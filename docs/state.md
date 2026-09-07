@@ -102,3 +102,23 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
 - Late-game samples at t=347/390/406 were detection spikes (count 4 at 390);
   hull logic renders them harmless. GT review (annotator on events_v2) remains
   the bar; 67 events.
+
+## 2026-09-07 (round 5) — PID-2/PID-3/PID-4 precursors on shot instants
+
+- SAM3 person scan extended to 12 shot instants (out/pid1_persons*): 2-5 persons
+  per instant, scores 0.87-0.99; 33 crops stored.
+- PID-3 cue feasibility: SAM3 "cue stick" probe returns thin long candidates
+  (e.g. 13x226 px at t=342.5) — usable but noisy; geometry fallback = cue-ball
+  position from event ball_from.
+- PID-2 dense tracklet detector gap: this cv2 5.0 build lacks HOGDescriptor and
+  CascadeClassifier; torchvision detection weights not fetchable right now
+  (pytorch.org denied, HF mirror unavailable). Dense continuous person tracking
+  deferred (ultralytics pip install or ROCm multiplex later).
+- PID-4 precursor (src/pid_identity.py): k-means k=2 over torso colors of
+  table-zone persons at 12 instants: 16 persons, clusters LIGHT (rgb ~104) vs
+  DARK (rgb ~35-80), between/within ratio 4.3; bent-shooter boxes (area frac
+  ~0.18) map to the DARK player at t=80.5/280.5/342.5/386.5 (and light player
+  elsewhere) -> strong preliminary A/B separation; artifacts
+  out/pid_identity_v0.json + out/pid_identity_montage.png (for user review).
+- Next: user shooter-GT field in the event review UI would let PID-3/5 scoring
+  be validated directly on the same review pass.
