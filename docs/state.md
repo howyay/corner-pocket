@@ -62,3 +62,11 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
     around those gaps,
   - one pot window_s [406,408] lies AFTER its pot t=387 (inconsistent window semantics from
     rebuild_events_calibrated.py).
+
+### PID-1 — person sensing feasibility (SAM3, CPU)
+- 4 shot-window frames (vod30 t=39.5/126.5/280.5/386.5, pre-impact −0.5 s): SAM3 text prompt
+  "person" detected 5/3/3/2 persons (scores 0.87–0.99); at t=280.5 & 386.5 a dominant large
+  person bbox (area frac 0.17–0.19, spanning table centre) = bent shooter pose. 13 crops stored
+  under out/pid1_persons/ (+report.json).
+- Implication: person masks exist per shot window; spectators also detected → tracklet zone
+  exclusion + geometric actor scoring (PID-2/PID-3) required, as the research predicted.
