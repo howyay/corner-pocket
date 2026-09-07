@@ -35,3 +35,30 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
 - Ceiling on set 1 only: ResNet18 79.5 % leave-one-frame-out (label-corrected);
   SqueezeNet 14 %, MobileNetV3-S 43 % — insufficient class support; certification
   deferred to BALL-1 after set-2 labels.
+
+## 2026-09-07 (round 2) — vod30 720p corner detection characterized; EVT-1 consistency audit
+
+### HOM-1 — vod30 corner detection characterization (src/quad_fit.py v3, make_segment_corners.py)
+- Tight-hue adaptive mask (anchor hue from centre band) is clean per frame (largest comp ~110 kpx,
+  bbox ≈ table). Failure is downstream of masking:
+  - mask/quad over-segmentation at 720p merges walls/clothing; minAreaRect axes can flip (90°),
+  - per-frame quad dispersion is BIMODAL/wide even after area gate: temporal median residual
+    median 205 px, p90 371 px over 175 sampled frames (max 510 px) → the simple
+    largest-component + approxPolyDP quad path is NOT usable for vod30 corners.
+- Robust side-line fitting (RANSAC / iterative assignment, quad_fit v3) converges 15/15 on the
+  sampled frames but with ~340 px systematic offset (mask edge loss on one rail biases the box).
+- Verdict: vod30 needs a line/corner-based finder (cushion rails via edge RANSAC in a dilated
+  cloth region) OR user-anchored pockets on 1–2 frames + rect-constrained PnP (highlight path);
+  per-frame quads should be replaced by one fixed segment homography (camera static).
+- Highlight 1080p remains stable (median 2.0 px).
+
+### EVT-1 — events.json consistency audit (no GT yet)
+- Causality violations: 0 (57 shots, 11 pot rows; every pot linked_shot_t <= pot t).
+- Pot count chain internally consistent: 10→8→6→5→4→3→1→0.
+- Issues to fix before GT review:
+  - pot rows are DUPLICATED pairwise (same t, same counts twice; 11 rows for 6 distinct moments),
+  - 6/68 events verified so far (all false),
+  - shot gaps up to 33–123 s imply missed quiet shots (false negatives) — candidate windows
+    around those gaps,
+  - one pot window_s [406,408] lies AFTER its pot t=387 (inconsistent window semantics from
+    rebuild_events_calibrated.py).
