@@ -179,3 +179,13 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   tracklets -> prototypes -> per-shot actors). Visuals: out/e2e_frame_81.png,
   out/e2e_frame_343.png.
 - Validation still needs :8124 GT (verdicts + shooter).
+
+## 2026-09-07 (round 10) — PID-4 v1: OSNet x0.25 embeddings
+
+- Vendored official osnet.py (kaiyangzhou/deep-person-reid, src/reid/) +
+  MSMT17-pretrained x0.25 weights (HF kaiyangzhou/osnet, 9.3MB, src/reid/weights).
+- src/pid_osnet.py embeds the 16 table-zone persons (256x128 crops):
+  leave-one-out NN same-colour-cluster 14/16 (0.88); intra cos 0.991 vs inter
+  0.987 (small gap: full-body crops incl. background dominate - mask-tight
+  crops or OSNet-AIN would improve; colour prototypes remain primary identity
+  cue until then). out/pid_osnet_eval.json.
