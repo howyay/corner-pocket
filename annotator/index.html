@@ -70,6 +70,7 @@ async function load() {
 
 function verdict(e) { return (annotations[String(e.id)] || {}).verdict; }
 function note(e) { return (annotations[String(e.id)] || {}).note || ''; }
+function shooter(e) { return (annotations[String(e.id)] || {}).shooter || ''; }
 
 function render() {
   const list = events.filter(e => {
@@ -106,20 +107,31 @@ function render() {
         <button class="btn ok ${v==='correct'?'done':''}" data-v="correct">✓ correct</button>
         <button class="btn bad ${v==='wrong'?'done':''}" data-v="wrong">✗ wrong</button>
         <button class="btn sure ${v==='unsure'?'done':''}" data-v="unsure">? unsure</button>
+        <select class="shooter">
+          <option value="">shooter: —</option>
+          <option value="A" ${shooter(e)==='A'?'selected':''}>A (light)</option>
+          <option value="B" ${shooter(e)==='B'?'selected':''}>B (dark)</option>
+          <option value="?" ${shooter(e)==='?'?'selected':''}>? unknown</option>
+        </select>
         <input class="note" placeholder="note (e.g. missed pot, wrong ball…)" value="${note(e)}">
         <span class="tag">#${e.id}</span>
       </div>`;
     const evId = String(e.id);
     d.querySelectorAll('.btn').forEach(b => b.onclick = async () => {
       await fetch('/api/annotate', { method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ event_id: e.id, verdict: b.dataset.v, note: d.querySelector('.note').value }) });
-      annotations[evId] = { verdict: b.dataset.v, note: d.querySelector('.note').value };
+        body: JSON.stringify({ event_id: e.id, verdict: b.dataset.v, note: d.querySelector('.note').value, shooter: d.querySelector('.shooter').value }) });
+      annotations[evId] = { verdict: b.dataset.v, note: d.querySelector('.note').value, shooter: d.querySelector('.shooter').value };
       render();
     });
     d.querySelector('.note').onchange = async () => {
       await fetch('/api/annotate', { method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ event_id: e.id, verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value }) });
-      annotations[evId] = { verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value };
+        body: JSON.stringify({ event_id: e.id, verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value, shooter: d.querySelector('.shooter').value }) });
+      annotations[evId] = { verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value, shooter: d.querySelector('.shooter').value };
+    };
+    d.querySelector('.shooter').onchange = async () => {
+      await fetch('/api/annotate', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ event_id: e.id, verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value, shooter: d.querySelector('.shooter').value }) });
+      annotations[evId] = { verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value, shooter: d.querySelector('.shooter').value };
     };
     $('#list').appendChild(d);
   }

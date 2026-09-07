@@ -119,6 +119,7 @@ class Handler(BaseHTTPRequestHandler):
         ann[str(event_id)] = {
             "verdict": payload.get("verdict", "unsure"),
             "note": payload.get("note", ""),
+            "shooter": payload.get("shooter", ""),
             "ts": datetime.now(timezone.utc).isoformat(),
         }
         ANNOT_FILE.write_text(json.dumps(ann, indent=1))

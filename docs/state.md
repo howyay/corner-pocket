@@ -122,3 +122,16 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   out/pid_identity_v0.json + out/pid_identity_montage.png (for user review).
 - Next: user shooter-GT field in the event review UI would let PID-3/5 scoring
   be validated directly on the same review pass.
+
+## 2026-09-07 (round 6) — vod30 calibration auto pass + shooter field in reviewer
+
+- src/calib_vod30.py: full rect-PnP run on vod30 (f=1685 px, 87/200 frames w/
+  usable quad+anchors): per-anchor medians TL 41 / TR 35 / BR 15 / BL 23 /
+  left-side 71 / right-side 10 mm (auto dark-blob anchors). Bias-corrected
+  half/half holdout: mean 30.0 mm / median 29.3 mm -> bar (<=15 mm) NOT MET.
+  Left side pocket blob detection is the weak anchor at 720p. out/calib_vod30.json
+  stores f, per-anchor medians, biases, holdout and the median H (usable now,
+  to be superseded by a manual 6-click anchor pass: same as the highlight path).
+- Review annotator (:8124) now persists a SHOOTER field per event (A light /
+  B dark / ? unknown) - one review pass yields event GT + shooter GT for
+  PID-3/5 validation. index.html JS syntax checked (node --check).
