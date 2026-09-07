@@ -135,3 +135,23 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
 - Review annotator (:8124) now persists a SHOOTER field per event (A light /
   B dark / ? unknown) - one review pass yields event GT + shooter GT for
   PID-3/5 validation. index.html JS syntax checked (node --check).
+
+## 2026-09-07 (round 7) — PID-2 v0 tracklets (YOLO) + PROJ-1 audit on vod30
+
+- ultralytics 8.4.142 installed in .venv (YOLOv8n, 6.2MB); person detections
+  match SAM3 anchors on shared frames (bent shooter, players, spectator).
+- src/yolo_track.py: 1 fps person tracklets over 4 shot windows (greedy
+  nearest-centre association, 6 s stale pruning = occlusion gaps):
+  - each window yields 2 long-lived tracks (26 s, ~27 samples) = the two
+    players, plus short spectator tracks;
+  - SAM3 anchor agreement 13/14 boxes (t=80.5 3/3, 198.5 3/4, 342.5 3/3,
+    386.5 4/4); 4 windows ran in ~14 s total (CPU).
+  - out/pid2_tracklets.json; occlusion semantics (hidden => gap, not identity
+    switch) inherited by association design.
+- PROJ-1 projection audit (vod30, out/calib_vod30.json H): portrait orientation
+  correct (head rail top y~303-314, foot rail bottom y~570-584, side pockets at
+  mid-length); mm rulers consistent with perspective (centre: 2.92 mm/px across
+  width, length foreshortening ~0.107 px/mm avg; 1000 mm rulers check out);
+  per-anchor biases (px) recorded; overlay artifact out/proj_audit_vod30.png.
+- Next: bind tracklets to A/B identity (OSNet or colour) and score shooter per
+  event (PID-3/4/5), then E2E-1.
