@@ -23,7 +23,7 @@ STD = np.array([0.229, 0.224, 0.225], np.float32)
 model = O.osnet_x0_25(pretrained=False, num_classes=1000)
 sd = torch.load(W, map_location="cpu", weights_only=False)
 sd = sd.get("state_dict", sd)
-sd = {k: v for k, v in sd.items() if k.startswith("backbone") or k.startswith("fc")}
+sd = {k: v for k, v in sd.items() if not k.startswith("classifier")}
 model.load_state_dict(sd, strict=False)
 model.eval()
 

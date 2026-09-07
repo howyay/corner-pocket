@@ -203,3 +203,19 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
 - Next steps (PID-4): SAM3 mask-tight person crops (store masks at scan time),
   and/or OSNet-AIN or a small fine-tune; colour prototypes remain primary.
   Tracklet identity binding should be re-tested with tight crops.
+
+## 2026-09-07 (round 12) — OSNet separation FIXED: weight-loading bug + tight crops
+
+- Root cause of the round-11 "background dominance" conclusion was WRONG: the
+  loader filtered keys by 'backbone.'/'fc.' prefixes, but torchreid checkpoints
+  store conv layers unprefixed -> only fc was loaded, all convs stayed random.
+  Full load (minus classifier): 0 missing.
+- With correct weights:
+  - tight-crop track pairs: win 68-94 intra 0.90/0.80 vs inter 0.69;
+    win 330-356 intra 0.62/0.73 vs inter 0.52.
+  - full-crop track pairs: win 68-94 intra 0.958/0.664 vs inter 0.414;
+    win 330-356 intra 0.641/0.900 vs inter 0.46-0.48 (torso mode similar).
+  - 16-person NN vs colour clusters: 13-14/16.
+- Conclusion: OSNet x0.25 MSMT17 separates the two players in this footage;
+  earlier negative result superseded (docs + issue comments corrected).
+- Mask-tight crops + masks stored under out/pid_masks (13 frames, 42 crops).
