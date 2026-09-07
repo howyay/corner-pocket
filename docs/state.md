@@ -168,3 +168,14 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
     (<=3.5s pairs) carry ball_from; per-shot actor GT from the :8124 reviewer
     (shooter field) is the validation target.
 - out/events_actors.json.
+
+## 2026-09-07 (round 9) — PID-3 v1 white-ball geometry + E2E-1 assembly
+
+- pid_shooter2.py: white (cue) ball localized per shot frame (HSV on cloth:
+  found in 50/57) -> nearest-person geometry for 45/57 shots (was 6), 7 colour
+  fallback, 5 no-person; actors: 20 A/B switches (sequence AAAAABA?B...).
+- docs/e2e_run.md: corrected 30-min chain documented with run commands,
+  artifacts and metrics (corners -> calib -> sam3 -> events_v2 -> persons ->
+  tracklets -> prototypes -> per-shot actors). Visuals: out/e2e_frame_81.png,
+  out/e2e_frame_343.png.
+- Validation still needs :8124 GT (verdicts + shooter).
