@@ -1,0 +1,38 @@
+# Identifying the shooter in a fixed-camera two-player pool stream
+
+## Bottom line
+
+Treat this as **action-to-track attribution first, track-to-name identification second**. Do not ask face recognition or generic ReID to decide who shot from one frame. At each detected cue-ball launch, find the person physically operating the cue; aggregate identity evidence across that person’s tracklet; then assign every pot in that ball-motion episode to that shooter.
+
+## What the literature says
+
+| Method | Published result | Relevance here |
+|---|---:|---|
+| OSNet x1.0 | Market-1501 **94.8 R1 / 84.9 mAP**; Duke **88.6 / 73.5** | Strong lightweight body embedding; the [ICCV 2019 paper](https://openaccess.thecvf.com/content_ICCV_2019/html/Zhou_Omni-Scale_Feature_Learning_for_Person_Re-Identification_ICCV_2019_paper.html) reports 2.2M parameters. |
+| OSNet x0.25 | Torchreid zoo: Market **91.2 / 75.0**; Duke **82.0 / 61.4** | Best minimum viable model: **0.2M parameters, 0.08 GFLOPs** at 256×128; official [model zoo](https://kaiyangzhou.github.io/deep-person-reid/MODEL_ZOO.html) and MIT-licensed [HF weights](https://huggingface.co/kaiyangzhou/osnet), including MSMT17-trained weights. |
+| Bag-of-Tricks ResNet-50 | Market **94.5 / 85.9**; Duke **86.4 / 76.4** | Solid heavier baseline; [CVPRW 2019](https://openaccess.thecvf.com/content_CVPRW_2019/html/TRMTMCT/Luo_Bag_of_Tricks_and_a_Strong_Baseline_for_Deep_Person_CVPRW_2019_paper.html). This is distinct from BoT-SORT, which is a MOT association system. |
+| TransReID, ViT-B/16 | Market **95.0 / 88.4**; Duke **91.1 / 81.9** at 256×128; best listed variants reach Market **95.2 / 89.5** | Best benchmark accuracy here, but far larger and unlikely to beat temporal/geometric fusion enough to justify its cost; [ICCV 2021](https://openaccess.thecvf.com/content/ICCV2021/html/He_TransReID_Transformer-Based_Object_Re-Identification_ICCV_2021_paper.html). |
+| ArcFace/InsightFace | ArcFace R100: LFW **99.83%**, CFP-FP **98.79%**, AgeDB-30 **98.23%** | Useful only as high-confidence identity anchors. These verification sets contain detected/aligned faces and do not predict tiny, profile, occluded Twitch faces; see [ArcFace](https://openaccess.thecvf.com/content_CVPR_2019/html/Deng_ArcFace_Additive_Angular_Margin_Loss_for_Deep_Face_Recognition_CVPR_2019_paper.html). InsightFace’s [model zoo](https://github.com/deepinsight/insightface/tree/master/model_zoo) offers `buffalo_l` and small `buffalo_sc`, but supplied weights are non-commercial-research-only; licensing matters. |
+
+Sports work supports **tracklet aggregation and constraints**, not single-frame classification. A single-side-view NBA method pooled discriminative body parts and reached **96.0% mean per-player accuracy** over five same-team players, but used 2,500 labeled crops/player and ground-truth boxes ([CVPRW 2018 paper](https://www.openaccess.thecvf.com/content_cvpr_2018_workshops/papers/w34/Senocak_Part-Based_Player_Identification_CVPR_2018_paper.pdf)). Hockey player ID aggregated jersey evidence across tracklets and exceeded **87%** ([paper](https://arxiv.org/abs/2009.02429)). Earlier sports CRFs connected detections temporally and imposed “one identity cannot occupy two places in one frame,” the exact useful abstraction here ([UBC report](https://www.cs.ubc.ca/sites/default/files/tr/2011/TR-2011-08_0.pdf)). Modern sports tracking similarly benefits from global tracklet association; GTA reports **81.04 HOTA** on SportsMOT ([ACCVW 2024](https://openaccess.thecvf.com/content/ACCV2024W/MLCSA2024/html/Sun_GTA_Global_Tracklet_Association_for_Multi-Object_Tracking_in_Sports_ACCVW_2024_paper.html)).
+
+## Recommended pipeline
+
+1. **Build tracklets.** Associate SAM person masks with Kalman motion, mask IoU/centroid, and cosine ReID cost. A fixed camera makes this easier than broadcast MOT. Exclude spectators using a dilated table interaction zone, but retain a temporary track outside it. Enforce at most one simultaneous track per identity.
+2. **Choose the actor geometrically.** In roughly `t_shot−1.5 s … t_shot+0.2 s`, score each track by: cue segment intersecting/within the hand/torso mask; cue tip distance to the pre-impact cue-ball center; hand/head proximity to the relevant rail; bent shooting-pose persistence; and negative distance from the table. If cue detection is weak, train a tiny two-class “shooting/not-shooting” crop classifier or use pose wrist/elbow alignment. Geometry should dominate appearance in selecting the actor.
+3. **Embed robust crops.** From 5–15 sharp, non-occluded frames per tracklet, use the mask-tight full-body box plus 5–10% padding, zero/blur other people and most table background, resize to 256×128, L2-normalize OSNet embeddings, then quality-weighted median/mean pool. Add simple HSV clothing histograms as an independent fixed-camera cue.
+4. **Bootstrap names training-free.** Cluster long, clean tracklets into exactly two prototypes (agglomerative or constrained k-means). Seed A/B names with one manual click each, overlay/scoreboard evidence, or a high-quality aligned face. Without such an anchor, clustering can recover two consistent identities but cannot know their human names. Update prototypes only from high-margin assignments; keep `unknown` rather than contaminating them.
+5. **Fuse globally.** For shot `s` and candidate `i`, combine calibrated log-scores, initially about **0.60 cue/action geometry + 0.25 tracklet ReID + 0.10 continuity + 0.05 face/clothing**, with hard mutual exclusion. Solve the whole rack by Viterbi/min-cost flow. “Players alternate” is only a soft prior: a legal pot can retain the turn, while miss/foul rules change it. Attribute all pots before the next shot to the selected shooter.
+6. **Optional adaptation.** Zero-shot: MSMT17-pretrained OSNet x0.25/x1.0 plus online prototypes—ROCm PyTorch should run the ordinary tensor ops; CPU is sufficient at sampled tracklet frames. Fine-tuning: label 200–500 diverse crops/player across several sessions, freeze most of OSNet and train the embedding head with binary cross-entropy/triplet loss, or simply fit logistic regression on frozen embeddings. Validate by held-out **session**, not random frames.
+
+## Realistic expectation for this footage
+
+| System | Estimated shot-attribution accuracy |
+|---|---:|
+| Cue/action geometry only | **90–96%** |
+| Zero-shot OSNet tracklets only | **90–97%** if clothing differs; **70–90%** if outfits are similar/change |
+| Geometry + tracklet ReID + temporal constraints | **96–99%** |
+| Same fusion with session-diverse fine-tuning | **98–99.5%** |
+| Face alone | **Highly variable, roughly 60–95% coverage-adjusted** |
+
+These are engineering estimates, not published pool benchmarks. Measure shooter accuracy per detected shot, identity-switch rate, coverage/abstention, and end-to-end pot-owner accuracy separately. Dominant failures are cue hidden or merged with background, shooter occluded/bent into a poor crop, bystander holding a cue, both players wearing similar dark clothing, clothing changes across streams, face blur/profile, broken tracklets, and false shot timestamps. A 2025 pool-specific model reports **87.4% clear-shot accuracy**, but addresses event/outcome classification—not shooter identity ([Attention-Pool](https://doi.org/10.3390/computers14090352)). I found no peer-reviewed pool/snooker system that reports **which named player executed each shot**; snooker literature found here concerns balls, scene/event segmentation, or visualization. That absence strengthens the case for the geometry-plus-tracklet formulation rather than a bespoke “pool player ID” model.

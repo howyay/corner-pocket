@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ball labeler — 1-15 + cue</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1a1a1a; }
+  @media (prefers-color-scheme: dark) { body { background: #16181d; color: #e8e8e8; } }
+  header { padding: 12px 20px; display: flex; gap: 14px; align-items: center; border-bottom: 1px solid #ddd; position: sticky; top: 0; background: inherit; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  .prog { margin-left: auto; font-size: 13px; color: #888; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+  .filters button { border: 1px solid #ccc; background: #fff; border-radius: 999px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  @media (prefers-color-scheme: dark) { .filters button { background: #23262d; border-color: #3a3f48; color: #eee; } }
+  .filters button.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+  main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 12px; margin-bottom: 14px; padding: 12px; display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  @media (prefers-color-scheme: dark) { .card { background: #1e2127; border-color: #33383f; } }
+  .card.unsure { border-color: #d97706; outline: 1px solid #d97706; }
+  .card.done { opacity: .86; }
+  .ctxbox { position: relative; }
+  .ctxbox img { width: 340px; height: 340px; object-fit: contain; background: #000; border-radius: 8px; }
+  .cropbox { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .cropbox img { width: 130px; height: 130px; object-fit: contain; background: #000; border-radius: 8px; image-rendering: pixelated; }
+  .info { flex: 1 1 180px; font-size: 13px; color: #667; }
+  .chip { display: inline-block; border-radius: 999px; padding: 2px 10px; font-weight: 700; margin-top: 4px; }
+  .chip.set { background: #2563eb; color: #fff; }
+  .chip.u { background: #d97706; color: #fff; }
+  .chip.none { background: #888; color: #fff; }
+  .keys { display: flex; flex-wrap: wrap; gap: 6px; max-width: 640px; }
+  .key { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #ccc; background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
+  @media (prefers-color-scheme: dark) { .key { background: #23262d; border-color: #3a3f48; color: #eee; } }
+  .key.cur { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .key.u { border-radius: 10px; }
+  .key.x { border-radius: 10px; font-size: 12px; color: #b00; }
+  .hint { font-size: 12px; color: #888; margin-top: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎱 Label the balls</h1>
+  <div class="filters" id="filters"></div>
+  <span class="prog" id="prog"></span>
+</header>
+<main id="list"></main>
+<script>
+const $ = (s) => document.querySelector(s);
+const NAMES = {0:'cue/white',1:'1 yellow',2:'2 blue',3:'3 red',4:'4 pink',5:'5 orange',6:'6 green',7:'7 brown',8:'8 black',
+  9:'9 yellow str',10:'10 blue str',11:'11 red str',12:'12 pink str',13:'13 orange str',14:'14 green str',15:'15 brown str'};
+let crops = [];
+let labels = {};   // file -> number | 'u'
+let filter = 'todo';
+
+function state(c) {
+  const v = labels[c.file];
+  if (v === undefined || v === null) return 'todo';
+  if (v === 'u') return 'unsure';
+  return 'done';
+}
+
+async function load() {
+  try {
+    crops = await (await fetch('/api/crops')).json();
+  } catch (e) {
+    $('#list').textContent = 'no crops yet — run collect_crops.py first';
+    return;
+  }
+  for (const c of crops) {
+    if (c.label !== undefined && c.label !== null) labels[c.file] = c.label;
+  }
+  renderFilters();
+  render();
+}
+
+function counts() {
+  const n = {todo:0, unsure:0, done:0};
+  for (const c of crops) n[state(c)]++;
+  return n;
+}
+
+function renderFilters() {
+  const n = counts();
+  const defs = [['todo', `To label ${n.todo}`], ['unsure', `Unsure ${n.unsure}`], ['done', `Labeled ${n.done}`], ['all', 'All']];
+  $('#filters').innerHTML = '';
+  for (const [k, lab] of defs) {
+    const b = document.createElement('button');
+    b.textContent = lab;
+    b.className = filter === k ? 'on' : '';
+    b.onclick = () => { filter = k; renderFilters(); render(); };
+    $('#filters').appendChild(b);
+  }
+}
+
+function fmtLabel(c) {
+  const v = labels[c.file];
+  if (v === undefined || v === null) return null;
+  if (v === 'u') return 'u';
+  return v;
+}
+
+async function setLabel(c, v) {
+  await fetch('/api/ball_label', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ file: c.file, label: v }) });
+  if (v === 'clear') delete labels[c.file];
+  else labels[c.file] = v;
+  renderFilters();
+  render();
+}
+
+function render() {
+  const st = state;
+  let list = crops.slice();
+  if (filter !== 'all') list = list.filter(c => st(c) === filter);
+  const n = counts();
+  $('#prog').textContent = `${n.done + n.unsure}/${crops.length} reviewed · ${n.todo} left`;
+  $('#list').innerHTML = '';
+  for (const c of list) {
+    const v = fmtLabel(c);
+    const s = st(c);
+    const d = document.createElement('div');
+    d.className = 'card ' + s;
+    const ctxSrc = c.ctx ? `/ctx/${c.ctx}` : null;
+    const cropName = c.file.split('/').pop();
+    d.innerHTML = `
+      <div class="ctxbox">${ctxSrc ? `<img src="${ctxSrc}" alt="context">` : '<div class="hint">no context image</div>'}</div>
+      <div class="cropbox"><img src="/crops/${cropName}" alt="crop"><span class="hint">t=${c.t}s · score ${c.score}</span></div>
+      <div class="info">
+        <div class="chip ${v == null ? 'none' : v === 'u' ? 'u' : 'set'}">${v == null ? 'unlabeled' : v === 'u' ? 'unsure ⚠' : NAMES[v] + ' ✓'}</div>
+        <div class="hint">${cropName}</div>
+      </div>
+      <div class="keys" data-file="${c.file}"></div>`;
+    const kd = d.querySelector('.keys');
+    const mk = (txt, title, cls, val) => {
+      const b = document.createElement('button');
+      b.className = 'key ' + cls;
+      b.textContent = txt;
+      b.title = title;
+      b.onclick = () => setLabel(c, val);
+      kd.appendChild(b);
+    };
+    for (let nn = 0; nn <= 15; nn++) mk(nn === 0 ? 'W' : nn, NAMES[nn], v === nn ? 'cur' : '', nn);
+    mk('?', 'not sure — mark for review', 'u ' + (v === 'u' ? 'cur' : ''), 'u');
+    mk('✕', 'clear label', 'x', 'clear');
+    $('#list').appendChild(d);
+  }
+}
+load();
+</script>
+</body>
+</html>

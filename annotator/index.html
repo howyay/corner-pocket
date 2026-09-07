@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pool event review — shots &amp; pots</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1a1a1a; }
+  @media (prefers-color-scheme: dark) { body { background: #16181d; color: #e8e8e8; } }
+  header { padding: 14px 20px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #ddd; position: sticky; top: 0; background: inherit; z-index: 5; }
+  header h1 { font-size: 16px; margin: 0; }
+  .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+  @media (prefers-color-scheme: dark) { .pill { background: #23262d; border-color: #3a3f48; } }
+  .pill.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .progress { margin-left: auto; font-size: 13px; color: #666; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+  @media (prefers-color-scheme: dark) { .card { background: #1e2127; border-color: #33383f; } }
+  .card .head { padding: 10px 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #eee; }
+  @media (prefers-color-scheme: dark) { .card .head { border-color: #2c3138; } }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; }
+  .badge.shot { background: #dbeafe; color: #1d4ed8; }
+  .badge.pot { background: #fee2e2; color: #b91c1c; }
+  @media (prefers-color-scheme: dark) { .badge.shot { background: #1e3a5f; color: #93c5fd; } .badge.pot { background: #5f1e1e; color: #fca5a5; } }
+  .time { font-weight: 700; font-size: 15px; }
+  .desc { font-size: 13px; color: #555; }
+  @media (prefers-color-scheme: dark) { .desc { color: #aab; } }
+  .imgwrap { padding: 8px; background: #000; text-align: center; }
+  .imgwrap img { max-width: 100%; max-height: 340px; }
+  .controls { padding: 10px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn { border: 1px solid #ccc; background: #fff; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  @media (prefers-color-scheme: dark) { .btn { background: #23262d; border-color: #3a3f48; color: #e8e8e8; } }
+  .btn.ok { border-color: #16a34a; color: #16a34a; }
+  .btn.ok.done { background: #16a34a; color: #fff; }
+  .btn.bad { border-color: #dc2626; color: #dc2626; }
+  .btn.bad.done { background: #dc2626; color: #fff; }
+  .btn.sure { border-color: #d97706; color: #d97706; }
+  .btn.sure.done { background: #d97706; color: #fff; }
+  .note { flex: 1 1 220px; min-width: 180px; padding: 7px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; background: #fff; }
+  @media (prefers-color-scheme: dark) { .note { background: #16181d; border-color: #3a3f48; color: #e8e8e8; } }
+  .tag { font-size: 12px; margin-left: 6px; color: #999; }
+  .empty { text-align: center; color: #888; padding: 40px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎱 Pool event review</h1>
+  <button class="pill active" data-f="all">All</button>
+  <button class="pill" data-f="shot">Shots</button>
+  <button class="pill" data-f="pot">Pots</button>
+  <button class="pill" data-f="open">Unreviewed</button>
+  <span class="progress" id="prog"></span>
+</header>
+<main id="list"></main>
+<script>
+const $ = (s) => document.querySelector(s);
+let events = [], annotations = {}, filter = 'all';
+
+async function load() {
+  try {
+    events = await (await fetch('/api/events')).json();
+    annotations = await (await fetch('/api/annotations')).json();
+  } catch (e) {
+    $('#list').innerHTML = '<div class="empty">Could not load events — is the server running with the right events.json?</div>';
+    return;
+  }
+  render();
+}
+
+function verdict(e) { return (annotations[String(e.id)] || {}).verdict; }
+function note(e) { return (annotations[String(e.id)] || {}).note || ''; }
+
+function render() {
+  const list = events.filter(e => {
+    if (filter === 'shot' && e.type !== 'shot') return false;
+    if (filter === 'pot' && e.type !== 'pot') return false;
+    if (filter === 'open' && verdict(e)) return false;
+    return true;
+  });
+  const done = events.filter(e => verdict(e)).length;
+  $('#prog').textContent = `${done}/${events.length} reviewed`;
+  if (!list.length) { $('#list').innerHTML = '<div class="empty">Nothing here.</div>'; return; }
+  $('#list').innerHTML = '';
+  for (const e of list) {
+    const d = document.createElement('div');
+    d.className = 'card';
+    const mm = e.t;
+    const tstr = `${Math.floor(mm/60)}:${String(Math.floor(mm%60)).padStart(2,'0')}`;
+    let desc = '';
+    if (e.type === 'shot') {
+      desc = `displacement ${e.disp_mm} mm (≈${e.speed_m_s} m/s) · ${e.ball_from ? 'from (' + e.ball_from[0] + ',' + e.ball_from[1] + ') mm to (' + e.ball_to[0] + ',' + e.ball_to[1] + ') mm' : ''}`;
+    } else {
+      desc = `ball potted near ${e.nearest_pocket} (${e.pocket_dist_mm} mm from pocket) · last at (${e.ball_table_mm[0]},${e.ball_table_mm[1]}) mm`;
+    }
+    const v = verdict(e);
+    const img = e.evidence ? e.evidence : `evidence_t${String(Math.round(e.t)).padStart(5,'0')}.jpg`;
+    d.innerHTML = `
+      <div class="head">
+        <span class="badge ${e.type}">${e.type.toUpperCase()}</span>
+        <span class="time">t = ${tstr}</span>
+        <span class="desc">${desc}</span>
+      </div>
+      <div class="imgwrap"><img src="${img}" alt="evidence at t=${tstr}" loading="lazy"></div>
+      <div class="controls">
+        <button class="btn ok ${v==='correct'?'done':''}" data-v="correct">✓ correct</button>
+        <button class="btn bad ${v==='wrong'?'done':''}" data-v="wrong">✗ wrong</button>
+        <button class="btn sure ${v==='unsure'?'done':''}" data-v="unsure">? unsure</button>
+        <input class="note" placeholder="note (e.g. missed pot, wrong ball…)" value="${note(e)}">
+        <span class="tag">#${e.id}</span>
+      </div>`;
+    const evId = String(e.id);
+    d.querySelectorAll('.btn').forEach(b => b.onclick = async () => {
+      await fetch('/api/annotate', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ event_id: e.id, verdict: b.dataset.v, note: d.querySelector('.note').value }) });
+      annotations[evId] = { verdict: b.dataset.v, note: d.querySelector('.note').value };
+      render();
+    });
+    d.querySelector('.note').onchange = async () => {
+      await fetch('/api/annotate', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ event_id: e.id, verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value }) });
+      annotations[evId] = { verdict: verdict(e) || 'unsure', note: d.querySelector('.note').value };
+    };
+    $('#list').appendChild(d);
+  }
+}
+
+document.querySelectorAll('.pill').forEach(p => p.onclick = () => {
+  document.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
+  p.classList.add('active'); filter = p.dataset.f; render();
+});
+load();
+</script>
+</body>
+</html>

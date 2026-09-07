@@ -1,0 +1,21 @@
+# heavy/local artifacts
+.venv/
+.venv-rocm/
+__pycache__/
+*.pyc
+.dsh-vision-router/
+
+# media data (large, not committed)
+data/
+*.mp4
+*.safetensors
+
+# generated outputs (regenerable from src/)
+out/
+viz/
+
+# vendored upstream checkout (reclone: github.com/facebookresearch/sam3)
+src/sam3/
+
+# local notes
+*.local.md
