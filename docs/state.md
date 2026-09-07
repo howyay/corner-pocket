@@ -189,3 +189,17 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   0.987 (small gap: full-body crops incl. background dominate - mask-tight
   crops or OSNet-AIN would improve; colour prototypes remain primary identity
   cue until then). out/pid_osnet_eval.json.
+
+## 2026-09-07 (round 11) — PID-4 v2 tracklet identity binding: inconclusive (cause found)
+
+- Embedded crops along colour-separated tracks (2 windows, full & torso modes,
+  both channel orders): intra ~0.99-1.00 AND inter ~0.99 -> pretrained OSNet
+  does NOT separate persons here on full-YOLO-box crops.
+- Cause: crops are background-dominated in this dark venue (persons are small
+  within their boxes; e.g. 70x178px at 720p) -> embeddings approximate the
+  venue background direction; synthetic controls (white/black/noise) vary
+  correctly, so the model/weights/preprocessing are not degenerate per se.
+- Person-level NN on 16 crops still matched colour clusters 14/16 (coarse).
+- Next steps (PID-4): SAM3 mask-tight person crops (store masks at scan time),
+  and/or OSNet-AIN or a small fine-tune; colour prototypes remain primary.
+  Tracklet identity binding should be re-tested with tight crops.

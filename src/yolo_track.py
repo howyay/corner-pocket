@@ -117,8 +117,8 @@ def main():
         out[f"{a}-{b}"] = {
             "n_tracklets": len(tls),
             "runtime_s": round(dt, 1),
-            "tracklets": [{"id": x["track_id"], "dur": x["duration_s"], "n": x["n"]}
-                          for x in tls[:8]],
+            "tracklets": [{"id": x["track_id"], "dur": x["duration_s"], "n": x["n"],
+                           "samples": x["samples"]} for x in tls],
         }
         print(f"window {a}-{b}: {len(tls)} tracklets in {dt:.0f}s")
         for x in tls[:8]:
