@@ -219,3 +219,15 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
 - Conclusion: OSNet x0.25 MSMT17 separates the two players in this footage;
   earlier negative result superseded (docs + issue comments corrected).
 - Mask-tight crops + masks stored under out/pid_masks (13 frames, 42 crops).
+
+## 2026-09-07 (round 13) — PID-5 v0 fused per-shot association
+
+- src/pid_associate.py: A/B prototypes = mean OSNet embeddings of the
+  colour-separated track pairs (2 windows); per shot: person boxes at t-0.8s,
+  embeddings, cue-ball (white) geometry; actor = person nearest cue, labelled by
+  prototype argmax w/ margin.
+- Result: 52/57 shots assigned (5 no-person); cue geometry 45; low-margin 9;
+  sequence heavily B (dark): "BBBBBBA?BBB...A?..." with 6 A/B switches.
+  Caveats: prototype set from 2 windows may not cover the light player's
+  appearances; nearest-cue selection may bias toward the near-table player.
+  Validation requires the :8124 shooter GT. out/events_actors.json (v2).
