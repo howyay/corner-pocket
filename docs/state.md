@@ -70,3 +70,18 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   under out/pid1_persons/ (+report.json).
 - Implication: person masks exist per shot window; spectators also detected → tracklet zone
   exclusion + geometric actor scoring (PID-2/PID-3) required, as the research predicted.
+
+## 2026-09-07 (round 3) — HOM-1: strip-refined corners solved for vod30
+
+- New tool `src/quad_refine.py`: refines a prior quad by scanning cloth->edge
+  transitions along side-normal strips (robust vs occlusion; 13/15 sampled
+  frames ok, fails only at heavy-occlusion instants).
+- `out/corners_30min_v2.json` (method + stats): 163/300 frames accepted (MAD
+  gate 6 px); per-frame jitter median **3.95 px**, p90 **5.59 px** (old
+  approach: ~205 px median). At ~1.9 mm/px -> ~7.5 mm / 10.6 mm corner jitter.
+- Systematic offset vs the provisional corners_30min found on the left side
+  (old TL/BL off by ~28-39 px): new reference is temporally consistent.
+- Remaining for the formal bar: 6-pocket anchor holdout on vod30 (user clicks,
+  same as the highlight path) -> rect-PnP + mm RMSE; then PROJ-1 pocket
+  residual table. Automatic rail-finder attempts (quad_fit.py v2/v3,
+  quad_fit_lines.py) documented as not viable on this footage.
