@@ -155,3 +155,16 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   per-anchor biases (px) recorded; overlay artifact out/proj_audit_vod30.png.
 - Next: bind tracklets to A/B identity (OSNet or colour) and score shooter per
   event (PID-3/4/5), then E2E-1.
+
+## 2026-09-07 (round 8) — PID-3 v0 per-shot actor assignment
+
+- src/pid_shooter.py: for each of 57 shots: YOLO persons at t-1.2s (table
+  zone), torso-colour cluster (A light / B dark per pid_identity prototypes),
+  geometry when verified (cue-ball mm -> px through calib_vod30 H):
+  - 52/57 assigned (5 no-person); geometry 6 (t=273/343/849/1072/1614/1662,
+    all actor B/dark, dist to cue 314-539 px); colour-only 46; A/B switches 15
+    (sequence BBBBABAAABBBBAABBBBABABBBBBBBBAB?BBB...); dark heavy (B~3x A).
+  - Sparse geometry because only shots with SAM3 displacement verification
+    (<=3.5s pairs) carry ball_from; per-shot actor GT from the :8124 reviewer
+    (shooter field) is the validation target.
+- out/events_actors.json.
