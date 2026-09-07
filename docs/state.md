@@ -85,3 +85,20 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   same as the highlight path) -> rect-PnP + mm RMSE; then PROJ-1 pocket
   residual table. Automatic rail-finder attempts (quad_fit.py v2/v3,
   quad_fit_lines.py) documented as not viable on this footage.
+
+## 2026-09-07 (round 4) — EVT-1: corrected event rebuild (events_v2.json)
+
+- Root causes found in the old build: (1) sam3 image coords were reprojected
+  with the HIGHLIGHT (1080p) calibration on the vod30 (720p) scan -> wrong mm;
+  (2) pot counts used raw counts incl. detection spikes; (3) occlusion gate was
+  missing in records (cloth_area recomputed per sam3 t from the video instead).
+- src/rebuild_events_v2.py -> out/scan30/events_v2.json: real-mm H from
+  corners_30min_v2 (2540x1270), real pocket centers, monotone-hull pot logic
+  (counts physically non-increasing; rises = detection noise), causality links.
+- Result: 57 shots + 10 pot rows (was 11 w/ inconsistent chain); pot chain
+  clean 10->8->6->5->4->3->1->0 (double pots at 81/137/343s, singles at
+  199/255/281/408s); all pots linked to shots; causality violations 0; pocket
+  distances <= 440 mm (bogus 1.1 m rows eliminated).
+- Late-game samples at t=347/390/406 were detection spikes (count 4 at 390);
+  hull logic renders them harmless. GT review (annotator on events_v2) remains
+  the bar; 67 events.
