@@ -231,3 +231,19 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   Caveats: prototype set from 2 windows may not cover the light player's
   appearances; nearest-cue selection may bias toward the near-table player.
   Validation requires the :8124 shooter GT. out/events_actors.json (v2).
+
+## 2026-09-08 — round: person-in-loop tooling + VOD highlight pipeline test
+
+- PID-6 anchor UI live on :8126 (pocket anchors w/ auto prefill; feeds HOM-1).
+- PID-6 player seed UI live on :8127 (click player-A track; rebuild rebuilds
+  OSNet prototypes & propagates across all tracklets; smoke test passed).
+- Review UIs now show predicted actor per event (from events_actors.json via
+  /api/actors, id-mapped) on :8124 / :8129.
+- vod30 event-time ball crops collected: 294 crops + ctx at 59 event times ->
+  served on :8128 (label.html) for ball-ID GT at the exact event frames.
+- scan_events patched (mp -> ThreadPoolExecutor; sandbox denies /dev/shm).
+- Highlight VOD pipeline test: full scan+SAM3+events ran end-to-end on
+  vod_highlight.mp4 -> out/scan_highlight/events.json: 6 shots + 11 pots,
+  evidence jpgs, served on :8129.  NOTE: 11 pots vs known ~9 balls -> likely
+  double-counted pairs (same pattern as the old vod30 bug: two pocket windows
+  firing for one ball); needs the same causal-chain guard as events_v2.
