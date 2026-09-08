@@ -48,6 +48,25 @@ class Handler(BaseHTTPRequestHandler):
             if not ANNOT_FILE.exists():
                 return self._send(200, b"{}")
             return self._send(200, ANNOT_FILE.read_bytes())
+        if self.path == "/api/actors":
+            f = ROOT.parent / "out" / "events_actors.json"
+            if not f.exists():
+                return self._send(200, b"{}")
+            # map by event id: events_actors.json entries carry t; events carry id+t
+            try:
+                ev = json.loads(EVENTS_FILE.read_bytes())
+                acts = json.loads(f.read_text())
+                by_t = {}
+                for a in acts:
+                    by_t[round(a["t"], 1)] = a
+                out = {}
+                for e in ev:
+                    a = by_t.get(round(e["t"], 1))
+                    if a:
+                        out[str(e["id"])] = a
+                return self._send(200, json.dumps(out).encode())
+            except Exception:
+                return self._send(200, b"{}")
         if self.path == "/label":
             body = (ROOT / "label.html").read_bytes()
             return self._send(200, body, "text/html; charset=utf-8")

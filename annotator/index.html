@@ -55,12 +55,13 @@
 <main id="list"></main>
 <script>
 const $ = (s) => document.querySelector(s);
-let events = [], annotations = {}, filter = 'all';
+let events = [], annotations = {}, actors = {}, filter = 'all';
 
 async function load() {
   try {
     events = await (await fetch('/api/events')).json();
     annotations = await (await fetch('/api/annotations')).json();
+    try { actors = await (await fetch('/api/actors')).json(); } catch (e2) { actors = {}; }
   } catch (e) {
     $('#list').innerHTML = '<div class="empty">Could not load events — is the server running with the right events.json?</div>';
     return;
@@ -101,6 +102,7 @@ function render() {
         <span class="badge ${e.type}">${e.type.toUpperCase()}</span>
         <span class="time">t = ${tstr}</span>
         <span class="desc">${desc}</span>
+        ${actors[String(e.id)] ? `<span class="desc" style="margin-left:auto;font-weight:700">pred: ${actors[String(e.id)].actor || '?'}${actors[String(e.id)].margin != null ? ' (m='+actors[String(e.id)].margin+')' : ''}</span>` : ''}
       </div>
       <div class="imgwrap"><img src="${img}" alt="evidence at t=${tstr}" loading="lazy"></div>
       <div class="controls">
