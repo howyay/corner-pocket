@@ -302,7 +302,11 @@ def main():
         t1, t2 = times[i], times[i + 1]
         if occluded(t1) or occluded(t2):
             continue  # count unknown while a person blocks the view
-        if counts[t2] < prev_min:
+        # recovery guard: a REAL pot never comes back.  If any of the next 3
+        # samples rises above the dropped level, treat as occlusion noise.
+        c2 = counts[t2]
+        recovers = any(counts[tt] > c2 for tt in times[i + 2:i + 5])
+        if c2 < prev_min and not recovers:
             prev_min = counts[t2]
             # greedy nearest-neighbour matching, k = drop size
             k = counts[t1] - counts[t2]
