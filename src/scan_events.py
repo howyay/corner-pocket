@@ -246,27 +246,14 @@ def main():
 
     print(f"phase 2: SAM3 confirmation of {len(conf_times)} timestamps (2 workers)...", flush=True)
     t0 = time.time()
-    import multiprocessing as mp
-
-    try:
-        mp.set_start_method("fork")
-    except RuntimeError:
-        pass
-
-    def _worker(chunk, q):
-        res = sam3_confirm(args.video, chunk, out_dir)
-        q.put(res)
-
-    chunks = np.array_split(conf_times, 2)
-    q = mp.Queue()
-    procs = [mp.Process(target=_worker, args=(list(c), q)) for c in chunks if len(c)]
-    for pr in procs:
-        pr.start()
+    # threads instead of mp (sandbox lacks /dev/shm for SemLock)
+    from concurrent.futures import ThreadPoolExecutor
+    chunks = [list(c) for c in np.array_split(conf_times, 2) if len(c)]
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        results = list(ex.map(lambda c: sam3_confirm(args.video, c, out_dir), chunks))
     sam3 = {}
-    for _ in procs:
-        sam3.update(q.get())
-    for pr in procs:
-        pr.join()
+    for r in results:
+        sam3.update(r)
     print(f"phase 2 done in {time.time()-t0:.0f}s", flush=True)
 
     # refine shot events: displacement of the fastest ball between bracketing SAM3 frames
