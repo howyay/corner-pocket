@@ -38,6 +38,10 @@ def _apply_patches() -> None:
         raise ValueError(f"Unexpected activation {activation}")
 
     fused.addmm_act = _addmm_act_cpu
+    # Import-order proof: vitdet may have been imported before this rebind
+    # (e.g. by the server's sam3 model import chain); fix its binding too.
+    import sam3.model.vitdet as _vitdet
+    _vitdet.addmm_act = _addmm_act_cpu
 
     # pin_memory() requires a CUDA-capable accelerator in recent torch; on CPU
     # it is a no-op, so make it safe for the image path.
@@ -50,6 +54,7 @@ def _apply_patches() -> None:
 
 
 def load_sam3_image_model(checkpoint_path: str, device: str = "cpu", **kwargs):
+    import torch
     """Build the SAM3 image model on CPU with the CUDA patch applied."""
     _apply_patches()
     from sam3.model_builder import build_sam3_image_model
@@ -59,7 +64,7 @@ def load_sam3_image_model(checkpoint_path: str, device: str = "cpu", **kwargs):
             Path(__file__).resolve().parent / "sam3" / "sam3" / "assets" / "bpe_simple_vocab_16e6.txt.gz"
         )
 
-    return build_sam3_image_model(
+    model = build_sam3_image_model(
         bpe_path=kwargs.pop("bpe_path"),
         device=device,
         eval_mode=True,
@@ -67,9 +72,17 @@ def load_sam3_image_model(checkpoint_path: str, device: str = "cpu", **kwargs):
         load_from_HF=False,
         **kwargs,
     )
+    if device != "cpu":
+        # Measured on this stack (RX 9070 XT, ROCm torch): the SAM3 detection
+        # head returns zero instances on GPU in every dtype configuration,
+        # while the CPU path is verified (10 balls).  SAM3 stays on CPU.
+        model = model.to(device=device, dtype=torch.float32)
+        model._fp32_gpu = True
+    return model
 
 
 def make_processor(model, device: str = "cpu", resolution: int = 1008):
+
     from sam3.model.sam3_image_processor import Sam3Processor
 
     return Sam3Processor(model, resolution=resolution, device=device)
