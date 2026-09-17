@@ -1,157 +1,133 @@
-"""PID-6 rebuild: OSNet prototypes from person-seeded tracks + propagation.
+"""Rebuild OSNet identities from explicit A/B seeds; never infer B from bystanders.
 
-Reads out/pid_seed.json (written by pid_seed_ui.py):
-  {"seeds": {"<track_id>:<win>": {"win","t","track_id"}}}
-For each seed: that track becomes identity A; the colour-most-different long
-track in the same window becomes B.  All samples of both tracks are embedded
-(full crops, pad 15) -> per-identity mean embedding (L2-normalised).
-Propagation: every track in every window is embedded and assigned A/B/? by
-cosine margin (>0.02) -> out/pid_seed_tracks.json.
-
-Outputs:
-  out/pid_seed_protos.json  {"A": [...], "B": [...], "n_per_identity": {...}}
-  out/pid_seed_tracks.json  {"map": {"<track_id>:<win>": "A"|"B"|"?"}, "detail": ...}
+Legacy unlabeled seeds are preserved but do not train identities. Without both
+identities, propagation is unknown. Heavy dependencies load only inside run().
 """
+import argparse
 import json
-import sys
 from pathlib import Path
+import sys
 
-import cv2
-import numpy as np
-import torch
-
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "reid"))
-import osnet as O  # noqa
-
-VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
-TR = ROOT.parent / "out" / "pid2_tracklets.json"
-SEED = ROOT.parent / "out" / "pid_seed.json"
-PROTO = ROOT.parent / "out" / "pid_seed_protos.json"
-TRK = ROOT.parent / "out" / "pid_seed_tracks.json"
-W = ROOT / "reid" / "weights" / "osnet_x0_25_msmt17.pth"
-MEAN = np.array([0.485, 0.456, 0.406], np.float32)
-STD = np.array([0.229, 0.224, 0.225], np.float32)
-MARGIN = 0.02
-
-model = O.osnet_x0_25(pretrained=False, num_classes=1000)
-sd = torch.load(W, map_location="cpu", weights_only=False)
-sd = sd.get("state_dict", sd)
-model.load_state_dict({k: v for k, v in sd.items() if not k.startswith("classifier")},
-                      strict=False)
-model.eval()
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def embed(bgr, box):
-    x0, y0, x1, y1 = box
-    pad = 15
-    h, w = bgr.shape[:2]
-    crop = bgr[max(0, y0 - pad):min(h, y1 + pad), max(0, x0 - pad):min(w, x1 + pad)]
-    if crop.size == 0:
-        return None
-    crop = cv2.resize(crop, (128, 256))
-    a = crop[:, :, ::-1].astype(np.float32) / 255.0
-    a = (a - MEAN) / STD
-    x = torch.from_numpy(a.transpose(2, 0, 1)).unsqueeze(0)
-    with torch.no_grad():
-        e = model(x)[0].numpy()
-    return e / (np.linalg.norm(e) + 1e-9)
+def explicit_seeds(tracklets, seeds):
+    """Return valid user-labeled track keys, ignoring legacy implicit-A seeds."""
+    valid = {f'{track["id"]}:{win}' for win, window in tracklets.items()
+             for track in window["tracklets"]}
+    return {key: seed["label"] for key, seed in seeds.items()
+            if key in valid and seed.get("label") in ("A", "B", "ignore")}
 
 
-def torso_col(bgr, box):
-    x0, y0, x1, y1 = box
-    h = y1 - y0
-    band = bgr[max(0, y0 + int(0.15 * h)):y0 + int(0.5 * h), x0:x1]
-    if band.size < 100:
-        return None
-    return band.reshape(-1, 3).mean(axis=0)[::-1]
+def run(root=ROOT):
+    root = Path(root)
+    sys.path.insert(0, str(ROOT))
+    from annotator.unified_server import atomic_save
+    out = root / "out"
+    tracklets = json.loads((out / "pid2_tracklets.json").read_text())
+    seed_file = out / "pid_seed.json"
+    seeds = json.loads(seed_file.read_text()).get("seeds", {}) if seed_file.exists() else {}
+    labels = explicit_seeds(tracklets, seeds)
+    mapping = {f'{tk["id"]}:{win}': "?" for win, window in tracklets.items() for tk in window["tracklets"]}
+    if not {"A", "B"}.issubset(set(labels.values())):
+        reason = "Explicit usable A and B seeds are required; no identities inferred."
+        atomic_save(out / "pid_seed_protos.json", {"A": None, "B": None, "n_per_identity": {"A": 0, "B": 0}, "reason": reason})
+        atomic_save(out / "pid_seed_tracks.json", {"map": mapping, "detail": {}, "reason": reason})
+        print(reason)
+        return
 
+    import cv2
+    import numpy as np
+    import torch
+    sys.path.insert(0, str(ROOT / "src" / "reid"))
+    import osnet
+    weights = root / "src" / "reid" / "weights" / "osnet_x0_25_msmt17.pth"
+    if not weights.is_file():
+        raise RuntimeError(f"OSNet weights not found: {weights}")
+    model = osnet.osnet_x0_25(pretrained=False, num_classes=1000)
+    state = torch.load(weights, map_location="cpu", weights_only=True)
+    state = state.get("state_dict", state)
+    state = {k.removeprefix("module."): v for k, v in state.items()}
+    state = {k: v for k, v in state.items() if not k.startswith("classifier")}
+    result = model.load_state_dict(state, strict=False)
+    missing = [k for k in result.missing_keys if not k.startswith("classifier")]
+    if missing or result.unexpected_keys:
+        raise RuntimeError(f"OSNet checkpoint mismatch: missing={missing}, unexpected={result.unexpected_keys}")
+    model.eval()
+    cap = cv2.VideoCapture(str(root / "data" / "vod_30min_260815.mp4"))
+    if not cap.isOpened():
+        cap.release()
+        raise RuntimeError("Cannot open vod30 video")
+    cache = {}
+    mean = np.array([0.485, 0.456, 0.406], np.float32)
+    std = np.array([0.229, 0.224, 0.225], np.float32)
+    try:
+        def embeddings(win, track):
+            key = f'{track["id"]}:{win}'
+            if key in cache:
+                return cache[key]
+            values = []
+            for t, box in track["samples"][::2]:
+                cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+                ok, frame = cap.read()
+                if not ok:
+                    continue
+                x0, y0, x1, y1 = map(int, box)
+                h, w = frame.shape[:2]
+                crop = frame[max(0, y0 - 15):min(h, y1 + 15), max(0, x0 - 15):min(w, x1 + 15)]
+                if not crop.size:
+                    continue
+                pixels = cv2.resize(crop, (128, 256))[:, :, ::-1].astype(np.float32) / 255
+                tensor = torch.from_numpy(((pixels - mean) / std).transpose(2, 0, 1)).unsqueeze(0)
+                with torch.no_grad():
+                    embedding = model(tensor)[0].numpy()
+                if not np.isfinite(embedding).all() or np.linalg.norm(embedding) <= 1e-9:
+                    raise RuntimeError("OSNet returned invalid embedding")
+                values.append(embedding / np.linalg.norm(embedding))
+            cache[key] = values
+            return values
 
-def run():
-    tr = json.load(open(TR))
-    seeds = json.loads(SEED.read_text())["seeds"] if SEED.exists() else {}
-    if not seeds:
-        raise SystemExit("no seeds recorded")
-
-    cap = cv2.VideoCapture(str(VIDEO))
-    emb_cache = {}
-
-    def track_embeddings(win, tid):
-        key = f"{tid}:{win}"
-        if key in emb_cache:
-            return emb_cache[key]
-        tk = next(t for t in tr[win]["tracklets"] if t["id"] == tid)
-        es, cols = [], []
-        for tt, box in tk["samples"][::2]:
-            cap.set(cv2.CAP_PROP_POS_MSEC, tt * 1000.0)
-            ok, bgr = cap.read()
-            if not ok:
-                continue
-            e = embed(bgr, box)
-            if e is not None:
-                es.append(e)
-            c = torso_col(bgr, box)
-            if c is not None:
-                cols.append(c)
-        out = (np.array(es), np.mean(cols, axis=0) if cols else None)
-        emb_cache[key] = out
-        return out
-
-    protoA, protoB = [], []
-    for key, s in seeds.items():
-        win, tid = s["win"], s["track_id"]
-        tk = next(t for t in tr[win]["tracklets"] if t["id"] == tid)
-        # B = longest other track with most-different torso colour
-        ea, ca = track_embeddings(win, tid)
-        if len(ea) < 5 or ca is None:
-            continue
-        best, bd = None, -1
-        for other in tr[win]["tracklets"]:
-            if other["id"] == tid or other["n"] < 8:
-                continue
-            eb, cb = track_embeddings(win, other["id"])
-            if cb is None or len(eb) < 5:
-                continue
-            d = float(np.linalg.norm(ca - cb))
-            if d > bd:
-                bd, best = d, (other["id"], eb)
-        if best is None:
-            continue
-        obid, eb = best
-        protoA.append(ea.mean(axis=0))
-        protoB.append(eb.mean(axis=0))
-
-    if not protoA:
-        raise SystemExit("no usable seeds")
-    A = np.mean(protoA, axis=0)
-    A /= np.linalg.norm(A) + 1e-9
-    B = np.mean(protoB, axis=0)
-    B /= np.linalg.norm(B) + 1e-9
-    PROTO.write_text(json.dumps({
-        "A": A.tolist(), "B": B.tolist(),
-        "n_per_identity": {"A": len(protoA), "B": len(protoB)}}))
-
-    # propagate to every track in every window
-    mapping, detail = {}, []
-    for win in tr:
-        for tk in tr[win]["tracklets"]:
-            if tk["n"] < 4:
-                continue
-            e, _ = track_embeddings(win, tk["id"])
-            if len(e) < 3:
-                continue
-            m = e.mean(axis=0)
-            m /= np.linalg.norm(m) + 1e-9
-            ca, cb = float(m @ A), float(m @ B)
-            ident = "?" if abs(ca - cb) < MARGIN else ("A" if ca > cb else "B")
-            mapping[f"{tk['id']}:{win}"] = ident
-            detail.append({"win": win, "track": tk["id"], "n": tk["n"],
-                           "cosA": round(ca, 3), "cosB": round(cb, 3),
-                           "identity": ident})
-    TRK.write_text(json.dumps({"map": mapping, "detail": detail}, indent=1))
-    cap.release()
-    return {"map": mapping, "n": len(mapping)}
+        trained = {"A": [], "B": []}
+        for win, window in tracklets.items():
+            for track in window["tracklets"]:
+                label = labels.get(f'{track["id"]}:{win}')
+                if label in trained:
+                    values = embeddings(win, track)
+                    if values:
+                        trained[label].append(np.mean(values, axis=0))
+        if not all(trained.values()):
+            reason = "No usable frame embeddings for both explicit A/B identities."
+            atomic_save(out / "pid_seed_protos.json", {"A": None, "B": None, "reason": reason})
+            atomic_save(out / "pid_seed_tracks.json", {"map": mapping, "detail": {}, "reason": reason})
+            print(reason)
+            return
+        prototypes = {}
+        for label, values in trained.items():
+            proto = np.mean(values, axis=0)
+            prototypes[label] = proto / (np.linalg.norm(proto) + 1e-9)
+        detail = {}
+        for win, window in tracklets.items():
+            for track in window["tracklets"]:
+                key = f'{track["id"]}:{win}'
+                if labels.get(key) == "ignore":
+                    detail[key] = {"reason": "user ignored"}
+                    continue
+                values = embeddings(win, track)
+                if not values:
+                    continue
+                vector = np.mean(values, axis=0)
+                vector /= np.linalg.norm(vector) + 1e-9
+                a, b = (float(vector @ prototypes[label]) for label in ("A", "B"))
+                mapping[key] = labels.get(key) or (("A" if a > b else "B") if abs(a - b) > 0.02 else "?")
+                detail[key] = {"cosA": a, "cosB": b, "margin": abs(a - b)}
+        atomic_save(out / "pid_seed_protos.json", {**{k: v.tolist() for k, v in prototypes.items()}, "n_per_identity": {k: len(v) for k, v in trained.items()}})
+        atomic_save(out / "pid_seed_tracks.json", {"map": mapping, "detail": detail, "seed_labels": labels})
+        print(f"Rebuilt {len(mapping)} tracks using explicit A/B seeds")
+    finally:
+        cap.release()
 
 
 if __name__ == "__main__":
-    print(json.dumps(run(), indent=1))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=ROOT)
+    run(parser.parse_args().root)
