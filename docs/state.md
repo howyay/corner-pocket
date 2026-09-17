@@ -1,5 +1,23 @@
 # Measured state (append-only)
 
+## Correction before unified Corner Pocket UI work
+
+Earlier entries and chat summaries overstate validation. HTTP 200 checks did
+not establish browser usability. Manual pocket anchors had no implemented
+calibration consumer; seed propagation was experimental and automatically
+inferred B, not continuous validated identity recognition. Candidate-only
+reviews cannot establish recall without independent missed-event ground truth.
+
+The highlight scan used `annotator/corners_30min.json` despite different video
+geometry. Its 6-shot/3-pot output is **invalid for accuracy claims**, not a clean
+validated rescan. Count recovery alone does not prove occlusion or a pot, and
+whole-VOD player/shot/pot precision and recall remain unmeasured. Treat actor
+assignments as suggestions and smoke-test prototypes as non-human labels.
+
+The unified UI work uses the supplied `Corner Pocket redesign (1).zip` design
+and replaces the fragmented correction entry points; it does not certify the
+underlying predictions. Ball-ID certification remains backlog.
+
 ## 2026-09-07 — repo + kaneo wired; calibration cross-segment audit first cut
 
 - Forgejo `operator/pool` (private) ⇄ Kaneo project `pool` (sync via Gitea

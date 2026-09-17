@@ -10,6 +10,28 @@ Track shots, pots and players from a fixed single-camera Twitch pool stream
 | Kaneo | https://proj.example.com (project `pool`) |
 | Worktree | `~/projects/pool` (NOT a git repo before this repo; data/ and out/ are gitignored) |
 
+## Unified Corner Pocket workbench
+
+The new workbench adapts the supplied `Corner Pocket redesign (1).zip` into a
+single annotation application. Source: `annotator/app.html`, `annotator/app.css`,
+`annotator/app.js`, and `annotator/unified_server.py`. It combines event/shooter
+review, ball crop labeling, pocket-anchor correction, and explicit player seeds.
+Start it from the repository root:
+
+```sh
+.venv/bin/python annotator/unified_server.py --port 8130
+```
+
+Open `http://127.0.0.1:8130`. The server binds to loopback by default; do not
+expose these local annotation endpoints publicly. Existing per-dataset JSON
+annotations remain the source of truth. Pocket saves record anchor annotations;
+they do not yet refit the pipeline calibration. Player rebuild requires explicit
+A **and** B labels, never an automatically chosen spectator.
+
+These are correction tools, not accuracy certification. Highlight event output
+used the wrong calibration and must not be treated as validated. Candidate
+reviews alone cannot measure recall; independent missed-event truth is required.
+
 ## Areas and priority (2026-09)
 
 See `docs/roadmap.md` for the decomposition into issues/tasks, acceptance bars

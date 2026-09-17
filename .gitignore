@@ -19,3 +19,8 @@ src/sam3/
 
 # local notes
 *.local.md
+
+# 3rd-party design reference + PM memory (untracked by design)
+.pm/
+design/
+Corner Pocket redesign (1).zip
