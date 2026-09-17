@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Corner Pocket · Review workbench</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zilla+Slab:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Barlow:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500&family=Noto+Serif+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body style="margin:0">
+<div id="review-root">
+<!-- Visual source: design/corner-pocket/Corner Pocket Ops standalone-src.dc.html. IDs used by app.js are preserved. -->
+<header class="ops-header">
+  <div class="ops-bar">
+    <a class="brand" href="/ops.html" title="Open Corner Pocket operations">
+      <span class="brand-ball" aria-hidden="true"><span>8</span></span>
+      <span class="brand-copy">
+        <strong>Corner Pocket</strong>
+        <small data-i18n="tagline">REVIEW WORKBENCH · LOCAL VOD</small>
+      </span>
+    </a>
+    <div class="ops-tools">
+      <span class="feed-pill" data-i18n="feed">LOCAL REVIEW</span>
+      <label>VOD dataset <select id="dataset" disabled><option>Loading datasets…</option></select></label>
+      <div class="chip-group" role="group" aria-label="Language">
+        <button type="button" id="lang-en" class="lang-btn active" aria-pressed="true">EN</button>
+        <button type="button" id="lang-zh" class="lang-btn" aria-pressed="false">中</button>
+      </div>
+      <div class="chip-group" role="group" aria-label="Color theme">
+        <button type="button" id="theme-dark" class="theme-btn active" aria-pressed="true" title="Dark felt">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.8A8.6 8.6 0 0 1 9.2 3.5a8.6 8.6 0 1 0 11.3 11.3Z"></path></svg>
+        </button>
+        <button type="button" id="theme-light" class="theme-btn" aria-pressed="false" title="Light cloth">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"></path></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <nav aria-label="Workbench modes">
+    <button type="button" data-mode="events" class="active" aria-current="page"><span class="nav-ball"><span>1</span></span><span data-i18n="nav-events">Event review</span> <span class="nav-meta" data-i18n="meta-events">SHOTS · POTS</span></button>
+    <button type="button" data-mode="balls"><span class="nav-ball"><span>2</span></span><span data-i18n="nav-balls">Ball labels</span> <span class="nav-meta" data-i18n="meta-balls">CUE · 1–15</span></button>
+    <button type="button" data-mode="calibration"><span class="nav-ball"><span>3</span></span><span data-i18n="nav-calibration">Table calibration</span> <span class="nav-meta" data-i18n="meta-calibration">SIX POCKETS</span></button>
+    <button type="button" data-mode="players"><span class="nav-ball"><span>4</span></span><span data-i18n="nav-players">Player identities</span> <span class="nav-meta" data-i18n="meta-players">A · B · IGNORE</span></button>
+    <button type="button" data-mode="timeline"><span class="nav-ball"><span>5</span></span><span data-i18n="nav-timeline">Video timeline</span> <span class="nav-meta" data-i18n="meta-timeline">SCRUB · INFER</span></button>
+  </nav>
+  <div class="ops-strip">
+    <span class="mono-label" data-i18n="strip-label">HUMAN IN THE LOOP</span>
+    <span class="strip-score" data-i18n="strip">Model candidates · human decisions · no accuracy claims without validation</span>
+  </div>
+</header>
+<main>
+  <div class="page-heading">
+    <div>
+      <div class="eyebrow" data-i18n="eyebrow">THE REVIEW DESK</div>
+      <h1 id="title">Event review</h1>
+      <p id="subtitle">Inspect shot and pot candidates against their source evidence.</p>
+    </div>
+    <div class="desk-stamp" data-i18n-html="stamp">INSPECT · LABEL<br><strong>VERIFY</strong></div>
+  </div>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <section id="content" aria-label="Review workspace" aria-busy="true"><div class="empty">Loading review workspace…</div></section>
+</main>
+<footer class="bottom-bar"><span data-i18n="foot-left">LOCAL DATA · EXPLICIT SAVES</span><span data-i18n="foot-right">Review decisions are not ground truth until verified.</span></footer>
+</div>
+</body>
+</html>
