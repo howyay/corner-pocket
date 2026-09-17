@@ -52,7 +52,7 @@ def motion_energy(gray_now: np.ndarray, gray_prev: np.ndarray, mask) -> float:
 
 
 def classical_scan(video: str, every: float) -> tuple[list, np.ndarray]:
-    """Phase 1: coarse scan. Returns per-sample records and median corners."""
+    """Phase 1: coarse scan. Candidate centers and median corners use source pixels."""
     cap = cv2.VideoCapture(video)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
@@ -66,9 +66,11 @@ def classical_scan(video: str, every: float) -> tuple[list, np.ndarray]:
         if not ok:
             break
         small = cv2.resize(frame, (960, 540))
+        scale_x = frame.shape[1] / small.shape[1]
+        scale_y = frame.shape[0] / small.shape[0]
         tab = detect_table(small)
         if tab["corners"] is not None:
-            corners_list.append(np.array(tab["corners"]) * 2.0)  # back to 720p coords
+            corners_list.append(np.array(tab["corners"]) * [scale_x, scale_y])
         cands = detect_ball_candidates(
             small, tab["mask"],
             min_area=MIN_BALL_AREA_720, max_area=MAX_BALL_AREA_720,
@@ -81,7 +83,7 @@ def classical_scan(video: str, every: float) -> tuple[list, np.ndarray]:
             "n_classical": len(cands),
             "motion": round(me, 2),
             "cloth_area": int(tab["mask"].sum()),
-            "cands": [[round(c["cx"] * 2, 1), round(c["cy"] * 2, 1)] for c in cands],
+            "cands": [[round(c["cx"] * scale_x, 1), round(c["cy"] * scale_y, 1)] for c in cands],
         })
         t += every
     cap.release()
@@ -129,8 +131,8 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
         tab = detect_table(bgr)
         st = proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
         st = proc.set_text_prompt("billiard ball", st)
-        masks = st["masks"].cpu().numpy()
-        scores = st["scores"].cpu().numpy()
+        masks = st["masks"].cpu().float().numpy()
+        scores = st["scores"].cpu().float().numpy()
         cloth = tab["mask"] > 0
         balls = []
         for i in range(len(scores)):
@@ -198,7 +200,7 @@ def build_events(records, sam3, motion_thr=MOTION_THRESH, shot_disp=SHOT_DISP_MM
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--video", default="data/vod_30min_260828.mp4")
+    ap.add_argument("--video", default="data/vod_30min_260815.mp4")
     ap.add_argument("--out", default="out/scan30")
     ap.add_argument("--every", type=float, default=1.0)
     ap.add_argument("--corners", default=None, help="precomputed corners JSON (do not re-estimate)")

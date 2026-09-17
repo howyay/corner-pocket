@@ -167,10 +167,11 @@ def ball_center(mask: np.ndarray) -> tuple[float, float, float]:
 
 
 def filter_instances(state, cloth_mask, bgr) -> list[dict]:
-    masks = state["masks"].cpu().numpy()
-    boxes = state["boxes"].cpu().numpy()
-    scores = state["scores"].cpu().numpy()
+    masks = state["masks"].cpu().float().numpy()
+    boxes = state["boxes"].cpu().float().numpy()
+    scores = state["scores"].cpu().float().numpy()
     cloth = cloth_mask > 0
+    float_masks = masks.dtype == np.float32
     out = []
     for i in range(len(scores)):
         if scores[i] < MIN_SCORE:
@@ -182,7 +183,7 @@ def filter_instances(state, cloth_mask, bgr) -> list[dict]:
         cx, cy, r = ball_center(m)
         # require most of the mask to lie on the cloth (tolerant of mask
         # bleeding onto neighbouring balls in a tight rack)
-        overlap = float((m & cloth).sum()) / max(1.0, area)
+        overlap = float((m * cloth).sum()) / max(1.0, area)
         if overlap < 0.5:
             continue
         x0, y0, x1, y1 = boxes[i]
@@ -191,7 +192,7 @@ def filter_instances(state, cloth_mask, bgr) -> list[dict]:
             continue
         if r < 4.0 or r > 60.0:
             continue
-        cls = classify_ball(bgr, m)
+        cls = classify_ball(bgr, m > 0.5)
         out.append(
             {
                 "cx": cx,
@@ -293,7 +294,7 @@ def process_frame(video_path, t_sec, model, proc, out_dir, fixed_corners=None) -
         b["tx"], b["ty"], b["tr"] = float(tx), float(ty), CANON_BALL_R
         result_balls.append(b)
 
-    masks_all = state["masks"].cpu().numpy()
+    masks_all = state["masks"].cpu().float().numpy()
     masks_overlay = [
         {"mask": np.squeeze(masks_all[i]) > 0, "cx": b["cx"], "cy": b["cy"],
          "r": b["r"], "color": b["color"]}
