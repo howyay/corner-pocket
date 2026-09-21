@@ -11,23 +11,24 @@ function harness() {
   const document = {addEventListener(event, fn) { handlers[event] = fn; }, querySelector() { return {}; }, querySelectorAll() { return []; }, documentElement: {}};
   const context = {document, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener() {}}, setInterval() {}, setTimeout() {}, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
   vm.createContext(context);
-  vm.runInContext(source.replace("(() => {", '').replace(/reload\(\);\s*\}\)\(\);\s*$/, ''), context);
+  vm.runInContext(source.replace("(() => {", '').replace('});reload();', '});').replace(/\}\)\(\);\s*$/, ''), context);
   vm.runInContext("data={revision:1,settings:{},tournament:{raceTo:7,entrants:[],matches:[]},players:[],history:[]}; calls=[]; realAction=action; action=async(name,payload)=>{calls.push({name,payload});return true}", context);
   return {context, handlers, evaluate: expression => vm.runInContext(expression, context)};
 }
-test('live processing allows datasets and saved channels, never arbitrary media URLs', () => {
+test('live controls keep the dataset/channel allowlist and the latency caveat', () => {
   const h = harness();
   assert.deepEqual(JSON.parse(h.evaluate("JSON.stringify(liveSource('dataset:highlight'))")), {kind:'dataset', dataset:'highlight'});
   assert.deepEqual(JSON.parse(h.evaluate("JSON.stringify(liveSource('twitch:saved-id'))")), {kind:'twitch', source_id:'saved-id'});
-  h.evaluate("data.sources=[{id:'channel',url:'https://www.twitch.tv/examplechannel'},{id:'vod',url:'https://www.twitch.tv/videos/123'}]");
-  const html = h.evaluate('livePanel()');
-  assert.ok(html.includes('twitch:channel'));
-  assert.ok(!html.includes('twitch:vod'));
-  assert.ok(html.includes('dataset:vod30') && html.includes('dataset:highlight'));
-  assert.ok(html.includes('data-live-detector="table"') && html.includes('data-live-detector="person"'));
-  assert.ok(html.includes('UNKNOWN') && html.includes('not glass-to-glass'));
-  h.evaluate("lang='zh'");
-  assert.ok(h.evaluate('livePanel()').includes('原生实时处理'));
+  h.evaluate("data.sources=[{id:'channel',url:'https://www.twitch.tv/examplechannel'},{id:'vod',url:'https://www.twitch.tv/videos/123'}, {id:'bad',url:'https://example.com/x'}]");
+  const channels = h.evaluate('JSON.stringify(channels())');
+  assert.equal(channels, '[{"id":"channel","url":"https://www.twitch.tv/examplechannel","channel":"examplechannel"}]');
+  assert.equal(h.evaluate('channelOf("channel")'), 'examplechannel');
+  assert.equal(h.evaluate('regulars().length'), 0);
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  assert.ok(adapter.includes('data-vs-action="live-start"') && adapter.includes('data-vs-action="live-stop"'));
+  assert.ok(adapter.includes('data-vs-value="${d}"') && adapter.includes("['table','person']"));
+  assert.ok(adapter.includes('not glass-to-glass'));
+  assert.ok(adapter.includes('data-vs-action="pick-live"'));
 });
 test('live polling cancels on navigation and only runs inside Vision', () => {
   const h = harness();
@@ -49,39 +50,54 @@ test('live start and stop send only processor contract fields', async () => {
   await h.evaluate("liveAction('stop')");
   assert.deepEqual(h.context.sent.payload,{action:'stop'});
 });
-test('live poll uses actual processor status and atomically paired JPEG metadata', async () => {
-  const h=harness(), statusNode={}, drawn=[], canvas={getContext:()=>({drawImage:()=>drawn.push('image'),strokeRect:(...box)=>drawn.push(box)})};
-  h.context.document.querySelector=selector=>selector==='#live-frame'?canvas:statusNode;
-  h.context.createImageBitmap=async()=>({width:640,height:360,close(){}});
-  h.context.fetch=async url=>url==='/api/live'?{ok:true,json:async()=>({state:'running',frame_age_ms:2500,frames_skipped:9,latest:{receive_to_result_ms:25,detections:{boxes:[{bbox:[9,9,9,9]}]}}})}:{ok:true,headers:{get:key=>key==='X-Live-Sequence'?'12':JSON.stringify({seq:12,detections:{boxes:[{bbox:[1,2,11,22]}]}})},blob:async()=>({})};
+test('live poll reports real status and hands the paired JPEG metadata to the stage', async () => {
+  const h = harness(), statusNode = {}, seen = [];
+  h.context.document.querySelector = selector => selector === '#live-status' ? statusNode : null;
+  h.context.URL = {createObjectURL: () => 'blob:live', revokeObjectURL() {}};
+  h.context.window.CornerPocketReview = {applyLiveStatus: status => seen.push({status}), ingestLiveFrame: (url, meta) => seen.push({url, meta})};
+  h.context.fetch = async url => url === '/api/live'
+    ? {ok:true, json:async()=>({state:'running',frame_age_ms:2500,frames_skipped:9,latest:{receive_to_result_ms:25,seq:12}})}
+    : {ok:true, headers:{get:key=>key==='X-Live-Sequence'?'12':JSON.stringify({seq:12,detections:{boxes:[{label:'person',bbox:[1,2,11,22]}]}})}, blob:async()=>({size:3})};
   await h.evaluate('pollLive(liveGeneration)');
   assert.ok(statusNode.textContent.startsWith('running'));
   assert.ok(statusNode.textContent.includes('25 ms')&&statusNode.textContent.includes('2500 ms')&&statusNode.textContent.includes('STALE')&&statusNode.textContent.includes('Dropped: 9'));
-  assert.deepEqual(drawn,['image',[1,2,10,20]]);
-  assert.equal(canvas.hidden,false);
+  assert.equal(seen[0].status.state, 'running');
+  assert.equal(seen[1].url, 'blob:live');
+  assert.equal(seen[1].meta.seq, 12);
+  assert.equal(seen[1].meta.detections.boxes[0].label, 'person');
 });
-test('live image overlays use metadata paired with the JPEG, not status polling', () => {
+test('live JPEG bytes and their metadata stay atomically paired', () => {
   assert.ok(source.includes("frame.headers.get('X-Live-Metadata')"));
   assert.ok(source.includes("frame.headers.get('X-Live-Sequence')"));
-  assert.ok(source.includes('const detections=meta.detections||{}'));
-  assert.ok(source.includes('if(generation!==liveGeneration)return;const canvas'));
+  assert.ok(source.includes("String(meta.seq)!==frame.headers.get('X-Live-Sequence')"));
+  assert.ok(source.includes("ingestLiveFrame(URL.createObjectURL(blob),meta"));
   assert.ok(source.includes('receive_to_result_ms'));
+  assert.ok(source.includes('applyLiveStatus(status)'));
 });
-test('Vision is fourth and every review mode is a native subtab', () => {
+test('Vision is one stage with two rails and no sub-tab navigation left', () => {
   const h = harness();
   assert.equal(h.evaluate("t('vision')"), 'Vision');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(Object.keys(reviewModes))')), ['stream','events','balls','calibration','players','timeline']);
   assert.ok(source.includes("['floor','setup','matches','vision','players','status']"));
   assert.ok(!source.includes('review-frame'));
   assert.ok(!source.includes('src="/app.html"'));
+  // The sub-tab machinery is gone: no mode table, no data-vision buttons, no dead host.
+  assert.ok(!source.includes('reviewModes'));
+  assert.ok(!source.includes('visionNavigation'));
+  assert.ok(!source.includes('data-vision'));
+  assert.ok(!source.includes('visionTab'));
+  assert.ok(!source.includes('vision-host-host'));
+  assert.ok(!source.includes('twitchEmbed'));
+  const surface = h.evaluate('visionSurface()');
+  for (const id of ['id="vs-chips"','id="vs-cues"','id="vs-stage"','id="vs-inspector"','id="vs-strip"','data-sheet-tab="cues"','data-sheet-tab="inspector"','id="vs-frame"','id="vs-marks"','data-vs-action="freeze"']) assert.ok(surface.includes(id), `vision surface missing ${id}`);
+  assert.ok(surface.indexOf('id="vs-frame"') < surface.indexOf('id="vs-inspector"'));
 });
 test('dirty or busy review vetoes top-level and subtab navigation', async () => {
-  for (const dataset of [{tab:'vision'}, {vision:'balls'}, {action:'floor'}]) {
+  for (const dataset of [{tab:'vision'}, {tab:'setup'}, {action:'floor'}]) {
     const h = harness();
     h.context.window.CornerPocketReview = {canLeave: () => false, activate: () => false};
-    h.evaluate("tab='vision';visionTab='events'");
+    h.evaluate("tab='vision'");
     await h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset}}});
-    assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify([tab,visionTab,lang,theme])')), ['vision','events','en','dark']);
+    assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify([tab,lang,theme])')), ['vision','en','dark']);
   }
 });
 test('shell does not intercept review clicks or form submissions', async () => {

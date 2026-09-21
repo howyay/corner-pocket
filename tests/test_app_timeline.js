@@ -37,7 +37,9 @@ function test(name, fn) {
 }
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
-  same(Object.keys(sandbox.window.CornerPocketReview), ['mount','activate','deactivate','canLeave','setAppearance']);
+  const api = Object.keys(sandbox.window.CornerPocketReview);
+  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  assert.strictEqual(api.length, 60, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -45,7 +47,8 @@ test('lifecycle is the only public namespace and absent host does not mount', ()
 test('mount initializes once and standalone mounts only its own host', () => {
   let requests = 0, bindings = 0, rootPresent = false;
   const host = {id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => [], addEventListener() { bindings++; }};
-  const context = {document:{querySelector: () => rootPresent ? host : null}, window:{addEventListener() {}}, fetch() { requests++; return new Promise(() => {}); }, console};
+  let documentBindings = 0;
+  const context = {document:{querySelector: () => rootPresent ? host : null, addEventListener() { documentBindings++; }}, window:{addEventListener() {}}, fetch() { requests++; return new Promise(() => {}); }, console};
   vm.createContext(context);
   vm.runInContext(source, context);
   assert.strictEqual(requests, 0);
@@ -54,6 +57,7 @@ test('mount initializes once and standalone mounts only its own host', () => {
   assert.strictEqual(review.mount(host), mounting);
   assert.strictEqual(requests, 1);
   assert.strictEqual(bindings, 2);
+  assert.strictEqual(documentBindings, 1, 'the vision surface owns one document-level key handler');
   assert.strictEqual(review.mount({...host}), false);
   rootPresent = true;
   vm.runInContext(source, context);
@@ -171,30 +175,55 @@ test('timeline state defaults are safe', () => {
 test('app.js pins the backend request contract and required labels', () => {
   for (const needle of [
     '/api/video?dataset=', '/api/frame?dataset=', '/api/frame-result?dataset=', '/api/inference?dataset=',
-    "'/api/inference',", "'/api/frame-correction',", '/media/${enc(state.dataset)}/video',
+    "'/api/inference',", "'/api/frame-correction',", '/api/unified?dataset=',
     'X-Frame-Index', 'X-Timestamp-Seconds', 'X-Timestamp-Kind', 'X-Frame-Width', 'X-Frame-Height',
-    'LOCAL INGESTED VOD ONLY', 'cannot detect shots or pots', 'Balls · SAM3 on CPU (slow)'
-  ]) assert.ok(source.includes(needle), `missing contract fragment: ${needle}`);
+    "'/api/' + 'vod30/anchors'", '/api/vod30/seeds', '/api/identity/seed', '/api/balls/',
+    'X-Frame-Index', 'AbortController'
+  ]) assert.ok(source.includes(needle) || source.includes(needle.replace("' + '", '')), `missing contract fragment: ${needle}`);
+  assert.ok(!source.includes('id="vod"'), 'the second VOD video surface is gone');
+  assert.ok(!source.includes('Frozen frame inspector'), 'the duplicate frozen-frame panel is gone');
 });
 
-test('app.html registers the timeline mode button', () => {
+test('form and video targets never double-consume the stage keys', () => {
+  const review = sandbox.window.CornerPocketReview;
+  T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
+  assert.strictEqual(review.activate('timeline'), true);
+  assert.ok(source.includes("closest('input,textarea,select,button,video,[contenteditable=\"true\"]')"), 'video is in the early-return selector list');
+  T.state.vmeta = {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080};
+  const before = T.state.frame;
+  T.onKeydown({key:'ArrowRight', target:{closest: selector => selector.includes('video') ? {} : null}});
+  assert.strictEqual(T.state.frame, before, 'a focused video keeps its own arrow keys');
+  T.onKeydown({key:'ArrowRight', target:{closest: selector => selector.includes('input') ? {} : null}});
+  assert.strictEqual(T.state.frame, before, 'a form field keeps its own arrow keys');
+  T.state.vmeta = null; T.state.dirty = false;
+  review.deactivate();
+});
+
+test('app.html is one stage host with no sub-tab navigation', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.html'), 'utf8');
-  assert.ok(html.includes('data-mode="timeline"'));
-  assert.ok(html.includes('Video timeline'));
+  assert.ok(html.includes('id="review-root"') && html.includes('id="content"'));
+  assert.ok(!html.includes('data-mode='), 'review mode buttons are gone');
+  assert.ok(!html.includes('ops-header'), 'the duplicate review header is gone');
 });
 
-test('app.css styles the timeline pieces', () => {
+test('app.css styles the one stage surface, ops.css styles the rails and strip', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.css'), 'utf8');
-  for (const needle of ['.timeline-grid', '.scrub-mark', '.scrub-marks', '.transport', '.draw-preview', '.t-poly', '.center-dot']) {
-    assert.ok(css.includes(needle), `missing css: ${needle}`);
+  for (const needle of ['.stage > img', '#t-overlay', '.draw-preview', '.t-poly', '.center-dot', '.stage-popover', '.pop-grid']) {
+    assert.ok(css.includes(needle), `missing stage css: ${needle}`);
+  }
+  assert.ok(!css.includes('.timeline-grid'), 'the two-panel timeline grid is gone');
+  assert.ok(!css.includes('[data-embedded] nav'), 'the hidden review nav rule is gone');
+  const ops = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
+  for (const needle of ['.vs-grid', '.vs-rail', '.vs-inspector', '.vs-strip', '.scrub-mark', '.vs-layer', '.vs-sheettabs', 'grid-template-columns:280px minmax(0,1fr) 320px']) {
+    assert.ok(ops.includes(needle), `missing surface css: ${needle}`);
   }
 });
 
 test('editor translation preserves dirty values, focus, selection and pending save state', () => {
-  const caption = {nodeType:3, nodeValue:'Save review'};
-  const optionText = {nodeType:3, nodeValue:'correct'};
+  const caption = {nodeType:3, nodeValue:'Frame load failed'};
+  const optionText = {nodeType:3, nodeValue:'solid'};
   const button = {tagName:'BUTTON', childNodes:[caption], disabled:true};
-  const option = {tagName:'OPTION', childNodes:[optionText], value:'correct', hasAttribute: () => false, setAttribute(name, value) { this[name] = value; }};
+  const option = {tagName:'OPTION', childNodes:[optionText], value:'solid', hasAttribute: () => false, setAttribute(name, value) { this[name] = value; }};
   const note = {value:'Save review — my raw note', placeholder:'What does the source actually show?', selectionStart:4, selectionEnd:9};
   let onMutation, requests = 0;
   sandbox.MutationObserver = class { constructor(callback) { onMutation = callback; } observe() {} };
@@ -205,58 +234,64 @@ test('editor translation preserves dirty values, focus, selection and pending sa
   const before = JSON.stringify(T.state);
   sandbox.window.CornerPocketReview.setAppearance('zh', 'light');
   assert.strictEqual(requests, 0);
-  assert.strictEqual(caption.nodeValue, '保存复核');
-  assert.strictEqual(optionText.nodeValue, '正确');
-  assert.strictEqual(option.value, 'correct');
+  assert.strictEqual(caption.nodeValue, '帧加载失败');
+  assert.strictEqual(optionText.nodeValue, '实色');
+  assert.strictEqual(option.value, 'solid');
   assert.strictEqual(note.value, 'Save review — my raw note');
   assert.strictEqual(note.selectionStart, 4); assert.strictEqual(note.selectionEnd, 9);
   assert.strictEqual(sandbox.document.activeElement, note);
   assert.strictEqual(button.disabled, true); assert.strictEqual(JSON.stringify(T.state), before);
   host.lang = 'en'; T.translateEditor();
-  assert.strictEqual(caption.nodeValue, 'Save review');
+  assert.strictEqual(caption.nodeValue, 'Frame load failed');
   assert.strictEqual(note.placeholder, 'What does the source actually show?');
   host.lang = 'zh'; caption.nodeValue = 'Saving…'; T.translateEditor();
   assert.strictEqual(caption.nodeValue, '保存中…');
-  caption.nodeValue = 'Save review'; onMutation();
-  assert.strictEqual(caption.nodeValue, '保存复核');
+  caption.nodeValue = 'Frame load failed'; onMutation();
+  assert.strictEqual(caption.nodeValue, '帧加载失败');
   assert.strictEqual(T.text('Save failed: HTTP 409: abc_xyz. Your changes remain on screen; retry when ready.'), '保存失败：HTTP 409: abc_xyz。更改仍保留在屏幕上，可稍后重试。');
   assert.strictEqual(T.text('abc_xyz'), 'abc_xyz');
-  const frameNode = {nodeType:3, nodeValue:'RAW DECODED FRAME · vod30 · frame 100 · nominal 4.000s (nominal_cfr) · OVERLAYS: inference'};
-  const facts = {tagName:'DIV', childNodes:[frameNode], firstChild:frameNode, get textContent() { return frameNode.nodeValue; }, set textContent(value) { frameNode.nodeValue = value; }};
-  const selectors = host.querySelectorAll;
-  host.querySelectorAll = selector => selector.includes('[aria-label]') || selector.includes('[placeholder]') ? [] : [facts];
-  host.querySelector = () => facts;
-  T.translateEditor(); T.updateOverlayFacts('manual corrections'); onMutation();
-  assert.strictEqual(frameNode.nodeValue, '原始解码帧 · vod30 · 帧 100 · 名义时间 4.000s (nominal_cfr) · 叠加层：人工修正');
-  host.lang = 'en'; T.translateEditor();
-  assert.strictEqual(frameNode.nodeValue, 'RAW DECODED FRAME · vod30 · frame 100 · nominal 4.000s (nominal_cfr) · OVERLAYS: manual corrections');
-  host.lang = 'zh'; host.querySelectorAll = selectors;
-  assert.strictEqual(T.text('Track track_8 · prediction: A · saved seed: B'), '轨迹 track_8 · 预测：A · 已保存种子：B');
+  // The facts line is composed by the vision-stage adapter from state.drawn, so the
+  // engine only has to record what the painter drew.
+  T.updateOverlayFacts('manual corrections');
+  assert.strictEqual(T.state.drawn.source, 'manual corrections');
+  assert.strictEqual(T.text('RAW DECODED FRAME · vod30 · frame 100 · nominal 4.000s (nominal_cfr) · OVERLAYS: manual corrections'), '原始解码帧 · vod30 · 帧 100 · 名义时间 4.000s (nominal_cfr) · 叠加层：人工修正');
+  host.lang = 'zh';
+  // The person-identity copy moved to the adapter when the players sub-tab became
+  // an inspector block, so that string is now covered by the adapter parity test.
   assert.strictEqual(T.text('Status: failed — MODEL_PATH=/tmp/a'), '状态：失败 — MODEL_PATH=/tmp/a');
   assert.strictEqual(T.text('RAW DECODED FRAME · vod30 · frame 100 · nominal 4.000s (nominal_cfr) · OVERLAYS: manual corrections'), '原始解码帧 · vod30 · 帧 100 · 名义时间 4.000s (nominal_cfr) · 叠加层：人工修正');
   assert.strictEqual(T.text('Inference running for frame 100: SAM3_CPU…'), '正在对帧 100 运行推理：SAM3_CPU…');
   T.state.dirty = false; T.state.busy = false;
 });
 
-test('browser regression: anchor spans, padded track label and box option values', () => {
-  const rows = ['1. Top left','2. Top right','3. Bottom right','4. Bottom left','5. Left side','6. Right side'];
-  const nodes = rows.map(nodeValue => ({nodeType:3, nodeValue}));
-  const track = {nodeType:3, nodeValue:'Track window '};
+test('browser regression: translated options keep submitted values, stage copy keeps parity', () => {
   const options = ['solid','stripe','eight'].map(value => ({tagName:'OPTION', value, childNodes:[{nodeType:3,nodeValue:value}], hasAttribute: () => true}));
-  const host = {lang:'zh', querySelectorAll(selector) {
-    if (!selector.includes('[data-point] span')) return [];
-    return [...nodes.map(node => ({childNodes:[node]})), {childNodes:[track]}, ...options];
-  }};
+  const host = {lang:'zh', querySelectorAll: selector => selector.includes('option') ? options : []};
   T.setRoot(host); T.translateEditor();
-  same(nodes.map(node => node.nodeValue), ['1. 左上','2. 右上','3. 右下','4. 左下','5. 左侧','6. 右侧']);
-  assert.strictEqual(track.nodeValue, '轨迹窗口 ');
   same(options.map(option => option.value), ['solid','stripe','eight']);
   same(options.map(option => option.childNodes[0].nodeValue), ['实色','花色','黑八']);
   const hint = 'Drag boxes or corner handles; arrow keys nudge the selected box (Shift = 10 px). Ball centers follow their box. Drag table polygon corners. Saving writes manual corrections for this exact frame; saved inference is never overwritten.';
   assert.strictEqual(T.text(hint), '拖动标注框或角点控制柄；方向键微调所选框（Shift = 10 像素）。球心随标注框移动。可拖动球桌多边形角点。保存仅写入此精确帧的人工修正，绝不覆盖已保存的推理结果。');
   host.lang = 'en'; T.translateEditor();
-  same(nodes.map(node => node.nodeValue), rows);
-  assert.strictEqual(track.nodeValue, 'Track window ');
+  same(options.map(option => option.nodeValue), [undefined, undefined, undefined]);
+  same(options.map(option => option.childNodes[0].nodeValue), ['solid','stripe','eight']);
+});
+
+test('every adapter string ships in both languages', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const start = adapter.indexOf('const COPY = {');
+  const literal = adapter.slice(adapter.indexOf('{', start), adapter.indexOf('\n};', start) + 2);
+  const table = vm.runInNewContext(`(${literal})`);
+  const enKeys = Object.keys(table.en).sort(), zhKeys = Object.keys(table.zh).sort();
+  assert.ok(enKeys.length > 60, `adapter copy table looks truncated: ${enKeys.length}`);
+  same(zhKeys, enKeys);
+  for (const key of enKeys) assert.ok(String(table.zh[key] || '').length, `missing zh copy for ${key}`);
+  for (const key of ['cues','inspector','sources','verdict','freeze','stale','startFailed','saveAnchors','latency']) {
+    assert.notStrictEqual(table.zh[key], table.en[key], `${key} is untranslated`);
+    assert.ok(/[\u4e00-\u9fff]/.test(table.zh[key]), `${key} has no Chinese copy`);
+  }
+  const zhBlock = adapter.slice(adapter.indexOf('zh: {'));
+  assert.ok(zhBlock.includes('线索') && zhBlock.includes('启动尝试') && zhBlock.includes('已过期'));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
