@@ -94,8 +94,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) #message.error{border-color:var(--red)}
 :is(#ops-shell, #ops-footer) footer{border-top:1px solid var(--line);color:var(--ink-dim);font-size:12px}
 :is(#ops-shell, #ops-footer) .empty{padding:28px 10px;color:var(--ink-dim)}
-:is(#ops-shell, #ops-footer) nav.vision-tabs{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:1560px;margin:auto;padding:10px clamp(14px,2.4vw,30px);border-top:1px solid var(--line);background:var(--panel2)}
-#vision-host{max-width:1680px;margin:auto;padding:0 32px 32px}
+#vision-host{display:block;width:100%}
 :is(#ops-shell, #ops-footer)[hidden],:is(#ops-shell, #ops-footer) [hidden],#vision-host[hidden],#review-root[hidden]{display:none!important}
 @media(max-width:750px){
 :is(#ops-shell, #ops-footer) header{position:static}
@@ -198,3 +197,141 @@ html,body{-webkit-font-smoothing:antialiased}
 /* UX polish: native control accents and empty-state paneling */
 :is(#ops-shell,#ops-footer) input[type=range],:is(#ops-shell,#ops-footer) input[type=checkbox]{accent-color:var(--brass)}
 .rounds .empty{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--brass);border-radius:3px;padding:16px 20px;color:var(--ink-dim)}
+
+/* --- Vision: one stage, two rails, zero subtabs --------------------------- */
+:is(#ops-shell) .vision-surface{display:flex;flex-direction:column;gap:10px;max-width:1560px;margin:0 auto}
+:is(#ops-shell) .vs-chips{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap}
+:is(#ops-shell) .vs-chiprow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+:is(#ops-shell) .vs-chip{padding:5px 10px;min-height:32px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);color:var(--ink-mid);font:11px var(--mono);letter-spacing:.06em;cursor:pointer}
+:is(#ops-shell) .vs-chip:hover{border-color:var(--brass);background:var(--rail)}
+:is(#ops-shell) .vs-chip.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+:is(#ops-shell) .vs-chipmeta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font:10.5px var(--mono);color:var(--ink-dim)}
+:is(#ops-shell) .vs-fresh{padding:4px 8px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);letter-spacing:.1em;text-transform:uppercase}
+:is(#ops-shell) .vs-fresh.stale{border-color:var(--amber-line);background:var(--amber-bg);color:var(--amber)}
+:is(#ops-shell) .vs-keys{color:var(--ink-faint);letter-spacing:.04em}
+:is(#ops-shell) .vs-grid{display:grid;grid-template-columns:280px minmax(0,1fr) 320px;gap:12px;align-items:start}
+:is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);max-height:min(calc(100vh - 356px),620px);overflow:auto;padding:12px}
+:is(#ops-shell) .vs-stage{min-width:0;display:flex;flex-direction:column;gap:8px}
+:is(#ops-shell) .vs-stagebar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+:is(#ops-shell) .vs-layers{display:flex;gap:4px;flex-wrap:wrap}
+:is(#ops-shell) .vs-layer{padding:4px 10px;min-height:28px;border:1px solid var(--btn-line);border-radius:2px;background:transparent;color:var(--ink-dim);font:10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+:is(#ops-shell) .vs-layer.on{background:var(--rail);border-color:var(--brass);color:var(--ink-hi)}
+:is(#ops-shell) .vs-layer:disabled{opacity:.4;cursor:not-allowed}
+:is(#ops-shell) .vs-identity{font:11px var(--mono);color:var(--ink-mid);overflow-wrap:anywhere}
+:is(#ops-shell) .vs-frame{position:relative;aspect-ratio:16/9;background:#090806;border:1px solid var(--line);overflow:hidden}
+:is(#ops-shell) .vs-frame>#vision-host{display:block;width:100%}
+:is(#ops-shell) .vs-sheettabs{display:none}
+:is(#ops-shell) .vs-strip{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);padding:6px 12px 8px}
+:is(#ops-shell) .vs-transport{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+:is(#ops-shell) .vs-transport button{min-height:30px;padding:0 11px;font-size:12.5px}
+:is(#ops-shell) .vs-transport .primary{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+:is(#ops-shell) .vs-frame-input{display:flex;align-items:center;gap:6px;font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-frame-input input{width:96px;min-height:32px;padding:0 8px;font:12.5px var(--mono)}
+:is(#ops-shell) .vs-rate{color:var(--ink-faint);font-size:10.5px;min-width:56px}
+:is(#ops-shell) .vs-track{position:relative;padding:15px 0 0}
+:is(#ops-shell) .vs-track input[type=range]{width:100%;margin:0;min-height:22px}
+:is(#ops-shell) .vs-strip[data-live="1"] .vs-track input[type=range]{opacity:.35}
+:is(#ops-shell) .vs-strip[data-live="1"] .vs-transport button{opacity:.55}
+:is(#ops-shell) .vs-edge{position:absolute;top:0;bottom:14px;width:3px;transform:translateX(-50%);background:var(--live-bg);border-left:2px solid var(--neutral-bg)}
+:is(#ops-shell) .vs-edge[data-live="1"]{border-color:var(--green);background:var(--green)}
+:is(#ops-shell) .vs-facts{margin:0;font:11px var(--mono);color:var(--ink-mid);overflow-wrap:anywhere}
+:is(#ops-shell) .vs-group{margin-bottom:14px}
+:is(#ops-shell) .vs-group header{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
+:is(#ops-shell) .vs-group h3,:is(#ops-shell) .vs-rail h3,:is(#ops-shell) .vs-inspector h3{margin:0;font:600 13.5px var(--display);letter-spacing:.02em;text-transform:uppercase;color:var(--ink-mid)}
+:is(#ops-shell) .vs-group.focused h3{color:var(--brass-hi)}
+:is(#ops-shell) .vs-group select{min-height:30px;font-size:12px;padding:0 26px 0 8px}
+:is(#ops-shell) .vs-filters{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
+:is(#ops-shell) .vs-filter{padding:3px 8px;min-height:26px;border:1px solid var(--line);border-radius:2px;background:transparent;color:var(--ink-dim);font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+:is(#ops-shell) .vs-filter.active{border-color:var(--brass);color:var(--ink-hi);background:var(--rail)}
+:is(#ops-shell) .vs-card{border:1px solid var(--line2);background:var(--panel2);padding:8px;margin-bottom:6px}
+:is(#ops-shell) .vs-card.selected{border-color:var(--brass)}
+:is(#ops-shell) .vs-card-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+:is(#ops-shell) .vs-verbs{display:flex;align-items:center;gap:4px;margin-top:7px}
+:is(#ops-shell) .vs-verbs button{min-height:26px;min-width:30px;padding:0 6px;border:1px solid var(--line);border-radius:2px;background:transparent;color:var(--ink-dim);font:12px var(--mono);cursor:pointer}
+:is(#ops-shell) .vs-verbs button:hover{border-color:var(--brass);color:var(--ink-hi)}
+:is(#ops-shell) .vs-verbs button.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+:is(#ops-shell) .vs-verb-label{margin-left:auto;font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;margin-bottom:3px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--ink);font-size:12px;cursor:pointer;min-height:0}
+:is(#ops-shell) .vs-item.selected{border-color:var(--brass);background:var(--rail)}
+:is(#ops-shell) .vs-item .vs-tag{margin-left:auto;font:10px var(--mono);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.1em}
+:is(#ops-shell) .vs-item .vs-tag.done{color:var(--green)}
+:is(#ops-shell) .vs-items{display:grid;gap:3px;margin-bottom:8px}
+:is(#ops-shell) .vs-mono{font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+:is(#ops-shell) .vs-dim{color:var(--ink-dim)}
+:is(#ops-shell) .vs-badge{border:1px solid var(--btn-line);border-radius:2px;padding:2px 6px;font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass-hi)}
+:is(#ops-shell) .vs-badge.pot{color:var(--green);border-color:var(--green-line)}
+:is(#ops-shell) .vs-empty{margin:0;padding:10px;border:1px dashed var(--line);color:var(--ink-dim);font-size:12px}
+:is(#ops-shell) .vs-inspector h3{font-size:15px;margin-bottom:6px;color:var(--ink-hi);text-transform:none}
+:is(#ops-shell) .vs-block{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
+:is(#ops-shell) .vs-block h4{margin:0 0 6px;font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+:is(#ops-shell) .vs-row button{min-height:30px;padding:0 10px;font-size:12px}
+:is(#ops-shell) .vs-row button.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+:is(#ops-shell) .vs-row button.primary{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+:is(#ops-shell) .vs-field{display:grid;gap:4px;margin:8px 0;font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-field select,:is(#ops-shell) .vs-field textarea,:is(#ops-shell) .vs-field input{min-height:32px;padding:6px 8px;font:13px var(--body);text-transform:none;letter-spacing:0;background:var(--panel2);border:1px solid var(--line);color:var(--ink);width:100%}
+:is(#ops-shell) .vs-check{display:flex;align-items:center;gap:6px;font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-dim)}
+:is(#ops-shell) .vs-check input{width:auto;min-height:0}
+:is(#ops-shell) .vs-note{margin:6px 0 0;font-size:11.5px;line-height:1.5;color:var(--ink-dim)}
+:is(#ops-shell) .vs-evidence{margin:8px 0;border:1px solid var(--line2);background:var(--panel2)}
+:is(#ops-shell) .vs-evidence video{display:block;width:100%;max-height:230px;background:#090806}
+:is(#ops-shell) .vs-evidence figcaption{padding:4px 8px;font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.12em}
+:is(#ops-shell) .vs-crop{display:flex;gap:8px;align-items:center;justify-content:center;background:var(--panel2);border:1px solid var(--line2);padding:6px;margin-bottom:6px}
+:is(#ops-shell) .vs-crop img{width:118px;height:118px;object-fit:contain}
+:is(#ops-shell) .vs-crop img.ctx{width:158px;height:158px}
+:is(#ops-shell) .vs-ballgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:8px 0}
+:is(#ops-shell) .vs-ballgrid button{min-height:34px;padding:0;font:13px var(--mono)}
+:is(#ops-shell) .vs-ballgrid button.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+:is(#ops-shell) .vs-nudge{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:8px 0}
+:is(#ops-shell) .vs-nudge button{min-height:32px;padding:0}
+:is(#ops-shell) .vs-receipt{margin:8px 0 0;padding:6px 8px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font:11px var(--mono);overflow-wrap:anywhere}
+:is(#ops-shell) .vs-receipt.error{border-left-color:var(--red);background:#3d231d;color:#ffd0c5}
+:is(#ops-shell) .vs-receipt.pending{border-left-color:var(--ink-faint);background:var(--panel2);color:var(--ink-dim)}
+:is(#ops-shell) .vs-notice{margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font-size:12.5px}
+:is(#ops-shell) .vs-notice.error{border-left-color:var(--red);background:#3d231d;color:#ffd0c5}
+:is(#ops-shell) .vs-error-block{margin:0 0 10px;padding:10px;border:1px solid var(--amber-line);background:var(--amber-bg);color:var(--ink)}
+:is(#ops-shell) .vs-error-block h4{margin:0 0 4px;font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+:is(#ops-shell) .vs-error-block p{margin:0 0 6px;font-size:12px}
+:is(#ops-shell) .vs-chat{height:260px;border:1px solid var(--line2);margin-bottom:10px}
+:is(#ops-shell) .vs-chat iframe{width:100%;height:100%;border:0}
+:is(#ops-shell) .vs-chat-toggle{position:sticky;top:0;float:right;z-index:2;min-height:26px;padding:0 8px;font:10px var(--mono);text-transform:uppercase;letter-spacing:.1em}
+:is(#ops-shell) .vs-close{float:right;min-height:26px;min-width:28px;padding:0;font-size:15px;line-height:1;color:var(--ink-dim)}
+:is(#ops-shell) .vs-channel{display:flex;align-items:center;gap:6px;margin:4px 0}
+:is(#ops-shell) .vs-channel .vs-mono{flex:1;min-width:0;overflow-wrap:anywhere}
+:is(#ops-shell) .vs-channel button{min-height:26px;padding:0 8px;font-size:11px}
+:is(#ops-shell) .vs-rail .scrub-marks{position:static;height:auto}
+:is(#ops-shell) .scrub-marks{position:absolute;left:0;right:0;top:0;height:16px;pointer-events:none}
+:is(#ops-shell) .scrub-mark{position:absolute;top:0;transform:translateX(-50%);width:4px;height:14px;padding:0;min-height:0;border-radius:1px;pointer-events:auto;border:0;cursor:pointer}
+:is(#ops-shell) .scrub-mark.shot{background:var(--blue,#8fb4cf)}
+:is(#ops-shell) .scrub-mark.pot{background:var(--green)}
+@media(max-width:1100px){
+  :is(#ops-shell) .vs-grid{grid-template-columns:minmax(0,1fr)}
+  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{max-height:none}
+}
+@media(max-width:750px){
+  :is(#ops-shell)[data-tab=vision] nav,:is(#ops-shell)[data-tab=vision] #strip{display:none}
+  :is(#ops-shell)[data-tab=vision] main{padding:3px 8px 118px}
+  :is(#ops-shell) .vision-surface{gap:6px}
+  :is(#ops-shell) .vs-chip{min-height:28px;padding:4px 8px}
+  :is(#ops-shell) .vs-layer{min-height:26px;padding:3px 8px}
+  :is(#ops-shell)[data-tab=vision] .bar{padding:6px 10px;gap:8px}
+  :is(#ops-shell)[data-tab=vision] .brand small{display:none}
+  :is(#ops-shell) .vs-grid{display:block}
+  :is(#ops-shell) .vs-stage{margin-bottom:8px}
+  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{position:fixed;left:0;right:0;bottom:44px;max-height:44vh;overflow:auto;z-index:30;border-left:0;border-right:0;border-bottom:0}
+  :is(#ops-shell) .vs-sheettabs{display:flex;position:fixed;left:0;right:0;bottom:0;height:44px;z-index:31;background:var(--panel2);border-top:1px solid var(--line)}
+  :is(#ops-shell) .vs-sheettabs button{flex:1;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;min-height:44px}
+  :is(#ops-shell) .vs-sheettabs button.active{background:var(--rail);color:var(--brass-hi)}
+  :is(#ops-shell) .vs-grid[data-sheet=cues] .vs-inspector{display:none}
+  :is(#ops-shell) .vs-grid[data-sheet=inspector] .vs-rail{display:none}
+  :is(#ops-shell) .vs-chiprow{overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
+  :is(#ops-shell) .vs-keys{display:none}
+  /* First evidence in the first viewport: one chip line, one layer line. */
+  :is(#ops-shell) .vs-chips{flex-wrap:nowrap;align-items:center;gap:8px}
+  /* Freshness and the key map live in the facts line and the inspector on mobile. */
+  :is(#ops-shell) .vs-chipmeta{display:none}
+  :is(#ops-shell) .vs-stagebar{flex-wrap:nowrap;overflow-x:auto;gap:8px}
+  :is(#ops-shell) .vs-layers{flex-wrap:nowrap;flex:none}
+  :is(#ops-shell) .vs-identity{white-space:nowrap}
+  :is(#ops-shell) .vs-strip{position:sticky;bottom:44px}
+}

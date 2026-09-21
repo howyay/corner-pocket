@@ -954,7 +954,7 @@ def make_handler(backend):
                         'X-Frame-Width': str(meta['width']), 'X-Frame-Height': str(meta['height'])})
                 if path in ("/favicon.svg", "/favicon-32.png", "/favicon-16.png", "/favicon.ico"):
                     return self.file(safe_file(backend.root / "annotator", path[1:]))
-                if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js"): 
+                if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js"): 
                     return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
                     return self.send(200, backend.event_frame(parts[1], parts[3]), "image/jpeg")
