@@ -265,3 +265,54 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
   evidence jpgs, served on :8129.  NOTE: 11 pots vs known ~9 balls -> likely
   double-counted pairs (same pattern as the old vod30 bug: two pocket windows
   firing for one ball); needs the same causal-chain guard as events_v2.
+
+## 2026-09-22 — table-cloth boundary: baseline, refinement, and a reference-geometry defect
+
+- Harness `src/eval_table_detect.py` (45 vod30 frames over t=0..1806, 21 highlight
+  frames), app rule reproduced offline (`mean corner distance <= 40 px`, best of
+  four cyclic alignments; `src/check_app_quad.py`). Baseline detector
+  `src/table_detect.detect_table`:
+  - vod30, ms/frame median 17.98 / p90 26.55; vs app-anchors median **72.77** /
+    p90 145.28 / max 176.86, accept@40 px **2.3%**, states `{off 15,
+    no detection 16, ok 1, invalid geometry 12}`; vs corners30-v2 median 78.36,
+    accept 0%.
+  - highlight, vs fixed_corners median **1.9** / p90 22.47, accept 85%.
+- Refined detector `src/table_refine.py`: static-camera prior (saved reference
+  quad, or the previous accepted frame) + strip/edge refinement — per side a
+  narrow perpendicular band, occupancy crossing of the cloth mask with an
+  intensity-ramp fallback, per-side motion capped at 8 px/iteration, partial
+  occlusion holds the unmeasured side instead of failing the frame — returning
+  `confidence`/`reason` and keeping `corners`/`mask`/`debug`. Wired into
+  `src/frame_inference.py` (`detect_table_for_frame`, optional `dataset=`) and
+  `annotator/unified_server.py` `_unified_detection` (cached `_prior_for`).
+  `detect_table()` is unchanged for its existing callers (pipeline,
+  rebuild_events_v2, info_complete_scan, ball_detect, scan_events).
+  - vod30 vs corners30-v2 median **4.38** / p90 7.16 / max 12.9, accept **100%**
+    (44/44 readable; t=1806.8 unreadable); no-detection 16 -> **0**, invalid
+    geometry 12 -> **0**; vs app-anchors 43.1 px, accept 0%.
+  - highlight median **11.7** / p90 11.8, accept **100%**, no refusals.
+  - Cost: app path (640x360 input) **9.8 -> 36.1 ms** median (+26 ms/frame);
+    full-res 1280x720 192 ms median (p90 366), inside the 0.2-2.3 s budget.
+- App-visible: model-quad refusals on vod30 **40/45 -> 4/45**, invalid-geometry
+  3 -> 0. The remaining four are refused with reason `low_cloth_area` and never
+  guessed: t=849.5, 970.9, 1618.2, 1658.6 — players standing over the bed, mean
+  gray inside the table quad 54-68 vs 89 at t=70.
+- **Reference-geometry defect (not a detector failure)**: the app validates the
+  quad against the first four of the six hand anchors, and those anchors are
+  pocket-jaw centres ~44 px inside the cloth boundary (per-corner 78.6 / 4.7 /
+  27.1 / 65.6 px vs the recorded cloth quad; anchor cloth-mask coverage 0.27-0.68
+  against 0.0 at the cloth corners). The best possible cloth-corner quad scores
+  **42.9-58.6 px** against them, i.e. above the 40 px tolerance, so a correct quad
+  is structurally un-drawable until the app's reference is fixed. Fix pending an
+  owner decision: re-anchor the four cloth corners, or derive the cloth corners
+  from the pocket geometry.
+- Circularity caveats: corners30-v2 is refinement-derived and is scored here
+  against a refinement detector (optimistic); the anchors are pocket geometry
+  (pessimistic). Both references are reported, neither is rigged.
+- highlight note: 11.7 px against a reference whose bottom rail sits 26-29 px
+  inside the visible cloth (measured at t=10/60/180/300/360). `_MAX_MOVE_PX` in
+  `src/table_refine.py` is the knob if literal parity with the old reference is
+  preferred over tracking the visible cloth.
+- Evidence: `out/table-detect-eval/baseline-naive.{json,txt}`,
+  `after-refined.{json,txt}`, `app-verdict.json`,
+  `overlay-normal.png` / `overlay-occluded.png` / `overlay-fixed.png`.
