@@ -14,8 +14,26 @@ _person_model = None
 _person_weights = None
 
 
-def infer_frame(frame, detectors, root, progress=lambda stage: None):
-    """Return raw-pixel detections using the existing table/SAM3 pipeline helpers."""
+def detect_table_for_frame(frame, dataset=None, prior=None, root=None):
+    """App-path table detection: static-camera prior plus local refinement.
+
+    Returns the improved detector's dict (``corners``/``mask``/``debug`` plus
+    ``confidence``/``reason``/``source``).  When the dataset has no saved prior the
+    call falls back to the naive detector, so a caller that cannot name its
+    dataset still gets the old behaviour rather than an error.
+    """
+    from src.table_refine import detect_table_refined, prior_for
+    centre = prior if prior is not None else (prior_for(dataset, root=root) if dataset else None)
+    return detect_table_refined(frame, prior=centre)
+
+
+def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=None):
+    """Return raw-pixel detections using the existing table/SAM3 pipeline helpers.
+
+    ``dataset`` selects the saved static-camera prior for the cloth-boundary
+    detector (``src/table_refine``); without it the call keeps the historical
+    naive result, so existing callers are unaffected.
+    """
     import cv2
     from src.table_detect import detect_table
 
@@ -24,7 +42,7 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None):
     table = None
     if 'table' in detectors or 'balls' in detectors:
         progress('detecting table')
-        table = detect_table(frame)
+        table = detect_table_for_frame(frame, dataset=dataset)
         if 'table' in detectors and table['corners'] is not None:
             polygon = table['corners'].tolist()
     if 'person' in detectors:

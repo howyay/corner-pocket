@@ -269,6 +269,26 @@ class Backend:
                 'persons_error': persons_error,
                 'events': self._unified_events(dataset, meta['timestamp_seconds'])}
 
+    def _prior_for(self, dataset):
+        """Saved static-camera cloth quad for a dataset, or None.
+
+        Cached per dataset: the reference is a file on disk and the viewer asks for
+        it on every unified frame.  A missing or unreadable reference returns None
+        rather than raising - the detector then falls back to the naive quad.
+        """
+        cache = getattr(self, '_prior_cache', None)
+        if cache is None:
+            cache = self._prior_cache = {}
+        if dataset in cache:
+            return cache[dataset]
+        try:
+            from src.table_refine import prior_for
+            value = prior_for(dataset, root=self.root)
+        except Exception:
+            value = None
+        cache[dataset] = value
+        return value
+
     def _unified_detection(self, dataset, frame_index, frame):
         """Table quad + ball candidates in full-res frame pixels. Detection
         runs on a 2x-downscaled copy (candidates, corners, homography live in
@@ -283,10 +303,23 @@ class Backend:
         import cv2
         import numpy as np
         from src.table_detect import detect_table
+        from src.frame_inference import detect_table_for_frame
         from src.ball_detect import detect_ball_candidates
         scale = 2.0
         small = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2), interpolation=cv2.INTER_AREA)
-        table = detect_table(small)
+        # The cloth-boundary detector needs a static-camera prior for this dataset;
+        # the prior is a full-res quad, so the search centre is scaled into the
+        # detection space.  Without one (or when the refinement is refused) the
+        # naive detect_table call is what runs - the same function, and the same
+        # seam, the callers and tests already patch, including the mask the ball
+        # candidates are filtered with.
+        saved = self._prior_for(dataset)
+        if saved is None:
+            table = detect_table(small)
+        else:
+            prior = np.asarray(saved, np.float32) / scale
+            refined = detect_table_for_frame(small, prior=prior)
+            table = detect_table(small) if refined.get('corners') is None else refined
         corners, balls = None, []
         if table.get('corners') is not None:
             quad = np.asarray(table['corners'], np.float32) * scale
@@ -558,6 +591,10 @@ class Backend:
                 from src.frame_inference import infer_frame
                 progress('decoding selected frame')
                 frame, decoded = self.decode_frame(dataset, meta['frame_index'])
+                # No dataset kwarg here: this path is the historical call shape
+                # (callers and tests stub ``infer_frame(frame, detectors, root,
+                # progress)``) and the refined table quad reaches the viewer
+                # through _unified_detection instead.
                 result = dict(infer_frame(frame, detectors, self.root, progress), **decoded, source='inferred', saved_at=now())
                 atomic_save(self.frame_path(dataset, meta['frame_index'], 'inference'), result)
                 with self.lock:

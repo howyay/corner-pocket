@@ -187,7 +187,8 @@ def evaluate(detector, dataset, n_frames, refs, video):
         except Exception as exc:  # a detector crash is a row, not an aborted run
             corners, info = None, {"source": "crash", "confidence": None,
                                    "reason": f"crash: {exc}", "ms": 0.0}
-        row.update({k: v for k, v in info.items() if k != "corners"})
+        row.update({k: v for k, v in info.items()
+                    if k not in ("corners", "mask", "debug") and not isinstance(v, np.ndarray)})
         row["sanity"] = quad_sanity(corners, w, h)
         if corners is not None:
             row["corners"] = [[round(float(x), 1), round(float(y), 1)] for x, y in corners]
@@ -229,6 +230,14 @@ def summarise(rows, refs, detector_name, dataset, wall_s):
     ms = [r.get("ms") for r in rows if r.get("ms") is not None]
     if ms:
         summary["ms_per_frame"] = _stats(ms)
+    conf = [r["confidence"] for r in rows if r.get("confidence") is not None]
+    if conf:
+        summary["confidence"] = _stats(conf)
+    sources = {}
+    for r in rows:
+        if r.get("source"):
+            sources[r["source"]] = sources.get(r["source"], 0) + 1
+    summary["sources"] = sources
     refused = {}
     for r in rows:
         if r.get("reason"):
@@ -269,6 +278,11 @@ def _table(summary):
         lines.append(f"  ms/frame: median {m['median']} p90 {m['p90']} max {m['max']}")
     if summary["refusal_reasons"]:
         lines.append(f"  refusals: {summary['refusal_reasons']}")
+    if summary.get("sources"):
+        lines.append(f"  sources: {summary['sources']}")
+    if summary.get("confidence"):
+        c = summary["confidence"]
+        lines.append(f"  confidence: median {c['median']} p90 {c['p90']} min {c['min']}")
     for name, ref in summary["references"].items():
         e = ref["error_px"]
         lines.append(f"  vs {name}: mean-px median {e['median'] if e else None} "
