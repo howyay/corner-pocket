@@ -41,6 +41,7 @@ const COPY = {
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
     stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
     liveNow:'live', staleNow:'STALE',
+    coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
     pocketsHeldRejected:'quad rejected', pocketsHeldUnverified:'unverified',
     correctionRefused:'saved correction refused', tolerance:'tol'
@@ -81,6 +82,7 @@ const COPY = {
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
     stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
     liveNow:'直播', staleNow:'已过期',
+    coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
     pocketsHeldRejected:'四边形被拒绝', pocketsHeldUnverified:'未校验',
     correctionRefused:'已保存修正被拒绝', tolerance:'容差'
@@ -211,6 +213,20 @@ function factsLine(s) {
   else parts.push(`${t('overlays')} ${total > 0 ? t('on') : t('none')}`);
   return parts.join(' · ');
 }
+// Nothing selected is still an annotatable frame. The correction controls used
+// to live only inside the box block, which needs an existing box, so a cold
+// frame (no saved correction, no saved inference) offered no way to draw a box,
+// add the table polygon or run inference at all. Same actions, same write
+// guards, reachable with an empty selection.
+function coldFrameBlock(s) {
+  const tool = s.corrections?.tool === 'draw' ? 'draw' : 'select';
+  return `<div class="vs-block"><h4>${esc(t('tool'))}</h4>
+    <div class="vs-row"><button class="${tool === 'select' ? 'active' : ''}" data-vs-action="tool" data-vs-value="select">${esc(t('selectTool'))}</button><button class="${tool === 'draw' ? 'active' : ''}" data-vs-action="tool" data-vs-value="draw">${esc(t('drawTool'))}</button></div>
+    <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div>
+    <div class="vs-row"><button data-vs-action="run-inference">${esc(t('runInference'))}</button></div>
+    ${s.dirty ? `<div class="vs-row"><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button></div>` : ''}
+    <p class="vs-note">${esc(t('coldStartHint'))}</p></div>`;
+}
 function sourceBlock(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
@@ -222,6 +238,7 @@ function sourceBlock(s) {
   return `${attempt}
   <h3>${esc(t('sources'))}</h3>
   <p class="vs-note">${esc(t('selectCueHint'))}</p>
+  ${coldFrameBlock(s)}
   <div class="vs-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <p class="vs-mono">${esc(s.source.kind === 'vod' ? s.source.label : '—')} · ${esc(t('frameCount'))} ${esc(s.frame.count)}</p></div>
   <div class="vs-block"><h4>${esc(t('liveState'))}</h4>
@@ -467,5 +484,5 @@ function attach(options) {
   render();
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); }};
 }
-window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML};
+window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML};
 })();

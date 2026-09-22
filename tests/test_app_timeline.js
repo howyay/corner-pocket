@@ -711,5 +711,41 @@ test('a refused model quad falls back to the saved calibration for the pockets',
   T.state.unified = null; T.state.cloth.reference = null;
 });
 
+test('a cold frame can start a correction without a devtools call', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  const stage = context.window.VisionStage;
+  // attach() only needs a host to bind to: the surface state is module-level.
+  stage.attach({mount:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, lang:'en', review:{snapshot: () => null}, channels: () => [], regulars: () => [], chat: () => false});
+  const base = {
+    selection:{kind:'none', box:-1}, source:{kind:'vod', label:'vod30', channel:null}, datasets:[{id:'vod30', label:'vod30'}], set:'unlabeled_crops',
+    frame:{count:54206, index:500}, live:{state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person']},
+    detectors:{table:true, person:true, balls:false}, corrections:{tool:'select', newBoxLabel:'ball', box:-1, boxLabel:null, polygon:false, result:'none', dirty:false, inferRunning:false, inferStatus:''},
+    dirty:false, notice:{text:''}, receipts:[], persons:{tracks:[], track:null, windows:[], win:'', status:''}
+  };
+  const html = stage.inspectorHTML(base);
+  for (const action of ['data-vs-action="add-polygon"', 'data-vs-action="run-inference"', 'data-vs-value="draw"']) assert.ok(html.includes(action), `a cold frame must offer ${action}`);
+  assert.ok(html.includes('data-vs-action="tool"') && html.includes('data-vs-action="clear-polygon"'));
+  assert.ok(!html.includes('data-vs-action="save-corrections"'), 'an untouched frame has nothing to save');
+  assert.ok(stage.inspectorHTML({...base, dirty:true}).includes('data-vs-action="save-corrections"'), 'unsaved edits expose the existing save action');
+  // The box block keeps its own copy of the same controls (inference stays in
+  // the action footer for that block), and the person block stays identity-only.
+  const box = stage.inspectorHTML({...base, selection:{kind:'box', box:0}});
+  assert.ok(box.includes('data-vs-action="add-polygon"') && box.includes('data-vs-action="delete-box"'));
+  assert.ok(adapter.includes('data-vs-action="run-inference"'), 'the box footer keeps run-inference');
+  const person = stage.inspectorHTML({...base, selection:{kind:'person', track:3, person:{cluster_id:null}}});
+  assert.ok(person.includes('Identity') && !person.includes('data-vs-action="add-polygon"'), 'the person block stays the identity block');
+  assert.ok(adapter.includes("data-vs-action=\"seed\" data-vs-value=\"A\""), 'the person footer keeps the seed actions');
+  // Every one of these buttons reaches a real engine entry point.
+  for (const action of ['tool','add-polygon','clear-polygon','run-inference','save-corrections']) {
+    assert.ok(adapter.includes(`case '${action}'`), `the surface must act on ${action}`);
+  }
+  for (const api of ['setTool','addPolygon','clearPolygon','runInference','saveCorrections']) {
+    assert.ok(typeof sandbox.window.CornerPocketReview[api] === 'function', `the engine must expose ${api}`);
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
