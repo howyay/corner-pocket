@@ -261,6 +261,13 @@ test('app.css styles the one stage surface, ops.css styles the rails and strip',
   for (const needle of ['.vs-grid', '.vs-rail', '.vs-inspector', '.vs-strip', '.scrub-mark', '.vs-layer', '.vs-sheettabs', 'grid-template-columns:280px minmax(0,1fr) 320px']) {
     assert.ok(ops.includes(needle), `missing surface css: ${needle}`);
   }
+  // The inspector scrolls above a fixed action footer: the scroll region reserves
+  // the footer's measured height, so no row hides under it at 390 or at short heights.
+  assert.ok(ops.includes('padding-bottom:calc(12px + var(--vs-footer-h,0px))'), 'the scroll region must reserve the footer height');
+  assert.ok(ops.includes('scroll-padding-bottom:calc(var(--vs-footer-h,0px) + 8px)'));
+  assert.ok(ops.includes('.vs-inspector-actions{flex:none'), 'the footer is a flex sibling, not an overlay');
+  assert.ok(ops.includes(':is(#ops-shell) .vs-rail{overflow:auto}'), 'only the rail keeps its own mobile scroll');
+  assert.ok(!/bottom:44px;max-height:44vh;overflow:auto/.test(ops), 'the mobile aside must not scroll under the footer');
 });
 
 test('editor translation preserves dirty values, focus, selection and pending save state', () => {
@@ -394,6 +401,10 @@ test('the adapter localizes engine state, keeps one scrub range and one action f
   assert.ok(adapter.includes("scrub.setAttribute('step', '1')"));
   // 2. engine-built strings render in the active language
   assert.ok(adapter.includes('engineText(s.notice.text)'), 'notices localize at render');
+  // the reserved footer height is measured, never hardcoded
+  assert.ok(adapter.includes('footer.offsetHeight') && adapter.includes("setProperty('--vs-footer-h'"), 'the footer height must be derived');
+  assert.ok(adapter.includes('new ResizeObserver(syncFooterHeight)'), 'footer height changes must re-derive the padding');
+  assert.ok(adapter.includes("data-vs-action=\"verdict-draft\""), 'the verdict verbs live in the always-visible footer');
   assert.ok(adapter.includes('engineText(row.text)'), 'receipts localize at render');
   assert.ok(adapter.includes('engineText(s.corrections.inferStatus'));
   assert.ok(adapter.includes('engineText(s.persons.status'));

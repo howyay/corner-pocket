@@ -80,7 +80,7 @@ const COPY = {
     liveNow:'直播', staleNow:'已过期'
   }
 };
-let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null;
+let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerObserver = null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const t = key => (COPY[opts?.lang] || COPY.en)[key] || COPY.en[key] || key;
 const $ = id => root ? root.querySelector(id) : null;
@@ -103,6 +103,14 @@ function receiptLine(kind) {
   if (!row.at) return `<p class="vs-receipt pending">· ${esc(engineText(row.text))}</p>`;
   const age = Math.max(0, (Date.now() - row.at) / 1000);
   return `<p class="vs-receipt${row.error ? ' error' : ''}" data-receipt-at="${row.at}">${row.error ? '!' : '✓'} ${esc(engineText(row.text))} · ${age.toFixed(1)} s ${esc(t('savedOk'))}</p>`;
+}
+// The footer's height is measured, never assumed: the scroll region reserves
+// exactly that much (CSS var --vs-footer-h) so no row hides under it.
+function syncFooterHeight() {
+  const inspector = $('#vs-inspector'), footer = $('#vs-inspector-actions');
+  if (!inspector || !footer) return;
+  const height = `${footer.offsetHeight}px`;
+  if (inspector.style.getPropertyValue('--vs-footer-h') !== height) inspector.style.setProperty('--vs-footer-h', height);
 }
 function receiptAge() {
   if (!root) return;
@@ -208,7 +216,7 @@ function eventBlock(s) {
   return `<h3>${esc(item.type === 'pot' ? t('pots') : t('shots'))} <span class="vs-mono vs-dim">#${esc(item.id)}</span></h3>
   <p class="vs-mono">${esc(timecode(item.t))}${item.nearest_pocket ? ` · ${esc(item.nearest_pocket)}` : ''}</p>
   <figure class="vs-evidence"><video controls loop muted playsinline preload="metadata" poster="${esc(evidence)}" src="/api/clip?dataset=${dataset}&t=${encodeURIComponent(item.t)}" data-vs-fallback="${esc(evidence)}"></video><figcaption class="vs-mono">${esc(t('evidence'))}</figcaption></figure>
-  <div class="vs-block"><h4>${esc(t('verdict'))}</h4><div class="vs-row">${['correct','wrong','unsure'].map(v => `<button class="${verdict === v ? 'active' : ''}" data-vs-action="verdict-draft" data-vs-value="${v}">${esc(t(v))}</button>`).join('')}</div></div>
+  <div class="vs-block"><h4>${esc(t('verdict'))}</h4><p class="vs-mono">${esc(verdict ? t(verdict) : t('notReviewed'))}</p></div>
   <label class="vs-field">${esc(t('shooter'))}<select data-vs-action="shooter">${[['','—'],['A',t('seedA')],['B',t('seedB')],['?',t('unknown')]].map(([v, l]) => `<option value="${v}" ${(annotation.shooter || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
   <label class="vs-field">${esc(t('notes'))}<textarea rows="3" data-vs-action="note">${esc(annotation.note || '')}</textarea></label>
   ${receiptLine('event')}`;
@@ -265,7 +273,11 @@ function boxBlock(s) {
 // so it stays clickable at any viewport height (measured at 1280x599).
 function actionsHTML(s) {
   const kind = s.selection.kind;
-  if (kind === 'event') return `<button class="primary" data-vs-action="save-verdict">${esc(t('saveReview'))}</button><button data-vs-action="next-event">${esc(t('nextCue'))}</button>`;
+  if (kind === 'event') {
+    const item = s.selection.event || s.events.items[s.events.index];
+    const verdict = s.verdictDraft ?? item?.annotation?.verdict ?? '';
+    return `${['correct','wrong','unsure'].map(v => `<button class="${verdict === v ? 'active' : ''}" data-vs-action="verdict-draft" data-vs-value="${v}">${esc(t(v))}</button>`).join('')}<button class="primary" data-vs-action="save-verdict">${esc(t('saveReview'))}</button><button data-vs-action="next-event">${esc(t('nextCue'))}</button>`;
+  }
   if (kind === 'ball') {
     const label = s.selection.crop?.label;
     return `<button class="${label === 'u' ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="-1">${esc(t('unknown'))}</button><button class="${label === 0 ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="0">${esc(t('cue'))} 0</button><button data-vs-action="label-ball" data-vs-value="clear">${esc(t('clear'))}</button>`;
@@ -332,6 +344,7 @@ function render() {
   const liveStrip = s.source.kind === 'live';
   const strip = $('#vs-strip'); if (strip) strip.dataset.live = liveStrip ? '1' : '0';
   root.querySelectorAll('[data-vs-action="step"],[data-vs-action="freeze"],[data-vs-action="play"],#vs-scrub').forEach(node => { node.disabled = liveStrip; });
+  syncFooterHeight();
   const grid = $('.vs-grid'); if (grid) grid.dataset.sheet = sheet;
   root.querySelectorAll('[data-sheet-tab]').forEach(b => b.classList.toggle('active', b.dataset.sheetTab === sheet));
   if (!ageTimer) ageTimer = setInterval(receiptAge, 1000);
@@ -418,6 +431,9 @@ function onChange(event) {
 function attach(options) {
   opts = options; root = options.mount;
   sig = {}; // the shell rebuilds #main on every render: never trust cached regions
+  const footer = root.querySelector('#vs-inspector-actions');
+  if (footerObserver) { footerObserver.disconnect(); footerObserver = null; }
+  if (footer && typeof ResizeObserver !== 'undefined') { footerObserver = new ResizeObserver(syncFooterHeight); footerObserver.observe(footer); }
   root.addEventListener('click', onClick);
   root.addEventListener('change', onChange);
   const unsubscribe = engine()?.subscribe ? engine().subscribe(render) : null;

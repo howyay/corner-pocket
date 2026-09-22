@@ -213,6 +213,10 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-rail{border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);max-height:min(calc(100vh - 356px),620px);overflow:auto;padding:12px}
 :is(#ops-shell) .vs-inspector{display:flex;flex-direction:column;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);max-height:min(calc(100vh - 356px),620px);overflow:hidden;padding:0}
 :is(#ops-shell) .vs-inspector-scroll{flex:1 1 auto;min-height:0;overflow:auto;padding:12px}
+/* The action footer is a sibling band, so the scroll region reserves its height
+   (--vs-footer-h is measured from the footer itself, never hardcoded) and every
+   row can be scrolled clear of it - mobile sheet and short desktop viewports. */
+:is(#ops-shell) .vs-inspector-scroll{padding-bottom:calc(12px + var(--vs-footer-h,0px));scroll-padding-bottom:calc(var(--vs-footer-h,0px) + 8px)}
 :is(#ops-shell) .vs-inspector-actions{flex:none;padding:8px 12px;border-top:1px solid var(--line);background:var(--panel2)}
 :is(#ops-shell) .vs-inspector-actions .vs-row{flex-wrap:wrap}
 :is(#ops-shell) .vs-inspector-actions .primary{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
@@ -326,7 +330,10 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell)[data-tab=vision] .brand small{display:none}
   :is(#ops-shell) .vs-grid{display:block}
   :is(#ops-shell) .vs-stage{margin-bottom:8px}
-  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{position:fixed;left:0;right:0;bottom:44px;max-height:44vh;overflow:auto;z-index:30;border-left:0;border-right:0;border-bottom:0}
+  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{position:fixed;left:0;right:0;bottom:44px;max-height:44vh;z-index:30;border-left:0;border-right:0;border-bottom:0}
+  /* Only the scroll region scrolls on mobile: the footer stays a fixed band, so
+     rows can never end up underneath it. */
+  :is(#ops-shell) .vs-rail{overflow:auto}
   :is(#ops-shell) .vs-sheettabs{display:flex;position:fixed;left:0;right:0;bottom:0;height:44px;z-index:31;background:var(--panel2);border-top:1px solid var(--line)}
   :is(#ops-shell) .vs-sheettabs button{flex:1;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;min-height:44px}
   :is(#ops-shell) .vs-sheettabs button.active{background:var(--rail);color:var(--brass-hi)}
