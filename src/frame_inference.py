@@ -58,7 +58,7 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None):
         import torch
         model = load_sam3_image_model(checkpoint_path=str(checkpoint), device='cpu')
         processor = make_processor(model)
-        progress('running SAM3 balls on the GPU (CPU fallback available)')
+        progress('running SAM3 balls on CPU (SAM3 is pinned to CPU, not GPU; expect minutes per frame)')
         device = inference_device()
         with torch.inference_mode(), torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device != 'cpu'):
             state = processor.set_image(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
