@@ -40,7 +40,10 @@ const COPY = {
     attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector',
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
     stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
-    liveNow:'live', staleNow:'STALE'
+    liveNow:'live', staleNow:'STALE',
+    quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
+    pocketsHeldRejected:'quad rejected', pocketsHeldUnverified:'unverified',
+    correctionRefused:'saved correction refused', tolerance:'tol'
   },
   zh: {
     cues:'线索', inspector:'检查器', sources:'视频源', events:'事件', balls:'球', persons:'人物',
@@ -77,7 +80,10 @@ const COPY = {
     attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器',
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
     stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
-    liveNow:'直播', staleNow:'已过期'
+    liveNow:'直播', staleNow:'已过期',
+    quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
+    pocketsHeldRejected:'四边形被拒绝', pocketsHeldUnverified:'未校验',
+    correctionRefused:'已保存修正被拒绝', tolerance:'容差'
   }
 };
 let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerObserver = null;
@@ -97,6 +103,10 @@ const stateText = value => engine()?.liveStateText ? engine().liveStateText(valu
 // on screen (the inspector signature includes the language).
 const engineText = value => engine()?.text ? engine().text(String(value ?? '')) : String(value ?? '');
 function labelText(label) { if (label === 'u' || label === -1) return t('unknown'); if (label === 0) return `${t('cue')} · 0`; return `#${label}`; }
+// Pocket names are pool-table rail terms in stored data; every displayed label
+// is the position word the engine maps them to, never the raw key.
+function pocketName(event) { return event?.nearest_pocket_text || event?.nearest_pocket || ''; }
+function pocketTag(event) { const name = pocketName(event); return name ? `<span class="vs-mono vs-dim">${esc(name)}</span>` : ''; }
 function receiptLine(kind) {
   const row = (snap()?.receipts || []).find(r => r.key === kind);
   if (!row) return '';
@@ -132,7 +142,7 @@ function chipsHTML(s) {
 function railHTML(s) {
   const events = s.events.items.filter(e => s.eventFilter === 'all' || (s.eventFilter === 'pending' ? !e.verdict : e.type === s.eventFilter));
   const cards = events.length ? events.map((e, i) => `<article class="vs-card${e.id === s.selection.event?.id ? ' selected' : ''}" data-vs-action="select-event" data-vs-id="${esc(e.id)}">
-      <div class="vs-card-row"><span class="vs-badge ${esc(e.type)}">${esc(e.type === 'pot' ? t('pots') : t('shots'))}</span><span class="vs-mono">${esc(timecode(e.t))}</span><span class="vs-mono vs-dim">#${esc(e.id)}</span>${e.nearest_pocket ? `<span class="vs-mono vs-dim">${esc(e.nearest_pocket)}</span>` : ''}</div>
+      <div class="vs-card-row"><span class="vs-badge ${esc(e.type)}">${esc(e.type === 'pot' ? t('pots') : t('shots'))}</span><span class="vs-mono">${esc(timecode(e.t))}</span><span class="vs-mono vs-dim">#${esc(e.id)}</span>${pocketTag(e)}</div>
       <div class="vs-verbs">${['correct','wrong','unsure'].map(v => `<button class="${e.verdict === v ? 'active' : ''}" data-vs-action="verdict" data-vs-id="${esc(e.id)}" data-vs-value="${v}" title="${esc(t(v))}" aria-label="${esc(t(v))}">${{correct:'✓',wrong:'✗',unsure:'?'}[v]}</button>`).join('')}<span class="vs-verb-label">${esc(e.verdict ? t(e.verdict) : t('notReviewed'))}</span></div>
     </article>`).join('') : `<p class="vs-empty">${esc(t('noEvents'))}</p>`;
   const crops = s.balls.items;
@@ -177,7 +187,20 @@ function factsLine(s) {
   };
   // Layer names come from the same copy table as the chips, so the facts line
   // is fully bilingual (EN keeps the design's lowercase technical tokens).
-  parts.push(layer('cloth', t('cloth').toLowerCase()), layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()), t('pockets').toLowerCase() + ' ' + Number(d.pockets || 0), t('anchors').toLowerCase() + ' ' + Number(d.anchors || 0), layer('events', t('events').toLowerCase()));
+  // A layer that was held back says so here, in the same words as the stage
+  // note: an empty layer is never left unexplained.
+  const cloth = s.cloth || {};
+  const verdict = cloth.verdict || {};
+  const refusal = cloth.refusal || null;
+  parts.push(layer('cloth', t('cloth').toLowerCase()), layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()));
+  const pocketCount = Number(d.pockets || 0);
+  const pocketsHeld = !pocketCount && verdict.state === 'off' ? t('pocketsHeldRejected') : !pocketCount && verdict.state === 'unverified' ? t('pocketsHeldUnverified') : '';
+  parts.push(`${t('pockets').toLowerCase()} ${pocketCount}${pocketsHeld ? ` (${pocketsHeld})` : ''}`);
+  parts.push(t('anchors').toLowerCase() + ' ' + Number(d.anchors || 0), layer('events', t('events').toLowerCase()));
+  if (verdict.state === 'off' && verdict.mean != null) parts.push(`${t('quadOff')} ${Math.round(verdict.mean)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
+  else if (verdict.state === 'off') parts.push(t('quadOff'));
+  else if (verdict.state === 'unverified') parts.push(t('quadUnverified'));
+  if (refusal) parts.push(`${t('correctionRefused')} (${refusal.owner})`);
   const total = d.cloth + d.balls + d.persons + d.pockets + d.anchors + d.events;
   if (s.loading.overlay) parts.push(`${t('overlays')} ${t('loading')} (${((Date.now() - s.loading.since) / 1000).toFixed(1)} s)`);
   else if (s.busy) parts.push(`${t('overlays')} ${t('loading2')}`);
@@ -214,7 +237,7 @@ function eventBlock(s) {
   const dataset = encodeURIComponent(s.dataset);
   const evidence = item.evidence ? `/media/${dataset}/evidence/${encodeURIComponent(String(item.evidence).split('/').pop())}` : `/media/${dataset}/event-frame/${encodeURIComponent(item.id)}`;
   return `<h3>${esc(item.type === 'pot' ? t('pots') : t('shots'))} <span class="vs-mono vs-dim">#${esc(item.id)}</span></h3>
-  <p class="vs-mono">${esc(timecode(item.t))}${item.nearest_pocket ? ` · ${esc(item.nearest_pocket)}` : ''}</p>
+  <p class="vs-mono">${esc(timecode(item.t))}${pocketName(item) ? ` · ${esc(pocketName(item))}` : ''}</p>
   <figure class="vs-evidence"><video controls loop muted playsinline preload="metadata" poster="${esc(evidence)}" src="/api/clip?dataset=${dataset}&t=${encodeURIComponent(item.t)}" data-vs-fallback="${esc(evidence)}"></video><figcaption class="vs-mono">${esc(t('evidence'))}</figcaption></figure>
   <div class="vs-block"><h4>${esc(t('verdict'))}</h4><p class="vs-mono">${esc(verdict ? t(verdict) : t('notReviewed'))}</p></div>
   <label class="vs-field">${esc(t('shooter'))}<select data-vs-action="shooter">${[['','—'],['A',t('seedA')],['B',t('seedB')],['?',t('unknown')]].map(([v, l]) => `<option value="${v}" ${(annotation.shooter || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
