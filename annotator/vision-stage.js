@@ -13,7 +13,7 @@ const COPY = {
     freeze:'Freeze', play:'Play', pause:'Pause', ticks:'Event ticks', dataset:'Dataset',
     start:'Start', stop:'Stop', detectors:'Frame detectors', table:'Table', person:'Person', ball:'Balls',
     latency:'Twitch upstream delay: UNKNOWN. Receive-to-result is local processing latency, not glass-to-glass latency.',
-    freshness:'Freshness', saved:'Saved channels', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
+    freshness:'Freshness', saved:'Saved channels', savedOk:'Saved', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
     select:'Select', remove:'Remove', chat:'Chat', showChat:'Show chat', hideChat:'Hide chat',
     startFailed:'Start attempt', cause:'Cause', remedy:'Remedy', retry:'Retry',
     remedyText:'Check that the source is a saved canonical Twitch channel, or that the allowlisted dataset media exists.',
@@ -50,7 +50,7 @@ const COPY = {
     freeze:'冻结', play:'播放', pause:'暂停', ticks:'事件刻度', dataset:'数据集',
     start:'开始', stop:'停止', detectors:'帧检测器', table:'球桌', person:'人物', ball:'球',
     latency:'Twitch 上游延迟：未知。接收到结果仅为本地处理耗时，不是端到端延迟。',
-    freshness:'新鲜度', saved:'已保存频道', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
+    freshness:'新鲜度', saved:'已保存频道', savedOk:'已保存', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
     select:'选择', remove:'移除', chat:'聊天', showChat:'显示聊天', hideChat:'隐藏聊天',
     startFailed:'启动尝试', cause:'原因', remedy:'处理', retry:'重试',
     remedyText:'请确认来源是已保存的标准 Twitch 频道，或数据集媒体确实存在。',
@@ -92,17 +92,21 @@ const fmtAge = ms => ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)
 // running / stopping / stopped / eos / error), so 中 mode never shows a raw
 // English state word.
 const stateText = value => engine()?.liveStateText ? engine().liveStateText(value) : String(value ?? '');
+// The engine stores notices and statuses as English source text; the adapter
+// localizes them at render time, so a language switch re-labels what is already
+// on screen (the inspector signature includes the language).
+const engineText = value => engine()?.text ? engine().text(String(value ?? '')) : String(value ?? '');
 function labelText(label) { if (label === 'u' || label === -1) return t('unknown'); if (label === 0) return `${t('cue')} · 0`; return `#${label}`; }
 function receiptLine(kind) {
   const row = (snap()?.receipts || []).find(r => r.key === kind);
   if (!row) return '';
-  if (!row.at) return `<p class="vs-receipt pending">· ${esc(row.text)}</p>`;
+  if (!row.at) return `<p class="vs-receipt pending">· ${esc(engineText(row.text))}</p>`;
   const age = Math.max(0, (Date.now() - row.at) / 1000);
-  return `<p class="vs-receipt${row.error ? ' error' : ''}" data-receipt-at="${row.at}">${row.error ? '!' : '✓'} ${esc(row.text)} · ${age.toFixed(1)} s ${esc(t('saved'))}</p>`;
+  return `<p class="vs-receipt${row.error ? ' error' : ''}" data-receipt-at="${row.at}">${row.error ? '!' : '✓'} ${esc(engineText(row.text))} · ${age.toFixed(1)} s ${esc(t('savedOk'))}</p>`;
 }
 function receiptAge() {
   if (!root) return;
-  const now = Date.now(), saved = opts?.lang === 'zh' ? '已保存' : 'Saved';
+  const now = Date.now(), saved = t('savedOk');
   root.querySelectorAll('[data-receipt-at]').forEach(node => {
     node.textContent = node.textContent.replace(/[\d.]+ s (?:已保存|Saved)$/, `${Math.max(0, (now - Number(node.dataset.receiptAt)) / 1000).toFixed(1)} s ${saved}`);
   });
@@ -176,16 +180,19 @@ function sourceBlock(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
   const live = s.live;
+  // A start that failed must not leave the row reading "idle": the row states
+  // the failure with the same vocabulary the running/stopped states use.
+  const liveFailed = !!(live.error || live.attempt?.error);
+  const liveRowState = liveFailed && live.state !== 'running' && live.state !== 'starting' ? 'error' : live.state;
   return `${attempt}
   <h3>${esc(t('sources'))}</h3>
   <p class="vs-note">${esc(t('selectCueHint'))}</p>
   <div class="vs-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <p class="vs-mono">${esc(s.source.kind === 'vod' ? s.source.label : '—')} · ${esc(t('frameCount'))} ${esc(s.frame.count)}</p></div>
   <div class="vs-block"><h4>${esc(t('liveState'))}</h4>
-    <p class="vs-mono" id="vs-live-status">${esc(stateText(live.state))}${live.error ? ` · ${esc(live.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
+    <p class="vs-mono" id="vs-live-status">${esc(stateText(liveRowState))}${(live.error || live.attempt?.error) ? ` · ${esc(live.error || live.attempt.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
     <div class="vs-chiprow">${channels}${(s.datasets || []).map(d => `<button class="vs-chip" data-vs-action="pick-live" data-vs-value="dataset:${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <div class="vs-row">${['table','person'].map(d => `<label class="vs-check"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${(live.detectors || []).includes(d) ? 'checked' : ''}> ${esc(t(d))}</label>`).join('')}</div>
-    <div class="vs-row"><button data-vs-action="live-start" class="primary">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button></div>
     <p class="vs-note">${esc(t('latency'))}</p></div>
   <div class="vs-block"><h4>${esc(t('detectors'))}</h4><div class="vs-row">${[['table','table'],['person','person'],['balls','ball']].map(([k, l]) => `<label class="vs-check"><input type="checkbox" data-vs-action="detector" data-vs-value="${k}" ${s.detectors[k] ? 'checked' : ''}> ${esc(t(l))}</label>`).join('')}</div><p class="vs-note">${esc(t('detectorReason'))}</p></div>
   <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}
@@ -204,7 +211,6 @@ function eventBlock(s) {
   <div class="vs-block"><h4>${esc(t('verdict'))}</h4><div class="vs-row">${['correct','wrong','unsure'].map(v => `<button class="${verdict === v ? 'active' : ''}" data-vs-action="verdict-draft" data-vs-value="${v}">${esc(t(v))}</button>`).join('')}</div></div>
   <label class="vs-field">${esc(t('shooter'))}<select data-vs-action="shooter">${[['','—'],['A',t('seedA')],['B',t('seedB')],['?',t('unknown')]].map(([v, l]) => `<option value="${v}" ${(annotation.shooter || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
   <label class="vs-field">${esc(t('notes'))}<textarea rows="3" data-vs-action="note">${esc(annotation.note || '')}</textarea></label>
-  <div class="vs-row"><button class="primary" data-vs-action="save-verdict">${esc(t('saveReview'))}</button><button data-vs-action="next-event">${esc(t('nextCue'))}</button></div>
   ${receiptLine('event')}`;
 }
 function ballBlock(s) {
@@ -217,7 +223,6 @@ function ballBlock(s) {
   <div class="vs-crop"><img src="/media/balls/${encodeURIComponent(s.set)}/${encodeURIComponent(file)}" alt="${esc(file)}">${ctx}</div>
   <p class="vs-mono">${esc(file)} · ${esc(timecode(crop.t))}${crop.score != null ? ` · ${Number(crop.score).toFixed(2)}` : ''}</p>
   <div class="vs-ballgrid">${Array.from({length:10},(_,i) => `<button class="${label === i ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="${i}">${i}</button>`).join('')}</div>
-  <div class="vs-row"><button class="${label === 'u' ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="-1">${esc(t('unknown'))}</button><button class="${label === 0 ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="0">${esc(t('cue'))} 0</button><button data-vs-action="label-ball" data-vs-value="clear">${esc(t('clear'))}</button></div>
   <div class="vs-row"><button data-vs-action="crop-step" data-vs-value="-1">${esc(t('prevCrop'))}</button><button data-vs-action="crop-step" data-vs-value="1">${esc(t('nextCrop'))}</button></div>
   ${receiptLine('ball')}`;
 }
@@ -229,10 +234,9 @@ function personBlock(s) {
   const names = (opts.regulars() || []);
   return `<h3>${esc(t('identity'))}</h3>
   <p class="vs-mono">${esc(t('trackWord'))} ${esc(s.persons.track ?? '—')} · ${esc(t('prediction'))}: ${esc(track?.label || '—')} · ${esc(t('seed'))}: ${esc(seed || '—')}</p>
-  <div class="vs-row"><button class="${seed === 'A' ? 'active' : ''}" data-vs-action="seed" data-vs-value="A">${esc(t('seedA'))}</button><button class="${seed === 'B' ? 'active' : ''}" data-vs-action="seed" data-vs-value="B">${esc(t('seedB'))}</button><button class="${seed === 'ignore' ? 'active' : ''}" data-vs-action="seed" data-vs-value="ignore">${esc(t('ignore'))}</button><button data-vs-action="seed" data-vs-value="clear">${esc(t('clearSeed'))}</button></div>
   <p class="vs-note">${esc(t('seedHint'))}</p>
   <div class="vs-block"><h4>${esc(t('regular'))}</h4>${cluster ? `<div class="vs-row"><select data-vs-action="regular">${names.map(n => `<option value="${esc(n.id)}">${esc(n.name)}</option>`).join('') || '<option value="">—</option>'}</select><button data-vs-action="bind-regular">${esc(t('bindName'))}</button></div>` : `<p class="vs-empty">${esc(t('noCluster'))}</p>`}</div>
-  <div class="vs-block"><h4>${esc(t('rebuild'))}</h4><div class="vs-row"><button data-vs-action="rebuild">${esc(t('rebuild'))}</button><button data-vs-action="rebuild-refresh">${esc(t('refresh'))}</button></div><p class="vs-mono">${esc(s.persons.status || '')}</p></div>
+  <div class="vs-block"><h4>${esc(t('rebuild'))}</h4><div class="vs-row"><button data-vs-action="rebuild">${esc(t('rebuild'))}</button><button data-vs-action="rebuild-refresh">${esc(t('refresh'))}</button></div><p class="vs-mono">${esc(engineText(s.persons.status || ''))}</p></div>
   ${receiptLine('person')}`;
 }
 function anchorBlock(s) {
@@ -243,7 +247,6 @@ function anchorBlock(s) {
   <div class="vs-items">${rows || `<p class="vs-empty">${esc(t('loading2'))}</p>`}</div>
   <div class="vs-nudge"><button data-vs-action="nudge" data-vs-value="0,-1">↑</button><button data-vs-action="nudge" data-vs-value="-1,0">←</button><button data-vs-action="nudge" data-vs-value="1,0">→</button><button data-vs-action="nudge" data-vs-value="0,1">↓</button></div>
   <div class="vs-row">${[70,200,350].map(x => `<button data-vs-action="anchors-at" data-vs-value="${x}">${esc(t('anchorsAt'))} ${x} s</button>`).join('')}</div>
-  <div class="vs-row"><button class="primary" data-vs-action="save-anchors">${esc(t('saveAnchors'))}</button></div>
   <p class="vs-mono">${s.anchors.loaded ? `t ${Number(s.anchors.t).toFixed(1)} s` : esc(t('loading2'))}</p>
   ${receiptLine('anchor')}`;
 }
@@ -256,7 +259,24 @@ function boxBlock(s) {
   <div class="vs-block"><h4>${esc(t('tool'))}</h4><div class="vs-row"><button class="${s.corrections.tool === 'select' ? 'active' : ''}" data-vs-action="tool" data-vs-value="select">${esc(t('selectTool'))}</button><button class="${s.corrections.tool === 'draw' ? 'active' : ''}" data-vs-action="tool" data-vs-value="draw">${esc(t('drawTool'))}</button></div>
     <label class="vs-field">${esc(t('newBoxLabel'))}<select data-vs-action="new-box-label">${labels.map(l => `<option value="${l}" ${s.corrections.newBoxLabel === l ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
     <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div></div>
-  <div class="vs-block"><h4>${esc(t('runInference'))}</h4><p class="vs-mono">${esc(s.corrections.inferStatus || '')}</p><div class="vs-row"><button data-vs-action="run-inference">${esc(t('runInference'))}</button><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button></div>${receiptLine('corrections')}</div>`;
+  <div class="vs-block"><h4>${esc(t('runInference'))}</h4><p class="vs-mono">${esc(engineText(s.corrections.inferStatus || ''))}</p>${receiptLine('corrections')}</div>`;
+}
+// The primary write of the active block lives in the inspector's action footer,
+// so it stays clickable at any viewport height (measured at 1280x599).
+function actionsHTML(s) {
+  const kind = s.selection.kind;
+  if (kind === 'event') return `<button class="primary" data-vs-action="save-verdict">${esc(t('saveReview'))}</button><button data-vs-action="next-event">${esc(t('nextCue'))}</button>`;
+  if (kind === 'ball') {
+    const label = s.selection.crop?.label;
+    return `<button class="${label === 'u' ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="-1">${esc(t('unknown'))}</button><button class="${label === 0 ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="0">${esc(t('cue'))} 0</button><button data-vs-action="label-ball" data-vs-value="clear">${esc(t('clear'))}</button>`;
+  }
+  if (kind === 'person') {
+    const seed = (s.persons.tracks.find(x => String(x.id) === String(s.persons.track)) || {}).seed || null;
+    return `<button class="${seed === 'A' ? 'active' : ''}" data-vs-action="seed" data-vs-value="A">${esc(t('seedA'))}</button><button class="${seed === 'B' ? 'active' : ''}" data-vs-action="seed" data-vs-value="B">${esc(t('seedB'))}</button><button class="${seed === 'ignore' ? 'active' : ''}" data-vs-action="seed" data-vs-value="ignore">${esc(t('ignore'))}</button><button data-vs-action="seed" data-vs-value="clear">${esc(t('clearSeed'))}</button>`;
+  }
+  if (kind === 'anchor') return `<button class="primary" data-vs-action="save-anchors">${esc(t('saveAnchors'))}</button>`;
+  if (kind === 'box') return `<button data-vs-action="run-inference">${esc(t('runInference'))}</button><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button>`;
+  return `<button data-vs-action="live-start" class="primary">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button>`;
 }
 function inspectorHTML(s) {
   const kind = s.selection.kind;
@@ -265,7 +285,7 @@ function inspectorHTML(s) {
   const chat = liveChat ? `<div class="vs-chat"><iframe title="Twitch chat" src="https://www.twitch.tv/embed/${esc(s.source.channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
   const chatToggle = s.source.kind === 'live' && s.source.channel ? `<button class="vs-chat-toggle" data-vs-action="chat">${esc(opts.chat() ? t('hideChat') : t('showChat'))}</button>` : '';
   const close = kind === 'none' ? '' : `<button class="vs-close" data-vs-action="deselect" aria-label="×">×</button>`;
-  const notice = s.notice.text ? `<div class="vs-notice${s.notice.error ? ' error' : ''}" role="status">${esc(s.notice.text)}</div>` : '';
+  const notice = s.notice.text ? `<div class="vs-notice${s.notice.error ? ' error' : ''}" role="status">${esc(engineText(s.notice.text))}</div>` : '';
   return `${chat}${chatToggle}${close}${notice}${body}`;
 }
 // ---- rendering -----------------------------------------------------------
@@ -281,11 +301,21 @@ function render() {
   const identity = identityHTML(s);
   if (identity !== sig.identity) { const node = $('#vs-identity'); if (node) node.innerHTML = identity; sig.identity = identity; }
   const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
-  if (insSig !== sig.inspector) { const node = $('#vs-inspector'); if (node) node.innerHTML = inspectorHTML(s); sig.inspector = insSig; }
+  if (insSig !== sig.inspector) {
+    const body = $('#vs-inspector-scroll'), actions = $('#vs-inspector-actions');
+    if (body) body.innerHTML = inspectorHTML(s);
+    if (actions) actions.innerHTML = `<div class="vs-row">${actionsHTML(s)}</div>`;
+    sig.inspector = insSig;
+  }
   const frameInput = $('#vs-frame-index');
   if (frameInput && document.activeElement !== frameInput) frameInput.value = s.frame.index;
   const scrub = $('#vs-scrub');
-  if (scrub && document.activeElement !== scrub) scrub.value = s.frame.index;
+  if (scrub) {
+    const max = String(Math.max(0, s.frame.count - 1));
+    if (scrub.getAttribute('max') !== max) scrub.setAttribute('max', max);
+    if (scrub.getAttribute('step') !== '1') scrub.setAttribute('step', '1');
+    if (document.activeElement !== scrub) scrub.value = s.frame.index;
+  }
   const marksSig = `${s.dataset}|${s.frame.duration}|${s.events.items.map(e => `${e.id}:${e.t}:${e.type}`).join(',')}`;
   const marks = $('#vs-marks');
   if (marks && marksSig !== sig.marks) {

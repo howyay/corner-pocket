@@ -69,7 +69,7 @@ async function save(button, path, body, after, key, label) {
     return true;
   } catch (error) {
     receipt(key, `${label} · ${text('save failed')}: ${error.message}`, Date.now(), true);
-    notice(`${text('save failed')}: ${error.message}. ${text('Your changes remain on screen; retry when ready.')}`, true);
+    notice(`Save failed: ${error.message}. Your changes remain on screen; retry when ready.`, true);
     return false;
   } finally { state.busy = false; if (button) { button.disabled = false; button.textContent = text(saved); } notify(); }
 }
@@ -149,7 +149,7 @@ async function loadTracks(at = null) {
     state.persons.tracks = data.tracks || [];
     state.persons.t = data.t ?? t;
     notify();
-  } catch (error) { if (epoch === state.epoch && request === trackRequest) notice(`${text('Tracks unavailable.')} ${error.message}`, true); }
+  } catch (error) { if (epoch === state.epoch && request === trackRequest) notice(`Tracks unavailable. ${error.message}`, true); }
 }
 async function loadSeeds() {
   try { const data = await api('/api/vod30/seeds'); state.persons.seeds = data.seeds || {}; notify(); } catch (_) {}
@@ -204,7 +204,7 @@ async function loadFrame(n) {
     applyFrameResult(); renderStage();
     scheduleUnified(shot.frame, epoch, request);
   } catch (error) {
-    if (epoch === state.epoch && request === state.frameReq) notice(`${text('Frame load failed')}: ${error.message}`, true);
+    if (epoch === state.epoch && request === state.frameReq) notice(`Frame load failed: ${error.message}`, true);
   } finally {
     if (epoch === state.epoch && request === state.frameReq) {
       state.busy = false; state.decoding = false;
@@ -450,35 +450,35 @@ async function saveVerdict(button, verdict) {
   const event = eventForSelection(); if (!event) return false;
   const saved = state.annotations[String(event.id)] || {};
   const body = {event_id: event.id, verdict: verdict || state.verdictDraft || saved.verdict || '', shooter: state.shooterDraft ?? saved.shooter ?? '', note: state.noteDraft ?? saved.note ?? ''};
-  if (!body.verdict) { notice(text('Choose a verdict before saving.'), true); return false; }
+  if (!body.verdict) { notice('Choose a verdict before saving.', true); return false; }
   const frame = state.frame;
   return save(button, `/api/${enc(state.dataset)}/annotate`, body, () => {
     state.annotations[String(event.id)] = body; state.verdictDraft = body.verdict;
   }, 'event', `${event.type === 'pot' ? 'cue' : 'shot'} #${event.id} ${event.type} @ frame ${frame} · ${body.verdict}`);
 }
-function labelValueText(value) { return value === null || value === undefined ? 'cleared' : value === -1 ? 'Unknown' : value === 0 ? 'Cue 0' : `Ball ${value}`; }
+function labelValueText(value) { return value === null || value === undefined ? 'cleared' : value === -1 || value === 'u' ? 'Unknown' : value === 0 ? 'Cue 0' : `Ball ${value}`; }
 async function labelBall(button, value) {
   const crop = state.sel.kind === 'ball' ? state.sel.crop : null;
-  if (!crop) { notice(text('Select a ball or a crop first.'), true); return false; }
+  if (!crop) { notice('Select a ball or a crop first.', true); return false; }
   const file = crop.file.split('/').pop();
   const label = value === 'clear' ? null : Number(value);
   return save(button, `/api/balls/${enc(state.set)}/label`, {file, label}, () => {
     state.balls.labels ||= {};
     if (label === null) delete state.balls.labels[file]; else state.balls.labels[file] = label === -1 ? 'u' : label;
-  }, 'ball', `crop ${file} = ${labelValueText(label === -1 ? 'u' : label)}`);
+  }, 'ball', `crop ${file} = ${text(labelValueText(label === -1 ? 'u' : label))}`);
 }
 // The seeds contract types track_id as an integer; rail dataset attributes are strings.
 function trackId(value) { return typeof value === 'string' && /^-?\d+$/.test(value) ? Number(value) : value; }
 async function setSeed(button, role, playerId) {
   const track = state.sel.track;
-  if (track === null || track === undefined) { notice(text('Select a visible track first.'), true); return false; }
+  if (track === null || track === undefined) { notice('Select a visible track first.', true); return false; }
   const t = state.persons.t ?? state.t;
   const body = {win: state.persons.win, t, track_id: trackId(track), label: role === 'clear' ? null : role};
   return save(button, '/api/vod30/seeds', body, async () => { await loadSeeds(); }, 'person', `win ${state.persons.win} · track ${track} = ${role === 'clear' ? 'cleared' : role}`);
 }
 async function seedIdentity(button, playerId) {
   const person = state.sel.person || {};
-  if (!person.cluster_id) { notice(text('This track has no identity cluster yet.'), true); return false; }
+  if (!person.cluster_id) { notice('This track has no identity cluster yet.', true); return false; }
   return save(button, '/api/identity/seed', {cluster_id: person.cluster_id, player_id: playerId}, null, 'person', `cluster ${String(person.cluster_id).slice(0, 6)} → ${playerId}`);
 }
 async function saveAnchors(button) {
@@ -487,7 +487,7 @@ async function saveAnchors(button) {
 async function saveCorrections(button) {
   if (state.busy || !state.fresult) return false;
   const invalid = state.boxes.find(box => !normalizeBox(box.bbox, state.frameWidth, state.frameHeight));
-  if (invalid) { notice(text('A box has invalid coordinates; fix or delete it before saving.'), true); return false; }
+  if (invalid) { notice('A box has invalid coordinates; fix or delete it before saving.', true); return false; }
   const body = {dataset: state.dataset, frame_index: state.frame, boxes: state.boxes.map(box => ({label: box.label, bbox: box.bbox})), table_polygon: state.polygon ? state.polygon.map(p => [p[0], p[1]]) : null};
   const ok = await save(button, '/api/frame-correction', body, () => { state.fresult.correction = {boxes: state.boxes.map(b => ({label: b.label, bbox: b.bbox.slice()})), table_polygon: body.table_polygon}; state.drawn.source = 'manual corrections'; paintOverlay(); }, 'corrections', `frame ${state.frame} · ${state.boxes.length} boxes${state.polygon ? ' + polygon' : ''}`);
   return ok;
@@ -518,19 +518,19 @@ function nudgeAnchor(dx, dy) {
   markDirty(); paintOverlay();
 }
 async function runInference(button) {
-  if (state.busy || !state.fresult) { if (!state.fresult) notice(text('Freeze a frame before running inference.'), true); return false; }
+  if (state.busy || !state.fresult) { if (!state.fresult) notice('Freeze a frame before running inference.', true); return false; }
   const detectors = Object.keys(state.detectors).filter(k => state.detectors[k]);
-  if (!detectors.length) { notice(text('Choose at least one detector (table, person, balls).'), true); return false; }
+  if (!detectors.length) { notice('Choose at least one detector (table, person, balls).', true); return false; }
   const frame = state.frame, epoch = state.epoch;
-  state.inferRunning = true; state.inferStatus = `${text('Starting inference on frame')} ${frame} (${detectors.join(', ')})…`; notify();
+  state.inferRunning = true; state.inferStatus = `Starting inference on frame ${frame} (${detectors.join(', ')})…`; notify();
   try {
     const job = await api('/api/inference', {dataset: state.dataset, frame_index: frame, detectors});
     if (epoch !== state.epoch) return false;
-    state.inferStatus = `${text('Inference running for frame')} ${job.frame_index}: ${job.stage || 'queued'}…`; notify();
+    state.inferStatus = `Inference running for frame ${job.frame_index}: ${job.stage || 'queued'}…`; notify();
     pollInference(epoch, job.frame_index);
     return true;
   } catch (error) {
-    if (epoch === state.epoch) { state.inferRunning = false; state.inferStatus = text('Idle.'); notice(`${text('Inference failed to start')}: ${error.message}`, true); }
+    if (epoch === state.epoch) { state.inferRunning = false; state.inferStatus = 'Idle.'; notice(`Inference failed to start: ${error.message}`, true); }
     return false;
   }
 }
@@ -540,37 +540,37 @@ function pollInference(epoch, frame) {
     try {
       const job = await api(`/api/inference?dataset=${enc(state.dataset)}`);
       if (epoch !== state.epoch) return;
-      if (job.status === 'running') { state.inferStatus = `${text('Inference running for frame')} ${job.frame_index}: ${job.stage || ''}…`; notify(); pollInference(epoch, frame); return; }
+      if (job.status === 'running') { state.inferStatus = `Inference running for frame ${job.frame_index}: ${job.stage || ''}…`; notify(); pollInference(epoch, frame); return; }
       state.inferRunning = false;
-      if (job.status === 'failed') { state.inferStatus = text('Inference failed.'); notice(`${text('Frame inference failed')}: ${job.error || 'unknown error'}`, true); return; }
-      state.inferStatus = `${text('Inference completed for frame')} ${job.frame_index}.`; notify();
+      if (job.status === 'failed') { state.inferStatus = 'Inference failed.'; notice(`Frame inference failed: ${job.error || 'unknown error'}`, true); return; }
+      state.inferStatus = `Inference completed for frame ${job.frame_index}.`; notify();
       if (job.status === 'completed' && job.result && job.frame_index === frame && state.frame === frame) {
         if (state.fresult) state.fresult.inference = job.result;
         if (!state.dirty && !state.fresult?.correction) { applyFrameResult(); renderStage(); }
         paintOverlay(); notify();
-        notice(text('Inference overlays updated for the frozen frame.'));
-      } else if (job.status === 'completed') notice(`${text('Inference for frame')} ${job.frame_index} ${text('finished; freeze that frame to see its overlays.')}`);
-    } catch (error) { if (epoch === state.epoch) { state.inferRunning = false; state.inferStatus = text('Status check failed.'); notice(`${text('Inference status error')}: ${error.message}`, true); } }
+        notice('Inference overlays updated for the frozen frame.');
+      } else if (job.status === 'completed') notice(`Inference for frame ${job.frame_index} finished; freeze that frame to see its overlays.`);
+    } catch (error) { if (epoch === state.epoch) { state.inferRunning = false; state.inferStatus = 'Status check failed.'; notice(`Inference status error: ${error.message}`, true); } }
   }, 1500);
 }
 async function rebuild(button) {
   if (button) button.disabled = true;
-  state.persons.status = text('Rebuilding…'); notify();
+  state.persons.status = 'Rebuilding…'; notify();
   try {
     const data = await api('/api/vod30/rebuild', {});
     state.persons.rebuild = data.status || 'unknown';
-    state.persons.status = `${text('Status')}: ${data.status || 'unknown'}${data.error ? ` — ${data.error}` : ''}`;
+    state.persons.status = `Status: ${data.status || 'unknown'}${data.error ? ` — ${data.error}` : ''}`;
     if (data.status === 'running') setTimeout(() => refreshRebuild(), 2500);
-  } catch (error) { state.persons.status = `${text('Rebuild failed')}: ${error.message}`; notice(`${text('Rebuild failed')}: ${error.message}`, true); }
+  } catch (error) { state.persons.status = `Rebuild failed: ${error.message}`; notice(`Rebuild failed: ${error.message}`, true); }
   notify();
 }
 async function refreshRebuild() {
   try {
     const data = await api('/api/vod30/rebuild');
     state.persons.rebuild = data.status || 'unknown';
-    state.persons.status = `${text('Status')}: ${data.status || 'unknown'}${data.error ? ` — ${data.error}` : ''}`;
+    state.persons.status = `Status: ${data.status || 'unknown'}${data.error ? ` — ${data.error}` : ''}`;
     if (data.status === 'completed') { const fresh = await api('/api/vod30/tracklets'); state.persons.predictions = fresh.predictions; await loadTracks(); }
-  } catch (error) { state.persons.status = `${text('Status unavailable')}: ${error.message}`; }
+  } catch (error) { state.persons.status = `Status unavailable: ${error.message}`; }
   notify();
 }
 // ---- live source: the stage shows the live edge in the same <img> ---------
@@ -593,7 +593,7 @@ function applyLiveStatus(status) {
   const failure = status.error || (state.live.state === 'error' ? state.live.error : null);
   if (failure) {
     state.live.attempt = {at: Date.now(), error: failure, source: state.live.attempt?.source || null};
-    notice(`${text('Live start failed')}: ${failure}`, true);
+    notice(`Live start failed: ${failure}`, true);
   } else if (state.live.state === 'running' || state.live.state === 'starting') {
     state.live.attempt = null;
   } else if (state.live.attempt?.error) {
@@ -626,9 +626,19 @@ async function setDataset(dataset) {
   if (!canLeave()) return false;
   state.dataset = dataset; state.unified = null; state.fresult = null; state.shotUrl = null; state.frame = 0;
   state.source = {kind:'vod', label: dataset, channel:null};
+  // The live edge's last frame and its detections belong to the live source.
+  state.live.detections = null; state.live.stale = false;
   state.anchors.loaded = false;
+  // A dataset switch always re-loads the one stage for the new dataset. The
+  // request is queued too, so a decode that is already in flight cannot swallow
+  // the switch and leave the stage without its model layer.
   notify();
-  try { await loadVideo(); await loadEvents(); await loadFrame(0); } catch (error) { notice(error.message, true); }
+  try {
+    await loadVideo();
+    await loadEvents();
+  } catch (error) { notice(`${error.message}. The review API is unavailable. Use the project review server, not a file:// URL.`, true); return false; }
+  if (state.busy) state.pendingSeek = 0;      // a decode owns the stage: it reloads frame 0 next
+  else { state.pendingSeek = null; loadFrame(0); }
   return true;
 }
 // ---- pointer editing on the imagery -------------------------------------
@@ -711,13 +721,15 @@ function onKeydown(e) {
     return;
   }
   if (key === 'Escape') { clearSelection(); return; }
-  if (key === 'Enter') { saveVerdict(null); return; }
+  // V / ⏎ act on the selected cue only: with the Source panel open they must not
+  // commit a draft to whichever event happens to be current.
+  if (key === 'Enter') { if (state.sel.kind === 'event') saveVerdict(null); else notice('Select a cue first.', true); return; }
   if (/^[0-9]$/.test(key)) { e.preventDefault(); labelBall(null, Number(key)); return; }
   const upper = key.length === 1 ? key.toUpperCase() : key;
   if (upper === 'U') { e.preventDefault(); labelBall(null, -1); return; }
   if (upper === 'C') { e.preventDefault(); labelBall(null, 0); return; }
   if (upper === 'A' || upper === 'B') { e.preventDefault(); setSeed(null, upper); return; }
-  if (upper === 'V') { e.preventDefault(); cycleVerdict(); return; }
+  if (upper === 'V') { e.preventDefault(); if (state.sel.kind === 'event') cycleVerdict(); else notice('Select a cue first.', true); return; }
   if (upper === 'F') { e.preventDefault(); seek(state.frame); }
 }
 function bindControls() {
@@ -737,7 +749,7 @@ async function init() {
     loadCrops(state.set).catch(() => {});
     loadFrame(0);
   } catch (error) {
-    notice(`${error.message} ${text('The review API is unavailable. Use the project review server, not a file:// URL.')}`, true);
+    notice(`${error.message}. The review API is unavailable. Use the project review server, not a file:// URL.`, true);
   }
 }
 function switchMode(mode) {
@@ -859,7 +871,7 @@ Object.assign(editorCopy, {
   'Frame inference covers this single decoded frame only. It cannot detect shots or pots — event inference needs time windows and is out of scope here.':'帧推理仅覆盖此单张解码帧，无法检测击球或入袋；事件推理需要时间窗口，不在此功能范围内。',
   'Drag boxes or corner handles; arrow keys nudge the selected box (Shift = 10 px). Ball centers follow their box. Drag table polygon corners. Saving writes manual corrections for this exact frame; saved inference is never overwritten.':'拖动标注框或角点控制柄；方向键微调所选框（Shift = 10 像素）。球心随标注框移动。可拖动球桌多边形角点。保存仅写入此精确帧的人工修正，绝不覆盖已保存的推理结果。',
   'Infer results and manual corrections are saved separately. Inference never overwrites your correction file.':'推理结果和人工修正分别保存。推理不会覆盖修正文件。',
-  'Saved':'已保存', 'Track':'轨迹', 'Track window':'轨迹窗口', 'Delete selected':'删除所选', 'Draw box':'绘制标注框', 'Select / move':'选择 / 移动',
+  'Saved':'已保存', 'cleared':'已清除', 'Cue 0':'母球 0', 'Select a cue first.':'请先选择线索。', 'cue':'母球', 'shot':'击球', 'pot':'入袋', 'correct':'正确', 'wrong':'错误', 'unsure':'不确定', 'Track':'轨迹', 'Track window':'轨迹窗口', 'Delete selected':'删除所选', 'Draw box':'绘制标注框', 'Select / move':'选择 / 移动',
   'Selected label':'所选标注', 'New box label':'新框标注', 'Add table polygon':'添加球桌多边形', 'Clear polygon':'清除多边形',
   'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌'
 });
@@ -876,6 +888,15 @@ const editorTemplates = [
   [/^Status: (.+?)( — [\s\S]*)?$/, (status, detail = '') => `状态：${liveStateText(status, 'zh')}${detail}`],
   [/^Status unavailable: ([\s\S]*)$/, detail => `状态不可用：${detail}`],
   [/^Rebuild failed: ([\s\S]*)$/, detail => `重建失败：${detail}`],
+  [/^Tracks unavailable\. ([\s\S]*)$/, detail => `轨迹不可用。${detail}`],
+  // Save receipts are engine-built too: they localize at render time like notices.
+  [/^crop (.+) = (.+)$/, (file, value) => `裁剪图 ${file} = ${text(value)}`],
+  [/^win (.+) · track (.+) = (.+)$/, (win, track, role) => `窗口 ${win} · 轨迹 ${track} = ${text(role)}`],
+  [/^(\d+) anchors @ t (.+)$/, (count, at) => `${count} 个锚点 @ t ${at}`],
+  [/^frame (\d+) · (\d+) boxes( \+ polygon)?$/, (frame, boxes, polygon) => `帧 ${frame} · ${boxes} 个标注框${polygon ? ' + 多边形' : ''}`],
+  [/^(shot|cue) #(.+?) (shot|pot) @ frame (\d+) · (.+)$/, (kind, id, type, frame, verdict) => `${text(type === 'pot' ? 'pot' : 'shot')} #${id} @ 帧 ${frame} · ${text(verdict)}`],
+  [/^(\d+) anchors @ t ([\d.]+)$/, (count, at) => `${count} 个锚点 @ t ${at}`],
+  [/^([\s\S]*?)\. The review API is unavailable\. Use the project review server, not a file:\/\/ URL\.$/, detail => `${detail}。复核 API 不可用。请通过项目复核服务器打开，而非 file:// 地址。`],
   [/^Inference completed for frame (\d+)\.$/, frame => `帧 ${frame} 推理已完成。`],
   [/^Inference running for frame (\d+): (.*)…$/, (frame, stage) => `正在对帧 ${frame} 运行推理：${stage}…`],
   [/^Starting inference on frame (\d+) \((.*)\)…$/, (frame, detectors) => `正在启动帧 ${frame} 的推理（${detectors}）…`],

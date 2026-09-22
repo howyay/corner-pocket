@@ -44,7 +44,7 @@ function visionSurface(){return `<section class="vision-surface" id="vision-surf
 <div class="vs-stagebar"><div class="vs-layers" id="vs-layers"></div><span class="vs-identity" id="vs-identity"></span></div>
 <div class="vs-frame" id="vs-frame"></div>
 </section>
-<aside class="vs-inspector" id="vs-inspector" aria-label="Vision inspector"></aside>
+<aside class="vs-inspector" id="vs-inspector" aria-label="Vision inspector"><div class="vs-inspector-scroll" id="vs-inspector-scroll"></div><div class="vs-inspector-actions" id="vs-inspector-actions"></div></aside>
 </div>
 <div class="vs-sheettabs" role="tablist"><button type="button" data-sheet-tab="cues" class="active" data-vs-label="showCues"></button><button type="button" data-sheet-tab="inspector" data-vs-label="showInspector"></button></div>
 <div class="vs-strip" id="vs-strip">
