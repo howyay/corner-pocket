@@ -38,8 +38,8 @@ function test(name, fn) {
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
-  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
-  assert.strictEqual(api.length, 60, 'the engine exposes exactly its lifecycle + one-stage API');
+  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  assert.strictEqual(api.length, 61, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -184,6 +184,25 @@ test('app.js pins the backend request contract and required labels', () => {
   assert.ok(!source.includes('Frozen frame inspector'), 'the duplicate frozen-frame panel is gone');
 });
 
+test('every processor state translates and never leaks raw English', () => {
+  const review = sandbox.window.CornerPocketReview;
+  const host = {lang:'en', querySelector: () => elementStub(), querySelectorAll: () => []};
+  T.setRoot(host);
+  const states = ['idle','starting','running','stopping','stopped','eos','error','failed','completed','unknown'];
+  for (const state of states) {
+    assert.strictEqual(review.liveStateText(state), state, `${state} must render as itself in EN`);
+    host.lang = 'zh';
+    const chinese = review.liveStateText(state);
+    assert.ok(/[\u4e00-\u9fff]/.test(chinese), `${state} is untranslated in 中`);
+    assert.strictEqual(T.text(`Status: ${state}`), `状态：${chinese}`);
+    host.lang = 'en';
+  }
+  assert.strictEqual(review.liveStateText('stopped'), 'stopped');
+  assert.strictEqual(review.liveStateText('brand-new-state'), 'brand-new-state', 'unknown values stay verbatim');
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  assert.ok(adapter.includes('liveStateText') && !/esc\(live\.state\)/.test(adapter), 'the adapter must not print the raw state');
+});
+
 test('form and video targets never double-consume the stage keys', () => {
   const review = sandbox.window.CornerPocketReview;
   T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
@@ -275,6 +294,49 @@ test('browser regression: translated options keep submitted values, stage copy k
   host.lang = 'en'; T.translateEditor();
   same(options.map(option => option.nodeValue), [undefined, undefined, undefined]);
   same(options.map(option => option.childNodes[0].nodeValue), ['solid','stripe','eight']);
+});
+
+test('adapter facts line separates model result from manual correction', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  const base = {
+    source:{kind:'vod', label:'vod30', channel:null}, frame:{index:8100, t:270, duration:1800, count:45000, playing:false, rate:0},
+    loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
+    drawn:{cloth:2, balls:16, persons:8, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}
+  };
+  const facts = context.window.VisionStage.factsLine(base);
+  assert.ok(facts.includes('cloth 1 (+1 manual)'), facts);
+  assert.ok(facts.includes('balls 8 (+8 manual)'), facts);
+  assert.ok(facts.includes('persons 4 (+4 manual)'), facts);
+  assert.ok(facts.includes('pockets 6') && !facts.includes('pockets 6 (+'), 'pockets are never manual');
+  assert.ok(facts.endsWith('overlays ON'), facts);
+  const clean = context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}});
+  assert.ok(!clean.includes('manual'), 'an untouched frame prints no provenance marker');
+  const loading = context.window.VisionStage.factsLine({...base, loading:{overlay:true, since: Date.now() - 1600}});
+  assert.ok(/overlays LOADING \(1\.[56] s\)$/.test(loading), loading);
+  const empty = context.window.VisionStage.factsLine({...base, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
+  assert.ok(empty.endsWith('overlays none'), empty);
+  const older = context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:2, persons:0, pockets:0, anchors:0, events:0}});
+  assert.ok(older.includes('balls 2') && !older.includes('manual'), 'a snapshot without provenance still prints its totals');
+});
+
+test('the facts line uses one word for one live state', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  const live = {source:{kind:'live', label:'live', channel:'examplechannel'}, frame:{index:0, t:0, duration:1800, count:45000, playing:false, rate:0},
+    loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:12, frame_age_ms:240, receive_to_result_ms:33},
+    drawn:{cloth:1, balls:0, persons:3, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:3, pockets:0, anchors:0, events:0}}};
+  const fresh = context.window.VisionStage.factsLine(live);
+  assert.ok(fresh.startsWith('live · seq 12'), fresh);
+  const stale = context.window.VisionStage.factsLine({...live, live:{...live.live, stale:true, frame_age_ms:10200}});
+  assert.ok(stale.startsWith('stale · seq 12'), stale);
+  assert.ok(!stale.includes('live'), 'the stale state is not described as live');
+  assert.ok(stale.includes('frame age 10.2 s') && stale.includes('receive-to-result 33 ms'), stale);
+  assert.ok(adapter.includes('not glass-to-glass') || adapter.includes('latency'), 'the latency caveat string is untouched');
 });
 
 test('every adapter string ships in both languages', () => {
