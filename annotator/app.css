@@ -47,6 +47,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .stage-live { position: absolute; left: 10px; top: 10px; padding: 4px 8px; border-radius: 2px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; background: var(--panel2); color: var(--green); border: 1px solid var(--green-line); }
 .stage-live.stale { color: var(--amber); border-color: var(--amber-line); background: var(--amber-bg); }
 .stage-live[hidden] { display: none; }
+/* Why a layer is missing is said on the stage itself, in the operator's
+   language, instead of leaving an unexplained empty layer. It sits at the top
+   because the stage is taller than a short viewport: a notice below the fold is
+   a notice nobody reads. The live chip owns the top-left corner, so the notice
+   steps below it while the live edge is on screen. */
+.stage-note { position: absolute; left: 10px; right: 10px; top: 10px; padding: 6px 9px; border-radius: 2px; border: 1px solid var(--amber-line); background: #14110fee; color: var(--amber); font-size: 11.5px; line-height: 1.45; }
+.stage-note[data-live="1"] { top: 42px; }
+.stage-note[hidden] { display: none; }
+.stage-note.error { border-color: var(--red); color: var(--red); }
 #t-overlay circle, #t-overlay .u-player { }
 #t-overlay text { font: 500 14px var(--mono); paint-order: stroke; stroke: #09080699; stroke-width: 3; pointer-events: none; }
 /* Provenance: automatic results (unified detection / live metadata) are a
@@ -82,6 +91,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #t-overlay .center-dot { fill: #fff; stroke: #20160d; stroke-width: 2; pointer-events: none; }
 #t-overlay .t-poly { fill: none; stroke: var(--green); stroke-width: 3; pointer-events: none; }
 #t-overlay .draw-preview { fill: #8bb89a22; stroke: var(--green); stroke-dasharray: 6 4; }
+/* Source tags: every drawn geometry group says whether it is MODEL output or
+   the operator's own mark. The tag sits next to the shape, never inside its
+   group, so it can never inherit the group's editable styling. */
+#t-overlay .o-src { pointer-events: none; }
+#t-overlay .o-src rect { fill: #0b0a08cc; stroke-width: 1.5; }
+#t-overlay .o-src.model rect { stroke: var(--brass); }
+#t-overlay .o-src.manual rect { stroke: var(--green); }
+#t-overlay .o-src text { font: 700 14px var(--mono); letter-spacing: .08em; stroke: none; }
+#t-overlay .o-src.model text { fill: var(--brass-hi); }
+#t-overlay .o-src.manual text { fill: var(--green); }
+#t-overlay .o-label { font: 500 14px var(--mono); fill: #fff4d5; }
+#t-overlay .u-person text.u-chip { fill: var(--green); opacity: .85; }
+#t-overlay .u-person text.u-chip.bound { fill: #8fd6a8; opacity: 1; }
 
 /* Ball label popover: attached to the ball it labels, dimming around it. */
 .stage-popover { position: absolute; z-index: 5; min-width: 168px; padding: 8px; border: 1px solid var(--brass); border-radius: 2px; background: var(--panel); box-shadow: 0 6px 26px #0009; line-height: 1.3; }

@@ -26,6 +26,7 @@ const state = {
   frameWidth:0, frameHeight:0, frameReq:0, shotUrl:null,
   overlay:{cloth:true,balls:true,persons:true,pockets:true,anchors:true,events:true},
   drawn:{cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0,on:false,source:'none'},
+  cloth:{reference:null,verdict:{state:'none',reason:'no detection'},refusal:null},
   loading:{overlay:false,since:0},
   live:{state:'idle',error:null,frame_age_ms:null,receive_to_result_ms:null,skipped:0,seq:null,receivedAt:null,stale:false,detections:null,attempt:null,detectors:['table','person']},
   source:{kind:'vod',label:'',channel:null},
@@ -96,6 +97,151 @@ function displayBoxes(result) {
   return {source, boxes: (payload.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score})), polygon: payload.table_polygon ? payload.table_polygon.map(p => [...p]) : null};
 }
 function ballLabelText(value) { return value === undefined || value === null ? 'Unlabeled' : value === -1 || value === 'u' ? 'Unknown' : value === 0 ? 'Cue · 0' : `Ball ${value}`; }
+// ---- pocket vocabulary, overlay provenance, geometry clearance ------------
+// Stored pocket keys are pool-table rail terms (head rail / foot rail). On the
+// imagery they read as body parts - a marker labelled `head-left` beside a
+// player is read as that player's head - so every DISPLAYED label goes through
+// this map at render time. Stored keys and APIs never change.
+const POCKET_LABELS = {
+  'head-left':'top-left', 'head-right':'top-right',
+  'foot-left':'bottom-left', 'foot-right':'bottom-right',
+  'left-side':'left-middle', 'right-side':'right-middle'
+};
+const POCKET_WORDS = {
+  'top-left':['top-left','左上'], 'top-right':['top-right','右上'],
+  'bottom-left':['bottom-left','左下'], 'bottom-right':['bottom-right','右下'],
+  'left-middle':['left-middle','左中'], 'right-middle':['right-middle','右中']
+};
+function pocketWord(token, lang) {
+  const shown = POCKET_LABELS[String(token)] || String(token ?? '');
+  const row = POCKET_WORDS[shown];
+  return row ? (lang === 'zh' ? row[1] : row[0]) : shown;
+}
+// `nearest_pocket` is a composed string ("foot-right (124mm)", "557mm from
+// foot-right"): the position word is translated, the measurement is kept.
+function pocketText(value, lang = root?.lang) {
+  const raw = String(value ?? '').trim();
+  const from = raw.match(/^([\d.]+)\s*mm from ([\w-]+)$/);
+  if (from) return lang === 'zh' ? `距${pocketWord(from[2], lang)} ${from[1]}mm` : `${from[1]}mm from ${pocketWord(from[2], lang)}`;
+  const near = raw.match(/^([\w-]+)\s*\((.*)\)$/);
+  if (near) return `${pocketWord(near[1], lang)} (${near[2]})`;
+  return pocketWord(raw, lang);
+}
+// Mean corner distance is the clearance bar for the automatic cloth quad. The
+// reference's own temporal jitter is 3.95 px median / 5.59 px p90; the
+// documented disagreement between the old and the refined vod30 corner sets is
+// 28-39 px; the per-frame detector path measured 59.9-145 px mean on sampled
+// vod30 frames. 40 px (~76 mm at the documented 1.9 mm/px) sits above the known
+// systematic disagreement and below every measured detector failure.
+const CLOTH_TOLERANCE_PX = 40;
+function clothTolerance(reference, frameWidth) {
+  const base = Number(reference?.width), width = Number(frameWidth);
+  return Number.isFinite(base) && base > 0 && Number.isFinite(width) && width > 0 ? CLOTH_TOLERANCE_PX * (width / base) : CLOTH_TOLERANCE_PX;
+}
+function quadPoints(value) {
+  if (!Array.isArray(value) || value.length < 4) return null;
+  const points = value.slice(0, 4).map(p => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : null);
+  return points.every(p => p && Number.isFinite(p[0]) && Number.isFinite(p[1])) ? points : null;
+}
+// A quad that starts at another vertex is still the same quadrilateral, so the
+// best of the four cyclic alignments is scored; a mirrored quad is a different
+// projection and never aligns.
+function quadDistance(quad, reference) {
+  const points = quadPoints(quad), ref = quadPoints(reference);
+  if (!points || !ref) return null;
+  let best = null;
+  for (let shift = 0; shift < 4; shift++) {
+    const distances = ref.map((p, i) => Math.hypot(points[(i + shift) % 4][0] - p[0], points[(i + shift) % 4][1] - p[1]));
+    const mean = distances.reduce((sum, d) => sum + d, 0) / 4;
+    if (!best || mean < best.mean) best = {mean, max: Math.max(...distances), shift, distances};
+  }
+  return best;
+}
+// A painted quad must also be a plausible table: inside the frame, four
+// distinct corners, and an area a table can actually occupy (the saved vod30
+// quad covers 9.5% of its frame).
+function quadSanity(points, width, height) {
+  if (!points) return 'malformed';
+  const w = Number(width), h = Number(height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 'malformed';
+  for (const [x, y] of points) if (x < -2 || y < -2 || x > w + 2 || y > h + 2) return 'outside frame';
+  for (let i = 0; i < 4; i++) { const a = points[i], b = points[(i + 1) % 4]; if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 8) return 'degenerate corner'; }
+  const area = Math.abs(points.reduce((sum, p, i) => sum + p[0] * points[(i + 1) % 4][1] - points[(i + 1) % 4][0] * p[1], 0)) / 2;
+  const fraction = area / (w * h);
+  return fraction >= 0.02 && fraction <= 0.9 ? null : `implausible area ${(fraction * 100).toFixed(1)}%`;
+}
+// Verdict for one frame's automatic quad: ok (checked and within tolerance),
+// off (checked and refused), unverified (no saved reference for this dataset),
+// none (nothing detected). Only `ok` and `unverified` may be painted.
+function validateCloth(corners, reference, frameWidth, frameHeight) {
+  const points = quadPoints(corners);
+  const bad = quadSanity(points, frameWidth, frameHeight);
+  if (bad) return {state:'off', reason:'invalid geometry', detail:bad, mean:null, max:null, tolerance:null, source:null};
+  const ref = quadPoints(reference?.points);
+  if (!ref) return {state:'unverified', reason:'no saved reference', detail:'', mean:null, max:null, tolerance:null, source:null};
+  const tolerance = clothTolerance(reference, frameWidth);
+  const fit = quadDistance(points, ref);
+  return fit.mean <= tolerance
+    ? {state:'ok', reason:'within tolerance', detail:'', mean:fit.mean, max:fit.max, tolerance, source:reference.source}
+    : {state:'off', reason:'off saved corners', detail:'', mean:fit.mean, max:fit.max, tolerance, source:reference.source};
+}
+// A saved frame correction belongs to exactly one (dataset, frame, source
+// size). The server files it under the dataset and frame it was written for,
+// but a re-encode or a copied file can leave a correction whose pixels describe
+// another image; drawing it over the current frame would present foreign
+// geometry as the operator's current correction. Anything that does not match
+// is refused, reported, and never painted.
+function correctionScope(correction, frame) {
+  if (!correction) return {ok:true, owner:null, expected:null, detail:null};
+  const expected = `${frame?.dataset ?? '?'} frame ${frame?.frame ?? '?'} @ ${frame?.width ?? '?'}×${frame?.height ?? '?'}`;
+  const owner = `${correction.dataset ?? '?'} frame ${correction.frame_index ?? '?'} @ ${correction.width ?? '?'}×${correction.height ?? '?'}`;
+  const detail = [];
+  if (frame?.dataset !== undefined && correction.dataset !== undefined && String(correction.dataset) !== String(frame.dataset)) detail.push(`dataset ${correction.dataset} ≠ ${frame.dataset}`);
+  if (frame?.frame !== undefined && correction.frame_index !== undefined && Number(correction.frame_index) !== Number(frame.frame)) detail.push(`frame ${correction.frame_index} ≠ ${frame.frame}`);
+  for (const [label, saved, live] of [['width', correction.width, frame?.width], ['height', correction.height, frame?.height]]) {
+    if (saved === undefined || saved === null || live === undefined || live === null) continue;
+    if (Number(saved) !== Number(live)) detail.push(`${label} ${saved} ≠ ${live}`);
+  }
+  // A file that declares no scope at all cannot be tied to this frame either.
+  const declared = ['dataset','frame_index','width','height'].filter(key => correction[key] !== undefined && correction[key] !== null);
+  if (!declared.length) detail.push('no scope metadata');
+  return {ok: !detail.length, owner, expected, detail: detail.join(', ')};
+}
+// Every drawn geometry group says who drew it: MODEL (detector / inference
+// output) or YOURS (the operator's saved correction or live edit). The dashed
+// model vs solid editable styling stays; the tag is what makes the difference
+// readable without the facts line.
+const SRC_TAG_HEIGHT = 18, SRC_TAG_FONT = 14;
+function glyphWidth(value, size) {
+  let width = 0;
+  for (const ch of String(value ?? '')) width += /[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? size : size * 0.62;
+  return width;
+}
+function sourceTagLabel(kind) { return kind === 'manual' ? text('YOURS') : text('MODEL'); }
+function sourceTagWidth(kind) { return Math.round(glyphWidth(sourceTagLabel(kind), SRC_TAG_FONT) + 14); }
+function sourceTag(x, y, kind) {
+  const label = sourceTagLabel(kind), width = sourceTagWidth(kind);
+  return `<g class="o-src ${kind}" data-src="${kind}"><rect x="${Math.round(x)}" y="${Math.round(y)}" width="${width}" height="${SRC_TAG_HEIGHT}" rx="3"></rect><text x="${Math.round(x + 7)}" y="${Math.round(y + 13)}">${esc(label)}</text></g>`;
+}
+// The tag and the group's own label share one line, so two sources drawn on the
+// same spot stay readable instead of stacking four rows of small text.
+function tagRow(x, y, kind, label, cls = 'o-label') {
+  const row = sourceTag(x, y, kind);
+  if (!label) return row;
+  return `${row}<text class="${cls}" x="${Math.round(x + sourceTagWidth(kind) + 6)}" y="${Math.round(y + 13)}">${esc(label)}</text>`;
+}
+function quadOrigin(points) {
+  const xs = points.map(p => Number(p[0])), ys = points.map(p => Number(p[1]));
+  return [Math.min(...xs), Math.min(...ys)];
+}
+// A person chip is a label, not a box: it names the detection and its track,
+// and states `unbound` while the track has a cluster but no player name.
+function personChip(per, track) {
+  if (per?.player_id) return String(per.player_id);
+  const id = track === undefined || track === null || track === '' ? '—' : track;
+  const prefix = per?.cluster_id === undefined || per?.cluster_id === null ? text('person') : text('unbound');
+  return `${prefix} · ${text('track')} ${id}`;
+}
 // ---- data loading (the only fetches in the Vision tab) --------------------
 async function loadDatasets() {
   const data = await api('/api/datasets');
@@ -153,6 +299,27 @@ async function loadTracks(at = null) {
 }
 async function loadSeeds() {
   try { const data = await api('/api/vod30/seeds'); state.persons.seeds = data.seeds || {}; notify(); } catch (_) {}
+}
+// The clearance reference for the automatic cloth quad: the dataset's saved six
+// anchors when they exist, otherwise the projection of its saved calibration.
+// Framing is per segment, so the reference is a per-dataset value, is compared
+// only against VOD frames of that dataset, and is never used for a live source.
+async function loadClothReference() {
+  state.cloth.reference = null;
+  if (state.dataset !== 'vod30') { paintOverlay(); notify(); return null; }
+  try {
+    const data = await api(`/api/${enc('vod30')}/anchors?t=${enc(state.anchors.t)}`);
+    const saved = Array.isArray(data.pts) && data.pts.length >= 4;
+    const suggested = Array.isArray(data.suggested_pts) && data.suggested_pts.length >= 4;
+    if (saved || suggested) state.cloth.reference = {
+      points: (saved ? data.pts : data.suggested_pts).slice(0, 4).map(p => [Number(p[0]), Number(p[1])]),
+      source: saved ? 'saved anchors' : 'saved calibration',
+      width: Number(data.width) || state.frameWidth,
+      height: Number(data.height) || state.frameHeight
+    };
+  } catch (_) { state.cloth.reference = null; }
+  paintOverlay(); notify();
+  return state.cloth.reference;
 }
 // ---- stage: exactly one frame surface ------------------------------------
 async function fetchFrame(dataset, n) {
@@ -214,6 +381,13 @@ async function loadFrame(n) {
   }
 }
 function applyFrameResult() {
+  // Scope first: a correction whose stored scope is not this frame is dropped
+  // from state entirely, so no later code path (painter, counters, save body)
+  // can present foreign geometry as this frame's manual correction.
+  const context = {dataset: state.dataset, frame: state.frame, width: state.frameWidth, height: state.frameHeight};
+  const scope = correctionScope(state.fresult?.correction, context);
+  state.cloth.refusal = scope.ok ? null : scope;
+  if (!scope.ok && state.fresult) state.fresult.correction = null;
   const display = displayBoxes(state.fresult);
   state.boxes = display.boxes; state.polygon = display.polygon;
   // A frame load replaces the box list, so only a box selection is dropped.
@@ -272,6 +446,7 @@ function stageHTML() {
     <svg id="t-overlay" role="group" aria-label="${esc(text('Frame overlays'))}" viewBox="0 0 ${w} ${h}"></svg>
     <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text('Pick a moment on the scrub strip, or select a cue, then freeze it here.'))}</div>
     <div class="stage-live" id="stage-live" ${state.source.kind === 'live' ? '' : 'hidden'}></div>
+    <div class="stage-note" id="stage-note" role="status" hidden></div>
     <div class="stage-popover" id="stage-popover" hidden></div>
   </figure>`;
 }
@@ -307,19 +482,36 @@ function paintOverlay() {
   const u = state.unified;
   const liveBoxes = (live?.detections?.boxes || []);
   const livePoly = live?.detections?.table_polygon || null;
-  if (ov.cloth) {
-    const corners = u?.table_corners || livePoly;
-    if (corners && corners.length) { layers.push(`<polygon class="u-cloth" points="${corners.map(p => p.join(',')).join(' ')}" fill="none"></polygon>`); auto.cloth = 1; }
+  // Clearance first: the automatic quad is painted only when its geometry is
+  // plausible and (on a VOD frame of a dataset that has one) within tolerance of
+  // the dataset's saved corners. The pocket markers and pot pulses are derived
+  // from that same quad, so they are painted only from a checked quad - a wrong
+  // quad is exactly what lands a rail-corner marker on top of a player.
+  const autoCloth = (Array.isArray(u?.table_corners) && u.table_corners.length ? u.table_corners : null)
+    || (isLive && Array.isArray(livePoly) && livePoly.length ? livePoly : null);
+  const reference = state.source.kind === 'vod' ? state.cloth.reference : null;
+  const clothVerdict = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : {state:'none',reason:'no detection',detail:'',mean:null,max:null,tolerance:null,source:null};
+  clothVerdict.available = Number(u?.pockets?.length || 0);
+  state.cloth.verdict = clothVerdict;
+  const pocketsChecked = clothVerdict.state === 'ok';
+  if (ov.cloth && autoCloth && clothVerdict.state !== 'off') {
+    const [qx, qy] = quadOrigin(quadPoints(autoCloth));
+    layers.push(`<polygon class="u-cloth" points="${autoCloth.map(p => p.join(',')).join(' ')}" fill="none"></polygon>`);
+    layers.push(sourceTag(qx + 8, qy + 8, 'model'));
+    auto.cloth = 1;
   }
-  if (ov.pockets && u?.pockets) { layers.push(u.pockets.map(pk => `<g class="u-pocket"><circle cx="${pk.cx}" cy="${pk.cy}" r="12" fill="none" stroke="var(--brass)" stroke-width="2.5"></circle><text x="${pk.cx}" y="${pk.cy + 26}" text-anchor="middle" font-size="13">${esc(pk.name)}</text></g>`).join('')); auto.pockets = u.pockets.length; }
+  if (ov.pockets && u?.pockets && pocketsChecked) {
+    layers.push(u.pockets.map(pk => `<g class="u-pocket"><circle cx="${pk.cx}" cy="${pk.cy}" r="12" fill="none" stroke="var(--brass)" stroke-width="2.5"></circle><text x="${pk.cx}" y="${pk.cy + 26}" text-anchor="middle" font-size="13">${esc(pocketText(pk.name))}</text></g>`).join(''));
+    auto.pockets = u.pockets.length;
+  }
   if (ov.persons) {
     const persons = u?.persons || (isLive ? liveBoxes.filter(b => b.label === 'person') : []);
     layers.push(persons.map(per => {
       const [x1, y1, x2, y2] = per.bbox;
       const track = per.track_id ?? per.track;
       const selected = state.sel.kind === 'person' && track !== undefined && String(state.sel.person?.track_id ?? state.sel.person?.track) === String(track);
-      const chip = ov && per.player_id ? `<text x="${x1}" y="${Math.max(14, y1 - 6)}" font-size="15" fill="#8fd6a8">${esc(per.player_id)}</text>` : (per.cluster_id ? `<text x="${x1}" y="${Math.max(14, y1 - 6)}" font-size="13" fill="var(--ink-dim)">track ${esc(track)}</text>` : '');
-      return `<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect>${chip}</g>`;
+      const chip = ov ? `<text class="u-chip${per.player_id ? ' bound' : ''}" x="${x1 + 2 + sourceTagWidth('model') + 6}" y="${Math.max(16, y1 - 8)}">${esc(personChip(per, track))}</text>` : '';
+      return `${sourceTag(x1 + 2, Math.max(2, y1 - 26), 'model')}${chip}<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect></g>`;
     }).join(''));
     auto.persons = persons.length;
   }
@@ -327,11 +519,11 @@ function paintOverlay() {
     const balls = u?.balls || (isLive ? liveBoxes.filter(b => b.label === 'ball') : []);
     layers.push(balls.map((b, i) => {
       const cx = b.cx ?? (b.bbox ? (b.bbox[0] + b.bbox[2]) / 2 : 0), cy = b.cy ?? (b.bbox ? (b.bbox[1] + b.bbox[3]) / 2 : 0), r = Math.max(9, b.r ?? 12);
-      return `<g class="u-ball" data-ball="${i}" data-cx="${cx}" data-cy="${cy}" data-r="${r}" data-color="${esc(b.color ?? '')}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--brass-hi)" stroke-width="2"></circle><circle cx="${cx}" cy="${cy}" r="2" fill="var(--brass-hi)"></circle></g>`;
+      return `${sourceTag(cx - sourceTagWidth('model') / 2, cy - r - 22, 'model')}<g class="u-ball" data-ball="${i}" data-cx="${cx}" data-cy="${cy}" data-r="${r}" data-color="${esc(b.color ?? '')}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--brass-hi)" stroke-width="2"></circle><circle cx="${cx}" cy="${cy}" r="2" fill="var(--brass-hi)"></circle></g>`;
     }).join(''));
     auto.balls = balls.length;
   }
-  if (ov.events && u?.events && u?.pockets) {
+  if (ov.events && u?.events && u?.pockets && pocketsChecked) {
     for (const event of u.events) {
       if (event.type !== 'pot') continue;
       const name = String(event.nearest_pocket || '').split(/[\s(]/)[0];
@@ -340,7 +532,9 @@ function paintOverlay() {
     }
   }
   if (ov.anchors && state.anchors.loaded && state.dataset === 'vod30') {
+    const [ax, ay] = state.anchors.pts[0] || [0, 0];
     layers.push(state.anchors.pts.map(([x, y], i) => `<g class="u-anchor${state.sel.kind === 'anchor' && state.anchors.index === i ? ' selected' : ''}" data-anchor="${i}"><circle cx="${x}" cy="${y}" r="12"></circle><text x="${x + 18}" y="${y - 16}">${i + 1}</text></g>`).join(''));
+    layers.push(sourceTag(ax + 16, Math.max(2, ay - 32), 'manual'));
     auto.anchors = state.anchors.pts.length;
   }
   // The editable layer is the operator's only once a correction exists or they
@@ -357,9 +551,9 @@ function paintOverlay() {
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
     const selected = state.sel.kind === 'box' && state.sel.box === i;
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
-    return `<g data-box="${i}" class="t-box${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}<text x="${x1+4}" y="${Math.max(16,y1-6)}">${esc(box.label)}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}</text>${handles}</g>`;
+    return `${tagRow(x1, Math.max(2, y1 - 26), boxSource, `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" class="t-box${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
   }).join('');
-  const poly = state.polygon ? `<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}` : '';
+  const poly = state.polygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, 'manual')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
   svg.innerHTML = layers.join('') + poly + boxes + preview;
   svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { if (state.tool === 'select' && state.sel.box !== Number(g.dataset.box)) { selectBox(Number(g.dataset.box)); } });
@@ -368,6 +562,29 @@ function paintOverlay() {
   svg.querySelectorAll('g.u-anchor').forEach(g => g.onclick = event => { event.stopPropagation(); selectAnchor(Number(g.dataset.anchor)); });
   Object.assign(drawn, {cloth: drawn.cloth + auto.cloth, balls: drawn.balls + auto.balls, persons: drawn.persons + auto.persons, pockets: auto.pockets, anchors: auto.anchors, events: auto.events});
   state.drawn = {...drawn, auto, on: true, source: state.drawn.source};
+  paintStageNote();
+}
+// Why a layer is not on the stage is stated in place, next to the imagery:
+// either the model quad failed its clearance check or a saved correction was
+// refused because it belongs to another frame. Both are facts about the frame
+// the operator is looking at, not transient errors.
+function clothNotice(verdict, refusal) {
+  const lines = [];
+  if (refusal && !refusal.ok) lines.push(text(`Saved correction belongs to ${refusal.owner}, not this frame (${refusal.expected}) — not drawn.`));
+  if (verdict?.state === 'off') lines.push(verdict.reason === 'invalid geometry'
+    ? text(`The model table quad is not a valid table quad for this frame (${verdict.detail}) — not drawn.`)
+    : text(`The model table quad is ${Math.round(verdict.mean)} px off this dataset's saved corners (${text(verdict.source || 'unknown')}, tolerance ${Math.round(verdict.tolerance)} px) — not drawn.`));
+  else if (verdict?.state === 'unverified') lines.push(text('No saved corner set exists for this dataset: the model quad is drawn unverified and pocket markers stay hidden.'));
+  return lines.filter(Boolean);
+}
+function paintStageNote() {
+  const note = $('#stage-note'); if (!note) return;
+  const lines = clothNotice(state.cloth.verdict, state.cloth.refusal);
+  note.hidden = !lines.length;
+  note.dataset.live = state.source.kind === 'live' ? '1' : '0';
+  note.classList.toggle('error', !!(state.cloth.refusal && !state.cloth.refusal.ok));
+  const body = lines.join(' ');
+  if (note.textContent !== body) note.textContent = body;
 }
 // ---- selection -----------------------------------------------------------
 function selectEvent(index) {
@@ -489,7 +706,12 @@ async function saveCorrections(button) {
   const invalid = state.boxes.find(box => !normalizeBox(box.bbox, state.frameWidth, state.frameHeight));
   if (invalid) { notice('A box has invalid coordinates; fix or delete it before saving.', true); return false; }
   const body = {dataset: state.dataset, frame_index: state.frame, boxes: state.boxes.map(box => ({label: box.label, bbox: box.bbox})), table_polygon: state.polygon ? state.polygon.map(p => [p[0], p[1]]) : null};
-  const ok = await save(button, '/api/frame-correction', body, () => { state.fresult.correction = {boxes: state.boxes.map(b => ({label: b.label, bbox: b.bbox.slice()})), table_polygon: body.table_polygon}; state.drawn.source = 'manual corrections'; paintOverlay(); }, 'corrections', `frame ${state.frame} · ${state.boxes.length} boxes${state.polygon ? ' + polygon' : ''}`);
+  const ok = await save(button, '/api/frame-correction', body, data => {
+    // The stored correction carries its own scope (dataset, frame, source
+    // size): keep the server's copy so the next paint checks what was saved.
+    state.fresult.correction = data?.correction || {dataset: body.dataset, frame_index: body.frame_index, width: state.frameWidth, height: state.frameHeight, boxes: state.boxes.map(b => ({label: b.label, bbox: b.bbox.slice()})), table_polygon: body.table_polygon};
+    state.cloth.refusal = null; state.drawn.source = 'manual corrections'; paintOverlay();
+  }, 'corrections', `frame ${state.frame} · ${state.boxes.length} boxes${state.polygon ? ' + polygon' : ''}`);
   return ok;
 }
 function setTool(tool) { state.tool = tool; notify(); }
@@ -612,7 +834,7 @@ function ingestLiveFrame(url, meta, source = {}) {
   state.live.receivedAt = Date.now();
   const img = $('#t-img'); const svg = $('#t-overlay');
   if (img) { img.src = url; img.hidden = false; }
-  if (epoch === state.epoch) { state.unified = null; paintOverlay(); paintLiveChip(); notify(); }
+  if (epoch === state.epoch) { state.unified = null; state.cloth.refusal = null; state.cloth.verdict = {state:'none',reason:'no detection'}; paintOverlay(); paintLiveChip(); notify(); }
 }
 function setLiveAttempt(attempt) { state.live.attempt = attempt; notify(); }
 // A successful start clears the failed-attempt block and its in-surface notice.
@@ -626,6 +848,7 @@ async function setDataset(dataset) {
   if (!canLeave()) return false;
   state.dataset = dataset; state.unified = null; state.fresult = null; state.shotUrl = null; state.frame = 0;
   state.source = {kind:'vod', label: dataset, channel:null};
+  state.cloth.refusal = null; state.cloth.reference = null;
   // The live edge's last frame and its detections belong to the live source.
   state.live.detections = null; state.live.stale = false;
   state.anchors.loaded = false;
@@ -637,6 +860,7 @@ async function setDataset(dataset) {
     await loadVideo();
     await loadEvents();
   } catch (error) { notice(`${error.message}. The review API is unavailable. Use the project review server, not a file:// URL.`, true); return false; }
+  loadClothReference().catch(() => {});
   if (state.busy) state.pendingSeek = 0;      // a decode owns the stage: it reloads frame 0 next
   else { state.pendingSeek = null; loadFrame(0); }
   return true;
@@ -747,6 +971,7 @@ async function init() {
     await loadVideo();
     await loadEvents();
     loadCrops(state.set).catch(() => {});
+    loadClothReference().catch(() => {});
     loadFrame(0);
   } catch (error) {
     notice(`${error.message}. The review API is unavailable. Use the project review server, not a file:// URL.`, true);
@@ -805,12 +1030,13 @@ function snapshot() {
     overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading},
     selection: selected, focus: state.focus, eventFilter: state.eventFilter,
     detectors: {...state.detectors},
-    events: {items: state.events.map(e => ({id: e.id, type: e.type, t: e.t, nearest_pocket: e.nearest_pocket ?? null, evidence: e.evidence ?? null, verdict: state.annotations[String(e.id)]?.verdict || '', annotation: state.annotations[String(e.id)] || null})), index: state.eventIndex, reviewed: Object.keys(state.annotations).length},
+    events: {items: state.events.map(e => ({id: e.id, type: e.type, t: e.t, nearest_pocket: e.nearest_pocket ?? null, nearest_pocket_text: e.nearest_pocket ? pocketText(e.nearest_pocket) : null, evidence: e.evidence ?? null, verdict: state.annotations[String(e.id)]?.verdict || '', annotation: state.annotations[String(e.id)] || null})), index: state.eventIndex, reviewed: Object.keys(state.annotations).length},
     verdictDraft: state.verdictDraft ?? null,
     balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
     anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
     corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus},
+    cloth: {verdict: {...state.cloth.verdict}, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
     receipts: state.receipts.slice(), notice: {...state.notice}, busy: state.busy, dirty: state.dirty
   };
 }
@@ -834,7 +1060,10 @@ const zhCopy = {
   'nav-calibration':'球桌标定', 'meta-calibration':'六个袋口', 'nav-players':'选手身份', 'meta-players':'A · B · 忽略',
   'nav-timeline':'统一视图', 'meta-timeline':'逐帧 · 推理', 'strip-label':'人在回路',
   strip:'模型候选 · 人工判定 · 未经验证不宣称精度', eyebrow:'复核台', stamp:'检查 · 标注<br><strong>核验</strong>',
-  'foot-left':'本地数据 · 显式保存', 'foot-right':'复核结论在核验前不是真值。'
+  // Every key names the slot it labels: the two pocket keys that used to carry
+  // the footer copy are gone (pocket names are data keys and were never shell
+  // slots), and the footer slots are named after themselves.
+  'footer-left':'本地数据 · 显式保存', 'footer-right':'复核结论在核验前不是真值。'
 };
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorCopy = {
@@ -852,8 +1081,8 @@ const editorCopy = {
   'Starting inference on frame':'正在启动帧', 'Inference running for frame':'正在对帧运行推理：',
   'Inference failed to start':'推理启动失败', 'Inference failed.':'推理失败。', 'Frame inference failed':'帧推理失败',
   'Inference completed for frame':'帧推理已完成：', 'Inference for frame':'帧', 'finished; freeze that frame to see its overlays.':'推理已完成；冻结该帧可查看叠加层。',
-  'Inference overlays updated for the frozen frame.':'冻结帧的推理叠加层已更新。', 'Inference status error':'推理状态错误',
-  'Status check failed.':'状态检查失败。', 'Idle.':'空闲。', 'Rebuilding…':'正在重建…', 'Status':'状态',
+  'Inference overlays updated for the frozen frame.':'冻结帧的推理叠加层已更新。', 'Inference status error':'推理状态错误',  'Status check failed.':'状态检查失败。', 'Idle.':'空闲。', 'Rebuilding…':'正在重建…', 'Status':'状态',
+  'No saved corner set exists for this dataset: the model quad is drawn unverified and pocket markers stay hidden.':'此数据集没有已保存的角点集：模型四边形按未校验绘制，袋口标记不显示。',
   'Rebuild failed':'重建失败', 'Status unavailable':'状态不可用', 'A box has invalid coordinates; fix or delete it before saving.':'有标注框坐标无效；请修复或删除后再保存。',
   'Frame load failed':'帧加载失败', 'Tracks unavailable.':'轨迹不可用。', 'No VOD datasets are configured.':'尚未配置录像数据集。',
   'The review API is unavailable. Use the project review server, not a file:// URL.':'复核 API 不可用。请通过项目复核服务器打开，而非 file:// 地址。',
@@ -873,7 +1102,10 @@ Object.assign(editorCopy, {
   'Infer results and manual corrections are saved separately. Inference never overwrites your correction file.':'推理结果和人工修正分别保存。推理不会覆盖修正文件。',
   'Saved':'已保存', 'cleared':'已清除', 'Cue 0':'母球 0', 'Select a cue first.':'请先选择线索。', 'cue':'母球', 'shot':'击球', 'pot':'入袋', 'correct':'正确', 'wrong':'错误', 'unsure':'不确定', 'Track':'轨迹', 'Track window':'轨迹窗口', 'Delete selected':'删除所选', 'Draw box':'绘制标注框', 'Select / move':'选择 / 移动',
   'Selected label':'所选标注', 'New box label':'新框标注', 'Add table polygon':'添加球桌多边形', 'Clear polygon':'清除多边形',
-  'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌'
+  'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌',
+  // Source tags the engine paints on the imagery, and the identity chip.
+  'MODEL':'模型', 'YOURS':'人工', 'track':'轨迹', 'unbound':'未绑定',
+  'saved anchors':'已保存锚点', 'saved calibration':'已保存标定'
 });
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorTemplates = [
@@ -901,6 +1133,11 @@ const editorTemplates = [
   [/^Inference running for frame (\d+): (.*)…$/, (frame, stage) => `正在对帧 ${frame} 运行推理：${stage}…`],
   [/^Starting inference on frame (\d+) \((.*)\)…$/, (frame, detectors) => `正在启动帧 ${frame} 的推理（${detectors}）…`],
   [/^Frame inference failed: ([\s\S]*)$/, detail => `帧推理失败：${detail}`],
+  // Why the stage is empty where a table quad or a saved correction would be:
+  // these lines are composed from the verdict, so they localize as templates.
+  [/^Saved correction belongs to (.+), not this frame \((.+)\) — not drawn\.$/, (owner, expected) => `已保存的修正属于 ${owner}，与当前帧（${expected}）不符——未绘制。`],
+  [/^The model table quad is ([\d.]+) px off this dataset's saved corners \((.+), tolerance ([\d.]+) px\) — not drawn\.$/, (off, source, tolerance) => `模型球桌四边形与本数据集已保存角点相差 ${off} px（${source}，容差 ${tolerance} px）——未绘制。`],
+  [/^The model table quad is not a valid table quad for this frame \((.+)\) — not drawn\.$/, detail => `模型球桌四边形对本帧不是有效的球桌四边形（${detail}）——未绘制。`],
   [/^Corrections saved for frame (\d+)\.$/, frame => `帧 ${frame} 的修正已保存。`]
 ];
 function text(copy) {

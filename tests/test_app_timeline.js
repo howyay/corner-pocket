@@ -23,7 +23,9 @@ vm.createContext(sandbox);
 // Instrument within the closure; production exports only its lifecycle API.
 vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
   globalThis.T = {clampFrame, frameTime, frameFromTime, timecode, markerLeft, ballLabel, boxCenter, normalizeBox, displayBoxes, state,
-    setRoot: host => { root = host; }, onKeydown, text, translateEditor, updateOverlayFacts};
+    setRoot: host => { root = host; }, onKeydown, text, translateEditor, updateOverlayFacts,
+    pocketText, pocketWord, POCKET_LABELS, CLOTH_TOLERANCE_PX, clothTolerance, quadDistance, quadSanity, validateCloth,
+    correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
 
@@ -434,6 +436,220 @@ test('every adapter string ships in both languages', () => {
   }
   const zhBlock = adapter.slice(adapter.indexOf('zh: {'));
   assert.ok(zhBlock.includes('线索') && zhBlock.includes('启动尝试') && zhBlock.includes('已过期'));
+});
+
+test('pocket labels are position words in both languages, never rail terms', () => {
+  const host = {lang:'en', querySelector: () => elementStub(), querySelectorAll: () => []};
+  T.setRoot(host);
+  assert.strictEqual(T.pocketText('foot-right (124mm)'), 'bottom-right (124mm)');
+  assert.strictEqual(T.pocketText('557mm from foot-right'), '557mm from bottom-right');
+  assert.strictEqual(T.pocketText('left-side (77mm)'), 'left-middle (77mm)');
+  assert.strictEqual(T.pocketText('head-left'), 'top-left');
+  assert.strictEqual(T.pocketText('head-right'), 'top-right');
+  assert.strictEqual(T.pocketText('foot-left'), 'bottom-left');
+  host.lang = 'zh';
+  assert.strictEqual(T.pocketText('foot-right (124mm)'), '右下 (124mm)');
+  assert.strictEqual(T.pocketText('557mm from foot-right'), '距右下 557mm');
+  assert.strictEqual(T.pocketText('head-right'), '右上');
+  host.lang = 'en';
+  // Stored keys are untouched: the map is applied at render time only.
+  assert.strictEqual(Object.keys(T.POCKET_LABELS).sort().join(','), 'foot-left,foot-right,head-left,head-right,left-side,right-side');
+  assert.strictEqual(T.pocketText('brand-new-pocket'), 'brand-new-pocket', 'unknown tokens stay verbatim');
+  // The engine publishes the display name beside the stored one.
+  T.state.events = [{id: 1, type: 'pot', t: 5.6, nearest_pocket: 'foot-right (124mm)'}];
+  T.state.annotations = {};
+  const snap = sandbox.window.CornerPocketReview.snapshot();
+  assert.strictEqual(snap.events.items[0].nearest_pocket, 'foot-right (124mm)');
+  assert.strictEqual(snap.events.items[0].nearest_pocket_text, 'bottom-right (124mm)');
+  T.state.events = [];
+});
+
+test('the automatic cloth quad is validated against the dataset reference', () => {
+  const reference = {points: [[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved calibration', width:1280, height:720};
+  const saved = [[455,308],[800,320],[1024,573],[450,564]];
+  const ok = T.validateCloth(saved, reference, 1280, 720);
+  assert.strictEqual(ok.state, 'ok');
+  assert.ok(ok.mean < 2 && ok.tolerance === T.CLOTH_TOLERANCE_PX);
+  // A quad that starts at another vertex is the same quadrilateral.
+  assert.strictEqual(T.validateCloth([[800,320],[1024,573],[450,564],[455,308]], reference, 1280, 720).state, 'ok');
+  // A mirrored quad is a different projection and never aligns.
+  assert.notStrictEqual(T.validateCloth([[307.8,454.9],[319.4,799.5],[573.1,1023.8],[563.5,449.6]], reference, 1280, 720).state, 'ok');
+  // The measured per-frame detector quads (59.9-145 px) are refused.
+  for (const quad of [[[190,176],[806,324],[1024,596],[384,566]], [[534,258],[768,282],[1036,594],[378,550]], [[208,216],[1000,226],[1008,600],[384,566]]]) {
+    const verdict = T.validateCloth(quad, reference, 1280, 720);
+    assert.strictEqual(verdict.state, 'off', `quad ${JSON.stringify(quad)} must be refused`);
+    assert.ok(verdict.mean > verdict.tolerance);
+  }
+  // Geometry that is not a table quad is refused before any distance check.
+  assert.strictEqual(T.validateCloth([[10,10],[20,10],[20,20],[10,20]], reference, 1280, 720).reason, 'invalid geometry');
+  assert.strictEqual(T.validateCloth([[NaN,0],[1,1],[2,2],[3,3]], reference, 1280, 720).reason, 'invalid geometry');
+  assert.strictEqual(T.validateCloth([[0,0],[2000,0],[2000,2000],[0,2000]], reference, 1280, 720).detail, 'outside frame');
+  assert.strictEqual(T.validateCloth([[100,100],[110,100],[110,105],[100,100]], reference, 1280, 720).reason, 'invalid geometry');
+  // No reference for this dataset: drawn, but never silently trusted.
+  assert.strictEqual(T.validateCloth(saved, null, 1280, 720).state, 'unverified');
+  // The tolerance follows the source size the reference was measured at.
+  assert.strictEqual(T.clothTolerance(reference, 1920), 60);
+  assert.strictEqual(T.clothTolerance(null, 1280), T.CLOTH_TOLERANCE_PX);
+  assert.strictEqual(T.clothTolerance(reference, 0), T.CLOTH_TOLERANCE_PX);
+  // The clearance bar must not move without this suite moving with it.
+  assert.strictEqual(T.CLOTH_TOLERANCE_PX, 40);
+});
+
+test('a saved correction is drawn only for the frame it belongs to', () => {
+  const frame = {dataset:'vod30', frame:2101, width:1280, height:720};
+  const good = {dataset:'vod30', frame_index:2101, width:1280, height:720, boxes:[{label:'person', bbox:[1,2,30,40]}], table_polygon:[[0,0],[10,0],[10,10],[0,10]]};
+  assert.strictEqual(T.correctionScope(good, frame).ok, true);
+  assert.strictEqual(T.correctionScope(null, frame).ok, true, 'no correction is not a refusal');
+  const wrongFrame = T.correctionScope({...good, frame_index:2100}, frame);
+  assert.strictEqual(wrongFrame.ok, false);
+  assert.strictEqual(wrongFrame.owner, 'vod30 frame 2100 @ 1280×720');
+  assert.strictEqual(wrongFrame.expected, 'vod30 frame 2101 @ 1280×720');
+  const wrongSize = T.correctionScope({...good, width:1920, height:1080}, frame);
+  assert.strictEqual(wrongSize.ok, false);
+  assert.ok(wrongSize.detail.includes('width 1920 ≠ 1280') && wrongSize.detail.includes('height 1080 ≠ 720'), wrongSize.detail);
+  assert.strictEqual(T.correctionScope({...good, dataset:'highlight'}, frame).ok, false);
+  assert.strictEqual(T.correctionScope({boxes:[], table_polygon:null}, frame).ok, false, 'an unscoped file cannot be tied to this frame');
+  // The stage drops a foreign correction from state, so nothing downstream can
+  // paint it or count it as this frame's manual geometry.
+  T.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+  T.state.dataset = 'vod30'; T.state.frame = 2101; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[5,5,20,20]}], table_polygon:null}, correction:{...good, frame_index:2100, boxes:[{label:'person', bbox:[9,9,99,99]}]}};
+  T.applyFrameResult();
+  assert.strictEqual(T.state.fresult.correction, null);
+  same(T.state.boxes, [{label:'ball', bbox:[5,5,20,20]}]);
+  assert.strictEqual(T.state.polygon, null);
+  assert.strictEqual(T.state.cloth.refusal.ok, false);
+  assert.strictEqual(T.state.cloth.refusal.owner, 'vod30 frame 2100 @ 1280×720');
+  // The same correction on its own frame is kept and counted as manual.
+  T.state.fresult = {inference:null, correction:{...good, boxes:[{label:'person', bbox:[9,9,99,99]}]}};
+  T.applyFrameResult();
+  assert.strictEqual(T.state.cloth.refusal, null);
+  same(T.state.boxes, [{label:'person', bbox:[9,9,99,99]}]);
+  same(T.state.polygon, [[0,0],[10,0],[10,10],[0,10]]);
+  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null;
+});
+
+test('every drawn group is tagged by source, in both languages', () => {
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.cloth.reference = null;
+  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true};
+  T.state.dirty = false;
+  T.state.fresult = {correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'person', bbox:[30,140,200,590]}, {label:'ball', bbox:[600,390,620,410]}], table_polygon:[[128,72],[1152,72],[1152,648],[128,648]]}};
+  T.applyFrameResult();
+  T.state.unified = {
+    table_corners:[[190,176],[806,324],[1024,596],[384,566]],
+    pockets:[{name:'head-left', cx:200, cy:180}, {name:'foot-right', cx:1000, cy:590}],
+    persons:[{bbox:[30,140,200,590], track_id:12, cluster_id:68}],
+    balls:[{cx:600, cy:400, r:12}], events:[{type:'pot', nearest_pocket:'foot-right (124mm)'}]
+  };
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  assert.ok(html.includes('data-src="model"') && html.includes('data-src="manual"'), 'both sources are tagged');
+  assert.ok(html.includes('>MODEL<') && html.includes('>YOURS<'), html.slice(0, 200));
+  assert.ok(html.includes('unbound · track 12'), 'a clustered track without a player name says so');
+  assert.ok(!/head-left|foot-right/.test(html), 'rail-corner vocabulary never reaches the stage');
+  assert.ok(!html.includes('u-pocket'), 'pocket markers are held while the quad is unverified');
+  assert.ok(!html.includes('data-anchor'), 'the anchors layer is off');
+  assert.ok(note.textContent.includes('No saved corner set exists for this dataset'), note.textContent);
+  assert.strictEqual(note.hidden, false);
+  // 中: the same tags and the same vocabulary, translated.
+  host.lang = 'zh';
+  T.paintOverlay();
+  assert.ok(svg.innerHTML.includes('>模型<') && svg.innerHTML.includes('>人工<'), 'tags are bilingual');
+  assert.ok(svg.innerHTML.includes('未绑定 · 轨迹 12'), 'the chip is bilingual');
+  assert.ok(note.textContent.includes('没有已保存的角点集'), note.textContent);
+  host.lang = 'en';
+  // A person detection with no cluster is still a person label, and a bound
+  // player id is shown as the id alone.
+  assert.strictEqual(T.personChip({bbox:[0,0,1,1], track_id:12}, 12), 'person · track 12');
+  assert.strictEqual(T.personChip({cluster_id: 68, track_id:12}, 12), 'unbound · track 12');
+  assert.strictEqual(T.personChip({player_id:'B', cluster_id: 70, track_id:3}, 3), 'B');
+  // A checked quad paints the model outline and its pockets, still tagged.
+  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved calibration', width:1280, height:720};
+  T.state.unified.table_corners = [[455,308],[800,320],[1024,573],[450,564]];
+  T.paintOverlay();
+  assert.ok(svg.innerHTML.includes('u-cloth'), 'a checked quad is drawn');
+  assert.ok(svg.innerHTML.includes('u-pocket'), 'pockets follow a checked quad');
+  assert.ok(svg.innerHTML.includes('bottom-right'), 'the pocket marker is renamed in place');
+  assert.strictEqual(note.hidden, true, 'no reason to show once the quad is checked');
+  // A rejected quad paints nothing and says why.
+  T.state.unified.table_corners = [[190,176],[806,324],[1024,596],[384,566]];
+  T.paintOverlay();
+  assert.ok(!svg.innerHTML.includes('u-cloth'), 'a rejected quad is not drawn');
+  assert.ok(!svg.innerHTML.includes('u-pocket'), 'its pockets are not drawn');
+  assert.ok(note.textContent.includes("off this dataset's saved corners (saved calibration, tolerance 40 px)"), note.textContent);
+  T.state.unified = null; T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.cloth.reference = null;
+});
+
+test('rail-corner keys are display-only and zhCopy is keyed by the slot it labels', () => {
+  const zhBlock = source.slice(source.indexOf('const zhCopy'), source.indexOf('const editorCopy'));
+  assert.ok(!/'(head|foot)-(left|right)'\s*:/.test(zhBlock), 'zhCopy must not key copy by pocket name');
+  assert.ok(zhBlock.includes("'footer-left':'本地数据 · 显式保存'") && zhBlock.includes("'footer-right':'复核结论在核验前不是真值。'"));
+  assert.ok(source.includes('pocketText(pk.name)'), 'stage pocket labels go through the display map');
+  assert.ok(!source.includes('esc(pk.name)'), 'the raw pocket key is never printed');
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  assert.ok(adapter.includes('nearest_pocket_text'), 'the rail card shows the mapped name');
+  assert.ok(!adapter.includes('esc(e.nearest_pocket)') && !adapter.includes('esc(item.nearest_pocket)'), 'the rail and inspector never print the raw key');
+});
+
+test('a foreign correction and a rejected quad are both stated on the stage', () => {
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.unified = null; T.state.fresult = null; T.state.boxes = []; T.state.polygon = null;
+  T.state.cloth.reference = null;
+  T.state.cloth.refusal = {ok:false, owner:'vod30 frame 12 @ 1920×1080', expected:'vod30 frame 0 @ 1280×720', detail:'width 1920 ≠ 1280'};
+  T.paintOverlay();
+  assert.strictEqual(note.hidden, false);
+  assert.strictEqual(note.textContent, 'Saved correction belongs to vod30 frame 12 @ 1920×1080, not this frame (vod30 frame 0 @ 1280×720) — not drawn.');
+  host.lang = 'zh';
+  T.paintOverlay();
+  assert.strictEqual(note.textContent, '已保存的修正属于 vod30 frame 12 @ 1920×1080，与当前帧（vod30 frame 0 @ 1280×720）不符——未绘制。');
+  host.lang = 'en';
+  T.state.cloth.refusal = null;
+  // A quad that is off the dataset's saved corners: refused with the number.
+  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved anchors', width:1280, height:720};
+  T.state.unified = {table_corners:[[190,176],[806,324],[1024,596],[384,566]], pockets:[{name:'head-left', cx:200, cy:180}], persons:[], balls:[], events:[]};
+  T.paintOverlay();
+  assert.strictEqual(T.state.cloth.verdict.state, 'off');
+  assert.match(note.textContent, /^The model table quad is \d+ px off this dataset's saved corners \(saved anchors, tolerance 40 px\) — not drawn\.$/);
+  // A quad that is not a table quad at all: refused before any distance check.
+  T.state.unified.table_corners = [[0,0],[2000,0],[2000,2000],[0,2000]];
+  T.paintOverlay();
+  assert.strictEqual(note.textContent, 'The model table quad is not a valid table quad for this frame (outside frame) — not drawn.');
+  T.state.unified = null;
+  T.paintOverlay();
+  assert.strictEqual(note.hidden, true);
+});
+
+test('adapter facts line names the layers it held back', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  const base = {
+    source:{kind:'vod', label:'vod30', channel:null}, frame:{index:0, t:0, duration:1800, count:45000, playing:false, rate:0},
+    loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
+    drawn:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0}},
+    cloth:{verdict:{state:'off', mean:98.1, max:171.7, tolerance:40, source:'saved calibration'}, refusal:{ok:false, owner:'vod30 frame 12 @ 1920×1080', expected:'vod30 frame 0 @ 1280×720'}}
+  };
+  const facts = context.window.VisionStage.factsLine(base);
+  assert.ok(facts.includes('pockets 0 (quad rejected)'), facts);
+  assert.ok(facts.includes('model quad off saved corners 98 px (tol 40 px)'), facts);
+  assert.ok(facts.includes('saved correction refused (vod30 frame 12 @ 1920×1080)'), facts);
+  const unverified = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}});
+  assert.ok(unverified.includes('pockets 0 (unverified)') && unverified.includes('model quad unverified'), unverified);
+  const clean = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null});
+  assert.ok(clean.includes('cloth 1') && clean.includes('pockets 6') && !clean.includes('quad'), clean);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
