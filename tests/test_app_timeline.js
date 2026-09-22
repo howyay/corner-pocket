@@ -218,6 +218,31 @@ test('form and video targets never double-consume the stage keys', () => {
   review.deactivate();
 });
 
+test('engine copy localizes notices, statuses and save receipts', () => {
+  const host = {lang:'zh', querySelector: () => elementStub(), querySelectorAll: () => []};
+  T.setRoot(host);
+  for (const [source, chinese] of [
+    ['Select a ball or a crop first.', '请先选择球或裁剪图。'],
+    ['Select a visible track first.', '请先选择可见的轨迹。'],
+    ['Live start failed: Select a saved canonical Twitch channel', '直播启动失败：Select a saved canonical Twitch channel'],
+    ['Save failed: HTTP 409. Your changes remain on screen; retry when ready.', '保存失败：HTTP 409。更改仍保留在屏幕上，可稍后重试。'],
+    ['crop t00005_b00.jpg = Cue 0', '裁剪图 t00005_b00.jpg = 母球 0'],
+    ['crop t00005_b00.jpg = Ball 7', '裁剪图 t00005_b00.jpg = 球 7'],
+    ['crop t00005_b00.jpg = Unknown', '裁剪图 t00005_b00.jpg = 未知'],
+    ['crop t00005_b00.jpg = cleared', '裁剪图 t00005_b00.jpg = 已清除'],
+    ['win 68-94 · track 1 = A', '窗口 68-94 · 轨迹 1 = A'],
+    ['6 anchors @ t 70.0', '6 个锚点 @ t 70.0'],
+    ['frame 0 · 14 boxes + polygon', '帧 0 · 14 个标注框 + 多边形'],
+    ['shot #2 shot @ frame 180 · correct', '击球 #2 @ 帧 180 · 正确'],
+    ['Status: stopped', '状态：已停止'],
+    ['Status: running', '状态：运行中']
+  ]) assert.strictEqual(T.text(source), chinese, source);
+  host.lang = 'en';
+  assert.strictEqual(T.text('Select a ball or a crop first.'), 'Select a ball or a crop first.', 'source text is language-neutral');
+  assert.strictEqual(T.text('win 68-94 · track 1 = A'), 'win 68-94 · track 1 = A');
+  host.lang = 'zh';
+});
+
 test('app.html is one stage host with no sub-tab navigation', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.html'), 'utf8');
   assert.ok(html.includes('id="review-root"') && html.includes('id="content"'));
@@ -337,6 +362,50 @@ test('the facts line uses one word for one live state', () => {
   assert.ok(!stale.includes('live'), 'the stale state is not described as live');
   assert.ok(stale.includes('frame age 10.2 s') && stale.includes('receive-to-result 33 ms'), stale);
   assert.ok(adapter.includes('not glass-to-glass') || adapter.includes('latency'), 'the latency caveat string is untouched');
+});
+
+test('the verdict keys act on the selected cue only', () => {
+  const review = sandbox.window.CornerPocketReview;
+  T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
+  assert.strictEqual(review.activate('timeline'), true);
+  T.state.events = [{id: 29, type: 'pot', t: 8100}, {id: 30, type: 'shot', t: 9000}];
+  T.state.annotations = {};
+  T.state.verdictDraft = null;
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  const key = (k, opts = {}) => T.onKeydown({key: k, target:{closest: () => null}, preventDefault() {}, ...opts});
+  key('v');
+  assert.strictEqual(T.state.verdictDraft, null, 'V must not draft a verdict with no cue selected');
+  assert.strictEqual(T.state.notice.text, 'Select a cue first.');
+  key('Enter');
+  assert.deepStrictEqual(T.state.annotations, {}, '⏎ must not save a verdict with no cue selected');
+  T.state.sel = {kind:'event', event: T.state.events[0], crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  key('v');
+  assert.strictEqual(T.state.verdictDraft, 'correct');
+  T.state.verdictDraft = null; T.state.dirty = false;
+  review.deactivate();
+});
+
+test('the adapter localizes engine state, keeps one scrub range and one action footer', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+  // 1. the scrub range is driven like the frame field, not left at max=0
+  assert.ok(/scrub\.getAttribute\('max'\) !== max/.test(adapter), 'the scrub range must publish frame_count - 1');
+  assert.ok(adapter.includes("scrub.setAttribute('max', max)"));
+  assert.ok(adapter.includes("scrub.setAttribute('step', '1')"));
+  // 2. engine-built strings render in the active language
+  assert.ok(adapter.includes('engineText(s.notice.text)'), 'notices localize at render');
+  assert.ok(adapter.includes('engineText(row.text)'), 'receipts localize at render');
+  assert.ok(adapter.includes('engineText(s.corrections.inferStatus'));
+  assert.ok(adapter.includes('engineText(s.persons.status'));
+  // 3. a failed start is a failed state in the status row
+  assert.ok(adapter.includes('liveRowState'), 'the live row must not read idle after a failed start');
+  // 4. the primary action of each block lives in an always-visible footer
+  assert.ok(adapter.includes('function actionsHTML'));
+  assert.ok(shell.includes('id="vs-inspector-scroll"') && shell.includes('id="vs-inspector-actions"'));
+  assert.ok(!adapter.includes('vs-sticky'), 'the footer replaced the sticky row');
+  // 5. a dataset switch re-loads the stage even while a decode owns it
+  assert.ok(source.includes('state.pendingSeek = 0'), 'the dataset switch must queue its frame reload');
+  assert.ok(source.includes('state.live.detections = null'), 'live detections must not survive a dataset switch');
 });
 
 test('every adapter string ships in both languages', () => {
