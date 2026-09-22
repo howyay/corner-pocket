@@ -298,6 +298,10 @@ function paintLiveChip() {
 function paintOverlay() {
   const svg = $('#t-overlay'); if (!svg) return;
   const drawn = {cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0};
+  // Provenance: `auto` holds what the model drew (unified detection or the live
+  // metadata stream); the manual polygon and correction boxes are counted into
+  // the same totals so the facts line still matches the stage exactly.
+  const auto = {cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0};
   const layers = [];
   const ov = state.overlay, live = state.live, isLive = state.source.kind === 'live';
   const u = state.unified;
@@ -305,9 +309,9 @@ function paintOverlay() {
   const livePoly = live?.detections?.table_polygon || null;
   if (ov.cloth) {
     const corners = u?.table_corners || livePoly;
-    if (corners && corners.length) { layers.push(`<polygon class="u-cloth" points="${corners.map(p => p.join(',')).join(' ')}" fill="none"></polygon>`); drawn.cloth = 1; }
+    if (corners && corners.length) { layers.push(`<polygon class="u-cloth" points="${corners.map(p => p.join(',')).join(' ')}" fill="none"></polygon>`); auto.cloth = 1; }
   }
-  if (ov.pockets && u?.pockets) { layers.push(u.pockets.map(pk => `<g class="u-pocket"><circle cx="${pk.cx}" cy="${pk.cy}" r="12" fill="none" stroke="var(--brass)" stroke-width="2.5"></circle><text x="${pk.cx}" y="${pk.cy + 26}" text-anchor="middle" font-size="13">${esc(pk.name)}</text></g>`).join('')); drawn.pockets = u.pockets.length; }
+  if (ov.pockets && u?.pockets) { layers.push(u.pockets.map(pk => `<g class="u-pocket"><circle cx="${pk.cx}" cy="${pk.cy}" r="12" fill="none" stroke="var(--brass)" stroke-width="2.5"></circle><text x="${pk.cx}" y="${pk.cy + 26}" text-anchor="middle" font-size="13">${esc(pk.name)}</text></g>`).join('')); auto.pockets = u.pockets.length; }
   if (ov.persons) {
     const persons = u?.persons || (isLive ? liveBoxes.filter(b => b.label === 'person') : []);
     layers.push(persons.map(per => {
@@ -317,7 +321,7 @@ function paintOverlay() {
       const chip = ov && per.player_id ? `<text x="${x1}" y="${Math.max(14, y1 - 6)}" font-size="15" fill="#8fd6a8">${esc(per.player_id)}</text>` : (per.cluster_id ? `<text x="${x1}" y="${Math.max(14, y1 - 6)}" font-size="13" fill="var(--ink-dim)">track ${esc(track)}</text>` : '');
       return `<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect>${chip}</g>`;
     }).join(''));
-    drawn.persons = persons.length;
+    auto.persons = persons.length;
   }
   if (ov.balls) {
     const balls = u?.balls || (isLive ? liveBoxes.filter(b => b.label === 'ball') : []);
@@ -325,22 +329,30 @@ function paintOverlay() {
       const cx = b.cx ?? (b.bbox ? (b.bbox[0] + b.bbox[2]) / 2 : 0), cy = b.cy ?? (b.bbox ? (b.bbox[1] + b.bbox[3]) / 2 : 0), r = Math.max(9, b.r ?? 12);
       return `<g class="u-ball" data-ball="${i}" data-cx="${cx}" data-cy="${cy}" data-r="${r}" data-color="${esc(b.color ?? '')}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--brass-hi)" stroke-width="2"></circle><circle cx="${cx}" cy="${cy}" r="2" fill="var(--brass-hi)"></circle></g>`;
     }).join(''));
-    drawn.balls = balls.length;
+    auto.balls = balls.length;
   }
   if (ov.events && u?.events && u?.pockets) {
     for (const event of u.events) {
       if (event.type !== 'pot') continue;
       const name = String(event.nearest_pocket || '').split(/[\s(]/)[0];
       const pk = u.pockets.find(p => p.name === name);
-      if (pk) { layers.push(`<circle class="u-pot-pulse" cx="${pk.cx}" cy="${pk.cy}" r="18" fill="none" stroke="var(--red)" stroke-width="3"></circle>`); drawn.events++; }
+      if (pk) { layers.push(`<circle class="u-pot-pulse" cx="${pk.cx}" cy="${pk.cy}" r="18" fill="none" stroke="var(--red)" stroke-width="3"></circle>`); auto.events++; }
     }
   }
   if (ov.anchors && state.anchors.loaded && state.dataset === 'vod30') {
     layers.push(state.anchors.pts.map(([x, y], i) => `<g class="u-anchor${state.sel.kind === 'anchor' && state.anchors.index === i ? ' selected' : ''}" data-anchor="${i}"><circle cx="${x}" cy="${y}" r="12"></circle><text x="${x + 18}" y="${y - 16}">${i + 1}</text></g>`).join(''));
-    drawn.anchors = state.anchors.pts.length;
+    auto.anchors = state.anchors.pts.length;
   }
-  for (const box of state.boxes) { if (box.label === 'person') drawn.persons++; else if (ballLabel(box.label)) drawn.balls++; }
-  if (state.polygon) drawn.cloth++;
+  // The editable layer is the operator's only once a correction exists or they
+  // have edited this frame; an untouched inference frame stays a model result.
+  const boxSource = state.dirty || state.fresult?.correction ? 'manual' : 'auto';
+  const boxesAreManual = boxSource === 'manual';
+  for (const box of state.boxes) {
+    if (box.label === 'person') { boxesAreManual ? drawn.persons++ : auto.persons++; }
+    else if (ballLabel(box.label)) { boxesAreManual ? drawn.balls++ : auto.balls++; }
+  }
+  if (state.polygon) boxesAreManual ? drawn.cloth++ : auto.cloth++;
+  svg.dataset.boxes = boxSource;
   const boxes = state.boxes.map((box, i) => {
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
     const selected = state.sel.kind === 'box' && state.sel.box === i;
@@ -354,7 +366,8 @@ function paintOverlay() {
   svg.querySelectorAll('g.u-ball').forEach(g => g.onclick = event => { event.stopPropagation(); selectStageBall(Number(g.dataset.ball), Number(g.dataset.cx), Number(g.dataset.cy), Number(g.dataset.r)); });
   svg.querySelectorAll('g.u-person').forEach(g => g.onclick = event => { event.stopPropagation(); selectStagePerson(g.dataset); });
   svg.querySelectorAll('g.u-anchor').forEach(g => g.onclick = event => { event.stopPropagation(); selectAnchor(Number(g.dataset.anchor)); });
-  state.drawn = {...drawn, on: true, source: state.drawn.source};
+  Object.assign(drawn, {cloth: drawn.cloth + auto.cloth, balls: drawn.balls + auto.balls, persons: drawn.persons + auto.persons, pockets: auto.pockets, anchors: auto.anchors, events: auto.events});
+  state.drawn = {...drawn, auto, on: true, source: state.drawn.source};
 }
 // ---- selection -----------------------------------------------------------
 function selectEvent(index) {
@@ -789,6 +802,20 @@ function snapshot() {
     receipts: state.receipts.slice(), notice: {...state.notice}, busy: state.busy, dirty: state.dirty
   };
 }
+// Every state the live processor (live_processing.py: idle / starting / running /
+// stopping / stopped / eos / error) and the identity rebuild job can report.
+// One map, used by the engine's own status lines and by the vision adapter, so
+// no raw English state can reach the UI in 中 mode.
+const stateCopy = {
+  idle:['idle','空闲'], starting:['starting','启动中'], running:['running','运行中'],
+  stopping:['stopping','停止中'], stopped:['stopped','已停止'], eos:['eos','已结束'],
+  error:['error','错误'], failed:['failed','失败'], completed:['completed','已完成'], unknown:['unknown','未知']
+};
+function liveStateText(value, lang = root?.lang) {
+  const row = stateCopy[String(value ?? '').toLowerCase()];
+  if (!row) return String(value ?? '');
+  return lang === 'zh' ? row[1] : row[0];
+}
 const zhCopy = {
   tagline:'复核工作台 · 本地录像', feed:'本地复核',
   'nav-events':'事件复核', 'meta-events':'击球 · 入袋', 'nav-balls':'球号标注', 'meta-balls':'母球 · 1–15',
@@ -846,7 +873,7 @@ const editorTemplates = [
   [/^Save failed: ([\s\S]*)\. Your changes remain on screen; retry when ready\.$/, detail => `保存失败：${detail}。更改仍保留在屏幕上，可稍后重试。`],
   [/^Save failed: ([\s\S]*)\. Your edits remain on screen; retry when ready\.$/, detail => `保存失败：${detail}。编辑仍保留在屏幕上。`],
   [/^Live start failed: ([\s\S]*)$/, detail => `直播启动失败：${detail}`],
-  [/^Status: (.+?)( — [\s\S]*)?$/, (status, detail = '') => `状态：${({running:'运行中',completed:'已完成',failed:'失败',idle:'空闲',unknown:'未知'})[status] || status}${detail}`],
+  [/^Status: (.+?)( — [\s\S]*)?$/, (status, detail = '') => `状态：${liveStateText(status, 'zh')}${detail}`],
   [/^Status unavailable: ([\s\S]*)$/, detail => `状态不可用：${detail}`],
   [/^Rebuild failed: ([\s\S]*)$/, detail => `重建失败：${detail}`],
   [/^Inference completed for frame (\d+)\.$/, frame => `帧 ${frame} 推理已完成。`],
@@ -928,7 +955,7 @@ window.CornerPocketReview = {
   saveAnchors, saveCorrections, runInference, rebuild, refreshRebuild, setWindow,
   setTool, setBoxLabel, deleteBox, addPolygon, clearPolygon, setNewBoxLabel, nudgeAnchor,
   setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,
-  applyLiveStatus, ingestLiveFrame, setLiveAttempt, clearLiveError,
+  applyLiveStatus, ingestLiveFrame, setLiveAttempt, clearLiveError, liveStateText,
   counts,
   text: copy => text(copy)
 };

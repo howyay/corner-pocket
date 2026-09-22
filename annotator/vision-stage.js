@@ -36,7 +36,7 @@ const COPY = {
     seedA:'Player A', seedB:'Player B', regular:'Name (identity pipeline)', bindName:'Bind name',
     noCluster:'No identity cluster on this track yet — pick a person box on the stage that has one.',
     loading2:'loading…', reviewedCount:'reviewed', inQueue:'in queue', crops:'crops', reviewedWord:'reviewed',
-    prediction:'prediction', seed:'saved seed', liveState:'Live state', detectorReason:'The balls detector (SAM3) is CPU-heavy and stays an explicit opt-in.',
+    prediction:'prediction', seed:'saved seed', liveState:'Live state', manual:'manual', detectorReason:'The balls detector (SAM3) is CPU-heavy and stays an explicit opt-in.',
     attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector',
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
     stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
@@ -73,7 +73,7 @@ const COPY = {
     seedA:'选手 A', seedB:'选手 B', regular:'姓名（身份流程）', bindName:'绑定姓名',
     noCluster:'此轨迹尚无身份聚类——请在舞台上选择带有聚类的球员框。',
     loading2:'读取中…', reviewedCount:'已复核', inQueue:'队列中', crops:'张裁剪图', reviewedWord:'已复核',
-    prediction:'预测', seed:'已保存种子', liveState:'直播状态', detectorReason:'球检测器（SAM3）为 CPU 密集，需显式开启。',
+    prediction:'预测', seed:'已保存种子', liveState:'直播状态', manual:'人工', detectorReason:'球检测器（SAM3）为 CPU 密集，需显式开启。',
     attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器',
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
     stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
@@ -88,6 +88,10 @@ const engine = () => opts?.review;
 const snap = () => engine()?.snapshot ? engine().snapshot() : null;
 const timecode = value => { const tenths = Math.round((Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0) * 10); const m = Math.floor(tenths / 600), seconds = ((tenths % 600) / 10).toFixed(1); return `${m}:${seconds.padStart(4, '0')}`; };
 const fmtAge = ms => ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+// One vocabulary for processor states, owned by the engine (idle / starting /
+// running / stopping / stopped / eos / error), so 中 mode never shows a raw
+// English state word.
+const stateText = value => engine()?.liveStateText ? engine().liveStateText(value) : String(value ?? '');
 function labelText(label) { if (label === 'u' || label === -1) return t('unknown'); if (label === 0) return `${t('cue')} · 0`; return `#${label}`; }
 function receiptLine(kind) {
   const row = (snap()?.receipts || []).find(r => r.key === kind);
@@ -145,12 +149,23 @@ function identityHTML(s) {
 }
 function factsLine(s) {
   const parts = [];
-  if (s.source.kind === 'live') parts.push(`${t('live')}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
+  // One word per state: the strip says the same thing the chip says.
+  if (s.source.kind === 'live') parts.push(`${(s.live.stale ? t('stale') : t('live')).toLowerCase()}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
   else parts.push(`${t('frameReadout')} ${s.frame.index}`, `t ${Number(s.frame.t).toFixed(1)} s`);
-  const d = s.drawn;
+  const d = s.drawn, auto = d.auto;
+  // Model vs operator provenance: `<model> (+<manual> manual)`. The two numbers
+  // add up to exactly what the painter drew, so the totals stay honest. Without
+  // a provenance report from the painter the totals print alone - the line never
+  // guesses who drew what.
+  const layer = (key, label) => {
+    const total = Number(d[key] || 0);
+    if (!auto) return `${label} ${total}`;
+    const manual = Math.max(0, total - Number(auto[key] || 0));
+    return manual ? `${label} ${Number(auto[key] || 0)} (+${manual} ${t('manual')})` : `${label} ${total}`;
+  };
   // Layer names come from the same copy table as the chips, so the facts line
   // is fully bilingual (EN keeps the design's lowercase technical tokens).
-  parts.push(`${t('cloth').toLowerCase()} ${d.cloth}`, `${t('balls').toLowerCase()} ${d.balls}`, `${t('persons').toLowerCase()} ${d.persons}`, `${t('pockets').toLowerCase()} ${d.pockets}`, `${t('anchors').toLowerCase()} ${d.anchors}`, `${t('events').toLowerCase()} ${d.events}`);
+  parts.push(layer('cloth', t('cloth').toLowerCase()), layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()), t('pockets').toLowerCase() + ' ' + Number(d.pockets || 0), t('anchors').toLowerCase() + ' ' + Number(d.anchors || 0), layer('events', t('events').toLowerCase()));
   const total = d.cloth + d.balls + d.persons + d.pockets + d.anchors + d.events;
   if (s.loading.overlay) parts.push(`${t('overlays')} ${t('loading')} (${((Date.now() - s.loading.since) / 1000).toFixed(1)} s)`);
   else if (s.busy) parts.push(`${t('overlays')} ${t('loading2')}`);
@@ -167,7 +182,7 @@ function sourceBlock(s) {
   <div class="vs-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <p class="vs-mono">${esc(s.source.kind === 'vod' ? s.source.label : '—')} · ${esc(t('frameCount'))} ${esc(s.frame.count)}</p></div>
   <div class="vs-block"><h4>${esc(t('liveState'))}</h4>
-    <p class="vs-mono" id="vs-live-status">${esc(live.state)}${live.error ? ` · ${esc(live.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
+    <p class="vs-mono" id="vs-live-status">${esc(stateText(live.state))}${live.error ? ` · ${esc(live.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
     <div class="vs-chiprow">${channels}${(s.datasets || []).map(d => `<button class="vs-chip" data-vs-action="pick-live" data-vs-value="dataset:${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <div class="vs-row">${['table','person'].map(d => `<label class="vs-check"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${(live.detectors || []).includes(d) ? 'checked' : ''}> ${esc(t(d))}</label>`).join('')}</div>
     <div class="vs-row"><button data-vs-action="live-start" class="primary">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button></div>

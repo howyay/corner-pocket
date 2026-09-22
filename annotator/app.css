@@ -49,15 +49,29 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .stage-live[hidden] { display: none; }
 #t-overlay circle, #t-overlay .u-player { }
 #t-overlay text { font: 500 14px var(--mono); paint-order: stroke; stroke: #09080699; stroke-width: 3; pointer-events: none; }
-#t-overlay .u-cloth { fill: none; stroke: var(--brass); stroke-width: 3; }
-#t-overlay .u-pocket circle { fill: none; stroke: var(--brass); stroke-width: 2.5; }
-#t-overlay .u-pocket text { fill: var(--brass-hi); }
+/* Provenance: automatic results (unified detection / live metadata) are a
+   dashed, dimmed reference layer; the operator's own polygon and boxes below
+   keep solid strokes and grab handles, so a corrected frame never shows two
+   indistinguishable copies of the same thing. */
+#t-overlay .u-cloth { fill: none; stroke: var(--brass); stroke-width: 3; stroke-dasharray: 12 8; opacity: .55; }
+#t-overlay .u-pocket circle { fill: none; stroke: var(--brass); stroke-width: 2.5; stroke-dasharray: 7 6; opacity: .5; }
+#t-overlay .u-pocket text { fill: var(--brass-hi); opacity: .6; }
 #t-overlay .u-ball circle { cursor: pointer; }
+#t-overlay .u-ball > circle:first-child { stroke-dasharray: 7 6; opacity: .6; }
+#t-overlay .u-ball > circle:last-child { opacity: .6; }
 #t-overlay .u-ball { cursor: pointer; }
-#t-overlay .u-person rect { cursor: pointer; }
-#t-overlay .u-person.selected rect { stroke-width: 4; }
-#t-overlay .u-person text { fill: var(--green); }
-#t-overlay .u-pot-pulse { fill: none; stroke: var(--red); stroke-width: 3; }
+#t-overlay .u-ball:hover > circle:first-child { opacity: 1; stroke-dasharray: none; }
+#t-overlay .u-person rect { cursor: pointer; stroke-dasharray: 10 7; opacity: .6; }
+#t-overlay .u-person.selected rect { stroke-width: 4; stroke-dasharray: none; opacity: 1; }
+#t-overlay .u-person text { fill: var(--green); opacity: .7; }
+#t-overlay .u-person:hover rect { opacity: 1; }
+#t-overlay .u-pot-pulse { fill: none; stroke: var(--red); stroke-width: 3; opacity: .6; stroke-dasharray: 6 5; }
+/* An untouched inference frame is still a model result: its editable layer is
+   drawn as reference too, until the operator saves a correction for this frame. */
+#t-overlay[data-boxes="auto"] .t-box rect { stroke-dasharray: 10 7; opacity: .6; }
+#t-overlay[data-boxes="auto"] .t-box text { opacity: .7; }
+#t-overlay[data-boxes="auto"] .t-poly { stroke-dasharray: 12 8; opacity: .55; }
+/* Manual content stays solid with full opacity and keeps its grab handles. */
 #t-overlay .u-anchor circle { fill: #20160d; stroke: var(--brass-hi); stroke-width: 3; cursor: grab; }
 #t-overlay .u-anchor text { fill: #fff4d5; font: 700 16px var(--mono); }
 #t-overlay .u-anchor.selected circle { fill: var(--brass); stroke: #fff; }
