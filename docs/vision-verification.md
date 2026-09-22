@@ -41,9 +41,32 @@ Genuine — exactly one: the stale notice described in verdict 3.
 ## Not tested
 
 - Whether 0 / U / C / A / B / V mutate data once their preconditions (selected ball or crop, selected track, selected event) are met — see verdict 2. Everything I could reach produced only a precondition notice; I did not observe a wrong write.
-- Mobile/sheet layout, the anchors flow, verdict saving to the API, and any Twitch path that needs a real stream.
+- The anchors flow and any Twitch path that needs a real stream. (Mobile/sheet layout and verdict saving were covered later — see the section below.)
 - The implementer's claimed test suites (python 168, timeline 21, ops 21) — this round is browser-side only; CI/test numbers are their claim, not re-run here.
 
 ## Evidence
 
 `out/vision-redesign/verify2-provenance.png` (first read) · `verify2-en-provenance.png`, `verify2-zh-provenance.png` (facts line + stage at 1440×1000, EN and 中) · `verify2-zh-surface.png` (中 surface) · `verify2-zh-stale-notice.png` (stale English notice in 中).
+
+---
+
+# Mobile 390 after the polish round
+
+Added after `d0e719a`, `abc2d8a`, `ab5e922` (inspector split into `#vs-inspector-scroll` + always-visible `#vs-inspector-actions`).
+Fixture: same command, `:8131` · browser session `vision-390-521027f9b1ad`, viewport **390×844**.
+Overlays left `LOADING` at ~40 s (`overlays LOADING (34.1 s)` → `ON`); all overlay numbers below were read after that.
+
+| # | Check | Claim | Measured | Verdict |
+|---|-------|-------|----------|---------|
+| 1 | No horizontal overflow; stage in the first viewport | `scrollWidth 390`, stage top < 200 px | `document.documentElement.scrollWidth` = **390**, `document.body.scrollWidth` = **390** (viewport 390×844). `#vs-stage` top = **136 px**, bottom = 380 px; stage image `#t-img` y 171→380 → fully inside the first screen | PASS |
+| 2 | Bottom sheet: sheet switch + reachable/clickable actions | both sheets render, footer clickable | CUES ⇄ INSPECTOR both switch (`#vs-grid[data-sheet]` = `cues` / `inspector`). Inspector renders: scroll region `#vs-inspector-scroll` 317 px tall with scrollHeight 555, content present (`Pots #1 0:05.6 · foot-right (124mm) SOURCE EVIDENCE VERDICT Correct Wrong Unsure SHOOTER …`). Action footer `#vs-inspector-actions` fixed at y 749–800, 51 px, `elementFromPoint` returns the buttons themselves. **Real click Start → `POST /api/live` 200 → `running · frame age 87 ms · receive-to-result 55 ms · dropped 77`**; Stop → `stopped`. With an event selected the footer swaps to `Save review` + `Next candidate`; **real clicks on `Wrong` then `Save review` → `POST /api/vod30/annotate` 200 and the cue card flips to `Wrong`** | PASS |
+| 3 | Exactly one facts line, numbers vs overlay nodes | 1 line, numbers agree | `document.querySelectorAll('.vs-facts')` = **1** (inside `#vs-strip`, y 524, visible). Before the live run: `frame 0 · t 0.0 s · cloth 1 (+1 manual) · balls 6 (+10 manual) · persons 4 (+4 manual) · pockets 6 · anchors 0 · events 0`; SVG at the same moment `g.t-box` **14** + `polygon.t-poly` **1** = 15 manual (=1+10+4) and `u-cloth` **1** + `u-ball` **6** + `u-person` **4** + `u-pocket` **6** = 17 auto (=1+6+4+6) — identical to the 1440 px round | PASS |
+| 4 | Console on the mobile drive | 0 | **0 errors, 0 warnings, 0 page errors** across load → sheet switches → Start → Stop → cue select → verdict → save | PASS |
+
+## Mobile defect found (minor)
+
+The verdict row sits **below the scroll region's fold, behind the sticky action footer**: at rest the three `verdict-draft` buttons are at y 765, inside the footer band (749–800), and `elementFromPoint` on them returns `button.primary` from `#vs-inspector-actions` — a direct click is refused as covered. Scrolling the region brings them to y 565 and they become hittable and clickable, so content is not lost, but the scroll region has no bottom padding / `scroll-padding` to clear the footer, so the last row can render flush underneath it.
+
+Caveat on the evidence: a `mouse wheel 200` over the scroll region and `agent-browser scroll down 250` both left `#vs-inspector-scroll.scrollTop` at 0 (the page did not scroll either), so I could not reproduce the user gesture that reveals the row; I verified reachability after a programmatic `scrollTop = 200`. Whether a touch drag scrolls the region is untested.
+
+Evidence: `out/vision-redesign/verify3-390-a-cues.png`, `-b-inspector.png`, `-c-live-running.png`, `-d-inspector-selected.png`, `-e-inspector-scrolled.png`, `-f-final.png`.
