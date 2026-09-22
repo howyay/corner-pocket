@@ -194,8 +194,12 @@ function factsLine(s) {
   const refusal = cloth.refusal || null;
   parts.push(layer('cloth', t('cloth').toLowerCase()), layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()));
   const pocketCount = Number(d.pockets || 0);
+  const pocketSource = cloth.pockets?.source || null;
   const pocketsHeld = !pocketCount && verdict.state === 'off' ? t('pocketsHeldRejected') : !pocketCount && verdict.state === 'unverified' ? t('pocketsHeldUnverified') : '';
-  parts.push(`${t('pockets').toLowerCase()} ${pocketCount}${pocketsHeld ? ` (${pocketsHeld})` : ''}`);
+  // A drawn pocket marker names its own source: the checked model quad, or the
+  // saved anchors / calibration it was projected from (engine-localized).
+  const pocketNote = pocketsHeld || (pocketCount && pocketSource === 'calibration' ? engineText(cloth.pockets?.reference || '') : '');
+  parts.push(`${t('pockets').toLowerCase()} ${pocketCount}${pocketNote ? ` (${pocketNote})` : ''}`);
   parts.push(t('anchors').toLowerCase() + ' ' + Number(d.anchors || 0), layer('events', t('events').toLowerCase()));
   if (verdict.state === 'off' && verdict.mean != null) parts.push(`${t('quadOff')} ${Math.round(verdict.mean)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
   else if (verdict.state === 'off') parts.push(t('quadOff'));

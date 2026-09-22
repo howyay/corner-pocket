@@ -91,16 +91,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #t-overlay .center-dot { fill: #fff; stroke: #20160d; stroke-width: 2; pointer-events: none; }
 #t-overlay .t-poly { fill: none; stroke: var(--green); stroke-width: 3; pointer-events: none; }
 #t-overlay .draw-preview { fill: #8bb89a22; stroke: var(--green); stroke-dasharray: 6 4; }
-/* Source tags: every drawn geometry group says whether it is MODEL output or
-   the operator's own mark. The tag sits next to the shape, never inside its
-   group, so it can never inherit the group's editable styling. */
+/* Source tags: every drawn geometry group says which source it came from -
+   MODEL output, the operator's own mark, or geometry projected from the saved
+   calibration (CALIB), which is trusted but is not a detection on this frame.
+   The tag sits next to the shape, never inside its group, so it can never
+   inherit the group's editable styling. */
 #t-overlay .o-src { pointer-events: none; }
 #t-overlay .o-src rect { fill: #0b0a08cc; stroke-width: 1.5; }
 #t-overlay .o-src.model rect { stroke: var(--brass); }
 #t-overlay .o-src.manual rect { stroke: var(--green); }
+#t-overlay .o-src.calib rect { stroke: var(--amber); }
 #t-overlay .o-src text { font: 700 14px var(--mono); letter-spacing: .08em; stroke: none; }
 #t-overlay .o-src.model text { fill: var(--brass-hi); }
 #t-overlay .o-src.manual text { fill: var(--green); }
+#t-overlay .o-src.calib text { fill: var(--amber); }
 #t-overlay .o-label { font: 500 14px var(--mono); fill: #fff4d5; }
 #t-overlay .u-person text.u-chip { fill: var(--green); opacity: .85; }
 #t-overlay .u-person text.u-chip.bound { fill: #8fd6a8; opacity: 1; }

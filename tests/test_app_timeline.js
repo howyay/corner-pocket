@@ -25,7 +25,8 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
   globalThis.T = {clampFrame, frameTime, frameFromTime, timecode, markerLeft, ballLabel, boxCenter, normalizeBox, displayBoxes, state,
     setRoot: host => { root = host; }, onKeydown, text, translateEditor, updateOverlayFacts,
     pocketText, pocketWord, POCKET_LABELS, CLOTH_TOLERANCE_PX, clothTolerance, quadDistance, quadSanity, validateCloth,
-    correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference};
+    correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
+    calibratedPockets, POCKET_ANCHOR_ORDER};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
 
@@ -648,8 +649,66 @@ test('adapter facts line names the layers it held back', () => {
   assert.ok(facts.includes('saved correction refused (vod30 frame 12 @ 1920×1080)'), facts);
   const unverified = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}});
   assert.ok(unverified.includes('pockets 0 (unverified)') && unverified.includes('model quad unverified'), unverified);
+  // Pockets drawn from the saved calibration say so, in the engine's own words.
+  const offset = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, pockets:6}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}});
+  assert.ok(offset.includes('pockets 6 (saved anchors)'), offset);
   const clean = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null});
   assert.ok(clean.includes('cloth 1') && clean.includes('pockets 6') && !clean.includes('quad'), clean);
+});
+
+test('a refused model quad falls back to the saved calibration for the pockets', () => {
+  const anchors = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
+  same(T.POCKET_ANCHOR_ORDER, ['head-left','head-right','foot-right','foot-left','left-side','right-side']);
+  same(T.calibratedPockets(anchors).map(p => p.name), T.POCKET_ANCHOR_ORDER);
+  same(T.calibratedPockets(anchors).map(p => p.cx), [454.9, 799.5, 1023.8, 449.6, 448.4, 883.9]);
+  assert.strictEqual(T.calibratedPockets({points:[[1,2],[3,4],[5,6],[7,8]], source:'saved anchors'}), null, 'a partial anchor set is not pocket geometry');
+  assert.strictEqual(T.calibratedPockets(null), null);
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.cloth.refusal = null;
+  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true};
+  T.state.cloth.reference = anchors;
+  // The per-frame model quad is 95 px off (measured on vod30 frame 0): refused,
+  // but the pockets are drawn from the saved anchors instead of going dark.
+  T.state.unified = {table_corners:[[190,176],[806,324],[1024,596],[384,566]], pockets:[{name:'head-left', cx:200, cy:180}, {name:'foot-right', cx:1000, cy:590}], persons:[], balls:[], events:[{type:'pot', nearest_pocket:'foot-right (124mm)'}]};
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  assert.strictEqual(T.state.cloth.verdict.state, 'off');
+  assert.strictEqual(T.state.cloth.pockets.source, 'calibration');
+  assert.strictEqual(T.state.cloth.pockets.reference, 'saved anchors');
+  assert.strictEqual(T.state.drawn.pockets, 6);
+  assert.strictEqual(T.state.drawn.events, 1, 'the pot pulse follows the trusted pockets');
+  assert.ok(html.includes('data-src="calib"'), 'pocket markers are tagged as calibration-derived');
+  assert.ok(!html.includes('data-src="model"'), 'no model tag for a quad that was refused (no cloth/ball/person drawn)');
+  assert.ok(!/head-left|foot-right/.test(html), 'storage keys never reach the stage');
+  assert.ok(html.includes('bottom-right') && html.includes('top-left'), 'pocket names are the display names');
+  assert.ok(!html.includes('u-cloth'), 'the refused quad is still not drawn');
+  assert.ok(html.includes('u-pot-pulse'), 'a pot at a trusted pocket still pulses');
+  // The pot pulse sits on the CALIBRATION pocket, not on the refused quad's pocket.
+  const pulse = Number(html.match(/u-pot-pulse" cx="([\d.]+)"/)[1]);
+  assert.strictEqual(Math.round(pulse), 1024);
+  assert.ok(html.includes('>CALIB<'));
+  host.lang = 'zh';
+  T.paintOverlay();
+  assert.ok(svg.innerHTML.includes('>标定<') && svg.innerHTML.includes('右下'), 'the calibration tag and pocket names are bilingual');
+  host.lang = 'en';
+  // Live has no dataset calibration: nothing to borrow, nothing drawn.
+  T.state.source = {kind:'live', label:'twitch', channel:'x'};
+  T.paintOverlay();
+  assert.strictEqual(T.state.cloth.pockets.source, null);
+  assert.ok(!svg.innerHTML.includes('u-pocket'));
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  // A dataset without saved anchors keeps the held-back report.
+  T.state.cloth.reference = null;
+  T.paintOverlay();
+  assert.strictEqual(T.state.cloth.pockets.source, null);
+  assert.ok(!svg.innerHTML.includes('u-pocket'), 'no trusted pocket geometry: nothing is drawn');
+  assert.ok(note.textContent.includes('No saved corner set exists for this dataset'), note.textContent);
+  T.state.unified = null; T.state.cloth.reference = null;
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -26,7 +26,7 @@ const state = {
   frameWidth:0, frameHeight:0, frameReq:0, shotUrl:null,
   overlay:{cloth:true,balls:true,persons:true,pockets:true,anchors:true,events:true},
   drawn:{cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0,on:false,source:'none'},
-  cloth:{reference:null,verdict:{state:'none',reason:'no detection'},refusal:null},
+  cloth:{reference:null,verdict:{state:'none',reason:'no detection'},pockets:{source:null,count:0,reference:null},refusal:null},
   loading:{overlay:false,since:0},
   live:{state:'idle',error:null,frame_age_ms:null,receive_to_result_ms:null,skipped:0,seq:null,receivedAt:null,stale:false,detections:null,attempt:null,detectors:['table','person']},
   source:{kind:'vod',label:'',channel:null},
@@ -217,7 +217,7 @@ function glyphWidth(value, size) {
   for (const ch of String(value ?? '')) width += /[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? size : size * 0.62;
   return width;
 }
-function sourceTagLabel(kind) { return kind === 'manual' ? text('YOURS') : text('MODEL'); }
+function sourceTagLabel(kind) { return text(kind === 'manual' ? 'YOURS' : kind === 'calib' ? 'CALIB' : 'MODEL'); }
 function sourceTagWidth(kind) { return Math.round(glyphWidth(sourceTagLabel(kind), SRC_TAG_FONT) + 14); }
 function sourceTag(x, y, kind) {
   const label = sourceTagLabel(kind), width = sourceTagWidth(kind);
@@ -241,6 +241,20 @@ function personChip(per, track) {
   const id = track === undefined || track === null || track === '' ? '—' : track;
   const prefix = per?.cluster_id === undefined || per?.cluster_id === null ? text('person') : text('unbound');
   return `${prefix} · ${text('track')} ${id}`;
+}
+// The dataset's saved six anchors are the two side pockets plus the four cloth
+// corners, in the canonical order the calibration uses. They are the trusted
+// pocket geometry when this frame's model quad cannot be trusted, so the pockets
+// layer keeps working instead of going dark behind a refused quad.
+const POCKET_ANCHOR_ORDER = ['head-left', 'head-right', 'foot-right', 'foot-left', 'left-side', 'right-side'];
+function calibratedPockets(reference) {
+  const points = Array.isArray(reference?.points) ? reference.points : null;
+  if (!points || points.length < POCKET_ANCHOR_ORDER.length) return null;
+  const rows = points.slice(0, POCKET_ANCHOR_ORDER.length).map((p, i) => {
+    const cx = Number(p?.[0]), cy = Number(p?.[1]);
+    return Number.isFinite(cx) && Number.isFinite(cy) ? {name: POCKET_ANCHOR_ORDER[i], cx, cy} : null;
+  });
+  return rows.every(Boolean) ? rows : null;
 }
 // ---- data loading (the only fetches in the Vision tab) --------------------
 async function loadDatasets() {
@@ -304,6 +318,8 @@ async function loadSeeds() {
 // anchors when they exist, otherwise the projection of its saved calibration.
 // Framing is per segment, so the reference is a per-dataset value, is compared
 // only against VOD frames of that dataset, and is never used for a live source.
+// All six points are kept: the first four are the cloth quad the quad check
+// needs, and the same six are the dataset's trusted pocket geometry.
 async function loadClothReference() {
   state.cloth.reference = null;
   if (state.dataset !== 'vod30') { paintOverlay(); notify(); return null; }
@@ -312,7 +328,7 @@ async function loadClothReference() {
     const saved = Array.isArray(data.pts) && data.pts.length >= 4;
     const suggested = Array.isArray(data.suggested_pts) && data.suggested_pts.length >= 4;
     if (saved || suggested) state.cloth.reference = {
-      points: (saved ? data.pts : data.suggested_pts).slice(0, 4).map(p => [Number(p[0]), Number(p[1])]),
+      points: (saved ? data.pts : data.suggested_pts).slice(0, POCKET_ANCHOR_ORDER.length).map(p => [Number(p[0]), Number(p[1])]),
       source: saved ? 'saved anchors' : 'saved calibration',
       width: Number(data.width) || state.frameWidth,
       height: Number(data.height) || state.frameHeight
@@ -493,16 +509,29 @@ function paintOverlay() {
   const clothVerdict = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : {state:'none',reason:'no detection',detail:'',mean:null,max:null,tolerance:null,source:null};
   clothVerdict.available = Number(u?.pockets?.length || 0);
   state.cloth.verdict = clothVerdict;
-  const pocketsChecked = clothVerdict.state === 'ok';
+  // Pocket markers need pocket geometry that can be trusted: this frame's model
+  // quad when it passed its clearance check, otherwise the dataset's saved
+  // anchors / calibration - the same geometry the anchors layer draws. A refused
+  // quad is never borrowed, and with no trusted source at all nothing is drawn.
+  const modelPockets = clothVerdict.state === 'ok' ? (u?.pockets || []) : [];
+  const calibPockets = modelPockets.length ? [] : (calibratedPockets(reference) || []);
+  const pockets = modelPockets.length ? modelPockets : calibPockets;
+  const pocketSource = modelPockets.length ? 'model' : calibPockets.length ? 'calibration' : null;
+  state.cloth.pockets = {source: pocketSource, count: pockets.length, reference: pocketSource === 'calibration' ? reference?.source ?? null : null};
   if (ov.cloth && autoCloth && clothVerdict.state !== 'off') {
     const [qx, qy] = quadOrigin(quadPoints(autoCloth));
     layers.push(`<polygon class="u-cloth" points="${autoCloth.map(p => p.join(',')).join(' ')}" fill="none"></polygon>`);
     layers.push(sourceTag(qx + 8, qy + 8, 'model'));
     auto.cloth = 1;
   }
-  if (ov.pockets && u?.pockets && pocketsChecked) {
-    layers.push(u.pockets.map(pk => `<g class="u-pocket"><circle cx="${pk.cx}" cy="${pk.cy}" r="12" fill="none" stroke="var(--brass)" stroke-width="2.5"></circle><text x="${pk.cx}" y="${pk.cy + 26}" text-anchor="middle" font-size="13">${esc(pocketText(pk.name))}</text></g>`).join(''));
-    auto.pockets = u.pockets.length;
+  if (ov.pockets && pockets.length) {
+    const kind = pocketSource === 'calibration' ? 'calib' : 'model';
+    layers.push(pockets.map(pk => {
+      const label = pocketText(pk.name);
+      const width = sourceTagWidth(kind) + 6 + glyphWidth(label, 14);
+      return `<g class="u-pocket"><circle cx="${pk.cx}" cy="${pk.cy}" r="12" fill="none" stroke="var(--brass)" stroke-width="2.5"></circle></g>${tagRow(pk.cx - width / 2, pk.cy + 16, kind, label)}`;
+    }).join(''));
+    auto.pockets = pockets.length;
   }
   if (ov.persons) {
     const persons = u?.persons || (isLive ? liveBoxes.filter(b => b.label === 'person') : []);
@@ -523,11 +552,14 @@ function paintOverlay() {
     }).join(''));
     auto.balls = balls.length;
   }
-  if (ov.events && u?.events && u?.pockets && pocketsChecked) {
+  // A pot pulse is placed at the pocket the event names: it follows the same
+  // trusted-source rule as the markers themselves, so a pulse never points at a
+  // pocket position the pockets layer would not draw.
+  if (ov.events && u?.events && pockets.length) {
     for (const event of u.events) {
       if (event.type !== 'pot') continue;
       const name = String(event.nearest_pocket || '').split(/[\s(]/)[0];
-      const pk = u.pockets.find(p => p.name === name);
+      const pk = pockets.find(p => p.name === name);
       if (pk) { layers.push(`<circle class="u-pot-pulse" cx="${pk.cx}" cy="${pk.cy}" r="18" fill="none" stroke="var(--red)" stroke-width="3"></circle>`); auto.events++; }
     }
   }
@@ -1036,7 +1068,7 @@ function snapshot() {
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
     anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
     corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus},
-    cloth: {verdict: {...state.cloth.verdict}, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
+    cloth: {verdict: {...state.cloth.verdict}, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, pockets: {...(state.cloth.pockets || {source:null, count:0, reference:null})}, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
     receipts: state.receipts.slice(), notice: {...state.notice}, busy: state.busy, dirty: state.dirty
   };
 }
@@ -1104,7 +1136,7 @@ Object.assign(editorCopy, {
   'Selected label':'所选标注', 'New box label':'新框标注', 'Add table polygon':'添加球桌多边形', 'Clear polygon':'清除多边形',
   'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌',
   // Source tags the engine paints on the imagery, and the identity chip.
-  'MODEL':'模型', 'YOURS':'人工', 'track':'轨迹', 'unbound':'未绑定',
+  'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'track':'轨迹', 'unbound':'未绑定',
   'saved anchors':'已保存锚点', 'saved calibration':'已保存标定'
 });
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
