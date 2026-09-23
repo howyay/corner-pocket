@@ -17,12 +17,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.motion_scan import (BALL_K_NATIVE, FLOOR_MARGIN, OCC_DENSE_K, SCAN_H, SCAN_W,
-                             WORK_H, WORK_W, ClothContext, MotionConfig, OnsetConfig,
-                             ScanReport, clip_motion, cloth_context, cloth_mask,
-                             decay_shape, detect_onsets, enforce_gap, load_quad,
-                             load_scan, noise_floor, rolling_baseline, sample_window,
-                             save_scan, window_bounds, window_profile)
+from src.motion_scan import (BALL_K_NATIVE, FLOOR_MARGIN, SCAN_H, SCAN_W, WORK_H, WORK_W,
+                             ClothContext, MotionConfig, OnsetConfig, ScanReport,
+                             ball_area, ball_radius, clip_motion, cloth_context,
+                             cloth_mask, config_for, decay_shape, detect_onsets,
+                             channel_planes, enforce_gap, freeze, load_quad, load_scan,
+                             moving_ball_instances, noise_floor, onset_signal,
+                             probe_pair, rolling_baseline, sample_window, save_scan,
+                             series_fields, window_bounds, window_profile)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -488,6 +490,181 @@ class PersistenceTest(unittest.TestCase):
             np.testing.assert_allclose(loaded_arrays["ball17"], arrays["ball17"])
             for name in arrays:
                 self.assertIn(name, loaded["series"]["fields"])
+
+
+class ResolutionTest(unittest.TestCase):
+    """The tool must follow the frames, not carry 720p pixel counts to 1080p."""
+
+    def test_the_reference_configuration_is_unchanged(self):
+        cfg = MotionConfig()
+        self.assertEqual((cfg.scan_w, cfg.scan_h), (1280, 720))
+        self.assertEqual(series_fields(cfg),
+                         ("t", "ball17", "ball9", "ball25", "ball13w", "occ_share",
+                          "occ_dense", "mean", "cell", "cell_share"))
+        self.assertEqual(onset_signal(cfg), "ball17")
+
+    def test_a_bigger_frame_scales_the_footprints(self):
+        small = freeze(MotionConfig())
+        full = freeze(MotionConfig(scan_w=1920, scan_h=1080, width=1440, height=810,
+                                   ball_radius_px=15.4, ball_area_px=745.1))
+        self.assertGreater(full.ball_k, small.ball_k)
+        self.assertGreater(full.occ_dense_k, small.occ_dense_k)
+        self.assertGreater(ball_area(full), 2 * ball_area(small))
+        self.assertNotEqual(series_fields(full), series_fields(small))
+        self.assertEqual(onset_signal(full), f"ball{full.ball_k}")
+
+    def test_the_measured_radius_wins_over_the_scaled_one(self):
+        self.assertAlmostEqual(ball_radius(MotionConfig(scan_w=1920, ball_radius_px=15.4)),
+                               15.4, places=3)
+        self.assertAlmostEqual(ball_radius(MotionConfig(scan_w=1920)), 9.45 * 1.5, places=2)
+
+    def test_the_occlusion_bar_is_resolution_independent(self):
+        """OCC_DENSE_MIN is a ratio of a window that scales with the ball, so a ball
+        fills the same share of it at any resolution."""
+        small = freeze(MotionConfig())
+        full = freeze(MotionConfig(scan_w=1920, scan_h=1080, ball_radius_px=15.4))
+        self.assertAlmostEqual(ball_area(small) / small.occ_dense_k ** 2,
+                               ball_area(full) / full.occ_dense_k ** 2, delta=0.03)
+
+    def test_the_working_mask_scales_from_its_own_frame_size(self):
+        """A 1920x1080 quad scaled by the 1280x720 reference ratio lands in the wrong
+        corner of the frame, and every occlusion reading taken on it is meaningless."""
+        quad = [[722.0, 452.0], [1177.0, 449.0], [1433.0, 844.0], [467.0, 849.0]]
+        cfg = freeze(MotionConfig(scan_w=1920, scan_h=1080, width=1440, height=810,
+                                  ball_radius_px=15.4))
+        ctx = cloth_context(quad, cfg)
+        ys, xs = np.divmod(ctx.idx, cfg.width)
+        self.assertAlmostEqual(xs.min(), 467 * 0.75, delta=2)
+        self.assertAlmostEqual(xs.max(), 1433 * 0.75, delta=2)
+        self.assertAlmostEqual(ys.min(), 449 * 0.75, delta=2)
+        self.assertAlmostEqual(ys.max(), 849 * 0.75, delta=2)
+        self.assertAlmostEqual(ctx.idx.size / ctx.native_idx.size, 0.5625, delta=0.01)
+
+    def test_a_quad_from_the_wrong_frame_size_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out").mkdir()
+            (root / "out" / "fixed_corners.json").write_text(json.dumps(
+                {"corners": [[722, 452], [1177, 449], [1433, 844], [467, 849]]}))
+            self.assertIsNotNone(load_quad("highlight", root=root,
+                                           frame_size=(1920, 1080))["quad_px"])
+            wrong = load_quad("highlight", root=root, frame_size=(1280, 720))
+            self.assertIsNone(wrong["quad_px"])
+            self.assertTrue(any("does not fit" in line for line in wrong["rejected"]))
+
+    def test_vod30_anchors_are_not_used_for_another_dataset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out").mkdir()
+            (root / "out" / "pid_anchors_vod30.json").write_text(json.dumps(
+                {"anchors": {"70.0": [[1, 2], [3, 4], [5, 6], [7, 8]]}}))
+            self.assertEqual(load_quad("vod30", root=root)["quad_px"],
+                             [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+            self.assertIsNone(load_quad("highlight", root=root)["quad_px"])
+
+    def test_a_real_dataset_config_comes_from_its_own_frames(self):
+        path = ROOT / "data" / "vod_highlight.mp4"
+        if not path.exists():
+            self.skipTest("highlight recording not present")
+        cfg = config_for(path, "highlight")
+        self.assertEqual((cfg.scan_w, cfg.scan_h), (1920, 1080))
+        self.assertEqual((cfg.width, cfg.height), (1440, 810))
+        self.assertGreater(cfg.ball_k, BALL_K_NATIVE)
+        quad = load_quad("highlight", frame_size=(cfg.scan_w, cfg.scan_h))
+        self.assertIsNotNone(quad["quad_px"])
+        self.assertLess(max(p[0] for p in quad["quad_px"]), 1920)
+
+
+class ChromaChannelTest(unittest.TestCase):
+    """The ball channel can run on the colour planes, and they are not the luma one."""
+
+    def setUp(self):
+        self.cfg = MotionConfig(channels=("luma", "B", "R", "BR"))
+        self.ctx = cloth_context(QUAD, self.cfg)
+
+    def _pair(self, plane, level=200):
+        prev = np.zeros((SCAN_H, SCAN_W, 3), np.uint8)
+        cur = prev.copy()
+        if plane == "B":
+            cur[380:400, 620:640, 0] = level
+        elif plane == "R":
+            cur[380:400, 620:640, 2] = level
+        elif plane == "luma":
+            cur[380:400, 620:640, :] = level
+        return prev, cur
+
+    def test_a_blue_only_change_shows_in_B_and_BR_not_in_R(self):
+        prev, cur = self._pair("B")
+        r = probe_pair(prev, cur, self.ctx, self.cfg)
+        self.assertGreater(r["ball_B"], 150)
+        self.assertGreater(r["ball_BR"], 150)
+        self.assertLess(r["ball_R"], 5)
+
+    def test_a_red_only_change_shows_in_R_and_BR(self):
+        prev, cur = self._pair("R")
+        r = probe_pair(prev, cur, self.ctx, self.cfg)
+        self.assertGreater(r["ball_R"], 150)
+        self.assertGreater(r["ball_BR"], 150)
+        self.assertLess(r["ball_B"], 5)
+
+    def test_BR_takes_whichever_plane_is_distinct(self):
+        prev, cur = self._pair("B")
+        blue = probe_pair(prev, cur, self.ctx, self.cfg)["ball_BR"]
+        prev, cur = self._pair("R")
+        red = probe_pair(prev, cur, self.ctx, self.cfg)["ball_BR"]
+        self.assertAlmostEqual(blue, red, delta=1.0)
+
+    def test_a_colour_change_can_beat_luma_reads(self):
+        """A ball distinct in colour but not in brightness: luma sees little."""
+        prev = np.zeros((SCAN_H, SCAN_W, 3), np.uint8)
+        cur = prev.copy()
+        cur[380:400, 620:640, 0] = 180          # blue up, red unchanged
+        r = probe_pair(prev, cur, self.ctx, self.cfg)
+        self.assertGreater(r["ball_B"] / max(1.0, r["ball_luma"]), 2.0)
+
+    def test_the_probe_reads_at_a_given_point_not_only_the_maximum(self):
+        prev, cur = self._pair("B")
+        r = probe_pair(prev, cur, self.ctx, self.cfg, points=[(630, 390), (400, 300)])
+        self.assertGreater(r["ball_B_at"][0], 150)      # on the change
+        self.assertLess(r["ball_B_at"][1], 5)           # elsewhere on the cloth
+        for key in ("ball_B_at_small", "ball_B_at_wide"):
+            self.assertIn(key, r)
+
+    def test_channel_planes_rejects_an_unknown_name(self):
+        with self.assertRaises(ValueError):
+            channel_planes(np.zeros((4, 4, 3), np.uint8), ("Y",))
+
+
+class MovingBallTest(unittest.TestCase):
+    """The census pairing: same colour, mutual nearest, real displacement."""
+
+    def test_a_moving_same_colour_ball_becomes_an_instance(self):
+        census = {"1.0": [{"color": "red", "img": [100, 100], "r": 9}],
+                  "1.5": [{"color": "red", "img": [140, 100], "r": 9}]}
+        rows = moving_ball_instances(census, min_move_px=5.0)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["moved_px"], 40.0)
+        self.assertEqual(rows[0]["color"], "red")
+
+    def test_a_stationary_ball_is_not_an_instance(self):
+        census = {"1.0": [{"color": "red", "img": [100, 100]}],
+                  "1.5": [{"color": "red", "img": [101, 100]}]}
+        self.assertEqual(moving_ball_instances(census, min_move_px=5.0), [])
+
+    def test_an_unknown_colour_is_dropped_rather_than_guessed(self):
+        census = {"1.0": [{"color": "unknown", "img": [100, 100]}],
+                  "1.5": [{"color": "unknown", "img": [200, 100]}]}
+        self.assertEqual(moving_ball_instances(census, min_move_px=5.0), [])
+
+    def test_the_colour_with_the_smaller_move_is_matched(self):
+        """Two blues move; each must take its own nearest, not the other's."""
+        census = {"1.0": [{"color": "blue", "img": [100, 100]},
+                          {"color": "blue", "img": [500, 500]}],
+                  "1.5": [{"color": "blue", "img": [110, 100]},
+                          {"color": "blue", "img": [400, 500]}]}
+        rows = moving_ball_instances(census, min_move_px=5.0)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(sorted(round(r["moved_px"]) for r in rows), [10, 100])
 
 
 class SyntheticVideoTest(unittest.TestCase):
