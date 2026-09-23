@@ -65,7 +65,16 @@ WORK_W, WORK_H = 960, 540       # the pipeline's working resolution (0.75x nativ
 
 # --------------------------------------------------------------- channels ----
 
-CHANGE_PX = 25                  # gray levels: a cloth pixel changed by this much "changed"
+CHANGE_PX = 25                  # levels: a cloth pixel changed by this much "changed"
+
+# The ball-scale channel can run on any plane of the frame.  The verification pass
+# (docs/motion-saturation-verification.md) measured, over 1052 SAM3 ball instances,
+# a luma contrast of median 39.0 / p95 70.0 / max 101.5 against a best-of-B/R chroma
+# contrast of median 89.5 / max 174.0: the ball is far more distinct in colour than
+# in brightness on this cloth.  ``BR`` is the per-pixel maximum of the blue and red
+# plane differences, so it takes whichever plane the ball happens to be distinct in.
+CHANNEL_NAMES = ("luma", "B", "R", "BR")
+DEFAULT_CHANNELS = ("luma",)
 BALL_K_NATIVE = 17              # primary ball footprint, px, native (median ball 18.9 px)
 BALL_K_SMALL = 9                # sensitivity: the ball's core only
 BALL_K_WIDE = 25                # sensitivity: the p90 ball (24.8 px)
@@ -73,27 +82,110 @@ BALL_K_WORK = 13                # the same footprint at 960x540 (0.75 x 17)
 OCC_DENSE_K = 61                # large footprint for the occlusion-density channel, px
 GRID_ROWS, GRID_COLS = 12, 8    # coarse grid over the cloth quad's bounding box
 
-# Measured on this VOD (out/scan30/sam3_results.json, 270 ball radii, see module docstring)
+# Measured on vod30 (out/scan30/sam3_results.json, 270 ball radii, see module docstring).
+# Every constant above is stated at this reference resolution; a scan of differently
+# sized frames scales the footprint-carrying ones by :func:`scan_scale` instead of
+# reusing the pixel counts.
+REF_W, REF_H = SCAN_W, SCAN_H
+REF_BALL_RADIUS = 9.45
 BALL_DIAMETER_NATIVE = 18.9
 BALL_DIAMETER_P10 = 13.8
 BALL_DIAMETER_P90 = 24.8
 BALL_AREA_NATIVE = 266.0        # pi * (18.9 / 2) ^ 2, the area one ball covers at native
 
-# Onset detection runs on this channel, at this resolution.
-ONSET_SIGNAL = "ball17"
+BALL_K_SMALL_RATIO = BALL_K_SMALL / BALL_K_NATIVE
+BALL_K_WIDE_RATIO = BALL_K_WIDE / BALL_K_NATIVE
+WORK_RATIO = 0.75               # working size = 0.75 x native, at any native size
+
+
+def _odd(value: float) -> int:
+    n = int(round(value))
+    return n if n % 2 else n + 1
+
+
+def scan_scale(cfg: "MotionConfig") -> float:
+    """How much bigger these frames are than the ones the constants were measured on."""
+    return cfg.scan_w / REF_W
+
+
+def ball_radius(cfg: "MotionConfig") -> float:
+    """The ball's radius in this scan's pixels: measured if given, else scaled."""
+    return cfg.ball_radius_px or REF_BALL_RADIUS * scan_scale(cfg)
+
+
+def ball_area(cfg: "MotionConfig") -> float:
+    return cfg.ball_area_px or math.pi * ball_radius(cfg) ** 2
+
+
+def ball_k(cfg: "MotionConfig", ratio: float = 1.0) -> int:
+    """The footprint that contains one ball: the equivalent-area square, odd."""
+    return _odd(math.sqrt(math.pi) * ball_radius(cfg) * ratio)
+
+
+def occ_dense_k(cfg: "MotionConfig") -> int:
+    """The occlusion footprint: the reference window scaled by the frame size, odd."""
+    return _odd(OCC_DENSE_K * scan_scale(cfg))
+
+
+def ball_blob_max(cfg: "MotionConfig") -> float:
+    """The most one ball can change: its old and its new position, disjoint."""
+    return 2.0 * ball_area(cfg)
+
+
+def ball_blob_min(cfg: "MotionConfig") -> float:
+    return 0.25 * ball_area(cfg)
+
+
+def limb_blob_min(cfg: "MotionConfig") -> float:
+    """Six ball areas: past this a component is not even an ambiguous limb."""
+    return 6.0 * ball_area(cfg)
+
+
+def series_fields(cfg: "MotionConfig") -> tuple:
+    """The per-frame array names, carrying the footprint actually used."""
+    return ("t", f"ball{ball_k(cfg)}", f"ball{ball_k(cfg, BALL_K_SMALL_RATIO)}",
+            f"ball{ball_k(cfg, BALL_K_WIDE_RATIO)}", f"ball{_odd(ball_k(cfg) * WORK_RATIO)}w",
+            "occ_share", "occ_dense", "mean", "cell", "cell_share")
+
+
+def onset_signal(cfg: "MotionConfig") -> str:
+    return series_fields(cfg)[1]
+
+
+def resolved_ball_k(cfg: "MotionConfig") -> int:
+    return cfg.ball_k or ball_k(cfg)
+
+
+def resolved_work_k(cfg: "MotionConfig") -> int:
+    return cfg.work_k or _odd(resolved_ball_k(cfg) * WORK_RATIO)
+
+
+def resolved_occ_dense_k(cfg: "MotionConfig") -> int:
+    return cfg.occ_dense_k or occ_dense_k(cfg)
+
+
+def freeze(cfg: "MotionConfig") -> "MotionConfig":
+    """Fill the derived fields in, so a saved config reproduces the scan exactly."""
+    cfg.ball_k = resolved_ball_k(cfg)
+    cfg.work_k = resolved_work_k(cfg)
+    cfg.occ_dense_k = resolved_occ_dense_k(cfg)
+    return cfg
+
 
 # An onset whose occlusion density is at or above this is explained by a person.
-# The bar is set from geometry, not taste: within a 61x61 px (3721 px) window at
-# native resolution a single ball can change at most ~530 px (the vacated plus the
-# new position, 2 x 266 px^2, and less when they overlap) == 0.14 of the window,
-# while a torso changes 0.5-1.0 of it.  0.30 is above anything one ball can reach
-# and below anything a body reaches; it also leaves 87.8 % of this VOD's frames
-# eligible, including every frame the still controls sit on.
-OCC_DENSE_MIN = 0.30            # share of a 61x61 window that changed
+# The bar is set from geometry, not taste: within the occlusion window a single ball
+# can change at most ~0.14 of it (2 x its area against 61x61 at the reference), while
+# a torso changes 0.5-1.0.  0.30 is above anything one ball can reach and below
+# anything a body reaches.  Both the footprint and the ball scale with resolution, so
+# the ratio does not, and this bar is deliberately resolution-independent.
+OCC_DENSE_MIN = 0.30            # share of the occlusion window that changed
 OCC_SHARE_MIN = 0.02            # share of the whole cloth that changed
 FLOOR_QUANTILE = 99.9           # the floor is this quantile of the control sample
 FLOOR_MARGIN = 1.25             # threshold = floor x this
 
+# The vod30 array names, kept as the default so artifacts written before the
+# resolution parameter existed stay readable.
+ONSET_SIGNAL = "ball17"
 SERIES_FIELDS = ("t", "ball17", "ball9", "ball25", "ball13w",
                  "occ_share", "occ_dense", "mean", "cell", "cell_share")
 
@@ -104,15 +196,20 @@ class MotionConfig:
 
     width: int = WORK_W
     height: int = WORK_H
+    scan_w: int = REF_W
+    scan_h: int = REF_H
+    ball_radius_px: float | None = None   # measured; None -> the vod30 radius, scaled
+    ball_area_px: float | None = None     # measured; None -> pi r^2
     stride: int = 1
     limit_s: float | None = None
     change_px: int = CHANGE_PX
-    ball_k: int = BALL_K_NATIVE
-    work_k: int = BALL_K_WORK
-    occ_dense_k: int = OCC_DENSE_K
+    ball_k: int | None = None       # None -> the equivalent-area square for this radius
+    work_k: int | None = None
+    occ_dense_k: int | None = None
     grid_rows: int = GRID_ROWS
     grid_cols: int = GRID_COLS
     native: bool = True
+    channels: tuple = DEFAULT_CHANNELS
 
 
 @dataclass
@@ -149,20 +246,42 @@ class ScanReport:
 
 # ------------------------------------------------------------- the quad ------
 
-def load_quad(dataset: str = "vod30", root=None, quad_file=None) -> dict:
-    """The verified cloth quad for ``dataset``, in native 1280x720 pixels.
+def load_quad(dataset: str = "vod30", root=None, quad_file=None, frame_size=None) -> dict:
+    """The verified cloth quad for ``dataset``, in that dataset's native pixels.
 
     Order of evidence: an explicit ``quad_file``, the per-segment calibration
-    artifact, the hand anchors, then the ``table_refine`` prior.  Never a
-    per-frame ``detect_table`` mask -- that was shown to collapse under occlusion.
+    artifact, a dataset-specific reference file, the vod30 hand anchors (only for
+    vod30), then the ``table_refine`` prior table.  Never a per-frame
+    ``detect_table`` mask -- that was shown to collapse under occlusion.
+
+    Every candidate is checked against ``frame_size`` when it is given: this repo
+    holds quads recorded at 1280x720 for a 1920x1080 video, and a quad from the
+    wrong frame size silently measures the carpet.
     """
     root = Path(root or ROOT)
+    rejected: list = []
+
+    def usable(candidate, source, note, evidence=None):
+        if candidate is None:
+            return None
+        if frame_size:
+            w, h = float(frame_size[0]), float(frame_size[1])
+            xs = [p[0] for p in candidate]
+            ys = [p[1] for p in candidate]
+            if max(xs) > w or max(ys) > h or min(xs) < 0 or min(ys) < 0:
+                rejected.append(f"{source}: quad {candidate} does not fit {w:g}x{h:g}")
+                return None
+        return {"quad_px": candidate, "source": source, "verified": bool(evidence),
+                "note": note, "evidence": evidence, "rejected": list(rejected)}
+
     if quad_file:
         payload = json.loads(Path(quad_file).read_text())
         pts = payload.get("quad_px") or payload.get("corners") or payload.get("anchors")
-        return {"quad_px": _as_quad(pts), "source": str(quad_file),
-                "verified": bool(payload.get("verified", False)),
-                "note": payload.get("note", "caller-supplied quad")}
+        out = usable(_as_quad(pts), str(quad_file),
+                     payload.get("note", "caller-supplied quad"),
+                     "caller-supplied" if payload.get("verified") else None)
+        if out:
+            return out
 
     seg_file = root / "out" / f"calib_{dataset}_segments.json"
     if seg_file.exists():
@@ -174,28 +293,107 @@ def load_quad(dataset: str = "vod30", root=None, quad_file=None) -> dict:
             if len(segments) > 1:
                 note = (f"{len(segments)} segments; using the first -- per-time segment "
                         f"lookup belongs to the calibration, not to this measurement")
-            return {"quad_px": _as_quad(seg["quad_px"]), "source": str(seg_file),
-                    "verified": bool((seg.get("evidence") or {}).get("trusted_for_mm")),
-                    "note": note}
+            evidence = seg.get("evidence") or {}
+            out = usable(_as_quad(seg["quad_px"]), str(seg_file), note,
+                         evidence.get("trust_reason")
+                         if evidence.get("trusted_for_mm") else None)
+            if out:
+                return out
+
+    reference = root / "out" / "fixed_corners.json"
+    if reference.exists() and dataset != "vod30":
+        payload = json.loads(reference.read_text())
+        out = usable(_as_quad(payload.get("corners")), str(reference),
+                     "dataset reference corners",
+                     "src/table_refine.py _DATASET_PRIOR documents this file at 2.0 px "
+                     "median against the cloth quad" if dataset == "highlight" else None)
+        if out:
+            return out
 
     anchors = root / "out" / "pid_anchors_vod30.json"
-    if anchors.exists():
+    if anchors.exists() and dataset == "vod30":
         payload = json.loads(anchors.read_text())
         rows = payload.get("anchors") or {}
         if rows:
             key = sorted(rows, key=lambda k: abs(float(k) - 70.0))[0]
-            return {"quad_px": _as_quad(rows[key][:4]), "source": str(anchors),
-                    "verified": True, "note": f"hand pocket anchors at t={key} (first four)"}
+            out = usable(_as_quad(rows[key][:4]), str(anchors),
+                         f"hand pocket anchors at t={key} (first four)", "hand anchors")
+            if out:
+                return out
 
     try:
         from src.table_refine import prior_for
         prior = prior_for(dataset, root=root)
-        if prior is not None:
-            return {"quad_px": _as_quad(prior), "source": "src.table_refine.prior_for",
-                    "verified": False, "note": "search-centre prior, not a verified quad"}
+        out = usable(_as_quad(prior) if prior is not None else None,
+                     "src.table_refine.prior_for",
+                     "search-centre prior, not a verified quad", None)
+        if out:
+            return out
     except Exception as exc:  # pragma: no cover - environment dependent
-        return {"quad_px": None, "source": "none", "verified": False, "note": f"no quad ({exc})"}
-    return {"quad_px": None, "source": "none", "verified": False, "note": "no quad found"}
+        rejected.append(f"table_refine prior: {exc}")
+    return {"quad_px": None, "source": "none", "verified": False,
+            "note": "no quad found", "evidence": None, "rejected": list(rejected)}
+
+
+def sam3_ball_radius(dataset: str, root=None) -> dict:
+    """The measured ball radius this dataset's SAM3 cache holds, if it has one.
+
+    Using the measurement beats scaling the vod30 radius by the frame size: the two
+    datasets sit at different camera distances, so their balls are not related by
+    the frame ratio alone.
+    """
+    root = Path(root or ROOT)
+    names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
+                                                          f"scan{dataset}", dataset]
+    for name in names:
+        path = root / "out" / name / "sam3_results.json"
+        if not path.exists():
+            continue
+        payload = json.loads(path.read_text())
+        radii = [float(b["r"]) for balls in payload.values() for b in balls if b.get("r")]
+        if not radii:
+            continue
+        arr = np.asarray(radii, np.float64)
+        median = float(np.median(arr))
+        return {"source": str(path), "n": int(arr.size), "radius": median,
+                "diameter": round(2 * median, 2),
+                "p10_diameter": round(2 * float(np.percentile(arr, 10)), 2),
+                "p90_diameter": round(2 * float(np.percentile(arr, 90)), 2),
+                "area": round(float(math.pi * median * median), 1)}
+    return {"source": None, "n": 0, "radius": None, "diameter": None, "area": None}
+
+
+def video_for(dataset: str, root=None) -> Path:
+    root = Path(root or ROOT)
+    names = [f"vod_{dataset}.mp4"]
+    if dataset == "vod30":
+        names.insert(0, "vod_30min_260815.mp4")
+    for name in names:
+        if (root / "data" / name).exists():
+            return root / "data" / name
+    return root / "data" / names[-1]
+
+
+def config_for(video, dataset: str = "vod30", root=None, **overrides) -> "MotionConfig":
+    """The scan configuration this dataset needs, read from its own frames.
+
+    The working size stays 0.75 x native (the ratio the pipeline uses) and the ball
+    footprint comes from the dataset's measured SAM3 radius, so nothing is a
+    hardcoded 720p pixel count applied to differently sized frames.
+    """
+    cap = cv2.VideoCapture(str(video))
+    if not cap.isOpened():
+        raise OSError(f"cannot open {video}")
+    scan_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or REF_W)
+    scan_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or REF_H)
+    cap.release()
+    measured = sam3_ball_radius(dataset, root)
+    overrides.setdefault("width", int(round(scan_w * WORK_RATIO / 2)) * 2)
+    overrides.setdefault("height", int(round(scan_h * WORK_RATIO / 2)) * 2)
+    if measured["radius"]:
+        overrides.setdefault("ball_radius_px", measured["radius"])
+        overrides.setdefault("ball_area_px", measured["area"])
+    return freeze(MotionConfig(scan_w=scan_w, scan_h=scan_h, **overrides))
 
 
 def _as_quad(points) -> list | None:
@@ -251,10 +449,13 @@ class ClothContext:
 
 
 def cloth_context(quad_px, cfg: MotionConfig = MotionConfig()) -> ClothContext:
-    mask = cloth_mask(quad_px, cfg.width, cfg.height)
+    # The working mask must scale the quad from ITS OWN frame size, not from the
+    # reference one: a 1920x1080 quad scaled by 1440/1280 lands in the wrong corner
+    # of the frame and every occlusion reading taken on it is meaningless.
+    mask = cloth_mask(quad_px, cfg.width, cfg.height, cfg.scan_w, cfg.scan_h)
     idx = np.flatnonzero(mask.ravel())
     poly = np.asarray(quad_px, np.int32)
-    sc = np.array([cfg.width / SCAN_W, cfg.height / SCAN_H], np.float64)
+    sc = np.array([cfg.width / cfg.scan_w, cfg.height / cfg.scan_h], np.float64)
     q = np.asarray(quad_px, np.float64) * sc
     x0, y0 = np.floor(q.min(axis=0)).astype(int)
     x1, y1 = np.ceil(q.max(axis=0)).astype(int)
@@ -265,7 +466,7 @@ def cloth_context(quad_px, cfg: MotionConfig = MotionConfig()) -> ClothContext:
     cell_of_idx = (row * cfg.grid_cols + col).astype(np.int64)
     cell_counts = np.bincount(cell_of_idx, minlength=cfg.grid_rows * cfg.grid_cols).astype(np.int64)
     if cfg.native:
-        native_mask = cloth_mask(quad_px, SCAN_W, SCAN_H, SCAN_W, SCAN_H)
+        native_mask = cloth_mask(quad_px, cfg.scan_w, cfg.scan_h, cfg.scan_w, cfg.scan_h)
         native_idx = np.flatnonzero(native_mask.ravel())
     else:
         native_mask, native_idx = np.zeros((1, 1), bool), np.empty(0, np.int64)
@@ -310,7 +511,8 @@ def clip_motion(prev_native, native, prev_work, work, ctx: ClothContext,
     changed_full[ctx.idx] = (values >= cfg.change_px)
     n_changed = int(changed_full.sum())
     changed_map = changed_full.reshape(cfg.height, cfg.width).astype(np.float32)
-    dense_map = cv2.boxFilter(changed_map, -1, (cfg.occ_dense_k, cfg.occ_dense_k),
+    ok = resolved_occ_dense_k(cfg)
+    dense_map = cv2.boxFilter(changed_map, -1, (ok, ok),
                               normalize=True, borderType=cv2.BORDER_REPLICATE)
     occ_dense = float(dense_map.ravel()[ctx.idx].max())
     if n_changed:
@@ -320,8 +522,10 @@ def clip_motion(prev_native, native, prev_work, work, ctx: ClothContext,
         cell_share = float(cell_sums[cell] / n_changed)
     else:
         cell, cell_share = -1, 0.0
+    primary, small, wide, work_key = series_fields(cfg)[1:5]
     out = {
-        "ball13w": round(_box_max(work_diff.astype(np.float32), cfg.work_k, ctx.idx), 4),
+        work_key: round(_box_max(work_diff.astype(np.float32), resolved_work_k(cfg),
+                                 ctx.idx), 4),
         "occ_share": round(n_changed / max(1, ctx.idx.size), 6),
         "occ_dense": round(occ_dense, 5),
         "mean": round(float(values.mean()), 4),
@@ -330,11 +534,13 @@ def clip_motion(prev_native, native, prev_work, work, ctx: ClothContext,
     }
     if native is not None and prev_native is not None and ctx.native_idx.size:
         native_diff = cv2.absdiff(native, prev_native).astype(np.float32)
-        out["ball17"] = round(_box_max(native_diff, BALL_K_NATIVE, ctx.native_idx), 4)
-        out["ball9"] = round(_box_max(native_diff, BALL_K_SMALL, ctx.native_idx), 4)
-        out["ball25"] = round(_box_max(native_diff, BALL_K_WIDE, ctx.native_idx), 4)
+        out[primary] = round(_box_max(native_diff, resolved_ball_k(cfg), ctx.native_idx), 4)
+        out[small] = round(_box_max(native_diff, ball_k(cfg, BALL_K_SMALL_RATIO),
+                                    ctx.native_idx), 4)
+        out[wide] = round(_box_max(native_diff, ball_k(cfg, BALL_K_WIDE_RATIO),
+                                   ctx.native_idx), 4)
     else:
-        out["ball17"] = out["ball9"] = out["ball25"] = 0.0
+        out[primary] = out[small] = out[wide] = 0.0
     return out
 
 
@@ -368,19 +574,19 @@ def frame_detail(video, frame_index: int, ctx: ClothContext,
         motion["frame"] = int(frame_index)
         motion["t"] = round(frame_index / (cap.get(cv2.CAP_PROP_FPS) or 30.0), 3)
         if native is not None and prev_native is not None:
+            k = resolved_ball_k(cfg)
             peak, (px, py) = _box_argmax(
-                cv2.absdiff(native, prev_native).astype(np.float32), cfg.ball_k,
-                ctx.native_idx, SCAN_W)
+                cv2.absdiff(native, prev_native).astype(np.float32), k,
+                ctx.native_idx, cfg.scan_w)
             motion["ball_peak"], motion["ball_peak_pixel"] = round(peak, 4), [px, py]
-            motion["ball_peak_box"] = [px - cfg.ball_k // 2, py - cfg.ball_k // 2,
-                                       px + cfg.ball_k // 2, py + cfg.ball_k // 2]
+            motion["ball_peak_box"] = [px - k // 2, py - k // 2, px + k // 2, py + k // 2]
             motion["ball_peak_space"] = "native"
         else:
+            k = resolved_work_k(cfg)
             peak, (px, py) = _box_argmax(
-                work_diff.astype(np.float32), cfg.work_k, ctx.idx, cfg.width)
+                work_diff.astype(np.float32), k, ctx.idx, cfg.width)
             motion["ball_peak"], motion["ball_peak_pixel"] = round(peak, 4), [px, py]
-            motion["ball_peak_box"] = [px - cfg.work_k // 2, py - cfg.work_k // 2,
-                                       px + cfg.work_k // 2, py + cfg.work_k // 2]
+            motion["ball_peak_box"] = [px - k // 2, py - k // 2, px + k // 2, py + k // 2]
             motion["ball_peak_space"] = "work"
         if keep_maps:
             motion["work_diff"] = work_diff
@@ -391,12 +597,122 @@ def frame_detail(video, frame_index: int, ctx: ClothContext,
         cap.release()
 
 
+def channel_planes(bgr: np.ndarray, channels=DEFAULT_CHANNELS) -> dict:
+    """The planes the ball channel can run on, all uint8 and frame-shaped.
+
+    ``luma`` is the BGR2GRAY plane, ``B`` and ``R`` the raw colour planes, and
+    ``BR`` their per-pixel maximum.
+    """
+    out = {}
+    for name in channels:
+        if name == "luma":
+            out["luma"] = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+        elif name == "B":
+            out["B"] = bgr[:, :, 0]
+        elif name == "R":
+            out["R"] = bgr[:, :, 2]
+        elif name == "BR":
+            out["BR"] = np.maximum(bgr[:, :, 0], bgr[:, :, 2])
+        else:
+            raise ValueError(f"unknown channel {name!r}; expected one of {CHANNEL_NAMES}")
+    return out
+
+
+def probe_pair(prev_bgr, bgr, ctx: ClothContext, cfg: MotionConfig = MotionConfig(),
+               points=()) -> dict:
+    """Every enabled channel for one frame pair, on the cloth and at given points.
+
+    ``points`` are native ``(x, y)`` positions; each gets that channel's footprint
+    mean centred there, which is how a *known* ball's position is read rather than
+    searching the whole cloth for a maximum.
+    """
+    result: dict = {}
+    prev_planes = channel_planes(prev_bgr, cfg.channels)
+    planes = channel_planes(bgr, cfg.channels)
+    for name in cfg.channels:
+        diff = cv2.absdiff(planes[name], prev_planes[name]).astype(np.float32)
+        key = f"ball_{name}"
+        if ctx.native_idx.size:
+            result[key] = round(_box_max(diff, resolved_ball_k(cfg), ctx.native_idx), 4)
+            result[f"{key}_small"] = round(_box_max(diff, ball_k(cfg, BALL_K_SMALL_RATIO),
+                                                    ctx.native_idx), 4)
+            result[f"{key}_wide"] = round(_box_max(diff, ball_k(cfg, BALL_K_WIDE_RATIO),
+                                                   ctx.native_idx), 4)
+        else:
+            result[key] = result[f"{key}_small"] = result[f"{key}_wide"] = 0.0
+        if points:
+            for kname, ksize in (("at", resolved_ball_k(cfg)),
+                                 ("at_small", ball_k(cfg, BALL_K_SMALL_RATIO)),
+                                 ("at_wide", ball_k(cfg, BALL_K_WIDE_RATIO))):
+                blurred = cv2.boxFilter(diff, -1, (ksize, ksize), normalize=True,
+                                        borderType=cv2.BORDER_REPLICATE)
+                flat = blurred.ravel()
+                result[f"{key}_{kname}"] = [round(float(flat[int(y) * cfg.scan_w + int(x)]), 4)
+                                            for x, y in points]
+    luma_prev = prev_planes["luma"]
+    luma = planes["luma"]
+    work_prev = cv2.resize(luma_prev, (cfg.width, cfg.height))
+    work = cv2.resize(luma, (cfg.width, cfg.height))
+    motion = clip_motion(luma_prev, luma, work_prev, work, ctx, cfg)
+    result["occ_share"] = motion["occ_share"]
+    result["occ_dense"] = motion["occ_dense"]
+    result["mean"] = motion["mean"]
+    return result
+
+
+def probe_windows(video, windows, ctx: ClothContext, cfg: MotionConfig = MotionConfig(),
+                  tracks=()) -> list:
+    """Decode each ``(t_start, t_end)`` window once and probe every frame pair.
+
+    ``tracks`` is an optional list of ``(t_start, t_end, p_from, p_to)`` in native
+    pixels: for a frame at time ``tau`` the point is interpolated linearly, which is
+    how a known moving ball is followed.  Sequential decode inside a window is used
+    because seeking per frame costs more than the measurement does.
+    """
+    rows: list = []
+    if not windows:
+        return rows
+    cap = cv2.VideoCapture(str(video))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    try:
+        for t_start, t_end in windows:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, max(1, int(round(t_start * fps)) - 1))
+            ok, prev = cap.read()
+            if not ok:
+                continue
+            frame = int(round(t_start * fps)) - 1
+            while True:
+                ok, cur = cap.read()
+                if not ok:
+                    break
+                frame += 1
+                tau = frame / fps
+                if tau > t_end:
+                    break
+                points = []
+                for (a, b, p_from, p_to) in tracks:
+                    if a <= tau <= b and b > a:
+                        f = (tau - a) / (b - a)
+                        points.append((p_from[0] + (p_to[0] - p_from[0]) * f,
+                                       p_from[1] + (p_to[1] - p_from[1]) * f))
+                row = probe_pair(prev, cur, ctx, cfg, points)
+                row["t"] = round(tau, 4)
+                row["frame"] = frame
+                rows.append(row)
+                prev = cur
+    finally:
+        cap.release()
+    return rows
+
+
 # ------------------------------------------------------------- the scan -------
 
 def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = "vod30",
          progress=lambda text: None) -> tuple[ScanReport, dict]:
     """Decode the whole VOD once; return the report and the per-frame arrays."""
     video = Path(video)
+    freeze(cfg)
+    fields = series_fields(cfg)
     ctx = cloth_context(quad_px, cfg)
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
@@ -404,7 +720,7 @@ def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = "vod
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     capacity = (total if cfg.stride == 1 else total // max(1, cfg.stride) + 2) + 1
-    series = {name: np.zeros(capacity, np.float64) for name in SERIES_FIELDS}
+    series = {name: np.zeros(capacity, np.float64) for name in fields}
     series["cell"] = series["cell"].astype(np.int64)
 
     index = row = 0
@@ -430,7 +746,7 @@ def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = "vod
             series["t"][row] = t
             if last_gray is not None:
                 m = clip_motion(last_native, native, last_gray, gray, ctx, cfg)
-                for name in SERIES_FIELDS:
+                for name in fields:
                     if name != "t":
                         series[name][row] = m[name]
             row += 1
@@ -446,7 +762,7 @@ def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = "vod
     report = ScanReport(
         dataset=dataset, video=str(video), fps=round(fps, 6), frame_count=int(total),
         frames_scanned=int(row), resolution=[cfg.width, cfg.height],
-        native_resolution=[SCAN_W, SCAN_H], quad_px=list(quad_px), quad_source="",
+        native_resolution=[cfg.scan_w, cfg.scan_h], quad_px=list(quad_px), quad_source="",
         quad_verified=True, config=asdict(cfg),
         cost={"wall_s": round(wall, 2),
               "ms_per_frame": round(wall / max(1, row) * 1000.0, 3),
@@ -456,12 +772,14 @@ def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = "vod
                        "abs-diff + 5 box filters + masked reductions")})
     report.stats = series_stats(arrays)
     report.notes = [
-        f"cloth quad: {ctx.n_pixels_native} px at {SCAN_W}x{SCAN_H}, "
+        f"cloth quad: {ctx.n_pixels_native} px at {cfg.scan_w}x{cfg.scan_h}, "
         f"{ctx.n_pixels} px at {cfg.width}x{cfg.height}",
-        f"ball-scale channel: max mean |diff| in a {BALL_K_NATIVE}x{BALL_K_NATIVE} px box, "
-        f"native resolution (measured ball diameter {BALL_DIAMETER_NATIVE} px median)",
+        f"ball-scale channel: max mean |diff| in a {resolved_ball_k(cfg)}x"
+        f"{resolved_ball_k(cfg)} px box, native resolution (ball radius "
+        f"{ball_radius(cfg):.2f} px, area {ball_area(cfg):.0f} px^2)",
         f"occlusion channel: occ_share = cloth pixels changed >= {cfg.change_px} levels; "
-        f"occ_dense = densest {cfg.occ_dense_k}x{cfg.occ_dense_k} px window of that mask",
+        f"occ_dense = densest {resolved_occ_dense_k(cfg)}x{resolved_occ_dense_k(cfg)} px "
+        f"window of that mask",
         "frame 0 has no predecessor and carries zeros",
     ]
     return report, arrays
@@ -690,51 +1008,68 @@ def value_at(t, values, t0: float) -> float:
 
 # --------------------------------------------------- the floor / the controls --
 
-def control_windows(root=None, still_count: int = 20) -> dict:
+def _records_for(dataset: str, root) -> list:
+    for name in (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
+                                                              f"scan{dataset}"]:
+        path = Path(root) / "out" / name / "records.json"
+        if not path.exists():
+            continue
+        rows = json.loads(path.read_text())
+        if isinstance(rows, dict):
+            rows = rows.get("records") or []
+        if rows:
+            return rows
+    return []
+
+
+def quiet_windows(records: list, dataset: str, root, still_count: int = 20,
+                  quantile: float = 1.0) -> list:
+    """Windows whose centre the *legacy* cloth-mean motion says is quiet.
+
+    This selection uses a different signal from the ball-scale channel (the 1 Hz
+    ``motion`` the earlier scan wrote into its own records), so characterising the
+    ball channel on these windows is not circular.  On a dataset with no
+    chance-pair set this is the whole control sample; how far it can be trusted is
+    reported separately, from how many records it was drawn from and how long the
+    recording is.
+    """
+    usable = [r for r in records if r.get("motion") is not None]
+    if not usable:
+        return []
+    cutoff = float(np.percentile([r["motion"] for r in usable], quantile))
+    quiet = [r for r in usable if float(r["motion"]) <= cutoff]
+    step = max(1, len(quiet) // still_count)
+    return [round(float(r["t"]), 3) for r in quiet[::step]][:still_count]
+
+
+def control_windows(root=None, dataset: str = "vod30", still_count: int = 20) -> dict:
     """The control sets, as (name, [t, ...]) pairs.
 
     ``chance_pairs``  every ``source == "pair"`` candidate in
                       ``out/scan30/raw_candidates.json`` -- the 916 pairings the
                       previous gate report called chance because the frames showed
-                      no motion for them.
-    ``timing_controls``  the quiet windows ``out/scan30/timing_verify.json`` chose.
+                      no motion for them.  Only vod30 has this set.
+    ``timing_controls``  the quiet windows ``out/scan30/timing_verify.json`` chose
+                      (vod30 only).
     ``still``         windows around the frames where the *independent* legacy
-                      cloth-mean motion (``out/scan30/records.json``) is at its
-                      lowest 1 % -- this set is selected by a different signal, so
-                      characterising the ball channel on it is not circular.
+                      cloth-mean motion is at its lowest 1 %, for whichever dataset
+                      has a records file.
     """
     root = Path(root or ROOT)
-    sets: dict[str, list] = {}
-    raw = root / "out" / "scan30" / "raw_candidates.json"
-    if raw.exists():
-        payload = json.loads(raw.read_text())
-        kept = payload.get("kept") if isinstance(payload, dict) else payload
-        sets["chance_pairs"] = sorted({round(float(c["t"]), 3) for c in kept or []
-                                       if c.get("source") == "pair"})
-    else:
-        sets["chance_pairs"] = []
-    tv = root / "out" / "scan30" / "timing_verify.json"
-    if tv.exists():
-        payload = json.loads(tv.read_text())
-        sets["timing_controls"] = [round(float(x), 3) for x in
-                                   (payload.get("controls") or {}).get("times", [])]
-    else:
-        sets["timing_controls"] = []
-    records = root / "out" / "scan30" / "records.json"
-    if records.exists():
-        rows = json.loads(records.read_text())
-        if isinstance(rows, dict):
-            rows = rows.get("records") or []
-        usable = [r for r in rows if r.get("motion") is not None]
-        if usable:
-            cutoff = float(np.percentile([r["motion"] for r in usable], 1))
-            quiet = [r for r in usable if float(r["motion"]) <= cutoff]
-            step = max(1, len(quiet) // still_count)
-            sets["still"] = [round(float(r["t"]), 3) for r in quiet[::step]][:still_count]
-        else:
-            sets["still"] = []
-    else:
-        sets["still"] = []
+    sets: dict[str, list] = {"chance_pairs": [], "timing_controls": []}
+    if dataset == "vod30":
+        raw = root / "out" / "scan30" / "raw_candidates.json"
+        if raw.exists():
+            payload = json.loads(raw.read_text())
+            kept = payload.get("kept") if isinstance(payload, dict) else payload
+            sets["chance_pairs"] = sorted({round(float(c["t"]), 3) for c in kept or []
+                                           if c.get("source") == "pair"})
+        tv = root / "out" / "scan30" / "timing_verify.json"
+        if tv.exists():
+            payload = json.loads(tv.read_text())
+            sets["timing_controls"] = [round(float(x), 3) for x in
+                                       (payload.get("controls") or {}).get("times", [])]
+    sets["still"] = quiet_windows(_records_for(dataset, root), dataset, root, still_count)
     return sets
 
 
@@ -750,42 +1085,61 @@ def window_bounds(times, half_s: float = 2.5) -> list:
     return merged
 
 
-def limits_block(arrays: dict, threshold: float, floor: float) -> dict:
-    """Where this measurement saturates, stated with the numbers that show it."""
+def limits_block(arrays: dict, threshold: float, floor: float,
+                 cfg: MotionConfig = MotionConfig(),
+                 contrast: float = 135.0) -> dict:
+    """Where this measurement saturates, stated with the numbers that show it.
+
+    ``contrast`` is the gray-level step a ball produces against the cloth: a white
+    ball at ~255 on cloth at ~120 is 135 levels, and a black ball is about 90.  The
+    footprint ceiling is that step diluted by how much of the window the ball fills.
+    """
+    fields = [f for f in arrays if f.startswith("ball") and not f.endswith("w")]
     stats = series_stats(arrays)
-    b17, b25, b9 = (stats.get(k, {}) for k in ("ball17", "ball25", "ball9"))
+    primary = fields[0] if fields else "ball"
+    k = resolved_ball_k(cfg)
+    area = ball_area(cfg)
+    dilution = min(1.0, area / float(k * k))
+    ceiling = contrast * dilution
     return {
-        "resolution": f"{SCAN_W}x{SCAN_H} native, {WORK_W}x{WORK_H} working (0.75x)",
-        "ball_diameter_px": {"native": BALL_DIAMETER_NATIVE, "p10": BALL_DIAMETER_P10,
-                             "p90": BALL_DIAMETER_P90},
-        "ball_area_native_px": BALL_AREA_NATIVE,
-        "max_change_one_ball_px": 2 * BALL_AREA_NATIVE,
-        "footprint_px": BALL_K_NATIVE,
+        "resolution": f"{cfg.scan_w}x{cfg.scan_h} native, {cfg.width}x{cfg.height} "
+                      f"working ({cfg.width / cfg.scan_w:g}x)",
+        "ball_radius_px": round(ball_radius(cfg), 2),
+        "ball_diameter_px": {"measured": round(2 * ball_radius(cfg), 1),
+                             "p10": BALL_DIAMETER_P10, "p90": BALL_DIAMETER_P90},
+        "ball_area_px": round(area, 1),
+        "ball_radius_source": ("measured on this dataset" if cfg.ball_radius_px
+                               else "vod30 median scaled by the frame size"),
+        "max_change_one_ball_px": round(ball_blob_max(cfg), 1),
+        "footprint_px": k,
+        "footprint_window_px": k * k,
+        "footprint_ball_fill": round(dilution, 3),
+        "ball_contrast_gray_levels": contrast,
+        "footprint_ceiling_gray_levels": round(ceiling, 1),
         "floor_gray_levels": floor,
         "threshold_gray_levels": threshold,
-        "measured_ball17": {k: b17.get(k) for k in ("median", "p999", "max")},
-        "measured_ball25": {k: b25.get(k) for k in ("median", "p999", "max")},
-        "measured_ball9": {k: b9.get(k) for k in ("median", "p999", "max")},
+        "head_room_ratio": round(ceiling / threshold, 3) if threshold else None,
+        "saturated": bool(threshold >= ceiling),
+        "measured_primary": {k2: stats.get(primary, {}).get(k2)
+                             for k2 in ("median", "p999", "max")},
+        "primary_channel": primary,
         "saturation": [
-            f"One ball at native resolution covers {BALL_AREA_NATIVE:.0f} px^2 and can "
-            f"change at most {2 * BALL_AREA_NATIVE:.0f} px^2 (its old and its new "
-            f"position, disjoint).  Every one of the {len(arrays['t'])} broadcast frames "
-            f"was tested against the largest changed component, and no frame in the VOD "
-            f"produced one at or under that size while also clearing the ball-scale "
-            f"threshold -- the smallest onset component measured is larger.",
-            f"A brighter-than-cloth ball sits at roughly 135 gray levels of contrast, so "
-            f"its best possible {BALL_K_NATIVE}x{BALL_K_NATIVE} footprint mean is about "
-            f"124 levels once the ball's area ({BALL_AREA_NATIVE:.0f} px^2) is averaged "
-            f"over the window ({BALL_K_NATIVE ** 2} px^2).  The measured floor is "
-            f"{floor:.1f} and the threshold {threshold:.1f} gray levels: the bar sits at "
-            f"a single ball's best case, which is what 'saturated' means here.",
+            f"One ball covers {area:.0f} px^2 at {cfg.scan_w}x{cfg.scan_h} and can change "
+            f"at most {ball_blob_max(cfg):.0f} px^2 (its old and its new position, "
+            f"disjoint).",
+            f"A brighter-than-cloth ball sits at about {contrast:.0f} gray levels of "
+            f"contrast; a {k}x{k} window is filled to {dilution:.0%} by one ball, so the "
+            f"best footprint mean a single ball can produce is about "
+            f"{ceiling:.0f} gray levels, against a measured floor of {floor:.1f} and a "
+            f"threshold of {threshold:.1f}.",
+            (f"HEAD-ROOM: the ceiling is {ceiling / threshold:.2f}x the threshold, so a "
+             f"ball can clear the bar."
+             if threshold < ceiling else
+             f"SATURATED: the threshold is {threshold / ceiling:.2f}x the ceiling, so no "
+             f"single ball can clear the bar at this resolution."),
             "Slower balls are worse, not better: below about one diameter of travel per "
             "frame the change region shrinks toward a sliver, so the footprint mean "
-            "falls instead of rising.  Nothing in this footage lets the measurement "
-            "distinguish a sub-diameter roll from the room's own motion.",
-            "This is a sensor problem, not a modelling one: at 18.9 px across, one ball "
-            "can never produce a large-footprint reading comparable to a person at the "
-            "rail, and on this VOD people are inside the cloth quad constantly.",
+            "falls instead of rising.",
         ],
     }
 
@@ -860,7 +1214,14 @@ def calibrate(arrays: dict, sets: dict, signal: str = ONSET_SIGNAL,
     occ = {name: noise_floor(t, arrays["occ_dense"], times, half_s)
            for name, times in sets.items() if times}
     occ_overall = noise_floor(t, arrays["occ_dense"], combined, half_s)
-    threshold = clean["threshold"]
+    # The conservative cross-check: the same quantile over EVERY unoccluded frame of
+    # the scan, not just the selected windows.  When the two disagree, the control
+    # selection is not representative and the stricter one becomes the bar.
+    whole = noise_floor(t, arrays[signal], [float(t[0]), float(t[-1])],
+                        half_s=(float(t[-1]) - float(t[0])) / 2.0 + 1.0,
+                        eligible=eligible)
+    floor = max(clean["floor"] or 0.0, whole["floor"] or 0.0)
+    threshold = round(floor * FLOOR_MARGIN, 4)
     in_control = np.zeros(t.size, bool)
     for start, end in clean["times"]:
         in_control |= (t >= start) & (t <= end)
@@ -872,10 +1233,25 @@ def calibrate(arrays: dict, sets: dict, signal: str = ONSET_SIGNAL,
         "per_set_unoccluded": per_set_clean,
         "combined": overall,
         "unoccluded": clean,
+        "whole_scan": whole,
         "threshold": threshold,
-        "threshold_basis": f"p{FLOOR_QUANTILE} of the ball-scale reading over control "
-                           f"frames with occ_dense < {dense_bar} and occ_share < "
+        "floor_used": round(floor, 4),
+        "floor_from_controls": clean["floor"],
+        "floor_from_whole_scan": whole["floor"],
+        "floor_agreement": (round(clean["floor"] / whole["floor"], 4)
+                            if clean["floor"] and whole["floor"] else None),
+        "threshold_basis": f"max(p{FLOOR_QUANTILE} over the selected control frames, "
+                           f"p{FLOOR_QUANTILE} over every unoccluded frame of the scan) "
+                           f"with occ_dense < {dense_bar} and occ_share < "
                            f"{OCC_SHARE_MIN}, x {FLOOR_MARGIN}",
+        "controls_trustworthy": (
+            f"the quiet-window selection and the whole scan agree to within "
+            f"{abs(1 - clean['floor'] / whole['floor']):.1%}, so the floor does not "
+            f"depend on the selection"
+            if clean["floor"] and whole["floor"]
+            and abs(1 - clean["floor"] / whole["floor"]) < 0.25 else
+            "the quiet-window selection and the whole scan disagree by more than 25%; "
+            "the stricter whole-scan floor is the bar"),
         "control_coverage": {
             "frames_inside_control_windows": int(in_control.sum()),
             "share_of_vod": round(float(in_control.mean()), 4),
@@ -1041,14 +1417,15 @@ def blob_shape(video, frame_index: int, ctx: ClothContext,
         w, h = int(stats[i, cv2.CC_STAT_WIDTH]), int(stats[i, cv2.CC_STAT_HEIGHT])
         area = int(stats[i, cv2.CC_STAT_AREA])
         aspect = round(max(w, h) / max(1, min(w, h)), 2)
-        over = round(area / BALL_AREA_NATIVE, 2)
-        if area < BALL_BLOB_MIN_PX:
+        one_ball = ball_area(cfg)
+        over = round(area / one_ball, 2)
+        if area < ball_blob_min(cfg):
             verdict = (f"nothing ball-sized changed at this frame (largest component "
                        f"{area} px^2, under a quarter of one ball)")
-        elif area <= BALL_BLOB_MAX_PX:
+        elif area <= ball_blob_max(cfg):
             verdict = (f"one compact component, {over} x one ball's area -- can be a "
                        f"single ball")
-        elif area <= LIMB_BLOB_MIN_PX:
+        elif area <= limb_blob_min(cfg):
             verdict = (f"one compact component, {over} x one ball's area "
                        f"(aspect {aspect}) -- too big for one ball, but a "
                        f"motion-blurred ball could reach this; not separable by size "
@@ -1087,7 +1464,7 @@ def render_blob_sheet(video, onsets: list, ctx: ClothContext, path,
                 continue
             x, y, w, h = info["largest_bbox"]
             x0, y0 = max(0, x - pad), max(0, y - pad)
-            x1, y1 = min(SCAN_W, x + w + pad), min(SCAN_H, y + h + pad)
+            x1, y1 = min(cfg.scan_w, x + w + pad), min(cfg.scan_h, y + h + pad)
             tiles = []
             for image, text in ((prev, f"f-1  t={(frame - 1) / 30.0:.2f}s"),
                                 (cur, f"f    t={frame / 30.0:.2f}s")):
@@ -1202,7 +1579,7 @@ def render_strip(video, onset, ctx: ClothContext, arrays: dict, path,
     """A legible strip: frames around the onset, quad + ball-scale peak marked."""
     detail = frame_detail(video, int(onset["frame"]), ctx, cfg)
     if signal not in arrays:
-        signal = "ball13w"
+        signal = series_fields(cfg)[4]
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     tiles = []
@@ -1393,13 +1770,321 @@ def benchmark(video, n_frames: int = 600, cfg: MotionConfig = MotionConfig(),
 
 # ----------------------------------------------------------------------- CLI --
 
+def _cfg_from_report(report) -> MotionConfig:
+    return MotionConfig(**{k: v for k, v in report["config"].items()
+                           if k in MotionConfig.__dataclass_fields__})
+
+
+# ------------------------------------------------- the channel comparison ----
+
+def quiet_blocks(arrays: dict, block_s: float = 10.0, keep: int = 14) -> list:
+    """Non-overlapping blocks ranked by occlusion density alone.
+
+    The ranking uses ``occ_dense`` p90 -- the occlusion proxy -- and nothing about
+    the ball channel, so the blocks are chosen without looking at the thing being
+    measured.  This is the selection ``docs/motion-saturation-verification.md``
+    used; the same rule is applied here to whichever series is being analysed.
+    """
+    t = arrays["t"]
+    t0, t1 = float(t[0]), float(t[-1])
+    dense = arrays["occ_dense"]
+    blocks = []
+    start = t0
+    while start + block_s <= t1:
+        sel = (t >= start) & (t < start + block_s)
+        if sel.any():
+            blocks.append((round(start, 3), round(start + block_s, 3), round(float(np.percentile(dense[sel], 90)), 4)))
+        start += block_s
+    blocks.sort(key=lambda b: b[2])
+    chosen = sorted(blocks[:keep], key=lambda b: b[0])
+    return [{"t_start": a, "t_end": b, "occ_dense_p90": c} for a, b, c in chosen]
+
+
+def percentile_block(rows: list, key: str) -> dict:
+    v = np.asarray([r[key] for r in rows if r.get(key) is not None], np.float64)
+    if v.size == 0:
+        return {"n": 0}
+    return {"n": int(v.size), "median": round(float(np.median(v)), 3),
+            "p90": round(float(np.percentile(v, 90)), 3),
+            "p99": round(float(np.percentile(v, 99)), 3),
+            "p999": round(float(np.percentile(v, 99.9)), 3),
+            "max": round(float(v.max()), 3)}
+
+
+def channel_floors(rows: list, cfg: MotionConfig) -> dict:
+    """Per channel and per footprint: the quiet floor and the bar it implies."""
+    out = {}
+    for name in cfg.channels:
+        for suffix, label in (("_small", "small"), ("", "primary"), ("_wide", "wide")):
+            key = f"ball_{name}{suffix}"
+            if not rows or key not in rows[0]:
+                continue
+            stats = percentile_block(rows, key)
+            stats["threshold"] = round(stats["p999"] * FLOOR_MARGIN, 3)
+            stats["channel"] = name
+            stats["footprint"] = label
+            stats["footprint_px"] = (resolved_ball_k(cfg) if label == "primary"
+                                     else ball_k(cfg, BALL_K_SMALL_RATIO) if label == "small"
+                                     else ball_k(cfg, BALL_K_WIDE_RATIO))
+            out[key] = stats
+    return out
+
+
+def moving_ball_instances(census: dict, min_move_px: float = 5.0,
+                          max_move_px: float = 500.0) -> list:
+    """The same ball at two cached times, with a measurable displacement.
+
+    Balls are matched by the colour the census carries, and only when that colour
+    appears exactly once in BOTH frames -- an ambiguous colour is dropped rather
+    than guessed.  A pair is kept when the two positions differ by at least
+    ``min_move_px``, which is what makes it evidence of a *moving* ball instead of
+    a stationary one.
+    """
+    rows = []
+    times = sorted(census, key=float)
+    for a, b in zip(times, times[1:]):
+        ta, tb = float(a), float(b)
+        if tb - ta > 1.5:
+            continue
+        by_a = {}
+        by_b = {}
+        for ball in census[a]:
+            by_a.setdefault(ball.get("color"), []).append(ball)
+        for ball in census[b]:
+            by_b.setdefault(ball.get("color"), []).append(ball)
+        for color, left in by_a.items():
+            if color in (None, "unknown") or color not in by_b:
+                continue
+            right = by_b[color]
+            # Mutual nearest inside the colour: a pair is used only when each side is
+            # the other's closest same-colour ball, which is what stops a two-blue
+            # frame from pairing the wrong two.
+            pairs = []
+            for i, ball_a in enumerate(left):
+                pa = ball_a["img"]
+                j = min(range(len(right)),
+                        key=lambda k: math.hypot(right[k]["img"][0] - pa[0],
+                                                 right[k]["img"][1] - pa[1]))
+                d = math.hypot(right[j]["img"][0] - pa[0], right[j]["img"][1] - pa[1])
+                if d > max_move_px:
+                    continue
+                back = min(range(len(left)),
+                           key=lambda k: math.hypot(left[k]["img"][0] - right[j]["img"][0],
+                                                    left[k]["img"][1] - right[j]["img"][1]))
+                if back != i:
+                    continue
+                pairs.append((i, j, d))
+            for i, j, d in pairs:
+                if d < min_move_px:
+                    continue
+                pa, pb = left[i]["img"], right[j]["img"]
+                rows.append({"color": color, "t_from": ta, "t_to": tb,
+                             "p_from": [float(pa[0]), float(pa[1])],
+                             "p_to": [float(pb[0]), float(pb[1])],
+                             "moved_px": round(d, 2),
+                             "px_per_frame": round(d / max(1e-6, (tb - ta)) / 30.0, 2),
+                             "r_from": left[i].get("r"), "r_to": right[j].get("r"),
+                             "ambiguous_same_colour": len(left) > 1 or len(right) > 1})
+    return rows
+
+
+def annotated_balls(census_row) -> list:
+    return [b for b in (census_row or []) if b.get("r")]
+
+
+def load_census(dataset: str = "vod30", root=None) -> dict:
+    root = Path(root or ROOT)
+    names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}"]
+    for name in names:
+        path = root / "out" / name / "sam3_census.json"
+        if path.exists():
+            return json.loads(path.read_text()).get("frames") or {}
+    return {}
+
+
+def cmd_channels(args) -> None:
+    """Per-channel quiet floor, the moving-ball sensitivity test, and the events."""
+    report, arrays = load_scan(args.out_dir, args.dataset)
+    cfg = _cfg_from_report(report)
+    cfg.channels = tuple(args.channels.split(","))
+    base_cfg = _cfg_from_report(report)          # for the luma-only dense series
+    quad = load_quad(args.dataset, quad_file=args.quad,
+                     frame_size=(cfg.scan_w, cfg.scan_h))
+    ctx = cloth_context(quad["quad_px"], cfg)
+
+    previous = (report.get("channels_report") or {})
+    if args.skip_quiet and previous.get("channel_floors"):
+        blocks = previous.get("quiet_blocks") or []
+        floors = previous["channel_floors"]
+        print(f"reusing the {len(blocks)} quiet windows and floors from the last run")
+    else:
+        blocks = quiet_blocks(arrays, block_s=args.block_s, keep=args.blocks)
+        windows = [(b["t_start"], b["t_end"]) for b in blocks]
+        print(f"quiet windows (ranked by occ_dense p90 alone): {len(windows)}")
+        for b in blocks:
+            print(f"   {b['t_start']:8.2f}-{b['t_end']:8.2f}  occ_dense p90 {b['occ_dense_p90']}")
+        quiet_rows = probe_windows(args.video, windows, ctx, cfg)
+        print(f"probed {len(quiet_rows)} frame pairs on {len(cfg.channels)} channels",
+              flush=True)
+        floors = channel_floors(quiet_rows, cfg)
+    persons = []
+    if args.person_check and not args.skip_quiet:
+        step = max(1, len(windows) // max(1, args.blocks))
+        for b in blocks[::step]:
+            mid = (b["t_start"] + b["t_end"]) / 2.0
+            persons.append({"window": [b["t_start"], b["t_end"]],
+                            **person_check(args.video, {"frame": int(mid * (report["fps"]))},
+                                           quad["quad_px"], offsets=(0,))})
+
+    census = load_census(args.dataset, ROOT)
+    instances = moving_ball_instances(census, min_move_px=args.min_move_px)
+    print(f"moving-ball instances found: {len(instances)}")
+    moving = []
+    for item in instances[:args.max_instances]:
+        tracks = [(item["t_from"], item["t_to"], item["p_from"], item["p_to"])]
+        rows = probe_windows(args.video, [(item["t_from"], item["t_to"])], ctx, cfg,
+                             tracks=tracks)
+        if not rows:
+            continue
+        reading = {}
+        for name in cfg.channels:
+            for kname in ("at", "at_small", "at_wide"):
+                key = f"ball_{name}_{kname}"
+                vals = [r[key][0] for r in rows if r.get(key)]
+                reading[f"{name}_{kname}"] = round(max(vals), 3) if vals else None
+        moving.append({**item, "at_ball_max": reading,
+                       "n_frames": len(rows),
+                       "occ_dense_max": round(max(r["occ_dense"] for r in rows), 4)})
+
+    events = []
+    for event in _served_events(ROOT, args.events, args.dataset):
+        t0 = float(event["t"])
+        rows = probe_windows(args.video, [(t0 - args.event_half_s, t0 + args.event_half_s)], ctx, cfg)
+        if not rows:
+            continue
+        reading = {}
+        for name in cfg.channels:
+            key = f"ball_{name}"
+            vals = [r[key] for r in rows if r.get(key) is not None]
+            if not vals:
+                continue
+            i = int(np.argmax(vals))
+            floor = floors.get(key, {}).get("p999")
+            reading[name] = {"peak": round(float(max(vals)), 3),
+                             "median": round(float(np.median(vals)), 3),
+                             "t_peak": rows[i]["t"],
+                             "offset_s": round(float(rows[i]["t"] - t0), 3),
+                             "over_quiet_floor": (round(float(max(vals)) / floor, 3)
+                                                  if floor else None)}
+        occ_dense = max(r["occ_dense"] for r in rows)
+        occ_share = max(r["occ_share"] for r in rows)
+        clears = {name: (reading[name]["peak"] > floors.get(f"ball_{name}", {}).get("p999", 1e9))
+                  for name in reading}
+        events.append({**event, "channels": reading,
+                       "clears_quiet_floor": clears,
+                       "occ_dense_peak": round(occ_dense, 4),
+                       "occ_share_peak": round(occ_share, 5),
+                       "occlusion_explains": bool(occ_dense >= OCC_DENSE_MIN
+                                                  or occ_share >= OCC_SHARE_MIN)})
+
+    payload = {
+        "channels": list(cfg.channels),
+        "quiet_blocks": blocks,
+        "quiet_probe_frames": (0 if args.skip_quiet else len(quiet_rows)),
+        "channel_floors": floors,
+        "person_free_check": persons,
+        "moving_ball_instances": len(instances),
+        "moving_ball_tested": len(moving),
+        "moving_balls": moving,
+        "signal_to_floor": {
+            f"{name}_{kname}": {
+                "floor": floors.get(f"ball_{name}{'' if kname == 'at' else '_' + kname[3:]}", {}).get("p999"),
+                "median_at_ball": percentile_block(
+                    [{"v": m["at_ball_max"].get(f"{name}_{kname}")} for m in moving], "v").get("median"),
+                "max_at_ball": percentile_block(
+                    [{"v": m["at_ball_max"].get(f"{name}_{kname}")} for m in moving], "v").get("max"),
+                "n_above_floor": len([m for m in moving
+                                      if (m["at_ball_max"].get(f"{name}_{kname}") or 0)
+                                      > floors.get(f"ball_{name}{'' if kname == 'at' else '_' + kname[3:]}", {}).get("p999", 1e9)]),
+                "n": len(moving),
+            } for name in cfg.channels for kname in ("at", "at_small", "at_wide")},
+        "moving_ball_rate_by_speed": {
+            band: {name: {
+                "n": len(subset),
+                "above_quiet_floor": len([m for m in subset
+                                          if (m["at_ball_max"].get(f"{name}_at") or 0)
+                                          > floors.get(f"ball_{name}", {}).get("p999", 1e9)]),
+                "median_at_ball": percentile_block(
+                    [{"v": m["at_ball_max"].get(f"{name}_at")} for m in subset], "v").get("median"),
+            } for name in cfg.channels}
+            for band, subset in (
+                ("fast >=2 px/frame", [m for m in moving if m["px_per_frame"] >= 2.0]),
+                ("slow <2 px/frame", [m for m in moving if m["px_per_frame"] < 2.0]),
+                ("all", moving))
+        },
+        "moving_ball_rate": {
+            name: {
+                "n": len([m for m in moving if m["at_ball_max"].get(f"{name}_at") is not None]),
+                "above_quiet_floor": len([m for m in moving
+                                          if (m["at_ball_max"].get(f"{name}_at") or 0)
+                                          > floors.get(f"ball_{name}", {}).get("p999", 1e9)]),
+                "median_at_ball": percentile_block(
+                    [{"v": m["at_ball_max"].get(f"{name}_at")} for m in moving], "v").get("median"),
+                "max_at_ball": percentile_block(
+                    [{"v": m["at_ball_max"].get(f"{name}_at")} for m in moving], "v").get("max"),
+            } for name in cfg.channels},
+        "events": events,
+        "event_summary": {
+            "n": len(events),
+            "any_channel_clears_quiet_floor": sum(
+                1 for e in events if any(e["clears_quiet_floor"].values())),
+            "occlusion_explained": sum(1 for e in events if e["occlusion_explains"]),
+            "channels": {name: sum(1 for e in events if e["clears_quiet_floor"].get(name))
+                         for name in cfg.channels},
+        },
+        "notes": [
+            f"floors from {len(blocks)} non-overlapping {args.block_s:g}s windows chosen by "
+            f"occ_dense p90 alone",
+            "the moving-ball test follows the census ball's own colour-matched track and "
+            "reads the channel at the interpolated position, so it measures a ball that "
+            "IS moving rather than one at rest",
+            "no physics model is applied anywhere",
+        ],
+    }
+    path = save_report({"channels_report": payload}, args.out_dir, args.dataset)
+    print(json.dumps(payload["event_summary"], indent=1))
+    print(json.dumps(payload["moving_ball_rate"], indent=1))
+    print(json.dumps(payload["moving_ball_rate_by_speed"], indent=1))
+    print("signal-to-floor (median at ball / quiet floor p99.9):")
+    for key, stats in sorted(payload["signal_to_floor"].items()):
+        if stats["floor"] and stats["median_at_ball"] is not None:
+            print(f"   {key:18s} floor={stats['floor']:7.2f} median@ball={stats['median_at_ball']:7.2f} "
+                  f"ratio={stats['median_at_ball'] / stats['floor']:5.2f} "
+                  f"above={stats['n_above_floor']}/{stats['n']}")
+    print("floors:")
+    for key, stats in sorted(floors.items()):
+        print(f"   {key:16s} n={stats['n']:5d} median={stats['median']:7.2f} "
+              f"p99={stats['p99']:7.2f} p99.9={stats['p999']:7.2f} max={stats['max']:7.2f} "
+              f"thr={stats['threshold']:7.2f}")
+    print(f"wrote {path}")
+
+
 def cmd_scan(args) -> None:
-    quad_meta = load_quad(args.dataset, quad_file=args.quad)
+    cfg = config_for(args.video, args.dataset, stride=args.stride, limit_s=args.limit_s,
+                     native=not args.no_native)
+    quad_meta = load_quad(args.dataset, quad_file=args.quad,
+                          frame_size=(cfg.scan_w, cfg.scan_h))
     if quad_meta["quad_px"] is None:
-        raise SystemExit(f"no cloth quad for {args.dataset}")
-    cfg = MotionConfig(stride=args.stride, limit_s=args.limit_s, native=not args.no_native)
-    primitive = benchmark(args.video, n_frames=args.bench_frames, cfg=cfg)
+        raise SystemExit(f"no cloth quad for {args.dataset}: {quad_meta['note']} "
+                         f"{quad_meta.get('rejected')}")
+    for line in quad_meta.get("rejected") or []:
+        print(f"quad candidate rejected: {line}")
+    measured = sam3_ball_radius(args.dataset)
     print(f"quad: {quad_meta['source']} verified={quad_meta['verified']}")
+    print(f"frames {cfg.scan_w}x{cfg.scan_h}, working {cfg.width}x{cfg.height}; ball radius "
+          f"{cfg.ball_radius_px:.2f} px ({measured['source'] or 'vod30 median, scaled'}), "
+          f"footprint {cfg.ball_k}x{cfg.ball_k}")
+    primitive = benchmark(args.video, n_frames=args.bench_frames, cfg=cfg)
     print(f"primitive (decode+gray+abs-diff): {primitive['ms_per_frame']} ms/frame")
     report, arrays = scan(args.video, quad_meta["quad_px"], cfg, args.dataset,
                           progress=lambda text: print("  " + text, flush=True))
@@ -1417,15 +2102,16 @@ def cmd_scan(args) -> None:
 def cmd_report(args) -> None:
     report, arrays = load_scan(args.out_dir, args.dataset)
     t = arrays["t"]
-    cfg = MotionConfig(**{k: v for k, v in report["config"].items()
-                          if k in MotionConfig.__dataclass_fields__})
+    cfg = _cfg_from_report(report)
+    signal = onset_signal(cfg)
 
-    sets = control_windows(ROOT)
-    cal = calibrate(arrays, sets, signal=ONSET_SIGNAL, half_s=args.control_half_s)
+    sets = control_windows(ROOT, args.dataset)
+    cal = calibrate(arrays, sets, signal=signal, half_s=args.control_half_s)
     threshold = cal["threshold"]
     occ_bars = cal["occlusion"]
 
-    onsets = detect_onsets(t, arrays[ONSET_SIGNAL],
+    fields = series_fields(cfg)
+    onsets = detect_onsets(t, arrays[signal],
                            OnsetConfig(threshold=threshold, merge_s=args.merge_s,
                                        min_gap_s=args.min_gap_s))
     quad_meta = load_quad(args.dataset, quad_file=args.quad)
@@ -1446,26 +2132,25 @@ def cmd_report(args) -> None:
                      "occ_share_at_onset": round(value_at(t, arrays["occ_share"], t0), 5),
                      "occ_dense_at_onset": round(value_at(t, arrays["occ_dense"], t0), 4),
                      "mean_at_onset": round(value_at(t, arrays["mean"], t0), 3),
-                     "ball9_at_onset": round(value_at(t, arrays["ball9"], t0), 3),
-                     "ball25_at_onset": round(value_at(t, arrays["ball25"], t0), 3),
-                     "ball13w_at_onset": round(value_at(t, arrays["ball13w"], t0), 3),
+                     "sensitivity": {name: round(value_at(t, arrays[name], t0), 3)
+                                     for name in fields[2:5]},
                      "occlusion_explains": (
                          value_at(t, arrays["occ_dense"], t0) >= occ_bars["dense_bar"]
                          or value_at(t, arrays["occ_share"], t0) >= occ_bars["share_bar"]),
                      "blob": blob_at(onset["frame"]),
-                     "decay": decay_shape(t, arrays[ONSET_SIGNAL], t0)})
+                     "decay": decay_shape(t, arrays[signal], t0)})
     top = sorted(rows, key=lambda r: -r["peak"])[:args.top]
     top_unoccluded = [r for r in sorted(rows, key=lambda r: -r["peak"])
                       if not r["occlusion_explains"]][:args.top]
 
     events = []
-    for event in _served_events(ROOT, args.events):
+    for event in _served_events(ROOT, args.events, args.dataset):
         t0 = float(event["t"])
-        ball = window_profile(t, arrays[ONSET_SIGNAL], t0, threshold,
+        ball = window_profile(t, arrays[signal], t0, threshold,
                               args.before, args.after, args.sample_hz)
         occ = occlusion_reading(t, arrays, t0, args.before, args.after)
         explains = explain_by_occlusion(occ, occ_bars)
-        window_peak = peak_in_window(t, arrays[ONSET_SIGNAL], t0, args.before, args.after)
+        window_peak = peak_in_window(t, arrays[signal], t0, args.before, args.after)
         # the blob is read at the frame that actually holds the window maximum: the
         # window profile's peak time sits on the sampling grid, not on a frame
         peak_frame = (int(np.argmin(np.abs(t - window_peak["t_peak"])))
@@ -1484,7 +2169,7 @@ def cmd_report(args) -> None:
             continue
         for t0 in times[:: max(1, len(times) // args.controls_per_set)][:args.controls_per_set]:
             controls.append({"set": name, "t": round(float(t0), 3),
-                             "ball": peak_in_window(t, arrays[ONSET_SIGNAL], t0, 2.5, 2.5),
+                             "ball": peak_in_window(t, arrays[signal], t0, 2.5, 2.5),
                              "occlusion": occlusion_reading(t, arrays, t0, 2.5, 2.5)})
 
     explained = [e for e in events if e["occlusion_explains"]]
@@ -1498,7 +2183,7 @@ def cmd_report(args) -> None:
         "onsets": rows,
         "top_onsets": top,
         "top_unoccluded_onsets": top_unoccluded,
-        "strongest_frames": strongest_frames(t, arrays[ONSET_SIGNAL], arrays["occ_dense"],
+        "strongest_frames": strongest_frames(t, arrays[signal], arrays["occ_dense"],
                                              n=args.top, threshold=threshold),
         "events": events,
         "controls": controls,
@@ -1526,9 +2211,11 @@ def cmd_report(args) -> None:
                 and not e["occlusion_explains"]),
             "strongest_unoccluded_onset": (top_unoccluded[0] if top_unoccluded else None),
         },
-        "limits": limits_block(arrays, threshold, cal["unoccluded"]["floor"]),
+        "limits": limits_block(arrays, threshold, cal["floor_used"], cfg),
         "person_evidence": cached_person_evidence(ROOT),
-        "thresholds": {"ball_floor": cal["unoccluded"]["floor"],
+        "thresholds": {"ball_floor": cal["floor_used"],
+                       "ball_floor_from_controls": cal["floor_from_controls"],
+                       "ball_floor_from_whole_scan": cal["floor_from_whole_scan"],
                        "ball_threshold": threshold,
                        "floor_margin": cal["unoccluded"]["margin"],
                        "floor_quantile": cal["unoccluded"]["quantile"],
@@ -1541,19 +2228,23 @@ def cmd_report(args) -> None:
     path = save_report(payload, args.out_dir, args.dataset)
     _write_summary(payload, report, args.out_dir, args.dataset)
     print(json.dumps(payload["answers"], indent=1))
-    print(f"threshold={threshold} unoccluded_floor={cal['unoccluded']['max']} "
+    print(f"floor controls={cal['floor_from_controls']} "
+          f"whole_scan={cal['floor_from_whole_scan']} used={cal['floor_used']}")
+    print(f"threshold={threshold} unoccluded_max={cal['unoccluded']['max']} "
           f"all_control_floor={cal['combined']['max']} occ_dense_bar={occ_bars['dense_bar']}")
     print(f"wrote {path}")
 
 
 def cmd_strips(args) -> None:
     report, arrays = load_scan(args.out_dir, args.dataset)
-    quad = load_quad(args.dataset, quad_file=args.quad)
-    cfg = MotionConfig(**{k: v for k, v in report["config"].items()
-                          if k in MotionConfig.__dataclass_fields__})
+    cfg0 = _cfg_from_report(report)
+    quad = load_quad(args.dataset, quad_file=args.quad,
+                     frame_size=(cfg0.scan_w, cfg0.scan_h))
+    cfg = _cfg_from_report(report)
     ctx = cloth_context(quad["quad_px"], cfg)
     threshold = (report.get("thresholds") or {}).get("ball_threshold")
-    signal = (report.get("onset_detection") or {}).get("onset_signal", ONSET_SIGNAL)
+    signal = (report.get("onset_detection") or {}).get("onset_signal") \
+        or onset_signal(cfg0)
     out = Path(args.out_dir) / "onsets"
     made = []
     seen: set = set()
@@ -1583,8 +2274,12 @@ def cmd_strips(args) -> None:
              "threshold": threshold or 0.0, "baseline": 0.0, "below_threshold": True,
              "occlusion_explains": strong["occ_dense"] >= (
                  (report.get("thresholds") or {}).get("occ_dense_bar", 1.0))})
+    # vod30's strips were already delivered unprefixed, so only other datasets carry
+    # their name in the filename.
+    prefix = "" if args.dataset == "vod30" else f"{args.dataset}_"
     for i, onset in enumerate(rows):
-        name = f"{i + 1:02d}_t{onset['t_onset']:07.2f}s_ball17_{onset['peak']:.0f}"
+        name = (f"{prefix}{i + 1:02d}_t{onset['t_onset']:07.2f}s_"
+                f"{signal}_{onset['peak']:.0f}")
         if onset.get("below_threshold"):
             name += "_belowthr"
         name += "_occluded" if onset.get("occlusion_explains") else "_unoccluded"
@@ -1603,7 +2298,9 @@ def cmd_strips(args) -> None:
 
 def cmd_person(args) -> None:
     report, arrays = load_scan(args.out_dir, args.dataset)
-    quad = load_quad(args.dataset, quad_file=args.quad)
+    cfg0 = _cfg_from_report(report)
+    quad = load_quad(args.dataset, quad_file=args.quad,
+                     frame_size=(cfg0.scan_w, cfg0.scan_h))
     rows_in = list(report.get("top_onsets", []))
     unoccluded = [o for o in report.get("top_unoccluded_onsets", [])
                   if o["t_onset"] not in {r["t_onset"] for r in rows_in}]
@@ -1627,8 +2324,20 @@ def cmd_person(args) -> None:
     save_report({"person_checks": payload}, args.out_dir, args.dataset)
 
 
-def _served_events(root, events_file) -> list:
-    path = Path(events_file) if events_file else Path(root) / "out" / "scan30" / "events.json"
+def events_for(dataset: str, root=None) -> Path:
+    """The event list this dataset's own scan wrote."""
+    root = Path(root or ROOT)
+    names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
+                                                          f"scan{dataset}"]
+    for name in names:
+        path = root / "out" / name / "events.json"
+        if path.exists():
+            return path
+    return root / "out" / f"scan_{dataset}" / "events.json"
+
+
+def _served_events(root, events_file, dataset: str = "vod30") -> list:
+    path = Path(events_file) if events_file else events_for(dataset, root)
     if not path.exists():
         return []
     data = json.loads(path.read_text())
@@ -1649,6 +2358,7 @@ def _served_events(root, events_file) -> list:
 
 
 def _write_summary(payload: dict, report: dict, out_dir, dataset: str) -> str:
+    lim = payload.get("limits", {})
     lines = [f"# motion_scan {dataset}", "",
              f"frames {report['frames_scanned']}  resolution {report['resolution']} work / "
              f"{report['native_resolution']} native",
@@ -1657,13 +2367,15 @@ def _write_summary(payload: dict, report: dict, out_dir, dataset: str) -> str:
              f"(primitive decode+gray+abs-diff {report['cost'].get('primitive_ms_per_frame')} "
              f"ms/frame)", "",
              f"ball-scale channel `{payload['calibration']['signal']}` = max "
-             f"{BALL_K_NATIVE}x{BALL_K_NATIVE} px mean |diff| at native; median ball "
-             f"{BALL_DIAMETER_NATIVE} px (p10 {BALL_DIAMETER_P10}, p90 {BALL_DIAMETER_P90})",
+             f"{lim['footprint_px']}x{lim['footprint_px']} px mean |diff| at "
+             f"{lim['resolution']}; ball {lim['ball_diameter_px']['measured']} px across "
+             f"({lim['ball_radius_source']}), area {lim['ball_area_px']} px^2",
              f"control floor p{payload['calibration']['unoccluded']['quantile']} = "
              f"{payload['thresholds']['ball_floor']} -> threshold "
              f"{payload['thresholds']['ball_threshold']} "
              f"(x{payload['thresholds']['floor_margin']}); control max (never the bar) "
              f"{payload['thresholds']['ball_floor_all_control_frames']}",
+             f"controls trustworthy: {payload['calibration']['controls_trustworthy']}",
              f"occlusion bars: occ_dense >= {payload['thresholds']['occ_dense_bar']} or "
              f"occ_share >= {payload['thresholds']['occ_share_bar']}",
              f"control frames above the threshold: "
@@ -1738,7 +2450,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):
-        p.add_argument("--video", default=str(ROOT / "data" / "vod_30min_260815.mp4"))
+        p.add_argument("--video", default=None)
         p.add_argument("--dataset", default="vod30")
         p.add_argument("--out-dir", default=str(ROOT / "out" / "motion_scan"))
         p.add_argument("--quad", default=None)
@@ -1769,12 +2481,28 @@ def main(argv=None) -> int:
     p.add_argument("--top", type=int, default=12)
     p.set_defaults(func=cmd_strips)
 
+    p = sub.add_parser("channels", help="per-channel floor, moving-ball test, events")
+    common(p)
+    p.add_argument("--channels", default="luma,B,R,BR")
+    p.add_argument("--block-s", type=float, default=10.0)
+    p.add_argument("--blocks", type=int, default=14)
+    p.add_argument("--events", default=None)
+    p.add_argument("--event-half-s", type=float, default=0.5)
+    p.add_argument("--min-move-px", type=float, default=5.0)
+    p.add_argument("--max-instances", type=int, default=60)
+    p.add_argument("--person-check", action="store_true")
+    p.add_argument("--skip-quiet", action="store_true",
+                   help="reuse the floors saved by the previous run")
+    p.set_defaults(func=cmd_channels)
+
     p = sub.add_parser("person", help="YOLO person check on the top onsets")
     common(p)
     p.add_argument("--top", type=int, default=12)
     p.set_defaults(func=cmd_person)
 
     args = ap.parse_args(argv)
+    if getattr(args, "video", None) is None:
+        args.video = str(video_for(args.dataset))
     args.func(args)
     return 0
 
