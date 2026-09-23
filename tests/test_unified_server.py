@@ -159,6 +159,30 @@ class BackendTests(unittest.TestCase):
         with self.assertRaises(APIError):
             self.backend.post(route, dict(base, t=71, label="A"))
 
+    def test_a_guest_name_is_stored_as_the_track_label_and_never_trains_an_identity(self):
+        # The rail's second labelling option: the typed name is this track's
+        # label in the same seeds store, so the card, the rail and the tracks
+        # route all read it back - while the identity rebuild keeps reading
+        # exactly the three legacy role values and ignores the name.
+        route = ["api", "vod30", "seeds"]
+        base = {"win": "68-94", "t": 70, "track_id": 2}
+        self.backend.post(route, dict(base, label="  Minh  "))
+        self.assertEqual(self.backend.seeds()["seeds"]["2:68-94"]["label"], "Minh")
+        tracks = self.backend.get(["api", "vod30", "tracks"], {"win": ["68-94"], "t": ["70"]})
+        self.assertEqual(tracks["tracks"][1], {"id": 2, "box": [2, 3, 4, 5], "label": "Minh"})
+        self.assertEqual(explicit_seeds(self.tracklets, self.backend.seeds()["seeds"]), {}, "a guest name never enters identity training")
+        self.assertTrue(self.backend.predictions()["stale"], "and cannot make the stored prediction look current")
+        # The three legacy values still mean what they meant, and Clear still clears.
+        for label in ("A", "B", "ignore"):
+            self.backend.post(route, dict(base, label=label))
+            self.assertEqual(explicit_seeds(self.tracklets, self.backend.seeds()["seeds"]), {"2:68-94": label})
+        self.backend.post(route, dict(base, label=None))
+        self.assertNotIn("2:68-94", self.backend.seeds()["seeds"])
+        for bad in ("", "   ", "x" * 61, 5, ["A"]):
+            with self.assertRaises(APIError):
+                self.backend.post(route, dict(base, label=bad))
+        self.assertNotIn("2:68-94", self.backend.seeds()["seeds"], "a rejected label writes nothing")
+
     def test_rebuild_without_both_seeds_unknown_no_model_load(self):
         before = (self.out / "pid_seed.json").read_bytes()
         run(self.root)
@@ -566,6 +590,25 @@ class BackendTests(unittest.TestCase):
             self.backend.post(["api", "identity", "seed"], {"cluster_id": "3", "player_id": "A"})
         with self.assertRaises(APIError):
             self.backend.post(["api", "identity", "seed"], {"cluster_id": True, "player_id": "A"})
+
+    def test_identity_unbind_clears_the_binding_and_keeps_the_samples(self):
+        # Clear in the review rail is a real undo of "Save": the cluster keeps its
+        # evidence, the player id goes back to None so face/body may match again.
+        pipeline = self._identity_pipeline_stub()
+        self.assertEqual(self.backend.post(["api", "identity", "unbind"], {"cluster_id": 3}), {"unbound": True, "cluster_id": 3})
+        pipeline.identity.explicit_assign.assert_called_once_with(3, None, reason="unbind")
+        for payload in ({"cluster_id": "3"}, {"cluster_id": True}, {}):
+            with self.assertRaises(APIError):
+                self.backend.post(["api", "identity", "unbind"], payload)
+
+    def test_identity_unbind_is_origin_protected(self):
+        pipeline = self._identity_pipeline_stub()
+        body = json.dumps({"cluster_id": 3}).encode()
+        headers = {"Host": "127.0.0.1:8130", "Origin": "https://evil.test", "Content-Length": str(len(body))}
+        handler = self.handler("/api/identity/unbind", headers, body)
+        handler.dispatch(post=True)
+        self.assertEqual(handler.status, 403)
+        self.assertFalse(pipeline.identity.explicit_assign.called)
 
     def test_identity_http_post_is_origin_protected(self):
         pipeline = self._identity_pipeline_stub()

@@ -279,6 +279,21 @@ class Backend:
             raise APIError(f"identity models unavailable: {exc}", 503) from exc
         return {"seeded": True}
 
+    def identity_unbind(self, payload):
+        """Undo an explicit binding: the cluster keeps its samples, the player id
+        goes back to None, so the face/body path may match it again later. Clear
+        in the review rail writes through here, which is what makes Clear a real
+        undo of "Save" rather than a label-only reset."""
+        cluster_id = payload.get("cluster_id")
+        if isinstance(cluster_id, bool) or not isinstance(cluster_id, int):
+            raise APIError("cluster_id must be an integer")
+        try:
+            with self._identity_lock:
+                self.identity_pipeline().identity.explicit_assign(cluster_id, None, reason="unbind")
+        except RuntimeError as exc:
+            raise APIError(f"identity models unavailable: {exc}", 503) from exc
+        return {"unbound": True, "cluster_id": cluster_id}
+
     # -- unified viewer: one overlay payload per frozen frame ---------------
 
     _UNIFIED_CACHE_MAX = 24
@@ -972,6 +987,27 @@ class Backend:
     def seeds(self):
         return load(self.out / "pid_seed.json", {"seeds": {}})
 
+    # A person track's label is one of the legacy role values the identity
+    # pipeline reads (A / B / ignore), a guest name the operator typed, or null
+    # to clear it. Both shapes share the one seeds slot on purpose: the pipeline
+    # keeps reading exactly the three role words, so a guest name is stored and
+    # displayed but never trains an identity.
+    _SEED_ROLES = ("A", "B", "ignore")
+    _SEED_NAME_MAX = 60
+
+    @classmethod
+    def seed_label(cls, label):
+        """The storable label, or None when the value is not one of the two
+        accepted shapes (the caller distinguishes None-as-clear from invalid)."""
+        if not isinstance(label, str):
+            return None
+        text = label.strip()
+        if text in cls._SEED_ROLES:
+            return text
+        if not text or len(text) > cls._SEED_NAME_MAX:
+            return None
+        return text
+
     def get(self, parts, query):
         if parts == ['api', 'operations']:
             return self.operations().get()
@@ -1067,6 +1103,8 @@ class Backend:
             return self.identity_enroll(payload)
         if parts == ['api', 'identity', 'seed']:
             return self.identity_seed(payload)
+        if parts == ['api', 'identity', 'unbind']:
+            return self.identity_unbind(payload)
         with self.lock:
             return self._post(parts, payload)
 
@@ -1141,14 +1179,17 @@ class Backend:
             if not track or not track["samples"]:
                 raise APIError("unknown track")
             t = number(p.get("t"), min(s[0] for s in track["samples"]), max(s[0] for s in track["samples"]), "t")
-            if "label" not in p or p["label"] not in ("A", "B", "ignore", None):
-                raise APIError("explicit A/B/ignore label required")
+            if "label" not in p:
+                raise APIError("explicit A/B/ignore label, a guest name, or null is required")
+            label = self.seed_label(p.get("label"))
+            if p.get("label") is not None and label is None:
+                raise APIError("label must be A, B, ignore, a guest name up to 60 characters, or null")
             saved = self.seeds()
             key = f"{tid}:{win}"
-            if p["label"] is None:
+            if label is None:
                 saved["seeds"].pop(key, None)
             else:
-                saved["seeds"][key] = dict(saved["seeds"].get(key, {}), win=win, t=t, track_id=tid, label=p["label"])
+                saved["seeds"][key] = dict(saved["seeds"].get(key, {}), win=win, t=t, track_id=tid, label=label)
             atomic_save(self.out / "pid_seed.json", saved)
             return {"ok": True, "seeds": saved["seeds"]}
         if route == "rebuild":
