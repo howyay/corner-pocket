@@ -298,13 +298,30 @@ def scan_info_complete(video: str, corners: np.ndarray, cfg: GateConfig = GateCo
         if total % 2000 == 0:
             progress('scanning', f'{state.frame_index}/{total_frames} frames, {ic_frames} IC, {len(candidates)} candidates')
     cap.release()
+    # One act, one candidate.  The per-pair diff can surface the same act several
+    # times (the pre-break rack at t=5.6/5.67/5.87 is one moment counted three
+    # times, 0.27 s wide); `src.event_gates.dedupe` merges those groups and keeps
+    # the earliest time, so the queue no longer repeats an act.  The rule is
+    # colour-and-position aware, unlike the old "same type within 4 s" sweep that
+    # also swallowed genuinely distinct acts.
+    from src.event_gates import GateConfig, dedupe
+    groups = dedupe(candidates, GateConfig())
+    merged = []
+    for group in groups:
+        first = dict(group['event']['raw'])
+        first['dup_count'] = group['count']
+        if group['count'] > 1:
+            first['merged_colors'] = group['colors']
+        merged.append(first)
     return {
-        'candidates': candidates,
+        'candidates': merged,
         'stats': {
             'frames_processed': total,
             'frames_total': total_frames,
             'ic_frames': ic_frames,
             'pairs': pair_count,
+            'candidates_before_dedup': len(candidates),
+            'duplicates_collapsed': len(candidates) - len(merged),
             'reject_reasons': reject,
             'seconds': round(time.time() - t_start, 1),
             'fps_effective': round(total / max(0.1, time.time() - t_start), 1),

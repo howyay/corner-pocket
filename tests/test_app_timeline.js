@@ -1063,5 +1063,43 @@ test('the snapshot carries the event geometry and the playback window', () => {
   T.exitPlayback(); T.state.events = [];
 });
 
+test('the cue card and the inspector show the numbers behind a detection gate', () => {
+  // The gate block the eval tool writes carries the numbers a human verdict
+  // needs: census before -> after, the vanished ball's distance to its pocket,
+  // the re-measured move. Loading the adapter standalone proves the formatting
+  // without a browser.
+  const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
+               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
+               console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
+  const VS = box.window.VisionStage;
+  const pot = {id:1, type:'pot', t:5.6, color:'blue', dup_count:3,
+               gate:{status:'rejected', gate:'census', reasons:['census_recovered'],
+                     numbers:{census_pre:3, census_post:2, color_census_pre:2, color_census_post:1,
+                              vanish_dist_mm:60, vanish_pocket:'foot-right', motion_max:1.82}}};
+  const shot = {id:16, type:'shot', t:82.5, color:'white', dup_count:1,
+                gate:{status:'confirmed', gate:'displacement',
+                      reasons:['displacement_corroborated', 'geometry_mismatch'],
+                      numbers:{disp_mm:777, disp_color:'white', window_motion:16.85, geometry_gap_px:386.5}}};
+  same(VS.gateEvidence(pot), ['3→2', '60 mm foot-right', '×3']);
+  same(VS.gateEvidence(shot), ['777 mm white', 'motion 16.85']);
+  same(VS.gateEvidence({id:3, type:'pot'}), []);          // no gate block: no invented numbers
+  const potFacts = VS.eventGeometry(pot);
+  assert.ok(potFacts.includes('Ball census') && potFacts.includes('3 → 2'), 'the census reaches the inspector');
+  assert.ok(potFacts.includes('Vanished ball') && potFacts.includes('60 mm · foot-right'), 'so does the pocket distance');
+  assert.ok(potFacts.includes('rejected · census') && potFacts.includes('census_recovered'), 'and why the gate failed');
+  assert.ok(potFacts.includes('Duplicate detections merged'), 'and how many repeats were merged');
+  const shotFacts = VS.eventGeometry(shot);
+  assert.ok(shotFacts.includes('Re-measured move') && shotFacts.includes('777 mm · white'), 'the re-measured move reaches the inspector');
+  assert.ok(shotFacts.includes('387 px'), 'so does the claim-vs-measured gap');
+  const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
+  for (const key of ['gateCheck', 'gateConfirmed', 'gateRejected', 'gateCensus', 'gateVanish', 'gateMove'])
+    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zh), `${key} is translated in 中`);
+  assert.ok(adapterSource.includes('gateEvidence(e)'), 'the cue rail renders the gate numbers on the card');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

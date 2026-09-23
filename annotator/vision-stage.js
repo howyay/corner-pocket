@@ -54,6 +54,10 @@ const COPY = {
     evidenceNote:'The clip plays in the stage with its overlay; per-frame detections come back when you freeze.',
     projectedNote:'Projected from the dataset calibration, in frame pixels.',
     notProjectable:'Not projectable: this dataset has no usable calibration for this event, so only the scan millimetres exist.',
+    gateCheck:'Detection gate', gateConfirmed:'confirmed', gateRejected:'rejected', gateUnconfirmed:'unconfirmed',
+    gateCensus:'Ball census', gateColourCensus:'Claimed colour census', gateVanish:'Vanished ball',
+    gateMove:'Re-measured move', gateMotion:'motion', gateGap:'Claim vs measured ball',
+    gateDup:'Duplicate detections merged', gateNotes:'Gate notes',
     loopWord:'loop', playingWord:'playing', pausedWord:'paused'
   },
   zh: {
@@ -105,6 +109,10 @@ const COPY = {
     evidenceNote:'片段在舞台上带叠加层播放；逐帧检测需冻结后恢复。',
     projectedNote:'由数据集标定投影到帧像素。',
     notProjectable:'无法投影：该数据集对此事件没有可用标定，仅有扫描毫米值。',
+    gateCheck:'检测门', gateConfirmed:'已确证', gateRejected:'已否决', gateUnconfirmed:'未确证',
+    gateCensus:'球数', gateColourCensus:'声称颜色球数', gateVanish:'消失球',
+    gateMove:'复测位移', gateMotion:'运动量', gateGap:'声称位置与实测球',
+    gateDup:'合并的重复检测', gateNotes:'检测门备注',
     loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停'
   }
 };
@@ -172,6 +180,26 @@ function pocketTag(event) { const name = pocketName(event); return name ? `<span
 function pxText(point) {
   return Array.isArray(point) && point.length === 2 && point.every(Number.isFinite) ? `${Math.round(point[0])}, ${Math.round(point[1])}` : '';
 }
+// The two or three numbers that decided this cue, so a human verdict takes
+// seconds: the ball census before -> after, the vanished ball's distance to its
+// pocket, the re-measured move. Empty when the cue carries no gate block.
+function gateEvidence(event) {
+  const n = event?.gate?.numbers;
+  if (!n) return [];
+  const out = [];
+  if (event.type === 'pot') {
+    if (Number.isFinite(n.census_pre) && Number.isFinite(n.census_post)) out.push(`${n.census_pre}→${n.census_post}`);
+    if (Number.isFinite(n.vanish_dist_mm)) out.push(`${Math.round(n.vanish_dist_mm)} mm ${n.vanish_pocket || ''}`.trim());
+  } else if (Number.isFinite(n.disp_mm)) {
+    out.push(`${Math.round(n.disp_mm)} mm${n.disp_color ? ` ${n.disp_color}` : ''}`);
+  }
+  if (Number.isFinite(n.window_motion)) out.push(`${t('gateMotion')} ${n.window_motion}`);
+  if ((event.dup_count || 1) > 1) out.push(`×${event.dup_count}`);
+  return out;
+}
+function gateStatusWord(status) {
+  return t(status === 'confirmed' ? 'gateConfirmed' : status === 'rejected' ? 'gateRejected' : 'gateUnconfirmed');
+}
 function eventGeometry(item) {
   const rows = [];
   const row = (key, value) => { if (value) rows.push(`<li class="vs-mono"><span class="vs-dim">${esc(t(key))}</span> ${esc(value)}</li>`); };
@@ -188,6 +216,23 @@ function eventGeometry(item) {
   }
   row('scanWindow', Array.isArray(item.window_s) ? `${timecode(item.window_s[0])} → ${timecode(item.window_s[1])}` : '');
   if (item.projectable) row('projectedFrom', item.px_source || '');
+  const gate = item.gate;
+  if (gate) {
+    const n = gate.numbers || {};
+    row('gateCheck', `${gateStatusWord(gate.status)}${gate.gate ? ` · ${gate.gate}` : ''}`);
+    if (item.type === 'pot') {
+      row('gateCensus', Number.isFinite(n.census_pre) && Number.isFinite(n.census_post) ? `${n.census_pre} → ${n.census_post}` : '');
+      row('gateColourCensus', Number.isFinite(n.color_census_pre) && Number.isFinite(n.color_census_post) ? `${n.color_census_pre} → ${n.color_census_post}` : '');
+      row('gateVanish', Number.isFinite(n.vanish_dist_mm)
+        ? `${Math.round(n.vanish_dist_mm)} mm${n.vanish_pocket ? ` · ${n.vanish_pocket}` : ''}${Number.isFinite(n.approach_mm) ? ` · ${Math.round(n.approach_mm)} mm` : ''}` : '');
+    } else {
+      row('gateMove', Number.isFinite(n.disp_mm) ? `${Math.round(n.disp_mm)} mm${n.disp_color ? ` · ${n.disp_color}` : ''}` : '');
+      row('gateGap', Number.isFinite(n.geometry_gap_px) ? `${Math.round(n.geometry_gap_px)} px` : '');
+    }
+    row('gateMotion', Number.isFinite(n.window_motion) ? String(n.window_motion) : '');
+    row('gateDup', (item.dup_count || 1) > 1 ? String(item.dup_count) : '');
+    row('gateNotes', (gate.reasons || []).join(' · '));
+  }
   const body = rows.length ? `<ul class="vs-facts">${rows.join('')}</ul>` : '';
   return `${body}<p class="vs-note">${esc(item.projectable ? t('projectedNote') : t('notProjectable'))}</p>`;
 }
@@ -244,6 +289,7 @@ function railHTML(s) {
   const events = s.events.items.filter(e => s.eventFilter === 'all' || (s.eventFilter === 'pending' ? !e.verdict : e.type === s.eventFilter));
   const cards = events.length ? events.map((e, i) => `<article class="vs-card${e.id === s.selection.event?.id ? ' selected' : ''}" data-vs-action="select-event" data-vs-id="${esc(e.id)}">
       <div class="vs-card-row"><span class="vs-badge ${esc(e.type)}">${esc(e.type === 'pot' ? t('pots') : t('shots'))}</span><span class="vs-mono">${esc(timecode(e.t))}</span><span class="vs-mono vs-dim">#${esc(e.id)}</span>${pocketTag(e)}</div>
+      ${gateEvidence(e).length ? `<div class="vs-mono vs-dim fv-gate">${esc(gateEvidence(e).join(' · '))}</div>` : ''}
       <div class="vs-verbs">${['correct','wrong','unsure'].map(v => `<button class="${e.verdict === v ? 'active' : ''}" data-vs-action="verdict" data-vs-id="${esc(e.id)}" data-vs-value="${v}" title="${esc(t(v))}" aria-label="${esc(t(v))}">${{correct:'✓',wrong:'✗',unsure:'?'}[v]}</button>`).join('')}<span class="vs-verb-label">${esc(e.verdict ? t(e.verdict) : t('notReviewed'))}</span></div>
     </article>`).join('') : `<p class="vs-empty">${esc(t('noEvents'))}</p>`;
   const crops = s.balls.items;
@@ -603,5 +649,5 @@ function attach(options) {
   render();
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); }};
 }
-window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail};
+window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry};
 })();

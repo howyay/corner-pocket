@@ -1397,7 +1397,16 @@ function snapshot() {
       last_px: e.last_px ?? null, from_px: e.from_px ?? null, to_px: e.to_px ?? null,
       pocket_name: e.pocket_name ?? null, pocket_px: e.pocket_px ?? null, px_source: e.px_source ?? null,
       color: e.color ?? null, disp_mm: e.disp_mm ?? null, speed_mm_s: e.speed_mm_s ?? (Number.isFinite(Number(e.speed_m_s)) ? Math.round(Number(e.speed_m_s) * 1000) : null),
-      projectable: !!(e.px_source || e.last_px || e.from_px)})), index: state.eventIndex, reviewed: Object.keys(state.annotations).length},
+      // The gate block the eval tool measured and wrote onto the event: the
+      // numbers behind the automated call (census, pocket distance, re-measured
+      // move, calibration coverage). Passed through as stored, never invented.
+      gate: e.gate && typeof e.gate === 'object' ? {...e.gate, numbers: {...(e.gate.numbers || {})}} : null,
+      dup_count: Number.isFinite(Number(e.dup_count)) ? Number(e.dup_count) : null,
+      projectable: !!(e.px_source || e.last_px || e.from_px)})), index: state.eventIndex,
+    // Verdicts count only while their event is still in the queue: a verdict
+    // recorded against a cue the detection gates later dropped must not read as
+    // "reviewed" next to a queue that no longer holds it.
+    reviewed: state.events.filter(e => state.annotations[String(e.id)]?.verdict).length},
     verdictDraft: state.verdictDraft ?? null,
     balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
