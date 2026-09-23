@@ -33,6 +33,13 @@ Identity policy (small club, clusters never expire):
 - bind_face() sets a player binding only when similarity >= match_threshold +
   margin (FACE bar) and the cluster is unbound — first confident face match
   wins, never auto-rebound.
+
+Persistence contract: register()/update() change memory only — they run while
+frames are observed, which includes read requests (GET /api/identity/frame,
+GET /api/unified), and a read must not write the index file. The file is written
+by bind_face() and explicit_assign(), where a durable decision is actually made
+(each save() writes the whole in-memory index, so observation accumulated since
+the last write goes out with the next real change), and by an explicit save().
 """
 from __future__ import annotations
 
@@ -149,7 +156,15 @@ class IdentityIndex:
             fv = _vec(face_embedding, f"track {track_id} face_embedding")
             self._check_dim(fv)
             cluster.face = fv
-        self.save()
+        # No save() here, on purpose. register() runs on the read path (every
+        # observed frame goes process_frame -> update -> register, including
+        # GET /api/identity/frame and GET /api/unified), and a read must not
+        # rewrite the index file: a read-only verification can then compare
+        # bytes, and concurrent readers cannot race on the path. What a tracker
+        # update changes is rebuildable observation (clusters, banks), not a
+        # decision - the index is persisted where a durable change happens,
+        # i.e. in bind_face() / explicit_assign(), which write the whole
+        # in-memory index (so accumulated observation goes out with them).
         return {track_id: cid}
 
     def update(self, tracks: list[dict[str, Any]]) -> dict[int, int]:
@@ -186,6 +201,9 @@ class IdentityIndex:
 
         Requires similarity >= match_threshold + margin and an unbound cluster.
         Returns True on new binding, False when rejected (no rebinding ever).
+        Persists here and not in register(): an automatic match may happen while
+        serving a read, but the binding is a durable decision, so it is written
+        where it is made rather than by whichever request comes later.
         """
         cluster = self._require(cluster_id)
         if cluster.player_id is not None:

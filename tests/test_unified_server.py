@@ -1,16 +1,23 @@
 """Fixture-only backend tests; never start a server or touch repository labels."""
+import hashlib
 import io
 import json
 import math
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 
 from annotator.unified_server import APIError, Backend, atomic_save, load, make_handler
 from src.pid_seed_rebuild import explicit_seeds, run
+
+
+def file_stamp(path):
+    """Bytes + size + mtime: the three things a read must never change."""
+    path = Path(path)
+    return (hashlib.md5(path.read_bytes()).hexdigest(), path.stat().st_size, path.stat().st_mtime_ns)
 
 
 class BackendTests(unittest.TestCase):
@@ -624,6 +631,39 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(handler.status, 403)
         pipeline.explicit_seed.assert_called_once()
 
+    def test_identity_frame_read_leaves_the_index_file_untouched(self):
+        """GET /api/identity/frame runs the tracker over one frame. That is
+        observation: the index file used to be rewritten by every register()
+        (payload grew by ~10 kB per frame request in the fixture), which made
+        read-only verification impossible. The write belongs to the binding."""
+        from src.person_identity import IdentityIndex
+        path = self.out / 'identity' / 'clusters.json'
+        index = IdentityIndex(path)
+        index.register(1, [1.0] * 128, frame_index=1)   # memory only
+        index.explicit_assign(1, 'playerZ')            # the durable change writes
+        before = file_stamp(path)
+        pipeline = Mock()
+        pipeline.identity = index
+        pipeline.process_frame.side_effect = lambda frame, frame_index, timestamp: (
+            index.update([{'track_id': 2, 'body_embedding': [1.0] * 128, 'frame_index': frame_index}]),
+            {'persons': [], 'events': []})[1]
+        self.backend._identity_pipeline = pipeline
+        meta = {'dataset': 'vod30', 'frame_index': 7, 'timestamp_seconds': 0.28, 'timestamp_kind': 'nominal_cfr'}
+        with patch.object(self.backend, 'decode_frame', return_value=(object(), meta)):
+            handler = self.handler('/api/identity/frame?dataset=vod30&frame=7')
+            handler.do_GET()
+            self.assertEqual(handler.status, 200)
+            self.assertEqual(json.loads(handler.wfile.getvalue())['frame_index'], 7)
+        self.assertEqual(file_stamp(path), before, 'a read must not rewrite the identity index')
+        # GET /api/vod30/tracks, the read that was measured: it never touched the
+        # index, and it must keep not touching it.
+        self.handler('/api/vod30/tracks?win=68-94&t=70').do_GET()
+        self.assertEqual(file_stamp(path), before, 'the tracks read leaves the index alone')
+        # The mutation still persists where it happens: cluster 2 was opened by
+        # the frame read above and is still unbound.
+        self.assertTrue(index.bind_face(2, 'playerY', 0.99), 'an unbound cluster takes the face match')
+        self.assertNotEqual(file_stamp(path), before, 'a binding writes at the binding')
+
     def test_identity_routes_503_when_models_missing(self):
         from unittest.mock import Mock
         factory = Mock(side_effect=RuntimeError("yolov8n.pt missing"))
@@ -679,6 +719,30 @@ class UnifiedViewTests(unittest.TestCase):
         if route:
             return self.backend.get(["api", "unified"], {"dataset": ["vod30"], "frame": ["150"]})
         return self.backend.unified("vod30", 150)
+
+    def test_unified_read_does_not_write_the_identity_index(self):
+        """The people overlay runs the same tracker seam as /api/identity/frame.
+        Drawing a frame is a read: it must leave out/identity/clusters.json
+        byte-for-byte alone (it used to rewrite it on every frame)."""
+        from src.person_identity import IdentityIndex
+        self.patch_pipeline()
+        path = self.root / 'out' / 'identity' / 'clusters.json'
+        index = IdentityIndex(path)
+        index.register(1, [1.0] * 128, frame_index=1)   # memory only
+        index.explicit_assign(1, 'playerZ')            # the durable change writes
+        before = file_stamp(path)
+        persons = [{'track_id': 2, 'bbox': [10, 20, 110, 220], 'cluster_id': 2,
+                    'player_id': None, 'face_sim': None, 'bound_evidence': None}]
+        pipeline = Mock()
+        pipeline.identity = index
+        pipeline.process_frame.side_effect = lambda frame, frame_index, timestamp: (
+            index.update([{'track_id': 2, 'body_embedding': [1.0] * 128, 'frame_index': frame_index}]),
+            {'persons': persons, 'events': []})[1]
+        self.backend._identity_pipeline = pipeline
+        data = self.backend.get(['api', 'unified'], {'dataset': ['vod30'], 'frame': ['150']})
+        self.assertEqual(data['persons'], persons, 'the overlay read really ran the identity seam')
+        self.assertIsNone(data['persons_error'])
+        self.assertEqual(file_stamp(path), before, 'reading a frame must not rewrite the identity index')
 
     def test_payload_shape_scales_detection_back_to_full_res(self):
         data = self.payload()

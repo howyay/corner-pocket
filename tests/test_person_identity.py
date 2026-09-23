@@ -1,5 +1,6 @@
 """Tests for src/person_identity.py — synthetic embeddings only, no model
 downloads, no boxmot import needed (embeddings are injected)."""
+import json
 import sys
 import tempfile
 import unittest
@@ -155,13 +156,34 @@ class PersonIdentityTest(unittest.TestCase):
         self.assertEqual(again, {2: 1})
         self.assertEqual(idx.get(1)["samples"], 3)
 
+    def test_tracking_updates_never_write_the_index_file(self):
+        """register()/update() run on the read path: every observed frame goes
+        process_frame -> update -> register, including GET /api/identity/frame
+        and GET /api/unified. A tracker update is observation, not a decision, so
+        it must not rewrite the file - otherwise no read-only verification can
+        compare bytes and concurrent readers can race on the path. The write
+        belongs to the binding, and it writes the accumulated state with it."""
+        self.assertFalse(self.path.exists(), "a fresh index persists nothing")
+        self.index.update([{"track_id": 1, "embedding": unit(0), "frame_index": 1},
+                           {"track_id": 2, "embedding": unit(3), "frame_index": 1}])
+        self.assertFalse(self.path.exists(), "update()/register() must not create the index")
+        self.assertTrue(self.index.bind_face(1, "playerQ", 0.99), "the face binding is accepted")
+        self.assertTrue(self.path.exists(), "a binding is persisted where it is made")
+        self.assertEqual(json.loads(self.path.read_text())["1"]["player_id"], "playerQ")
+        bytes_before, mtime_before = self.path.read_bytes(), self.path.stat().st_mtime_ns
+        self.index.update([{"track_id": 3, "embedding": unit(5), "frame_index": 2}])
+        self.assertEqual(self.path.read_bytes(), bytes_before, "later tracking leaves the bytes alone")
+        self.assertEqual(self.path.stat().st_mtime_ns, mtime_before, "and never touches the mtime")
+        # The mutation that follows still persists everything accumulated.
+        self.index.explicit_assign(3, "playerR", reason="unbind")
+        self.assertNotEqual(self.path.read_bytes(), bytes_before, "an explicit change still writes")
+
     def test_bank_bound_and_persist_cap(self):
         for i in range(40):
             self.index.register(1, near(0, noise=0.01 * (i % 5) - 0.02), frame_index=i)
         c = self.index._clusters[1]
         self.assertLessEqual(len(c.bank), 32)
         self.index.save()
-        import json
         rec = json.loads(self.path.read_text())["1"]
         self.assertEqual(len(rec["body_bank"]), 8)
 
