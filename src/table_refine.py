@@ -84,7 +84,20 @@ def prior_for(dataset: str, t: float | None = None, root=None):
     ``t`` selects the recorded anchor frame (vod30 anchors exist at t=70 only);
     ``root`` overrides where the reference is read from, so a caller pointed at its
     own tree (a test fixture, another checkout) never picks up this one's artifacts.
+
+    When a measured segment artifact exists (``out/calib_<dataset>_segments.json``,
+    see ``src/calib_segments``) it decides: calibration is per segment, and the
+    segment that covers ``t`` owns the reference for it.  Without the artifact the
+    saved prior below is used unchanged, so nothing that runs today changes.
     """
+    from src import calib_segments
+
+    segments = calib_segments.load(dataset, root=root)
+    if segments is not None:
+        seg = segments.resolve(t)
+        if seg is not None:
+            return _order(seg.quad)
+
     spec = _DATASET_PRIOR.get(str(dataset))
     if not spec:
         return None
@@ -111,8 +124,31 @@ def prior_for(dataset: str, t: float | None = None, root=None):
         return None
     if pts.shape != (4, 2):
         return None
+    return _order(pts)
+
+
+def _order(pts):
     from src.table_detect import _order_corners
-    return _order_corners(pts)
+    return _order_corners(np.asarray(pts, np.float32))
+
+
+def prior_provenance(dataset: str, t: float | None = None, root=None) -> dict:
+    """Where ``prior_for`` got the reference: the segment, or the saved prior."""
+    from src import calib_segments
+
+    segments = calib_segments.load(dataset, root=root)
+    if segments is not None:
+        seg = segments.resolve(t)
+        if seg is not None:
+            return {"dataset": dataset, "kind": "segment", "id": seg.id,
+                    "source": seg.source, "t_start": seg.t_start, "t_end": seg.t_end,
+                    "clamped": seg.clamped, "clamp_reason": seg.clamp_reason,
+                    "detail": seg.source_detail, "artifact": str(segments.path) if segments.path else None}
+    spec = _DATASET_PRIOR.get(str(dataset))
+    if not spec:
+        return {"dataset": dataset, "kind": "none", "source": None}
+    return {"dataset": dataset, "kind": "saved_prior", "id": None,
+            "source": spec["file"], "detail": spec["note"]}
 
 
 def load_priors() -> dict:
@@ -120,8 +156,11 @@ def load_priors() -> dict:
     out = {}
     for dataset, spec in _DATASET_PRIOR.items():
         q = prior_for(dataset)
+        prov = prior_provenance(dataset)
         out[dataset] = {"quad": None if q is None else np.asarray(q, float).round(1).tolist(),
-                        "source": spec["file"], "note": spec["note"]}
+                        "source": prov.get("source") if prov["kind"] == "segment" else spec["file"],
+                        "kind": prov["kind"],
+                        "note": prov.get("detail") if prov["kind"] == "segment" else spec["note"]}
     return out
 
 

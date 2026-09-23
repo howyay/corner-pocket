@@ -460,6 +460,80 @@ class Backend:
 
     _EVENT_QUADS = (('corners.json', 'scan cloth quad'),)
 
+    def _segments(self, dataset):
+        """The measured per-segment calibration for a dataset, or None.
+
+        ``docs/state.md``: calibration is per segment, and a single homography
+        must not be reused across a camera move.  ``out/calib_<dataset>_segments.json``
+        (``src/calib_segment_fit.py``) says which reference owns which time range;
+        the segment's quad is authoritative for an event inside its range.  A tree
+        without the artifact keeps the dataset-level projection unchanged, so this
+        is additive for every existing fixture.
+        """
+        cache = getattr(self, '_segments_cache', None)
+        if cache is None:
+            cache = self._segments_cache = {}
+        try:
+            from src import calib_segments
+        except Exception:
+            return None
+        path = self.out / f'calib_{dataset}_segments.json'
+        stamp = path.stat().st_mtime_ns if path.exists() else None
+        with self.lock:
+            cached = cache.get(dataset)
+            if cached is not None and cached[0] == stamp:
+                return cached[1]
+            loaded = calib_segments.load(dataset, path=path, use_cache=False) if stamp else None
+            cache[dataset] = (stamp, loaded)
+        return loaded
+
+    def _event_segment_projection(self, dataset, t):
+        """(inverse homography, label, segment id) for the segment covering ``t``.
+
+        None when the dataset has no segment artifact, when the segment's quad is
+        unusable, or when the artifact reports a single segment - see
+        ``_segment_overrides`` for why a single-segment artifact must not move an
+        event's pixels.
+        """
+        segments = self._segments(dataset)
+        if segments is None or not self._segment_overrides(segments):
+            return None
+        forward, inverse, seg = segments.homographies(t)
+        if inverse is None or seg is None:
+            return None
+        label = 'segment %s · %s' % (seg.id, str(seg.source).replace('_', ' '))
+        return inverse, label, seg.id
+
+    @staticmethod
+    def _segment_overrides(segments):
+        """Does a measured segment replace the dataset-level event projection?
+
+        The dataset-level projection is fitted to this dataset's own measurements
+        (``sam3_results.json`` holds the scan's image pixels next to the table
+        millimetres it computed for them, so the fit reproduces the scan's own
+        mapping exactly).  It therefore already describes the segment it was
+        fitted from, and a segment reference only adds information when the
+        artifact reports that the dataset contains **more than one** framing.
+
+        On a single-segment artifact, re-projecting through the segment quad
+        instead swaps that self-consistent mapping for the reference calibration -
+        a different question, and a visible one: on vod30 the scan's homography
+        places the cloth head-left corner at table mm (267, 640) while the hand
+        anchors place it at (0, 0), so the two disagree by up to 93 px at the head
+        rail.  The calibration evidence says nothing about which of those the
+        reviewer wants to see, so this leaves the drawn pixels where they are and
+        only records the segment id.
+        """
+        return segments.verdict == "split_supported"
+
+    def _segment_id(self, dataset, t):
+        """The segment id that owns ``t``, or None - traceability without redrawing."""
+        segments = self._segments(dataset)
+        if segments is None:
+            return None
+        seg = segments.resolve(t)
+        return None if seg is None else seg.id
+
     def _event_projection(self, dataset):
         """(inverse homography: canonical millimetres -> frame pixels, label)."""
         cache = getattr(self, '_projection_cache', None)
@@ -557,41 +631,59 @@ class Backend:
         when the event really projects: a pot without a projected last position,
         or a shot with only one end, stays millimetres-only and carries no
         ``px_source``, which is how the client knows to say "not projectable".
+
+        Each event is projected with the reference its *own time* resolves to: when
+        a measured segment artifact exists, that is the segment's quad, and
+        ``px_segment`` names it.  A dataset without one projects exactly as before.
         """
         projection = self._event_projection(dataset)
         inverse, source = projection if projection else (None, None)
-        items, projected = [], 0
+        items, projected, segment_only_source = [], 0, None
         for event in events:
             item = dict(event)
             speed = event.get('speed_m_s', event.get('avg_speed_m_s'))
             if isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(speed):
                 item.setdefault('speed_mm_s', round(float(speed) * 1000))
             kind = str(event.get('type') or '')
+            ev_inverse, ev_source, segment_id = inverse, source, None
+            segment_projection = self._event_segment_projection(dataset, event.get('t'))
+            if segment_projection is not None:
+                ev_inverse, ev_source, segment_id = segment_projection
+                if inverse is None:
+                    segment_only_source = ev_source
+            else:
+                # Traceable even when the pixels do not move: the payload says which
+                # measured segment owns this event's time.
+                segment_id = self._segment_id(dataset, event.get('t'))
             hits = False
-            if inverse is not None and kind == 'shot':
-                start = self._project(inverse, event.get('ball_from') or event.get('from_mm'))
-                end = self._project(inverse, event.get('ball_to') or event.get('to_mm'))
+            if ev_inverse is not None and kind == 'shot':
+                start = self._project(ev_inverse, event.get('ball_from') or event.get('from_mm'))
+                end = self._project(ev_inverse, event.get('ball_to') or event.get('to_mm'))
                 if start:
                     item['from_px'] = start
                 if end:
                     item['to_px'] = end
                 hits = bool(start and end)
-            elif inverse is not None and kind == 'pot':
-                last = self._project(inverse, event.get('last_mm'))
+            elif ev_inverse is not None and kind == 'pot':
+                last = self._project(ev_inverse, event.get('last_mm'))
                 if last:
                     item['last_px'] = last
                 name = self._pocket_name(event)
                 if name:
                     item['pocket_name'] = name
-                    pocket = self._project(inverse, _pockets_mm()[name])
+                    pocket = self._project(ev_inverse, _pockets_mm()[name])
                     if pocket:
                         item['pocket_px'] = pocket
                 hits = bool(last)
             if hits:
-                item['px_source'] = source
+                item['px_source'] = ev_source
+                if segment_id is not None:
+                    item['px_segment'] = segment_id
                 projected += 1
             items.append(item)
-        report = None if inverse is None else {'source': source, 'projected': projected, 'total': len(items)}
+        effective = source if inverse is not None else segment_only_source
+        report = None if effective is None else {'source': effective, 'projected': projected,
+                                                 'total': len(items)}
         return items, report
 
     def dataset(self, dataset):

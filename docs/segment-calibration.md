@@ -102,6 +102,22 @@ the *derived* reference that the per-side gate rejects — which is the argument
 against adopting it. `t=483.36` (the late shot the queue keeps) is
 `confirmed / tier: geometry` with `calibration_frac = 0.812` under both references.
 
+## Where it is wired
+
+* `src/calib_segments.py` — the time → reference lookup (see below).
+* `src/table_refine.prior_for` / `prior_provenance` — the table-detection prior is
+  per segment; a tree without the artifact answers exactly as before.
+* `annotator/unified_server.py` — every projected event carries the additive
+  `px_segment` naming the segment that owns its time. The **pixels move only when
+  the artifact reports a split** (`segmentation_verdict: split_supported`), because
+  on a single-segment artifact the dataset-level projection already describes the
+  one framing that exists; re-projecting through the cloth quad instead is a
+  different question, and a visible one — on vod30 the scan's own homography puts
+  the cloth head-left corner at table mm (267, 640) while the hand anchors put it
+  at (0, 0), so the two mappings disagree by up to **93 px** at the head rail,
+  which is a property of the scan's homography and not of any camera move.
+  `tests/test_calib_segments.py::EventProjectionWiringTest` pins both branches.
+
 ## What this does not fix
 
 * `calibration_frac` remains a confounded proxy. The gate's
@@ -114,7 +130,13 @@ against adopting it. `t=483.36` (the late shot the queue keeps) is
   round. The seam is one line there: build the probe's `forward`/`inverse`/`quad`
   from `src.calib_segments.Segments.homographies(t)` for the event's own `t`, the
   way `src/segment_calib_report.py`'s `PerTimeProbe` does. Until then
-  `out/segcalib/segment_calib_report.json` carries the per-candidate numbers.
+  `out/segcalib/segment_calib_report.json` carries the per-candidate numbers, and
+  the served `px_segment` field says which segment each event belongs to.
+* The scan's own homography and the hand-anchor geometry disagree by up to 93 px /
+  ~440 mm at the head-left corner. That is a **pre-existing** geometry problem,
+  larger than the segmentation question and independent of it: it is why the
+  event pixel projection and the gate's millimetre measurements do not share one
+  reference. It needs its own round.
 * The hand anchors sit ~3 px inside the left rail and ~4 px outside the foot rail.
   That bias is present at `t=0` and is not a segmentation effect, but at ~4.7 mm/px
   on the far rail it is worth a fresh anchor pass (HOM-1).
