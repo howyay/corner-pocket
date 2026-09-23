@@ -68,14 +68,44 @@ wrong rail happens to cross the cloth edge) keep it there.
 
 ## 5. What the fix does
 
-The app path's search centre becomes the dataset's hand anchors (its own clearance geometry,
-6-13 px off the visible cloth) with `src.table_refine.prior_for` as the fallback for datasets that
-have none. Same refinement, same evidence gates, same honest refusal — only the seed changes.
-Measured with the seed forced to the anchors (`out/app-path-probe-anchors.json`): app path
-**6.43 px median** from the anchors, **11/15 frames drawn**, 4 honest refusals (the four
-`low_cloth_area` frames + t=20.3).
+`src/frame_inference.app_prior_for` is the app path's only seed: the dataset's saved hand
+anchors (its earliest saved time, first four of six) or **None** — never
+`out/corners_30min_v2.json`, which is a measured-bad seed (67-90 px off the visible cloth on its
+left rail). The refinement, its evidence gates and its honest refusal are unchanged; only the
+search centre moves. `annotator/unified_server.Backend._prior_for`,
+`src.frame_inference.detect_table_for_frame`, `src.frame_inference.infer_frame` and
+`src/check_app_quad` all resolve it through that one function, so the browser, the cold-path
+inference job and the offline app-visible harness cannot disagree about the seed. A dataset with
+no anchors gets no refinement prior and keeps its documented naive fallback
+(`reason='no_prior'`), rather than a reference of unknown quality.
 
-Caveat, stated plainly: seeding from the reference weakens the app's check as an *independent*
-test of the table's position — it now bounds the refinement's drift from the hand geometry instead
-of asking "is this quad the table". The independent evidence for the drawn quad is the frame's own
-cloth evidence (the refinement's per-side gates) plus the scanline measurement above.
+Verified on the same 15 frames, `--refine-rev HEAD --prior auto` (the real server path, seed now
+resolved to the anchors), `out/app-path-probe-fixed.json`:
+
+| app path (640x360) | before | after |
+|---|---|---|
+| vs the hand anchors, median | 43.22 px | **6.43 px** (p90 8.07, max 27.82) |
+| vs `corners_30min_v2`, median | 5.30 px | 42.95 px (the old self-score, now the honest gap) |
+| app verdict vs anchors | 0 ok / 10 off / 5 no detection | **11 ok** / 0 off / **4 no detection** |
+| frames drawn | 0/15 | **11/15** |
+
+The four refusals are the four `low_cloth_area` frames (t=849.5/970.9/1618.2/1658.6) plus t=20.3,
+a player standing over the bed - they are refusals, not failures, and they stay refusals.
+
+Also fixed here: `annotator/unified_server.start_inference` called
+`infer_frame(frame, detectors, root, progress)` with no `dataset=`, so the saved frozen-frame
+inference polygon that `app.js` paints was the **naive** quad (131 px from the anchors at
+t=427.8). It now names its dataset, and `infer_frame` resolves the prior under its own `root`.
+
+**Caveat, stated plainly**: seeding from the reference weakens the app's check as an *independent*
+test of the table's position - it now bounds the refinement's drift from the operator's hand
+geometry ("the quad did not wander more than 40 px from the saved corners") instead of asking "is
+this quad the table". The independent evidence for a drawn quad is the frame's own cloth evidence
+(the refinement's per-side gates) plus the scanline measurement in §2. The Vision facts line now
+prints the measured drift (`quad drift vs saved corners 6.4 px (tol 40 px)`) rather than only the
+pass/fail, so the number is visible to the operator.
+
+Still open, not in this worker's files: `src/eval_table_detect.py --detector app` seeds
+`detect_table_refined` with `prior_for(dataset)` and scores it against the same file, so the
+full-resolution "4.58 px / 97.2 %" headline remains a self-score - it is now the only place that
+still does this.

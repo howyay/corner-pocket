@@ -30,8 +30,9 @@ import numpy as np
 
 from src.eval_table_detect import (ANCHORS, CORNERS_V2, HIGHLIGHT, TOLERANCE_PX, VOD30,
                                    load_references, quad_distance, quad_sanity)
+from src.frame_inference import app_prior_for
 from src.table_detect import detect_table
-from src.table_refine import detect_table_refined, prior_for
+from src.table_refine import detect_table_refined
 
 OUT = Path(__file__).resolve().parent.parent / 'out' / 'table-detect-eval'
 
@@ -60,17 +61,20 @@ def run(dataset, video, frames, detector):
         if not ok:
             continue
         h, w = frame.shape[:2]
+        # The search centre is resolved exactly as the server resolves it
+        # (src.frame_inference.app_prior_for): a harness that picks its own prior
+        # reports a different verdict than the browser.
+        prior = app_prior_for(dataset)
         if dataset == 'vod30':
             # the app detects on the 2x-downscaled copy then scales back
             small = cv2.resize(frame, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
-            prior = prior_for(dataset)
             prior_small = None if prior is None else np.asarray(prior, np.float32) / 2.0
             corners = detect_table_refined(small, prior=prior_small)['corners']
             naive = detect_table(small)['corners']
             corners = None if corners is None else np.asarray(corners, np.float32) * 2.0
             naive = None if naive is None else np.asarray(naive, np.float32) * 2.0
         else:
-            corners = detect_table_refined(frame, prior=prior_for(dataset))['corners']
+            corners = detect_table_refined(frame, prior=prior)['corners']
             naive = detect_table(frame)['corners']
         row = {'t': t}
         for label, quad in (('naive', naive), ('refined', corners)):

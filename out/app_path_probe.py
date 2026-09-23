@@ -209,8 +209,12 @@ def main():
         from src.frame_inference import detect_table_for_frame
         refined_small = detect_table_for_frame(small, prior=np.asarray(prior, np.float32) / scale)
         branch = 'refined' if refined_small.get('corners') is not None else 'naive_fallback'
-        replay = np.asarray(refined_small['corners'], np.float32) * scale \
-            if refined_small.get('corners') is not None else None
+        # the quad the app is handed on this branch: the server falls back to the
+        # naive detector when the refinement refuses, then scales both back by 2
+        from src.table_detect import detect_table
+        handed = refined_small if refined_small.get('corners') is not None else detect_table(small)
+        replay = None if handed.get('corners') is None else \
+            np.asarray(handed['corners'], np.float32) * scale
 
         # 2. the full-resolution path the offline harness scores
         refined_full = detect_table_for_frame(frame, prior=np.asarray(prior, np.float32))

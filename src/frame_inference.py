@@ -1,4 +1,5 @@
 """Lazy, local-weights-only selected-frame inference. No temporal event claims."""
+import json
 from pathlib import Path
 
 
@@ -14,16 +15,57 @@ _person_model = None
 _person_weights = None
 
 
+def _saved_anchor_quad(path, n=4):
+    """First ``n`` saved hand anchors as an ordered quad, or None.
+
+    ``out/pid_anchors_<dataset>.json`` holds the operator's hand-placed pocket
+    points.  The earliest saved time is used: the camera is static per segment
+    and that is the time the viewer opens on.
+    """
+    try:
+        import numpy as np
+        anchors = json.loads(Path(path).read_text())['anchors']
+        key = min(anchors, key=float)
+        pts = np.asarray(anchors[key][:n], np.float32)
+    except Exception:
+        return None
+    if pts.shape != (n, 2) or not np.isfinite(pts).all():
+        return None
+    from src.table_detect import _order_corners
+    return _order_corners(pts)
+
+
+def app_prior_for(dataset, root=None):
+    """Saved table geometry the app path searches around for ``dataset``, or None.
+
+    The viewer clears the automatic cloth quad against the dataset's hand-placed
+    pocket anchors (``annotator/app.js`` ``validateCloth``) and projects the pocket
+    markers from those same points, so the app path searches around that geometry.
+    On vod30 those anchors track the visible cloth's left edge within 6-13 px, while
+    ``out/corners_30min_v2.json`` - the reference this used to search around - sits
+    67-90 px off it (docs/app-path-refusal.md), which is why the refinement never
+    reached the boundary and the viewer refused every frame.  That file is a
+    measured-bad seed and is never used here again.
+
+    No hand anchors means no refinement prior: the caller keeps its own documented
+    fallback (``detect_table_for_frame`` returns the naive detector's result with
+    ``reason='no_prior'``) instead of guessing from a reference of unknown quality.
+    """
+    base = Path(root) if root is not None else Path(__file__).resolve().parent.parent
+    return _saved_anchor_quad(base / 'out' / f'pid_anchors_{dataset}.json')
+
+
 def detect_table_for_frame(frame, dataset=None, prior=None, root=None):
     """App-path table detection: static-camera prior plus local refinement.
 
     Returns the improved detector's dict (``corners``/``mask``/``debug`` plus
-    ``confidence``/``reason``/``source``).  When the dataset has no saved prior the
-    call falls back to the naive detector, so a caller that cannot name its
-    dataset still gets the old behaviour rather than an error.
+    ``confidence``/``reason``/``source``).  The search centre is ``prior`` when
+    given, else :func:`app_prior_for` for the named dataset.  When neither is
+    available the call falls back to the naive detector, so a caller that cannot
+    name its dataset still gets the old behaviour rather than an error.
     """
-    from src.table_refine import detect_table_refined, prior_for
-    centre = prior if prior is not None else (prior_for(dataset, root=root) if dataset else None)
+    from src.table_refine import detect_table_refined
+    centre = prior if prior is not None else (app_prior_for(dataset, root=root) if dataset else None)
     return detect_table_refined(frame, prior=centre)
 
 
@@ -31,8 +73,10 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=Non
     """Return raw-pixel detections using the existing table/SAM3 pipeline helpers.
 
     ``dataset`` selects the saved static-camera prior for the cloth-boundary
-    detector (``src/table_refine``); without it the call keeps the historical
-    naive result, so existing callers are unaffected.
+    detector (:func:`app_prior_for`: the dataset's hand anchors), resolved under
+    ``root`` so a caller pointed at another tree never reads this one's artifacts;
+    without it the call keeps the historical naive result, so existing callers are
+    unaffected.
     """
     import cv2
     from src.table_detect import detect_table
@@ -42,7 +86,7 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=Non
     table = None
     if 'table' in detectors or 'balls' in detectors:
         progress('detecting table')
-        table = detect_table_for_frame(frame, dataset=dataset)
+        table = detect_table_for_frame(frame, dataset=dataset, root=root)
         if 'table' in detectors and table['corners'] is not None:
             polygon = table['corners'].tolist()
     if 'person' in detectors:

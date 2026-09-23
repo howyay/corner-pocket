@@ -270,11 +270,16 @@ class Backend:
                 'events': self._unified_events(dataset, meta['timestamp_seconds'])}
 
     def _prior_for(self, dataset):
-        """Saved static-camera cloth quad for a dataset, or None.
+        """Table geometry the app path searches around for a dataset, or None.
 
-        Cached per dataset: the reference is a file on disk and the viewer asks for
-        it on every unified frame.  A missing or unreadable reference returns None
-        rather than raising - the detector then falls back to the naive quad.
+        Resolved by ``src.frame_inference.app_prior_for``: the dataset's hand-placed
+        anchors when it has them (the geometry this viewer clears the quad against,
+        so the detection and the check describe the same boundary), else None - the
+        refinement-derived reference ``out/corners_30min_v2.json`` is a measured-bad
+        seed and is never searched around again (docs/app-path-refusal.md).  Cached
+        per dataset: the reference is a file on disk and the viewer asks for it on
+        every unified frame.  A missing or unreadable reference returns None rather
+        than raising - the detector then falls back to the naive quad.
         """
         cache = getattr(self, '_prior_cache', None)
         if cache is None:
@@ -282,8 +287,8 @@ class Backend:
         if dataset in cache:
             return cache[dataset]
         try:
-            from src.table_refine import prior_for
-            value = prior_for(dataset, root=self.root)
+            from src.frame_inference import app_prior_for
+            value = app_prior_for(dataset, root=self.root)
         except Exception:
             value = None
         cache[dataset] = value
