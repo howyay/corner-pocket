@@ -45,21 +45,28 @@ if str(ROOT) not in sys.path:
 from src.event_gates import (CANON_H, CANON_W, GateConfig, PotEvidence,  # noqa: E402
                              ShotEvidence, dedupe, judge, nearest_pocket,
                              normalize)
+from src.ball_census import (CENSUS_VERSION, build_census, classify_ball_color,  # noqa: E402
+                             displacement_measure, observations_from_classical,
+                             observations_from_sam3, window_summary)
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
+from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540
 MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 # The probe cache is keyed by (kind, t, colour) and carries this version: a
 # measurement change must invalidate old payloads, or a stale cache would
 # silently weaken the gates (missing fields default to "not measured").
-CACHE_VERSION = 3
+CACHE_VERSION = 5
 CENSUS_STEP_S = 0.25          # window sampling
 POT_PRE_S, POT_POST_S = 1.5, 2.5
 SHOT_INTERVALS_S = (0.3, 0.45, 0.6)   # sharp frames either side of the shot
+SHOT_CENSUS_S = 2.0           # fused-census reach around a shot anchor
 MATCH_PX = 40.0               # same ball between samples, 960x540 pixels
 OBS_PX = 60.0                 # a ball re-sighted at the same spot, frame pixels
 GEOMETRY_MARGIN_MM = 20.0     # a measured ball must be on the cloth
+# SAM3 frames are stored in 1280x720 pixels; the census works in 960x540.
+SAM3_SCALE = SMALL_W / 1280.0
 HUMAN_VERDICT_FILES = ("out/scan30/annotations.json",
                        "out/ui-browser-fixture/out/scan30/annotations.json")
 
@@ -103,18 +110,47 @@ def reference_calibration(anchors_path, quad_path):
         return None, None, "none: calibration unusable"
 
 
+class SAM3Store:
+    """Ball positions SAM3 measured on named frames (app cache + this round's).
+
+    Both files are read; the app's ``sam3_results.json`` is never written.
+    Positions are full-frame pixels and are scaled to the census frame when they
+    are turned into observations.
+    """
+
+    def __init__(self, paths=(APP_CACHE, OWN_CACHE)):
+        self.frames = {}
+        self.paths = []
+        for path in paths:
+            loaded = load_cache(path)
+            if loaded:
+                self.paths.append(str(path))
+            self.frames.update(loaded)
+
+    def within(self, lo: float, hi: float, tol: float = 0.03) -> list:
+        """[(t, balls)] for the cached frames inside ``[lo, hi]``, in time order."""
+        return sorted((t, balls) for t, balls in self.frames.items()
+                      if lo - tol <= t <= hi + tol)
+
+    def __len__(self):
+        return len(self.frames)
+
+
 class Probe:
     """Bounded frame probe: decodes only around the candidates, never the VOD."""
 
-    def __init__(self, video, forward, inverse, quad):
+    def __init__(self, video, forward, inverse, quad, sam3=None):
         self.video = Path(video)
         self.forward, self.inverse = forward, inverse
         self.quad = quad
+        self.sam3 = sam3 if sam3 is not None else SAM3Store()
         self.cap = None
         self.fps = 30.0
         self.cloth = None
         self.frames = 0
         self.seconds = 0.0
+        self.sam3_frames_decoded = 0
+        self._frame_cache = {}
 
     def open(self):
         self.cap = cv2.VideoCapture(str(self.video))
@@ -153,6 +189,56 @@ class Probe:
             out.append((float(t), cands, cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)))
         self.seconds += time.time() - started
         return out
+
+    # -- fused census ----------------------------------------------------
+    def color_at(self, t, cx, cy, r):
+        """Colour of a stored SAM3 ball, sampled from the frame at ``t``.
+
+        SAM3 segments balls but has no colour class; the frame is decoded once
+        per timestamp and cached, because the app's own cache predates colour
+        sampling.
+        """
+        key = round(float(t), 3)
+        frame = self._frame_cache.get(key)
+        if frame is None:
+            if len(self._frame_cache) > 400:
+                self._frame_cache.clear()
+            started = time.time()
+            frame = self._read_seek(t)
+            self.seconds += time.time() - started
+            self._frame_cache[key] = frame
+            self.sam3_frames_decoded += 1
+        if frame is None:
+            return "unknown"
+        return classify_ball_color(frame, cx, cy, r)
+
+    def census(self, samples, times):
+        """Fused census over the sampled frames and the SAM3 frames in range.
+
+        ``samples`` comes from :meth:`sample`; ``times`` are the times the
+        caller asked for, so only SAM3 frames inside this window join it.  The
+        report is ``src.ball_census.build_census``: one row per frame with the
+        fused count, the two source counts and the per-ball identity.
+        """
+        if not samples or not times:
+            return {"version": CENSUS_VERSION, "frames": [], "tracks": [], "observations": 0}
+        lo, hi = min(times), max(times)
+        observations = []
+        for t, cands, _ in samples:
+            observations += observations_from_classical(t, cands)
+        sam3_frames = self.sam3.within(lo, hi)
+        for t, balls in sam3_frames:
+            observations += observations_from_sam3(
+                t, balls, scale=SAM3_SCALE,
+                color_fn=lambda cx, cy, r, at=t: self.color_at(at, cx, cy, r))
+        # A frame with no detections at all is still a frame: it is a measurement
+        # of an empty cloth, and dropping it would raise every median.
+        report = build_census(observations, table_mm_fn=self.mm,
+                              frame_times=list(times) + [t for t, _ in sam3_frames],
+                              sam3_times=[t for t, _ in sam3_frames])
+        report["sam3_frames"] = [round(t, 2) for t, _ in sam3_frames]
+        report["classical_frames"] = [round(t, 2) for t, _, _ in samples]
+        return report
 
     # -- geometry helpers ------------------------------------------------
     def mm(self, cx, cy):
@@ -292,6 +378,26 @@ def probe_shot(claim, probe):
                                                         claimed_px[1] - chosen[2][1]), 1)
     evidence.from_in_cloth_px = probe.in_cloth(probe.px(claim["from_mm"]))
     evidence.to_in_cloth_px = probe.in_cloth(probe.px(claim["to_mm"]))
+    # The fused census measures the same event by other means: SAM3 sees the
+    # balls the colour blobs lose to motion blur, and the temporal association
+    # keeps them apart, so a fast ball is measurable again.
+    census = probe.census(samples, [anchor - SHOT_CENSUS_S, anchor + SHOT_CENSUS_S])
+    move = displacement_measure(census, anchor, claim_color=claimed_color,
+                                min_disp_mm=GateConfig().shot_min_disp_mm)
+    evidence.census_version = CENSUS_VERSION
+    evidence.census_frames = len(census["frames"])
+    evidence.census_sam3_frames = len(census.get("sam3_frames", []))
+    evidence.census_source = "sam3" if evidence.census_sam3_frames else "classical"
+    evidence.census_disp_mm = move["disp_mm"]
+    evidence.census_disp_color = move["color"]
+    evidence.census_start_hits = move["start_hits"]
+    evidence.census_end_hits = move["end_hits"]
+    evidence.census_tracks_moved = move["tracks_moved"]
+    claimed_px = probe.px(claim["from_mm"])
+    if move["start_px"] is not None and claimed_px is not None:
+        start_px = [move["start_px"][0] * 1280.0 / SMALL_W, move["start_px"][1] * 720.0 / SMALL_H]
+        evidence.census_geometry_gap_px = round(math.hypot(claimed_px[0] - start_px[0],
+                                                           claimed_px[1] - start_px[1]), 1)
     window = probe.sample([t for t in (anchor + off for off in (-1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0))
                            if t >= 0])
     motions = [_motion(window[i][2], window[i + 1][2], probe.cloth) for i in range(len(window) - 1)]
@@ -300,29 +406,91 @@ def probe_shot(claim, probe):
 
 
 def probe_pot(claim, probe):
-    """Census before/after plus the measured vanished ball for one pot claim."""
+    """Census before/after plus the measured vanished ball for one pot claim.
+
+    The census is the fused one (classical + SAM3 + temporal association), so a
+    single ball leaving the cloth is measurable; the vanished ball is an
+    *identity* with a sighting history rather than one frame's blob, and its
+    distance to the pocket is measured from the identity's own last position.
+    """
     anchor = _anchor(claim)
     times = sorted({round(anchor + offset, 3) for offset in
                     np.arange(-POT_PRE_S, POT_POST_S + 1e-6, CENSUS_STEP_S) if anchor + offset >= 0})
     samples = probe.sample(times)
     if not samples:
         return PotEvidence(available=False, note="no probe frames")
-    pre = [s for s in samples if s[0] <= anchor - CENSUS_STEP_S + 1e-6]
-    post = [s for s in samples if s[0] >= anchor + 3 * CENSUS_STEP_S - 1e-6]
-    if not pre or not post:
+    pre_times = [t for t in times if t <= anchor - CENSUS_STEP_S + 1e-6]
+    post_times = [t for t in times if t >= anchor + 3 * CENSUS_STEP_S - 1e-6]
+    if not pre_times or not post_times:
         return PotEvidence(available=False, note="window too short for a census")
-    evidence = PotEvidence(available=True,
-                           census_pre=float(np.median([len(s[1]) for s in pre])),
-                           census_post=float(np.median([len(s[1]) for s in post])),
-                           census_post_max=float(max(len(s[1]) for s in post)))
+    census = probe.census(samples, times)
+    summary = window_summary(census, pre_times, post_times, claim_color=claim["color"],
+                             mm_fn=probe.mm)
+    evidence = PotEvidence(available=True, census_version=CENSUS_VERSION,
+                           census_source=summary["source"],
+                           census_comparable=summary["census_comparable"],
+                           census_counts_pre=summary["counts_pre"],
+                           census_counts_post=summary["counts_post"],
+                           census_spread_pre=summary["spread_pre"],
+                           census_spread_post=summary["spread_post"],
+                           sam3_frames_pre=summary["sam3_frames_pre"],
+                           sam3_frames_post=summary["sam3_frames_post"],
+                           stable_pre=summary["stable_pre"], stable_post=summary["stable_post"],
+                           identity_drop=summary["identity_drop"],
+                           claim_color=summary.get("claim_color"),
+                           claim_color_present=summary.get("claim_color_present"),
+                           claim_color_present_measured=summary.get("claim_color_present_measured"),
+                           claim_color_present_hits=summary.get("claim_color_present_hits"),
+                           claim_color_present_sources=summary.get("claim_color_present_sources"),
+                           claim_color_unique=summary.get("claim_color_unique"))
+    if summary["census_pre"] is not None and summary["census_post"] is not None:
+        evidence.census_pre = summary["census_pre"]
+        evidence.census_post = summary["census_post"]
+        evidence.census_post_max = summary["census_post_max"]
+    else:
+        # No usable fused frames: keep the pre-fusion formula and say so.
+        pre = [s for s in samples if s[0] <= anchor - CENSUS_STEP_S + 1e-6]
+        post = [s for s in samples if s[0] >= anchor + 3 * CENSUS_STEP_S - 1e-6]
+        evidence.census_pre = float(np.median([len(s[1]) for s in pre])) if pre else None
+        evidence.census_post = float(np.median([len(s[1]) for s in post])) if post else None
+        evidence.census_post_max = float(max(len(s[1]) for s in post)) if post else None
+        evidence.census_counts_pre = [len(s[1]) for s in pre]
+        evidence.census_counts_post = [len(s[1]) for s in post]
+        evidence.census_source = "classical"
     if claim["color"]:
         evidence.color_census_pre = float(np.median([sum(1 for b in s[1] if b.get("color") == claim["color"])
-                                                     for s in pre]))
+                                                     for s in samples if s[0] in pre_times] or [0]))
         evidence.color_census_post = float(np.median([sum(1 for b in s[1] if b.get("color") == claim["color"])
-                                                      for s in post]))
+                                                      for s in samples if s[0] in post_times] or [0]))
     motions = [_motion(samples[i][2], samples[i + 1][2], probe.cloth) for i in range(len(samples) - 1)]
     evidence.motion_max = round(max(motions), 2) if motions else None
     evidence.calibration_frac = probe.cloth_fraction(anchor)
+    # The clicked vanish candidates stay: they are the position-level view, and
+    # the identity rows below are the same measurement with a sighting history.
+    vanish = list(_classical_vanish(samples, probe, anchor))
+    vanished_tids = {row.get("tid") for row in vanish if row.get("tid")}
+    for row in summary["vanished"]:
+        if row.get("tid") in vanished_tids:
+            continue
+        vanish.append({"color": row["color"], "mm": row["table_mm"], "pocket": row["pocket"],
+                       "dist_mm": row["dist_mm"], "pre_hits": row["hits"],
+                       "approach_mm": row["approach_mm"], "tid": row["tid"],
+                       "hits": row["hits"], "total_hits": row["total_hits"],
+                       "stable": row["stable"], "sources": row["sources"],
+                       "confidence": row["confidence"], "last_t": row["last_t"],
+                       "last_px": [row["cx"], row["cy"]]})
+    evidence.vanish = _consolidate([row for row in vanish if row.get("mm")])
+    return evidence
+
+
+def _classical_vanish(samples, probe, anchor):
+    """Position-level vanish candidates from the classical samples (pre-fusion).
+
+    Kept as the fallback: without SAM3 coverage this is the only measurement,
+    and with it the rows still show where the colour blobs last saw the ball.
+    """
+    pre = [s for s in samples if s[0] <= anchor - CENSUS_STEP_S + 1e-6]
+    post = [s for s in samples if s[0] >= anchor + 3 * CENSUS_STEP_S - 1e-6]
     pre_cands = [(s[0], c) for s in pre for c in s[1]]
     post_cands = [c for s in post for c in s[1]]
     vanish = []
@@ -353,22 +521,40 @@ def probe_pot(claim, probe):
                              - nearest_pocket(*trajectory[-1][1])[1], 1)
         vanish.append({"color": ball.get("color"), "mm": [round(mm[0]), round(mm[1])],
                        "pocket": pocket, "dist_mm": round(distance), "pre_hits": len(hits),
-                       "approach_mm": approach})
-    evidence.vanish = _consolidate(vanish)
-    return evidence
+                       "approach_mm": approach, "tid": None, "hits": len(hits),
+                       "stable": len(hits) >= 2, "sources": {"classical": len(hits)},
+                       "confidence": None, "last_t": None})
+    return vanish
 
 
 def _consolidate(vanish):
-    """One row per vanished ball: near-duplicate pre detections collapse."""
+    """One row per vanished ball: near-duplicate rows collapse, identity wins.
+
+    Two measurements can describe the same vanished ball: a position-level row
+    (colour blobs) and an identity row (the fused census, with a sighting
+    history and a better position).  The identity row replaces the blob row for
+    the same ball; hit counts and source mixes merge, so nothing measured is
+    dropped.
+    """
     kept = []
-    for item in sorted(vanish, key=lambda v: (v["color"] or "", v["dist_mm"])):
+    for item in sorted(vanish, key=lambda v: ((v.get("dist_mm") is None), v.get("dist_mm") or 0.0)):
         same = next((k for k in kept if k["color"] == item["color"]
+                     and k["mm"] and item["mm"]
                      and math.hypot(k["mm"][0] - item["mm"][0], k["mm"][1] - item["mm"][1])
                      <= GateConfig().dedup_position_mm), None)
         if same is None:
-            kept.append(item)
-        else:
-            same["pre_hits"] = max(same["pre_hits"], item["pre_hits"])
+            kept.append(dict(item))
+            continue
+        same["pre_hits"] = max(same.get("pre_hits") or 0, item.get("pre_hits") or 0)
+        same["hits"] = max(same.get("hits") or 0, item.get("hits") or 0)
+        same["stable"] = bool(same.get("stable") or item.get("stable"))
+        sources = dict(same.get("sources") or {})
+        for name, count in (item.get("sources") or {}).items():
+            sources[name] = max(sources.get(name, 0), count)
+        same["sources"] = sources
+        for key in ("tid", "approach_mm", "confidence", "last_t", "total_hits"):
+            if same.get(key) is None and item.get(key) is not None:
+                same[key] = item[key]
     return kept
 
 
@@ -579,6 +765,11 @@ def near_misses(rows, limit=5):
         if (evidence.get("disp_mm") or 0) >= 150:
             score += 1
             why.append(f"ball moved {evidence['disp_mm']}mm ({evidence.get('disp_color')})")
+        if (evidence.get("census_disp_mm") or 0) >= 150:
+            score += 1
+            why.append(f"fused census: a ball moved {evidence['census_disp_mm']}mm "
+                       f"({evidence.get('census_disp_color')}) with "
+                       f"{evidence.get('census_start_hits')}/{evidence.get('census_end_hits')} sightings")
         if (evidence.get("window_motion") or 0) >= 20:
             score += 0.5
             why.append(f"window motion {evidence['window_motion']}")
@@ -604,6 +795,31 @@ def build_rows(groups, previous_ids):
     return rows
 
 
+def _census_line(row):
+    """One line an owner can check in seconds: census, vanish, motion, verdict."""
+    numbers = row["verdict"].get("numbers") or {}
+    if row["kind"] == "pot":
+        source = numbers.get("census_source") or "-"
+        vanish = "no vanished ball measured"
+        if numbers.get("vanish_color"):
+            vanish = (f"{numbers['vanish_color']} vanished {numbers.get('vanish_dist_mm')}mm "
+                      f"from {numbers.get('vanish_pocket')} (seen {numbers.get('vanish_pre_hits')}x, "
+                      f"approach {numbers.get('approach_mm')}mm)")
+        present = ""
+        if numbers.get("claim_color_present"):
+            present = f" | claim colour still on the cloth: {numbers.get('claim_color_present_sources')}"
+        return (f"census {source} {numbers.get('census_pre')}->{numbers.get('census_post')} "
+                f"(max {numbers.get('census_post_max')}, sam3 frames "
+                f"{numbers.get('sam3_frames_pre')}/{numbers.get('sam3_frames_post')}) | {vanish} | "
+                f"motion {numbers.get('motion_max')}{present}")
+    return (f"census disp {numbers.get('census_disp_mm')}mm {numbers.get('census_disp_color') or ''} "
+            f"(hits {numbers.get('census_start_hits')}/{numbers.get('census_end_hits')}, "
+            f"moved {numbers.get('census_tracks_moved')}, gap {numbers.get('census_geometry_gap_px')}px), "
+            f"classical disp {numbers.get('disp_mm')}mm {numbers.get('disp_color') or ''} "
+            f"(stable {numbers.get('stable_hits')}/{numbers.get('anchor_tries')}) | "
+            f"motion {numbers.get('window_motion')}")
+
+
 def print_report(rows, summary, agree, calibration, seconds, probe_seconds, previous_count):
     print(f"calibration: {calibration}")
     print("caveat: the VOD changes framing (the reference quad covers 0.38-0.82 cloth-hued "
@@ -618,6 +834,7 @@ def print_report(rows, summary, agree, calibration, seconds, probe_seconds, prev
         print(f"{str(row['id'] if row['id'] is not None else '-'):>2} | {row['kind']:4} | {row['t']:6.1f} | "
               f"{str(row['color'] or '-'):6} | {row['dup_count']:3} | {gate['status']:11} | "
               f"{gate['gate']:12} | {','.join(gate['reasons'])}")
+        print(f"     {_census_line(row)}")
     print("aggregate:", json.dumps({k: v for k, v in summary.items() if k != "near_misses"}))
     for miss in summary["near_misses"]:
         print(f"near miss: id={miss['id']} {miss['kind']} t={miss['t']} ({miss['color']}) "

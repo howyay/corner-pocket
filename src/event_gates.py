@@ -34,6 +34,23 @@ Thresholds and where they come from (measured on vod30, 2026-09-23):
                                 ball's worth of mm ambiguity.
 * ``off_cloth_tol_px = -2``     the claimed position must be inside the cloth
                                 quad, not on the rail or the wall behind it.
+
+Round 2 -- the fused census (2026-09-23).  The probe now measures the census
+from the fused classical + SAM3 + temporal-association report
+(``src.ball_census``), so a frame count is no longer a 1-3 ball sample and a
+single ball leaving the cloth is measurable.  Three rules were added; none is a
+loosening, each replaces "unmeasurable" with a measurement:
+
+* ``vanished_ball_still_on_cloth`` the claim's colour is one a rack holds
+  exactly once (``black``) and a *scored* sighting of it exists after the event.
+  Presence is a measurement, absence is not; the asymmetry is deliberate.
+* ``census_source_mismatch``       the two sides of the window were measured by
+  different detectors (SAM3 on one side only), so their counts are not
+  comparable and no drop may be inferred.  Unconfirmed, never a drop.
+* ``census_displacement_corroborated`` a shot the colour-blob detector cannot
+  re-measure (motion blur) but a stable fused identity can, sighted at least
+  twice at each end of the window and within ``shot_geometry_tol_px`` of the
+  claim.  It is only reached after the classical path has failed.
 """
 from __future__ import annotations
 
@@ -93,6 +110,20 @@ class GateResult:
 
 def _num(value: Any):
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+COLOR_ALIASES = {"red2": "red", "red1": "red"}
+
+
+def color_key(value: Any) -> str:
+    """Detector colour name -> comparable colour name.
+
+    ``row.src.ball_detect`` reports the hue-wraparound red band under a second
+    name (``red2``); a claim and a measurement of the same physical ball must
+    compare equal, so both sides go through this.
+    """
+    text = str(value or "").strip().lower()
+    return COLOR_ALIASES.get(text, text)
 
 
 def normalize(raw: Any) -> dict:
@@ -217,6 +248,26 @@ class PotEvidence:
     vanish: list = field(default_factory=list)   # {color, mm, pocket, dist_mm, pre_hits, approach_mm}
     motion_max: float | None = None
     calibration_frac: float | None = None     # cloth pixels inside the reference quad
+    # -- fused-census additions (all Optional: absent means "not measured",
+    #    and every consumer falls back to the classical numbers above) -------
+    census_version: int | None = None
+    census_source: str | None = None          # sam3 | classical | None
+    census_comparable: bool | None = None     # both sides measured by one detector
+    census_counts_pre: list | None = None     # per-frame counts, so a human sees the spread
+    census_counts_post: list | None = None
+    census_spread_pre: float | None = None
+    census_spread_post: float | None = None
+    sam3_frames_pre: int | None = None
+    sam3_frames_post: int | None = None
+    stable_pre: float | None = None           # balls seen in >= 2 frames
+    stable_post: float | None = None
+    identity_drop: int | None = None          # stable identities lost across the event
+    claim_color: str | None = None
+    claim_color_present: bool | None = None   # measured on the cloth after the event
+    claim_color_present_measured: bool | None = None
+    claim_color_present_hits: int | None = None
+    claim_color_present_sources: dict | None = None
+    claim_color_unique: bool | None = None    # a rack holds one ball of this colour
 
 
 @dataclass
@@ -237,6 +288,17 @@ class ShotEvidence:
     stable_hits: int | None = None    # anchors (±0.1 s) that corroborate the same pair
     anchor_tries: int | None = None
     calibration_frac: float | None = None     # cloth pixels inside the reference quad
+    # -- fused-census additions (absent = not measured; see PotEvidence) ------
+    census_version: int | None = None
+    census_source: str | None = None
+    census_disp_mm: float | None = None       # largest same-identity move across the event
+    census_disp_color: str | None = None
+    census_start_hits: int | None = None      # sightings of that identity before the event
+    census_end_hits: int | None = None        # ... and after it
+    census_tracks_moved: int | None = None    # identities that moved >= shot_min_disp_mm
+    census_geometry_gap_px: float | None = None   # claim start vs the identity's start
+    census_frames: int | None = None
+    census_sam3_frames: int | None = None
 
 
 # --------------------------------------------------------------------- gates
@@ -245,11 +307,37 @@ def pot_gate(claim: dict, evidence: PotEvidence, cfg: GateConfig = GateConfig())
     """A pot needs a census drop that stays down, and the vanished ball at a pocket."""
     numbers = {"census_pre": evidence.census_pre, "census_post": evidence.census_post,
                "census_post_max": evidence.census_post_max, "motion_max": evidence.motion_max,
-               "calibration_frac": evidence.calibration_frac}
+               "calibration_frac": evidence.calibration_frac,
+               "census_source": evidence.census_source,
+               "census_comparable": evidence.census_comparable,
+               "census_counts_pre": evidence.census_counts_pre,
+               "census_counts_post": evidence.census_counts_post,
+               "census_spread_pre": evidence.census_spread_pre,
+               "census_spread_post": evidence.census_spread_post,
+               "sam3_frames_pre": evidence.sam3_frames_pre,
+               "sam3_frames_post": evidence.sam3_frames_post,
+               "stable_pre": evidence.stable_pre, "stable_post": evidence.stable_post,
+               "identity_drop": evidence.identity_drop,
+               "claim_color_present": evidence.claim_color_present,
+               "claim_color_present_measured": evidence.claim_color_present_measured,
+               "claim_color_present_hits": evidence.claim_color_present_hits,
+               "claim_color_present_sources": evidence.claim_color_present_sources,
+               "claim_color_unique": evidence.claim_color_unique}
     if not evidence.available:
         return GateResult("unconfirmed", "probe", [evidence.note or "no probe evidence"], numbers=numbers)
+    if evidence.claim_color_unique and evidence.claim_color_present_measured \
+            and evidence.claim_color_present:
+        # A colour a rack holds once was measured on the cloth after the event:
+        # whatever the count did, that ball did not go in.  Presence needs a
+        # scored SAM3 sighting or two independent sightings; a lone colour blob
+        # is not enough to call a pot false.
+        return GateResult("rejected", "vanish", ["vanished_ball_still_on_cloth"], numbers=numbers)
     if evidence.census_pre is None or evidence.census_post is None:
         return GateResult("unconfirmed", "census", ["no cloth census measured"], numbers=numbers)
+    if evidence.census_comparable is False:
+        # One side measured by SAM3 (10 balls), the other by the colour blobs
+        # (1-3): the difference between them is the detector, not the table.
+        return GateResult("unconfirmed", "census", ["census_source_mismatch"], numbers=numbers)
     if evidence.census_pre < cfg.pot_min_census:
         # One or two detections cannot show a one-ball drop: the classical
         # detector sees a fraction of the balls, so a missing drop here is a
@@ -264,13 +352,16 @@ def pot_gate(claim: dict, evidence: PotEvidence, cfg: GateConfig = GateConfig())
         return GateResult("rejected", "census", ["census_recovered"], numbers=numbers)
 
     eligible = [v for v in evidence.vanish
-                if not (claim["color"] and v.get("color") and claim["color"] != v["color"])]
+                if not (claim["color"] and v.get("color")
+                        and color_key(claim["color"]) != color_key(v["color"]))]
     if not eligible:
         return GateResult("unconfirmed", "vanish", ["no_vanished_ball_measured"], numbers=numbers)
     best = min(eligible, key=lambda v: v.get("dist_mm", float("inf")))
     numbers.update({"vanish_color": best.get("color"), "vanish_mm": best.get("mm"),
                     "vanish_pocket": best.get("pocket"), "vanish_dist_mm": best.get("dist_mm"),
-                    "vanish_pre_hits": best.get("pre_hits"), "approach_mm": best.get("approach_mm")})
+                    "vanish_pre_hits": best.get("pre_hits"), "approach_mm": best.get("approach_mm"),
+                    "vanish_tid": best.get("tid"), "vanish_sources": best.get("sources"),
+                    "vanish_confidence": best.get("confidence")})
     if best.get("dist_mm") is None or best["dist_mm"] > cfg.pot_pocket_r_mm:
         return GateResult("rejected", "pocket", ["vanished_ball_not_at_pocket"], numbers=numbers)
     if (best.get("pre_hits") or 0) < cfg.pot_min_pre_hits:
@@ -290,7 +381,15 @@ def shot_gate(claim: dict, evidence: ShotEvidence, cfg: GateConfig = GateConfig(
                "from_in_cloth_px": evidence.from_in_cloth_px, "to_in_cloth_px": evidence.to_in_cloth_px,
                "start_hits": evidence.start_hits, "end_hits": evidence.end_hits,
                "stable_hits": evidence.stable_hits, "anchor_tries": evidence.anchor_tries,
-               "calibration_frac": evidence.calibration_frac}
+               "calibration_frac": evidence.calibration_frac,
+               "census_source": evidence.census_source, "census_disp_mm": evidence.census_disp_mm,
+               "census_disp_color": evidence.census_disp_color,
+               "census_start_hits": evidence.census_start_hits,
+               "census_end_hits": evidence.census_end_hits,
+               "census_tracks_moved": evidence.census_tracks_moved,
+               "census_geometry_gap_px": evidence.census_geometry_gap_px,
+               "census_frames": evidence.census_frames,
+               "census_sam3_frames": evidence.census_sam3_frames}
     if not evidence.available:
         return GateResult("unconfirmed", "probe", [evidence.note or "no probe evidence"], numbers=numbers)
     if evidence.from_in_cloth_px is None or evidence.to_in_cloth_px is None:
@@ -298,6 +397,10 @@ def shot_gate(claim: dict, evidence: ShotEvidence, cfg: GateConfig = GateConfig(
     numbers["min_in_cloth_px"] = round(min(evidence.from_in_cloth_px, evidence.to_in_cloth_px), 1)
     if min(evidence.from_in_cloth_px, evidence.to_in_cloth_px) < cfg.off_cloth_tol_px:
         return GateResult("rejected", "geometry", ["off_cloth"], numbers=numbers)
+    if census_shot_corroborated(evidence, cfg):
+        reasons = ["census_displacement_corroborated"]
+        _warn_calibration(evidence, cfg, reasons)
+        return GateResult("confirmed", "displacement", reasons, tier="census", numbers=numbers)
     if evidence.disp_mm is None:
         return GateResult("unconfirmed", "displacement", ["no_matched_ball_measured"], numbers=numbers)
     if evidence.disp_mm < cfg.shot_min_disp_mm:
@@ -320,6 +423,33 @@ def shot_gate(claim: dict, evidence: ShotEvidence, cfg: GateConfig = GateConfig(
     reasons = ["displacement_corroborated"]
     _warn_calibration(evidence, cfg, reasons)
     return GateResult("confirmed", "displacement", reasons, tier="geometry", numbers=numbers)
+
+
+def census_shot_corroborated(evidence: ShotEvidence, cfg: GateConfig = GateConfig()) -> bool:
+    """Does the fused census corroborate a displacement the blob detector could not?
+
+    The colour-blob detector cannot see a fast ball (motion blur), which is why
+    most shots end as "displacement_not_corroborated".  A stable fused identity
+    (>= 2 sightings at each end, so a single mis-detection cannot make a ball
+    "move") that travelled at least ``shot_min_disp_mm`` and whose start sits
+    within ``shot_geometry_tol_px`` of the claim is a measurement of the same
+    claim by other means.
+
+    Every field is optional: without SAM3 coverage they are None, this returns
+    False, and the classical path runs exactly as before.
+    """
+    if evidence.census_disp_mm is None or evidence.census_disp_mm < cfg.shot_min_disp_mm:
+        return False
+    if (evidence.census_start_hits or 0) < evidence.observations_needed:
+        return False
+    if (evidence.census_end_hits or 0) < evidence.observations_needed:
+        return False
+    if (evidence.census_tracks_moved or 0) < 1:
+        return False
+    if evidence.census_geometry_gap_px is not None \
+            and evidence.census_geometry_gap_px > cfg.shot_geometry_tol_px:
+        return False
+    return True
 
 
 def _warn_calibration(evidence, cfg: GateConfig, reasons: list) -> None:
