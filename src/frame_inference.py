@@ -83,6 +83,60 @@ def detect_table_for_frame(frame, dataset=None, prior=None, root=None):
     return detect_table_refined(frame, prior=centre)
 
 
+def table_quad_note(result, seed_file=None, refused=None):
+    """What the table detection decided about the quad, for a viewer payload.
+
+    ``result`` is the dict the caller used, ``refused`` the refinement result whose
+    refusal forced the naive fallback (None when the refinement was used or never
+    ran).  Without this the viewer only sees ``corners: null``: the reason codes and
+    the per-side evidence stay inside the refine path and the operator is left
+    looking at a silent absence (docs/app-path-refusal.md).
+
+    Additive and code-only - the UI owns the wording.  Returns::
+
+        {'state': 'refined' | 'naive_fallback' | 'no_seed',
+         'reason': <top-level code or None>,      # why the refinement refused
+         'confidence': <float or None>,
+         'source': <detector source string>,
+         'verified_sides': <int or None>,
+         'sides': [{'side': 0..3, 'state': 'verified'|'inherited'|'unverified',
+                    'reason': <per-side code>}],
+         'seed_file': <path or None>}
+    """
+    decided = refused if refused is not None else result
+    debug = decided.get('debug_info') or {}
+    if isinstance(debug, dict) and isinstance(debug.get('tried'), list) and debug['tried']:
+        debug = (debug['tried'][0].get('info') or {})     # the refused seed attempt
+    sides = []
+    for report in (debug.get('sides') or []):
+        if not isinstance(report, dict) or 'side' not in report:
+            continue
+        code = report.get('reason')
+        # An inherited side still reports verified=True in src/table_refine (it is the
+        # side's own prior, not this frame's measurement), so check it first.
+        if report.get('inherited') or code == 'side_inherited':
+            state = 'inherited'
+        elif report.get('verified'):
+            state = 'verified'
+        else:
+            state = 'unverified'
+        entry = {'side': int(report['side']), 'state': state}
+        if code and code != 'side_inherited':
+            entry['reason'] = str(code)
+        sides.append(entry)
+    if result.get('refined'):
+        state = 'refined'
+    else:
+        state = 'naive_fallback' if refused is not None else 'no_seed'
+    return {'state': state,
+            'reason': decided.get('reason'),
+            'confidence': result.get('confidence'),
+            'source': result.get('source') or 'naive',
+            'verified_sides': debug.get('verified_sides'),
+            'sides': sides,
+            'seed_file': None if seed_file is None else str(seed_file)}
+
+
 def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=None):
     """Return raw-pixel detections using the existing table/SAM3 pipeline helpers.
 

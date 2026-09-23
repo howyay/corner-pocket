@@ -139,5 +139,101 @@ class AppPathScaleTests(unittest.TestCase):
         self.assertEqual(balls, [])
 
 
+class UnifiedQuadNoteTests(unittest.TestCase):
+    """Why a frame has no quad must travel with the payload the viewer renders.
+
+    A refused frame used to arrive as ``table_corners: null`` and nothing else, so the
+    operator saw a silent absence instead of "the cloth is hidden"
+    (docs/app-path-refusal.md).
+    """
+
+    META = {"dataset": "vod30", "frame_index": 150, "timestamp_seconds": 5.0,
+            "timestamp_kind": "nominal_cfr", "width": 1280, "height": 720}
+    REFUSAL = {"corners": None, "mask": None, "confidence": 0.0, "reason": "low_cloth_area",
+               "refined": False, "source": "naive", "used_prior": True,
+               "debug_info": {"tried": [{"prior_source": "saved_prior", "info": {
+                   "reason": "low_cloth_area", "verified_sides": 2, "unverified_sides": [
+                       {"side": 0, "reason": "low_cloth_area"}, {"side": 2, "reason": "low_cloth_area"}],
+                   "sides": [{"side": 0, "verified": False, "reason": "low_cloth_area"},
+                             {"side": 1, "verified": True},
+                             {"side": 2, "verified": False, "reason": "low_cloth_area"},
+                             {"side": 3, "verified": True}]}}]}}
+    ACCEPTED = {"corners": np.array([[266, 161], [400, 162], [498, 284], [192, 281]], np.float32),
+                "mask": None, "confidence": 0.71, "reason": None, "refined": True,
+                "source": "refined_saved_prior", "debug_info": {
+                    "reason": "side_inherited", "verified_sides": 3, "sides": [
+                        {"side": 0, "verified": True},
+                        {"side": 1, "verified": True, "inherited": True, "reason": "side_inherited"},
+                        {"side": 2, "verified": True}, {"side": 3, "verified": True}]}}
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / 'out').mkdir()
+        (self.root / 'out' / 'pid_anchors_vod30.json').write_text(
+            json.dumps({'anchors': {'70.0': ANCHORS}}))
+        self.backend = Backend(self.root)
+
+    def start_patches(self, *pairs):
+        for target, replacement in pairs:
+            patcher = patch(target, **replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def meta(self, refined):
+        frame = np.zeros((720, 1280, 3), np.uint8)
+        self.start_patches(('annotator.unified_server.Backend.video_metadata',
+                            {'new': lambda *a, **k: {"fps": 30.0, "frame_count": 330,
+                                                     "width": 1280, "height": 720}}),
+                           ('annotator.unified_server.Backend.decode_frame',
+                            {'new': lambda *a, **k: (frame, dict(self.META))}),
+                   ('src.frame_inference.detect_table_for_frame', {'return_value': refined}),
+                   ('src.table_detect.detect_table', {'return_value': {'corners': None, 'mask': None}}),
+                   ('src.ball_detect.detect_ball_candidates', {'return_value': []}))
+        return self.backend.unified('vod30', 150)
+
+    def test_a_refusal_carries_its_reason_and_per_side_evidence(self):
+        data = self.meta(self.REFUSAL)
+        self.assertIsNone(data['table_corners'])
+        note = data['table_quad']
+        self.assertEqual(note['state'], 'naive_fallback')
+        self.assertEqual(note['reason'], 'low_cloth_area')
+        self.assertEqual(note['verified_sides'], 2)
+        self.assertEqual([side['state'] for side in note['sides']],
+                         ['unverified', 'verified', 'unverified', 'verified'])
+        self.assertEqual(note['sides'][0]['reason'], 'low_cloth_area')
+        self.assertTrue(note['seed_file'].endswith('pid_anchors_vod30.json'))
+        # the note describes the cached detection the payload's corners came from
+        self.assertEqual(self.backend._unified_quad('vod30', 150), note)
+        self.assertIsNone(self.backend._unified_quad('vod30', 999))
+
+    def test_an_accepted_quad_reports_confidence_and_inherited_sides(self):
+        data = self.meta(self.ACCEPTED)
+        self.assertIsNotNone(data['table_corners'])
+        note = data['table_quad']
+        self.assertEqual(note['state'], 'refined')
+        self.assertIsNone(note['reason'])
+        self.assertEqual(note['confidence'], 0.71)
+        self.assertEqual([side['state'] for side in note['sides']],
+                         ['verified', 'inherited', 'verified', 'verified'])
+
+    def test_without_a_seed_the_note_says_so_instead_of_inventing_a_reason(self):
+        (self.root / 'out' / 'pid_anchors_vod30.json').unlink()
+        self.start_patches(('annotator.unified_server.Backend.video_metadata',
+                            {'new': lambda *a, **k: {"fps": 30.0, "frame_count": 330,
+                                                     "width": 1280, "height": 720}}),
+                           ('annotator.unified_server.Backend.decode_frame',
+                            {'new': lambda *a, **k: (np.zeros((720, 1280, 3), np.uint8),
+                                                     dict(self.META))}),
+                   ('src.table_detect.detect_table',
+                    {'return_value': {'corners': np.array([[100, 80], [540, 76], [540, 280], [100, 284]],
+                                                          np.float32), 'mask': None}}),
+                   ('src.ball_detect.detect_ball_candidates', {'return_value': []}))
+        note = self.backend.unified('vod30', 150)['table_quad']
+        self.assertEqual(note['state'], 'no_seed')
+        self.assertIsNone(note['seed_file'])
+
+
 if __name__ == '__main__':
     unittest.main()

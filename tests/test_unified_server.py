@@ -595,8 +595,12 @@ class UnifiedViewTests(unittest.TestCase):
     def test_payload_shape_scales_detection_back_to_full_res(self):
         data = self.payload()
         self.assertEqual(sorted(data), ["balls", "events", "frame_index", "height", "persons",
-                                        "persons_error", "pockets", "table_corners", "timestamp_kind",
-                                        "timestamp_seconds", "width"])
+                                        "persons_error", "pockets", "table_corners", "table_quad",
+                                        "timestamp_kind", "timestamp_seconds", "width"])
+        # Additive: what the detector decided (no hand anchors in this fixture root, so
+        # the naive detector ran) - the viewer renders the reason from it.
+        self.assertEqual(data["table_quad"]["state"], "no_seed")
+        self.assertIsNone(data["table_quad"]["seed_file"])
         self.assertEqual(data["frame_index"], 150)
         self.assertEqual(data["timestamp_seconds"], 5.0)
         self.assertEqual((data["width"], data["height"]), (1280, 720))

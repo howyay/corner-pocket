@@ -43,6 +43,7 @@ const COPY = {
     liveNow:'live', staleNow:'STALE',
     coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
+    quadRefused:'quad refused', quadFallback:'quad from the naive fallback', storedInference:'stored inference',
     quadDrift:'quad drift vs saved corners',
     pocketsHeldRejected:'quad rejected', pocketsHeldUnverified:'unverified',
     correctionRefused:'saved correction refused', tolerance:'tol'
@@ -85,6 +86,7 @@ const COPY = {
     liveNow:'直播', staleNow:'已过期',
     coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
+    quadRefused:'四边形已拒绝', quadFallback:'四边形来自朴素回退', storedInference:'已存推理',
     quadDrift:'四边形相对已保存角点漂移',
     pocketsHeldRejected:'四边形被拒绝', pocketsHeldUnverified:'未校验',
     correctionRefused:'已保存修正被拒绝', tolerance:'容差'
@@ -106,6 +108,43 @@ const stateText = value => engine()?.liveStateText ? engine().liveStateText(valu
 // localizes them at render time, so a language switch re-labels what is already
 // on screen (the inspector signature includes the language).
 const engineText = value => engine()?.text ? engine().text(String(value ?? '')) : String(value ?? '');
+// The detector reports machine codes (low_cloth_area, no_boundary_evidence, ...);
+// the operator reads a phrase. Same idea as labelText: the code never reaches the
+// UI, and the default still translates instead of printing snake_case.
+const QUAD_REASON = {
+  low_cloth_area: ['the cloth is hidden - a player or an object is over the bed', '台面被遮挡——有人或物体挡在台面上'],
+  no_boundary_evidence: ['no rail edge is visible inside the search band', '搜索带内看不到库边边缘'],
+  boundary_outside_band: ['the rail edge sits outside the search band', '库边边缘超出搜索带'],
+  prior_disagreement: ['the four sides disagree with the saved centre', '四条边与已保存中心不一致'],
+  invalid_geometry: ['the four corners are not a valid table quad', '四个角点不构成有效球桌四边形'],
+  no_prior: ['no saved geometry exists for this dataset', '该数据集没有已保存几何'],
+  no_cloth_area: ['no cloth was found in this frame', '此帧没有找到台呢']
+};
+function quadReason(code) {
+  const raw = String(code || 'unknown');
+  const row = QUAD_REASON[raw];
+  if (row) return opts?.lang === 'zh' ? row[1] : row[0];
+  const words = raw.replace(/_/g, ' ');
+  return opts?.lang === 'zh' ? `检测器报告「${words}」` : `the detector reported "${words}"`;
+}
+function quadSideNote(quad) {
+  const verified = Number(quad?.verified_sides);
+  if (!Number.isFinite(verified) || verified >= 4) return '';
+  const sides = (quad?.sides || []).filter(side => side.state !== 'verified')
+    .map(side => Number(side.side) + 1).join(', ');
+  const count = 4 - verified;
+  return opts?.lang === 'zh' ? ` · 未校验边 ${count}/4${sides ? `：${sides}` : ''}` : ` · ${count}/4 sides unverified${sides ? `: ${sides}` : ''}`;
+}
+function quadDetail(s) {
+  const quad = s?.cloth?.quad;
+  if (!quad) return '';
+  const head = opts?.lang === 'zh'
+    ? `四边形：${quad.state || '?'}（种子 ${quad.seed_file || '无'}）`
+    : `quad: ${quad.state || '?'} (seed ${quad.seed_file || 'none'})`;
+  const reason = quad.reason ? (opts?.lang === 'zh' ? `，原因 ${quadReason(quad.reason)}` : `, reason: ${quadReason(quad.reason)}`) : '';
+  const sides = (quad.sides || []).map(side => `${Number(side.side) + 1}:${side.state}${side.reason ? `(${quadReason(side.reason)})` : ''}`).join(', ');
+  return `${head}${reason}${sides ? (opts?.lang === 'zh' ? `，各边 ${sides}` : `, sides ${sides}`) : ''}`;
+}
 function labelText(label) { if (label === 'u' || label === -1) return t('unknown'); if (label === 0) return `${t('cue')} · 0`; return `#${label}`; }
 // Pocket names are pool-table rail terms in stored data; every displayed label
 // is the position word the engine maps them to, never the raw key.
@@ -196,7 +235,10 @@ function factsLine(s) {
   const cloth = s.cloth || {};
   const verdict = cloth.verdict || {};
   const refusal = cloth.refusal || null;
-  parts.push(layer('cloth', t('cloth').toLowerCase()), layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()));
+  const quad = cloth.quad || null;
+  const clothLabel = layer('cloth', t('cloth').toLowerCase())
+    + (cloth.polygon === 'inference' ? ` (${t('storedInference')})` : '');
+  parts.push(clothLabel, layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()));
   const pocketCount = Number(d.pockets || 0);
   const pocketSource = cloth.pockets?.source || null;
   const pocketsHeld = !pocketCount && verdict.state === 'off' ? t('pocketsHeldRejected') : !pocketCount && verdict.state === 'unverified' ? t('pocketsHeldUnverified') : '';
@@ -211,6 +253,15 @@ function factsLine(s) {
   // The detector searches around the saved hand anchors, so a pass is a drift
   // measurement, not a verdict on the table: report the number, not just "ok".
   else if (verdict.state === 'ok' && verdict.mean != null) parts.push(`${t('quadDrift')} ${verdict.mean.toFixed(1)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
+  // Why there is no quad at all. The detector's codes stay machine-side; the
+  // operator reads the phrase, plus how many sides were left unverified (the
+  // per-side list is the tooltip on this line).
+  if (quad?.reason && (verdict.state === 'none' || verdict.state === 'off')) {
+    const sides = quadSideNote(quad);
+    parts.push(`${t('quadRefused')} (${quadReason(quad.reason)}${sides})`);
+  } else if (quad?.state === 'naive_fallback') {
+    parts.push(`${t('quadFallback')} (${quadReason(quad.reason)})`);
+  }
   if (refusal) parts.push(`${t('correctionRefused')} (${refusal.owner})`);
   const total = d.cloth + d.balls + d.persons + d.pockets + d.anchors + d.events;
   if (s.loading.overlay) parts.push(`${t('overlays')} ${t('loading')} (${((Date.now() - s.loading.since) / 1000).toFixed(1)} s)`);
@@ -383,7 +434,8 @@ function render() {
     marks.innerHTML = s.events.items.map(e => { const pct = e.t / s.frame.duration * 100; return pct >= 0 && pct <= 100 ? `<button class="scrub-mark ${esc(e.type)}" data-vs-action="select-event-time" data-vs-value="${esc(e.t)}" title="#${esc(e.id)} ${esc(e.type)} · ${esc(timecode(e.t))}" style="left:${pct}%"></button>` : ''; }).join('');
     sig.marks = marksSig;
   }
-  const facts = $('#vs-facts'); if (facts) facts.textContent = factsLine(s);
+  const facts = $('#vs-facts');
+  if (facts) { facts.textContent = factsLine(s); facts.title = quadDetail(s); }
   const edge = $('#vs-edge'); if (edge) { edge.dataset.live = s.source.kind === 'live' ? '1' : '0'; edge.style.left = `${s.source.kind === 'live' ? 100 : (s.frame.duration ? Math.min(100, Math.max(0, s.frame.t / s.frame.duration * 100)) : 0)}%`; }
   const play = $('#vs-play'); if (play) play.textContent = s.frame.playing ? `❚❚ ${t('pause')}` : `▶ ${t('play')}`;
   root.querySelectorAll('[data-vs-label]').forEach(node => { const copy = t(node.dataset.vsLabel); if (node.textContent !== copy) node.textContent = copy; });
@@ -489,5 +541,5 @@ function attach(options) {
   render();
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); }};
 }
-window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML};
+window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail};
 })();

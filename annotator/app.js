@@ -26,7 +26,7 @@ const state = {
   frameWidth:0, frameHeight:0, frameReq:0, shotUrl:null,
   overlay:{cloth:true,balls:true,persons:true,pockets:true,anchors:true,events:true},
   drawn:{cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0,on:false,source:'none'},
-  cloth:{reference:null,verdict:{state:'none',reason:'no detection'},pockets:{source:null,count:0,reference:null},refusal:null},
+  cloth:{reference:null,verdict:{state:'none',reason:'no detection'},quad:null,polygon:null,pockets:{source:null,count:0,reference:null},refusal:null},
   loading:{overlay:false,since:0},
   live:{state:'idle',error:null,frame_age_ms:null,receive_to_result_ms:null,skipped:0,seq:null,receivedAt:null,stale:false,detections:null,attempt:null,detectors:['table','person']},
   source:{kind:'vod',label:'',channel:null},
@@ -520,6 +520,10 @@ function paintOverlay() {
   const clothVerdict = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : {state:'none',reason:'no detection',detail:'',mean:null,max:null,tolerance:null,source:null};
   clothVerdict.available = Number(u?.pockets?.length || 0);
   state.cloth.verdict = clothVerdict;
+  // What the detector decided about the quad (additive API field `table_quad`):
+  // the refusal reason and the per-side evidence the operator needs when the cloth
+  // layer stays empty.
+  state.cloth.quad = u?.table_quad || null;
   // Pocket markers need pocket geometry that can be trusted: this frame's model
   // quad when it passed its clearance check, otherwise the dataset's saved
   // anchors / calibration - the same geometry the anchors layer draws. A refused
@@ -588,7 +592,12 @@ function paintOverlay() {
     if (box.label === 'person') { boxesAreManual ? drawn.persons++ : auto.persons++; }
     else if (ballLabel(box.label)) { boxesAreManual ? drawn.balls++ : auto.balls++; }
   }
-  if (state.polygon) boxesAreManual ? drawn.cloth++ : auto.cloth++;
+  // The editable polygon is counted by where it came from: the operator's own
+  // correction is manual (so the facts split can fire), a stored inference polygon
+  // is model-derived and counted as auto.
+  const polySource = polygonSource();
+  state.cloth.polygon = polySource;
+  if (state.polygon) polySource === 'manual' ? drawn.cloth++ : auto.cloth++;
   svg.dataset.boxes = boxSource;
   const boxes = state.boxes.map((box, i) => {
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
@@ -596,7 +605,7 @@ function paintOverlay() {
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
     return `${tagRow(x1, Math.max(2, y1 - 26), boxSource, `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" class="t-box${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
   }).join('');
-  const poly = state.polygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, 'manual')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
+  const poly = state.polygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
   svg.innerHTML = layers.join('') + poly + boxes + preview;
   svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { if (state.tool === 'select' && state.sel.box !== Number(g.dataset.box)) { selectBox(Number(g.dataset.box)); } });
@@ -607,22 +616,83 @@ function paintOverlay() {
   state.drawn = {...drawn, auto, on: true, source: state.drawn.source};
   paintStageNote();
 }
+// Why the detector produced no quad, in the operator's words. The server sends
+// machine codes (low_cloth_area, no_boundary_evidence, ...) and the operator reads
+// a sentence: the codes are a detector contract, not UI copy. Same map shape as
+// POCKET_WORDS; "${code}" is the only composed slot and it stays translated.
+const QUAD_REFUSAL_COPY = {
+  low_cloth_area: ['the cloth is hidden - a player or an object is over the bed',
+                   '台面被遮挡——有人或物体挡在台面上'],
+  no_boundary_evidence: ['no rail edge is visible inside the search band',
+                         '搜索带内看不到库边边缘'],
+  boundary_outside_band: ['the rail edge sits outside the search band',
+                          '库边边缘超出搜索带'],
+  prior_disagreement: ['the four sides disagree with the saved centre',
+                       '四条边与已保存中心不一致'],
+  invalid_geometry: ['the four corners are not a valid table quad',
+                     '四个角点不构成有效球桌四边形'],
+  no_prior: ['no saved geometry exists for this dataset',
+             '该数据集没有已保存几何'],
+  no_cloth_area: ['no cloth was found in this frame', '此帧没有找到台呢'],
+  default: ['the detector reported "${code}"', '检测器报告「${code}」']
+};
+function quadReasonText(code) {
+  const row = QUAD_REFUSAL_COPY[String(code || '')] || QUAD_REFUSAL_COPY.default;
+  return (root?.lang === 'zh' ? row[1] : row[0]).replace('${code}', String(code || 'unknown').replace(/_/g, ' '));
+}
+function quadSideText(quad) {
+  const verified = Number(quad?.verified_sides);
+  if (!Number.isFinite(verified) || verified >= 4) return '';
+  const unverified = quad?.sides?.filter(side => side.state !== 'verified')
+    .map(side => Number(side.side) + 1).join(', ');
+  return root?.lang === 'zh'
+    ? `（未校验边 ${4 - verified}/4${unverified ? `：${unverified}` : ''}）`
+    : ` (${4 - verified}/4 sides unverified${unverified ? `: ${unverified}` : ''})`;
+}
+function quadRefusalText(quad) {
+  const phrase = quadReasonText(quad?.reason);
+  return root?.lang === 'zh'
+    ? `球桌四边形已拒绝：${phrase}——未绘制。${quadSideText(quad)}`
+    : `Table quad refused: ${phrase} — not drawn.${quadSideText(quad)}`;
+}
+function quadFallbackText(quad) {
+  const phrase = quadReasonText(quad?.reason);
+  return root?.lang === 'zh'
+    ? `当前绘制的是朴素检测回退结果，而非精修四边形：${phrase}。`
+    : `The model quad is the naive fallback, not the refined one: ${phrase}.`;
+}
+// Where the editable polygon came from. The stage tag and the facts split have to
+// agree with the count the painter records, or the operator reads "cloth 2" while
+// one polygon is tagged YOURS and no (+1 manual) ever appears.
+function polygonSource() {
+  if (!state.polygon) return null;
+  // A stored inference polygon is model-derived; everything else on this layer is
+  // the operator's - their saved correction, or a live edit of either.
+  if (state.fresult?.correction?.table_polygon) return 'manual';
+  if (state.fresult?.inference?.table_polygon) return state.dirty ? 'manual' : 'inference';
+  return 'manual';
+}
 // Why a layer is not on the stage is stated in place, next to the imagery:
 // either the model quad failed its clearance check or a saved correction was
 // refused because it belongs to another frame. Both are facts about the frame
 // the operator is looking at, not transient errors.
-function clothNotice(verdict, refusal) {
+function clothNotice(verdict, refusal, quad) {
   const lines = [];
   if (refusal && !refusal.ok) lines.push(text(`Saved correction belongs to ${refusal.owner}, not this frame (${refusal.expected}) — not drawn.`));
   if (verdict?.state === 'off') lines.push(verdict.reason === 'invalid geometry'
     ? text(`The model table quad is not a valid table quad for this frame (${verdict.detail}) — not drawn.`)
     : text(`The model table quad is ${Math.round(verdict.mean)} px off this dataset's saved corners (${text(verdict.source || 'unknown')}, tolerance ${Math.round(verdict.tolerance)} px) — not drawn.`));
   else if (verdict?.state === 'unverified') lines.push(text('No saved corner set exists for this dataset: the model quad is drawn unverified and pocket markers stay hidden.'));
+  // Why the detector produced no quad (or a fallback one) travels with the payload
+  // as `table_quad`: without it a refused frame reaches the operator as a silent
+  // absence. The reason codes are mapped to operator phrases, never printed raw.
+  if (quad?.reason && (verdict?.state === 'off' || verdict?.state === 'none')) lines.push(quadRefusalText(quad));
+  else if (quad?.state === 'naive_fallback') lines.push(quadFallbackText(quad));
   return lines.filter(Boolean);
 }
 function paintStageNote() {
   const note = $('#stage-note'); if (!note) return;
-  const lines = clothNotice(state.cloth.verdict, state.cloth.refusal);
+  const lines = clothNotice(state.cloth.verdict, state.cloth.refusal, state.cloth.quad);
   note.hidden = !lines.length;
   note.dataset.live = state.source.kind === 'live' ? '1' : '0';
   note.classList.toggle('error', !!(state.cloth.refusal && !state.cloth.refusal.ok));
@@ -1079,7 +1149,7 @@ function snapshot() {
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
     anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
     corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus},
-    cloth: {verdict: {...state.cloth.verdict}, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, pockets: {...(state.cloth.pockets || {source:null, count:0, reference:null})}, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
+    cloth: {verdict: {...state.cloth.verdict}, quad: state.cloth.quad ? {...state.cloth.quad} : null, polygon: state.cloth.polygon || null, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, pockets: {...(state.cloth.pockets || {source:null, count:0, reference:null})}, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
     receipts: state.receipts.slice(), notice: {...state.notice}, busy: state.busy, dirty: state.dirty
   };
 }

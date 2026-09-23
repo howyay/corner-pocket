@@ -26,7 +26,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     setRoot: host => { root = host; }, onKeydown, text, translateEditor, updateOverlayFacts,
     pocketText, pocketWord, POCKET_LABELS, CLOTH_TOLERANCE_PX, clothTolerance, quadDistance, quadSanity, validateCloth,
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
-    calibratedPockets, POCKET_ANCHOR_ORDER};
+    calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
 
@@ -768,6 +768,128 @@ test('a cold frame can start a correction without a devtools call', () => {
   for (const api of ['setTool','addPolygon','clearPolygon','runInference','saveCorrections']) {
     assert.ok(typeof sandbox.window.CornerPocketReview[api] === 'function', `the engine must expose ${api}`);
   }
+});
+
+test('a refused quad states its reason on the stage, in both languages', () => {
+  // The detector's codes (low_cloth_area ...) are a machine contract: the operator
+  // gets a phrase, the affected-side count, and never a raw snake_case token.
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null;
+  T.state.cloth.reference = null; T.state.cloth.refusal = null;
+  T.state.unified = {table_corners:null, pockets:[], persons:[], balls:[], events:[], table_quad:{
+    state:'naive_fallback', reason:'low_cloth_area', confidence:0.0, source:'naive', verified_sides:2,
+    sides:[{side:0, state:'unverified', reason:'low_cloth_area'}, {side:1, state:'verified'},
+           {side:2, state:'unverified', reason:'low_cloth_area'}, {side:3, state:'verified'}],
+    seed_file:'/tmp/out/pid_anchors_vod30.json'}};
+  T.paintOverlay();
+  assert.strictEqual(T.state.cloth.verdict.state, 'none', 'no quad was returned, so nothing is painted');
+  assert.strictEqual(note.hidden, false, 'a silent absence is what this fixes');
+  assert.ok(note.textContent.includes('Table quad refused: the cloth is hidden'), note.textContent);
+  assert.ok(note.textContent.includes('(2/4 sides unverified: 1, 3)'), note.textContent);
+  assert.ok(!/_/.test(note.textContent), 'no raw snake_case code reaches the operator');
+  host.lang = 'zh';
+  T.paintOverlay();
+  assert.ok(note.textContent.includes('球桌四边形已拒绝：台面被遮挡'), note.textContent);
+  assert.ok(note.textContent.includes('（未校验边 2/4：1, 3）'), note.textContent);
+  host.lang = 'en';
+  // An accepted quad keeps the plain stage: no refusal sentence, drift stays in the facts line.
+  const anchors = [[532,323],[800,324],[997,569],[384,563]];
+  T.state.cloth.reference = {points:anchors, source:'saved anchors', width:1280, height:720};
+  T.state.unified.table_quad = {state:'refined', reason:null, confidence:0.8, source:'refined_saved_prior',
+                                verified_sides:4, sides:[], seed_file:'/tmp/out/pid_anchors_vod30.json'};
+  T.state.unified.table_corners = anchors;
+  T.paintOverlay();
+  assert.strictEqual(note.hidden, true);
+  assert.strictEqual(T.quadReasonText('boundary_outside_band'), 'the rail edge sits outside the search band');
+  assert.strictEqual(T.quadReasonText('a_new_code'), 'the detector reported "a new code"');
+  T.state.unified = null;
+});
+
+test('the cloth count follows where the polygon came from', () => {
+  // A stored correction is the operator's (manual); a stored inference polygon is
+  // model-derived. Counting both as auto is why "cloth 2" never showed (+1 manual)
+  // while the stage tagged one polygon YOURS.
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.unified = null; T.state.cloth.reference = null; T.state.boxes = []; T.state.dirty = false;
+  const poly = [[100,100],[600,100],[600,400],[100,400]];
+  T.state.polygon = poly;
+  T.state.fresult = {correction:{table_polygon:poly, boxes:[]}, inference:null};
+  T.paintOverlay();
+  assert.strictEqual(T.polygonSource(), 'manual');
+  assert.strictEqual(T.state.cloth.polygon, 'manual');
+  assert.strictEqual(T.state.drawn.cloth, 1, 'one cloth polygon is on the stage in total');
+  assert.strictEqual(T.state.drawn.auto.cloth, 0, 'a stored correction is not counted as auto');
+  assert.strictEqual(T.state.drawn.cloth - T.state.drawn.auto.cloth, 1, 'the facts split sees one manual polygon');
+  assert.ok(svg.innerHTML.includes('YOURS'), 'a stored correction is tagged as the operator\'s');
+  T.state.fresult = {correction:null, inference:{table_polygon:poly, boxes:[]}};
+  T.paintOverlay();
+  assert.strictEqual(T.polygonSource(), 'inference');
+  assert.strictEqual(T.state.drawn.auto.cloth, 1, 'a stored inference polygon is model-derived');
+  assert.strictEqual(T.state.drawn.cloth - T.state.drawn.auto.cloth, 0, 'nothing manual to report');
+  assert.ok(svg.innerHTML.includes('MODEL') && !svg.innerHTML.includes('YOURS'), 'tag matches the count');
+  T.state.dirty = true;
+  assert.strictEqual(T.polygonSource(), 'manual', 'an edited inference polygon becomes the operator\'s');
+  T.state.dirty = false; T.state.polygon = null; T.state.fresult = null;
+  assert.strictEqual(T.polygonSource(), null);
+});
+
+test('the facts line states a refused quad reason in both languages', () => {
+  // Fix 1 end to end on the render side: table_quad.reason exists, so the facts
+  // line says why there is no quad instead of an unexplained `cloth 0`.
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  const V = context.window.VisionStage;
+  // zh copy comes from the adapter's own opts (ops.js passes the shell language in),
+  // so the bilingual assertions attach with lang:'zh' first and switch back.
+  const mountStub = {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}};
+  V.attach({mount: mountStub, lang:'en'});
+  const quad = {state:'naive_fallback', reason:'low_cloth_area', confidence:0.0, source:'naive', verified_sides:2,
+                sides:[{side:0, state:'unverified', reason:'low_cloth_area'}, {side:1, state:'verified'},
+                       {side:2, state:'unverified', reason:'low_cloth_area'}, {side:3, state:'verified'}],
+                seed_file:'/tmp/out/pid_anchors_vod30.json'};
+  const base = {
+    source:{kind:'vod', label:'vod30', channel:null}, frame:{index:8100, t:270, duration:1800, count:45000, playing:false, rate:0},
+    loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
+    drawn:{cloth:0, balls:8, persons:4, pockets:0, anchors:0, events:1, auto:{cloth:0, balls:8, persons:4, pockets:0, anchors:0, events:1}},
+    cloth:{verdict:{state:'none', reason:'no detection'}, quad, pockets:{source:null, count:0, reference:null}, reference:null}
+  };
+  const refused = V.factsLine(base);
+  assert.ok(refused.includes('quad refused (the cloth is hidden'), 'A ' + refused);
+  assert.ok(refused.includes('2/4 sides unverified: 1, 3'), 'B ' + refused);
+  assert.ok(!/_/.test(refused.split('quad refused')[1].split(' · ')[0]), 'no snake_case code in the facts line');
+  assert.ok(V.quadDetail(base).includes('reason: the cloth is hidden'), V.quadDetail(base));
+  V.attach({mount: mountStub, lang:'zh'});
+  const zh = V.factsLine(base);
+  assert.ok(zh.includes('四边形已拒绝 (台面被遮挡'), 'Z1 ' + zh);
+  assert.ok(zh.includes('未校验边 2/4：1, 3'), 'Z2 ' + zh);
+  V.attach({mount: mountStub, lang:'en'});
+  // A refusal with a drawn fallback quad says which quad the operator is looking at.
+  const fallback = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
+                                cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
+  assert.ok(fallback.includes('quad from the naive fallback (the cloth is hidden'), 'F ' + fallback);
+  // An accepted, fully verified quad keeps the drift line and grows no refusal.
+  const ok = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
+                          cloth:{...base.cloth, quad:{...quad, state:'refined', reason:null, verified_sides:4, sides:[]},
+                                 verdict:{state:'ok', reason:'within tolerance', mean:5.7, tolerance:40, source:'saved anchors'}}});
+  assert.ok(ok.includes('quad drift vs saved corners 5.7 px (tol 40 px)'), 'O ' + ok);
+  assert.ok(!ok.includes('refused') && !ok.includes('fallback'), 'O2 ' + ok);
+  // The stored-inference polygon names itself instead of hiding inside the total.
+  const inference = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
+                                 drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
+  assert.ok(inference.includes('cloth 1 (stored inference)'), 'I ' + inference);
+  assert.ok(V.factsLine({...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
+                         drawn:{cloth:2, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}).includes('cloth 1 (+1 manual)'), 'M');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

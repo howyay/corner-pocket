@@ -263,6 +263,7 @@ class Backend:
                 'timestamp_kind': meta['timestamp_kind'],
                 'width': meta['width'], 'height': meta['height'],
                 'table_corners': corners,
+                'table_quad': self._unified_quad(dataset, index),
                 'balls': balls,
                 'pockets': self._unified_pockets(corners),
                 'persons': persons,
@@ -308,7 +309,8 @@ class Backend:
         import cv2
         import numpy as np
         from src.table_detect import detect_table
-        from src.frame_inference import detect_table_for_frame
+        from src.frame_inference import (app_prior_source, detect_table_for_frame,
+                                         table_quad_note)
         from src.ball_detect import detect_ball_candidates
         scale = 2.0
         small = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2), interpolation=cv2.INTER_AREA)
@@ -319,12 +321,22 @@ class Backend:
         # seam, the callers and tests already patch, including the mask the ball
         # candidates are filtered with.
         saved = self._prior_for(dataset)
+        refused = None
         if saved is None:
             table = detect_table(small)
         else:
             prior = np.asarray(saved, np.float32) / scale
             refined = detect_table_for_frame(small, prior=prior)
-            table = detect_table(small) if refined.get('corners') is None else refined
+            if refined.get('corners') is None:
+                table = detect_table(small)
+                refused = refined
+            else:
+                table = refined
+        # The operator cannot see why a frame has no quad unless the reason travels
+        # with the payload: corners=null alone is a silent absence.  Additive field,
+        # localized in the viewer.
+        note = table_quad_note(table, seed_file=app_prior_source(dataset, root=self.root),
+                               refused=refused)
         corners, balls = None, []
         if table.get('corners') is not None:
             quad = np.asarray(table['corners'], np.float32) * scale
@@ -334,11 +346,23 @@ class Backend:
                      for c in detect_ball_candidates(small, table.get('mask'))]
         with self.lock:
             cache = self._unified_cache
-            cache[key] = {'corners': corners, 'balls': balls}
+            cache[key] = {'corners': corners, 'balls': balls, 'quad': note}
             cache.move_to_end(key)
             while len(cache) > self._UNIFIED_CACHE_MAX:
                 cache.popitem(last=False)
         return corners, balls
+
+    def _unified_quad(self, dataset, frame_index):
+        """Refusal/acceptance note for the last ``_unified_detection`` call.
+
+        Additive payload field (``table_quad``): a refused frame used to reach the
+        viewer as ``table_corners: null`` with no reason at all
+        (docs/app-path-refusal.md).  Read from the detection cache, so it describes
+        the exact result the payload's corners came from.
+        """
+        with self.lock:
+            cached = self._unified_cache.get((dataset, frame_index))
+            return None if cached is None else cached.get('quad')
 
     def _unified_pockets(self, corners):
         """Six physical pockets mapped back to frame pixels through the inverse
