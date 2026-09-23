@@ -130,6 +130,107 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
     return balls
 
 
+def reference_quad(corners_path="out/scan30/corners.json", dataset="vod30"):
+    """The verified cloth quad SAM3's balls are allowed to sit on.
+
+    The per-frame ``detect_table`` mask is estimated from the frame and collapses
+    (or balloons onto the wall panels) under occlusion; the reference quad is
+    human-clicked geometry and is stable.  Preference: the calibration segment,
+    then the hand anchors, then the scan's own naive corners as a last resort.
+    """
+    try:
+        from src.calib_segments import load as load_segments
+        segments = load_segments(dataset)
+        if segments is not None:
+            for segment in segments.segments:
+                if segment.source == "human_anchors":
+                    return np.array(segment.quad, np.float32)
+    except Exception:
+        pass
+    for path, key in ((f"out/pid_anchors_{dataset}.json", "anchors"), (corners_path, "corners")):
+        try:
+            data = json.loads(Path(path).read_text())
+        except (OSError, ValueError):
+            continue
+        if key == "anchors":
+            first = next(iter(data.get("anchors", {}).values()), None)
+            if first:
+                return np.array(first[:4], np.float32)
+        elif data.get("corners"):
+            return np.array(data["corners"], np.float32)
+    return None
+
+
+def diagnose_frame(video, time_s, model_proc, corners_path, reference=None,
+                   progress=lambda text: None) -> dict:
+    """Run SAM3 on one frame and report every filter stage.
+
+    A zero-ball frame is only evidence of an empty cloth if SAM3 really found
+    nothing: if it found ten balls and the per-frame ``detect_table`` mask threw
+    them away, the zero is a filter failure, not an observation.  This returns
+    the counts at each stage (raw -> score -> area -> radius -> cloth) under both
+    cloth tests, so the two causes are distinguishable without guessing.
+    """
+    from PIL import Image
+
+    from src.pipeline import ball_center
+
+    if reference is None:
+        reference = reference_quad(corners_path)
+    cap = cv2.VideoCapture(str(video))
+    cap.set(cv2.CAP_PROP_POS_MSEC, float(time_s) * 1000.0)
+    ok, bgr = cap.read()
+    decoded_t = round(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0, 3)
+    cap.release()
+    if not ok:
+        return {"t": time_s, "ok": False}
+    table = detect_table(bgr)
+    cloth = table["mask"] > 0
+    reference_mask = None
+    if reference is not None and np.asarray(reference).shape == (4, 2):
+        reference_mask = np.zeros(cloth.shape, np.uint8)
+        cv2.fillPoly(reference_mask, [np.round(np.asarray(reference, np.float32)).astype(np.int32)], 1)
+        reference_mask = reference_mask > 0
+    state = model_proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
+    state = model_proc.set_text_prompt("billiard ball", state)
+    masks = state["masks"].cpu().float().numpy()
+    scores = state["scores"].cpu().float().numpy()
+    stages = {"raw": int(len(scores)), "score": 0, "area": 0, "radius": 0,
+              "cloth_frame_mask": 0, "cloth_reference": 0}
+    for index in range(len(scores)):
+        if scores[index] < MIN_SCORE:
+            continue
+        stages["score"] += 1
+        mask = np.squeeze(masks[index])
+        area = float(mask.sum())
+        if area < MIN_AREA or area > MAX_AREA:
+            continue
+        stages["area"] += 1
+        cx, cy, radius = ball_center(mask)
+        if radius < MIN_R or radius > MAX_R:
+            continue
+        stages["radius"] += 1
+        inside = 0 <= int(cy) < cloth.shape[0] and 0 <= int(cx) < cloth.shape[1]
+        if inside and cloth[int(cy), int(cx)]:
+            stages["cloth_frame_mask"] += 1
+        if reference_mask is not None and inside and reference_mask[int(cy), int(cx)]:
+            stages["cloth_reference"] += 1
+    if stages["raw"] == 0:
+        verdict = "no detections at all"
+    elif stages["radius"] and not stages["cloth_frame_mask"]:
+        verdict = "mask filtered the balls"
+    elif stages["cloth_frame_mask"]:
+        verdict = "balls kept"
+    else:
+        verdict = "nothing reached the cloth test"
+    progress(f"t={time_s}: {verdict} {stages}")
+    return {"t": round(float(time_s), 3), "ok": True, "decoded_t": decoded_t,
+            "cloth_area": int(cloth.sum()), "reference_area": int(reference_mask.sum())
+            if reference_mask is not None else None,
+            "scores": [round(float(s), 3) for s in sorted(scores)[::-1][:12]],
+            "stages": stages, "verdict": verdict}
+
+
 def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/scan30/corners.json",
         budget_s=2400.0, checkpoint="data/sam3.safetensors", progress=print) -> dict:
     """Run the pending timestamps in order under a wall-clock budget."""
