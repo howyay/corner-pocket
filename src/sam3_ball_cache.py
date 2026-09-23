@@ -69,19 +69,63 @@ def load_costs(path) -> dict:
     return data.get("cost", {}) if isinstance(data, dict) else {}
 
 
-def save_cache(path, frames: dict, costs: dict, video: str) -> None:
+def save_cache(path, frames: dict, costs: dict, video: str, filters: dict | None = None) -> None:
+    """Write the cache; ``filters`` records which cloth geometry kept each frame.
+
+    A frame measured before the reference-quad fix cannot be told from one
+    measured after it by its ball list alone, so the filter that produced it is
+    stored next to it.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         "version": 1, "generated_by": "src/sam3_ball_cache.py", "video": video,
         "note": "targeted SAM3 ball frames; read by src.eval_events via src.ball_census",
         "cost": costs,
+        "filter": dict(filters or {}),
         "frames": {f"{t:.1f}": frames[t] for t in sorted(frames)},
     }, indent=1))
 
 
-def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: None) -> dict:
-    """SAM3 balls on one frame; same filter chain as src.scan_events.sam3_confirm."""
+def load_filters(path) -> dict:
+    path = Path(path)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except ValueError:
+        return {}
+    return data.get("filter", {}) if isinstance(data, dict) else {}
+
+
+def cloth_mask(bgr, reference=None, corners_path="out/scan30/corners.json"):
+    """The cloth a ball is allowed to sit on, and which geometry decided it.
+
+    ``detect_table`` estimates the cloth per frame, and that estimate collapses
+    onto the wall panels or balloons over the whole frame when a player stands at
+    the table; filtering balls through it zeroed a frame that held ten of them
+    (t=487.3 of the reference VOD).  The verified reference geometry -- the
+    calibration segment's human quad, or the hand anchors -- is stable, so it is
+    the filter; the per-frame mask stays a *reported* signal (see
+    ``src.sam3_frame_audit``), never a silent veto.  The per-frame mask is only
+    used when no reference geometry exists at all, and the caller is told so.
+    """
+    if reference is None:
+        reference = reference_quad(corners_path)
+    if reference is not None:
+        mask = np.zeros(bgr.shape[:2], np.uint8)
+        cv2.fillPoly(mask, [np.round(np.asarray(reference, np.float32)).astype(np.int32)], 1)
+        return mask > 0, "reference_quad"
+    return detect_table(bgr)["mask"] > 0, "frame_mask"
+
+
+def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: None,
+                 reference=None) -> tuple:
+    """SAM3 balls on one frame; returns ``(balls, filter_used)``.
+
+    The filter is the verified reference quad, not the per-frame table mask: a
+    mask failure must never silently zero the census (see ``cloth_mask``).
+    """
     from PIL import Image
 
     from src.pipeline import ball_center, homography_to_canonical
@@ -94,12 +138,11 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
         raise RuntimeError(f"no frame at t={time_s}")
     fixed = np.array(json.loads(Path(corners_path).read_text())["corners"], dtype=np.float32)
     H = homography_to_canonical(fixed)
-    table = detect_table(bgr)
+    cloth, filter_used = cloth_mask(bgr, reference=reference, corners_path=corners_path)
     state = model_proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
     state = model_proc.set_text_prompt("billiard ball", state)
     masks = state["masks"].cpu().float().numpy()
     scores = state["scores"].cpu().float().numpy()
-    cloth = table["mask"] > 0
     balls = []
     for index in range(len(scores)):
         if scores[index] < MIN_SCORE:
@@ -126,8 +169,8 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
             "color": classify_ball_color(bgr, cx, cy, max(radius * 0.5, 2.5)),
         })
     balls.sort(key=lambda ball: ball["table_mm"])
-    progress(f"t={time_s}: {len(balls)} balls")
-    return balls
+    progress(f"t={time_s}: {len(balls)} balls ({filter_used})")
+    return balls, filter_used
 
 
 def reference_quad(corners_path="out/scan30/corners.json", dataset="vod30"):
@@ -231,17 +274,40 @@ def diagnose_frame(video, time_s, model_proc, corners_path, reference=None,
             "stages": stages, "verdict": verdict}
 
 
+def pending_times(times, cached=(), refetch=()) -> list:
+    """Which timestamps still need measuring: uncached ones plus ``refetch``.
+
+    A frame measured through a filter that has since been shown to zero real
+    balls is not evidence, so it goes back on the list rather than being trusted.
+    """
+    cached = {f"{round(float(t), 1):.1f}" for t in cached}
+    again = {f"{round(float(t), 1):.1f}" for t in refetch}
+    out = []
+    for t in times:
+        key = f"{round(float(t), 1):.1f}"
+        if key not in cached or key in again:
+            out.append(round(float(t), 1))
+    return out
+
+
 def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/scan30/corners.json",
-        budget_s=2400.0, checkpoint="data/sam3.safetensors", progress=print) -> dict:
-    """Run the pending timestamps in order under a wall-clock budget."""
+        budget_s=2400.0, checkpoint="data/sam3.safetensors", progress=print, refetch=()) -> dict:
+    """Run the pending timestamps in order under a wall-clock budget.
+
+    ``refetch`` names timestamps to re-measure even though a cache holds them:
+    a frame measured through a filter that has since been shown to zero real
+    balls is not evidence, so it has to be bought again rather than trusted.
+    """
     app_frames = load_cache(app_path)
     own_frames = load_cache(out_path)
     frames = {**app_frames, **own_frames}
     costs = load_costs(out_path)
-    pending = [round(float(t), 1) for t in times if round(float(t), 1) not in frames]
+    filters = load_filters(out_path)
+    again = {round(float(t), 1) for t in refetch}
+    pending = pending_times(times, cached=frames, refetch=again)
     report = {"requested": len(list(times)), "already_cached": len(list(times)) - len(pending),
-              "pending": len(pending), "done": [], "skipped_budget": [], "load_s": None,
-              "seconds": 0.0}
+              "pending": len(pending), "refetch": sorted(again), "done": [],
+              "skipped_budget": [], "load_s": None, "filter": None, "seconds": 0.0}
     if not pending:
         progress("nothing to do: every requested frame is cached")
         return report
@@ -251,6 +317,10 @@ def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/
 
     import torch
     torch.set_num_threads(8)
+    reference = reference_quad(corners_path)
+    if reference is None:
+        progress("no reference geometry found: falling back to the per-frame cloth mask, "
+                 "which is known to zero frames under occlusion")
     model = load_sam3_image_model(str(ROOT / checkpoint))
     model.float()
     processor = make_processor(model)
@@ -267,20 +337,24 @@ def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/
                 continue
             frame_started = time.time()
             try:
-                own_frames[time_s] = detect_frame(video, time_s, processor, corners_path,
-                                                  progress=lambda text: progress(f"  {text}"))
+                own_frames[time_s], filter_used = detect_frame(
+                    video, time_s, processor, corners_path,
+                    progress=lambda text: progress(f"  {text}"), reference=reference)
             except Exception as error:                      # keep the loop alive
                 progress(f"  t={time_s} failed: {error}")
                 continue
+            filters[f"{time_s:.1f}"] = filter_used
+            report["filter"] = filter_used
             costs[f"{time_s:.1f}"] = round(time.time() - frame_started, 1)
             # Written after every frame: an interrupted run keeps what it paid for.
-            save_cache(out_path, own_frames, costs, str(video))
-            report["done"].append({"t": time_s, "seconds": costs[f"{time_s:.1f}"]})
-            progress(f"  cached t={time_s} in {costs[f'{time_s:.1f}']}s "
+            save_cache(out_path, own_frames, costs, str(video), filters)
+            report["done"].append({"t": time_s, "seconds": costs[f"{time_s:.1f}"],
+                                   "filter": filter_used})
+            progress(f"  cached t={time_s} in {costs[f'{time_s:.1f}']}s ({filter_used}) "
                      f"({len(report['done'])}/{len(pending)}, {time.time() - started:.0f}s wall)")
     finally:
         report["seconds"] = round(time.time() - started, 1)
-        save_cache(out_path, own_frames, costs, str(video))
+        save_cache(out_path, own_frames, costs, str(video), filters)
     return report
 
 
