@@ -34,8 +34,18 @@ for folder in ('scan30', 'scan_highlight', 'unlabeled_crops', 'unlabeled_crops2'
             shutil.copy2(path, dest)
 for name in ('pid2_tracklets.json', 'calib_vod30.json', 'events_actors.json'):
     shutil.copy2(ROOT / 'out' / name, fixture / 'out' / name)
-for name, value in [('pid_seed.json', {'seeds': {}}), ('pid_anchors_vod30.json', {'anchors': {}})]:
-    (fixture / 'out' / name).write_text(json.dumps(value))
+# The hand anchors are a read-only input copied from the real workspace (like the
+# files above), so the fixture exercises the seeded app path - refine, then accept
+# with a drift or refuse with a reason. Zeroing them here would leave the fixture
+# able to reach only the no-seed path, which tests/test_app_path_prior.py covers.
+# If the real file is missing the fixture keeps its old empty-anchors fallback
+# rather than failing; nothing under ROOT/out/ is ever written.
+anchors = ROOT / 'out' / 'pid_anchors_vod30.json'
+if anchors.is_file():
+    shutil.copy2(anchors, fixture / 'out' / 'pid_anchors_vod30.json')
+else:
+    (fixture / 'out' / 'pid_anchors_vod30.json').write_text(json.dumps({'anchors': {}}))
+(fixture / 'out' / 'pid_seed.json').write_text(json.dumps({'seeds': {}}))
 # Reuse production decoding read-only; correction writes stay in the fixture.
 backend = Backend(fixture)
 real = Backend(ROOT)
