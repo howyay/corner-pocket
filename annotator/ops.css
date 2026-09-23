@@ -316,6 +316,13 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .scrub-mark{position:absolute;top:0;transform:translateX(-50%);width:4px;height:14px;padding:0;min-height:0;border-radius:1px;pointer-events:auto;border:0;cursor:pointer}
 :is(#ops-shell) .scrub-mark.shot{background:var(--blue,#8fb4cf)}
 :is(#ops-shell) .scrub-mark.pot{background:var(--green)}
+/* The stage's playback window on the strip: the cue's [t-before, t+after] band,
+   the cue's own time inside it, and the loop counter. One window, one picture -
+   the band and the playing video can never describe two different moments. */
+:is(#ops-shell) .scrub-window{position:absolute;top:0;height:16px;background:color-mix(in srgb,var(--brass,#c9a227) 28%,transparent);border-left:1px solid var(--brass,#c9a227);border-right:1px solid var(--brass,#c9a227);pointer-events:none}
+:is(#ops-shell) .scrub-cue{position:absolute;top:0;width:2px;height:16px;transform:translateX(-50%);background:var(--red,#cf5b4d);pointer-events:none}
+:is(#ops-shell) .scrub-loop{position:absolute;right:0;top:18px;padding:0 5px;border-radius:2px;background:var(--panel2,#100e0c);border:1px solid var(--brass,#c9a227);color:var(--brass-hi,#e3c877);font:10px var(--mono);letter-spacing:.08em;text-transform:uppercase;pointer-events:none;white-space:nowrap}
+:is(#ops-shell) .scrub-loop[data-playing="0"]{color:var(--amber,#dfa93a);border-color:var(--amber-line,#5c4a1e)}
 @media(max-width:1100px){
   :is(#ops-shell) .vs-grid{grid-template-columns:minmax(0,1fr)}
   :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{max-height:none}

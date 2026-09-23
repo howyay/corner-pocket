@@ -229,7 +229,7 @@ function glyphWidth(value, size) {
   for (const ch of String(value ?? '')) width += /[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? size : size * 0.62;
   return width;
 }
-function sourceTagLabel(kind) { return text(kind === 'manual' ? 'YOURS' : kind === 'calib' ? 'CALIB' : 'MODEL'); }
+function sourceTagLabel(kind) { return text(kind === 'manual' ? 'YOURS' : kind === 'calib' ? 'CALIB' : kind === 'event' ? 'EVENT' : 'MODEL'); }
 function sourceTagWidth(kind) { return Math.round(glyphWidth(sourceTagLabel(kind), SRC_TAG_FONT) + 14); }
 function sourceTag(x, y, kind) {
   const label = sourceTagLabel(kind), width = sourceTagWidth(kind);
@@ -276,6 +276,16 @@ function staticQuad() {
   const points = state.cloth.reference?.points;
   const quad = Array.isArray(points) && points.length >= 4 ? points.slice(0, 4).map(p => [Number(p[0]), Number(p[1])]) : null;
   return quad && quad.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1])) ? quad : null;
+}
+// The pockets the stage actually draws, so an event's target pocket highlight is
+// the marker the operator can see rather than a second, differently-calibrated
+// point a few pixels away. Falls back to the event's own projected pocket.
+function drawnPocket(name, event) {
+  const pockets = calibratedPockets(state.cloth.reference) || [];
+  const drawn = name ? pockets.find(p => p.name === name) : null;
+  if (drawn) return [drawn.cx, drawn.cy];
+  const px = event?.pocket_px;
+  return Array.isArray(px) && px.length === 2 && px.every(Number.isFinite) ? [Number(px[0]), Number(px[1])] : null;
 }
 // ---- data loading (the only fetches in the Vision tab) --------------------
 async function loadDatasets() {
@@ -746,6 +756,17 @@ function paintOverlay() {
       if (pk) { layers.push(`<circle class="u-pot-pulse" cx="${pk.cx}" cy="${pk.cy}" r="18" fill="none" stroke="var(--red)" stroke-width="3"></circle>`); auto.events++; }
     }
   }
+  // The selected cue's own geometry, drawn for the whole playback window and on
+  // a frozen frame that sits in that window: a pot is the ball's last known
+  // position, the line to the pocket it names and a ring on that pocket; a shot
+  // is the from -> to displacement with its speed. Everything here is the
+  // server's projection of the scan's millimetres (px_source travels with the
+  // event); an event without pixels says "not projectable" instead.
+  const cue = ov.events ? (state.sel.kind === 'event' ? state.sel.event : null) : null;
+  if (cue && cueGeometryVisible(cue)) {
+    const geometry = paintCueGeometry(cue);
+    if (geometry) { layers.push(geometry.markup); auto.events++; }
+  }
   if (ov.anchors && state.anchors.loaded && state.dataset === 'vod30') {
     const [ax, ay] = state.anchors.pts[0] || [0, 0];
     layers.push(state.anchors.pts.map(([x, y], i) => `<g class="u-anchor${state.sel.kind === 'anchor' && state.anchors.index === i ? ' selected' : ''}" data-anchor="${i}"><circle cx="${x}" cy="${y}" r="12"></circle><text x="${x + 18}" y="${y - 16}">${i + 1}</text></g>`).join(''));
@@ -872,6 +893,62 @@ function paintStageNote() {
   note.classList.toggle('error', !!(state.cloth.refusal && !state.cloth.refusal.ok));
   const body = lines.join(' ');
   if (note.textContent !== body) note.textContent = body;
+}
+// ---- the selected cue, drawn ---------------------------------------------
+// A cue's geometry comes from the server's projection of the scan's millimetres
+// (`px_source` travels with the event), so nothing here is estimated in the
+// browser. It is drawn while the stage plays that cue's window and on a frozen
+// frame inside it; an event without pixels draws nothing and says why.
+const COLOUR_WORDS = {
+  blue:['blue','蓝'], red:['red','红'], yellow:['yellow','黄'], green:['green','绿'],
+  white:['white','白'], black:['black','黑'], pink:['pink','粉'], brown:['brown','棕'],
+  orange:['orange','橙'], purple:['purple','紫'], grey:['grey','灰'], gray:['grey','灰']
+};
+function colourWord(value) {
+  const row = COLOUR_WORDS[String(value ?? '').toLowerCase()];
+  return row ? (root?.lang === 'zh' ? row[1] : row[0]) : '';
+}
+function cueGeometryVisible(event) {
+  if (!event?.px_source) return false;
+  if (![event.last_px, event.from_px, event.to_px].some(p => Array.isArray(p) && p.length >= 2)) return false;
+  const playback = state.playback;
+  if (playback.on && playback.event && String(playback.event.id) === String(event.id)) return true;
+  const t = Number(state.t);
+  return Number.isFinite(t) && Math.abs(t - Number(event.t)) <= 3.0;
+}
+// The scan carries no colour for vod30 events, so a label simply leaves it out
+// instead of printing "unknown" over the imagery; the inspector shows the row
+// only when the data has one.
+function numberText(value, unit, fallback = '—') {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${Math.round(number)} ${unit}` : fallback;
+}
+function paintCueGeometry(event) {
+  const parts = [];
+  if (event.type === 'pot') {
+    const last = Array.isArray(event.last_px) ? event.last_px.map(Number) : null;
+    const pocket = drawnPocket(event.pocket_name, event);
+    if (!last || !pocket) return null;
+    parts.push(`<line class="u-cue-line" x1="${last[0]}" y1="${last[1]}" x2="${pocket[0]}" y2="${pocket[1]}" fill="none"></line>`);
+    parts.push(`<g class="u-cue-ball"><circle cx="${last[0]}" cy="${last[1]}" r="14" fill="none"></circle><circle cx="${last[0]}" cy="${last[1]}" r="3"></circle></g>`);
+    parts.push(`<circle class="u-cue-pocket" cx="${pocket[0]}" cy="${pocket[1]}" r="24" fill="none"></circle>`);
+    const label = `${colourWord(event.color) ? `${colourWord(event.color)} → ` : ''}${pocketText(event.nearest_pocket || event.pocket_name)}`;
+    parts.push(tagRow(last[0] + 18, Math.max(2, last[1] - 30), 'event', label, 'o-label'));
+    return {markup: parts.join('')};
+  }
+  const from = Array.isArray(event.from_px) ? event.from_px.map(Number) : null;
+  const to = Array.isArray(event.to_px) ? event.to_px.map(Number) : null;
+  if (!from || !to) return null;
+  const angle = Math.atan2(to[1] - from[1], to[0] - from[0]);
+  const head = [[to[0], to[1]],
+                [to[0] - 18 * Math.cos(angle - 0.42), to[1] - 18 * Math.sin(angle - 0.42)],
+                [to[0] - 18 * Math.cos(angle + 0.42), to[1] - 18 * Math.sin(angle + 0.42)]];
+  parts.push(`<line class="u-cue-line" x1="${from[0]}" y1="${from[1]}" x2="${to[0]}" y2="${to[1]}" fill="none"></line>`);
+  parts.push(`<polygon class="u-cue-head" points="${head.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}"></polygon>`);
+  parts.push(`<circle class="u-cue-takeoff" cx="${from[0]}" cy="${from[1]}" r="12" fill="none"></circle>`);
+  const label = `${colourWord(event.color) ? `${colourWord(event.color)} · ` : ''}${numberText(event.disp_mm, 'mm')} · ${numberText(event.speed_mm_s, 'mm/s')}`;
+  parts.push(tagRow(Math.min(from[0], to[0]) + 14, Math.max(2, Math.min(from[1], to[1]) - 30), 'event', label, 'o-label'));
+  return {markup: parts.join('')};
 }
 // ---- selection -----------------------------------------------------------
 // Selecting a cue plays its evidence on the stage and loops inside its window;
@@ -1394,11 +1471,11 @@ Object.assign(editorCopy, {
   'Selected label':'所选标注', 'New box label':'新框标注', 'Add table polygon':'添加球桌多边形', 'Clear polygon':'清除多边形',
   'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌',
   // Source tags the engine paints on the imagery, and the identity chip.
-  'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'track':'轨迹', 'unbound':'未绑定',
+  'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'EVENT':'事件', 'track':'轨迹', 'unbound':'未绑定',
   'saved anchors':'已保存锚点', 'saved calibration':'已保存标定',
   // Stage video state and the honesty rule that goes with it: what is drawn over
   // moving video, and what only comes back on a freeze.
-  'playing':'播放中', 'paused':'已暂停', 'window':'窗口', 'loop':'循环',
+  'playing':'播放中', 'paused':'已暂停', 'window':'窗口', 'loop':'循环', 'colour unknown':'颜色未知',
   'per-frame detections update on freeze':'逐帧检测在冻结后更新',
   'per-frame detections return on freeze':'逐帧检测在冻结后恢复',
   'The stage video failed to load; freeze a frame to inspect it as a still.':'舞台视频加载失败；可冻结一帧以静帧方式检查。',

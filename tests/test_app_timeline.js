@@ -28,7 +28,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
     playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip,
-    staticQuad, CLIP_BEFORE_S, CLIP_AFTER_S};
+    paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
 
@@ -903,9 +903,15 @@ test('the stage is one video with the overlay on top of it', () => {
   assert.ok(html.indexOf('id="t-video"') < html.indexOf('id="t-overlay"'), 'the overlay SVG is painted over the video');
   assert.ok(html.includes('id="stage-play"'), 'the playback state chip exists');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.css'), 'utf8');
-  for (const needle of ['.stage > video', '.stage > video[hidden]', '.stage > svg']) {
+  for (const needle of ['.stage > video', '.stage > video[hidden]', '.stage > svg', '.u-cue-line', '.u-cue-pocket', '.u-cue-head']) {
     assert.ok(css.includes(needle), `missing stage video css: ${needle}`);
   }
+  // The second frame surface is gone: the inspector keeps a poster, not a player.
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  assert.ok(!/<video/.test(adapter), 'the inspector video element is gone');
+  assert.ok(!adapter.includes('/api/clip'), 'the inspector no longer fetches a raw clip');
+  assert.ok(adapter.includes('data-vs-action="play-event"'), 'the cue plays in the stage instead');
+  assert.ok(adapter.includes('class="vs-evidence"><img'), 'the cue card keeps a poster for scanning');
 });
 
 test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {
@@ -987,6 +993,49 @@ test('playing drops per-frame detections and never paints a stale mark', () => {
   assert.strictEqual(T.state.fresult, null);
   assert.strictEqual(T.state.boxes.length, 0);
   assert.strictEqual(T.state.dirty, false);
+  T.exitPlayback();
+});
+
+test('the selected cue draws its own projected geometry, or says it cannot', () => {
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:true};
+  T.state.unified = null; T.state.fresult = null; T.state.boxes = [];
+  T.state.cloth.reference = {points:[[532,323],[800,324],[997,569],[384,563],[480,397],[865,398]], source:'saved anchors', width:1280, height:720};
+  T.state.playback = {on:true, playing:true, event:null, from:0, to:0, loops:0, seek:NaN};
+  const pot = {id: 1, type:'pot', t: 5.6, color:'blue', last_mm:[1146.2,2547.9], last_px:[965.4,605.0],
+               pocket_name:'foot-right', pocket_px:[1021.1,608.2], nearest_pocket:'foot-right (124mm)', px_source:'measured ball correspondences'};
+  T.state.sel = {kind:'event', event: pot, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  T.state.playback = {on:true, playing:true, event: pot, from:4.1, to:8.2, loops:0, seek:NaN};
+  T.paintOverlay();
+  assert.ok(svg.innerHTML.includes('u-cue-ball') && svg.innerHTML.includes('u-cue-pocket'), 'the ball and its pocket are marked');
+  assert.ok(svg.innerHTML.includes('u-cue-line'), 'and a line joins them');
+  assert.ok(svg.innerHTML.includes('blue → bottom-right (124mm)'), 'labelled with the colour and the distance');
+  assert.ok(svg.innerHTML.includes('>EVENT<'), 'tagged as the event geometry, not a detection');
+  // The highlight lands on the pocket the stage actually draws when it has one.
+  same(T.drawnPocket('foot-right', pot), [997, 569]);
+  // A shot draws the direction, the displacement and the speed.
+  const shot = {id: 2, type:'shot', t: 6.0, color:null, disp_mm:172, speed_m_s:2.6, speed_mm_s:2600,
+                from_px:[463.2,284.8], to_px:[600,400], px_source:'measured ball correspondences'};
+  T.state.sel = {kind:'event', event: shot, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  T.state.playback = {on:true, playing:true, event: shot, from:4.5, to:8.5, loops:0, seek:NaN};
+  T.paintOverlay();
+  assert.ok(svg.innerHTML.includes('u-cue-head'), 'the shot arrow has a head');
+  assert.ok(svg.innerHTML.includes('172 mm · 2600 mm/s'), 'shot labels carry both numbers');
+  // A cue the scan has no colour for leaves it out instead of printing "unknown".
+  T.state.sel = {kind:'event', event: {...shot, color:'blue'}, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  assert.ok(T.paintCueGeometry({...shot, color:'blue'}).markup.includes('blue · 172 mm'), 'a known colour is named');
+  // An event the dataset cannot project draws no geometry at all.
+  const raw = {id: 3, type:'pot', t: 9.4, last_mm:[1287.7,2526.4], nearest_pocket:'foot-right (22mm)'};
+  assert.strictEqual(T.cueGeometryVisible(raw), false);
+  assert.strictEqual(T.paintCueGeometry(raw), null);
+  T.state.sel = {kind:'event', event: raw, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  T.state.playback = {on:true, playing:true, event: raw, from:7.9, to:11.9, loops:0, seek:NaN};
+  T.paintOverlay();
+  assert.ok(!svg.innerHTML.includes('u-cue-ball') && !svg.innerHTML.includes('u-cue-line'), 'nothing is invented for it');
   T.exitPlayback();
 });
 

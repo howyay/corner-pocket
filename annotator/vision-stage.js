@@ -28,7 +28,7 @@ const COPY = {
     newBoxLabel:'New box label', tool:'Tool', selectTool:'Select / move', drawTool:'Draw box',
     frameReadout:'frame', overlays:'overlays', loading:'LOADING', none:'none', on:'ON',
     live:'live', stale:'STALE', age:'frame age', receive:'receive-to-result', dropped:'dropped',
-    selectCueHint:'Selecting a cue seeks and freezes the stage. Overlays are layer chips; nothing switches mode.',
+    selectCueHint:'Selecting a cue plays its window on the stage and loops in it; freeze to inspect one frame.',
     noCrops:'No crops in this queue.', noTracks:'No track windows are available for this VOD.',
     noEvents:'No event candidates in this filter.', vodOnlyAnchors:'Anchors are available for the vod30 dataset only.',
     keys:'SPACE play · ←/→ step · 0–9/U/C label · A/B identity · V verdict · ⏎ save',
@@ -46,7 +46,15 @@ const COPY = {
     quadRefused:'quad refused', quadFallback:'quad from the naive fallback', storedInference:'stored inference',
     quadDrift:'quad drift vs saved corners',
     pocketsHeldRejected:'quad rejected', pocketsHeldUnverified:'unverified',
-    correctionRefused:'saved correction refused', tolerance:'tol'
+    correctionRefused:'saved correction refused', tolerance:'tol',
+    playInStage:'▶ Play in stage', geometry:'Detected geometry', colour:'Colour',
+    ballLast:'Ball last seen', pocketAt:'Pocket at', shotFrom:'From', shotTo:'To',
+    displacement:'Displacement', speed:'Speed', scanWindow:'Scan window',
+    projectedFrom:'Projected from', pocket:'Pocket',
+    evidenceNote:'The clip plays in the stage with its overlay; per-frame detections come back when you freeze.',
+    projectedNote:'Projected from the dataset calibration, in frame pixels.',
+    notProjectable:'Not projectable: this dataset has no usable calibration for this event, so only the scan millimetres exist.',
+    loopWord:'loop', playingWord:'playing', pausedWord:'paused'
   },
   zh: {
     cues:'线索', inspector:'检查器', sources:'视频源', events:'事件', balls:'球', persons:'人物',
@@ -71,7 +79,7 @@ const COPY = {
     newBoxLabel:'新框标注', tool:'工具', selectTool:'选择 / 移动', drawTool:'绘制标注框',
     frameReadout:'帧', overlays:'叠加层', loading:'加载中', none:'无', on:'开',
     live:'直播', stale:'已过期', age:'帧龄', receive:'接收到结果', dropped:'丢帧',
-    selectCueHint:'选择线索会定位并冻结舞台。叠加层为图层开关，不再切换模式。',
+    selectCueHint:'选择线索会在舞台上播放其片段并循环；冻结后可检查单帧。',
     noCrops:'此队列没有裁剪图。', noTracks:'此录像没有可用的轨迹窗口。',
     noEvents:'此筛选下没有事件候选。', vodOnlyAnchors:'锚点仅适用于 vod30 数据集。',
     keys:'空格 播放 · ←/→ 步进 · 0–9/U/C 标注 · A/B 身份 · V 判定 · ⏎ 保存',
@@ -89,7 +97,15 @@ const COPY = {
     quadRefused:'四边形已拒绝', quadFallback:'四边形来自朴素回退', storedInference:'已存推理',
     quadDrift:'四边形相对已保存角点漂移',
     pocketsHeldRejected:'四边形被拒绝', pocketsHeldUnverified:'未校验',
-    correctionRefused:'已保存修正被拒绝', tolerance:'容差'
+    correctionRefused:'已保存修正被拒绝', tolerance:'容差',
+    playInStage:'▶ 在舞台播放', geometry:'检测几何', colour:'颜色',
+    ballLast:'球最后位置', pocketAt:'袋口位置', shotFrom:'起点', shotTo:'终点',
+    displacement:'位移', speed:'速度', scanWindow:'扫描窗口',
+    projectedFrom:'投影来源', pocket:'袋口',
+    evidenceNote:'片段在舞台上带叠加层播放；逐帧检测需冻结后恢复。',
+    projectedNote:'由数据集标定投影到帧像素。',
+    notProjectable:'无法投影：该数据集对此事件没有可用标定，仅有扫描毫米值。',
+    loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停'
   }
 };
 let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerObserver = null;
@@ -150,6 +166,31 @@ function labelText(label) { if (label === 'u' || label === -1) return t('unknown
 // is the position word the engine maps them to, never the raw key.
 function pocketName(event) { return event?.nearest_pocket_text || event?.nearest_pocket || ''; }
 function pocketTag(event) { const name = pocketName(event); return name ? `<span class="vs-mono vs-dim">${esc(name)}</span>` : ''; }
+// What the scan actually measured for this cue, and whether the server could
+// project it into frame pixels. An event the dataset cannot project says so:
+// there is no second, browser-side guess at where the ball was.
+function pxText(point) {
+  return Array.isArray(point) && point.length === 2 && point.every(Number.isFinite) ? `${Math.round(point[0])}, ${Math.round(point[1])}` : '';
+}
+function eventGeometry(item) {
+  const rows = [];
+  const row = (key, value) => { if (value) rows.push(`<li class="vs-mono"><span class="vs-dim">${esc(t(key))}</span> ${esc(value)}</li>`); };
+  row('colour', item.color || '');
+  if (item.type === 'pot') {
+    row('ballLast', `${pxText(item.last_px)} px`);
+    row('pocket', item.pocket_name || pocketName(item));
+    row('pocketAt', `${pxText(item.pocket_px)} px`);
+  } else {
+    row('shotFrom', `${pxText(item.from_px)} px`);
+    row('shotTo', `${pxText(item.to_px)} px`);
+    row('displacement', item.disp_mm != null ? `${Math.round(item.disp_mm)} mm` : '');
+    row('speed', item.speed_mm_s != null ? `${Math.round(item.speed_mm_s)} mm/s` : '');
+  }
+  row('scanWindow', Array.isArray(item.window_s) ? `${timecode(item.window_s[0])} → ${timecode(item.window_s[1])}` : '');
+  if (item.projectable) row('projectedFrom', item.px_source || '');
+  const body = rows.length ? `<ul class="vs-facts">${rows.join('')}</ul>` : '';
+  return `${body}<p class="vs-note">${esc(item.projectable ? t('projectedNote') : t('notProjectable'))}</p>`;
+}
 function receiptLine(kind) {
   const row = (snap()?.receipts || []).find(r => r.key === kind);
   if (!row) return '';
@@ -173,6 +214,23 @@ function receiptAge() {
   });
 }
 // ---- regions -------------------------------------------------------------
+// The strip shows where the stage's video is playing: the loop window of the
+// selected cue, the cue's own time inside it, and how many loops have run. It is
+// the same window the stage loops in (the cue's t ± CLIP_BEFORE/CLIP_AFTER), so
+// the band and the picture can never describe two different moments.
+function windowBandHTML(s) {
+  const playback = s.playback || {};
+  const duration = Number(s.frame.duration) || 0;
+  if (!playback.on || !duration) return '';
+  const clamp = value => Math.max(0, Math.min(100, value));
+  const left = clamp((Number(playback.from) || 0) / duration * 100);
+  const right = clamp((Number(playback.to) || 0) / duration * 100);
+  const at = playback.event == null ? null : (s.events.items || []).find(e => String(e.id) === String(playback.event));
+  const mark = at ? clamp(Number(at.t) / duration * 100) : null;
+  return `<span class="scrub-window" style="left:${left}%;width:${Math.max(0.4, right - left)}%"></span>`
+    + (mark == null ? '' : `<span class="scrub-cue" style="left:${mark}%" title="${esc(timecode(at.t))}"></span>`)
+    + `<span class="scrub-loop" data-playing="${playback.playing ? '1' : '0'}">↻ ${esc(playback.loops || 0)} · ${esc(playback.playing ? t('playingWord') : t('pausedWord'))}</span>`;
+}
 function chipsHTML(s) {
   const channels = (opts.channels() || []).map(c => `<button class="vs-chip${s.source.kind === 'live' && s.source.channel === c.channel ? ' active' : ''}" data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${s.source.kind === 'live' && s.source.channel === c.channel ? '● ' : ''}${esc(t('live'))} · twitch ${esc(c.channel || '')}</button>`).join('');
   const datasets = (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
@@ -315,7 +373,10 @@ function eventBlock(s) {
   const evidence = item.evidence ? `/media/${dataset}/evidence/${encodeURIComponent(String(item.evidence).split('/').pop())}` : `/media/${dataset}/event-frame/${encodeURIComponent(item.id)}`;
   return `<h3>${esc(item.type === 'pot' ? t('pots') : t('shots'))} <span class="vs-mono vs-dim">#${esc(item.id)}</span></h3>
   <p class="vs-mono">${esc(timecode(item.t))}${pocketName(item) ? ` · ${esc(pocketName(item))}` : ''}</p>
-  <figure class="vs-evidence"><video controls loop muted playsinline preload="metadata" poster="${esc(evidence)}" src="/api/clip?dataset=${dataset}&t=${encodeURIComponent(item.t)}" data-vs-fallback="${esc(evidence)}"></video><figcaption class="vs-mono">${esc(t('evidence'))}</figcaption></figure>
+  <figure class="vs-evidence"><img src="${esc(evidence)}" alt="${esc(t('evidence'))}" loading="lazy"><figcaption class="vs-mono">${esc(t('evidence'))}</figcaption></figure>
+  <div class="vs-row"><button class="primary" data-vs-action="play-event" data-vs-value="${esc(s.events.index)}">${esc(t('playInStage'))}</button></div>
+  <p class="vs-note">${esc(t('evidenceNote'))}</p>
+  <div class="vs-block"><h4>${esc(t('geometry'))}</h4>${eventGeometry(item)}</div>
   <div class="vs-block"><h4>${esc(t('verdict'))}</h4><p class="vs-mono">${esc(verdict ? t(verdict) : t('notReviewed'))}</p></div>
   <label class="vs-field">${esc(t('shooter'))}<select data-vs-action="shooter">${[['','—'],['A',t('seedA')],['B',t('seedB')],['?',t('unknown')]].map(([v, l]) => `<option value="${v}" ${(annotation.shooter || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
   <label class="vs-field">${esc(t('notes'))}<textarea rows="3" data-vs-action="note">${esc(annotation.note || '')}</textarea></label>
@@ -428,10 +489,10 @@ function render() {
     if (scrub.getAttribute('step') !== '1') scrub.setAttribute('step', '1');
     if (document.activeElement !== scrub) scrub.value = s.frame.index;
   }
-  const marksSig = `${s.dataset}|${s.frame.duration}|${s.events.items.map(e => `${e.id}:${e.t}:${e.type}`).join(',')}`;
+  const marksSig = `${s.dataset}|${s.frame.duration}|${s.events.items.map(e => `${e.id}:${e.t}:${e.type}`).join(',')}|${s.playback.on ? 1 : 0}|${s.playback.event || ''}|${s.playback.from}|${s.playback.to}|${s.playback.loops}|${s.playback.playing ? 1 : 0}`;
   const marks = $('#vs-marks');
   if (marks && marksSig !== sig.marks) {
-    marks.innerHTML = s.events.items.map(e => { const pct = e.t / s.frame.duration * 100; return pct >= 0 && pct <= 100 ? `<button class="scrub-mark ${esc(e.type)}" data-vs-action="select-event-time" data-vs-value="${esc(e.t)}" title="#${esc(e.id)} ${esc(e.type)} · ${esc(timecode(e.t))}" style="left:${pct}%"></button>` : ''; }).join('');
+    marks.innerHTML = windowBandHTML(s) + s.events.items.map(e => { const pct = e.t / s.frame.duration * 100; return pct >= 0 && pct <= 100 ? `<button class="scrub-mark ${esc(e.type)}" data-vs-action="select-event-time" data-vs-value="${esc(e.t)}" title="#${esc(e.id)} ${esc(e.type)} · ${esc(timecode(e.t))}" style="left:${pct}%"></button>` : ''; }).join('');
     sig.marks = marksSig;
   }
   const facts = $('#vs-facts');
@@ -475,6 +536,7 @@ function act(action, value, node) {
     }
     case 'event-filter': target.setEventFilter(value); break;
     case 'select-event': { const index = s.events.items.findIndex(e => String(e.id) === String(node.dataset.vsId)); if (index >= 0) target.selectEvent(index); break; }
+    case 'play-event': { const index = Number(value); if (Number.isInteger(index) && s.events.items[index]) target.playEvent(index); break; }
     case 'select-event-time': { const index = s.events.items.findIndex(e => Number(e.t) === num); if (index >= 0) target.selectEvent(index); else target.seekTime(num); break; }
     case 'verdict': { const index = s.events.items.findIndex(e => String(e.id) === String(node.dataset.vsId)); if (index >= 0) { target.selectEvent(index); target.saveVerdict(null, value); } break; }
     case 'verdict-draft': target.setVerdictDraft(value); break;
