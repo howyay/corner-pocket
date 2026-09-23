@@ -907,12 +907,49 @@ test('the stage is one video with the overlay on top of it', () => {
   for (const needle of ['.stage > video', '.stage > video[hidden]', '.stage > svg', '.u-cue-line', '.u-cue-pocket', '.u-cue-head']) {
     assert.ok(css.includes(needle), `missing stage video css: ${needle}`);
   }
-  // The second frame surface is gone: the inspector keeps a poster, not a player.
+  // The inspector holds no picture at all: the stage is the one surface for a
+  // cue, and it already freezes into the still when the window cannot play.
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   assert.ok(!/<video/.test(adapter), 'the inspector video element is gone');
   assert.ok(!adapter.includes('/api/clip'), 'the inspector no longer fetches a raw clip');
   assert.ok(adapter.includes('data-vs-action="play-event"'), 'the cue plays in the stage instead');
-  assert.ok(adapter.includes('class="vs-evidence"><img'), 'the cue card keeps a poster for scanning');
+  assert.ok(!adapter.includes('vs-evidence'), 'the inspector keeps no second picture surface either');
+});
+
+test('the Vision tab renders one picture surface for the selected cue', () => {
+  // A cue click used to paint a second still in the inspector next to a moving
+  // stage; two pictures of the same moment read as one stale picture. The
+  // inspector now carries no picture at all, and the rail cards carry none:
+  // every cue-shaped selection has exactly the stage.
+  const VS = adapterStage('en');
+  const item = {id:1046, type:'shot', t:484.1, color:'blue', from_px:[100, 200], to_px:[300, 400], disp_mm:727,
+                speed_mm_s:47.75, window_s:[482.6, 486.6], px_source:'scan cloth quad', projectable:true, tier:'geometry',
+                annotation:{verdict:'correct', shooter:'A', note:'checked'}};
+  const snapshot = visionSnapshot({
+    dataset:'vod30', focus:'events', eventFilter:'all', verdictDraft:null,
+    selection:{kind:'event', event:item, box:-1},
+    events:{items:[item], index:0, reviewed:1},
+    balls:{items:[], index:0, set:'unlabeled_crops', labels:{}},
+  });
+  const inspector = VS.inspectorHTML(snapshot);
+  assert.ok(!/<img|<video/.test(inspector), 'the inspector block for a cue holds no picture at all');
+  assert.ok(inspector.includes('data-vs-action="play-event"'), 'the cue still offers the stage playback');
+  assert.ok(inspector.includes('The clip plays in the stage with its overlay'), 'the note explaining the one surface stays');
+  assert.ok(inspector.includes('#1046') && inspector.includes('Detected geometry') && inspector.includes('Verdict') && inspector.includes('Correct'),
+    'the id, geometry and verdict stay in the block that lost its picture');
+  const rail = VS.railHTML(snapshot);
+  assert.ok(!/<img|<video/.test(rail), 'the cues rail carries no per-cue thumbnail picture');
+  assert.ok(rail.includes('data-vs-action="select-event"') && rail.includes('tier-geometry'), 'the rail card keeps its pick action and tier badge');
+  // The stage markup holds the playing video and the frozen still; renderStage
+  // shows exactly one of them, so the tab never has two live pictures.
+  T.state.shotUrl = null;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  const stage = T.stageHTML();
+  assert.strictEqual((stage.match(/<video/g) || []).length, 1, 'one stage video');
+  assert.strictEqual((stage.match(/<img/g) || []).length, 1, 'one stage still');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
+  assert.ok(app.includes('videoShown = playing && !!stageVideo() && videoReady(video);'), 'the video needs a playable window');
+  assert.ok(app.includes('const showStill = !!state.shotUrl && !videoShown;'), 'the still is the same one surface, shown when the video cannot play');
 });
 
 test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {

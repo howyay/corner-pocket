@@ -18,7 +18,7 @@ const COPY = {
     startFailed:'Start attempt', cause:'Cause', remedy:'Remedy', retry:'Retry',
     remedyText:'Check that the source is a saved canonical Twitch channel, or that the allowlisted dataset media exists.',
     correct:'Correct', wrong:'Wrong', unsure:'Unsure', saveReview:'Save review', nextCue:'Next candidate →',
-    evidence:'Source evidence', notReviewed:'Not reviewed', reviewed:'Reviewed', unlabeled:'Unlabeled',
+    notReviewed:'Not reviewed', reviewed:'Reviewed', unlabeled:'Unlabeled',
     unknown:'Unknown', cue:'Cue', clear:'Clear label', prevCrop:'← Previous crop', nextCrop:'Next crop →',
     ignore:'Ignore', rebuild:'Rebuild assignments', refresh:'Refresh status',
     seedHint:'Seeds save immediately. Saving a seed alone does not rebuild predictions.',
@@ -89,7 +89,7 @@ const COPY = {
     startFailed:'启动尝试', cause:'原因', remedy:'处理', retry:'重试',
     remedyText:'请确认来源是已保存的标准 Twitch 频道，或数据集媒体确实存在。',
     correct:'正确', wrong:'错误', unsure:'不确定', saveReview:'保存复核', nextCue:'下一个候选 →',
-    evidence:'原始证据', notReviewed:'未复核', reviewed:'已复核', unlabeled:'未标注',
+    notReviewed:'未复核', reviewed:'已复核', unlabeled:'未标注',
     unknown:'未知', cue:'母球', clear:'清除标注', prevCrop:'← 上一张裁剪图', nextCrop:'下一张裁剪图 →',
     ignore:'忽略', rebuild:'重建分配', refresh:'刷新状态',
     seedHint:'种子立即保存。仅保存种子不会重建预测。',
@@ -540,11 +540,13 @@ function eventBlock(s) {
   if (!item) return `<h3>${esc(t('events'))}</h3><p class="vs-empty">${esc(t('noEvents'))}</p>`;
   const annotation = item.annotation || {};
   const verdict = s.verdictDraft ?? annotation.verdict ?? '';
-  const dataset = encodeURIComponent(s.dataset);
-  const evidence = item.evidence ? `/media/${dataset}/evidence/${encodeURIComponent(String(item.evidence).split('/').pop())}` : `/media/${dataset}/event-frame/${encodeURIComponent(item.id)}`;
+  // The stage is the only picture surface for a cue: it plays the window with
+  // the overlay and freezes into a still when the window cannot play. The
+  // inspector used to carry a second still (`/media/<dataset>/evidence/<file>`,
+  // falling back to an event frame); rendered next to a moving stage it read as
+  // a picture that never updated.
   return `<h3>${esc(item.type === 'pot' ? t('pots') : t('shots'))} <span class="vs-mono vs-dim">#${esc(item.id)}</span></h3>
   <p class="vs-mono">${esc(timecode(item.t))}${pocketName(item) ? ` · ${esc(pocketName(item))}` : ''}</p>
-  <figure class="vs-evidence"><img src="${esc(evidence)}" alt="${esc(t('evidence'))}" loading="lazy"><figcaption class="vs-mono">${esc(t('evidence'))}</figcaption></figure>
   <div class="vs-row"><button class="primary" data-vs-action="play-event" data-vs-value="${esc(s.events.index)}">${esc(t('playInStage'))}</button></div>
   <p class="vs-note">${esc(t('evidenceNote'))}</p>
   <div class="vs-block"><h4>${esc(t('geometry'))}</h4>${eventGeometry(item)}</div>

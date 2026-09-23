@@ -311,9 +311,6 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-quiet .vs-row button{min-height:28px;padding:0 8px;font-size:11px;color:var(--ink-dim)}
 :is(#ops-shell) .vs-quiet .vs-note{font-size:11px}
 :is(#ops-shell) .vs-item .vs-tag.guest{text-transform:none;letter-spacing:.02em}
-:is(#ops-shell) .vs-evidence{margin:8px 0;border:1px solid var(--line2);background:var(--panel2)}
-:is(#ops-shell) .vs-evidence video{display:block;width:100%;max-height:230px;background:#090806}
-:is(#ops-shell) .vs-evidence figcaption{padding:4px 8px;font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.12em}
 :is(#ops-shell) .vs-crop{display:flex;gap:8px;align-items:center;justify-content:center;background:var(--panel2);border:1px solid var(--line2);padding:6px;margin-bottom:6px}
 :is(#ops-shell) .vs-crop img{width:118px;height:118px;object-fit:contain}
 :is(#ops-shell) .vs-crop img.ctx{width:158px;height:158px}
