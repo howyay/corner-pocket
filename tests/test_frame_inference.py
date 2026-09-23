@@ -90,7 +90,7 @@ class FrameTests(unittest.TestCase):
             thread = original_thread(*args, **kwargs)
             threads.append(thread)
             return thread
-        def inference(frame, detectors, root, progress):
+        def inference(frame, detectors, root, progress, dataset=None):
             progress('fixture detecting')
             entered.set()
             release.wait(5)

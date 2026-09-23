@@ -596,11 +596,13 @@ class Backend:
                 from src.frame_inference import infer_frame
                 progress('decoding selected frame')
                 frame, decoded = self.decode_frame(dataset, meta['frame_index'])
-                # No dataset kwarg here: this path is the historical call shape
-                # (callers and tests stub ``infer_frame(frame, detectors, root,
-                # progress)``) and the refined table quad reaches the viewer
-                # through _unified_detection instead.
-                result = dict(infer_frame(frame, detectors, self.root, progress), **decoded, source='inferred', saved_at=now())
+                # ``dataset`` selects the app path's static-camera seed, so the
+                # frozen-frame polygon comes from the same refinement the unified
+                # overlay uses.  Without it this path saved the naive detector's
+                # quad (131 px from the saved anchors at t=427.8 on vod30) and
+                # app.js painted it.
+                result = dict(infer_frame(frame, detectors, self.root, progress, dataset=dataset),
+                              **decoded, source='inferred', saved_at=now())
                 atomic_save(self.frame_path(dataset, meta['frame_index'], 'inference'), result)
                 with self.lock:
                     job.update(status='completed', stage='completed', result=result)
