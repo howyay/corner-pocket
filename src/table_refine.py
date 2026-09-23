@@ -41,30 +41,49 @@ _MIN_SAMPLES = 9         # samples needed before a side is believed
 _MAX_SIDE_MAD = 2.5      # px: sample spread around the side's own offset
 _MAX_MOVE_PX = 8.0       # px: a side may not teleport in one iteration
 _MIN_CONTRAST = 18.0     # gray levels for the intensity fallback
+_PEAK_FLOOR = 0.6        # band mask peak below which a side has no cloth evidence
+_EDGE_MARGIN_PX = 1.5    # a crossing this close to the band edge is not a measurement
+_SCAN_MIN_INLIERS = 7    # accepted scan-line samples needed for the ramp fallback
+_SCAN_MAD_MAX = 6.0      # px: scan-line spread allowed for the ramp fallback
+_CONVERGED_PX = 0.75     # px: stop iterating when no side moves more than this
+_INHERIT_AGREE_PX = 3.0  # px: weak evidence this close to the prior may inherit it
+_INHERIT_DIFFUSE_PX = 8.0  # px: a diffuse crossing this close may still inherit the prior
+_INNER_FLOOR = 0.55      # cloth coverage just inside a crossing must reach this
+_DROP_MIN = 0.20         # occupancy fall across a crossing must reach this
+_RAIL_CONTRAST_MIN = 25.0  # gray levels: dark rail band then bright outside
+_RAIL_BAND_PX = 26.0     # px: width of the rail strip sampled outside a crossing
+_SIG_SCALE_NUM, _SIG_SCALE_DEN = 1, 4   # signature checks run at quarter resolution
+_SIG_SCALE = _SIG_SCALE_NUM / _SIG_SCALE_DEN
+_SIG_MIN_SEP = 1.5       # px at signature scale (== 6 px full resolution)
+# Measured on vod30: the brightness-edge probe below agrees with the mask crossing
+# on the head/foot rails (mad ~2 px) but scatters on the right/bottom rails where a
+# player or the rail highlight dominates (mad 10-27 px), so it is reported as a
+# diagnostic only and never verifies a side.
 
 _DATASET_PRIOR = {
-    # Saved static-camera references, each with the reason it may serve as a
-    # search centre.  A prior is never returned as the answer on its own.
-    "vod30": {"file": "corners_30min_v2.json", "key": "corners",
-              "note": "300-frame temporal median of strip-refined vod30 quads "
-                      "(163/300 accepted, 3.95 px median jitter)"},
-    "highlight": {"file": "fixed_corners.json", "key": "corners",
+    # Each entry names a saved static-camera reference *and* how many of its points
+    # are the cloth quad.  The prior is only a search centre, but a wrong centre is
+    # not harmless: seeding vod30 from ``corners_30min_v2.json`` puts a vertical
+    # left rail at x=450 while the cloth edge slants x=520 (y=330) -> x=381 (y=560),
+    # so the refinement searched 70 px of carpet.  The six hand anchors (their first
+    # four points are the cloth corners) track the same edge within 6-13 px, so they
+    # are the seed.
+    "vod30": {"file": "pid_anchors_vod30.json", "key": "anchors", "points": 4,
+              "note": "first four of the six hand pocket anchors at t=70 "
+                      "(measured within 6-13 px of the visible cloth edge); "
+                      "corners_30min_v2.json is NOT used - its left rail is ~70 px "
+                      "outside the cloth at the top and ~70 px inside at the bottom"},
+    "highlight": {"file": "fixed_corners.json", "key": "corners", "points": 4,
                   "note": "highlight reference (docs/state.md: 2.0 px median vs the cloth quad)"},
 }
 
 
-# --------------------------------------------------------------------------
-# priors
-# --------------------------------------------------------------------------
-
 def prior_for(dataset: str, t: float | None = None, root=None):
     """Saved reference quad for a dataset, or None when there is none.
 
-    ``t`` is accepted so a future per-segment prior table can key on it; both
-    datasets here are single static segments.  ``root`` overrides where the
-    reference is read from, so a caller that is pointed at its own tree (a test
-    fixture, another checkout) never picks up this one's artifacts: it either
-    finds its own ``out/`` copy or gets None and falls back to the naive quad.
+    ``t`` selects the recorded anchor frame (vod30 anchors exist at t=70 only);
+    ``root`` overrides where the reference is read from, so a caller pointed at its
+    own tree (a test fixture, another checkout) never picks up this one's artifacts.
     """
     spec = _DATASET_PRIOR.get(str(dataset))
     if not spec:
@@ -74,8 +93,23 @@ def prior_for(dataset: str, t: float | None = None, root=None):
         return None
     try:
         data = json.loads(path.read_text())
-        pts = np.asarray(data[spec["key"]], np.float32).reshape(4, 2)
+        raw = data[spec["key"]]
+        if spec["key"] == "anchors":              # {"anchors": {"70.0": [[x, y], ...]}}
+            if not raw:
+                return None
+            key = None
+            if t is not None:
+                for candidate in (f"{float(t)}", f"{float(t):.1f}", str(int(t)) if float(t).is_integer() else None):
+                    if candidate and candidate in raw:
+                        key = candidate
+                        break
+            if key is None:
+                key = sorted(raw, key=float)[0]
+            raw = raw[key]
+        pts = np.asarray(raw, np.float32).reshape(-1, 2)[:spec["points"]]
     except Exception:
+        return None
+    if pts.shape != (4, 2):
         return None
     from src.table_detect import _order_corners
     return _order_corners(pts)
@@ -265,7 +299,7 @@ def _sample_grid(a, b, nrm, h, w, band, step, n):
     return ts, xs, ys, ok
 
 
-def _side_evidence(gray, mm, a, b, nrm, band=_BAND_PX, bounds=None):
+def _side_evidence(gray, mm, a, b, nrm, band=_BAND_PX, bounds=None, mask_scale=1.0):
     """Sample one side: per scan line, where does the cloth end?
 
     Offsets are perpendicular distances from the prior line (+ = outward).  The
@@ -287,7 +321,12 @@ def _side_evidence(gray, mm, a, b, nrm, band=_BAND_PX, bounds=None):
         idx = np.where(on[:, j])[0]
         if len(idx):
             i = int(idx[np.argmax(ts[idx])])          # outermost 'on' sample
-            offsets.append(float(ts[i]) + (0.25 if i + 1 < n_t else 0.0))
+            edge = float(ts[i]) + (0.25 if i + 1 < n_t else 0.0)
+            # A sample at the outer limit of the band means the cloth continues past
+            # the search: clamp it inside, so a rail that was never reached is not
+            # reported as sitting on the band edge.
+            edge = min(edge, float(ts[-1]) - _EDGE_MARGIN_PX)
+            offsets.append(max(edge, float(ts[0]) + _EDGE_MARGIN_PX))
             kinds.append("mask")
             continue
         gh, gw = gray.shape[:2]
@@ -305,10 +344,121 @@ def _side_evidence(gray, mm, a, b, nrm, band=_BAND_PX, bounds=None):
         after = col[i + 1:i + 6]
         if step < _MIN_CONTRAST or len(prev) < 2 or len(after) < 2:
             continue
-        offsets.append(float(ts[i]))
+        # ``ts`` is in mask units but the ramp was located on the full-res frame,
+        # so the offset has to be expressed in mask units here: the caller converts
+        # mask px -> real px exactly once.
+        offsets.append(float(ts[i]) / mask_scale)
         rises.append(step)
         kinds.append("edge")
     return np.asarray(offsets, float), np.asarray(rises, float), kinds
+
+
+def intensity_band_offset(gray, a, b, nrm, band_px, n=_N_SAMPLES, min_drop=25.0):
+    """Independent evidence for one side: the strongest bright->dark intensity step.
+
+    The cloth mask is hue-based, and on vod30 the carpet and the rail shadow share
+    the cloth hue, so the mask crossing on the left rail is diffuse (coverage ramps
+    from 0.5 to 1.0 over ~20 px) and cannot verify anything on its own.  Brightness
+    does separate cloth from shadow, so this scans perpendicular to the side on the
+    full-resolution gray frame and reports the median position of the sharpest
+    sustained fall, plus how many scan lines agreed.
+
+    Returns ``(offset_px, mad_px, n_lines)`` with offset in real pixels and
+    ``(None, None, 0)`` when no line shows a step of at least ``min_drop``.
+    """
+    gray = np.asarray(gray, np.float32)
+    h, w = gray.shape[:2]
+    a = np.asarray(a, float)
+    b = np.asarray(b, float)
+    nrm = np.asarray(nrm, float)
+    ts = np.arange(-band_px, band_px + 0.5, 0.5)
+    fracs = np.linspace(0.10, 0.90, n)
+    p0 = a[None, :] + (b - a)[None, :] * fracs[:, None]
+    xs = np.rint(p0[:, 0][None, :] + nrm[0] * ts[:, None]).astype(int)
+    ys = np.rint(p0[:, 1][None, :] + nrm[1] * ts[:, None]).astype(int)
+    ok = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
+    if ok.sum() < 12:
+        return None, None, 0
+    vals = np.full(xs.shape, np.nan, np.float32)
+    vals[ok] = gray[ys[ok], xs[ok]]
+    offs = []
+    for j in range(xs.shape[1]):
+        col, okj = vals[:, j], ok[:, j]
+        valid = np.where(okj)[0]
+        if len(valid) < 10:
+            continue
+        best_t, best_drop = None, min_drop
+        for i in range(valid[0] + 2, valid[-1] - 3):
+            if not (okj[i - 2:i + 1].all() and okj[i + 2:i + 6].all()):
+                continue
+            drop = float(col[i - 2:i + 1].mean() - col[i + 2:i + 6].mean())
+            if drop > best_drop:
+                best_drop, best_t = drop, float(ts[i])
+        if best_t is not None:
+            offs.append(best_t)
+    if len(offs) < 8:
+        return None, None, len(offs)
+    offs = np.asarray(offs, float)
+    med = float(np.median(offs))
+    mad = float(np.median(np.abs(offs - med)) * 1.4826)
+    inl = offs[np.abs(offs - med) <= max(3.0, 2.5 * mad)]
+    if len(inl) >= 6:
+        med = float(np.median(inl))
+        mad = float(np.median(np.abs(inl - med)) * 1.4826)
+    return med, mad, len(offs)
+
+
+def rail_band_check(gray, a, b, nrm, offset_px, band_px, n=13, min_sep=6.0):
+    """Is the thing just outside this crossing a pool-table rail?
+
+    A cushion edge has a signature: cloth, then a *dark* band (the rail's shadowed
+    nose), then the bright outside (carpet, floor, wall).  A crossing whose outside
+    is a smooth dark field with no rail band at all is not the table boundary - it
+    is a player's body, a shadow or an occluder that happens to sit on the cloth,
+    which is the class of mistake this detector must not make.
+
+    Returns ``(rail_dark, outside_bright, n)``: the darkest brightness of the band
+    strip, the brightness further out, and how many scan lines voted.  ``None``
+    when the geometry leaves the frame.
+    """
+    gray = np.asarray(gray, np.float32)
+    h, w = gray.shape[:2]
+    a = np.asarray(a, float)
+    b = np.asarray(b, float)
+    nrm = np.asarray(nrm, float)
+    # The rail is ~20-40 px wide at these resolutions, so the strip and the outside
+    # sample have to sit that far beyond the crossing.  The previous version sampled
+    # only ~10 px out, which is still cloth, so every crossing looked like it had no
+    # rail - the check never fired in either direction.
+    rail_px = max(4.0, band_px * (_RAIL_BAND_PX / _BAND_PX))
+    t0 = max(min_sep, offset_px + min_sep / 2.0)
+    near = t0 + rail_px
+    far = near + rail_px
+    mids = np.linspace(t0, near, 5)
+    outs = np.linspace(near + 2.0, far + 2.0, 3)
+    fracs = np.linspace(0.14, 0.86, n)
+    darks, brights = [], []
+    for frac in fracs:
+        p0 = a + (b - a) * frac
+        def sample(t):
+            p = p0 + nrm * t
+            x, y = int(round(p[0])), int(round(p[1]))
+            return gray[y, x] if 0 <= x < w and 0 <= y < h else None
+        band_vals = [sample(t) for t in mids]
+        out_vals = [sample(t) for t in outs]
+        band_vals = [v for v in band_vals if v is not None]
+        out_vals = [v for v in out_vals if v is not None]
+        if len(band_vals) >= 3 and len(out_vals) >= 2:
+            darks.append(min(band_vals))
+            brights.append(max(out_vals))
+    if len(darks) < 6:
+        return None, None, len(darks)
+    import os
+    if os.environ.get("RAIL_DEBUG"):
+        print("RAIL_DEBUG offset", round(offset_px,2), "t0", round(t0,1), "near", round(near,1), "far", round(far,1),
+              "dark", round(float(np.median(darks)),1), "out", round(float(np.median(brights)),1),
+              "mids", [round(float(x),1) for x in mids], "outs", [round(float(x),1) for x in outs])
+    return float(np.median(darks)), float(np.median(brights)), len(darks)
 
 
 def _robust_offset(offsets):
@@ -440,21 +590,30 @@ def _side_occupancy(mm, a, b, nrm, band=_BAND_PX, step=0.5, n=12, integral=None)
 
 
 def _occupancy_crossing(ts, occ, thresh=0.5):
-    """Signed offset where the mean occupancy falls through ``thresh`` walking
-    from inside (positive occupancy) outwards; None when the curve never gets
-    there or never leaves."""
+    """Where the mean occupancy falls through ``thresh``, walking from the inside.
+
+    Returns ``None`` when the curve never gets there.  Also reports the occupancy
+    just inside and just outside the crossing and the drop across it, because
+    "the curve fell through 0.5" alone is not evidence of a boundary: a partial
+    mask (a hole, an occluded rail) crosses 0.5 gently and in the wrong place,
+    while a real cloth edge drops nearly a full unit in a couple of pixels.
+    """
     valid = np.isfinite(occ)
     if valid.sum() < 8:
         return None
     tsv, occv = ts[valid], occ[valid]
-    if occv.max() < max(thresh + 0.15, 0.6) or occv.min() > thresh - 0.15:
-        return None
-    # iterate from the inside end outwards, take the first crossing
+    # Walk from the inside (the end that is covered) outwards.
+    if occv[0] < occv[-1]:
+        tsv, occv = tsv[::-1], occv[::-1]
     for i in range(len(occv) - 1):
         if occv[i] >= thresh > occv[i + 1]:
             span = occv[i] - occv[i + 1]
             f = 0.0 if span <= 1e-6 else (occv[i] - thresh) / span
-            return float(tsv[i] + f * (tsv[i + 1] - tsv[i]))
+            crossing = float(tsv[i] + f * (tsv[i + 1] - tsv[i]))
+            inner = float(np.mean(occv[max(0, i - 3):i + 1]))
+            outer = float(np.mean(occv[i + 1:min(len(occv), i + 5)]))
+            return {"crossing_px": crossing, "inner": inner, "outer": outer,
+                    "drop": inner - outer}
     return None
 
 
@@ -492,17 +651,64 @@ def _shift_side(quad, s, offset):
     quad[(s + 1) % 4] = quad[(s + 1) % 4] + nrm * offset
 
 
-def refine_quad_edges(frame, prior, band_px=_BAND_PX, iters=_ITERS):
+def refine_quad_edges(frame, prior, band_px=_BAND_PX, iters=_ITERS, band_scales=(1.0, 2.0, 3.0)):
     """Refine ``prior`` against frame evidence; return ``(quad, info)``.
 
+    The search band widens across ``band_scales`` passes: a rail whose boundary
+    sits outside the narrow band is not measurable at that width, and refusing the
+    frame there would be a coverage loss, not honesty.  Widening keeps the rule
+    intact - every pass still requires in-band evidence with the band-edge
+    rejection - so a side that is unverified at 3x the band is genuinely
+    unmeasurable and the frame is refused.
+    """
+    last = None
+    for scale in band_scales:
+        quad, info = _refine_once(frame, prior, band_px=band_px * scale, iters=iters)
+        info["band_scale"] = scale
+        if quad is not None or scale == band_scales[-1]:
+            return quad, info
+        last = info
+        # Widening is only a *search* fallback for a prior that found nothing.  A
+        # prior that verified a strict subset of its sides is self-contradictory
+        # (part of the frame agrees with it, part does not): widening that one
+        # would let the agreeing rails pull the others far past the boundary, which
+        # is exactly the confident-wrong-quad case.  Those refuse as they are.
+        verified = info.get("verified_sides", 0)
+        if verified:
+            return None, info
+    return None, last or {"confidence": 0.0, "reason": "no_boundary_evidence"}
+
+
+def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
+    """One refinement pass at a fixed band width.
+
     Each iteration measures, per side, the mask-occupancy crossing plus the
-    per-scan-line offsets, and moves the side to the consensus.  The result is
-    accepted only when every side clears the evidence floors; otherwise
-    ``quad`` is None and ``reason`` says what was missing.
+    per-scan-line offsets, and moves the side to the consensus.
+
+    Verification rule (a side is *verified* only when the frame shows its
+    boundary inside the search band):
+
+    * the occupancy crossing exists AND the band's mask peak is >= ``_PEAK_FLOOR``
+      AND the crossing sits at least ``_EDGE_MARGIN_PX`` inside the band edge -
+      a crossing *at* the band edge means the search never reached a boundary and
+      the side is merely following the prior, not measuring it; or
+    * the per-scan-line consensus has >= 7 inliers with MAD <= ``_SCAN_MAD_MAX``
+      (the intensity ramp, used where the mask retracts).
+
+    If ANY side fails, no corners are returned: ``quad`` is None, ``reason`` is
+    ``low_cloth_area`` / ``no_boundary_evidence`` / ``prior_disagreement``, and
+    ``unverified_sides`` carries the per-side code.  A side kept at its prior
+    position is not a verified measurement, so it can never be reported as a
+    confident quad - that is the failure class this project deletes from the UI.
     """
     from src.table_detect import _order_corners
     prior = _order_corners(np.asarray(prior, np.float32))
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    # Signature checks run on a quarter-resolution gray image (measured ~4x cheaper
+    # than the full one and still resolving a 26 px rail band).
+    gray_small = cv2.resize(gray, (max(1, gray.shape[1] * _SIG_SCALE_NUM // _SIG_SCALE_DEN),
+                                   max(1, gray.shape[0] * _SIG_SCALE_NUM // _SIG_SCALE_DEN)),
+                            interpolation=cv2.INTER_AREA)
     cands = _mask_candidates(frame, prior)
     if not cands:
         return None, {"confidence": 0.0, "reason": "low_cloth_area", "mask": "no_candidate"}
@@ -511,15 +717,24 @@ def refine_quad_edges(frame, prior, band_px=_BAND_PX, iters=_ITERS):
         return None, {"confidence": 0.0, "reason": "low_cloth_area",
                       "mask": "no_candidate_covers_prior",
                       "candidates": [c["name"] for c in cands]}
-    # The boundary is measured on a 2x-downsampled mask: the mask edge spans
-    # several pixels, so halving it costs no measurable accuracy while keeping the
-    # per-side profiles (the hot loop) four times cheaper on 1080p frames.
-    mask_scale = 0.5
-    mm_small = cv2.resize(mm * 255, (max(1, mm.shape[1] // 2), max(1, mm.shape[0] // 2)),
-                          interpolation=cv2.INTER_NEAREST)
-    integral = _integral(mm_small)
+    # The boundary is measured on a half-resolution mask (one resize, and the mask
+    # edge spans several pixels so the halving is invisible), but the step that
+    # moves a side is applied in real pixels: the old code divided by the scale
+    # instead of multiplying, so an iteration advanced only half the offset it had
+    # just measured.  ``mask_scale`` is applied exactly once, at each measured
+    # offset, and offset units are documented at every producer.
+    # The boundary is measured on the FULL-resolution mask.  Half resolution is
+    # cheaper, but the resample moves the mask edge by ~1.5 px, and that shows up as
+    # a constant offset between what the detector measures and what it writes (the
+    # 1.011 applied/reported ratio the verifier caught, and the residual of a
+    # one-iteration step).  Full resolution removes the bias; the occupancy profile
+    # is O(1) per sample through the integral image, so the cost is bounded.
+    mask_scale = 1.0
+    band_mask = band_px * mask_scale
+    mm_small = mm
+    integral = _integral(mm)
     quad = prior.astype(np.float64).copy()
-    side_reports, movements = [], []
+    side_reports, side_state, movements = [], {}, []
     it = 0
     for it in range(max(1, iters)):
         reports = []
@@ -534,85 +749,174 @@ def refine_quad_edges(frame, prior, band_px=_BAND_PX, iters=_ITERS):
             # exactly how an out-of-bounds index got through before.
             mh, mw = mm_small.shape[:2]
             offsets, rises, kinds = _side_evidence(gray, mm_small, a_s, b_s, nrm,
-                                                  band=band_px * mask_scale, bounds=(mh, mw))
-            ts, occ = _side_occupancy(mm_small, a_s, b_s, nrm, band=band_px * mask_scale,
-                                      integral=integral)
-            crossing = _occupancy_crossing(ts, occ)
+                                                   band=band_mask, bounds=(mh, mw),
+                                                   mask_scale=mask_scale)
+            ts, occ = _side_occupancy(mm_small, a_s, b_s, nrm, band=band_mask, integral=integral)
+            crossing_info = _occupancy_crossing(ts, occ)
+            crossing = None if crossing_info is None else crossing_info["crossing_px"]
+            rail_dark, rail_out, rail_n = (None, None, 0)
+            if crossing is not None:
+                # The rail band is ~26 px wide and the outside sample sits ~80 px
+                # out, so a quarter-resolution gray image resolves it fine and keeps
+                # this off the profile of the frame.
+                rail_dark, rail_out, rail_n = rail_band_check(
+                    gray_small, a * _SIG_SCALE, b * _SIG_SCALE, nrm, crossing * _SIG_SCALE,
+                    band_px * _SIG_SCALE, min_sep=_SIG_MIN_SEP)
             peak, width = _band_quality(ts, occ)
             med, mad, n_in = _robust_offset(offsets)
             reports.append({"side": s, "n": int(len(offsets)), "n_inliers": n_in,
                             "mask_offset_px": None if crossing is None else round(crossing, 2),
+                            "mask_inner_occupancy": (None if crossing_info is None
+                                                     else round(crossing_info["inner"], 2)),
+                            "mask_edge_drop": (None if crossing_info is None
+                                               else round(crossing_info["drop"], 2)),
                             "mask_band_peak": None if peak is None else round(peak, 2),
                             "mask_band_width_px": None if width is None else round(width, 2),
                             "scan_offset_px": None if med is None else round(med, 2),
                             "scan_mad_px": None if mad is None else round(mad, 2),
+                            "rail_dark": None if rail_dark is None else round(rail_dark, 1),
+                            "rail_outside": None if rail_out is None else round(rail_out, 1),
+                            "rail_lines": rail_n,
                             "kinds": {k: kinds.count(k) for k in sorted(set(kinds))},
                             "rise_median": round(float(np.median(rises)) if len(rises) else 0.0, 1)})
-        # Which offsets are defensible?  The occupancy crossing is a per-side
-        # measurement, so a player crossing one rail is outvoted.  A side with no
-        # evidence is NOT a refusal: it stays where the prior put it, the move is
-        # logged, and the frame's confidence drops.  That is the partial-occlusion
-        # case - the other three rails still measure the boundary, and refusing
-        # the frame would throw that away.
-        chosen, held = {}, []
+        # Verify each side against the frame before letting it move the quad.
+        offsets_mask, unverified = {}, {}
         for r in reports:
             cross = r["mask_offset_px"]
-            if cross is not None and (r["mask_band_peak"] or 0) >= 0.6:
-                chosen[r["side"]] = cross * mask_scale
-                continue
-            if r["scan_offset_px"] is not None and r["n_inliers"] >= 7 and (r["scan_mad_px"] or 99) <= 6.0:
-                chosen[r["side"]] = r["scan_offset_px"] * mask_scale
-                continue
-            held.append({"side": r["side"], "reason": ("low_cloth_area"
-                         if (r["mask_band_peak"] or 0) < 0.4 else "no_boundary_evidence"),
-                         "peak": r["mask_band_peak"]})
-            chosen[r["side"]] = 0.0
-        if len(held) == 4:
-            return None, {"confidence": 0.0, "reason": "low_cloth_area", "mask": mask_note,
+            peak = r["mask_band_peak"] or 0.0
+            inner = r["mask_inner_occupancy"]
+            drop = r["mask_edge_drop"]
+            at_band_edge = cross is not None and abs(cross) >= band_mask - _EDGE_MARGIN_PX
+            # A real cloth edge has cloth covering the inside of the crossing and a
+            # sharp fall across it.  A partial mask (hole, occluded rail) crosses at
+            # a low inner occupancy and/or a shallow drop, which is not a boundary
+            # measurement - that is how a confident wrong quad got out before.
+            # A real boundary needs the rail signature outside it: a dark band
+            # followed by a brighter outside.  Without it the crossing is something
+            # lying on the cloth (a body, a shadow), which must not verify a side.
+            rail_ok = (r["rail_dark"] is not None and r["rail_outside"] is not None
+                       and r["rail_lines"] >= 6
+                       and (r["rail_outside"] - r["rail_dark"]) >= _RAIL_CONTRAST_MIN)
+            measured_edge = (inner is not None and inner >= _INNER_FLOOR
+                             and drop is not None and drop >= _DROP_MIN and rail_ok)
+            if peak < _PEAK_FLOOR and not measured_edge:
+                unverified[r["side"]] = "low_cloth_area"
+            elif cross is not None and not at_band_edge and measured_edge:
+                offsets_mask[r["side"]] = cross * mask_scale
+            elif r["scan_offset_px"] is not None and r["n_inliers"] >= _SCAN_MIN_INLIERS \
+                    and (r["scan_mad_px"] or 99.0) <= _SCAN_MAD_MAX \
+                    and abs(r["scan_offset_px"]) < band_mask - _EDGE_MARGIN_PX:
+                offsets_mask[r["side"]] = r["scan_offset_px"] * mask_scale
+            elif (r["scan_offset_px"] is not None and r["n_inliers"] >= _SCAN_MIN_INLIERS
+                  and (r["scan_mad_px"] or 99) <= _SCAN_MAD_MAX
+                  and abs(r["scan_offset_px"]) < band_mask - _EDGE_MARGIN_PX):
+                offsets_mask[r["side"]] = r["scan_offset_px"] * mask_scale
+            elif at_band_edge:
+                # The curve only fell through 0.5 at the edge of the band: the real
+                # boundary is somewhere outside the search, so this side is not
+                # verified and must not be dragged toward the band edge.
+                unverified[r["side"]] = "boundary_outside_band"
+            else:
+                unverified[r["side"]] = "no_boundary_evidence"
+
+        # Explicit inheritance for a side whose own evidence is weak but not
+        # contradictory: the mask is diffuse there (the vod30 left rail shares its
+        # hue with the carpet, so coverage ramps rather than steps), yet the weak
+        # evidence still agrees with where the prior put the side within
+        # ``_INHERIT_AGREE_PX``.  Such a side stays at the prior position and is
+        # reported as inherited, never as verified: confidence is penalised and the
+        # caller can see exactly which sides rest on the prior.  A side whose weak
+        # evidence points somewhere else is a disagreement and refuses the frame.
+        inherited = {}
+        if unverified:
+            for side, code in list(unverified.items()):
+                r = next(x for x in reports if x["side"] == side)
+                # A diffuse crossing (no step at all across the threshold) carries no
+                # position information: its offset is dominated by how wide the ramp
+                # is, not by where the edge sits, so it is not a disagreement.
+                diffuse = (r["mask_offset_px"] is not None
+                           and (r["mask_edge_drop"] or 1.0) < _DROP_MIN
+                           and abs(r["mask_offset_px"]) * mask_scale <= _INHERIT_DIFFUSE_PX)
+                # Contradictory evidence (a crossing far from the prior *and* a scan
+                # consensus in the same direction) can never inherit.
+                contradicting = [v for v in (r["mask_offset_px"], r["scan_offset_px"])
+                                 if v is not None and abs(v) * mask_scale > _BAND_PX / 2.0]
+                if len(contradicting) >= 2:
+                    continue
+                weak = [] if diffuse else [v for v in (r["mask_offset_px"], r["scan_offset_px"])
+                                           if v is not None]
+                # ``weak`` empty means the frame showed *nothing* for this side, and
+                # nothing is not agreement: inheriting there would report the prior
+                # as if the frame had supported it.
+                if (weak or diffuse) and all(abs(v) <= _INHERIT_AGREE_PX / mask_scale for v in weak):
+                    inherited[side] = {"reason": code, "diffuse_crossing": bool(diffuse),
+                                       "weak_offsets_px": [round(float(v) * mask_scale, 2) for v in weak]}
+                    offsets_mask[side] = 0.0
+                    del unverified[side]
+        side_state = dict(unverified)
+        n_verified = 4 - len(unverified) - len(inherited)
+        for r in reports:
+            r["verified"] = r["side"] not in unverified
+            r["inherited"] = r["side"] in inherited
+            if r["side"] in unverified:
+                r["reason"] = unverified[r["side"]]
+            elif r["side"] in inherited:
+                r["reason"] = "side_inherited"
+        if unverified:
+            reason = ("low_cloth_area"
+                      if all(v == "low_cloth_area" for v in unverified.values())
+                      else "boundary_outside_band"
+                      if all(v in ("low_cloth_area", "boundary_outside_band") for v in unverified.values())
+                      else "no_boundary_evidence")
+            return None, {"confidence": 0.0, "reason": reason, "mask": mask_note,
                           "iteration": it, "sides": reports,
-                          "held_sides": held,
+                          "verified_sides": n_verified,
+                          "unverified_sides": [dict(side=s, reason=unverified[s]) for s in sorted(unverified)],
+                          "inherited_sides": [dict(side=s, **inherited[s]) for s in sorted(inherited)],
                           "candidates": [c["name"] for c in cands]}
-        moved = np.array([chosen[s] for s in range(4)], float)
-        live = np.array([s for s in range(4) if not any(h["side"] == s for h in held)])
-        if len(live) >= 2 and float(np.median(np.abs(moved[live] - np.median(moved[live])))) > 45.0:
+        moved_mask = np.array([offsets_mask[s] for s in range(4)], float)      # mask px
+        moved_px = moved_mask / mask_scale                                     # real px
+        if float(np.median(np.abs(moved_px - np.median(moved_px)))) > 45.0:
             return None, {"confidence": 0.0, "reason": "prior_disagreement", "mask": mask_note,
-                          "iteration": it, "sides": reports, "held_sides": held}
+                          "iteration": it, "sides": reports,
+                          "unverified_sides": [dict(side=s, reason="prior_disagreement") for s in range(4)]}
         for s in range(4):
-            # ``chosen`` is in downsampled-mask units: back to full-res pixels.
-            # A side may only move a bounded amount per iteration: an unbounded
-            # step lets one rail (the 1080p bottom rail, whose cloth rolls into a
-            # shadow band) swallow the frame's dark edge.  The cap also keeps the
-            # refined quad inside the segment prior's neighbourhood.
-            _shift_side(quad, s, float(np.clip(chosen[s], -_MAX_MOVE_PX, _MAX_MOVE_PX)) / mask_scale)
-        movements.append(round(float(np.mean([abs(moved[s]) for s in range(4)])), 2))
+            # One iteration advances the FULL measured offset, clipped to the cap.
+            # The cap is expressed in real pixels: an unbounded step lets one rail
+            # (the 1080p bottom rail, whose cloth rolls into a shadow band) swallow
+            # the frame's dark edge.
+            _shift_side(quad, s, float(np.clip(moved_px[s], -_MAX_MOVE_PX, _MAX_MOVE_PX)))
+        movements.append(round(float(np.mean(np.abs(np.clip(moved_px, -_MAX_MOVE_PX, _MAX_MOVE_PX)))), 2))
         side_reports = reports
-        all_held = held
-        if max(abs(moved[s]) for s in range(4)) < 0.75:
+        if float(np.max(np.abs(moved_px))) < _CONVERGED_PX:
             break
     quad = _order_corners(quad.astype(np.float32))
     ok, why = _plausible(quad, prior, frame.shape[1], frame.shape[0])
     if not ok:
         return None, {"confidence": 0.0, "reason": why, "mask": mask_note,
                       "iteration": it, "sides": side_reports}
-    # Confidence: the weakest side caps it (a quad is only as trustworthy as its
-    # worst edge), with the typical edge width and per-scan-line spread as the
-    # other two components.  Refusals are the gates above; this number only says
-    # how comfortable the accepted quad is.
-    peaks = [r["mask_band_peak"] if r["mask_band_peak"] is not None else 0.45 for r in side_reports]
+    # Every side was verified this iteration (an unverified one returns above), so
+    # confidence grades how clean those measurements were, not how many there were.
+    peaks = [r["mask_band_peak"] if r["mask_band_peak"] is not None else 0.0 for r in side_reports]
     widths = [r["mask_band_width_px"] for r in side_reports if r["mask_band_width_px"] is not None]
     spreads = [r["scan_mad_px"] for r in side_reports if r["scan_mad_px"] is not None]
 
     def _unit(v, lo, hi):
         return max(0.0, min(1.0, (v - lo) / (hi - lo)))
 
-    comp_peak = _unit(float(np.min(peaks)), 0.6, 0.9)
+    comp_peak = _unit(float(np.min(peaks)), _PEAK_FLOOR, 0.9)
     comp_width = 1.0 - _unit(float(np.median(widths)) if widths else 25.0, 8.0, 30.0)
     comp_spread = 1.0 - _unit(float(np.median(spreads)) if spreads else 8.0, 4.0, 14.0)
-    measured = (4 - len(all_held)) / 4.0
-    confidence = round(measured * (0.40 * comp_peak + 0.30 * comp_width + 0.30 * comp_spread), 3)
+    confidence = round(0.40 * comp_peak + 0.30 * comp_width + 0.30 * comp_spread, 3)
+    # An inherited side was not measured on this frame, so the quad cannot claim
+    # the confidence a fully measured one earns.
+    if inherited:
+        confidence = round(confidence * (1.0 - 0.25 * len(inherited)), 3)
     info = {"confidence": confidence, "reason": None, "mask": mask_note,
             "iterations": len(movements), "side_moves_px": movements,
-            "held_sides": all_held, "measured_sides": 4 - len(all_held),
+            "verified_sides": 4 - len(inherited), "unverified_sides": [],
+            "inherited_sides": [dict(side=s, **inherited[s]) for s in sorted(inherited)],
+            "reason": "side_inherited" if inherited else None,
             "side_peak_occupancy": round(float(np.min(peaks)), 2),
             "edge_width_px": round(float(np.median(widths)) if widths else -1.0, 2),
             "scan_mad_px": round(float(np.median(spreads)) if spreads else -1.0, 2),

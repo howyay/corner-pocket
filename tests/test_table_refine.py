@@ -12,27 +12,54 @@ import cv2
 import numpy as np
 
 from src.table_detect import detect_table
+from src.table_detect import _order_corners
 from src.table_refine import (detect_table_refined, load_priors, prior_for, refine_quad_edges)
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def bed_frame(quad=None, occlude=None, cloth_hue=106):
+def bed_frame(quad=None, occlude=None, cloth_bgr=(150, 100, 50), rail_px=30):
     """Synthetic 640x360 frame shaped like the vod30 geometry.
 
     The bed covers ~9.5% of the frame, the same fraction the saved vod30 quad
     covers, so the app's quad-sanity rules (2%-90% area, inside the frame) behave
-    here exactly as they do on the recording.
+    here exactly as they do on the recording.  Brightness is ordered the way the
+    real frames are - cloth (gray ~93) brighter than the rail band (~55), bright
+    outside (~160) - because the detector requires that rail signature before it
+    will call a crossing a table boundary.
     """
     w, h = 640, 360
-    frame = np.full((h, w, 3), (40, 40, 42), dtype=np.uint8)
+    frame = np.full((h, w, 3), 160, dtype=np.uint8)                 # bright outside
     if quad is None:
         quad = np.array([[102, 124], [372, 124], [472, 279], [102, 279]], dtype=np.int32)
-    colour = cv2.cvtColor(np.uint8([[[cloth_hue, 160, 120]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
-    cv2.fillConvexPoly(frame, quad.astype(np.int32), tuple(int(v) for v in colour))
+    # A rail band of constant width: offset each side line outward by rail_px and
+    # intersect neighbours (a centroid-scaled quad would give a band that is thick
+    # on the long sides and thin on the short ones).
+    q = quad.astype(np.float64)
+    centre = q.mean(axis=0)
+    lines = []
+    for i in range(4):
+        a, b = q[i], q[(i + 1) % 4]
+        d = b - a
+        d = d / max(float(np.linalg.norm(d)), 1e-9)
+        nrm = np.array([-d[1], d[0]])
+        if np.dot(nrm, (a + b) / 2.0 - centre) < 0:
+            nrm = -nrm
+        lines.append((a + nrm * rail_px, d))
+    rail = []
+    for i in range(4):
+        p1, d1 = lines[i]
+        p2, d2 = lines[(i + 1) % 4]
+        m = np.array([[d1[0], -d2[0]], [d1[1], -d2[1]]])
+        t = np.linalg.solve(m, p2 - p1)
+        rail.append(p1 + t[0] * d1)
+    cv2.fillConvexPoly(frame, np.asarray(rail, np.int32), (55, 55, 55))      # dark rail
+    cv2.fillConvexPoly(frame, quad.astype(np.int32), tuple(int(v) for v in cloth_bgr))
     if occlude is not None:
+        # A body is mid-brightness: it must not look like a rail band, and it must
+        # not offer the dark-rail + bright-outside signature either.
         for rect in occlude:
-            cv2.rectangle(frame, rect[0], rect[1], (60, 60, 60), -1)
+            cv2.rectangle(frame, rect[0], rect[1], (112, 112, 112), -1)
     return frame, quad.astype(np.float32)
 
 
@@ -93,13 +120,72 @@ class DetectorContractTests(unittest.TestCase):
         self.assertEqual(result['confidence'], 0.0)
         self.assertIn(result['reason'], ('low_cloth_area', 'no_boundary_evidence', 'prior_disagreement'))
 
-    def test_occlusion_leaves_the_untouched_sides_measured(self):
-        frame, quad = bed_frame(occlude=[((120, 250), (520, 300))])  # bottom rail covered
+    def test_one_iteration_advances_the_measured_offset_in_real_pixels(self):
+        """The step size is the measurement, converted once and expressed in real
+        pixels (regression: the step was divided by the mask scale, so each
+        iteration advanced half of what it had just measured)."""
+        from src.table_refine import _MAX_MOVE_PX
+        frame, quad = bed_frame()
+        offset = 10.0
+        prior = quad + np.array([[0, -offset], [0, -offset], [0, offset], [0, offset]], dtype=np.float32)
+        one, info = refine_quad_edges(frame, prior, iters=1)
+        self.assertIsNotNone(one, f'clean bed refused: {info.get("reason")}')
+        moved = abs(float(one[0][1] - prior[0][1]))
+        self.assertGreater(moved, min(offset, _MAX_MOVE_PX) - 1.5,
+                           f'one iteration moved only {moved:.1f} px of a {offset:.0f} px offset')
+        self.assertLessEqual(moved, _MAX_MOVE_PX + 0.01, 'the cap must be the real-pixel cap')
+        two, _ = refine_quad_edges(frame, prior, iters=2)
+        self.assertLess(float(np.linalg.norm(np.asarray(two) - quad, axis=1).mean()), 1.5,
+                        'two iterations must converge on a clean bed')
+
+    def test_a_corner_dragged_off_the_cloth_is_either_refused_or_verified(self):
+        """Corner-level damage leaves the side *lines* intact, so a good recovery is
+        legitimate - but any accepted quad must account for all four sides, and any
+        refusal must carry no corners."""
+        frame, quad = bed_frame()
+        prior = quad.copy()
+        prior[0] += np.array([40, 0], dtype=np.float32)
+        prior[2] += np.array([80, 0], dtype=np.float32)
+        result = detect_table_refined(frame, prior=prior)
+        if result['corners'] is None:
+            self.assertEqual(result['confidence'], 0.0)
+            self.assertIsNotNone(result['reason'])
+            return
+        info = result['debug_info']
+        info = info if 'verified_sides' in info else (info.get('tried') or [{}])[0].get('info', {})
+        self.assertEqual(info.get('verified_sides', 0) + len(info.get('inherited_sides') or []), 4)
+        if info.get('inherited_sides'):
+            self.assertLess(result['confidence'], 0.8)
+        else:
+            self.assertLess(float(np.linalg.norm(np.asarray(result['corners']) - quad, axis=1).mean()), 8.0)
+
+    def test_side_verification_is_reported_per_side(self):
+        """Every accepted quad names which sides were measured and which inherited
+        the prior, and any side that is neither refuses the frame."""
+        frame, quad = bed_frame()
         result = detect_table_refined(frame, prior=quad)
         self.assertIsNotNone(result['corners'])
-        held = result['debug_info'].get('held_sides') or []
-        self.assertTrue(all(entry['side'] in (0, 1, 2, 3) for entry in held))
-        self.assertLessEqual(len(held), 3, 'at least one side must be measured')
+        info = result['debug_info']
+        self.assertEqual(info.get('verified_sides'), 4)
+        self.assertEqual(info.get('inherited_sides'), [])
+        for side in info['sides']:
+            self.assertTrue(side.get('verified'))
+            self.assertIsNotNone(side.get('mask_band_peak'))
+
+    def test_occlusion_marks_the_covered_side_instead_of_failing(self):
+        """A covered side has no evidence of its own and no contradiction, so it
+        inherits the prior and is reported - or the frame refuses. What must not
+        happen is a silent full-confidence answer."""
+        frame, quad = bed_frame(occlude=[((0, 124), (639, 320))])   # bottom rail blocked
+        result = detect_table_refined(frame, prior=quad)
+        if result['corners'] is None:
+            self.assertEqual(result['confidence'], 0.0)
+            self.assertIsNotNone(result['reason'])
+        else:
+            info = result['debug_info']
+            self.assertLess(info.get('verified_sides'), 4)
+            self.assertTrue(info.get('inherited_sides'))
+            self.assertLess(result['confidence'], 0.8)
 
     def test_prior_is_never_returned_unchecked(self):
         frame, _ = bed_frame()
@@ -146,18 +232,25 @@ class RecordedReferenceTests(unittest.TestCase):
             self.skipTest(f'cannot decode vod30 at t={t}')
         return frame
 
-    def test_refinement_beats_the_naive_quad_on_a_recorded_frame(self):
-        with open(ROOT / 'out' / 'corners_30min_v2.json') as handle:
-            reference = np.asarray(json.load(handle)['corners'], np.float32)
+    def test_refinement_agrees_with_the_hand_anchors_on_a_recorded_frame(self):
+        """vod30 is seeded from the six hand anchors and scored against them.
+
+        The previous version of this test scored against ``corners_30min_v2.json``
+        after seeding from that same file - a self-score.  The anchors track the
+        visible cloth edge (left rail x=520 at y=330 -> x=381 at y=560); the v2 left
+        rail is a vertical x=450, so agreement with the anchors is the signal.
+        """
+        with open(ROOT / 'out' / 'pid_anchors_vod30.json') as handle:
+            anchors_raw = json.load(handle)['anchors']
+        key = sorted(anchors_raw, key=float)[0]
+        anchors = _order_corners(np.asarray(anchors_raw[key][:4], np.float32))
         frame = self.frame_at(70)
         naive = np.asarray(detect_table(frame)['corners'], np.float32)
         refined = detect_table_refined(frame, prior=prior_for('vod30'))
         self.assertIsNotNone(refined['corners'])
-        naive_err = float(np.linalg.norm(naive - reference, axis=1).mean())
-        refined_err = float(np.linalg.norm(refined['corners'] - reference, axis=1).mean())
+        naive_err = float(np.linalg.norm(_order_corners(naive) - anchors, axis=1).mean())
+        refined_err = float(np.linalg.norm(_order_corners(refined['corners']) - anchors, axis=1).mean())
         self.assertLess(refined_err, naive_err)
-        self.assertLess(refined_err, 20.0)
-
-
-if __name__ == '__main__':
-    unittest.main()
+        self.assertLess(refined_err, 15.0)
+        info = refined['debug_info']
+        self.assertEqual(info.get('verified_sides', 0) + len(info.get('inherited_sides') or []), 4)
