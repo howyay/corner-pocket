@@ -979,15 +979,25 @@ function selectStageBall(index, cx, cy, r) {
 function selectStagePerson(dataset) {
   const track = dataset.person === '' ? null : trackId(dataset.person);
   const bbox = String(dataset.bbox || '').split(',').map(Number);
-  state.sel = {kind:'person', person:{track_id: track, bbox, cluster_id: dataset.cluster || null, player_id: dataset.player || null}, crop:null, ball:null, event:null, track: track, anchor:0, box:-1};
+  const identity = trackIdentity(track);
+  state.sel = {kind:'person', person:{track_id: track, bbox, cluster_id: dataset.cluster || identity.cluster_id, player_id: dataset.player || identity.player_id, bound_evidence: identity.bound_evidence}, crop:null, ball:null, event:null, track: track, anchor:0, box:-1};
   state.focus = 'persons';
   if (!state.persons.windows.length) loadPersons().then(() => { if (state.persons.win) loadTracks(); });
   notify();
 }
+// The identity binding a track already carries, when this frame's identity
+// overlay resolved it: a stage click carries it in the markup, a rail pick asks
+// the same overlay payload instead of running the pipeline a second time.
+// Unknown stays unknown - never guessed, so the rail can say so out loud.
+function trackIdentity(track) {
+  const row = track === null || track === undefined ? null : (state.unified?.persons || []).find(p => String(p.track_id ?? p.track) === String(track));
+  if (!row) return {cluster_id: null, player_id: null, bound_evidence: null};
+  return {cluster_id: row.cluster_id ?? null, player_id: row.player_id ?? null, bound_evidence: row.bound_evidence ?? null};
+}
 function selectTrack(id) {
   const track = state.persons.tracks.find(t => String(t.id) === String(id)) || {id: trackId(id), box:null, label:null, seed:null};
   state.persons.track = track.id;
-  state.sel = {kind:'person', person:{track_id: id, bbox: track.box || null, cluster_id: null, player_id: null}, track: id, crop:null, ball:null, event:null, anchor:0, box:-1};
+  state.sel = {kind:'person', person:{track_id: id, bbox: track.box || null, ...trackIdentity(track.id)}, track: id, crop:null, ball:null, event:null, anchor:0, box:-1};
   state.focus = 'persons';
   notify(); paintOverlay();
   return track;
@@ -1043,17 +1053,44 @@ async function labelBall(button, value) {
 }
 // The seeds contract types track_id as an integer; rail dataset attributes are strings.
 function trackId(value) { return typeof value === 'string' && /^-?\d+$/.test(value) ? Number(value) : value; }
+// One write per track label. Three shapes share this path on purpose, because
+// they share one store: 'clear' removes the entry, 'A'/'B'/'ignore' are the
+// legacy role values the identity pipeline still reads, and anything else is a
+// guest name the operator typed. The server validates both shapes.
 async function setSeed(button, role, playerId) {
   const track = state.sel.track;
   if (track === null || track === undefined) { notice('Select a visible track first.', true); return false; }
+  const label = role === 'clear' ? null : (typeof role === 'string' ? role.trim() : role);
+  if (label !== null && String(label) === '') { notice('Type a guest name or choose a regular before saving.', true); return false; }
   const t = state.persons.t ?? state.t;
-  const body = {win: state.persons.win, t, track_id: trackId(track), label: role === 'clear' ? null : role};
-  return save(button, '/api/vod30/seeds', body, async () => { await loadSeeds(); }, 'person', `win ${state.persons.win} · track ${track} = ${role === 'clear' ? 'cleared' : role}`);
+  const body = {win: state.persons.win, t, track_id: trackId(track), label};
+  return save(button, '/api/vod30/seeds', body, async () => { await loadSeeds(); }, 'person', `win ${state.persons.win} · track ${track} = ${label === null ? 'cleared' : label}`);
 }
+// The regular path: the player's id is bound to this track's identity cluster,
+// so face/body matching keeps working from the same explicit pick.
 async function seedIdentity(button, playerId) {
   const person = state.sel.person || {};
   if (!person.cluster_id) { notice('This track has no identity cluster yet.', true); return false; }
   return save(button, '/api/identity/seed', {cluster_id: person.cluster_id, player_id: playerId}, null, 'person', `cluster ${String(person.cluster_id).slice(0, 6)} → ${playerId}`);
+}
+// Clear is a real undo of either labelling path: the seeds label (guest name or
+// a legacy A/B/ignore value) is removed, and an identity binding on this track's
+// cluster is unbound. Both writes are explicit; nothing else is touched.
+async function clearIdentity(button) {
+  const track = state.sel.track;
+  const person = state.sel.person || {};
+  const seeded = track !== null && track !== undefined
+    && Object.values(state.persons.seeds || {}).some(s => s.win === state.persons.win && String(s.track_id) === String(track));
+  const bound = person.cluster_id !== null && person.cluster_id !== undefined && person.player_id;
+  if (!seeded && !bound) { notice('Nothing is bound to this track yet.', true); return false; }
+  let ok = true;
+  if (seeded) ok = await setSeed(button, 'clear');
+  if (bound) {
+    const unbound = await save(button, '/api/identity/unbind', {cluster_id: person.cluster_id}, null, 'person', `cluster ${String(person.cluster_id).slice(0, 6)} unbound`);
+    if (unbound) { state.sel.person = {...person, player_id: null, bound_evidence: null}; }
+    ok = unbound && ok;
+  }
+  return ok;
 }
 async function saveAnchors(button) {
   return save(button, '/api/vod30/anchors', {t: state.anchors.t, pts: state.anchors.pts.map(p => [...p])}, () => { state.anchors.saved = true; }, 'anchor', `${state.anchors.pts.length} anchors @ t ${Number(state.anchors.t).toFixed(1)}`);
@@ -1455,6 +1492,8 @@ const editorCopy = {
   'The label is written to this crop':'标注将写入此裁剪图', 'Select a crop cue in the rail to label it':'请在左栏选择裁剪图线索以标注',
   'Select a ball or a crop first.':'请先选择球或裁剪图。', 'Select a visible track first.':'请先选择可见的轨迹。',
   'This track has no identity cluster yet.':'此轨迹尚无身份聚类。', 'saving…':'保存中…', 'save failed':'保存失败',
+  'Type a guest name or choose a regular before saving.':'请先输入访客姓名或选择常客，再保存。',
+  'Nothing is bound to this track yet.':'该轨迹尚未绑定任何标注。',
   'Your changes remain on screen; retry when ready.':'更改仍保留在屏幕上，可稍后重试。',
   'Choose a verdict before saving.':'请先选择判定再保存。', 'Saving…':'保存中…',
   'Discard unsaved changes?':'放弃未保存的更改？', 'Live start failed':'直播启动失败', 'STALE state':'已过期状态',
@@ -1598,7 +1637,7 @@ window.CornerPocketReview = {
   seek, seekTime, stepFrame, setPlaying, setOverlay, toggleOverlay, freeze, setDetector, setEventFilter,
   selectEvent, playEvent, selectCrop, selectTrack, selectTrackAndSeek, selectAnchor, selectBox, clearSelection,
   selectStageBall, selectStagePerson,
-  saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity,
+  saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity, clearIdentity,
   saveAnchors, saveCorrections, runInference, rebuild, refreshRebuild, setWindow,
   setTool, setBoxLabel, deleteBox, addPolygon, clearPolygon, setNewBoxLabel, nudgeAnchor,
   setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,

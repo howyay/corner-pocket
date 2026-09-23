@@ -83,7 +83,10 @@ setInterval(tick,200);window.addEventListener('storage',e=>{if(e.key==='cp-ops-c
 function reviewState(){try{return review()?.snapshot?.()||{}}catch(_){return {}}}
 function channels(){return (data?.sources||[]).map(s=>{const parsed=parseSource(s.url);return parsed&&parsed.kind==='channel'?{id:s.id,url:s.url,channel:parsed.channel}:null}).filter(Boolean)}
 function channelOf(id){return channels().find(c=>c.id===id)?.channel||null}
-function regulars(){return (data?.players||[]).map(p=>({id:p.id,name:p.name}))}
+// The roster the Vision rail labels person tracks from: every regular who is
+// not retired, Active ones first, each with the rating that tells two similar
+// names apart and a shell-language status word for the ones that are not Active.
+function regulars(){return (data?.players||[]).filter(p=>p.status!=='Inactive').map(p=>({id:p.id,name:p.name,rating:Number.isFinite(Number(p.rating))?Number(p.rating):null,status:p.status||'Active',statusText:t(p.status||'Active')})).sort((a,b)=>(b.status==='Active')-(a.status==='Active')||(b.rating??0)-(a.rating??0))}
 function liveSourceLabel(value){const [kind,...rest]=String(value).split(':');const id=rest.join(':');if(kind==='twitch'){const channel=channelOf(id);return channel?`twitch ${channel}`:liveText('Twitch channel','Twitch 频道')}return `${liveText('dataset','数据集')} ${id}`}
 function pickLive(value){liveChoice=value;visionAttempt=null;review()?.setLiveAttempt({source:value,at:Date.now(),error:null});renderSurface()}
 function startLive(){visionAttempt=null;review()?.setLiveAttempt(null);liveAction('start')}

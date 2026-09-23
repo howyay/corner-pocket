@@ -20,7 +20,7 @@ const COPY = {
     correct:'Correct', wrong:'Wrong', unsure:'Unsure', saveReview:'Save review', nextCue:'Next candidate →',
     evidence:'Source evidence', notReviewed:'Not reviewed', reviewed:'Reviewed', unlabeled:'Unlabeled',
     unknown:'Unknown', cue:'Cue', clear:'Clear label', prevCrop:'← Previous crop', nextCrop:'Next crop →',
-    ignore:'Ignore', clearSeed:'Clear seed', rebuild:'Rebuild assignments', refresh:'Refresh status',
+    ignore:'Ignore', rebuild:'Rebuild assignments', refresh:'Refresh status',
     seedHint:'Seeds save immediately. Saving a seed alone does not rebuild predictions.',
     saveAnchors:'Save six anchors', anchorsAt:'Load anchors at', anchorNote:'Anchors belong to the raw source frame; saving stores anchor annotations only, it never fits a calibration.',
     boxLabel:'Box label', deleteBox:'Delete selected', saveCorrections:'Save corrections for this frame',
@@ -33,7 +33,19 @@ const COPY = {
     noEvents:'No event candidates in this filter.', vodOnlyAnchors:'Anchors are available for the vod30 dataset only.',
     keys:'SPACE play · ←/→ step · 0–9/U/C label · A/B identity · V verdict · ⏎ save',
     cropAtFrame:'crop at this frame', selectedBall:'Ball', trackWord:'Track', box:'Box', anchorWord:'Anchor',
-    seedA:'Player A', seedB:'Player B', regular:'Name (identity pipeline)', bindName:'Bind name',
+    seedA:'Player A', seedB:'Player B',
+    // Identity labelling: one regular (the identity pipeline), or a guest name
+    // (this track's label). The legacy A/B/ignore values stay readable.
+    whichRegular:'Which regular?', guestOption:'— not a regular (guest) —', guestName:'Guest name',
+    guestPlaceholder:'Type the guest’s name', saveBinding:'Save', clearBinding:'Clear',
+    notAPlayer:'Ignore (not a player)',
+    ignoreHint:'Marks this track as a spectator: excluded from identity assignment, and never competing with the two labelling options above.',
+    railEmpty:'Select a cue, a ball, a person or an anchor to label it.', thisFrame:'This frame', noSelection:'Nothing selected',
+    bindNone:'no label yet', bindLegacy:'legacy A/B seed', bindGuest:'guest name',
+    boundManual:'manual bind', boundAuto:'automatic face match', boundIdentity:'identity binding',
+    bindIdentityHint:'Saves through the identity pipeline, so face and body matching keep working.',
+    bindGuestHint:'Saves the typed name as this track’s label.',
+    closePanel:'Close',
     noCluster:'No identity cluster on this track yet — pick a person box on the stage that has one.',
     loading2:'loading…', reviewedCount:'reviewed', inQueue:'in queue', crops:'crops', reviewedWord:'reviewed',
     prediction:'prediction', seed:'saved seed', liveState:'Live state', manual:'manual', detectorReason:'The balls detector (SAM3) is CPU-heavy and stays an explicit opt-in.',
@@ -79,7 +91,7 @@ const COPY = {
     correct:'正确', wrong:'错误', unsure:'不确定', saveReview:'保存复核', nextCue:'下一个候选 →',
     evidence:'原始证据', notReviewed:'未复核', reviewed:'已复核', unlabeled:'未标注',
     unknown:'未知', cue:'母球', clear:'清除标注', prevCrop:'← 上一张裁剪图', nextCrop:'下一张裁剪图 →',
-    ignore:'忽略', clearSeed:'清除种子', rebuild:'重建分配', refresh:'刷新状态',
+    ignore:'忽略', rebuild:'重建分配', refresh:'刷新状态',
     seedHint:'种子立即保存。仅保存种子不会重建预测。',
     saveAnchors:'保存六个锚点', anchorsAt:'加载锚点时刻', anchorNote:'锚点属于原始源帧；保存仅存储锚点标注，不会拟合标定。',
     boxLabel:'标注框标签', deleteBox:'删除所选', saveCorrections:'保存此帧修正',
@@ -92,7 +104,17 @@ const COPY = {
     noEvents:'此筛选下没有事件候选。', vodOnlyAnchors:'锚点仅适用于 vod30 数据集。',
     keys:'空格 播放 · ←/→ 步进 · 0–9/U/C 标注 · A/B 身份 · V 判定 · ⏎ 保存',
     cropAtFrame:'此帧的裁剪图', selectedBall:'球', trackWord:'轨迹', box:'标注框', anchorWord:'锚点',
-    seedA:'选手 A', seedB:'选手 B', regular:'姓名（身份流程）', bindName:'绑定姓名',
+    seedA:'选手 A', seedB:'选手 B',
+    whichRegular:'选择常客', guestOption:'— 不是常客（访客）—', guestName:'访客姓名',
+    guestPlaceholder:'输入访客姓名', saveBinding:'保存', clearBinding:'清除',
+    notAPlayer:'忽略（不是球员）',
+    ignoreHint:'将该轨迹标记为观众：排除在身份分配之外，也不会与上方两个标注选项争夺注意力。',
+    railEmpty:'请先选择线索、球、人物或锚点，再进行标注。', thisFrame:'此帧', noSelection:'未选择',
+    bindNone:'尚未标注', bindLegacy:'旧版 A/B 种子', bindGuest:'访客姓名',
+    boundManual:'人工绑定', boundAuto:'自动人脸匹配', boundIdentity:'身份绑定',
+    bindIdentityHint:'通过身份流程保存，人脸与体型匹配继续生效。',
+    bindGuestHint:'把输入的姓名保存为该轨迹的标注。',
+    closePanel:'关闭',
     noCluster:'此轨迹尚无身份聚类——请在舞台上选择带有聚类的球员框。',
     loading2:'读取中…', reviewedCount:'已复核', inQueue:'队列中', crops:'张裁剪图', reviewedWord:'已复核',
     prediction:'预测', seed:'已保存种子', liveState:'直播状态', manual:'人工', detectorReason:'球检测器（SAM3）为 CPU 密集，需显式开启。',
@@ -125,6 +147,9 @@ const COPY = {
   }
 };
 let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerObserver = null;
+// The source panel's open state and the half-typed guest name are adapter state,
+// not engine state: the engine owns no frame or source selection ambiguity.
+let sourceOpen = false, guestDraft = null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const t = key => (COPY[opts?.lang] || COPY.en)[key] || COPY.en[key] || key;
 const $ = id => root ? root.querySelector(id) : null;
@@ -178,6 +203,54 @@ function quadDetail(s) {
   return `${head}${reason}${sides ? (opts?.lang === 'zh' ? `，各边 ${sides}` : `, sides ${sides}`) : ''}`;
 }
 function labelText(label) { if (label === 'u' || label === -1) return t('unknown'); if (label === 0) return `${t('cue')} · 0`; return `#${label}`; }
+// A saved seed is either one of the three legacy role values the identity
+// pipeline still reads (A / B / ignore) or a guest name the operator typed.
+// Both live in the same seeds store under the same key, so the reader must tell
+// them apart by the role words alone - never by "looks like a name".
+const SEED_ROLE_KEYS = {A:'seedA', B:'seedB', ignore:'ignore'};
+function isSeedRole(value) { return value != null && Object.prototype.hasOwnProperty.call(SEED_ROLE_KEYS, String(value)); }
+function seedText(value) { return value == null || value === '' ? '' : isSeedRole(value) ? t(SEED_ROLE_KEYS[String(value)]) : String(value); }
+// What this person track is labelled with right now, and where the label came
+// from. A track can carry two independent things at once: a saved seeds label
+// (a legacy A/B/ignore value, or a guest name) and an identity binding on its
+// cluster (the operator's explicit pick, or an automatic face/body match).
+// Everything reported here exists in the state; nothing is inferred.
+function bindingFacts(s) {
+  const track = (s?.persons?.tracks || []).find(x => String(x.id) === String(s.persons.track)) || null;
+  const person = s?.selection?.person || {};
+  const seed = track?.seed ?? null;
+  const playerId = person.player_id ?? null;
+  const roster = (opts?.regulars ? opts.regulars() : null) || [];
+  const bound = playerId ? roster.find(row => String(row.id) === String(playerId)) || null : null;
+  const evidence = person.bound_evidence || null;
+  return {
+    track, seed, playerId, bound, evidence,
+    cluster: person.cluster_id ?? null,
+    legacy: isSeedRole(seed),
+    guest: seed != null && !isSeedRole(seed),
+    label: seed == null ? null : {text: seedText(seed), raw: String(seed)},
+    identity: playerId ? {
+      id: String(playerId),
+      name: bound ? bound.name : String(playerId),
+      // A face/body match is never the operator's pick: the evidence says which.
+      source: evidence?.source === 'bind_face' ? 'boundAuto' : evidence?.source === 'explicit_assign' ? 'boundManual' : 'boundIdentity'
+    } : null,
+    kind: playerId ? 'regular' : seed == null ? 'none' : isSeedRole(seed) ? `legacy-${seed}` : 'guest'
+  };
+}
+// The honest one-liner: what this track is bound to, and by which path. Both
+// halves are shown when both exist, so a stale legacy seed can never hide an
+// identity binding (or the other way round).
+function bindingLine(s) {
+  const facts = bindingFacts(s);
+  const parts = [`${t('trackWord')} ${s.persons.track ?? '—'}`];
+  const prediction = s.persons.predictions && !s.persons.predictions.stale ? (s.persons.predictions.map || {})[`${s.persons.track}:${s.persons.win}`] : null;
+  if (prediction) parts.push(`${t('prediction')} ${prediction}`);
+  if (facts.label) parts.push(`${facts.label.text} · ${t(facts.legacy ? 'bindLegacy' : 'bindGuest')}`);
+  else parts.push(t('bindNone'));
+  if (facts.identity) parts.push(`${facts.identity.name} · ${t(facts.identity.source)}`);
+  return `<p class="vs-mono" data-vs-binding="${esc(facts.kind)}">${parts.map(esc).join(' · ')}</p>`;
+}
 // Pocket names are pool-table rail terms in stored data; every displayed label
 // is the position word the engine maps them to, never the raw key.
 function pocketName(event) { return event?.nearest_pocket_text || event?.nearest_pocket || ''; }
@@ -291,8 +364,15 @@ function chipsHTML(s) {
   const freshness = s.source.kind === 'live'
     ? `<span class="vs-fresh${s.live.stale ? ' stale' : ''}">${s.live.stale ? esc(t('stale')) : esc(t('live'))} · ${esc(t('age'))} ${fmtAge(s.live.frame_age_ms)}</span>`
     : `<span class="vs-fresh">${esc(s.source.label)}</span>`;
-  return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${datasets}${channels}</div>
-  <div class="vs-chipmeta">${freshness}<span class="vs-keys">${esc(t('keys'))}</span></div>`;
+  // The source settings hang off the chip row itself: one chip opens the panel
+  // that used to be the rail's nothing-selected state, so the rail stays about
+  // the selection and the settings are still one click away at any width.
+  const chip = `<button class="vs-chip vs-source-chip${sourceOpen ? ' active' : ''}" data-vs-action="source-panel" aria-expanded="${sourceOpen ? 'true' : 'false'}" aria-controls="vs-source-panel" aria-label="${esc(t('sources'))}">${esc(t('sources'))}</button>`;
+  const panel = sourceOpen ? `<div class="vs-source-panel" id="vs-source-panel" role="group" aria-label="${esc(t('sources'))}">
+    <div class="vs-source-head"><strong>${esc(t('sources'))}</strong><button class="vs-source-close" data-vs-action="source-panel" aria-label="${esc(t('closePanel'))}">×</button></div>
+    ${sourcePanelHTML(s)}</div>` : '';
+  return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
+  <div class="vs-chipmeta">${freshness}<span class="vs-keys">${esc(t('keys'))}</span></div>${panel}`;
 }
 function tierBadge(event) {
   // The confirmation tier, on the card and in the inspector: geometry-verified
@@ -322,7 +402,7 @@ function railHTML(s) {
     </article>`).join('') : `<p class="vs-empty" data-vs-empty="${s.eventFilter === 'pot' ? 'pots-measured-none' : 'none'}">${esc(emptyState)}</p>`;
   const crops = s.balls.items;
   const cropRows = crops.length ? crops.map(c => `<button class="vs-item${s.selection.crop && c.file === s.selection.crop.file ? ' selected' : ''}" data-vs-action="select-crop" data-vs-value="${esc(c.file)}"><span class="vs-mono">${esc(c.file)}</span><span class="vs-mono vs-dim">${esc(timecode(c.t))}</span><span class="vs-tag${c.label == null ? '' : ' done'}">${esc(c.label == null ? t('unlabeled') : labelText(c.label))}</span></button>`).join('') : `<p class="vs-empty">${esc(t('noCrops'))}</p>`;
-  const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => `<button class="vs-item${String(s.persons.track) === String(x.id) ? ' selected' : ''}" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span><span class="vs-tag${x.seed ? ' done' : ''}">${esc(x.seed || x.label || '?')}</span></button>`).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
+  const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => { const label = x.seed || x.label; return `<button class="vs-item${String(s.persons.track) === String(x.id) ? ' selected' : ''}" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span><span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>`; }).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
   return `<section class="vs-group${s.focus === 'events' ? ' focused' : ''}"><header><h3>${esc(t('events'))}</h3><span class="vs-mono">${esc(s.events.reviewed)} ${esc(t('reviewedWord'))}</span></header>
     <div class="vs-filters">${[['all','all'],['geometry','tierGeometry'],['window','tierWindow'],['shot','shots'],['pot','pots'],['pending','pending']].map(([v, l]) => `<button class="vs-filter${s.eventFilter === v ? ' active' : ''}" data-vs-action="event-filter" data-vs-value="${v}">${esc(t(l))}</button>`).join('')}</div>${cards}</section>
   <section class="vs-group${s.focus === 'balls' ? ' focused' : ''}"><header><h3>${esc(t('queue'))}</h3><span class="vs-mono">${crops.length} ${esc(t('crops'))}</span></header>${cropRows}</section>
@@ -338,7 +418,13 @@ function layersHTML(s) {
 function identityHTML(s) {
   const sel = s.selection;
   if (sel.kind === 'ball') return sel.crop ? `${esc(t('selectedBall'))} · ${esc(t('cropAtFrame'))} ${esc(sel.crop.file)}${sel.crop.label != null ? ` · ${esc(labelText(sel.crop.label))}` : ''}` : esc(t('noCropHere'));
-  if (sel.kind === 'person') return `${esc(t('trackWord'))} ${esc(sel.track)}`;
+  if (sel.kind === 'person') {
+    // The stagebar states the same binding the rail does, in one phrase.
+    const facts = bindingFacts(s);
+    const bound = facts.identity ? `${facts.identity.name} · ${t(facts.identity.source)}`
+      : facts.label ? `${facts.label.text} · ${t(facts.legacy ? 'bindLegacy' : 'bindGuest')}` : t('bindNone');
+    return `${esc(t('trackWord'))} ${esc(sel.track)} · ${esc(bound)}`;
+  }
   if (sel.kind === 'anchor') return `${esc(t('anchorWord'))} ${Number(sel.anchor) + 1} · ${s.anchors.points[sel.anchor] ? `${Math.round(s.anchors.points[sel.anchor][0])}, ${Math.round(s.anchors.points[sel.anchor][1])}` : ''}`;
   if (sel.kind === 'event' && sel.event) return `#${esc(sel.event.id)} · ${esc(sel.event.type)} · ${esc(timecode(sel.event.t))}`;
   if (sel.kind === 'box') return `${esc(t('box'))} ${sel.box + 1} · ${esc(s.corrections.boxLabel || '')}`;
@@ -405,17 +491,30 @@ function factsLine(s) {
 // to live only inside the box block, which needs an existing box, so a cold
 // frame (no saved correction, no saved inference) offered no way to draw a box,
 // add the table polygon or run inference at all. Same actions, same write
-// guards, reachable with an empty selection.
+// guards, reachable with an empty selection - under "This frame", because they
+// are frame tools, not source settings.
 function coldFrameBlock(s) {
   const tool = s.corrections?.tool === 'draw' ? 'draw' : 'select';
-  return `<div class="vs-block"><h4>${esc(t('tool'))}</h4>
+  return `<div class="vs-block vs-frame-tools"><h4>${esc(t('thisFrame'))}</h4>
     <div class="vs-row"><button class="${tool === 'select' ? 'active' : ''}" data-vs-action="tool" data-vs-value="select">${esc(t('selectTool'))}</button><button class="${tool === 'draw' ? 'active' : ''}" data-vs-action="tool" data-vs-value="draw">${esc(t('drawTool'))}</button></div>
     <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div>
     <div class="vs-row"><button data-vs-action="run-inference">${esc(t('runInference'))}</button></div>
     ${s.dirty ? `<div class="vs-row"><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button></div>` : ''}
     <p class="vs-note">${esc(t('coldStartHint'))}</p></div>`;
 }
-function sourceBlock(s) {
+// The rail with nothing selected: selection-related copy only. The source
+// settings are not here any more - they open from the Source chip in the chip
+// row, so the rail cannot be mistaken for a settings drawer.
+function emptyRailBlock(s) {
+  return `<h3>${esc(t('noSelection'))}</h3>
+  <p class="vs-empty" data-vs-empty="no-selection">${esc(t('railEmpty'))}</p>
+  <p class="vs-note">${esc(t('selectCueHint'))}</p>
+  ${coldFrameBlock(s)}`;
+}
+// The Source block's body, now the body of the panel under the chip row: the
+// dataset chips, the live state row, the detector toggles, freshness, the saved
+// channels and the latency caveat are unchanged, only the container moved.
+function sourcePanelHTML(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
   const live = s.live;
@@ -424,13 +523,11 @@ function sourceBlock(s) {
   const liveFailed = !!(live.error || live.attempt?.error);
   const liveRowState = liveFailed && live.state !== 'running' && live.state !== 'starting' ? 'error' : live.state;
   return `${attempt}
-  <h3>${esc(t('sources'))}</h3>
-  <p class="vs-note">${esc(t('selectCueHint'))}</p>
-  ${coldFrameBlock(s)}
   <div class="vs-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <p class="vs-mono">${esc(s.source.kind === 'vod' ? s.source.label : '—')} · ${esc(t('frameCount'))} ${esc(s.frame.count)}</p></div>
   <div class="vs-block"><h4>${esc(t('liveState'))}</h4>
     <p class="vs-mono" id="vs-live-status">${esc(stateText(liveRowState))}${(live.error || live.attempt?.error) ? ` · ${esc(live.error || live.attempt.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
+    <div class="vs-row"><button class="primary" data-vs-action="live-start">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button></div>
     <div class="vs-chiprow">${channels}${(s.datasets || []).map(d => `<button class="vs-chip" data-vs-action="pick-live" data-vs-value="dataset:${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <div class="vs-row">${['table','person'].map(d => `<label class="vs-check"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${(live.detectors || []).includes(d) ? 'checked' : ''}> ${esc(t(d))}</label>`).join('')}</div>
     <p class="vs-note">${esc(t('latency'))}</p></div>
@@ -469,18 +566,36 @@ function ballBlock(s) {
   <div class="vs-row"><button data-vs-action="crop-step" data-vs-value="-1">${esc(t('prevCrop'))}</button><button data-vs-action="crop-step" data-vs-value="1">${esc(t('nextCrop'))}</button></div>
   ${receiptLine('ball')}`;
 }
+// Identity labelling for a person track: EXACTLY two ways to name it - a
+// regular from the roster (the identity pipeline keeps face/body matching
+// working) or a guest name (stored as this track's label in the seeds store).
+// "Not a player" is a quiet secondary action because spectators exist in this
+// footage and must stay excludable without competing with the two options.
 function personBlock(s) {
-  const track = s.persons.tracks.find(x => String(x.id) === String(s.persons.track)) || null;
-  const seed = track?.seed || null;
-  const person = s.selection.person || {};
-  const cluster = person.cluster_id || null;
-  const names = (opts.regulars() || []);
+  const facts = bindingFacts(s);
+  const roster = opts.regulars() || [];
+  const picked = facts.identity ? facts.identity.id : '';
+  const guestValue = facts.guest ? facts.label.raw : (guestDraft && String(guestDraft.track) === String(s.persons.track) ? guestDraft.value : '');
+  const options = [`<option value=""${picked ? '' : ' selected'}>${esc(t('guestOption'))}</option>`]
+    .concat(roster.map(row => `<option value="${esc(row.id)}"${String(row.id) === picked ? ' selected' : ''}>${esc(row.name)}${row.rating != null ? ` · ${esc(row.rating)}` : ''}${row.statusText && row.status && row.status !== 'Active' ? ` · ${esc(row.statusText)}` : ''}</option>`));
+  const guestOff = !!picked;
   return `<h3>${esc(t('identity'))}</h3>
-  <p class="vs-mono">${esc(t('trackWord'))} ${esc(s.persons.track ?? '—')} · ${esc(t('prediction'))}: ${esc(track?.label || '—')} · ${esc(t('seed'))}: ${esc(seed || '—')}</p>
-  <p class="vs-note">${esc(t('seedHint'))}</p>
-  <div class="vs-block"><h4>${esc(t('regular'))}</h4>${cluster ? `<div class="vs-row"><select data-vs-action="regular">${names.map(n => `<option value="${esc(n.id)}">${esc(n.name)}</option>`).join('') || '<option value="">—</option>'}</select><button data-vs-action="bind-regular">${esc(t('bindName'))}</button></div>` : `<p class="vs-empty">${esc(t('noCluster'))}</p>`}</div>
-  <div class="vs-block"><h4>${esc(t('rebuild'))}</h4><div class="vs-row"><button data-vs-action="rebuild">${esc(t('rebuild'))}</button><button data-vs-action="rebuild-refresh">${esc(t('refresh'))}</button></div><p class="vs-mono">${esc(engineText(s.persons.status || ''))}</p></div>
+  ${bindingLine(s)}
+  <div class="vs-block vs-labelblock">
+    <label class="vs-field">${esc(t('whichRegular'))}<select data-vs-action="regular" ${roster.length ? '' : 'disabled'}>${options.join('')}</select></label>
+    <label class="vs-field${guestOff ? ' vs-guest-off' : ''}" data-vs-role="guest-field">${esc(t('guestName'))}<input type="text" data-vs-action="guest-name" maxlength="60" value="${esc(guestValue)}" placeholder="${esc(t('guestPlaceholder'))}" ${guestOff ? 'disabled' : ''}></label>
+    <p class="vs-note" data-vs-role="bind-hint">${esc(bindHint(facts, picked))}</p>
+  </div>
+  <div class="vs-block vs-quiet"><div class="vs-row"><button data-vs-action="seed" data-vs-value="ignore">${esc(t('notAPlayer'))}</button></div>
+    <p class="vs-note">${esc(t('ignoreHint'))}</p></div>
+  <div class="vs-block"><h4>${esc(t('rebuild'))}</h4><div class="vs-row"><button data-vs-action="rebuild">${esc(t('rebuild'))}</button><button data-vs-action="rebuild-refresh">${esc(t('refresh'))}</button></div><p class="vs-note">${esc(t('seedHint'))}</p><p class="vs-mono">${esc(engineText(s.persons.status || ''))}</p></div>
   ${receiptLine('person')}`;
+}
+// What Save will do, said before the click: a regular needs an identity cluster,
+// a guest name never does. The note is the honest reason, not a dead button.
+function bindHint(facts, picked) {
+  if (!picked) return t('bindGuestHint');
+  return facts.cluster == null ? t('noCluster') : t('bindIdentityHint');
 }
 function anchorBlock(s) {
   if (s.dataset !== 'vod30') return `<h3>${esc(t('calibration'))}</h3><p class="vs-empty">${esc(t('vodOnlyAnchors'))}</p>`;
@@ -518,16 +633,20 @@ function actionsHTML(s) {
     return `<button class="${label === 'u' ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="-1">${esc(t('unknown'))}</button><button class="${label === 0 ? 'active' : ''}" data-vs-action="label-ball" data-vs-value="0">${esc(t('cue'))} 0</button><button data-vs-action="label-ball" data-vs-value="clear">${esc(t('clear'))}</button>`;
   }
   if (kind === 'person') {
-    const seed = (s.persons.tracks.find(x => String(x.id) === String(s.persons.track)) || {}).seed || null;
-    return `<button class="${seed === 'A' ? 'active' : ''}" data-vs-action="seed" data-vs-value="A">${esc(t('seedA'))}</button><button class="${seed === 'B' ? 'active' : ''}" data-vs-action="seed" data-vs-value="B">${esc(t('seedB'))}</button><button class="${seed === 'ignore' ? 'active' : ''}" data-vs-action="seed" data-vs-value="ignore">${esc(t('ignore'))}</button><button data-vs-action="seed" data-vs-value="clear">${esc(t('clearSeed'))}</button>`;
+    // The primary write of the identity block lives in the footer, so it stays
+    // clickable at any viewport height: Save (regular or guest) and Clear.
+    return `<button class="primary" data-vs-action="identity-save">${esc(t('saveBinding'))}</button><button data-vs-action="identity-clear">${esc(t('clearBinding'))}</button>`;
   }
   if (kind === 'anchor') return `<button class="primary" data-vs-action="save-anchors">${esc(t('saveAnchors'))}</button>`;
   if (kind === 'box') return `<button data-vs-action="run-inference">${esc(t('runInference'))}</button><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button>`;
-  return `<button data-vs-action="live-start" class="primary">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button>`;
+  // Nothing selected: the live start/stop pair moved into the Source panel with
+  // the rest of the source settings, so this footer only carries the frame's own
+  // pending write.
+  return s.dirty ? `<button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button>` : '';
 }
 function inspectorHTML(s) {
   const kind = s.selection.kind;
-  const body = kind === 'event' ? eventBlock(s) : kind === 'ball' ? ballBlock(s) : kind === 'person' ? personBlock(s) : kind === 'anchor' ? anchorBlock(s) : kind === 'box' ? boxBlock(s) : sourceBlock(s);
+  const body = kind === 'event' ? eventBlock(s) : kind === 'ball' ? ballBlock(s) : kind === 'person' ? personBlock(s) : kind === 'anchor' ? anchorBlock(s) : kind === 'box' ? boxBlock(s) : emptyRailBlock(s);
   const liveChat = s.source.kind === 'live' && s.source.channel && opts.chat();
   const chat = liveChat ? `<div class="vs-chat"><iframe title="Twitch chat" src="https://www.twitch.tv/embed/${esc(s.source.channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
   const chatToggle = s.source.kind === 'live' && s.source.channel ? `<button class="vs-chat-toggle" data-vs-action="chat">${esc(opts.chat() ? t('hideChat') : t('showChat'))}</button>` : '';
@@ -547,7 +666,9 @@ function render() {
   if (layersSig !== sig.layers) { const node = $('#vs-layers'); if (node) node.innerHTML = layersHTML(s); sig.layers = layersSig; }
   const identity = identityHTML(s);
   if (identity !== sig.identity) { const node = $('#vs-identity'); if (node) node.innerHTML = identity; sig.identity = identity; }
-  const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
+  // The identity block reads the saved seed and the track's binding, so both
+  // belong in the signature: a save must repaint the block that saved it.
+  const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.person?.cluster_id ?? ''}|${s.selection.person?.player_id ?? ''}|${s.selection.person?.bound_evidence?.source ?? ''}|${(s.persons.tracks || []).find(x => String(x.id) === String(s.persons.track))?.seed ?? ''}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
   if (insSig !== sig.inspector) {
     const body = $('#vs-inspector-scroll'), actions = $('#vs-inspector-actions');
     if (body) body.innerHTML = inspectorHTML(s);
@@ -623,7 +744,23 @@ function act(action, value, node) {
     case 'label-ball': target.labelBall(null, value === 'clear' ? 'clear' : Number(value)); break;
     case 'select-track': target.selectTrackAndSeek(value); break;
     case 'seed': target.setSeed(null, value); break;
-    case 'bind-regular': { const select = root.querySelector('[data-vs-action="regular"]'); target.seedIdentity(null, select ? select.value : ''); break; }
+    case 'source-panel': sourceOpen = !sourceOpen; sig.chips = null; render(); break;
+    case 'regular': syncGuestField(value); break;
+    case 'guest-name': guestDraft = {track: String(s.persons.track ?? ''), value: node.value}; break;
+    // The two labelling paths, never mixed: a regular goes through the identity
+    // pipeline (the player's id on this track's cluster), a guest name is this
+    // track's label in the seeds store. An empty form is refused by setSeed
+    // before any write happens.
+    case 'identity-save': {
+      const select = root.querySelector('[data-vs-action="regular"]');
+      const input = root.querySelector('[data-vs-action="guest-name"]');
+      const picked = select ? select.value : '';
+      const name = input ? input.value.trim() : '';
+      if (picked) target.seedIdentity(node, picked);
+      else { guestDraft = null; target.setSeed(node, name); }
+      break;
+    }
+    case 'identity-clear': guestDraft = null; target.clearIdentity(node); break;
     case 'rebuild': target.rebuild(node); break;
     case 'rebuild-refresh': target.refreshRebuild(); break;
     case 'select-anchor': target.selectAnchor(Number(value)); break;
@@ -647,7 +784,24 @@ function act(action, value, node) {
     default: break;
   }
 }
-const FIELD_ACTIONS = ['shooter','note','regular','box-label','new-box-label'];
+const FIELD_ACTIONS = ['shooter','note','regular','guest-name','box-label','new-box-label'];
+// The guest box is the fallback path, so a chosen regular turns it off instead
+// of leaving two competing inputs on screen. The hint says what Save will do,
+// including the honest reason a regular cannot be saved on this track yet.
+function syncGuestField(value) {
+  const field = root.querySelector('[data-vs-role="guest-field"]');
+  const input = root.querySelector('[data-vs-action="guest-name"]');
+  const hint = root.querySelector('[data-vs-role="bind-hint"]');
+  const off = !!value;
+  if (field) field.classList.toggle('vs-guest-off', off);
+  if (input) input.disabled = off;
+  if (hint) hint.textContent = off ? (snap()?.selection?.person?.cluster_id == null ? t('noCluster') : t('bindIdentityHint')) : t('bindGuestHint');
+}
+function onInput(event) {
+  if (!root || !root.contains(event.target)) return;
+  const node = event.target.closest ? event.target.closest('[data-vs-action="guest-name"]') : null;
+  if (node) guestDraft = {track: String(snap()?.persons?.track ?? ''), value: node.value};
+}
 function onClick(event) {
   if (!root || !root.contains(event.target)) return;
   const sheetTab = event.target.closest('[data-sheet-tab]');
@@ -673,9 +827,10 @@ function attach(options) {
   if (footer && typeof ResizeObserver !== 'undefined') { footerObserver = new ResizeObserver(syncFooterHeight); footerObserver.observe(footer); }
   root.addEventListener('click', onClick);
   root.addEventListener('change', onChange);
+  root.addEventListener('input', onInput);
   const unsubscribe = engine()?.subscribe ? engine().subscribe(render) : null;
   render();
-  return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); }};
+  return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput); }};
 }
-window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML};
+window.VisionStage = {attach, render, act, actionsHTML, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
 })();

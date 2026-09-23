@@ -200,11 +200,21 @@ html,body{-webkit-font-smoothing:antialiased}
 
 /* --- Vision: one stage, two rails, zero subtabs --------------------------- */
 :is(#ops-shell) .vision-surface{display:flex;flex-direction:column;gap:10px;max-width:1560px;margin:0 auto}
-:is(#ops-shell) .vs-chips{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap}
+:is(#ops-shell) .vs-chips{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;position:relative}
 :is(#ops-shell) .vs-chiprow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 :is(#ops-shell) .vs-chip{padding:5px 10px;min-height:32px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);color:var(--ink-mid);font:11px var(--mono);letter-spacing:.06em;cursor:pointer}
 :is(#ops-shell) .vs-chip:hover{border-color:var(--brass);background:var(--rail)}
 :is(#ops-shell) .vs-chip.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+/* The Source chip owns the settings that used to be the rail's nothing-selected
+   state. The panel hangs off the chip row, so the settings stay one click away
+   at 1280 and 390 without competing with the selection options in the rail. */
+:is(#ops-shell) .vs-source-chip{border-color:var(--brass);color:var(--brass-hi);text-transform:uppercase;letter-spacing:.12em}
+:is(#ops-shell) .vs-source-chip::after{content:' ▾'}
+:is(#ops-shell) .vs-source-chip.active::after{content:' ▴'}
+:is(#ops-shell) .vs-source-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:24;max-height:min(72vh,560px);overflow:auto;padding:12px 14px;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);box-shadow:0 16px 48px rgba(0,0,0,.55)}
+:is(#ops-shell) .vs-source-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+:is(#ops-shell) .vs-source-head strong{font:600 13.5px var(--display);letter-spacing:.02em;text-transform:uppercase;color:var(--ink-hi)}
+:is(#ops-shell) .vs-source-close{min-height:28px;min-width:30px;padding:0;font-size:15px;line-height:1;color:var(--ink-dim)}
 :is(#ops-shell) .vs-chipmeta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font:10.5px var(--mono);color:var(--ink-dim)}
 :is(#ops-shell) .vs-fresh{padding:4px 8px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);letter-spacing:.1em;text-transform:uppercase}
 :is(#ops-shell) .vs-fresh.stale{border-color:var(--amber-line);background:var(--amber-bg);color:var(--amber)}
@@ -291,6 +301,16 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-check{display:flex;align-items:center;gap:6px;font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-dim)}
 :is(#ops-shell) .vs-check input{width:auto;min-height:0}
 :is(#ops-shell) .vs-note{margin:6px 0 0;font-size:11.5px;line-height:1.5;color:var(--ink-dim)}
+/* Identity labelling: the regular dropdown and the guest box are the only two
+   naming options, so a chosen regular turns the guest box off instead of
+   leaving two competing inputs; "not a player" stays a quiet secondary action. */
+:is(#ops-shell) .vs-labelblock select{min-height:34px}
+:is(#ops-shell) .vs-guest-off{opacity:.5}
+:is(#ops-shell) .vs-quiet{margin-top:14px;border-top:1px dashed var(--line)}
+:is(#ops-shell) .vs-quiet .vs-row{margin-top:8px}
+:is(#ops-shell) .vs-quiet .vs-row button{min-height:28px;padding:0 8px;font-size:11px;color:var(--ink-dim)}
+:is(#ops-shell) .vs-quiet .vs-note{font-size:11px}
+:is(#ops-shell) .vs-item .vs-tag.guest{text-transform:none;letter-spacing:.02em}
 :is(#ops-shell) .vs-evidence{margin:8px 0;border:1px solid var(--line2);background:var(--panel2)}
 :is(#ops-shell) .vs-evidence video{display:block;width:100%;max-height:230px;background:#090806}
 :is(#ops-shell) .vs-evidence figcaption{padding:4px 8px;font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.12em}
@@ -358,6 +378,10 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell) .vs-chips{flex-wrap:nowrap;align-items:center;gap:8px}
   /* Freshness and the key map live in the facts line and the inspector on mobile. */
   :is(#ops-shell) .vs-chipmeta{display:none}
+  /* The Source chip is the first chip in the row, so the settings panel is one
+     tap away without horizontal scrolling; the panel itself never widens the page. */
+  :is(#ops-shell) .vs-source-panel{max-height:72vh;padding:10px}
+  :is(#ops-shell) .vs-source-chip{min-height:28px;padding:4px 8px}
   :is(#ops-shell) .vs-stagebar{flex-wrap:nowrap;overflow-x:auto;gap:8px}
   :is(#ops-shell) .vs-layers{flex-wrap:nowrap;flex:none}
   :is(#ops-shell) .vs-identity{white-space:nowrap}

@@ -43,8 +43,8 @@ function test(name, fn) {
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
-  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
-  assert.strictEqual(api.length, 62, 'the engine exposes exactly its lifecycle + one-stage API');
+  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  assert.strictEqual(api.length, 63, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -762,7 +762,8 @@ test('a cold frame can start a correction without a devtools call', () => {
   assert.ok(adapter.includes('data-vs-action="run-inference"'), 'the box footer keeps run-inference');
   const person = stage.inspectorHTML({...base, selection:{kind:'person', track:3, person:{cluster_id:null}}});
   assert.ok(person.includes('Identity') && !person.includes('data-vs-action="add-polygon"'), 'the person block stays the identity block');
-  assert.ok(adapter.includes("data-vs-action=\"seed\" data-vs-value=\"A\""), 'the person footer keeps the seed actions');
+  assert.ok(!person.includes('data-vs-value="A"') && !person.includes('data-vs-value="B"'), 'the person block no longer offers the removed A/B seeds');
+  assert.ok(adapter.includes('case \'identity-save\'') && adapter.includes('case \'identity-clear\''), 'the surface must act on both identity actions');
   // Every one of these buttons reaches a real engine entry point.
   for (const action of ['tool','add-polygon','clear-polygon','run-inference','save-corrections']) {
     assert.ok(adapter.includes(`case '${action}'`), `the surface must act on ${action}`);
@@ -1161,6 +1162,156 @@ test('the pots tab explains its empty state instead of showing a bare list', () 
   assert.ok(empty.includes('No event candidates in this filter.'), 'an empty queue keeps the plain copy, not the pot reason');
   assert.ok(source.includes('tier: e.tier') && source.includes('geometry_check:'),
     'app.js passes the tier and the geometry check through to the rail');
+});
+
+// ---- identity labelling + source panel (owner request, 2026-09-23) --------
+// The adapter under test: loaded once per language with a stub host, so the
+// blocks can be rendered without a browser or a live engine.
+function adapterStage(lang, roster) {
+  const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []},
+               location:{hostname:'127.0.0.1'}, URL:{}, fetch: () => Promise.reject(new Error('no network in tests')),
+               setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
+  const VS = box.window.VisionStage;
+  VS.attach({mount:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}},
+             lang, review:{snapshot: () => null}, channels: () => [], regulars: () => roster || [], chat: () => false});
+  return VS;
+}
+// The smallest snapshot the identity block and the chip row read.
+function visionSnapshot(over = {}) {
+  return {
+    selection:{kind:'none', box:-1}, source:{kind:'vod', label:'vod30 · 1800 s', channel:null},
+    datasets:[{id:'vod30', label:'vod30'}], set:'unlabeled_crops', frame:{index:500, t:20, duration:1800, count:54206, playing:false},
+    live:{state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person'], stale:false, seq:null},
+    detectors:{table:true, person:true, balls:false},
+    corrections:{tool:'select', newBoxLabel:'ball', box:-1, boxLabel:null, polygon:false, result:'none', dirty:false, inferRunning:false, inferStatus:''},
+    dirty:false, notice:{text:''}, receipts:[], busy:false, loading:{overlay:false, since:0}, overlay:{}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0},
+    cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
+    persons:{tracks:[], track:null, windows:[{win:'68-94', count:3}], win:'68-94', status:'', predictions:null},
+    ...over
+  };
+}
+const ADAPTER_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+const ROSTER = [{id:'p1', name:'Ana', rating:78, status:'Active', statusText:'Active'},
+                {id:'p2', name:'Bo', rating:52, status:'Visitor', statusText:'Visitor'}];
+
+test('a person track is labelled as one regular or one guest name, and Save hits the matching endpoint', () => {
+  const VS = adapterStage('en', ROSTER);
+  const person = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null, player_id:null, bound_evidence:null}}});
+  const block = VS.inspectorHTML(person);
+  assert.ok(block.includes('Which regular?') && block.includes('data-vs-action="regular"'), 'option 1: the roster dropdown');
+  assert.ok(block.includes('Guest name') && block.includes('data-vs-action="guest-name"'), 'option 2: the guest textbox');
+  assert.ok(block.includes('— not a regular (guest) —'), 'the guest option is explicit, not an empty label');
+  assert.ok(block.includes('Ana · 78') && block.includes('Bo · 52 · Visitor'), 'the roster carries name + rating (+ status when not Active)');
+  assert.ok(block.includes('data-vs-binding="none"') && block.includes('no label yet'), 'an unlabelled track says so honestly');
+  assert.ok(!block.includes('data-vs-value="A"') && !block.includes('data-vs-action="bind-regular"'), 'the removed A/B buttons are gone');
+  const footer = VS.actionsHTML(person);
+  assert.ok(footer.includes('data-vs-action="identity-save"') && footer.includes('data-vs-action="identity-clear"'), 'Save and Clear are the only writes');
+  assert.ok(!footer.includes('data-vs-value="A"') && !footer.includes('data-vs-value="B"') && !footer.includes('data-vs-value="clear"'), 'the footer keeps no legacy seed buttons');
+  // Which path each choice takes, pinned at the call site and in the engine.
+  assert.ok(ADAPTER_SOURCE.includes('if (picked) target.seedIdentity(node, picked);'), 'a picked regular calls seedIdentity');
+  assert.ok(/find\(x => String\(x\.id\) === String\(s\.persons\.track\)\)\?\.seed/.test(ADAPTER_SOURCE),
+    'the inspector signature carries the selected track seed, so a save repaints the block that saved it');
+  assert.ok(ADAPTER_SOURCE.includes('else { guestDraft = null; target.setSeed(node, name); }'), 'a typed name calls setSeed');
+  assert.ok(source.includes("save(button, '/api/identity/seed', {cluster_id: person.cluster_id, player_id: playerId}"), 'the regular path posts /api/identity/seed with the player id');
+  assert.ok(source.includes("return save(button, '/api/vod30/seeds', body"), 'the guest path posts /api/vod30/seeds with the typed name');
+  assert.ok(source.includes("save(button, '/api/identity/unbind', {cluster_id: person.cluster_id}"), 'Clear unbinds through /api/identity/unbind');
+  // The idle guest box and the disabled guest box are the same control.
+  assert.ok(VS.syncGuestField('p1') === undefined && ADAPTER_SOURCE.includes("input.disabled = off"), 'picking a regular turns the guest box off, not away');
+  // A regular with a cluster states what Save will do; without one it says why not.
+  const bound = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7, player_id:'p1', bound_evidence:{source:'explicit_assign'}}},
+                                persons:{tracks:[{id:2, seed:null}], track:2, windows:[], win:'68-94', status:'', predictions:null}});
+  const boundBlock = VS.inspectorHTML(bound);
+  assert.ok(boundBlock.includes('data-vs-binding="regular"') && boundBlock.includes('Ana · manual bind'), 'an explicit pick reads as a manual bind');
+  assert.ok(boundBlock.includes('value="p1" selected'), 'the dropdown preselects the bound regular');
+  assert.ok(boundBlock.includes('Saves through the identity pipeline'), 'and the hint names the pipeline');
+  assert.ok(VS.inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null, player_id:null}}})).includes('Saves the typed name'), 'with no cluster the guest path is the one described');
+  // The automatic match is named as such, never as the operator's pick.
+  const auto = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7, player_id:'p1', bound_evidence:{source:'bind_face'}}},
+                               persons:{tracks:[{id:2, seed:null}], track:2, windows:[], win:'68-94', status:'', predictions:{map:{'2:68-94':'B'}, detail:{}, stale:false}}});
+  const autoBlock = VS.inspectorHTML(auto);
+  assert.ok(autoBlock.includes('automatic face match') && autoBlock.includes('prediction B'), 'an automatic match says it is one, next to the stored prediction');
+  assert.ok(!autoBlock.includes('manual bind'), 'an automatic match is never reported as a manual bind');
+});
+
+test('a legacy A/B seed still renders on the rail and in the identity block', () => {
+  const VS = adapterStage('en', ROSTER);
+  for (const [seed, text] of [['A','Player A'], ['B','Player B'], ['ignore','Ignore']]) {
+    const s = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
+                              persons:{tracks:[{id:2, seed}], track:2, windows:[], win:'68-94', status:'', predictions:null}});
+    const block = VS.inspectorHTML(s);
+    assert.ok(block.includes(`data-vs-binding="legacy-${seed}"`), `a stored ${seed} seed keeps its own binding state`);
+    assert.ok(block.includes(text) && block.includes('legacy A/B seed'), `a stored ${seed} seed reads as ${text}, named as a legacy value`);
+    const rail = VS.railHTML({eventFilter:'all', selection:{}, focus:'persons', events:{items:[], index:0, reviewed:0},
+                              balls:{items:[], index:0}, persons:{tracks:[{id:2, seed}], windows:[], win:'68-94', track:null}, frame:{}, source:{}, live:{}});
+    assert.ok(rail.includes(text), `the rail tag reads ${text}, not the raw ${seed}`);
+  }
+  // A guest name is a label too, and it is not shouted in upper case or read as a role.
+  const guest = visionSnapshot({selection:{kind:'person', track:3, person:{track_id:3, cluster_id:null}},
+                                persons:{tracks:[{id:3, seed:'Minh'}], track:3, windows:[], win:'68-94', status:'', predictions:null}});
+  assert.ok(VS.inspectorHTML(guest).includes('data-vs-binding="guest"'), 'a typed name is stored and read as a guest label');
+  const guestRail = VS.railHTML({eventFilter:'all', selection:{}, focus:'persons', events:{items:[], index:0, reviewed:0},
+                                 balls:{items:[], index:0}, persons:{tracks:[{id:3, seed:'Minh'}], windows:[], win:'68-94', track:null}, frame:{}, source:{}, live:{}});
+  assert.ok(guestRail.includes('>Minh<') && guestRail.includes('vs-tag done guest'), 'a guest name is not put in the legacy A/B uppercase style');
+  // Nothing was removed from the pipeline's reach: the keyboard seeds still post
+  // the three legacy values through the same endpoint the pipeline reads.
+  assert.ok(source.includes("if (upper === 'A' || upper === 'B') { e.preventDefault(); setSeed(null, upper); return; }"), 'the legacy A/B keyboard seeds stay reachable');
+  assert.ok(source.includes("role === 'clear' ? null : (typeof role === 'string' ? role.trim() : role)"), 'one seeds writer still carries clear, the role values and a guest name');
+});
+
+test('the source settings open from the Source chip and are no longer the rail empty state', () => {
+  const VS = adapterStage('en', ROSTER);
+  const base = visionSnapshot();
+  const none = VS.inspectorHTML(base);
+  assert.ok(none.includes('data-vs-empty="no-selection"'), 'the rail marks its nothing-selected state');
+  assert.ok(none.includes('<h3>Nothing selected</h3>') && !none.includes('<h3>Inspector</h3>'), 'and heads it as such, not as the rail itself');
+  assert.ok(none.includes('Select a cue, a ball, a person or an anchor to label it.'), 'and says what to select (EN)');
+  assert.ok(none.includes('This frame') && none.includes('data-vs-action="add-polygon"') && none.includes('data-vs-action="run-inference"'), 'the frame tools stay, under their own heading');
+  assert.ok(none.indexOf('This frame') > none.indexOf('data-vs-empty="no-selection"'), 'and are separated from the empty-state copy');
+  for (const gone of ['data-vs-action="pick-dataset"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-live"',
+                      'data-vs-action="detector"', 'id="vs-live-status"', 'id="source-form"', 'Twitch upstream delay']) {
+    assert.ok(!none.includes(gone), `the rail's nothing-selected state no longer carries ${gone}`);
+  }
+  assert.ok(!VS.actionsHTML(base), 'and its footer carries no source action either');
+  const closed = VS.chipsHTML(base);
+  assert.ok(closed.includes('data-vs-action="source-panel"') && closed.includes('aria-expanded="false"'), 'the Source chip sits in the chip row, closed');
+  assert.ok(!closed.includes('id="vs-source-panel"'), 'nothing is rendered until it is asked for');
+  VS.act('source-panel');
+  const open = VS.chipsHTML(base);
+  assert.ok(open.includes('id="vs-source-panel"') && open.includes('aria-expanded="true"'), 'one click opens the settings panel');
+  for (const kept of ['data-vs-action="pick-dataset"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-live"',
+                      'data-vs-action="live-detector"', 'data-vs-action="detector"', 'id="vs-live-status"', 'id="source-form"',
+                      'Twitch upstream delay', 'not glass-to-glass']) {
+    assert.ok(open.includes(kept), `the panel keeps ${kept}`);
+  }
+  assert.ok(open.includes('data-vs-action="live-start"') && open.includes('data-vs-action="live-stop"'),
+    'start/stop moved with the block instead of disappearing from the rail footer');
+  assert.ok(VS.sourcePanelHTML(visionSnapshot({live:{state:'error', error:'no frames', attempt:{source:'twitch:abc', error:'no frames', at:1}, frame_age_ms:null, receive_to_result_ms:null, skipped:3, detectors:[]}}))
+    .includes('Start attempt'), 'the refusal reason block still renders inside the panel');
+  VS.act('source-panel');
+  assert.ok(!VS.chipsHTML(base).includes('id="vs-source-panel"'), 'and the chip closes it again');
+});
+
+test('the rail empty state and the labelling copy render in 中 as well', () => {
+  const zh = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8').match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
+  for (const key of ['railEmpty', 'noSelection', 'thisFrame', 'whichRegular', 'guestOption', 'guestName', 'saveBinding', 'clearBinding', 'notAPlayer',
+                     'bindNone', 'bindLegacy', 'bindGuest', 'boundManual', 'boundAuto', 'bindIdentityHint', 'bindGuestHint', 'ignoreHint'])
+    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zh), `${key} is translated in 中`);
+  const VS = adapterStage('zh', ROSTER);
+  const none = VS.inspectorHTML(visionSnapshot());
+  assert.ok(none.includes('请先选择线索、球、人物或锚点，再进行标注。'), 'the rail empty state is Chinese');
+  assert.ok(none.includes('此帧'), 'the frame-tools heading is Chinese');
+  const person = VS.inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
+  assert.ok(person.includes('选择常客') && person.includes('访客姓名'), 'both labelling options are Chinese');
+  assert.ok(person.includes('— 不是常客（访客）—'), 'the guest option is Chinese');
+  const legacy = VS.inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
+                                                 persons:{tracks:[{id:2, seed:'A'}], track:2, windows:[], win:'68-94', status:'', predictions:null}}));
+  assert.ok(legacy.includes('选手 A') && legacy.includes('旧版 A/B 种子'), 'a legacy A seed reads as 选手 A in 中 too');
+  const en = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot());
+  assert.ok(en.includes('Select a cue, a ball, a person or an anchor to label it.'), 'EN keeps its own copy, not a translation of 中');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
