@@ -26,7 +26,9 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     setRoot: host => { root = host; }, onKeydown, text, translateEditor, updateOverlayFacts,
     pocketText, pocketWord, POCKET_LABELS, CLOTH_TOLERANCE_PX, clothTolerance, quadDistance, quadSanity, validateCloth,
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
-    calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText};
+    calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
+    playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip,
+    staticQuad, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
 
@@ -41,8 +43,8 @@ function test(name, fn) {
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
-  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
-  assert.strictEqual(api.length, 61, 'the engine exposes exactly its lifecycle + one-stage API');
+  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  assert.strictEqual(api.length, 62, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -890,6 +892,126 @@ test('the facts line states a refused quad reason in both languages', () => {
   assert.ok(inference.includes('cloth 1 (stored inference)'), 'I ' + inference);
   assert.ok(V.factsLine({...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
                          drawn:{cloth:2, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}).includes('cloth 1 (+1 manual)'), 'M');
+});
+
+test('the stage is one video with the overlay on top of it', () => {
+  T.state.shotUrl = null;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  const html = T.stageHTML();
+  assert.strictEqual((html.match(/<video/g) || []).length, 1, 'exactly one stage video surface');
+  assert.ok(html.includes('id="t-video"') && html.includes('id="t-img"'), 'video and the frozen still share the stage');
+  assert.ok(html.indexOf('id="t-video"') < html.indexOf('id="t-overlay"'), 'the overlay SVG is painted over the video');
+  assert.ok(html.includes('id="stage-play"'), 'the playback state chip exists');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.css'), 'utf8');
+  for (const needle of ['.stage > video', '.stage > video[hidden]', '.stage > svg']) {
+    assert.ok(css.includes(needle), `missing stage video css: ${needle}`);
+  }
+});
+
+test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {
+  assert.strictEqual(T.CLIP_BEFORE_S, 1.5, 'the same before the /api/clip endpoint defaults to');
+  assert.strictEqual(T.CLIP_AFTER_S, 2.5, 'the same after the /api/clip endpoint defaults to');
+  T.state.vmeta = {dataset:'vod30', fps:30, frame_count:54206, duration:1806.8, width:1280, height:720};
+  same(T.eventWindow({t: 100}), {from: 98.5, to: 102.5, before: 1.5, after: 2.5});
+  same(T.eventWindow({t: 0.5}), {from: 0, to: 3, before: 1.5, after: 2.5}, 'never before the start of the video');
+  assert.strictEqual(T.eventWindow({t: 1806}).to, 1806.8, 'never past the end of the video');
+});
+
+test('the stage video loops inside the event window it was given', () => {
+  const video = {dataset:{}, currentTime:0, readyState:1, paused:true, played:0, attrs:{},
+                 getAttribute(name) { return this.attrs[name] ?? null; }, setAttribute(name, value) { this.attrs[name] = value; },
+                 load() {}, pause() { this.paused = true; }, play() { this.paused = false; this.played++; return Promise.resolve(); }};
+  const host = {lang:'en', querySelector: selector => selector === '#t-video' ? video : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.vmeta = {dataset:'vod30', fps:30, frame_count:54206, duration:1806.8, width:1280, height:720};
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.events = [{id: 4, t: 100, type:'pot', last_mm:[1,2], last_px:[3,4], pocket_name:'foot-right', pocket_px:[5,6], px_source:'scan cloth quad', window_s:[99,103]}];
+  T.state.annotations = {};
+  T.bindVideo(video);
+  assert.strictEqual(T.stageVideo(), video, 'the real video element is the stage video');
+  assert.strictEqual(T.playEvent(0), true);
+  assert.strictEqual(video.attrs.src, '/media/vod30/video', 'the stage plays the dataset video, not a pre-rendered clip');
+  assert.strictEqual(video.currentTime, 98.5, 'it seeks to t - before');
+  assert.strictEqual(video.played, 1, 'and plays');
+  same([T.state.playback.from, T.state.playback.to], [98.5, 102.5]);
+  // Past the end of the window it wraps to the start and counts the loop.
+  video.currentTime = 102.6;
+  video.ontimeupdate();
+  assert.strictEqual(video.currentTime, 98.5, 'the window loops instead of running past it');
+  assert.strictEqual(T.state.playback.loops, 1);
+  video.currentTime = 100.2;
+  video.ontimeupdate();
+  assert.strictEqual(video.currentTime, 100.2, 'inside the window nothing is rewound');
+  assert.strictEqual(T.state.frame, 3006, 'the strip follows the playing picture');
+  // Freezing leaves video mode: the picture pauses and the still path takes over.
+  T.exitPlayback();
+  assert.strictEqual(T.state.playback.on, false);
+  assert.strictEqual(video.paused, true, 'freezing pauses the video');
+  T.state.vmeta = null; T.state.events = [];
+});
+
+test('playing drops per-frame detections and never paints a stale mark', () => {
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.t = 5; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true};
+  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[480,397],[865,398]], source:'saved anchors', width:1280, height:720};
+  T.state.unified = {
+    table_corners:[[455,308],[800,320],[1024,573],[450,564]],
+    pockets:[{name:'head-left', cx:459, cy:269}, {name:'foot-right', cx:1024, cy:573}],
+    persons:[{bbox:[30,140,200,590], track_id:12}], balls:[{cx:600, cy:400, r:12}], events:[]
+  };
+  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[600,390,620,410]}], table_polygon:null}, correction:null};
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.applyFrameResult();
+  T.exitPlayback();
+  T.paintOverlay();
+  assert.ok(svg.innerHTML.includes('u-ball') && svg.innerHTML.includes('u-person'), 'a frozen frame draws its detections');
+  assert.ok(svg.innerHTML.includes('t-box'), 'and its editable boxes');
+  assert.strictEqual(T.state.drawn.perFrame, 1);
+  // The video runs: the painter must clear them rather than leave them behind.
+  T.state.playback = {on:true, playing:true, event:null, from:0, to:0, loops:0, seek:NaN};
+  T.paintOverlay();
+  assert.ok(!svg.innerHTML.includes('u-ball'), 'no stale ball marker while the video plays');
+  assert.ok(!svg.innerHTML.includes('u-person'), 'no stale person box while the video plays');
+  assert.ok(!svg.innerHTML.includes('t-box'), 'no stale editable box while the video plays');
+  assert.ok(svg.innerHTML.includes('u-cloth') && svg.innerHTML.includes('u-pocket'), 'the static layers stay drawn');
+  assert.ok(svg.innerHTML.includes('>CALIB<'), 'and say they are calibration, not a detection');
+  assert.strictEqual(T.state.drawn.perFrame, 0);
+  // Playback drops the state itself, so a later paint cannot resurrect it.
+  T.state.unified = {balls:[{cx:1, cy:1, r:9}]}; T.state.boxes = [{label:'ball', bbox:[1,1,9,9]}];
+  T.dropPerFrame();
+  assert.strictEqual(T.state.unified, null);
+  assert.strictEqual(T.state.fresult, null);
+  assert.strictEqual(T.state.boxes.length, 0);
+  assert.strictEqual(T.state.dirty, false);
+  T.exitPlayback();
+});
+
+test('the snapshot carries the event geometry and the playback window', () => {
+  const review = sandbox.window.CornerPocketReview;
+  T.state.dataset = 'vod30';
+  T.state.events = [{id: 1, type:'pot', t: 5.6, nearest_pocket:'foot-right (124mm)', last_mm:[1146.2,2547.9],
+                     last_px:[965.4,605.0], pocket_name:'foot-right', pocket_px:[1021.1,608.2], px_source:'measured ball correspondences', color:'blue'}];
+  T.state.annotations = {};
+  T.exitPlayback();
+  const snap = review.snapshot();
+  const item = snap.events.items[0];
+  assert.strictEqual(item.last_px[0], 965.4, 'the projected pixels reach the shell');
+  assert.strictEqual(item.pocket_name, 'foot-right');
+  assert.strictEqual(item.px_source, 'measured ball correspondences');
+  assert.strictEqual(item.projectable, true);
+  assert.strictEqual(item.nearest_pocket_text, 'bottom-right (124mm)', 'and the label stays a position word');
+  assert.strictEqual(snap.playback.on, false);
+  T.state.playback = {on:true, playing:true, event:{id:1}, from:4.1, to:8.1, loops:2, seek:NaN};
+  const playing = review.snapshot();
+  assert.strictEqual(playing.playback.on, true);
+  assert.strictEqual(playing.playback.loops, 2);
+  assert.strictEqual(playing.playback.event, 1);
+  assert.strictEqual(playing.frame.video, true);
+  T.exitPlayback(); T.state.events = [];
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

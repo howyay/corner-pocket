@@ -34,6 +34,7 @@ const state = {
   focus:'events',
   receipts:[], notice:{text:'',error:false},
   dirty:false, busy:false, epoch:0, decoding:false, playing:false, playTimer:null, unifiedTimer:null, pendingSeek:null,
+  playback:{on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN},
   detectors:{table:true,person:true,balls:false}, inferTimer:null, inferRunning:false, inferStatus:'',
   subs:[]
 };
@@ -267,6 +268,15 @@ function calibratedPockets(reference) {
   });
   return rows.every(Boolean) ? rows : null;
 }
+// The dataset's own saved cloth quad - the static-camera geometry the operator
+// placed, or the saved calibration. While the video runs this is the only cloth
+// the stage may draw: a per-frame detected quad describes a frame, not a moving
+// picture, and the tag says which of the two is on screen (MODEL vs CALIB).
+function staticQuad() {
+  const points = state.cloth.reference?.points;
+  const quad = Array.isArray(points) && points.length >= 4 ? points.slice(0, 4).map(p => [Number(p[0]), Number(p[1])]) : null;
+  return quad && quad.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1])) ? quad : null;
+}
 // ---- data loading (the only fetches in the Vision tab) --------------------
 async function loadDatasets() {
   const data = await api('/api/datasets');
@@ -429,6 +439,9 @@ function seek(n) {
   const meta = state.vmeta; if (!meta) return false;
   n = clampFrame(n, meta);
   if (!canLeave()) return false;
+  // Freezing is the exit from video mode: pause the picture and decode the
+  // still through the unchanged guarded path below.
+  exitPlayback();
   if (state.busy) { state.pendingSeek = n; notify(); return true; }
   loadFrame(n); return true;
 }
@@ -437,7 +450,23 @@ function stepFrame(delta) { if (!state.vmeta || !canLeave()) return false; retur
 function setPlaying(playing) {
   state.playing = !!playing;
   clearTimeout(state.playTimer); state.playTimer = null;
-  if (state.playing) tickPlayback();
+  const video = stageVideo();
+  if (state.playing) {
+    if (video && videoReady(video)) {
+      const at = Number(video.currentTime) || Number(state.t) || 0;
+      const keep = state.playback.on && state.sel.kind === 'event' ? state.playback : null;
+      // Playing drops the frozen frame's detections: the picture is moving.
+      dropPerFrame();
+      state.playback = {on:true, playing:false, event:keep ? keep.event : null,
+                        from:keep ? keep.from : at, to:keep ? keep.to : 0, loops:keep ? keep.loops : 0, seek:NaN};
+      startVideo(video, keep ? keep.from : at);
+      renderStage();
+    } else tickPlayback();   // no stage video (live edge): the decode pump stays the fallback
+  } else {
+    if (video && !video.paused) video.pause();
+    state.playback.playing = false;
+    renderStage();
+  }
   notify();
 }
 // Frames come from the review server one request at a time: playback is a
@@ -463,30 +492,163 @@ function setOverlay(kind, on) {
   state.overlay[kind] = !!on; paintOverlay(); notify(); return true;
 }
 function toggleOverlay(kind) { const next = !state.overlay[kind]; setOverlay(kind, next); return next; }
+// ---- the stage video: one moving surface, one overlay ---------------------
+// The stage used to be a still only: the video now runs inside it, under the
+// same SVG overlay and in the same coordinate space (both are 100% width of the
+// figure with the frame's aspect, the SVG viewBox stays the frame's pixels).
+// Freezing leaves video mode and runs the still path unchanged - the dirty /
+// busy / frame-token guards, /api/frame and /api/unified are all still there.
+//
+// Honesty rule, and the reason this is written down: everything the painter
+// draws for a *frame* (balls, persons, boxes, the detected quad) belongs to one
+// decoded frame. The moment the picture moves those detections are stale, so
+// they are dropped and not drawn until the operator freezes again. Only the
+// static-per-dataset layers (cloth quad, pockets, anchors) and the selected
+// event's own geometry are drawn over moving video, and the stage says so.
+const CLIP_BEFORE_S = 1.5, CLIP_AFTER_S = 2.5;
+function videoSrc() { return state.source.kind === 'live' ? null : `/media/${enc(state.dataset)}/video`; }
+// Per-frame detections describe one frame. Dropping them is not a cache flush:
+// it is the only way a stale ball marker can never survive into playback.
+function dropPerFrame() {
+  state.unified = null; state.fresult = null; state.boxes = []; state.polygon = null;
+  state.dirty = false; state.drawn.perFrame = 0;
+  if (state.sel.kind === 'box') state.sel = {...state.sel, kind:'none', box:-1};
+}
+function eventWindow(event) {
+  const t = Number(event?.t), at = Number.isFinite(t) ? t : 0;
+  const meta = state.vmeta;
+  const from = Math.max(0, at - CLIP_BEFORE_S);
+  const to = Math.min(Number(meta?.duration) || at + CLIP_AFTER_S, at + CLIP_AFTER_S);
+  return {from, to: Math.max(from + 0.2, to), before: CLIP_BEFORE_S, after: CLIP_AFTER_S};
+}
+function exitPlayback() {
+  const video = stageVideo();
+  if (video && video.paused === false) video.pause();
+  state.playback = {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN};
+  state.playing = false;
+}
+function bindVideo(video) {
+  if (!video.dataset || video.dataset.bound) return video;
+  video.dataset.bound = '1';
+  video.onplay = () => { state.playback.playing = true; state.playing = true; renderStage(); notify(); };
+  video.onpause = () => { state.playback.playing = false; state.playing = false; notify(); };
+  video.onloadedmetadata = () => {
+    if (state.playback.on && Number.isFinite(state.playback.seek)) { video.currentTime = state.playback.seek; state.playback.seek = NaN; }
+    renderStage();
+  };
+  // Loop the event window, and keep the strip honest about where the picture is.
+  video.ontimeupdate = () => {
+    const playback = state.playback, meta = state.vmeta;
+    const now = Number(video.currentTime) || 0;
+    state.t = now;
+    if (meta) state.frame = clampFrame(frameFromTime(meta, now), meta);
+    if (playback.on && playback.event && playback.to > playback.from && now >= playback.to - 0.03) {
+      playback.loops++;
+      video.currentTime = playback.from;
+    }
+    notify();
+  };
+  video.onerror = () => notice(text('The stage video failed to load; freeze a frame to inspect it as a still.'), true);
+  return video;
+}
+function videoReady(video) {
+  const src = videoSrc();
+  if (!src) return false;
+  if (video.getAttribute('src') !== src) { video.setAttribute('src', src); video.load(); }
+  return true;
+}
+// The mounted <video>, or null when there is none. A real element has a dataset,
+// getAttribute and play(); a host without them (the test harness, the live edge)
+// simply has no stage video and keeps the old decode-rate pump.
+function stageVideo() {
+  const video = $('#t-video');
+  return video && video.dataset && video.getAttribute && typeof video.play === 'function' ? bindVideo(video) : null;
+}
+function startVideo(video, at) {
+  if (video.readyState >= 1) { try { video.currentTime = at; } catch (_) {} }
+  else state.playback.seek = at;
+  const started = video.play();
+  // The element is the source of truth for "is the picture moving": calling
+  // play() on an element that already plays fires no `play` event, so the flag
+  // is set here and corrected by the element's own handlers afterwards.
+  state.playback.playing = video.paused === false;
+  state.playing = state.playback.playing;
+  if (started && typeof started.catch === 'function') started.catch(() =>
+    notice(text('The browser refused to play the stage video; freeze a frame instead.'), true));
+}
+// Is the stage video actually moving? Read from the element, never from a flag
+// that a missed event can leave stale - the chip must not claim a paused stage.
+function videoPlaying() {
+  const video = $('#t-video');
+  return !!(video && state.playback.on && video.paused === false);
+}
+// Selecting a cue plays its window on the stage and loops in it: the evidence is
+// the video itself, not a second player in the inspector.
+function playEvent(index) {
+  const event = state.events[index]; if (!event) return false;
+  if (!canLeave()) return false;
+  state.eventIndex = index;
+  state.verdictDraft = null; state.shooterDraft = null; state.noteDraft = null;
+  state.sel = {kind:'event', event, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  state.focus = 'events';
+  dropPerFrame();
+  const window_ = eventWindow(event);
+  state.playback = {on:true, playing:false, event, from:window_.from, to:window_.to, loops:0, seek:window_.from};
+  const video = stageVideo();
+  if (!video || !videoReady(video)) { state.playback.on = false; seekTime(event.t); notify(); return true; }
+  startVideo(video, window_.from);
+  renderStage(); notify();
+  return true;
+}
 // The facts line is derived from what the painter actually drew, so
 // "overlays: none" while nodes are drawn is structurally impossible.
 // ---- stage rendering -----------------------------------------------------
 function stageHTML() {
   const w = state.frameWidth || 1280, h = state.frameHeight || 720;
   return `<figure class="stage" id="stage">
+    <video id="t-video" playsinline muted preload="metadata" hidden></video>
     <img id="t-img" alt="${esc(text('Raw decoded frame'))}" ${state.shotUrl ? `src="${esc(state.shotUrl)}"` : ''}>
     <svg id="t-overlay" role="group" aria-label="${esc(text('Frame overlays'))}" viewBox="0 0 ${w} ${h}"></svg>
     <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text('Pick a moment on the scrub strip, or select a cue, then freeze it here.'))}</div>
     <div class="stage-live" id="stage-live" ${state.source.kind === 'live' ? '' : 'hidden'}></div>
+    <div class="stage-play" id="stage-play" role="status" hidden></div>
     <div class="stage-note" id="stage-note" role="status" hidden></div>
     <div class="stage-popover" id="stage-popover" hidden></div>
   </figure>`;
 }
 function renderStage() {
   const content = $('#content');
-  if (!content) return;
+  if (!content || !content.dataset) return;   // no real stage host: nothing to render into
   if (content.dataset.stage !== '1' || !$('#t-overlay')) { content.dataset.stage = '1'; content.innerHTML = stageHTML(); }
+  const playing = !!state.playback.on;
+  const video = $('#t-video');
+  let videoShown = false;
+  if (video && video.dataset) {
+    videoShown = playing && !!stageVideo() && videoReady(video);
+    video.hidden = !videoShown;
+  }
   const img = $('#t-img');
   if (img && state.shotUrl && img.getAttribute('src') !== state.shotUrl) img.src = state.shotUrl;
-  if (img) img.hidden = !state.shotUrl;
-  const empty = $('#stage-empty'); if (empty) empty.hidden = !!state.shotUrl;
+  const showStill = !!state.shotUrl && !videoShown;
+  if (img) img.hidden = !showStill;
+  const empty = $('#stage-empty'); if (empty) empty.hidden = !!state.shotUrl || videoShown;
   const svg = $('#t-overlay'); if (svg) { svg.setAttribute('viewBox', `0 0 ${state.frameWidth || 1280} ${state.frameHeight || 720}`); if (!svg.dataset.bound) { svg.dataset.bound = '1'; svg.onpointerdown = overlayPointerDown; svg.onpointermove = overlayPointerMove; svg.onpointerup = svg.onpointercancel = overlayPointerUp; } }
-  paintOverlay(); paintLiveChip(); paintPopover(); notify();
+  paintOverlay(); paintLiveChip(); paintPlayChip(); paintPopover(); notify();
+}
+// What the stage is doing, next to the picture it is doing it to: whether the
+// video runs, which window it loops in, and the rule that per-frame detections
+// only come back on a freeze. No fake liveness.
+function paintPlayChip() {
+  const chip = $('#stage-play'); if (!chip) return;
+  const playback = state.playback;
+  if (!playback.on) { chip.hidden = true; chip.textContent = ''; return; }
+  chip.hidden = false;
+  const moving = videoPlaying();
+  chip.dataset.playing = moving ? '1' : '0';
+  const parts = [moving ? text('playing') : text('paused')];
+  if (playback.event) parts.push(`${text('window')} ${timecode(playback.from)} → ${timecode(playback.to)}`);
+  parts.push(text(moving ? 'per-frame detections update on freeze' : 'per-frame detections return on freeze'));
+  chip.textContent = parts.join(' · ');
 }
 function paintLiveChip() {
   const chip = $('#stage-live'); if (!chip) return;
@@ -506,7 +668,11 @@ function paintOverlay() {
   const auto = {cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0};
   const layers = [];
   const ov = state.overlay, live = state.live, isLive = state.source.kind === 'live';
-  const u = state.unified;
+  // Video mode: only the static-per-dataset layers and the selected event's own
+  // geometry are drawn. A per-frame detection is not re-used here - it would be
+  // a marker for a frame that is no longer on screen.
+  const playing = !!state.playback.on;
+  const u = playing ? null : state.unified;
   const liveBoxes = (live?.detections?.boxes || []);
   const livePoly = live?.detections?.table_polygon || null;
   // Clearance first: the automatic quad is painted only when its geometry is
@@ -515,7 +681,8 @@ function paintOverlay() {
   // from that same quad, so they are painted only from a checked quad - a wrong
   // quad is exactly what lands a rail-corner marker on top of a player.
   const autoCloth = (Array.isArray(u?.table_corners) && u.table_corners.length ? u.table_corners : null)
-    || (isLive && Array.isArray(livePoly) && livePoly.length ? livePoly : null);
+    || (isLive && Array.isArray(livePoly) && livePoly.length ? livePoly : null)
+    || staticQuad();
   const reference = state.source.kind === 'vod' ? state.cloth.reference : null;
   const clothVerdict = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : {state:'none',reason:'no detection',detail:'',mean:null,max:null,tolerance:null,source:null};
   clothVerdict.available = Number(u?.pockets?.length || 0);
@@ -534,9 +701,10 @@ function paintOverlay() {
   const pocketSource = modelPockets.length ? 'model' : calibPockets.length ? 'calibration' : null;
   state.cloth.pockets = {source: pocketSource, count: pockets.length, reference: pocketSource === 'calibration' ? reference?.source ?? null : null};
   if (ov.cloth && autoCloth && clothVerdict.state !== 'off') {
+    const detected = Array.isArray(u?.table_corners) && u.table_corners.length;
     const [qx, qy] = quadOrigin(quadPoints(autoCloth));
     layers.push(`<polygon class="u-cloth" points="${autoCloth.map(p => p.join(',')).join(' ')}" fill="none"></polygon>`);
-    layers.push(sourceTag(qx + 8, qy + 8, 'model'));
+    layers.push(sourceTag(qx + 8, qy + 8, detected || isLive ? 'model' : 'calib'));
     auto.cloth = 1;
   }
   if (ov.pockets && pockets.length) {
@@ -548,7 +716,7 @@ function paintOverlay() {
     }).join(''));
     auto.pockets = pockets.length;
   }
-  if (ov.persons) {
+  if (ov.persons && !playing) {
     const persons = u?.persons || (isLive ? liveBoxes.filter(b => b.label === 'person') : []);
     layers.push(persons.map(per => {
       const [x1, y1, x2, y2] = per.bbox;
@@ -559,7 +727,7 @@ function paintOverlay() {
     }).join(''));
     auto.persons = persons.length;
   }
-  if (ov.balls) {
+  if (ov.balls && !playing) {
     const balls = u?.balls || (isLive ? liveBoxes.filter(b => b.label === 'ball') : []);
     layers.push(balls.map((b, i) => {
       const cx = b.cx ?? (b.bbox ? (b.bbox[0] + b.bbox[2]) / 2 : 0), cy = b.cy ?? (b.bbox ? (b.bbox[1] + b.bbox[3]) / 2 : 0), r = Math.max(9, b.r ?? 12);
@@ -586,9 +754,11 @@ function paintOverlay() {
   }
   // The editable layer is the operator's only once a correction exists or they
   // have edited this frame; an untouched inference frame stays a model result.
+  // While the video runs the editable layer is empty by construction: it belongs
+  // to one frame, and dropPerFrame() emptied it when playback started.
   const boxSource = state.dirty || state.fresult?.correction ? 'manual' : 'auto';
   const boxesAreManual = boxSource === 'manual';
-  for (const box of state.boxes) {
+  for (const box of (playing ? [] : state.boxes)) {
     if (box.label === 'person') { boxesAreManual ? drawn.persons++ : auto.persons++; }
     else if (ballLabel(box.label)) { boxesAreManual ? drawn.balls++ : auto.balls++; }
   }
@@ -599,7 +769,7 @@ function paintOverlay() {
   state.cloth.polygon = polySource;
   if (state.polygon) polySource === 'manual' ? drawn.cloth++ : auto.cloth++;
   svg.dataset.boxes = boxSource;
-  const boxes = state.boxes.map((box, i) => {
+  const boxes = (playing ? [] : state.boxes).map((box, i) => {
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
     const selected = state.sel.kind === 'box' && state.sel.box === i;
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
@@ -613,7 +783,11 @@ function paintOverlay() {
   svg.querySelectorAll('g.u-person').forEach(g => g.onclick = event => { event.stopPropagation(); selectStagePerson(g.dataset); });
   svg.querySelectorAll('g.u-anchor').forEach(g => g.onclick = event => { event.stopPropagation(); selectAnchor(Number(g.dataset.anchor)); });
   Object.assign(drawn, {cloth: drawn.cloth + auto.cloth, balls: drawn.balls + auto.balls, persons: drawn.persons + auto.persons, pockets: auto.pockets, anchors: auto.anchors, events: auto.events});
-  state.drawn = {...drawn, auto, on: true, source: state.drawn.source};
+  // Per-frame provenance for the facts line and for the tests that pin the
+  // honesty rule: at zero while the video runs, because nothing frame-shaped is
+  // painted then.
+  state.drawn = {...drawn, auto, on: true, source: state.drawn.source, playing,
+                 perFrame: playing ? 0 : boxes ? state.boxes.length : 0};
   paintStageNote();
 }
 // Why the detector produced no quad, in the operator's words. The server sends
@@ -700,16 +874,9 @@ function paintStageNote() {
   if (note.textContent !== body) note.textContent = body;
 }
 // ---- selection -----------------------------------------------------------
-function selectEvent(index) {
-  const event = state.events[index]; if (!event) return false;
-  state.eventIndex = index;
-  state.verdictDraft = null; state.shooterDraft = null; state.noteDraft = null;
-  state.sel = {kind:'event', event, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
-  state.focus = 'events';
-  notify();
-  seekTime(event.t);
-  return true;
-}
+// Selecting a cue plays its evidence on the stage and loops inside its window;
+// the freeze button (or any step) is what returns to a single decoded frame.
+function selectEvent(index) { return playEvent(index); }
 function selectCrop(file) {
   const item = state.balls.items.find(i => i.file === file) || (file ? {file, t: state.t} : null);
   if (!item) return false;
@@ -1137,13 +1304,23 @@ function snapshot() {
   return {
     lang: root?.lang || 'en',
     dataset: state.dataset, datasets: state.datasets, set: state.set, sets: state.sets,
-    frame: {index: state.frame, t: state.t, fps: meta?.fps ?? 0, count: meta?.frame_count ?? 0, duration: meta?.duration ?? 0, kind: meta?.timestamp_kind || '', has: !!state.shotUrl, decoding: state.decoding, playing: state.playing, rate: playbackRate()},
+    frame: {index: state.frame, t: state.t, fps: meta?.fps ?? 0, count: meta?.frame_count ?? 0, duration: meta?.duration ?? 0, kind: meta?.timestamp_kind || '', has: !!state.shotUrl, decoding: state.decoding, playing: state.playing, rate: playbackRate(), video: !!state.playback.on},
+    playback: {on: !!state.playback.on, playing: videoPlaying(), loops: state.playback.loops || 0, from: state.playback.from || 0, to: state.playback.to || 0, event: state.playback.event ? state.playback.event.id : null, before: CLIP_BEFORE_S, after: CLIP_AFTER_S},
     source: {kind: state.source.kind, label: state.source.kind === 'vod' ? `${state.dataset} · ${meta ? `${Math.round(meta.duration)} s · ${Number(meta.fps).toFixed(3)} fps` : '—'}` : state.source.label, channel: state.source.channel},
     live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, detectors: state.live.detectors},
     overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading},
     selection: selected, focus: state.focus, eventFilter: state.eventFilter,
     detectors: {...state.detectors},
-    events: {items: state.events.map(e => ({id: e.id, type: e.type, t: e.t, nearest_pocket: e.nearest_pocket ?? null, nearest_pocket_text: e.nearest_pocket ? pocketText(e.nearest_pocket) : null, evidence: e.evidence ?? null, verdict: state.annotations[String(e.id)]?.verdict || '', annotation: state.annotations[String(e.id)] || null})), index: state.eventIndex, reviewed: Object.keys(state.annotations).length},
+    events: {items: state.events.map(e => ({id: e.id, type: e.type, t: e.t, nearest_pocket: e.nearest_pocket ?? null, nearest_pocket_text: e.nearest_pocket ? pocketText(e.nearest_pocket) : null, evidence: e.evidence ?? null, verdict: state.annotations[String(e.id)]?.verdict || '', annotation: state.annotations[String(e.id)] || null,
+      // Everything the inspector and the stage need to show what was detected:
+      // the scan's own millimetres, and the server's projection of them (absent
+      // when the dataset has no usable calibration - then it is not projectable).
+      window_s: Array.isArray(e.window_s) ? [...e.window_s] : null,
+      last_mm: e.last_mm ?? null, from_mm: e.ball_from ?? null, to_mm: e.ball_to ?? null,
+      last_px: e.last_px ?? null, from_px: e.from_px ?? null, to_px: e.to_px ?? null,
+      pocket_name: e.pocket_name ?? null, pocket_px: e.pocket_px ?? null, px_source: e.px_source ?? null,
+      color: e.color ?? null, disp_mm: e.disp_mm ?? null, speed_mm_s: e.speed_mm_s ?? (Number.isFinite(Number(e.speed_m_s)) ? Math.round(Number(e.speed_m_s) * 1000) : null),
+      projectable: !!(e.px_source || e.last_px || e.from_px)})), index: state.eventIndex, reviewed: Object.keys(state.annotations).length},
     verdictDraft: state.verdictDraft ?? null,
     balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
@@ -1218,7 +1395,14 @@ Object.assign(editorCopy, {
   'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌',
   // Source tags the engine paints on the imagery, and the identity chip.
   'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'track':'轨迹', 'unbound':'未绑定',
-  'saved anchors':'已保存锚点', 'saved calibration':'已保存标定'
+  'saved anchors':'已保存锚点', 'saved calibration':'已保存标定',
+  // Stage video state and the honesty rule that goes with it: what is drawn over
+  // moving video, and what only comes back on a freeze.
+  'playing':'播放中', 'paused':'已暂停', 'window':'窗口', 'loop':'循环',
+  'per-frame detections update on freeze':'逐帧检测在冻结后更新',
+  'per-frame detections return on freeze':'逐帧检测在冻结后恢复',
+  'The stage video failed to load; freeze a frame to inspect it as a still.':'舞台视频加载失败；可冻结一帧以静帧方式检查。',
+  'The browser refused to play the stage video; freeze a frame instead.':'浏览器拒绝播放舞台视频；请改为冻结一帧。'
 });
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorTemplates = [
@@ -1320,7 +1504,7 @@ window.CornerPocketReview = {
   canLeave: () => !active || canLeave(),
   subscribe, snapshot, notify,
   seek, seekTime, stepFrame, setPlaying, setOverlay, toggleOverlay, freeze, setDetector, setEventFilter,
-  selectEvent, selectCrop, selectTrack, selectTrackAndSeek, selectAnchor, selectBox, clearSelection,
+  selectEvent, playEvent, selectCrop, selectTrack, selectTrackAndSeek, selectAnchor, selectBox, clearSelection,
   selectStageBall, selectStagePerson,
   saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity,
   saveAnchors, saveCorrections, runInference, rebuild, refreshRebuild, setWindow,
