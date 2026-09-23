@@ -86,6 +86,42 @@ workspace was denied; person inference still completed. No workaround was used.
 The full backend suite now has 21 passing tests, including frame bounds/decoding,
 async errors/busy behavior, corrections and the reused ball helper contract.
 
+### The nominal timeline, measured (2026-09-23)
+
+`src/timing_verify.py` measures the timestamp axis directly, because the owner
+reported that no served event lined up with ball movement. On `vod30` the
+nominal contract above is not merely nominal: **`frame_index / fps` equals the
+container PTS within 1.6 ms at every one of 31 samples across 1806 s**, and the
+app's frame path (`frame_index = round(t * fps)`) and the stage's seek path
+(`video.currentTime = t`) decode the *identical* picture (SSIM 1.000, 0 frames
+apart) at 60 s, 300 s, 900 s, 1700 s and at every event window start. The clip
+we show is the moment the detector measured; no seek mapping needs to change.
+
+What the served timestamps *do* contain is motion that is not a ball. For all 15
+served events the cloth changes by 10.6-55.8 gray levels (mean) over 15-77 % of
+its pixels inside `[t-1.5, t+2.5]` - and 10-76 % of the cloth sits in single
+change blobs of 3000 px or more. A ball on this table is 2.5-4.5 px in radius at
+the 960x540 working size, so a struck ball changes 0.05-0.2 % of the 73 227-px
+cloth: the measured footprints are 100-1000x too large to be one. Contact sheets
+at 82.5 s, 483.4 s and 1081.6 s show why - a person crosses or stands in front
+of the camera at the served instant, occluding the cloth.
+
+Two consequences worth remembering. First, the cloth-mean absolute difference
+prescribed for this check cannot answer "did the ball move": a ball contributes
+~0.05-0.2 % of the cloth mean, which is below this stream's still-cloth noise.
+Second, the scan's own per-second trigger signal (`out/scan30/records.json`
+`motion`) is elevated at the served times (up to 73.9 against a p50 of 4.8), so
+the detector fired on a real change at the right moment - the trigger's *content*
+is occlusion, not the timestamp. Rejecting occlusion at the candidate stage is
+the open fix; it needs a re-scan and has not been made.
+
+Reproduce with
+`.venv/bin/python -m src.timing_verify --control-count 12 --drift-step 60`
+(~16 s; writes `out/scan30/timing_verify.json`). Tests:
+`tests/test_timing_verify.py` pins the two-timebase equality, the app/tool
+window-constant parity, the nominal convention in both producers, and that a
+noisy control floor yields "not separable" rather than a false negative.
+
 Twitch embedding/ingestion, live DVR buffering, and temporal shot/pot inference
 are not implemented. The timeline operates on the two existing local VODs.
 
