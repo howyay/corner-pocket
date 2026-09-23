@@ -35,6 +35,20 @@ def _saved_anchor_quad(path, n=4):
     return _order_corners(pts)
 
 
+def app_prior_source(dataset, root=None):
+    """Path of the anchor file the app path's seed comes from, or None.
+
+    Split out from :func:`app_prior_for` so a caller can state *where* its search
+    centre came from: the measurement harnesses use it to assert that no detector is
+    ever seeded from a file it is scored against (the reference
+    ``out/corners_30min_v2.json`` was both, which is what made the vod30 score
+    circular - docs/app-path-refusal.md).
+    """
+    base = Path(root) if root is not None else Path(__file__).resolve().parent.parent
+    path = base / 'out' / f'pid_anchors_{dataset}.json'
+    return path if _saved_anchor_quad(path) is not None else None
+
+
 def app_prior_for(dataset, root=None):
     """Saved table geometry the app path searches around for ``dataset``, or None.
 
@@ -51,8 +65,8 @@ def app_prior_for(dataset, root=None):
     fallback (``detect_table_for_frame`` returns the naive detector's result with
     ``reason='no_prior'``) instead of guessing from a reference of unknown quality.
     """
-    base = Path(root) if root is not None else Path(__file__).resolve().parent.parent
-    return _saved_anchor_quad(base / 'out' / f'pid_anchors_{dataset}.json')
+    source = app_prior_source(dataset, root=root)
+    return None if source is None else _saved_anchor_quad(source)
 
 
 def detect_table_for_frame(frame, dataset=None, prior=None, root=None):

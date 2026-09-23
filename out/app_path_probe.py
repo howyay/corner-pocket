@@ -227,8 +227,10 @@ def main():
             'app_minus_full_px': delta,
             'app_minus_full_mean': None if delta is None else round(float(np.mean(delta)), 3),
             'app_minus_full_max': None if delta is None else round(float(max(delta)), 3),
-            'replay_matches_app': bool(app_quad is not None and replay is not None
-                                       and np.allclose(app_quad, replay, atol=0.06)),
+            'replay_matches_app': bool(
+                (app_quad is None and replay is None)
+                or (app_quad is not None and replay is not None
+                    and np.allclose(app_quad, replay, atol=0.06))),  # the server rounds to 0.1 px
             'app_refined_half_res_reason': refined_small.get('reason'),
             'full_refined_reason': refined_full.get('reason'),
             'app_err_v2': err(app_quad, cloth), 'app_err_anchors': err(app_quad, anchors),

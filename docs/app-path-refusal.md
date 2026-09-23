@@ -105,7 +105,31 @@ this quad the table". The independent evidence for a drawn quad is the frame's o
 prints the measured drift (`quad drift vs saved corners 6.4 px (tol 40 px)`) rather than only the
 pass/fail, so the number is visible to the operator.
 
-Still open, not in this worker's files: `src/eval_table_detect.py --detector app` seeds
-`detect_table_refined` with `prior_for(dataset)` and scores it against the same file, so the
-full-resolution "4.58 px / 97.2 %" headline remains a self-score - it is now the only place that
-still does this.
+## 6. The detection harness no longer scores a detector against its own seed
+
+`src/eval_table_detect.py` has three modes - `naive` (no seed), `refined` (full resolution,
+seeded through `src.frame_inference.app_prior_for`) and `app` (the viewer's own 640x360 path) -
+and every one of them reports **both** vod30 references, with the authoritative one named as the
+headline and the circular one labelled. Seeds come only from `app_prior_for`;
+`assert_seed_is_measurable` raises if a detector is ever seeded from a non-authoritative
+reference, and `tests/test_eval_table_detect.py` pins that (plus that `prior_for` is not called
+anywhere in the harness). Same 45 + 21 frame sample, refinement blob `7e248ad9a87b`:
+
+| detector | dataset | vs authoritative ref | vs `corners_30min_v2` (circular) |
+|---|---|---|---|
+| `naive` | vod30 | anchors: median 72.77, p90 145.28, accept 2.3 % | median 78.36, accept 0 % |
+| `refined` | vod30 | anchors: median **5.09**, p90 5.83, accept **86.4 %** (38 ok, 6 refused) | median 43.08, accept 0 % |
+| `app` | vod30 | anchors: median **6.20**, p90 40.47, accept **77.3 %** (34 ok, 4 off, 2 invalid, 4 none) | median 43.00, accept 0 % |
+| `naive` | highlight | fixed-corners: median 1.90, p90 22.47, accept 85 % | - |
+| `refined` | highlight | fixed-corners: median 1.90, accept 85 % (no hand anchors: no seed, so this is the naive detector with `reason='no_prior'`) | - |
+| `app` | highlight | fixed-corners: median 13.28, accept 70 % (naive detector on the 960x540 copy) | - |
+
+Evidence: `out/table-detect-eval/anchors-{naive,refined,app}.{json,txt}`,
+`out/eval-anchors-all.log`.
+
+Highlight cost of removing the circular seed, stated plainly: its app path used to be seeded from
+`out/fixed_corners.json` - the file it is also scored against, i.e. the same circle - and now has
+no seed, so it falls back to the naive detector *evaluated on the half-resolution copy* (median
+13.28 px) instead of the full-resolution naive result (1.90 px). If highlight should be scored and
+seeded like vod30, it needs its own hand-placed anchors; that is an owner decision, not a code
+one.
