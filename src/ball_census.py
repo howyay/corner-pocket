@@ -143,7 +143,7 @@ def observations_from_classical(t: float, cands: Iterable[dict]) -> list[Observa
 
 
 def observations_from_sam3(t: float, balls: Iterable[dict], scale: float = 1.0,
-                           color_fn=None) -> list[Observation]:
+                           color_fn=None, use_stored_mm: bool = False) -> list[Observation]:
     """SAM3 frame entry -> observations.
 
     ``balls`` are the stored rows (``score``/``img``/``r``, optionally
@@ -154,6 +154,11 @@ def observations_from_sam3(t: float, balls: Iterable[dict], scale: float = 1.0,
     is used when no caller can sample, so a better classifier never needs the
     frames re-measured.  Without either the ball is an ``unknown`` colour, which
     still counts, associates and refutes nothing.
+
+    ``table_mm`` stored in the cache is *not* used by default: it was projected
+    with the scan's own naive quad, which is 5-50 mm off against the reference
+    calibration, and a caller that has the reference projects the pixels itself.
+    ``use_stored_mm=True`` keeps the cached value for callers without one.
     """
     out = []
     for ball in balls:
@@ -173,9 +178,10 @@ def observations_from_sam3(t: float, balls: Iterable[dict], scale: float = 1.0,
             color = normalize_color(color_fn(cx, cy, max(radius * 0.5, 2.5)))
         else:
             color = normalize_color(ball.get("color"))
+        stored = ball.get("table_mm") if use_stored_mm else None
         out.append(Observation(t=float(t), color=color, cx=cx, cy=cy, r=radius,
                                source="sam3", score=score,
-                               table_mm=tuple(ball["table_mm"]) if ball.get("table_mm") else None))
+                               table_mm=tuple(stored) if stored else None))
     return out
 
 
@@ -449,7 +455,8 @@ def build_census(observations: Iterable[Observation], table_mm_fn=None,
     carries ``count`` (distinct identities seen at that time, i.e. classical and
     SAM3 on the same ball counted once), the two source counts, how many of the
     balls were already stable identities, and the per-ball rows.
-    ``table_mm_fn(cx, cy) -> [x, y] | None`` fills the millimetres.
+    ``table_mm_fn(cx, cy, t) -> [x, y] | None`` fills the millimetres, with the
+    observation's own time so a per-segment reference quad is honoured.
 
     ``frame_times`` names frames that must appear even with no detections: an
     empty frame is a measurement of an empty cloth, and leaving it out would
@@ -459,7 +466,10 @@ def build_census(observations: Iterable[Observation], table_mm_fn=None,
     if table_mm_fn is not None:
         for observation in observations:
             if observation.table_mm is None:
-                mm = table_mm_fn(observation.cx, observation.cy)
+                # The projector takes the observation's own time: the reference
+                # quad can change per segment, and a millimetre measured against
+                # another segment's quad is worse than no millimetre at all.
+                mm = table_mm_fn(observation.cx, observation.cy, observation.t)
                 observation.table_mm = tuple(mm) if mm else None
     tracks, frames = associate(observations, match_px=match_px, gap_s=gap_s)
     for t in frame_times or ():
@@ -543,18 +553,22 @@ def window_summary(report: dict, pre_times: Iterable[float], post_times: Iterabl
     measured.  ``census_comparable`` is False when only one side has SAM3, and
     the caller must then treat the drop as unmeasured.
 
-    On SAM3 sides a frame whose count falls below ``MIN_CENSUS_BALLS`` is
-    reported in ``dropped_pre``/``dropped_post`` and left out of the comparison:
-    at t=26-28 s of the reference VOD a player stands at the table and SAM3 sees
-    0-4 of the 10 balls, which is a measurement of the occlusion, not of the
-    table.  A side whose retained counts still swing by more than
-    ``MAX_CENSUS_SPREAD`` is not stable either; both cases set
+    On SAM3 sides a frame whose count falls below ``MIN_CENSUS_BALLS`` *and*
+    below what its own side shows is reported in ``dropped_pre``/``dropped_post``
+    and left out of the comparison: at t=26-28 s of the reference VOD a player
+    stands at the table and SAM3 sees 0-4 of the 10 balls, which is a measurement
+    of the occlusion, not of the table.  A side that is uniformly below the floor
+    is a *low* side, not a broken one -- the late segment of the reference VOD
+    holds 2 balls, and dropping those frames would throw away exactly the
+    one-ball drop that ends a game -- so the side is kept and flagged
+    ``low_census_pre``/``low_census_post``.  A side whose retained counts still
+    swing by more than ``MAX_CENSUS_SPREAD`` is not stable either; both cases set
     ``census_stable`` False.  The classical numbers keep the formula they had
     before the fusion, so a window without SAM3 coverage behaves exactly as it
     did.
 
-    ``mm_fn(cx, cy)`` projects a pixel position to table millimetres; without it
-    the vanish rows carry pixels only.
+    ``mm_fn(cx, cy, t)`` projects a pixel position to table millimetres; without
+    it the vanish rows carry pixels only.
     """
     pre_times, post_times = list(pre_times), list(post_times)
     pre_frames = frames_in(report, pre_times)
@@ -562,16 +576,18 @@ def window_summary(report: dict, pre_times: Iterable[float], post_times: Iterabl
                    if row["t"] >= min(post_times) - TIME_BUCKET_S] if post_times else []
     sam3_pre = [row for row in pre_frames if row.get("sam3_frame")]
     sam3_post = [row for row in post_frames if row.get("sam3_frame")]
+    low_pre = low_post = False
     if sam3_pre and sam3_post:
         source, pre_use, post_use = "sam3", sam3_pre, sam3_post
-        # A frame a player stands in front of is not an empty table.  Below the
-        # floor the count measures the occlusion, so the frame leaves the
-        # comparison (and is reported as dropped, never silently).
         floor = MIN_CENSUS_BALLS
-        dropped_pre = [round(row["t"], 2) for row in pre_use if row["count"] < floor]
-        dropped_post = [round(row["t"], 2) for row in post_use if row["count"] < floor]
-        pre_use = [row for row in pre_use if row["count"] >= floor]
-        post_use = [row for row in post_use if row["count"] >= floor]
+        low_pre = max(row["count"] for row in pre_use) < floor
+        low_post = max(row["count"] for row in post_use) < floor
+        dropped_pre = [round(row["t"], 2) for row in pre_use
+                       if row["count"] < floor and not low_pre]
+        dropped_post = [round(row["t"], 2) for row in post_use
+                        if row["count"] < floor and not low_post]
+        pre_use = [row for row in pre_use if row["count"] >= floor or low_pre]
+        post_use = [row for row in post_use if row["count"] >= floor or low_post]
     else:
         # No SAM3 on both sides: the classical numbers keep the formula they
         # had before the fusion, and SAM3-only frames stay out of them (their
@@ -601,6 +617,7 @@ def window_summary(report: dict, pre_times: Iterable[float], post_times: Iterabl
         "stable_pre": _median([row["stable_count"] for row in pre_use]),
         "stable_post": _median([row["stable_count"] for row in post_use]),
         "dropped_pre": dropped_pre, "dropped_post": dropped_post,
+        "low_census_pre": low_pre, "low_census_post": low_post,
         "census_stable": (source != "sam3" or (
             not dropped_pre and not dropped_post and counts_pre and counts_post
             and max(counts_pre) - min(counts_pre) <= MAX_CENSUS_SPREAD
@@ -633,13 +650,13 @@ def window_summary(report: dict, pre_times: Iterable[float], post_times: Iterabl
                    "cx": round(last.cx, 1), "cy": round(last.cy, 1), "table_mm": None,
                    "pocket": None, "dist_mm": None, "approach_mm": None}
             from src.event_gates import nearest_pocket
-            mm = last.table_mm or (mm_fn(last.cx, last.cy) if mm_fn else None)
+            mm = last.table_mm or (mm_fn(last.cx, last.cy, last.t) if mm_fn else None)
             if mm is not None:
                 row["table_mm"] = [round(mm[0], 1), round(mm[1], 1)]
                 pocket, distance = nearest_pocket(mm[0], mm[1])
                 row["pocket"], row["dist_mm"] = pocket, round(distance)
                 first = hits_pre[0]
-                first_mm = first.table_mm or (mm_fn(first.cx, first.cy) if mm_fn else None)
+                first_mm = first.table_mm or (mm_fn(first.cx, first.cy, first.t) if mm_fn else None)
                 if first_mm is not None:
                     row["approach_mm"] = round(
                         nearest_pocket(first_mm[0], first_mm[1])[1] - distance, 1)

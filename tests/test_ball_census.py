@@ -18,7 +18,7 @@ from src.event_gates import (GateConfig, GateResult, PotEvidence, ShotEvidence, 
 
 # A tiny canonical-frame projector: 1 px = 10 mm on both axes, so distances in
 # the tests read directly in millimetres.
-MM_FN = lambda cx, cy: [cx * 10.0, cy * 10.0]  # noqa: E731
+MM_FN = lambda cx, cy, t=None: [cx * 10.0, cy * 10.0]  # noqa: E731
 FOOT_RIGHT_MM = (1270.0, 2540.0)               # frame px (127.0, 254.0)
 
 
@@ -274,6 +274,42 @@ class WindowSummaryTests(unittest.TestCase):
         self.assertTrue(color_presence(report_two, "black", [1.5, 1.75])["measured"])
         scored = report([obs(1.5, "black", 127.0, 254.0, source="sam3", score=0.9)])
         self.assertTrue(color_presence(scored, "black", [1.5])["measured"])
+
+
+class EndgameCensusTests(unittest.TestCase):
+    def test_an_endgame_side_is_low_not_occluded(self):
+        # Two balls on the cloth before, one after: the whole side is below the
+        # floor, and dropping it would hide exactly the drop that ends a game.
+        observations = []
+        for t in (0.0, 0.25):
+            observations += rack_frame(t, 1, source="sam3")
+            observations.append(obs(t, "black", 120.0, 200.0, source="sam3", score=0.9))
+        for t in (1.5, 1.75):
+            observations += rack_frame(t, 1, source="sam3")
+        summary = window_summary(report(observations), pre_times=[0.0, 0.25],
+                                 post_times=[1.5, 1.75])
+        # Two balls is the floor itself: counted, not flagged.  One ball is
+        # below it, and the whole side is low, so it is kept and flagged.
+        self.assertFalse(summary["low_census_pre"])
+        self.assertTrue(summary["low_census_post"])
+        self.assertEqual(summary["census_pre"], 2.0)
+        self.assertEqual(summary["census_post"], 1.0)
+        self.assertEqual(summary["census_drop"], 1.0)
+        self.assertEqual(summary["dropped_pre"], [])
+        self.assertEqual(summary["dropped_post"], [])
+
+    def test_a_dropout_inside_a_populated_side_is_occlusion(self):
+        observations = []
+        for t, count in ((0.0, 10), (0.3, 1)):
+            observations += rack_frame(t, count, source="sam3")
+        for t in (1.5, 1.8):
+            observations += rack_frame(t, 10, source="sam3")
+        summary = window_summary(report(observations), pre_times=[0.0, 0.3],
+                                 post_times=[1.5, 1.8])
+        self.assertFalse(summary["low_census_pre"])
+        self.assertEqual(summary["dropped_pre"], [0.3])
+        self.assertEqual(summary["census_pre"], 10.0)
+        self.assertFalse(summary["census_stable"])
 
 
 class DisplacementMeasureTests(unittest.TestCase):

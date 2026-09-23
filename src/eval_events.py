@@ -57,7 +57,7 @@ MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 # The probe cache is keyed by (kind, t, colour) and carries this version: a
 # measurement change must invalidate old payloads, or a stale cache would
 # silently weaken the gates (missing fields default to "not measured").
-CACHE_VERSION = 5
+CACHE_VERSION = 7
 CENSUS_STEP_S = 0.25          # window sampling
 POT_PRE_S, POT_POST_S = 1.5, 2.5
 SHOT_INTERVALS_S = (0.3, 0.45, 0.6)   # sharp frames either side of the shot
@@ -72,6 +72,20 @@ HUMAN_VERDICT_FILES = ("out/scan30/annotations.json",
 
 
 # ------------------------------------------------------------------- geometry
+
+def load_segments(dataset="vod30"):
+    """The per-segment reference quads, or None when the artifact is absent.
+
+    Read-only: the segmentation is produced elsewhere (`src.calib_segments`); a
+    missing or broken artifact leaves the tool on the single reference quad it
+    has always used, and says so in the report.
+    """
+    try:
+        from src.calib_segments import load
+        return load(dataset)
+    except Exception:
+        return None
+
 
 def load_quad(path, key="corners"):
     try:
@@ -139,10 +153,11 @@ class SAM3Store:
 class Probe:
     """Bounded frame probe: decodes only around the candidates, never the VOD."""
 
-    def __init__(self, video, forward, inverse, quad, sam3=None):
+    def __init__(self, video, forward, inverse, quad, sam3=None, segments=None):
         self.video = Path(video)
         self.forward, self.inverse = forward, inverse
         self.quad = quad
+        self.segments = segments
         self.sam3 = sam3 if sam3 is not None else SAM3Store()
         self.cap = None
         self.fps = 30.0
@@ -151,6 +166,7 @@ class Probe:
         self.seconds = 0.0
         self.sam3_frames_decoded = 0
         self._frame_cache = {}
+        self._segment_cache = {}
 
     def open(self):
         self.cap = cv2.VideoCapture(str(self.video))
@@ -241,21 +257,45 @@ class Probe:
         return report
 
     # -- geometry helpers ------------------------------------------------
-    def mm(self, cx, cy):
-        return to_table_mm(self.forward, cx * 1280.0 / SMALL_W, cy * 720.0 / SMALL_H)
+    def homographies(self, t=None):
+        """``(forward, inverse, segment)`` for that time's calibration segment.
 
-    def px(self, mm):
-        if self.inverse is None or not mm:
+        The reference quad can differ per segment (the VOD re-frames), so every
+        millimetre this probe reports is measured against the segment the event
+        is in.  Without a segment artifact the single reference quad is used.
+        """
+        if self.segments is None or t is None:
+            return self.forward, self.inverse, None
+        key = round(float(t), 1)
+        if key not in self._segment_cache:
+            forward, inverse, segment = self.segments.homographies(t)
+            self._segment_cache[key] = (self.forward if forward is None else forward,
+                                        self.inverse if inverse is None else inverse,
+                                        segment)
+        return self._segment_cache[key]
+
+    def quad_for(self, t=None):
+        _, _, segment = self.homographies(t)
+        return self.quad if segment is None else segment.quad
+
+    def mm(self, cx, cy, t=None):
+        forward, _, _ = self.homographies(t)
+        return to_table_mm(forward, cx * 1280.0 / SMALL_W, cy * 720.0 / SMALL_H)
+
+    def px(self, mm, t=None):
+        _, inverse, _ = self.homographies(t)
+        if inverse is None or not mm:
             return None
-        x, y, w = self.inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
+        x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
         if not math.isfinite(w) or abs(w) < 1e-9:
             return None
         return [round(float(x) / float(w), 1), round(float(y) / float(w), 1)]
 
-    def in_cloth(self, px):
-        if px is None or self.quad is None:
+    def in_cloth(self, px, t=None):
+        quad = self.quad_for(t)
+        if px is None or quad is None:
             return None
-        return float(cv2.pointPolygonTest(self.quad.astype(np.float32),
+        return float(cv2.pointPolygonTest(quad.astype(np.float32),
                                           (float(px[0]), float(px[1])), True))
 
     def cloth_fraction(self, t):
@@ -342,7 +382,7 @@ def probe_shot(claim, probe):
             radius = 3.0 * max([c["r"] for c in before + after] or [10.0])
             matched, _, _ = match_balls(before, after, radius)
             for prev, cur, _ in matched:
-                a_mm, b_mm = probe.mm(prev["cx"], prev["cy"]), probe.mm(cur["cx"], cur["cy"])
+                a_mm, b_mm = probe.mm(prev["cx"], prev["cy"], a), probe.mm(cur["cx"], cur["cy"], a)
                 if not _on_cloth(a_mm) or not _on_cloth(b_mm):
                     continue
                 start_px = [round(prev["cx"] * 1280.0 / SMALL_W, 1), round(prev["cy"] * 720.0 / SMALL_H, 1)]
@@ -372,12 +412,12 @@ def probe_shot(claim, probe):
         evidence.start_px = chosen[2]
         evidence.start_hits = chosen[4]
         evidence.end_hits = chosen[5]
-        claimed_px = probe.px(claim["from_mm"])
+        claimed_px = probe.px(claim["from_mm"], anchor)
         if claimed_px is not None:
             evidence.geometry_gap_px = round(math.hypot(claimed_px[0] - chosen[2][0],
                                                         claimed_px[1] - chosen[2][1]), 1)
-    evidence.from_in_cloth_px = probe.in_cloth(probe.px(claim["from_mm"]))
-    evidence.to_in_cloth_px = probe.in_cloth(probe.px(claim["to_mm"]))
+    evidence.from_in_cloth_px = probe.in_cloth(probe.px(claim["from_mm"], anchor), anchor)
+    evidence.to_in_cloth_px = probe.in_cloth(probe.px(claim["to_mm"], anchor), anchor)
     # The fused census measures the same event by other means: SAM3 sees the
     # balls the colour blobs lose to motion blur, and the temporal association
     # keeps them apart, so a fast ball is measurable again.
@@ -393,7 +433,7 @@ def probe_shot(claim, probe):
     evidence.census_start_hits = move["start_hits"]
     evidence.census_end_hits = move["end_hits"]
     evidence.census_tracks_moved = move["tracks_moved"]
-    claimed_px = probe.px(claim["from_mm"])
+    claimed_px = probe.px(claim["from_mm"], anchor)
     if move["start_px"] is not None and claimed_px is not None:
         start_px = [move["start_px"][0] * 1280.0 / SMALL_W, move["start_px"][1] * 720.0 / SMALL_H]
         evidence.census_geometry_gap_px = round(math.hypot(claimed_px[0] - start_px[0],
@@ -433,6 +473,8 @@ def probe_pot(claim, probe):
                            census_counts_post=summary["counts_post"],
                            census_spread_pre=summary["spread_pre"],
                            census_spread_post=summary["spread_post"],
+                           census_low_pre=summary.get("low_census_pre"),
+                           census_low_post=summary.get("low_census_post"),
                            sam3_frames_pre=summary["sam3_frames_pre"],
                            sam3_frames_post=summary["sam3_frames_post"],
                            stable_pre=summary["stable_pre"], stable_post=summary["stable_post"],
@@ -494,14 +536,14 @@ def _classical_vanish(samples, probe, anchor):
     pre_cands = [(s[0], c) for s in pre for c in s[1]]
     post_cands = [c for s in post for c in s[1]]
     vanish = []
-    for _, ball in pre_cands:
+    for seen_t, ball in pre_cands:
         if any(other.get("color") == ball.get("color")
                and math.hypot(other["cx"] - ball["cx"], other["cy"] - ball["cy"]) <= MATCH_PX
                for other in post_cands):
             continue                      # still on the cloth: not a pot
         hits = [b for _, b in pre_cands if b.get("color") == ball.get("color")
                 and math.hypot(b["cx"] - ball["cx"], b["cy"] - ball["cy"]) <= MATCH_PX]
-        mm = probe.mm(ball["cx"], ball["cy"])
+        mm = probe.mm(ball["cx"], ball["cy"], seen_t)
         if not _on_cloth(mm):
             continue
         pocket, distance = nearest_pocket(mm[0], mm[1])
@@ -511,7 +553,7 @@ def _classical_vanish(samples, probe, anchor):
                 continue
             if math.hypot(other["cx"] - ball["cx"], other["cy"] - ball["cy"]) > 3 * MATCH_PX:
                 continue
-            spot = probe.mm(other["cx"], other["cy"])
+            spot = probe.mm(other["cx"], other["cy"], t)
             if spot is not None:
                 trajectory.append((t, spot))
         approach = None
@@ -646,7 +688,8 @@ def to_queue_event(group, previous_ids):
         "source": raw.get("source") or "info-complete",
         "window_s": raw.get("window_s") or [round(claim["t"] - 1.0, 1), round(claim["t"] + 3.0, 1)],
     }
-    for key in ("disp_mm", "speed_mm_s", "from_mm", "to_mm", "last_mm", "gap_s", "color"):
+    for key in ("disp_mm", "speed_mm_s", "from_mm", "to_mm", "last_mm", "gap_s", "color",
+                "origin"):
         if key in raw:
             event[key] = raw[key]
     if claim["kind"] == "shot":
@@ -788,6 +831,7 @@ def build_rows(groups, previous_ids):
         event = to_queue_event(group, previous_ids)
         rows.append({"id": event["id"], "kind": group["event"]["kind"], "t": group["event"]["t"],
                      "color": group["event"]["color"], "dup_count": group["count"],
+                     "measured": group["event"]["raw"].get("measured"),
                      "pocket": event.get("nearest_pocket") or next(
                          (v.get("pocket") for v in group["evidence"].get("vanish", [])), None),
                      "verdict": group["verdict"], "evidence": group["evidence"],
@@ -857,6 +901,8 @@ def main():
     ap.add_argument("--video", default="data/vod_30min_260815.mp4")
     ap.add_argument("--anchors", default="out/pid_anchors_vod30.json")
     ap.add_argument("--scan-quad", default="out/scan30/corners.json")
+    ap.add_argument("--dataset", default="vod30",
+                    help="calibration segment artifact to resolve the reference quad per event")
     ap.add_argument("--report", default="out/scan30/eval_events.json")
     ap.add_argument("--cache", default="out/scan30/probe_events.json")
     ap.add_argument("--no-probe", action="store_true", help="cached measurements only")
@@ -870,9 +916,12 @@ def main():
     quad = load_quad(args.anchors, "anchors") if inverse is not None else None
     if quad is None:
         quad = load_quad(args.scan_quad)
+    segments = load_segments(args.dataset)
+    if segments is not None:
+        label = f"{label}; per segment: {segments.verdict} ({len(segments.segments)} segment(s))"
     probe = None
     if not args.no_probe and inverse is not None and Path(args.video).exists():
-        probe = Probe(args.video, forward, inverse, quad)
+        probe = Probe(args.video, forward, inverse, quad, segments=segments)
         if not probe.open():
             probe = None
     candidates = Path(args.candidates)
@@ -914,7 +963,8 @@ def main():
               "seconds": seconds, "probe_seconds": probe_seconds,
               "previous_queue_size": previous_count, "queue_size": len(queue),
               "events": [{"id": row["id"], "kind": row["kind"], "t": row["t"], "color": row["color"],
-                          "dup_count": row["dup_count"], "verdict": row["verdict"],
+                          "dup_count": row["dup_count"], "measured": row.get("measured"),
+                          "verdict": row["verdict"],
                           "evidence": row["evidence"]} for row in rows]}
     Path(args.report).parent.mkdir(parents=True, exist_ok=True)
     Path(args.report).write_text(json.dumps(report, indent=1))

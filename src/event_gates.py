@@ -257,6 +257,8 @@ class PotEvidence:
     census_counts_post: list | None = None
     census_spread_pre: float | None = None
     census_spread_post: float | None = None
+    census_low_pre: bool | None = None        # a side below the floor as a whole
+    census_low_post: bool | None = None       # (an endgame, not an occlusion)
     sam3_frames_pre: int | None = None
     sam3_frames_post: int | None = None
     stable_pre: float | None = None           # balls seen in >= 2 frames
@@ -314,6 +316,8 @@ def pot_gate(claim: dict, evidence: PotEvidence, cfg: GateConfig = GateConfig())
                "census_counts_post": evidence.census_counts_post,
                "census_spread_pre": evidence.census_spread_pre,
                "census_spread_post": evidence.census_spread_post,
+               "census_low_pre": evidence.census_low_pre,
+               "census_low_post": evidence.census_low_post,
                "sam3_frames_pre": evidence.sam3_frames_pre,
                "sam3_frames_post": evidence.sam3_frames_post,
                "stable_pre": evidence.stable_pre, "stable_post": evidence.stable_post,
