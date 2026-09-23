@@ -58,6 +58,10 @@ const COPY = {
     gateCensus:'Ball census', gateColourCensus:'Claimed colour census', gateVanish:'Vanished ball',
     gateMove:'Re-measured move', gateMotion:'motion', gateGap:'Claim vs measured ball',
     gateDup:'Duplicate detections merged', gateNotes:'Gate notes',
+    tierLabel:'Confirmation tier', tierGeometry:'geometry-verified', tierWindow:'motion window only',
+    tierGeometryHint:'The re-measured motion matches the claim: this ball, this start, this end.',
+    tierWindowHint:'A ball really moved in this window, but not the one or where the claim said. Review it as a moment, not as the claimed shot.',
+    noPotsMeasured:'No pot candidate in this VOD survived measurement: the ball census refuted every claim (a ball said to be potted was still on the cloth) and 2 stayed unconfirmed, so this list is empty on purpose.',
     loopWord:'loop', playingWord:'playing', pausedWord:'paused'
   },
   zh: {
@@ -113,6 +117,10 @@ const COPY = {
     gateCensus:'球数', gateColourCensus:'声称颜色球数', gateVanish:'消失球',
     gateMove:'复测位移', gateMotion:'运动量', gateGap:'声称位置与实测球',
     gateDup:'合并的重复检测', gateNotes:'检测门备注',
+    tierLabel:'确认层级', tierGeometry:'几何已核', tierWindow:'仅运动窗口',
+    tierGeometryHint:'复测位移与声称一致：同这颗球、同起点、同终点。',
+    tierWindowHint:'该窗口确有球在动，但不是声称的那颗，或不在声称的位置。请按「时刻」复核，而不是按声称的那次击球。',
+    noPotsMeasured:'本场没有经测量存活的入袋候选：球数普查推翻了每一条断言（声称入袋的球仍在台面上），另有 2 条未确认，因此列表为空是刻意的。',
     loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停'
   }
 };
@@ -220,6 +228,7 @@ function eventGeometry(item) {
   if (gate) {
     const n = gate.numbers || {};
     row('gateCheck', `${gateStatusWord(gate.status)}${gate.gate ? ` · ${gate.gate}` : ''}`);
+    if (item.tier === 'geometry' || item.tier === 'window') row('tierLabel', t(item.tier === 'geometry' ? 'tierGeometry' : 'tierWindow'));
     if (item.type === 'pot') {
       row('gateCensus', Number.isFinite(n.census_pre) && Number.isFinite(n.census_post) ? `${n.census_pre} → ${n.census_post}` : '');
       row('gateColourCensus', Number.isFinite(n.color_census_pre) && Number.isFinite(n.color_census_post) ? `${n.color_census_pre} → ${n.color_census_post}` : '');
@@ -285,18 +294,37 @@ function chipsHTML(s) {
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${datasets}${channels}</div>
   <div class="vs-chipmeta">${freshness}<span class="vs-keys">${esc(t('keys'))}</span></div>`;
 }
+function tierBadge(event) {
+  // The confirmation tier, on the card and in the inspector: geometry-verified
+  // means the re-measured motion matches the claim, motion-window means a ball
+  // moved but not the one or where the claim said.  Shown only when the gate
+  // recorded a tier, so an unlabelled event never reads as verified.
+  const tier = event?.tier === 'geometry' ? 'geometry' : event?.tier === 'window' ? 'window' : null;
+  if (!tier) return '';
+  const key = tier === 'geometry' ? 'tierGeometry' : 'tierWindow';
+  const hint = tier === 'geometry' ? 'tierGeometryHint' : 'tierWindowHint';
+  return `<span class="vs-badge tier-${tier}" data-vs-tier="${tier}" title="${esc(t(hint))}">${esc(t(key))}</span>`;
+}
 function railHTML(s) {
-  const events = s.events.items.filter(e => s.eventFilter === 'all' || (s.eventFilter === 'pending' ? !e.verdict : e.type === s.eventFilter));
-  const cards = events.length ? events.map((e, i) => `<article class="vs-card${e.id === s.selection.event?.id ? ' selected' : ''}" data-vs-action="select-event" data-vs-id="${esc(e.id)}">
-      <div class="vs-card-row"><span class="vs-badge ${esc(e.type)}">${esc(e.type === 'pot' ? t('pots') : t('shots'))}</span><span class="vs-mono">${esc(timecode(e.t))}</span><span class="vs-mono vs-dim">#${esc(e.id)}</span>${pocketTag(e)}</div>
+  const events = s.events.items.filter(e => {
+    if (s.eventFilter === 'all') return true;
+    if (s.eventFilter === 'pending') return !e.verdict;
+    if (s.eventFilter === 'geometry' || s.eventFilter === 'window') return e.tier === s.eventFilter;
+    return e.type === s.eventFilter;
+  });
+  const emptyState = s.eventFilter === 'pot' && !events.length
+    ? t('noPotsMeasured')            // the measured reason, not a bare empty list
+    : t('noEvents');
+  const cards = events.length ? events.map((e, i) => `<article class="vs-card tier-${esc(e.tier || 'none')}${e.id === s.selection.event?.id ? ' selected' : ''}" data-vs-action="select-event" data-vs-id="${esc(e.id)}">
+      <div class="vs-card-row"><span class="vs-badge ${esc(e.type)}">${esc(e.type === 'pot' ? t('pots') : t('shots'))}</span>${tierBadge(e)}<span class="vs-mono">${esc(timecode(e.t))}</span><span class="vs-mono vs-dim">#${esc(e.id)}</span>${pocketTag(e)}</div>
       ${gateEvidence(e).length ? `<div class="vs-mono vs-dim fv-gate">${esc(gateEvidence(e).join(' · '))}</div>` : ''}
       <div class="vs-verbs">${['correct','wrong','unsure'].map(v => `<button class="${e.verdict === v ? 'active' : ''}" data-vs-action="verdict" data-vs-id="${esc(e.id)}" data-vs-value="${v}" title="${esc(t(v))}" aria-label="${esc(t(v))}">${{correct:'✓',wrong:'✗',unsure:'?'}[v]}</button>`).join('')}<span class="vs-verb-label">${esc(e.verdict ? t(e.verdict) : t('notReviewed'))}</span></div>
-    </article>`).join('') : `<p class="vs-empty">${esc(t('noEvents'))}</p>`;
+    </article>`).join('') : `<p class="vs-empty" data-vs-empty="${s.eventFilter === 'pot' ? 'pots-measured-none' : 'none'}">${esc(emptyState)}</p>`;
   const crops = s.balls.items;
   const cropRows = crops.length ? crops.map(c => `<button class="vs-item${s.selection.crop && c.file === s.selection.crop.file ? ' selected' : ''}" data-vs-action="select-crop" data-vs-value="${esc(c.file)}"><span class="vs-mono">${esc(c.file)}</span><span class="vs-mono vs-dim">${esc(timecode(c.t))}</span><span class="vs-tag${c.label == null ? '' : ' done'}">${esc(c.label == null ? t('unlabeled') : labelText(c.label))}</span></button>`).join('') : `<p class="vs-empty">${esc(t('noCrops'))}</p>`;
   const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => `<button class="vs-item${String(s.persons.track) === String(x.id) ? ' selected' : ''}" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span><span class="vs-tag${x.seed ? ' done' : ''}">${esc(x.seed || x.label || '?')}</span></button>`).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
   return `<section class="vs-group${s.focus === 'events' ? ' focused' : ''}"><header><h3>${esc(t('events'))}</h3><span class="vs-mono">${esc(s.events.reviewed)} ${esc(t('reviewedWord'))}</span></header>
-    <div class="vs-filters">${[['all','all'],['shot','shots'],['pot','pots'],['pending','pending']].map(([v, l]) => `<button class="vs-filter${s.eventFilter === v ? ' active' : ''}" data-vs-action="event-filter" data-vs-value="${v}">${esc(t(l))}</button>`).join('')}</div>${cards}</section>
+    <div class="vs-filters">${[['all','all'],['geometry','tierGeometry'],['window','tierWindow'],['shot','shots'],['pot','pots'],['pending','pending']].map(([v, l]) => `<button class="vs-filter${s.eventFilter === v ? ' active' : ''}" data-vs-action="event-filter" data-vs-value="${v}">${esc(t(l))}</button>`).join('')}</div>${cards}</section>
   <section class="vs-group${s.focus === 'balls' ? ' focused' : ''}"><header><h3>${esc(t('queue'))}</h3><span class="vs-mono">${crops.length} ${esc(t('crops'))}</span></header>${cropRows}</section>
   <section class="vs-group${s.focus === 'persons' ? ' focused' : ''}"><header><h3>${esc(t('tracks'))}</h3>${s.persons.windows.length ? `<select id="vs-window">${s.persons.windows.map(w => `<option value="${esc(w.win)}" ${w.win === s.persons.win ? 'selected' : ''}>${esc(w.win)} · ${w.count}</option>`).join('')}</select>` : ''}</header>${tracks}</section>`;
 }
@@ -649,5 +677,5 @@ function attach(options) {
   render();
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); }};
 }
-window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry};
+window.VisionStage = {attach, render, act, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML};
 })();

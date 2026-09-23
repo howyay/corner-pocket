@@ -1075,7 +1075,7 @@ function setTool(tool) { state.tool = tool; notify(); }
 function setDetector(kind, on) { if (!(kind in state.detectors)) return false; state.detectors[kind] = !!on; notify(); return true; }
 function setShooter(value) { state.shooterDraft = value; notify(); }
 function setNote(value) { state.noteDraft = value; }
-function setEventFilter(filter) { state.eventFilter = ['all','shot','pot','pending'].includes(filter) ? filter : 'all'; notify(); }
+function setEventFilter(filter) { state.eventFilter = ['all','shot','pot','pending','geometry','window'].includes(filter) ? filter : 'all'; notify(); }
 function freeze() { setPlaying(false); return seek(state.frame); }
 async function setWindow(win) {
   if (state.busy) return false;
@@ -1401,6 +1401,12 @@ function snapshot() {
       // numbers behind the automated call (census, pocket distance, re-measured
       // move, calibration coverage). Passed through as stored, never invented.
       gate: e.gate && typeof e.gate === 'object' ? {...e.gate, numbers: {...(e.gate.numbers || {})}} : null,
+      // Which tier the event was confirmed at ("geometry" = the re-measured
+      // motion matches the claim, "window" = a ball moved, but not the one or
+      // where the claim said) and the claim-vs-measurement check behind it.
+      // Passed through as stored; the claim geometry itself is never rewritten.
+      tier: e.tier === 'geometry' || e.tier === 'window' ? e.tier : null,
+      geometry_check: e.geometry_check && typeof e.geometry_check === 'object' ? {...e.geometry_check} : null,
       dup_count: Number.isFinite(Number(e.dup_count)) ? Number(e.dup_count) : null,
       projectable: !!(e.px_source || e.last_px || e.from_px)})), index: state.eventIndex,
     // Verdicts count only while their event is still in the queue: a verdict

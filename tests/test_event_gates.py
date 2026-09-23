@@ -210,6 +210,49 @@ class EvalToolTests(unittest.TestCase):
         self.assertEqual(event["gate"]["numbers"]["census_pre"], 3.0)
         json.dumps(event)
 
+    def test_queue_event_carries_the_tier_and_keeps_the_claim_geometry(self):
+        # The owner serves every confirmed shot, so the queue must say which tier
+        # it was confirmed at and whether the claim's own start survived the
+        # re-measurement -- without rewriting what the scan claimed.
+        from src.event_gates import GateConfig, ShotEvidence, judge
+        claim = {"type": "shot", "t": 1799.1, "color": "white",
+                 "from_mm": [712.3, 1813.0], "to_mm": [915.6, 1214.7]}
+        groups = dedupe([claim])
+        group = groups[0]
+        evidence = ShotEvidence(available=True, disp_mm=318, disp_color="white",
+                                geometry_gap_px=263.2, window_motion=52.87,
+                                from_in_cloth_px=69.6, to_in_cloth_px=55.4,
+                                start_hits=2, end_hits=2, stable_hits=2, anchor_tries=3,
+                                calibration_frac=0.351)
+        group["evidence"] = dict(evidence.__dict__)
+        group["verdict"] = judge(group["event"], evidence, GateConfig()).as_dict()
+        event = self.tool.to_queue_event(group, previous_ids={})
+        self.assertEqual(event["tier"], "window")
+        self.assertFalse(event["geometry_check"]["matches"])
+        self.assertEqual(event["geometry_check"]["gap_px"], 263.2)
+        self.assertEqual(event["geometry_check"]["tol_px"], 60.0)
+        self.assertEqual(event["geometry_check"]["claim_start_mm"], [712.3, 1813.0])
+        self.assertEqual(event["ball_from"], [712.3, 1813.0])      # claim kept as-is
+        self.assertEqual(event["ball_to"], [915.6, 1214.7])
+        json.dumps(event)
+
+    def test_a_geometry_tier_event_reports_that_the_claim_matched(self):
+        from src.event_gates import GateConfig, ShotEvidence, judge
+        claim = {"type": "shot", "t": 483.4, "color": "black",
+                 "from_mm": [307.9, 702.8], "to_mm": [321.8, 269.7]}
+        group = dedupe([claim])[0]
+        evidence = ShotEvidence(available=True, disp_mm=1837, disp_color="black",
+                                geometry_gap_px=29.0, window_motion=57.48,
+                                from_in_cloth_px=34.7, to_in_cloth_px=12.0,
+                                start_hits=17, end_hits=7, stable_hits=3, anchor_tries=3,
+                                calibration_frac=0.812)
+        group["evidence"] = dict(evidence.__dict__)
+        group["verdict"] = judge(group["event"], evidence, GateConfig()).as_dict()
+        event = self.tool.to_queue_event(group, previous_ids={})
+        self.assertEqual(event["tier"], "geometry")
+        self.assertTrue(event["geometry_check"]["matches"])
+        self.assertEqual(event["gate"]["numbers"]["disp_mm"], 1837)
+
     def test_summary_counts_duplicates_and_no_corroboration(self):
         rows = [
             {"id": 1, "kind": "pot", "t": 1.0, "color": "blue", "dup_count": 3,

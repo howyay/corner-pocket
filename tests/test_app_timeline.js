@@ -1101,5 +1101,67 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
   assert.ok(adapterSource.includes('gateEvidence(e)'), 'the cue rail renders the gate numbers on the card');
 });
 
+test('the confirmation tier is badged on the card and in the inspector, in both languages', () => {
+  const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
+               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
+               console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
+  const VS = box.window.VisionStage;
+  const geometry = VS.tierBadge({tier:'geometry'});
+  const window_ = VS.tierBadge({tier:'window'});
+  assert.ok(geometry.includes('geometry-verified') && geometry.includes('data-vs-tier="geometry"'), 'the solid tier is badged');
+  assert.ok(window_.includes('motion window only') && window_.includes('data-vs-tier="window"'), 'the window tier is badged');
+  assert.ok(geometry.includes('vs-badge tier-geometry') && window_.includes('vs-badge tier-window'),
+    'the two tiers carry different classes, so the rail can tell them apart at a glance');
+  assert.strictEqual(VS.tierBadge({id:9, type:'shot'}), '', 'an event with no tier is never badged as verified');
+  const shot = {id:1011, type:'shot', t:1799.1, color:'white', tier:'window',
+                gate:{status:'confirmed', gate:'displacement', reasons:['displacement_corroborated','geometry_mismatch'],
+                      numbers:{disp_mm:318, disp_color:'white', geometry_gap_px:263.2, calibration_frac:0.351}},
+                geometry_check:{matches:false, gap_px:263.2, tol_px:60}};
+  const facts = VS.eventGeometry(shot);
+  assert.ok(facts.includes('Confirmation tier') && facts.includes('motion window only'),
+    'the tier survives into the inspector verdict block');
+  const served = {id:28, type:'shot', t:483.4, color:'black', tier:'geometry',
+                  gate:{status:'confirmed', gate:'displacement', reasons:['displacement_corroborated'],
+                        numbers:{disp_mm:1837, disp_color:'black', geometry_gap_px:29}}};
+  assert.ok(VS.eventGeometry(served).includes('geometry-verified'), 'and so does the geometry tier');
+  const rail = VS.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[shot, served], index:0, reviewed:0},
+                            balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
+  assert.ok(rail.includes('data-vs-tier="geometry"') && rail.includes('data-vs-tier="window"'),
+    'the rail shows both tiers side by side');
+  assert.ok(rail.includes('data-vs-value="geometry"') && rail.includes('data-vs-value="window"'),
+    'and offers a filter for each tier');
+  assert.ok(rail.match(/vs-card tier-window/), 'the card itself is marked with its tier');
+  const zhTiers = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
+  for (const key of ['tierGeometry', 'tierWindow', 'tierLabel', 'noPotsMeasured'])
+    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zhTiers), `${key} is translated in 中`);
+});
+
+test('the pots tab explains its empty state instead of showing a bare list', () => {
+  const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
+               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
+               console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
+  const VS = box.window.VisionStage;
+  const shot = {id:28, type:'shot', t:483.4, color:'black', tier:'geometry', gate:{status:'confirmed', gate:'displacement', numbers:{disp_mm:1837}}};
+  const rail = VS.railHTML({eventFilter:'pot', selection:{}, focus:'events', events:{items:[shot], index:0, reviewed:0},
+                            balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
+  assert.ok(rail.includes('data-vs-empty="pots-measured-none"'), 'the empty pots list is marked as measured-empty');
+  assert.ok(rail.includes('No pot candidate in this VOD survived measurement'), 'and names why: no candidate survived measurement');
+  assert.ok(rail.includes('the ball census refuted every claim'), 'with the refuting gate named');
+  assert.ok(!rail.includes('data-vs-action="select-event"'), 'no shot is smuggled into the pots tab');
+  const empty = VS.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[], index:0, reviewed:0},
+                             balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
+  assert.ok(empty.includes('No event candidates in this filter.'), 'an empty queue keeps the plain copy, not the pot reason');
+  assert.ok(source.includes('tier: e.tier') && source.includes('geometry_check:'),
+    'app.js passes the tier and the geometry check through to the rail');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

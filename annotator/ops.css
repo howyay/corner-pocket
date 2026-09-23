@@ -269,6 +269,12 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-dim{color:var(--ink-dim)}
 :is(#ops-shell) .vs-badge{border:1px solid var(--btn-line);border-radius:2px;padding:2px 6px;font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass-hi)}
 :is(#ops-shell) .vs-badge.pot{color:var(--green);border-color:var(--green-line)}
+/* The confirmation tier, scannable in the rail: a solid green edge for
+   geometry-verified, a dashed brass edge for motion-window-only. */
+:is(#ops-shell) .vs-badge.tier-geometry{color:var(--green);border-color:var(--green-line)}
+:is(#ops-shell) .vs-badge.tier-window{color:var(--brass-hi);border-color:var(--brass);border-style:dashed}
+:is(#ops-shell) .vs-card.tier-geometry{border-left:3px solid var(--green)}
+:is(#ops-shell) .vs-card.tier-window{border-left:3px dashed var(--brass)}
 :is(#ops-shell) .vs-empty{margin:0;padding:10px;border:1px dashed var(--line);color:var(--ink-dim);font-size:12px}
 :is(#ops-shell) .vs-inspector h3{font-size:15px;margin-bottom:6px;color:var(--ink-hi);text-transform:none}
 :is(#ops-shell) .vs-block{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
