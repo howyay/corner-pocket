@@ -43,6 +43,7 @@ const COPY = {
     liveNow:'live', staleNow:'STALE',
     coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
+    quadDrift:'quad drift vs saved corners',
     pocketsHeldRejected:'quad rejected', pocketsHeldUnverified:'unverified',
     correctionRefused:'saved correction refused', tolerance:'tol'
   },
@@ -84,6 +85,7 @@ const COPY = {
     liveNow:'直播', staleNow:'已过期',
     coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
+    quadDrift:'四边形相对已保存角点漂移',
     pocketsHeldRejected:'四边形被拒绝', pocketsHeldUnverified:'未校验',
     correctionRefused:'已保存修正被拒绝', tolerance:'容差'
   }
@@ -206,6 +208,9 @@ function factsLine(s) {
   if (verdict.state === 'off' && verdict.mean != null) parts.push(`${t('quadOff')} ${Math.round(verdict.mean)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
   else if (verdict.state === 'off') parts.push(t('quadOff'));
   else if (verdict.state === 'unverified') parts.push(t('quadUnverified'));
+  // The detector searches around the saved hand anchors, so a pass is a drift
+  // measurement, not a verdict on the table: report the number, not just "ok".
+  else if (verdict.state === 'ok' && verdict.mean != null) parts.push(`${t('quadDrift')} ${verdict.mean.toFixed(1)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
   if (refusal) parts.push(`${t('correctionRefused')} (${refusal.owner})`);
   const total = d.cloth + d.balls + d.persons + d.pockets + d.anchors + d.events;
   if (s.loading.overlay) parts.push(`${t('overlays')} ${t('loading')} (${((Date.now() - s.loading.since) / 1000).toFixed(1)} s)`);

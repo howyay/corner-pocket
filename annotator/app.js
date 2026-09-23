@@ -173,6 +173,17 @@ function quadSanity(points, width, height) {
 // Verdict for one frame's automatic quad: ok (checked and within tolerance),
 // off (checked and refused), unverified (no saved reference for this dataset),
 // none (nothing detected). Only `ok` and `unverified` may be painted.
+//
+// What this check is now: the detector searches around the same saved anchors it
+// is compared against here (src/frame_inference.app_prior_for), because the
+// reference it used to search around - out/corners_30min_v2.json - sits 67-90 px
+// off the visible cloth on its left rail and made every frame fail. A pass is
+// therefore a *drift bound* on the saved hand geometry ("the refinement did not
+// wander far from the operator's corners"), not an independent test that the quad
+// is the table: the evidence for the boundary is the refinement's own per-side
+// measurement of this frame. The facts line prints the measured drift, so the
+// number is visible instead of hidden behind a pass/fail. See
+// docs/app-path-refusal.md.
 function validateCloth(corners, reference, frameWidth, frameHeight) {
   const points = quadPoints(corners);
   const bad = quadSanity(points, frameWidth, frameHeight);

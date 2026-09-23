@@ -357,6 +357,29 @@ test('adapter facts line separates model result from manual correction', () => {
   assert.ok(older.includes('balls 2') && !older.includes('manual'), 'a snapshot without provenance still prints its totals');
 });
 
+test('an accepted quad prints its measured drift, not just a pass', () => {
+  // The detector searches around the saved anchors it is validated against
+  // (src/frame_inference.app_prior_for), so "ok" alone would hide the number
+  // that says how far the refinement moved from the operator's corners.
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  const base = {
+    source:{kind:'vod', label:'vod30', channel:null}, frame:{index:8100, t:270, duration:1800, count:45000, playing:false, rate:0},
+    loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
+    drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}},
+    cloth:{verdict:{state:'ok', reason:'within tolerance', mean:6.43, max:8.07, tolerance:40, source:'saved anchors'},
+           pockets:{source:'model', count:6, reference:null}, reference:{source:'saved anchors', width:1280, height:720}}
+  };
+  const fresh = context.window.VisionStage.factsLine(base);
+  assert.ok(fresh.includes('quad drift vs saved corners 6.4 px (tol 40 px)'), fresh);
+  const unverified = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
+  assert.ok(unverified.includes('model quad unverified') && !unverified.includes('quad drift'), unverified);
+  const off = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}});
+  assert.ok(off.includes('model quad off saved corners 43 px (tol 40 px)'), off);
+});
+
 test('the facts line uses one word for one live state', () => {
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
