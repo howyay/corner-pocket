@@ -89,6 +89,39 @@ async errors/busy behavior, corrections and the reused ball helper contract.
 Twitch embedding/ingestion, live DVR buffering, and temporal shot/pot inference
 are not implemented. The timeline operates on the two existing local VODs.
 
+## API write contract
+
+Every `GET` is side-effect free: it reads state and renders it, but it never
+rewrites a persisted file. The check is bytes + size + mtime, e.g. `md5sum
+out/identity/clusters.json` before and after a read.
+
+- Fixed 2026-09-23: `GET /api/identity/frame` and `GET /api/unified` rewrote
+  `out/identity/clusters.json` on every observed frame, because
+  `IdentityIndex.register()` saved the whole index after each tracker update
+  (`src/person_identity.py`, the `process_frame -> update -> register` seam). A
+  tracker update is observation, not a decision: reads now change memory only,
+  and the file is written by `bind_face()` / `explicit_assign()` — where the
+  durable binding is actually made, and which persist everything accumulated
+  since the last write — or by an explicit `save()`.
+- `GET /api/clip` still writes one thing: a regenerable fragment under
+  `out/clip-cache/`, only on a cache miss, keyed by dataset + window, never
+  rewriting an existing file (it prunes its own directory). That is derived
+  media, not state, so it stays a cache on purpose.
+- Reads audited as write-free: `/api/operations`, `/api/vod30/{seeds,tracklets,
+  tracks,anchors,rebuild}`, `/api/events`, `/api/frame`, `/api/frame-result`,
+  `/api/inference` (status), `/api/datasets`, `/api/balls/<set>/meta`,
+  `/api/identity/status`, `/api/live` and `/api/live/frame`,
+  `/api/review-template`, `/media/*`, static assets. Writes live in the POST
+  handlers (`annotate`, `seeds`, `anchors`, `frame-correction`,
+  `identity/{seed,unbind,enroll}`, and the inference job the POST starts).
+- Fixture measurement (`tests/serve_workbench_fixture.py`, :8131). Before: one
+  `GET /api/identity/frame?dataset=vod30&frame=2040` moved the index from md5
+  `77777777777777777777777777777777…` / 1,855,684 B / 20:43:21 to `77777777777777777777777777777777…` / 1,865,607 B / 20:58:05.
+  After: the same read, `GET /api/vod30/tracklets` and a full read-only page load
+  (Vision tab, track selection, `GET /api/unified?dataset=vod30&frame=0`) left
+  `77777777777777777777777777777777…` / 1,865,607 B / 20:58:05 untouched. `GET /api/vod30/tracks` was
+  byte-identical before and after (`77777777777777777777777777777777…`, 205 B).
+
 ## Verification
 
 - 14 isolated backend unit tests pass: dataset isolation, legacy label keys,
