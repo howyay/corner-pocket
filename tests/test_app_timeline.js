@@ -1178,6 +1178,44 @@ test('the confirmation tier is badged on the card and in the inspector, in both 
     assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zhTiers), `${key} is translated in 中`);
 });
 
+test('an emptied queue explains itself instead of showing a bare list', () => {
+  const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
+               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
+               console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
+  const VS = box.window.VisionStage;
+  const emptyQueue = {eventFilter:'all', selection:{}, focus:'events', events:{items:[], index:0, reviewed:0},
+                      balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}};
+  const rail = VS.railHTML(emptyQueue);
+  assert.ok(rail.includes('data-vs-empty="shots-measured-none"'), 'the empty queue is marked as measured-empty');
+  assert.ok(rail.includes('No shot candidate survived measurement'), 'and says so');
+  assert.ok(rail.includes('explained by occlusion'), 'naming the measured reason: occlusion');
+  assert.ok(rail.includes('detection floor'), 'and the resolution limit behind it');
+  assert.ok(rail.includes('report artifacts'), 'and where the events still live');
+  assert.ok(!rail.includes('data-vs-action="select-event"'), 'no card is invented for an empty queue');
+  assert.ok(!rail.includes('No event candidates in this filter.'), 'the bare copy is not used while the reason exists');
+  const geometryFilter = VS.railHTML({...emptyQueue, eventFilter:'geometry'});
+  assert.ok(geometryFilter.includes('data-vs-empty="shots-measured-none"'), 'a tier filter inherits the same reason');
+  const pots = VS.railHTML({...emptyQueue, eventFilter:'pot'});
+  assert.ok(pots.includes('data-vs-empty="pots-measured-none"') && pots.includes('No pot candidate in this VOD survived measurement'),
+    'the pots tab keeps its own reason');
+  const shot = {id:28, type:'shot', t:483.4, color:'black', tier:'geometry', gate:{status:'confirmed', gate:'displacement', numbers:{disp_mm:1837}}};
+  const withEvent = VS.railHTML({...emptyQueue, events:{items:[shot], index:0, reviewed:0}});
+  assert.ok(withEvent.includes('data-vs-value="geometry"') && withEvent.includes('data-vs-value="window"'),
+    'with a tiered event the tier controls come back');
+  const untiered = VS.railHTML({...emptyQueue, events:{items:[{...shot, tier:null}], index:0, reviewed:0}});
+  assert.ok(!untiered.includes('data-vs-value="geometry"'), 'without a tiered event they are not offered');
+  assert.ok(!untiered.includes('data-vs-tier='), 'and no badge is invented');
+  const inspector = VS.inspectorHTML ? '' : '';
+  const zhShots = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
+  for (const key of ['noShotsMeasured', 'noPotsMeasured', 'tierGeometry', 'tierWindow'])
+    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zhShots), `${key} is translated in 中`);
+  assert.ok(/noShotsMeasured:'[^']*遮挡/.test(zhShots), 'the 中 reason names the occlusion');
+});
+
 test('the pots tab explains its empty state instead of showing a bare list', () => {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
@@ -1196,7 +1234,8 @@ test('the pots tab explains its empty state instead of showing a bare list', () 
   assert.ok(!rail.includes('data-vs-action="select-event"'), 'no shot is smuggled into the pots tab');
   const empty = VS.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[], index:0, reviewed:0},
                              balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
-  assert.ok(empty.includes('No event candidates in this filter.'), 'an empty queue keeps the plain copy, not the pot reason');
+  assert.ok(empty.includes('data-vs-empty="shots-measured-none"'), 'an empty queue gets the shot reason, not the pot one');
+  assert.ok(!empty.includes('No pot candidate'), 'the pot reason never leaks onto the shots filter');
   assert.ok(source.includes('tier: e.tier') && source.includes('geometry_check:'),
     'app.js passes the tier and the geometry check through to the rail');
 });
