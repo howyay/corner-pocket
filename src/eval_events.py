@@ -702,6 +702,24 @@ def to_queue_event(group, previous_ids):
     event["dup_count"] = group["count"]
     event["gate"] = {**group["verdict"], "dup_count": group["count"],
                      "colors_merged": group["colors"]}
+    # Additive, read by the review rail: the tier the event was confirmed at
+    # ("geometry" = the measured motion matches the claim's geometry, "window" =
+    # a ball moved but not the one or where the claim said), and whether the
+    # claim's own geometry survived the re-measurement.  Nothing is rewritten --
+    # the stored from_mm/to_mm stay exactly as the scan wrote them.
+    numbers = event["gate"].get("numbers") or {}
+    event["tier"] = event["gate"].get("tier")
+    if claim["kind"] == "shot":
+        gap = numbers.get("geometry_gap_px")
+        tolerance = GateConfig().shot_geometry_tol_px
+        event["geometry_check"] = {
+            "claim_start_mm": raw.get("from_mm"), "claim_end_mm": raw.get("to_mm"),
+            "measured_disp_mm": numbers.get("disp_mm"),
+            "measured_disp_color": numbers.get("disp_color"),
+            "gap_px": gap, "tol_px": tolerance,
+            "matches": None if gap is None else bool(gap <= tolerance),
+            "calibration_frac": numbers.get("calibration_frac"),
+        }
     return event
 
 

@@ -546,11 +546,14 @@ def select_for_gating(kept, plan, controls: int = 20, served=()) -> list:
         selected.append(dict(event, measured="served", origin="served"))
     for index, candidate in enumerate(selected, start=1001):
         # Ids above the served queue's range: a regenerated candidate must never
-        # inherit an id the owner has already voted on.  ``source`` keeps the
-        # queue's own value (the schema the app reads); where the candidate came
-        # from goes in the additive ``origin`` field.
-        candidate["id"] = index
-        candidate["origin"] = candidate.get("source") or "unknown"
+        # inherit an id the owner has already voted on.  An event the queue
+        # already carries keeps *its* id -- renaming it would orphan the verdicts
+        # recorded against it.  ``source`` keeps the queue's own value (the
+        # schema the app reads); where the candidate came from goes in the
+        # additive ``origin`` field.
+        if candidate.get("id") is None:
+            candidate["id"] = index
+        candidate["origin"] = candidate.get("origin") or candidate.get("source") or "unknown"
         candidate["source"] = "info-complete"
         candidate["window_s"] = [round(candidate["t"] - 1.0, 2), round(candidate["t"] + 2.5, 2)]
     return selected
