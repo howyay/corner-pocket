@@ -316,3 +316,54 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
 - Evidence: `out/table-detect-eval/baseline-naive.{json,txt}`,
   `after-refined.{json,txt}`, `app-verdict.json`,
   `overlay-normal.png` / `overlay-occluded.png` / `overlay-fixed.png`.
+
+## 2026-09-22 (correction) — that 4.38 px / 100 % table-cloth result was a self-score
+
+- The section above claims "vod30 vs corners30-v2 median 78.4 -> 4.38 px, accept
+  0 -> 100 %" as a detector improvement. It is **circular and must not stand as an
+  improvement claim**: `prior_for('vod30')` read `out/corners_30min_v2.json`, the
+  same file `src/eval_table_detect.py` scores against. Seeding a refinement from a
+  reference and then scoring it against that reference measures the seed, not the
+  detector. The 4.38 px / 100 % figures and the "44 px inside the cloth" claim in
+  that section are withdrawn.
+- What the cloth edge actually is (vod30, t=70, horizontal scanlines on the
+  outermost bright-cloth boundary, cross-checked against the HSV cloth mask): the
+  left edge **slants** x=520 (y=330) -> x=381 (y=560). `corners_30min_v2.json` puts
+  a **vertical** left rail at x~450: 67 px outside the cloth at the top and 70 px
+  inside at the bottom. The six hand anchors track that same edge within **6-13 px**
+  (perpendicular deviation <= 10 px), i.e. the anchors are the correct reference and
+  the app's 40 px tolerance is sound. Reproduced here: mask edge
+  x=520/502/482/462/444/424/406/386 vs anchor line x=528/509/491/472/454/435/417/398
+  at y=330..540.
+- Corrected numbers, same 45 + 21 frame sample, seeded from the hand anchors
+  (`out/pid_anchors_vod30.json`) since commit `b33b966`:
+  - vod30 vs app-anchors: median **5.09 px**, p90 5.83, max 6.28, accept@40 px
+    **86.4 %** (38/44 readable frames), confidence median 1.0; refusals 6
+    (`low_cloth_area` 2, `no_boundary_evidence` 4 = players over the bed).
+  - vod30 vs `corners_30min_v2.json`: median **43.08 px**, accept 0 % — recorded
+    only to show that the old reference disagrees with the cloth, not as a target.
+  - highlight vs `fixed_corners.json`: median **11.73 px**, p90 11.83, accept
+    **95 %** (19/20; the saved highlight reference's bottom rail sits 26-29 px
+    inside the visible cloth - see the note above).
+  - App path (`app_prior_for('vod30')` -> `detect_table_for_frame`, anchors seed):
+    11/15 frames drawn, median **4.99 px**, p90 5.36 vs anchors, all four sides
+    verified on every accepted frame; cost 10.0 -> 29.9 ms median on a 640x360
+    input.
+- Two defects found by an independent verifier and fixed in the same commit:
+  1. the step was converted to frame pixels and then divided by the mask scale
+     again, so an iteration advanced ~half the measured offset and the 8 px cap
+     bound at an effective 32 px; the side profile now measures on the
+     full-resolution mask (the 2x downsample moved the mask edge ~1.5 px). A 10 px
+     prior perturbation now converges to 0.68 px in two iterations (was 3.02 px).
+  2. a side whose band held no boundary evidence was still reported as a
+     high-confidence quad: a +-120 px rail perturbation returned a 61-65 px-wrong
+     quad at confidence 0.70-0.75 with `reason=None`. Every side must now show an
+     occupancy crossing with cloth inside it (>= 0.55 coverage), a real drop
+     (>= 0.20) and the rail signature outside it (dark band then bright outside,
+     >= 25 gray levels); otherwise the frame is refused with a per-side reason
+     code, or the side is explicitly marked `inherited` (weak but agreeing
+     evidence within 3 px, never counted as verified, confidence reduced). The
+     120 px case now returns no corners with `no_boundary_evidence`.
+- Evidence: `out/table-detect-eval/after-anchor-seed.{json,txt}`,
+  `baseline-naive.{json,txt}`, `app-verdict.json`; tests
+  `tests/test_table_refine.py` (per-side verification, step size, refusal cases).
