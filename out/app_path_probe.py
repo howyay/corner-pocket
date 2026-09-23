@@ -118,12 +118,14 @@ def query_prior(name, root):
 def force_prior(prior):
     """Make the app path's own prior resolution return ``prior``.
 
-    ``_unified_detection`` resolves its search centre through
-    ``Backend._prior_for`` -> ``src.table_refine.prior_for``, so this is where a
-    different search centre has to be injected to measure the counterfactual.
+    ``Backend._prior_for`` resolves the search centre through
+    ``src.frame_inference.app_prior_for`` (it used to go through
+    ``src.table_refine.prior_for``), so that is where a different search centre has
+    to be injected to measure the counterfactual - patching anything else silently
+    measures the real seed while claiming otherwise.
     """
-    import src.table_refine as live
-    live.prior_for = lambda dataset, t=None, root=None: prior if str(dataset) == 'vod30' else None
+    import src.frame_inference as frame_inference
+    frame_inference.app_prior_for = lambda dataset, root=None: prior if str(dataset) == 'vod30' else None
 
 
 def frame_at(t):
