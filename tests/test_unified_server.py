@@ -1,6 +1,7 @@
 """Fixture-only backend tests; never start a server or touch repository labels."""
 import io
 import json
+import math
 from pathlib import Path
 import tempfile
 import unittest
@@ -49,6 +50,50 @@ class BackendTests(unittest.TestCase):
         for payload in ({"event_id": 9}, {"event_id": 1, "verdict": "bad"}, {"event_id": 1, "shooter": "C"}):
             with self.assertRaises(APIError):
                 self.backend.post(["api", "vod30", "annotate"], payload)
+
+    def test_event_geometry_projects_millimetres_into_frame_pixels(self):
+        # The stage draws in frame pixels, the scan stores canonical millimetres:
+        # the projection is additive and the stored fields are never rewritten.
+        atomic_save(self.out / "scan30" / "corners.json",
+                    {"corners": [[100, 100], [1100, 120], [1120, 620], [90, 600]]})
+        atomic_save(self.out / "scan30" / "events.json", [
+            {"id": 7, "t": 5.6, "type": "pot", "window_s": [4.6, 8.6],
+             "last_mm": [5.0, 1270.0], "nearest_pocket": "left-side (5mm)"},
+            {"id": 8, "t": 6.0, "type": "shot", "window_s": [5.0, 9.0], "disp_mm": 172,
+             "speed_m_s": 2.6, "ball_from": [100.0, 200.0], "ball_to": [300.0, 400.0]},
+        ])
+        payload = self.backend.get(["api", "vod30", "events"], {})
+        self.assertEqual(payload["geometry"], {"source": "scan cloth quad", "projected": 2, "total": 2})
+        pot, shot = payload["events"]
+        # Existing fields keep their names and values.
+        self.assertEqual(pot["last_mm"], [5.0, 1270.0])
+        self.assertEqual(pot["nearest_pocket"], "left-side (5mm)")
+        self.assertEqual(pot["window_s"], [4.6, 8.6])
+        self.assertEqual(shot["disp_mm"], 172)
+        self.assertEqual(shot["speed_m_s"], 2.6)
+        # Additive geometry, in frame pixels.
+        for point in (pot["last_px"], pot["pocket_px"], shot["from_px"], shot["to_px"]):
+            self.assertEqual(len(point), 2)
+            self.assertTrue(0 <= point[0] <= 1280 and 0 <= point[1] <= 720, point)
+        self.assertEqual(shot["speed_mm_s"], 2600)
+        self.assertEqual(pot["pocket_name"], "left-side")
+        self.assertEqual(pot["px_source"], "scan cloth quad")
+        # The pocket the event names is the pocket it points at: a ball reported
+        # 5 mm from the left side pocket must land next to that marker.
+        self.assertLess(math.hypot(pot["last_px"][0] - pot["pocket_px"][0],
+                                   pot["last_px"][1] - pot["pocket_px"][1]), 20)
+
+    def test_event_geometry_stays_millimetres_only_without_a_calibration(self):
+        atomic_save(self.out / "scan30" / "events.json", [
+            {"id": 3, "t": 9.4, "type": "pot", "last_mm": [1287.7, 2526.4], "nearest_pocket": "foot-right (22mm)"},
+        ])
+        payload = self.backend.get(["api", "vod30", "events"], {})
+        self.assertIsNone(payload["geometry"])
+        event = payload["events"][0]
+        self.assertEqual(event["last_mm"], [1287.7, 2526.4])
+        self.assertNotIn("last_px", event)
+        self.assertNotIn("pocket_px", event)
+        self.assertNotIn("px_source", event, "an event without pixels must not claim a projection source")
 
     def test_ball_legacy_keys_and_context(self):
         route = ["api", "balls", "unlabeled_crops", "label"]
@@ -625,6 +670,20 @@ class UnifiedViewTests(unittest.TestCase):
         data = self.payload()
         self.assertEqual([e["id"] for e in data["events"]], [1, 3],
                          "5.5s and 8.4s are within ±3s of 5.0s, 30s is not")
+
+    def test_events_window_carries_the_same_additive_pixel_geometry(self):
+        # The stage's ±3 s event window draws the same projected geometry the cue
+        # list carries, so a pot pulse and its cue cannot disagree.
+        scan = self.root / "out" / "scan30"
+        atomic_save(scan / "corners.json",
+                    {"corners": [[100, 100], [1100, 120], [1120, 620], [90, 600]]})
+        events = json.loads((scan / "events.json").read_text())
+        events[0] = {"id": 1, "t": 5.5, "type": "pot", "last_mm": [5.0, 1270.0],
+                     "nearest_pocket": "left-side (5mm)"}
+        atomic_save(scan / "events.json", events)
+        window = [e for e in self.payload()["events"] if e["id"] == 1]
+        self.assertEqual(window[0]["pocket_name"], "left-side")
+        self.assertTrue(window[0]["last_px"] and 0 <= window[0]["last_px"][0] <= 1280)
 
     def test_identity_degrades_to_empty_persons_with_error_note(self):
         def broken(self):

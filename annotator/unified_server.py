@@ -13,6 +13,7 @@ import math
 import mimetypes
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -83,6 +84,40 @@ def _number(value, name, allow_none=False):
     return number(value, -1e9, 1e9, name)
 
 
+def _point(value):
+    """A stored ``[x, y]`` pair as floats, or None: never a string, never a guess."""
+    if not isinstance(value, (list, tuple)) or len(value) < 2:
+        return None
+    try:
+        x, y = float(value[0]), float(value[1])
+    except (TypeError, ValueError):
+        return None
+    return (x, y) if math.isfinite(x) and math.isfinite(y) else None
+
+
+def _saved_quad(data, key):
+    """The first four stored points as a cloth quad, or None.
+
+    ``corners.json`` stores ``{"corners": [[x, y] x 4]}``; ``pid_anchors_*.json``
+    stores one six-point set per time under ``{"anchors": {"70.0": [...]}}`` and
+    the first four anchors are the cloth quad (annotator/app.js POCKET_ANCHOR_ORDER).
+    """
+    import numpy as np
+    rows = (data or {}).get(key)
+    if isinstance(rows, dict):
+        rows = rows.get(min(rows, key=float)) if rows else None
+    if not isinstance(rows, list) or len(rows) < 4:
+        return None
+    points = np.asarray([_point(point) or (float('nan'), float('nan')) for point in rows[:4]], np.float32)
+    return points if points.shape == (4, 2) and np.isfinite(points).all() else None
+
+
+def _pockets_mm():
+    """Canonical pocket geometry, imported on demand (src.scan_events pulls cv2)."""
+    from src.scan_events import POCKETS_MM
+    return POCKETS_MM
+
+
 def safe_file(base, name):
     if not name or Path(name).name != name or name in (".", ".."):
         raise APIError("invalid media path", 404)
@@ -108,6 +143,7 @@ class Backend:
         self._identity_error = None
         self._identity_lock = threading.Lock()
         self._unified_cache = OrderedDict()
+        self._projection_cache = {}
 
     def live_processor(self):
         with self.lock:
@@ -400,7 +436,163 @@ class Backend:
         for event in load(self.dataset(dataset) / 'events.json', []):
             if isinstance(event.get('t'), (int, float)) and abs(event['t'] - timestamp) <= 3.0:
                 window.append(event)
-        return window
+        return self._event_geometry(dataset, window)[0]
+
+    # -- event geometry: table millimetres and their frame pixels ------------
+    #
+    # The event scan measures positions in canonical table millimetres through a
+    # homography of the dataset's static camera; the stage draws in frame pixels.
+    # The projection therefore belongs here, where the calibration lives, and it
+    # travels as additive ``*_px`` fields - the stored millimetres are never
+    # rewritten and no field is renamed.  Sources, best first:
+    #
+    #   1. the dataset's own measured correspondences (``sam3_results.json`` holds
+    #      the scan's image pixels next to the table millimetres it computed for
+    #      them; the fit reproduces those millimetres to 0.1 mm);
+    #   2. the cloth quad stored beside the scan (``corners.json``);
+    #   3. the operator's saved hand anchors (``out/pid_anchors_<dataset>.json``).
+    #
+    # A dataset with none of them keeps its millimetres and gets no pixel fields:
+    # the client answers "not projectable" from their absence instead of drawing
+    # a guess.  Known residual: on vod30 the stored quad and the measured fit
+    # disagree by ~3 px at the head rail and ~24 px at the foot rail, and both
+    # reproduce the scan's own labelled pocket distances within ~20 mm.
+
+    _EVENT_QUADS = (('corners.json', 'scan cloth quad'),)
+
+    def _event_projection(self, dataset):
+        """(inverse homography: canonical millimetres -> frame pixels, label)."""
+        cache = getattr(self, '_projection_cache', None)
+        if cache is None:
+            cache = self._projection_cache = {}
+        try:
+            base = self.dataset(dataset)
+        except APIError:
+            return None
+        sources = [(base / name, label) for name, label in self._EVENT_QUADS]
+        sources.append((self.out / f'pid_anchors_{dataset}.json', 'saved anchors'))
+        sources.append((base / 'sam3_results.json', 'measured ball correspondences'))
+        stamp = tuple((path.name, path.stat().st_mtime_ns, path.stat().st_size)
+                      if path.exists() else (path.name, None, None) for path, _ in sources)
+        with self.lock:
+            cached = cache.get(dataset)
+            if cached is not None and cached[0] == stamp:
+                return cached[1]
+        projection = self._fit_event_projection(sources)
+        with self.lock:
+            cache[dataset] = (stamp, projection)
+        return projection
+
+    def _fit_event_projection(self, sources):
+        import numpy as np
+        from src.pipeline import homography_to_canonical
+        pairs = []
+        for path, _ in sources:
+            if path.name != 'sam3_results.json':
+                continue
+            for rows in (load(path, {}) or {}).values():
+                for ball in (rows if isinstance(rows, list) else []):
+                    if not isinstance(ball, dict):
+                        continue
+                    image, millimetres = _point(ball.get('img')), _point(ball.get('table_mm'))
+                    if image is not None and millimetres is not None:
+                        pairs.append((image, millimetres))
+        if len(pairs) >= 4:
+            try:
+                import cv2
+                matrix, _ = cv2.findHomography(np.asarray([pair[0] for pair in pairs], np.float32),
+                                               np.asarray([pair[1] for pair in pairs], np.float32), 0)
+                if matrix is not None and abs(float(np.linalg.det(matrix))) > 1e-12:
+                    return np.linalg.inv(matrix), 'measured ball correspondences'
+            except Exception:
+                pass
+        for path, label in sources:
+            if path.name == 'sam3_results.json':
+                continue
+            quad = _saved_quad(load(path, {}) or {}, 'anchors' if path.name.startswith('pid_anchors_') else 'corners')
+            if quad is None:
+                continue
+            try:
+                return np.linalg.inv(homography_to_canonical(quad)), label
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _project(inverse, mm):
+        """Canonical millimetres -> rounded frame pixels, or None."""
+        point = _point(mm)
+        if point is None:
+            return None
+        try:
+            import numpy as np
+            x, y, w = inverse @ np.asarray([point[0], point[1], 1.0])
+            if not math.isfinite(w) or abs(w) < 1e-9:
+                return None
+            x, y = float(x) / float(w), float(y) / float(w)
+        except Exception:
+            return None
+        if not (math.isfinite(x) and math.isfinite(y)) or max(abs(x), abs(y)) > 1e6:
+            return None
+        return [round(x, 1), round(y, 1)]
+
+    @staticmethod
+    def _pocket_name(event):
+        """The pocket a pot names, from the scan's own field or its millimetres."""
+        pockets = _pockets_mm()
+        raw = str(event.get('nearest_pocket') or '').strip()
+        named = re.match(r'^([\w-]+)\s*\(', raw) or re.match(r'^[\d.]+\s*mm from ([\w-]+)$', raw)
+        if named and named.group(1) in pockets:
+            return named.group(1)
+        point = _point(event.get('last_mm'))
+        if point is None:
+            return None
+        return min(pockets, key=lambda name: math.hypot(point[0] - pockets[name][0],
+                                                        point[1] - pockets[name][1]))
+
+    def _event_geometry(self, dataset, events):
+        """Additive per-event frame pixels plus a dataset-level projection report.
+
+        Existing fields are copied through untouched and ``*_px`` is added only
+        when the event really projects: a pot without a projected last position,
+        or a shot with only one end, stays millimetres-only and carries no
+        ``px_source``, which is how the client knows to say "not projectable".
+        """
+        projection = self._event_projection(dataset)
+        inverse, source = projection if projection else (None, None)
+        items, projected = [], 0
+        for event in events:
+            item = dict(event)
+            speed = event.get('speed_m_s', event.get('avg_speed_m_s'))
+            if isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(speed):
+                item.setdefault('speed_mm_s', round(float(speed) * 1000))
+            kind = str(event.get('type') or '')
+            hits = False
+            if inverse is not None and kind == 'shot':
+                start = self._project(inverse, event.get('ball_from') or event.get('from_mm'))
+                end = self._project(inverse, event.get('ball_to') or event.get('to_mm'))
+                if start:
+                    item['from_px'] = start
+                if end:
+                    item['to_px'] = end
+                hits = bool(start and end)
+            elif inverse is not None and kind == 'pot':
+                last = self._project(inverse, event.get('last_mm'))
+                if last:
+                    item['last_px'] = last
+                name = self._pocket_name(event)
+                if name:
+                    item['pocket_name'] = name
+                    pocket = self._project(inverse, _pockets_mm()[name])
+                    if pocket:
+                        item['pocket_px'] = pocket
+                hits = bool(last)
+            if hits:
+                item['px_source'] = source
+                projected += 1
+            items.append(item)
+        report = None if inverse is None else {'source': source, 'projected': projected, 'total': len(items)}
+        return items, report
 
     def dataset(self, dataset):
         if dataset not in DATASETS:
@@ -723,7 +915,7 @@ class Backend:
         _, dataset, route = parts
         base = self.dataset(dataset)
         if route == "events":
-            events = load(base / "events.json", [])
+            events, geometry = self._event_geometry(dataset, load(base / "events.json", []))
             actors = {}
             if dataset == "vod30":
                 raw = load(self.out / "events_actors.json", [])
@@ -731,7 +923,8 @@ class Backend:
                     match = next((a for a in raw if abs(a["t"] - event["t"]) < 0.01), None)
                     if match:
                         actors[str(event["id"])] = match
-            return {"events": events, "annotations": load(base / "annotations.json", {}), "actors": actors}
+            return {"events": events, "annotations": load(base / "annotations.json", {}),
+                    "actors": actors, "geometry": geometry}
         if dataset != "vod30":
             raise APIError("feature only available for vod30", 404)
         if route == "anchors":
