@@ -96,6 +96,7 @@ class LiveProcessor:
         self._dropped = {reason: 0 for reason in _DROP_REASONS}
         self._last_drop = None
         self._stage_runs = {}
+        self._stage_skips = {}
         self._stage_evidence = {}
         self._fps = None
         self._previous_received = None
@@ -160,6 +161,7 @@ class LiveProcessor:
             self._dropped = {reason: 0 for reason in _DROP_REASONS}
             self._last_drop = None
             self._stage_runs = {stage.name: 0 for stage in stages}
+            self._stage_skips = {stage.name: 0 for stage in stages}
             self._stage_evidence = {stage.name: None for stage in stages}
             self._fps = None
             self._previous_received = None
@@ -321,6 +323,8 @@ class LiveProcessor:
                 with self._condition:
                     for name in run.ran:
                         self._stage_runs[name] = self._stage_runs.get(name, 0) + 1
+                    for name in run.skipped:
+                        self._stage_skips[name] = self._stage_skips.get(name, 0) + 1
                     self._stage_evidence.update({name: copy.deepcopy(entry)
                                                  for name, entry in run.evidence.items()})
                 if run.overrun_stage is not None:
@@ -390,10 +394,13 @@ class LiveProcessor:
                         upstream_delay_ms=None,
                         # Additive: per-stage rolling latency in registry order, the
                         # same window for the non-stage steps, and why frames went.
-                        # Each stage also carries how often it ran and the provenance of
-                        # its last result, so a consumer can tell measured from cached.
+                        # Each stage also carries its cadence, how often it actually
+                        # ran and the provenance of its last result, so a consumer can
+                        # tell measured from cached and a skipped frame from an empty one.
                         stages=[dict(name=stage.name, budget_ms=stage.budget_ms,
+                                     every_n_frames=getattr(stage, 'every_n_frames', 1) or 1,
                                      runs=self._stage_runs.get(stage.name, 0),
+                                     skips=self._stage_skips.get(stage.name, 0),
                                      evidence=copy.deepcopy(self._stage_evidence.get(stage.name)),
                                      **self._latency.summary(stage.name)) for stage in self._registry],
                         latency_ms=self._latency.snapshot(),

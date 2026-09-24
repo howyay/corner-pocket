@@ -182,19 +182,52 @@ class PipelineStageTests(unittest.TestCase):
         self.assertIsNone(empty['table_polygon'])
         self.assertEqual(empty['detectors'], ['table'])
 
-    def test_every_frame_runs_every_stage_and_records_evidence(self):
+    def test_cadence_skips_frames_and_reports_absent_evidence(self):
         calls = []
         stage = Recorder('ball', calls)
+        stage.every_n_frames = 3
         registry = StageRegistry([stage])
-        runs = [registry.run('frame') for _ in range(3)]
-        self.assertEqual(calls, ['ball'] * 3)
-        self.assertEqual([run.ran for run in runs], [['ball']] * 3)
+        runs = [registry.run('frame') for _ in range(7)]
+        self.assertEqual(calls, ['ball', 'ball', 'ball'])          # frames 0, 3, 6
+        self.assertEqual([run.ran for run in runs],
+                         [['ball'], [], [], ['ball'], [], [], ['ball']])
+        self.assertEqual([run.skipped for run in runs],
+                         [[], ['ball'], ['ball'], [], ['ball'], ['ball'], []])
         for index, run in enumerate(runs):
-            self.assertEqual(run.evidence['ball'], dict(ran=True, age_frames=0))
-            self.assertIn('ball', run.results)
-            self.assertIn('ball', run.timings_ms)
+            entry = run.evidence['ball']
+            if index % 3 == 0:
+                self.assertEqual(entry, dict(ran=True, age_frames=0))
+                self.assertIn('ball', run.results)
+                self.assertIn('ball', run.timings_ms)
+            else:
+                # Absent, not stale: no result, no timing sample, an age the consumer can read.
+                self.assertEqual(entry, dict(ran=False, age_frames=index % 3))
+                self.assertNotIn('ball', run.results)
+                self.assertNotIn('ball', run.timings_ms)
         self.assertEqual(runs[1].frame_number, 1)
-        self.assertEqual(registry.frames, 3)
+        self.assertEqual(registry.frames, 7)
+
+    def test_stage_added_mid_run_reports_no_evidence_yet(self):
+        registry = StageRegistry([Recorder('a', [])])
+        registry.run('frame')
+        late = Recorder('late', [])
+        late.every_n_frames = 2
+        registry.add(late)
+        run = registry.run('frame')                                # frame 1: cadence skips it
+        self.assertEqual(run.evidence['late'], dict(ran=False, age_frames=None))
+
+    def test_cadence_must_be_a_positive_integer(self):
+        for value in (0, -1, 2.5, True, 'two'):
+            stage = Recorder('a', [])
+            stage.every_n_frames = value
+            with self.assertRaises(ValueError):
+                StageRegistry([stage])
+
+    def test_registry_accepts_none_cadence_as_every_frame(self):
+        stage = Recorder('a', [])
+        stage.every_n_frames = None
+        registry = StageRegistry([stage])
+        self.assertEqual(registry.run('frame').ran, ['a'])
 
     def test_stage_provenance_is_merged_into_evidence(self):
         class Provenance(Stage):
@@ -266,10 +299,10 @@ class TableStageTests(unittest.TestCase):
             self.assertEqual(run.evidence['table']['ran'], True)
         self.assertEqual([run.ran for run in runs], [['table']] * 5)
 
-    def test_table_stage_is_wired_with_the_dataset_reference(self):
+    def test_table_stage_always_answers_every_frame(self):
+        self.assertEqual(TableStage(self.root).every_n_frames, 1)
         self.assertEqual(default_stages(['table'], self.root)[0].dataset, None)
         self.assertEqual(default_stages(['table'], self.root, dataset='vod30')[0].dataset, 'vod30')
-        self.assertEqual(default_stages(['table'], self.root, dataset='vod30')[0].name, 'table')
 
 
 if __name__ == '__main__':

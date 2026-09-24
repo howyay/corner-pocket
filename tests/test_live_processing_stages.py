@@ -291,19 +291,63 @@ class LiveStageHarnessTests(unittest.TestCase):
         self.assertEqual(metadata['width'], 32)
         self.assertEqual(metadata['receive_to_result_ms'] >= metadata['inference_ms'], True)
 
-    def test_every_frame_carries_per_stage_evidence(self):
+    def published(self, processor, count):
+        """Every distinct published frame's metadata, keyed by sequence."""
+        seen = {}
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            pair = processor.latest_jpeg()
+            if pair is not None:
+                seen[pair[1]['seq']] = pair[1]
+            status = processor.status()
+            if len(seen) >= count and not status['worker_alive']:
+                break
+            if len(seen) >= count and status['frames_received'] >= count:
+                break
+            time.sleep(.002)
+        return seen
+
+    def test_partitioned_stage_is_absent_not_stale_on_skipped_frames(self):
         stage = Sleepy('ball', delay=0, result={'boxes': [{'label': 'ball'}]})
+        stage.every_n_frames = 2
         processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30), stages=[stage],
                                    frame_budget_ms=1000)
         processor.start(self.source)
-        self.finished(processor)
-        status = processor.status()
+        seen = self.published(processor, 6)
+        self.assertEqual(sorted(seen), [1, 2, 3, 4, 5, 6])
+        for seq, metadata in seen.items():
+            evidence = metadata['stage_evidence']['ball']
+            if seq % 2:                                  # frames 1, 3, 5 ran
+                self.assertEqual(evidence, dict(ran=True, age_frames=0), seq)
+                self.assertEqual(metadata['detections']['boxes'], [{'label': 'ball'}], seq)
+                self.assertIn('ball', metadata['stage_ms'], seq)
+            else:                                        # 2, 4, 6 skipped
+                self.assertEqual(evidence, dict(ran=False, age_frames=1), seq)
+                self.assertEqual(metadata['detections']['boxes'], [], seq)
+                self.assertNotIn('ball', metadata['stage_ms'], seq)
+        status = self.finished(processor)
+        self.assertEqual(status['frames_processed'], 6)
+
+    def test_status_reports_cadence_runs_skips_and_evidence(self):
+        stage = Sleepy('ball', delay=0, result={'boxes': [{'label': 'ball'}]})
+        stage.every_n_frames = 3
+        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30), stages=[stage],
+                                   frame_budget_ms=1000)
+        processor.start(self.source)
+        status = self.finished(processor)
         entry = status['stages'][0]
-        self.assertEqual(entry['runs'], status['frames_processed'])
-        self.assertEqual(entry['evidence'], dict(ran=True, age_frames=0))
-        jpeg, metadata = processor.latest_jpeg()
-        self.assertEqual(metadata['stage_evidence']['ball'], dict(ran=True, age_frames=0))
-        self.assertEqual(metadata['detections']['boxes'], [{'label': 'ball'}])
+        self.assertEqual(entry['every_n_frames'], 3)
+        self.assertEqual((entry['runs'], entry['skips']), (2, 4))
+        self.assertEqual(entry['runs'] + entry['skips'], status['frames_processed'])
+        self.assertEqual(entry['count'], 2)              # only executed frames feed the window
+        self.assertEqual(entry['evidence'], dict(ran=False, age_frames=2))
+
+    def test_invalid_cadence_is_refused_at_start(self):
+        stage = Sleepy('ball', delay=0)
+        stage.every_n_frames = 0
+        processor = self.processor(capture_factory=lambda _: Capture(count=1), stages=[stage])
+        with self.assertRaises(ValueError):
+            processor.start(self.source)
 
     def test_saved_table_reference_travels_with_the_published_frame(self):
         quad = [[532.0, 323.0], [800.0, 324.0], [997.0, 569.0], [384.0, 563.0]]
@@ -340,7 +384,7 @@ class LiveStageHarnessTests(unittest.TestCase):
             status = self.finished(processor)
         self.assertEqual(infer.call_count, 2)                    # frames 0 and 2
         entry = status['stages'][0]
-        self.assertEqual(entry['runs'], 4)                     # it answers every frame
+        self.assertEqual((entry['runs'], entry['skips']), (4, 0))  # it answers every frame
         self.assertEqual(entry['evidence']['table_source'], 'measured')
         self.assertEqual(entry['evidence']['table_age_frames'], 1)  # last frame reuses frame 2's quad
         self.assertEqual(status['frames_processed'], 4)

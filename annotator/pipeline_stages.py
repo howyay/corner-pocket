@@ -6,6 +6,7 @@ it.  The contract is one method and three facts::
     class BallStage(Stage):
         name = 'ball'              # unique, used as the metadata/latency key
         budget_ms = 15.0           # optional per-stage ceiling; None borrows the frame budget
+        every_n_frames = 2         # run on 1 of every N frames; absent (never stale) in between
         def process(self, frame, context):
             table = context.result('table')      # read an earlier stage, or None
             return {'boxes': [...]}              # any JSON-able result
@@ -15,10 +16,18 @@ needs the cloth polygon the table stage already found) does not recompute it; a
 stage that needs nothing ignores the argument.  Registration order is execution
 order, and results merge into the frame metadata in that same order.
 
+**Cadence (``every_n_frames``).**  A partitioned stage runs on 1 frame of every N
+and is *absent* on the others: no ``process`` call, no result, no timing sample,
+so a consumer can never mistake "did not run" for "found nothing" or for the
+previous frame's answer.  Every frame carries ``StageRun.evidence`` - one entry per
+registered stage - naming ``ran`` and ``age_frames``, so missing evidence stays
+missing and identifiable rather than silently reused.
+
 **Provenance (``Stage.evidence``).**  A stage may report what its result was made
-of (measured now, read from a saved reference, cached N frames ago).  Geometry such
-as the cloth quad *is* a property of the camera, not of the frame, so serving a
-saved quad is correct - as long as the frame says so and says how old it is.
+of (measured now, read from a saved reference, cached N frames ago).  That is the
+opposite situation from a skipped stage: geometry such as the cloth quad *is* a
+property of the camera, not of the frame, so serving a saved quad is correct - as
+long as the frame says so and says how old it is.
 
 Nothing here queues or retries.  Metrics are a fixed-size rolling window
 (count/p50/p95/max/last) per step, and budget enforcement is deliberately the
@@ -49,11 +58,13 @@ class Stage:
     """One unit of per-frame work. Subclass and override ``name``/``process``.
 
     Duck typing is enough: any object with a non-empty ``name``, a callable
-    ``process`` and an optional numeric ``budget_ms`` registers as a stage.
+    ``process``, an optional numeric ``budget_ms`` and an optional integer
+    ``every_n_frames`` registers as a stage.
     """
 
     name = 'stage'
     budget_ms = None
+    every_n_frames = 1
 
     def process(self, frame, context):
         """Return this stage's result for ``frame``; may read ``context.result(name)``."""
@@ -95,10 +106,10 @@ class StageRun:
     """One frame through the registry: results, per-stage ms, evidence, first overrun."""
 
     __slots__ = ('results', 'timings_ms', 'total_ms', 'overrun_stage', 'overrun_ms', 'budget_ms',
-                 'evidence', 'ran', 'frame_number')
+                 'evidence', 'ran', 'skipped', 'frame_number')
 
     def __init__(self, results, timings_ms, total_ms, overrun_stage, overrun_ms, budget_ms,
-                 evidence, ran, frame_number):
+                 evidence, ran, skipped, frame_number):
         self.results = results
         self.timings_ms = timings_ms
         self.total_ms = total_ms
@@ -107,6 +118,7 @@ class StageRun:
         self.budget_ms = budget_ms
         self.evidence = evidence      # {stage name: {'ran', 'age_frames', ...provenance}}
         self.ran = ran                # names that executed this frame, in registry order
+        self.skipped = skipped        # names whose cadence skipped this frame
         self.frame_number = frame_number
 
 
@@ -125,6 +137,7 @@ class StageRegistry:
         self._clock = clock
         self._stages = []
         self._frame = 0
+        self._last_ran = {}
         for stage in stages:
             self.add(stage)
 
@@ -137,6 +150,8 @@ class StageRegistry:
         budget = getattr(stage, 'budget_ms', None)
         if budget is not None and (isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0):
             raise ValueError('Stage %s budget_ms must be a positive number or None' % name)
+        _positive_int(cadence if (cadence := getattr(stage, 'every_n_frames', 1)) is not None else 1,
+                      'Stage %s every_n_frames' % name)
         if any(existing.name == name for existing in self._stages):
             raise ValueError('Duplicate stage name: %s' % name)
         self._stages.append(stage)
@@ -161,19 +176,29 @@ class StageRegistry:
         results = {}
         timings = {}
         evidence = {}
-        ran = []
+        ran, skipped = [], []
         context = StageContext(results, seq=seq, source=source, frame_number=self._frame,
                                frame_index=frame_index, time_s=time_s)
         total = max(0.0, float(elapsed_ms))
         overrun = None  # (stage name, measured ms, ceiling ms)
         for stage in self._stages:
             name = stage.name
+            every = getattr(stage, 'every_n_frames', 1)
+            every = 1 if every is None else every
+            last = self._last_ran.get(name)
+            if self._frame % every:
+                # Absent, not stale: nothing ran, so there is no result to merge and no
+                # timing sample to dilute the window's percentiles.
+                skipped.append(name)
+                evidence[name] = dict(ran=False, age_frames=None if last is None else self._frame - last)
+                continue
             started = self._clock()
             results[name] = stage.process(frame, context)
             taken = max(0.0, self._clock() - started) * 1000
             timings[name] = taken
             total += taken
             ran.append(name)
+            self._last_ran[name] = self._frame
             hook = getattr(stage, 'evidence', None)
             extra = hook(results[name]) if callable(hook) else None
             entry = dict(ran=True, age_frames=0)
@@ -190,7 +215,7 @@ class StageRegistry:
                 # (decode, scale, encode) counts against it too.
                 overrun = (name, total, frame_budget_ms)
         name, measured, ceiling = overrun if overrun else (None, None, None)
-        run = StageRun(results, timings, total, name, measured, ceiling, evidence, ran,
+        run = StageRun(results, timings, total, name, measured, ceiling, evidence, ran, skipped,
                        self._frame)
         self._frame += 1
         return run
@@ -265,13 +290,16 @@ class TableStage(Stage):
     operator's human geometry, not a per-frame guess.  Without one (a live stream has
     no saved calibration) the quad is measured from pixels at most once every
     ``measure_every_n`` frames and served from that measurement in between, labelled
-    ``source='measured'`` with the age of the measurement in frames.  Serving last-known
-    geometry is correct here (the camera does not move) precisely because the frame says
-    so and says how old it is - unlike a motion stage, where a frame without evidence
-    must stay unknown.
+    ``source='measured'`` with the age of the measurement in frames.
+
+    ``every_n_frames`` stays 1 on purpose: this stage must *answer* on every frame, and
+    only its measurement is cached.  Serving last-known geometry is correct here
+    (the camera does not move) precisely because the frame says so and says how old it
+    is - unlike a motion stage, where a frame without evidence must stay unknown.
     """
 
     name = 'table'
+    every_n_frames = 1
 
     def __init__(self, root, dataset=None, measure_every_n=30, segments=None):
         from pathlib import Path
