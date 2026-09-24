@@ -227,3 +227,72 @@ SAM3 zero-shot detection on the GPU returns **zero instances in every configurat
 
 Vendored-code patches applied during the investigation (geometry-encoder prompt dtype alignment, decoder-FFN dtype guard) remain in the tree as no-ops on CPU. The loader now **refuses GPU for SAM3** with an explicit error rather than silently returning zero balls; `src/frame_inference.inference_device()` selects `cuda` for YOLO/table and `cpu` for SAM3. Root cause is most plausibly an immature ROCm 6.4 attention kernel for gfx1201 inside SAM3's detection head — an environment/compiler issue, not an application-level fix. Revisit when ROCm ships RDNA4 kernel fixes.
 
+## Per-frame stage seam and the 30 fps envelope (2026-09-24 measured)
+
+Requirement under test: near-real-time at **30 fps = 33.3 ms/frame end to end, decode included**. GPU present and used (`torch 2.9.1+rocm6.4`, `torch.cuda.is_available()` True, AMD Radeon RX 9070 XT).
+
+### The seam
+
+`annotator/pipeline_stages.py` is the whole framework: one method, one registry, one rolling window.
+
+- **Contract** — a stage is any object with a non-empty `name`, an optional numeric `budget_ms`, and `process(frame, context) -> result`. `context.result(name)` returns an *earlier* stage's result for the same frame (a ball detector needs the cloth polygon the table stage already found; a stage that needs nothing ignores the argument). `context.seq`/`context.source` carry the frame identity.
+- **Registry** — `StageRegistry(stages, clock)` runs stages in registration order, refuses duplicate names, measures each with the pipeline's own clock, and returns a `StageRun` (`results`, `timings_ms`, `total_ms`, `overrun_stage`, `overrun_ms`, `budget_ms`). Every stage of a frame still runs after an overrun: a half-measured profile of a late frame is worthless for deciding what to cut.
+- **Default registry** — `table` then `person`, each calling `infer_frame` with its own detector list, merged by `merge_detections`. An injected `infer(frame, detectors, root)` is wrapped as a single `detect` stage, so the pre-existing metadata contract (`detections`, `inference_ms`) is unchanged.
+- **Budget** — `frame_budget_ms` defaults to `1000/source fps` (33.33 ms at 30 fps). A frame is dropped, not published late, when a stage exceeds its own `budget_ms` or when the accumulated time (decode + scale + encode + stages) exceeds the frame budget. Nothing queues: the pending slot holds one frame, and a newer frame supersedes it.
+- **Drop accounting** — `frames_skipped` stays the total, now partitioned into exactly three reasons on `status()['drop_reasons']`: `no_frame_ready` (the decoder superseded the frame before the worker took it), `stage_overrun` (budget blown), `stale` (already older than a frame period at pickup, or abandoned by stop/error). `frames_processed + sum(drop_reasons) == frames_received` holds at every point, and `status()['last_drop']` names the reason, the sequence and the offending stage.
+- **Latency** — `LatencyWindow(120)` records `decode`, `resize`, `encode`, each stage, `receive_to_process`, `receive_to_result` and `inter_frame`, exposed as `count/p50/p95/max/last` on `status()['stages']` (registry order, with each stage's budget) and `status()['latency_ms']`. Percentiles are nearest-rank over the retained samples, not interpolated. All of it is additive on the existing `/api/live` payload; `frames_skipped`, `frame_age_ms` and `latest.*` are unchanged.
+- **Ball detector seam** — register one stage; the decode loop is not touched:
+
+```python
+class BallStage(Stage):
+    name = 'ball'
+    budget_ms = 15.0                       # its own ceiling, or None for the frame budget
+    def __init__(self, root): self.root = Path(root)
+    def process(self, frame, context):
+        cloth = context.result('table')    # the polygon the table stage already found
+        return {'boxes': [...]}            # merged into detections.boxes in stage order
+
+registry = StageRegistry(default_stages(['table', 'person'], root) + [BallStage(root)])
+processor = LiveProcessor(root, stages=registry)   # or stages=[...] on the app path
+```
+
+### What was measured
+
+Real VOD replay (no network): `data/vod_30min_260815.mp4`, 1280x720 at 30.0003 fps, seek to frame 8000, 90 frames per case, model warm (each case is run twice; the first run pays and discards the one-time YOLO load), real 30 fps pacing, budget enforced. `tests/live_envelope_run.py`, artifact `out/live-envelope/envelope.json`. The host was **shared** at the time (another worker's `src.tiny_ball_net` probe at ~108% CPU plus an Android emulator at ~218%); `loadavg` 30-33 on 12 cores during the reported run, recorded per case in the JSON. `person` and `table` run on the scaled 960x540 frame the pipeline has always used, so these are not the 720p ~26 ms figure.
+
+| case (stage list) | decode p50 | resize p50 | encode p50 | table p50 | person p50 | ball p50 | envelope p50 | envelope p95 | published/90 | achieved fps | drops (nfr/overrun/stale) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `decode` (no stages) | 0.84 | 1.82 | 1.72 | — | — | — | **4.38** | 11.34 | 90 | 30.6 | 0/0/0 |
+| `person` | 0.97 | 5.62 | 1.64 | — | 14.78 | — | **23.01** | 56.55 | 63 | 21.0 | 3/25/1 |
+| `table+person` | 1.96 | 6.44 | 1.81 | 11.27 | 15.46 | — | **36.94** | 87.97 | 7 | 2.3 | 20/63/2 |
+| `person+ball` (15 ms stand-in) | 1.58 | 6.05 | 1.72 | — | 15.26 | 15.07 | **39.68** | 82.18 | 1 | 0.3 | 20/68/2 |
+| `tablecached+person+ball` | 1.99 | 6.72 | 1.77 | 0.00 (max 39.4) | 17.19 | 15.07 | **42.74** | 88.12 | 0 | 0.0 | 26/63/2 |
+| `table+person+ball` (default + ball) | 1.72 | 6.70 | 1.80 | 11.82 | 15.66 | 15.08 | **52.78** | 110.50 | 0 | 0.0 | 37/53/1 |
+
+`envelope = decode + resize + encode + sum(stages)`, p50 unless stated. The `ball` numbers are exact: `BallStandIn` sleeps 15 ms and never varies (`p50 15.07, p95 16.54, max 16.71`), so the pipeline's own accounting is verified against a known quantity.
+
+### Verdict: 30 fps is NOT met with a 15 ms ball stage
+
+- **No headroom for the ball detector at the current stage mix.** The cheapest observed non-ball envelope for `table+person` was 36.94 ms p50 in this run (22.92 ms in an earlier, quieter window at load 34-38) against a 33.33 ms budget; adding the 15 ms stand-in measures 52.78 ms p50 and drops **every** frame (37 `no_frame_ready` + 53 `stage_overrun`). Even the best case is 22.92 + 15.07 = 38.0 ms, i.e. ~4.7 ms over. The answer to "is there headroom" is **no**, and it is not close.
+- **The pipeline only meets 30 fps when it has almost nothing to do.** With zero stages it publishes 90/90 at 30.6 fps (envelope 4.38 ms p50). The person stage alone leaves 10.3 ms of slack in this run and overshot on 25 of 90 frames (published 21.0 fps); the drop counters show the overshoot instead of hiding it as latency.
+- **The table stage is the cheapest thing to remove.** It costs 11.27 ms p50 on every frame for a polygon that changes only when the table is re-covered; the cached variant (`recompute every 30 frames`, harness-local `TableEveryN`, public contract only) measures **0.00 ms p50, 39.4 ms once per 30 frames** — that is ~11 ms/frame returned to the budget. `person` alone measured 14.0 ms p50 in the earlier quieter window, so `person+ball` would be ~29 ms there — still only ~4 ms of slack, and the ball detector fits *only* if the static cloth comes off the per-frame path.
+- **Recommendation:** take the cloth polygon off the per-frame path (cache or a slow lane), target the ball detector at ≤10 ms, and keep the budget enforced so an overshoot surfaces as a counted drop rather than as a lagging picture.
+- **Drop behaviour proven, not just asserted:** with the synthetic 15 ms stage registered, all 90 frames were dropped and reported (see the table), no frame was queued, and `frames_processed + sum(drop_reasons) == frames_received`. `tests/test_live_processing_stages.py` pins this and the reason breakdown; `tests/test_pipeline_stages.py` pins ordering, context, percentile and budget semantics.
+
+### Twitch live path: NOT reachable (no live-channel numbers)
+
+The Twitch proof could not be produced; the VOD-replay table above is the evidence.
+
+- The saved channel (`https://www.twitch.tv/examplechannel`, `out/corner-pocket/state.json`) and three further public channels all fail at resolution with the module's safe public error *"Twitch channel is offline or has no public playable stream"*.
+- The failure is not a stale query hash: `twitch_source._TOKEN_HASH` is byte-identical to the persisted-query hash in current Streamlink `master` (`77777777777777777777777777777777…cdbe9`), and the `PlaybackAccessToken` GQL call returns a **non-null** token.
+- The failing step is usher: `https://usher.ttvnw.net/api/channel/hls/<channel>.m3u8` answers `404 {"error":"Can not find channel"}` for that token, with and without a browser user-agent. Streamlink's only additional step is a client-integrity token (`Device-Id`/`Client-Integrity` headers, acquired by driving a headless browser), which this module refuses by design (no login, no ad filtering, no integrity bypass). Whether the channels are genuinely offline or Twitch now requires integrity for anonymous playback could not be distinguished from here without a live channel.
+- Consequence: **`resolve_twitch` behaves correctly and safely** (no credential fallback, no token leakage, actionable message), but no live decode, receive-rate or drop number exists. Live latency therefore remains `upstream_delay_ms = None`, i.e. unmeasured, exactly as `docs/handoff.md` §4 states.
+
+### What was not measured
+
+- Glass-to-glass latency. `upstream_delay_ms` is still `None`; receive-to-result is local processing only.
+- The real ball detector (it does not exist yet): its ~15 ms is an assumption, supplied as a stand-in stage.
+- Anything on a quiet host: every number above carries a `loadavg` of 30-33 with two other tenants consuming ~3.5 cores of 12, and the CPU-side steps (resize, encode, pickup latency) are the ones that move with host load. GPU stage times were the stable ones.
+- Multi-process/threaded partitioning, 60 fps sources, and a second camera. The budget machinery is per-frame and single-worker, so a 60 fps source would need `frame_budget_ms` 16.7 and would drop proportionally more.
+
+

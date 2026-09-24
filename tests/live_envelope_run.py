@@ -42,6 +42,31 @@ class BallStandIn:
         return {'boxes': []}
 
 
+class TableEveryN:
+    """Table stage that recomputes the cloth polygon every N frames and caches it.
+
+    The cloth is static - the camera does not move - so paying 8-11 ms on every frame
+    for a polygon that only changes when the table is re-covered is avoidable. This
+    stand-in measures the pipeline with that fixed, using only the public contract.
+    """
+
+    name = 'table'
+    budget_ms = None
+
+    def __init__(self, every=30):
+        from annotator.pipeline_stages import TableStage
+        self.every = every
+        self.count = 0
+        self.inner = TableStage(ROOT)
+        self.cached = None
+
+    def process(self, frame, context):
+        if self.cached is None or self.count % self.every == 0:
+            self.cached = self.inner.process(frame, context)
+        self.count += 1
+        return self.cached
+
+
 def seek_capture(media, start_frame):
     """Default capture factory plus a seek, so a case can start mid-match."""
     from annotator.live_processing import _capture
@@ -58,11 +83,10 @@ def stages_for(names):
     the ball stand-in is registered as a stage only - which is exactly the seam a
     real ball detector will use.
     """
-    from annotator.pipeline_stages import default_stages
-    stages = default_stages([name for name in names if name in ('table', 'person')], ROOT)
-    if 'ball' in names:
-        stages.append(BallStandIn())
-    return stages
+    from annotator.pipeline_stages import PersonStage, TableStage
+    factories = {'table': lambda: TableStage(ROOT), 'tablecache': lambda: TableEveryN(30),
+                 'person': lambda: PersonStage(ROOT), 'ball': lambda: BallStandIn()}
+    return [factories[name]() for name in names]
 
 
 def measure(case, names, detectors, frames, start_frame, warmup):
@@ -102,7 +126,12 @@ def measure(case, names, detectors, frames, start_frame, warmup):
 
     cold, _ = run(warmup, max(300.0, warmup / 30.0 + 30.0))
     warmed = [entry['name'] for entry in cold['stages'] if entry['count'] >= 1]
-    status, elapsed = run(frames, max(60.0, frames / 30.0 + 30.0))
+    status, elapsed = run(frames, max(180.0, frames / 30.0 + 120.0))
+    if status['frames_received'] < frames * 0.5:
+        # Another tenant stalled the decoder (this host is shared); retry once rather
+        # than reporting a number that measures the neighbour.
+        status, elapsed = run(frames, max(180.0, frames / 30.0 + 120.0))
+    stalled = status['frames_received'] < frames * 0.5
     latency = status['latency_ms']
     def p50(name):
         return latency.get(name, {}).get('p50_ms') or 0.0
@@ -122,6 +151,7 @@ def measure(case, names, detectors, frames, start_frame, warmup):
         fits_30fps_p50=envelope_p50 <= FRAME_BUDGET_MS, fits_30fps_p95=envelope_p95 <= FRAME_BUDGET_MS,
         cold_first_result_ms=round(cold['latency_ms'].get('receive_to_result', {}).get('max_ms') or 0.0, 1),
         warm_stages=warmed, warm=all(entry['count'] >= 1 for entry in cold['stages']),
+        stalled=stalled,
         loadavg=[round(value, 1) for value in os.getloadavg()],
         steps={name: latency[name] for name in
                ('decode', 'resize', 'encode', 'receive_to_process', 'receive_to_result', 'inter_frame')
@@ -194,7 +224,7 @@ def main():
     parser.add_argument('--frames', type=int, default=60)
     parser.add_argument('--warmup', type=int, default=10)
     parser.add_argument('--start', type=int, default=8000)
-    parser.add_argument('--cases', default='decode,table,person,table+person,ball')
+    parser.add_argument('--cases', default='decode,person,table+person,person+ball,tablecached+person+ball,ball')
     parser.add_argument('--twitch-channel', default='')
     parser.add_argument('--output', default='')
     args = parser.parse_args()
@@ -205,6 +235,8 @@ def main():
         'table': (['table'], ['table']),
         'person': (['person'], ['person']),
         'table+person': (['table', 'person'], ['table', 'person']),
+        'person+ball': (['person', 'ball'], ['person']),
+        'tablecached+person+ball': (['tablecache', 'person', 'ball'], ['table', 'person']),
         'ball': (['table', 'person', 'ball'], ['table', 'person']),
     }
     results = []
