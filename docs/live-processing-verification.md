@@ -426,7 +426,24 @@ Every ball configuration collapses where the stand-in's fit. For reference, the 
 
 **The finding that matters more than the collapse: cadence cannot rescue a stage that costs more than the frame budget.** A partitioned stage runs on 1 frame in N, but the frame it runs on pays the whole cost, and the pipeline drops any frame whose stages push it past the budget. With a 33.33 ms budget and a 45-60 ms ball stage, *every ball-bearing frame overruns*: cadence N reduces the amortised rate (the `amort p50` column) without touching the peak. `ball@1` is the clean demonstration — its 25 frames that ran the ball stage were all counted as `stage_overrun`, and the case published **0 of 90** frames; the 5 frames `ball@2` did publish were frames its cadence skipped. To publish a ball result at 30 fps the stage must cost roughly <=25 ms wall including its own preprocessing; at 15 fps (66.7 ms) the budget reaches ~55 ms and this stage, at 45-60 ms, is still marginal. The honest summary: **the detector does not fit this pipeline's real-time envelope at either target on this host, and the binding constraint is peak per-frame cost, not the average.**
 
-The definitive re-measurement (real and stand-in back to back in one quiet window) is deferred: the host sat at `loadavg` 24-43 for the whole of this session, and no quiet window appeared within the 45 minutes allowed for waiting.
+The definitive re-measurement in a genuinely quiet window is still deferred: the host sat at `loadavg` 24-43 for the whole of this session, and a 45-minute wait for `loadavg < 8` expired without one. What did happen at the end of that wait is the next best thing, and it changes how the table above should be read.
+
+**The same-load pair.** With the wait expired, both matrices were run back to back in the same window — real then stand-in, no wait between them (`out/live-envelope/matrix-real-quiet.json`, `matrix-standin-quiet.json`) — so the two are measured under one load instead of against a load-4 row from the previous session:
+
+| case | real: ball p50/p95 | stand-in: ball p50/p95 | real published/90 | stand-in published/90 | real load | stand-in load |
+|---|---|---|---|---|---|---|
+| `table+person` | – | – | 35 | 8 | 40.8 | 36.9 |
+| `ball@1` | 60.3/117.5 | **15.2/16.9** | 0 | 0 | 40.8 | 37.6 |
+| `ball@2` | 52.2/73.5 | **15.1/16.0** | 4 | 3 | 39.3 | 37.2 |
+| `ball@3` | 59.9/98.4 | **15.1/17.2** | 9 | 5 | 39.5 | 37.2 |
+
+Three things follow, and the second one corrects the impression the load-27 table gives on its own:
+
+1. **The detector's price is 3.5-4.0x the stand-in's, and that is a property of the detector, not of the load**: 52.2-60.3 ms p50 against an exact `sleep(15 ms)` at 15.1-15.2 ms, on the same host, minutes apart. The p95 gap is wider still (73.5-117.5 ms vs 16.0-17.2 ms).
+2. **The published counts in this pair carry no information about the detector.** `table+person` — no ball stage at all, nobody's change — scattered from 35/90 to 8/90 between the two passes. At `loadavg` ~38 even the *stand-in's* envelope (47.9-55.3 ms) is past the 33.33 ms budget, so the ball-bearing frame is dropped whichever detector is in it. Reading the load-27 table as "the real detector caused the collapse" would be wrong: at this load the pipeline is in a regime where the detector's cost barely moves the outcome.
+3. **Onset latency at one load, both detectors**: real 177/286/410 ms (`ball@1/@2/@3`) against stand-in 132/248/365 ms. The difference is exactly the ball stage's measured processing time (+45/+37/+45 ms), which is the sanity check that the arithmetic in the table above is measuring what it claims.
+
+So the detector-specific claims rest on the stage cost breakdown in section 2 (24.6 ms forward + 19.7 ms of the stage's own work) and on this pair, not on the drop counts; the 30 fps question cannot be settled until the host is quiet and the whole matrix can be re-run at 4-6.
 
 ### 4. Five minutes of dense tracks, and the first shot/pot events this project has measured
 
@@ -494,7 +511,7 @@ The live pipeline's own partition invariant (`frames_received` = published + dro
 - **The held-out set is 96% stationary balls** (section 2), so the F1 does not cover the case the gate cares about — a ball in flight. The dense run is the only evidence about that case, and it is indirect: 4.34 balls per sampled frame, 974 intervals above the motion bar, and at least one 159 px burst sustained for 0.73 s.
 - **No human has verified the three detected shots.** They satisfy the gate's rules and carry their rest stretch, peak speed and sample list; that is all that can be said. The 5-minute segment is also inside the detector's *training* time range, so these tracks are the detector at its best, not at its generalisation limit.
 - **No pot was detected, and the reason is structural rather than a threshold away.** Getting pots out of this footage needs identity persistence through a fast mover and through a player crossing the cloth — an association or detector problem, not a `pocket_r_mm` problem. `src/shot_pot_gate.py` was not changed at all for this measurement.
-- **The real-time envelope is not met.** Both the collapse at `loadavg` 27-34 and the peak-frame-cost arithmetic point the same way: ~45 ms of stage cost against a 33.33 ms budget. The 20 ms of that which is not the CNN (resize + RGB stack + `/255` + peak search) is the cheap half to attack next; the identity fragmentation is the other.
+- **The real-time envelope is not met.** Both the collapse at `loadavg` 27-41 and the peak-frame-cost arithmetic point the same way: ~45 ms of stage cost against a 33.33 ms budget. The 20 ms of that which is not the CNN (resize + RGB stack + `/255` + peak search) is the cheap half to attack next; the identity fragmentation is the other. What is *not* established is the exact quiet-host number: the same-load pair above says the detector is 3.5-4x the stand-in, and the stage breakdown says what the 45 ms is, but nobody has yet run the matrix at `loadavg` 4-6 with the real detector in it.
 - **Twitch live remains unverified** for the reasons in the section above; nothing here was measured on a live stream.
 
 
