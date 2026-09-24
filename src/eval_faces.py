@@ -738,7 +738,7 @@ def md5_files(paths=PROTECTED, root=REPO):
     return out
 
 
-def scratch_root(directory=DEFAULT_DIR, fresh=True):
+def scratch_root(directory=DEFAULT_DIR, fresh=True, name="scratch"):
     """Isolated Backend/PersonPipeline root: symlinked media, own out/ stores.
 
     Mirrors tests/serve_workbench_fixture.py: annotator/src/data and the YOLO
@@ -746,15 +746,15 @@ def scratch_root(directory=DEFAULT_DIR, fresh=True):
     scratch out/ so the demo can enroll and bind without touching production.
     """
     directory = Path(directory).resolve()
-    root = directory / "scratch"
+    root = directory / name
     if fresh and root.exists():
         shutil.rmtree(root)
     (root / "out" / "corner-pocket").mkdir(parents=True, exist_ok=True)
     (root / "out" / "identity").mkdir(parents=True, exist_ok=True)
-    for name in ("annotator", "data", "src", "yolov8n.pt"):
-        link = root / name
+    for entry in ("annotator", "data", "src", "yolov8n.pt"):
+        link = root / entry
         if not link.exists():
-            link.symlink_to(REPO / name)
+            link.symlink_to(REPO / entry)
     return root
 
 
@@ -1049,19 +1049,16 @@ def _get(port, path):
         return json.loads(response.read())
 
 
-def http_demo(port=8133, directory=DEFAULT_DIR, wait=120.0, log=print):
+def http_demo(port=8133, directory=DEFAULT_DIR, wait=120.0, max_frames=12, log=print):
     """Drive POST /api/identity/enroll + GET /api/identity/frame over HTTP.
 
-    Assumes `serve` is already running on `port` against the scratch root the
-    offline demo used, so this checks the *route* wiring (base64 -> cv2.imdecode
-    -> enroll_face -> store) and the read path (identity_frame -> process_frame
-    -> bind_face), not a second copy of the matching logic.
+    Assumes `serve` is already running on `port` against a scratch root that is
+    still empty, so this checks the *route* wiring (base64 -> cv2.imdecode ->
+    enroll_face -> store) and the read path (identity_frame -> process_frame ->
+    bind_face) end to end over HTTP, not a second copy of the matching logic.
     """
     import time
-    from src.face_id import load_faces
     directory = Path(directory).resolve()
-    demo_path = directory / "demo.json"
-    split = json.loads(demo_path.read_text(encoding="utf-8"))["split"] if demo_path.is_file() else None
     deadline = time.time() + wait
     status = None
     while time.time() < deadline:
@@ -1073,37 +1070,42 @@ def http_demo(port=8133, directory=DEFAULT_DIR, wait=120.0, log=print):
     if status is None:
         raise RuntimeError(f"fixture on port {port} never answered")
     payload = json.loads((directory / "detections.json").read_text(encoding="utf-8"))
-    dataset = (split or {}).get("dataset", "vod30")
-    frame_index = (split or {}).get("enroll", {}).get("frame_index")
+    analysis = json.loads((directory / "analysis.json").read_text(encoding="utf-8"))
+    window = pick_demo_window(analysis, dataset="vod30")
+    if window is None:
+        raise RuntimeError("run `analyse` first")
+    dataset = window["dataset"]
+    medoid = role_medoid(payload["records"], dataset, window["enroll_burst"], window["role"])
+    if medoid is None:
+        raise RuntimeError("no medoid face to enroll over HTTP")
     import cv2
-    end_frames = sorted({rec["frame_index"] for rec in payload["records"]
-                         if rec["dataset"] == dataset})
-    assert frame_index is not None, "run `demo` before `http-demo`"
-    result = {"status_before": status, "enroll": [], "frames": []}
-    for index, frame in iter_frames(REPO / DATASETS[dataset][0], [frame_index]):
-        for rec in payload["records"]:
-            if (rec["dataset"] == dataset and rec["frame_index"] == frame_index
-                    and rec.get("role") and quality_faces(rec) is not None):
-                face = quality_faces(rec)
-                crop = face_crop(frame, face["bbox"])
-                ok, encoded = cv2.imencode(".png", crop)
-                if not ok:
-                    continue
-                response = _post(port, "/api/identity/enroll",
-                                 {"player_id": f"player-{rec['role']}",
-                                  "image_base64": base64.b64encode(encoded.tobytes()).decode()})
-                result["enroll"].append({"role": rec["role"], **response})
-                log(f"http enroll player-{rec['role']}: {response}")
+    record = medoid["record"]
+    result = {"status_before": status, "window": window, "enroll": []}
+    for _index, frame in iter_frames(REPO / DATASETS[dataset][0], [record["frame_index"]]):
+        crop = face_crop(frame, quality_faces(record)["bbox"])
+        ok, encoded = cv2.imencode(".png", crop)
+        if not ok:
+            raise RuntimeError("PNG encode failed")
+        response = _post(port, "/api/identity/enroll",
+                         {"player_id": f"player-{window['role']}",
+                          "image_base64": base64.b64encode(encoded.tobytes()).decode()})
+        result["enroll"].append({"role": window["role"], "frame_index": record["frame_index"],
+                                 **response})
+        log(f"http enroll player-{window['role']}: {response}", flush=True)
     result["status_after_enroll"] = _get(port, "/api/identity/status")
-    for frame_index in end_frames[:24]:
+    holdout = sorted({rec["frame_index"] for rec in payload["records"]
+                      if rec["dataset"] == dataset and rec["burst"] in window["holdout_bursts"]})
+    result["frames"] = []
+    for frame_index in holdout[:max_frames]:
         frame_result = _get(port, f"/api/identity/frame?dataset={dataset}&frame={frame_index}")
         result["frames"].append({"frame_index": frame_index, "events": frame_result.get("events"),
                                  "persons": frame_result.get("persons")})
-        log(f"http frame {frame_index}: events={len(frame_result.get('events', []))}")
+        log(f"http frame {frame_index}: events={len(frame_result.get('events', []))}", flush=True)
     result["status_after_frames"] = _get(port, "/api/identity/status")
+    result["binds"] = [event for frame in result["frames"] for event in frame.get("events") or []]
     path = directory / "http-demo.json"
     path.write_text(json.dumps(result, indent=1), encoding="utf-8")
-    log(f"wrote {path}")
+    log(f"wrote {path}: binds={len(result['binds'])}", flush=True)
     return result
 
 
@@ -1119,6 +1121,7 @@ def main(argv=None):
     parser.add_argument("--burst", type=int, default=None)
     parser.add_argument("--spacing", type=int, default=None)
     parser.add_argument("--root", default=None)
+    parser.add_argument("--name", default="scratch", help="scratch root directory name")
     parser.add_argument("--port", type=int, default=8133)
     args = parser.parse_args(argv)
     if args.command == "measure":
