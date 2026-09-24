@@ -25,9 +25,9 @@ from pathlib import Path
 
 from src.shot_pot_gate import (CANON_H, CANON_W, OCC_DENSE_MIN, POCKETS_MM, POCKET_R_MM,
                                VOD30_POCKETS_PX, VOD30_REFERENCE_QUAD, BreakGroup,
-                               GateThresholds, Occlusion, PotEvent, Sample, Track, classify,
-                               default_pocket_model, homography, pocket_pixels, project,
-                               track_events)
+                               GateThresholds, Occlusion, PotEvent, Rejection, Sample, ShotEvent,
+                               Track, classify, default_pocket_model, homography,
+                               pocket_pixels, project, track_events)
 
 ROOT = Path(__file__).resolve().parents[1]
 CENSUS = ROOT / "out" / "scan30" / "sam3_census.json"
@@ -91,9 +91,11 @@ class GateTestCase(unittest.TestCase):
 
     def assert_evidence_complete(self, report) -> None:
         for shot in report.shots:
+            self.assertIsInstance(shot, ShotEvent)
             self.assertTrue(shot.samples_used, f"shot {shot.ball_id} carries no samples")
             self.assertTrue(shot.thresholds, f"shot {shot.ball_id} carries no thresholds")
         for rec in list(report.pots) + list(report.rejections):
+            self.assertIsInstance(rec, PotEvent if rec.kind == "pot" else Rejection)
             self.assertTrue(rec.samples_used, f"{rec.kind} {rec.ball_id} carries no samples")
             self.assertTrue(rec.thresholds, f"{rec.kind} {rec.ball_id} carries no thresholds")
             self.assertTrue(rec.reason, f"{rec.kind} {rec.ball_id} carries no reason")
