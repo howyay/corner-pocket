@@ -278,11 +278,11 @@ Places that stated a number the system does not apply, and what they now say:
 | `src/eval_faces.py` | bind column computed as `similarity >= threshold + margin` | calls `accept_match(..., bind=True)`, so the reported bind / false-accept numbers match the code |
 | `docs/face-identification-assessment.md:39` | already stated 0.47 | unchanged; this section is the canonical statement |
 
-Still mis-stated, outside this round's file ownership (one clause each, not edited here):
-`docs/handoff.md:13` — "threshold 0.35 cosine, margin 0.12 over runner-up" should add
-"effective bind bar 0.47 = 0.35 + 0.12"; and `docs/live-processing-verification.md:5` —
-"supporting thresholds 0.35/0.12 margin" should say the same. (Line 139 of that file already
-quotes the 0.47 bar correctly.)
+Both remaining places were corrected in follow-up commit `bc69602`: `docs/handoff.md:13` now reads
+"effective bind bar 0.47 = 0.35 threshold + 0.12 margin, with the runner-up 0.12 behind — 0.35
+alone never binds", and `docs/live-processing-verification.md:5` now reads "supporting a 0.35
+match threshold with a 0.12 margin over the runner-up (the effective bind bar is 0.47 = 0.35 +
+0.12; 0.35 alone never binds)". (Line 139 of that file already quoted the 0.47 bar correctly.)
 
 ### 7.3 Candidate bar 0.65 — evidence, sample size, what would confirm it
 
