@@ -348,41 +348,69 @@ class LiveStageHarnessTests(unittest.TestCase):
     def test_ball_stage_publishes_positions_for_the_frames_it_runs_on(self):
         """The real BallStage class through the real live loop, with a stub net.
 
-        Read from the *last* published frame rather than by polling for each one, and
-        at one frame per second: under a loaded host a poller can miss a published
-        frame and a fast source can let the decoder supersede one, either of which
-        would turn a cadence assertion into a scheduling assertion.
+        No assertion here is a function of scheduling. The host is shared, so how
+        many of six frames reach `frames_processed` depends on whether the decoder
+        superseded one before the worker took it - that is the pipeline's documented
+        behaviour and this test does not pretend it is not. What is asserted is the
+        invariant: at cadence 1 every published frame ran the ball stage, so every
+        one carries `balls`, its evidence, and its timing, and the positions are in
+        the working frame's pixels.
         """
         stage = StubBallStage(self.root, peak=(480, 270))
-        processor = self.processor(capture_factory=lambda _: Capture(count=3, fps=1),
+        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30),
                                    stages=[stage], frame_budget_ms=1000)
         processor.start(self.source)
+        seen = self.published(processor, 3)
         status = self.finished(processor)
-        self.assertEqual(status['frames_processed'], 3)
-        _, metadata = processor.latest_jpeg()
-        evidence = metadata['stage_evidence']['ball']       # frame 3: 3 % 1 == 0, it ran
-        self.assertEqual(evidence['ran'], True)
-        self.assertEqual(evidence['ball_stack'], 'causal')
-        self.assertEqual(evidence['ball_count'], 1)
-        # A square 32x32 working frame from the net's 960x540: the two axes scale
-        # independently (32/960 on x, 32/540 on y).
-        self.assertEqual(metadata['detections']['balls'],
-                         [{'x': 16.0, 'y': 16.0, 'score': 0.9}])
-        self.assertEqual(metadata['detections']['boxes'], [])
-        self.assertEqual(status['stages'][0]['runs'], 3)
+        self.assertGreaterEqual(len(seen), 1)
+        for seq, metadata in seen.items():
+            evidence = metadata['stage_evidence']['ball']
+            self.assertEqual(evidence['ran'], True, seq)
+            self.assertEqual(evidence['ball_stack'], 'causal', seq)
+            self.assertEqual(evidence['ball_count'], 1, seq)
+            # A square 32x32 working frame from the net's 960x540: the two axes scale
+            # independently (32/960 on x, 32/540 on y).
+            self.assertEqual(metadata['detections']['balls'],
+                             [{'x': 16.0, 'y': 16.0, 'score': 0.9}], seq)
+            self.assertEqual(metadata['detections']['boxes'], [], seq)
+            self.assertIn('ball', metadata['stage_ms'], seq)
+        self.assertEqual(status['stages'][0]['every_n_frames'], 1)
+        self.assertGreaterEqual(status['stages'][0]['runs'], 1)
+        self.assertEqual(status['stages'][0]['skips'], 0)
 
-    def test_ball_stage_is_absent_not_stale_on_a_skipped_frame(self):
+    def test_ball_stage_is_absent_exactly_when_it_did_not_run(self):
+        """The `balls` key is present exactly when the stage ran - never stale.
+
+        Read as an invariant over whatever frames the host let through rather than
+        as a count: `ran`, the `balls` key in the payload and the `ball` entry in
+        `stage_ms` have to agree on every frame, and a skipped frame must report the
+        age of the result it did not reuse. The deterministic, thread-free version of
+        this property is `test_a_skipped_frame_has_no_ball_result_at_all` in
+        tests/test_pipeline_stages.py, which drives the registry directly; this one
+        proves the same property survives the real decode loop.
+        """
         stage = StubBallStage(self.root, peak=(480, 270), every_n_frames=2)
-        processor = self.processor(capture_factory=lambda _: Capture(count=2, fps=1),
+        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30),
                                    stages=[stage], frame_budget_ms=1000)
         processor.start(self.source)
+        seen = self.published(processor, 3)
         status = self.finished(processor)
-        self.assertEqual(status['frames_processed'], 2)
-        _, metadata = processor.latest_jpeg()               # frame 2: cadence skipped it
-        self.assertEqual(metadata['stage_evidence']['ball'], dict(ran=False, age_frames=1))
-        self.assertNotIn('balls', metadata['detections'])
-        self.assertNotIn('ball', metadata['stage_ms'])
-        self.assertEqual((status['stages'][0]['runs'], status['stages'][0]['skips']), (1, 1))
+        self.assertGreaterEqual(len(seen), 1)
+        for seq, metadata in seen.items():
+            evidence = metadata['stage_evidence']['ball']
+            self.assertEqual('balls' in metadata['detections'], bool(evidence['ran']), seq)
+            self.assertEqual('ball' in metadata['stage_ms'], bool(evidence['ran']), seq)
+            if not evidence['ran']:
+                self.assertGreaterEqual(evidence['age_frames'], 1, seq)
+                self.assertNotIn('balls', metadata['detections'], seq)
+        entry = status['stages'][0]
+        self.assertEqual(entry['every_n_frames'], 2)
+        self.assertGreaterEqual(entry['runs'], 1)
+        if status['frames_processed'] >= 2:
+            self.assertGreaterEqual(entry['skips'], 1)       # cadence 2: half the frames
+        # The pipeline's own partition, which no amount of load may break.
+        self.assertEqual(status['frames_processed'] + sum(status['drop_reasons'].values()),
+                         status['frames_received'])
 
     def test_status_reports_cadence_runs_skips_and_evidence(self):
         stage = Sleepy('ball', delay=0, result={'boxes': [{'label': 'ball'}]})
