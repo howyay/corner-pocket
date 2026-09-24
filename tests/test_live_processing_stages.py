@@ -1,0 +1,275 @@
+"""Stage-harness tests: the live loop's drop-and-report behaviour and its metrics.
+
+Harness shape: a synthetic stage stands in for the ball detector that does not
+exist yet, the injected capture is a fake source with a chosen frame rate, and
+every assertion is about what the pipeline *published*, what it *dropped* and why.
+Run: PYTHONPATH=. .venv/bin/python -m unittest tests.test_live_processing_stages
+"""
+import json
+from pathlib import Path
+import tempfile
+import threading
+import time
+import unittest
+
+import cv2
+import numpy as np
+
+from annotator.live_processing import LiveProcessor
+from annotator.pipeline_stages import Stage
+
+
+class Capture:
+    def __init__(self, count=5, fps=30, opened=True):
+        self.count, self.fps, self.opened = count, fps, opened
+        self.index = 0
+        self.released = False
+
+    def isOpened(self):
+        return self.opened
+
+    def get(self, prop):
+        return self.fps
+
+    def read(self):
+        if self.index >= self.count:
+            return False, None
+        self.index += 1
+        return True, np.full((32, 32, 3), self.index, dtype=np.uint8)
+
+    def release(self):
+        self.released = True
+
+
+class Sleepy(Stage):
+    """Synthetic slow stage: the ball detector's placeholder."""
+
+    def __init__(self, name='ball', delay=0.06, budget_ms=None, calls=None, result=None):
+        self.name = name
+        self.delay = delay
+        self.budget_ms = budget_ms
+        self.calls = calls if calls is not None else []
+        self.result = {'name': name} if result is None else result
+
+    def process(self, frame, context):
+        self.calls.append(self.name)
+        if self.delay:
+            time.sleep(self.delay)
+        return self.result
+
+
+class Reader(Stage):
+    name = 'reader'
+
+    def __init__(self, seen):
+        self.seen = seen
+
+    def process(self, frame, context):
+        self.seen.append(context.result('first'))
+        return {'boxes': [{'label': 'person'}]}
+
+
+class LiveStageHarnessTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / 'data').mkdir()
+        (self.root / 'data/vod_30min_260815.mp4').touch()
+        state = self.root / 'out/corner-pocket/state.json'
+        state.parent.mkdir(parents=True)
+        state.write_text(json.dumps({'sources': []}))
+        self.source = dict(kind='dataset', dataset='vod30')
+
+    def processor(self, **kwargs):
+        kwargs.setdefault('capture_factory', lambda _: Capture())
+        processor = LiveProcessor(self.root, **kwargs)
+        self.addCleanup(processor.stop)
+        return processor
+
+    def wait_for(self, processor, predicate, timeout=5):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            status = processor.status()
+            if predicate(status):
+                return status
+            time.sleep(.002)
+        self.fail('Timed out: ' + repr(processor.status()))
+
+    def finished(self, processor):
+        return self.wait_for(processor, lambda s: not s['decoder_alive'] and not s['worker_alive'])
+
+    def assert_partition(self, status):
+        """Every received frame is either published or dropped under one reason."""
+        self.assertEqual(status['frames_processed'] + sum(status['drop_reasons'].values()),
+                         status['frames_received'])
+        self.assertEqual(status['frames_skipped'], sum(status['drop_reasons'].values()))
+        self.assertEqual(set(status['drop_reasons']), {'no_frame_ready', 'stage_overrun', 'stale'})
+
+    def test_slow_stage_drops_every_frame_and_says_why(self):
+        # Four fps keeps the decoder from superseding frames, so the only reason
+        # available to the pipeline is the stage overrun itself.
+        calls = []
+        stage = Sleepy('ball', delay=.06, calls=calls)
+        processor = self.processor(capture_factory=lambda _: Capture(count=3, fps=4), stages=[stage],
+                                   frame_budget_ms=33.333)
+        status = processor.start(self.source)
+        self.assertTrue(status['budget_enforcement'])
+        self.assertEqual(status['frame_budget_ms'], 33.333)
+        status = self.finished(processor)
+        self.assertEqual(status['frames_processed'], 0)
+        self.assertEqual(status['drop_reasons']['stage_overrun'], 3)
+        self.assertEqual(status['drop_reasons']['no_frame_ready'], 0)
+        self.assertEqual(status['drop_reasons']['stale'], 0)
+        self.assertEqual(status['last_drop']['reason'], 'stage_overrun')
+        self.assertEqual(status['last_drop']['stage'], 'ball')
+        self.assertGreater(status['last_drop']['ms'], status['last_drop']['budget_ms'])
+        self.assertEqual(calls, ['ball'] * 3)  # every stage of a late frame still runs
+        self.assertIsNone(processor.latest_jpeg())
+        self.assert_partition(status)
+
+    def test_derived_frame_budget_follows_the_source_fps(self):
+        # The decoder learns the source rate when the capture opens; until then the
+        # processor reports the configured value (None here) rather than guessing.
+        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=60),
+                                   stages=[Sleepy('ball', delay=0)])
+        processor.start(self.source)
+        status = self.finished(processor)
+        self.assertAlmostEqual(status['frame_budget_ms'], 1000 / 60, places=3)
+
+    def test_fast_stage_publishes_every_frame_with_its_own_timing(self):
+        calls = []
+        stage = Sleepy('ball', delay=0, calls=calls, result={'boxes': [{'label': 'ball'}]})
+        processor = self.processor(capture_factory=lambda _: Capture(count=4, fps=30), stages=[stage],
+                                   frame_budget_ms=1000)
+        processor.start(self.source)
+        status = self.finished(processor)
+        self.assertEqual(status['frames_processed'], 4)
+        self.assertEqual(sum(status['drop_reasons'].values()), 0)
+        self.assertIsNone(status['last_drop'])
+        jpeg, metadata = processor.latest_jpeg()
+        self.assertEqual(metadata['seq'], 4)
+        self.assertEqual(list(metadata['stage_ms']), ['ball'])
+        self.assertEqual(metadata['detections']['boxes'], [{'label': 'ball'}])
+        self.assertEqual(metadata['detections']['detectors'], ['table', 'person'])
+        self.assertGreaterEqual(metadata['inference_ms'], 0)
+        self.assert_partition(status)
+
+    def test_stage_order_and_upstream_context_in_the_live_loop(self):
+        seen = []
+        first = Sleepy('first', delay=0, calls=[], result={'boxes': [{'label': 'table'}],
+                                                          'table_polygon': [[0, 0], [1, 0], [1, 1], [0, 1]]})
+        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=200),
+                                   stages=[first, Reader(seen)], frame_budget_ms=1000)
+        status = processor.start(self.source)
+        self.assertEqual([stage['name'] for stage in status['stages']], ['first', 'reader'])
+        status = self.finished(processor)
+        self.assertEqual(seen, [{'boxes': [{'label': 'table'}], 'table_polygon': [[0, 0], [1, 0], [1, 1], [0, 1]]}])
+        jpeg, metadata = processor.latest_jpeg()
+        self.assertEqual(list(metadata['stage_ms']), ['first', 'reader'])
+        self.assertEqual([box['label'] for box in metadata['detections']['boxes']], ['table', 'person'])
+        self.assertEqual(metadata['detections']['table_polygon'], [[0, 0], [1, 0], [1, 1], [0, 1]])
+        self.assert_partition(status)
+
+    def test_superseded_frames_are_counted_as_no_frame_ready(self):
+        stage = Sleepy('ball', delay=.05)
+        processor = self.processor(capture_factory=lambda _: Capture(count=30, fps=200), stages=[stage],
+                                   budget_enforcement=False)
+        processor.start(self.source)
+        self.wait_for(processor, lambda s: not s['decoder_alive'])
+        status = self.finished(processor)
+        self.assertGreater(status['drop_reasons']['no_frame_ready'], 20)
+        self.assertEqual(status['drop_reasons']['stage_overrun'], 0)
+        self.assertGreaterEqual(status['frames_processed'], 1)
+        self.assertLess(status['frames_processed'], 30)
+        self.assertEqual(status['drop_reasons']['no_frame_ready'],
+                         status['frames_received'] - status['frames_processed'])
+        self.assertEqual(status['drop_reasons']['stale'], 0)
+        self.assertEqual(status['latest']['seq'], 30)
+        self.assert_partition(status)
+
+    def test_frames_older_than_the_budget_are_stale_and_never_reach_a_stage(self):
+        calls = []
+        stage = Sleepy('ball', delay=0, calls=calls)
+        processor = self.processor(capture_factory=lambda _: Capture(count=4, fps=30), stages=[stage],
+                                   frame_budget_ms=0.0)
+        processor.start(self.source)
+        status = self.finished(processor)
+        self.assertEqual(status['frames_processed'], 0)
+        self.assertEqual(status['drop_reasons']['stale'], 4)
+        self.assertEqual(status['last_drop']['reason'], 'stale')
+        self.assertEqual(status['last_drop']['stage'], None)
+        self.assertEqual(calls, [])
+        self.assert_partition(status)
+
+    def test_stop_abandons_the_in_flight_frame_as_stale(self):
+        entered, unblock = threading.Event(), threading.Event()
+        self.addCleanup(unblock.set)
+
+        class Blocked(Stage):
+            name = 'blocked'
+
+            def process(self, frame, context):
+                entered.set()
+                unblock.wait(2)
+                return {}
+
+        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=200),
+                                   stages=[Blocked()], stop_timeout=.02, budget_enforcement=False)
+        processor.start(self.source)
+        self.assertTrue(entered.wait(1))
+        self.assertEqual(processor.stop()['state'], 'stopping')
+        unblock.set()
+        status = self.finished(processor)
+        self.assertEqual(status['frames_processed'], 0)
+        self.assertEqual(status['drop_reasons']['stale'], 1)
+        self.assertIsNone(processor.latest_jpeg())
+        self.assert_partition(status)
+
+    def test_status_exposes_the_rolling_latency_window(self):
+        processor = self.processor(capture_factory=lambda _: Capture(count=5, fps=200),
+                                   stages=[Sleepy('ball', delay=0)], frame_budget_ms=1000, latency_window=3)
+        status = processor.start(self.source)
+        self.assertEqual(status['latency_window'], 3)
+        self.assertEqual(status['latency_ms'], {})
+        self.assertEqual(status['stages'][0]['count'], 0)
+        status = self.finished(processor)
+        for name in ('decode', 'inter_frame', 'resize', 'encode', 'ball',
+                     'receive_to_process', 'receive_to_result'):
+            summary = status['latency_ms'][name]
+            self.assertIsNotNone(summary['p50_ms'], name)
+            self.assertGreaterEqual(summary['p95_ms'], summary['p50_ms'], name)
+            self.assertGreaterEqual(summary['max_ms'], summary['p95_ms'], name)
+            self.assertEqual(summary['last_ms'], summary['max_ms'] if summary['count'] == 1 else summary['last_ms'])
+        self.assertEqual(status['stages'][0]['name'], 'ball')
+        self.assertEqual(status['stages'][0]['count'], status['latency_ms']['ball']['count'])
+        self.assertLessEqual(status['latency_ms']['decode']['count'], 3)
+
+    def test_infer_and_stages_are_mutually_exclusive(self):
+        with self.assertRaises(ValueError):
+            LiveProcessor(self.root, infer=lambda *args: {}, stages=[Sleepy()])
+
+    def test_configured_budget_overrides_the_source_fps(self):
+        processor = self.processor(capture_factory=lambda _: Capture(count=2, fps=200),
+                                   stages=[Sleepy('ball', delay=.06)], frame_budget_ms=500)
+        status = processor.start(self.source)
+        self.assertEqual(status['frame_budget_ms'], 500)
+        status = self.finished(processor)
+        self.assertEqual(status['frames_processed'], 2)
+        self.assertEqual(sum(status['drop_reasons'].values()), 0)
+
+    def test_real_jpeg_is_published_with_the_stage_timings(self):
+        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=200),
+                                   stages=[Sleepy('ball', delay=0)], frame_budget_ms=1000)
+        processor.start(self.source)
+        self.finished(processor)
+        jpeg, metadata = processor.latest_jpeg()
+        image = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual(image.shape[:2], (32, 32))
+        self.assertEqual(int(image[0, 0, 0]), 1)
+        self.assertEqual(metadata['width'], 32)
+        self.assertEqual(metadata['receive_to_result_ms'] >= metadata['inference_ms'], True)
+
+
+if __name__ == '__main__':
+    unittest.main()

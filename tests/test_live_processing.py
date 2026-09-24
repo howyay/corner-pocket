@@ -53,6 +53,11 @@ class LiveProcessingTests(unittest.TestCase):
 
     def processor(self, **kwargs):
         kwargs.setdefault('infer', infer)
+        # This suite pins supersession, frame shape, pacing and failure hygiene. Its
+        # Capture feeds a fake 200 fps source, which would make the derived frame
+        # budget 5 ms and turn these cases into budget cases; budget enforcement is
+        # pinned by test_live_processing_stages.py, and by the last test below.
+        kwargs.setdefault('budget_enforcement', False)
         processor = LiveProcessor(self.root, **kwargs)
         self.addCleanup(processor.stop)
         return processor
