@@ -51,6 +51,27 @@ loosening, each replaces "unmeasurable" with a measurement:
   re-measure (motion blur) but a stable fused identity can, sighted at least
   twice at each end of the window and within ``shot_geometry_tol_px`` of the
   claim.  It is only reached after the classical path has failed.
+
+Round 3 -- calibration truth (2026-09-24).  Two long-open geometry defects were
+measured and closed:
+
+* **which px<->mm mapping is authoritative.**  The hand anchors are the physical
+  reference: the frame's own rail boundaries verify all four sides against them
+  on every sampled frame, the scan quad's corners sit 9-91 px outside them
+  (3 of 4 outside), and the scan quad's two *held-out* side-pocket clicks land
+  166-236 mm off against 18-24 mm here (``out/calib_mapping_audit.json``).
+  ``src.eval_events`` now keeps the two apart explicitly: measured millimetres
+  use the reference mapping, while a *claim's* stored millimetres -- written by
+  the scan through its own quad -- are projected back to pixels through that
+  same quad (``Probe.claim_px``), which moves the served samples by up to 61 px.
+* ``calibration_weak_at_time`` **is gone as a trigger.**  Coverage
+  (``calibration_frac``) falls on occlusion and shading exactly like a camera
+  move, and it warned on frames the frame itself verifies.  The warning now
+  comes from the per-side rail evidence: ``calibration_rail_unverified_at_time``
+  when a side of the reference has no boundary evidence on this frame, and
+  ``calibration_reference_contradicted_at_time`` when a side's boundary is
+  demonstrably somewhere else.  Coverage stays in ``numbers`` as a reported
+  signal only.
 """
 from __future__ import annotations
 
@@ -83,11 +104,17 @@ class GateConfig:
     shot_geometry_tol_px: float = 60.0
     shot_stable_anchors: int = 2     # of 3 anchor offsets (t, t-0.1, t+0.1)
     off_cloth_tol_px: float = -2.0
-    # Below this the reference cloth quad covers partly non-cloth pixels at the
-    # event frame -- the VOD changes framing (sampled: 0.38-0.82 at t=450/483/
-    # 1120 s against 0.85-1.00 in the calibrated segment).  Occlusion lowers it
-    # too, so this is reported as a warning, never as a verdict.
-    calibration_warn_fraction: float = 0.80
+    # Calibration health is decided by the per-side rail evidence, never by
+    # coverage (see ``calibration_warning``).  ``calibration_frac`` below is kept
+    # only as a reported number: it collapses onto the wall panels when a player
+    # stands on the cloth, which is exactly when shots happen (measured at
+    # t=483.4 / 1120.2: coverage 0.777 / 0.800 with all four rails verified).
+    calibration_warn_fraction: float = 0.80      # reporting only; not a trigger
+    # Every side of the reference quad must be supported by the frame's own
+    # boundary evidence -- verified with the dark-rail/bright-cloth signature or
+    # explicitly inherited from the prior, never unverified.  That is the same
+    # rule ``src.calib_segment_fit`` uses to call a sample framed-consistently.
+    calibration_min_supported_sides: int = 4
 
 
 @dataclass
@@ -248,6 +275,8 @@ class PotEvidence:
     vanish: list = field(default_factory=list)   # {color, mm, pocket, dist_mm, pre_hits, approach_mm}
     motion_max: float | None = None
     calibration_frac: float | None = None     # cloth pixels inside the reference quad
+    # Per-side rail evidence; see ``ShotEvidence.rail_evidence``.
+    rail_evidence: dict | None = None
     # -- fused-census additions (all Optional: absent means "not measured",
     #    and every consumer falls back to the classical numbers above) -------
     census_version: int | None = None
@@ -281,6 +310,10 @@ class ShotEvidence:
     disp_color: str | None = None
     start_px: list | None = None
     geometry_gap_px: float | None = None
+    # The same gap measured by projecting the claim's scan-frame millimetres
+    # through the *physical* reference instead of the frame that wrote them: the
+    # before/after of the 2026-09-24 mapping fix, reported, never judged.
+    geometry_gap_px_ref_frame: float | None = None
     window_motion: float | None = None
     from_in_cloth_px: float | None = None
     to_in_cloth_px: float | None = None
@@ -290,6 +323,12 @@ class ShotEvidence:
     stable_hits: int | None = None    # anchors (±0.1 s) that corroborate the same pair
     anchor_tries: int | None = None
     calibration_frac: float | None = None     # cloth pixels inside the reference quad
+    # Per-side rail evidence for the reference quad at the event time, measured
+    # by ``src.eval_events`` with ``src.table_refine.refine_quad_edges``:
+    # ``{verified_sides, inherited_sides, unverified: {side: reason},
+    #   supported_sides, reason, quad_moved_max_px}``.  Absent (None) means the
+    # frame could not be measured, which is never reported as a bad frame.
+    rail_evidence: dict | None = None
     # -- fused-census additions (absent = not measured; see PotEvidence) ------
     census_version: int | None = None
     census_source: str | None = None
@@ -310,6 +349,7 @@ def pot_gate(claim: dict, evidence: PotEvidence, cfg: GateConfig = GateConfig())
     numbers = {"census_pre": evidence.census_pre, "census_post": evidence.census_post,
                "census_post_max": evidence.census_post_max, "motion_max": evidence.motion_max,
                "calibration_frac": evidence.calibration_frac,
+               "rail_evidence": evidence.rail_evidence,
                "census_source": evidence.census_source,
                "census_comparable": evidence.census_comparable,
                "census_counts_pre": evidence.census_counts_pre,
@@ -381,11 +421,14 @@ def pot_gate(claim: dict, evidence: PotEvidence, cfg: GateConfig = GateConfig())
 def shot_gate(claim: dict, evidence: ShotEvidence, cfg: GateConfig = GateConfig()) -> GateResult:
     """A shot needs on-cloth geometry and a re-measured displacement of the ball."""
     numbers = {"disp_mm": evidence.disp_mm, "disp_color": evidence.disp_color,
-               "geometry_gap_px": evidence.geometry_gap_px, "window_motion": evidence.window_motion,
+               "geometry_gap_px": evidence.geometry_gap_px,
+               "geometry_gap_px_ref_frame": evidence.geometry_gap_px_ref_frame,
+               "window_motion": evidence.window_motion,
                "from_in_cloth_px": evidence.from_in_cloth_px, "to_in_cloth_px": evidence.to_in_cloth_px,
                "start_hits": evidence.start_hits, "end_hits": evidence.end_hits,
                "stable_hits": evidence.stable_hits, "anchor_tries": evidence.anchor_tries,
                "calibration_frac": evidence.calibration_frac,
+               "rail_evidence": evidence.rail_evidence,
                "census_source": evidence.census_source, "census_disp_mm": evidence.census_disp_mm,
                "census_disp_color": evidence.census_disp_color,
                "census_start_hits": evidence.census_start_hits,
@@ -456,15 +499,44 @@ def census_shot_corroborated(evidence: ShotEvidence, cfg: GateConfig = GateConfi
     return True
 
 
-def _warn_calibration(evidence, cfg: GateConfig, reasons: list) -> None:
-    """Flag a frame where the reference quad covers non-cloth pixels.
+# A side reason that says the frame put the boundary *somewhere else*: that is a
+# contradiction of the reference quad, not a weak measurement.
+CALIBRATION_REFUTE_REASONS = ("boundary_outside_band", "prior_disagreement")
 
-    Reported, never a verdict: occlusion lowers this number exactly when a
-    player leans over the table, which is when shots happen.
+
+def calibration_warning(rail, cfg: GateConfig = GateConfig()) -> str | None:
+    """The reason this frame's own rail evidence does not support the reference.
+
+    ``rail`` is the measured per-side evidence (``src.eval_events.Probe.rail_evidence``,
+    built on ``src.table_refine.refine_quad_edges``); ``None`` means the frame
+    could not be measured at all, which is not a bad frame and warns about
+    nothing.  Coverage is deliberately not consulted here: it is a proxy that
+    occlusion and shading move exactly like a camera move, and it fired on
+    frames whose four rails the frame itself verifies.
     """
-    frac = getattr(evidence, "calibration_frac", None)
-    if frac is not None and frac < cfg.calibration_warn_fraction:
-        reasons.append("calibration_weak_at_time")
+    if not rail:
+        return None
+    unverified = rail.get("unverified") or {}
+    if not unverified:
+        supported = rail.get("supported_sides")
+        if supported is not None and supported < cfg.calibration_min_supported_sides:
+            return "calibration_rail_unverified_at_time"
+        return None
+    reasons = {str(value) for value in unverified.values()}
+    if reasons & set(CALIBRATION_REFUTE_REASONS):
+        return "calibration_reference_contradicted_at_time"
+    return "calibration_rail_unverified_at_time"
+
+
+def _warn_calibration(evidence, cfg: GateConfig, reasons: list) -> None:
+    """Flag a frame whose rail evidence does not support the reference quad.
+
+    Reported, never a verdict.  A side the frame cannot measure is not a side
+    the frame contradicts, so the two cases get different reasons.
+    """
+    reason = calibration_warning(getattr(evidence, "rail_evidence", None), cfg)
+    if reason:
+        reasons.append(reason)
 
 
 def judge(claim: dict, evidence, cfg: GateConfig = GateConfig()) -> GateResult:

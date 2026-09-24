@@ -53,6 +53,7 @@ from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540
+FULL_W, FULL_H = 1280, 720            # the reference quad's own resolution
 MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 # The probe cache is keyed by (kind, t, colour) and carries this version: a
 # measurement change must invalidate old payloads, or a stale cache would
@@ -107,6 +108,13 @@ def reference_calibration(anchors_path, quad_path):
     camera is static (the cloth centroid moves <0.2 px across 0-1800 s), and
     the scan's own naive quad is demonstrably off.  The scan quad is only a
     fallback so the tool still runs on a dataset without anchors.
+
+    Measured 2026-09-24 (``out/calib_mapping_audit.json``): the scan quad's four
+    corners sit 9-91 px outside this quad (3 of 4 outside), its two held-out
+    side-pocket clicks land 166-236 mm off against 18-24 mm here, and frames the
+    VOD itself verifies only ever verify against this quad (4/4 sides at t=0,
+    70, 483.4, 1120.2).  This mapping is the physical one.  The scan quad is not
+    a rival reference: it is the *claim* frame -- see :func:`claim_calibration`.
     """
     from src.pipeline import homography_to_canonical
 
@@ -122,6 +130,30 @@ def reference_calibration(anchors_path, quad_path):
         return forward, np.linalg.inv(forward), label
     except Exception:
         return None, None, "none: calibration unusable"
+
+
+def claim_calibration(quad_path):
+    """(inverse, label): the millimetre frame the served claims were measured in.
+
+    Every ``from_mm``/``to_mm``/``last_mm`` in a scan candidate is a pixel that
+    ``src/info_complete_scan.py`` (``--corners``, default ``out/scan30/corners.json``)
+    turned into millimetres through *its own* quad.  A claim's millimetres are
+    therefore a scan-frame quantity, and projecting them back to pixels needs
+    that quad's inverse, not the physical mapping: mixing the two lands the
+    claim up to 61 px (1.9 m at the head rail) from the pixel the scan measured.
+
+    ``None`` when there is no scan quad: the claims then stay in whatever frame
+    the caller already has.
+    """
+    from src.pipeline import homography_to_canonical
+
+    quad = load_quad(quad_path)
+    if quad is None:
+        return None, "none: no scan quad, claims kept in their stored frame"
+    try:
+        return np.linalg.inv(homography_to_canonical(quad)), f"scan claim frame ({quad_path})"
+    except Exception:
+        return None, "none: scan quad unusable"
 
 
 class SAM3Store:
@@ -153,9 +185,11 @@ class SAM3Store:
 class Probe:
     """Bounded frame probe: decodes only around the candidates, never the VOD."""
 
-    def __init__(self, video, forward, inverse, quad, sam3=None, segments=None):
+    def __init__(self, video, forward, inverse, quad, sam3=None, segments=None,
+                 claim_inverse=None):
         self.video = Path(video)
         self.forward, self.inverse = forward, inverse
+        self.claim_inverse = claim_inverse
         self.quad = quad
         self.segments = segments
         self.sam3 = sam3 if sam3 is not None else SAM3Store()
@@ -167,6 +201,7 @@ class Probe:
         self.sam3_frames_decoded = 0
         self._frame_cache = {}
         self._segment_cache = {}
+        self._rail_cache = {}
 
     def open(self):
         self.cap = cv2.VideoCapture(str(self.video))
@@ -192,6 +227,24 @@ class Probe:
             return None
         self.frames += 1
         return cv2.resize(frame, (SMALL_W, SMALL_H))
+
+    def _read_full(self, time_s):
+        """The frame at the reference quad's resolution (1280x720).
+
+        ``_read_seek`` downscales to the 960x540 detector frame; the reference
+        quad and ``src.table_refine`` work in 1280x720, so geometry checks need
+        this one.  Passing the small frame with a full-size quad is a silent
+        ``low_cloth_area``, which is how a frame gets reported as badly
+        calibrated when it is only measured at the wrong scale.
+        """
+        self.cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, time_s) * 1000.0)
+        ok, frame = self.cap.read()
+        if not ok:
+            return None
+        self.frames += 1
+        if frame.shape[1] != FULL_W or frame.shape[0] != FULL_H:
+            frame = cv2.resize(frame, (FULL_W, FULL_H))
+        return frame
 
     def sample(self, times):
         """[(t, cands, gray)] at the requested times, in order."""
@@ -283,8 +336,34 @@ class Probe:
         return to_table_mm(forward, cx * 1280.0 / SMALL_W, cy * 720.0 / SMALL_H)
 
     def px(self, mm, t=None):
+        """Canonical millimetres -> pixels, through the physical reference.
+
+        Use this for *measured* millimetres (a position this tool derived from a
+        pixel).  A claim's stored millimetres are in the scan frame: use
+        :meth:`claim_px` for those.
+        """
         _, inverse, _ = self.homographies(t)
         if inverse is None or not mm:
+            return None
+        x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
+        if not math.isfinite(w) or abs(w) < 1e-9:
+            return None
+        return [round(float(x) / float(w), 1), round(float(y) / float(w), 1)]
+
+    def claim_px(self, mm):
+        """A *claim's* stored millimetres -> pixels, in the frame that produced them.
+
+        ``src/info_complete_scan.py`` wrote ``from_mm``/``to_mm``/``last_mm`` from
+        pixels through the scan quad, so the inverse of that same quad recovers
+        the pixel.  Falls back to the physical mapping when no scan quad exists,
+        which is the previous behaviour.  The two differ by up to 61 px on the
+        served samples (median 30 px at the head, 53 px at the foot;
+        ``out/calib_mapping_audit.json``).
+        """
+        if not mm:
+            return None
+        inverse = self.claim_inverse if self.claim_inverse is not None else self.inverse
+        if inverse is None:
             return None
         x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
         if not math.isfinite(w) or abs(w) < 1e-9:
@@ -301,9 +380,12 @@ class Probe:
     def cloth_fraction(self, t):
         """Share of the reference quad that is cloth-hued at ``t``.
 
-        1.0 when the quad really sits on the playing surface; below the gate
-        threshold the frame's framing differs from the calibrated segment, so
-        every millimetre-derived number for this event is unusable.
+        **Reported, never a health verdict.**  Occlusion and shading lower it
+        exactly like a camera move would: at t=483.4 (0.777) and t=1120.2 (0.800)
+        a player stands on the cloth, the HSV mask collapses onto the wall
+        panels, and all four rails still verify against the reference.  Use
+        :meth:`rail_evidence` for calibration health; this number is kept so the
+        report still shows what the proxy does.
         """
         from src.table_detect import detect_cloth_mask
         small = self._read_seek(t)
@@ -312,6 +394,48 @@ class Probe:
         mask = detect_cloth_mask(small)
         total = int((self.cloth > 0).sum())
         return round(float(((mask > 0) & (self.cloth > 0)).sum()) / max(1, total), 3)
+
+    def rail_evidence(self, t):
+        """Per-side rail evidence for the reference quad at ``t``.
+
+        The frame's own boundaries, measured by ``src.table_refine``: a side
+        counts only when the search finds the cloth boundary inside the band
+        with the inner-occupancy + edge-drop + dark-rail/bright-cloth signature.
+        A side kept at its prior because this frame's evidence is weak (the
+        occlusion case) is reported separately as ``inherited``; a side whose
+        boundary is somewhere else is ``unverified`` with its reason.
+
+        Returns ``None`` when the frame or the refinement could not be measured:
+        an unmeasured frame must not be reported as a bad one.
+        """
+        if self.cap is None or self.quad is None:
+            return None
+        key = round(float(t), 1)
+        if key in self._rail_cache:
+            return self._rail_cache[key]
+        from src.table_refine import refine_quad_edges
+
+        started = time.time()
+        frame = self._read_full(t)
+        self.seconds += time.time() - started
+        if frame is None:
+            return None
+        quad = self.quad_for(t)
+        out, info = refine_quad_edges(frame, np.asarray(quad, np.float32))
+        unverified = {int(s["side"]): s.get("reason") for s in info.get("unverified_sides") or []}
+        inherited = {int(s["side"]): s.get("reason") for s in info.get("inherited_sides") or []}
+        row = {"source": "src.table_refine.refine_quad_edges",
+               "reason": info.get("reason"),
+               "verified_sides": info.get("verified_sides"),
+               "inherited_sides": sorted(inherited),
+               "unverified": {str(s): r for s, r in sorted(unverified.items())},
+               "supported_sides": 0 if info.get("verified_sides") is None
+                                   else (info.get("verified_sides") or 0) + len(inherited),
+               "quad_moved_max_px": None if out is None else round(float(
+                   np.linalg.norm(np.asarray(out, float) - np.asarray(quad, float),
+                                  axis=1).max()), 2)}
+        self._rail_cache[key] = row
+        return row
 
 
 # -------------------------------------------------------------------- probes
@@ -370,6 +494,7 @@ def probe_shot(claim, probe):
         return ShotEvidence(available=False, note="no probe frames")
     evidence = ShotEvidence(available=True, anchor_tries=len(anchors), stable_hits=0)
     evidence.calibration_frac = probe.cloth_fraction(anchor)
+    evidence.rail_evidence = probe.rail_evidence(anchor)
     claimed_color = claim["color"]
     per_anchor, best_claimed, best_any = [], None, None
     for a in anchors:
@@ -412,12 +537,18 @@ def probe_shot(claim, probe):
         evidence.start_px = chosen[2]
         evidence.start_hits = chosen[4]
         evidence.end_hits = chosen[5]
-        claimed_px = probe.px(claim["from_mm"], anchor)
+        claimed_px = probe.claim_px(claim["from_mm"])
         if claimed_px is not None:
             evidence.geometry_gap_px = round(math.hypot(claimed_px[0] - chosen[2][0],
                                                         claimed_px[1] - chosen[2][1]), 1)
-    evidence.from_in_cloth_px = probe.in_cloth(probe.px(claim["from_mm"], anchor), anchor)
-    evidence.to_in_cloth_px = probe.in_cloth(probe.px(claim["to_mm"], anchor), anchor)
+            # The same gap measured the old way (claim mm through the physical
+            # mapping) is kept so the report shows what the frame switch bought.
+            old_px = probe.px(claim["from_mm"], anchor)
+            if old_px is not None:
+                evidence.geometry_gap_px_ref_frame = round(
+                    math.hypot(old_px[0] - chosen[2][0], old_px[1] - chosen[2][1]), 1)
+    evidence.from_in_cloth_px = probe.in_cloth(probe.claim_px(claim["from_mm"]), anchor)
+    evidence.to_in_cloth_px = probe.in_cloth(probe.claim_px(claim["to_mm"]), anchor)
     # The fused census measures the same event by other means: SAM3 sees the
     # balls the colour blobs lose to motion blur, and the temporal association
     # keeps them apart, so a fast ball is measurable again.
@@ -433,7 +564,7 @@ def probe_shot(claim, probe):
     evidence.census_start_hits = move["start_hits"]
     evidence.census_end_hits = move["end_hits"]
     evidence.census_tracks_moved = move["tracks_moved"]
-    claimed_px = probe.px(claim["from_mm"], anchor)
+    claimed_px = probe.claim_px(claim["from_mm"])
     if move["start_px"] is not None and claimed_px is not None:
         start_px = [move["start_px"][0] * 1280.0 / SMALL_W, move["start_px"][1] * 720.0 / SMALL_H]
         evidence.census_geometry_gap_px = round(math.hypot(claimed_px[0] - start_px[0],
@@ -507,6 +638,7 @@ def probe_pot(claim, probe):
     motions = [_motion(samples[i][2], samples[i + 1][2], probe.cloth) for i in range(len(samples) - 1)]
     evidence.motion_max = round(max(motions), 2) if motions else None
     evidence.calibration_frac = probe.cloth_fraction(anchor)
+    evidence.rail_evidence = probe.rail_evidence(anchor)
     # The clicked vanish candidates stay: they are the position-level view, and
     # the identity rows below are the same measurement with a sighting history.
     vanish = list(_classical_vanish(samples, probe, anchor))
@@ -717,8 +849,10 @@ def to_queue_event(group, previous_ids):
             "measured_disp_mm": numbers.get("disp_mm"),
             "measured_disp_color": numbers.get("disp_color"),
             "gap_px": gap, "tol_px": tolerance,
+            "gap_px_reference_frame": numbers.get("geometry_gap_px_ref_frame"),
             "matches": None if gap is None else bool(gap <= tolerance),
             "calibration_frac": numbers.get("calibration_frac"),
+            "rail_evidence": (event["gate"].get("numbers") or {}).get("rail_evidence"),
         }
     return event
 
@@ -931,6 +1065,7 @@ def main():
 
     cfg = GateConfig()
     forward, inverse, label = reference_calibration(args.anchors, args.scan_quad)
+    claim_inverse, claim_label = claim_calibration(args.scan_quad)
     quad = load_quad(args.anchors, "anchors") if inverse is not None else None
     if quad is None:
         quad = load_quad(args.scan_quad)
@@ -939,7 +1074,8 @@ def main():
         label = f"{label}; per segment: {segments.verdict} ({len(segments.segments)} segment(s))"
     probe = None
     if not args.no_probe and inverse is not None and Path(args.video).exists():
-        probe = Probe(args.video, forward, inverse, quad, segments=segments)
+        probe = Probe(args.video, forward, inverse, quad, segments=segments,
+                      claim_inverse=claim_inverse)
         if not probe.open():
             probe = None
     candidates = Path(args.candidates)
@@ -976,6 +1112,7 @@ def main():
     previous_count = len(json.loads(before.read_text())) if before.exists() else 0
     report = {"generated_from": {"queue": args.queue, "candidates": str(candidates),
                                  "video": args.video if probe else None, "calibration": label,
+                                 "claim_frame": claim_label,
                                  "human_verdicts": "read-only"},
               "thresholds": asdict(cfg), "aggregates": summary, "owner_verdicts": agree,
               "seconds": seconds, "probe_seconds": probe_seconds,

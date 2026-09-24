@@ -172,8 +172,14 @@ class VerdictShapeTests(unittest.TestCase):
         self.assertEqual(cfg.off_cloth_tol_px, -2.0)
         self.assertEqual(cfg.shot_stable_anchors, 2)
         self.assertEqual(cfg.pot_min_census, 2.0)
+        self.assertEqual(cfg.calibration_min_supported_sides, 4)
 
-    def test_weak_calibration_is_a_reported_warning_not_a_verdict(self):
+    def test_coverage_alone_no_longer_warns(self):
+        """``calibration_frac`` is reported, never a calibration verdict.
+
+        Measured case: t=483.4 has coverage 0.777 with all four rails verified --
+        a player standing on the cloth, not a moved camera.
+        """
         claim = normalize(shot(82.5, "white", (423.1, 612.9), (700.0, 900.0)))
         evidence = ShotEvidence(available=True, disp_mm=777.0, disp_color="white",
                                 start_px=[938.7, 566.7], geometry_gap_px=40.0,
@@ -181,8 +187,80 @@ class VerdictShapeTests(unittest.TestCase):
                                 start_hits=3, end_hits=6, calibration_frac=0.42)
         result = judge(claim, evidence)
         self.assertEqual(result.status, "confirmed")
-        self.assertIn("calibration_weak_at_time", result.reasons)
-        self.assertEqual(result.numbers["calibration_frac"], 0.42)
+        self.assertNotIn("calibration_weak_at_time", result.reasons)
+        self.assertEqual([r for r in result.reasons if r.startswith("calibration")], [])
+        self.assertEqual(result.numbers["calibration_frac"], 0.42)   # still reported
+
+    def test_verified_rails_keep_a_low_coverage_frame_silent(self):
+        """Known-good late frame (t=483.4 / t=1120.2): 4/4 rails, coverage < 0.80."""
+        claim = normalize(shot(1120.2, "white", (423.1, 612.9), (700.0, 900.0)))
+        evidence = ShotEvidence(available=True, disp_mm=1345.0, disp_color="white",
+                                start_px=[938.7, 566.7], geometry_gap_px=40.0,
+                                from_in_cloth_px=29.6, to_in_cloth_px=42.8,
+                                start_hits=3, end_hits=6, calibration_frac=0.777,
+                                rail_evidence={"verified_sides": 4, "inherited_sides": [],
+                                               "unverified": {}, "supported_sides": 4,
+                                               "reason": None})
+        result = judge(claim, evidence)
+        self.assertEqual(result.status, "confirmed")
+        self.assertEqual([r for r in result.reasons if r.startswith("calibration")], [])
+        self.assertEqual(result.numbers["rail_evidence"]["verified_sides"], 4)
+
+    def test_inherited_sides_do_not_warn(self):
+        """Occlusion: two sides inherited from the prior, never unverified."""
+        claim = normalize(shot(1800.0, "white", (423.1, 612.9), (700.0, 900.0)))
+        evidence = ShotEvidence(available=True, disp_mm=900.0, disp_color="white",
+                                start_px=[900.0, 560.0], geometry_gap_px=30.0,
+                                from_in_cloth_px=25.0, to_in_cloth_px=30.0,
+                                start_hits=3, end_hits=3, calibration_frac=0.19,
+                                rail_evidence={"verified_sides": 2, "inherited_sides": [0, 3],
+                                               "unverified": {}, "supported_sides": 4,
+                                               "reason": "side_inherited"})
+        result = judge(claim, evidence)
+        self.assertEqual(result.status, "confirmed")
+        self.assertNotIn("calibration_rail_unverified_at_time", result.reasons)
+        self.assertNotIn("calibration_reference_contradicted_at_time", result.reasons)
+
+    def test_a_genuinely_bad_reference_still_warns(self):
+        """The measured bad case: the 90 px-off scan quad verifies 1-3 sides only."""
+        claim = normalize(shot(1120.2, "white", (423.1, 612.9), (700.0, 900.0)))
+        evidence = ShotEvidence(available=True, disp_mm=1345.0, disp_color="white",
+                                start_px=[938.7, 566.7], geometry_gap_px=40.0,
+                                from_in_cloth_px=29.6, to_in_cloth_px=42.8,
+                                start_hits=3, end_hits=6, calibration_frac=0.999,
+                                rail_evidence={"verified_sides": 1, "inherited_sides": [],
+                                               "unverified": {"0": "no_boundary_evidence",
+                                                              "2": "no_boundary_evidence",
+                                                              "3": "no_boundary_evidence"},
+                                               "supported_sides": 1,
+                                               "reason": "no_boundary_evidence"})
+        result = judge(claim, evidence)
+        self.assertEqual(result.status, "confirmed")
+        self.assertIn("calibration_rail_unverified_at_time", result.reasons)
+        self.assertEqual(result.numbers["rail_evidence"]["supported_sides"], 1)
+
+    def test_a_contradicted_reference_gets_its_own_reason(self):
+        claim = normalize(shot(600.0, "white", (423.1, 612.9), (700.0, 900.0)))
+        evidence = ShotEvidence(available=True, disp_mm=800.0, disp_color="white",
+                                start_px=[900.0, 560.0], geometry_gap_px=20.0,
+                                from_in_cloth_px=25.0, to_in_cloth_px=30.0,
+                                start_hits=3, end_hits=3, calibration_frac=0.95,
+                                rail_evidence={"verified_sides": 3, "inherited_sides": [],
+                                               "unverified": {"1": "boundary_outside_band"},
+                                               "supported_sides": 3,
+                                               "reason": "boundary_outside_band"})
+        result = judge(claim, evidence)
+        self.assertIn("calibration_reference_contradicted_at_time", result.reasons)
+
+    def test_an_unmeasured_frame_warns_about_nothing(self):
+        claim = normalize(shot(600.0, "white", (423.1, 612.9), (700.0, 900.0)))
+        evidence = ShotEvidence(available=True, disp_mm=800.0, disp_color="white",
+                                start_px=[900.0, 560.0], geometry_gap_px=20.0,
+                                from_in_cloth_px=25.0, to_in_cloth_px=30.0,
+                                start_hits=3, end_hits=3, calibration_frac=0.31,
+                                rail_evidence=None)
+        result = judge(claim, evidence)
+        self.assertEqual([r for r in result.reasons if r.startswith("calibration")], [])
 
     def test_pocket_geometry_matches_the_scan_frame(self):
         self.assertEqual(nearest_pocket(1200.0, 2500.0)[0], "foot-right")
