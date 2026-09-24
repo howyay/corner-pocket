@@ -488,8 +488,16 @@ class BallStage(Stage):
 
         self._load()
         height, width = frame.shape[:2]
-        small = frame if (width, height) == self.size else cv2.resize(
-            frame, self.size, interpolation=cv2.INTER_AREA)
+        if (width, height) == self.size:
+            small = frame
+        else:
+            # INTER_AREA for the normal case (the pipeline caps at exactly this size);
+            # a *smaller* source is the one case that needs upscaling, and INTER_AREA
+            # degrades to nearest there - a real stream at 640x360 should not be fed a
+            # nearest-neighbour blow-up of two thirds of the net's expected pixels.
+            small = cv2.resize(frame, self.size,
+                               interpolation=cv2.INTER_AREA if width >= self.size[0]
+                               else cv2.INTER_LINEAR)
         self._history.append((context.frame_number, small))
         planes = [entry[1] for entry in self._history]
         while len(planes) < self.stack:
