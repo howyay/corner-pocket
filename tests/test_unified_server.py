@@ -276,15 +276,75 @@ class BackendTests(unittest.TestCase):
 
     def test_live_lazy_singleton_and_shutdown(self):
         from unittest.mock import Mock
+        import annotator.unified_server as server
         self.assertIsNone(self.backend._live)
         self.backend.close()
-        with patch('annotator.live_processing.LiveProcessor') as factory:
-            processor = factory.return_value
+        # The class the backend builds is the vod-replay-capable one; the seam is
+        # the factory, so the singleton/lazy/close contract is pinned against it.
+        with patch.object(server, 'vod_replay_processor_class') as factory:
+            processor = factory.return_value.return_value
             self.assertIs(self.backend.live_processor(), processor)
             self.assertIs(self.backend.live_processor(), processor)
-            factory.assert_called_once_with(self.root)
+            factory.assert_called_once_with()
+            factory.return_value.assert_called_once_with(self.root)
             self.backend.close()
             processor.stop.assert_called_once()
+
+    def test_vod_replay_request_reaches_the_capture_with_its_own_values(self):
+        from annotator.unified_server import replay_request, vod_replay_processor_class
+        # The request shape: an id or a URL, a start offset and a rate. Anything
+        # else is the client's error, and the message says which one.
+        self.assertEqual(replay_request({'kind': 'vod-replay', 'vod_id': 'https://www.twitch.tv/videos/12345'}),
+                         {'vod_id': '12345', 'start_s': 0.0, 'rate': 1.0})
+        self.assertEqual(replay_request({'kind': 'vod-replay', 'vod_id': 7, 'start_s': 30, 'rate': 2}),
+                         {'vod_id': '7', 'start_s': 30.0, 'rate': 2.0})
+        for bad in ({'kind': 'vod-replay'}, {'kind': 'vod-replay', 'vod_id': 'nope'},
+                    {'kind': 'vod-replay', 'vod_id': '1', 'rate': 0},
+                    {'kind': 'vod-replay', 'vod_id': '1', 'start_s': -1},
+                    {'kind': 'vod-replay', 'vod_id': '1', 'extra': True}):
+            with self.assertRaisesRegex(ValueError, '(?i)vod|rate|start_s|unsupported'):
+                replay_request(bad)
+        processor = vod_replay_processor_class()(self.root)
+        seen = {}
+        resolved = {'vod_id': '12345', 'title': 't', 'length_s': 10.0, 'channel': 'c', 'master_status': 200,
+                    'media_url': 'https://usher.ttvnw.net/vod/12345.m3u8?nauth=secret',
+                    'variant': {'height': 720, 'bandwidth': 1}, 'variants': [],
+                    'playlist': {'type': 'VOD', 'target_duration_s': 2.0, 'segments_in_head': 3, 'has_endlist': True}}
+        class FakeCapture:
+            def __init__(self, media, **kwargs):
+                seen.update(kwargs, media=media)
+        with patch('annotator.twitch_vod_source.resolve_vod', return_value=resolved), \
+             patch('annotator.twitch_vod_source.VodRealtimeCapture', FakeCapture):
+            safe, media = processor._source_media({'kind': 'vod-replay', 'vod_id': '12345', 'start_s': 12.0, 'rate': 2.0})
+            capture = processor._capture_factory(media)
+        self.assertEqual(safe, {'kind': 'vod-replay', 'vod_id': '12345', 'start_s': 12.0, 'rate': 2.0})
+        self.assertEqual(seen, {'vod_id': '12345', 'start_s': 12.0, 'rate': 2.0, 'media': resolved['media_url']})
+        self.assertIsInstance(capture, FakeCapture)
+        # status() carries the capture's own honest self-description, with the
+        # signed URL redacted out of the resolution evidence.
+        self.assertEqual(processor._replay_resolution['media_url_host'], 'usher.ttvnw.net')
+        self.assertNotIn('m3u8', json.dumps(processor._replay_resolution), 'the signed URL never leaves the process')
+        processor._replay_capture = Mock()
+        processor._replay_capture.state.return_value = {'kind': 'vod-replay', 'live': False,
+                                                        'vod_id': '12345', 'rate': 2.0, 'drift_s': -1.5}
+        payload = processor.status()
+        self.assertEqual(payload['replay']['kind'], 'vod-replay')
+        self.assertFalse(payload['replay']['live'])
+        self.assertEqual(payload['replay']['drift_s'], -1.5)
+        self.assertEqual(payload['replay']['resolution']['media_url_host'], 'usher.ttvnw.net')
+
+    def test_a_refused_vod_is_a_refused_start_with_twitchs_own_sentence(self):
+        from annotator.twitch_vod_source import TwitchVodError
+        from annotator.unified_server import vod_replay_processor_class
+        self.backend._live = vod_replay_processor_class()(self.root)
+        message = 'Twitch VOD playlist request failed (HTTP 403)'
+        with patch('annotator.twitch_vod_source.resolve_vod', side_effect=TwitchVodError(message)):
+            with self.assertRaises(APIError) as error:
+                self.backend.live_action({'action': 'start', 'source': {'kind': 'vod-replay', 'vod_id': '5'}})
+        self.assertEqual(error.exception.status, 502)
+        self.assertEqual(str(error.exception), message)
+        self.assertEqual(self.backend._live.status()['state'], 'idle')
+        self.assertIsNone(self.backend._live.status()['error'])
 
     def test_live_http_status_frame_and_actions(self):
         from unittest.mock import Mock

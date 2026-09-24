@@ -8,6 +8,7 @@ import argparse
 import base64
 import binascii
 from collections import OrderedDict
+import functools
 import json
 import math
 import mimetypes
@@ -127,6 +128,139 @@ def safe_file(base, name):
     return path
 
 
+#: A Twitch VOD replayed in real time is a *source*, not a detector: the request
+#: names the VOD (id or URL), where in it to start, and how fast to play it. The
+#: capture itself is twitch_vod_source.VodRealtimeCapture, whose state() keeps
+#: saying kind='vod-replay', live=False - a replay is never a broadcast.
+_REPLAY_KEYS = ("kind", "vod_id", "start_s", "rate")
+_REPLAY_RATE_MAX = 8.0
+#: The enrolment preview scans the person's track around the clicked frame. The
+#: module's own default is 180 s, which is an offline-eval budget (the detector
+#: and face engine cost ~6 s per sampled frame, so 180 s is over an hour); the
+#: interactive endpoint defaults to +/-5 s and reports what it actually saw
+#: (frames_seen, crops, purity), so the smaller basis is visible, not implied.
+ENROLL_WINDOW_S = 5.0
+ENROLL_WINDOW_S_MAX = 600.0
+#: Confirmed plans kept for the confirm click: bounded, and the token is the key
+#: the operator was shown. A restart loses them - the endpoint says so and asks
+#: for a fresh preview rather than enrolling something it cannot re-verify.
+ENROLL_PLAN_CACHE_MAX = 4
+
+
+def replay_request(source):
+    """Validate a {kind:'vod-replay'} source into the capture's arguments.
+
+    A malformed request is a client error (``ValueError``); a VOD Twitch itself
+    refuses keeps its own ``TwitchVodError`` sentence, which the caller passes on
+    verbatim instead of inventing a friendlier one.
+    """
+    from annotator.twitch_vod_source import TwitchVodError, vod_id_of
+    extra = sorted(set(source) - set(_REPLAY_KEYS))
+    if extra:
+        raise ValueError("unsupported vod-replay option: %s" % ", ".join(extra))
+    if "vod_id" not in source:
+        raise ValueError("vod_id is required: a Twitch VOD id or https://www.twitch.tv/videos/<id>")
+    try:
+        vod_id = vod_id_of(source["vod_id"])
+    except TwitchVodError as exc:              # shape of the value, not the network
+        raise ValueError(str(exc)) from None
+    start_s = source.get("start_s", 0.0)
+    rate = source.get("rate", 1.0)
+    if isinstance(start_s, bool) or not isinstance(start_s, (int, float)) or start_s < 0:
+        raise ValueError("start_s must be a non-negative number of seconds")
+    if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not 0 < rate <= _REPLAY_RATE_MAX:
+        raise ValueError("rate must be between 0 and %g VOD seconds per wall second" % _REPLAY_RATE_MAX)
+    return {"vod_id": vod_id, "start_s": float(start_s), "rate": float(rate)}
+
+
+class VodReplaySourceMixin:
+    """The Twitch-VOD-replay source, as a mixin bound to LiveProcessor on first use.
+
+    ``annotator/live_processing.py`` is not edited here. Its documented injection
+    seams are ``capture_factory``/``resolver``, and ``twitch_vod_source.py`` says
+    its capture exists "so that file needs no change to gain a real-time VOD
+    input". This mixin therefore widens exactly one thing - the source a request
+    may name - and builds that capture through the seam; every other source keeps
+    the base class's behaviour unchanged. It is a mixin, not a subclass, because
+    live_processing imports its whole stage stack (torch) and this HTTP module
+    keeps its heavy imports on demand.
+
+    Resolution happens on the request thread inside ``_source_media``, so a VOD
+    Twitch refuses is a refused *start* carrying Twitch's own sentence, never a
+    processor that opens, spins and publishes nothing. The capture is created on
+    the decoder thread that will read it.
+    """
+
+    def __init__(self, root, **kwargs):
+        self._replay = None                 # validated {vod_id, start_s, rate}
+        self._replay_resolution = None      # redacted resolve_vod() evidence
+        self._replay_capture = None         # the open capture, for status()
+        super().__init__(root, **kwargs)
+        base_capture, base_resolver = self._capture_factory, self._resolver
+        self._capture_factory = lambda media: self._open_replay(media) or base_capture(media)
+        self._resolver = lambda media: media if self._replay is not None else base_resolver(media)
+
+    def _open_replay(self, media):
+        if self._replay is None:
+            return None
+        from annotator.twitch_vod_source import VodRealtimeCapture
+        capture = VodRealtimeCapture(media, vod_id=self._replay["vod_id"],
+                                     rate=self._replay["rate"], start_s=self._replay["start_s"])
+        self._replay_capture = capture
+        return capture
+
+    def _source_media(self, source):
+        if isinstance(source, dict) and source.get("kind") == "vod-replay":
+            from annotator.twitch_vod_source import TwitchVodError, evidence, resolve_vod
+            request = replay_request(source)
+            try:
+                resolved = resolve_vod(request["vod_id"])
+            except TwitchVodError:
+                self._replay = None
+                raise
+            self._replay = request
+            self._replay_capture = None
+            # The signed media URL is a private decoder input; evidence() is the
+            # module's own redactor, so what leaves this process is the host and
+            # length of that URL plus the variant facts - never the URL itself.
+            self._replay_resolution = evidence(resolved)
+            safe = {"kind": "vod-replay", "vod_id": request["vod_id"],
+                    "start_s": request["start_s"], "rate": request["rate"]}
+            return safe, resolved["media_url"]
+        self._replay = None
+        self._replay_capture = None
+        self._replay_resolution = None
+        return super()._source_media(source)
+
+    def status(self):
+        payload = super().status()
+        capture = self._replay_capture
+        if capture is not None:
+            try:
+                # The capture's own honest self-description: kind, live, vod_id,
+                # rate, wall/video position and the drift it is carrying.
+                payload["replay"] = dict(capture.state(), resolution=self._replay_resolution)
+            except Exception:            # a half-released capture must not 500 status
+                payload["replay"] = None
+        return payload
+
+
+@functools.lru_cache(maxsize=1)
+def vod_replay_processor_class():
+    """Bind VodReplaySourceMixin to the real LiveProcessor on first use.
+
+    live_processing pulls in the stage stack (torch and friends), which this
+    module deliberately keeps off its import path; the class is built once, the
+    first time a live processor is asked for.
+    """
+    from annotator.live_processing import LiveProcessor
+
+    class VodReplayLiveProcessor(VodReplaySourceMixin, LiveProcessor):
+        """LiveProcessor plus the vod-replay source (see the mixin)."""
+
+    return VodReplayLiveProcessor
+
+
 class Backend:
     def __init__(self, root=ROOT):
         self.root = Path(root)
@@ -144,12 +278,12 @@ class Backend:
         self._identity_lock = threading.Lock()
         self._unified_cache = OrderedDict()
         self._projection_cache = {}
+        self._enroll_plans = OrderedDict()
 
     def live_processor(self):
         with self.lock:
             if self._live is None:
-                from annotator.live_processing import LiveProcessor
-                self._live = LiveProcessor(self.root)
+                self._live = vod_replay_processor_class()(self.root)
             return self._live
 
     def close(self):
@@ -157,6 +291,7 @@ class Backend:
             self._live.stop()
 
     def live_action(self, payload):
+        from annotator.twitch_vod_source import TwitchVodError
         action = payload.get("action")
         if action not in ("start", "stop"):
             raise APIError("action must be start or stop")
@@ -166,6 +301,10 @@ class Backend:
         try:
             processor = self.live_processor()
             return processor.start(payload.get("source"), payload.get("detectors")) if action == "start" else processor.stop()
+        except TwitchVodError as exc:
+            # Twitch's own sentence: the resolver refused, so nothing started and
+            # nothing is spinning. Verbatim, so the operator reads the real cause.
+            raise APIError(str(exc), 502) from exc
         except ValueError as exc:
             raise APIError(str(exc)) from exc
         except RuntimeError as exc:
@@ -293,6 +432,91 @@ class Backend:
         except RuntimeError as exc:
             raise APIError(f"identity models unavailable: {exc}", 503) from exc
         return {"unbound": True, "cluster_id": cluster_id}
+
+    # -- enrolling a regular from the person on screen ----------------------
+    # Two steps on purpose: the preview only reads (no file is touched) and the
+    # confirm is the one write, made by the operator's explicit click. The plan
+    # the preview built stays here under the token the operator was shown, and
+    # confirm_enrollment() re-renders the crops from the recording and re-checks
+    # that token, so a stale tab cannot enrol a different person.
+
+    def enroll_preview(self, payload):
+        """Plan an enrolment for the clicked person. Reads only."""
+        from src.enroll_from_tracklet import Selection, plan_for_selection, preview_payload
+        dataset = payload.get("dataset", "vod30")
+        if dataset not in DATASETS:
+            raise APIError("unknown dataset")
+        frame_index = payload.get("frame_index")
+        if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
+            raise APIError("frame_index must be a non-negative integer")
+        bbox = payload.get("bbox")
+        if (not isinstance(bbox, (list, tuple)) or len(bbox) != 4
+                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in bbox)):
+            raise APIError("bbox must be [x1, y1, x2, y2] in frame pixels")
+        window_s = payload.get("window_s", ENROLL_WINDOW_S)
+        if isinstance(window_s, bool) or not isinstance(window_s, (int, float)) or not 1 <= window_s <= ENROLL_WINDOW_S_MAX:
+            raise APIError("window_s must be between 1 and %g seconds" % ENROLL_WINDOW_S_MAX)
+        plan = plan_for_selection(self.root, dataset, frame_index, [float(v) for v in bbox],
+                                  window_s=float(window_s))
+        result = preview_payload(plan, root=self.root, dataset=dataset)
+        if isinstance(plan, Selection) and result.get("ok") and isinstance(result.get("token"), str):
+            with self.lock:
+                self._enroll_plans[result["token"]] = plan
+                while len(self._enroll_plans) > ENROLL_PLAN_CACHE_MAX:
+                    self._enroll_plans.popitem(last=False)
+        return result
+
+    def enroll_confirm(self, payload):
+        """The write: the operator confirmed this person and typed this name."""
+        from src.enroll_from_tracklet import EnrollmentTokenError, confirm_enrollment
+        token = payload.get("token")
+        name = payload.get("player_name")
+        if not isinstance(token, str) or not token:
+            raise APIError("token is required (the one the preview returned)")
+        if not isinstance(name, str):
+            raise APIError("player_name must be a string")
+        name = name.strip()          # emptiness is the module's own refusal to make
+        if len(name) > self._SEED_NAME_MAX:
+            raise APIError("player_name must be at most %d characters" % self._SEED_NAME_MAX)
+        with self.lock:
+            plan = self._enroll_plans.get(token)
+        if plan is None:
+            # A restart (or an evicted plan) forgets the crops behind the token;
+            # say so instead of enrolling something that cannot be re-verified.
+            return {"ok": False, "reason": "preview_expired",
+                    "message": "this preview is no longer held; preview the track again before confirming"}
+        try:
+            result = confirm_enrollment(self.root, plan, token, name,
+                                        scratch_root=self.out / "enroll-eval" / "scratch",
+                                        dataset=plan.dataset)
+        except EnrollmentTokenError as exc:
+            return exc.to_dict()
+        if result.get("ok"):
+            result = dict(result, promoted=self._promote_enrollment(result.get("written") or {}))
+            with self.lock:
+                self._enroll_plans.pop(token, None)
+        return result
+
+    def _promote_enrollment(self, written):
+        """Make a confirmed enrolment real in THIS server's roster.
+
+        ``write_enrollment()`` writes to a scratch root on purpose - "the caller
+        decides when the enrolment becomes real". The operator's confirm click is
+        that decision, so the two files it wrote are promoted here, atomically and
+        in the same format Operations writes. A refusal never reaches this method.
+        """
+        promoted = {}
+        for key, name in (("state", "state.json"), ("store", "face_embeddings.json")):
+            source = written.get(key)
+            if not source:
+                continue
+            payload = load(Path(source))
+            if payload is None:
+                raise APIError("enrolment scratch file is missing: %s" % source, 500)
+            target = self.out / "corner-pocket" / name
+            atomic_save(target, payload)
+            promoted[key] = str(target)
+        return promoted
 
     # -- unified viewer: one overlay payload per frozen frame ---------------
 
@@ -1105,6 +1329,10 @@ class Backend:
             return self.identity_seed(payload)
         if parts == ['api', 'identity', 'unbind']:
             return self.identity_unbind(payload)
+        if parts == ['api', 'identity', 'enroll-preview']:
+            return self.enroll_preview(payload)
+        if parts == ['api', 'identity', 'enroll-confirm']:
+            return self.enroll_confirm(payload)
         with self.lock:
             return self._post(parts, payload)
 
