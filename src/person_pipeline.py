@@ -2,9 +2,11 @@
 
 Every model component is injectable; defaults load lazily so tests never touch
 weights or downloads. Thresholds follow the measured calibrations in
-docs/live-processing-verification.md: faces bind at >= 0.35 with 0.12 margin;
-body (OSNet) cross-exit clustering is disabled by default — measured
-same/cross-person OSNet cosine distributions overlap on this footage
+docs/live-processing-verification.md: a face binds at >= 0.47 (the effective
+bar = match_threshold 0.35 + margin 0.12; the runner-up must also trail by the
+0.12 margin, enforced by best_match and now by bind_face as well — 0.35 alone
+never binds); body (OSNet) cross-exit clustering is disabled by default —
+measured same/cross-person OSNet cosine distributions overlap on this footage
 (BODY_MATCH_THRESHOLD in src/person_identity.py).
 
 Face-stage latency control (buffalo_l full-frame analyze is ~240ms warm, 75%
@@ -202,9 +204,15 @@ class PersonPipeline:
             face = item['face']
             if face is not None and person['player_id'] is None:
                 match = self._get_engine().best_match(face['embedding'], self._gallery_data())
+                # runner_up is passed through so bind_face re-applies the same
+                # margin rule best_match used (the binding path used to check
+                # only the similarity; see src/person_identity.py:bind_face).
+                # .get() keeps a matcher that predates the field (or a test
+                # double) working: no runner-up means no competing enrolment.
                 if match and self.identity.bind_face(cluster, match['player_id'],
                                                      match['similarity'],
-                                                     {'frame_index': frame_index}):
+                                                     {'frame_index': frame_index},
+                                                     runner_up=match.get('runner_up')):
                     person['player_id'] = match['player_id']
                     person['face_sim'] = match['similarity']
                     events.append({'kind': 'bind', 'player_id': match['player_id'],

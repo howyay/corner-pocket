@@ -10,7 +10,9 @@ through :meth:`IdentityIndex.update`.
 Calibration is per embedding space; the two bars must not be confused:
 - FACE (buffalo_l 512-d, measured on this footage): same-person 1s-apart
   cosine median 0.958 (p05 0.644) vs cross-person same-frame 0.077
-  (p05 -0.04) -> the 0.35/0.12 defaults below are the FACE bar.
+  (p05 -0.04) -> threshold 0.35 / margin 0.12. The bar bind_face() applies is
+  the composed one, DEFAULT_BIND_BAR = 0.47 (threshold + margin); 0.35 alone
+  never binds.
 - BODY (vendored OSNet x0.25 128-d, measured by tests/test_body_calibration.py
   on frames 8000-12000 of data/vod_30min_260815.mp4 with IoU>=0.6 short-gap
   pseudo-ground-truth): same-person <=1s cosine p05 0.755 / median 0.830 vs
@@ -30,9 +32,12 @@ Identity policy (small club, clusters never expire):
   and best - second_best >= body margin it joins that cluster (cross-exit
   re-association), otherwise it gets a new one;
 - explicit_assign() is the authoritative override (player_id, reason);
-- bind_face() sets a player binding only when similarity >= match_threshold +
-  margin (FACE bar) and the cluster is unbound — first confident face match
-  wins, never auto-rebound.
+- bind_face() sets a player binding only when the effective FACE bar is met —
+  similarity >= bind_bar (0.47 with the defaults) and, when the runner-up
+  similarity is supplied, that runner-up trailing by >= margin — and the
+  cluster is unbound. First confident face match wins, never auto-rebound.
+  best_match() and bind_face() call the same src.face_id.accept_match() rule,
+  so the binding path is never more permissive than the matcher.
 
 Persistence contract: register()/update() change memory only — they run while
 frames are observed, which includes read requests (GET /api/identity/frame,
@@ -50,6 +55,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+try:  # package import (src.person_identity); tests may load this as a flat module
+    from src.face_id import DEFAULT_BIND_BAR, DEFAULT_MARGIN, DEFAULT_THRESHOLD, accept_match
+except ImportError:  # pragma: no cover - tests/test_person_identity.py adds src/ to sys.path
+    from face_id import DEFAULT_BIND_BAR, DEFAULT_MARGIN, DEFAULT_THRESHOLD, accept_match
 
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "out" / "identity" / "clusters.json"
 BANK_SIZE = 32          # internal body-embedding bank bound per cluster
@@ -109,15 +119,22 @@ class IdentityIndex:
     def __init__(
         self,
         path: str | os.PathLike = DEFAULT_PATH,
-        match_threshold: float = 0.35,
-        margin: float = 0.12,
+        match_threshold: float = DEFAULT_THRESHOLD,
+        margin: float = DEFAULT_MARGIN,
         body_match_threshold: float = BODY_MATCH_THRESHOLD,
         body_margin: float = BODY_MARGIN,
+        bind_bar: float | None = None,
     ):
         self.path = Path(path)
-        # FACE bar (face_embedding binding via bind_face)
+        # FACE bar (face_embedding binding via bind_face). The number bind_face
+        # actually applies is bind_bar; None keeps the composed default
+        # (match_threshold + margin = 0.47), so tuning the matcher threshold
+        # moves the binding bar with it. Pass bind_bar explicitly to pin the
+        # bar on its own (src.face_id.CANDIDATE_BIND_BAR is the measured
+        # candidate; see docs/face-identification-assessment.md).
         self.match_threshold = float(match_threshold)
         self.margin = float(margin)
+        self.bind_bar = None if bind_bar is None else float(bind_bar)
         # BODY bar (OSNet cross-exit cluster merging); inf by default -> body
         # matching disabled, one cluster per tracker track (see module docstring)
         self.body_match_threshold = float(body_match_threshold)
@@ -127,6 +144,17 @@ class IdentityIndex:
         self._track_to_cluster: dict[int, int] = {}
         self._dim: int | None = None
         self._load()
+
+    @property
+    def effective_bind_bar(self) -> float:
+        """The similarity bind_face() requires: bind_bar, else threshold + margin.
+
+        Defaults to DEFAULT_BIND_BAR (0.47). This is the number to quote when
+        tuning the binding behaviour; 0.35 never binds on its own.
+        """
+        if self.bind_bar is not None:
+            return self.bind_bar
+        return round(self.match_threshold + self.margin, 4)
 
     # -- registration ------------------------------------------------------
 
@@ -196,10 +224,22 @@ class IdentityIndex:
         cluster.evidence = {"source": "explicit_assign", "reason": reason, "player_id": player_id}
         self.save()
 
-    def bind_face(self, cluster_id: int, player_id: str, similarity: float, evidence: Any = None) -> bool:
+    def bind_face(self, cluster_id: int, player_id: str, similarity: float, evidence: Any = None,
+                  runner_up: float | None = None) -> bool:
         """Bind player via face match; first confident match only.
 
-        Requires similarity >= match_threshold + margin and an unbound cluster.
+        The accept decision is src.face_id.accept_match(), the same rule
+        best_match() applies, with bind=True: similarity must reach
+        effective_bind_bar (0.47 = match_threshold + margin by default, or an
+        explicit bind_bar), and when `runner_up` — the best *other* enrollee's
+        cosine, as best_match() reports in its 'runner_up' field — is supplied,
+        that runner-up must trail by >= margin. Before this rule was shared, the
+        binding path checked only the similarity, so a probe whose runner-up was
+        inside the margin could bind (measured consequence: 2 of 35 impostor
+        faces at 0.60/0.55 off one enrolment photo, docs/face-identification-
+        assessment.md). runner_up=None means no competing enrolment (the
+        single-player gallery case).
+
         Returns True on new binding, False when rejected (no rebinding ever).
         Persists here and not in register(): an automatic match may happen while
         serving a read, but the binding is a durable decision, so it is written
@@ -208,12 +248,15 @@ class IdentityIndex:
         cluster = self._require(cluster_id)
         if cluster.player_id is not None:
             return False
-        if float(similarity) < self.match_threshold + self.margin:
+        if not accept_match(similarity, runner_up, threshold=self.match_threshold,
+                            margin=self.margin, bind=True, bind_bar=self.bind_bar):
             return False
         cluster.player_id = player_id
         cluster.evidence = {
             "source": "bind_face",
             "similarity": float(similarity),
+            "runner_up": None if runner_up is None else float(runner_up),
+            "bind_bar": self.effective_bind_bar,
             "evidence": evidence,
             "player_id": player_id,
         }

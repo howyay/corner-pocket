@@ -16,7 +16,8 @@ Three questions, three numbers:
    table end);
 2. separation (``analyse``): cosine distributions of within-tracklet pairs
    (same person, <=4.5s apart) vs same-frame cross-tracklet pairs (provably
-   different people), against DEFAULT_THRESHOLD=0.35 / DEFAULT_MARGIN=0.12;
+   different people), against the effective binding bar 0.47 = threshold 0.35 +
+   margin 0.12 (see src/face_id.py: accept_match / DEFAULT_BIND_BAR);
 3. end to end (``demo``): enroll one face photo per player through
    PersonPipeline.enroll_face — the exact function ``POST /api/identity/enroll``
    calls — into an isolated scratch root, then replay held-out frames through
@@ -51,6 +52,7 @@ from src.face_id import (
     DEFAULT_THRESHOLD,
     MIN_DET_SCORE,
     MIN_EYE_PX,
+    accept_match,
     best_match,
     quality,
 )
@@ -484,7 +486,10 @@ def evaluate_binding(probes, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAUL
     probes: [{'role': 'left'|'right', 'embedding': ...}]
     gallery: {player_id: [entry, ...]} as load_faces() returns it
     A probe is 'correct' when best_match names the gallery player enrolled for
-    its role; 'accepted' adds the stricter bind_face bar (threshold + margin).
+    its role. 'accepted_by_bind_face' runs the same accept_match(..., bind=True)
+    rule IdentityIndex.bind_face applies — similarity >= threshold + margin AND
+    the runner-up trailing by >= margin — so a probe best_match rejected as
+    ambiguous is not counted as biddable either.
     """
     rows = []
     for probe in probes:
@@ -494,7 +499,7 @@ def evaluate_binding(probes, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAUL
                       for pid, value in gallery.items()} if gallery else {}
         ranked = sorted(per_player.items(), key=lambda kv: kv[1], reverse=True)
         best_pid, best_sim = ranked[0] if ranked else (None, 0.0)
-        runner_up = ranked[1][1] if len(ranked) > 1 else float("inf")
+        runner_up_value = ranked[1][1] if len(ranked) > 1 else None
         rows.append({
             "role": probe.get("role"),
             "expected": probe.get("expected"),
@@ -503,14 +508,15 @@ def evaluate_binding(probes, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAUL
             "frame_index": probe.get("frame_index"),
             "matched": None if match is None else match["player_id"],
             "similarity": round(float(best_sim), 4),
-            "runner_up": None if runner_up == float("inf") else round(float(runner_up), 4),
-            "margin": None if runner_up == float("inf") else round(float(best_sim - runner_up), 4),
+            "runner_up": None if runner_up_value is None else round(float(runner_up_value), 4),
+            "margin": None if runner_up_value is None else round(float(best_sim - runner_up_value), 4),
             "accepted_by_best_match": match is not None,
-            "accepted_by_bind_face": bool(best_sim >= threshold + margin),
+            "accepted_by_bind_face": accept_match(best_sim, runner_up_value, threshold=threshold,
+                                                  margin=margin, bind=True),
             "rejected_below_threshold": bool(best_sim < threshold),
             "rejected_below_bind_face_bar": bool(best_sim < threshold + margin),
-            "rejected_ambiguous": bool(best_sim >= threshold and
-                                       runner_up != float("inf") and best_sim - runner_up < margin),
+            "rejected_ambiguous": bool(best_sim >= threshold and runner_up_value is not None
+                                       and best_sim - runner_up_value < margin),
         })
     expected = [row for row in rows if row["expected"]]
     correct = [row for row in expected if row["matched"] == row["expected"]]

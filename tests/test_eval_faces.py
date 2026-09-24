@@ -368,7 +368,30 @@ class BindingEvaluationTest(unittest.TestCase):
         row = result["rows"][0]
         self.assertIsNone(row["matched"])
         self.assertTrue(row["rejected_ambiguous"])
-        self.assertTrue(row["accepted_by_bind_face"], "the raw similarity clears the bind_face bar")
+        self.assertFalse(row["accepted_by_bind_face"],
+                         "the measured bind gate applies the same margin as best_match")
+
+    def test_measured_bind_gate_is_the_shared_rule(self):
+        """evaluate_binding's bind column must not be more permissive than
+        IdentityIndex.bind_face: bar = threshold + margin AND the runner-up margin."""
+        gallery, left, _right = self._gallery()
+        del gallery["player-right"]  # single enrolment: no runner-up at all
+        row = evaluate_binding([{"role": "left", "expected": "player-left",
+                                 "embedding": at(left, 0.40, 78)}], gallery)["rows"][0]
+        self.assertIsNone(row["runner_up"])
+        self.assertTrue(row["accepted_by_best_match"], "0.40 clears the 0.35 threshold")
+        self.assertFalse(row["accepted_by_bind_face"], "0.40 does not clear the 0.47 bar")
+        row = evaluate_binding([{"role": "left", "expected": "player-left",
+                                 "embedding": left}], gallery)["rows"][0]
+        self.assertTrue(row["accepted_by_bind_face"])
+        # two enrolments, same similarity, runner-up inside the margin -> no bind
+        gallery, left, _right = self._gallery()
+        gallery["player-right"] = [{"embedding": at(left, 0.92, 79).tolist()}]
+        row = evaluate_binding([{"role": "left", "expected": "player-left", "embedding": left}], gallery)["rows"][0]
+        self.assertIsNotNone(row["runner_up"])
+        self.assertLess(row["margin"], 0.12)
+        self.assertIsNone(row["matched"])
+        self.assertFalse(row["accepted_by_bind_face"])
 
     def test_the_bind_face_bar_is_higher_than_the_match_threshold(self):
         """The 0.35 threshold and the 0.47 bind_face bar are different gates."""

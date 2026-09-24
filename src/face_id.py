@@ -23,6 +23,19 @@ Threshold rationale, measured on real VOD 1280x720 frames:
      8px inter-eye distance is ~4px in the detector input, where SCRFD kps
      stop being reliable.
 
+WHERE THE BAR IS APPLIED (read this before tuning a number):
+  - matching (best_match, i.e. "is this face a known player?"): similarity >=
+    DEFAULT_THRESHOLD (0.35) AND runner-up >= DEFAULT_MARGIN behind.
+  - binding (IdentityIndex.bind_face, i.e. "this player_id is now attached to
+    this cluster"): similarity >= DEFAULT_BIND_BAR, which is threshold + margin
+    = 0.47, AND the same runner-up margin. **0.35 never binds.** Both paths call
+    the one accept_match() rule below, so they cannot drift apart.
+  - identity-index construction may pin the binding bar explicitly
+    (IdentityIndex(bind_bar=...)); None keeps the composed default. See
+    CANDIDATE_BIND_BAR for the measured, NOT-yet-applied alternative and
+    docs/face-identification-assessment.md ("Bar configuration") for the
+    evidence and the data still needed.
+
 Pure stdlib + insightface + numpy (no torch).
 """
 from __future__ import annotations
@@ -40,11 +53,43 @@ DEFAULT_FACE_STORE = ROOT / "out" / "corner-pocket" / "face_embeddings.json"
 
 MIN_EYE_PX = 8.0
 MIN_DET_SCORE = 0.4
-DEFAULT_THRESHOLD = 0.35
-DEFAULT_MARGIN = 0.12
+DEFAULT_THRESHOLD = 0.35          # gallery match bar (best_match)
+DEFAULT_MARGIN = 0.12             # runner-up separation, enforced by both paths
+DEFAULT_BIND_BAR = round(DEFAULT_THRESHOLD + DEFAULT_MARGIN, 4)  # 0.47: the bar bind_face applies
+# Measured candidate for a later recalibration; NOT applied by default. One
+# 30-minute window (out/face-eval/demo.json) put the worst single-photo false
+# accept at 0.603 and the worst correct accept at 0.697, so a bar inside that
+# gap removes those false accepts. One window is not a calibration — see
+# docs/face-identification-assessment.md ("Bar configuration").
+CANDIDATE_BIND_BAR = 0.65
 EMBEDDING_DIM = 512
 
 _engine = None
+
+
+def accept_match(similarity, runner_up=None, threshold=DEFAULT_THRESHOLD,
+                 margin=DEFAULT_MARGIN, bind=False, bind_bar=None):
+    """The single accept rule shared by best_match() and IdentityIndex.bind_face().
+
+    similarity must reach the bar — `threshold` for matching, `bind_bar` (or
+    threshold + margin) for binding — and, whenever the best competing player's
+    similarity is known (`runner_up`), that runner-up must trail by >= `margin`.
+    runner_up=None means there is no competing enrolment, the single-player
+    gallery case where best_match also reports an infinite margin.
+    """
+    if similarity is None:
+        return False
+    if bind:
+        # rounded the same way as IdentityIndex.effective_bind_bar, so the bar
+        # the code compares against is the bar the config/docs report (0.47)
+        bar = float(bind_bar) if bind_bar is not None else round(float(threshold) + float(margin), 4)
+    else:
+        bar = float(threshold)
+    if float(similarity) < bar:
+        return False
+    if runner_up is None:
+        return True
+    return float(similarity) - float(runner_up) >= float(margin)
 
 
 class FaceEngine:
@@ -178,11 +223,13 @@ def _gallery_items(gallery):
 def best_match(emb, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAULT_MARGIN):
     """Best gallery match for embedding `emb`, or None.
 
-    Returns {'player_id', 'similarity', 'margin'} where margin is the gap to
-    the best *other* player (inf with a single-player gallery). Rejects when
-    similarity < threshold (no real match) or margin < margin (ambiguous
-    between players). Accepts gallery as {pid: [entries]} or flat
-    [{player_id, embedding}] lists.
+    Returns {'player_id', 'similarity', 'margin', 'runner_up'} where margin is
+    the gap to the best *other* player (inf with a single-player gallery, in
+    which case runner_up is None). Rejects when similarity < threshold (no real
+    match) or margin < margin (ambiguous between players). The decision is made
+    by accept_match(), the same rule IdentityIndex.bind_face() applies, so the
+    two paths can never disagree about what "a match" means. Accepts gallery as
+    {pid: [entries]} or flat [{player_id, embedding}] lists.
     """
     if emb is None or not gallery:
         return None
@@ -196,10 +243,11 @@ def best_match(emb, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAULT_MARGIN)
     pid = max(per_player, key=per_player.get)
     sim = per_player[pid]
     others = [s for p, s in per_player.items() if p != pid]
-    gap = sim - max(others) if others else float("inf")
-    if sim < threshold or gap < margin:
+    runner_up = max(others) if others else None
+    if not accept_match(sim, runner_up, threshold=threshold, margin=margin):
         return None
-    return {"player_id": pid, "similarity": sim, "margin": gap}
+    gap = sim - runner_up if runner_up is not None else float("inf")
+    return {"player_id": pid, "similarity": sim, "margin": gap, "runner_up": runner_up}
 
 
 @dataclass
