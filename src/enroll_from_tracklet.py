@@ -39,6 +39,15 @@ tests/test_enroll_from_tracklet.py):
   no_face_in_track, face_too_small, face_low_detection, single_face_only,
   inconsistent_faces.
 
+Operator seam (what the UI calls): `plan_for_selection(root, dataset, frame_index,
+bbox)` locks the click onto one IoU track and plans the enrolment; `preview_payload()`
+returns a JSON-safe payload with up to 5 face crops as base64 data URLs (no file
+route needed) plus a `token`; `enrollment_token()` hashes the dataset, track id,
+kept frame indices and each crop's JPEG bytes; `confirm_enrollment(root, plan, token,
+player_name)` recomputes that token and refuses a mismatch with
+`EnrollmentTokenError('token_mismatch')`, so a stale browser tab cannot enrol a
+different person than the one it displayed.
+
 Writes: `write_enrollment()` copies the production state into the caller's scratch
 root and writes only there. The production roster and face store are never touched;
 the caller decides when the enrolment becomes real.
@@ -79,6 +88,7 @@ REFUSAL_REASONS = (
     "single_face_only",     # one usable face: no consistency evidence
     "inconsistent_faces",   # two or more usable faces that do not agree
     "mixed_track",          # the kept faces disagree with the rest of the track
+    "selection_not_matched",  # the click does not overlap any person box in that frame
 )
 
 PROTECTED = (str(DEFAULT_STATE), str(DEFAULT_FACE_STORE))
@@ -186,6 +196,7 @@ class Refusal:
     reason: str
     detail: dict = field(default_factory=dict)
     candidates: list = field(default_factory=list)
+    context: dict = field(default_factory=dict, repr=False)   # non-serialised (observations)
 
     def __post_init__(self):
         if self.reason not in REFUSAL_REASONS:
@@ -204,6 +215,7 @@ class Refusal:
             "single_face_only": "only one usable face: upload a second photo to prove consistency",
             "inconsistent_faces": "the usable faces do not agree: more than one person may be in this track",
             "mixed_track": "the best faces disagree with the rest of this track: the track may have switched people",
+            "selection_not_matched": "that click does not overlap a person in this frame: click the person again",
         }[self.reason]
 
     def to_dict(self) -> dict:
@@ -560,3 +572,318 @@ def _write_json(path, payload) -> None:
         json.dump(payload, stream, indent=2, allow_nan=False)
         stream.write("\n")
     os.replace(tmp, path)
+
+
+# --------------------------------------------------------------------------
+# the operator seam: click a person, see the crops, confirm with a name
+# --------------------------------------------------------------------------
+
+CROP_PAD = 0.6            # padding around the face box, as a fraction of its size
+CROP_SCALE = 4            # nearest-neighbour upscale for the preview
+CROP_QUALITY = 85         # JPEG quality; ~15-25 KB per crop at 4x
+CROP_MAX_BYTES = 40_000   # the per-crop budget the UI was promised
+PREVIEW_CROPS = 5
+SELECTION_IOU_MIN = 0.2   # a click must overlap the person box at least this much
+
+
+class EnrollmentTokenError(Exception):
+    """Typed confirmation failure.
+
+    Reasons: `token_mismatch` (a stale tab is confirming a different person or a
+    different set of crops) and `player_name_required` (nothing to enrol under).
+    """
+
+    def __init__(self, reason: str, detail: dict | None = None):
+        if reason not in ("token_mismatch", "player_name_required"):
+            raise ValueError(f"unknown confirmation error: {reason}")
+        super().__init__(reason)
+        self.reason = reason
+        self.detail = detail or {}
+
+    def to_dict(self) -> dict:
+        return {"ok": False, "reason": self.reason,
+                "message": {"token_mismatch": "these crops are not the ones you were shown; reload the frame",
+                            "player_name_required": "a name is required to enrol a regular"}[self.reason],
+                "detail": self.detail}
+
+
+@dataclass
+class Selection:
+    """What the operator's click locked onto: one IoU track plus its enrolment."""
+    dataset: str
+    frame_index: int
+    track_id: int
+    selection_iou: float
+    frames_seen: int
+    enrollment: Enrollment
+    context: dict = field(default_factory=dict, repr=False)   # observations, for rendering
+
+    @property
+    def ok(self) -> bool:
+        return True
+
+    def to_dict(self) -> dict:
+        return {"ok": True, "dataset": self.dataset, "frame_index": self.frame_index,
+                "track_id": self.track_id, "selection_iou": round(float(self.selection_iou), 4),
+                "frames_seen": self.frames_seen, "enrollment": self.enrollment.to_dict()}
+
+
+def plan_for_selection(root, dataset, frame_index, bbox, *, observations=None,
+                       window_s=180, stride=30, min_selection_iou=SELECTION_IOU_MIN,
+                       player_name=None, state=None, **kwargs) -> Selection | Refusal:
+    """Lock onto the person the operator clicked and plan their enrolment.
+
+    `root`/`dataset` name the recording; `frame_index` + `bbox` are what the UI has
+    on screen. The click is matched to the scan's IoU track by overlap with the
+    person box in that frame, and the result carries `selection_iou` (how well the
+    click matched) and `frames_seen` (how long that track lasts), so the UI can say
+    truthfully which person it locked onto. Nothing overlaps -> `selection_not_matched`.
+
+    `player_name=None` is allowed here: the name is not part of the token, and
+    `confirm_enrollment` re-plans with the operator's name at confirmation time.
+    """
+    from_frame = int(frame_index)
+    if observations is None:
+        observations = scan_frames(root, dataset, max(0, from_frame - window_s * 30),
+                                   from_frame + window_s * 30, stride,
+                                   **{key: value for key, value in kwargs.items()
+                                      if key in ("detector", "engine", "log")})
+    frame = next((row for row in observations if int(row["frame_index"]) == from_frame), None)
+    if frame is None:
+        return Refusal("selection_not_matched",
+                       {"detail": "the clicked frame is outside the scanned range",
+                        "frame_index": from_frame, "track_id": None})
+    scored = sorted(((iou(bbox, person["bbox"]), int(person["track_id"]))
+                     for person in frame.get("persons", [])), reverse=True)
+    if not scored or scored[0][0] < min_selection_iou:
+        return Refusal("selection_not_matched",
+                       {"frame_index": from_frame, "bbox": [float(v) for v in bbox],
+                        "min_selection_iou": min_selection_iou,
+                        "best_overlap": round(float(scored[0][0]), 4) if scored else 0.0},
+                       context={"observations": observations})
+    selection_iou, track_id = scored[0]
+    scan = scan_track(observations, track_id)
+    planned = plan_for_track(observations, track_id,
+                             player_name=player_name or f"track-{track_id}",
+                             state=state, **{key: value for key, value in kwargs.items()
+                                             if key not in ("detector", "engine", "log")})
+    if not planned.ok:
+        planned.detail = {**planned.detail, "frame_index": from_frame,
+                          "selection_iou": round(float(selection_iou), 4),
+                          "frames_seen": scan["frames_with_track"],
+                          "bbox": [float(v) for v in bbox]}
+        planned.context = {"observations": observations}
+        return planned
+    return Selection(dataset=dataset, frame_index=from_frame, track_id=track_id,
+                     selection_iou=float(selection_iou),
+                     frames_seen=scan["frames_with_track"], enrollment=planned,
+                     context={"observations": observations})
+
+
+def crop_jpeg(root, dataset, frame_index, bbox, *, pad=CROP_PAD, scale=CROP_SCALE,
+              quality=CROP_QUALITY) -> bytes:
+    """Face crop around `bbox`, padded, upscaled nearest-neighbour, JPEG-encoded.
+
+    Deterministic: the same frame, box and parameters give byte-identical output,
+    which is what makes the confirmation token meaningful.
+    """
+    import cv2
+    video = Path(root) / DATASETS[dataset]
+    cap = cv2.VideoCapture(str(video))
+    if not cap.isOpened():
+        raise RuntimeError(f"cannot open {video}")
+    try:
+        if not cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_index)):
+            raise RuntimeError(f"frame seek failed: {frame_index}")
+        ok, frame = cap.read()
+        if not ok:
+            raise RuntimeError(f"frame decode failed: {frame_index}")
+    finally:
+        cap.release()
+    height, width = frame.shape[:2]
+    box_w, box_h = float(bbox[2]) - float(bbox[0]), float(bbox[3]) - float(bbox[1])
+    x0 = int(max(0, float(bbox[0]) - box_w * pad))
+    y0 = int(max(0, float(bbox[1]) - box_h * pad))
+    x1 = int(min(width, float(bbox[2]) + box_w * pad))
+    y1 = int(min(height, float(bbox[3]) + box_h * pad))
+    crop = frame[y0:max(y0 + 1, y1), x0:max(x0 + 1, x1)]
+    if scale > 1:
+        crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+    ok, encoded = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+    if not ok:
+        raise RuntimeError("JPEG encode failed")
+    return encoded.tobytes()
+
+
+def crop_data_url(jpeg_bytes) -> str:
+    import base64
+    return "data:image/jpeg;base64," + base64.b64encode(jpeg_bytes).decode("ascii")
+
+
+def _crop_bytes(crop) -> bytes:
+    """Accept {'jpeg': bytes} or {'jpeg_data_url': '...'} as the browser sends it."""
+    import base64
+    if isinstance(crop, dict):
+        if isinstance(crop.get("jpeg"), (bytes, bytearray)):
+            return bytes(crop["jpeg"])
+        data_url = crop.get("jpeg_data_url") or crop.get("data_url")
+        if isinstance(data_url, str) and "," in data_url:
+            return base64.b64decode(data_url.split(",", 1)[1])
+    raise ValueError("a crop must carry its JPEG bytes (jpeg) or a data URL (jpeg_data_url)")
+
+
+def enrollment_token(dataset, track_id, crops) -> str:
+    """Hash over exactly the crops shown to the operator.
+
+    Covers the dataset, the track id, and each crop's frame index plus the SHA-256
+    of its JPEG bytes, so re-encoding, re-sampling or swapping a crop changes the
+    token. `confirm_enrollment` recomputes it and refuses a mismatch.
+    """
+    import hashlib
+    rows = []
+    for index, crop in enumerate(crops):
+        frame_index = crop.get("frame_index") if isinstance(crop, dict) else None
+        payload = _crop_bytes(crop)
+        rows.append({"index": index,
+                     "frame_index": int(frame_index) if frame_index is not None else None,
+                     "sha256": hashlib.sha256(payload).hexdigest()})
+    canonical = json.dumps({"dataset": str(dataset), "track_id": int(track_id), "crops": rows},
+                           sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _crop_record(index, frame_index, t, det_score, eye_px, jpeg) -> dict:
+    """Internal crop record: carries the bytes the token hashes plus the data URL."""
+    return {"index": int(index), "frame_index": int(frame_index),
+            "t": None if t is None else float(t),
+            "det_score": None if det_score is None else float(det_score),
+            "eye_px": None if eye_px is None else float(eye_px),
+            "jpeg": jpeg, "jpeg_data_url": crop_data_url(jpeg)}
+
+
+def _public_crop(crop) -> dict:
+    """What the browser gets: no raw bytes, only the data URL (JSON-safe)."""
+    return {key: value for key, value in crop.items() if key != "jpeg"}
+
+
+def _json_safe(value):
+    """Recursively turn numpy scalars / tuples / Paths into plain JSON types."""
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (np.floating, np.integer)):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return _json_safe(value.tolist())
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
+def _seen_face_crops(root, dataset, observations, track_id, limit=PREVIEW_CROPS) -> list:
+    """Faces associated with a track, gated or not, best-ranked: what we saw."""
+    seen = []
+    for observation in observations:
+        persons = observation.get("persons", [])
+        mine = [person for person in persons if int(person["track_id"]) == int(track_id)]
+        if not mine:
+            continue
+        person = mine[0]
+        for face in observation.get("faces", []):
+            if center_inside(face["bbox"], person["bbox"]):
+                seen.append((rank_score(face.get("det_score") or 0.0, face.get("eye_px")),
+                             observation, face))
+    seen.sort(key=lambda item: item[0], reverse=True)
+    crops = []
+    for index, (_rank, observation, face) in enumerate(seen[:limit]):
+        crops.append(_crop_record(index, observation["frame_index"], observation.get("t"),
+                                  face.get("det_score"), face.get("eye_px"),
+                                  crop_jpeg(root, dataset, observation["frame_index"], face["bbox"])))
+    return crops
+
+
+def preview_payload(plan_or_refusal, *, root=REPO, dataset=None, player_name=None) -> dict:
+    """JSON-safe payload for the browser: crops as data URLs, never a file path.
+
+    An `ok` payload carries the token `confirm_enrollment` needs; a refusal payload
+    still carries the faces that were seen, because "here is what I saw and why it
+    is not enough" is what the operator needs to re-click.
+    """
+    root = Path(root)
+    if isinstance(plan_or_refusal, Selection):
+        selection = plan_or_refusal
+        enrollment = selection.enrollment
+        crops = [_crop_record(index, candidate.frame_index, candidate.t,
+                              candidate.det_score, candidate.eye_px,
+                              crop_jpeg(root, selection.dataset, candidate.frame_index, candidate.bbox))
+                 for index, candidate in enumerate(enrollment.crops)]
+        evidence = enrollment.evidence
+        return _json_safe({
+            "ok": True, "dataset": selection.dataset, "frame_index": selection.frame_index,
+            "track_id": selection.track_id,
+            "selection_iou": round(float(selection.selection_iou), 4),
+            "frames_seen": selection.frames_seen,
+            "crops": [_public_crop(crop) for crop in crops],
+            "purity": {"probes": evidence.get("purity_probes"), "agreement": evidence.get("purity")},
+            "quality": {"kept": evidence.get("kept"), "usable": evidence.get("usable_faces")},
+            "player_id": enrollment.player_id,
+            "player_name": player_name or enrollment.player_name,
+            "frames": evidence.get("kept_frame_indices"),
+            "token": enrollment_token(selection.dataset, selection.track_id, crops)})
+    refusal = plan_or_refusal
+    detail = refusal.detail or {}
+    dataset = dataset or detail.get("dataset")
+    crops = []
+    observations = (refusal.context or {}).get("observations")
+    if observations and dataset and detail.get("track_id") is not None:
+        crops = _seen_face_crops(root, dataset, observations, detail["track_id"])
+    return _json_safe({
+        "ok": False, "reason": refusal.reason, "message": refusal.message(),
+        "track_id": detail.get("track_id"), "dataset": dataset,
+        "frame_index": detail.get("frame_index"),
+        "crops": [_public_crop(crop) for crop in crops],
+        "detail": {key: value for key, value in detail.items() if key != "track_id"}})
+
+
+def confirm_enrollment(root, plan, token, player_name, *, scratch_root=None, dataset=None,
+                       state=None, created_at=None) -> dict:
+    """Confirm the preview: verify the token, then write through `write_enrollment`.
+
+    The token is recomputed from the plan's crops (re-rendered from the recording,
+    so byte-identical) and a mismatch raises
+    `EnrollmentTokenError('token_mismatch')` before anything is written — a stale
+    tab cannot enrol a different person than the one it displayed. Writes go to
+    `scratch_root` only; `root` is read for the roster, never written.
+    """
+    if not isinstance(plan, Selection):
+        raise ValueError("confirm_enrollment needs a Selection from plan_for_selection")
+    if not isinstance(player_name, str) or not player_name.strip():
+        raise EnrollmentTokenError("player_name_required", {"track_id": plan.track_id})
+    dataset = dataset or plan.dataset
+    crops = [_crop_record(index, candidate.frame_index, candidate.t,
+                          candidate.det_score, candidate.eye_px,
+                          crop_jpeg(root, dataset, candidate.frame_index, candidate.bbox))
+             for index, candidate in enumerate(plan.enrollment.crops)]
+    expected = enrollment_token(dataset, plan.track_id, crops)
+    if not isinstance(token, str) or token != expected:
+        raise EnrollmentTokenError("token_mismatch",
+                                   {"track_id": plan.track_id, "dataset": dataset,
+                                    "expected": expected,
+                                    "received": token if isinstance(token, str) else None,
+                                    "crops": len(crops),
+                                    "frame_indices": [crop["frame_index"] for crop in crops]})
+    state = state if state is not None else load_state(root)
+    enrollment = plan_enrollment(plan.enrollment.crops, track_id=plan.track_id,
+                                 player_name=player_name, state=state, created_at=created_at)
+    if not enrollment.ok:                                   # pragma: no cover - crops were vetted already
+        return {"ok": False, "reason": enrollment.reason, "message": enrollment.message(),
+                "detail": enrollment.detail}
+    scratch_root = (Path(scratch_root) if scratch_root is not None
+                    else Path(root) / "out" / "enroll-eval" / "scratch")
+    written = write_enrollment(scratch_root, enrollment, source_root=root)
+    roster = enrollment.roster_json
+    return {"ok": True, "player_id": enrollment.player_id, "player_name": enrollment.player_name,
+            "revision": None if roster is None else roster.get("revision"),
+            "embeddings": len(enrollment.crops), "event": "player_enroll_from_tracklet",
+            "track_id": plan.track_id, "dataset": dataset, "written": written, "token": expected}

@@ -11,6 +11,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.enroll_from_tracklet import (  # noqa: E402
     CONSISTENCY_COSINE,
+    CROP_MAX_BYTES,
+    EnrollmentTokenError,
     PURITY_DEFAULT,
     PURITY_PROBES_MIN,
     DEFAULT_FACE_STORE,
@@ -28,8 +30,13 @@ from src.enroll_from_tracklet import (  # noqa: E402
     md5,
     persistent_tracks,
     plan_enrollment,
+    plan_for_selection,
     plan_for_track,
+    preview_payload,
     rank_score,
+    enrollment_token,
+    confirm_enrollment,
+    Selection,
     scan_frames,
     scan_track,
     write_enrollment,
@@ -484,3 +491,245 @@ class ScanFramesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless((Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4").is_file(),
+                     "the vod30 recording is not present")
+class SelectionSeamTest(unittest.TestCase):
+    """plan_for_selection -> preview_payload -> confirm_enrollment, with a fake scan.
+
+    The crops are rendered from the real recording (a few frame seeks), through a
+    symlinked data/ so the temp root stays a workspace root.
+    """
+
+    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
+        (self.root / "out" / "corner-pocket").mkdir(parents=True)
+        (self.root / "out" / "corner-pocket" / "state.json").write_text(
+            json.dumps(state_with()), encoding="utf-8")
+        self.base = unit(71)
+        self.other_base = unit(171)
+        self.observations = []
+        for index in range(6):
+            self.observations.append(observation(
+                index * 30,
+                [person(1, [100, 100, 300, 600]), person(2, OTHER_PERSON)],
+                [face([150, 150, 190, 200], embedding=at(self.base, 0.9 - 0.01 * index, 200 + index)),
+                 face([750, 150, 790, 200],
+                      embedding=at(self.other_base, 0.9 - 0.01 * index, 300 + index))]))
+
+    def _plan(self, **kwargs):
+        return plan_for_selection(self.root, "vod30", 0, [100, 100, 300, 600],
+                                  observations=self.observations, **kwargs)
+
+    def test_clicks_lock_onto_the_best_overlapping_track(self):
+        selection = self._plan()
+        self.assertIsInstance(selection, Selection)
+        self.assertEqual(selection.track_id, 1)
+        self.assertAlmostEqual(selection.selection_iou, 1.0, places=4)
+        self.assertEqual(selection.frames_seen, 6)
+        self.assertEqual(selection.frame_index, 0)
+
+    def test_a_click_on_the_other_person_locks_onto_the_other_track(self):
+        selection = plan_for_selection(self.root, "vod30", 30, [700, 100, 900, 600],
+                                       observations=self.observations)
+        self.assertEqual(selection.track_id, 2)
+        self.assertNotEqual(selection.enrollment.evidence["track_id"], 1)
+
+    def test_selection_not_matched_when_nothing_overlaps(self):
+        refusal = plan_for_selection(self.root, "vod30", 0, [900, 500, 1000, 600],
+                                     observations=self.observations)
+        self.assertIsInstance(refusal, Refusal)
+        self.assertEqual(refusal.reason, "selection_not_matched")
+        self.assertIn("best_overlap", refusal.detail)
+
+    def test_selection_not_matched_when_the_frame_is_outside_the_scan(self):
+        refusal = plan_for_selection(self.root, "vod30", 99999, [100, 100, 300, 600],
+                                     observations=self.observations)
+        self.assertEqual(refusal.reason, "selection_not_matched")
+        self.assertIn("outside the scanned range", refusal.detail["detail"])
+
+    def test_a_refused_track_keeps_the_selection_evidence(self):
+        observations = [observation(index * 30, [person(1)], [])
+                        for index in range(3)]
+        refusal = plan_for_selection(self.root, "vod30", 0, [100, 100, 300, 600],
+                                     observations=observations)
+        self.assertEqual(refusal.reason, "no_face_in_track")
+        self.assertEqual(refusal.detail["track_id"], 1)
+        self.assertEqual(refusal.detail["frames_seen"], 3)
+        self.assertIn("selection_iou", refusal.detail)
+
+
+class PreviewPayloadTest(SelectionSeamTest):
+    """Preview is JSON-safe and never writes."""
+
+    def test_a_selection_preview_payload_is_json_round_trippable(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        again = json.loads(json.dumps(payload))
+        self.assertEqual(again, payload)
+
+    def test_preview_shape_matches_the_contract(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        for key in ("ok", "dataset", "frame_index", "track_id", "selection_iou", "frames_seen",
+                    "crops", "purity", "quality", "token"):
+            self.assertIn(key, payload)
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["track_id"], 1)
+        self.assertEqual(len(payload["token"]), 64)
+        self.assertGreaterEqual(len(payload["crops"]), 1)
+
+    def test_crops_carry_a_data_url_and_are_small(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        for crop in payload["crops"]:
+            self.assertTrue(crop["jpeg_data_url"].startswith("data:image/jpeg;base64,"))
+            self.assertEqual(sorted(crop), ["det_score", "eye_px", "frame_index", "index",
+                                            "jpeg_data_url", "t"])
+            self.assertLess(len(crop["jpeg_data_url"]), CROP_MAX_BYTES,
+                            "the data URL stays inside the per-crop budget")
+
+    def test_payload_has_no_non_json_types(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        stack = [payload]
+        while stack:
+            value = stack.pop()
+            if isinstance(value, dict):
+                self.assertTrue(all(isinstance(key, str) for key in value))
+                stack.extend(value.values())
+            elif isinstance(value, list):
+                stack.extend(value)
+            else:
+                self.assertNotIsInstance(value, (np.generic, np.ndarray, Path, bytes))
+
+    def test_preview_writes_nothing(self):
+        before = sorted(str(path.relative_to(self.root)) for path in self.root.rglob("*"))
+        preview_payload(self._plan(), root=self.root)
+        self.assertEqual(sorted(str(path.relative_to(self.root)) for path in self.root.rglob("*")),
+                         before)
+
+    def test_a_refusal_preview_carries_the_faces_it_saw(self):
+        observations = [observation(index * 30, [person(1)],
+                                    [face([150, 150, 190, 200], eye=3.0)])
+                        for index in range(3)]
+        refusal = plan_for_selection(self.root, "vod30", 0, [100, 100, 300, 600],
+                                     observations=observations)
+        self.assertEqual(refusal.reason, "face_too_small")
+        payload = preview_payload(refusal, root=self.root, dataset="vod30")
+        self.assertEqual(payload["ok"], False)
+        self.assertEqual(payload["reason"], "face_too_small")
+        self.assertTrue(payload["message"])
+        self.assertEqual(len(payload["crops"]), 3, "the faces we saw are shown, gated or not")
+        self.assertTrue(payload["crops"][0]["jpeg_data_url"].startswith("data:image/jpeg;base64,"))
+        self.assertNotIn("token", payload)
+
+    def test_a_refusal_preview_without_observations_is_still_json(self):
+        payload = preview_payload(Refusal("no_face_in_track", {"track_id": 5}),
+                                  root=self.root, dataset="vod30")
+        self.assertEqual(payload["crops"], [])
+        self.assertEqual(json.loads(json.dumps(payload))["reason"], "no_face_in_track")
+
+
+class TokenTest(SelectionSeamTest):
+    def test_token_is_stable_for_the_same_crops(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        again = enrollment_token("vod30", 1, payload["crops"])
+        self.assertEqual(again, payload["token"])
+
+    def test_token_accepts_bytes_or_data_urls(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        from_bytes = enrollment_token("vod30", 1, payload["crops"])
+        from_urls = enrollment_token("vod30", 1, [{"frame_index": crop["frame_index"],
+                                                   "jpeg_data_url": crop["jpeg_data_url"]}
+                                                  for crop in payload["crops"]])
+        self.assertEqual(from_bytes, from_urls)
+
+    def test_swapping_a_crop_changes_the_token(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        moved = [dict(crop) for crop in payload["crops"]]
+        moved[0]["frame_index"] += 1
+        self.assertNotEqual(enrollment_token("vod30", 1, moved), payload["token"])
+
+    def test_track_and_dataset_are_part_of_the_token(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        self.assertNotEqual(enrollment_token("vod30", 2, payload["crops"]), payload["token"])
+        self.assertNotEqual(enrollment_token("highlight", 1, payload["crops"]), payload["token"])
+
+    def test_a_crop_without_bytes_is_rejected(self):
+        with self.assertRaises(ValueError):
+            enrollment_token("vod30", 1, [{"frame_index": 0}])
+
+
+class ConfirmTest(SelectionSeamTest):
+    def _scratch(self):
+        return self.root / "scratch"
+
+    def test_confirm_writes_the_roster_and_the_face_store(self):
+        selection = self._plan()
+        payload = preview_payload(selection, root=self.root)
+        result = confirm_enrollment(self.root, selection, payload["token"], "Alice",
+                                    scratch_root=self._scratch())
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["embeddings"], 5)
+        self.assertEqual(result["event"], "player_enroll_from_tracklet")
+        self.assertEqual(result["revision"], 5)
+        state = json.loads((self._scratch() / DEFAULT_STATE).read_text())
+        self.assertEqual([player["name"] for player in state["players"]], ["Alice"])
+        store = json.loads((self._scratch() / DEFAULT_FACE_STORE).read_text())
+        self.assertEqual(len(list(store.values())[0]), 5)
+        self.assertEqual(md5(self.root / DEFAULT_STATE), self.source_state_md5())
+
+    def source_state_md5(self):
+        return md5(self.root / "out" / "corner-pocket" / "state.json")
+
+    def test_a_stale_token_is_refused_and_nothing_is_written(self):
+        selection = self._plan()
+        payload = preview_payload(selection, root=self.root)
+        other = plan_for_selection(self.root, "vod30", 30, [700, 100, 900, 600],
+                                   observations=self.observations)
+        stale = preview_payload(other, root=self.root)["token"]
+        with self.assertRaises(EnrollmentTokenError) as ctx:
+            confirm_enrollment(self.root, selection, stale, "Alice", scratch_root=self._scratch())
+        self.assertEqual(ctx.exception.reason, "token_mismatch")
+        self.assertEqual(ctx.exception.to_dict()["ok"], False)
+        self.assertFalse(self._scratch().exists(), "a refused confirmation writes nothing")
+        self.assertEqual(md5(self.root / DEFAULT_STATE), self.source_state_md5())
+
+    def test_a_tampered_token_is_refused(self):
+        selection = self._plan()
+        token = preview_payload(selection, root=self.root)["token"]
+        for bad in (token[:-1] + ("0" if token[-1] != "0" else "1"), "", None, 12345):
+            with self.assertRaises(EnrollmentTokenError):
+                confirm_enrollment(self.root, selection, bad, "Alice", scratch_root=self._scratch())
+        self.assertFalse(self._scratch().exists())
+
+    def test_a_missing_name_is_refused(self):
+        selection = self._plan()
+        token = preview_payload(selection, root=self.root)["token"]
+        with self.assertRaises(EnrollmentTokenError) as ctx:
+            confirm_enrollment(self.root, selection, token, "   ", scratch_root=self._scratch())
+        self.assertEqual(ctx.exception.reason, "player_name_required")
+        self.assertFalse(self._scratch().exists())
+
+    def test_confirm_needs_a_selection(self):
+        with self.assertRaises(ValueError):
+            confirm_enrollment(self.root, Refusal("no_face_in_track"), "x", "Alice")
+
+    def test_the_roster_revision_advances_from_the_existing_state(self):
+        selection = self._plan()
+        token = preview_payload(selection, root=self.root)["token"]
+        first = confirm_enrollment(self.root, selection, token, "Alice", scratch_root=self._scratch())
+        second = plan_for_selection(self.root, "vod30", 0, [700, 100, 900, 600],
+                                    observations=self.observations)
+        token2 = preview_payload(second, root=self.root)["token"]
+        result = confirm_enrollment(self.root, second, token2, "Bob",
+                                    scratch_root=self._scratch(),
+                                    state=load_state(self._scratch()))
+        self.assertEqual(first["revision"], 5)
+        self.assertEqual(result["revision"], 6)
+        names = [player["name"] for player in
+                 json.loads((self._scratch() / DEFAULT_STATE).read_text())["players"]]
+        self.assertEqual(names, ["Alice", "Bob"])
