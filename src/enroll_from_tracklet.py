@@ -887,3 +887,191 @@ def confirm_enrollment(root, plan, token, player_name, *, scratch_root=None, dat
             "revision": None if roster is None else roster.get("revision"),
             "embeddings": len(enrollment.crops), "event": "player_enroll_from_tracklet",
             "track_id": plan.track_id, "dataset": dataset, "written": written, "token": expected}
+
+
+# --------------------------------------------------------------------------
+# identity groups + the sheets the operator confirms from
+# --------------------------------------------------------------------------
+
+def identity_groups(observations, track_ids=None, *, consistency=CONSISTENCY_COSINE) -> dict:
+    """Greedy clustering of every usable face: which tracks are the same person.
+
+    One cluster per person, seeded by the best face and grown at `consistency`
+    cosine (the same bar the enrolment uses). Each track is assigned to the group
+    holding most of its faces. This is what makes "bind this player's other faces
+    and not the other player's" measurable without human labels; it is
+    face-derived, so it measures internal consistency, not true identity.
+    """
+    if track_ids is None:
+        track_ids = [row["track_id"] for row in persistent_tracks(observations)]
+    medoids, members = [], []
+    for track_id in track_ids:
+        for candidate in collect_face_candidates(observations, track_id):
+            for index, medoid in enumerate(medoids):
+                if cosine(candidate.embedding, medoid) >= consistency:
+                    members[index].append((track_id, candidate))
+                    break
+            else:
+                medoids.append(candidate.embedding)
+                members.append([(track_id, candidate)])
+    votes = {}
+    for index, rows in enumerate(members):
+        for track_id, _candidate in rows:
+            votes.setdefault(track_id, {})
+            votes[track_id][index] = votes[track_id].get(index, 0) + 1
+    return {"groups": len(medoids),
+            "faces_per_group": [len(rows) for rows in members],
+            "track_group": {track_id: max(counts, key=counts.get) for track_id, counts in votes.items()},
+            "members": members}
+
+
+def bind_counts(observations, enrollment, groups, *, bar=None) -> dict:
+    """'Binds its own faces, not the other player's' for one enrolment.
+
+    own: probes from the same identity group in other tracks. other: probes from
+    every other group (and tracks the grouping never saw a face for).
+    """
+    from src.face_id import DEFAULT_BIND_BAR
+    bar = DEFAULT_BIND_BAR if bar is None else float(bar)
+    gallery = [np.asarray(entry["embedding"], np.float32)
+               for entry in list(enrollment.store_json.values())[0]]
+    track_group = groups["track_group"]
+    my_group = track_group.get(enrollment.track_id)
+    own, foreign = [], []
+    for track_id in {row["track_id"] for row in persistent_tracks(observations)}:
+        if track_id == enrollment.track_id:
+            continue
+        for candidate in collect_face_candidates(observations, track_id):
+            similarity = max(cosine(candidate.embedding, entry) for entry in gallery)
+            (own if track_group.get(track_id) == my_group else foreign).append(similarity)
+    return {"own": {"n": len(own), "bound": sum(1 for value in own if value >= bar),
+                    "stats": stats(own), "bar": bar},
+            "other": {"n": len(foreign), "clearing": sum(1 for value in foreign if value >= bar),
+                      "stats": stats(foreign), "bar": bar}}
+
+
+def render_sheet(path, header_lines, crops, *, label_height=26, header_pad=8, line_height=22,
+                 background=(24, 24, 24), foreground=(240, 240, 240)) -> str:
+    """One contact sheet: the kept crops side by side, labelled, under a header.
+
+    `crops` is a list of (bgr_image, label) pairs. Pure cv2/numpy; writes a JPEG.
+    """
+    import cv2
+    images = [image for image, _label in crops]
+    if not images:
+        raise ValueError("a sheet needs at least one crop")
+    height = max(image.shape[0] for image in images)
+    cells = []
+    for image, label in crops:
+        canvas = np.full((height + label_height, image.shape[1], 3), background, np.uint8)
+        canvas[:image.shape[0], :image.shape[1]] = image
+        cv2.putText(canvas, label, (4, height + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
+                    foreground, 1, cv2.LINE_AA)
+        cv2.line(canvas, (0, 0), (0, canvas.shape[0] - 1), (90, 90, 90), 1)
+        cells.append(canvas)
+    strip = np.hstack(cells)
+    header = np.full((header_pad * 2 + line_height * len(header_lines), strip.shape[1], 3),
+                     background, np.uint8)
+    for index, line in enumerate(header_lines):
+        cv2.putText(header, line, (6, header_pad + 16 + index * line_height),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, foreground, 1, cv2.LINE_AA)
+    sheet = np.vstack([header, strip])
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ok, encoded = cv2.imencode(".jpg", sheet, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    if not ok:
+        raise RuntimeError("sheet encode failed")
+    path.write_bytes(encoded.tobytes())
+    return str(path)
+
+
+def _crop_image(root, dataset, candidate, *, scale=CROP_SCALE, pad=CROP_PAD):
+    import cv2
+    jpeg = crop_jpeg(root, dataset, candidate.frame_index, candidate.bbox, scale=scale, pad=pad)
+    return cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+
+
+def render_sheets(root=REPO, directory=None, dataset="vod30", *, fps=30.0, log=print) -> dict:
+    """Write out/enroll-eval/sheets/track-<id>.jpg and index.md for every enrolment."""
+    directory = Path(directory) if directory is not None else Path(root) / "out" / "enroll-eval"
+    observations = json.loads((directory / "observations.json").read_text(encoding="utf-8"))
+    groups = identity_groups(observations)
+    sheets_dir = directory / "sheets"
+    rows = []
+    for track in persistent_tracks(observations):
+        result = plan_for_track(observations, track["track_id"],
+                                player_name=f"track-{track['track_id']}", state={})
+        if not result.ok:
+            continue
+        counts = bind_counts(observations, result, groups)
+        evidence = result.evidence
+        first_s = track["first_frame"] / fps
+        last_s = track["last_frame"] / fps
+        header = [
+            f"track {track['track_id']}  group {groups['track_group'].get(track['track_id'])}  "
+            f"frames {track['frames']}  first seen {int(first_s // 60)}:{first_s % 60:04.1f}  "
+            f"last {int(last_s // 60)}:{last_s % 60:04.1f}",
+            f"kept {evidence['kept']}/{evidence['usable_faces']} usable  "
+            f"purity {evidence['purity']} over {evidence['purity_probes']} probes  "
+            f"own {counts['own']['bound']}/{counts['own']['n']} bound  "
+            f"other {counts['other']['clearing']}/{counts['other']['n']} clearing {counts['own']['bar']}",
+        ]
+        crops = [(_crop_image(root, dataset, candidate),
+                  f"f{candidate.frame_index} det {candidate.det_score:.2f} eye {candidate.eye_px:.1f}")
+                 for candidate in result.crops]
+        path = sheets_dir / f"track-{track['track_id']}.jpg"
+        render_sheet(path, header, crops)
+        rows.append({"track_id": track["track_id"], "group": groups["track_group"].get(track["track_id"]),
+                     "frames": track["frames"], "first_frame": track["first_frame"],
+                     "first_s": round(first_s, 1), "kept": evidence["kept"],
+                     "usable": evidence["usable_faces"], "purity": evidence["purity"],
+                     "purity_probes": evidence["purity_probes"],
+                     "own_bound": counts["own"]["bound"], "own_n": counts["own"]["n"],
+                     "other_clearing": counts["other"]["clearing"], "other_n": counts["other"]["n"],
+                     "sheet": str(path.relative_to(directory))})
+        log(f"sheet {path.name}: own {counts['own']['bound']}/{counts['own']['n']} "
+            f"other {counts['other']['clearing']}/{counts['other']['n']}", flush=True)
+    lines = ["# Enrolment sheets", "",
+             f"{len(rows)} enrolable tracks in {len(persistent_tracks(observations))} IoU tracks "
+             f"({groups['groups']} identity groups) over {len(observations)} sampled frames.", "",
+             "Open a sheet and name the person: the crops are the faces that would be enrolled, "
+             "labelled with their detection score and eye distance.", "",
+             "| track | group | first seen | frames | kept | purity | own faces bound | other clearing bar | sheet |",
+             "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
+    for row in rows:
+        first = f"{int(row['first_s'] // 60)}:{row['first_s'] % 60:04.1f}"
+        purity = "n/a" if row["purity"] is None else f"{row['purity']:.2f} ({row['purity_probes']})"
+        lines.append(f"| {row['track_id']} | {row['group']} | {first} | {row['frames']} | "
+                     f"{row['kept']}/{row['usable']} | {purity} | "
+                     f"{row['own_bound']}/{row['own_n']} | {row['other_clearing']}/{row['other_n']} | "
+                     f"[jpg]({row['sheet']}) |")
+    lines += ["", "Notes:",
+              "- `purity` = share of this track's other usable faces that agree with the kept set "
+              "(`n/a` means the track had no other face to check, so purity was not measurable).",
+              "- `own faces bound` / `other clearing bar` are face-group derived: `own` counts faces "
+              "of tracks in the same identity group, `other` counts faces the grouping placed in a "
+              "different group. The grouping itself is face-based, so `other` can include the same "
+              "person in a track it split - treat that column as an upper bound on the risk, and "
+              "the sheets as the tie-breaker."]
+    (sheets_dir / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {"sheets": len(rows), "rows": rows, "index": str(sheets_dir / "index.md"),
+            "groups": groups["groups"]}
+
+
+def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description="enrol a regular from a person track")
+    parser.add_argument("command", choices=("sheets",))
+    parser.add_argument("--dir", default=None)
+    parser.add_argument("--root", default=str(REPO))
+    parser.add_argument("--dataset", default="vod30")
+    args = parser.parse_args(argv)
+    if args.command == "sheets":
+        report = render_sheets(args.root, args.dir, args.dataset)
+        print(json.dumps({"sheets": report["sheets"], "groups": report["groups"],
+                          "index": report["index"]}, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

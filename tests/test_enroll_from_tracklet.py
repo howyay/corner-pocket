@@ -28,6 +28,10 @@ from src.enroll_from_tracklet import (  # noqa: E402
     iou,
     load_state,
     md5,
+    identity_groups,
+    bind_counts,
+    _crop_image,
+    render_sheet,
     persistent_tracks,
     plan_enrollment,
     plan_for_selection,
@@ -487,6 +491,61 @@ class ScanFramesTest(unittest.TestCase):
                            detector=self._Detector(), engine=self._Engine(),
                            log=lambda *a, **k: None)
         self.assertEqual(rows, [])
+
+
+class SheetsTest(unittest.TestCase):
+    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
+        self.a, self.b = unit(81), unit(82)
+        self.observations = []
+        for index in range(5):
+            self.observations.append(observation(
+                index * 30,
+                [person(1, PERSON), person(2, OTHER_PERSON), person(3, [500, 100, 690, 600]),
+                 person(4, [900, 100, 1100, 600])],
+                [face([150, 150, 190, 200], embedding=at(self.a, 0.9 - 0.01 * index, 400 + index)),
+                 face([750, 150, 790, 200], embedding=at(self.b, 0.9 - 0.01 * index, 500 + index)),
+                 face([550, 150, 590, 200], embedding=at(self.b, 0.88 - 0.01 * index, 600 + index)),
+                 face([950, 150, 990, 200], embedding=at(self.a, 0.88 - 0.01 * index, 700 + index))]))
+
+    def test_identity_groups_puts_two_tracks_of_one_person_together(self):
+        groups = identity_groups(self.observations)
+        self.assertEqual(groups["groups"], 2)
+        self.assertEqual(groups["track_group"][1], groups["track_group"][4],
+                         "the same person in a second track joins the group")
+        self.assertEqual(groups["track_group"][2], groups["track_group"][3])
+        self.assertNotEqual(groups["track_group"][1], groups["track_group"][2])
+
+    def test_bind_counts_separates_own_from_other(self):
+        enrollment = plan_for_track(self.observations, 1, player_name="Alice", state={})
+        groups = identity_groups(self.observations)
+        counts = bind_counts(self.observations, enrollment, groups)
+        self.assertEqual(counts["own"]["n"] + counts["other"]["n"], 15)
+        self.assertEqual(counts["own"]["n"], 5, "the other track of the same person")
+        self.assertEqual(counts["own"]["bound"], 5)
+        self.assertEqual(counts["other"]["clearing"], 0, "no other-identity face clears the bar")
+
+    @unittest.skipUnless(VIDEO.is_file(), "the vod30 recording is not present")
+    def test_render_sheet_writes_a_labelled_jpeg(self):
+        import cv2
+        crops = [(_crop_image(self.root, "vod30", candidate), f"f{candidate.frame_index}")
+                 for candidate in plan_for_track(self.observations, 1, player_name="Alice",
+                                                 state={}).crops[:2]]
+        path = self.root / "sheet.jpg"
+        render_sheet(path, ["track 1", "kept 2"], crops)
+        image = cv2.imread(str(path))
+        self.assertIsNotNone(image)
+        self.assertEqual(image.shape[0], crops[0][0].shape[0] + 26 + 8 * 2 + 22 * 2)
+        self.assertEqual(image.shape[1], sum(crop.shape[1] for crop, _label in crops))
+
+    def test_render_sheet_needs_a_crop(self):
+        with self.assertRaises(ValueError):
+            render_sheet(self.root / "empty.jpg", ["header"], [])
 
 
 if __name__ == "__main__":
