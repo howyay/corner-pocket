@@ -333,7 +333,7 @@ def student_peaks(model, video, indices: list, size: tuple, device: str = "auto"
     """
     import torch
 
-    from src.tiny_ball_net import NATIVE_WH, STACK, read_frames
+    from src.tiny_ball_net import NATIVE_WH, STACK, pick_peaks, read_frames
 
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -362,7 +362,9 @@ def stack_at(frames: dict, index: int, size: tuple):
     import cv2
     planes = []
     for k in (-1, 0, 1):
-        bgr = frames.get(index + k) or frames.get(index)
+        bgr = frames.get(index + k)
+        if bgr is None:
+            bgr = frames.get(index)          # a neighbour that did not decode
         if bgr is None:
             return None
         small = bgr if tuple(bgr.shape[1::-1]) == tuple(size) else cv2.resize(
@@ -508,8 +510,10 @@ def cmd_prelabel(args) -> int:
     scanned = student_peaks(model, VIDEO, indices, size, device=device,
                             threshold=args.threshold)
     scan_seconds = time.time() - started
+    # the neighbour check must step by the scan's own stride, or it looks for frames
+    # that were never sampled and rejects every detection as unsupported
     filtered = persistence_filter(scanned["peaks"], radius_px=args.radius_px,
-                                  stride=1, min_support=args.min_support,
+                                  stride=step, min_support=args.min_support,
                                   neighbours=2)
     labels, queue = {}, {}
     for index, rows in filtered["kept"].items():

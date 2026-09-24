@@ -14,9 +14,11 @@ from pathlib import Path
 
 import numpy as np
 
-from src.tiny_ball_net import (NATIVE_WH, SIGMA_PX, SPLIT_GAP_S, TRAIN_WH, count_params,
-                               f1, heatmap_target, load_labels, match, pick_peaks,
-                               read_frames, split_blocks, stack_for)
+from src.tiny_ball_net import (LOC_BAR_PX, NATIVE_WH, PROD_WH, SIGMA_PX, SPLIT_GAP_S,
+                               TRAIN_WH, cloth_edge_distance, count_params, f1,
+                               heatmap_target, load_labels, match, match_rows_native,
+                               operating_point, parse_size, pick_peaks, read_frames,
+                               sigma_for, split_blocks, stack_for)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -101,7 +103,11 @@ class PeakPickerTest(unittest.TestCase):
         heat[90, 161] = 0.8
         peaks = pick_peaks(heat, 0.5, nms_px=4.0)
         self.assertEqual(len(peaks), 1)
-        self.assertEqual(peaks[0][:2], (160, 90))
+        # the production pass refines the peak onto the sub-pixel maximum, so the
+        # integer contract is pinned on the un-refined call
+        self.assertEqual(pick_peaks(heat, 0.5, nms_px=4.0, subpixel=False)[0][:2], (160, 90))
+        self.assertAlmostEqual(peaks[0][0], 160.4, delta=0.05)
+        self.assertAlmostEqual(peaks[0][1], 90.0, delta=0.05)
 
     def test_two_separated_blobs_give_two_peaks(self):
         heat = np.zeros((180, 320), np.float32)
@@ -180,6 +186,121 @@ class ModelTest(unittest.TestCase):
         self.assertLess(count_params(model), 2_000_000)
         out = model(torch.zeros(1, STACK * 3, 180, 320))
         self.assertEqual(tuple(out.shape), (1, 1, 180, 320))
+
+
+class ResolutionTest(unittest.TestCase):
+    def test_a_size_is_parsed_from_the_conventional_string(self):
+        self.assertEqual(parse_size("960x540"), (960, 540))
+        self.assertEqual(parse_size("1280x720"), (1280, 720))
+
+    def test_the_production_minimum_is_at_least_960_wide(self):
+        self.assertGreaterEqual(PROD_WH[0], 960)
+
+    def test_the_sigma_scales_with_the_frame(self):
+        self.assertAlmostEqual(sigma_for(TRAIN_WH), SIGMA_PX, places=6)
+        # the probe's argument is that the ball must keep its shape in the target
+        self.assertAlmostEqual(sigma_for((960, 540)), SIGMA_PX * 1.5, places=3)
+        self.assertAlmostEqual(sigma_for(NATIVE_WH), SIGMA_PX * 2.0, places=3)
+
+    def test_a_scaled_sigma_still_sits_inside_the_ball(self):
+        ball_radius_px = 9.2
+        for size in (TRAIN_WH, (960, 540), NATIVE_WH):
+            radius_at_size = ball_radius_px * size[0] / NATIVE_WH[0]
+            self.assertLess(sigma_for(size), radius_at_size)
+
+
+class SubpixelPeakTest(unittest.TestCase):
+    @staticmethod
+    def gaussian(shape, cx, cy, sigma=2.0):
+        ys, xs = np.mgrid[0:shape[0], 0:shape[1]]
+        return np.exp(-((xs - cx) ** 2 + (ys - cy) ** 2) / (2 * sigma ** 2)).astype(np.float32)
+
+    def test_the_refined_peak_beats_the_integer_argmax(self):
+        truth = (160.7, 90.3)
+        heat = self.gaussian((180, 320), *truth)
+        coarse = pick_peaks(heat, 0.5, subpixel=False)[0]
+        fine = pick_peaks(heat, 0.5, subpixel=True)[0]
+        coarse_err = math.hypot(coarse[0] - truth[0], coarse[1] - truth[1])
+        fine_err = math.hypot(fine[0] - truth[0], fine[1] - truth[1])
+        self.assertLess(fine_err, coarse_err)
+        self.assertLess(fine_err, 0.25)
+
+    def test_a_flat_top_does_not_invent_an_offset(self):
+        heat = np.zeros((40, 40), np.float32)
+        heat[20, 20] = 0.9
+        peaks = pick_peaks(heat, 0.5)
+        self.assertEqual(peaks[0][0], 20.0)
+        self.assertEqual(peaks[0][1], 20.0)
+
+    def test_the_refinement_never_leaves_the_pixel(self):
+        heat = self.gaussian((40, 40), 20.4, 19.6, sigma=0.6)
+        for (x, y, _s) in pick_peaks(heat, 0.01):
+            self.assertLessEqual(abs(x - round(x)), 0.5 + 1e-9)
+            self.assertLessEqual(abs(y - round(y)), 0.5 + 1e-9)
+
+
+class OperatingPointTest(unittest.TestCase):
+    @staticmethod
+    def row(threshold, f1_value, p90):
+        return {"threshold": threshold, "f1": f1_value, "localisation_px_p90": p90}
+
+    def test_the_best_f1_that_clears_the_localisation_bar_is_chosen(self):
+        sweep = [self.row(0.05, 0.95, 9.0), self.row(0.10, 0.90, 3.5),
+                 self.row(0.15, 0.88, 3.0)]
+        chosen, best = operating_point(sweep)
+        self.assertAlmostEqual(chosen["f1"], 0.90, places=6)
+        self.assertAlmostEqual(best["f1"], 0.95, places=6)
+
+    def test_when_nothing_clears_the_bar_the_best_f1_is_still_reported(self):
+        sweep = [self.row(0.05, 0.95, 9.0), self.row(0.10, 0.90, 8.0)]
+        chosen, best = operating_point(sweep)
+        self.assertIsNone(chosen)
+        self.assertAlmostEqual(best["f1"], 0.95, places=6)
+
+    def test_an_empty_sweep_is_not_an_error(self):
+        self.assertEqual(operating_point([]), (None, None))
+
+    def test_the_bar_is_the_declared_four_pixels(self):
+        self.assertEqual(LOC_BAR_PX, 4.0)
+
+
+class DisagreementTest(unittest.TestCase):
+    def test_missed_and_extra_are_both_listed(self):
+        truth = [{"x": 100.0, "y": 100.0, "r": 9.0, "score": 0.9},
+                 {"x": 200.0, "y": 100.0, "r": 9.0, "score": 0.7}]
+        pred = [(50.0, 50.0, 0.9), (100.0, 100.0, 0.9)]
+        result = match_rows_native(pred, truth, tol_px=6.0, scale=2.0)
+        self.assertEqual(result["matched"], 1)
+        self.assertEqual(len(result["missed"]), 1)
+        self.assertEqual(result["missed"][0]["x"], 200.0)
+        self.assertEqual(len(result["extra"]), 1)
+
+    def test_the_cloth_edge_distance_is_signed(self):
+        quad = np.array([[0, 0], [100, 0], [100, 100], [0, 100]], np.float32)
+        self.assertGreater(cloth_edge_distance(quad, 50, 50), 0)
+        self.assertLess(cloth_edge_distance(quad, 150, 50), 0)
+
+    def test_no_quad_is_not_an_error(self):
+        self.assertNotEqual(cloth_edge_distance(None, 1, 1), cloth_edge_distance(None, 1, 1))
+
+
+class SizedFrameReadTest(unittest.TestCase):
+    def test_frames_read_for_a_size_still_fit_the_stack(self):
+        import cv2
+        import tempfile as tf
+        with tf.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "clip.avi")
+            writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), 30.0, (320, 180))
+            if not writer.isOpened():
+                self.skipTest("this OpenCV build cannot write MJPG avi")
+            for i in range(30):
+                writer.write(np.full((180, 320, 3), i * 8 % 255, np.uint8))
+            writer.release()
+            size = (960, 540)
+            frames = read_frames(path, [5, 6, 7], size=size)
+            stack = stack_for(frames, 6, size=size)
+            self.assertEqual(stack.shape, (540, 960, 9))
+            self.assertLessEqual(float(stack.max()), 1.0)
 
 
 if __name__ == "__main__":
