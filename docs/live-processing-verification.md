@@ -2,7 +2,7 @@
 
 ## Person identification performance (2026-09-11 measured)
 
-Warm per-frame cost on real VOD 1280x720, CPU only: YOLOv8n person detection ~25–32 ms, OSNet x0.25 (vendored MSMT17 weights) re-ID ~38–47 ms per frame for up to 3 persons — combined worst frame 78 ms, comfortably inside a 10 fps processing budget. Face embeddings (buffalo_l ArcFace) verified usable at this camera distance: 268/268 sampled faces produced 512-dim normalized embeddings; same-person 1s-apart cosine median 0.958 (p05 0.644) vs cross-person same-frame 0.077 (p05 −0.04), supporting thresholds 0.35/0.12 margin. Face sizes: eye distance median ~10.4 px, max 15.9, min 2.3.
+Warm per-frame cost on real VOD 1280x720, CPU only: YOLOv8n person detection ~25–32 ms, OSNet x0.25 (vendored MSMT17 weights) re-ID ~38–47 ms per frame for up to 3 persons — combined worst frame 78 ms, comfortably inside a 10 fps processing budget. Face embeddings (buffalo_l ArcFace) verified usable at this camera distance: 268/268 sampled faces produced 512-dim normalized embeddings; same-person 1s-apart cosine median 0.958 (p05 0.644) vs cross-person same-frame 0.077 (p05 −0.04), supporting a 0.35 match threshold with a 0.12 margin over the runner-up (the effective bind bar is 0.47 = 0.35 + 0.12; 0.35 alone never binds). Face sizes: eye distance median ~10.4 px, max 15.9, min 2.3.
 
 Ground-truth caution: `out/events_actors.json` contains 57 entries but 45 were labeled by the previous `osnet-geo` model output, not independent humans (48 B / 4 A / 5 None). Shooter-association P/R must be measured only against human-confirmed labels from the explicit A/B/ignore seeding workflow; model-labeled actors are never truth.
 
