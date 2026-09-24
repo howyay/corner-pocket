@@ -38,6 +38,86 @@ def infer(frame, detectors, root):
     return {'pixel': int(frame[0, 0, 0])}
 
 
+class LiveDetectorRequestTests(unittest.TestCase):
+    """`ball` is requestable at runtime, and an un-runnable request is refused."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / 'data').mkdir()
+        (self.root / 'data/vod_30min_260815.mp4').touch()
+        self.source = dict(kind='dataset', dataset='vod30')
+
+    def weights(self, size=2048):
+        path = self.root / 'out/tiny_ball_probe/960x540-scratch.pt'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b'x' * size)
+        return path
+
+    def processor(self, **kwargs):
+        kwargs.setdefault('capture_factory', lambda _: Capture(count=0))
+        kwargs.setdefault('frame_budget_ms', 1000)
+        processor = LiveProcessor(self.root, **kwargs)
+        self.addCleanup(processor.stop)
+        return processor
+
+    def test_ball_is_requested_through_the_normal_start_and_is_in_the_registry(self):
+        self.weights()
+        processor = self.processor()
+        status = processor.start(self.source, ['table', 'person', 'ball'])
+        self.assertEqual(status['detectors'], ['table', 'person', 'ball'])
+        stages = processor.status()['stages']
+        self.assertEqual([stage['name'] for stage in stages], ['table', 'person', 'ball'])
+        self.assertEqual(stages[2]['every_n_frames'], 1)       # every frame unless asked
+
+    def test_ball_cadence_is_the_callers_choice(self):
+        self.weights()
+        processor = self.processor(ball_every_n=3)
+        processor.start(self.source, ['ball'])
+        self.assertEqual(processor.status()['stages'][0]['every_n_frames'], 3)
+
+    def test_missing_weights_refuse_the_start_and_name_the_path(self):
+        processor = self.processor()
+        with self.assertRaises(ValueError) as caught:
+            processor.start(self.source, ['ball'])
+        message = str(caught.exception)
+        self.assertIn("'ball'", message)
+        self.assertIn('out/tiny_ball_probe/960x540-scratch.pt', message)
+        # Refused, not degraded: nothing started and nothing is left half-set.
+        status = processor.status()
+        self.assertEqual(status['state'], 'idle')
+        self.assertEqual(status['detectors'], [])
+        self.assertFalse(status['decoder_alive'])
+        self.assertFalse(status['worker_alive'])
+        self.assertIsNone(processor.latest_jpeg())
+
+    def test_empty_weights_file_is_refused_too(self):
+        self.weights(size=0)
+        processor = self.processor()
+        with self.assertRaises(ValueError) as caught:
+            processor.start(self.source, ['ball'])
+        self.assertIn('empty', str(caught.exception))
+
+    def test_a_requested_ball_without_a_ball_stage_is_refused(self):
+        # The legacy single-detector path builds one 'detect' stage: a caller asking
+        # for ball there would get a pipeline that never produces a ball result.
+        self.weights()
+        processor = self.processor(infer=infer)
+        with self.assertRaises(ValueError) as caught:
+            processor.start(self.source, ['ball'])
+        self.assertIn('no stage', str(caught.exception))
+        self.assertEqual(processor.status()['state'], 'idle')
+
+    def test_unknown_detector_names_are_refused(self):
+        self.weights()
+        for detectors in (['balls'], ['sam3'], ['BALL'], ['table', 'ball', 'balls'], [], 'ball'):
+            processor = self.processor()
+            with self.assertRaises(ValueError, msg=repr(detectors)):
+                processor.start(self.source, detectors)
+            self.assertEqual(processor.status()['state'], 'idle', detectors)
+
+
 class LiveProcessingTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

@@ -379,6 +379,24 @@ class TableStage(Stage):
         return result.get('table_polygon') if isinstance(result, dict) else None
 
 
+def check_ball_weights(root, checkpoint=None):
+    """The trained ball weights under ``root``, or ``FileNotFoundError`` naming the path.
+
+    Exists so a *start* can refuse before any thread runs: a stage the caller asked
+    for that silently never executes is worse than a refused start, because every
+    downstream number would then look like a measurement of "no ball".  Checks
+    existence and a non-empty file only - the weights are loaded lazily on the first
+    frame, so a corrupt checkpoint still fails loudly, just later.
+    """
+    from pathlib import Path
+    path = Path(root) / (checkpoint or BALL_CHECKPOINT)
+    if not path.is_file():
+        raise FileNotFoundError('ball detector weights are not on disk: %s' % path)
+    if path.stat().st_size < 1024:
+        raise FileNotFoundError('ball detector weights at %s are empty' % path)
+    return path
+
+
 class BallStage(Stage):
     """The trained ball detector (``src/tiny_ball_net.py``) as a per-frame stage.
 
@@ -411,7 +429,7 @@ class BallStage(Stage):
     stack = BALL_STACK
 
     def __init__(self, root, checkpoint=None, threshold=None, size=None, device='auto',
-                 nms_px=4.0, max_balls=6, every_n_frames=1, model=None):
+                 nms_px=4.0, max_balls=12, every_n_frames=1, model=None):
         from pathlib import Path
         self.root = Path(root)
         self.checkpoint = checkpoint or self.checkpoint
@@ -428,14 +446,16 @@ class BallStage(Stage):
         self._loaded_from = None
         self._resolved_device = None
 
+    def verify(self):
+        """Raise unless the trained weights are readable here, naming the path."""
+        return check_ball_weights(self.root, self.checkpoint)
+
     def _load(self):
         """Load the trained weights once; raise (not return empty) if they are absent."""
         if self._loaded:
             return
-        from src.tiny_ball_net import build_model, load_checkpoint, pick_device
-        path = self.root / self.checkpoint
-        if not path.is_file():
-            raise FileNotFoundError('Ball stage weights are not on disk: %s' % path)
+        from src.tiny_ball_net import load_checkpoint, pick_device
+        path = self.verify()
         model, saved = load_checkpoint(path, self.size)
         device = self._device
         model.to(device)
@@ -526,19 +546,28 @@ class CallableStage(Stage):
         return self.call(frame, self.detectors, self.root)
 
 
-def default_stages(detectors, root, dataset=None, table_measure_every_n=30):
+def default_stages(detectors, root, dataset=None, table_measure_every_n=30, ball_every_n=1):
     """Registry for the live pipeline's detectors, in inference order (table first).
 
     ``dataset`` lets the table stage answer from that dataset's saved segment
     reference instead of measuring a static quad again on every frame; without it
     (a live stream) the stage measures on ``table_measure_every_n``'s cadence and
     labels the age of what it serves.
+
+    ``ball`` appends the trained detector last (it is the most expensive stage, and a
+    consumer reading box results in order should not wait behind it).  Its cadence is
+    the caller's decision, so it is a parameter here exactly like the table's: the
+    default runs it on every frame - the most accurate and most expensive setting -
+    and the cost of each cadence under a real 30 fps source is measured in
+    ``docs/live-processing-verification.md`` rather than guessed at here.
     """
     stages = []
     if 'table' in detectors:
         stages.append(TableStage(root, dataset=dataset, measure_every_n=table_measure_every_n))
     if 'person' in detectors:
         stages.append(PersonStage(root))
+    if 'ball' in detectors:
+        stages.append(BallStage(root, every_n_frames=ball_every_n))
     return stages
 
 
