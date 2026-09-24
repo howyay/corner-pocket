@@ -229,3 +229,100 @@ PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_eval_faces.
 Artifacts: `out/face-eval/detections.json` (484 instances, 240 frames, embeddings),
 `out/face-eval/analysis.json` (all tables above), `out/face-eval/demo.json` (enrollment,
 held-out matching, replay binds, md5s). All gitignored; regenerable from `src/eval_faces.py`.
+
+## 7. Bar configuration (fix round: the margin, and the number to quote)
+
+### 7.1 `bind_face` now enforces the same margin as `best_match`
+
+`best_match()` rejected an ambiguous probe (best − runner-up < 0.12), but
+`IdentityIndex.bind_face()` checked only the similarity — so any caller of `bind_face`
+could bind a face whose closest competitor was a hair behind. Both paths now call one rule,
+`src.face_id.accept_match(similarity, runner_up, threshold, margin, bind, bind_bar)`:
+
+- matching (`bind=False`): `similarity >= threshold` **and** the runner-up trailing by `>= margin`;
+- binding (`bind=True`): `similarity >= bind_bar` **and** the same runner-up margin.
+
+`best_match()` returns `runner_up` next to `similarity`/`margin` (None for a single-player
+gallery) and `PersonPipeline.process_frame` passes it through (`runner_up=match.get('runner_up')`
+in `src/person_pipeline.py`), so the margin is enforced twice on the production path. Proven by
+`tests/test_person_identity.py::test_bind_rejects_a_runner_up_inside_the_margin` (0.80 with a
+0.70 runner-up must not bind; the same 0.80 with a 0.68 runner-up binds),
+`::test_bind_margin_boundary_is_inclusive` (0.120 passes, 0.11999 does not),
+`::test_shared_rule_is_the_same_for_matching_and_binding`, and
+`tests/test_eval_faces.py::test_measured_bind_gate_is_the_shared_rule` (the measurement tool
+reports the same gate the code applies).
+
+### 7.2 The number an operator must quote is 0.47, not 0.35
+
+`bar = threshold + margin` composes, and only the composed number binds. The configuration now
+says so explicitly:
+
+| Value | Where | Meaning |
+| --- | --- | --- |
+| `DEFAULT_THRESHOLD = 0.35` | `src/face_id.py` | gallery *matching* bar — "is this a known face" |
+| `DEFAULT_MARGIN = 0.12` | `src/face_id.py` | runner-up separation, enforced by both paths |
+| `DEFAULT_BIND_BAR = 0.47` | `src/face_id.py` | **the bar that binds** = threshold + margin |
+| `IdentityIndex(bind_bar=...)` | `src/person_identity.py` | explicit override; `None` keeps 0.47, so tuning `match_threshold`/`margin` moves the binding bar with it |
+| `IdentityIndex.effective_bind_bar` | `src/person_identity.py` | property reporting the bar actually applied |
+| `CANDIDATE_BIND_BAR = 0.65` | `src/face_id.py` | measured candidate — **not applied** (§7.3) |
+
+Places that stated a number the system does not apply, and what they now say:
+
+| Place | Was | Now |
+| --- | --- | --- |
+| `src/face_id.py` module docstring | threshold rationale with no binding statement | a "WHERE THE BAR IS APPLIED" block: 0.35 matches, **0.35 never binds**, binding is 0.47 + margin |
+| `src/face_id.py` constants | `DEFAULT_THRESHOLD` / `DEFAULT_MARGIN` only | `+ DEFAULT_BIND_BAR = 0.47`, `+ CANDIDATE_BIND_BAR = 0.65` |
+| `src/person_identity.py` module docstring | "the 0.35/0.12 defaults below are the FACE bar" | "threshold 0.35 / margin 0.12. The bar bind_face() applies is the composed one, DEFAULT_BIND_BAR = 0.47; 0.35 alone never binds" |
+| `src/person_identity.py` `bind_face` docstring | "Requires similarity >= match_threshold + margin" | names the shared rule, the runner-up requirement, and the defect it fixes |
+| `src/person_pipeline.py` module docstring | "faces bind at >= 0.35 with 0.12 margin" | "a face binds at >= 0.47 (the effective bar = match_threshold 0.35 + margin 0.12 …), the runner-up must trail by 0.12" |
+| `src/eval_faces.py` | bind column computed as `similarity >= threshold + margin` | calls `accept_match(..., bind=True)`, so the reported bind / false-accept numbers match the code |
+| `docs/face-identification-assessment.md:39` | already stated 0.47 | unchanged; this section is the canonical statement |
+
+Still mis-stated, outside this round's file ownership (one clause each, not edited here):
+`docs/handoff.md:13` — "threshold 0.35 cosine, margin 0.12 over runner-up" should add
+"effective bind bar 0.47 = 0.35 + 0.12"; and `docs/live-processing-verification.md:5` —
+"supporting thresholds 0.35/0.12 margin" should say the same. (Line 139 of that file already
+quotes the 0.47 bar correctly.)
+
+### 7.3 Candidate bar 0.65 — evidence, sample size, what would confirm it
+
+**Not applied.** The deployed default stays 0.47; the candidate is
+`src/face_id.CANDIDATE_BIND_BAR`, opt-in per index via `IdentityIndex(bind_bar=0.65)`.
+`tests/test_person_identity.py::test_explicit_bind_bar_overrides_the_composition` pins that an
+explicit bar is used as-is while the default remains 0.47, and
+`::test_bind_bar_rule_follows_configured_threshold_and_margin` pins the *rule*
+(bar = threshold + margin) rather than the number.
+
+| | cosine | sample |
+| --- | ---: | --- |
+| worst false accept (face at the enrolled table end, not the enrolled person) | 0.603 | 35 impostor probes |
+| second false accept | 0.551 | 2/35 = 5.7% false-accept rate |
+| worst correct accept | 0.697 | 28 same-person probes (median 0.786) |
+
+The gap between 0.603 and 0.697 is where a separating bar would sit; 0.65 is mid-gap. **The
+sample is one 30-minute window, one enrolled player, one photo, 63 probes** — enough to
+nominate a value, not to adopt one. Two reasons to be careful:
+
+1. the same 0.47 bar produced **zero** false accepts in the 240-frame census
+   (different-people-same-frame max 0.226, 0.0% clearing the 0.35 threshold), so those two
+   faces are not representative impostors: they are same-end faces the 0.6-to-burst-medoid
+   labelling rule called "not the enrolled person", and may be that person in a hard pose;
+2. raising the bar costs real binds — only 93.1% of within-tracklet same-person pairs clear
+   0.47 today, and the same-person p05 is 0.405, so a 0.65 bar would drop a material tail.
+   More enrolment photos per regular (the gallery keeps the best entry,
+   `src/face_id.py:190-193`) lift that tail without touching the bar.
+
+What would confirm or refute the candidate (do **not** re-tune on this window):
+
+1. **Windows:** ≥ 5 sessions, each with ≥ 2 players enrolled, ≥ 60 s of play per player, spread
+   over different lighting and segments.
+2. **Labels:** per window, ≥ 100 same-person probes and ≥ 100 impostor probes *verified as
+   different people* — not "not the medoid of this burst". A human pass over a probe montage is
+   the cheap version.
+3. **Decision rule:** choose the lowest bar whose per-window worst impostor accept stays 0.05
+   below the per-window 5th-percentile same-person accept, on **every** window, not on the
+   pooled distribution. If no bar satisfies that, the honest answer is more enrolment photos,
+   not a moved bar.
+4. **Report both errors** per window: the false-accept rate at the chosen bar and the
+   lost-bind rate it causes, with the enrolment-photo count used.
+
