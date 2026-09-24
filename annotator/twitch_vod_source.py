@@ -1,0 +1,326 @@
+"""A Twitch VOD replayed at 1x wall clock, in the shape the live pipeline consumes.
+
+**This is not a live broadcast.**  The live path is externally blocked: `usher.ttvnw.net`
+answers `404 {"error":"Can not find channel"}` for every channel without a
+client-integrity token, and this repository refuses to acquire one by driving a browser
+(no login, no integrity bypass - see ``annotator/twitch_source.py``).  A *recorded* VOD
+is reachable anonymously from this machine (verified 2026-09-24, evidence in
+``docs/twitch-vod-as-live.md``), and it is a faithful stand-in for demonstrating and
+operating near-real-time analysis today: same codec family, same 1280x720, same 30 fps,
+delivered at the same wall-clock rate.  Every surface of this module says so - ``kind``
+is ``'vod-replay'``, ``live`` is ``False``, and the VOD id, rate, pacing mode and network
+state are reported together.
+
+Fetch path (all three steps verified; the endpoints and query shapes mirror Streamlink's
+twitch plugin, which is the reference for anonymous web playback):
+
+1. ``https://gql.twitch.tv/gql`` - ``{video(id:"<id>"){playbackAccessToken(params:{platform:
+   "web",playerBackend:"mediaplayer",playerType:"site"}){signature value}}}``.  The plain
+   query form needs that explicit ``params`` argument; the persisted-query form used by
+   the live resolver returns the token under ``data.videoPlaybackAccessToken`` instead.
+2. ``https://usher.ttvnw.net/vod/<id>.m3u8?nauth=<value>&nauthsig=<signature>&...`` -
+   a master playlist of variants.
+3. the best variant at or below ``max_height`` (720p), which is the media playlist the
+   decoder opens.
+
+Signed URLs and playback tokens are private, short-lived decoder inputs: they are never
+logged, never returned by ``evidence()``, and never persisted.
+
+Capture contract (matches what ``annotator/live_processing.py`` expects from an injected
+``capture_factory``, without that file being touched)::
+
+    capture = VodRealtimeCapture(media_url, vod_id=..., rate=1.0, start_s=0.0)
+    capture.isOpened() -> True
+    ok, frame = capture.read()          # blocks until this frame's wall-clock slot
+    capture.get(cv2.CAP_PROP_FPS) / CAP_PROP_POS_FRAMES / CAP_PROP_POS_MSEC
+    capture.state()  -> {'kind': 'vod-replay', 'live': False, 'drift_s': ...}
+    capture.release()
+
+Pacing is authoritative: ``read()`` holds one frame per ``1/fps`` seconds of wall clock at
+``rate=1.0`` and *drops* source frames (counting them) when the consumer has fallen
+behind, so the video position tracks wall clock instead of drifting.  A consumer that is
+slow loses frames; it never falls behind in time.
+"""
+import json
+import math
+from pathlib import Path
+import re
+import ssl
+import time
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urljoin, urlsplit
+from urllib.request import Request, build_opener, HTTPSHandler
+
+from annotator import twitch_source as live
+
+#: The live resolver's host allowlists and anonymous web client id are the single source
+#: of truth for which hosts this machine will talk to; the VOD path adds no new host.
+_VOD_TOKEN_QUERY = (
+    '{ video(id: "%s") { id title lengthSeconds createdAt owner { login } '
+    'playbackAccessToken(params: {platform: "web", playerBackend: "mediaplayer", '
+    'playerType: "site"}) { signature value } } }')
+_VIDEO_QUERY = ('{ video(id: "%s") { id title lengthSeconds createdAt owner { login } } }')
+_CHANNEL_QUERY = (
+    '{ user(login: "%s") { login videos(first: %d, type: ARCHIVE) '
+    '{ edges { node { id title lengthSeconds createdAt } } } } }')
+
+#: Media-playlist fetch limits: a long VOD playlist is large, and only its head is needed.
+_PLAYLIST_BYTES = 200000
+_HEAD_BYTES = 4000
+
+
+class TwitchVodError(RuntimeError):
+    """Safe public error: contains no upstream body, playback token, or signed URL."""
+
+
+#: VOD media is *not* served from the live hosts: usher hands out a signed playlist on
+#: Twitch's CloudFront distribution (observed: d2nvs31859zcd8.cloudfront.net, 2026-09-24).
+#: That host is pinned exactly rather than wildcarded - `*.cloudfront.net` would allow
+#: every CloudFront distribution on the internet as a decoder input.  If Twitch rotates
+#: it, playback fails loudly with 'unsafe VOD playback URL' and the new host is added here.
+_VOD_MEDIA_HOSTS = frozenset({'d2nvs31859zcd8.cloudfront.net'})
+
+
+def _validate_media(url):
+    """HTTPS media URL on Twitch's own CDN (or the pinned VOD distribution) only."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ''
+        allowed = (host in _VOD_MEDIA_HOSTS or host.endswith('.ttvnw.net')
+                   or host.endswith('.twitchcdn.net'))
+        valid = (allowed and parts.scheme == 'https' and not parts.username
+                 and not parts.password and parts.port in (None, 443)
+                 and not parts.fragment and not re.search(r'[\s\\]', url))
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        raise TwitchVodError('Twitch returned an unsafe VOD playback URL')
+    return url
+
+
+def vod_id_of(argument):
+    """``1000000011`` / ``v1000000011`` / ``https://www.twitch.tv/videos/1000000011`` -> id."""
+    if isinstance(argument, int) and not isinstance(argument, bool) and argument > 0:
+        return str(argument)
+    if not isinstance(argument, str):
+        raise TwitchVodError('Expected a Twitch VOD id or https://www.twitch.tv/videos/<id> URL')
+    text = argument.strip().rstrip('/')
+    if text.startswith('https://www.twitch.tv/videos/'):
+        text = text[len('https://www.twitch.tv/videos/'):]
+    text = text.lstrip('vV')
+    if not text.isdigit() or int(text) <= 0:
+        raise TwitchVodError('Expected a Twitch VOD id or https://www.twitch.tv/videos/<id> URL')
+    return text
+
+
+def _raw(url, payload=None, *, timeout=12, limit=_PLAYLIST_BYTES):
+    """One request with its **raw** status and body, so a probe can report both.
+
+    Redirects are refused and hosts are validated against the live resolver's own
+    allowlists (``gql.twitch.tv`` / ``usher.ttvnw.net`` for API calls, ``*.ttvnw.net`` /
+    ``*.twitchcdn.net`` for media), so a signed URL can never be redirected off-Twitch.
+    A transport failure is returned, not raised, with the exception *type* only - never
+    the message, which can contain a signed URL.
+    """
+    live._validate_url(url) if payload is not None else _validate_media(url)
+    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*'}
+    data = None
+    if payload is not None:
+        headers.update({'Client-ID': live._CLIENT_ID, 'Content-Type': 'application/json'})
+        data = json.dumps(payload).encode('utf-8')
+    context = ssl.create_default_context()
+    if Path('/etc/ssl/certs/ca-certificates.crt').is_file():
+        context.load_verify_locations('/etc/ssl/certs/ca-certificates.crt')
+    opener = build_opener(live._NoRedirect(), HTTPSHandler(context=context))
+    try:
+        with opener.open(Request(url, data=data, headers=headers), timeout=timeout) as response:
+            body = response.read(limit + 1)
+            return {'status': response.status, 'body': body.decode('utf-8-sig', 'replace')[:limit],
+                    'transport': None}
+    except HTTPError as exc:
+        try:
+            body = exc.read(limit).decode('utf-8-sig', 'replace')
+        except Exception:
+            body = ''
+        return {'status': exc.code, 'body': body, 'transport': None}
+    except (URLError, OSError) as exc:
+        return {'status': None, 'body': '', 'transport': type(exc).__name__}
+
+
+def gql(query, *, timeout=12):
+    """POST one GraphQL query and return the parsed document, or a safe error."""
+    result = _raw('https://gql.twitch.tv/gql', {'query': query}, timeout=timeout)
+    if result['transport'] is not None:
+        raise TwitchVodError('Twitch API request failed; check network and TLS connectivity')
+    if result['status'] != 200:
+        raise TwitchVodError('Twitch API request failed (HTTP %s)' % result['status'])
+    try:
+        return json.loads(result['body'])
+    except ValueError:
+        raise TwitchVodError('Twitch returned an invalid API response') from None
+
+
+def channel_recent_vods(channel, limit=3):
+    """The most recent archived broadcasts of ``channel``, newest first."""
+    if not isinstance(channel, str) or not re.fullmatch(r'[a-z0-9_]{1,25}', channel):
+        raise TwitchVodError('Expected a canonical Twitch channel login')
+    document = gql(_CHANNEL_QUERY % (channel, max(1, min(int(limit), 10))))
+    user = (document.get('data') or {}).get('user')
+    if user is None:
+        raise TwitchVodError('Twitch has no such channel')
+    edges = ((user.get('videos') or {}).get('edges')) or []
+    return [dict(id=node.get('id'), title=node.get('title'), length_s=node.get('lengthSeconds'),
+                 created_at=node.get('createdAt'), channel=user.get('login'))
+            for node in (edge.get('node') or {} for edge in edges) if node.get('id')]
+
+
+def vod_info(vod_id, *, strict=True):
+    """Title, length and channel of a VOD. No token, no signature, no media URL."""
+    vod = vod_id_of(vod_id)
+    result = _raw('https://gql.twitch.tv/gql', {'query': _VIDEO_QUERY % vod})
+    if result['transport'] is not None:
+        raise TwitchVodError('Twitch API request failed; check network and TLS connectivity')
+    video = {}
+    errors = None
+    if result['status'] == 200:
+        try:
+            document = json.loads(result['body'])
+            video = (document.get('data') or {}).get('video') or {}
+            errors = document.get('errors')
+        except ValueError:
+            errors = 'invalid JSON'
+    info = {'vod_id': vod, 'status': result['status'], 'errors': errors, 'id': video.get('id'),
+            'title': video.get('title'), 'length_s': video.get('lengthSeconds'),
+            'created_at': video.get('createdAt'), 'channel': (video.get('owner') or {}).get('login')}
+    if strict and not info['id']:
+        raise TwitchVodError('Twitch returned no such VOD (HTTP %s)' % result['status'])
+    return info
+
+
+def vod_token(vod_id, *, strict=True, timeout=12):
+    """The VOD's anonymous ``playbackAccessToken``, with its raw request status.
+
+    Returns ``signature``/``value`` for the usher call; ``evidence()`` strips them.
+    ``strict=False`` returns the failure instead of raising, which is what the probe
+    needs in order to record what Twitch actually said.
+    """
+    vod = vod_id_of(vod_id)
+    result = _raw('https://gql.twitch.tv/gql', {'query': _VOD_TOKEN_QUERY % vod}, timeout=timeout)
+    document = {}
+    error = None
+    if result['transport'] is not None:
+        error = 'transport:' + result['transport']
+    elif result['status'] != 200:
+        error = 'HTTP %s' % result['status']
+    else:
+        try:
+            document = json.loads(result['body'])
+        except ValueError:
+            error = 'invalid JSON'
+    data = document.get('data') or {}
+    video = data.get('video') or {}
+    token = video.get('playbackAccessToken') or {}
+    output = {'vod_id': vod, 'status': result['status'], 'transport': result['transport'],
+              'errors': document.get('errors') or (None if error is None else error),
+              'data_keys': sorted(data), 'video_keys': sorted(video),
+              'signature': token.get('signature') if isinstance(token.get('signature'), str) else None,
+              'value': token.get('value') if isinstance(token.get('value'), str) else None,
+              'title': video.get('title'), 'length_s': video.get('lengthSeconds'),
+              'channel': (video.get('owner') or {}).get('login')}
+    output['ok'] = bool(output['signature'] and output['value'])
+    if strict and not output['ok']:
+        raise TwitchVodError('Twitch returned no playback token for VOD %s (HTTP %s)'
+                             % (vod, result['status']))
+    return output
+
+
+def playlist_lines(text):
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def vod_variants(master_url, master_text):
+    """``[{height, bandwidth, fps, url}]`` from a VOD master playlist, in file order."""
+    lines = playlist_lines(master_text)
+    if not lines or lines[0] != '#EXTM3U':
+        raise TwitchVodError('Twitch returned an invalid VOD playlist')
+    variants = []
+    for index, line in enumerate(lines[:-1]):
+        if not line.startswith('#EXT-X-STREAM-INF:'):
+            continue
+        bandwidth = re.search(r'(?:[:,])BANDWIDTH=(\d+)(?:,|$)', line)
+        resolution = re.search(r'(?:[:,])RESOLUTION=\d+x(\d+)(?:,|$)', line)
+        framerate = re.search(r'(?:[:,])FRAME-RATE=([\d.]+)(?:,|$)', line)
+        if bandwidth and resolution and not lines[index + 1].startswith('#'):
+            variants.append({'height': int(resolution[1]), 'bandwidth': int(bandwidth[1]),
+                             'fps': float(framerate[1]) if framerate else None,
+                             'url': _validate_media(urljoin(master_url, lines[index + 1]))})
+    return variants
+
+
+def resolve_vod(vod_id, *, max_height=720, timeout=15):
+    """Resolve a VOD id to its playable media playlist, anonymously.
+
+    Returns the master's status, every variant (heights/bandwidths only - the variant
+    URLs stay inside the returned dict and are stripped by ``evidence()``), the chosen
+    media URL, and the media playlist's own head facts.  Nothing here claims the stream
+    is live: a VOD playlist is ``EVENT`` or ``VOD`` typed, not ``None``.
+    """
+    token = vod_token(vod_id, timeout=timeout)
+    master_url = 'https://usher.ttvnw.net/vod/%s.m3u8?%s' % (token['vod_id'], urlencode({
+        'nauth': token['value'], 'nauthsig': token['signature'], 'allow_source': 'true',
+        'playlist_include_framerate': 'true', 'supported_codecs': 'avc1'}))
+    master = _raw(master_url, timeout=timeout)
+    if master['transport'] is not None:
+        raise TwitchVodError('Twitch VOD playlist request failed; check network and TLS connectivity')
+    if master['status'] != 200:
+        raise TwitchVodError('Twitch VOD playlist request failed (HTTP %s)' % master['status'])
+    variants = vod_variants(master_url, master['body'])
+    if not variants:
+        raise TwitchVodError('Twitch returned no playable VOD variant')
+    modest = [variant for variant in variants if variant['height'] <= max_height]
+    chosen = max(modest or variants, key=lambda variant: (variant['height'], variant['bandwidth']))
+    head = _raw(chosen['url'], timeout=timeout, limit=_HEAD_BYTES)
+    if head['transport'] is not None:
+        raise TwitchVodError('Twitch VOD media playlist request failed; check network and TLS connectivity')
+    if head['status'] != 200:
+        raise TwitchVodError('Twitch VOD media playlist request failed (HTTP %s)' % head['status'])
+    lines = playlist_lines(head['body'])
+    if not lines or lines[0] != '#EXTM3U':
+        raise TwitchVodError('Twitch returned an invalid VOD media playlist')
+    playlist_type = next((line.split(':', 1)[1] for line in lines
+                          if line.startswith('#EXT-X-PLAYLIST-TYPE:')), None)
+    target_duration = next((float(line.split(':', 1)[1]) for line in lines
+                            if line.startswith('#EXT-X-TARGETDURATION:')), None)
+    if playlist_type not in ('EVENT', 'VOD'):
+        raise TwitchVodError('Twitch returned a playlist that is not a finished VOD')
+    return {'vod_id': token['vod_id'], 'title': token['title'], 'length_s': token['length_s'],
+            'channel': token['channel'], 'master_status': master['status'],
+            'media_url': chosen['url'], 'variant': dict(chosen, url=None),
+            'variants': [dict(variant, url=None) for variant in variants],
+            'playlist': {'type': playlist_type, 'target_duration_s': target_duration,
+                         'segments_in_head': sum(1 for line in lines if line.startswith('#EXTINF:')),
+                         'has_endlist': any(line == '#EXT-X-ENDLIST' for line in lines)}}
+
+
+def evidence(result):
+    """The printable, redacted view of any result above: no token, no signature, no URL.
+
+    Signed media URLs are reduced to their host and length, and tokens to their lengths,
+    because both are private decoder inputs (the usher body even echoes the requesting IP).
+    """
+    if not isinstance(result, dict):
+        return result
+    redacted = {}
+    for key, value in result.items():
+        if key in ('signature', 'value', 'nauth', 'nauthsig'):
+            redacted[key + '_len'] = len(value) if isinstance(value, str) else None
+        elif key in ('media_url', 'url') and isinstance(value, str) and value:
+            redacted[key + '_host'] = urlsplit(value).hostname
+            redacted[key + '_len'] = len(value)
+        elif isinstance(value, dict):
+            redacted[key] = evidence(value)
+        elif isinstance(value, list):
+            redacted[key] = [evidence(item) for item in value]
+        else:
+            redacted[key] = value
+    return redacted
