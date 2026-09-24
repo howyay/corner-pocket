@@ -263,14 +263,17 @@ def summarise(result):
     print(json.dumps({key: value for key, value in result.items()
                       if key not in ('gate', 'thresholds')}, indent=1))
     counts = result['gate']['counts']
-    print('\nGATE: %d shots, %d pots, %d unknowns, %d rejections, %d breaks (of %d tracks)'
+    real_breaks = sum(1 for group in result['gate']['breaks'] if group.get('is_break'))
+    print('\nGATE: %d shots, %d pots, %d unknowns, %d rejections, %d onset group(s) of which '
+          '%d break(s) (of %d tracks)'
           % (counts['shots'], counts['pots'], counts['unknowns'], counts['rejections'],
-             counts['breaks'], counts['tracks']))
+             counts['breaks'], real_breaks, counts['tracks']))
     print('rejection codes:', json.dumps(result['rejection_codes']))
     for shot in result['gate']['shots'][:10]:
-        print('  SHOT  t=%7.2f  %s  peak %.0f px/s  %d samples'
+        print('  SHOT  t=%7.2f  %s  peak %.0f px/s  %.2f s  %d samples  rest %.2f s'
               % (shot['onset_t'], shot['ball_id'], shot.get('peak_speed_px_s') or 0,
-                 len(shot.get('samples') or [])))
+                 shot.get('duration_s') or 0, len(shot.get('samples_used') or []),
+                 shot.get('rest_window_measured_s') or 0))
     for pot in result['gate']['pots'][:10]:
         print('  %-7s t=%7.2f  %s  pocket %s  %.0f px from centre  %s'
               % (pot['verdict'].upper(), pot['last_t'], pot['ball_id'],
