@@ -242,5 +242,150 @@ class ResolveTests(unittest.TestCase):
                 vod.resolve_vod('1000000011')
 
 
+class FakeCapture:
+    """A decoder standing in for OpenCV: counts reads, records seeks."""
+
+    def __init__(self, frames=100000, fps=30.0, opened=True):
+        self.frames, self.fps, self.opened = frames, fps, opened
+        self.index = 0
+        self.seeks = []
+        self.released = False
+
+    def isOpened(self):
+        return self.opened
+
+    def get(self, prop):
+        return self.fps if prop == 5 else float(self.index)          # 5 == CAP_PROP_FPS
+
+    def set(self, prop, value):
+        self.seeks.append((prop, value))
+        return True
+
+    def read(self):
+        if self.index >= self.frames:
+            return False, None
+        self.index += 1
+        return True, ('frame', self.index)
+
+    def release(self):
+        self.released = True
+        self.opened = False
+
+
+class FakeClock:
+    """A clock that only advances when something sleeps."""
+
+    def __init__(self, now=0.0):
+        self.now = now
+        self.slept = []
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+class PacingTests(unittest.TestCase):
+    def capture(self, *, inner=None, **kwargs):
+        inner = inner or FakeCapture(**{key: value for key, value in kwargs.items()
+                                       if key in ('frames', 'fps', 'opened')})
+        clock = FakeClock()
+        capture = vod.VodRealtimeCapture('https://d2nvs31859zcd8.cloudfront.net/vod.m3u8',
+                                         vod_id='1000000011', capture=inner, clock=clock,
+                                         sleep=clock.sleep, **{key: value for key, value in kwargs.items()
+                                                               if key not in ('frames', 'fps', 'opened')})
+        return capture, inner, clock
+
+    def test_serves_one_frame_per_source_frame_period(self):
+        capture, inner, clock = self.capture()
+        for _ in range(5):
+            ok, frame = capture.read()
+            self.assertTrue(ok)
+        self.assertEqual(capture.state()['frames_served'], 5)
+        self.assertEqual(capture.state()['frames_dropped'], 0)
+        self.assertAlmostEqual(clock.now, 4 / 30.0, places=6)        # first frame is immediate
+        self.assertEqual(len(clock.slept), 4)
+        # Steady state holds the video at most one frame period ahead of the wall clock.
+        self.assertLessEqual(0.0, capture.state()['drift_s'])
+        self.assertLessEqual(capture.state()['drift_s'], 1 / 30.0 + 1e-9)
+
+    def test_rate_scales_the_wall_clock_slot(self):
+        capture, inner, clock = self.capture(rate=2.0)
+        for _ in range(5):
+            capture.read()
+        self.assertAlmostEqual(clock.now, 4 / 60.0, places=6)        # 60 fps of video in real time
+        self.assertEqual(capture.state()['rate'], 2.0)
+        self.assertEqual(capture.state()['frames_dropped'], 0)
+
+    def test_a_late_consumer_loses_frames_instead_of_drifting(self):
+        capture, inner, clock = self.capture()
+        capture.read()
+        clock.now += 5.0                                             # consumer stalled 5 s
+        ok, frame = capture.read()
+        self.assertTrue(ok)
+        state = capture.state()
+        self.assertEqual(state['frames_dropped'], 30)                # bounded catch-up: 1 s worth
+        self.assertLessEqual(abs(state['drift_s']), 4.1)             # still behind, bounded
+        for _ in range(6):                                           # keeps catching up, never blocks
+            capture.read()
+        state = capture.state()
+        self.assertLessEqual(abs(state['drift_s']), 0.05)            # back on the wall clock
+        self.assertGreater(state['frames_dropped'], 30)
+        self.assertEqual(state['frames_served'], 8)
+
+    def test_start_offset_seeks_and_shifts_the_timeline(self):
+        capture, inner, clock = self.capture()
+        capture2 = vod.VodRealtimeCapture('file.mp4', start_s=600.0, capture=FakeCapture(),
+                                          clock=FakeClock(), sleep=lambda seconds: None, fps=30.0)
+        self.assertEqual(inner.seeks, [])
+        self.assertEqual(capture2._capture.seeks[0][1], 600000.0)    # CAP_PROP_POS_MSEC
+        self.assertEqual(capture2.state()['video_s'], 600.0)
+        self.assertEqual(capture2.get(5), 30.0)                      # FPS
+        self.assertEqual(capture2.get(1), 18000.0)                   # POS_FRAMES = 600 s * 30 fps
+        self.assertEqual(capture2.get(0), 600000.0)                  # POS_MSEC
+
+    def test_state_never_claims_to_be_live(self):
+        capture, inner, clock = self.capture()
+        capture.read()
+        state = capture.state()
+        self.assertEqual(state['kind'], 'vod-replay')
+        self.assertFalse(state['live'])
+        self.assertEqual(state['vod_id'], '1000000011')
+        self.assertEqual(state['pacing'], 'wall-clock')
+        self.assertEqual(state['network'], 'hls')
+        self.assertEqual(state['fps'], 30.0)
+        self.assertIn('drift_s', state)
+        self.assertTrue(state['opened'])
+        self.assertEqual(vod.VodRealtimeCapture('data/vod_30min_260815.mp4', capture=FakeCapture()).state()['network'],
+                         'file')
+
+    def test_end_of_media_and_release_are_reported(self):
+        capture, inner, clock = self.capture(frames=2)
+        self.assertTrue(capture.read()[0])
+        self.assertTrue(capture.read()[0])
+        ok, frame = capture.read()
+        self.assertFalse(ok)
+        self.assertIsNone(frame)
+        self.assertEqual(capture.state()['read_failures'], 1)
+        capture.release()
+        self.assertTrue(inner.released)
+        self.assertFalse(capture.isOpened())
+
+    def test_capture_without_an_inner_decoder_uses_opencv_timeouts(self):
+        with patch('annotator.twitch_vod_source._open', return_value=FakeCapture()) as opener:
+            capture = vod.VodRealtimeCapture('https://d2nvs31859zcd8.cloudfront.net/v.m3u8', fps=30.0)
+        self.assertEqual(opener.call_args[0][0], 'https://d2nvs31859zcd8.cloudfront.net/v.m3u8')
+        self.assertTrue(capture.isOpened())
+
+    def test_bad_arguments_are_refused(self):
+        for kwargs in ({'rate': 0}, {'rate': -1}, {'rate': True}, {'rate': 'x'},
+                       {'start_s': -1}, {'start_s': None}, {'start_s': True}, {'max_catchup_s': 0}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(TwitchVodError):
+                    vod.VodRealtimeCapture('file.mp4', capture=FakeCapture(), **kwargs)
+
+
 if __name__ == '__main__':
     unittest.main()

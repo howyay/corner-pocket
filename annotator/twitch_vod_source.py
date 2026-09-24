@@ -302,6 +302,151 @@ def resolve_vod(vod_id, *, max_height=720, timeout=15):
                          'has_endlist': any(line == '#EXT-X-ENDLIST' for line in lines)}}
 
 
+def _cv2():
+    """OpenCV is needed by the capture, not by the fetch/probe half of this module."""
+    import cv2
+    return cv2
+
+
+def _open(media, *, open_timeout_ms=15000, read_timeout_ms=8000):
+    cv2 = _cv2()
+    return cv2.VideoCapture(media, cv2.CAP_FFMPEG, [
+        cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, open_timeout_ms,
+        cv2.CAP_PROP_READ_TIMEOUT_MSEC, read_timeout_ms,
+    ])
+
+
+class VodRealtimeCapture:
+    """A VOD as a capture: real time in, frames out, drift corrected by dropping.
+
+    The wall clock is the authority.  ``read()`` returns the frame whose video time is
+    ``start_s + rate x (wall clock since open)``: it *sleeps* while the video is ahead of
+    that line and *drops* source frames (counting them) while it is behind, so a slow
+    consumer loses frames instead of falling further behind.  At ``rate=1.0`` that is one
+    frame per source frame period, which is what makes a recorded VOD indistinguishable
+    from a live feed for a consumer - while ``state()`` keeps saying exactly what it is:
+
+        {'kind': 'vod-replay', 'live': False, 'vod_id': ..., 'pacing': 'wall-clock',
+         'network': 'hls'|'file', 'rate': 1.0, 'wall_s': ..., 'video_s': ...,
+         'expected_video_s': ..., 'drift_s': ..., 'frames_served': ...,
+         'frames_dropped': ..., 'read_failures': ...}
+
+    The OpenCV-compatible surface (``isOpened``/``read``/``get``/``release``) is what
+    ``annotator/live_processing.py`` consumes from an injected ``capture_factory``; this
+    class exists so that file needs no change to gain a real-time VOD input.
+
+    ``max_catchup_s`` bounds how much source material one ``read`` may discard (default
+    1 s): a consumer that stalls for a minute recovers over the following reads instead of
+    blocking inside one call, and ``state()['drift_s']`` shows the debt while it does.
+    """
+
+    def __init__(self, media, *, vod_id=None, rate=1.0, start_s=0.0, fps=None,
+                 clock=time.monotonic, sleep=time.sleep, capture=None, network=None,
+                 max_catchup_s=1.0, open_timeout_ms=15000, read_timeout_ms=8000):
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)) or rate <= 0:
+            raise TwitchVodError('rate must be a positive number')
+        if isinstance(start_s, bool) or not isinstance(start_s, (int, float)) or start_s < 0:
+            raise TwitchVodError('start_s must be a non-negative number')
+        if isinstance(max_catchup_s, bool) or not isinstance(max_catchup_s, (int, float)) or max_catchup_s <= 0:
+            raise TwitchVodError('max_catchup_s must be a positive number')
+        self.media = media
+        self.vod_id = vod_id
+        self.rate = float(rate)
+        self.start_s = float(start_s)
+        self._clock, self._sleep = clock, sleep
+        self._capture = capture if capture is not None else _open(
+            media, open_timeout_ms=open_timeout_ms, read_timeout_ms=read_timeout_ms)
+        self._network = network or ('hls' if isinstance(media, str) and media.startswith('https://') else 'file')
+        self._fps = float(fps) if fps else self._read_fps()
+        self._frame_period = 1.0 / self._fps / self.rate
+        self._max_catchup_frames = max(1, int(round(self._fps * self.rate * max_catchup_s)))
+        self._start_frame = 0
+        if self.start_s:
+            self._capture.set(_cv2().CAP_PROP_POS_MSEC, self.start_s * 1000.0)
+            self._start_frame = int(round(self.start_s * self._fps))
+        self._wall_start = self._clock()
+        self._source_frames = 0
+        self._served = 0
+        self._dropped = 0
+        self._read_failures = 0
+
+    def _read_fps(self):
+        cv2 = _cv2()
+        try:
+            fps = float(self._capture.get(cv2.CAP_PROP_FPS))
+        except Exception:
+            fps = 0.0
+        return fps if math.isfinite(fps) and 0 < fps <= 240 else 30.0
+
+    # --- the capture contract annotator/live_processing.py consumes ---------------
+
+    def isOpened(self):
+        try:
+            return bool(self._capture.isOpened())
+        except Exception:
+            return False
+
+    def read(self):
+        """Wait for this frame's wall-clock slot, or skip ahead if the consumer is late."""
+        target = self.start_s + (self._clock() - self._wall_start) * self.rate
+        position = self.start_s + self._source_frames / self._fps
+        if position < target - self._frame_period:
+            budget = self._max_catchup_frames
+            while position < target - self._frame_period and budget > 0:
+                ok, _ = self._capture.read()
+                if not ok:
+                    self._read_failures += 1
+                    return False, None
+                self._source_frames += 1
+                self._dropped += 1
+                budget -= 1
+                position = self.start_s + self._source_frames / self._fps
+        elif position > target:
+            self._sleep(position - target)
+        ok, frame = self._capture.read()
+        if ok:
+            self._source_frames += 1
+            self._served += 1
+        else:
+            self._read_failures += 1
+        return ok, frame
+
+    def get(self, prop):
+        cv2 = _cv2()
+        if prop == cv2.CAP_PROP_FPS:
+            return self._fps
+        if prop == cv2.CAP_PROP_POS_FRAMES:
+            return float(self._start_frame + self._source_frames)
+        if prop == cv2.CAP_PROP_POS_MSEC:
+            return (self.start_s + self._source_frames / self._fps) * 1000.0
+        return self._capture.get(prop)
+
+    def set(self, prop, value):
+        return self._capture.set(prop, value)
+
+    def release(self):
+        try:
+            self._capture.release()
+        finally:
+            self._released_at = self._clock()
+
+    # --- honest self-description --------------------------------------------------
+
+    def state(self):
+        now = self._clock()
+        wall = max(0.0, now - self._wall_start)
+        expected = self.start_s + wall * self.rate
+        position = self.start_s + self._source_frames / self._fps
+        return {'kind': 'vod-replay', 'live': False, 'vod_id': self.vod_id,
+                'network': self._network, 'rate': self.rate, 'pacing': 'wall-clock',
+                'start_s': self.start_s, 'fps': self._fps,
+                'wall_s': round(wall, 3), 'video_s': round(position, 3),
+                'expected_video_s': round(expected, 3), 'drift_s': round(position - expected, 3),
+                'frames_served': self._served, 'frames_dropped': self._dropped,
+                'read_failures': self._read_failures, 'opened': self.isOpened()}
+
+
+
 def evidence(result):
     """The printable, redacted view of any result above: no token, no signature, no URL.
 
