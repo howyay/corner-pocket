@@ -98,6 +98,9 @@ BALL_MIN_AREA, BALL_MAX_AREA = 60, 9000
 BALL_MIN_R, BALL_MAX_R = 4.0, 60.0
 BALL_AREA_RANGE = (BALL_MIN_AREA, BALL_MAX_AREA)
 BALL_R_RANGE = (BALL_MIN_R, BALL_MAX_R)
+# Four lines of header on every crop: the verdict, the numbers behind it, and the
+# legend.  The crop is the checkable artifact, so the text has to be readable.
+BAND_H = 88
 
 
 def _log(text: str) -> None:
@@ -298,8 +301,16 @@ def verdict_counts(rows: list) -> dict:
     return counts
 
 
-def headline(fp_rows: list, fn_rows: list, recovery: list) -> dict:
-    """The counts a reader acts on, computed once so the doc cannot drift."""
+def headline(fp_rows: list, fn_rows: list, recovery: list, cost: list = (),
+             f1_epsilon: float = 0.01) -> dict:
+    """The counts a reader acts on, computed once so the doc cannot drift.
+
+    ``fn_recovered_best`` alone would be a bad headline: at the lowest threshold in
+    the sweep almost anything comes back, at the price of a precision collapse
+    (F1 0.82 for 9 of 22).  The number a reader can act on is how many come back
+    for F1 that is essentially unchanged, so ``cost`` (the frozen report's own
+    precision/recall at each threshold) is what picks that row.
+    """
     counts = verdict_counts(fp_rows)
     below = sum(1 for row in fp_rows
                 if row["verdict"] == "teacher_recall"
@@ -308,6 +319,12 @@ def headline(fp_rows: list, fn_rows: list, recovery: list) -> dict:
     operational = next((row for row in recovery
                         if abs(row["threshold"] - 0.425) < 1e-9), None)
     best = max(recovery, key=lambda row: row["recovered"]) if recovery else None
+    near_free = []
+    op_f1 = _f1_at(cost, operational["threshold"]) if operational else None
+    if op_f1 is not None:
+        near_free = [row for row in cost
+                     if row["f1"] is not None and row["f1"] >= op_f1 - f1_epsilon]
+    cheapest = max(near_free, key=lambda row: row["fn_recovered"]) if near_free else None
     return {
         "fp_total": len(fp_rows),
         "teacher_recall": counts["teacher_recall"],
@@ -319,28 +336,46 @@ def headline(fp_rows: list, fn_rows: list, recovery: list) -> dict:
         "fn_recovered_at_operating_threshold": (operational or {}).get("recovered"),
         "fn_recovered_best": (best or {}).get("recovered"),
         "fn_recovered_best_threshold": (best or {}).get("threshold"),
+        "fn_unrecovered_at_any_threshold": (
+            (best or {}).get("of", len(fn_rows)) - (best or {}).get("recovered", 0)),
+        "f1_epsilon": f1_epsilon,
+        "fn_recovered_within_f1_epsilon": (cheapest or {}).get("fn_recovered"),
+        "fn_recovery_threshold_within_f1_epsilon": (cheapest or {}).get("threshold"),
+        "f1_cost_of_that_recovery": (cheapest or {}).get("f1"),
     }
+
+
+def _f1_at(cost: list, threshold: float):
+    for row in cost:
+        if abs(row["threshold"] - threshold) < 1e-9:
+            return row["f1"]
+    return None
 
 
 # -------------------------------------------------------------------- report ---
 
 def markdown_table(fp_rows: list, fn_rows: list, entry: dict) -> str:
-    """The verdict table, generated from the JSON so it cannot drift from it."""
+    """The verdict table, generated from the JSON so it cannot drift from it.
+
+    "Nearest instance" and "the instance that justified the verdict" are two
+    different rows of evidence and the table keeps them apart: a near-miss at
+    1.3 px scoring 0.185 is below the audit's floor and proves nothing, while the
+    0.49 instance 1.73 px away is what makes the case teacher recall.  Printing
+    only the nearest score would make that row read as a contradiction.
+    """
     lines = ["## Per-case verdicts: the 15 false positives", "",
-             "| case | t (s) | student | offset to nearest SAM3 inst | inst score | inst r | gate "
-             "| verdict | why |",
-             "|---|---|---|---|---|---|---|---|---|"]
+             "| case | t (s) | student | nearest inst (offset / score) "
+             "| justifying inst (offset / score) | verdict | why |",
+             "|---|---|---|---|---|---|---|"]
     for row in fp_rows:
-        lines.append("| {id} | {t:.1f} | {s:.2f} | {off} | {sc} | {r} | {gate} | **{v}** | {why} |"
+        lines.append("| {id} | {t:.1f} | {s:.2f} | {near} | {just} | **{v}** | {why} |"
                      .format(id=row["id"], t=row["t"], s=row["student_score"],
-                             off=(f"{row['nearest_offset_px']:.1f} px"
-                                  if row["nearest_offset_px"] is not None else "-"),
-                             sc=(f"{row['nearest_offset_score']:.2f}"
-                                 if row["nearest_offset_score"] is not None else "-"),
-                             r=(f"{row.get('found_r'):.1f} px" if row.get("found_r") is not None
-                                else (f"{row['instances'][0]['r']:.1f} px"
-                                      if row["instances"] else "-")),
-                             gate=(row["instances"][0]["gate"] if row["instances"] else "-"),
+                             near=(f"{row['nearest_offset_px']:.1f} px / "
+                                   f"{row['nearest_offset_score']:.2f}"
+                                   if row["nearest_offset_px"] is not None else "-"),
+                             just=(f"{row['found_offset_px']:.1f} px / "
+                                   f"{row['found_score']:.2f}"
+                                   if row.get("found_score") is not None else "-"),
                              v=row["verdict"], why=row["reason"]))
     lines += ["", "## Per-case mirror test: the 22 false negatives", "",
               "| case | t (s) | teacher score | offset to nearest student peak at 0.425 "
@@ -593,15 +628,29 @@ def cache_agreement(t: float, instances: list, cached: dict) -> dict:
 
 
 def cmd_measure(args) -> int:
-    """Buy SAM3 frames for the disputed points, cached after every frame."""
+    """Buy SAM3 frames for the disputed points, cached after every frame.
+
+    ``--extra-times`` buys frames outside the false-positive set.  It exists because
+    the cross-check against the teacher cache surfaced a second question the FP set
+    cannot answer: ``out/scan30/sam3_results.json`` holds 13 empty rows, two of them
+    truth rows of the held-out set, and an empty row is indistinguishable from a
+    correct "no balls here" until the frame is measured.  Those frames are recorded
+    with ``purpose`` so they are never mistaken for part of the adjudication.
+    """
     cases = json.loads(CASES_OUT.read_text())
-    wanted = sorted({round(float(row["t"]), 3) for row in cases["fp"]})
+    wanted = {round(float(row["t"]), 3): "false_positive" for row in cases["fp"]}
+    for text in (args.extra_times or "").split(","):
+        text = text.strip()
+        if text:
+            wanted[round(float(text), 3)] = "cache_integrity_check"
     cached = json.loads(SWEEP_OUT.read_text()) if SWEEP_OUT.exists() else {}
     frames = cached.get("frames", {})
-    todo = [t for t in wanted if str(t) not in frames]
+    todo = [t for t in sorted(wanted) if str(t) not in frames]
+    if args.only_extra:
+        todo = [t for t in todo if wanted[t] == "cache_integrity_check"]
     if args.max_frames:
         todo = todo[:args.max_frames]
-    _log(f"{len(wanted)} FP frames, {len(wanted) - len(todo)} already measured, "
+    _log(f"{len(wanted)} frames wanted, {len(wanted) - len(todo)} already measured, "
          f"{len(todo)} to buy")
     if not todo:
         _log("nothing to buy")
@@ -620,13 +669,15 @@ def cmd_measure(args) -> int:
             row = measure_frame(t)
         except Exception as exc:                     # one bad frame must not lose the run
             _log(f"t={t}: FAILED {type(exc).__name__}: {exc}")
-            frames[str(t)] = {"error": f"{type(exc).__name__}: {exc}"}
+            frames[str(t)] = {"error": f"{type(exc).__name__}: {exc}",
+                              "purpose": wanted[t]}
             _write_sweep(frames, started, cached)
             continue
+        row["purpose"] = wanted[t]
         row["agreement"] = cache_agreement(t, row["instances"], cached_teacher)
         frames[str(t)] = row
         spent.append(row["seconds"])
-        _log(f"t={t}: {row['count']} instances, {row['seconds']}s, "
+        _log(f"t={t} ({row['purpose']}): {row['count']} instances, {row['seconds']}s, "
              f"cache agrees={row['agreement'].get('agrees')}")
         _write_sweep(frames, started, cached)
     _log(json.dumps({"frames_run": len(spent),
@@ -722,7 +773,7 @@ def cmd_verdicts(args) -> int:
                      "localisation_px_p90": frozen_row["localisation_px_p90"],
                      "recovered_localisation_median_px": r["localisation_px_median"]})
 
-    head = headline(fp_rows, fn_rows, recovery)
+    head = headline(fp_rows, fn_rows, recovery, cost)
     measured = sum(1 for t in {round(float(r["t"]), 3) for r in cases["fp"]}
                    if _sweep_instances(sweep["frames"], t) is not None)
     payload = {"headline": head, "cost": cost, "entry_threshold": entry,
@@ -756,13 +807,37 @@ def crop_bounds(x: float, y: float, half: int, shape: tuple) -> tuple:
     return x0, y0, x1, y1
 
 
+def fitted_text(canvas, text: str, org: tuple, max_width: int, scale: float,
+                colour: tuple, thickness: int = 1, min_scale: float = 0.30) -> float:
+    """Draw ``text`` shrunk until it fits ``max_width``: a clipped label is a lost label.
+
+    The subtitle carries the numbers the whole verdict rests on, and at the default
+    scale it ran off the right edge of a 540 px crop; the reader then sees
+    "admitted @ 0.41 (cut 0.6" and has to guess the cut.
+    """
+    import cv2
+
+    size = scale
+    while size > min_scale:
+        if cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, size, thickness)[0][0] <= max_width:
+            break
+        size -= 0.02
+    cv2.putText(canvas, text, org, cv2.FONT_HERSHEY_SIMPLEX, size, colour, thickness,
+                cv2.LINE_AA)
+    return size
+
+
 def render_case(bgr, case: dict, half: int, scale: int, title: str, subtitle: str,
                 student_peaks: list, teacher_labels: list, instances: list,
                 extra_peaks: list = ()) -> "object":
     """One crop per case: the dispute, the student, the teacher and the sweep.
 
     The picture is the *checkable* artifact: a human should be able to confirm or
-    overturn the automated verdict in it without reading the JSON.
+    overturn the automated verdict in it without reading the JSON.  Three details do
+    the work: the disputed point carries a crosshair (a crop holds several
+    detections and the audited one has to be unambiguous), the SAM3 instance labels
+    are staggered (three instances on one ball printed their scores on top of each
+    other), and every text is fitted to the crop width.
     """
     import cv2
     import numpy as np
@@ -779,10 +854,10 @@ def render_case(bgr, case: dict, half: int, scale: int, title: str, subtitle: st
             continue
         centre = to_px(lx, ly)
         cv2.circle(crop, centre, max(8, int(lr * scale)), (0, 200, 0), 2)
-        cv2.putText(crop, "teacher", (centre[0] + 6, centre[1] - 6),
+        cv2.putText(crop, "teacher", (centre[0] + 6, centre[1] - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 0), 1, cv2.LINE_AA)
     # SAM3 instances from this sweep (cyan below the production cut, orange above)
-    for inst in instances or ():
+    for index, inst in enumerate(instances or ()):
         ix, iy = float(inst["x"]), float(inst["y"])
         if not (x0 <= ix <= x1 and y0 <= iy <= y1):
             continue
@@ -790,7 +865,11 @@ def render_case(bgr, case: dict, half: int, scale: int, title: str, subtitle: st
         centre = to_px(ix, iy)
         cv2.circle(crop, centre, max(5, int(float(inst.get("r") or 5) * scale)),
                    colour, 1 if inst["score"] < PRODUCTION_CUT else 2)
-        cv2.putText(crop, f"sam3 {inst['score']:.2f}", (centre[0] + 6, centre[1] + 16),
+        # stagger: several instances land on the same ball and their scores would
+        # otherwise print on top of each other into an unreadable blob
+        tx = centre[0] + 8 + 26 * (index // 3)
+        ty = centre[1] + 16 + 15 * (index % 3)
+        cv2.putText(crop, f"sam3 {inst['score']:.2f}", (tx, ty),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, colour, 1, cv2.LINE_AA)
     # the student's own peaks at the operating threshold (red)
     for (px, py, s) in student_peaks:
@@ -798,7 +877,7 @@ def render_case(bgr, case: dict, half: int, scale: int, title: str, subtitle: st
             continue
         centre = to_px(px, py)
         cv2.circle(crop, centre, 10, (0, 0, 255), 2)
-        cv2.putText(crop, f"student {s:.2f}", (centre[0] + 6, centre[1] - 10),
+        cv2.putText(crop, f"student {s:.2f}", (centre[0] + 6, centre[1] - 12),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 255), 1, cv2.LINE_AA)
     # extra peaks (blue): the student after the output threshold is lowered
     for (px, py, s) in extra_peaks or ():
@@ -806,8 +885,12 @@ def render_case(bgr, case: dict, half: int, scale: int, title: str, subtitle: st
             continue
         centre = to_px(px, py)
         cv2.circle(crop, centre, 14, (255, 0, 0), 2)
-        cv2.putText(crop, f"student@low {s:.2f}", (centre[0] + 6, centre[1] + 30),
+        cv2.putText(crop, f"student@low {s:.2f}", (centre[0] + 6, centre[1] + 32),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 0, 0), 1, cv2.LINE_AA)
+
+    # the disputed point itself, so the audited detection is unambiguous
+    point = to_px(x, y)
+    cv2.drawMarker(crop, point, (255, 255, 255), cv2.MARKER_CROSS, 34, 1)
 
     # a context thumbnail so the crop is locatable on the table.  It is sized from
     # the crop, not fixed: a case near the frame edge has a narrow crop (the bounds
@@ -826,14 +909,16 @@ def render_case(bgr, case: dict, half: int, scale: int, title: str, subtitle: st
                        (0, 0, 255), cv2.MARKER_CROSS, 7, 1)
         crop[0:thumb_h, w - thumb_w:w] = thumb
 
-    band = np.zeros((74, w, 3), np.uint8)
-    cv2.putText(band, title, (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255, 255, 255), 1,
-                cv2.LINE_AA)
-    cv2.putText(band, subtitle[:110], (8, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.46,
-                (200, 255, 200), 1, cv2.LINE_AA)
-    cv2.putText(band, "red = student  green = teacher label  cyan/orange = SAM3 now "
-                      "(cyan < 0.62 cut)  blue = student at a lower threshold",
-                (8, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (180, 180, 180), 1, cv2.LINE_AA)
+    band = np.zeros((BAND_H, w, 3), np.uint8)
+    margin, limit = 8, w - 16
+    fitted_text(band, title, (margin, 22), limit, 0.56, (255, 255, 255))
+    fitted_text(band, subtitle, (margin, 44), limit, 0.46, (190, 255, 190))
+    fitted_text(band, "red = student peaks at the operating threshold   "
+                      "green = teacher label   [+] = the disputed point",
+                (margin, 63), limit, 0.40, (185, 185, 185))
+    fitted_text(band, "cyan = SAM3 now, below the 0.62 production cut   "
+                      "orange = SAM3 now, at or above it   blue = student at a lower threshold",
+                (margin, 80), limit, 0.40, (185, 185, 185))
     return np.concatenate([band, crop], axis=0)
 
 
@@ -945,6 +1030,11 @@ def main(argv=None) -> int:
     p = sub.add_parser("sam3", help="buy SAM3 frames for the disputed points")
     p.add_argument("--budget-s", type=float, default=1500.0)
     p.add_argument("--max-frames", type=int, default=0)
+    p.add_argument("--extra-times", default="",
+                   help="comma-separated extra timestamps to buy, recorded with "
+                        "purpose=cache_integrity_check rather than as adjudication")
+    p.add_argument("--only-extra", action="store_true",
+                   help="buy only the --extra-times frames")
     p.add_argument("--estimate-s", type=float, default=45.0,
                    help="cost estimate used to refuse a frame that will not fit the budget")
     p.set_defaults(func=cmd_measure)

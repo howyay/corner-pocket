@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.ball_fp_audit import (AUDIT, BALL_AREA_RANGE, BALL_R_RANGE, CANDIDATE_RADIUS_PX,
+from src.ball_fp_audit import (AUDIT, BALL_AREA_RANGE, BALL_R_RANGE, BAND_H, CANDIDATE_RADIUS_PX,
                               CASES_OUT, FN_THRESHOLDS, MATCH_TOL_PX, PRODUCTION_CUT,
                               SAM3_FLOOR, SWEEP_THRESHOLDS, _sweep_instances, admit,
                               adjudicate_fp, cache_agreement, case_times, crop_bounds,
@@ -266,6 +266,26 @@ class CountingTest(unittest.TestCase):
         self.assertEqual(head["fn_recovered_best"], 15)
         self.assertEqual(head["fn_recovered_best_threshold"], 0.3)
 
+    def test_headline_separates_recovery_that_costs_nothing_from_recovery_that_costs(self):
+        """The best recovery is at the bottom of the sweep and wrecks precision, so
+        the actionable number is the one whose F1 is still within epsilon."""
+        recovery = [{"threshold": 0.425, "recovered": 0, "of": 22},
+                    {"threshold": 0.3, "recovered": 5, "of": 22},
+                    {"threshold": 0.05, "recovered": 9, "of": 22}]
+        cost = [{"threshold": 0.425, "fn_recovered": 0, "f1": 0.927},
+                {"threshold": 0.3, "fn_recovered": 5, "f1": 0.921},
+                {"threshold": 0.05, "fn_recovered": 9, "f1": 0.82}]
+        head = headline([], [], recovery, cost)
+        self.assertEqual(head["fn_recovered_best"], 9)
+        self.assertEqual(head["fn_unrecovered_at_any_threshold"], 13)
+        self.assertEqual(head["fn_recovered_within_f1_epsilon"], 5)
+        self.assertEqual(head["fn_recovery_threshold_within_f1_epsilon"], 0.3)
+        self.assertEqual(head["f1_cost_of_that_recovery"], 0.921)
+
+    def test_headline_without_a_cost_table_reports_no_cheap_recovery(self):
+        head = headline([], [], [{"threshold": 0.425, "recovered": 0, "of": 22}], [])
+        self.assertIsNone(head["fn_recovered_within_f1_epsilon"])
+
     def test_percentile_is_nearest_rank(self):
         values = [float(i) for i in range(1, 11)]
         self.assertEqual(percentile(values, 50), 5.0)
@@ -296,7 +316,19 @@ class TableTest(unittest.TestCase):
         table = markdown_table(fp, [], {})
         for line in table.splitlines():
             if line.startswith("| fp"):
-                self.assertEqual(len(line.split("|")), 11)   # 9 cells + 2 edge empties
+                self.assertEqual(len(line.split("|")), 9)    # 7 cells + 2 edge empties
+
+    def test_the_nearest_score_and_the_justifying_score_are_kept_apart(self):
+        """fp15's real shape: a 0.185 instance 1.3 px away proves nothing, the
+        0.49 instance 1.7 px away is what makes the case teacher recall."""
+        row = adjudicate_fp(case(), [inst(101.3, 100.0, 0.185), inst(101.7, 100.0, 0.49)])
+        self.assertEqual(row["verdict"], "teacher_recall")
+        self.assertAlmostEqual(row["nearest_offset_score"], 0.185, places=3)
+        self.assertAlmostEqual(row["found_score"], 0.49, places=3)
+        table = markdown_table([row], [], {})
+        line = next(l for l in table.splitlines() if l.startswith("| fp"))
+        self.assertIn("1.3 px / 0.18", line)
+        self.assertIn("1.7 px / 0.49", line)
 
 
 class SweepLookupTest(unittest.TestCase):
@@ -365,7 +397,7 @@ class CropTest(unittest.TestCase):
             instances=[{"x": 643.0, "y": 360.0, "score": 0.58, "r": 8.0, "area": 200.0,
                         "in_cloth": True}],
             extra_peaks=[(640.0, 362.0, 0.2)])
-        self.assertEqual(image.shape[0], 74 + 180 * 2)          # band + cropped height
+        self.assertEqual(image.shape[0], BAND_H + 180 * 2)      # band + cropped height
         self.assertEqual(image.shape[1], 180 * 2)
         self.assertTrue(image[40:60, 8:80].any())              # the title band is drawn
 
