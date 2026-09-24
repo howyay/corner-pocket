@@ -51,6 +51,7 @@ if str(ROOT) not in sys.path:
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
 
+SMALL_W, SMALL_H = 960, 540      # the scan's working frame (src.info_complete_scan)
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 SCAN_QUAD = ROOT / "out" / "scan30" / "corners.json"
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
@@ -324,6 +325,53 @@ def event_projection(HA, HB, path=CANDIDATES):
             "foot_max_px": round(max(foot), 1) if foot else None}
 
 
+def claim_frame_provenance(HA, HB, path=CANDIDATES):
+    """Which mapping actually wrote the claims' stored millimetres?
+
+    A pot candidate carries both ``last_mm`` and the pixel it was measured at
+    (``last_cx``/``last_cy``, in the scan's 960x540 working frame).  Feeding
+    ``last_mm`` back through each candidate mapping and comparing with the stored
+    pixel is therefore a *held-out test of the claim frame*, independent of the
+    quad evidence: the frame that wrote the millimetres is the one that returns
+    the pixel the scan saw.
+
+    ``src.info_complete_scan`` builds its homography from ``detect_table`` and
+    never persists it, so this reconstructs it from ``out/scan30/corners.json``
+    (the same detector's saved median quad) and reports the residual of both
+    candidates; the anchors are the physical mapping, not the claim frame.
+    """
+    try:
+        events = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {"error": f"cannot read {path}"}
+    rows = [e for e in events if e.get("last_cx") is not None and e.get("last_mm")]
+    if not rows:
+        return {"error": "no candidate carries both last_mm and a pixel", "n": 0}
+    out = {"source": str(path), "n": len(rows), "frame": "960x540 (the scan's working space)"}
+    for key, H in (("hand_anchors", HA), ("scan_quad", HB)):
+        inverse = np.linalg.inv(H)
+        residuals = []
+        for event in rows:
+            px = project(inverse, event["last_mm"])
+            if px is None:
+                continue
+            # The quad and both mappings are in 1280x720; the stored pixel is not.
+            px = px * np.array([SMALL_W / 1280.0, SMALL_H / 720.0], np.float64)
+            residuals.append(float(np.hypot(px[0] - event["last_cx"], px[1] - event["last_cy"])))
+        residuals.sort()
+        out[key] = {"n": len(residuals),
+                    "median_px": round(float(np.median(residuals)), 2) if residuals else None,
+                    "p90_px": round(float(np.percentile(residuals, 90)), 2) if residuals else None,
+                    "max_px": round(max(residuals), 2) if residuals else None}
+    a, b = out["hand_anchors"]["median_px"], out["scan_quad"]["median_px"]
+    out["verdict"] = ("the claims were written in the scan frame"
+                      if a is not None and b is not None and b < a / 2.0 else
+                      "inconclusive: neither candidate reproduces the stored pixels")
+    out["note"] = ("the scan's own homography is not persisted; corners.json is the same "
+                   "detector's saved median quad, so its residual is an upper bound")
+    return out
+
+
 def build(args):
     HA, HB, quad_a, quad_b, pockets = load_mappings(args.anchors, args.scan_quad)
     rows, summary = pixel_disagreement(HA, HB)
@@ -338,6 +386,7 @@ def build(args):
         "pixel_disagreement": {"rows": rows, "by_region": summary},
         "corner_containment": corner_containment(quad_a, quad_b),
         "held_out_anchors": held_out_anchors(HA, HB, pockets),
+        "claim_frame_provenance": claim_frame_provenance(HA, HB, args.candidates),
         "foreshortening": foreshortening(HA, HB, quad_a, quad_b),
         "rail_evidence": rail_evidence(args.video, args.times, quad_a, quad_b),
         "event_projection": event_projection(HA, HB, args.candidates),
@@ -363,6 +412,11 @@ def _print(payload):
     for row in payload["held_out_anchors"]:
         print(f"  {row['anchor']:10s} clicked {row['clicked_px']} -> "
               f"A err {row['a_err_mm']:6.1f} mm | B err {row['b_err_mm']:6.1f} mm")
+    prov = payload["claim_frame_provenance"]
+    if "error" not in prov:
+        print(f"\nclaim frame provenance (n={prov['n']} pots with a stored pixel): "
+              f"hand anchors median residual {prov['hand_anchors']['median_px']} px, "
+              f"scan quad {prov['scan_quad']['median_px']} px -> {prov['verdict']}")
     print("\ncorner containment:")
     for key, info in payload["corner_containment"].items():
         worst = min(info["rows"], key=lambda r: r["signed_dist_px"])

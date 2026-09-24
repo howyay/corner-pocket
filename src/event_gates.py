@@ -115,6 +115,11 @@ class GateConfig:
     # explicitly inherited from the prior, never unverified.  That is the same
     # rule ``src.calib_segment_fit`` uses to call a sample framed-consistently.
     calibration_min_supported_sides: int = 4
+    # ... but a *warning* needs more than one unmeasurable side; see
+    # ``calibration_warning``.  Two sides with no boundary evidence at all is
+    # the reference-does-not-fit signature (measured: 2-3 on the 90 px-off scan
+    # quad, 0-1 on every occluded frame of the calibrated VOD).
+    calibration_min_unsupported_sides: int = 2
 
 
 @dataclass
@@ -502,6 +507,13 @@ def census_shot_corroborated(evidence: ShotEvidence, cfg: GateConfig = GateConfi
 # A side reason that says the frame put the boundary *somewhere else*: that is a
 # contradiction of the reference quad, not a weak measurement.
 CALIBRATION_REFUTE_REASONS = ("boundary_outside_band", "prior_disagreement")
+# The reason a side gets when the search found no boundary with the rail
+# signature anywhere in its band.  One such side is what occlusion looks like (a
+# body covers the rail, so nothing is measurable there); two or more is the
+# reference-not-fitting signature -- measured on the 90 px-off scan quad (2-3
+# such sides at t=0/70/1120.2/1800) against 0-1 on every occluded frame of the
+# calibrated VOD (t=484.1 has one; t=1661.0 and t=1799.1 have none at all).
+CALIBRATION_NO_EVIDENCE_REASON = "no_boundary_evidence"
 
 
 def calibration_warning(rail, cfg: GateConfig = GateConfig()) -> str | None:
@@ -513,11 +525,23 @@ def calibration_warning(rail, cfg: GateConfig = GateConfig()) -> str | None:
     nothing.  Coverage is deliberately not consulted here: it is a proxy that
     occlusion and shading move exactly like a camera move, and it fired on
     frames whose four rails the frame itself verifies.
+
+    Two things warn, both about the *reference*, never about the event:
+
+    * a side whose boundary is demonstrably somewhere else;
+    * ``calibration_min_unsupported_sides`` (2) or more sides with no boundary
+      evidence at all -- the reference does not fit this frame.
+
+    One unmeasurable side does not warn: a player standing on the cloth covers a
+    rail, and an unmeasurable side is not a contradicted one.  A frame where
+    nothing could be measured at all is unmeasurable, never bad.
     """
     if not rail:
         return None
     unverified = rail.get("unverified") or {}
     if not unverified:
+        if rail.get("verified_sides") is None:
+            return None                      # nothing measurable at all: not bad
         supported = rail.get("supported_sides")
         if supported is not None and supported < cfg.calibration_min_supported_sides:
             return "calibration_rail_unverified_at_time"
@@ -525,7 +549,11 @@ def calibration_warning(rail, cfg: GateConfig = GateConfig()) -> str | None:
     reasons = {str(value) for value in unverified.values()}
     if reasons & set(CALIBRATION_REFUTE_REASONS):
         return "calibration_reference_contradicted_at_time"
-    return "calibration_rail_unverified_at_time"
+    blind = sum(1 for value in unverified.values()
+                if str(value) == CALIBRATION_NO_EVIDENCE_REASON)
+    if blind >= cfg.calibration_min_unsupported_sides:
+        return "calibration_rail_unverified_at_time"
+    return None
 
 
 def _warn_calibration(evidence, cfg: GateConfig, reasons: list) -> None:

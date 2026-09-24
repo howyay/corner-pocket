@@ -58,7 +58,9 @@ MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 # The probe cache is keyed by (kind, t, colour) and carries this version: a
 # measurement change must invalidate old payloads, or a stale cache would
 # silently weaken the gates (missing fields default to "not measured").
-CACHE_VERSION = 7
+# v8: claims are projected in the scan frame (geometry_gap_px) and every event
+# carries per-side rail evidence.
+CACHE_VERSION = 8
 CENSUS_STEP_S = 0.25          # window sampling
 POT_PRE_S, POT_POST_S = 1.5, 2.5
 SHOT_INTERVALS_S = (0.3, 0.45, 0.6)   # sharp frames either side of the shot
@@ -135,12 +137,19 @@ def reference_calibration(anchors_path, quad_path):
 def claim_calibration(quad_path):
     """(inverse, label): the millimetre frame the served claims were measured in.
 
-    Every ``from_mm``/``to_mm``/``last_mm`` in a scan candidate is a pixel that
-    ``src/info_complete_scan.py`` (``--corners``, default ``out/scan30/corners.json``)
-    turned into millimetres through *its own* quad.  A claim's millimetres are
+    Every ``from_mm``/``to_mm``/``last_mm`` in a scan candidate was written by
+    ``src/info_complete_scan.py``, which builds its own homography from
+    ``detect_table`` quads (it never persists it).  A claim's millimetres are
     therefore a scan-frame quantity, and projecting them back to pixels needs
-    that quad's inverse, not the physical mapping: mixing the two lands the
-    claim up to 61 px (1.9 m at the head rail) from the pixel the scan measured.
+    that quad's inverse, not the physical mapping.
+
+    Measured (``out/calib_mapping_audit.json``, ``claim_frame_provenance``): the
+    fourteen pot candidates that carry both ``last_mm`` and the pixel it was
+    measured at are returned to that pixel with a median residual of **12.88 px**
+    through this quad against **38.19 px** through the hand anchors -- a
+    held-out test of which mapping wrote the numbers.  The scan's exact
+    homography is not persisted, so 12.88 px is an upper bound on the error of
+    this reconstruction; 38.19 px is a lower bound on the anchors' misfit.
 
     ``None`` when there is no scan quad: the claims then stay in whatever frame
     the caller already has.
@@ -1018,10 +1027,12 @@ def _census_line(row):
 
 def print_report(rows, summary, agree, calibration, seconds, probe_seconds, previous_count):
     print(f"calibration: {calibration}")
-    print("caveat: the VOD changes framing (the reference quad covers 0.38-0.82 cloth-hued "
-          "pixels at t=450/483/1120 s against 0.85-1.00 in the calibrated segment), so "
-          "millimetres and pocket distances are approximate outside that segment; "
-          "occlusion lowers the same number, so it is reported per event, not gated on.")
+    print("caveat: coverage (calibration_frac) is a proxy -- occlusion and shading move it "
+          "exactly like a camera move, and it is 0.19-0.99 across the calibrated VOD while the "
+          "camera never moves (phase shift <= 0.74 px) and the per-side rail evidence verifies "
+          "the reference. Per event the report carries that rail evidence; the numbers it "
+          "reports are measured in the reference (hand anchors) frame, while each claim's stored "
+          "millimetres are projected back in the scan frame that wrote them.")
     print(f"probe: {probe_seconds}s video decode inside {seconds}s wall "
           f"(queue had {previous_count} events)")
     print("id | kind |    t | color  | dup | status      | gate         | reasons")
@@ -1119,6 +1130,8 @@ def main():
               "previous_queue_size": previous_count, "queue_size": len(queue),
               "events": [{"id": row["id"], "kind": row["kind"], "t": row["t"], "color": row["color"],
                           "dup_count": row["dup_count"], "measured": row.get("measured"),
+                          "tier": row["verdict"].get("tier"),
+                          "geometry_check": row["event"].get("geometry_check"),
                           "verdict": row["verdict"],
                           "evidence": row["evidence"]} for row in rows]}
     Path(args.report).parent.mkdir(parents=True, exist_ok=True)

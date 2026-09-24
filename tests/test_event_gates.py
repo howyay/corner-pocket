@@ -222,7 +222,12 @@ class VerdictShapeTests(unittest.TestCase):
         self.assertNotIn("calibration_reference_contradicted_at_time", result.reasons)
 
     def test_a_genuinely_bad_reference_still_warns(self):
-        """The measured bad case: the 90 px-off scan quad verifies 1-3 sides only."""
+        """The measured bad case: the 90 px-off scan quad loses 2-3 sides.
+
+        Measured at t=0/70/1120.2/1800 (``out/calib_mapping_audit.json``): the
+        scan quad reports ``no_boundary_evidence`` on two or three sides, which
+        no occluded frame of the calibrated VOD does.
+        """
         claim = normalize(shot(1120.2, "white", (423.1, 612.9), (700.0, 900.0)))
         evidence = ShotEvidence(available=True, disp_mm=1345.0, disp_color="white",
                                 start_px=[938.7, 566.7], geometry_gap_px=40.0,
@@ -238,6 +243,37 @@ class VerdictShapeTests(unittest.TestCase):
         self.assertEqual(result.status, "confirmed")
         self.assertIn("calibration_rail_unverified_at_time", result.reasons)
         self.assertEqual(result.numbers["rail_evidence"]["supported_sides"], 1)
+
+    def test_an_occluded_frame_with_one_unmeasurable_side_does_not_warn(self):
+        """t=484.1 measured: a player covers two rails (low_cloth_area) and the
+        foot rail has no crossing; one such side is occlusion, not a bad frame."""
+        claim = normalize(shot(484.1, "white", (423.1, 612.9), (700.0, 900.0)))
+        evidence = ShotEvidence(available=True, disp_mm=900.0, disp_color="white",
+                                start_px=[900.0, 560.0], geometry_gap_px=20.0,
+                                from_in_cloth_px=25.0, to_in_cloth_px=30.0,
+                                start_hits=3, end_hits=3, calibration_frac=0.762,
+                                rail_evidence={"verified_sides": 1, "inherited_sides": [],
+                                               "unverified": {"0": "low_cloth_area",
+                                                              "2": "no_boundary_evidence",
+                                                              "3": "low_cloth_area"},
+                                               "supported_sides": 1,
+                                               "reason": "no_boundary_evidence"})
+        result = judge(claim, evidence)
+        self.assertEqual([r for r in result.reasons if r.startswith("calibration")], [])
+
+    def test_a_wholly_unmeasurable_frame_does_not_warn(self):
+        """t=1661.0 / t=1799.1 measured: the mask collapses entirely on the wall
+        panels, so nothing can be measured -- unmeasurable, never bad."""
+        claim = normalize(shot(1661.0, "white", (423.1, 612.9), (700.0, 900.0)))
+        evidence = ShotEvidence(available=True, disp_mm=900.0, disp_color="white",
+                                start_px=[900.0, 560.0], geometry_gap_px=20.0,
+                                from_in_cloth_px=25.0, to_in_cloth_px=30.0,
+                                start_hits=3, end_hits=3, calibration_frac=0.315,
+                                rail_evidence={"verified_sides": None, "inherited_sides": [],
+                                               "unverified": {}, "supported_sides": 0,
+                                               "reason": "low_cloth_area"})
+        result = judge(claim, evidence)
+        self.assertEqual([r for r in result.reasons if r.startswith("calibration")], [])
 
     def test_a_contradicted_reference_gets_its_own_reason(self):
         claim = normalize(shot(600.0, "white", (423.1, 612.9), (700.0, 900.0)))

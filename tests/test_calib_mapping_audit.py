@@ -87,6 +87,24 @@ class MappingTruthTests(unittest.TestCase):
         self.assertLess(scan["head_over_foot"], anchors["head_over_foot"])
         self.assertAlmostEqual(scan["head_rail_px"], 347.7, delta=2.0)
 
+    @unittest.skipUnless(HAVE_QUADS, "calibration artifacts absent")
+    def test_the_stored_claim_millimetres_came_from_the_scan_frame(self):
+        """Held-out provenance: a pot's stored pixel vs its stored millimetres.
+
+        The candidates carry both, so feeding ``last_mm`` back through each
+        candidate mapping and comparing with the pixel the scan measured says
+        which mapping wrote the numbers.
+        """
+        from src.calib_mapping_audit import claim_frame_provenance, load_mappings
+        if not (ROOT / "out" / "scan30" / "candidates_selected.json").is_file():
+            self.skipTest("no scan candidates")
+        ha, hb, _qa, _qb, _pockets = load_mappings()
+        prov = claim_frame_provenance(ha, hb)
+        self.assertNotIn("error", prov)
+        self.assertGreaterEqual(prov["n"], 10)
+        self.assertLess(prov["scan_quad"]["median_px"], prov["hand_anchors"]["median_px"] / 2.0)
+        self.assertEqual(prov["verdict"], "the claims were written in the scan frame")
+
     def test_the_two_mappings_are_a_documented_contract(self):
         from src import eval_events
         self.assertTrue(eval_events.claim_calibration.__doc__)
