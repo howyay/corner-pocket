@@ -5,11 +5,10 @@ it.  The contract is one method and three facts::
 
     class BallStage(Stage):
         name = 'ball'              # unique, used as the metadata/latency key
-        budget_ms = 15.0           # optional per-stage ceiling; None borrows the frame budget
         every_n_frames = 2         # run on 1 of every N frames; absent (never stale) in between
         def process(self, frame, context):
             table = context.result('table')      # read an earlier stage, or None
-            return {'boxes': [...]}              # any JSON-able result
+            return {'balls': [...]}              # any JSON-able result
 
 ``context`` exists so a stage that needs an upstream result (the ball detector
 needs the cloth polygon the table stage already found) does not recompute it; a
@@ -40,6 +39,18 @@ import math
 import threading
 import time
 from collections import deque
+
+#: The trained ball detector (``src/tiny_ball_net.py``, round ``960x540-scratch``,
+#: 300 train frames / 20 epochs) and the operating point its held-out sweep chose:
+#: 960x540, threshold 0.425, held-out F1 0.927 (P 0.940 / R 0.914) with median
+#: 1.48 px and p90 3.62 px localisation over 47 held-out frames.  The checkpoint
+#: path is relative to the pipeline root; ``out/`` is gitignored, so the weights
+#: are a local artifact and a root without them gets an error naming the path.
+BALL_CHECKPOINT = 'out/tiny_ball_probe/960x540-scratch.pt'
+BALL_THRESHOLD = 0.425
+BALL_SIZE = (960, 540)
+#: Frames per sample the net was trained on: (t-1, t, t+1).
+BALL_STACK = 3
 
 
 def _percentile(ordered, fraction):
@@ -368,6 +379,140 @@ class TableStage(Stage):
         return result.get('table_polygon') if isinstance(result, dict) else None
 
 
+class BallStage(Stage):
+    """The trained ball detector (``src/tiny_ball_net.py``) as a per-frame stage.
+
+    The net is a 3-frame-in / heatmap-out CNN: it sees ``(t-1, t, t+1)`` during
+    training, and a live pipeline only ever has the past.  This stage therefore
+    feeds a **causal** stack - the last three frames it was given, ending at the
+    current one - and says so in its evidence (``ball_stack='causal'``), because the
+    trained layout is a domain the live one cannot reproduce.  Its result is the
+    peaks found in the current frame, in the *working frame's* pixels: a frame whose
+    cadence skipped the stage produces nothing at all, never the previous frame's
+    answer (see the module docstring on ``every_n_frames``).
+
+    Cadence interacts with the stack and the evidence names it: at
+    ``every_n_frames=N`` the stage only sees 1 frame in N, so three planes span
+    ``2N`` source frames (``ball_stack_span_frames``).  That is a property of
+    partitioning a temporal detector, not a bug to hide.
+
+    Weights are loaded lazily on the first ``process`` call (importing torch at
+    module import time would make every consumer of this module pay for it) from
+    ``checkpoint`` under ``root``.  A missing checkpoint raises ``FileNotFoundError``
+    naming the path - never a silent empty result, which would read as "no ball".
+    ``model=``/``heatmap()`` exist so a test can exercise the contract without
+    torch, the weights, or a GPU.
+    """
+
+    name = 'ball'
+    checkpoint = BALL_CHECKPOINT
+    threshold = BALL_THRESHOLD
+    size = BALL_SIZE
+    stack = BALL_STACK
+
+    def __init__(self, root, checkpoint=None, threshold=None, size=None, device='auto',
+                 nms_px=4.0, max_balls=6, every_n_frames=1, model=None):
+        from pathlib import Path
+        self.root = Path(root)
+        self.checkpoint = checkpoint or self.checkpoint
+        self.threshold = float(self.threshold if threshold is None else threshold)
+        self.size = tuple(self.size if size is None else size)
+        self.device = device
+        self.nms_px = float(nms_px)
+        self.max_balls = _positive_int(max_balls, 'max_balls')
+        self.every_n_frames = _positive_int(
+            every_n_frames if every_n_frames is not None else 1, 'every_n_frames')
+        self._model = model
+        self._loaded = model is not None
+        self._history = deque(maxlen=self.stack)
+        self._loaded_from = None
+        self._resolved_device = None
+
+    def _load(self):
+        """Load the trained weights once; raise (not return empty) if they are absent."""
+        if self._loaded:
+            return
+        from src.tiny_ball_net import build_model, load_checkpoint, pick_device
+        path = self.root / self.checkpoint
+        if not path.is_file():
+            raise FileNotFoundError('Ball stage weights are not on disk: %s' % path)
+        model, saved = load_checkpoint(path, self.size)
+        device = self._device
+        model.to(device)
+        model.eval()
+        self._model = model
+        self._loaded = True
+        self._loaded_from = dict(path=str(path), saved_size=list(saved), device=device)
+
+    def heatmap(self, stack):
+        """The net's heatmap for one ``H x W x 9`` float stack. Overridden in tests."""
+        import numpy as np
+        import torch
+        tensor = torch.from_numpy(np.ascontiguousarray(stack.transpose(2, 0, 1)))[None]
+        with torch.no_grad():
+            out = self._model(tensor.to(self._device)).cpu().numpy()
+        return out[0, 0]
+
+    @property
+    def _device(self):
+        """Resolved once: ``torch.cuda.is_available()`` is not worth paying per frame."""
+        if self._resolved_device is None:
+            from src.tiny_ball_net import pick_device
+            self._resolved_device = pick_device(self.device)
+        return self._resolved_device
+
+    def process(self, frame, context):
+        import cv2
+        import numpy as np
+        from src.tiny_ball_net import pick_peaks
+
+        self._load()
+        height, width = frame.shape[:2]
+        small = frame if (width, height) == self.size else cv2.resize(
+            frame, self.size, interpolation=cv2.INTER_AREA)
+        self._history.append((context.frame_number, small))
+        planes = [entry[1] for entry in self._history]
+        while len(planes) < self.stack:
+            # Opening frames of a run: the net needs three planes and the stream has
+            # given fewer, so the oldest available frame is repeated.  Recorded, not
+            # hidden - the evidence reports how many planes were real.
+            planes.insert(0, planes[0])
+        stack = np.concatenate([cv2.cvtColor(plane, cv2.COLOR_BGR2RGB) for plane in planes],
+                               axis=2).astype(np.float32) / 255.0
+        heat = np.asarray(self.heatmap(stack))
+        peaks = pick_peaks(heat, self.threshold, nms_px=self.nms_px)[:self.max_balls]
+        scale_x, scale_y = width / float(self.size[0]), height / float(self.size[1])
+        balls = [{'x': round(px * scale_x, 2), 'y': round(py * scale_y, 2),
+                  'score': round(float(score), 4)}
+                 for px, py, score in sorted(peaks, key=lambda peak: -peak[2])]
+        frames = [entry[0] for entry in self._history]
+        return {'balls': balls, 'boxes': [], 'ball_threshold': self.threshold,
+                'ball_stack': 'causal', 'ball_size': list(self.size),
+                'ball_stack_planes': len(frames), 'ball_warm': len(frames) < self.stack,
+                'ball_stack_span_frames': (None if len(frames) < 2
+                                           else frames[-1] - frames[0]),
+                'ball_from': dict(self._loaded_from or {})}
+
+    def evidence(self, result):
+        if not isinstance(result, dict):
+            return {}
+        entry = {key: result.get(key) for key in
+                 ('ball_threshold', 'ball_stack', 'ball_size', 'ball_stack_planes',
+                  'ball_warm', 'ball_stack_span_frames')}
+        entry['ball_count'] = len(result.get('balls') or [])
+        return entry
+
+    def positions(self, result):
+        """Ball positions for the frame: ``[{x, y, score}]``.
+
+        ``[]`` means the stage ran and found nothing; ``None`` means it produced no
+        result for this frame at all (cadence skipped it), which is a different fact.
+        """
+        if result is None or not isinstance(result, dict):
+            return None
+        return list(result.get('balls') or [])
+
+
 class CallableStage(Stage):
     """Adapter for an injected ``infer(frame, detectors, root)``-style callable."""
 
@@ -403,15 +548,30 @@ def merge_detections(results, detectors):
     Boxes concatenate in stage order; the first non-empty cloth polygon wins (only
     the table stage produces one today); an unknown/absent note falls back to the
     historical single-frame note so the metadata contract is unchanged.
+
+    ``balls`` is additive and carries the ball stage's positions for *this* frame.
+    The key is present only when a stage actually produced a ball result: a frame
+    whose cadence skipped the ball stage has no ``balls`` key at all, so a consumer
+    can never read "the detector did not run" as "the detector found nothing" - the
+    per-frame ``stage_evidence`` entry says which it was.  Ball rows are deliberately
+    NOT appended to ``boxes``: the published box list is what the app draws, and
+    injecting detections the app's own detector list never asked for is a contract
+    change nobody requested.
     """
     boxes, polygon, note = [], None, None
+    balls = None
     for result in results.values():
         if not isinstance(result, dict):
             continue
         boxes.extend(result.get('boxes') or [])
         if result.get('table_polygon') is not None:
             polygon = result['table_polygon']
+        if 'balls' in result:
+            balls = list(result['balls']) if balls is None else balls + list(result['balls'])
         note = result.get('event_note') or note
-    return {'boxes': boxes, 'table_polygon': polygon, 'detectors': list(detectors),
-            'events_supported': False,
-            'event_note': note or 'Single frames cannot infer shots or events; time-window inference is deferred.'}
+    payload = {'boxes': boxes, 'table_polygon': polygon, 'detectors': list(detectors),
+               'events_supported': False,
+               'event_note': note or 'Single frames cannot infer shots or events; time-window inference is deferred.'}
+    if balls is not None:
+        payload['balls'] = balls
+    return payload

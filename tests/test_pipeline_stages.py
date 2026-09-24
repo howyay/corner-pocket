@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 import numpy as np
 
-from annotator.pipeline_stages import (CallableStage, LatencyWindow, Stage, StageRegistry,
-                                       TableStage, default_stages, merge_detections)
+from annotator.pipeline_stages import (BallStage, CallableStage, LatencyWindow, Stage,
+                                       StageRegistry, TableStage, default_stages,
+                                       merge_detections)
 
 
 class Recorder(Stage):
@@ -303,6 +304,104 @@ class TableStageTests(unittest.TestCase):
         self.assertEqual(TableStage(self.root).every_n_frames, 1)
         self.assertEqual(default_stages(['table'], self.root)[0].dataset, None)
         self.assertEqual(default_stages(['table'], self.root, dataset='vod30')[0].dataset, 'vod30')
+
+
+class StubBallStage(BallStage):
+    """A BallStage whose net is one bright pixel at a chosen model-space point."""
+
+    def __init__(self, root, peak=(100, 50), **kwargs):
+        super().__init__(root, model=object(), **kwargs)
+        self.peak = peak
+        self.stacks = []
+
+    def heatmap(self, stack):
+        self.stacks.append(stack)
+        heat = np.zeros((self.size[1], self.size[0]), np.float32)
+        heat[int(self.peak[1]), int(self.peak[0])] = 0.9
+        return heat
+
+
+class BallStageTests(unittest.TestCase):
+    """The detector's contract: positions for the frame, or nothing at all."""
+
+    def setUp(self):
+        self.frame = np.zeros((540, 960, 3), np.uint8)
+
+    def test_operating_point_is_the_trained_rounds_checkpoint(self):
+        self.assertEqual(BallStage.checkpoint, 'out/tiny_ball_probe/960x540-scratch.pt')
+        self.assertEqual(BallStage.threshold, 0.425)
+        self.assertEqual(BallStage.size, (960, 540))
+
+    def test_positions_are_reported_in_the_working_frame(self):
+        stage = StubBallStage('/root', peak=(100, 50))
+        run = StageRegistry([stage]).run(self.frame)
+        self.assertEqual(stage.positions(run.results['ball']), [{'x': 100.0, 'y': 50.0, 'score': 0.9}])
+        self.assertEqual(run.results['ball']['boxes'], [])
+        self.assertEqual(run.evidence['ball']['ball_count'], 1)
+
+    def test_positions_scale_from_the_net_size_to_a_smaller_frame(self):
+        stage = StubBallStage('/root', peak=(100, 50), size=(480, 270))
+        run = StageRegistry([stage]).run(np.zeros((270, 480, 3), np.uint8))
+        self.assertEqual(stage.positions(run.results['ball'])[0]['x'], 100.0)
+        stage = StubBallStage('/root', peak=(100, 50))
+        run = StageRegistry([stage]).run(np.zeros((270, 480, 3), np.uint8))
+        self.assertEqual(stage.positions(run.results['ball']), [{'x': 50.0, 'y': 25.0, 'score': 0.9}])
+
+    def test_a_skipped_frame_has_no_ball_result_at_all(self):
+        stage = StubBallStage('/root', every_n_frames=2)
+        registry = StageRegistry([stage])
+        runs = [registry.run(self.frame) for _ in range(4)]
+        for index, run in enumerate(runs):
+            merged = merge_detections(run.results, ['table', 'person'])
+            if index % 2 == 0:
+                self.assertEqual(run.evidence['ball']['ran'], True)
+                self.assertEqual(len(merged['balls']), 1)
+                self.assertEqual(stage.positions(run.results['ball'])[0]['x'], 100.0)
+            else:
+                # Absent, never stale: no result to read and no key in the payload.
+                self.assertEqual(run.evidence['ball'], dict(ran=False, age_frames=1))
+                self.assertNotIn('ball', run.results)
+                self.assertNotIn('balls', merged)
+                self.assertIsNone(stage.positions(run.results.get('ball')))
+
+    def test_evidence_names_the_causal_stack_and_its_span(self):
+        stage = StubBallStage('/root', every_n_frames=3)
+        registry = StageRegistry([stage])
+        runs = [registry.run(self.frame) for _ in range(7)]
+        first, second, third = (runs[0].evidence['ball'], runs[3].evidence['ball'],
+                                runs[6].evidence['ball'])
+        self.assertEqual(first['ball_stack'], 'causal')
+        self.assertEqual([first['ball_stack_planes'], second['ball_stack_planes'],
+                          third['ball_stack_planes']], [1, 2, 3])
+        self.assertEqual([first['ball_warm'], second['ball_warm'], third['ball_warm']],
+                         [True, True, False])
+        # Three planes at cadence 3 span 6 source frames - stated, not hidden.
+        self.assertIsNone(first['ball_stack_span_frames'])
+        self.assertEqual((second['ball_stack_span_frames'], third['ball_stack_span_frames']), (3, 6))
+        self.assertEqual(len(stage.stacks), 3)
+        self.assertEqual([stack.shape for stack in stage.stacks], [(540, 960, 9)] * 3)
+
+    def test_cadence_must_be_a_positive_integer(self):
+        for value in (0, -1, 2.5, True, 'two'):
+            with self.assertRaises(ValueError):
+                StubBallStage('/root', every_n_frames=value)
+
+    def test_missing_weights_raise_instead_of_reporting_no_ball(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage = BallStage(directory)
+            with self.assertRaises(FileNotFoundError) as caught:
+                StageRegistry([stage]).run(self.frame)
+            self.assertIn('960x540-scratch.pt', str(caught.exception))
+
+    def test_merge_detections_only_carries_balls_when_a_stage_produced_them(self):
+        plain = merge_detections({'person': {'boxes': [{'label': 'person'}]}}, ['person'])
+        self.assertEqual(plain['boxes'], [{'label': 'person'}])
+        self.assertNotIn('balls', plain)
+        merged = merge_detections({'person': {'boxes': [{'label': 'person'}]},
+                                   'ball': {'boxes': [], 'balls': [{'x': 1, 'y': 2, 'score': 0.9}]}},
+                                  ['person'])
+        self.assertEqual(merged['boxes'], [{'label': 'person'}])   # ball rows are not boxes
+        self.assertEqual(merged['balls'], [{'x': 1, 'y': 2, 'score': 0.9}])
 
 
 if __name__ == '__main__':

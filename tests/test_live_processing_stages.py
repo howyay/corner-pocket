@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 from annotator.live_processing import LiveProcessor
-from annotator.pipeline_stages import Stage, TableStage
+from annotator.pipeline_stages import BallStage, Stage, TableStage
 
 
 class Capture:
@@ -88,6 +88,23 @@ class Reader(Stage):
     def process(self, frame, context):
         self.seen.append(context.result('first'))
         return {'boxes': [{'label': 'person'}]}
+
+
+class StubBallStage(BallStage):
+    """The real stage with a stub net: one bright pixel at a model-space point.
+
+    No torch, no weights, no GPU - the contract under test is the stage's, not the
+    CNN's (the net itself is measured by tests/ball_stack_ab.py and the envelope run).
+    """
+
+    def __init__(self, root, peak=(480, 270), **kwargs):
+        super().__init__(root, model=object(), **kwargs)
+        self.peak = peak
+
+    def heatmap(self, stack):
+        heat = np.zeros((self.size[1], self.size[0]), np.float32)
+        heat[int(self.peak[1]), int(self.peak[0])] = 0.9
+        return heat
 
 
 class LiveStageHarnessTests(unittest.TestCase):
@@ -327,6 +344,34 @@ class LiveStageHarnessTests(unittest.TestCase):
                 self.assertNotIn('ball', metadata['stage_ms'], seq)
         status = self.finished(processor)
         self.assertEqual(status['frames_processed'], 6)
+
+    def test_ball_stage_publishes_positions_and_is_absent_on_skipped_frames(self):
+        """The real BallStage class through the real live loop, with a stub net."""
+        stage = StubBallStage(self.root, peak=(480, 270), every_n_frames=2)
+        # Four fps keeps the decoder from superseding frames, so which frames were
+        # published is decided by the cadence, not by a race with the worker.
+        processor = self.processor(capture_factory=lambda _: Capture(count=3, fps=4),
+                                   stages=[stage], frame_budget_ms=1000)
+        processor.start(self.source)
+        seen = self.published(processor, 3)
+        self.assertEqual(sorted(seen), [1, 2, 3])
+        for seq, metadata in seen.items():
+            evidence = metadata['stage_evidence']['ball']
+            if seq % 2:                                   # frames 1, 3 ran
+                self.assertEqual(evidence['ran'], True, seq)
+                self.assertEqual(evidence['ball_stack'], 'causal', seq)
+                self.assertEqual(evidence['ball_count'], 1, seq)
+                # A square 32x32 working frame from the net's 960x540: the two axes
+                # scale independently (32/960 on x, 32/540 on y).
+                self.assertEqual(metadata['detections']['balls'],
+                                 [{'x': 16.0, 'y': 16.0, 'score': 0.9}], seq)
+                self.assertEqual(metadata['detections']['boxes'], [], seq)
+            else:                                         # 2 skipped
+                self.assertEqual(evidence, dict(ran=False, age_frames=1), seq)
+                self.assertNotIn('balls', metadata['detections'], seq)
+        status = self.finished(processor)
+        self.assertEqual(status['frames_processed'], 3)
+        self.assertEqual((status['stages'][0]['runs'], status['stages'][0]['skips']), (2, 1))
 
     def test_status_reports_cadence_runs_skips_and_evidence(self):
         stage = Sleepy('ball', delay=0, result={'boxes': [{'label': 'ball'}]})
