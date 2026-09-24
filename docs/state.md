@@ -367,3 +367,122 @@ median ~5 mm corner jitter. Segment calibration (`calib_final.json`, holdout
 - Evidence: `out/table-detect-eval/after-anchor-seed.{json,txt}`,
   `baseline-naive.{json,txt}`, `app-verdict.json`; tests
   `tests/test_table_refine.py` (per-side verification, step size, refusal cases).
+
+## 2026-09-24 — shot/pot gating over a real ball track: the rules exist before the detector
+
+Every event verdict this repo has produced so far was decided from a sparse ball
+census (1-3 detections per sampled frame): 24 of 30 served events were false and
+all 16 pots were refuted. The GPU ball detector in training (204k params,
+15.5 ms/frame) will supply **dense per-frame tracks**, so the rules are written
+and tested now, against synthetic ground truth, so the first real track can be
+judged the moment it exists.
+
+- New, pure (stdlib only, no video, no OpenCV, no torch, no I/O):
+  `src/shot_pot_gate.py`; tests `tests/test_shot_pot_gate.py` (57 tests + 6
+  subtests, green).
+- **Pocket model = the verified reference geometry, not a new calibration.**
+  Six pocket centres in source pixels are the canonical `POCKETS_MM` (the same
+  names as `src/event_gates.py`) projected through the cloth quad of
+  `out/calib_vod30_segments.json` (`segments[0].quad_px`, source
+  `human_anchors`, i.e. `out/pid_anchors_vod30.json` `anchors["70.0"][:4]`).
+  Independent cross-check: the file's two *hand side-pocket* anchors sit 6.8 px
+  and 4.9 px from the projected side pockets, and the four corner anchors 0.0-0.7
+  px, so two independent human measurements agree on all six places. The pot
+  radius is the repo's measured `pot_pocket_r_mm = 100 mm` (`src/event_gates.py`:
+  vanished balls cluster at 39-86 mm and then jump to >= 110 mm) converted at
+  each pocket's **local** scale, 12.9 px head / 38.8 px foot: the far end is
+  foreshortened ~3x, so one global pixel radius would be wrong at both ends.
+
+### The rules and every bar
+
+- **Shot = motion onset.** A ball still for `rest_window_s = 0.5 s` (0.5 s = 15
+  dense frames, and a ball at the motion bar covers 20 px - 2-5 ball diameters -
+  in that time, so "still" cannot be met in motion) with at least
+  `rest_min_intervals = 2` intervals, each at or below `rest_speed_px_s = 6 px/s`
+  (0.2 px per 30 fps frame: below the detector's positional noise and below 6 % of
+  the smallest ball radius, which is 3.7 px here), then `onset_intervals = 3`
+  consecutive intervals above `motion_speed_px_s = 40 px/s` (1.3 px/frame, 6.7x
+  the rest bar; 3 frames = 0.1 s of commitment, the regime a single-frame identity
+  jump and label swap cannot hold). An interval longer than `max_gap_s = 0.25 s`
+  breaks a run: "sustained" cannot be claimed across frames the ball was not seen
+  in. The event carries the onset time (the last measured still position), the
+  direction (image space: 0 deg = +x, 90 deg = +y down), the peak speed, the
+  duration, and the still stretch plus the run as evidence.
+- **Pot = the track terminates inside a pocket radius** and does not reappear for
+  `persistence_s = 1.0 s` (30 dense frames of absence, ~100x the frame period,
+  far longer than a one-frame dropout, while the last ~40 px into a pocket take
+  <= 0.2 s at a modest 200 px/s), with the occlusion channel **clear** for that
+  stretch. A disappearance must also exceed `vanish_min_s = 0.4 s` *and*
+  `vanish_cadence_multiple = 4x` the track's own median interval, so a 0.5 s
+  census is not read as vanishing between two normal samples.
+- **The occlusion channel is an input** (per-sample flags, or `occ_share` /
+  `occ_dense` from `src/motion_scan.py`, whose person bar `OCC_DENSE_MIN = 0.30`
+  is reused and pinned equal by a test). A ball that vanishes while a person
+  covers the cloth is **unknown, never potted**; a silent channel (no reading) is
+  also unknown, never clear; and a pot with no stated observation window after the
+  disappearance is unknown, never a free pot.
+- **Break = N shot events in one group.** 4 movers starting within
+  `simultaneous_window_s = 0.15 s` give 4 shot events that share a `group_id`,
+  plus one group record flagged `is_break` at `break_min_balls = 3` (2 movers is a
+  cue plus the ball it contacted - a normal shot; one contact cannot start 3
+  identities at once). Merging them into one event would throw away the per-ball
+  directions and speeds; not grouping them would hide that it was one act.
+- **Nothing is silent.** Every disappearance, motion burst, rest-only track and
+  frame-edge exit is emitted with a reason code, the samples used and the
+  thresholds that decided it: `no_motion_onset`, `motion_too_short`,
+  `no_still_stretch`, `roll_without_pocket`, `reappeared_after_gap`,
+  `disappeared_outside_pocket`, `left_frame_edge`, `left_cloth`,
+  `track_ends_at_window_end`, `track_too_short`, `below_confidence_floor`,
+  `empty_track`, and `PotEvent(verdict="unknown")` for the occluded cases.
+- **No threshold is tuned against the 25 known movers or the emptied queue**
+  (neither belongs to this work). Every bar above is geometry (a ball is
+  3.7-11.1 px here), the detector's frame period, or a repo-measured value.
+
+### Test outcome
+
+- `tests/test_shot_pot_gate.py`: 57 tests + 6 subtests, all green. Synthetic
+  ground truth: a stationary ball, a single shot (onset/direction/peak/duration),
+  a pot into each of the six pockets, a break (4 movers), jitter below the bar,
+  a single-frame jump, a rolling ball that never reaches a pocket, a ball leaving
+  the frame edge, a ball leaving the cloth, a corner pot that must not be called
+  "left the cloth", a ball vanishing under the occlusion flag (asserted
+  **unknown**, not a pot), an occlusion series over the persistence window, a
+  silent channel, a disappearance and reappearance (gap, not a pot), an identity
+  swap inside a pocket radius, a ball parked in the jaws, a gap shorter than the
+  vanish bar, and a sparse track whose vanish gap scales with its own cadence.
+- **One test is built from real data**: the SAM3 census frame-times
+  (`out/scan30/sam3_census.json`, 138 sampled times, t = 4.1-1799.7 s) chained by
+  colour plus nearest-neighbour continuity into 364 short tracks (70 with >= 3
+  samples, longest 9). The gate produces **nothing: 0 shots, 0 pots, 0 unknown
+  disappearances, 435 rejections** (294 `track_too_short`, 66 `no_motion_onset`,
+  4 `motion_too_short`, 69 `disappeared_outside_pocket`, 1 `reappeared_after_gap`,
+  1 `track_ends_at_window_end`). The reason is measured and pinned: the census is
+  sampled 0.9 s apart at the median, well beyond the 0.25 s gap bar, and every
+  above-bar burst in the whole file is 2 intervals against the 3-interval onset
+  bar. The honest result of gating a sparse census is nothing, and the test says
+  so in numbers rather than in prose.
+- Full suite after this work: **621 passed, 2 skipped** (baseline was 461 + 2
+  skipped; the rest arrived with concurrent workers' test files in this tree).
+
+### What the gate cannot do without the detector (stated, not hidden)
+
+- It cannot attribute a shot to a player: a track has no actor.
+- It cannot tell a pot from a ball **parked in the jaws**: both end inside the
+  pocket radius. The case is flagged (`parked_in_jaws_possible`, and the verdict
+  is `unknown / at_rest_inside_pocket_radius` when the last sighting is at rest)
+  and never decided.
+- Its pot rule is only as good as the detector's **identity persistence**: a ball
+  that reappears after a full persistence window inside a pocket radius is an
+  identity swap, and once that happens none of that identity's later
+  disappearances is called a pot either (`prior_identity_swap_inside_pocket`).
+- It cannot see the cloth or the frame: a pocket is geometry, so a vanish near the
+  rail with no pocket there is `disappeared_outside_pocket`; the frame and cloth
+  tests only run when the caller supplies `frame_size` / `cloth_quad`.
+- A track that starts already moving cannot produce a shot (there is no still
+  stretch to prove the onset), so the associator must deliver the rest before the
+  shot. Nothing here measures the ball, the identity or the occlusion channel;
+  those come from the detector, the associator and `src/motion_scan.py`.
+- Not touched by this work (byte-identical): `src/event_gates.py`,
+  `src/eval_events.py`, `src/tiny_ball_net.py`, `src/face_id.py`,
+  `src/person_identity.py`, `annotator/live_processing.py`, `out/pid_seed.json`,
+  `out/scan30/annotations.json`, the queue.
