@@ -273,5 +273,40 @@ class ClaimFrameProjectionTests(unittest.TestCase):
                            20.0)
 
 
+@unittest.skipUnless(HAVE_VIDEO, "VOD or calibration artifacts absent")
+class HighlightReferenceTests(unittest.TestCase):
+    """Q3: the highlight reference's bottom rail, measured two ways."""
+
+    def test_the_bottom_rail_sits_inside_the_visible_cloth(self):
+        from src.calib_mapping_audit import highlight_reference_check
+        video = ROOT / "data" / "vod_highlight.mp4"
+        if not video.is_file():
+            self.skipTest("no highlight VOD")
+        out = highlight_reference_check(str(video), times=(60.0, 180.0, 370.0))
+        self.assertNotIn("error", out)
+        inset = out["bottom_rail_inset_px"]
+        self.assertGreater(inset["n"], 5)
+        self.assertGreater(inset["median"], 26.0)          # was reported as 26-29 px
+        self.assertLess(inset["median"], 30.5)
+        # the other three sides agree with the visible cloth
+        for side in ("0", "1", "3"):
+            self.assertLess(abs(out["per_side_refine_offset_px"][side]["median"]), 5.0)
+        # and the independent rail-step definition agrees with the mask edge
+        step = out["per_side_rail_step_offset_px"]["2"]["median"]
+        self.assertLess(abs(step - inset["median"]), 8.0)
+
+    def test_the_inset_is_about_one_ball_diameter_at_1080p(self):
+        from src.calib_mapping_audit import BALL_DIAMETER_PX_1080, highlight_reference_check
+        video = ROOT / "data" / "vod_highlight.mp4"
+        if not video.is_file():
+            self.skipTest("no highlight VOD")
+        out = highlight_reference_check(str(video), times=(60.0, 180.0))
+        mm = out["bottom_rail_mm"]
+        self.assertAlmostEqual(BALL_DIAMETER_PX_1080, 30.8, delta=0.1)
+        self.assertGreater(mm["inset_in_ball_diameters"], 0.6)
+        self.assertLess(mm["inset_in_ball_diameters"], 1.1)
+        self.assertGreater(mm["inset_mm"], 60.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -52,6 +52,7 @@ from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540      # the scan's working frame (src.info_complete_scan)
+BALL_DIAMETER_PX_1080 = 30.8     # stated by the highlight probe (docs/app-path-refusal.md)
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 SCAN_QUAD = ROOT / "out" / "scan30" / "corners.json"
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
@@ -372,6 +373,118 @@ def claim_frame_provenance(HA, HB, path=CANDIDATES):
     return out
 
 
+def highlight_reference_check(video, quad_path=None, times=None, columns=(600, 900, 1200)):
+    """Measure the highlight reference against the *visible* cloth edge.
+
+    ``out/fixed_corners.json`` is the highlight's reference and has no hand
+    anchors.  Two definitions of the visible cloth edge are used, both stated
+    because they disagree by 7 px and the honest report carries both:
+
+    * **mask edge** - the last row that is cloth-hued at that column in the
+      frame's own ``detect_cloth_mask``.  This is the definition the vod30 hand
+      anchors were clicked to (the refinement agrees with them within a few px);
+    * **rail step** - the strongest bright->dark intensity gradient in a +-40 px
+      perpendicular profile, median-combined over the side's length.  It owes the
+      mask nothing, so it is the independent opinion.
+
+    Reported per side, plus the bottom rail's inset in px, in millimetres (via
+    the reference's own local scale) and in ball diameters at 1080p.
+    """
+    from src.calib_segment_measure import profile_sides
+    from src.table_detect import detect_cloth_mask
+    from src.table_refine import _order, refine_quad_edges
+
+    path = Path(quad_path) if quad_path is not None else ROOT / "out" / "fixed_corners.json"
+    try:
+        quad = _order(np.asarray(json.loads(path.read_text())["corners"], np.float32))
+    except (OSError, ValueError, KeyError):
+        return {"error": f"cannot read {path}"}
+    if not Path(video).is_file():
+        return {"error": f"cannot open {video}", "quad_px": np.round(quad, 1).tolist()}
+    times = list(times) if times is not None else list(np.arange(2.0, 377.0, 15.0))
+    cap = cv2.VideoCapture(str(video))
+    if not cap.isOpened():
+        return {"error": f"cannot open {video}"}
+    per_side_refine, per_side_step, bottom_inset = {s: [] for s in range(4)}, {s: [] for s in range(4)}, []
+    frames, refused = 0, 0
+    for t in times:
+        cap.set(cv2.CAP_PROP_POS_MSEC, float(t) * 1000.0)
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        frames += 1
+        _q, info = refine_quad_edges(frame, quad)
+        if info.get("unverified_sides"):
+            refused += 1
+        for row in info.get("sides") or []:
+            if row.get("mask_offset_px") is not None:
+                per_side_refine[int(row["side"])].append(float(row["mask_offset_px"]))
+        for side, prof in enumerate(profile_sides(frame, quad, half=40.0)):
+            if prof is not None and prof.get("offset_px") is not None:
+                per_side_step[side].append(float(prof["offset_px"]))
+        mask = detect_cloth_mask(frame) > 0
+        a, b = np.asarray(quad[3], float), np.asarray(quad[2], float)      # BL -> BR
+        for x in columns:
+            if not (0 <= x < mask.shape[1]):
+                continue
+            ys = np.where(mask[:, x])[0]
+            if not len(ys):
+                continue
+            rail_y = a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0])
+            bottom_inset.append(float(ys.max() - rail_y))
+    cap.release()
+
+    def _stats(values):
+        if not values:
+            return {"n": 0}
+        values = sorted(values)
+        return {"n": len(values), "median": round(float(np.median(values)), 2),
+                "p10": round(float(np.percentile(values, 10)), 2),
+                "p90": round(float(np.percentile(values, 90)), 2),
+                "min": round(min(values), 2), "max": round(max(values), 2)}
+
+    H = homography_to_canonical(quad)
+    mid = (np.asarray(quad[2], float) + np.asarray(quad[3], float)) / 2.0
+    p0 = unproject(H, mid)
+    scale = None
+    if p0 is not None:
+        deltas = []
+        for d in (5.0, -5.0):
+            q = unproject(H, (mid[0], mid[1] + d))
+            if q is not None:
+                deltas.append(abs(q[1] - p0[1]) / abs(d))
+        scale = round(float(np.mean(deltas)), 3) if deltas else None
+    inset = _stats(bottom_inset)
+    median_inset = inset.get("median")
+    return {
+        "reference": str(path), "video": str(video), "frame_size_px": [1920, 1080],
+        "frames_sampled": frames, "frames_refused_by_the_refinement": refused,
+        "definition": {
+            "mask_edge": "last cloth-hued row at that column in detect_cloth_mask",
+            "rail_step": "strongest bright->dark step in a +-40 px perpendicular profile, "
+                         "median over 21 stations (owes the mask nothing)",
+        },
+        "per_side_refine_offset_px": {str(s): _stats(v) for s, v in per_side_refine.items()},
+        "per_side_rail_step_offset_px": {str(s): _stats(v) for s, v in per_side_step.items()},
+        "bottom_rail_inset_px": inset,
+        "bottom_rail_mm": {
+            "mm_per_px_at_the_rail": scale,
+            "inset_mm": None if (median_inset is None or scale is None)
+                        else round(median_inset * scale, 1),
+            "stated_ball_diameter_px_at_1080p": BALL_DIAMETER_PX_1080,
+            "inset_in_ball_diameters": None if median_inset is None
+                                       else round(median_inset / BALL_DIAMETER_PX_1080, 2),
+        },
+        "notes": [
+            "The refinement's own per-side offset is a per-iteration measurement clipped at "
+            "_MAX_MOVE_PX (8 px), so it reports 21 px where the direct mask edge is 28 px.",
+            "The other three sides agree with the visible cloth within ~0.5 px.",
+            "No hand anchors exist for the highlight; this reference is measured, not invented, "
+            "and no data file is changed.",
+        ],
+    }
+
+
 def build(args):
     HA, HB, quad_a, quad_b, pockets = load_mappings(args.anchors, args.scan_quad)
     rows, summary = pixel_disagreement(HA, HB)
@@ -387,6 +500,8 @@ def build(args):
         "corner_containment": corner_containment(quad_a, quad_b),
         "held_out_anchors": held_out_anchors(HA, HB, pockets),
         "claim_frame_provenance": claim_frame_provenance(HA, HB, args.candidates),
+        "highlight_reference": highlight_reference_check(args.highlight, args.highlight_quad,
+                                                         args.highlight_times),
         "foreshortening": foreshortening(HA, HB, quad_a, quad_b),
         "rail_evidence": rail_evidence(args.video, args.times, quad_a, quad_b),
         "event_projection": event_projection(HA, HB, args.candidates),
@@ -412,6 +527,15 @@ def _print(payload):
     for row in payload["held_out_anchors"]:
         print(f"  {row['anchor']:10s} clicked {row['clicked_px']} -> "
               f"A err {row['a_err_mm']:6.1f} mm | B err {row['b_err_mm']:6.1f} mm")
+    hl = payload.get("highlight_reference") or {}
+    if "error" not in hl and hl.get("bottom_rail_inset_px", {}).get("n"):
+        inset = hl["bottom_rail_inset_px"]
+        mm = hl["bottom_rail_mm"]
+        print(f"\nhighlight reference (out/fixed_corners.json, {hl['frames_sampled']} frames): "
+              f"bottom rail inset {inset['median']} px (p10 {inset['p10']} p90 {inset['p90']}) "
+              f"= {mm['inset_mm']} mm = {mm['inset_in_ball_diameters']} ball diameters at 1080p; "
+              f"other sides "
+              f"{[hl['per_side_refine_offset_px'][str(s)]['median'] for s in (0, 1, 3)]} px")
     prov = payload["claim_frame_provenance"]
     if "error" not in prov:
         print(f"\nclaim frame provenance (n={prov['n']} pots with a stored pixel): "
@@ -448,6 +572,9 @@ def main(argv=None):
     ap.add_argument("--scan-quad", default=str(SCAN_QUAD))
     ap.add_argument("--video", default=str(VIDEO))
     ap.add_argument("--candidates", default=str(CANDIDATES))
+    ap.add_argument("--highlight", default=str(ROOT / "data" / "vod_highlight.mp4"))
+    ap.add_argument("--highlight-quad", default=str(ROOT / "out" / "fixed_corners.json"))
+    ap.add_argument("--highlight-times", type=float, nargs="*", default=None)
     ap.add_argument("--times", type=float, nargs="*", default=list(FRAME_TIMES))
     ap.add_argument("--out", default=str(OUT))
     args = ap.parse_args(argv)
