@@ -73,8 +73,7 @@ was **shared and busy** (`loadavg` in the table); the last envelope section of
 
 | | Twitch VOD as live | local file as live |
 |---|---|---|
-| source | VOD `1000000011`, 720p30 HLS, `examplechannel` | `data/vod_30min_260815.mp4` from 267 s |
-| host `loadavg` (1/5/15 min, 12 cores) | 35.5 / 33.3 / 23.8 | 37.0 / 34.6 / 29.0 |
+| source | VOD `1000000011`, 720p30 HLS, `examplechannel` | `data/vod_30min_260815.mp4` from 267 s || host `loadavg` (1/5/15 min, 12 cores) | 35.5 / 33.3 / 23.8 | 37.0 / 34.6 / 29.0 |
 | open (first frame) | 0.7 s | 0.6 s |
 | frames received | 5488 (**29.61 fps**) | 5435 (**29.34 fps**) |
 | frames published | 3697 (**19.95 fps**) | 671 (**3.62 fps**) |
@@ -95,6 +94,10 @@ Reading of these numbers, honestly stated:
 - **The 1x requirement is met**: 185.3 s of video in 185.4 s of wall clock, drift -0.09 s
   (VOD) and -0.01 s (file), worst excursion 0.24 s / 1.76 s. A consumer cannot tell the
   difference between this and a live feed at frame rate, and the source says what it is.
+  (The vod run starts at 0 s, so its `video_s` *is* the consumed amount; the file run starts
+  at 267 s, and `video_consumed_s = video_s - start_s` is reported separately. The first
+  artifact was written before that field existed, hence its `video_per_wall` reads from
+  `video_s` directly - correct there because the offset is zero.)
 - **The pipeline holds the source rate** (`received` ≈ 29.3-29.6 fps of a 30 fps source, i.e.
   no accumulating backlog) but **does not publish every frame on this host**: 19.95 fps at
   `loadavg` 35, and only 3.62 fps in the file run at `loadavg` 37, because the person stage
