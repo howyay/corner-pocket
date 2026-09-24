@@ -33,11 +33,12 @@ direction, the peak speed and the duration.
 that is covered by a person when it vanishes is **unknown, never potted**.
 
 **Break** - N shot events (one per moving identity, each with its own evidence),
-all sharing ``group_id``, plus one :class:`BreakGroup` record when
-``break_min_balls`` or more identities start within ``simultaneous_window_s``.
-One merged event would throw away the per-ball directions and speeds a reviewer
-needs; one ungrouped event per ball would hide that it was one physical act.  The
-group is additive, so a consumer can present either one cue or N.
+all sharing ``group_id``, plus one :class:`BreakGroup` record per simultaneous
+cluster, flagged ``is_break`` when ``break_min_balls`` or more identities start
+within ``simultaneous_window_s``.  One merged event would throw away the per-ball
+directions and speeds a reviewer needs; one ungrouped event per ball would hide
+that it was one physical act.  The group is additive, so a consumer can present
+either one cue or N.
 
 Nothing is silent: every disappearance, motion run, rest-only track and frame-edge
 exit the gate examines is emitted as a record with its reason, the samples used
@@ -53,7 +54,10 @@ What the gate cannot do (stated, not hidden)
 * it cannot tell a pot from an identity swap: the pot rule is only as good as the
   detector's identity persistence.  A track that reappears after a
   ``persistence_s`` gap inside a pocket radius is reported as
-  ``reappeared_after_gap`` with ``identity_swap_suspected``;
+  ``reappeared_after_gap`` with ``identity_swap_suspected``, and once an identity
+  has done that none of its later disappearances is called a pot either
+  (``prior_identity_swap_inside_pocket``), because its persistence has been shown
+  to be unreliable;
 * it cannot judge anything a track does not contain: a track that starts already
   in motion has no still stretch and yields a rejection, not a shot, so the
   associator must deliver the rest before the shot;
@@ -65,7 +69,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 from statistics import median
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, NamedTuple, Sequence
 
 # ---------------------------------------------------------------------------
 # reference geometry (verified; reused, not re-derived)
@@ -327,15 +331,14 @@ def pocket_pixels(quad: Sequence[Sequence[float]] = VOD30_REFERENCE_QUAD,
 
 
 def default_pocket_model(quad: Sequence[Sequence[float]] = VOD30_REFERENCE_QUAD,
-                         pocket_r_mm: float = POCKET_R_MM,
-                         dataset: str = "vod30") -> PocketModel:
+                         pocket_r_mm: float = POCKET_R_MM) -> PocketModel:
     """The verified vod30 pocket model, or one derived from any other quad.
 
-    With the default quad the pinned :data:`VOD30_POCKETS_PX` table is used (so the
-    model a reviewer reads in the source is the model the gate uses); any other
-    quad is projected here.  No file is read: the reference geometry is data.
+    With the reference quad the pinned :data:`VOD30_POCKETS_PX` table is used (so the
+    model a reviewer reads in the source is the model the gate uses); any other quad
+    is projected here.  No file is read: the reference geometry is data.
     """
-    if dataset == "vod30" and tuple(map(tuple, quad)) == VOD30_REFERENCE_QUAD:
+    if tuple(map(tuple, quad)) == VOD30_REFERENCE_QUAD:
         derived = {n: (VOD30_POCKETS_PX[n]["px"], VOD30_POCKETS_PX[n]["px_per_mm"])
                    for n in VOD30_POCKETS_PX}
     else:
@@ -533,7 +536,7 @@ class ShotEvent:
     onset_t: float
     onset_x: float
     onset_y: float
-    direction_deg: float                 # image space: 0 = +x (right), 90 = +y (down)
+    direction_deg: float | None          # image space: 0 = +x (right), 90 = +y (down)
     direction_x: float
     direction_y: float
     peak_speed_px_s: float
@@ -558,7 +561,7 @@ class ShotEvent:
                 "onset_frame_index": int(self.onset_frame_index),
                 "onset_t": round(self.onset_t, 6),
                 "onset": [round(self.onset_x, 2), round(self.onset_y, 2)],
-                "direction_deg": round(self.direction_deg, 2),
+                "direction_deg": None if self.direction_deg is None else round(self.direction_deg, 2),
                 "direction": [round(self.direction_x, 4), round(self.direction_y, 4)],
                 "peak_speed_px_s": round(self.peak_speed_px_s, 2),
                 "peak_t": round(self.peak_t, 6),
@@ -707,15 +710,26 @@ class GateReport:
 # the rules
 # ---------------------------------------------------------------------------
 
-def _intervals(samples: Sequence[Sample]) -> list[tuple[Sample, Sample, float, float]]:
-    """(a, b, dt, speed) for consecutive samples with a positive dt."""
+class _Iv(NamedTuple):
+    """One interval between consecutive samples, by index."""
+
+    ia: int
+    ib: int
+    dt: float
+    dist: float
+    speed: float
+
+
+def _intervals(samples: Sequence[Sample]) -> list[_Iv]:
+    """Intervals between consecutive samples with a positive dt, indexed."""
     out = []
-    for a, b in zip(samples, samples[1:]):
+    for i in range(len(samples) - 1):
+        a, b = samples[i], samples[i + 1]
         dt = float(b.t) - float(a.t)
         if dt <= 0.0:
             continue
         dist = math.hypot(b.x - a.x, b.y - a.y)
-        out.append((a, b, dt, dist / dt))
+        out.append(_Iv(i, i + 1, dt, dist, dist / dt))
     return out
 
 
@@ -727,16 +741,16 @@ def _still_stretch(samples: Sequence[Sample], onset_index: int,
     stretch of consecutive intervals ending at the onset sample whose speed is at
     or below the rest bar and whose gap is at or below the motion gap bar.
     """
-    intervals = _intervals(samples[:onset_index + 1])
-    first = max(onset_index - 1, 0)
+    intervals = [iv for iv in _intervals(samples) if iv.ib <= onset_index]
+    first = onset_index
     max_speed = 0.0
     n = 0
-    for a, b, dt, speed in reversed(intervals):
-        if dt > th.max_gap_s or speed > th.rest_speed_px_s:
+    for iv in reversed(intervals):
+        if iv.dt > th.max_gap_s or iv.speed > th.rest_speed_px_s:
             break
-        max_speed = max(max_speed, speed)
+        max_speed = max(max_speed, iv.speed)
         n += 1
-        first = samples.index(a)
+        first = iv.ia
     window = 0.0 if n == 0 else float(samples[onset_index].t) - float(samples[first].t)
     return first, window, n, max_speed
 
@@ -745,8 +759,8 @@ def _motion_runs(samples: Sequence[Sample], th: GateThresholds) -> list[tuple[in
     """Maximal (start_index, end_index) runs of consecutive above-bar intervals."""
     runs: list[tuple[int, int]] = []
     start: int | None = None
-    for i, (a, b, dt, speed) in enumerate(_intervals(samples)):
-        hot = speed > th.motion_speed_px_s and dt <= th.max_gap_s
+    for i, iv in enumerate(_intervals(samples)):
+        hot = iv.speed > th.motion_speed_px_s and iv.dt <= th.max_gap_s
         if hot and start is None:
             start = i
         elif not hot and start is not None:
@@ -767,13 +781,10 @@ def _vanishing_candidates(samples: Sequence[Sample], until_t: float,
     Returns ``(vanish_gap_s, [(start_index, end_index, gap_s), ...])`` where
     ``end_index == -1`` marks the trailing disappearance after the last sample.
     """
-    dts = [dt for _a, _b, dt, _s in _intervals(samples)]
-    cadence = median(dts) if dts else 0.0
+    intervals = _intervals(samples)
+    cadence = median([iv.dt for iv in intervals]) if intervals else 0.0
     vanish_gap = max(th.vanish_min_s, th.vanish_cadence_multiple * cadence)
-    out = []
-    for i, (_a, _b, dt, _s) in enumerate(_intervals(samples)):
-        if dt >= vanish_gap:
-            out.append((i, i + 1, dt))
+    out = [(iv.ia, iv.ib, iv.dt) for iv in intervals if iv.dt >= vanish_gap]
     if samples and until_t > float(samples[-1].t):
         trailing = until_t - float(samples[-1].t)
         if trailing >= vanish_gap:
@@ -819,21 +830,34 @@ def track_events(track: Track, pockets: PocketModel,
     pots: list[PotEvent] = []
     rejections: list[Rejection] = []
     occ = occlusion if occlusion is not None else Occlusion.from_samples(samples)
-    nan = float("nan")
     if not samples:
-        rejections.append(Rejection("rejection", "empty_track", t.ball_id, "no samples", None, None))
+        rejections.append(Rejection("rejection", "empty_track", t.ball_id, "no samples",
+                                    None, None, {"samples": 0},
+                                    thresholds={"min_samples": 3}))
         return shots, pots, rejections
     if len(samples) < 3:
         rejections.append(Rejection(
             "rejection", "track_too_short", t.ball_id,
             "fewer than 3 samples: no interval pair can establish still-then-moving",
             float(samples[-1].t), int(samples[-1].frame_index),
-            {"samples": len(samples), "duplicates": t.duplicates()}))
+            {"samples": len(samples), "duplicates": t.duplicates()},
+            tuple(samples), thresholds={"min_samples": 3}))
         return shots, pots, rejections
 
     kept = [s for s in samples if s.confidence >= th.min_confidence]
-    if len(kept) >= 3:
-        samples = kept
+    if len(kept) < 3:
+        rejections.append(Rejection(
+            "rejection", "below_confidence_floor", t.ball_id,
+            f"only {len(kept)} of {len(samples)} samples reach the "
+            f"{th.min_confidence:.3f} confidence floor: too few samples are left to measure "
+            "still-then-moving (the floor is a caller setting, not a verdict)",
+            float(samples[-1].t), int(samples[-1].frame_index),
+            {"samples": len(samples), "kept": len(kept),
+             "max_confidence": round(max(s.confidence for s in samples), 4)},
+            tuple(samples), thresholds={"min_confidence": th.min_confidence,
+                                        "min_samples": 3}))
+        return shots, pots, rejections
+    samples = kept
     min_conf = min(s.confidence for s in samples)
 
     # ---- shot rule ---------------------------------------------------------
@@ -845,20 +869,28 @@ def track_events(track: Track, pockets: PocketModel,
     moved = False
     for start, end in runs:
         moved = True
-        intervals = _intervals(samples[start:end + 1])
+        intervals = [iv for iv in _intervals(samples) if start <= iv.ia and iv.ib <= end]
         if len(intervals) < th.onset_intervals:
+            # above the speed bar but not sustained: exactly the shape of a
+            # single-frame identity jump.  Refused, and named.
+            rejections.append(Rejection(
+                "rejection", "motion_too_short", t.ball_id,
+                f"a {len(intervals)}-interval burst above the motion bar at "
+                f"t={samples[start].t:.3f} is shorter than the {th.onset_intervals} intervals a "
+                "sustained onset needs (a detector jump, not a shot)",
+                float(samples[start].t), int(samples[start].frame_index),
+                {"burst_intervals": len(intervals),
+                 "burst_speed_px_s": round(max(iv.speed for iv in intervals), 2),
+                 "burst_displacement_px": round(sum(iv.dist for iv in intervals), 2)},
+                tuple(samples[start:end + 1]), rest_thresholds))
             continue                            # too short to be a sustained onset
         first_still, window, n_rest, max_rest = _still_stretch(samples, start, th)
         a, b = samples[start], samples[end]
-        path = 0.0
-        prev = samples[start]
-        for s in samples[start + 1:end + 1]:
-            path += math.hypot(s.x - prev.x, s.y - prev.y)
-            prev = s
+        path = sum(iv.dist for iv in intervals)
         net = math.hypot(b.x - a.x, b.y - a.y)
         if net <= 0:
             direction = (0.0, 0.0)
-            deg = nan
+            deg = None                     # motion that returns to its start has no direction
         else:
             direction = ((b.x - a.x) / net, (b.y - a.y) / net)
             deg = math.degrees(math.atan2(direction[1], direction[0])) % 360.0
@@ -866,9 +898,9 @@ def track_events(track: Track, pockets: PocketModel,
         lasts = end == len(samples) - 1
         endless = bool(lasts and pocket is None)
         peak_speed, peak_t = 0.0, float(a.t)
-        for _x, _y, _dt, _s in intervals:
-            if _s > peak_speed:
-                peak_speed, peak_t = _s, float(_y.t)
+        for iv in intervals:
+            if iv.speed > peak_speed:
+                peak_speed, peak_t = iv.speed, float(samples[iv.ib].t)
         evidence = tuple(samples[max(0, first_still):end + 1])
         if window + 1e-12 < th.rest_window_s or n_rest < th.rest_min_intervals:
             rejections.append(Rejection(
@@ -899,10 +931,10 @@ def track_events(track: Track, pockets: PocketModel,
                 {"nearest_pocket": None if pocket is None else pocket.name,
                  "distance_px": round(dist, 2),
                  "radius_px": None if pocket is None else round(pocket.radius_px, 2),
-                 "last_speed_px_s": round(intervals[-1][3], 2) if intervals else None},
+                 "last_speed_px_s": round(intervals[-1].speed, 2) if intervals else None},
                 tuple(samples[max(0, end - 1):end + 1]), rest_thresholds))
     if not moved:
-        speeds = [s for _a, _b, _dt, s in _intervals(samples)]
+        speeds = [iv.speed for iv in _intervals(samples)]
         rejections.append(Rejection(
             "rejection", "no_motion_onset", t.ball_id,
             f"no sustained motion: peak interval speed {max(speeds, default=0.0):.2f} px/s is at "
@@ -920,6 +952,26 @@ def track_events(track: Track, pockets: PocketModel,
                       "vanish_gap_s": round(vanish_gap, 4),
                       "occlusion_threshold": occ.threshold,
                       "occlusion_mode": occ.mode}
+    if not candidates:
+        # The track ends where the data ends, or the gap is too short to be a
+        # disappearance.  Either way nothing may be said about a pot - and saying
+        # nothing at all would be a silent event.
+        last0 = samples[-1]
+        pocket0, dist0 = pockets.inside(last0.x, last0.y)
+        rejections.append(Rejection(
+            "rejection", "track_ends_at_window_end", t.ball_id,
+            f"the last sighting at t={last0.t:.3f} is not followed by a disappearance longer than "
+            f"the {vanish_gap:.2f} s vanish gap (observation ends at t={until:.3f}): a track that "
+            "stops with the data cannot be read as a pot",
+            float(last0.t), int(last0.frame_index),
+            {"observed_until_t": round(until, 4),
+             "gap_after_last_s": round(max(0.0, until - float(last0.t)), 4),
+             "vanish_gap_s": round(vanish_gap, 4),
+             "pocket": None if pocket0 is None else pocket0.name,
+             "distance_px": round(dist0, 2),
+             "inside_pocket_radius": pocket0 is not None},
+            tuple(samples[-th.evidence_samples:]), pot_thresholds))
+    swap_seen = False
     for start, end, gap in candidates:
         last = samples[start]
         tail = samples[max(0, start - (th.evidence_samples - 1)):start + 1]
@@ -939,12 +991,14 @@ def track_events(track: Track, pockets: PocketModel,
             parked_in_jaws_possible=parked, observed_until_t=until,
             persistence_s=th.persistence_s, gap_s=gap, internal_gap=internal,
             identity_swap_suspected=False, occlusion_status=occ_status,
-            occlusion_source=occ.source, thresholds=pot_thresholds)
+            occlusion_source=occ.source, samples_used=tuple(tail),
+            thresholds=pot_thresholds)
         if internal:
             # the ball is seen again -> not a pot.  Inside a pocket radius for a whole
             # persistence window this is the signature of an identity swap, which the
             # gate can name but not resolve.
             swap = bool(pocket is not None and gap >= th.persistence_s)
+            swap_seen = swap_seen or swap
             rejections.append(Rejection(
                 "rejection", "reappeared_after_gap", t.ball_id,
                 f"the identity was seen again {gap:.3f} s later at t={samples[end].t:.3f}; a gap "
@@ -960,6 +1014,30 @@ def track_events(track: Track, pockets: PocketModel,
                                      "reappeared_after_gap_inside_pocket",
                                      pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
                                      **dict(common, identity_swap_suspected=True)))
+            continue
+        if _inside_frame(last.x, last.y, th) is False and pocket is None:
+            rejections.append(Rejection(
+                "rejection", "left_frame_edge", t.ball_id,
+                f"the last sighting is within {th.edge_margin_px:.0f} px of the image border, "
+                "outside every pocket radius: the ball left the frame, which is not a pocket",
+                float(last.t), int(last.frame_index),
+                {"last_xy": [round(last.x, 2), round(last.y, 2)],
+                 "frame_size": list(th.frame_size) if th.frame_size else None,
+                 "nearest_pocket": pockets.nearest(last.x, last.y)[0].name,
+                 "distance_px": round(dist, 2),
+                 "radius_px": round(pockets.nearest(last.x, last.y)[0].radius_px, 2)},
+                tuple(tail), pot_thresholds))
+            continue
+        if _inside_quad(last.x, last.y, th.cloth_quad) is False and pocket is None:
+            rejections.append(Rejection(
+                "rejection", "left_cloth", t.ball_id,
+                "the last sighting is outside the reference cloth quad and outside every pocket "
+                "radius: the ball left the playing surface",
+                float(last.t), int(last.frame_index),
+                {"last_xy": [round(last.x, 2), round(last.y, 2)],
+                 "nearest_pocket": pockets.nearest(last.x, last.y)[0].name,
+                 "distance_px": round(dist, 2)},
+                tuple(tail), pot_thresholds))
             continue
         if pocket is None:
             near, near_dist = pockets.nearest(last.x, last.y)
@@ -979,27 +1057,6 @@ def track_events(track: Track, pockets: PocketModel,
                  "inside_cloth": _inside_quad(last.x, last.y, th.cloth_quad)},
                 tuple(tail), pot_thresholds))
             continue
-        if _inside_frame(last.x, last.y, th) is False:
-            rejections.append(Rejection(
-                "rejection", "left_frame_edge", t.ball_id,
-                f"the last sighting is within {th.edge_margin_px:.0f} px of the image border: the "
-                "ball left the frame, which is not a pocket",
-                float(last.t), int(last.frame_index),
-                {"last_xy": [round(last.x, 2), round(last.y, 2)],
-                 "frame_size": list(th.frame_size) if th.frame_size else None,
-                 "pocket": pocket.name, "distance_px": round(dist, 2)},
-                tuple(tail), pot_thresholds))
-            continue
-        if _inside_quad(last.x, last.y, th.cloth_quad) is False:
-            rejections.append(Rejection(
-                "rejection", "left_cloth", t.ball_id,
-                "the last sighting is outside the reference cloth quad and not inside a pocket "
-                "radius: the ball left the playing surface",
-                float(last.t), int(last.frame_index),
-                {"last_xy": [round(last.x, 2), round(last.y, 2)],
-                 "pocket": pocket.name, "distance_px": round(dist, 2)},
-                tuple(tail), pot_thresholds))
-            continue
         if gap < th.persistence_s:
             pots.append(PotEvent("pot", t.ball_id, "unknown", "no_persistence_window",
                                  pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
@@ -1014,6 +1071,21 @@ def track_events(track: Track, pockets: PocketModel,
             pots.append(PotEvent("pot", t.ball_id, "unknown", "occlusion_channel_silent",
                                  pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
                                  **common))
+            continue
+        if parked:
+            # A ball at rest inside the pocket radius is exactly the shape of a ball
+            # parked in the jaws of the pocket, and no track fact separates the two.
+            pots.append(PotEvent("pot", t.ball_id, "unknown", "at_rest_inside_pocket_radius",
+                                 pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
+                                 **common))
+            continue
+        if swap_seen:
+            # This identity was already seen to reappear after a full persistence
+            # window inside a pocket radius: its persistence is not trustworthy, so
+            # its next disappearance cannot be called a pot either.
+            pots.append(PotEvent("pot", t.ball_id, "unknown", "prior_identity_swap_inside_pocket",
+                                 pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
+                                 **dict(common, identity_swap_suspected=True)))
             continue
         pots.append(PotEvent("pot", t.ball_id, "pot", "inside_pocket_persistence_clear",
                              pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
@@ -1058,8 +1130,7 @@ def classify(tracks: Iterable[Track], pockets: PocketModel | None = None,
     tracks = [t.ordered() for t in tracks]
     model = pockets if pockets is not None else default_pocket_model(
         quad=thresholds.cloth_quad or VOD30_REFERENCE_QUAD,
-        pocket_r_mm=thresholds.pocket_r_mm,
-        dataset="vod30" if (thresholds.cloth_quad or VOD30_REFERENCE_QUAD) else "derived")
+        pocket_r_mm=thresholds.pocket_r_mm)
     if observed_until_t is None:
         last = [float(t.samples[-1].t) for t in tracks if t.samples]
         observed_until_t = max(last) if last else None
