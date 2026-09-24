@@ -318,42 +318,76 @@ def _rate(part, whole):
     return round(float(part) / float(whole), 4) if whole else None
 
 
+def _medoid(points):
+    """The point most similar to the others in its group (robust to one outlier)."""
+    if len(points) == 1:
+        return points[0]
+    best, best_score = points[0], -2.0
+    for candidate in points:
+        score = sum(_cos(candidate[3], other[3]) for other in points if other is not candidate)
+        if score > best_score:
+            best, best_score = candidate, score
+    return best
+
+
 def separation(records, threshold=DEFAULT_THRESHOLD, margin=DEFAULT_MARGIN):
     """Within-tracklet vs same-frame cross-tracklet cosine distributions.
 
     within: two faces on the same tracklet from different frames (same person,
     <=4.5s apart). cross: two faces from different person boxes *in the same
     frame* — provably different people, no tracking assumption.
+
+    Pairs that point at the *same* detected face are dropped: two overlapping
+    person boxes can both contain one face's centre (center_inside is per-box),
+    and counting that face against itself would put a cosine of exactly 1.0
+    into the cross-person distribution.
     """
     by_frame, by_tracklet = {}, {}
+    faces = {}
     for rec in records:
         face = quality_faces(rec)
         if face is None:
             continue
+        key = (rec["dataset"], rec["frame_index"], tuple(face["bbox"]))
         point = {"dataset": rec["dataset"], "tracklet": rec["tracklet"], "role": rec.get("role"),
-                 "embedding": face["embedding"], "frame": rec["frame_index"]}
+                 "embedding": face["embedding"], "frame": rec["frame_index"], "face_key": key}
+        faces[key] = faces.get(key, 0) + 1
         by_frame.setdefault((rec["dataset"], rec["frame_index"]), []).append(point)
         by_tracklet.setdefault(rec["tracklet"], []).append(point)
+    shared = sum(1 for count in faces.values() if count > 1)
 
-    within = []
+    within, within_by_dataset = [], {}
     for points in by_tracklet.values():
         for i in range(len(points)):
             for j in range(i + 1, len(points)):
                 if points[i]["frame"] == points[j]["frame"]:
                     continue
-                within.append(_cos(points[i]["embedding"], points[j]["embedding"]))
-    cross = []
+                value = _cos(points[i]["embedding"], points[j]["embedding"])
+                within.append(value)
+                within_by_dataset.setdefault(points[i]["dataset"], []).append(value)
+    cross, cross_by_dataset, duplicate_pairs = [], {}, 0
     for points in by_frame.values():
         for i in range(len(points)):
             for j in range(i + 1, len(points)):
                 if points[i]["tracklet"] == points[j]["tracklet"]:
                     continue
-                cross.append(_cos(points[i]["embedding"], points[j]["embedding"]))
+                if points[i]["face_key"] == points[j]["face_key"]:
+                    duplicate_pairs += 1
+                    continue
+                value = _cos(points[i]["embedding"], points[j]["embedding"])
+                cross.append(value)
+                cross_by_dataset.setdefault(points[i]["dataset"], []).append(value)
     return {
         "thresholds": {"cosine": threshold, "margin": margin,
                        "bind_face_bar": round(threshold + margin, 4)},
         "within_tracklet": pair_stats(within),
         "cross_person_same_frame": pair_stats(cross),
+        "same_face_pairs_dropped": duplicate_pairs,
+        "faces_claimed_by_both_boxes": shared,
+        "by_dataset": {"within_tracklet": {name: pair_stats(values)
+                                           for name, values in within_by_dataset.items()},
+                       "cross_person_same_frame": {name: pair_stats(values)
+                                                   for name, values in cross_by_dataset.items()}},
         "accept_rates": {
             "within_ge_threshold": _rate(sum(1 for v in within if v >= threshold), len(within)),
             "within_ge_bind_face_bar": _rate(sum(1 for v in within if v >= threshold + margin), len(within)),
@@ -363,34 +397,81 @@ def separation(records, threshold=DEFAULT_THRESHOLD, margin=DEFAULT_MARGIN):
     }
 
 
-def role_pairs(records):
-    """Long-range consistency of the two table-end roles on one dataset.
+def role_pairs(records, same_person_cosine=0.5):
+    """Table-end roles: are the two players separable, and do they stay put?
 
-    same_role: faces of the same table end, different bursts (the two main
-    players are the two roles, so this is the long-range same-person class);
-    cross_role: left-end face vs right-end face (the two different players).
+    cross_role_same_frame: the two players at the two table ends in one frame —
+    provably different people, the "between-track" class. Pairs that point at
+    one detected face (two overlapping boxes, or a face the centre test claims
+    twice) are dropped.
+
+    same_role_consecutive_burst: cosine between the medoid face of one table end
+    in an anchor and the medoid of the next anchor (~112s later on vod30) — how
+    often the same person is still at that end, i.e. roster turnover.
+    same_role_cross_burst: the raw same-role pair distribution across all
+    anchors; bimodal when several different people stand at that end, which is
+    what a rotating tournament looks like.
     """
-    by_role = {}
+    by_role, by_burst = {}, {}
     for rec in records:
         role = rec.get("role")
         face = quality_faces(rec)
-        if role is None or face is None:
+        if role is None or face is None or face.get("embedding") is None:
             continue
-        by_role.setdefault(role, []).append((rec["burst"], rec["frame_index"], face["embedding"]))
-    same, cross = [], []
+        face_key = (rec["dataset"], rec["frame_index"], tuple(face["bbox"]))
+        point = (rec["burst"], rec["frame_index"], face_key, face["embedding"])
+        by_role.setdefault(role, []).append(point)
+        by_burst.setdefault((rec["burst"], role), []).append(point)
+    same, cross_burst = [], []
     for role, points in by_role.items():
         for i in range(len(points)):
             for j in range(i + 1, len(points)):
                 if points[i][0] == points[j][0]:
                     continue
-                same.append(_cos(points[i][2], points[j][2]))
+                same.append(_cos(points[i][3], points[j][3]))
     left, right = by_role.get("left", []), by_role.get("right", [])
-    for _b1, _f1, emb_a in left:
-        for _b2, _f2, emb_b in right:
-            cross.append(_cos(emb_a, emb_b))
-    return {"same_role_across_bursts": pair_stats(same),
-            "cross_role": pair_stats(cross),
-            "faces_left": len(left), "faces_right": len(right)}
+    for _b1, _f1, key_a, emb_a in left:
+        for _b2, _f2, key_b, emb_b in right:
+            if key_a == key_b:
+                continue
+            cross_burst.append(_cos(emb_a, emb_b))
+    # per-frame cross-role: the two players standing at the table at that moment
+    frames = {}
+    for rec in records:
+        if rec.get("role") is None:
+            continue
+        face = quality_faces(rec)
+        if face is not None and face.get("embedding") is not None:
+            frames.setdefault((rec["burst"], rec["frame_index"]), {})[rec["role"]] = (
+                (rec["dataset"], rec["frame_index"], tuple(face["bbox"])), face["embedding"])
+    cross_frame = [_cos(roles["left"][1], roles["right"][1]) for roles in frames.values()
+                   if "left" in roles and "right" in roles and roles["left"][0] != roles["right"][0]]
+    continuity = []
+    for role in ("left", "right"):
+        bursts = sorted({burst for burst, name in by_burst if name == role})
+        for first, second in zip(bursts, bursts[1:]):
+            if second - first > 1:
+                continue
+            first_face = _medoid(by_burst[(first, role)])
+            second_face = _medoid(by_burst[(second, role)])
+            cosine = _cos(first_face[3], second_face[3])
+            continuity.append({"role": role, "bursts": [first, second],
+                               "cosine": round(float(cosine), 4),
+                               "faces": [len(by_burst[(first, role)]), len(by_burst[(second, role)])],
+                               "same_person": bool(cosine >= same_person_cosine)})
+    return {
+        "cross_role_same_frame": pair_stats(cross_frame),
+        "same_role_cross_burst": pair_stats(same),
+        "cross_role_cross_burst": pair_stats(cross_burst),
+        "same_role_consecutive_burst": {
+            "pairs": len(continuity),
+            "same_person": sum(1 for row in continuity if row["same_person"]),
+            "rate": _rate(sum(1 for row in continuity if row["same_person"]), len(continuity)),
+            "same_person_cosine": same_person_cosine,
+            "rows": continuity,
+        },
+        "faces_left": len(left), "faces_right": len(right),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -417,6 +498,9 @@ def evaluate_binding(probes, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAUL
         rows.append({
             "role": probe.get("role"),
             "expected": probe.get("expected"),
+            "group": probe.get("group"),
+            "burst": probe.get("burst"),
+            "frame_index": probe.get("frame_index"),
             "matched": None if match is None else match["player_id"],
             "similarity": round(float(best_sim), 4),
             "runner_up": None if runner_up == float("inf") else round(float(runner_up), 4),
@@ -431,6 +515,25 @@ def evaluate_binding(probes, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAUL
     expected = [row for row in rows if row["expected"]]
     correct = [row for row in expected if row["matched"] == row["expected"]]
     wrong = [row for row in expected if row["matched"] is not None and row["matched"] != row["expected"]]
+    groups = {}
+    for row in rows:
+        if row.get("group") is None:
+            continue
+        bucket = groups.setdefault(row["group"], {"n": 0, "similarities": [], "margins": [],
+                                                  "matched_any": 0, "matched_expected": 0,
+                                                  "accepted_by_bind_face": 0})
+        bucket["n"] += 1
+        bucket["similarities"].append(row["similarity"])
+        if row["margin"] is not None:
+            bucket["margins"].append(row["margin"])
+        bucket["matched_any"] += 1 if row["matched"] else 0
+        bucket["matched_expected"] += 1 if row["expected"] and row["matched"] == row["expected"] else 0
+        bucket["accepted_by_bind_face"] += 1 if row["accepted_by_bind_face"] else 0
+    for bucket in groups.values():
+        bucket["similarity_stats"] = pair_stats(bucket.pop("similarities"))
+        bucket["margin_stats"] = pair_stats(bucket.pop("margins"))
+        bucket["match_rate"] = _rate(bucket["matched_expected"], bucket["n"])
+        bucket["false_match_rate"] = _rate(bucket["matched_any"], bucket["n"])
     by_role = {}
     for row in expected:
         bucket = by_role.setdefault(row["role"], {"n": 0, "correct": 0, "accepted": 0,
@@ -454,6 +557,7 @@ def evaluate_binding(probes, gallery, threshold=DEFAULT_THRESHOLD, margin=DEFAUL
             "accuracy": _rate(len(correct), len(expected)),
             "unmatched": len(expected) - len(correct) - len(wrong),
             "by_role": by_role,
+            "by_group": groups,
             "thresholds": {"cosine": threshold, "margin": margin,
                            "bind_face_bar": round(threshold + margin, 4)},
         },
@@ -550,7 +654,7 @@ def measure(directory=DEFAULT_DIR, dataset_ids=("vod30", "highlight"), plan=None
     plan = plan or DEFAULT_PLAN
     detector = load_detector()
     engine = get_face_engine()
-    directory = Path(directory)
+    directory = Path(directory).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     payload = {"datasets": {}, "records": [], "started_at": None, "runtime_s": None}
     import time
@@ -580,20 +684,20 @@ def measure(directory=DEFAULT_DIR, dataset_ids=("vod30", "highlight"), plan=None
                                        fps, persons, faces, corners)
             payload["records"].extend(records)
             log(f"{dataset_id} f{frame_index} t={frame_index / fps:.1f}s "
-                f"persons={len(persons)} faces={len(faces)}")
+                f"persons={len(persons)} faces={len(faces)}", flush=True)
     created = assign_tracklets(payload["records"], max_gap=60)
     payload["tracklets"] = created
     payload["runtime_s"] = round(time.time() - started, 1)
     path = directory / "detections.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     log(f"wrote {path}: {len(payload['records'])} person instances, "
-        f"{created} tracklets, {payload['runtime_s']}s")
+        f"{created} tracklets, {payload['runtime_s']}s", flush=True)
     return payload
 
 
 def analyse(directory=DEFAULT_DIR, log=print):
     """Detectability + separation over a detections.json (no models)."""
-    directory = Path(directory)
+    directory = Path(directory).resolve()
     payload = json.loads((directory / "detections.json").read_text(encoding="utf-8"))
     records = payload["records"]
     report = {
@@ -641,7 +745,7 @@ def scratch_root(directory=DEFAULT_DIR, fresh=True):
     weights are read-only symlinks, every identity store lives under the
     scratch out/ so the demo can enroll and bind without touching production.
     """
-    directory = Path(directory)
+    directory = Path(directory).resolve()
     root = directory / "scratch"
     if fresh and root.exists():
         shutil.rmtree(root)
@@ -654,41 +758,104 @@ def scratch_root(directory=DEFAULT_DIR, fresh=True):
     return root
 
 
-def pick_demo_split(records, dataset="vod30", enroll_burst=0, holdout_bursts=None):
-    """Choose the frames whose left/right table-end faces seed and test the demo.
+def pick_demo_window(analysis, dataset="vod30", min_run=3):
+    """The longest run of consecutive anchors where one table end keeps its person.
 
-    The enrollment frame is a (burst, frame) where both table-end roles have a
-    quality face; the held-out frames must be a different burst, so the demo's
-    probes are faces the enrollment never saw.
+    Taken from the measured continuity rows of `analyse` (medoid cosine between
+    adjacent anchors >= 0.5): the first anchor enrolls, the later anchors of the
+    run are the held-out frames. Outside such a run the same table end holds a
+    *different* person every other minute (measured turnover), so a demo that
+    spans the whole VOD would be testing the roster, not the face matcher.
     """
-    frames = {}
-    for rec in records:
-        if rec["dataset"] != dataset:
+    try:
+        rows = analysis["role_pairs"][dataset]["same_role_consecutive_burst"]["rows"]
+    except (KeyError, TypeError):
+        return None
+    best = None
+    for role in ("left", "right"):
+        run = None
+        for row in rows:
+            if row["role"] != role:
+                continue
+            if not row["same_person"]:
+                continue
+            if run is not None and row["bursts"][0] == run[-1]:
+                run.append(row["bursts"][1])
+            else:
+                run = list(row["bursts"])
+            if best is None or len(run) > len(best["bursts"]):
+                best = {"role": role, "bursts": list(run)}
+    if best is None or len(best["bursts"]) < min_run:
+        return None
+    return {"dataset": dataset, "role": best["role"], "bursts": best["bursts"],
+            "enroll_burst": best["bursts"][0], "holdout_bursts": best["bursts"][1:]}
+
+
+def _role_faces(records, dataset, burst, role):
+    """(record, face) of every quality face standing at `role` in one anchor."""
+    rows = []
+    for rec in sorted(records, key=lambda r: r["frame_index"]):
+        if rec["dataset"] != dataset or rec["burst"] != burst or rec.get("role") != role:
             continue
         face = quality_faces(rec)
-        if face is None or rec.get("role") is None:
-            continue
-        key = (rec["burst"], rec["frame_index"])
-        frames.setdefault(key, {})[rec["role"]] = rec
-    complete = {key: roles for key, roles in frames.items() if set(roles) >= {"left", "right"}}
-    if not complete:
+        if face is not None and face.get("embedding") is not None:
+            rows.append((rec, face))
+    return rows
+
+
+def role_medoid(records, dataset, burst, role):
+    """The person who most consistently holds one table end in one anchor.
+
+    An anchor's burst covers 4.5s; over that window several people can stand
+    near the same end (spectators, the opponent getting up). The medoid of the
+    quality faces at that end is the recurring person, which is why enrollment
+    uses it instead of the first frame's face.
+    """
+    rows = _role_faces(records, dataset, burst, role)
+    if not rows:
         return None
-    bursts = sorted({key[0] for key in complete})
-    enroll_key = None
+    points = [(rec, np.asarray(face["embedding"], np.float32)) for rec, face in rows]
+    best, best_score = points[0], -2.0
+    for candidate in points:
+        score = sum(_cos(candidate[1], other[1]) for other in points if other is not candidate[0])
+        if score > best_score:
+            best, best_score = candidate, score
+    record, embedding = best
+    return {"record": record, "embedding": embedding, "faces": len(rows),
+            "spread_cosine": pair_stats([_cos(embedding, other[1]) for other in points])}
+
+
+def label_role_probes(records, dataset, bursts, role, same_person_cosine=0.6):
+    """Held-out probes at one table end, labelled by that anchor's medoid person.
+
+    'same' probes are the faces of the recurring person at that end in their
+    burst (the one the continuity rows tracked across anchors); 'other' probes
+    are the rest of the faces at that same end — different people standing in
+    the same place — plus (when asked) every quality face at the other end.
+    """
+    probes = []
     for burst in bursts:
-        if burst == enroll_burst or enroll_burst not in bursts:
-            candidates = [key for key in sorted(complete) if key[0] == burst]
-            if candidates:
-                enroll_key = candidates[len(candidates) // 2]
-                break
-    if enroll_key is None:
-        enroll_key = sorted(complete)[0]
-    hold = set(holdout_bursts) if holdout_bursts is not None else {b for b in bursts if b != enroll_key[0]}
-    return {"dataset": dataset, "enroll": {"burst": enroll_key[0], "frame_index": enroll_key[1],
-                                           "roles": sorted(complete[enroll_key])},
-            "holdout_bursts": sorted(hold),
-            "bursts_with_both_roles": bursts,
-            "frames_with_both_roles": len(complete)}
+        medoid = role_medoid(records, dataset, burst, role)
+        if medoid is None:
+            continue
+        for rec, face in _role_faces(records, dataset, burst, role):
+            same = _cos(medoid["embedding"], np.asarray(face["embedding"], np.float32)) >= same_person_cosine
+            probes.append({"role": role, "expected": f"player-{role}" if same else None,
+                           "group": "same" if same else "impostor_same_end",
+                           "burst": burst, "frame_index": rec["frame_index"],
+                           "medoid_cosine": round(float(_cos(medoid["embedding"],
+                                                            np.asarray(face["embedding"], np.float32))), 4),
+                           "embedding": np.asarray(face["embedding"], np.float32)})
+    return probes
+
+
+def _frame_with_role(records, dataset, burst, role, exclude=()):
+    """The frame in `burst` whose quality face sits at `role` (first by index)."""
+    for rec in sorted(records, key=lambda r: r["frame_index"]):
+        if (rec["dataset"] == dataset and rec["burst"] == burst and rec.get("role") == role
+                and quality_faces(rec) is not None and rec["frame_index"] not in exclude):
+            return rec
+    return None
 
 
 def face_crop(frame, bbox, pad=0.6):
@@ -704,70 +871,96 @@ def face_crop(frame, bbox, pad=0.6):
 
 
 def demo(directory=DEFAULT_DIR, dataset="vod30", log=print):
-    """Enroll one photo per table-end player, then replay held-out frames."""
+    """Enroll one photo per player, then bind held-out faces on a scratch root.
+
+    Ground truth here is *positional*: inside the measured continuity window one
+    person holds the chosen table end, so a held-out face at that end is the
+    enrolled person and a face at the other end is provably someone else. The
+    window comes from `analyse`, and every similarity in the result is reported
+    so the reader can see how strong that assumption was.
+    """
     import cv2
     from src.person_pipeline import PersonPipeline
-    directory = Path(directory)
+    directory = Path(directory).resolve()
     payload = json.loads((directory / "detections.json").read_text(encoding="utf-8"))
+    analysis_path = directory / "analysis.json"
+    if not analysis_path.is_file():
+        raise RuntimeError("run `analyse` first: the demo window comes from the measured continuity")
+    analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
     corners = payload["datasets"][dataset]["corners"]
-    split = pick_demo_split(payload["records"], dataset=dataset)
-    if split is None:
-        raise RuntimeError("no frame carries a quality face at both table ends")
+    window = pick_demo_window(analysis, dataset=dataset)
+    if window is None:
+        raise RuntimeError("no continuous table-end run long enough to seed a demo")
+    records = payload["records"]
+
+    # the players to enroll: the medoid person of the window role at the first
+    # anchor of the run (A) plus the other end in the same anchor (B), so
+    # cross-player rejection is testable when that end has a quality face
+    enroll_role = window["role"]
+    other_role = "right" if enroll_role == "left" else "left"
+    enroll_records = [(enroll_role, role_medoid(records, dataset, window["enroll_burst"], enroll_role))]
+    other = role_medoid(records, dataset, window["enroll_burst"], other_role)
+    if other is not None:
+        enroll_records.append((other_role, other))
+    enroll_records = [(role, medoid) for role, medoid in enroll_records if medoid is not None]
+    if not enroll_records:
+        raise RuntimeError("no quality face in the enrollment burst")
+
     before = md5_files()
     root = scratch_root(directory)
     pipeline = PersonPipeline(root)
 
     # 1. enroll through the production function POST /api/identity/enroll calls
-    enroll_frame = None
-    for index, frame in iter_frames(REPO / DATASETS[dataset][0], [split["enroll"]["frame_index"]]):
-        enroll_frame = frame
-    if enroll_frame is None:
-        raise RuntimeError("could not decode the enrollment frame")
-    enrolled = {}
-    enroll_rows = []
-    for role, record in _enroll_records(payload["records"], split, dataset):
-        crop = face_crop(enroll_frame, record["faces"][_quality_index(record)]["bbox"])
+    enroll_frames = sorted({medoid["record"]["frame_index"] for _role, medoid in enroll_records})
+    decoded = dict(iter_frames(REPO / DATASETS[dataset][0], enroll_frames))
+    enrolled, enroll_rows = {}, []
+    for role, medoid in enroll_records:
+        record, face = medoid["record"], quality_faces(medoid["record"])
+        crop = face_crop(decoded[record["frame_index"]], face["bbox"])
         player_id = f"player-{role}"
         count = pipeline.enroll_face(player_id, crop)
         enrolled[player_id] = count
         enroll_rows.append({"role": role, "player_id": player_id, "burst": record["burst"],
                             "frame_index": record["frame_index"], "enrolled": count,
-                            "eye_px": record["faces"][_quality_index(record)]["eye_px"],
-                            "det_score": record["faces"][_quality_index(record)]["det_score"]})
+                            "eye_px": face["eye_px"], "det_score": face["det_score"],
+                            "crop_px": [int(crop.shape[1]), int(crop.shape[0])],
+                            "faces_at_that_end": medoid["faces"],
+                            "medoid_spread": medoid["spread_cosine"]})
         log(f"enroll {player_id}: {count} face(s) from {dataset} burst "
-            f"{record['burst']} frame {record['frame_index']}")
+            f"{record['burst']} frame {record['frame_index']}", flush=True)
 
-    # 2. held-out probes, matched against the scratch gallery (no models needed:
-    #    the embeddings come from the same engine on the same frames)
+    # 2. held-out probes: the recurring person at the enrolled end (same), the
+    #    other people standing in that same place (impostors), matched against
+    #    the scratch gallery
     gallery = _gallery_from_scratch(root)
-    probes = []
-    for rec in payload["records"]:
-        if rec["dataset"] != dataset or rec["burst"] not in split["holdout_bursts"]:
-            continue
-        face = quality_faces(rec)
-        if face is None or rec.get("role") is None or face.get("embedding") is None:
-            continue
-        probes.append({"role": rec["role"], "expected": f"player-{rec['role']}",
-                       "burst": rec["burst"], "frame_index": rec["frame_index"],
-                       "embedding": np.asarray(face["embedding"], np.float32)})
+    probes = label_role_probes(records, dataset, window["holdout_bursts"], enroll_role)
+    probes.extend({"role": rec["role"], "expected": None, "group": "impostor_other_end",
+                   "burst": rec["burst"], "frame_index": rec["frame_index"], "medoid_cosine": None,
+                   "embedding": np.asarray(face["embedding"], np.float32)}
+                  for rec in records
+                  if rec["dataset"] == dataset and rec["burst"] in window["holdout_bursts"]
+                  and rec.get("role") not in (None, enroll_role)
+                  and (face := quality_faces(rec)) is not None and face.get("embedding") is not None)
     offline = evaluate_binding(probes, gallery)
 
     # 3. end-to-end replay: process_frame -> tracker -> best_match -> bind_face
-    holdout_frames = sorted({rec["frame_index"] for rec in payload["records"]
+    holdout_frames = sorted({rec["frame_index"] for rec in records
                              if rec["dataset"] == dataset
-                             and rec["burst"] in split["holdout_bursts"]})
+                             and rec["burst"] in window["holdout_bursts"]})
     binds, persons_seen = [], []
     for frame_index, frame in iter_frames(REPO / DATASETS[dataset][0], holdout_frames):
-        result = pipeline.process_frame(frame, frame_index, frame_index / payload["datasets"][dataset]["fps"])
+        result = pipeline.process_frame(frame, frame_index,
+                                        frame_index / payload["datasets"][dataset]["fps"])
         for person in result["persons"]:
-            role = table_role(person["bbox"], corners)
             persons_seen.append({"frame_index": frame_index, "track_id": person["track_id"],
-                                 "cluster_id": person["cluster_id"], "role": role,
+                                 "cluster_id": person["cluster_id"],
+                                 "role": table_role(person["bbox"], corners),
                                  "player_id": person["player_id"], "face_sim": person["face_sim"]})
         for event in result["events"]:
             binds.append({"frame_index": frame_index, "player_id": event["player_id"],
                           "cluster_id": event["cluster_id"], "similarity": event["similarity"]})
-        log(f"replay f{frame_index}: persons={len(result['persons'])} binds={len(result['events'])}")
+        log(f"replay f{frame_index}: persons={len(result['persons'])} binds={len(result['events'])}",
+            flush=True)
 
     bound = {}
     for person in persons_seen:
@@ -777,14 +970,18 @@ def demo(directory=DEFAULT_DIR, dataset="vod30", log=print):
         "frames_replayed": len(holdout_frames),
         "persons_observed": len(persons_seen),
         "bind_events": binds,
-        "clusters": sorted({person["cluster_id"] for person in persons_seen}),
         "bound_players": {pid: sorted(roles) for pid, roles in bound.items()},
+        "wrong_role_binds": [b for b in binds if sorted(bound.get(b["player_id"], [])) !=
+                             [b["player_id"].split("-")[-1]]],
         "person_rows": persons_seen,
     }
     after = md5_files()
     result = {
         "dataset": dataset,
-        "split": split,
+        "window": window,
+        "continuity_rows": [row for row in analysis["role_pairs"][dataset]
+                            ["same_role_consecutive_burst"]["rows"]
+                            if row["role"] == enroll_role and row["bursts"][0] in window["bursts"]],
         "enrollment": {"rows": enroll_rows, "gallery_players": sorted(gallery),
                        "gallery_entries": {pid: len(entries) for pid, entries in gallery.items()},
                        "store": str((root / "out" / "corner-pocket" / "face_embeddings.json").relative_to(REPO))},
@@ -796,7 +993,7 @@ def demo(directory=DEFAULT_DIR, dataset="vod30", log=print):
     path = directory / "demo.json"
     path.write_text(json.dumps(result, indent=1), encoding="utf-8")
     log(f"wrote {path}: enrolled={enrolled} binds={len(binds)} "
-        f"accuracy={offline['summary']['accuracy']}")
+        f"accuracy={offline['summary']['accuracy']}", flush=True)
     return result
 
 
@@ -805,18 +1002,6 @@ def _quality_index(record):
         if face.get("quality") and center_inside(face["bbox"], record["person"]):
             return index
     raise RuntimeError("record has no quality face")
-
-
-def _enroll_records(records, split, dataset):
-    """The enrollment frame's (role, record) pairs, one per table end."""
-    rows = []
-    for rec in records:
-        if (rec["dataset"] == dataset and rec["burst"] == split["enroll"]["burst"]
-                and rec["frame_index"] == split["enroll"]["frame_index"]
-                and rec.get("role") in "left right".split()
-                and quality_faces(rec) is not None):
-            rows.append((rec["role"], rec))
-    return sorted(rows, key=lambda item: item[0])
 
 
 def _gallery_from_scratch(root):
@@ -829,13 +1014,17 @@ def _gallery_from_scratch(root):
 # --------------------------------------------------------------------------
 
 def serve(root, port=8133):
-    """Serve the unified API against a scratch root (md5-protected reads only)."""
+    """Serve the unified API against a scratch root (md5-protected reads only).
+
+    Refuses the production root before importing the server, so a mistyped
+    --root can never expose a service that writes production identity state.
+    """
+    root = Path(root).resolve()
+    if REPO == root or REPO.is_relative_to(root):
+        raise SystemExit(f"refusing to serve {root}: not a scratch root")
     from http.server import ThreadingHTTPServer
     sys.path.insert(0, str(REPO))
     from annotator.unified_server import Backend, make_handler
-    root = Path(root).resolve()
-    if REPO == root or REPO.is_relative_to(root):
-        raise SystemExit("refusing to serve the production root")
     backend = Backend(root)
     real = Backend(REPO)
     backend.video = real.video            # decoding stays read-only on the real VOD
@@ -870,7 +1059,7 @@ def http_demo(port=8133, directory=DEFAULT_DIR, wait=120.0, log=print):
     """
     import time
     from src.face_id import load_faces
-    directory = Path(directory)
+    directory = Path(directory).resolve()
     demo_path = directory / "demo.json"
     split = json.loads(demo_path.read_text(encoding="utf-8"))["split"] if demo_path.is_file() else None
     deadline = time.time() + wait
