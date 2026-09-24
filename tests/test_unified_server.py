@@ -691,6 +691,24 @@ class UnifiedViewTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.backend = Backend(self.root)
+        # /api/unified asks the identity seam for persons. This class is about
+        # payload geometry (table, balls, pockets, events, LRU) and promises "no
+        # model loads" — but with the real seam, `_unified_persons` built
+        # PersonPipeline on this temp root, whose root/yolov8n.pt does not exist,
+        # so ultralytics DOWNLOADED yolov8n.pt from GitHub inside the suite: once
+        # per test, ~6 MB, and the whole suite stopped being offline-capable.
+        # A stub that reports no persons keeps every payload identical (the real
+        # detector only ever saw a zero frame) without touching the network.
+        # The seam itself stays covered by
+        # test_identity_persons_project_only_documented_fields,
+        # test_identity_degrades_to_empty_persons_with_error_note and
+        # test_unified_read_does_not_write_the_identity_index, which each inject
+        # their own pipeline (src/frame_inference.py disables downloads the same
+        # way: local weights or RuntimeError).
+        stub = Mock()
+        stub.process_frame.side_effect = lambda frame, frame_index, timestamp: {
+            "persons": [], "events": []}
+        self.backend._identity_pipeline = stub
         scan = self.root / "out" / "scan30"
         scan.mkdir(parents=True)
         (scan / "events.json").write_text(json.dumps([
