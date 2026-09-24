@@ -1,11 +1,11 @@
 """Per-frame stages: an ordered registry, a rolling latency window, a frame budget.
 
 The decode loop owns *when* a frame is taken; a stage owns *what* is computed from
-it.  The contract is one method and two facts::
+it.  The contract is one method and three facts::
 
     class BallStage(Stage):
-        name = 'ball'          # unique, used as the metadata/latency key
-        budget_ms = 15.0       # optional per-stage ceiling; None borrows the frame budget
+        name = 'ball'              # unique, used as the metadata/latency key
+        budget_ms = 15.0           # optional per-stage ceiling; None borrows the frame budget
         def process(self, frame, context):
             table = context.result('table')      # read an earlier stage, or None
             return {'boxes': [...]}              # any JSON-able result
@@ -15,11 +15,16 @@ needs the cloth polygon the table stage already found) does not recompute it; a
 stage that needs nothing ignores the argument.  Registration order is execution
 order, and results merge into the frame metadata in that same order.
 
+**Provenance (``Stage.evidence``).**  A stage may report what its result was made
+of (measured now, read from a saved reference, cached N frames ago).  Geometry such
+as the cloth quad *is* a property of the camera, not of the frame, so serving a
+saved quad is correct - as long as the frame says so and says how old it is.
+
 Nothing here queues or retries.  Metrics are a fixed-size rolling window
 (count/p50/p95/max/last) per step, and budget enforcement is deliberately the
 caller's decision: this module only *reports* which stage first exceeded its
 ceiling (``StageRun.overrun_stage``) plus what it spent, so the pipeline can drop
-the frame and say why.  Every stage of a frame always runs, even after one has
+the frame and say why.  Every stage that runs keeps running after another stage has
 already overrun, because a half-measured profile of a late frame is useless.
 """
 import math
@@ -32,6 +37,12 @@ def _percentile(ordered, fraction):
     """Nearest-rank percentile of an already-sorted non-empty sample list."""
     index = max(0, min(len(ordered) - 1, math.ceil(fraction * len(ordered)) - 1))
     return ordered[index]
+
+
+def _positive_int(value, label):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError('%s must be a positive integer' % label)
+    return value
 
 
 class Stage:
@@ -48,16 +59,32 @@ class Stage:
         """Return this stage's result for ``frame``; may read ``context.result(name)``."""
         raise NotImplementedError
 
+    def evidence(self, result):
+        """What ``result`` was made of, as JSON-able keys merged into the frame's evidence.
+
+        The registry always contributes ``ran``/``age_frames``; a stage overrides this
+        only to add provenance (e.g. the table stage's ``source`` and the age of the
+        measurement its quad came from).  Must be cheap: it runs once per executed stage.
+        """
+        return {}
+
 
 class StageContext:
     """Live read-only view of the results earlier stages produced for this frame."""
 
-    __slots__ = ('_results', 'seq', 'source')
+    __slots__ = ('_results', 'seq', 'source', 'frame_number', 'frame_index', 'time_s')
 
-    def __init__(self, results, seq=None, source=None):
+    def __init__(self, results, seq=None, source=None, frame_number=0, frame_index=None, time_s=None):
         self._results = results
         self.seq = seq
         self.source = source
+        # frame_number: 0-based index since this pipeline run started (never None).
+        # frame_index: position in the source media when the decoder can report one.
+        # time_s: that position in seconds, which is what a per-segment calibration
+        # resolves against.
+        self.frame_number = frame_number
+        self.frame_index = frame_index
+        self.time_s = time_s
 
     def result(self, name, default=None):
         """Result of an already-executed stage, or ``default`` if it has not run."""
@@ -65,33 +92,39 @@ class StageContext:
 
 
 class StageRun:
-    """One frame through the registry: results, per-stage ms, first overrun."""
+    """One frame through the registry: results, per-stage ms, evidence, first overrun."""
 
-    __slots__ = ('results', 'timings_ms', 'total_ms', 'overrun_stage', 'overrun_ms', 'budget_ms')
+    __slots__ = ('results', 'timings_ms', 'total_ms', 'overrun_stage', 'overrun_ms', 'budget_ms',
+                 'evidence', 'ran', 'frame_number')
 
-    def __init__(self, results, timings_ms, total_ms, overrun_stage, overrun_ms, budget_ms):
+    def __init__(self, results, timings_ms, total_ms, overrun_stage, overrun_ms, budget_ms,
+                 evidence, ran, frame_number):
         self.results = results
         self.timings_ms = timings_ms
         self.total_ms = total_ms
         self.overrun_stage = overrun_stage
         self.overrun_ms = overrun_ms
         self.budget_ms = budget_ms
+        self.evidence = evidence      # {stage name: {'ran', 'age_frames', ...provenance}}
+        self.ran = ran                # names that executed this frame, in registry order
+        self.frame_number = frame_number
 
 
 class StageRegistry:
     """Ordered stages: registered order is execution order, duplicates refused.
 
-    ``run`` measures every stage with the injected ``clock`` (the pipeline passes
-    its own clock) and flags the first stage that either exceeded its own
-    ``budget_ms`` or pushed the whole frame past ``frame_budget_ms`` - counting
-    the time already spent before the stages (``elapsed_ms``: decode, scale,
-    encode) against that same frame budget.  ``frame_budget_ms=None`` measures
-    without enforcing.
+    ``run`` measures every stage that its cadence lets run, with the injected
+    ``clock`` (the pipeline passes its own clock), and flags the first stage that
+    either exceeded its own ``budget_ms`` or pushed the whole frame past
+    ``frame_budget_ms`` - counting the time already spent before the stages
+    (``elapsed_ms``: decode, scale, encode) against that same frame budget.
+    ``frame_budget_ms=None`` measures without enforcing.
     """
 
     def __init__(self, stages=(), clock=time.perf_counter):
         self._clock = clock
         self._stages = []
+        self._frame = 0
         for stage in stages:
             self.add(stage)
 
@@ -118,29 +151,49 @@ class StageRegistry:
     def names(self):
         return [stage.name for stage in self._stages]
 
-    def run(self, frame, *, elapsed_ms=0.0, frame_budget_ms=None, seq=None, source=None):
+    @property
+    def frames(self):
+        """Frames this registry has been asked to run (its own cadence counter)."""
+        return self._frame
+
+    def run(self, frame, *, elapsed_ms=0.0, frame_budget_ms=None, seq=None, source=None,
+            frame_index=None, time_s=None):
         results = {}
         timings = {}
-        context = StageContext(results, seq=seq, source=source)
+        evidence = {}
+        ran = []
+        context = StageContext(results, seq=seq, source=source, frame_number=self._frame,
+                               frame_index=frame_index, time_s=time_s)
         total = max(0.0, float(elapsed_ms))
         overrun = None  # (stage name, measured ms, ceiling ms)
         for stage in self._stages:
+            name = stage.name
             started = self._clock()
-            results[stage.name] = stage.process(frame, context)
+            results[name] = stage.process(frame, context)
             taken = max(0.0, self._clock() - started) * 1000
-            timings[stage.name] = taken
+            timings[name] = taken
             total += taken
+            ran.append(name)
+            hook = getattr(stage, 'evidence', None)
+            extra = hook(results[name]) if callable(hook) else None
+            entry = dict(ran=True, age_frames=0)
+            if isinstance(extra, dict):
+                entry.update(extra)
+            evidence[name] = entry
             if overrun is not None:
                 continue
             ceiling = stage.budget_ms if stage.budget_ms is not None else frame_budget_ms
             if ceiling is not None and taken > ceiling:
-                overrun = (stage.name, taken, ceiling)
+                overrun = (name, taken, ceiling)
             elif frame_budget_ms is not None and total > frame_budget_ms:
                 # The frame's budget is a whole-frame ceiling: the pre-stage time
                 # (decode, scale, encode) counts against it too.
-                overrun = (stage.name, total, frame_budget_ms)
+                overrun = (name, total, frame_budget_ms)
         name, measured, ceiling = overrun if overrun else (None, None, None)
-        return StageRun(results, timings, total, name, measured, ceiling)
+        run = StageRun(results, timings, total, name, measured, ceiling, evidence, ran,
+                       self._frame)
+        self._frame += 1
+        return run
 
 
 class LatencyWindow:
@@ -202,17 +255,89 @@ class PersonStage(Stage):
 
 
 class TableStage(Stage):
-    """Cloth polygon from the frame's own pixels (live path has no dataset prior)."""
+    """Cloth quad for the frame: the saved segment reference first, else measured on a cadence.
+
+    A static camera makes the quad a property of the *time segment*, not of the frame,
+    so this stage does not run a per-frame detection.  With a saved artifact
+    (``src/calib_segments.load(dataset, root)``) the quad is resolved for the frame's
+    time, scaled from the artifact's reference frame size to the working frame, and
+    served with evidence ``source='saved:<segment id>'`` - the reference is the
+    operator's human geometry, not a per-frame guess.  Without one (a live stream has
+    no saved calibration) the quad is measured from pixels at most once every
+    ``measure_every_n`` frames and served from that measurement in between, labelled
+    ``source='measured'`` with the age of the measurement in frames.  Serving last-known
+    geometry is correct here (the camera does not move) precisely because the frame says
+    so and says how old it is - unlike a motion stage, where a frame without evidence
+    must stay unknown.
+    """
 
     name = 'table'
 
-    def __init__(self, root):
+    def __init__(self, root, dataset=None, measure_every_n=30, segments=None):
         from pathlib import Path
         self.root = Path(root)
+        self.dataset = dataset
+        self.measure_every_n = _positive_int(measure_every_n, 'measure_every_n')
+        self._segments = segments
+        self._loaded = segments is not None
+        self._measured = None
+        self._measured_at = None
+
+    def _reference(self):
+        """The dataset's segment artifact, loaded at most once per stage."""
+        if not self._loaded:
+            self._loaded = True
+            if isinstance(self.dataset, str) and self.dataset:
+                try:
+                    from src.calib_segments import load
+                    self._segments = load(self.dataset, root=self.root)
+                except Exception:
+                    self._segments = None
+        return self._segments
+
+    def _saved(self, context):
+        """(scaled quad, segment, source label) from the saved reference, or (None, None, None)."""
+        segments = self._reference()
+        if segments is None or context.time_s is None:
+            return None, None, None
+        segment = segments.resolve(context.time_s)
+        if segment is None:
+            return None, None, None
+        quad = [[round(float(x), 2), round(float(y), 2)] for x, y in segment.quad]
+        return quad, segment, ('saved-clamped:%s' % segment.id if segment.clamped else 'saved:%s' % segment.id)
 
     def process(self, frame, context):
         from src.frame_inference import infer_frame
-        return infer_frame(frame, ['table'], self.root)
+        quad, segment, source = self._saved(context)
+        height, width = frame.shape[:2]
+        if quad is not None:
+            reference = (self._reference().payload.get('frame_size') or [width, height])
+            try:
+                scale_x, scale_y = width / float(reference[0]), height / float(reference[1])
+            except (TypeError, ValueError, ZeroDivisionError):
+                scale_x = scale_y = 1.0
+            scaled = [[round(x * scale_x, 2), round(y * scale_y, 2)] for x, y in quad]
+            return {'boxes': [], 'table_polygon': scaled, 'table_source': source,
+                    'table_age_frames': 0, 'table_measured_at': None,
+                    'table_reference_size': list(reference), 'table_segment': segment.as_dict()}
+        if self._measured is None or self._measured_at is None or \
+                context.frame_number % self.measure_every_n == 0:
+            self._measured = infer_frame(frame, ['table'], self.root)
+            self._measured_at = context.frame_number
+        result = dict(self._measured)
+        result.update(table_source='measured', table_age_frames=context.frame_number - self._measured_at,
+                      table_measured_at=self._measured_at, table_reference_size=[width, height])
+        return result
+
+    def evidence(self, result):
+        if not isinstance(result, dict):
+            return {}
+        return {key: result.get(key) for key in
+                ('table_source', 'table_age_frames', 'table_measured_at', 'table_reference_size')}
+
+    def quad(self, result):
+        """The cloth polygon a consumer would use, or None when the stage produced none."""
+        return result.get('table_polygon') if isinstance(result, dict) else None
 
 
 class CallableStage(Stage):
@@ -228,11 +353,17 @@ class CallableStage(Stage):
         return self.call(frame, self.detectors, self.root)
 
 
-def default_stages(detectors, root):
-    """Registry for the live pipeline's detectors, in inference order (table first)."""
+def default_stages(detectors, root, dataset=None, table_measure_every_n=30):
+    """Registry for the live pipeline's detectors, in inference order (table first).
+
+    ``dataset`` lets the table stage answer from that dataset's saved segment
+    reference instead of measuring a static quad again on every frame; without it
+    (a live stream) the stage measures on ``table_measure_every_n``'s cadence and
+    labels the age of what it serves.
+    """
     stages = []
     if 'table' in detectors:
-        stages.append(TableStage(root))
+        stages.append(TableStage(root, dataset=dataset, measure_every_n=table_measure_every_n))
     if 'person' in detectors:
         stages.append(PersonStage(root))
     return stages

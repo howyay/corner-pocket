@@ -66,7 +66,8 @@ class LiveProcessor:
 
     def __init__(self, root, *, capture_factory=None, resolver=None, infer=None, stages=None,
                  clock=time.monotonic, wall_clock=time.time, stop_timeout=2.0,
-                 frame_budget_ms=None, budget_enforcement=True, latency_window=120):
+                 frame_budget_ms=None, budget_enforcement=True, latency_window=120,
+                 table_measure_every_n=30):
         if infer is not None and stages is not None:
             raise ValueError('Pass either infer or stages, not both')
         self.root = Path(root).resolve()
@@ -75,6 +76,7 @@ class LiveProcessor:
         self._infer = infer
         self._stage_spec = None if stages is None else list(stages)
         self._legacy_detector = False
+        self._table_measure_every_n = table_measure_every_n
         self._clock, self._wall_clock = clock, wall_clock
         self._stop_timeout = stop_timeout
         self._configured_budget = frame_budget_ms
@@ -93,6 +95,9 @@ class LiveProcessor:
         self._received = self._processed = self._skipped = 0
         self._dropped = {reason: 0 for reason in _DROP_REASONS}
         self._last_drop = None
+        self._stage_runs = {}
+        self._stage_evidence = {}
+        self._fps = None
         self._previous_received = None
         self._last_received = None
         self._done = False
@@ -141,7 +146,10 @@ class LiveProcessor:
                 stages = [CallableStage('detect', self._infer, self._detectors, self.root)]
                 self._legacy_detector = True
             else:
-                stages, self._legacy_detector = default_stages(self._detectors, self.root), False
+                stages = default_stages(self._detectors, self.root,
+                                        dataset=safe_source.get('dataset') if safe_source.get('kind') == 'dataset' else None,
+                                        table_measure_every_n=self._table_measure_every_n)
+                self._legacy_detector = False
             registry = StageRegistry(stages, clock=self._clock)
             self._generation += 1
             generation = self._generation
@@ -151,6 +159,9 @@ class LiveProcessor:
             self._received = self._processed = self._skipped = 0
             self._dropped = {reason: 0 for reason in _DROP_REASONS}
             self._last_drop = None
+            self._stage_runs = {stage.name: 0 for stage in stages}
+            self._stage_evidence = {stage.name: None for stage in stages}
+            self._fps = None
             self._previous_received = None
             self._last_received = None
             self._frame_budget_ms = self._configured_budget
@@ -210,6 +221,7 @@ class LiveProcessor:
                     self._state = 'running'
                 # The frame budget is the source's own frame period unless overridden.
                 self._frame_budget_ms = self._configured_budget if self._configured_budget is not None else 1000.0 / fps
+                self._fps = fps
             while not self._stop.is_set():
                 if replay and self._stop.wait(max(0, deadline - self._clock())):
                     break
@@ -223,6 +235,15 @@ class LiveProcessor:
                     break
                 if frame is None or len(frame.shape) != 3 or frame.shape[2] != 3 or not (0 < frame.shape[0] <= 2160 and 0 < frame.shape[1] <= 3840):
                     raise _SourceError('Decoded frame must be a color image no larger than 3840 × 2160')
+                # The media position is what a per-segment calibration resolves against;
+                # a live stream has none, so both stay None there.
+                frame_index = None
+                if replay:
+                    try:
+                        position = float(capture.get(cv2.CAP_PROP_POS_FRAMES))
+                        frame_index = int(position) - 1 if position >= 1 else None
+                    except Exception:
+                        frame_index = None
                 received, received_at = self._clock(), self._wall_clock()
                 with self._condition:
                     if generation != self._generation or self._stop.is_set():
@@ -234,7 +255,7 @@ class LiveProcessor:
                     self._last_received = received_at
                     if self._pending is not None:
                         self._drop('no_frame_ready', self._pending[0])
-                    self._pending = (self._received, frame, received, received_at)
+                    self._pending = (self._received, frame, received, received_at, frame_index)
                     self._condition.notify_all()
                 # Do not burst through a backlog after a decoder stall.
                 deadline = max(deadline + 1 / fps, received)
@@ -265,9 +286,10 @@ class LiveProcessor:
                         break
                     if self._pending is None:
                         break
-                    seq, frame, received, received_at = self._pending
+                    seq, frame, received, received_at, frame_index = self._pending
                     self._pending = None
                     budget_ms = self._frame_budget_ms if self._enforce_budget else None
+                    fps = self._fps
                 started = self._clock()
                 if budget_ms is not None and (started - received) * 1000 > budget_ms:
                     # Older than a whole frame period at pickup: publishing it now
@@ -285,8 +307,10 @@ class LiveProcessor:
                 encoded = self._clock()
                 if not ok:
                     raise RuntimeError('JPEG encoding failed')
-                run = self._registry.run(frame, elapsed_ms=max(0, encoded - received) * 1000,
-                                         frame_budget_ms=budget_ms, seq=seq, source=self._source)
+                run = self._registry.run(
+                    frame, elapsed_ms=max(0, encoded - received) * 1000, frame_budget_ms=budget_ms,
+                    seq=seq, source=self._source, frame_index=frame_index,
+                    time_s=frame_index / fps if frame_index is not None and fps else None)
                 finished = self._clock()
                 self._latency.add('resize', (resized - started) * 1000)
                 self._latency.add('encode', (encoded - resized) * 1000)
@@ -294,6 +318,11 @@ class LiveProcessor:
                     self._latency.add(name, elapsed)
                 self._latency.add('receive_to_process', (started - received) * 1000)
                 self._latency.add('receive_to_result', (finished - received) * 1000)
+                with self._condition:
+                    for name in run.ran:
+                        self._stage_runs[name] = self._stage_runs.get(name, 0) + 1
+                    self._stage_evidence.update({name: copy.deepcopy(entry)
+                                                 for name, entry in run.evidence.items()})
                 if run.overrun_stage is not None:
                     self._drop('stage_overrun', seq, stage=run.overrun_stage, ms=run.overrun_ms,
                                budget_ms=run.budget_ms)
@@ -303,11 +332,16 @@ class LiveProcessor:
                 metadata = dict(seq=seq, detections=detections, received_at=received_at,
                                 width=int(frame.shape[1]), height=int(frame.shape[0]),
                                 source_width=int(source_width), source_height=int(source_height),
+                                source_frame_index=frame_index,
                                 processed_at=self._wall_clock(),
                                 receive_to_process_ms=max(0, started - received) * 1000,
                                 receive_to_result_ms=max(0, finished - received) * 1000,
                                 inference_ms=run.total_ms,
                                 stage_ms={name: round(elapsed, 2) for name, elapsed in run.timings_ms.items()},
+                                # Per-frame provenance: which stages ran, which were
+                                # skipped by cadence (evidence absent, not stale) and
+                                # what each executed stage's result was made of.
+                                stage_evidence=copy.deepcopy(run.evidence),
                                 upstream_delay_ms=None)
                 published = False
                 with self._condition:
@@ -356,12 +390,16 @@ class LiveProcessor:
                         upstream_delay_ms=None,
                         # Additive: per-stage rolling latency in registry order, the
                         # same window for the non-stage steps, and why frames went.
+                        # Each stage also carries how often it ran and the provenance of
+                        # its last result, so a consumer can tell measured from cached.
                         stages=[dict(name=stage.name, budget_ms=stage.budget_ms,
+                                     runs=self._stage_runs.get(stage.name, 0),
+                                     evidence=copy.deepcopy(self._stage_evidence.get(stage.name)),
                                      **self._latency.summary(stage.name)) for stage in self._registry],
                         latency_ms=self._latency.snapshot(),
                         drop_reasons=dict(self._dropped), last_drop=copy.deepcopy(self._last_drop),
                         frame_budget_ms=self._frame_budget_ms, budget_enforcement=self._enforce_budget,
-                        latency_window=self._latency.size)
+                        latency_window=self._latency.size, source_fps=self._fps)
 
     def latest_jpeg(self):
         """Return (bytes, metadata) from the same sequence, or None before output."""

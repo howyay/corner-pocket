@@ -11,12 +11,13 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 
 from annotator.live_processing import LiveProcessor
-from annotator.pipeline_stages import Stage
+from annotator.pipeline_stages import Stage, TableStage
 
 
 class Capture:
@@ -29,7 +30,7 @@ class Capture:
         return self.opened
 
     def get(self, prop):
-        return self.fps
+        return self.fps if prop == cv2.CAP_PROP_FPS else self.index
 
     def read(self):
         if self.index >= self.count:
@@ -39,6 +40,26 @@ class Capture:
 
     def release(self):
         self.released = True
+
+
+class PositionCapture(Capture):
+    """Capture that reports a real media position, like a decoder over a file."""
+
+    def __init__(self, count=3, fps=30, start=0, shape=(32, 32, 3)):
+        super().__init__(count=count, fps=fps)
+        self.start = start
+        self.shape = shape
+
+    def read(self):
+        if self.index >= self.count:
+            return False, None
+        self.index += 1
+        return True, np.full(self.shape, self.index, dtype=np.uint8)
+
+    def get(self, prop):
+        if prop == cv2.CAP_PROP_POS_FRAMES:
+            return self.start + self.index          # position of the *next* frame
+        return super().get(prop)
 
 
 class Sleepy(Stage):
@@ -269,6 +290,60 @@ class LiveStageHarnessTests(unittest.TestCase):
         self.assertEqual(int(image[0, 0, 0]), 1)
         self.assertEqual(metadata['width'], 32)
         self.assertEqual(metadata['receive_to_result_ms'] >= metadata['inference_ms'], True)
+
+    def test_every_frame_carries_per_stage_evidence(self):
+        stage = Sleepy('ball', delay=0, result={'boxes': [{'label': 'ball'}]})
+        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30), stages=[stage],
+                                   frame_budget_ms=1000)
+        processor.start(self.source)
+        self.finished(processor)
+        status = processor.status()
+        entry = status['stages'][0]
+        self.assertEqual(entry['runs'], status['frames_processed'])
+        self.assertEqual(entry['evidence'], dict(ran=True, age_frames=0))
+        jpeg, metadata = processor.latest_jpeg()
+        self.assertEqual(metadata['stage_evidence']['ball'], dict(ran=True, age_frames=0))
+        self.assertEqual(metadata['detections']['boxes'], [{'label': 'ball'}])
+
+    def test_saved_table_reference_travels_with_the_published_frame(self):
+        quad = [[532.0, 323.0], [800.0, 324.0], [997.0, 569.0], [384.0, 563.0]]
+        (self.root / 'out/calib_vod30_segments.json').write_text(json.dumps({
+            'dataset': 'vod30', 'frame_size': [1280, 720], 'segmentation_verdict': 'single_segment',
+            'segments': [dict(id='seg-1', t_start=0.0, t_end=100.0, source='human_anchors',
+                              quad_px=quad)]}))
+        stage = TableStage(self.root, dataset='vod30')
+        processor = self.processor(capture_factory=lambda _: PositionCapture(count=2, fps=30, shape=(36, 64, 3)),
+                                   stages=[stage], frame_budget_ms=1000)
+        processor.start(self.source)
+        self.finished(processor)
+        jpeg, metadata = processor.latest_jpeg()
+        evidence = metadata['stage_evidence']['table']
+        self.assertEqual(evidence['table_source'], 'saved:seg-1')
+        self.assertEqual(evidence['table_age_frames'], 0)
+        self.assertEqual(evidence['table_reference_size'], [1280, 720])
+        self.assertEqual(evidence['ran'], True)
+        self.assertEqual(metadata['source_frame_index'], 1)      # second frame of the file
+        # 64x36 working frame from a 1280x720 reference: 0.05 scale on both axes.
+        self.assertEqual(metadata['detections']['table_polygon'][0], [26.6, 16.15])
+        status = processor.status()
+        self.assertEqual(status['stages'][0]['evidence']['table_source'], 'saved:seg-1')
+        self.assertEqual(status['source_fps'], 30.0)
+        self.assertEqual(status['latency_ms']['table']['count'], 2)
+
+    def test_measured_table_is_labelled_and_aged_without_a_reference(self):
+        measured = {'boxes': [], 'table_polygon': [[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]}
+        stage = TableStage(self.root, dataset=None, measure_every_n=2)
+        processor = self.processor(capture_factory=lambda _: PositionCapture(count=4, fps=30),
+                                   stages=[stage], frame_budget_ms=1000)
+        with patch('src.frame_inference.infer_frame', return_value=measured) as infer:
+            processor.start(self.source)
+            status = self.finished(processor)
+        self.assertEqual(infer.call_count, 2)                    # frames 0 and 2
+        entry = status['stages'][0]
+        self.assertEqual(entry['runs'], 4)                     # it answers every frame
+        self.assertEqual(entry['evidence']['table_source'], 'measured')
+        self.assertEqual(entry['evidence']['table_age_frames'], 1)  # last frame reuses frame 2's quad
+        self.assertEqual(status['frames_processed'], 4)
 
 
 if __name__ == '__main__':
