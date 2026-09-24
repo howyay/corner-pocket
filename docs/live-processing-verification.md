@@ -355,4 +355,144 @@ A stage registered with `every_n_frames=N` runs on 1 frame in N. On the others i
 - Twitch live: still unreachable for the reasons in the section above.
 - Whether the shot/pot gate accepts cadence-partitioned samples: the arithmetic above is derived from the gate's constants, and the gate has not been run against a cadenced ball stream (its `_intervals` already derives `dt` from sample times, but that path is unexercised with gaps).
 
+## The trained ball detector in the pipeline, and the first events it produces (2026-09-24 measured)
+
+The stand-in is gone: `annotator/pipeline_stages.py` now carries the trained detector as a stage, the envelope has been re-measured with the real net in it, and the shot/pot gate has been run against five minutes of dense per-frame tracks.
+
+### 1. `BallStage`: the detector behind the existing stage contract
+
+`BallStage` loads the 960x540 round (`out/tiny_ball_probe/960x540-scratch.pt`, 300 train frames / 20 epochs, 204,529 params) at its measured operating point (threshold 0.425), lazily on the first frame, and answers through the same stage contract every other stage uses.
+
+- **Result**: `{'balls': [{'x', 'y', 'score'}], 'boxes': []}` — positions in the *working frame's* pixels, so a consumer never has to guess which coordinate space a sample is in. Ball rows are deliberately **not** appended to `boxes`: the published box list is what the app draws, and injecting a detection class the app never asked for is a contract change nobody requested. `merge_detections` carries them as `detections['balls']` instead.
+- **Absent, never stale**: on a frame the cadence skipped, the payload has **no `balls` key at all** and `stage_evidence['ball']` is `{'ran': False, 'age_frames': k}`. "Did not run" can never be read as "found nothing".
+- **Evidence per frame** names what the result was made of: `ball_count`, `ball_threshold`, `ball_size`, `ball_stack`, `ball_stack_planes`, `ball_warm`, `ball_stack_span_frames`.
+- **A missing checkpoint raises** `FileNotFoundError` naming the full path — never an empty result.
+- **The stack is causal and says so.** The net trains on `(t-1, t, t+1)`; a live stream has only the past, so the stage feeds `(t-2, t-1, t)` (`ball_stack: 'causal'`). At `every_n_frames=N` the three planes span 2N source frames, reported as `ball_stack_span_frames` — a property of partitioning a temporal detector, not something to hide.
+- **`ball` is requestable at runtime** (`live: let the ball stage be requested at runtime`): `LiveProcessor.start(source, ['table','person','ball'])`, with `ball_every_n` the caller's cadence (default 1 = every frame, mirroring `table_measure_every_n`). The start is **refused**, before any state is touched and before any thread exists, when the weights are missing or empty (naming `'ball'` and the expected path), when no ball stage would exist at all (the legacy `infer=` path), or for an unknown detector name. A pipeline that runs and quietly omits a requested stage is the failure this prevents. The GUI's live-detector row still lists table/person only; the API is ahead of the checkbox on purpose.
+
+### 2. What the detector does on the held-out set — and what that set cannot say
+
+`tests/ball_stack_ab.py`, artifact `out/tiny_ball_probe/stack_ab.json`. Same 47 held-out frames, same preprocessing code path as the stage, two stack layouts:
+
+| stack layout | F1 | P | R | tp/fp/fn | median px | p90 px |
+|---|---|---|---|---|---|---|
+| centred `(t-1,t,t+1)` — what it trained on | 0.927 | 0.940 | 0.914 | 235/15/22 | 1.48 | 3.62 |
+| causal `(t-2,t-1,t)` — what a live stream can feed | 0.923 | 0.933 | 0.914 | 235/17/22 | 1.45 | 3.73 |
+
+The centred column reproduces the published operating point **exactly**, which is the check that the stage's own decode/resize/stack is the same function the probe measured — otherwise the causal column would be a comparison of two different pipelines. The cost of running the live layout is **−0.004 F1, identical recall, two more false positives**. The stack layout was never the problem.
+
+Frame cost, split (median of repeated measurements, same host moment):
+
+| piece | measured |
+|---|---|
+| forward pass, synced (`.cpu()` inside the timed region) | **24.6 ms** (min 14.0) |
+| the stage **without** the forward: resize, 3-plane RGB stack, `/255`, peak search | **19.7 ms** (min 14.7) |
+| the whole stage inside the live pipeline | **56.0-72.3 ms** p50 at `loadavg` 27-34 |
+
+So ~20 ms of the stage is work that is not the CNN, and the envelope's 56-72 ms is that plus the forward plus load. The forward is 24.6 ms only when it is *synced*: timing `model(x)` alone measures ROCm kernel queueing (~1.5 ms) and is not a measurement of the forward. The earlier "23.5 ms inference-only" figure survives this check.
+
+**The held-out set is a still-ball set.** Binning every labelled held-out ball by its own speed (1:1 nearest-first assignment to the neighbouring labelled frame, so a moving ball is not pinned to the stationary neighbour it passed):
+
+| labelled speed | n | found | recall |
+|---|---|---|---|
+| < 40 px/s (the gate's motion bar) | 210 | 194 | 0.924 |
+| 40-200 px/s | 4 | 4 | 1.0 |
+| 200-600 px/s | 1 | 1 | 1.0 |
+| > 600 px/s | 0 | — | — |
+
+**5 of 215 labelled balls move faster than the gate's own motion bar; none exceeds 600 px/s.** The F1 0.927 is therefore a statement about finding *stationary* balls. It is not evidence that the detector holds a ball through a shot, and nothing in the held-out set can make it so. The five moving balls were all found — that is five samples, not a result. This is the largest caveat on every accuracy claim in this document.
+
+### 3. The envelope with the real detector in it
+
+`tests/live_envelope_run.py --frames 90 --warmup 10 --ball real`, artifact `out/live-envelope/matrix-real.json`. Host `loadavg` 27.0-28.0 (1-minute) throughout — the host was carrying other workers (SAM3 on CPU, a face scan of this same VOD, an HLS pull) and the stand-in matrix earlier in this document was measured at 4.0-5.8. **The absolute numbers below are load-inflated and are not comparable with that one**; `person`, which nobody changed, went from 9.65 to 19.59 ms p50 on load alone. What is comparable is the ball stage's own price and the shape of the collapse.
+
+| case | load | decode | resize | encode | table | person | ball p50/p95 | env p50 | amort p50 | result p50/p95 | published/90 | fps | drops nfr/overrun/stale |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `decode` | 27.5 | 1.86 | 4.46 | 1.90 | – | – | – | 8.22 | 8.22 | 6.94/12.36 | 90 | 30.4 | 0/0/0 |
+| `table+person` | 27.1 | 2.26 | 6.75 | 1.90 | 0.10 | 19.59 | – | 30.60 | 30.60 | 35.01/62.42 | 34 | 11.4 | 6/51/0 |
+| `table+person+ball@1` | 27.0 | 2.13 | 6.27 | 1.71 | 0.09 | 13.97 | **56.0/91.4** | 80.20 | 80.20 | 100.98/128.66 | 0 | 0.0 | 64/25/2 |
+| `table+person+ball@2` | 26.9 | 2.46 | 6.56 | 1.86 | 0.10 | 18.13 | **61.4/76.5** | 90.48 | 59.80 | 71.81/118.54 | 5 | 1.7 | 41/44/2 |
+| `table+person+ball@3` | 28.0 | 3.05 | 8.38 | 2.48 | 0.12 | 28.08 | **72.3/122.3** | 114.42 | 66.21 | 77.00/166.81 | 1 | 0.3 | 49/40/1 |
+
+Every ball configuration collapses where the stand-in's fit. For reference, the stand-in's own matrix (15.06 ms, `loadavg` 4-5.8, earlier in this document) published 82/71/86 frames of 90 at `ball@1/@2/@3` with envelopes of 30.5/30.9/30.7 ms. The real stage is 56-72 ms where the stand-in was 15.06, and discounting the ~2x load inflation gives ~28-36 ms — still 2x the stand-in. The stage cost breakdown in section 2 says where that goes.
+
+**Onset latency, with the real per-frame cost** (the gate needs `onset_intervals = 3` consecutive above-bar intervals; `dt` = cadence x frame period; the sampling phase is how long after the onset the first sample lands; the last frame still has to be processed):
+
+| cadence | interval | motion spanned | + phase | + ball processing (p50/p95) | mean onset->call | worst onset->call |
+|---|---|---|---|---|---|---|
+| `ball@1` | 33.3 ms | 100 ms | 16.7 ms | 56.0 / 91.4 ms | **173 ms** | 225 ms |
+| `ball@2` | 66.7 ms | 200 ms | 33.3 ms | 61.4 / 76.5 ms | **295 ms** | 343 ms |
+| `ball@3` | 100 ms | 300 ms | 50.0 ms | 72.3 / 122.3 ms | **422 ms** | 522 ms |
+
+**The finding that matters more than the collapse: cadence cannot rescue a stage that costs more than the frame budget.** A partitioned stage runs on 1 frame in N, but the frame it runs on pays the whole cost, and the pipeline drops any frame whose stages push it past the budget. With a 33.33 ms budget and a 45-60 ms ball stage, *every ball-bearing frame overruns*: cadence N reduces the amortised rate (the `amort p50` column) without touching the peak. To publish a ball result at 30 fps the stage must cost roughly <=25 ms wall including its own preprocessing; at 15 fps (66.7 ms) the budget reaches ~55 ms and this stage, at 45-60 ms, is still marginal. The honest summary: **the detector does not fit this pipeline's real-time envelope at either target on this host, and the binding constraint is peak per-frame cost, not the average.**
+
+The definitive re-measurement (real and stand-in back to back in one quiet window) is deferred: the host sat at `loadavg` 24-43 for the whole of this session, and no quiet window appeared within the 45 minutes allowed for waiting.
+
+### 4. Five minutes of dense tracks, and the first shot/pot events this project has measured
+
+`tests/ball_dense_events.py --start 1350 --seconds 300 --cadence 2`, artifact `out/dense-events/segment-1350-1650.json`. The segment is **t 1350.0-1650.0 s of `data/vod_30min_260815.mp4`** (frames 40500-49499), chosen as the busiest 300 s of the VOD by the sum of the scan's motion signal; it contains held-out frames (1363-1366, 1530, 1650) as well as training ones. The chain is the production one end to end: the same stage registry `LiveProcessor.start(source, ['table','person','ball'])` builds (`table` @1, `person` @1, `ball` @2), then `src/ball_census.associate` on the per-frame detections, then `src/motion_scan.probe_pair` for the occlusion channel, then `src/shot_pot_gate.classify` with the verified human-anchor cloth quad (`out/calib_vod30_segments.json`; identical to the gate's own `VOD30_REFERENCE_QUAD`, checked) scaled to the working frame.
+
+**Track shape — the thing that has to be readable before any event claim is.**
+
+| quantity | measured |
+|---|---|
+| frames decoded / expected | 9000 / 9000 |
+| ball stage runs (cadence 2) | 4500 of an expected 4500 — cadence decay, exactly as designed |
+| ball detections | 19,534 (4.34 per sampled frame) |
+| identities | 248 (211 with >=2 samples, 37 singletons) |
+| median identity length | 8.5 samples / **0.93 s** (max 1381 samples / 104.7 s) |
+| sample spacing | 66.7 ms (= 2 x 33.33 ms), no gaps from load |
+| interval speed | median **0.3 px/s**, p90 11.5 px/s, max 809.1 px/s |
+| intervals above the 40 px/s motion bar | 974 of 19,286 |
+| frames with a person inside the cloth quad | 7,427 / 9,000 (**82.5%**; 7,529 had any person box; the largest single box covered 79.8% of the quad) |
+| `occ_dense` >= 0.30 (the occlusion channel's own bar) | **15.1%** of frames (p50 0.016, p90 0.423, max 0.985) |
+
+Two things to read off that table. The tracks are **dense in time** (66.7 ms spacing, no load-induced gaps — the offline pass discards no frame) but **fragmented in identity** (median 0.93 s per identity, 248 of them for roughly ten balls). And the occlusion channel is far more conservative than "a person is present": a person covers part of the cloth in 82.5% of frames, but the 61x61 px densest-change window only clears its 0.30 bar in 15.1%.
+
+**The gate's verdict** (721 rejections, every one with its code, samples and thresholds):
+
+| verdict | count |
+|---|---|
+| **shots** | **3** |
+| pots | 0 |
+| unknown disappearances | 0 |
+| rejections | 721 |
+| onset groups | 3 (each 1 identity; **0 breaks** — a break needs >=3 simultaneous identities) |
+
+**The three shots.** A ball at rest for seconds, then a sustained run above the motion bar — the first measurement-backed shot detection in this project:
+
+| onset t | identity | rest before | peak speed | duration | path | direction | ends |
+|---|---|---|---|---|---|---|---|
+| 1482.25 s | `t129-white` | 1.67 s / 25 intervals (max 3.99 px/s) | 303.6 px/s | 0.267 s | 80.6 px | 249.8 deg | 136.6 px from a pocket, open cloth |
+| 1580.12 s | `t193-blue` | 9.73 s / 146 intervals (max 2.99 px/s) | 491.6 px/s | 0.733 s | 159.9 px (net 159.1) | 197.9 deg | 29.4 px from a pocket, then the track ends (`endless_roll`) |
+| 1621.52 s | `t265-blue` | 1.80 s / 27 intervals (max 3.80 px/s) | 301.7 px/s | 0.200 s | 59.9 px | 347.9 deg | 156.6 px from a pocket, open cloth |
+
+**Why no pots, in the gate's own codes.** The pot rule's precondition is a disappearance near a pocket that does not come back; the tracks never deliver one:
+
+| rejection code | n | what it means here |
+|---|---|---|
+| `disappeared_outside_pocket` | 170 | identities ended on open cloth: median 89.9 px from the nearest pocket (11 within 20 px, 37 within 40 px, 76 within 80 px) |
+| `reappeared_after_gap` | 162 | identities came back after 0.5-2.0 s (median 0.9 s) — a gap, not a pot |
+| `motion_too_short` | 157 | 114 bursts lasted **one** interval, 43 lasted two (median burst 63.8 px/s): above the bar, but not the 3 consecutive intervals `onset_intervals` demands |
+| `no_motion_onset` | 79 | genuinely still: median peak interval speed 5.0 px/s |
+| `track_too_short` | 74 | fewer than 3 samples: no interval pair at all |
+| `no_still_stretch` | 73 | tracks that start already moving (median peak 125.6 px/s) yield no rest window |
+| `left_cloth` / `roll_without_pocket` / `track_ends_at_window_end` | 2 / 2 / 2 | off the cloth; rolled to the end still on it; ends where the data ends |
+
+**The occlusion channel was not the blocker.** 0 pot events were produced, which means the gate never reached its occlusion test — the disappearances were rejected on geometry first. That is the opposite of the expected failure mode, and worth stating plainly: with 162 identities reappearing after a median 0.9 s gap and 170 ending more than 40 px from any pocket, the dominant defect is **identity fragmentation**, not occlusion. `TRACK_MATCH_PX = 30` in the associator plus the detector's own dropouts on a fast or partly covered ball split one ball's path into several identities, so a potted ball is not seen to disappear near a pocket: it is seen to stop being detected mid-cloth and then reappear, or to be replaced by a new identity.
+
+**Load diagnosis, so a sparse result cannot be misread.** Host `loadavg` was **35.5/33.0/23.5 at the start and 34.1/33.4/29.8 at the end** of this run, which makes two different sparsities worth separating:
+
+- *Cadence decay*: the ball stage ran 4500 of 4500 expected samples (1 frame in 2). Predicted by `--cadence`, independent of load.
+- *Budget drops*: **4,779 of 9,000 frames exceeded the 33.33 ms budget** (4,239 attributed to the ball stage, 539 to `person`, 1 to `table`). At this load a *live* run of this very configuration would have published almost nothing. This offline pass counts the overrun and keeps the frame, so **the tracks above contain every frame a live run would have thrown away** — their sparsity is cadence and detector behaviour, not a busy box. Wall clock: 846 s (10.63 fps offline); per-step p50/p95: decode 2.1/7.0, resize 8.1/17.1, occlusion 18.9/36.9, `person` 17.2/35.5, `ball` 63.1/94.7, table 0.09/0.15 ms; accounted 842.4 s of 846.4 s.
+
+### 5. What this does not establish
+
+- **The detector's F1 is measured against SAM3, which is a teacher, not ground truth.** 15 of its held-out detections have no label at all, and the disagreement report's own reading is that they are either student false positives or teacher misses. Nothing here resolves them; only eyes can.
+- **The held-out set is 96% stationary balls** (section 2), so the F1 does not cover the case the gate cares about — a ball in flight. The dense run is the only evidence about that case, and it is indirect: 4.34 balls per sampled frame, 974 intervals above the motion bar, and at least one 159 px burst sustained for 0.73 s.
+- **No human has verified the three detected shots.** They satisfy the gate's rules and carry their rest stretch, peak speed and sample list; that is all that can be said. The 5-minute segment is also inside the detector's *training* time range, so these tracks are the detector at its best, not at its generalisation limit.
+- **No pot was detected, and the reason is structural rather than a threshold away.** Getting pots out of this footage needs identity persistence through a fast mover and through a player crossing the cloth — an association or detector problem, not a `pocket_r_mm` problem. `src/shot_pot_gate.py` was not changed at all for this measurement.
+- **The real-time envelope is not met.** Both the collapse at `loadavg` 27-34 and the peak-frame-cost arithmetic point the same way: ~45 ms of stage cost against a 33.33 ms budget. The 20 ms of that which is not the CNN (resize + RGB stack + `/255` + peak search) is the cheap half to attack next; the identity fragmentation is the other.
+- **Twitch live remains unverified** for the reasons in the section above; nothing here was measured on a live stream.
+
 
