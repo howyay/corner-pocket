@@ -39,6 +39,16 @@ tests/test_enroll_from_tracklet.py):
   no_face_in_track, face_too_small, face_low_detection, single_face_only,
   inconsistent_faces.
 
+Two paths, same gates. `plan_for_cluster(root, cluster_id, ...)` is the fast one:
+it plans from identity evidence the pipeline already stored and never re-decodes
+video; a stored face must clear the same quality gates, and a single stored face is
+reported as `cross_checked=False` because one face cannot be cross-checked.
+`plan_for_selection(root, dataset, frame_index, bbox)` is the slow one: it samples
+the frames nearest the click first and stops as soon as it has K crops with a
+consistency check, so a preview costs a handful of inferred frames instead of the
+whole window. `preview_payload` carries `evidence {source, crops, cross_checked,
+purity}` so the operator sees which of the two they are confirming.
+
 Operator seam (what the UI calls): `plan_for_selection(root, dataset, frame_index,
 bbox)` locks the click onto one IoU track and plans the enrolment; `preview_payload()`
 returns a JSON-safe payload with up to 5 face crops as base64 data URLs (no file
@@ -89,6 +99,7 @@ REFUSAL_REASONS = (
     "inconsistent_faces",   # two or more usable faces that do not agree
     "mixed_track",          # the kept faces disagree with the rest of the track
     "selection_not_matched",  # the click does not overlap any person box in that frame
+    "no_stored_evidence",   # the identity index holds no usable face for that cluster
 )
 
 PROTECTED = (str(DEFAULT_STATE), str(DEFAULT_FACE_STORE))
@@ -216,6 +227,7 @@ class Refusal:
             "inconsistent_faces": "the usable faces do not agree: more than one person may be in this track",
             "mixed_track": "the best faces disagree with the rest of this track: the track may have switched people",
             "selection_not_matched": "that click does not overlap a person in this frame: click the person again",
+            "no_stored_evidence": "no stored face for this person yet: the frames have to be scanned",
         }[self.reason]
 
     def to_dict(self) -> dict:
@@ -584,6 +596,8 @@ CROP_QUALITY = 85         # JPEG quality; ~15-25 KB per crop at 4x
 CROP_MAX_BYTES = 40_000   # the per-crop budget the UI was promised
 PREVIEW_CROPS = 5
 SELECTION_IOU_MIN = 0.2   # a click must overlap the person box at least this much
+NEAREST_MAX_FRAMES = 6    # hard cap on inferred frames per preview
+NEAREST_SPAN_S = 5        # window half-width in seconds for the slow path
 
 
 class EnrollmentTokenError(Exception):
@@ -609,27 +623,43 @@ class EnrollmentTokenError(Exception):
 
 @dataclass
 class Selection:
-    """What the operator's click locked onto: one IoU track plus its enrolment."""
-    dataset: str
-    frame_index: int
+    """What the operator's click locked onto: one IoU track plus its enrolment.
+
+    `source` says where the evidence came from ("cluster_face" = a stored face, no
+    inference; "window_scan" = frames were inferred) and `cross_checked` says
+    whether more than one face backs it — a single stored face cannot be
+    cross-checked and the payload must not imply otherwise.
+    """
+    dataset: str | None
+    frame_index: int | None
     track_id: int
     selection_iou: float
     frames_seen: int
     enrollment: Enrollment
+    source: str = "window_scan"
+    frames_scanned: int | None = None
     context: dict = field(default_factory=dict, repr=False)   # observations, for rendering
 
     @property
     def ok(self) -> bool:
         return True
 
+    @property
+    def cross_checked(self) -> bool:
+        return len(self.enrollment.crops) > 1
+
     def to_dict(self) -> dict:
         return {"ok": True, "dataset": self.dataset, "frame_index": self.frame_index,
                 "track_id": self.track_id, "selection_iou": round(float(self.selection_iou), 4),
-                "frames_seen": self.frames_seen, "enrollment": self.enrollment.to_dict()}
+                "frames_seen": self.frames_seen, "source": self.source,
+                "cross_checked": self.cross_checked, "frames_scanned": self.frames_scanned,
+                "enrollment": self.enrollment.to_dict()}
 
 
 def plan_for_selection(root, dataset, frame_index, bbox, *, observations=None,
-                       window_s=180, stride=30, min_selection_iou=SELECTION_IOU_MIN,
+                       scan="nearest", window_s=180, span_s=NEAREST_SPAN_S,
+                       max_frames=NEAREST_MAX_FRAMES, min_crops=MIN_KEPT_DEFAULT,
+                       stride=30, min_selection_iou=SELECTION_IOU_MIN,
                        player_name=None, state=None, **kwargs) -> Selection | Refusal:
     """Lock onto the person the operator clicked and plan their enrolment.
 
@@ -644,10 +674,32 @@ def plan_for_selection(root, dataset, frame_index, bbox, *, observations=None,
     """
     from_frame = int(frame_index)
     if observations is None:
-        observations = scan_frames(root, dataset, max(0, from_frame - window_s * 30),
-                                   from_frame + window_s * 30, stride,
-                                   **{key: value for key, value in kwargs.items()
-                                      if key in ("detector", "engine", "log")})
+        engines = {key: value for key, value in kwargs.items()
+                   if key in ("detector", "engine", "log")}
+        if scan == "nearest":
+            # stop as soon as the click's person has `min_crops` mutually
+            # consistent crops; K is the cap, not a requirement to keep sampling
+            clicked = {"track_id": None}
+
+            def enough(scanned):
+                if clicked["track_id"] is None:
+                    scored = sorted(((iou(bbox, person["bbox"]), int(person["track_id"]))
+                                     for person in scanned[0].get("persons", [])), reverse=True)
+                    if not scored or scored[0][0] < min_selection_iou:
+                        return True
+                    clicked["track_id"] = scored[0][1]
+                candidates = collect_face_candidates(scanned, clicked["track_id"])
+                if len(candidates) < min_crops:
+                    return False
+                return plan_enrollment(candidates, track_id=clicked["track_id"],
+                                       player_name="probe", min_kept=min_crops).ok
+
+            observations = scan_nearest(root, dataset, from_frame, span_frames=span_s * 30,
+                                        stride=stride, stop_when=enough, max_frames=max_frames,
+                                        **engines)
+        else:
+            observations = scan_frames(root, dataset, max(0, from_frame - window_s * 30),
+                                       from_frame + window_s * 30, stride, **engines)
     frame = next((row for row in observations if int(row["frame_index"]) == from_frame), None)
     if frame is None:
         return Refusal("selection_not_matched",
@@ -677,6 +729,7 @@ def plan_for_selection(root, dataset, frame_index, bbox, *, observations=None,
     return Selection(dataset=dataset, frame_index=from_frame, track_id=track_id,
                      selection_iou=float(selection_iou),
                      frames_seen=scan["frames_with_track"], enrollment=planned,
+                     source="window_scan", frames_scanned=len(observations),
                      context={"observations": observations})
 
 
@@ -827,6 +880,10 @@ def preview_payload(plan_or_refusal, *, root=REPO, dataset=None, player_name=Non
             "crops": [_public_crop(crop) for crop in crops],
             "purity": {"probes": evidence.get("purity_probes"), "agreement": evidence.get("purity")},
             "quality": {"kept": evidence.get("kept"), "usable": evidence.get("usable_faces")},
+            "evidence": {"source": selection.source, "crops": len(crops),
+                         "cross_checked": selection.cross_checked,
+                         "purity": evidence.get("purity"),
+                         "frames_scanned": selection.frames_scanned},
             "player_id": enrollment.player_id,
             "player_name": player_name or enrollment.player_name,
             "frames": evidence.get("kept_frame_indices"),
@@ -843,6 +900,7 @@ def preview_payload(plan_or_refusal, *, root=REPO, dataset=None, player_name=Non
         "track_id": detail.get("track_id"), "dataset": dataset,
         "frame_index": detail.get("frame_index"),
         "crops": [_public_crop(crop) for crop in crops],
+        "evidence": {"source": "window_scan", "crops": len(crops), "cross_checked": False},
         "detail": {key: value for key, value in detail.items() if key != "track_id"}})
 
 
@@ -874,8 +932,11 @@ def confirm_enrollment(root, plan, token, player_name, *, scratch_root=None, dat
                                     "crops": len(crops),
                                     "frame_indices": [crop["frame_index"] for crop in crops]})
     state = state if state is not None else load_state(root)
+    preview = plan.enrollment.evidence or {}
     enrollment = plan_enrollment(plan.enrollment.crops, track_id=plan.track_id,
-                                 player_name=player_name, state=state, created_at=created_at)
+                                 player_name=player_name, state=state, created_at=created_at,
+                                 k=preview.get("k", K_DEFAULT),
+                                 min_kept=preview.get("min_kept", MIN_KEPT_DEFAULT))
     if not enrollment.ok:                                   # pragma: no cover - crops were vetted already
         return {"ok": False, "reason": enrollment.reason, "message": enrollment.message(),
                 "detail": enrollment.detail}
@@ -1061,7 +1122,7 @@ def render_sheets(root=REPO, directory=None, dataset="vod30", *, fps=30.0, log=p
 def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description="enrol a regular from a person track")
-    parser.add_argument("command", choices=("sheets",))
+    parser.add_argument("command", choices=("sheets", "bench"))
     parser.add_argument("--dir", default=None)
     parser.add_argument("--root", default=str(REPO))
     parser.add_argument("--dataset", default="vod30")
@@ -1073,5 +1134,341 @@ def main(argv=None):
     return 0
 
 
+def _main(argv=None):                                   # pragma: no cover - CLI wrapper
+    import sys as _sys
+    if len(_sys.argv) > 1 and _sys.argv[1] == "bench":
+        return _bench_main(_sys.argv[2:])
+    return main(argv)
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# --------------------------------------------------------------------------
+# fast path: plan from identity evidence the pipeline already stored
+# --------------------------------------------------------------------------
+
+CLUSTER_INDEX = Path("out") / "identity" / "clusters.json"
+CLUSTER_MIN_KEPT = 1      # a stored face is one crop: no consistency evidence
+
+
+def load_cluster_evidence(root=REPO, cluster_id=None, *, path=None) -> dict:
+    """Stored identity evidence per cluster, read-only from the identity index.
+
+    Reads what `IdentityIndex.save()` writes (`out/identity/clusters.json`) plus
+    the additive fields the fast path needs: a `face` embedding with its quality
+    numbers (`face_eye_px`, `face_det_score`, `face_bbox`, `face_frame_index`), or
+    a `face_samples` list of such records. A bare embedding is NOT enough to
+    enrol — the quality gates cannot be checked without its eye distance and
+    detection score, and this module never weakens them.
+
+    Returns {cluster_id: {"player_id", "last_seen_frame", "samples": [...],
+    "faces": n}}, or one cluster's record (or None) when `cluster_id` is given.
+    """
+    index_path = Path(path) if path is not None else Path(root) / CLUSTER_INDEX
+    try:
+        raw = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    records = {}
+    for key, entry in (raw.items() if isinstance(raw, dict) else []):
+        if not isinstance(entry, dict):
+            continue
+        samples = []
+        for sample in entry.get("face_samples") or []:
+            if isinstance(sample, dict) and sample.get("embedding") is not None:
+                samples.append({"embedding": sample["embedding"],
+                                "eye_px": sample.get("eye_px"),
+                                "det_score": sample.get("det_score"),
+                                "bbox": sample.get("bbox") or sample.get("face_bbox"),
+                                "frame_index": sample.get("frame_index"),
+                                "source": sample.get("source") or "cluster_face"})
+        if entry.get("face") is not None:
+            samples.append({"embedding": entry["face"],
+                            "eye_px": entry.get("face_eye_px"),
+                            "det_score": entry.get("face_det_score"),
+                            "bbox": entry.get("face_bbox"),
+                            "frame_index": entry.get("face_frame_index",
+                                                     entry.get("last_seen_frame")),
+                            "source": "cluster_face"})
+        try:
+            cid = int(key)
+        except (TypeError, ValueError):
+            continue
+        records[cid] = {"player_id": entry.get("player_id"),
+                        "last_seen_frame": entry.get("last_seen_frame"),
+                        "samples": samples, "faces": len(samples)}
+    if cluster_id is None:
+        return records
+    return records.get(int(cluster_id), {"player_id": None, "last_seen_frame": None,
+                                         "samples": [], "faces": 0})
+
+
+def usable_cluster_candidates(evidence, *, min_eye_px=MIN_EYE_PX, min_det_score=MIN_DET_SCORE) -> list:
+    """Stored samples that clear BOTH quality gates and can be rendered.
+
+    Gated out (never weakened): no eye distance, eye < min_eye_px, det < min_det_score,
+    or no face box / frame to render a crop from. Returns Candidates best-ranked first.
+    """
+    usable = []
+    for sample in (evidence or {}).get("samples", []):
+        eye, det = sample.get("eye_px"), sample.get("det_score")
+        if eye is None or float(eye) < min_eye_px:
+            continue
+        if det is None or float(det) < min_det_score:
+            continue
+        if sample.get("bbox") is None or sample.get("frame_index") is None:
+            continue
+        usable.append(Candidate(frame_index=int(sample["frame_index"]), t=None,
+                                bbox=[round(float(v), 2) for v in sample["bbox"]],
+                                person_bbox=[round(float(v), 2) for v in sample["bbox"]],
+                                det_score=float(det), eye_px=float(eye),
+                                embedding=np.asarray(sample["embedding"], np.float32),
+                                face_iou=1.0))
+    usable.sort(key=lambda candidate: candidate.rank, reverse=True)
+    return usable
+
+
+def plan_for_cluster(root, cluster_id, *, dataset=None, frame_index=None, bbox=None,
+                     fallback=False, observations=None, window_s=5, stride=30,
+                     player_name=None, state=None, index_path=None, **kwargs):
+    """Fast path: plan the enrolment from evidence the pipeline already stored.
+
+    No inference: reads the identity index, checks the stored face against the same
+    quality gates, and (when it passes) returns a Selection whose crops are rendered
+    from the stored face box/frame — one crop, `cross_checked=False`, source
+    `cluster_face`. A stored face that fails a gate, or an index without face
+    evidence, refuses with `no_stored_evidence`; with `fallback=True` and a click
+    (dataset + frame_index + bbox) it falls through to the window scan instead, so
+    the caller can offer the button either way.
+    """
+    evidence = load_cluster_evidence(root, cluster_id, path=index_path)
+    candidates = usable_cluster_candidates(evidence)
+    if candidates:
+        planned = plan_enrollment(candidates, track_id=int(cluster_id),
+                                  player_name=player_name or f"cluster-{cluster_id}",
+                                  k=K_DEFAULT, min_kept=CLUSTER_MIN_KEPT,
+                                  state=state)
+        if planned.ok:
+            planned.evidence["evidence_source"] = "cluster_face"
+            planned.evidence["cross_checked"] = len(planned.crops) > 1
+            planned.evidence["stored_samples"] = evidence.get("faces", len(candidates))
+            return Selection(dataset=dataset, frame_index=candidates[0].frame_index,
+                             track_id=int(cluster_id), selection_iou=1.0,
+                             frames_seen=len(candidates), enrollment=planned,
+                             source="cluster_face", frames_scanned=0,
+                             context={"observations": None})
+    detail = {"cluster_id": int(cluster_id), "dataset": dataset, "frame_index": frame_index,
+              "stored_faces": evidence.get("faces", 0),
+              "usable_faces": len(candidates),
+              "reason_detail": ("the index has no face evidence for this cluster"
+                                if not evidence.get("faces") else
+                                "the stored face(s) do not clear the quality gates "
+                                f"(eye >= {MIN_EYE_PX}, det >= {MIN_DET_SCORE})")
+              if not candidates else "the stored faces were rejected by the plan",
+              "fallback": bool(fallback)}
+    if fallback and dataset is not None and frame_index is not None and bbox is not None:
+        planned = plan_for_selection(root, dataset, frame_index, bbox,
+                                     observations=observations, window_s=window_s,
+                                     stride=stride, player_name=player_name, state=state,
+                                     **kwargs)
+        if planned.ok:
+            planned.enrollment.evidence["evidence_source"] = "window_scan"
+            planned.enrollment.evidence["cross_checked"] = len(planned.enrollment.crops) > 1
+            planned.enrollment.evidence["fast_path_skipped"] = detail
+            planned.context = {**planned.context, "source": "window_scan",
+                               "cross_checked": len(planned.enrollment.crops) > 1}
+        else:
+            planned.detail = {**planned.detail, "fast_path": detail}
+            planned.context = {**(planned.context or {}), "dataset": dataset}
+        return planned
+    return Refusal("no_stored_evidence", detail, context={"dataset": dataset})
+
+
+# --------------------------------------------------------------------------
+# slow path: nearest-first, early-exit window scan
+# --------------------------------------------------------------------------
+
+class _IouTracker:
+    """Greedy IoU tracking shared by both scans (PersonPipeline._IOU_MATCH rule)."""
+
+    def __init__(self, stride, max_age=TRACK_MAX_AGE):
+        self.stride = max(1, int(stride))
+        self.grace = self.stride * max_age
+        self.tracks = {}
+        self.next_id = 1
+
+    def assign(self, frame_index, boxes):
+        live = {tid: value for tid, value in self.tracks.items()
+                if frame_index - value[0] <= self.grace}
+        free, taken = [], set()
+        for box in boxes:
+            bbox = [float(v) for v in box["bbox"]]
+            best, best_iou = None, IOU_TRACK
+            for tid, (_last_frame, last_box) in live.items():
+                if tid in taken:
+                    continue
+                value = iou(bbox, last_box)
+                if value >= best_iou:
+                    best, best_iou = tid, value
+            if best is None:
+                best = self.next_id
+                self.next_id += 1
+            taken.add(best)
+            free.append((best, bbox, float(box.get("conf", 0.0))))
+        self.tracks = dict(live)
+        for tid, bbox, _conf in free:
+            self.tracks[tid] = (frame_index, bbox)
+        return free
+
+
+def _observation(frame_index, fps, free, faces) -> dict:
+    return {"frame_index": int(frame_index), "t": round(frame_index / fps, 3),
+            "persons": [{"track_id": tid, "bbox": bbox, "conf": round(conf, 4)}
+                        for tid, bbox, conf in free],
+            "faces": [{"bbox": [round(float(v), 2) for v in face["bbox"]],
+                       "eye_px": None if face.get("eye_px") is None else round(float(face["eye_px"]), 2),
+                       "det_score": round(float(face["det_score"]), 4),
+                       "embedding": (None if float(face["det_score"]) < MIN_DET_SCORE
+                                     else [round(float(v), 4) for v in np.asarray(face["embedding"], np.float32)])}
+                      for face in faces]}
+
+
+def _infer(root, detector, engine, dataset):
+    import cv2
+    pipeline = PersonPipeline(root)
+    detector = detector or pipeline._get_detector()
+    if engine is None:
+        from src.face_id import get_face_engine
+        engine = get_face_engine()
+    cap = cv2.VideoCapture(str(Path(root) / DATASETS[dataset]))
+    if not cap.isOpened():
+        raise RuntimeError(f"cannot open {Path(root) / DATASETS[dataset]}")
+    return cap, detector, engine
+
+
+def scan_nearest(root, dataset, frame_index, *, span_frames=150, stride=30,
+                 stop_when=None, max_frames=NEAREST_MAX_FRAMES, detector=None,
+                 engine=None, log=print) -> list:
+    """Sample the frames nearest the click first, stopping as soon as `stop_when`.
+
+    Random access (one seek per sample, not a sequential walk) so the order is by
+    distance from the click: 0, +stride, -stride, +2*stride, ... Frames are only
+    inferred until `stop_when(observations)` says the plan is ready, `max_frames`
+    is reached, or the window is exhausted; the returned list is ordered
+    nearest-first and its length is how many frames were actually inferred.
+    """
+    import cv2
+    frame_index = int(frame_index)
+    offsets = [0]
+    for step in range(1, int(span_frames) // max(1, int(stride)) + 1):
+        offsets += [step * stride, -step * stride]
+    wanted = [frame_index + offset for offset in offsets if frame_index + offset >= 0]
+    cap, detector, engine = _infer(root, detector, engine, dataset)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    tracker = _IouTracker(stride)
+    observations = []
+    try:
+        for index in wanted:
+            if max_frames is not None and len(observations) >= max_frames:
+                break
+            if not cap.set(cv2.CAP_PROP_POS_FRAMES, index):
+                continue
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            faces = engine.analyze(frame)
+            free = tracker.assign(index, detector(frame))
+            observations.append(_observation(index, fps, free, faces))
+            log(f"nearest f{index} t={index / fps:.1f}s persons={len(free)} faces={len(faces)}",
+                flush=True)
+            if stop_when is not None and stop_when(observations):
+                break
+    finally:
+        cap.release()
+    return observations
+
+
+# --------------------------------------------------------------------------
+# bench: coverage of the fast path, and the slow path's before/after
+# --------------------------------------------------------------------------
+
+def bench(root=REPO, directory=None, *, dataset="vod30", frame_index=None, bbox=None,
+          track_id=None, span_s=NEAREST_SPAN_S, stride=30, log=print) -> dict:
+    """Measure the two paths on a real window: coverage, fast-path cost, slow-path cost.
+
+    Fast-path coverage = of the enrolable tracks in `<dir>/observations.json`, how
+    many have usable stored evidence in the identity index today. Slow-path
+    before/after = the same clicked person planned by scanning the whole window
+    versus the nearest-first early-exit scan.
+    """
+    import time
+    directory = Path(directory) if directory is not None else Path(root) / "out" / "enroll-eval"
+    observations = json.loads((directory / "observations.json").read_text(encoding="utf-8"))
+    tracks = [row for row in persistent_tracks(observations)
+              if plan_for_track(observations, row["track_id"], player_name="probe", state={}).ok]
+    index = load_cluster_evidence(root)
+    stored = {cluster: record["faces"] for cluster, record in index.items() if record["faces"]}
+    report = {"index_clusters": len(index), "index_clusters_with_faces": len(stored),
+              "enrolable_tracks": len(tracks), "tracks_with_stored_evidence": 0,
+              "coverage": "0/%d" % len(tracks),
+              "why": ("no cluster stores a face with its quality numbers: "
+                      "PersonPipeline.process_frame passes face_embedding=None "
+                      "(src/person_pipeline.py) and IdentityIndex.save() writes face:null, "
+                      "so the fast path has nothing to read yet")}
+    target = track_id or (tracks[0]["track_id"] if tracks else None)
+    if target is not None and frame_index is None:
+        planned = plan_for_track(observations, target, player_name="probe", state={})
+        if planned.ok:
+            frame_index = planned.crops[0].frame_index
+            bbox = planned.crops[0].person_bbox
+    if frame_index is not None and bbox is not None:
+        from src.person_pipeline import PersonPipeline
+        from src.face_id import get_face_engine
+        detector = PersonPipeline(root)._get_detector()
+        engine = get_face_engine()
+        started = time.time()
+        old = scan_frames(root, dataset, max(0, frame_index - span_s * 30),
+                          frame_index + span_s * 30, stride, detector=detector, engine=engine,
+                          log=lambda *a, **k: None)
+        old_plan = plan_for_selection(root, dataset, frame_index, bbox, observations=old,
+                                      player_name="probe", state={})
+        before_s = round(time.time() - started, 1)
+        started = time.time()
+        new_plan = plan_for_selection(root, dataset, frame_index, bbox, scan="nearest",
+                                      span_s=span_s, stride=stride, max_frames=None,
+                                      detector=detector, engine=engine, player_name="probe",
+                                      state={})
+        after_s = round(time.time() - started, 1)
+        inferred = len((new_plan.context or {}).get("observations") or [])
+        started = time.time()
+        refusal = plan_for_cluster(root, next(iter(index), 1), dataset=dataset)
+        fast_s = round(time.time() - started, 4)
+        report.update({
+            "clicked": {"frame_index": frame_index, "bbox": bbox, "track_id": target},
+            "slow_path_before": {"frames_inferred": len(old), "seconds": before_s,
+                                 "ok": old_plan.ok},
+            "slow_path_after": {"frames_inferred": inferred, "seconds": after_s,
+                                "ok": new_plan.ok,
+                                "crops": len(new_plan.enrollment.crops) if new_plan.ok else 0},
+            "fast_path_without_evidence": {"seconds": fast_s, "reason": refusal.reason},
+        })
+    return report
+
+
+def _bench_main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description="measure the enrolment paths")
+    parser.add_argument("--dir", default=None)
+    parser.add_argument("--root", default=str(REPO))
+    parser.add_argument("--frame", type=int, default=None)
+    parser.add_argument("--bbox", default=None)
+    parser.add_argument("--track", type=int, default=None)
+    parser.add_argument("--stride", type=int, default=30)
+    args = parser.parse_args(argv)
+    bbox = [float(v) for v in args.bbox.split(",")] if args.bbox else None
+    report = bench(args.root, args.dir, frame_index=args.frame, bbox=bbox, track_id=args.track,
+                   stride=args.stride)
+    print(json.dumps(report, indent=1))
+    return 0

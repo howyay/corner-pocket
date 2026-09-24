@@ -30,6 +30,10 @@ from src.enroll_from_tracklet import (  # noqa: E402
     md5,
     identity_groups,
     bind_counts,
+    load_cluster_evidence,
+    plan_for_cluster,
+    scan_nearest,
+    usable_cluster_candidates,
     _crop_image,
     render_sheet,
     persistent_tracks,
@@ -792,3 +796,200 @@ class ConfirmTest(SelectionSeamTest):
         names = [player["name"] for player in
                  json.loads((self._scratch() / DEFAULT_STATE).read_text())["players"]]
         self.assertEqual(names, ["Alice", "Bob"])
+
+
+class ClusterFastPathTest(unittest.TestCase):
+    """plan_for_cluster: stored evidence, same gates, evidence level in the payload."""
+
+    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
+        (self.root / "out" / "identity").mkdir(parents=True)
+        (self.root / "out" / "corner-pocket").mkdir(parents=True)
+        (self.root / "out" / "corner-pocket" / "state.json").write_text(
+            json.dumps(state_with()), encoding="utf-8")
+        self.base = unit(91)
+        self.face_bbox = [150, 150, 190, 200]
+        self.index_path = self.root / "out" / "identity" / "clusters.json"
+
+    def _index(self, samples):
+        self.index_path.write_text(json.dumps({"7": {"player_id": None, "last_seen_frame": 100,
+                                                     "body_bank": [], "face_samples": samples}}),
+                                   encoding="utf-8")
+
+    def _sample(self, embedding=None, eye=12.0, det=0.8, bbox=None, frame_index=100):
+        return {"embedding": (unit(91) if embedding is None else np.asarray(embedding, np.float32)).tolist(),
+                "eye_px": eye, "det_score": det,
+                "bbox": self.face_bbox if bbox is None else bbox, "frame_index": frame_index}
+
+    def test_a_stored_face_plans_without_inference(self):
+        self._index([self._sample()])
+        selection = plan_for_cluster(self.root, 7, dataset="vod30")
+        self.assertIsInstance(selection, Selection)
+        self.assertEqual(selection.source, "cluster_face")
+        self.assertEqual(len(selection.enrollment.crops), 1)
+        self.assertFalse(selection.cross_checked, "one stored face cannot be cross-checked")
+        self.assertEqual(selection.frames_scanned, 0, "no frame was inferred")
+
+    def test_payload_reports_the_cluster_face_evidence_level(self):
+        self._index([self._sample()])
+        payload = preview_payload(plan_for_cluster(self.root, 7, dataset="vod30"), root=self.root)
+        self.assertEqual(payload["evidence"],
+                         {"source": "cluster_face", "crops": 1, "cross_checked": False,
+                          "purity": None, "frames_scanned": 0})
+        self.assertEqual(json.loads(json.dumps(payload)), payload)
+
+    def test_several_stored_faces_are_cross_checked(self):
+        self._index([self._sample(), self._sample(embedding=at(self.base, 0.9, 95), frame_index=130)])
+        selection = plan_for_cluster(self.root, 7, dataset="vod30")
+        self.assertEqual(len(selection.enrollment.crops), 2)
+        self.assertTrue(selection.cross_checked)
+        self.assertEqual(selection.enrollment.evidence["purity"], None,
+                         "one other face is not enough to judge purity")
+
+    def test_a_bare_embedding_without_quality_numbers_is_not_usable(self):
+        """The index today stores only `face`; the gates cannot be checked, so no."""
+        self.index_path.write_text(json.dumps({"7": {"player_id": None, "body_bank": [],
+                                                     "face": unit(91).tolist()}}), encoding="utf-8")
+        refusal = plan_for_cluster(self.root, 7, dataset="vod30")
+        self.assertIsInstance(refusal, Refusal)
+        self.assertEqual(refusal.reason, "no_stored_evidence")
+        self.assertEqual(refusal.detail["usable_faces"], 0)
+        self.assertIn("quality gates", refusal.detail["reason_detail"])
+
+    def test_a_stored_face_below_the_eye_gate_falls_through(self):
+        self._index([self._sample(eye=3.0)])
+        refusal = plan_for_cluster(self.root, 7, dataset="vod30")
+        self.assertEqual(refusal.reason, "no_stored_evidence")
+        self.assertEqual(refusal.detail["stored_faces"], 1)
+        self.assertEqual(refusal.detail["usable_faces"], 0)
+
+    def test_a_stored_face_below_the_detection_gate_falls_through(self):
+        self._index([self._sample(det=0.2)])
+        self.assertEqual(plan_for_cluster(self.root, 7, dataset="vod30").reason, "no_stored_evidence")
+
+    def test_a_stored_face_without_a_box_cannot_be_rendered(self):
+        self._index([self._sample(bbox=[])])
+        self.assertEqual(plan_for_cluster(self.root, 7, dataset="vod30").reason, "no_stored_evidence")
+
+    def test_an_empty_index_refuses_with_no_stored_evidence(self):
+        refusal = plan_for_cluster(self.root, 7, dataset="vod30")
+        self.assertEqual(refusal.reason, "no_stored_evidence")
+        self.assertEqual(refusal.detail["stored_faces"], 0)
+
+    def test_fallback_scans_the_window_when_the_index_has_nothing(self):
+        self._index([])
+        refusal = plan_for_cluster(self.root, 7, dataset="vod30", frame_index=0,
+                                   bbox=[100, 100, 300, 600], fallback=True,
+                                   observations=[])
+        self.assertIsInstance(refusal, Refusal)
+        self.assertIn("fast_path", refusal.detail, "the refusal says why the fast path was skipped")
+
+    def test_an_unwritten_index_still_refuses_cleanly(self):
+        if self.index_path.exists():
+            self.index_path.unlink()
+        self.assertEqual(plan_for_cluster(self.root, 7).reason, "no_stored_evidence")
+
+    def test_load_cluster_evidence_reads_the_saved_shape(self):
+        self.index_path.write_text(json.dumps({"1": {"player_id": "p1", "face": unit(91).tolist(),
+                                                     "face_eye_px": 12.5, "face_det_score": 0.9,
+                                                     "face_bbox": self.face_bbox,
+                                                     "face_frame_index": 42, "body_bank": []}}),
+                                   encoding="utf-8")
+        evidence = load_cluster_evidence(self.root, 1)
+        self.assertEqual(evidence["player_id"], "p1")
+        self.assertEqual(evidence["faces"], 1)
+        self.assertEqual(evidence["samples"][0]["eye_px"], 12.5)
+        candidate = usable_cluster_candidates(evidence)[0]
+        self.assertAlmostEqual(candidate.rank, 11.25, places=4)
+
+    def test_the_token_covers_whichever_path_produced_the_crops(self):
+        self._index([self._sample()])
+        selection = plan_for_cluster(self.root, 7, dataset="vod30")
+        payload = preview_payload(selection, root=self.root)
+        self.assertEqual(enrollment_token("vod30", 7, payload["crops"]), payload["token"])
+        result = confirm_enrollment(self.root, selection, payload["token"], "Alice",
+                                    scratch_root=self.root / "scratch")
+        self.assertTrue(result["ok"])
+
+
+class NearestFirstScanTest(unittest.TestCase):
+    """The slow path stops as soon as the answer is settled."""
+
+    def test_frames_are_sampled_outward_from_the_click_and_stop_early(self):
+        seen = []
+
+        class Detector:
+            def __call__(self, frame):
+                return [{"bbox": [100.0, 100.0, 300.0, 600.0], "conf": 0.9}]
+
+        def stop_when(observations):
+            seen.append(observations[-1]["frame_index"])
+            return len(observations) >= 2
+
+        observations = scan_nearest(Path(__file__).resolve().parents[1], "vod30", 22644,
+                                    span_frames=150, stride=30, stop_when=stop_when,
+                                    max_frames=6, detector=Detector(),
+                                    engine=_StubEngine(), log=lambda *a, **k: None)
+        self.assertEqual([row["frame_index"] for row in observations], [22644, 22674],
+                         "nearest first, then the next one out, then stop")
+        self.assertEqual(seen, [22644, 22674], "nothing beyond the settling frame was inferred")
+
+    def test_max_frames_caps_the_work(self):
+        class Detector:
+            def __call__(self, frame):
+                return [{"bbox": [100.0, 100.0, 300.0, 600.0], "conf": 0.9}]
+
+        observations = scan_nearest(Path(__file__).resolve().parents[1], "vod30", 22644,
+                                    span_frames=150, stride=30, stop_when=lambda rows: False,
+                                    max_frames=3, detector=Detector(), engine=_StubEngine(),
+                                    log=lambda *a, **k: None)
+        self.assertEqual(len(observations), 3)
+
+    def test_the_window_is_respected(self):
+        class Detector:
+            def __call__(self, frame):
+                return []
+
+        observations = scan_nearest(Path(__file__).resolve().parents[1], "vod30", 30,
+                                    span_frames=60, stride=30, max_frames=None,
+                                    detector=Detector(), engine=_StubEngine(),
+                                    log=lambda *a, **k: None)
+        self.assertEqual([row["frame_index"] for row in observations], [30, 60, 0, 90],
+                         "outward from the click, clipped at zero and to the span")
+
+
+class _StubEngine:
+    """One consistent face per frame: enough for the scan plumbing, no model."""
+
+    def analyze(self, frame):
+        return [{"bbox": [150.0, 150.0, 190.0, 200.0], "eye_px": 12.0, "det_score": 0.8,
+                 "embedding": unit(91)}]
+
+
+class EvidenceLevelTest(SelectionSeamTest):
+    """The payload must say which path and how much evidence produced it."""
+
+    def test_a_window_scan_selection_is_cross_checked(self):
+        payload = preview_payload(self._plan(), root=self.root)
+        self.assertEqual(payload["evidence"]["source"], "window_scan")
+        self.assertEqual(payload["evidence"]["crops"], len(payload["crops"]))
+        self.assertTrue(payload["evidence"]["cross_checked"])
+        self.assertEqual(payload["evidence"]["purity"], 1.0)
+
+    def test_a_refusal_payload_says_it_is_not_cross_checked(self):
+        payload = preview_payload(Refusal("no_stored_evidence", {"track_id": 3}, context={}),
+                                  root=self.root, dataset="vod30")
+        self.assertEqual(payload["evidence"], {"source": "window_scan", "crops": 0,
+                                               "cross_checked": False})
+        self.assertEqual(json.loads(json.dumps(payload)), payload)
+
+    def test_selection_to_dict_carries_the_evidence_level(self):
+        data = self._plan().to_dict()
+        self.assertEqual(data["source"], "window_scan")
+        self.assertTrue(data["cross_checked"])
+        self.assertEqual(data["frames_scanned"], len(self.observations))
