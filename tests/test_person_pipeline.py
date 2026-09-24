@@ -228,5 +228,70 @@ class FaceCacheStrideTests(unittest.TestCase):
         self.assertEqual(outs[1]['persons'], [])
 
 
+class DetectorWeightsTest(unittest.TestCase):
+    """The person detector must never fetch weights: ultralytics answers a
+    missing weights path by downloading the release asset from GitHub, which
+    would turn any root that forgot the file into a network dependency (the
+    unified-view fixture hit exactly that). These tests prove the no-download
+    behaviour by construction: every path that could try is patched to fail
+    loudly, and the missing-weights case must raise before any loader runs.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def _no_network(self):
+        """Any ultralytics download raises; YOLO construction is recorded."""
+        import ultralytics.utils.downloads as downloads
+        loader = mock.Mock()
+        patchers = [
+            mock.patch.object(downloads, 'download',
+                              side_effect=AssertionError('network download attempted')),
+            mock.patch.object(downloads, 'safe_download',
+                              side_effect=AssertionError('network download attempted')),
+            mock.patch('ultralytics.YOLO', loader),
+        ]
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return loader
+
+    def test_missing_weights_raise_instead_of_downloading(self):
+        loader = self._no_network()
+        with mock.patch('src.person_pipeline.REPO', self.root):  # no repo fallback either
+            with self.assertRaises(RuntimeError) as ctx:
+                PersonPipeline(self.root)._get_detector()
+        message = str(ctx.exception)
+        self.assertIn('yolov8n.pt', message, 'the error names the expected file')
+        self.assertIn(str(self.root / 'yolov8n.pt'), message)
+        self.assertIn('downloads are disabled', message)
+        self.assertFalse(loader.called, 'no loader (and so no download) may run')
+
+    def test_root_local_weights_are_preferred(self):
+        loader = self._no_network()
+        (self.root / 'yolov8n.pt').write_bytes(b'not really a checkpoint')
+        PersonPipeline(self.root)._get_detector()
+        self.assertEqual(loader.call_args.args[0], str(self.root / 'yolov8n.pt'))
+
+    def test_repo_weights_are_the_fallback(self):
+        loader = self._no_network()
+        PersonPipeline(self.root)._get_detector()
+        from src.person_pipeline import REPO
+        self.assertEqual(loader.call_args.args[0], str(REPO / 'yolov8n.pt'))
+        self.assertTrue((REPO / 'yolov8n.pt').is_file(), 'the fallback exists in this repo')
+
+    def test_weights_helper_is_the_only_source(self):
+        loader = self._no_network()
+        (self.root / 'yolov8n.pt').write_bytes(b'x')
+        pipeline = PersonPipeline(self.root)
+        self.assertEqual(pipeline.detector_weights(), self.root / 'yolov8n.pt')
+        with mock.patch('src.person_pipeline.REPO', self.root / 'nowhere'):
+            with self.assertRaises(RuntimeError):
+                PersonPipeline(self.root / 'empty').detector_weights()
+        self.assertFalse(loader.called)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -34,6 +34,8 @@ _MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 _STD = np.array([0.229, 0.224, 0.225], np.float32)
 _IOU_MATCH = 0.3
 _MAX_AGE = 30
+REPO = Path(__file__).resolve().parents[1]
+DETECTOR_WEIGHTS_NAME = 'yolov8n.pt'
 
 
 def _iou(a, b):
@@ -68,10 +70,29 @@ class PersonPipeline:
         self._face_sig = None
         self._face_obs = []
 
+    def detector_weights(self):
+        """Local path of the person detector weights; never a download.
+
+        ultralytics answers a missing weights *path* by fetching the release
+        asset from GitHub, which would turn any root that forgot the file into a
+        silent 6 MB network dependency (a scratch fixture root, a server started
+        from the wrong directory). src/frame_inference.py already refuses to
+        download; this mirrors it: root-local weights first, then the repo-local
+        copy, otherwise a RuntimeError naming both expected paths.
+        """
+        candidates = [self.root / DETECTOR_WEIGHTS_NAME, REPO / DETECTOR_WEIGHTS_NAME]
+        for path in candidates:
+            if path.is_file():
+                return path
+        raise RuntimeError(
+            f"person detector weights not found: looked for {candidates[0]} and {candidates[1]}; "
+            f"downloads are disabled - place {DETECTOR_WEIGHTS_NAME} in the pipeline root "
+            f"or in the repository root")
+
     def _get_detector(self):
         if self.detector is None:
             from ultralytics import YOLO
-            model = YOLO(str(self.root / 'yolov8n.pt'))
+            model = YOLO(str(self.detector_weights()))
 
             def detector(frame):
                 result = model.predict(frame, classes=[0], device='cpu', verbose=False)[0]
