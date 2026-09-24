@@ -28,6 +28,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
     playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip,
+    boxTagKind, markBoxEdited,
     paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
@@ -157,10 +158,12 @@ test('displayBoxes prefers manual correction over inference and copies data', ()
   const correction = {boxes: [{label: 'cue', bbox: [5, 6, 7, 8]}], table_polygon: null};
   const display = T.displayBoxes({inference, correction});
   assert.strictEqual(display.source, 'manual corrections');
-  same(display.boxes, [{label: 'cue', bbox: [5, 6, 7, 8]}]);
+  // Provenance travels with each box: a correction is the operator's, an
+  // inference result is the model's, and nothing has been edited in this session.
+  same(display.boxes, [{label: 'cue', bbox: [5, 6, 7, 8], origin: 'manual', edited: false}]);
   const inferred = T.displayBoxes({inference, correction: null});
   assert.strictEqual(inferred.source, 'inference');
-  same(inferred.boxes, [{label: 'person', bbox: [1, 2, 3, 4], score: 0.9}]);
+  same(inferred.boxes, [{label: 'person', bbox: [1, 2, 3, 4], score: 0.9, origin: 'auto', edited: false}]);
   same(inferred.polygon, [[0, 0], [1, 0], [1, 1], [0, 1]]);
   inferred.polygon[0][0] = 99;
   assert.strictEqual(inference.table_polygon[0][0], 0, 'polygon copy must not alias saved data');
@@ -543,7 +546,9 @@ test('a saved correction is drawn only for the frame it belongs to', () => {
   T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[5,5,20,20]}], table_polygon:null}, correction:{...good, frame_index:2100, boxes:[{label:'person', bbox:[9,9,99,99]}]}};
   T.applyFrameResult();
   assert.strictEqual(T.state.fresult.correction, null);
-  same(T.state.boxes, [{label:'ball', bbox:[5,5,20,20]}]);
+  // The foreign correction was dropped, so what is left is the model's own box:
+  // the surviving layer's provenance is the inference's, not the correction's.
+  same(T.state.boxes, [{label:'ball', bbox:[5,5,20,20], origin:'auto', edited:false}]);
   assert.strictEqual(T.state.polygon, null);
   assert.strictEqual(T.state.cloth.refusal.ok, false);
   assert.strictEqual(T.state.cloth.refusal.owner, 'vod30 frame 2100 @ 1280×720');
@@ -551,9 +556,51 @@ test('a saved correction is drawn only for the frame it belongs to', () => {
   T.state.fresult = {inference:null, correction:{...good, boxes:[{label:'person', bbox:[9,9,99,99]}]}};
   T.applyFrameResult();
   assert.strictEqual(T.state.cloth.refusal, null);
-  same(T.state.boxes, [{label:'person', bbox:[9,9,99,99]}]);
+  same(T.state.boxes, [{label:'person', bbox:[9,9,99,99], origin:'manual', edited:false}]);
   same(T.state.polygon, [[0,0],[10,0],[10,10],[0,10]]);
   T.state.fresult = null; T.state.boxes = []; T.state.polygon = null;
+});
+
+test('a model box stays the model\'s until the operator edits that box', () => {
+  // The owner-reported bug: one frame-level flag (`dirty || correction`) painted
+  // every box YOURS as soon as anything on the frame was dirty, so boxes the
+  // model's own inference had produced read as 人工. Provenance is per box.
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
+  T.state.cloth.reference = null; T.state.unified = null; T.state.polygon = null;
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[10,10,30,30]}, {label:'ball', bbox:[40,40,60,60]}], table_polygon:null}, correction:null};
+  T.applyFrameResult();
+  T.state.dirty = true;                       // an unsaved edit somewhere on this frame
+  T.paintOverlay();
+  assert.strictEqual(svg.dataset.boxes, 'auto', 'a dirty frame does not make the model\'s boxes the operator\'s');
+  assert.strictEqual((svg.innerHTML.match(/data-src="auto"/g) || []).length, 2, 'both boxes keep the model tag');
+  assert.ok(svg.innerHTML.includes('>MODEL<') && !svg.innerHTML.includes('>YOURS<'), 'nothing reads YOURS yet');
+  assert.strictEqual(T.state.drawn.balls, 2);
+  assert.strictEqual(T.state.drawn.auto.balls, 2);
+  assert.strictEqual(T.state.drawn.balls - T.state.drawn.auto.balls, 0, 'the facts split agrees: nothing manual');
+  // The operator touches one box: that box is theirs, the other is still the model's.
+  T.markBoxEdited(T.state.boxes[0]);
+  T.paintOverlay();
+  assert.strictEqual(svg.dataset.boxes, 'mixed', 'the frame carries both provenances');
+  assert.strictEqual((svg.innerHTML.match(/data-src="manual"/g) || []).length, 1, 'one box is tagged YOURS');
+  assert.strictEqual((svg.innerHTML.match(/data-src="auto"/g) || []).length, 1, 'the untouched one is still MODEL');
+  assert.ok(svg.innerHTML.includes('>MODEL<') && svg.innerHTML.includes('>YOURS<'), 'the histogram shows both');
+  assert.strictEqual(T.state.drawn.balls - T.state.drawn.auto.balls, 1, 'the facts split counts exactly one manual box');
+  // A stored correction is the operator's; a stored inference is the model's.
+  T.state.fresult = {inference:null, correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'ball', bbox:[10,10,30,30]}]}};
+  T.applyFrameResult(); T.paintOverlay();
+  assert.strictEqual(T.boxTagKind(T.state.boxes[0]), 'manual', 'a stored correction is the operator\'s');
+  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[10,10,30,30]}], table_polygon:null}, correction:null};
+  T.applyFrameResult(); T.paintOverlay();
+  assert.strictEqual(T.boxTagKind(T.state.boxes[0]), 'auto', 'a stored inference is the model\'s');
+  assert.strictEqual(T.state.boxes[0].edited, false, 'a reloaded box does not inherit this session\'s edit');
+  T.state.dirty = false; T.state.fresult = null; T.state.boxes = [];
 });
 
 test('every drawn group is tagged by source, in both languages', () => {

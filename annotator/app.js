@@ -92,11 +92,20 @@ function normalizeBox(value, w, h) {
   const y1 = Math.max(0, Math.min(h, Math.min(value[1], value[3]))), y2 = Math.max(0, Math.min(h, Math.max(value[1], value[3])));
   return x2 - x1 >= 1 && y2 - y1 >= 1 ? [Math.round(x1), Math.round(y1), Math.round(x2), Math.round(y2)] : null;
 }
+// Box provenance is per box, not per frame. A stored correction is the
+// operator's (`manual`), a stored inference result is the model's (`auto`), and
+// an edit made in this session makes that one box the operator's - the frame-level
+// flag this used to share painted every model box YOURS as soon as anything on the
+// frame was dirty, which is not what the operator did.
 function displayBoxes(result) {
   const source = result?.correction ? 'manual corrections' : result?.inference ? 'inference' : 'none';
   const payload = result?.correction || result?.inference || {};
-  return {source, boxes: (payload.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score})), polygon: payload.table_polygon ? payload.table_polygon.map(p => [...p]) : null};
+  const origin = result?.correction ? 'manual' : 'auto';
+  return {source, boxes: (payload.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin, edited: false})), polygon: payload.table_polygon ? payload.table_polygon.map(p => [...p]) : null};
 }
+// The one place a box's origin changes: an edit by the operator in this session.
+function markBoxEdited(box) { if (box) { box.origin = 'manual'; box.edited = true; } }
+function boxTagKind(box) { return box?.origin === 'manual' ? 'manual' : 'auto'; }
 function ballLabelText(value) { return value === undefined || value === null ? 'Unlabeled' : value === -1 || value === 'u' ? 'Unknown' : value === 0 ? 'Cue · 0' : `Ball ${value}`; }
 // ---- pocket vocabulary, overlay provenance, geometry clearance ------------
 // Stored pocket keys are pool-table rail terms (head rail / foot rail). On the
@@ -777,11 +786,15 @@ function paintOverlay() {
   // have edited this frame; an untouched inference frame stays a model result.
   // While the video runs the editable layer is empty by construction: it belongs
   // to one frame, and dropPerFrame() emptied it when playback started.
-  const boxSource = state.dirty || state.fresult?.correction ? 'manual' : 'auto';
-  const boxesAreManual = boxSource === 'manual';
+  // Each box is counted and tagged by its own origin, so the facts-line split and
+  // the on-stage tags come from one truth: the model's boxes stay MODEL/模型 and
+  // only the boxes the operator actually made or touched read YOURS/人工.
+  const boxKinds = (playing ? [] : state.boxes).map(boxTagKind);
+  const boxSource = boxKinds.length && boxKinds.every(kind => kind === boxKinds[0]) ? boxKinds[0] : boxKinds.length ? 'mixed' : 'auto';
   for (const box of (playing ? [] : state.boxes)) {
-    if (box.label === 'person') { boxesAreManual ? drawn.persons++ : auto.persons++; }
-    else if (ballLabel(box.label)) { boxesAreManual ? drawn.balls++ : auto.balls++; }
+    const manual = boxTagKind(box) === 'manual';
+    if (box.label === 'person') { manual ? drawn.persons++ : auto.persons++; }
+    else if (ballLabel(box.label)) { manual ? drawn.balls++ : auto.balls++; }
   }
   // The editable polygon is counted by where it came from: the operator's own
   // correction is manual (so the facts split can fire), a stored inference polygon
@@ -794,7 +807,7 @@ function paintOverlay() {
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
     const selected = state.sel.kind === 'box' && state.sel.box === i;
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
-    return `${tagRow(x1, Math.max(2, y1 - 26), boxSource, `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" class="t-box${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
+    return `${tagRow(x1, Math.max(2, y1 - 26), boxTagKind(box), `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" class="t-box${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
   }).join('');
   const poly = state.polygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
@@ -1122,7 +1135,7 @@ async function setWindow(win) {
   if (Number.isFinite(start)) { await loadTracks(); seekTime(start); }
   return true;
 }
-function setBoxLabel(label) { if (state.boxes[state.sel.box]) { state.boxes[state.sel.box].label = label; markDirty(); paintOverlay(); } }
+function setBoxLabel(label) { const box = state.boxes[state.sel.box]; if (box) { box.label = label; markBoxEdited(box); markDirty(); paintOverlay(); } }
 function deleteBox() { if (state.sel.box >= 0) { state.boxes.splice(state.sel.box, 1); clearSelection(); state.dirty = true; paintOverlay(); notify(); } }
 function addPolygon() { const w = state.frameWidth, h = state.frameHeight; state.polygon = [[Math.round(w*.1),Math.round(h*.1)],[Math.round(w*.9),Math.round(h*.1)],[Math.round(w*.9),Math.round(h*.9)],[Math.round(w*.1),Math.round(h*.9)]]; markDirty(); paintOverlay(); }
 function clearPolygon() { if (state.polygon) { state.polygon = null; markDirty(); paintOverlay(); } }
@@ -1282,13 +1295,13 @@ function overlayPointerMove(event) {
     const box = state.boxes[drag.box]; if (!box) return;
     const w = drag.orig[2] - drag.orig[0], h = drag.orig[3] - drag.orig[1];
     const nx1 = Math.max(0, Math.min(state.frameWidth - w, drag.orig[0] + x - drag.x)), ny1 = Math.max(0, Math.min(state.frameHeight - h, drag.orig[1] + y - drag.y));
-    box.bbox = [nx1, ny1, nx1 + w, ny1 + h]; markDirty(); paintOverlay();
+    box.bbox = [nx1, ny1, nx1 + w, ny1 + h]; markBoxEdited(box); markDirty(); paintOverlay();
   } else if (drag.kind === 'handle') {
     const box = state.boxes[drag.box]; if (!box) return;
     const next = box.bbox.slice();
     next[[0,2,2,0][drag.corner]] = x; next[[1,1,3,3][drag.corner]] = y;
     box.bbox = normalizeBox(next, state.frameWidth, state.frameHeight) || box.bbox;
-    markDirty(); paintOverlay();
+    markBoxEdited(box); markDirty(); paintOverlay();
   } else if (drag.kind === 'poly') { state.polygon[drag.index] = [x, y]; markDirty(); paintOverlay();
   } else if (drag.kind === 'anchor') {
     const p = state.anchors.pts[drag.index]; if (!p) return;
@@ -1301,14 +1314,14 @@ function overlayPointerUp() {
   state.drag = null;
   if (drag.kind === 'draw') {
     const bbox = normalizeBox([drag.x1, drag.y1, drag.x2, drag.y2], state.frameWidth, state.frameHeight);
-    if (bbox) { state.boxes.push({label: state.newBoxLabel || 'ball', bbox}); selectBox(state.boxes.length - 1); setTool('select'); markDirty(); }
+    if (bbox) { state.boxes.push({label: state.newBoxLabel || 'ball', bbox, origin:'manual', edited:true}); selectBox(state.boxes.length - 1); setTool('select'); markDirty(); }
   }
   paintOverlay(); notify();
 }
 function nudgeBox(dx, dy) {
   if (state.busy || state.sel.box < 0 || !state.boxes[state.sel.box]) return;
   const box = state.boxes[state.sel.box], moved = normalizeBox([box.bbox[0]+dx, box.bbox[1]+dy, box.bbox[2]+dx, box.bbox[3]+dy], state.frameWidth, state.frameHeight);
-  if (moved) { box.bbox = moved; markDirty(); paintOverlay(); }
+  if (moved) { box.bbox = moved; markBoxEdited(box); markDirty(); paintOverlay(); }
 }
 // ---- the ball label popover, attached to the ball on the imagery ---------
 function paintPopover() {
