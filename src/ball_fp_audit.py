@@ -123,6 +123,29 @@ def instances_near(instances: list, x: float, y: float, radius: float) -> list:
     return rows
 
 
+def nearest_label(truth: list, x: float, y: float, matched_ids=frozenset(),
+                  tol_px: float = MATCH_TOL_PX) -> tuple:
+    """``(label, distance_px, duplicate_of_matched_label)`` for one disputed point.
+
+    The third value is the one worth being careful with.  A detection 6.4 px from a
+    ball that another peak already claimed is a *duplicate*, not a hallucination --
+    the student found a real ball and reported it twice, and that is fixed by
+    non-maximum suppression, not by retraining.  It is only a duplicate when the
+    label is inside the match tolerance: a label 79 px away is a different ball,
+    and calling it "already matched" would turn a hallucination verdict into a
+    reassurance.  The teacher's cached labels are 0.1 px-rounded, so the tolerance
+    check is what keeps this honest.
+    """
+    best, best_d = None, None
+    for ball in truth:
+        d = math.hypot(float(ball["x"]) - x, float(ball["y"]) - y)
+        if best_d is None or d < best_d:
+            best, best_d = ball, d
+    if best is None:
+        return None, None, False
+    return best, best_d, bool(best_d <= tol_px and id(best) in matched_ids)
+
+
 def admit(inst: dict) -> tuple:
     """``(admitted, reason)`` -- would ``sam3_ball_cache`` have stored this ball?
 
@@ -407,11 +430,8 @@ def cmd_cases(args) -> int:
             })
         for (px, py, score) in result["extra"]:
             x, y = px * scale, py * scale
-            nearest, nearest_d = None, None
-            for ball in truth:
-                d = math.hypot(ball["x"] - x, ball["y"] - y)
-                if nearest_d is None or d < nearest_d:
-                    nearest, nearest_d = ball, d
+            label, label_d, duplicate = nearest_label(truth, x, y, matched_ids[t],
+                                                      args.tol_px)
             fp_rows.append({
                 "id": f"fp{len(fp_rows) + 1:02d}", "t": t,
                 "x": round(float(x), 1), "y": round(float(y), 1),
@@ -419,11 +439,10 @@ def cmd_cases(args) -> int:
                 # a duplicate of a label another peak already claimed is a
                 # *different* story from a hallucination, and this is the field
                 # that makes it visible instead of letting the verdict imply it
-                "nearest_label_px": round(nearest_d, 2) if nearest_d is not None else None,
-                "nearest_label_score": (round(float(nearest.get("score") or 0.0), 3)
-                                        if nearest is not None else None),
-                "nearest_label_already_matched": bool(
-                    nearest is not None and id(nearest) in matched_ids[t]),
+                "nearest_label_px": round(label_d, 2) if label_d is not None else None,
+                "nearest_label_score": (round(float(label.get("score") or 0.0), 3)
+                                        if label is not None else None),
+                "duplicate_of_matched_label": duplicate,
                 "labels_in_frame": frames_labels,
             })
 

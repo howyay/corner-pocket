@@ -18,8 +18,8 @@ from src.ball_fp_audit import (AUDIT, BALL_AREA_RANGE, BALL_R_RANGE, CANDIDATE_R
                               CASES_OUT, FN_THRESHOLDS, MATCH_TOL_PX, PRODUCTION_CUT,
                               SAM3_FLOOR, SWEEP_THRESHOLDS, _sweep_instances, admit,
                               adjudicate_fp, cache_agreement, case_times, crop_bounds,
-                              headline, instances_near, markdown_table, percentile,
-                              recover_fn, recovery_by_threshold, render_case,
+                              headline, instances_near, markdown_table, nearest_label,
+                              percentile, recover_fn, recovery_by_threshold, render_case,
                               verdict_counts)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -68,6 +68,43 @@ class InstancesNearTest(unittest.TestCase):
     def test_an_empty_sweep_is_not_an_error(self):
         self.assertEqual(instances_near([], 100, 100, 10.0), [])
         self.assertEqual(instances_near(None, 100, 100, 10.0), [])
+
+
+class NearestLabelTest(unittest.TestCase):
+    """The duplicate flag must only fire inside the match tolerance."""
+
+    def truth(self):
+        return [{"x": 100.0, "y": 100.0, "score": 0.8}, {"x": 300.0, "y": 300.0,
+                                                        "score": 0.7}]
+
+    def test_a_second_peak_on_a_claimed_ball_is_a_duplicate(self):
+        truth = self.truth()
+        _label, distance, duplicate = nearest_label(truth, 103.0, 100.0, {id(truth[0])})
+        self.assertAlmostEqual(distance, 3.0, places=2)
+        self.assertTrue(duplicate)
+
+    def test_a_label_far_away_is_not_a_duplicate_however_matched_it_is(self):
+        """The bug this pins: 79 px is a different ball, not an already-claimed one."""
+        truth = self.truth()
+        _label, distance, duplicate = nearest_label(truth, 179.0, 100.0, {id(truth[0])})
+        self.assertAlmostEqual(distance, 79.0, places=2)
+        self.assertFalse(duplicate)
+
+    def test_a_label_inside_the_tolerance_that_was_never_matched_is_not_a_duplicate(self):
+        truth = self.truth()
+        _label, _distance, duplicate = nearest_label(truth, 103.0, 100.0, set())
+        self.assertFalse(duplicate)
+
+    def test_exactly_the_tolerance_counts_as_a_duplicate(self):
+        truth = self.truth()
+        self.assertTrue(nearest_label(truth, 106.0, 100.0, {id(truth[0])})[2])
+        self.assertFalse(nearest_label(truth, 106.1, 100.0, {id(truth[0])})[2])
+
+    def test_no_labels_at_all_is_not_a_duplicate(self):
+        label, distance, duplicate = nearest_label([], 100.0, 100.0, set())
+        self.assertIsNone(label)
+        self.assertIsNone(distance)
+        self.assertFalse(duplicate)
 
 
 class AdmitTest(unittest.TestCase):
