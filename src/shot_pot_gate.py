@@ -291,6 +291,7 @@ class Membership:
     mm_available: bool
     pocket_test: str = "mm"                 # "mm" | "px_only"
     last_mm: tuple[float, float] | None = None
+    uncertainty_mm: float | None = None     # the mm distance's own error bar
 
     @property
     def disagrees(self) -> bool:
@@ -301,6 +302,18 @@ class Membership:
         """The verdict: millimetres when the geometry is there, pixels otherwise."""
         return self.inside_mm if self.mm_available else self.inside_px
 
+    @property
+    def verdict_mm(self) -> str:
+        """``"inside"`` | ``"outside"`` | ``"ambiguous"`` - the error bar decides."""
+        if not self.mm_available or self.distance_mm is None:
+            return "inside" if self.inside_px else "outside"
+        bar = float(self.uncertainty_mm or 0.0)
+        if self.distance_mm + bar <= float(self.radius_mm or 0.0):
+            return "inside"
+        if self.distance_mm - bar > float(self.radius_mm or 0.0):
+            return "outside"
+        return "ambiguous"
+
     def as_dict(self) -> dict:
         return {"pocket": None if self.pocket is None else self.pocket.name,
                 "pocket_px": None if self.pocket is None else [round(self.pocket.x, 2),
@@ -309,6 +322,9 @@ class Membership:
                 "radius_px": None if self.radius_px is None else round(self.radius_px, 3),
                 "distance_mm": None if self.distance_mm is None else round(self.distance_mm, 2),
                 "radius_mm": self.radius_mm,
+                "distance_mm_uncertainty": (None if self.uncertainty_mm is None
+                                            else round(self.uncertainty_mm, 2)),
+                "verdict_mm": self.verdict_mm,
                 "inside_px": bool(self.inside_px),
                 "inside_mm": bool(self.inside_mm),
                 "inside": bool(self.inside),
@@ -364,8 +380,58 @@ class PocketModel:
             return None
         return math.hypot(here[0] - centre[0], here[1] - centre[1])
 
-    def measure(self, x: float, y: float) -> Membership:
-        """Which pocket a point is in - millimetres first, pixels reported."""
+    def _jacobian_px_to_mm(self, x: float, y: float,
+                           step: float = 1.0) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        """Local Jacobian of the pixel->millimetre map, as two columns (mm per px)."""
+        here = self.canonical(x, y)
+        if here is None:
+            return None
+        right = self.canonical(x + step, y)
+        down = self.canonical(x, y + step)
+        if right is None or down is None:
+            return None
+        return (((right[0] - here[0]) / step, (right[1] - here[1]) / step),
+                ((down[0] - here[0]) / step, (down[1] - here[1]) / step))
+
+    def distance_mm_uncertainty(self, pocket: Pocket, x: float, y: float,
+                                err_px: float) -> float | None:
+        """How uncertain the millimetre distance is, given a pixel localisation error.
+
+        Error propagation, first order: the distance changes by ``|J^T u| . err``
+        where ``J`` is the pixel->millimetre Jacobian at the ball and ``u`` is the
+        unit vector from the pocket centre to the ball *in millimetres*.  That
+        directional form is the honest one - the worst case over all directions is
+        ``err x sigma_max(J)``, which at the head pockets (where 100 mm is 3.1 px at
+        960x540, i.e. ~32 mm per pixel) would swamp the gate from every direction,
+        while the direction a ball actually approached in is measured.
+        """
+        here = self.canonical(x, y)
+        if here is None:
+            return None
+        centre = self.canonical(pocket.x, pocket.y)
+        columns = self._jacobian_px_to_mm(x, y)
+        if centre is None or columns is None:
+            return None
+        dx, dy = here[0] - centre[0], here[1] - centre[1]
+        distance = math.hypot(dx, dy)
+        if distance <= 1e-9:
+            # no separation direction to propagate along: fall back to the worst case
+            return float(err_px) * max(math.hypot(*columns[0]), math.hypot(*columns[1]))
+        ux, uy = dx / distance, dy / distance
+        # J^T u in mm per pixel along the separation direction
+        gx = columns[0][0] * ux + columns[1][0] * uy
+        gy = columns[0][1] * ux + columns[1][1] * uy
+        return float(err_px) * math.hypot(gx, gy)
+
+    def measure(self, x: float, y: float,
+                err_px: float = 0.0) -> Membership:
+        """Which pocket a point is in - millimetres first, pixels reported.
+
+        ``err_px`` is the localisation error to propagate into the millimetre
+        distance; with it, the answer is three-way: confidently inside, confidently
+        outside, or ``ambiguous`` (inside the error bar of the gate).  A gate that
+        only holds inside the error bar is not a claim.
+        """
         best_px, best_px_dist = None, float("inf")
         best_mm, best_mm_dist = None, float("inf")
         inside_px_any, inside_mm_any = False, False
@@ -384,13 +450,16 @@ class PocketModel:
             return Membership(None, None, None, None, None, False, False, self.mm_available)
         d_px = chosen.distance(x, y)
         d_mm = self.distance_mm(chosen, x, y)
+        uncertainty = (self.distance_mm_uncertainty(chosen, x, y, err_px)
+                       if (self.mm_available and err_px) else 0.0)
         return Membership(
             pocket=chosen, distance_px=d_px, radius_px=chosen.radius_px,
             distance_mm=d_mm, radius_mm=chosen.r_mm,
             inside_px=inside_px_any, inside_mm=inside_mm_any,
             mm_available=self.mm_available,
             pocket_test="mm" if self.mm_available else "px_only",
-            last_mm=self.canonical(x, y))
+            last_mm=self.canonical(x, y),
+            uncertainty_mm=uncertainty)
 
     def inside(self, x: float, y: float) -> tuple[Pocket | None, float]:
         """``(pocket, distance_px)`` when the point is inside - millimetres decide."""
@@ -686,6 +755,15 @@ class GateThresholds:
     #: linear scale of the track's frame against native 1280x720, used only when
     #: neither ball_diameter_px nor frame_size is given (960x540 => 0.75).
     frame_scale: float = 1.0
+    #: The detector's own localisation error, in the pixels of the frame the track
+    #: is given in: **p90 3.62 px** (median 1.48 px) at the r1 operating point
+    #: 960x540, measured in ``out/tiny_ball_probe/report_960x540.json``
+    #: (``operating.localisation_px_p90``, docs/near-real-time-ball-detector.md) -
+    #: the same frame the dense run gates in.  Every distance this gate compares
+    #: against a bar carries at least this much error, so a verdict that only holds
+    #: inside the error bar is ``unknown``, not a claim.  A caller gating another
+    #: resolution should scale it (x frame_size[0]/960) or state its own.
+    localisation_error_px: float = 3.62
 
     # --- pot ------------------------------------------------------------------
     #: the repo's measured pot radius: src.event_gates.GateConfig.pot_pocket_r_mm.
@@ -747,6 +825,17 @@ class GateThresholds:
     def min_net_displacement_px(self) -> float:
         """Net travel a sustained run must show, in this frame's pixels."""
         return self.min_net_displacement_diameters * self.ball_diameter()
+
+    def net_uncertainty_px(self) -> float:
+        """The net-displacement bar's own error bar, in this frame's pixels.
+
+        The net displacement is the difference of two sightings, each carrying the
+        detector's p90 localisation error, so its error is sqrt(2) x that (they are
+        independent measurements of different frames): 5.12 px at the r1 operating
+        point.  A run that lands inside the bar by less than this cannot be called a
+        shot or an oscillation, only unresolved.
+        """
+        return math.sqrt(2.0) * float(self.localisation_error_px)
 
     def as_dict(self) -> dict:
         return {k: (list(v) if isinstance(v, tuple) else v) for k, v in self.__dict__.items()}
@@ -849,6 +938,8 @@ class PotEvent:
     pocket_test: str = "mm"
     pocket_test_disagrees: bool = False
     last_mm: tuple[float, float] | None = None
+    distance_mm_uncertainty: float | None = None
+    verdict_mm: str | None = None
 
     @property
     def is_pot(self) -> bool:
@@ -862,6 +953,9 @@ class PotEvent:
                 "distance_px": None if self.distance_px is None else round(self.distance_px, 2),
                 "radius_mm": self.radius_mm,
                 "distance_mm": self.distance_mm,
+                "distance_mm_uncertainty": (None if self.distance_mm_uncertainty is None
+                                            else round(self.distance_mm_uncertainty, 2)),
+                "verdict_mm": self.verdict_mm,
                 "inside_px": self.inside_px,
                 "inside_mm": self.inside_mm,
                 "pocket_test": self.pocket_test,
@@ -908,6 +1002,35 @@ class Rejection:
 
 
 @dataclass(frozen=True)
+class UnresolvedEvent:
+    """A motion run the gate can neither call a shot nor refuse.
+
+    Net travel inside the bar's own error bar is exactly that case: the run moved,
+    but not by more than the detector's localisation error can explain.  It is not a
+    shot (a shot-shaped claim would be unsupported) and not a rejection (nothing was
+    contradicted), so it lives in its own channel - ``GateReport.unresolved`` - and
+    never appears in ``shots``.
+    """
+
+    kind: str                            # always "unresolved"
+    code: str                            # "oscillation_unresolved"
+    ball_id: str
+    reason: str
+    t: float
+    frame_index: int
+    numbers: dict = field(default_factory=dict)
+    samples_used: tuple[Sample, ...] = ()
+    thresholds: dict = field(default_factory=dict)
+
+    def as_dict(self) -> dict:
+        return {"kind": self.kind, "code": self.code, "ball_id": self.ball_id,
+                "reason": self.reason, "t": round(self.t, 6),
+                "frame_index": int(self.frame_index), "numbers": dict(self.numbers),
+                "samples_used": [s.as_dict() for s in self.samples_used],
+                "thresholds": dict(self.thresholds)}
+
+
+@dataclass(frozen=True)
 class BreakGroup:
     """The group record for simultaneous onsets - see the module docstring."""
 
@@ -934,6 +1057,7 @@ class GateReport:
     pots: list[PotEvent] = field(default_factory=list)
     rejections: list[Rejection] = field(default_factory=list)
     breaks: list[BreakGroup] = field(default_factory=list)
+    unresolved: list[UnresolvedEvent] = field(default_factory=list)
     tracks_in: int = 0
     observed_until_t: float | None = None
     notes: list[str] = field(default_factory=list)
@@ -943,10 +1067,12 @@ class GateReport:
                 "pots": [p.as_dict() for p in self.pots],
                 "rejections": [r.as_dict() for r in self.rejections],
                 "breaks": [b.as_dict() for b in self.breaks],
+                "unresolved": [u.as_dict() for u in self.unresolved],
                 "counts": {"tracks": self.tracks_in, "shots": len(self.shots),
                            "pots": sum(1 for p in self.pots if p.is_pot),
                            "unknowns": sum(1 for p in self.pots if not p.is_pot),
-                           "rejections": len(self.rejections), "breaks": len(self.breaks)},
+                           "rejections": len(self.rejections), "breaks": len(self.breaks),
+                           "unresolved": len(self.unresolved)},
                 "observed_until_t": self.observed_until_t,
                 "notes": list(self.notes)}
 
@@ -1061,7 +1187,8 @@ def track_events(track: Track, pockets: PocketModel,
                  thresholds: GateThresholds = GateThresholds(),
                  observed_until_t: float | None = None,
                  group_ids: dict[str, str] | None = None) -> tuple[list[ShotEvent],
-                                                                   list[PotEvent], list[Rejection]]:
+                                                                   list[PotEvent], list[Rejection],
+                                                                   list[UnresolvedEvent]]:
     """Shots, pot verdicts and rejections for ONE ball identity.
 
     ``observed_until_t`` is the last time the analyser watched: a track that ends at
@@ -1074,12 +1201,13 @@ def track_events(track: Track, pockets: PocketModel,
     shots: list[ShotEvent] = []
     pots: list[PotEvent] = []
     rejections: list[Rejection] = []
+    unresolved: list[UnresolvedEvent] = []
     occ = occlusion if occlusion is not None else Occlusion.from_samples(samples)
     if not samples:
         rejections.append(Rejection("rejection", "empty_track", t.ball_id, "no samples",
                                     None, None, {"samples": 0},
                                     thresholds={"min_samples": 3}))
-        return shots, pots, rejections
+        return shots, pots, rejections, unresolved
     if len(samples) < 3:
         rejections.append(Rejection(
             "rejection", "track_too_short", t.ball_id,
@@ -1087,7 +1215,7 @@ def track_events(track: Track, pockets: PocketModel,
             float(samples[-1].t), int(samples[-1].frame_index),
             {"samples": len(samples), "duplicates": t.duplicates()},
             tuple(samples), thresholds={"min_samples": 3}))
-        return shots, pots, rejections
+        return shots, pots, rejections, unresolved
 
     kept = [s for s in samples if s.confidence >= th.min_confidence]
     if len(kept) < 3:
@@ -1101,7 +1229,7 @@ def track_events(track: Track, pockets: PocketModel,
              "max_confidence": round(max(s.confidence for s in samples), 4)},
             tuple(samples), thresholds={"min_confidence": th.min_confidence,
                                         "min_samples": 3}))
-        return shots, pots, rejections
+        return shots, pots, rejections, unresolved
     samples = kept
     min_conf = min(s.confidence for s in samples)
 
@@ -1109,12 +1237,15 @@ def track_events(track: Track, pockets: PocketModel,
     runs = _motion_runs(samples, th)
     ball_px = th.ball_diameter()
     min_net_px = th.min_net_displacement_px()
+    net_uncertainty = th.net_uncertainty_px()
     rest_thresholds = {"rest_speed_px_s": th.rest_speed_px_s, "rest_window_s": th.rest_window_s,
                        "rest_min_intervals": th.rest_min_intervals, "max_gap_s": th.max_gap_s,
                        "motion_speed_px_s": th.motion_speed_px_s,
                        "onset_intervals": th.onset_intervals,
                        "min_net_displacement_px": round(min_net_px, 3),
                        "min_net_displacement_diameters": th.min_net_displacement_diameters,
+                       "net_uncertainty_px": round(net_uncertainty, 3),
+                       "localisation_error_px": th.localisation_error_px,
                        "ball_diameter_px": round(ball_px, 3),
                        "frame_scale": round(th.frame_scale_effective(), 4)}
     moved = False
@@ -1139,7 +1270,7 @@ def track_events(track: Track, pockets: PocketModel,
         a, b = samples[start], samples[end]
         path = sum(iv.dist for iv in intervals)
         net = math.hypot(b.x - a.x, b.y - a.y)
-        if net < min_net_px:
+        if net <= min_net_px - net_uncertainty:
             # Sustained speed without net travel: an identity oscillating inside its
             # own footprint.  Refused, and named - never silently a shot, and never a
             # pot either (there is no run to end anywhere).
@@ -1147,12 +1278,15 @@ def track_events(track: Track, pockets: PocketModel,
                 "rejection", "oscillation_no_net_travel", t.ball_id,
                 f"a sustained run at t={a.t:.3f} moves at up to "
                 f"{max(iv.speed for iv in intervals):.1f} px/s but its net displacement is "
-                f"{net:.2f} px ({net / ball_px:.2f} ball diameters of {ball_px:.1f} px) against the "
-                f"{min_net_px:.1f} px bar the ball's own size sets: the ball did not go anywhere, "
+                f"{net:.2f} px ({net / ball_px:.2f} ball diameters of {ball_px:.1f} px), short of "
+                f"the {min_net_px:.1f} px bar the ball's own size sets by more than the "
+                f"{net_uncertainty:.2f} px localisation error: the ball did not go anywhere, "
                 "so this is detector oscillation, not a shot",
                 float(a.t), int(a.frame_index),
                 {"net_displacement_px": round(net, 3),
                  "net_displacement_diameters": round(net / ball_px, 3),
+                 "net_uncertainty_px": round(net_uncertainty, 3),
+                 "bar_minus_net_px": round(min_net_px - net, 3),
                  "path_length_px": round(path, 3),
                  "net_over_path": round(net / path, 4) if path > 0 else None,
                  "path_over_net": round(path / net, 2) if net > 0 else None,
@@ -1162,7 +1296,31 @@ def track_events(track: Track, pockets: PocketModel,
                  "rest_window_measured_s": round(window, 4)},
                 tuple(samples[start:end + 1]), rest_thresholds))
             continue
-        # net >= min_net_px > 0 past the criterion above, so the run has a direction
+        if net <= min_net_px + net_uncertainty:
+            # Inside the bar's own error bar: the run moved, but not by more than the
+            # detector's localisation error explains.  Not a shot, and not a refusal
+            # either - it goes to the report's unresolved channel.
+            unresolved.append(UnresolvedEvent(
+                "unresolved", "oscillation_unresolved", t.ball_id,
+                f"a sustained run at t={a.t:.3f} (peak "
+                f"{max(iv.speed for iv in intervals):.1f} px/s) has {net:.2f} px of net travel "
+                f"against the {min_net_px:.1f} px bar and inside the {net_uncertainty:.2f} px the "
+                "detector's own localisation error puts on that difference: the gate cannot "
+                "tell a shot from an oscillation here",
+                float(a.t), int(a.frame_index),
+                {"net_displacement_px": round(net, 3),
+                 "net_displacement_diameters": round(net / ball_px, 3),
+                 "net_uncertainty_px": round(net_uncertainty, 3),
+                 "bar_minus_net_px": round(min_net_px - net, 3),
+                 "path_length_px": round(path, 3),
+                 "net_over_path": round(net / path, 4) if path > 0 else None,
+                 "path_over_net": round(path / net, 2) if net > 0 else None,
+                 "peak_speed_px_s": round(max(iv.speed for iv in intervals), 2),
+                 "run_intervals": len(intervals),
+                 "rest_window_measured_s": round(window, 4)},
+                tuple(samples[start:end + 1]), rest_thresholds))
+            continue
+        # net > bar + uncertainty > 0 past the criteria above, so it has a direction
         direction = ((b.x - a.x) / net, (b.y - a.y) / net)
         deg = math.degrees(math.atan2(direction[1], direction[0])) % 360.0
         pocket, dist = pockets.inside(b.x, b.y)
@@ -1261,8 +1419,9 @@ def track_events(track: Track, pockets: PocketModel,
             dt = float(last.t) - float(samples[start - 1].t)
             prev_speed = d / dt if dt > 0 else 0.0
         internal = end != -1
-        m = pockets.measure(last.x, last.y)
-        pocket = m.pocket if m.inside else None
+        m = pockets.measure(last.x, last.y, err_px=th.localisation_error_px)
+        mm_verdict = m.verdict_mm
+        pocket = m.pocket if mm_verdict == "inside" else None
         dist = m.distance_px if m.distance_px is not None else float("inf")
         span_until = float(samples[end].t) if internal else until
         occ_status = occ.status_at_disappearance(float(last.t), span_until)
@@ -1277,7 +1436,20 @@ def track_events(track: Track, pockets: PocketModel,
             distance_mm=None if m.distance_mm is None else round(m.distance_mm, 2),
             radius_mm=m.radius_mm, inside_px=bool(m.inside_px), inside_mm=bool(m.inside_mm),
             pocket_test=m.pocket_test, pocket_test_disagrees=bool(m.disagrees),
-            last_mm=m.last_mm, thresholds=pot_thresholds)
+            last_mm=m.last_mm, verdict_mm=mm_verdict,
+            distance_mm_uncertainty=(None if m.uncertainty_mm is None
+                                     else round(m.uncertainty_mm, 2)),
+            thresholds=pot_thresholds)
+        if mm_verdict == "ambiguous" and m.pocket is not None:
+            # With the ball's own localisation error propagated, the millimetre
+            # distance is not resolvable against the gate: a confident pot and a
+            # confident refusal are both unsupported, so the honest verdict is
+            # unknown.  This is the iron-rule shape - we cannot tell.
+            pots.append(PotEvent("pot", t.ball_id, "unknown",
+                                 "pocket_distance_within_uncertainty",
+                                 m.pocket.name, (m.pocket.x, m.pocket.y), m.pocket.radius_px, dist,
+                                 **common))
+            continue
         if internal:
             # the ball is seen again -> not a pot.  Inside a pocket radius for a whole
             # persistence window this is the signature of an identity swap, which the
@@ -1416,7 +1588,7 @@ def track_events(track: Track, pockets: PocketModel,
         pots.append(PotEvent("pot", t.ball_id, "pot", "inside_pocket_persistence_clear",
                              pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
                              **common))
-    return shots, pots, rejections
+    return shots, pots, rejections, unresolved
 
 
 def _group_onsets(shots: list[ShotEvent], th: GateThresholds) -> list[BreakGroup]:
@@ -1464,16 +1636,18 @@ def classify(tracks: Iterable[Track], pockets: PocketModel | None = None,
     report = GateReport(tracks_in=len(tracks), observed_until_t=until)
     shots: list[ShotEvent] = []
     for tr in tracks:
-        s, p, r = track_events(tr, model, occlusion=occlusion, thresholds=thresholds,
-                               observed_until_t=until)
+        s, p, r, u = track_events(tr, model, occlusion=occlusion, thresholds=thresholds,
+                                  observed_until_t=until)
         shots.extend(s)
         report.pots.extend(p)
         report.rejections.extend(r)
+        report.unresolved.extend(u)
     report.breaks = _group_onsets(shots, thresholds)
     shots.sort(key=lambda s: s.onset_t)
     report.shots = shots
     report.pots.sort(key=lambda p: (p.last_t, p.ball_id))
     report.rejections.sort(key=lambda r: (r.t if r.t is not None else -1.0, r.ball_id))
+    report.unresolved.sort(key=lambda u: (u.t, u.ball_id))
     report.notes.append(
         f"{len(shots)} shot(s), {sum(1 for p in report.pots if p.is_pot)} pot(s), "
         f"{sum(1 for p in report.pots if not p.is_pot)} unknown disappearance(s), "

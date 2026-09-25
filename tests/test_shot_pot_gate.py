@@ -26,8 +26,8 @@ from pathlib import Path
 from src.shot_pot_gate import (BALL_DIAMETER_NATIVE_PX, CANON_H, CANON_W, OCC_DENSE_MIN,
                                POCKETS_MM, POCKET_R_MM, VOD30_POCKETS_PX, VOD30_REFERENCE_QUAD,
                                BreakGroup, GateThresholds, Occlusion, PotEvent, Rejection, Sample,
-                               ShotEvent, Track, classify, default_pocket_model, homography,
-                               pocket_pixels, project, track_events)
+                               ShotEvent, Track, UnresolvedEvent, classify, default_pocket_model,
+                               homography, pocket_pixels, project, track_events)
 
 ROOT = Path(__file__).resolve().parents[1]
 CENSUS = ROOT / "out" / "scan30" / "sam3_census.json"
@@ -80,9 +80,11 @@ def approach(pocket, x0: float, y0: float, start: int, n: int = 25,
 
 #: a pot fixture starts here in canonical millimetres: the middle of the table
 TABLE_MIDDLE_MM = (CANON_W / 2.0, CANON_H / 2.0)
-#: ... and stops this far from the pocket centre, well inside the 100 mm gate in
-#: every direction (the repo's measured vanished-ball cluster is 39-86 mm)
-POT_END_MM = 40.0
+#: ... and stops this far from the pocket centre.  A potted ball's last sighting is
+#: at the hole, not at the mouth: 20 mm is confident under the millimetre gate *plus*
+#: the localisation error the gate propagates (the repo's sparse-census cluster was
+#: measured at the mouth, 39-86 mm, and every one of those events was refuted).
+POT_END_MM = 20.0
 
 
 def mm_walk(model, pocket_name: str, end_mm: float = POT_END_MM,
@@ -136,8 +138,9 @@ class GateTestCase(unittest.TestCase):
             self.assertIsInstance(shot, ShotEvent)
             self.assertTrue(shot.samples_used, f"shot {shot.ball_id} carries no samples")
             self.assertTrue(shot.thresholds, f"shot {shot.ball_id} carries no thresholds")
-        for rec in list(report.pots) + list(report.rejections):
-            self.assertIsInstance(rec, PotEvent if rec.kind == "pot" else Rejection)
+        for rec in list(report.pots) + list(report.rejections) + list(report.unresolved):
+            self.assertIsInstance(rec, PotEvent if rec.kind == "pot"
+                                  else (UnresolvedEvent if rec.kind == "unresolved" else Rejection))
             self.assertTrue(rec.samples_used, f"{rec.kind} {rec.ball_id} carries no samples")
             self.assertTrue(rec.thresholds, f"{rec.kind} {rec.ball_id} carries no thresholds")
             self.assertTrue(rec.reason, f"{rec.kind} {rec.ball_id} carries no reason")
@@ -430,6 +433,11 @@ class ShotRuleTests(GateTestCase):
         self.assertEqual(GateThresholds(ball_diameter_px=11.0).min_net_displacement_px(), 22.0)
         self.assertAlmostEqual(GateThresholds(frame_size=(960, 540)).min_net_displacement_px(),
                                27.6, delta=1e-9)
+        # the localisation error is the detector's own measured p90, and it scales the
+        # net-displacement bar's error bar by sqrt(2) (two independent endpoints)
+        self.assertEqual(th.localisation_error_px, 3.62)
+        self.assertAlmostEqual(th.net_uncertainty_px(), math.sqrt(2) * 3.62, delta=1e-9)
+        self.assertAlmostEqual(GateThresholds(localisation_error_px=0.0).net_uncertainty_px(), 0.0)
         # a raised bar really is used
         strict = GateThresholds(motion_speed_px_s=500.0)
         rows = still(*OPEN, 20) + moving(OPEN[0], OPEN[1], 1, 0, 20, 20, px=4.0)
@@ -447,6 +455,45 @@ class ShotRuleTests(GateTestCase):
         record = [r for r in report.rejections if r.code == "oscillation_no_net_travel"][0]
         self.assertEqual(record.numbers["net_displacement_px"], 0.0)
         self.assertGreater(record.numbers["path_length_px"], 0.0)
+        self.assert_json_safe(report)
+
+    def test_a_run_inside_the_bars_own_error_is_unresolved_not_a_shot(self):
+        """Net travel within the bar's error bar is neither a shot nor a refusal.
+
+        The bar is 2 ball diameters; the net displacement is the difference of two
+        sightings, each carrying the detector's p90 3.62 px, so the difference carries
+        sqrt(2) x 3.62 = 5.12 px.  A run whose net lands inside that band (22.5-32.7 px
+        at the dense run's 960x540) goes to ``GateReport.unresolved`` - it never
+        appears in ``shots`` and never in ``rejections``.
+        """
+        thresholds = GateThresholds(frame_size=(960, 540))
+        self.assertAlmostEqual(thresholds.net_uncertainty_px(), 5.119, delta=0.002)
+        self.assertAlmostEqual(thresholds.min_net_displacement_px(),
+                               2.0 * thresholds.ball_diameter(), delta=1e-9)
+        rows = still(*OPEN, 20)
+        x, y = OPEN
+        net_y = 26.0 / 15.0                      # 15 intervals: net ~26 px, inside the band
+        for k in range(15):
+            x += 4.0 if k % 2 == 0 else -3.5
+            y += net_y
+            rows.append(sample(20 + k, x, y))
+        report = report_for(Track("obj", tuple(rows)), thresholds=thresholds)
+        self.assertEqual(report.shots, [])
+        self.assertEqual(len(report.unresolved), 1)
+        record = report.unresolved[0]
+        self.assertEqual(record.kind, "unresolved")
+        self.assertEqual(record.code, "oscillation_unresolved")
+        self.assertNotIn("oscillation_unresolved", codes(report.rejections))
+        self.assertGreater(record.numbers["net_displacement_px"],
+                           thresholds.min_net_displacement_px() - thresholds.net_uncertainty_px())
+        self.assertLess(record.numbers["net_displacement_px"],
+                        thresholds.min_net_displacement_px() + thresholds.net_uncertainty_px())
+        self.assertAlmostEqual(record.numbers["net_uncertainty_px"],
+                               thresholds.net_uncertainty_px(), delta=0.001)
+        self.assertGreater(record.numbers["peak_speed_px_s"], thresholds.motion_speed_px_s)
+        self.assertIn("unresolved", report.as_dict())
+        self.assertEqual(report.as_dict()["counts"]["unresolved"], 1)
+        self.assert_evidence_complete(report)
         self.assert_json_safe(report)
 
     def test_an_identity_that_jitters_inside_its_own_footprint_is_not_a_shot(self):
@@ -540,10 +587,13 @@ class PotRuleTests(GateTestCase):
                 self.assert_json_safe(report)
 
     def test_a_ball_ending_inside_the_pixel_radius_but_outside_the_millimetre_gate(self):
-        """The served candidate: 9.62 px from the centre, 148 mm against a 100 mm gate.
+        """The served candidate: 9.62 px from the centre, 148.5 mm against a 100 mm gate.
 
-        The pixel radius cannot follow this projection, so the millimetre test is the
-        authority and the disagreement is the reason - not a pot-shaped candidate.
+        At the left-side pocket the 100 mm disc is only 5.9 px tall at 960x540, so the
+        16.8 mm/px compression turns the detector's 3.62 px p90 localisation error into
+        a ~54 mm error bar on that 148.5 mm.  |148.5 - 100| = 48.5 mm is inside the
+        bar, so neither a pot nor a refusal is supported: the honest verdict is
+        ``unknown``, with both numbers and the uncertainty.
         """
         model = default_pocket_model(quad=WORK_QUAD, pocket_r_mm=POCKET_R_MM)
         pocket = model.by_name("left-side")
@@ -554,27 +604,49 @@ class PotRuleTests(GateTestCase):
         report = report_for(Track("t265-blue", tuple(rows)),
                             thresholds=GateThresholds(frame_size=list(WORK_SIZE),
                                                       cloth_quad=list(WORK_QUAD)))
-        self.assertEqual(report.pots, [], "a pocket-shaped candidate must not survive the mm test")
-        self.assertIn("pocket_test_disagrees_px_vs_mm", codes(report.rejections))
-        record = [r for r in report.rejections
-                  if r.code == "pocket_test_disagrees_px_vs_mm"][0]
-        self.assertAlmostEqual(record.numbers["distance_px"], 9.62, delta=0.05)
-        self.assertAlmostEqual(record.numbers["radius_px"], 14.46, delta=0.02)
-        self.assertAlmostEqual(record.numbers["distance_mm"], 148.0, delta=1.5)
-        self.assertEqual(record.numbers["radius_mm"], 100.0)
-        self.assertTrue(record.numbers["inside_px"])
-        self.assertFalse(record.numbers["inside_mm"])
-        self.assertFalse(record.numbers["inside"])
-        self.assertEqual(record.numbers["pocket"], "left-side")
-        self.assertAlmostEqual(record.numbers["ppx_vs_mm_ratio"], 1.485, delta=0.02)
+        self.assertEqual(len(report.pots), 1, "the near-pocket disappearance is a record")
+        pot = report.pots[0]
+        self.assertEqual(pot.verdict, "unknown")
+        self.assertEqual(pot.reason, "pocket_distance_within_uncertainty")
+        self.assertEqual(pot.pocket, "left-side")
+        self.assertEqual(pot.verdict_mm, "ambiguous")
+        self.assertTrue(pot.inside_px)
+        self.assertAlmostEqual(pot.distance_mm, 148.5, delta=1.0)
+        self.assertEqual(pot.radius_mm, 100.0)
+        self.assertAlmostEqual(pot.distance_mm_uncertainty, 54.1, delta=1.5)
+        self.assertAlmostEqual(abs(pot.distance_mm - pot.radius_mm),
+                               pot.distance_mm_uncertainty, delta=6.0)
+        self.assertNotIn("pocket_test_disagrees_px_vs_mm", codes(report.rejections))
+        self.assertNotIn("disappeared_outside_pocket", codes(report.rejections))
         self.assert_evidence_complete(report)
         self.assert_json_safe(report)
 
-    def test_the_same_track_inside_the_millimetre_gate_is_a_pot_candidate_again(self):
-        """Half a radius towards the rail is 74 mm: inside, and both tests agree."""
+    def test_a_further_sighting_is_confidently_outside_and_the_disagreement_is_named(self):
+        """12 px below the same centre = 190 mm, clear of 100 mm + the error bar."""
         model = default_pocket_model(quad=WORK_QUAD, pocket_r_mm=POCKET_R_MM)
         pocket = model.by_name("left-side")
-        target = (pocket.x + 1.6, pocket.y + 4.54)      # 4.81 px = half the pixel radius
+        target = (pocket.x, pocket.y + 12.0)            # still inside the 14.46 px radius
+        rows = (still(*OPEN, 20)
+                + approach(target, OPEN[0], OPEN[1], 20, n=25, finish=1.0))
+        report = report_for(Track("obj", tuple(rows)),
+                            thresholds=GateThresholds(frame_size=list(WORK_SIZE),
+                                                      cloth_quad=list(WORK_QUAD)))
+        self.assertEqual(report.pots, [], "190 mm is not a pot by any reading")
+        self.assertIn("pocket_test_disagrees_px_vs_mm", codes(report.rejections))
+        record = [r for r in report.rejections
+                  if r.code == "pocket_test_disagrees_px_vs_mm"][0]
+        self.assertTrue(record.numbers["inside_px"])
+        self.assertFalse(record.numbers["inside_mm"])
+        self.assertGreater(record.numbers["distance_mm"],
+                           record.numbers["radius_mm"] + record.thresholds["pocket_r_mm"] * 0.5)
+        self.assertAlmostEqual(record.numbers["distance_px"], 12.0, delta=0.05)
+        self.assert_evidence_complete(report)
+
+    def test_the_same_track_at_the_hole_is_a_pot_candidate_again(self):
+        """Two px from the centre is 32 mm: inside 100 mm by more than the error bar."""
+        model = default_pocket_model(quad=WORK_QUAD, pocket_r_mm=POCKET_R_MM)
+        pocket = model.by_name("left-side")
+        target = (pocket.x + 0.7, pocket.y + 1.9)       # 2.0 px from the centre
         rows = (still(*OPEN, 20)
                 + approach(target, OPEN[0], OPEN[1], 20, n=25, finish=1.0))
         report = report_for(Track("obj", tuple(rows)),
@@ -583,7 +655,8 @@ class PotRuleTests(GateTestCase):
         self.assertEqual([p.verdict for p in report.pots], ["pot"])
         pot = report.pots[0]
         self.assertEqual(pot.pocket_test, "mm")
-        self.assertLessEqual(pot.distance_mm, pot.radius_mm)
+        self.assertEqual(pot.verdict_mm, "inside")
+        self.assertLessEqual(pot.distance_mm + pot.distance_mm_uncertainty, pot.radius_mm)
         self.assertTrue(pot.inside_px)
         self.assertFalse(pot.pocket_test_disagrees)
 
@@ -941,10 +1014,10 @@ class ReportTests(GateTestCase):
                                                  sample(21, OPEN[0] + 12, OPEN[1]),
                                                  sample(22, OPEN[0] + 4, OPEN[1]),
                                                  sample(23, OPEN[0], OPEN[1])])), {}),
-            # a ball inside the pixel radius but outside the millimetre gate
+            # a ball inside the pixel radius but confidently outside the millimetre gate
             (Track("n", tuple(still(*OPEN, 20)
-                              + approach((default_pocket_model(quad=WORK_QUAD).by_name("left-side").x + 3.2,
-                                          default_pocket_model(quad=WORK_QUAD).by_name("left-side").y + 9.08),
+                              + approach((default_pocket_model(quad=WORK_QUAD).by_name("left-side").x,
+                                          default_pocket_model(quad=WORK_QUAD).by_name("left-side").y + 12.0),
                                          OPEN[0], OPEN[1], 20, n=25, finish=1.0))),
              {"thresholds": GateThresholds(frame_size=list(WORK_SIZE),
                                            cloth_quad=list(WORK_QUAD))}),
@@ -958,17 +1031,18 @@ class ReportTests(GateTestCase):
 
     def test_track_events_can_be_called_directly_on_one_track(self):
         track = pot_track("obj", "foot-left")
-        shots, pots, rejections = track_events(track, default_pocket_model(),
-                                               observed_until_t=track.samples[-1].t + PERSIST)
+        shots, pots, rejections, unresolved = track_events(
+            track, default_pocket_model(), observed_until_t=track.samples[-1].t + PERSIST)
         self.assertEqual(len(shots), 1)
         self.assertEqual([p.verdict for p in pots], ["pot"])
         self.assertEqual(rejections, [])
+        self.assertEqual(unresolved, [])
 
     def test_every_record_is_a_plain_dict_after_as_dict(self):
         report = classify([pot_track("obj", "right-side")])
         payload = report.as_dict()
-        self.assertEqual(set(payload), {"shots", "pots", "rejections", "breaks", "counts",
-                                        "observed_until_t", "notes"})
+        self.assertEqual(set(payload), {"shots", "pots", "rejections", "breaks", "unresolved",
+                                        "counts", "observed_until_t", "notes"})
         for shot in payload["shots"]:
             self.assertEqual(shot["kind"], "shot")
             self.assertTrue(shot["samples_used"] and shot["thresholds"])
@@ -1045,12 +1119,19 @@ class Sam3CensusTests(GateTestCase):
 
     def test_nothing_is_called_a_shot_or_a_pot(self):
         self.assertEqual(self.report.shots, [])
-        self.assertEqual(self.report.pots, [])
         self.assertEqual(self.report.breaks, [])
+        self.assertEqual([p for p in self.report.pots if p.is_pot], [])
         counts = self.report.as_dict()["counts"]
         self.assertEqual(counts["shots"], 0)
         self.assertEqual(counts["pots"], 0)
         self.assertEqual(counts["tracks"], len(self.tracks))
+        # three sparse chains do sit near the left-side pocket, and with the detector's
+        # 3.62 px p90 propagated they land in the gate's error bar: unknown, not a pot
+        self.assertEqual(counts["unknowns"], 3)
+        self.assertEqual({p.reason for p in self.report.pots},
+                         {"pocket_distance_within_uncertainty"})
+        self.assertTrue(all(p.verdict_mm == "ambiguous" for p in self.report.pots))
+        self.assertTrue(all(p.distance_mm > p.radius_mm for p in self.report.pots))
 
     def test_every_census_track_still_produces_a_named_reason(self):
         """Not one track is dropped in silence, whatever the sparsity."""
@@ -1075,7 +1156,10 @@ class Sam3CensusTests(GateTestCase):
         self.assertEqual(codes_seen["track_too_short"], 294)
         self.assertEqual(codes_seen["no_motion_onset"], 66)
         self.assertEqual(codes_seen["motion_too_short"], 4)
-        self.assertEqual(codes_seen["disappeared_outside_pocket"], 69)
+        # 69 disappearances on open cloth became 66: the 3 that sit within the gate's
+        # own error bar of the left-side pocket are unknown, not refusals
+        self.assertEqual(codes_seen["disappeared_outside_pocket"], 66)
+        self.assertEqual(sum(codes_seen.values()), 432)
 
 
 if __name__ == "__main__":
