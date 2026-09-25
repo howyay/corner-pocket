@@ -551,8 +551,14 @@ class Backend:
             payload = load(Path(source))
             if payload is None:
                 raise APIError("enrolment scratch file is missing: %s" % source, 500)
+            # The scratch store holds only this enrolment's rows: merge them in
+            # under the store lock, never write them over the whole gallery.
+            from src.face_id import add_faces
             target = self.out / "corner-pocket" / "face_embeddings.json"
-            atomic_save(target, payload)
+            with self._identity_lock:
+                add_faces(target, payload)
+                if self._identity_pipeline is not None:
+                    self._identity_pipeline.reload_gallery()
             promoted["store"] = str(target)
         return promoted
 

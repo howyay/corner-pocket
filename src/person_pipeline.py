@@ -27,7 +27,7 @@ import numpy as np
 from pathlib import Path
 import torch
 
-from src.face_id import DEFAULT_FACE_STORE, get_face_engine, load_faces, store_faces
+from src.face_id import DEFAULT_FACE_STORE, add_faces, get_face_engine, load_faces
 from src.person_identity import IdentityIndex
 
 _MEAN = np.array([0.485, 0.456, 0.406], np.float32)
@@ -264,14 +264,17 @@ class PersonPipeline:
             self._gallery = load_faces(self.face_store)
         return self._gallery
 
+    def reload_gallery(self):
+        """Forget the cached gallery: the next match reads the store again. Called
+        when something else (a confirmed enrolment) has written the store."""
+        self._gallery = None
+
     def enroll_face(self, player_id, image):
         engine = self._get_engine()
         analyze = getattr(engine, 'analyze_resilient', engine.analyze)
         records = [f for f in analyze(image) if engine.quality(f)]
-        gallery = self._gallery_data()
-        gallery.setdefault(str(player_id), []).extend(records)
-        store_faces(self.face_store, gallery)
-        self._gallery = gallery
+        # merge into the store on disk, never write the cached copy over it
+        self._gallery = add_faces(self.face_store, {str(player_id): records})
         return len(records)
 
     def explicit_seed(self, cluster_id, player_id, reason='seed'):

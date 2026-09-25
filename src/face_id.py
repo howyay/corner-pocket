@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -313,6 +314,31 @@ def store_faces(path, gallery):
     tmp.write_text(json.dumps(stored, indent=1), encoding="utf-8")
     os.replace(tmp, path)
     return stored
+
+
+_STORE_LOCKS: dict = {}
+_STORE_LOCKS_GUARD = threading.Lock()
+
+
+def _store_lock(path):
+    """One process-wide lock per store path (the Operations store does the same)."""
+    with _STORE_LOCKS_GUARD:
+        return _STORE_LOCKS.setdefault(Path(path).resolve(), threading.RLock())
+
+
+def add_faces(path, additions):
+    """Merge {player_id: [face entries]} into the store; returns the stored gallery.
+
+    One locked read-modify-write: every other player's rows are kept as they are
+    and the new rows are appended after that player's existing ones. This is the
+    only safe way to add to the store - writing a gallery built from an earlier
+    read (or from the new rows alone) drops whoever was enrolled in between.
+    """
+    with _store_lock(path):
+        gallery = load_faces(path)
+        for pid, entries in additions.items():
+            gallery.setdefault(str(pid), []).extend(entries)
+        return store_faces(path, gallery)
 
 
 def load_faces(path):

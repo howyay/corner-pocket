@@ -871,6 +871,29 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(state['events'][-1]['action'], 'player_enroll_from_tracklet')
         self.assertEqual(state['revision'], 2)
 
+    def test_a_second_enrolment_keeps_the_first_players_faces_and_matches_at_once(self):
+        """Enrol A, then B, through the real confirm. The face store keeps both
+        players' samples (a confirm used to replace the whole gallery with the new
+        player's rows), and the running pipeline matches B on the next frame - no
+        restart - because the promote refreshes the gallery it had cached."""
+        from src.face_id import best_match, load_faces
+        from src.person_pipeline import PersonPipeline
+        pipeline = PersonPipeline(self.root, face_engine=Mock())
+        self.backend._identity_pipeline = pipeline
+        self.assertEqual(pipeline._gallery_data(), {}, 'the running pipeline caches an empty gallery')
+        first, a_face = self._enrol_selection(track_id=6, seed=11)
+        second, b_face = self._enrol_selection(track_id=9, seed=23)
+        a = self._confirm('Ana', first)
+        b = self._confirm('Bo', second)
+        self.assertTrue(a['ok'] and b['ok'], (a, b))
+        store = load_faces(self.out / 'corner-pocket' / 'face_embeddings.json')
+        self.assertEqual(sorted(store), sorted([a['player_id'], b['player_id']]), 'both players are in the store')
+        self.assertEqual([len(store[a['player_id']]), len(store[b['player_id']])], [3, 3])
+        match = best_match(b_face, pipeline._gallery_data())
+        self.assertIsNotNone(match, 'the running pipeline sees the new enrolment without a restart')
+        self.assertEqual(match['player_id'], b['player_id'])
+        self.assertEqual(best_match(a_face, pipeline._gallery_data())['player_id'], a['player_id'])
+
     def test_identity_frame_read_leaves_the_index_file_untouched(self):
         """GET /api/identity/frame runs the tracker over one frame. That is
         observation: the index file used to be rewritten by every register()
