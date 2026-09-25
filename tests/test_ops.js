@@ -153,6 +153,26 @@ test('player notes are editable and safely escaped', () => {
   assert.ok(html.includes('&lt;/textarea&gt;'));
   assert.ok(!html.includes('<script>'));
 });
+test('every shell word has EN and 中 copy, so no raw key renders (Regulars roster heading)', () => {
+  const h = harness();
+  // Every literal t('key') in the shell must resolve in both languages: t() falls
+  // back to the key itself, which is how "rosterTitle" reached the screen.
+  const words = JSON.parse(h.evaluate('JSON.stringify(words)'));
+  const used = [...new Set([...source.matchAll(/\bt\('([A-Za-z0-9_]+)'\)/g)].map(m => m[1]))];
+  assert.ok(used.length > 90, `the scan found the shell's keys: ${used.length}`);
+  const missing = used.filter(key => !Array.isArray(words[key]) || !words[key][0] || !words[key][1]);
+  assert.deepEqual(missing, [], 'every t() key has an EN and a 中 entry');
+  h.evaluate("data.players=[{id:'p1',name:'Ana',status:'Active',rating:80,createdAt:'2026-09-01T00:00:00Z'}]");
+  for (const [lang, heading] of [['en', words.rosterTitle[0]], ['zh', words.rosterTitle[1]]]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('playersScreen()');
+    const headings = [...html.matchAll(/<h3[^>]*>([^<]*)<\/h3>/g)].map(m => m[1]);
+    assert.ok(headings.includes(heading), `${lang}: the roster heading is its copy: ${JSON.stringify(headings)}`);
+    const raw = used.filter(key => new RegExp(`>${key}<`).test(html));
+    assert.deepEqual(raw, [], `${lang}: no raw key renders as text on Regulars`);
+  }
+  assert.ok(/[\u4e00-\u9fff]/.test(words.rosterTitle[1]), 'the 中 heading is Chinese');
+});
 test('Back room retains nine truthful deferred roadmap areas', () => {
   const h = harness();
   const html = h.evaluate('roadmapPanel()');
