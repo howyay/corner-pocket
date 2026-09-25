@@ -416,3 +416,22 @@ test('a Twitch VOD picker sends the replay source the server accepts, never a li
   assert.equal(h.evaluate('errors.length'), 1);
   assert.equal(h.evaluate('replayChoice()'), null);
 });
+test('a VOD replay the server would refuse is explained before Start, in both languages', () => {
+  const h = harness();
+  h.evaluate("errors=[]; message=(text,error)=>errors.push({text,error})");
+  for (const bad of ["{vod_id:'https://www.twitch.tv/examplechannel'}", "{vod_id:'abc'}", "{vod_id:'0'}", "{vod_id:'1000000011',rate:9}"]) {
+    h.evaluate(`vodChoice=null; pickReplay(${bad})`);
+    assert.equal(h.evaluate('replayChoice()'), null, `${bad} is not kept as the replay`);
+  }
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(errors.map(e=>[e.text,e.error]))')), [
+    ['Use a Twitch VOD id or https://www.twitch.tv/videos/<id>', true],
+    ['Use a Twitch VOD id or https://www.twitch.tv/videos/<id>', true],
+    ['Use a Twitch VOD id or https://www.twitch.tv/videos/<id>', true],
+    ['Rate must be more than 0 and at most 8', true]]);
+  h.evaluate("lang='zh'; errors=[]; pickReplay({vod_id:'abc'}); pickReplay({vod_id:'1000000011',rate:9})");
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(errors.map(e=>e.text))')), ['请输入 Twitch 回放 id 或 https://www.twitch.tv/videos/<id> 网址', '倍速须大于 0 且不超过 8']);
+  for (const good of ["{vod_id:'v1000000011',rate:8}", "{vod_id:'https://www.twitch.tv/videos/1000000011/'}", "{vod_id:'1000000011',rate:0.25}"]) {
+    h.evaluate(`vodChoice=null; pickReplay(${good})`);
+    assert.notEqual(h.evaluate('replayChoice()'), null, `${good} is accepted`);
+  }
+});
