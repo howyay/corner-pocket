@@ -27,6 +27,16 @@ What the queue is not allowed to claim:
 * **machine output is labelled as machine output** (`provenance.machine_produced`,
   `human_confirmed: false`), with the detector, the cadence and the run.
 
+What the queue serves (the rule is written into the report as `serving_rule`): every
+shot the gate shaped as an event, a pot the gate confirmed, and **every occluded
+unknown that vanished while still moving** (last sighting >= 100 px/s) -- the owner's
+standing decision is to label candidates honestly rather than hide them, and since
+one member of that class was already in the queue, serving one of three siblings
+would be an inconsistent rule.  An unknown that vanished effectively at rest stays
+out: a near-stationary disappearance is a detector dropout, not a ball running at a
+pocket.  The runs the gate cannot resolve (`oscillation_unresolved`) are neither
+events nor rejections and are counted, not carded.
+
 Ids are stable by identity.  An entry already served keeps the id it was served
 with -- `provenance.ball_id` is the key -- because a human verdict may already
 point at that id.  Ids of entries that left the queue are retired, never handed
@@ -59,6 +69,10 @@ NATIVE_W, NATIVE_H = 1280, 720
 DETECTOR = "dense-track · trained 960×540 net @ ball@2"
 ID_BASE = 9001
 ANNOTATIONS = "out/scan30/annotations.json"
+#: The durable id ledger.  The report is overwritten on every regeneration, so the
+#: ids that are dead for good live in their own file: without it a queue that shrank
+#: would re-issue a retired number to a new ball.
+LEDGER = "out/scan30/dense_queue_retired.json"
 #: Stored pocket keys are pool-table rail terms; the rail shows position words.
 #: Any sentence built here has to use the shown word, because the rail only
 #: translates the raw key when it renders `nearest_pocket`, not prose.
@@ -71,6 +85,15 @@ POCKET_WORDS_ZH = {"head-left": "左上", "head-right": "右上", "foot-left": "
 #: the stationary disappearances in this run move at <= 17.4 px/s, the moving
 #: ones at >= 211.3 px/s, and the gate's own motion bar is 40 px/s.
 MOVING_PX_S = 100.0
+#: Why a pot-shaped unknown is in the queue.  The class rule is the owner's
+#: standing decision -- label the candidate honestly rather than hide it -- and
+#: the carry rule keeps an already-served card from being withdrawn silently.
+CLASS_REASON = ("one of the occluded disappearances where the ball was still moving when "
+                "it vanished (>= %.0f px/s at the last sighting): the owner's decision is to "
+                "label candidates honestly rather than hide them, so the whole class is "
+                "served, each with its pocket distance and the error bar on it" % MOVING_PX_S)
+CARRIED_REASON = ("already in the queue from the previous gate run: it stays until a human "
+                  "looks at it or the gate confirms it, even though the gate calls it unknown")
 
 
 def _md5(path) -> str | None:
@@ -351,16 +374,58 @@ def _previous_ids(previous_path) -> dict:
     return held
 
 
-def assign_ids(entries: list, previous_path) -> dict:
+def _previous_retired(report_path) -> dict:
+    """Every id this tool has already retired, read back from its own report.
+
+    An id whose entry left the queue is dead for good, and the queue file alone
+    cannot say so: the report is the ledger.  Without this, a queue that shrank
+    would hand a retired number to a new ball -- the one thing stable ids exist
+    to prevent (`9003` would come back the moment the queue held only `9002`).
+    """
+    path = Path(report_path)
+    if not path.exists():
+        return {}
+    try:
+        previous = json.loads(path.read_text())
+    except ValueError:
+        return {}
+    retired = {ball_id: dict(row) for ball_id, row in (previous.get("retired_ids") or {}).items()}
+    channel = previous.get("channels") or {}
+    departed = {row.get("ball_id"): row for row in channel.get("departed_entries") or []}
+    for ball_id, old_id in ((previous.get("id_changes") or {}).get("departed") or {}).items():
+        row = departed.get(ball_id) or {}
+        retired.setdefault(ball_id, {"id": old_id, "code": row.get("code"),
+                                     "numbers": row.get("numbers"), "why": row.get("reason"),
+                                     "retired_in_queue": (previous.get("queue") or {}).get("md5_after")})
+    return retired
+
+
+def read_ledger(path) -> dict:
+    """The ids this tool has retired, as written by the last run."""
+    path = Path(path)
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except ValueError:
+        return {}
+
+
+def write_ledger(path, retired: dict) -> None:
+    Path(path).write_text(json.dumps(retired, indent=1, sort_keys=True))
+
+
+def assign_ids(entries: list, previous_path, reserved_ids=()) -> dict:
     """Ids are stable by identity, and a retired id is never handed to another ball.
 
     A verdict may already point at a served id, so the rule has to survive the
     queue changing shape underneath it: an entry whose ball was served before
-    keeps its number, a new ball gets a number above everything ever issued
-    here, and a ball that left the queue retires its number for good.
+    keeps its number, a new ball gets a number above everything ever issued here
+    (including the ids the report has retired), and a ball that left the queue
+    retires its number for good.
     """
     held = _previous_ids(previous_path)
-    used = set(held.values())
+    used = set(held.values()) | {int(i) for i in reserved_ids}
     is_new = []
     for entry in entries:                      # already sorted by t
         ball_id = entry["provenance"]["ball_id"]
@@ -376,9 +441,13 @@ def assign_ids(entries: list, previous_path) -> dict:
         used.add(nxt)
         nxt += 1
     kept = {entry["provenance"]["ball_id"]: entry["id"] for entry in entries}
+    departed = {b: i for b, i in held.items() if b not in kept}
     return {"served_before": held,
             "reused": {b: i for b, i in held.items() if b in kept},
-            "departed": {b: i for b, i in held.items() if b not in kept},
+            "departed": departed,
+            # Everything this run will not hand out: the ids earlier runs retired
+            # plus the ones this run retires as it writes.
+            "reserved": sorted({int(i) for i in reserved_ids} | set(departed.values())),
             "added": {entry["provenance"]["ball_id"]: entry["id"] for entry in is_new}}
 
 
@@ -500,17 +569,23 @@ def gate_ledger(artifact, id_plan: dict) -> dict:
                 "threshold_px_s": MOVING_PX_S,
                 "note": "the split is insensitive in this run: the stationary disappearances "
                         "move at <= 17.4 px/s, the moving ones at >= 211.3 px/s",
+                "class_rule": "the whole moving class is served (owner decision: label "
+                              "candidates honestly rather than hide them)",
                 "moving": moving, "parked": len(parked)},
-            "why_not_served": "every one of these is verdict_mm 'ambiguous': no pocket claim "
-                              "survives the error bar, so serving them would ask the operator "
-                              "to judge candidates the gate itself cannot call",
+            "why_served": "each one is verdict_mm 'ambiguous', so serving it asks the operator "
+                          "a question rather than making a claim: the entry carries the pocket "
+                          "distance with its error bar, no tier, and the machine-produced label",
+            "why_the_parked_ones_are_not_served": "a near-stationary disappearance is a "
+                                                  "detector dropout, not a ball running at a "
+                                                  "pocket; they stay counted in this ledger",
             "no_distance_reported": [row["ball_id"] for row in text],
             "rows": unknown_rows},
         "departed_entries": departed,
     }
 
 
-def build(artifact_path: str, queue_path: str, report_path: str, previous_path: str | None = None) -> dict:
+def build(artifact_path: str, queue_path: str, report_path: str, previous_path: str | None = None,
+          ledger_path: str | None = None) -> dict:
     artifact = json.loads(Path(artifact_path).read_text())
     H, quad = calibration(artifact)
     before = _md5(ANNOTATIONS)
@@ -520,25 +595,45 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
     # What the queue is allowed to serve:
     # * every shot the gate shaped as an event;
     # * a pot the gate actually *confirmed*;
-    # * a pot-shaped *unknown* only if the queue already carried it -- an
-    #   unknown the gate cannot call is not a new card, and every one of them in
-    #   this run is `verdict_mm ambiguous`, so the seven the previous queue did
-    #   not carry stay out and are counted here instead.
+    # * *every* occluded unknown that vanished while still moving -- the class the
+    #   owner decided to label rather than hide (one of its members was already in
+    #   the queue, so serving one and not its siblings would be an inconsistent
+    #   rule); each one carries its millimetre distance *with* the error bar and
+    #   `verdict_mm ambiguous`, so the operator sees the uncertainty, not a claim;
+    # * an unknown the queue already carried, even if it was effectively at rest,
+    #   because a card once served is not silently withdrawn.
+    # An unknown that vanished at rest stays report-only: a near-stationary
+    # disappearance is a detector dropout, not a ball running at a pocket.
     pots = artifact["gate"]["pots"]
     confirmed = [row for row in pots if row.get("verdict") == "confirmed"]
     unknown = [row for row in pots if row.get("verdict") != "confirmed"]
-    carried = [row for row in unknown if row["ball_id"] in held]
-    dropped = [row for row in unknown if row["ball_id"] not in held]
+
+    def _moved(row) -> bool:
+        speed = row.get("last_speed_px_s")
+        return speed is not None and float(speed) >= MOVING_PX_S
+
+    served_unknown = [row for row in unknown if row["ball_id"] in held or _moved(row)]
+    dropped = [row for row in unknown if row not in served_unknown]
 
     entries = [shot_event(shot, H, artifact) for shot in artifact["gate"]["shots"]]
     entries += [pot_event(row, H, artifact) for row in confirmed]
-    carried_reason = ("already in the queue from the previous gate run: it stays until a "
-                      "human looks at it or the gate confirms it, even though the gate calls "
-                      "it unknown")
-    entries += [pot_event(row, H, artifact, served_reason=carried_reason,
-                          siblings_not_served=len(dropped)) for row in carried]
+    for row in served_unknown:
+        entries.append(pot_event(row, H, artifact,
+                                 served_reason=(CARRIED_REASON if row["ball_id"] in held
+                                                else CLASS_REASON),
+                                 siblings_not_served=len(dropped)))
     entries.sort(key=lambda event: event["t"])
-    id_plan = assign_ids(entries, previous_path or queue_path)
+    retired = _previous_retired(report_path)
+    retired.update(read_ledger(ledger_path or LEDGER))
+    id_plan = assign_ids(entries, previous_path or queue_path,
+                         reserved_ids={row["id"] for row in retired.values()
+                                       if isinstance(row.get("id"), int)})
+    ledger = gate_ledger(artifact, id_plan)
+    for ball_id, old_id in id_plan["departed"].items():
+        row = next((x for x in ledger["departed_entries"] if x["ball_id"] == ball_id), {})
+        retired[ball_id] = {"id": old_id, "code": row.get("code"),
+                            "numbers": row.get("numbers"), "why": row.get("reason"),
+                            "retired_in_queue": queue_before}
     Path(queue_path).write_text(json.dumps(entries, indent=1))
     after = _md5(ANNOTATIONS)
     report = {
@@ -560,27 +655,35 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
                             for event in entries}},
         "id_changes": {"served_before": id_plan["served_before"],
                        "kept": id_plan["reused"], "added": id_plan["added"],
-                       "departed": id_plan["departed"]},
+                       "departed": id_plan["departed"],
+                       "reserved_never_reissued": id_plan["reserved"]},
         "verdict_file": {"path": ANNOTATIONS, "md5_before": before, "md5_after": after,
                          "unchanged": before == after},
         "serving_rule": {
             "serve": ["every shot the gate shaped as an event",
                       "a pot the gate confirmed (verdict 'confirmed')",
-                      "a pot-shaped unknown the queue already carried, until a human verdict "
-                      "or a gate confirmation moves it"],
+                      "every occluded unknown that vanished while still moving "
+                      "(last sighting >= %.0f px/s; 3 of the 8 in this segment)" % MOVING_PX_S,
+                      "a pot-shaped unknown the queue already carried, even at rest: a card "
+                      "once served is not silently withdrawn"],
             "never_serve": ["an unresolved run (the gate cannot tell a shot from an oscillation)",
                             "a rejected candidate",
-                            "a pot-shaped unknown the queue did not already carry"],
-            "why": "a card asks the operator for a verdict, so it may only carry a candidate "
-                   "the gate can at least shape -- and every occluded unknown in this run is "
-                   "'ambiguous' in the millimetre pocket test: the gate itself cannot call it, "
-                   "and serving all eight would ask the operator to judge candidates the gate "
-                   "refuses to judge"},
+                            "an occluded unknown that vanished effectively at rest: a "
+                            "near-stationary disappearance is a detector dropout, not a ball "
+                            "running at a pocket (5 of the 8 in this segment, <= 17.4 px/s)"],
+            "moving_threshold_px_s": MOVING_PX_S,
+            "why": "the owner's standing decision is to label candidates honestly rather than "
+                   "hide them, and the class is internally consistent: one member was already "
+                   "served, so serving one of the three and hiding its two siblings would be "
+                   "an inconsistent rule.  Every served unknown is 'ambiguous' in the "
+                   "millimetre pocket test, carries the distance with its error bar, is "
+                   "labelled machine-produced/unconfirmed, and has no tier -- so it asks the "
+                   "operator a question, it does not make a claim"},
         "not_served": {"shots_in_artifact": len(artifact["gate"]["shots"]),
                        "pots_in_artifact": len(pots),
                        "pots_confirmed": len(confirmed),
                        "pots_unknown_in_channel": len(unknown),
-                       "unknowns_carried_from_previous_queue": [row["ball_id"] for row in carried],
+                       "unknowns_served": [row["ball_id"] for row in served_unknown],
                        "unknowns_not_carded": [{"ball_id": row["ball_id"], "last_t": row.get("last_t"),
                                                 "distance_mm": row.get("distance_mm"),
                                                 "distance_mm_uncertainty": row.get("distance_mm_uncertainty"),
@@ -591,9 +694,10 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
                        "rejections": artifact.get("gate", {}).get("counts", {}).get("rejections"),
                        "rejection_codes": artifact.get("rejection_codes"),
                        "note": "the full rejected-candidate evidence stays in the dense artifact; "
-                               "the queue carries only the events the gate shaped as events, plus "
-                               "any pot-shaped unknown that was already in the queue"},
-        "channels": gate_ledger(artifact, id_plan),
+                               "the queue carries the events the gate shaped as events and the "
+                               "occluded unknowns that vanish while still moving"},
+        "retired_ids": retired,
+        "channels": ledger,
         "entries": [{"id": event["id"], "t": event["t"], "type": event["type"],
                      "color": event["color"], "tier": event["tier"],
                      "status": event["gate"]["status"], "reasons": event["gate"]["reasons"],
@@ -601,6 +705,7 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
                                   if k.startswith("dense_") or k.startswith("vanish_")}}
                      for event in entries],
     }
+    write_ledger(ledger_path or LEDGER, retired)
     Path(report_path).write_text(json.dumps(report, indent=1))
     return report
 
@@ -612,10 +717,13 @@ def main():
     ap.add_argument("--report", default="out/scan30/dense_queue_report.json")
     ap.add_argument("--previous", default=None,
                     help="queue to take stable ids from (defaults to --queue before the write)")
+    ap.add_argument("--ledger", default=None,
+                    help=f"durable retired-id ledger (default {LEDGER})")
     args = ap.parse_args()
-    report = build(args.artifact, args.queue, args.report, args.previous)
+    report = build(args.artifact, args.queue, args.report, args.previous, args.ledger)
     channels = report["channels"]
     print(json.dumps({"queue": report["queue"], "id_changes": report["id_changes"],
+                      "retired_ids": report["retired_ids"],
                       "verdict_file": report["verdict_file"],
                       "counts": channels["counts"],
                       "oscillation_rejections": {k: v for k, v in channels["oscillation_rejections"].items()

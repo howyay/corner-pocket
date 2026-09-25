@@ -182,22 +182,30 @@ class DenseQueueHonesty(unittest.TestCase):
         path.write_text(json.dumps(artifact))
         return path
 
-    def _build(self, tmp, previous=None, pot_verdict="unknown"):
-        """Build the queue the way the tool is run: the old queue supplies the ids."""
+    def _build(self, tmp, previous=None, pot_verdict="unknown", queue_name="events.json",
+               ledger_name="retired.json"):
+        """Build the queue the way the tool is run: old queue supplies ids, ledger the dead ones."""
         from src.dense_queue import build
-        queue, report = Path(tmp) / "events.json", Path(tmp) / "report.json"
+        queue, report = Path(tmp) / queue_name, Path(tmp) / "report.json"
         previous_path = None
         if previous is not None:
             previous_path = Path(tmp) / "previous.json"
             previous_path.write_text(json.dumps(previous))
         build(str(self._artifact(tmp, pot_verdict=pot_verdict)), str(queue), str(report),
-              None if previous_path is None else str(previous_path))
+              None if previous_path is None else str(previous_path),
+              str(Path(tmp) / ledger_name))
         return json.loads(queue.read_text()), json.loads(report.read_text()), queue
+
+    @staticmethod
+    def _pot(events, ball_id="t265-blue"):
+        return next(event for event in events
+                    if event["type"] == "pot"
+                    and event["provenance"]["ball_id"] == ball_id)
 
     def test_every_entry_says_it_is_machine_made(self):
         with TemporaryDirectory() as tmp:
             events, _, _ = self._build(tmp, previous=self.PREVIOUS)
-            self.assertEqual(len(events), 2)
+            self.assertEqual(len(events), 3)
             for event in events:
                 provenance = event["provenance"]
                 self.assertTrue(provenance["machine_produced"])
@@ -209,7 +217,7 @@ class DenseQueueHonesty(unittest.TestCase):
     def test_the_pot_shaped_entry_is_not_a_pot(self):
         with TemporaryDirectory() as tmp:
             events, _, _ = self._build(tmp, previous=self.PREVIOUS)
-            pot = next(event for event in events if event["type"] == "pot")
+            pot = self._pot(events)
             self.assertEqual(pot["gate"]["status"], "unconfirmed")
             self.assertIn("cloth_occluded_at_disappearance", pot["gate"]["reasons"])
             self.assertNotEqual(pot["gate"]["status"], "confirmed")
@@ -241,35 +249,70 @@ class DenseQueueHonesty(unittest.TestCase):
         """The gate changed under the queue; the ids of what stayed must not."""
         with TemporaryDirectory() as tmp:
             events, report, _ = self._build(tmp, previous=self.PREVIOUS)
-            self.assertEqual([event["id"] for event in events], [9002, 9004])
             self.assertEqual({event["provenance"]["ball_id"]: event["id"] for event in events},
-                             {"t193-blue": 9002, "t265-blue": 9004})
+                             {"t193-blue": 9002, "t265-blue": 9004, "t202-blue": 9005})
             self.assertEqual(report["id_changes"]["departed"], {"t125-white": 9001,
                                                                 "t256-blue": 9003})
-            self.assertEqual(report["id_changes"]["added"], {})
+            self.assertEqual(report["id_changes"]["added"], {"t202-blue": 9005},
+                             "the class rule adds; it never renumbers what stayed")
+
+    def _with_extra_shot(self, tmp, ball_id="t999-blue"):
+        artifact = json.loads(self._artifact(tmp).read_text())
+        extra = dict(artifact["gate"]["shots"][0])
+        extra.update({"ball_id": ball_id, "onset_t": 1600.0, "group_id": "onset-2"})
+        artifact["gate"]["shots"].append(extra)
+        path = Path(tmp) / "artifact.json"
+        path.write_text(json.dumps(artifact))
+        return path
 
     def test_a_retired_id_is_never_handed_to_another_ball(self):
         from src.dense_queue import build
         with TemporaryDirectory() as tmp:
-            # The fixture's own shot keeps 9002; a second, new shot must not take
-            # 9001 or 9003, both retired by the two rejected runs.
-            artifact = json.loads(self._artifact(tmp).read_text())
-            extra = dict(artifact["gate"]["shots"][0])
-            extra.update({"ball_id": "t999-blue", "onset_t": 1600.0, "group_id": "onset-2"})
-            artifact["gate"]["shots"].append(extra)
-            path = Path(tmp) / "artifact.json"
-            path.write_text(json.dumps(artifact))
+            path = self._with_extra_shot(tmp)
             previous = Path(tmp) / "previous.json"
             previous.write_text(json.dumps(self.PREVIOUS))
             queue = Path(tmp) / "events.json"
-            build(str(path), str(queue), str(Path(tmp) / "report.json"), str(previous))
+            build(str(path), str(queue), str(Path(tmp) / "report.json"), str(previous),
+                  str(Path(tmp) / "retired.json"))
             by_ball = {event["provenance"]["ball_id"]: event["id"]
                        for event in json.loads(queue.read_text())}
             self.assertEqual(by_ball["t193-blue"], 9002)
             self.assertEqual(by_ball["t265-blue"], 9004)
-            self.assertGreater(by_ball["t999-blue"], 9004,
+            self.assertEqual(by_ball["t202-blue"], 9005)
+            self.assertGreater(by_ball["t999-blue"], 9005,
                                "a new ball starts above every id ever issued here")
             self.assertNotIn(by_ball["t999-blue"], (9001, 9003))
+
+    def test_a_shrunk_queue_never_reissues_a_retired_id(self):
+        """The ledger, not the queue, is what keeps a dead id dead."""
+        from src.dense_queue import build
+        with TemporaryDirectory() as tmp:
+            # Run 1 retires 9001 and 9003 (the two rejected runs) into the ledger.
+            _, first, _ = self._build(tmp, previous=self.PREVIOUS)
+            self.assertEqual(first["id_changes"]["reserved_never_reissued"], [9001, 9003])
+            ledger = json.loads((Path(tmp) / "retired.json").read_text())
+            self.assertEqual({row["id"] for row in ledger.values()}, {9001, 9003})
+            self.assertTrue(all(row["code"] == "oscillation_no_net_travel"
+                                for row in ledger.values()))
+            # Run 2: the queue has shrunk to 9002 alone.  A new ball must not take
+            # 9003 back just because nothing holds it any more.
+            shrunk = [entry for entry in self.PREVIOUS if entry["id"] == 9002]
+            queue = Path(tmp) / "shrunk.json"
+            build(str(self._with_extra_shot(tmp)), str(queue), str(Path(tmp) / "report2.json"),
+                  None, str(Path(tmp) / "retired.json"))
+            shrunk_path = Path(tmp) / "previous-shrunk.json"
+            shrunk_path.write_text(json.dumps(shrunk))
+            queue2 = Path(tmp) / "shrunk2.json"
+            build(str(self._artifact(tmp)), str(queue2), str(Path(tmp) / "report3.json"),
+                  str(shrunk_path), str(Path(tmp) / "retired.json"))
+            ids = {event["provenance"]["ball_id"]: event["id"]
+                   for event in json.loads(queue2.read_text())}
+            self.assertEqual(ids["t193-blue"], 9002, "the one still served keeps its id")
+            for ball_id in ("t265-blue", "t202-blue"):
+                self.assertNotIn(ids[ball_id], (9001, 9003),
+                                 "a retired id is dead even when nothing holds it")
+                self.assertGreaterEqual(ids[ball_id], 9001)
+            self.assertEqual(len(set(ids.values())), len(ids), "ids stay unique")
 
     def test_regenerating_from_the_same_gate_output_changes_nothing(self):
         with TemporaryDirectory() as tmp:
@@ -286,7 +329,7 @@ class DenseQueueHonesty(unittest.TestCase):
     def test_the_unknown_keeps_its_millimetre_distance_and_error_bar(self):
         with TemporaryDirectory() as tmp:
             events, _, _ = self._build(tmp, previous=self.PREVIOUS)
-            numbers = next(e for e in events if e["type"] == "pot")["gate"]["numbers"]
+            numbers = self._pot(events)["gate"]["numbers"]
             self.assertAlmostEqual(numbers["vanish_dist_mm"], 148.48, places=2)
             self.assertAlmostEqual(numbers["vanish_dist_mm_uncertainty"], 54.11, places=2)
             self.assertEqual(numbers["vanish_verdict_mm"], "ambiguous")
@@ -299,7 +342,7 @@ class DenseQueueHonesty(unittest.TestCase):
     def test_the_pocket_test_disagreement_is_reported(self):
         with TemporaryDirectory() as tmp:
             events, _, _ = self._build(tmp, previous=self.PREVIOUS)
-            pot = next(event for event in events if event["type"] == "pot")
+            pot = self._pot(events)                      # t265-blue: px inside, mm outside
             numbers = pot["gate"]["numbers"]
             self.assertFalse(numbers["pocket_test_agrees"])
             self.assertIn("pocket_test_disagrees_px_vs_mm", pot["gate"]["codes"])
@@ -314,23 +357,61 @@ class DenseQueueHonesty(unittest.TestCase):
             self.assertTrue(set(pot["gate"]["codes"]) <= set(pot["gate"]["reasons"]))
             self.assertTrue(any("±" in reason for reason in pot["gate"]["reasons"]))
 
-    def test_the_unknowns_that_were_not_carried_are_counted_and_not_carded(self):
+    def test_the_moving_class_is_served_and_the_parked_unknowns_are_not(self):
+        """The owner's rule: a disappearance that was still moving is a candidate."""
         with TemporaryDirectory() as tmp:
             events, report, _ = self._build(tmp, previous=self.PREVIOUS)
             served = {event["provenance"]["ball_id"] for event in events}
-            self.assertEqual(served, {"t193-blue", "t265-blue"})
+            self.assertEqual(served, {"t193-blue", "t265-blue", "t202-blue"})
             self.assertEqual(report["not_served"]["pots_confirmed"], 0)
             self.assertEqual(report["not_served"]["pots_unknown_in_channel"], 3)
+            self.assertEqual(report["not_served"]["unknowns_served"], ["t265-blue", "t202-blue"])
             not_carded = report["not_served"]["unknowns_not_carded"]
-            self.assertEqual({row["ball_id"] for row in not_carded}, {"t170-black", "t202-blue"})
+            self.assertEqual([row["ball_id"] for row in not_carded], ["t170-black"],
+                             "a near-stationary disappearance is a dropout, not a candidate")
             for row in not_carded:
                 self.assertEqual(row["verdict_mm"], "ambiguous")
                 self.assertIsNotNone(row["distance_mm"])
                 self.assertIsNotNone(row["distance_mm_uncertainty"])
+                self.assertLess(row["last_speed_px_s"], 100.0)
             channel = report["channels"]["occluded_unknowns"]
             self.assertEqual(channel["count"], 3)
-            self.assertEqual([row["ball_id"] for row in channel["served"]], ["t265-blue"])
+            self.assertEqual([row["ball_id"] for row in channel["served"]],
+                             ["t265-blue", "t202-blue"])
             self.assertEqual(channel["verdict_mm_counts"], {"ambiguous": 3})
+            self.assertEqual(channel["moving_at_last_sighting"]["threshold_px_s"], 100.0)
+            self.assertEqual([row["ball_id"]
+                              for row in channel["moving_at_last_sighting"]["moving"]],
+                             ["t265-blue", "t202-blue"])
+            self.assertEqual(channel["moving_at_last_sighting"]["parked"], 1)
+
+    def test_the_class_rule_serves_a_still_moving_unknown_the_queue_never_carried(self):
+        with TemporaryDirectory() as tmp:
+            events, report, _ = self._build(tmp)          # no previous queue at all
+            by_ball = {event["provenance"]["ball_id"]: event for event in events}
+            self.assertEqual(set(by_ball), {"t193-blue", "t265-blue", "t202-blue"})
+            self.assertNotIn("t170-black", by_ball, "the parked one is never served")
+            for ball_id in ("t202-blue", "t265-blue"):
+                self.assertIn("still moving", by_ball[ball_id]["provenance"]["served_because"])
+                self.assertEqual(by_ball[ball_id]["provenance"]["unknowns_in_channel"], 1)
+            for event in events:
+                if event["type"] != "pot":
+                    continue
+                self.assertEqual(event["gate"]["status"], "unconfirmed")
+                self.assertIsNone(event["tier"])
+                self.assertIn("±", event["gate"]["numbers"]["vanish_distance_text"])
+                self.assertEqual(event["gate"]["numbers"]["vanish_verdict_mm"], "ambiguous")
+
+    def test_the_serving_rule_is_written_down_in_words(self):
+        with TemporaryDirectory() as tmp:
+            _, report, _ = self._build(tmp, previous=self.PREVIOUS)
+            rule = report["serving_rule"]
+            self.assertEqual(rule["moving_threshold_px_s"], 100.0)
+            joined = " ".join(rule["serve"] + rule["never_serve"])
+            self.assertIn("vanished while still moving", joined)
+            self.assertIn("at rest", joined)
+            self.assertIn("unresolved", joined)
+            self.assertIn("honestly", rule["why"])
 
     def test_the_unresolved_runs_are_counted_and_not_carded(self):
         with TemporaryDirectory() as tmp:
@@ -373,9 +454,10 @@ class DenseQueueHonesty(unittest.TestCase):
             path.write_text(json.dumps(artifact))
             queue = Path(tmp) / "events.json"
             build(str(path), str(queue), str(Path(tmp) / "report.json"))
-            self.assertEqual([event["provenance"]["ball_id"]
-                              for event in json.loads(queue.read_text())],
-                             ["t193-blue", "t265-blue"])
+            served = [event["provenance"]["ball_id"] for event in json.loads(queue.read_text())]
+            self.assertEqual(served, ["t202-blue", "t193-blue", "t265-blue"],
+                             "the confirmed pot is served without being carried; the two "
+                             "moving unknowns come in by the class rule")
 
     def test_the_verdict_file_never_gains_the_dense_ids(self):
         with TemporaryDirectory() as tmp:
