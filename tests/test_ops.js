@@ -305,6 +305,13 @@ test('registration without a guest name or a regular is stopped at the guest fie
   await h.handlers.submit(form({pid0: 'p1', guest0: ''}));
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => c.payload))')), [{members: [{name: 'Ann'}]}, {members: [{pid: 'p1'}]}]);
 });
+test('choosing a regular after the guest prompt clears it, so the browser lets the form submit', () => {
+  const h = harness();
+  const guest = {validity: 'Type a guest name or choose a regular.', setCustomValidity(text) { this.validity = text; }};
+  const form = {querySelectorAll: sel => sel === 'input' ? [guest] : []};
+  h.handlers.change({target: {id: '', name: 'pid0', form}});
+  assert.equal(guest.validity, '');
+});
 test('a full floor is explained in plain words in both languages', () => {
   const h = harness();
   assert.equal(h.evaluate("validationMessage('All tables are in use')"), 'All tables are in use');
