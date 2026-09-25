@@ -26,7 +26,8 @@ test('live controls keep the dataset/channel allowlist and the latency caveat', 
   assert.equal(h.evaluate('regulars().length'), 0);
   const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
   assert.ok(adapter.includes('data-vs-action="live-start"') && adapter.includes('data-vs-action="live-stop"'));
-  assert.ok(adapter.includes('data-vs-value="${d}"') && adapter.includes("['table','person']"));
+  assert.ok(adapter.includes('data-vs-value="${d}"') && adapter.includes("['table','person','ball']"),
+    'the live row offers table, person and the trained ball stage');
   assert.ok(adapter.includes('not glass-to-glass'));
   assert.ok(adapter.includes('data-vs-action="pick-live"'));
 });
@@ -198,4 +199,46 @@ test('failed API response localizes primary copy and preserves exact optional de
   assert.equal(h.evaluate('errors[0].detail'), 'Schedule match before scoring');
   assert.ok(!h.evaluate('errors[0].text').includes('Schedule match'));
   assert.equal(h.evaluate('busy'), false);
+});
+
+test('the clock paints the true remaining time on the first render, in every view', () => {
+  const h = harness();
+  // The defect: clockHTML() hardcoded 0:30, so any re-render (switching to
+  // Vision, a stream repainting the strip) flashed a value the clock was not at.
+  h.evaluate("timer={duration:60,remaining:12.4,deadline:null}");
+  const painted = h.evaluate('clockHTML()');
+  assert.ok(painted.includes('>0:13<'), 'the first paint is the real remaining time: ' + painted);
+  assert.ok(!painted.includes('>0:30<'), 'never the hardcoded 0:30');
+  assert.ok(painted.includes('width:20.666'), 'the progress bar paints the live value too: ' + painted);
+  // A running clock paints from the same source, and the interval writes with the
+  // same formatter, so a paint and a tick can never disagree.
+  h.evaluate("timer={duration:60,remaining:12.4,deadline:Date.now()+7400}");
+  assert.ok(/>(0:0[7-8])</.test(h.evaluate('clockHTML()')), 'a deadline render is the live value too');
+  h.evaluate("timer={duration:60,remaining:12.4,deadline:null}; seen=[]; document.querySelectorAll = sel => sel === '[data-clock]' ? [{textContent:'', classList:{toggle(){}}}].map(e => { seen.push(e); return e; }) : []");
+  h.evaluate('tick()');
+  assert.equal(h.evaluate('seen[0].textContent'), '0:13', 'the interval writes exactly what the paint shows');
+  assert.equal(h.evaluate('clockText(clockLeft())'), '0:13', 'and both go through clockText()');
+  // Every view: the Vision surface carries its own [data-clock] (mobile hides the
+  // strip that carries the desktop one), and it is painted by the same helpers.
+  const surface = h.evaluate('visionSurface()');
+  assert.ok(surface.includes('data-clock'), 'the Vision stagebar carries the same clock element');
+  assert.ok(surface.includes('>0:13<'), 'and its first paint is the same instant');
+  // A cross-tab tick repaints; only a duration change re-renders the view.
+  assert.ok(source.includes('durationChanged?render():tick()'), 'a cross-tab update paints the clock in place');
+});
+
+test('a Twitch VOD picker sends the replay source the server accepts, never a live label', () => {
+  const h = harness();
+  h.evaluate("pickReplay({vod_id:'https://www.twitch.tv/videos/1000000011',start_s:30,rate:2})");
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(liveSource())')),
+    {kind: 'vod-replay', vod_id: 'https://www.twitch.tv/videos/1000000011', start_s: 30, rate: 2});
+  assert.equal(h.evaluate("liveSourceLabel('vod-replay')").includes('live'), false, 'a replay is never labelled live');
+  assert.ok(h.evaluate("liveSourceLabel('vod-replay')").includes('1000000011'), 'the label names the VOD');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(replayChoice())')),
+    {vod_id: 'https://www.twitch.tv/videos/1000000011', start_s: 30, rate: 2}, 'the panel can show what was chosen');
+  // An empty box is refused in the shell, before any request is made.
+  h.evaluate("errors=[]; message=(text,error)=>errors.push({text,error})");
+  h.evaluate("vodChoice=null; pickReplay({vod_id:'  '})");
+  assert.equal(h.evaluate('errors.length'), 1);
+  assert.equal(h.evaluate('replayChoice()'), null);
 });

@@ -237,6 +237,11 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-layer.on{background:var(--rail);border-color:var(--brass);color:var(--ink-hi)}
 :is(#ops-shell) .vs-layer:disabled{opacity:.4;cursor:not-allowed}
 :is(#ops-shell) .vs-identity{font:11px var(--mono);color:var(--ink-mid);overflow-wrap:anywhere}
+/* The one shot clock, shown in the stagebar only where the strip that carries it
+   on desktop is hidden (mobile Vision). Same [data-clock] element, same tick. */
+:is(#ops-shell) .vs-clock{display:none;font:11px var(--mono);color:var(--ink-dim)}
+:is(#ops-shell) .vs-clock .clock{font-size:13px;color:var(--ink-hi)}
+:is(#ops-shell) .vs-clock .clock.low{color:var(--red,#cf5b4d)}
 :is(#ops-shell) .vs-frame{position:relative;aspect-ratio:16/9;background:#090806;border:1px solid var(--line);overflow:hidden}
 :is(#ops-shell) .vs-frame>#vision-host{display:block;width:100%}
 :is(#ops-shell) .vs-sheettabs{display:none}
@@ -382,5 +387,6 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell) .vs-stagebar{flex-wrap:nowrap;overflow-x:auto;gap:8px}
   :is(#ops-shell) .vs-layers{flex-wrap:nowrap;flex:none}
   :is(#ops-shell) .vs-identity{white-space:nowrap}
+  :is(#ops-shell) .vs-clock{display:inline-flex;align-items:baseline;gap:4px;flex:none}
   :is(#ops-shell) .vs-strip{position:sticky;bottom:44px}
 }
