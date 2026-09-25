@@ -157,8 +157,10 @@ class OperationsTests(unittest.TestCase):
         state = self.register(4)
         first, second = state['tournament']['matches'][:2]
         self.call('match_schedule', id=first['id'])
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, '^All tables are in use$'):
             self.call('match_schedule', id=second['id'])
+        with self.assertRaisesRegex(ValueError, 'table must be an integer from 1 to 1'):
+            self.call('match_schedule', id=second['id'], table=2)
         self.call('match_absence', id=first['id'], side=0, absent=True)
         with self.assertRaises(ValueError):
             self.call('match_schedule', id=first['id'])

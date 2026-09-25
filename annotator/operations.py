@@ -281,6 +281,8 @@ class Operations:
                     raise ValueError('Absent player; match held')
                 occupied = {m['table'] for m in t['matches'] if m['id'] != match['id'] and m['status'] == 'live'}
                 table = p.get('table', next((n for n in range(1, t['tables'] + 1) if n not in occupied), None))
+                if table is None:
+                    raise ValueError('All tables are in use')
                 table = integer(table, 1, t['tables'], 'table')
                 if table in occupied:
                     raise ValueError('Table is occupied')

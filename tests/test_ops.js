@@ -305,6 +305,12 @@ test('registration without a guest name or a regular is stopped at the guest fie
   await h.handlers.submit(form({pid0: 'p1', guest0: ''}));
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => c.payload))')), [{members: [{name: 'Ann'}]}, {members: [{pid: 'p1'}]}]);
 });
+test('a full floor is explained in plain words in both languages', () => {
+  const h = harness();
+  assert.equal(h.evaluate("validationMessage('All tables are in use')"), 'All tables are in use');
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("validationMessage('All tables are in use')"), '所有球台都在使用中，请先释放一张球台。');
+});
 test('appearance form serializes numbers and unchecked diamonds correctly', async () => {
   const h = harness();
   await h.handlers.submit(submission('appearance-form', {clothColor: '#1f4a70', lampGlow: '0.4'}));
