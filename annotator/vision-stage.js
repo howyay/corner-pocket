@@ -24,6 +24,8 @@ const COPY = {
     seedHint:'Seeds save immediately. Saving a seed alone does not rebuild predictions.',
     saveAnchors:'Save six anchors', anchorsAt:'Load anchors at', anchorNote:'Anchors belong to the raw source frame; saving stores anchor annotations only, it never fits a calibration.',
     boxLabel:'Box label', deleteBox:'Delete selected', saveCorrections:'Save corrections for this frame',
+    layerNote:'MODEL boxes are this session\u2019s reference only: saving a correction writes your boxes (YOURS), never the model\u2019s.',
+    modelBoxes:'model boxes', yourBoxes:'your boxes',
     runInference:'Run inference on frozen frame', addPolygon:'Add table polygon', clearPolygon:'Clear polygon',
     newBoxLabel:'New box label', tool:'Tool', selectTool:'Select / move', drawTool:'Draw box',
     frameReadout:'frame', overlays:'overlays', loading:'LOADING', none:'none', on:'ON',
@@ -123,6 +125,8 @@ const COPY = {
     seedHint:'种子立即保存。仅保存种子不会重建预测。',
     saveAnchors:'保存六个锚点', anchorsAt:'加载锚点时刻', anchorNote:'锚点属于原始源帧；保存仅存储锚点标注，不会拟合标定。',
     boxLabel:'标注框标签', deleteBox:'删除所选', saveCorrections:'保存此帧修正',
+    layerNote:'模型框（MODEL）仅为本次会话的参照：保存修正只写入你的框（人工），不会写入模型框。',
+    modelBoxes:'模型框', yourBoxes:'你的框',
     runInference:'对冻结帧运行推理', addPolygon:'添加球桌多边形', clearPolygon:'清除多边形',
     newBoxLabel:'新框标注', tool:'工具', selectTool:'选择 / 移动', drawTool:'绘制标注框',
     frameReadout:'帧', overlays:'叠加层', loading:'加载中', none:'无', on:'开',
@@ -565,6 +569,7 @@ function coldFrameBlock(s) {
     <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div>
     <div class="vs-row"><button data-vs-action="run-inference" ${s.corrections?.inferRunning ? 'disabled' : ''}>${esc(t('runInference'))}</button></div>
     ${inferenceLine(s)}${s.corrections?.inferStatus ? `<p class="vs-mono">${esc(engineText(s.corrections.inferStatus))}</p>` : ''}
+    <p class="vs-note" data-vs-layers-note="1">${esc(t('layerNote'))}</p>
     ${s.dirty ? `<div class="vs-row"><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button></div>` : ''}
     <p class="vs-note">${esc(t('coldStartHint'))}</p></div>`;
 }
@@ -788,6 +793,7 @@ function inferenceLine(s) {
   if (!c.inferenceAt || c.result === 'none') return '';
   return `<p class="vs-mono" data-vs-inference="${c.storedInference ? 'stored' : 'session'}">${esc(t('inferenceFrom'))}: ${esc(t(c.storedInference ? 'storedInference' : 'inferenceNotStored'))} · ${esc(stampText(c.inferenceAt))}</p>`;
 }
+function boxLayers(s) { return `${s.corrections?.manualBoxes ?? 0}/${s.corrections?.modelBoxes ?? 0}`; }
 function boxBlock(s) {
   const index = s.selection.box;
   const labels = ['person','ball','cue','solid','stripe','eight'];
@@ -797,6 +803,7 @@ function boxBlock(s) {
   <div class="vs-block"><h4>${esc(t('tool'))}</h4><div class="vs-row"><button class="${s.corrections.tool === 'select' ? 'active' : ''}" data-vs-action="tool" data-vs-value="select">${esc(t('selectTool'))}</button><button class="${s.corrections.tool === 'draw' ? 'active' : ''}" data-vs-action="tool" data-vs-value="draw">${esc(t('drawTool'))}</button></div>
     <label class="vs-field">${esc(t('newBoxLabel'))}<select data-vs-action="new-box-label">${labels.map(l => `<option value="${l}" ${s.corrections.newBoxLabel === l ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
     <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div></div>
+  <div class="vs-block vs-layers-note" data-vs-layers="${esc(boxLayers(s))}"><h4>${esc(t('yourBoxes'))}</h4><p class="vs-mono">${esc(t('yourBoxes'))} ${esc(s.corrections?.manualBoxes ?? 0)} · ${esc(t('modelBoxes'))} ${esc(s.corrections?.modelBoxes ?? 0)}</p><p class="vs-note">${esc(t('layerNote'))}</p></div>
   <div class="vs-block"><h4>${esc(t('runInference'))}</h4>${inferenceLine(s)}<p class="vs-mono">${esc(engineText(s.corrections.inferStatus || ''))}</p>${receiptLine('corrections')}</div>`;
 }
 // The primary write of the active block lives in the inspector's action footer,

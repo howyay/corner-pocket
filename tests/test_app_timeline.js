@@ -28,7 +28,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
     playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip,
-    boxTagKind, markBoxEdited,
+    boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
     paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
@@ -153,14 +153,16 @@ test('normalizeBox clamps, reorders, and rejects degenerate boxes', () => {
   assert.strictEqual(T.normalizeBox([1, 1], 1920, 1080), null);
 });
 
-test('displayBoxes prefers manual correction over inference and copies data', () => {
+test('displayBoxes keeps both layers, each box with its own origin', () => {
   const inference = {boxes: [{label: 'person', bbox: [1, 2, 3, 4], score: 0.9}], table_polygon: [[0, 0], [1, 0], [1, 1], [0, 1]]};
   const correction = {boxes: [{label: 'cue', bbox: [5, 6, 7, 8]}], table_polygon: null};
   const display = T.displayBoxes({inference, correction});
   assert.strictEqual(display.source, 'manual corrections');
-  // Provenance travels with each box: a correction is the operator's, an
-  // inference result is the model's, and nothing has been edited in this session.
-  same(display.boxes, [{label: 'cue', bbox: [5, 6, 7, 8], origin: 'manual', edited: false}]);
+  // Both layers are kept (the correction no longer replaces the inference), and
+  // provenance travels with each box: the correction is the operator's, the
+  // inference is the model's, nothing has been edited in this session.
+  same(display.boxes, [{label: 'cue', bbox: [5, 6, 7, 8], origin: 'manual', edited: false},
+                       {label: 'person', bbox: [1, 2, 3, 4], score: 0.9, origin: 'auto', edited: false}]);
   const inferred = T.displayBoxes({inference, correction: null});
   assert.strictEqual(inferred.source, 'inference');
   same(inferred.boxes, [{label: 'person', bbox: [1, 2, 3, 4], score: 0.9, origin: 'auto', edited: false}]);
@@ -1571,6 +1573,65 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     .includes('no usable crop was kept'), 'a refusal with no crops says so instead of showing an empty box');
   const zh = adapterStage('zh', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:cluster}));
   assert.ok(zh.includes('已存聚类人脸') && zh.includes('未交叉核对') && zh.includes('确认登记'), 'the whole block is Chinese too');
+});
+
+test('two layers on one frame: model dashed, yours solid, and only yours are saved', () => {
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
+  T.state.cloth.reference = null; T.state.unified = null; T.state.polygon = null;
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  // The reported frame: a stored correction (the operator's) and the model's own
+  // inference, with one ball in both layers and one only the model saw.
+  T.state.fresult = {correction:{dataset:'vod30', frame_index:0, width:1280, height:720,
+                                 boxes:[{label:'ball', bbox:[100,100,120,120]}]},
+                     inference:{boxes:[{label:'ball', bbox:[101,101,121,121]}, {label:'ball', bbox:[400,300,420,320]}], table_polygon:null}};
+  T.state.dirty = false;
+  T.applyFrameResult();
+  assert.strictEqual(T.state.boxes.length, 3, 'both layers are in state.boxes');
+  assert.strictEqual(T.manualBoxCount(), 1);
+  assert.strictEqual(T.modelBoxCount(), 2);
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  assert.ok(html.includes('data-origin="manual"') && html.includes('data-origin="auto"'), 'both origins are drawn');
+  assert.ok(html.includes('>YOURS<') && html.includes('>MODEL<'), 'with their own tags');
+  assert.ok(/class="t-box manual"/.test(html) && /class="t-box auto/.test(html), 'and their own classes for solid vs dashed');
+  // The model box the operator already covered by a manual box is that pair's faint
+  // counterpart, at the model's own rectangle - not a second bright box.
+  assert.ok(/data-origin="auto"[^>]*class="t-box auto faint"/.test(html) || /class="t-box auto faint"/.test(html),
+    'a matched model box is drawn faint: ' + html.slice(html.indexOf('data-origin="auto"'), html.indexOf('data-origin="auto"') + 120));
+  assert.ok(html.includes('x="101"') && html.includes('y="101"'), 'at the model\u2019s coordinates, so a disagreement shows as a gap');
+  assert.ok(!/class="t-box auto faint"[^>]*data-ghost/.test(html), 'nothing is frozen before an edit');
+  // The save payload carries the operator's box only.
+  const body = T.correctionBody();
+  assert.strictEqual(body.boxes.length, 1, 'one manual box is saved');
+  same(body.boxes[0], {label:'ball', bbox:[100,100,120,120]});
+  assert.ok(body.boxes.every(box => box.origin === undefined), 'and the payload carries no origin bookkeeping of its own');
+  // Dragging a model box makes it the operator's, and the model's original stays as
+  // a frozen ghost until the frame is reloaded.
+  const model = T.state.boxes[2];
+  T.ghostModelBox(model);
+  model.bbox = [460, 300, 480, 320];
+  T.markBoxEdited(model);
+  T.paintOverlay();
+  assert.strictEqual(model.origin, 'manual', 'the dragged box is the operator\u2019s');
+  const ghost = T.state.boxes.find(box => box.frozen);
+  same(ghost.bbox, [400, 300, 420, 320]);
+  assert.strictEqual(ghost.origin, 'auto');
+  assert.ok(/data-ghost="1"/.test(svg.innerHTML), 'and it is drawn as a ghost');
+  const after = T.correctionBody();
+  assert.strictEqual(after.boxes.length, 2, 'the edited model box is now included in the save payload');
+  assert.ok(after.boxes.some(box => JSON.stringify(box.bbox) === JSON.stringify([460, 300, 480, 320])), 'at its new geometry');
+  assert.ok(!after.boxes.some(box => JSON.stringify(box.bbox) === JSON.stringify([400, 300, 420, 320])), 'the ghost is never saved');
+  assert.strictEqual(T.state.boxes.filter(box => box.origin === 'auto' && !box.frozen).length, 1,
+    'the paired model box stays the model\u2019s: a counterpart is never promoted to a decision');
+  // The painter says the same thing the payload does.
+  assert.ok(svg.innerHTML.includes('data-origin="auto"'), 'the model\u2019s layer is still on the stage after the edit');
+  T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

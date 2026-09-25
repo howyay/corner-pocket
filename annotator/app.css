@@ -96,10 +96,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #t-overlay .u-cue-head { fill: var(--red); opacity: .95; }
 #t-overlay .o-src.event rect { stroke: var(--red); }
 #t-overlay .o-src.event text { fill: #f3b3aa; }
-/* An untouched inference frame is still a model result: its editable layer is
-   drawn as reference too, until the operator saves a correction for this frame. */
-#t-overlay[data-boxes="auto"] .t-box rect { stroke-dasharray: 10 7; opacity: .6; }
-#t-overlay[data-boxes="auto"] .t-box text { opacity: .7; }
+/* Two layers can be on one frame, so the style follows each box's own origin, not
+   a frame-level flag: the model's boxes are dashed reference (fainter still when a
+   manual box already describes the same object), the operator's are solid. */
+#t-overlay .t-box.model rect { stroke-dasharray: 10 7; opacity: .6; }
+#t-overlay .t-box.model text { opacity: .7; }
+#t-overlay .t-box.model.faint rect { stroke-dasharray: 6 6; opacity: .32; }
+#t-overlay .t-box.manual rect { stroke-dasharray: none; opacity: 1; }
 #t-overlay[data-boxes="auto"] .t-poly { stroke-dasharray: 12 8; opacity: .55; }
 /* Manual content stays solid with full opacity and keeps its grab handles. */
 #t-overlay .u-anchor circle { fill: #20160d; stroke: var(--brass-hi); stroke-width: 3; cursor: grab; }

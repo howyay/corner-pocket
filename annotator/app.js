@@ -101,14 +101,51 @@ function normalizeBox(value, w, h) {
 // flag this used to share painted every model box YOURS as soon as anything on the
 // frame was dirty, which is not what the operator did.
 function displayBoxes(result) {
+  // Both layers, always: the stored correction is the operator's (manual) and the
+  // stored inference is the model's (auto). A correction used to replace the
+  // inference list, so the model's boxes vanished exactly when the operator most
+  // needed to see where the two disagreed.
   const source = result?.correction ? 'manual corrections' : result?.inference ? 'inference' : 'none';
-  const payload = result?.correction || result?.inference || {};
-  const origin = result?.correction ? 'manual' : 'auto';
-  return {source, boxes: (payload.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin, edited: false})), polygon: payload.table_polygon ? payload.table_polygon.map(p => [...p]) : null};
+  const manual = (result?.correction?.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin: 'manual', edited: false}));
+  const model = (result?.inference?.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin: 'auto', edited: false}));
+  const polygon = result?.correction?.table_polygon || result?.inference?.table_polygon || null;
+  return {source, boxes: [...manual, ...model], polygon: polygon ? polygon.map(p => [...p]) : null};
 }
 // The one place a box's origin changes: an edit by the operator in this session.
 function markBoxEdited(box) { if (box) { box.origin = 'manual'; box.edited = true; } }
 function boxTagKind(box) { return box?.origin === 'manual' ? 'manual' : 'auto'; }
+// An edited model box becomes the operator's, but the model's original stays on
+// the stage as a frozen ghost until the frame is reloaded: the operator can see
+// what the model said before they moved it, and the ghost is never saveable.
+function ghostModelBox(box) {
+  if (!box || box.origin !== 'auto' || box.frozen) return;
+  state.boxes.push({label: box.label, bbox: box.bbox.slice(), score: box.score, origin: 'auto', edited: true, frozen: true});
+}
+function boxIou(a, b) {
+  const [ax1, ay1, ax2, ay2] = a, [bx1, by1, bx2, by2] = b;
+  const width = Math.min(ax2, bx2) - Math.max(ax1, bx1), height = Math.min(ay2, by2) - Math.max(ay1, by1);
+  if (width <= 0 || height <= 0) return 0;
+  const inter = width * height;
+  const union = (ax2 - ax1) * (ay2 - ay1) + (bx2 - bx1) * (by2 - by1) - inter;
+  return union > 0 ? inter / union : 0;
+}
+// Two boxes describe the same object when they overlap by half or more, or when
+// their centres are within 8 px. The overlap bar is the usual "same object" bar
+// between two box sets; the centre fallback exists because the balls are small -
+// the same ball with a slightly different radius can drop under the IoU bar while
+// sitting on the same centre - and 8 px is below the smallest radius drawn on the
+// stage (9 px), so it can never merge two different balls.
+function boxesMatch(a, b) {
+  if (boxIou(a.bbox, b.bbox) >= 0.5) return true;
+  const [ax, ay] = boxCenter(a), [bx, by] = boxCenter(b);
+  return Math.hypot(ax - bx, ay - by) <= 8;
+}
+// A model box that a manual box already describes is drawn as that box's faint
+// counterpart: agreement reads as one clean box, a disagreement as a visible gap.
+function isPairedModel(box, boxes) {
+  if (box?.origin !== 'auto') return false;
+  return boxes.some(other => other !== box && other.origin === 'manual' && boxesMatch(box, other));
+}
 function ballLabelText(value) { return value === undefined || value === null ? 'Unlabeled' : value === -1 || value === 'u' ? 'Unknown' : value === 0 ? 'Cue · 0' : `Ball ${value}`; }
 // ---- pocket vocabulary, overlay provenance, geometry clearance ------------
 // Stored pocket keys are pool-table rail terms (head rail / foot rail). On the
@@ -808,14 +845,20 @@ function paintOverlay() {
   svg.dataset.boxes = boxSource;
   const boxes = (playing ? [] : state.boxes).map((box, i) => {
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
-    const selected = state.sel.kind === 'box' && state.sel.box === i;
+    const kind = boxTagKind(box);
+    const selected = state.sel.kind === 'box' && state.sel.box === i && !box.frozen;
+    const ghost = box.frozen === true;
+    const faint = ghost || isPairedModel(box, state.boxes);
+    // A paired model box puts its tag under the box so the two tags never sit on
+    // top of each other: agreement keeps one clean pair of rectangles.
+    const tagAt = faint && kind === 'auto' ? y2 + 18 : Math.max(2, y1 - 26);
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
-    return `${tagRow(x1, Math.max(2, y1 - 26), boxTagKind(box), `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" class="t-box${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
+    return `${tagRow(x1, tagAt, kind, `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" data-origin="${kind}"${ghost ? ' data-ghost="1"' : ''} class="t-box ${kind}${faint ? ' faint' : ''}${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
   }).join('');
   const poly = state.polygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
   svg.innerHTML = layers.join('') + poly + boxes + preview;
-  svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { if (state.tool === 'select' && state.sel.box !== Number(g.dataset.box)) { selectBox(Number(g.dataset.box)); } });
+  svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { const index = Number(g.dataset.box); if (state.boxes[index]?.frozen) return; if (state.tool === 'select' && state.sel.box !== index) { selectBox(index); } });
   svg.querySelectorAll('g.u-ball').forEach(g => g.onclick = event => { event.stopPropagation(); selectStageBall(Number(g.dataset.ball), Number(g.dataset.cx), Number(g.dataset.cy), Number(g.dataset.r)); });
   svg.querySelectorAll('g.u-person').forEach(g => g.onclick = event => { event.stopPropagation(); selectStagePerson(g.dataset); });
   svg.querySelectorAll('g.u-anchor').forEach(g => g.onclick = event => { event.stopPropagation(); selectAnchor(Number(g.dataset.anchor)); });
@@ -1154,11 +1197,22 @@ function cancelEnroll() { state.enroll = {status:'idle', payload:null, name: sta
 async function saveAnchors(button) {
   return save(button, '/api/vod30/anchors', {t: state.anchors.t, pts: state.anchors.pts.map(p => [...p])}, () => { state.anchors.saved = true; }, 'anchor', `${state.anchors.pts.length} anchors @ t ${Number(state.anchors.t).toFixed(1)}`);
 }
+// What 'save corrections' writes: the operator's own boxes only. The model's are
+// session-only reference (and a frozen ghost of an edited model box is never a
+// correction of ours); an edited model box has already flipped its origin, so it is
+// included - which is exactly how the operator turns a model box into theirs.
+function manualBoxCount() { return state.boxes.filter(box => box.origin !== 'auto').length; }
+function modelBoxCount() { return state.boxes.filter(box => box.origin === 'auto').length; }
+function correctionBody() {
+  return {dataset: state.dataset, frame_index: state.frame,
+          boxes: state.boxes.filter(box => box.origin !== 'auto').map(box => ({label: box.label, bbox: box.bbox.slice()})),
+          table_polygon: state.polygon ? state.polygon.map(p => [p[0], p[1]]) : null};
+}
 async function saveCorrections(button) {
   if (state.busy || !state.fresult) return false;
   const invalid = state.boxes.find(box => !normalizeBox(box.bbox, state.frameWidth, state.frameHeight));
   if (invalid) { notice('A box has invalid coordinates; fix or delete it before saving.', true); return false; }
-  const body = {dataset: state.dataset, frame_index: state.frame, boxes: state.boxes.map(box => ({label: box.label, bbox: box.bbox})), table_polygon: state.polygon ? state.polygon.map(p => [p[0], p[1]]) : null};
+  const body = correctionBody();
   const ok = await save(button, '/api/frame-correction', body, data => {
     // The stored correction carries its own scope (dataset, frame, source
     // size): keep the server's copy so the next paint checks what was saved.
@@ -1332,10 +1386,10 @@ function svgPoint(event) {
 function overlayPointerDown(event) {
   if (state.busy) return;
   const svg = $('#t-overlay'), handle = event.target.closest('[data-handle]'), poly = event.target.closest('[data-poly]'), anchor = event.target.closest('[data-anchor]'), box = event.target.closest('[data-box]');
-  if (handle && (state.sel.box >= 0 || state.sel === undefined)) { event.preventDefault(); svg.setPointerCapture(event.pointerId); state.drag = {kind:'handle', box: Number(handle.closest('[data-box]')?.dataset.box ?? state.sel.box), corner: Number(handle.dataset.handle)}; return; }
+  if (handle && (state.sel.box >= 0 || state.sel === undefined)) { const target = Number(handle.closest('[data-box]')?.dataset.box ?? state.sel.box); if (state.boxes[target]?.frozen) return; event.preventDefault(); svg.setPointerCapture(event.pointerId); state.drag = {kind:'handle', box: target, corner: Number(handle.dataset.handle)}; return; }
   if (poly) { event.preventDefault(); svg.setPointerCapture(event.pointerId); state.drag = {kind:'poly', index: Number(poly.dataset.poly)}; return; }
   if (anchor) { event.preventDefault(); selectAnchor(Number(anchor.dataset.anchor)); svg.setPointerCapture(event.pointerId); state.drag = {kind:'anchor', index: Number(anchor.dataset.anchor)}; return; }
-  if (box) { const index = Number(box.dataset.box); selectBox(index); if (state.tool === 'draw') return; event.preventDefault(); svg.setPointerCapture(event.pointerId); const [x,y] = svgPoint(event); state.drag = {kind:'move', box: index, x, y, orig: state.boxes[index].bbox.slice()}; return; }
+  if (box) { const index = Number(box.dataset.box); if (state.boxes[index]?.frozen) return; selectBox(index); if (state.tool === 'draw') return; event.preventDefault(); svg.setPointerCapture(event.pointerId); const [x,y] = svgPoint(event); state.drag = {kind:'move', box: index, x, y, orig: state.boxes[index].bbox.slice()}; return; }
   if (state.tool === 'draw') { event.preventDefault(); svg.setPointerCapture(event.pointerId); const [x,y] = svgPoint(event); state.drag = {kind:'draw', x1:x, y1:y, x2:x, y2:y}; paintOverlay(); return; }
   clearSelection();
 }
@@ -1346,13 +1400,14 @@ function overlayPointerMove(event) {
     const box = state.boxes[drag.box]; if (!box) return;
     const w = drag.orig[2] - drag.orig[0], h = drag.orig[3] - drag.orig[1];
     const nx1 = Math.max(0, Math.min(state.frameWidth - w, drag.orig[0] + x - drag.x)), ny1 = Math.max(0, Math.min(state.frameHeight - h, drag.orig[1] + y - drag.y));
+    ghostModelBox(box);
     box.bbox = [nx1, ny1, nx1 + w, ny1 + h]; markBoxEdited(box); markDirty(); paintOverlay();
   } else if (drag.kind === 'handle') {
     const box = state.boxes[drag.box]; if (!box) return;
     const next = box.bbox.slice();
     next[[0,2,2,0][drag.corner]] = x; next[[1,1,3,3][drag.corner]] = y;
     box.bbox = normalizeBox(next, state.frameWidth, state.frameHeight) || box.bbox;
-    markBoxEdited(box); markDirty(); paintOverlay();
+    ghostModelBox(box); markBoxEdited(box); markDirty(); paintOverlay();
   } else if (drag.kind === 'poly') { state.polygon[drag.index] = [x, y]; markDirty(); paintOverlay();
   } else if (drag.kind === 'anchor') {
     const p = state.anchors.pts[drag.index]; if (!p) return;
@@ -1372,7 +1427,7 @@ function overlayPointerUp() {
 function nudgeBox(dx, dy) {
   if (state.busy || state.sel.box < 0 || !state.boxes[state.sel.box]) return;
   const box = state.boxes[state.sel.box], moved = normalizeBox([box.bbox[0]+dx, box.bbox[1]+dy, box.bbox[2]+dx, box.bbox[3]+dy], state.frameWidth, state.frameHeight);
-  if (moved) { box.bbox = moved; markBoxEdited(box); markDirty(); paintOverlay(); }
+  if (moved) { ghostModelBox(box); box.bbox = moved; markBoxEdited(box); markDirty(); paintOverlay(); }
 }
 // ---- the ball label popover, attached to the ball on the imagery ---------
 function paintPopover() {
@@ -1518,7 +1573,7 @@ function snapshot() {
     balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
     anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
-    corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus,
+    corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
       // Where this frame's inference came from: a stored file from an earlier run
       // (marked by the server, with its own timestamp) or the result of inference
       // run on this frame now, which is never written to disk.
