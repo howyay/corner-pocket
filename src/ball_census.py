@@ -53,8 +53,44 @@ STITCH_PX = 45.0
 TRACK_GAP_S = 2.0
 # Observations this close in time are the same frame (30 fps = 0.033 s).
 TIME_BUCKET_S = 0.02
-# Extrapolating a rolling ball's position is only safe over a short lead.
+# Extrapolating a rolling ball's position is only safe over a short lead; this is
+# the fallback cap for callers that do not use the adaptive gate.
 MAX_PREDICT_S = 0.5
+
+# -- association across a miss (measured on out/dense-events/segment-1350-1650.json,
+#    300 s, ball stage at cadence 2, 248 identities, 66.7 ms sampling) ----------
+#
+# On that run 120 of the 170 identities that ended on open cloth were lost on a
+# *clean* frame -- the detector missed a ball that was there -- and only 12 of
+# the 225 fragment links were within 20 px: the ball keeps moving through the
+# gap (implied speed median 158 px/s, p90 841).  Gating on the distance to the
+# last position therefore splits one ball into many identities by construction
+# (TRACK_MATCH_PX = 30 is less than one sample of an ordinary shot).  The gate
+# below is on the *residual* around a constant-velocity prediction instead.
+#
+#: A gate never smaller than this: the same 30 px = a ball and a half at 960x540.
+GATE_BASE_PX = TRACK_MATCH_PX
+#: The widest a ball can be from its last sighting one sample later: the segment's
+#: fastest interval is 809 px/s, which is 54 px at the measured 66.7 ms cadence.
+#: Offered only to an identity with a single sighting (nothing to predict from)
+#: and only across the sampling interval -- 0.1 s covers one missed sample at that
+#: cadence, and beyond it an unknown ball could be anywhere.
+GATE_BOOTSTRAP_PX = 60.0
+GATE_BOOTSTRAP_DT_S = 0.1
+#: A quarter of the distance the identity would have travelled during the gap.
+#: Provenance: the p90 sample-to-sample speed change on the segment is 11.5 px/s
+#: over 66.7 ms (172 px/s^2); over the measured median gap of 0.87 s that is a
+#: 65 px position error, which is a quarter of the 137 px that ball travels.
+#: Balls struck by another ball change velocity far more than that and are
+#: *supposed* to become new identities -- a hit is the event being detected.
+VELOCITY_SLACK = 0.25
+#: A gap longer than this is a hole, not jitter: two samples at 66.7 ms.
+BRIDGE_MIN_S = 0.15
+#: A speed change between consecutive sightings that one ball cannot make on its
+#: own: the segment's p90 sample-to-sample change is 11.5 px/s and its maximum is
+#: 809 px/s, so 200 px/s is 17x the ordinary change and a fifth of the extreme.
+#: Reported as a purity signal, never silently fused over.
+KINK_SPEED_PX_S = 200.0
 
 UNKNOWN = "unknown"
 # Colours whose detector class holds exactly one physical ball on a rack: a
@@ -105,6 +141,15 @@ class Observation:
     score: float | None = None
     table_mm: tuple | None = None
     color_raw: str | None = None
+    #: The association linked this sighting to an identity across a hole longer
+    #: than ``BRIDGE_MIN_S``: the ball was *not* continuously observed, so the
+    #: stretch before it is unknown.  The sample itself is still a real detection
+    #: at a real time; what is not measured is what happened in between, and no
+    #: consumer may read a bridged stretch as a ball that stayed put.
+    bridged: bool = False
+    #: Distance from the constant-velocity prediction, in pixels (None for the
+    #: first sighting of an identity): the number the adaptive gate judged.
+    residual_px: float | None = None
 
     def __post_init__(self):
         if self.color_raw is None:
@@ -128,7 +173,8 @@ class Observation:
         return {"t": round(self.t, 3), "color": self.color, "color_raw": self.color_raw,
                 "cx": round(self.cx, 1), "cy": round(self.cy, 1), "r": round(self.r, 1),
                 "source": self.source, "score": self.score,
-                "confidence": self.confidence,
+                "confidence": self.confidence, "bridged": bool(self.bridged),
+                "residual_px": None if self.residual_px is None else round(self.residual_px, 1),
                 "table_mm": [round(v, 1) for v in self.table_mm] if self.table_mm else None}
 
 
@@ -310,11 +356,91 @@ class Track:
             return 0.0, 0.0
         return (b.cx - a.cx) / dt, (b.cy - a.cy) / dt
 
-    def predict(self, t: float) -> tuple[float, float]:
+    def predict(self, t: float, lead_cap: float | None = None) -> tuple[float, float]:
+        """Where a constant-velocity ball would be at ``t``.
+
+        The lead is the whole gap: capping it short of the gap would put the
+        prediction closer to the last sighting than the ball can be, which is the
+        mistake the fixed radius made.  ``lead_cap`` restores the old cap for
+        callers that want the conservative behaviour.
+        """
         last = self.obs[-1]
         vx, vy = self.velocity()
-        lead = min(MAX_PREDICT_S, max(0.0, t - last.t))
+        lead = max(0.0, t - last.t)
+        if lead_cap is not None:
+            lead = min(lead_cap, lead)
         return last.cx + vx * lead, last.cy + vy * lead
+
+    def gate_radius(self, dt: float, base: float = GATE_BASE_PX,
+                    slack: float = VELOCITY_SLACK) -> float:
+        """How far from the prediction a sighting may be and still be this ball.
+
+        The floor keeps a stationary ball's re-detection inside the gate; the
+        speed term admits a rolling ball whose path the last samples already
+        describe.  Nothing here widens the gate for a *stopped* ball: a ball at
+        rest gets ``base``, because a ball that moves without prior speed is a
+        new event, not a continuation.
+
+        An identity with a single sighting has no velocity to predict from, so it
+        gets ``GATE_BOOTSTRAP_PX`` -- but only across the sampling interval.  The
+        segment's fastest interval is 809 px/s, which is 54 px between
+        consecutive samples, so 60 px covers the fastest ball the data contains;
+        it is deliberately *not* offered across a longer gap, where an unknown
+        ball could be anywhere and a wide gate would only fuse two balls.
+        """
+        if self.hits < 2:
+            return GATE_BOOTSTRAP_PX if dt <= GATE_BOOTSTRAP_DT_S else base
+        speed = math.hypot(*self.velocity())
+        return base + slack * speed * max(0.0, dt)
+
+    def bridges(self) -> list:
+        """The holes this identity was linked across, in order."""
+        return [{"from_t": round(self.obs[i - 1].t, 3), "to_t": round(o.t, 3),
+                 "dt_s": round(o.t - self.obs[i - 1].t, 3)}
+                for i, o in enumerate(self.obs) if i and o.bridged]
+
+    @property
+    def bridged_samples(self) -> int:
+        return sum(1 for o in self.obs if o.bridged)
+
+    @property
+    def wide_links(self) -> int:
+        """Sightings that only the adaptive widening could link."""
+        return sum(1 for o in self.obs if o.residual_px is not None
+                   and o.residual_px > GATE_BASE_PX)
+
+    def _frame_positions(self) -> list:
+        """One position per frame bucket: the latest sighting of that frame.
+
+        Kinematics are read from these, not from raw observations: two detectors
+        report the same ball a few pixels apart inside one frame, and that
+        jitter is not the ball's motion.
+        """
+        latest: dict = {}
+        for observation in self.obs:
+            latest[_bucket(observation.t)] = observation
+        return [latest[key] for key in sorted(latest)]
+
+    @property
+    def kinks(self) -> int:
+        """Speed changes between frames that one ball cannot make by itself.
+
+        A real ball's path is smooth (the segment's p90 sample-to-sample change is
+        11.5 px/s); a fusion of two different balls shows a reversal or a jump.
+        Counted and reported, never gated on: it is the purity price of a
+        permissive gate, and the caller gets to see it.
+        """
+        positions = self._frame_positions()
+        kinks = 0
+        for a, b, c in zip(positions, positions[1:], positions[2:]):
+            v1 = _velocity_of(a, b)
+            v2 = _velocity_of(b, c)
+            if v1 is None or v2 is None:
+                continue
+            change = math.hypot(v2[0] - v1[0], v2[1] - v1[1])
+            if change > KINK_SPEED_PX_S:
+                kinks += 1
+        return kinks
 
     def table_position(self) -> list | None:
         for observation in reversed(self.obs):
@@ -327,7 +453,17 @@ class Track:
                 "stable": self.stable, "first_t": round(self.first_t, 2),
                 "last_t": round(self.last_t, 2), "confidence": self.confidence,
                 "conflicts": self.conflicts, "sources": self.sources,
+                "bridged_samples": self.bridged_samples, "bridges": self.bridges(),
+                "wide_links": self.wide_links, "kinks": self.kinks,
                 "table_mm": self.table_position()}
+
+
+def _velocity_of(a, b):
+    """px/s between two observations, or None when they share a timestamp."""
+    dt = b.t - a.t
+    if dt <= 1e-6:
+        return None
+    return ((b.cx - a.cx) / dt, (b.cy - a.cy) / dt)
 
 
 def _color_compatible(track: Track, observation: Observation, distance: float) -> bool:
@@ -357,19 +493,37 @@ def _bucket(t: float) -> float:
 
 
 def associate(observations: Iterable[Observation], match_px: float = TRACK_MATCH_PX,
-              gap_s: float = TRACK_GAP_S) -> tuple[list[Track], dict]:
+              gap_s: float = TRACK_GAP_S, adaptive: bool = True,
+              stats: dict | None = None) -> tuple[list[Track], dict]:
     """Temporal association: observations -> stable identities.
 
     Observations are walked in time order, grouped into frames; each frame is
-    matched to open identities by predicted position (colour-compatible, within
-    ``match_px``), closest first.  Unmatched observations open a new identity.
-    Returns ``(tracks, frames)`` where ``frames`` maps a bucketed time to the
-    ``(observation, track)`` pairs seen at it.
+    matched to an open identity by constant-velocity prediction (colour-
+    compatible, closest residual first).  Unmatched observations open a new
+    identity.  Returns ``(tracks, frames)`` where ``frames`` maps a bucketed time
+    to the ``(observation, track)`` pairs seen at it.
+
+    ``adaptive`` is the fix for fragmentation, and it is on by default: the gate
+    is ``base + slack * speed * dt`` around the prediction instead of a fixed
+    distance to the last sighting, and a link across a hole longer than
+    ``BRIDGE_MIN_S`` is recorded -- the sighting is marked ``bridged`` and the
+    hole is listed on the track, so a consumer can never mistake an inferred
+    continuation for a measurement.  ``adaptive=False`` restores the fixed gate
+    for a before/after comparison; then no sighting is ever marked bridged.
+
+    ``stats``, when given, is filled with the purity counters: duplicate claims
+    (the same detection claimed twice -- must stay zero), the number of links
+    that only the widening admitted, and the tracks carrying a kink.
     """
     items = sorted(observations, key=lambda o: (_bucket(o.t), o.source, o.color, o.cx))
     tracks: list[Track] = []
     frames: dict = {}
     used: dict = {}                      # (bucket, tid, source) already seen
+    stats = stats if stats is not None else {}
+    stats.setdefault("assignments", 0)
+    stats.setdefault("bridged_links", 0)
+    stats.setdefault("wide_links", 0)
+    stats.setdefault("frame_source_skips", 0)
     for observation in items:
         key = _bucket(observation.t)
         pairs = frames.setdefault(key, [])
@@ -379,38 +533,91 @@ def associate(observations: Iterable[Observation], match_px: float = TRACK_MATCH
             # detectors reporting the same ball is the fusion's whole point:
             # they must land on one identity, not two.
             if (key, track.tid, observation.source) in used:
+                stats["frame_source_skips"] += 1
                 continue
-            if observation.t - track.last_t > gap_s:
+            dt = observation.t - track.last_t
+            if dt > gap_s:
                 continue
             px, py = track.predict(observation.t)
-            d = math.hypot(px - observation.cx, py - observation.cy)
-            if d > match_px:
+            residual = math.hypot(px - observation.cx, py - observation.cy)
+            radius = track.gate_radius(dt, match_px) if adaptive else match_px
+            if residual > radius:
                 continue
-            if not _color_compatible(track, observation, d):
+            if not _color_compatible(track, observation, residual):
                 continue
-            if best is None or d < best[0]:
-                best = (d, track)
+            if best is None or residual < best[0]:
+                best = (residual, track, dt)
         if best is None:
             track = Track(tid=len(tracks) + 1)
             tracks.append(track)
+            observation.bridged = False
+            observation.residual_px = None
         else:
-            track = best[1]
+            residual, track, dt = best
+            observation.residual_px = residual
+            observation.bridged = bool(adaptive and dt > BRIDGE_MIN_S)
+            if observation.bridged:
+                stats["bridged_links"] += 1
+            if residual > match_px:
+                stats["wide_links"] += 1
         track.add(observation)
         used[(key, track.tid, observation.source)] = True
+        stats["assignments"] += 1
         pairs.append((observation, track))
-    return _stitch(tracks, frames)
+    tracks, frames = _stitch(tracks, frames, adaptive=adaptive, stats=stats)
+    stats["tracks"] = len(tracks)
+    stats["kinked_tracks"] = sum(1 for track in tracks if track.kinks)
+    stats["kinks"] = sum(track.kinks for track in tracks)
+    stats.update(double_claims(tracks))
+    return tracks, frames
 
 
-def _stitch(tracks: list[Track], frames: dict) -> tuple[list[Track], dict]:
+def double_claims(tracks: Iterable[Track], radius_px: float = 12.0) -> dict:
+    """Frames where two identities claim the same detection.
+
+    A permissive gate can fuse two balls into one path; the opposite failure --
+    two identities owning one detection -- would double-count a ball.  The
+    associator cannot produce it (each observation is consumed once), so this is
+    the post-hoc check that it stayed true: within one frame, two identities whose
+    positions are closer than ``radius_px`` (half a ball) are the same detection
+    claimed twice.
+    """
+    per_frame: dict = {}
+    for track in tracks:
+        for observation in track.obs:
+            per_frame.setdefault(_bucket(observation.t), []).append((track.tid, observation))
+    double = 0
+    frames_with_double = 0
+    for key, entries in per_frame.items():
+        pairs = 0
+        for i in range(len(entries)):
+            for j in range(i + 1, len(entries)):
+                if entries[i][0] == entries[j][0]:
+                    continue
+                a, b = entries[i][1], entries[j][1]
+                if math.hypot(a.cx - b.cx, a.cy - b.cy) <= radius_px:
+                    pairs += 1
+        if pairs:
+            frames_with_double += 1
+            double += pairs
+    return {"double_claims": double, "frames_with_double_claims": frames_with_double}
+
+
+def _stitch(tracks: list[Track], frames: dict, adaptive: bool = True,
+            stats: dict | None = None) -> tuple[list[Track], dict]:
     """Re-join identities a brief occlusion split.
 
     A player crossing the cloth hides a ball for a second or two; it comes back
     where it was, and without this pass the census would report one ball
     vanishing and another appearing.  Two identities re-join when the later one
-    starts in a *later frame* within ``STITCH_GAP_S`` and ``STITCH_PX`` of where
-    the earlier one ended, in the same colour -- two balls visible in one frame
-    are two balls, so a frame count is never touched by this pass.  A potted
-    ball does not come back, so a vanish survives it.
+    starts in a *later frame* within ``STITCH_GAP_S`` of where the earlier one
+    ended, in the same colour, inside the gate that identity's own speed allows
+    (the same adaptive radius the main pass uses, so a fast ball that rolled on
+    is not stitched to a neighbour while a stationary one is) -- two balls
+    visible in one frame are two balls, so a frame count is never touched by this
+    pass.  A re-joined sighting is marked ``bridged`` for the same reason the main
+    pass marks its own: the identity survived a hole, and the hole is not a
+    measurement.  A potted ball does not come back, so a vanish survives it.
     """
     merged = True
     while merged:
@@ -421,16 +628,33 @@ def _stitch(tracks: list[Track], frames: dict) -> tuple[list[Track], dict]:
             for newer in sorted(tracks, key=lambda track: track.first_t):
                 if newer is older or newer not in tracks or newer.tid == older.tid:
                     continue
-                if newer.first_t - older.last_t < TIME_BUCKET_S:
+                gap = newer.first_t - older.last_t
+                if gap < TIME_BUCKET_S:
                     continue      # same frame: two balls, not one returning
-                if newer.first_t - older.last_t > STITCH_GAP_S:
+                if gap > STITCH_GAP_S:
                     continue
                 if older.color != UNKNOWN and newer.color != UNKNOWN and older.color != newer.color:
                     continue
-                px, py = older.obs[-1].cx, older.obs[-1].cy
-                qx, qy = newer.obs[0].cx, newer.obs[0].cy
-                if math.hypot(px - qx, py - qy) > STITCH_PX:
+                if adaptive:
+                    prediction = older.predict(newer.first_t)
+                    residual = math.hypot(prediction[0] - newer.obs[0].cx,
+                                          prediction[1] - newer.obs[0].cy)
+                    radius = older.gate_radius(gap, STITCH_PX)
+                else:
+                    # The pre-prediction rule, kept for the before/after baseline:
+                    # raw distance from where the earlier identity was last seen.
+                    residual = math.hypot(newer.obs[0].cx - older.obs[-1].cx,
+                                          newer.obs[0].cy - older.obs[-1].cy)
+                    radius = STITCH_PX
+                if residual > radius:
                     continue
+                if adaptive and stats is not None:
+                    stats["stitched_links"] = stats.get("stitched_links", 0) + 1
+                # Bridged only when the re-joined pieces left a real hole: two
+                # fragments one sample apart are a missed link, not an occlusion.
+                newer.obs[0] = replace_observation(
+                    newer.obs[0], bridged=bool(adaptive and gap > BRIDGE_MIN_S),
+                    residual_px=residual)
                 for observation in newer.obs:
                     older.add(observation)
                 tracks.remove(newer)
@@ -441,6 +665,15 @@ def _stitch(tracks: list[Track], frames: dict) -> tuple[list[Track], dict]:
             if merged:
                 break
     return tracks, frames
+
+
+def replace_observation(observation: Observation, **changes) -> Observation:
+    """A copy of an observation with fields replaced (Observations are mutable)."""
+    import copy as _copy
+    clone = _copy.copy(observation)
+    for key, value in changes.items():
+        setattr(clone, key, value)
+    return clone
 
 
 # --------------------------------------------------------------- frame report

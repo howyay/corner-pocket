@@ -3,6 +3,7 @@
 No video, no model: ``src.ball_census`` is pure and the gates are pure, so every
 rule is exercised on synthetic observations and synthetic evidence.
 """
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -169,7 +170,8 @@ class FrameReportShapeTests(unittest.TestCase):
         census = report(rack_frame(0.0, 1))
         track = census["tracks"][0]
         self.assertEqual(set(track), {"tid", "color", "hits", "stable", "first_t", "last_t",
-                                      "confidence", "conflicts", "sources", "table_mm"})
+                                      "confidence", "conflicts", "sources", "table_mm",
+                                      "bridged_samples", "bridges", "wide_links", "kinks"})
 
 
 class WindowSummaryTests(unittest.TestCase):
@@ -455,3 +457,153 @@ class SourceHelperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AssociationAcrossMissTests(unittest.TestCase):
+    """Synthetic ground truth for the association: the case before the real run.
+
+    Every case has a known answer, so the real-data result has something to be
+    wrong against.  Frames are 960x540 pixels, one sample per 66.7 ms -- the
+    dense run's own cadence.
+    """
+
+    STEP = 1.0 / 15.0          # 66.7 ms
+
+    def series(self, start, count, x0, y0, vx, vy, color="white", skip=()):
+        out = []
+        for index in range(count):
+            if index in skip:
+                continue
+            t = round(start + index * self.STEP, 4)
+            out.append(obs(t, color, x0 + vx * (t - start), y0 + vy * (t - start), source="sam3", score=0.9))
+        return out
+
+    def test_a_constant_velocity_ball_survives_a_three_frame_miss(self):
+        # 150 px/s, three samples missing in the middle: one identity, and the
+        # hole is recorded instead of being silently filled.
+        observations = self.series(0.0, 12, 100.0, 100.0, 150.0, 0.0, skip=(5, 6, 7))
+        frames = {}
+        tracks, _ = associate(observations, stats=frames)
+        self.assertEqual(len(tracks), 1)
+        self.assertEqual(tracks[0].hits, 9)
+        self.assertEqual(tracks[0].bridged_samples, 1)      # the sighting after the hole
+        bridges = tracks[0].bridges()
+        self.assertEqual(len(bridges), 1)
+        self.assertAlmostEqual(bridges[0]["dt_s"], round(4 * self.STEP, 3), places=3)
+        # bridged is not a measurement: the identity has no sighting *inside* the
+        # hole, and the sample that re-joins it says so out loud.
+        inside = [o for o in tracks[0].obs if 0.30 < o.t < 0.48]
+        self.assertEqual(inside, [])
+        self.assertTrue(tracks[0].obs[5].bridged)
+        self.assertFalse(tracks[0].obs[0].bridged)
+
+    def test_the_fixed_gate_splits_that_same_ball(self):
+        # The before-picture, on purpose: a 600 px/s ball rolls 40 px between two
+        # samples, past the fixed 30 px gate, so the old rule calls one ball many.
+        # The adaptive gate has the velocity by then and keeps one identity.
+        observations = self.series(0.0, 10, 100.0, 100.0, 700.0, 0.0, skip=(5, 6))
+        fixed, _ = associate(observations, adaptive=False)
+        adaptive, _ = associate(observations)
+        self.assertGreater(len(fixed), len(adaptive))
+        self.assertEqual(len(adaptive), 1)
+        self.assertEqual(adaptive[0].hits, 8)
+        self.assertEqual(adaptive[0].bridged_samples, 1)
+
+    def test_two_balls_crossing_stay_two_identities(self):
+        # Same colour, opposite directions, crossing between samples: the
+        # prediction must not swap them mid-path, and no detection may be
+        # claimed twice.
+        left = self.series(0.0, 10, 200.0, 300.0, 200.0, 0.0)
+        right = self.series(0.0, 10, 600.0, 300.0, -200.0, 0.0)
+        stats = {}
+        tracks, _ = associate(left + right, stats=stats)
+        self.assertEqual(len(tracks), 2)
+        self.assertEqual(stats["double_claims"], 0)
+        for track in tracks:
+            # Each keeps its own side of the crossing: a swap would show as a
+            # direction reversal, which is what the kink counter reports.
+            self.assertEqual(track.kinks, 0, track.as_dict())
+            # No identity swap: each ball keeps its own direction throughout, so
+            # the sign of every step is the one it started with.
+            steps = [b.cx - a.cx for a, b in zip(track.obs, track.obs[1:])]
+            self.assertTrue(all(step > 0 for step in steps) or all(step < 0 for step in steps),
+                            f"direction reversed: {steps}")
+            self.assertGreater(abs(track.obs[-1].cx - track.obs[0].cx), 100.0)
+
+    def test_a_ball_decelerating_to_rest_keeps_one_identity(self):
+        observations = []
+        x = 100.0
+        for index in range(20):
+            speed = max(0.0, 600.0 - 40.0 * index)      # 600 -> 0 px/s over 1.3 s
+            observations.append(obs(round(index * self.STEP, 4), "black", x, 200.0,
+                                    source="sam3", score=0.9))
+            x += speed * self.STEP
+        tracks, _ = associate(observations)
+        self.assertEqual(len(tracks), 1)
+        self.assertLess(abs(tracks[0].obs[-1].cx - tracks[0].obs[-2].cx), 6.0)   # it did stop
+        self.assertEqual(tracks[0].bridged_samples, 0)
+
+    def test_a_ball_that_disappears_into_a_pocket_terminates(self):
+        # The ball rolls to the pocket and is never seen again: the identity ends
+        # there, with no bridge to anything, and its last sighting is the pocket.
+        pocket = (500.0, 300.0)
+        observations = self.series(0.0, 10, 200.0, 300.0, 300.0, 0.0)
+        observations.append(obs(round(9 * self.STEP + 0.5, 4), "blue", 900.0, 480.0,
+                                source="sam3", score=0.9))
+        tracks, _ = associate(observations)
+        ending = next(track for track in tracks if track.color == "white")
+        self.assertEqual(ending.bridged_samples, 0)
+        distance = math.hypot(ending.obs[-1].cx - pocket[0], ending.obs[-1].cy - pocket[1])
+        self.assertGreater(distance, 100.0)             # it never got there: honest
+        self.assertEqual(len({t.tid for t in tracks}), len(tracks))
+
+    def test_a_permissive_gate_never_fuses_a_stopped_ball_with_a_far_one(self):
+        # The purity guard: prediction only widens the gate for a ball whose own
+        # motion is known.  A stopped ball keeps the fixed floor, so a detection
+        # 300 px away stays a different ball -- no false continuity.
+        observations = self.series(0.0, 6, 100.0, 100.0, 0.0, 0.0)          # at rest
+        observations += [obs(round(6 * self.STEP, 4), "white", 400.0, 100.0,
+                             source="sam3", score=0.9)]
+        stats = {}
+        tracks, _ = associate(observations, stats=stats)
+        self.assertEqual(len(tracks), 2)
+        self.assertEqual(stats["wide_links"], 0)
+        self.assertEqual(sum(track.kinks for track in tracks), 0)
+
+    def test_the_adaptive_gate_is_bounded_by_speed_and_gap(self):
+        # The gate's own arithmetic, pinned: floor for a stopped ball, and a
+        # quarter of the travelled distance for a moving one.
+        fast_tracks = associate(self.series(0.0, 4, 100.0, 100.0, 800.0, 0.0))[0]
+        self.assertEqual(len(fast_tracks), 1)
+        fast = fast_tracks[0]
+        self.assertAlmostEqual(fast.gate_radius(self.STEP), 30.0 + 0.25 * 800.0 * self.STEP, places=2)
+        still = associate(self.series(0.0, 4, 100.0, 100.0, 0.0, 0.0))[0][0]
+        self.assertAlmostEqual(still.gate_radius(1.0), 30.0, places=2)
+        # A single sighting has no velocity: it gets the bootstrap gate across
+        # one sample and the plain floor across a longer gap.
+        solo = associate([obs(0.0, "red", 100.0, 100.0, source="sam3", score=0.9)])[0][0]
+        self.assertAlmostEqual(solo.gate_radius(0.0667), 60.0, places=2)
+        self.assertAlmostEqual(solo.gate_radius(1.0), 30.0, places=2)
+
+    def test_colour_still_guards_the_widened_gate(self):
+        # The colour term keeps its job on the wider gate: a ball of another
+        # colour does not join a fast identity even when the prediction lands on
+        # it.  Measured cost of dropping it: same-colour pairs were 30 % of the
+        # candidate links on the dense run, so colour removes ~70 % of them.
+        observations = self.series(0.0, 4, 100.0, 100.0, 800.0, 0.0, color="white")
+        predicted = observations[-1].cx + 800.0 * 0.2
+        observations.append(obs(round(3 * self.STEP + 0.2, 4), "black", predicted, 100.0,
+                                source="sam3", score=0.9))
+        tracks, _ = associate(observations)
+        self.assertEqual(len(tracks), 2)
+        self.assertEqual({track.color for track in tracks}, {"white", "black"})
+
+    def test_the_purity_counters_report_what_the_gate_admitted(self):
+        observations = self.series(0.0, 12, 100.0, 100.0, 150.0, 0.0, skip=(5, 6, 7))
+        stats = {}
+        associate(observations, stats=stats)
+        self.assertEqual(stats["double_claims"], 0)
+        self.assertEqual(stats["assignments"], len(observations))
+        self.assertEqual(stats["bridged_links"], 1)
+        self.assertEqual(stats["tracks"], 1)
+        self.assertEqual(stats["kinked_tracks"], 0)

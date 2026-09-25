@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 import json
+import math
 from pathlib import Path
 import statistics
 import sys
@@ -195,6 +196,7 @@ def diagnose(report) -> dict:
             },
             "examples": links[:10],
         },
+        "prediction": prediction_residuals(report),
         "rejection_codes": report.get("rejection_codes", {}),
         "gate_counts": report.get("gate", {}).get("counts", {}),
     }
@@ -220,6 +222,9 @@ def format_audit(audit) -> str:
         f"moving {frag['moving_links_over_20px']}  implied speed px/s median "
         f"{frag['implied_speed_px_s']['median']} p90 {frag['implied_speed_px_s']['p90']} "
         f"max {frag['implied_speed_px_s']['max']}",
+        f"prediction residual, same colour: {json.dumps(audit['prediction']['same_colour'])}",
+        f"                    cross colour: {json.dumps(audit['prediction']['cross_colour'])} "
+        f"(same-colour share {audit['prediction']['same_colour_share']})",
         f"gate: {json.dumps(audit['gate_counts'])}",
     ]
     return "\n".join(lines)
@@ -238,5 +243,79 @@ def main():
     print(f"-> {out}")
 
 
+
+
+def prediction_residuals(report, max_gap_s: float = 2.5, max_px: float = 600.0) -> dict:
+    """What a constant-velocity prediction has to cover, and what colour adds.
+
+    For every identity that ends and a same-colour identity that starts within
+    ``max_gap_s``, extrapolate the ending identity's own velocity across the gap
+    and measure the residual against the starting position.  That residual is the
+    gate radius the predictor needs; the *angular* error is what is left after
+    motion is accounted for.  The same pairs without the colour filter give the
+    colour term's value: if a cross-colour pair is as close as the same-colour
+    one, colour is doing the disambiguating and cannot be dropped.
+    """
+    tails = identity_tails(report)
+    identities = sorted(tails.items(), key=lambda kv: kv[1]["last"]["t"])
+    same, cross = [], []
+    for ball_id, tail in identities:
+        samples = _tail_samples(report, ball_id)
+        velocity = _velocity(samples)
+        for other_id, other in identities:
+            if other_id == ball_id:
+                continue
+            gap = other["first"]["t"] - tail["last"]["t"]
+            if not 0.0 < gap <= max_gap_s:
+                continue
+            end, start = tail["last"], other["first"]
+            raw = math.hypot(start["x"] - end["x"], start["y"] - end["y"])
+            if raw > max_px:
+                continue
+            if velocity is None:
+                residual, angular = raw, None
+            else:
+                predicted = (end["x"] + velocity[0] * gap, end["y"] + velocity[1] * gap)
+                residual = math.hypot(start["x"] - predicted[0], start["y"] - predicted[1])
+                travelled = math.hypot(velocity[0] * gap, velocity[1] * gap)
+                angular = None if travelled < 1e-6 else residual / travelled
+            row = {"ended": ball_id, "started": other_id, "gap_s": round(gap, 3),
+                   "raw_px": round(raw, 1), "residual_px": round(residual, 1),
+                   "angular": None if angular is None else round(angular, 3)}
+            (same if other["color"] == tail["color"] else cross).append(row)
+
+    def summary(rows):
+        residuals = [r["residual_px"] for r in rows]
+        angular = [r["angular"] for r in rows if r["angular"] is not None]
+        return {"n": len(rows),
+                "residual_px": {"p50": round(statistics.median(residuals), 1) if residuals else None,
+                                "p90": round(_percentile(residuals, .9), 1) if residuals else None,
+                                "p99": round(_percentile(residuals, .99), 1) if residuals else None},
+                "angular": {"p50": round(statistics.median(angular), 3) if angular else None,
+                            "p90": round(_percentile(angular, .9), 3) if angular else None}}
+
+    return {"same_colour": summary(same), "cross_colour": summary(cross),
+            "same_colour_share": round(len(same) / max(1, len(same) + len(cross)), 3)}
+
+
+def _tail_samples(report, ball_id):
+    rows = []
+    for row in report.get("gate", {}).get("rejections", []):
+        if row["ball_id"] != ball_id:
+            continue
+        rows.extend(row.get("samples_used") or ())
+    rows.sort(key=lambda s: s["t"])
+    return rows
+
+
+def _velocity(samples):
+    """px/s from the last two samples, or None when there are not two."""
+    if len(samples) < 2:
+        return None
+    a, b = samples[-2], samples[-1]
+    dt = b["t"] - a["t"]
+    if dt <= 1e-6:
+        return None
+    return ((b["x"] - a["x"]) / dt, (b["y"] - a["y"]) / dt)
 if __name__ == "__main__":
     main()
