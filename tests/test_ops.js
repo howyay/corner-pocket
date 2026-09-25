@@ -268,7 +268,7 @@ test('Back room retains nine truthful deferred roadmap areas', () => {
   assert.ok(h.evaluate('roadmapPanel()').includes('尚无自动化'));
 });
 function submission(formId, values, submitter = {}) {
-  return {preventDefault() {}, target: {id: {shadowedByNamedControl: true}, getAttribute: () => formId, classList: {contains: () => false}, values}, submitter};
+  return {preventDefault() {}, target: {id: {shadowedByNamedControl: true}, getAttribute: () => formId, classList: {contains: () => false}, querySelectorAll: () => [], values}, submitter};
 }
 test('named id control cannot shadow form identity; sign saves score before completion', async () => {
   const h = harness();
@@ -305,6 +305,23 @@ test('registration without a guest name or a regular is stopped at the guest fie
   await h.handlers.submit(form({pid0: 'p1', guest0: ''}));
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => c.payload))')), [{members: [{name: 'Ann'}]}, {members: [{pid: 'p1'}]}]);
 });
+test('a required text field holding only spaces is stopped at the field, in both languages', async () => {
+  const h = harness();
+  const field = {value: '   ', validity: '', setCustomValidity(text) { this.validity = text; }, reportValidity() { return false; }};
+  const form = (id, cls, values) => ({preventDefault() {}, target: {getAttribute: () => id, classList: {contains: c => c === cls}, querySelectorAll: sel => sel.includes('[required]') ? [field] : [], values}});
+  for (const [id, cls, values] of [[null, 'player-form', {name: '   ', status: 'Active'}], ['settings-form', '', {name: '   ', format: 'singles', tables: '1', raceTo: '1'}], ['note-form', '', {text: '   '}]]) {
+    field.validity = '';
+    await h.handlers.submit(form(id, cls, values));
+    assert.equal(field.validity, "Fill this in — spaces alone don't count.", id || cls);
+  }
+  assert.equal(h.evaluate('calls.length'), 0, 'nothing blank reaches the server');
+  h.evaluate("lang='zh'");
+  await h.handlers.submit(form('note-form', '', {text: '   '}));
+  assert.equal(field.validity, '请填写此项，仅有空格不算。');
+  field.value = 'Ada';
+  await h.handlers.submit(form(null, 'player-form', {name: 'Ada', status: 'Active'}));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'player_save', payload: {name: 'Ada', status: 'Active'}}]);
+});
 test('choosing a regular after the guest prompt clears it, so the browser lets the form submit', () => {
   const h = harness();
   const guest = {validity: 'Type a guest name or choose a regular.', setCustomValidity(text) { this.validity = text; }};
@@ -325,7 +342,7 @@ test('appearance form serializes numbers and unchecked diamonds correctly', asyn
 });
 test('adding a regular never sends a rating the form did not collect; editing keeps it', async () => {
   const h = harness();
-  const playerForm = values => ({preventDefault() {}, target: {getAttribute: () => null, classList: {contains: c => c === 'player-form'}, values}});
+  const playerForm = values => ({preventDefault() {}, target: {getAttribute: () => null, classList: {contains: c => c === 'player-form'}, querySelectorAll: () => [], values}});
   assert.ok(!h.evaluate('playerForm()').includes('name="rating"'), 'create form has no rating field');
   await h.handlers.submit(playerForm({name: 'Ada', status: 'Active'}));
   h.evaluate('realCall=calls[0]');
