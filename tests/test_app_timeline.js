@@ -44,8 +44,8 @@ function test(name, fn) {
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
-  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
-  assert.strictEqual(api.length, 63, 'the engine exposes exactly its lifecycle + one-stage API');
+  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  assert.strictEqual(api.length, 67, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -1290,7 +1290,7 @@ test('the pots tab explains its empty state instead of showing a bare list', () 
 // ---- identity labelling + source panel (owner request, 2026-09-23) --------
 // The adapter under test: loaded once per language with a stub host, so the
 // blocks can be rendered without a browser or a live engine.
-function adapterStage(lang, roster) {
+function adapterStage(lang, roster, extra) {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []},
                location:{hostname:'127.0.0.1'}, URL:{}, fetch: () => Promise.reject(new Error('no network in tests')),
@@ -1300,7 +1300,7 @@ function adapterStage(lang, roster) {
   vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
   const VS = box.window.VisionStage;
   VS.attach({mount:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}},
-             lang, review:{snapshot: () => null}, channels: () => [], regulars: () => roster || [], chat: () => false});
+             lang, review:{snapshot: () => null}, channels: () => [], regulars: () => roster || [], chat: () => false, ...(extra || {})});
   return VS;
 }
 // The smallest snapshot the identity block and the chip row read.
@@ -1437,5 +1437,142 @@ test('the rail empty state and the labelling copy render in 中 as well', () => 
   assert.ok(en.includes('Select a cue, a ball, a person or an anchor to label it.'), 'EN keeps its own copy, not a translation of 中');
 });
 
+test('an inference run says it was not stored, and a stored file is labelled as an earlier run', () => {
+  // The write is gone from the server (no file, no directory); what the UI owes
+  // the operator is the provenance: this frame's own run, or a file an earlier
+  // run left behind - never the two blurred together.
+  assert.ok(source.includes('Inference completed for frame ${job.frame_index} (not stored).'),
+    'the completion line says the result was not stored');
+  assert.ok(source.includes('推理已完成（未存储）'), 'and 中 renders the same sentence');
+  const boxes = {tool:'select', newBoxLabel:'ball', box:0, boxLabel:'ball', polygon:false, result:'inference',
+                 dirty:false, inferRunning:false, inferStatus:'Idle.'};
+  const stored = visionSnapshot({selection:{kind:'box', box:0},
+                                 corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00'}});
+  const storedHTML = adapterStage('en', ROSTER).inspectorHTML(stored);
+  assert.ok(storedHTML.includes('data-vs-inference="stored"') && storedHTML.includes('stored inference'),
+    'a stored file is named as stored');
+  assert.ok(/2026|9\/2[0-9]|09\/2[0-9]/.test(storedHTML), 'with its own timestamp');
+  const session = visionSnapshot({selection:{kind:'box', box:0},
+                                  corrections:{...boxes, storedInference:false, inferenceAt:'2026-09-23T21:10:00+00:00'}});
+  const sessionHTML = adapterStage('en', ROSTER).inspectorHTML(session);
+  assert.ok(sessionHTML.includes('data-vs-inference="session"') && sessionHTML.includes('run on this frame, not stored'),
+    'this session\'s run says it was not stored');
+  const zhHTML = adapterStage('zh', ROSTER).inspectorHTML(stored);
+  assert.ok(zhHTML.includes('已存推理') && zhHTML.includes('推理来源'), 'and the stored label is Chinese too');
+  const facts = adapterStage('en', ROSTER).factsLine(visionSnapshot({
+    drawn:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0}},
+    cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
+    corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00'}}));
+  assert.ok(facts.includes('stored inference'), 'the facts line names the earlier run too: ' + facts);
+});
+
+test('the live ball detector is selectable and named as the trained net', () => {
+  const VS = adapterStage('en', ROSTER);
+  const running = visionSnapshot({live:{state:'running', error:null, attempt:null, frame_age_ms:20, receive_to_result_ms:30,
+    skipped:0, detectors:['table','person','ball'], stale:false, seq:1,
+    stages:[{name:'table', every_n_frames:30, runs:2, skips:28, budget_ms:12},
+            {name:'person', every_n_frames:1, runs:30, skips:0, budget_ms:10},
+            {name:'ball', every_n_frames:2, runs:15, skips:15, budget_ms:120}]}});
+  const panel = VS.sourcePanelHTML(running);
+  for (const option of ['data-vs-value="table"', 'data-vs-value="person"', 'data-vs-value="ball"']) {
+    assert.ok(panel.includes(option), `the live detector row offers ${option}`);
+  }
+  assert.ok(panel.includes('Ball (trained net)'), 'the ball row names the trained net, not SAM3');
+  assert.ok(panel.includes('The live ball detector is the trained tiny net'), 'and says which path it is');
+  assert.ok(panel.includes('SAM3'), 'while naming the CPU-heavy frame detector as the other one');
+  assert.ok(panel.includes('data-vs-live-stages="3"'), 'the panel reports the stages the processor really has');
+  assert.ok(panel.includes('every 2 frames') && panel.includes('not run on the skipped frames'),
+    'a partitioned stage states its cadence and what a skipped frame means: ' + panel.slice(0, 400));
+  assert.ok(panel.includes('15 runs'), 'with how often it actually ran');
+  const zhPanel = adapterStage('zh', ROSTER).sourcePanelHTML(running);
+  assert.ok(zhPanel.includes('球（训练网络）') && zhPanel.includes('每 2 帧'), 'the row and the cadence are Chinese: ' + zhPanel.slice(0, 300));
+  // A refusal is the server's sentence, shown as it comes - never a green state.
+  const refused = visionSnapshot({live:{state:'error', error:"Requested detector 'ball' cannot run: no weights at /x/960x540-scratch.pt",
+    attempt:{source:'dataset:vod30', error:"Requested detector 'ball' cannot run: no weights at /x/960x540-scratch.pt", at: 1},
+    frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person'], stale:false, seq:null, stages:[]}});
+  const refusalPanel = adapterStage('en', ROSTER).sourcePanelHTML(refused);
+  assert.ok(refusalPanel.includes('cannot run: no weights at /x/960x540-scratch.pt'),
+    'the refusal sentence reaches the panel verbatim (escaped, not rewritten)');
+  assert.ok(refusalPanel.includes('error · Requested detector &#39;ball&#39;'), 'and the live row keeps the state error');
+  assert.ok(refusalPanel.includes('Start attempt'), 'and is labelled as the attempt that failed');
+});
+
+test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => {
+  const base = {state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0,
+                detectors:['table','person'], stale:false, seq:null, stages:[], source:null, replay:null};
+  const chosen = adapterStage('en', ROSTER, {replayChoice: () => ({vod_id: '1000000011', start_s: 30, rate: 2})})
+    .sourcePanelHTML(visionSnapshot({live:{...base}}));
+  assert.ok(chosen.includes('data-vs-replay="chosen"'), 'a chosen VOD is shown before it starts');
+  assert.ok(chosen.includes('vod 1000000011') && chosen.includes('a replay, never a live broadcast'),
+    'and it is named a replay, never a broadcast: ' + chosen.slice(chosen.indexOf('vs-replay'), chosen.indexOf('vs-replay') + 200));
+  const running = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...base, state:'running',
+    source:{kind:'vod-replay', vod_id:'1000000011', rate:2, start_s:30},
+    replay:{kind:'vod-replay', live:false, vod_id:'1000000011', rate:2, drift_s:-0.42, network:'hls', pacing:'wall-clock', wall_s:12.5, video_s:12.1}}}));
+  assert.ok(running.includes('data-vs-replay="running"'), 'a running replay reports itself');
+  assert.ok(running.includes('kind vod-replay') && running.includes('live false'), 'kind and live come from the server: ' + running.slice(running.indexOf('vs-replay'), running.indexOf('vs-replay') + 260));
+  assert.ok(running.includes('vod 1000000011') && running.includes('×2') && running.includes('drift -0.42 s'), 'with the id, the rate and the drift');
+  assert.ok(!/live true/.test(running), 'nothing here claims it is live');
+  const failed = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...base, state:'error',
+    error:'Twitch VOD playlist request failed (HTTP 403)', attempt:{source:'vod-replay', error:'Twitch VOD playlist request failed (HTTP 403)', at:1}}}));
+  assert.ok(failed.includes('data-vs-replay="failed"') && failed.includes('Twitch VOD playlist request failed (HTTP 403)'),
+    'a refusal shows its cause instead of a spinner that never ends');
+  const zhRunning = adapterStage('zh', ROSTER).sourcePanelHTML(visionSnapshot({live:{...base, state:'running',
+    source:{kind:'vod-replay', vod_id:'1000000011', rate:2, start_s:30}, replay:{kind:'vod-replay', live:false, vod_id:'1000000011', rate:2, drift_s:-0.42}}}));
+  assert.ok(zhRunning.includes('回放') && zhRunning.includes('漂移'), 'and the panel is bilingual');
+});
+
+test('the enrol block shows the evidence level, the crops and one confirm', () => {
+  // The engine's two calls: a read for the preview, the write only on confirm.
+  assert.ok(source.includes("api('/api/identity/enroll-preview', body)"), 'the preview is a read of its own endpoint');
+  assert.ok(source.includes("body.cluster_id = person.cluster_id"), 'it carries the cluster id when the track has one, for the fast path');
+  assert.ok(source.includes("save(button, '/api/identity/enroll-confirm', {token: payload.token, player_name: name}"),
+    'the confirm is the one write, with the token and the typed name');
+  const idle = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
+  assert.ok(idle.includes('data-vs-action="enroll-preview"') && idle.includes('Enrol as regular'), 'the person rail offers the action');
+  assert.ok(idle.includes('nothing is written until you confirm'), 'and says the preview writes nothing');
+  const pending = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
+    enroll:{status:'pending', payload:null, name:'', elapsed_ms:4200, error:null}}));
+  assert.ok(pending.includes('data-vs-enrol="pending"') && pending.includes('collecting faces · 4 s'),
+    'a slow preview reports itself working, with elapsed seconds: ' + pending.slice(0, 80));
+  assert.ok(!pending.includes('data-vs-action="enroll-preview"'), 'and cannot be started twice');
+  const ready = {status:'ready', name:'', elapsed_ms:null, error:null,
+    payload:{ok:true, token:'tok', track_id:6, selection_iou:0.98, frames_seen:6,
+      crops:[{index:0, frame_index:2010, t:67.0, det_score:0.7977, eye_px:12.7, jpeg_data_url:'data:image/jpeg;base64,AAA'},
+             {index:1, frame_index:2040, t:68.0, det_score:0.81, eye_px:13.1, jpeg_data_url:'data:image/jpeg;base64,BBB'}],
+      purity:{probes:49, agreement:0.98}, quality:{kept:2, usable:2},
+      evidence:{source:'window_scan', stored_face:false, cross_checked:true, crops:2, frames_scanned:2}}};
+  const readyHTML = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:ready}));
+  assert.ok(readyHTML.includes('data-vs-crop="0"') && readyHTML.includes('data-vs-crop="1"'), 'the crops are shown');
+  assert.ok(readyHTML.includes('data:image/jpeg;base64,AAA'), 'as data URLs, so no file route is needed');
+  assert.ok(readyHTML.includes('det 0.80') && readyHTML.includes('eye 12.7 px'), 'with the detection and eye numbers');
+  assert.ok(readyHTML.includes('frames seen 6') && readyHTML.includes('usable faces 2/2') && readyHTML.includes('purity 98% (49)'),
+    'and the plan\u2019s own numbers: ' + readyHTML.slice(readyHTML.indexOf('facts'), readyHTML.indexOf('facts') + 220));
+  assert.ok(readyHTML.includes('evidence: window scan · 2 crops · cross-checked'), 'and which evidence level produced them');
+  assert.ok(readyHTML.includes('data-vs-action="enroll-name"') && readyHTML.includes('data-vs-action="enroll-confirm"')
+    && readyHTML.includes('data-vs-action="enroll-cancel"'), 'with one name box, one confirm and one cancel');
+  // One stored face: weaker evidence, said out loud.
+  const cluster = {...ready, payload:{...ready.payload, evidence:{source:'cluster_face', stored_face:true, cross_checked:false, crops:1, frames_scanned:0},
+    crops:[ready.payload.crops[0]], quality:{kept:1, usable:1}, purity:{probes:0, agreement:null}}};
+  const clusterHTML = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7}}, enroll:cluster}));
+  assert.ok(clusterHTML.includes('evidence: stored cluster face · 1 crops · not cross-checked'),
+    'the cluster path says it is not cross-checked: ' + clusterHTML.slice(clusterHTML.indexOf('evidence:'), clusterHTML.indexOf('evidence:') + 90));
+  assert.ok(clusterHTML.includes('no other face to cross-check'), 'and why purity is absent');
+  // A refusal is the reason in the operator's words, with the code still visible.
+  const refused = {status:'refused', name:'', elapsed_ms:null, error:null,
+    payload:{ok:false, reason:'single_face_only', message:'only one usable face: upload a second photo to prove consistency',
+             crops:[{index:0, frame_index:2010, t:67.0, det_score:0.79, eye_px:12.7, jpeg_data_url:'data:image/jpeg;base64,AAA'}]}};
+  const refusedHTML = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:refused}));
+  assert.ok(refusedHTML.includes('data-vs-enrol="refused"') && refusedHTML.includes('only one usable face: no second face to cross-check it'),
+    'the refusal is a sentence, in operator language');
+  assert.ok(refusedHTML.includes('single_face_only') && refusedHTML.includes('upload a second photo'), 'with the module code and its own sentence beside it');
+  assert.ok(refusedHTML.includes('data-vs-crop="0"'), 'and it still shows the face it did see');
+  const none = {status:'refused', name:'', elapsed_ms:null, error:null, payload:{ok:false, reason:'no_face_in_track', message:'x', crops:[]}};
+  assert.ok(adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:none}))
+    .includes('no usable crop was kept'), 'a refusal with no crops says so instead of showing an empty box');
+  const zh = adapterStage('zh', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:cluster}));
+  assert.ok(zh.includes('已存聚类人脸') && zh.includes('未交叉核对') && zh.includes('确认登记'), 'the whole block is Chinese too');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
+

@@ -42,6 +42,33 @@ const COPY = {
     ignoreHint:'Marks this track as a spectator: excluded from identity assignment, and never competing with the two labelling options above.',
     railEmpty:'Select a cue, a ball, a person or an anchor to label it.', thisFrame:'This frame', noSelection:'Nothing selected',
     bindNone:'no label yet', bindLegacy:'legacy A/B seed', bindGuest:'guest name',
+    // Live detectors: the trained tiny ball net is a live *stage*, unlike the
+    // CPU-heavy SAM3 frame detector, and the panel names the difference.
+    liveBall:'Ball (trained net)',
+    liveBallNote:'The live ball detector is the trained tiny net (the pipeline\u2019s "ball" stage; its weights are checked before the start). The Balls row under Frame detectors is the CPU-heavy SAM3 scan: a frame tool here, never a live stage.',
+    stageEvery:'every', stageAbsent:'not run on the skipped frames', stageRuns:'runs',
+    // Twitch VOD replay: a source, never a broadcast. The panel prints the
+    // server's and the capture's own words (kind, live, rate, drift), not ours.
+    vodReplay:'Twitch VOD replay', vodId:'VOD id or URL', vodStart:'Start at (s)', vodRate:'Rate (VOD s per wall s)',
+    vodUse:'Use this VOD', vodChosen:'Chosen', vodNotLive:'a replay, never a live broadcast',
+    vodNote:'The server resolves the VOD with Twitch and replays it in real time. The panel reports what the server and the capture say it is: kind, live, the VOD id, the rate and the drift it is carrying.',
+    vodResolving:'resolving the VOD with Twitch…', vodFailed:'the VOD could not be resolved',
+    vodDrift:'drift', vodVideoAt:'video at', vodWall:'wall', liveFlag:'live', pace:'pacing',
+    enrolTitle:'Enrol as regular',
+    enrolStart:'Enrol as regular', enrolHint:'Reads this person from the footage first; nothing is written until you confirm a name. A window scan can take about a minute.',
+    enrolScanning:'collecting faces', enrolWait:'the scan reads the recording around this frame; it stops by itself and reports what it saw',
+    enrolNeedsBox:'pick the person on the stage first: enrolment starts from their box in this frame',
+    enrolCrops:'crops', enrolFrame:'frame', enrolDet:'det', enrolEye:'eye', enrolFramesSeen:'frames seen',
+    enrolFaces:'usable faces', enrolPurity:'purity', enrolNoPurity:'no other face to cross-check',
+    enrolIoU:'selection IoU', enrolEvidence:'evidence', enrolClusterFace:'stored cluster face',
+    enrolWindowScan:'window scan', enrolCrossChecked:'cross-checked', enrolNotCrossChecked:'not cross-checked',
+    enrolName:'Regular\u2019s name', enrolConfirm:'Confirm enrolment', enrolCancel:'Cancel',
+    enrolRefused:'Enrolment refused', enrolNoCrops:'no usable crop was kept: nothing to enrol from',
+    enrolWrote:'enrolled; the roster was re-read', enrolRetry:'Preview again',
+    enrolMismatch:'these crops are not the ones you were shown; preview again',
+    inferenceNotStored:'run on this frame, not stored', inferenceFrom:'inference source',
+    // Live detectors: the trained tiny ball net is a live stage, unlike the
+    // CPU-heavy SAM3 frame detector, and the panel names the difference.
     boundManual:'manual bind', boundAuto:'automatic face match', boundIdentity:'identity binding',
     bindIdentityHint:'Saves through the identity pipeline, so face and body matching keep working.',
     bindGuestHint:'Saves the typed name as this track’s label.',
@@ -112,6 +139,27 @@ const COPY = {
     ignoreHint:'将该轨迹标记为观众：排除在身份分配之外，也不会与上方两个标注选项争夺注意力。',
     railEmpty:'请先选择线索、球、人物或锚点，再进行标注。', thisFrame:'此帧', noSelection:'未选择',
     bindNone:'尚未标注', bindLegacy:'旧版 A/B 种子', bindGuest:'访客姓名',
+    liveBall:'球（训练网络）',
+    liveBallNote:'实时球检测使用训练好的小型网络（流水线的 ball 阶段，启动前校验权重）。帧检测器里的「球」是 CPU 密集的 SAM3 扫描：它属于帧工具，从不作为实时阶段运行。',
+    stageEvery:'每', stageAbsent:'跳过的帧上不运行', stageRuns:'次运行',
+    vodReplay:'Twitch 回放', vodId:'回放 id 或网址', vodStart:'起始秒', vodRate:'倍速（回放秒/墙钟秒）',
+    vodUse:'使用该回放', vodChosen:'已选择', vodNotLive:'回放，绝不是直播',
+    vodNote:'由服务端向 Twitch 解析该回放并实时播放。面板只报服务端与采集器的原话：类型、是否直播、回放 id、倍速以及当前漂移。',
+    vodResolving:'正在向 Twitch 解析该回放…', vodFailed:'该回放无法解析',
+    vodDrift:'漂移', vodVideoAt:'视频位置', vodWall:'墙钟', liveFlag:'直播', pace:'节拍',
+    enrolTitle:'登记为常客',
+    enrolStart:'登记为常客', enrolHint:'先从录像中读取该人物；在你确认姓名之前不会写入任何内容。窗口扫描约需一分钟。',
+    enrolScanning:'正在采集人脸', enrolWait:'扫描正在读取此帧附近的录像；它会自行结束并报告所见',
+    enrolNeedsBox:'请先在舞台上选择该人物：登记从他/她在此帧的标注框开始',
+    enrolCrops:'张裁剪图', enrolFrame:'帧', enrolDet:'检测', enrolEye:'眼距', enrolFramesSeen:'可见帧数',
+    enrolFaces:'可用人脸', enrolPurity:'纯度', enrolNoPurity:'没有其他人脸可交叉核对',
+    enrolIoU:'选择重叠度', enrolEvidence:'证据', enrolClusterFace:'已存聚类人脸',
+    enrolWindowScan:'窗口扫描', enrolCrossChecked:'已交叉核对', enrolNotCrossChecked:'未交叉核对',
+    enrolName:'常客姓名', enrolConfirm:'确认登记', enrolCancel:'取消',
+    enrolRefused:'登记被拒绝', enrolNoCrops:'没有保留可用裁剪图：无从登记',
+    enrolWrote:'已登记；名单已重新读取', enrolRetry:'重新预览',
+    enrolMismatch:'这些裁剪图与展示时不一致；请重新预览',
+    inferenceNotStored:'本次运行，未存储', inferenceFrom:'推理来源',
     boundManual:'人工绑定', boundAuto:'自动人脸匹配', boundIdentity:'身份绑定',
     bindIdentityHint:'通过身份流程保存，人脸与体型匹配继续生效。',
     bindGuestHint:'把输入的姓名保存为该轨迹的标注。',
@@ -495,6 +543,9 @@ function factsLine(s) {
     parts.push(`${t('quadFallback')} (${quadReason(quad.reason)})`);
   }
   if (refusal) parts.push(`${t('correctionRefused')} (${refusal.owner})`);
+  // A stored inference file is an earlier run's evidence, and the line says so
+  // rather than letting it read as this session's detection.
+  if (s.corrections?.storedInference && s.corrections?.inferenceAt) parts.push(`${t('storedInference')} ${stampText(s.corrections.inferenceAt)}`);
   const total = d.cloth + d.balls + d.persons + d.pockets + d.anchors + d.events;
   if (s.loading.overlay) parts.push(`${t('overlays')} ${t('loading')} (${((Date.now() - s.loading.since) / 1000).toFixed(1)} s)`);
   else if (s.busy) parts.push(`${t('overlays')} ${t('loading2')}`);
@@ -512,7 +563,8 @@ function coldFrameBlock(s) {
   return `<div class="vs-block vs-frame-tools"><h4>${esc(t('thisFrame'))}</h4>
     <div class="vs-row"><button class="${tool === 'select' ? 'active' : ''}" data-vs-action="tool" data-vs-value="select">${esc(t('selectTool'))}</button><button class="${tool === 'draw' ? 'active' : ''}" data-vs-action="tool" data-vs-value="draw">${esc(t('drawTool'))}</button></div>
     <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div>
-    <div class="vs-row"><button data-vs-action="run-inference">${esc(t('runInference'))}</button></div>
+    <div class="vs-row"><button data-vs-action="run-inference" ${s.corrections?.inferRunning ? 'disabled' : ''}>${esc(t('runInference'))}</button></div>
+    ${inferenceLine(s)}${s.corrections?.inferStatus ? `<p class="vs-mono">${esc(engineText(s.corrections.inferStatus))}</p>` : ''}
     ${s.dirty ? `<div class="vs-row"><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button></div>` : ''}
     <p class="vs-note">${esc(t('coldStartHint'))}</p></div>`;
 }
@@ -528,6 +580,50 @@ function emptyRailBlock(s) {
 // The Source block's body, now the body of the panel under the chip row: the
 // dataset chips, the live state row, the detector toggles, freshness, the saved
 // channels and the latency caveat are unchanged, only the container moved.
+// Which live stages the running processor actually has, and at what cadence: a
+// partitioned stage is absent on the frames it skips, and the panel says so
+// rather than letting "no ball" stand for "no ball detector ran".
+// The VOD replay request, and the honest self-description of the replay that is
+// actually running: kind 'vod-replay', live false, the VOD id, the rate and the
+// drift the capture is carrying. A replay is never labelled a broadcast here,
+// and a refusal is the server's sentence rather than a spinner that never ends.
+function replaySelfDescription(replay) {
+  if (!replay || !replay.kind) return '';
+  const parts = [`kind ${replay.kind}`, `${t('liveFlag')} ${replay.live === true}`];
+  if (replay.vod_id) parts.push(`vod ${replay.vod_id}`);
+  if (replay.rate != null) parts.push(`${t('vodRate').split(' ')[0]} ×${replay.rate}`);
+  if (replay.drift_s != null) parts.push(`${t('vodDrift')} ${Number(replay.drift_s).toFixed(2)} s`);
+  if (replay.network) parts.push(replay.network);
+  if (replay.pacing) parts.push(`${t('pace')} ${replay.pacing}`);
+  return parts.join(' · ');
+}
+function replayBlock(s) {
+  const live = s.live || {};
+  const chosen = opts.replayChoice ? opts.replayChoice() : null;
+  const running = live.replay || (live.source && live.source.kind === 'vod-replay' ? live.source : null);
+  const failed = live.attempt?.error && String(live.attempt.source || '').startsWith('vod-replay');
+  const state = running ? `<p class="vs-mono" data-vs-replay="running">${esc(replaySelfDescription(running))}</p>`
+    : failed ? `<p class="vs-mono" data-vs-replay="failed">${esc(t('vodFailed'))}: ${esc(live.attempt.error)}</p>`
+    : chosen ? `<p class="vs-mono" data-vs-replay="chosen">${esc(t('vodChosen'))}: vod ${esc(chosen.vod_id)} · ${esc(t('vodStart'))} ${esc(chosen.start_s)} · ${esc(t('vodRate').split(' ')[0])} ×${esc(chosen.rate)} · ${esc(t('vodNotLive'))}</p>`
+    : '';
+  return `<div class="vs-block vs-replay"><h4>${esc(t('vodReplay'))}</h4>
+    <label class="vs-field">${esc(t('vodId'))}<input name="vod" type="text" data-vs-field="vod" placeholder="https://www.twitch.tv/videos/1234567890"></label>
+    <div class="vs-row"><label class="vs-field">${esc(t('vodStart'))}<input name="start" type="number" data-vs-field="vod-start" min="0" step="1" value="0"></label><label class="vs-field">${esc(t('vodRate'))}<input name="rate" type="number" data-vs-field="vod-rate" min="0.25" max="4" step="0.25" value="1"></label></div>
+    <div class="vs-row"><button data-vs-action="pick-replay">${esc(t('vodUse'))}</button></div>
+    ${state}<p class="vs-note">${esc(t('vodNote'))}</p></div>`;
+}
+function liveStageLine(s) {
+  const stages = (s.live?.stages || []).filter(stage => stage && stage.name);
+  if (!stages.length) return '';
+  const rows = stages.map(stage => {
+    const cadence = Number(stage.every_n_frames) > 1
+      ? `${t('stageEvery')} ${Number(stage.every_n_frames)} ${t('frameCount')} · ${t('stageAbsent')}`
+      : `${t('stageEvery')} 1 ${t('frameCount')}`;
+    const runs = Number(stage.runs || 0);
+    return `${esc(stage.name)} · ${esc(cadence)} · ${runs} ${t('stageRuns')}`;
+  });
+  return `<p class="vs-mono" data-vs-live-stages="${stages.length}">${rows.map(esc).join('<br>')}</p>`;
+}
 function sourcePanelHTML(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
@@ -543,9 +639,12 @@ function sourcePanelHTML(s) {
     <p class="vs-mono" id="vs-live-status">${esc(stateText(liveRowState))}${(live.error || live.attempt?.error) ? ` · ${esc(live.error || live.attempt.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
     <div class="vs-row"><button class="primary" data-vs-action="live-start">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button></div>
     <div class="vs-chiprow">${channels}${(s.datasets || []).map(d => `<button class="vs-chip" data-vs-action="pick-live" data-vs-value="dataset:${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
-    <div class="vs-row">${['table','person'].map(d => `<label class="vs-check"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${(live.detectors || []).includes(d) ? 'checked' : ''}> ${esc(t(d))}</label>`).join('')}</div>
+    <div class="vs-row">${['table','person','ball'].map(d => `<label class="vs-check" title="${d === 'ball' ? esc(t('liveBallNote')) : esc(t(d))}"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${(live.detectors || []).includes(d) ? 'checked' : ''}> ${esc(d === 'ball' ? t('liveBall') : t(d))}</label>`).join('')}</div>
+    <p class="vs-note" data-vs-live-ball="note">${esc(t('liveBallNote'))}</p>
+    ${liveStageLine(s)}
     <p class="vs-note">${esc(t('latency'))}</p></div>
   <div class="vs-block"><h4>${esc(t('detectors'))}</h4><div class="vs-row">${[['table','table'],['person','person'],['balls','ball']].map(([k, l]) => `<label class="vs-check"><input type="checkbox" data-vs-action="detector" data-vs-value="${k}" ${s.detectors[k] ? 'checked' : ''}> ${esc(t(l))}</label>`).join('')}</div><p class="vs-note">${esc(t('detectorReason'))}</p></div>
+  ${replayBlock(s)}
   <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}
     <form id="source-form"><label class="vs-field">${esc(t('channelUrl'))}<input name="url" type="url" placeholder="https://www.twitch.tv/channel" required></label><button class="primary">${esc(t('addChannel'))}</button></form></div>`;
 }
@@ -587,6 +686,61 @@ function ballBlock(s) {
 // working) or a guest name (stored as this track's label in the seeds store).
 // "Not a player" is a quiet secondary action because spectators exist in this
 // footage and must stay excludable without competing with the two options.
+// The module's refusal codes, in the operator's words. The code and its own
+// sentence stay on screen next to the translation, so nothing is smoothed over.
+const ENROL_REASON_COPY = {
+  selection_not_matched:['the click does not overlap a person in this frame', '此点击与此帧中的人物不重叠'],
+  track_not_found:['that person was not seen in the sampled frames', '在采样帧中没有看到该人物'],
+  no_face_in_track:['the person was seen, but no face inside their box', '看到了该人物，但其标注框内没有人脸'],
+  face_too_small:['every face was below the eye-distance gate', '所有人脸都低于眼距门槛'],
+  face_low_detection:['every face was below the detection gate', '所有人脸都低于检测门槛'],
+  single_face_only:['only one usable face: no second face to cross-check it', '只有一张可用人脸：没有第二张可交叉核对'],
+  inconsistent_faces:['the usable faces do not agree: more than one person may be in this track', '可用人脸彼此不一致：该轨迹内可能有不止一人'],
+  mixed_track:['the best faces disagree with the rest of this track: the track may have switched people', '最佳人脸与轨迹其余部分不一致：该轨迹可能换过人'],
+  no_stored_evidence:['the identity index holds no usable face for this cluster', '身份索引中该聚类没有可用人脸'],
+  preview_expired:['this preview is no longer held; preview again', '此预览已不再保留；请重新预览'],
+  token_mismatch:['these crops are not the ones you were shown; preview again', '这些裁剪图与展示时不一致；请重新预览'],
+  player_name_required:['a name is required to enrol a regular', '登记常客需要姓名']
+};
+function enrolReasonText(payload) {
+  const row = ENROL_REASON_COPY[payload?.reason];
+  if (!row) return String(payload?.message || payload?.reason || t('unknown'));
+  return opts?.lang === 'zh' ? row[1] : row[0];
+}
+function enrolCropsHTML(payload) {
+  const crops = payload?.crops || [];
+  if (!crops.length) return '';
+  return `<div class="vs-cropgrid">${crops.map(c => `<figure class="vs-cropcard" data-vs-crop="${esc(c.index)}"><img src="${esc(c.jpeg_data_url || '')}" alt=""><figcaption><span class="vs-mono">#${esc(c.index)}</span> · ${esc(t('enrolFrame'))} ${esc(c.frame_index)}${c.t != null ? ` · t ${Number(c.t).toFixed(1)} s` : ''}<br><span class="vs-mono vs-dim">${esc(t('enrolDet'))} ${c.det_score != null ? Number(c.det_score).toFixed(2) : '—'} · ${esc(t('enrolEye'))} ${c.eye_px != null ? Number(c.eye_px).toFixed(1) : '—'} px</span></figcaption></figure>`).join('')}</div>`;
+}
+// The enrolment block on the selected person: preview (reads), then the one
+// confirm click (writes). The evidence level is stated before the name is typed,
+// because one stored face is weaker evidence than a cross-checked gallery.
+function enrolBlock(s) {
+  const e = s.enroll || {status:'idle'};
+  const p = e.payload || {};
+  const ev = p.evidence || {};
+  const seconds = e.elapsed_ms != null ? (Number(e.elapsed_ms) / 1000).toFixed(0) : '0';
+  const start = e.status === 'pending' ? '' : `<div class="vs-row"><button data-vs-action="enroll-preview">${esc(e.status === 'idle' ? t('enrolStart') : t('enrolRetry'))}</button></div>`;
+  let body = '';
+  if (e.status === 'pending') {
+    body = `<p class="vs-mono" data-vs-enrol="pending">${esc(t('enrolScanning'))} · ${esc(seconds)} s</p><p class="vs-note">${esc(t('enrolWait'))}</p>`;
+  } else if (e.status === 'ready' || e.status === 'written') {
+    const facts = [
+      `${t('enrolFramesSeen')} ${p.frames_seen ?? '—'}`,
+      `${t('enrolFaces')} ${p.quality?.kept ?? '—'}/${p.quality?.usable ?? '—'}`,
+      `${t('enrolPurity')} ${p.purity?.probes ? `${Math.round((p.purity.agreement ?? 0) * 100)}% (${p.purity.probes})` : t('enrolNoPurity')}`,
+      `${t('enrolIoU')} ${p.selection_iou ?? '—'}`
+    ].join(' · ');
+    const evidence = `${t('enrolEvidence')}: ${t(ev.stored_face ? 'enrolClusterFace' : 'enrolWindowScan')} · ${ev.crops ?? (p.crops || []).length} ${t('enrolCrops')} · ${t(ev.cross_checked ? 'enrolCrossChecked' : 'enrolNotCrossChecked')}`;
+    body = `${enrolCropsHTML(p)}<p class="vs-mono" data-vs-enrol="facts">${esc(facts)}</p><p class="vs-mono" data-vs-enrol="evidence">${esc(evidence)}</p>
+      <label class="vs-field">${esc(t('enrolName'))}<input type="text" data-vs-action="enroll-name" maxlength="60" value="${esc(e.name || '')}"></label>
+      <div class="vs-row"><button class="primary" data-vs-action="enroll-confirm">${esc(t('enrolConfirm'))}</button>${e.status === 'written' ? '' : `<button data-vs-action="enroll-cancel">${esc(t('enrolCancel'))}</button>`}</div>
+      ${e.status === 'written' ? `<p class="vs-mono" data-vs-enrol="written">✓ ${esc(t('enrolWrote'))}</p>` : ''}`;
+  } else if (e.status === 'refused') {
+    body = `<p class="vs-mono" data-vs-enrol="refused">${esc(t('enrolRefused'))}: ${esc(enrolReasonText(p))}</p><p class="vs-mono vs-dim">${esc(p.reason || '')}${p.message ? ` · ${esc(p.message)}` : ''}</p>${enrolCropsHTML(p) || `<p class="vs-note">${esc(t('enrolNoCrops'))}</p>`}`;
+  }
+  return `<div class="vs-block vs-enrol"><h4>${esc(t('enrolTitle'))}</h4>${start}${body}<p class="vs-note">${esc(t('enrolHint'))}</p></div>`;
+}
 function personBlock(s) {
   const facts = bindingFacts(s);
   const roster = opts.regulars() || [];
@@ -602,6 +756,7 @@ function personBlock(s) {
     <label class="vs-field${guestOff ? ' vs-guest-off' : ''}" data-vs-role="guest-field">${esc(t('guestName'))}<input type="text" data-vs-action="guest-name" maxlength="60" value="${esc(guestValue)}" placeholder="${esc(t('guestPlaceholder'))}" ${guestOff ? 'disabled' : ''}></label>
     <p class="vs-note" data-vs-role="bind-hint">${esc(bindHint(facts, picked))}</p>
   </div>
+  ${enrolBlock(s)}
   <div class="vs-block vs-quiet"><div class="vs-row"><button data-vs-action="seed" data-vs-value="ignore">${esc(t('notAPlayer'))}</button></div>
     <p class="vs-note">${esc(t('ignoreHint'))}</p></div>
   <div class="vs-block"><h4>${esc(t('rebuild'))}</h4><div class="vs-row"><button data-vs-action="rebuild">${esc(t('rebuild'))}</button><button data-vs-action="rebuild-refresh">${esc(t('refresh'))}</button></div><p class="vs-note">${esc(t('seedHint'))}</p><p class="vs-mono">${esc(engineText(s.persons.status || ''))}</p></div>
@@ -624,6 +779,15 @@ function anchorBlock(s) {
   <p class="vs-mono">${s.anchors.loaded ? `t ${Number(s.anchors.t).toFixed(1)} s` : esc(t('loading2'))}</p>
   ${receiptLine('anchor')}`;
 }
+// Where this frame's detection came from, said out loud: a stored file is
+// evidence from an earlier run and keeps its own timestamp; a result run on this
+// frame now was never written to disk.
+const stampText = value => { if (!value) return ''; const at = new Date(value); return Number.isNaN(at.getTime()) ? String(value) : at.toLocaleString(); };
+function inferenceLine(s) {
+  const c = s.corrections || {};
+  if (!c.inferenceAt || c.result === 'none') return '';
+  return `<p class="vs-mono" data-vs-inference="${c.storedInference ? 'stored' : 'session'}">${esc(t('inferenceFrom'))}: ${esc(t(c.storedInference ? 'storedInference' : 'inferenceNotStored'))} · ${esc(stampText(c.inferenceAt))}</p>`;
+}
 function boxBlock(s) {
   const index = s.selection.box;
   const labels = ['person','ball','cue','solid','stripe','eight'];
@@ -633,7 +797,7 @@ function boxBlock(s) {
   <div class="vs-block"><h4>${esc(t('tool'))}</h4><div class="vs-row"><button class="${s.corrections.tool === 'select' ? 'active' : ''}" data-vs-action="tool" data-vs-value="select">${esc(t('selectTool'))}</button><button class="${s.corrections.tool === 'draw' ? 'active' : ''}" data-vs-action="tool" data-vs-value="draw">${esc(t('drawTool'))}</button></div>
     <label class="vs-field">${esc(t('newBoxLabel'))}<select data-vs-action="new-box-label">${labels.map(l => `<option value="${l}" ${s.corrections.newBoxLabel === l ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
     <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div></div>
-  <div class="vs-block"><h4>${esc(t('runInference'))}</h4><p class="vs-mono">${esc(engineText(s.corrections.inferStatus || ''))}</p>${receiptLine('corrections')}</div>`;
+  <div class="vs-block"><h4>${esc(t('runInference'))}</h4>${inferenceLine(s)}<p class="vs-mono">${esc(engineText(s.corrections.inferStatus || ''))}</p>${receiptLine('corrections')}</div>`;
 }
 // The primary write of the active block lives in the inspector's action footer,
 // so it stays clickable at any viewport height (measured at 1280x599).
@@ -684,7 +848,7 @@ function render() {
   if (identity !== sig.identity) { const node = $('#vs-identity'); if (node) node.innerHTML = identity; sig.identity = identity; }
   // The identity block reads the saved seed and the track's binding, so both
   // belong in the signature: a save must repaint the block that saved it.
-  const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.person?.cluster_id ?? ''}|${s.selection.person?.player_id ?? ''}|${s.selection.person?.bound_evidence?.source ?? ''}|${(s.persons.tracks || []).find(x => String(x.id) === String(s.persons.track))?.seed ?? ''}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
+  const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.person?.cluster_id ?? ''}|${s.selection.person?.player_id ?? ''}|${s.selection.person?.bound_evidence?.source ?? ''}|${(s.persons.tracks || []).find(x => String(x.id) === String(s.persons.track))?.seed ?? ''}|${s.enroll?.status || ''}|${s.enroll?.payload?.token || ''}|${s.enroll?.payload?.reason || ''}|${s.enroll?.elapsed_ms == null ? '' : Math.round(s.enroll.elapsed_ms / 1000)}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
   if (insSig !== sig.inspector) {
     const body = $('#vs-inspector-scroll'), actions = $('#vs-inspector-actions');
     if (body) body.innerHTML = inspectorHTML(s);
@@ -734,6 +898,15 @@ function act(action, value, node) {
     case 'live-stop': opts.stopLive(); break;
     case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
     case 'live-detector': { const list = new Set(s.live.detectors || []); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
+    case 'pick-replay': {
+      // A VOD id or URL, where in it to start, and how fast: the server resolves it
+      // and the panel reports the capture's own kind/live/rate/drift afterwards.
+      const field = name => (root.querySelector(`[data-vs-field="${name}"]`) || {}).value || '';
+      const vod = String(field('vod')).trim();
+      if (!vod) { opts.notice?.(t('vodId')); break; }
+      opts.pickReplay({vod_id: vod, start_s: Number(field('vod-start')) || 0, rate: Number(field('vod-rate')) || 1});
+      break;
+    }
     case 'detector': target.setDetector(value, node.checked); break;
     case 'layer': {
       const on = target.toggleOverlay(value);
@@ -777,6 +950,11 @@ function act(action, value, node) {
       break;
     }
     case 'identity-clear': guestDraft = null; target.clearIdentity(node); break;
+    // The preview only reads; the confirm is the write, and it happens here.
+    case 'enroll-preview': target.enrollPreview(node); break;
+    case 'enroll-confirm': target.enrollConfirm(node); break;
+    case 'enroll-cancel': target.cancelEnroll(); break;
+    case 'enroll-name': target.setEnrollName(node.value); break;
     case 'rebuild': target.rebuild(node); break;
     case 'rebuild-refresh': target.refreshRebuild(); break;
     case 'select-anchor': target.selectAnchor(Number(value)); break;
@@ -800,7 +978,7 @@ function act(action, value, node) {
     default: break;
   }
 }
-const FIELD_ACTIONS = ['shooter','note','regular','guest-name','box-label','new-box-label'];
+const FIELD_ACTIONS = ['shooter','note','regular','guest-name','enroll-name','box-label','new-box-label'];
 // The guest box is the fallback path, so a chosen regular turns it off instead
 // of leaving two competing inputs on screen. The hint says what Save will do,
 // including the honest reason a regular cannot be saved on this track yet.

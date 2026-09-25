@@ -36,6 +36,9 @@ const state = {
   dirty:false, busy:false, epoch:0, decoding:false, playing:false, playTimer:null, unifiedTimer:null, pendingSeek:null,
   playback:{on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN},
   detectors:{table:true,person:true,balls:false}, inferTimer:null, inferRunning:false, inferStatus:'',
+  // Enrolling the person on screen: the preview only reads, the confirm is the
+  // one write, and both live here so the rail renders one truth.
+  enroll:{status:'idle', payload:null, name:'', startedAt:0, error:null},
   subs:[]
 };
 const subscribers = [];
@@ -1105,6 +1108,49 @@ async function clearIdentity(button) {
   }
   return ok;
 }
+// ---- enrolling a regular from the person on screen ------------------------
+// Two steps, and only the second one writes. The preview scans the person's
+// track (or reads the identity index when the track already carries a cluster)
+// and can take a while, so it reports what it is doing and cannot be started
+// twice; the plan it returns is held under one token, which the confirm re-checks
+// against the recording before anything is written.
+async function enrollPreview(button) {
+  const person = state.sel.person || {};
+  const bbox = Array.isArray(person.bbox) && person.bbox.length === 4 && person.bbox.every(Number.isFinite) ? person.bbox : null;
+  if (!bbox) { notice('Select the person on the stage first: enrolment starts from their box in this frame.', true); return false; }
+  if (state.enroll.status === 'pending') return false;
+  const epoch = state.epoch;
+  state.enroll = {status:'pending', payload:null, name: state.enroll.name || '', startedAt: Date.now(), error:null};
+  notify();
+  try {
+    const body = {dataset: state.dataset, frame_index: state.frame, bbox: bbox.slice()};
+    if (person.cluster_id !== null && person.cluster_id !== undefined) body.cluster_id = person.cluster_id;
+    const payload = await api('/api/identity/enroll-preview', body);
+    if (epoch !== state.epoch || state.enroll.status !== 'pending') return false;
+    state.enroll = {status: payload?.ok ? 'ready' : 'refused', payload, name: state.enroll.name || '', startedAt: state.enroll.startedAt, error:null};
+    notify();
+    return !!payload?.ok;
+  } catch (error) {
+    if (epoch !== state.epoch) return false;
+    state.enroll = {status:'idle', payload:null, name: state.enroll.name || '', startedAt:0, error:error.message};
+    notice(`Enrolment preview failed: ${error.message}`, true);
+    notify();
+    return false;
+  }
+}
+async function enrollConfirm(button) {
+  const payload = state.enroll.payload;
+  if (!payload?.token) { notice('Preview the person before confirming.', true); return false; }
+  const name = String(state.enroll.name || '').trim();
+  const ok = await save(button, '/api/identity/enroll-confirm', {token: payload.token, player_name: name},
+    data => { state.enroll = {status: data?.ok ? 'written' : 'refused', payload: {...payload, result: data}, name, startedAt: 0, error: null}; },
+    'person', `${name || '—'} → regular`);
+  if (ok && state.enroll.status === 'written' && opts?.reloadRoster) opts.reloadRoster();
+  return ok;
+}
+// The typed name is a draft: it must not re-render the block while it is typed in.
+function setEnrollName(value) { state.enroll = {...state.enroll, name: String(value ?? '')}; }
+function cancelEnroll() { state.enroll = {status:'idle', payload:null, name: state.enroll.name || '', startedAt:0, error:null}; notify(); }
 async function saveAnchors(button) {
   return save(button, '/api/vod30/anchors', {t: state.anchors.t, pts: state.anchors.pts.map(p => [...p])}, () => { state.anchors.saved = true; }, 'anchor', `${state.anchors.pts.length} anchors @ t ${Number(state.anchors.t).toFixed(1)}`);
 }
@@ -1172,7 +1218,7 @@ function pollInference(epoch, frame) {
       if (job.status === 'running') { state.inferStatus = `Inference running for frame ${job.frame_index}: ${job.stage || ''}…`; notify(); pollInference(epoch, frame); return; }
       state.inferRunning = false;
       if (job.status === 'failed') { state.inferStatus = 'Inference failed.'; notice(`Frame inference failed: ${job.error || 'unknown error'}`, true); return; }
-      state.inferStatus = `Inference completed for frame ${job.frame_index}.`; notify();
+      state.inferStatus = `Inference completed for frame ${job.frame_index} (not stored).`; notify();
       if (job.status === 'completed' && job.result && job.frame_index === frame && state.frame === frame) {
         if (state.fresult) state.fresult.inference = job.result;
         if (!state.dirty && !state.fresult?.correction) { applyFrameResult(); renderStage(); }
@@ -1209,8 +1255,13 @@ function applyLiveStatus(status) {
   state.live.state = status.state || 'idle';
   state.live.error = status.error || null;
   state.live.skipped = status.frames_skipped ?? 0;
+  // Per-stage evidence from the processor: the panel names which detectors ran and
+  // at what cadence, instead of implying all of them ran on every frame.
+  state.live.stages = Array.isArray(status.stages) ? status.stages : [];
   state.live.receive_to_result_ms = status.latest?.receive_to_result_ms ?? null;
   state.live.frame_age_ms = status.frame_age_ms ?? null;
+  state.live.source = status.source && typeof status.source === 'object' ? status.source : null;
+  state.live.replay = status.replay && typeof status.replay === 'object' ? status.replay : null;
   if (status.latest?.seq != null) state.live.seq = status.latest.seq;
   // Frames that stopped arriving keep the last good image, marked stale.
   const measured = state.live.receivedAt ? Date.now() - state.live.receivedAt : null;
@@ -1434,7 +1485,7 @@ function snapshot() {
     frame: {index: state.frame, t: state.t, fps: meta?.fps ?? 0, count: meta?.frame_count ?? 0, duration: meta?.duration ?? 0, kind: meta?.timestamp_kind || '', has: !!state.shotUrl, decoding: state.decoding, playing: state.playing, rate: playbackRate(), video: !!state.playback.on},
     playback: {on: !!state.playback.on, playing: videoPlaying(), loops: state.playback.loops || 0, from: state.playback.from || 0, to: state.playback.to || 0, event: state.playback.event ? state.playback.event.id : null, before: CLIP_BEFORE_S, after: CLIP_AFTER_S},
     source: {kind: state.source.kind, label: state.source.kind === 'vod' ? `${state.dataset} · ${meta ? `${Math.round(meta.duration)} s · ${Number(meta.fps).toFixed(3)} fps` : '—'}` : state.source.label, channel: state.source.channel},
-    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, detectors: state.live.detectors},
+    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null},
     overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading},
     selection: selected, focus: state.focus, eventFilter: state.eventFilter,
     detectors: {...state.detectors},
@@ -1467,8 +1518,17 @@ function snapshot() {
     balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
     anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
-    corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus},
+    corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus,
+      // Where this frame's inference came from: a stored file from an earlier run
+      // (marked by the server, with its own timestamp) or the result of inference
+      // run on this frame now, which is never written to disk.
+      storedInference: state.fresult?.inference?.stored_inference === true,
+      inferenceAt: state.fresult?.inference?.saved_at || null},
     cloth: {verdict: {...state.cloth.verdict}, quad: state.cloth.quad ? {...state.cloth.quad} : null, polygon: state.cloth.polygon || null, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, pockets: {...(state.cloth.pockets || {source:null, count:0, reference:null})}, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
+    enroll: {status: state.enroll.status, payload: state.enroll.payload, name: state.enroll.name, error: state.enroll.error,
+             // How long the preview has been collecting faces, so the rail can say
+             // it is working rather than spinning forever.
+             elapsed_ms: state.enroll.status === 'pending' ? Math.max(0, Date.now() - state.enroll.startedAt) : null},
     receipts: state.receipts.slice(), notice: {...state.notice}, busy: state.busy, dirty: state.dirty
   };
 }
@@ -1506,6 +1566,9 @@ const editorCopy = {
   'Select a ball or a crop first.':'请先选择球或裁剪图。', 'Select a visible track first.':'请先选择可见的轨迹。',
   'This track has no identity cluster yet.':'此轨迹尚无身份聚类。', 'saving…':'保存中…', 'save failed':'保存失败',
   'Type a guest name or choose a regular before saving.':'请先输入访客姓名或选择常客，再保存。',
+  'Select the person on the stage first: enrolment starts from their box in this frame.':'请先在舞台上选择该人物：登记从他/她在此帧的标注框开始。',
+  'Preview the person before confirming.':'请先预览该人物再确认。',
+  'Enrolment preview failed':'登记预览失败',
   'Nothing is bound to this track yet.':'该轨迹尚未绑定任何标注。',
   'Your changes remain on screen; retry when ready.':'更改仍保留在屏幕上，可稍后重试。',
   'Choose a verdict before saving.':'请先选择判定再保存。', 'Saving…':'保存中…',
@@ -1571,6 +1634,7 @@ const editorTemplates = [
   [/^(\d+) anchors @ t ([\d.]+)$/, (count, at) => `${count} 个锚点 @ t ${at}`],
   [/^([\s\S]*?)\. The review API is unavailable\. Use the project review server, not a file:\/\/ URL\.$/, detail => `${detail}。复核 API 不可用。请通过项目复核服务器打开，而非 file:// 地址。`],
   [/^Inference completed for frame (\d+)\.$/, frame => `帧 ${frame} 推理已完成。`],
+  [/^Inference completed for frame (\d+) \(not stored\)\.$/, frame => `帧 ${frame} 推理已完成（未存储）。`],
   [/^Inference running for frame (\d+): (.*)…$/, (frame, stage) => `正在对帧 ${frame} 运行推理：${stage}…`],
   [/^Starting inference on frame (\d+) \((.*)\)…$/, (frame, detectors) => `正在启动帧 ${frame} 的推理（${detectors}）…`],
   [/^Frame inference failed: ([\s\S]*)$/, detail => `帧推理失败：${detail}`],
@@ -1651,6 +1715,7 @@ window.CornerPocketReview = {
   selectEvent, playEvent, selectCrop, selectTrack, selectTrackAndSeek, selectAnchor, selectBox, clearSelection,
   selectStageBall, selectStagePerson,
   saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity, clearIdentity,
+  enrollPreview, enrollConfirm, setEnrollName, cancelEnroll,
   saveAnchors, saveCorrections, runInference, rebuild, refreshRebuild, setWindow,
   setTool, setBoxLabel, deleteBox, addPolygon, clearPolygon, setNewBoxLabel, nudgeAnchor,
   setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,
