@@ -1,0 +1,924 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-25T13:57:59.707Z",
+  "title": "Design System: Corner Pocket",
+  "extensions": {
+    "colorMeta": {
+      "walnut-night": {
+        "role": "neutral",
+        "displayName": "Walnut Night",
+        "canonical": "#14110f",
+        "oklch": "oklch(18.1% 0.006 55.9)",
+        "tonalRamp": [
+          "#0d0a09",
+          "#282422",
+          "#45413f",
+          "#64605e",
+          "#85817f",
+          "#a8a4a1",
+          "#cdc8c5",
+          "#f2edea"
+        ],
+        "cssVar": "--bg",
+        "light": "#eee6d8",
+        "description": "Page ground."
+      },
+      "felt-panel": {
+        "role": "neutral",
+        "displayName": "Felt Panel",
+        "canonical": "#1a1613",
+        "oklch": "oklch(20.4% 0.009 59.1)",
+        "tonalRamp": [
+          "#0e0a08",
+          "#282421",
+          "#46413d",
+          "#65605c",
+          "#86817d",
+          "#a9a4a0",
+          "#cec8c4",
+          "#f3ede9"
+        ],
+        "cssVar": "--panel",
+        "light": "#faf6ee",
+        "description": "Panels, header, rails, inspector, modal, popover."
+      },
+      "pocket-well": {
+        "role": "neutral",
+        "displayName": "Pocket Well",
+        "canonical": "#100e0c",
+        "oklch": "oklch(16.5% 0.005 67.4)",
+        "tonalRamp": [
+          "#0d0b09",
+          "#272522",
+          "#44413f",
+          "#63615e",
+          "#84827f",
+          "#a7a4a1",
+          "#cbc8c5",
+          "#f1eeeb"
+        ],
+        "cssVar": "--panel2",
+        "light": "#fffdf8",
+        "description": "Recessed layer: inputs, entries, cue cards, bars, sheet tabs."
+      },
+      "rail-wood": {
+        "role": "neutral",
+        "displayName": "Rail Wood",
+        "canonical": "#241e19",
+        "oklch": "oklch(24.0% 0.013 61.9)",
+        "tonalRamp": [
+          "#0f0a06",
+          "#2a241f",
+          "#47413b",
+          "#67605a",
+          "#88817a",
+          "#aba39d",
+          "#d0c7c1",
+          "#f5ede6"
+        ],
+        "cssVar": "--rail",
+        "light": "#e9e0d0",
+        "description": "Hover / selected fill, active nav and layer, toast."
+      },
+      "seam": {
+        "role": "neutral",
+        "displayName": "Seam",
+        "canonical": "#2e2620",
+        "oklch": "oklch(27.6% 0.016 58.9)",
+        "tonalRamp": [
+          "#100a05",
+          "#2b231d",
+          "#49403a",
+          "#695f58",
+          "#8a8079",
+          "#ada39b",
+          "#d2c7bf",
+          "#f7ece4"
+        ],
+        "cssVar": "--line",
+        "light": "#d8cbb6",
+        "description": "Default 1px border and divider."
+      },
+      "seam-soft": {
+        "role": "neutral",
+        "displayName": "Seam Soft",
+        "canonical": "#262019",
+        "oklch": "oklch(24.8% 0.016 71.3)",
+        "tonalRamp": [
+          "#0f0a05",
+          "#2a241d",
+          "#474139",
+          "#676058",
+          "#888178",
+          "#aba49b",
+          "#d0c8be",
+          "#f5ede3"
+        ],
+        "cssVar": "--line2",
+        "light": "#e3d9c7",
+        "description": "Borders of entries, cue cards, items."
+      },
+      "button-rim": {
+        "role": "neutral",
+        "displayName": "Button Rim",
+        "canonical": "#4a3f33",
+        "oklch": "oklch(37.5% 0.025 69.4)",
+        "tonalRamp": [
+          "#120902",
+          "#2d2318",
+          "#4b4034",
+          "#6b5f52",
+          "#8c8073",
+          "#b0a395",
+          "#d4c7b8",
+          "#faecdd"
+        ],
+        "cssVar": "--btn-line",
+        "light": "#c2b299",
+        "description": "Default button border, link underline, vs-badge border."
+      },
+      "chalk-bright": {
+        "role": "neutral",
+        "displayName": "Chalk Bright",
+        "canonical": "#f6f1e6",
+        "oklch": "oklch(95.9% 0.016 86.4)",
+        "tonalRamp": [
+          "#0e0b05",
+          "#28251d",
+          "#464239",
+          "#656157",
+          "#868278",
+          "#a9a59a",
+          "#cdc9be",
+          "#f3eee3"
+        ],
+        "cssVar": "--ink-hi",
+        "light": "#171208",
+        "description": "Headings and active text."
+      },
+      "chalk": {
+        "role": "neutral",
+        "displayName": "Chalk",
+        "canonical": "#f2e9dd",
+        "oklch": "oklch(93.8% 0.019 75.3)",
+        "tonalRamp": [
+          "#100a04",
+          "#2a241b",
+          "#484137",
+          "#686056",
+          "#898176",
+          "#aca498",
+          "#d0c8bc",
+          "#f6ede1"
+        ],
+        "cssVar": "--ink",
+        "light": "#241c12",
+        "description": "Body text."
+      },
+      "cue-shaft": {
+        "role": "neutral",
+        "displayName": "Cue Shaft",
+        "canonical": "#b6a693",
+        "oklch": "oklch(73.4% 0.033 72.0)",
+        "tonalRamp": [
+          "#130900",
+          "#2f2213",
+          "#4d3f2f",
+          "#6d5f4d",
+          "#8f806d",
+          "#b2a28f",
+          "#d7c6b3",
+          "#fdecd7"
+        ],
+        "cssVar": "--ink-mid",
+        "light": "#5b4f41",
+        "description": "Paragraphs, facts line."
+      },
+      "worn-leather": {
+        "role": "neutral",
+        "displayName": "Worn Leather",
+        "canonical": "#8a7a68",
+        "oklch": "oklch(58.9% 0.033 70.4)",
+        "tonalRamp": [
+          "#140800",
+          "#2f2213",
+          "#4d3f2f",
+          "#6e5e4d",
+          "#8f7f6d",
+          "#b3a28f",
+          "#d7c6b2",
+          "#fdebd7"
+        ],
+        "cssVar": "--ink-dim",
+        "light": "#7c6d5b",
+        "description": "Labels and meta."
+      },
+      "old-varnish": {
+        "role": "neutral",
+        "displayName": "Old Varnish",
+        "canonical": "#6d5f51",
+        "oklch": "oklch(49.5% 0.028 67.1)",
+        "tonalRamp": [
+          "#130901",
+          "#2e2216",
+          "#4c3f32",
+          "#6c5e50",
+          "#8e7f71",
+          "#b1a293",
+          "#d6c6b6",
+          "#fcebdb"
+        ],
+        "cssVar": "--ink-faint",
+        "light": "#9b8b77",
+        "description": "Footnotes, placeholders, provenance (below 4.5:1)."
+      },
+      "rail-brass": {
+        "role": "primary",
+        "displayName": "Rail Brass",
+        "canonical": "#c9a227",
+        "oklch": "oklch(72.8% 0.138 89.7)",
+        "tonalRamp": [
+          "#100a00",
+          "#2f2302",
+          "#524005",
+          "#775e0c",
+          "#9e7e15",
+          "#c7a024",
+          "#ecc452",
+          "#feedc1"
+        ],
+        "cssVar": "--brass",
+        "light": "#8a6a12",
+        "description": "The only accent: current / selected / primary, 3px panel top edges, focus ring."
+      },
+      "polished-brass": {
+        "role": "primary",
+        "displayName": "Polished Brass",
+        "canonical": "#e3c877",
+        "oklch": "oklch(83.8% 0.105 91.6)",
+        "tonalRamp": [
+          "#100a00",
+          "#2f2400",
+          "#514000",
+          "#765e02",
+          "#99802c",
+          "#bda352",
+          "#e2c776",
+          "#ffeebc"
+        ],
+        "cssVar": "--brass-hi",
+        "light": "#6d5210",
+        "description": "Brass as text: links, clock digits, MODEL tag text, active sub-labels."
+      },
+      "brass-hover": {
+        "role": "primary",
+        "displayName": "Brass Hover",
+        "canonical": "#dcbb46",
+        "oklch": "oklch(80.0% 0.138 93.1)",
+        "tonalRamp": [
+          "#100b00",
+          "#2e2402",
+          "#504105",
+          "#745f0d",
+          "#9c7f00",
+          "#c3a225",
+          "#e8c753",
+          "#ffeeb9"
+        ],
+        "cssVar": "--brass-hover",
+        "light": "#a07d18",
+        "description": "Hover of the clock-toggle button only."
+      },
+      "brass-ink": {
+        "role": "primary",
+        "displayName": "Brass Ink",
+        "canonical": "#17120c",
+        "oklch": "oklch(18.6% 0.014 71.9)",
+        "tonalRamp": [
+          "#0f0a05",
+          "#29241e",
+          "#47413a",
+          "#666059",
+          "#888179",
+          "#aba49c",
+          "#cfc8bf",
+          "#f5ede4"
+        ],
+        "cssVar": "--brass-fg",
+        "light": "#fdf8ee",
+        "description": "Text on a brass fill."
+      },
+      "pip-off": {
+        "role": "neutral",
+        "displayName": "Pip Off",
+        "canonical": "#2b241d",
+        "oklch": "oklch(26.6% 0.016 67.0)",
+        "tonalRamp": [
+          "#100a05",
+          "#2b241d",
+          "#484039",
+          "#686058",
+          "#898178",
+          "#aca39a",
+          "#d1c7be",
+          "#f6ede3"
+        ],
+        "cssVar": "--pip-off",
+        "light": "#d9cdb8"
+      },
+      "baize-green": {
+        "role": "signal",
+        "displayName": "Baize Green",
+        "canonical": "#7fc39a",
+        "oklch": "oklch(76.0% 0.091 157.0)",
+        "tonalRamp": [
+          "#000f05",
+          "#022d19",
+          "#074f2f",
+          "#2c714c",
+          "#50936c",
+          "#73b78e",
+          "#97dcb1",
+          "#c6fedb"
+        ],
+        "cssVar": "--green",
+        "light": "#256a45",
+        "description": "Complete / confirmed / live edge / pot / geometry-verified / YOURS."
+      },
+      "baize-green-bg": {
+        "role": "signal",
+        "displayName": "Baize Green Bg",
+        "canonical": "#16241c",
+        "oklch": "oklch(24.5% 0.025 158.9)",
+        "tonalRamp": [
+          "#030e07",
+          "#1b2921",
+          "#37463d",
+          "#56665c",
+          "#76877d",
+          "#99aa9f",
+          "#bccec3",
+          "#e1f4e8"
+        ],
+        "cssVar": "--green-bg",
+        "light": "#dfeade"
+      },
+      "baize-green-line": {
+        "role": "signal",
+        "displayName": "Baize Green Line",
+        "canonical": "#3d5f4c",
+        "oklch": "oklch(45.3% 0.051 159.1)",
+        "tonalRamp": [
+          "#000f06",
+          "#0a2c1c",
+          "#294a38",
+          "#486a57",
+          "#688c77",
+          "#8baf9a",
+          "#aed4bd",
+          "#d3fae2"
+        ],
+        "cssVar": "--green-line",
+        "light": "#a6c2ac"
+      },
+      "chalk-blue": {
+        "role": "signal",
+        "displayName": "Chalk Blue",
+        "canonical": "#8fb4cf",
+        "oklch": "oklch(75.2% 0.056 240.1)",
+        "tonalRamp": [
+          "#000d18",
+          "#04283d",
+          "#24465d",
+          "#43667e",
+          "#6487a1",
+          "#86aac5",
+          "#a9cfea",
+          "#e0f1ff"
+        ],
+        "cssVar": "--blue",
+        "light": "#25587c",
+        "description": "Scheduled status; shot marks on the scrub strip (ops.css only)."
+      },
+      "chalk-blue-bg": {
+        "role": "signal",
+        "displayName": "Chalk Blue Bg",
+        "canonical": "#171f26",
+        "oklch": "oklch(23.5% 0.018 245.1)",
+        "tonalRamp": [
+          "#050c12",
+          "#1e262d",
+          "#3a434b",
+          "#59636b",
+          "#7a848d",
+          "#9ca6b0",
+          "#c0cbd4",
+          "#e5f0fa"
+        ],
+        "cssVar": "--blue-bg",
+        "light": "#dde7ef"
+      },
+      "chalk-blue-line": {
+        "role": "signal",
+        "displayName": "Chalk Blue Line",
+        "canonical": "#31495b",
+        "oklch": "oklch(39.4% 0.043 241.6)",
+        "tonalRamp": [
+          "#000d19",
+          "#102738",
+          "#2d4557",
+          "#4c6578",
+          "#6c869a",
+          "#8ea9be",
+          "#b2cde3",
+          "#e0f1ff"
+        ],
+        "cssVar": "--blue-line",
+        "light": "#a8bfd2"
+      },
+      "lamp-amber": {
+        "role": "signal",
+        "displayName": "Lamp Amber",
+        "canonical": "#dfa93a",
+        "oklch": "oklch(76.6% 0.138 81.5)",
+        "tonalRamp": [
+          "#120900",
+          "#322200",
+          "#563d06",
+          "#7e5a01",
+          "#a87903",
+          "#d09b27",
+          "#f6bf54",
+          "#ffeccc"
+        ],
+        "cssVar": "--amber",
+        "light": "#8a5307",
+        "description": "Club live + delayed badges; Vision stale, paused, CALIB, error blocks."
+      },
+      "lamp-amber-bg": {
+        "role": "signal",
+        "displayName": "Lamp Amber Bg",
+        "canonical": "#2a2013",
+        "oklch": "oklch(25.1% 0.027 73.4)",
+        "tonalRamp": [
+          "#120901",
+          "#2d2316",
+          "#4b4032",
+          "#6b5f50",
+          "#8d8071",
+          "#b0a393",
+          "#d4c7b6",
+          "#faecdb"
+        ],
+        "cssVar": "--amber-bg",
+        "light": "#f6e9cf"
+      },
+      "lamp-amber-line": {
+        "role": "signal",
+        "displayName": "Lamp Amber Line",
+        "canonical": "#5c4a1e",
+        "oklch": "oklch(41.8% 0.066 86.9)",
+        "tonalRamp": [
+          "#110a00",
+          "#302300",
+          "#513f12",
+          "#715f33",
+          "#938054",
+          "#b7a375",
+          "#dcc798",
+          "#ffedc4"
+        ],
+        "cssVar": "--amber-line",
+        "light": "#d6bd8a"
+      },
+      "red-ball": {
+        "role": "signal",
+        "displayName": "Red Ball",
+        "canonical": "#cf5b4d",
+        "oklch": "oklch(61.4% 0.150 29.1)",
+        "tonalRamp": [
+          "#1f0000",
+          "#4c0202",
+          "#7f0705",
+          "#a5352a",
+          "#cd594b",
+          "#f47d6d",
+          "#feb3a8",
+          "#ffe9e5"
+        ],
+        "cssVar": "--red",
+        "light": "#a4382b",
+        "description": "Errors, danger, low clock, the cue under review."
+      },
+      "live-glow-bg": {
+        "role": "neutral",
+        "displayName": "Live Glow Bg",
+        "canonical": "#221a10",
+        "oklch": "oklch(22.4% 0.022 72.5)",
+        "tonalRamp": [
+          "#110a03",
+          "#2c2319",
+          "#494035",
+          "#695f54",
+          "#8b8174",
+          "#aea396",
+          "#d2c7ba",
+          "#f8eddf"
+        ],
+        "cssVar": "--live-bg",
+        "light": "#f8eed4"
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Neutral Bg",
+        "canonical": "#17130f",
+        "oklch": "oklch(19.0% 0.010 67.1)",
+        "tonalRamp": [
+          "#0e0a07",
+          "#292420",
+          "#46413c",
+          "#65605b",
+          "#87817c",
+          "#aaa49e",
+          "#cec8c2",
+          "#f3ede7"
+        ],
+        "cssVar": "--neutral-bg",
+        "light": "#f0e8db"
+      },
+      "lamp-haze": {
+        "role": "neutral",
+        "displayName": "Lamp Haze",
+        "canonical": "rgba(240,214,150,.08)",
+        "cssVar": "--lamp",
+        "light": "rgba(255,206,110,.2)",
+        "description": "Scoreboard lamp glow."
+      },
+      "scroll-track": {
+        "role": "neutral",
+        "displayName": "Scroll Track",
+        "canonical": "#100e0c",
+        "oklch": "oklch(16.5% 0.005 67.4)",
+        "tonalRamp": [
+          "#0d0b09",
+          "#272522",
+          "#44413f",
+          "#63615e",
+          "#84827f",
+          "#a7a4a1",
+          "#cbc8c5",
+          "#f1eeeb"
+        ],
+        "cssVar": "--track",
+        "light": "#e6dccb"
+      },
+      "scroll-thumb": {
+        "role": "neutral",
+        "displayName": "Scroll Thumb",
+        "canonical": "#3a3129",
+        "oklch": "oklch(32.0% 0.019 63.7)",
+        "tonalRamp": [
+          "#110904",
+          "#2c231c",
+          "#494038",
+          "#695f56",
+          "#8b8077",
+          "#aea399",
+          "#d2c7bd",
+          "#f8ece2"
+        ],
+        "cssVar": "--thumb",
+        "light": "#c2b299"
+      },
+      "stage-black": {
+        "role": "literal",
+        "displayName": "Stage Black",
+        "canonical": "#090806",
+        "oklch": "oklch(13.5% 0.006 86.9)",
+        "tonalRamp": [
+          "#0c0b09",
+          "#262522",
+          "#43423f",
+          "#62615e",
+          "#84827f",
+          "#a6a5a1",
+          "#cbc9c5",
+          "#f0eeea"
+        ],
+        "description": "Stage letterbox; identical in both themes."
+      },
+      "overlay-cream": {
+        "role": "literal",
+        "displayName": "Overlay Cream",
+        "canonical": "#fff4d5",
+        "oklch": "oklch(96.8% 0.042 90.8)",
+        "tonalRamp": [
+          "#100a00",
+          "#2d240a",
+          "#4a4127",
+          "#6a6146",
+          "#8c8266",
+          "#afa587",
+          "#d3c9ab",
+          "#f9eecf"
+        ],
+        "description": "SVG overlay label text and the cue ball."
+      },
+      "error-wash": {
+        "role": "literal",
+        "displayName": "Error Wash",
+        "canonical": "#3d231d",
+        "oklch": "oklch(28.8% 0.042 33.7)",
+        "tonalRamp": [
+          "#190402",
+          "#371d17",
+          "#563a33",
+          "#775952",
+          "#9a7a72",
+          "#be9c94",
+          "#e3c0b8",
+          "#ffe9e4"
+        ],
+        "description": "Hard-coded error background (dark in both themes)."
+      },
+      "error-ink": {
+        "role": "literal",
+        "displayName": "Error Ink",
+        "canonical": "#ffd0c5",
+        "oklch": "oklch(89.5% 0.055 33.4)",
+        "tonalRamp": [
+          "#1d0100",
+          "#3c1a12",
+          "#5c372e",
+          "#7e564d",
+          "#a1776d",
+          "#c5998f",
+          "#ebbdb2",
+          "#fee9e4"
+        ],
+        "description": "Hard-coded error text (dark in both themes)."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Player names on the scoreboard (.name)."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Score digits (.digits)."
+      },
+      "clock": {
+        "displayName": "Clock",
+        "purpose": "Shot clock; 22px in the strip, 13px in the mobile stagebar."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "h2; only the offline / error screen."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "h3 article and card heads."
+      },
+      "panel-heading": {
+        "displayName": "Panel heading",
+        "purpose": "Vision rail / inspector group heads, Source panel head; uppercase."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Document default, 15/1.5; paragraphs in ink-mid."
+      },
+      "body-compact": {
+        "displayName": "Body compact",
+        "purpose": "Vision list items (.vs-item), 12px."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Facts line, identity, chips, readouts (11-12.5px mono)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "small / .kicker / .badge / label>span / th; uppercase, tracked."
+      },
+      "overlay-tag": {
+        "displayName": "Overlay tag",
+        "purpose": "SVG source tags MODEL / YOURS / CALIB / EVENT, in frame pixels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "toast",
+        "value": "0 5px 30px #0005",
+        "purpose": "#message, bottom-right (declared ops.css:92, survives the later restyle)."
+      },
+      {
+        "name": "modal",
+        "value": "0 14px 44px rgba(0,0,0,.5)",
+        "purpose": ".modal over a rgba(10,8,6,.62) backdrop."
+      },
+      {
+        "name": "source-panel",
+        "value": "0 16px 48px rgba(0,0,0,.55)",
+        "purpose": ".vs-source-panel dropping from the chip row."
+      },
+      {
+        "name": "stage-popover",
+        "value": "0 6px 26px #0009",
+        "purpose": ".stage-popover on the frame."
+      },
+      {
+        "name": "ball-bevel",
+        "value": "inset 0 0 0 1px #0006",
+        "purpose": "Pool-ball icons and pips; skeuomorphic detail, not elevation."
+      },
+      {
+        "name": "eight-ball",
+        "value": "inset 0 0 0 1px var(--btn-line),0 2px 6px rgba(0,0,0,.35)",
+        "purpose": "The brand 8-ball mark."
+      }
+    ],
+    "motion": [
+      {
+        "name": "none",
+        "value": "no transition, no @keyframes",
+        "purpose": "State changes are instant; the CSS declares no motion."
+      },
+      {
+        "name": "reduced-motion-guard",
+        "value": "ops.css: animation/transition none !important; app.css: durations 1ms",
+        "purpose": "Guards exist in both stylesheets; nothing animates today."
+      },
+      {
+        "name": "clock-tick",
+        "value": "setInterval 200ms",
+        "purpose": "Shot-clock digits and progress bar (ops.js:89)."
+      },
+      {
+        "name": "receipt-age",
+        "value": "setInterval 1000ms",
+        "purpose": "Re-renders the \"… s saved\" age on receipts."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "1100px",
+        "purpose": "max-width: .vs-grid collapses to one column."
+      },
+      {
+        "name": "mobile",
+        "value": "750px",
+        "purpose": "max-width: static header; on Vision the nav and strip hide, rail/inspector become fixed bottom sheets (44vh) over a 44px sheet-tab bar."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default (secondary) button: transparent, 1px rim, brass on hover and focus.",
+      "html": "<button class=\"ds-btn\">Reset</button>",
+      "css": ".ds-btn{min-height:40px;padding:0 14px;border:1px solid #4a3f33;border-radius:2px;background:transparent;color:#f2e9dd;font:15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn:hover{border-color:#c9a227;background:#241e19}.ds-btn:focus-visible{outline:2px solid #c9a227;outline-offset:3px}.ds-btn:disabled{opacity:.45;cursor:not-allowed}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Brass fill with brass-ink text; the one thing to press (Freeze, Save, Start).",
+      "html": "<button class=\"ds-btn-primary\">Freeze</button>",
+      "css": ".ds-btn-primary{min-height:40px;padding:0 14px;border:1px solid #c9a227;border-radius:2px;background:#c9a227;color:#17120c;font:500 15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:#dcbb46;border-color:#c9a227}.ds-btn-primary:focus-visible{outline:2px solid #c9a227;outline-offset:3px}"
+    },
+    {
+      "name": "Segmented chip group",
+      "kind": "chip",
+      "refersTo": "chip-group-button",
+      "description": "EN | 中 and clock presets: 1px-gap segments on a seam ground, active segment brass.",
+      "html": "<div class=\"ds-chipgroup\" role=\"group\" aria-label=\"Language / 语言\"><button class=\"ds-chipgroup-btn ds-active\">EN</button><button class=\"ds-chipgroup-btn\">中</button></div>",
+      "css": ".ds-chipgroup{display:inline-flex;gap:1px;padding:1px;background:#2e2620;border-radius:2px}.ds-chipgroup-btn{min-height:34px;padding:0 12px;border:0;border-radius:2px;background:#100e0c;color:#8a7a68;font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em;cursor:pointer}.ds-chipgroup-btn.ds-active{background:#c9a227;color:#17120c}.ds-chipgroup-btn:focus-visible{outline:2px solid #c9a227;outline-offset:3px}"
+    },
+    {
+      "name": "Status badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Word + tinted triplet: live (On table) and delayed amber, complete (Signed) green, scheduled (Racked) blue.",
+      "html": "<span class=\"ds-badge ds-badge-live\">On table</span> <span class=\"ds-badge ds-badge-complete\">Signed</span> <span class=\"ds-badge ds-badge-scheduled\">Racked</span>",
+      "css": ".ds-badge{display:inline-block;padding:4px 9px;border:1px solid #2e2620;background:#100e0c;color:#8a7a68;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.16em;text-transform:uppercase}.ds-badge-live{color:#dfa93a;border-color:#5c4a1e;background:#2a2013}.ds-badge-complete{color:#7fc39a;border-color:#3d5f4c;background:#16241c}.ds-badge-scheduled{color:#8fb4cf;border-color:#31495b;background:#171f26}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Well-filled field with a 2px bottom border that turns brass on focus; 9.5px uppercase mono label.",
+      "html": "<label class=\"ds-field\"><span>Name</span><input class=\"ds-input\" placeholder=\"Guest\"></label>",
+      "css": ".ds-field{display:grid;gap:6px}.ds-field>span{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.18em;text-transform:uppercase;color:#8a7a68}.ds-input{min-height:42px;padding:0 12px;background:#100e0c;color:#f2e9dd;border:1px solid #2e2620;border-bottom:2px solid #2e2620;border-radius:2px;font:15px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-input::placeholder{color:#6d5f51}.ds-input:focus{outline:none;border-bottom-color:#c9a227}"
+    },
+    {
+      "name": "Nav tab",
+      "kind": "nav",
+      "refersTo": "button",
+      "description": "Numbered pool-ball tab; active = rail fill, brass border, brass-hi count.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-tab ds-active\" aria-current=\"page\"><span class=\"ds-ball\" style=\"background:#e3b52a\"><i>1</i></span>Floor<small></small></button><button class=\"ds-tab\"><span class=\"ds-ball\" style=\"background:#23527c\"><i>2</i></span>Set up<small>12</small></button></nav>",
+      "css": ".ds-nav{display:flex;gap:10px;flex-wrap:wrap}.ds-tab{display:flex;align-items:center;gap:9px;min-height:44px;padding:0 9px 0 8px;border:1px solid #2e2620;border-radius:2px;background:transparent;color:#f2e9dd;font:14.5px 'Barlow','Noto Sans SC',Arial,sans-serif;letter-spacing:.01em;cursor:pointer}.ds-tab:hover{border-color:#c9a227;background:#241e19}.ds-tab.ds-active{background:#241e19;border-color:#c9a227;color:#f6f1e6}.ds-tab small{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.12em;color:#6d5f51}.ds-tab.ds-active small{color:#e3c877}.ds-ball{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}.ds-ball i{display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#f6f1e6;color:#17120c;font:9px 'DM Mono','Noto Sans SC',monospace;font-style:normal}"
+    },
+    {
+      "name": "Cue card",
+      "kind": "card",
+      "refersTo": "cue-card",
+      "description": "Vision rail card; tier sets the left edge (solid green geometry-verified, dashed brass motion-window).",
+      "html": "<article class=\"ds-cue ds-tier-geometry\"><div class=\"ds-cue-row\"><span class=\"ds-vbadge ds-pot\">Pots</span><span class=\"ds-vbadge ds-geo\">geometry-verified</span><span class=\"ds-mono\">0:41.1</span><span class=\"ds-mono ds-dim\">#e12</span></div><p class=\"ds-prov\">machine-produced candidate; no human has confirmed it</p></article>",
+      "css": ".ds-cue{border:1px solid #262019;border-left:3px solid #7fc39a;background:#100e0c;padding:8px;color:#f2e9dd}.ds-cue:hover{border-color:#c9a227;border-left-color:#7fc39a}.ds-cue-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ds-vbadge{border:1px solid #4a3f33;border-radius:2px;padding:2px 6px;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;color:#e3c877}.ds-pot,.ds-geo{color:#7fc39a;border-color:#3d5f4c}.ds-mono{font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em}.ds-dim{color:#8a7a68}.ds-prov{margin:4px 0 0;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em;color:#6d5f51}"
+    },
+    {
+      "name": "Layer toggle",
+      "kind": "chip",
+      "refersTo": "layer-toggle",
+      "description": "Stagebar overlay toggles; on = rail fill, brass border, bright ink.",
+      "html": "<div class=\"ds-layers\"><button class=\"ds-layer ds-on\">Cloth</button><button class=\"ds-layer\">Balls</button><button class=\"ds-layer\" disabled>Anchors</button></div>",
+      "css": ".ds-layers{display:flex;gap:4px;flex-wrap:wrap}.ds-layer{min-height:28px;padding:4px 10px;border:1px solid #4a3f33;border-radius:2px;background:transparent;color:#8a7a68;font:10.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}.ds-layer:hover{border-color:#c9a227}.ds-layer.ds-on{background:#241e19;border-color:#c9a227;color:#f6f1e6}.ds-layer:disabled{opacity:.4;cursor:not-allowed}.ds-layer:focus-visible{outline:2px solid #c9a227;outline-offset:3px}"
+    },
+    {
+      "name": "Overlay source tags",
+      "kind": "custom",
+      "refersTo": "overlay-tag",
+      "description": "MODEL (brass, dashed geometry), YOURS (green, solid), CALIB (amber): the provenance tag beside every drawn shape.",
+      "html": "<svg class=\"ds-tags\" viewBox=\"0 0 330 70\" width=\"330\" height=\"70\" role=\"img\" aria-label=\"Source tags\"><rect x=\"1\" y=\"1\" width=\"328\" height=\"68\" fill=\"#090806\"/><g class=\"ds-src ds-model\"><rect x=\"10\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"17\" y=\"23\">MODEL</text></g><g class=\"ds-src ds-yours\"><rect x=\"80\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"87\" y=\"23\">YOURS</text></g><g class=\"ds-src ds-calib\"><rect x=\"150\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"157\" y=\"23\">CALIB</text></g><rect class=\"ds-geom-model\" x=\"10\" y=\"38\" width=\"100\" height=\"24\"/><rect class=\"ds-geom-yours\" x=\"120\" y=\"38\" width=\"100\" height=\"24\"/></svg>",
+      "css": ".ds-src rect{fill:#0b0a08cc;stroke-width:1.5}.ds-src text{font:700 14px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em}.ds-model rect{stroke:#c9a227}.ds-model text{fill:#e3c877}.ds-yours rect{stroke:#7fc39a}.ds-yours text{fill:#7fc39a}.ds-calib rect{stroke:#dfa93a}.ds-calib text{fill:#dfa93a}.ds-geom-model{fill:#c9a22722;stroke:#c9a227;stroke-width:3;stroke-dasharray:10 7;opacity:.6}.ds-geom-yours{fill:#c9a22722;stroke:#c9a227;stroke-width:3}.ds-tags:hover .ds-geom-model{opacity:1}"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "#message: fixed bottom-right, rail fill, 3px brass left edge (red on error), role=status.",
+      "html": "<div class=\"ds-toast\" role=\"status\">Saved.</div><div class=\"ds-toast ds-error\" role=\"status\">Action failed</div>",
+      "css": ".ds-toast{max-width:400px;margin:0 0 8px;padding:12px 16px;background:#241e19;border:1px solid #2e2620;border-left:3px solid #c9a227;box-shadow:0 5px 30px #0005;color:#f2e9dd;font:14px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-toast.ds-error{border-left-color:#cf5b4d}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lamp-Lit Scoreboard",
+    "overview": "Corner Pocket looks like the back room of a pool hall at night. The ground is dark walnut (`#14110f`) under a faint warm lamp haze (`--lamp`, a radial gradient over the scoreboard). The text is chalk. One metal accent, rail brass (`#c9a227`), marks whatever is current, chosen or primary. The mark is a real 8-ball. Each tab in the nav carries a numbered, coloured pool ball (1 yellow, 2 blue, 3 red, 4 purple, 5 orange, 6 green). The one signature illustration, the cloth preview, is drawn as a table: an 18 px walnut rail around the cloth colour. The club side of the product (Floor, Set up, Matches, Regulars, Back room) uses this material language at full size. Player names and scores are set in Zilla Slab at up to 80 px and 110 px.\n\nThe Vision side is the same room with a different job, and a much denser type scale. It is a review instrument in three columns: a cues rail, a 16:9 stage and an inspector. Every panel wears the same 3 px brass top edge. Most text is DM Mono at 10–12.5 px, uppercase and tracked. The design has one moral axis: **who said this**. Machine output is drawn dashed and dimmed. The operator's own work is drawn solid. Calibration is labelled as calibration. A small source tag (MODEL / YOURS / CALIB, 模型 / 人工 / 标定) sits beside every drawn shape. Status is a word inside a bordered chip, never colour alone. The facts line spells out what is on the stage in one ` · `-joined sentence.\n\nThe system is flat. Depth comes from four tonal steps (`pocket-well` < `walnut-night` < `felt-panel` < `rail-wood`) and from 1 px seams. Shadows appear only on things that float: toasts, modals, the source panel and the stage popover. Corners are nearly square (2 px). Motion is effectively absent. Both themes and both languages are first-class. Dark/EN is the default. Light is a warm-paper swap of every colour token.",
+    "keyCharacteristics": [
+      "Warm near-black walnut ground with chalk ink; one brass accent for *current / selected / primary*.",
+      "Three voices: Zilla Slab for names, headings and big numerals; Barlow for body text; DM Mono for every label, readout and status word (uppercase, tracked .1–.18em).",
+      "Square-ish: 2 px radius almost everywhere; 50% only for balls and pips.",
+      "Flat tonal layering plus 1 px seams; a 3 px brass top edge marks a working panel.",
+      "Provenance is encoded in stroke: dashed = machine / reference, solid = human / under review.",
+      "Status = word + tinted chip (green complete / amber live-or-stale / blue scheduled / red error).",
+      "Bilingual EN / 中 everywhere, including SVG overlay tags; the Noto SC families sit inside every font stack."
+    ],
+    "rules": [
+      {
+        "name": "The One Brass Rule",
+        "body": "Brass means *current, selected or primary*, and nothing else is brass. When two things on screen are brass, one of them is the active state of the other.",
+        "section": "colors"
+      },
+      {
+        "name": "The Word-Not-Colour Rule",
+        "body": "Every status colour ships with its word (`LIVE`, `STALE`, `COMPLETE`, `geometry-verified`, `CALIB`) inside a bordered chip or tag. The hue only reinforces the word.",
+        "section": "colors"
+      },
+      {
+        "name": "The Triplet Rule",
+        "body": "A signal hue is used as text + tinted background + darker border together (`--green` / `--green-bg` / `--green-line`), never as a bare fill.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono-Means-Machine Rule",
+        "body": "Measured values, identifiers, counts, times and state words are set in DM Mono. Prose and editable names are not.",
+        "section": "typography"
+      },
+      {
+        "name": "The Uppercase-Label Rule",
+        "body": "Labels are small, uppercase and tracked (≥ .1em). Content (names, notes, guest names, via `.vs-tag.guest`) is never uppercased.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Until-It-Floats Rule",
+        "body": "Resting surfaces never cast shadows. A shadow means the element sits on top of other content and can be dismissed.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Brass-Lintel Rule",
+        "body": "A surface you work *in* gets a 3px brass top edge. A message you *read* gets a 3px left edge.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** take every colour from the `--*` tokens so both themes follow. A new status needs its `-bg` / `-line` pair in both `:root` blocks, and `app.css` must mirror it (see *Recorded inconsistencies*).",
+      "**Do** keep brass for current / selected / primary only. Put the 3px brass top edge on any new working panel and the 3px left edge on any new callout.",
+      "**Do** draw machine output dashed and dimmed and operator output solid. Put a MODEL / YOURS / CALIB tag beside every drawn geometry group (not inside it), and keep the tag bilingual (模型 / 人工 / 标定).",
+      "**Do** set measured values, IDs, counts and state words in DM Mono. Labels go 10px uppercase with ≥ .1em tracking. Names go in Zilla Slab, and prose in Barlow 15/1.5.",
+      "**Do** ship every string in EN and 中, join readouts with ` · `, keep units Latin, and give icon-only controls a bilingual `aria-label`.",
+      "**Do** keep 2px corners, 1px seams and flat tonal layers. Use a shadow only on floating, dismissable layers, and follow the existing z-index ladder (10 / 24 / 30 / 31 / 50 / 60).",
+      "**Do** keep controls ≥ 44px wherever they are the primary touch target on mobile (nav, sheet tabs, clock toggle)."
+    ],
+    "donts": [
+      "**Don't** add a second accent hue, gradients on UI chrome, or brass as decoration. The lamp glow on the scoreboard and the ball icons are the only atmosphere.",
+      "**Don't** show status by colour alone, and don't let a pending write show a success word.",
+      "**Don't** call a replay \"live\", show a machine candidate as confirmed, or show an unlabelled event as verified. Provenance must read correctly in the overlay, the rail and the facts line.",
+      "**Don't** add `transition` or `@keyframes` for decoration. The instrument has no motion today, and the reduced-motion guards assume that.",
+      "**Don't** hard-code theme-dependent colours in CSS or in template strings (see *Recorded inconsistencies* for the existing ones). The stage letterbox `#090806` is the one intentional theme-invariant colour.",
+      "**Don't** use rounded pills or large radii. 12px belongs to the pool-table illustration and 50% to balls and pips."
+    ]
+  }
+}
