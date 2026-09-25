@@ -322,6 +322,19 @@ test('a required text field holding only spaces is stopped at the field, in both
   await h.handlers.submit(form(null, 'player-form', {name: 'Ada', status: 'Active'}));
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'player_save', payload: {name: 'Ada', status: 'Active'}}]);
 });
+test('a stream link the server refuses is explained before or after the request, in both languages', async () => {
+  const h = harness();
+  for (const path of ['subscriptions', 'inventory', 'wallet', 'jobs', 'turbo', 'Wallet']) {
+    assert.equal(h.evaluate(`parseSource('https://www.twitch.tv/${path}')`), null, `${path} is a Twitch page, not a channel`);
+  }
+  assert.equal(h.evaluate("parseSource('https://www.twitch.tv/examplechannel').channel"), 'examplechannel');
+  await h.handlers.submit(submission('source-form', {url: 'https://www.twitch.tv/wallet'}));
+  assert.equal(h.evaluate('calls.length'), 0, 'a reserved Twitch page never reaches the server');
+  assert.equal(h.evaluate("validationMessage('Source already added')"), 'Source already added');
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("validationMessage('Source already added')"), '这个直播源已经添加过了。');
+  assert.equal(h.evaluate("validationMessage('Use a Twitch channel or videos/<digits> URL')"), '请输入Twitch频道网址或 videos/<数字> 视频网址。');
+});
 test('choosing a regular after the guest prompt clears it, so the browser lets the form submit', () => {
   const h = harness();
   const guest = {validity: 'Type a guest name or choose a regular.', setCustomValidity(text) { this.validity = text; }};
