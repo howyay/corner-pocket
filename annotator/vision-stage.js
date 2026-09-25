@@ -100,6 +100,9 @@ const COPY = {
     gateCensus:'Ball census', gateColourCensus:'Claimed colour census', gateVanish:'Vanished ball',
     gateMove:'Re-measured move', gateMotion:'motion', gateGap:'Claim vs measured ball',
     gateDup:'Duplicate detections merged', gateNotes:'Gate notes',
+    gateNetPath:'Net move / path', gatePeakSpeed:'Peak speed', gateDenseWindow:'Track window',
+    provenanceMachine:'machine-produced candidate; no human has confirmed it',
+    provenanceHuman:'confirmed by a person',
     tierLabel:'Confirmation tier', tierGeometry:'geometry-verified', tierWindow:'motion window only',
     tierGeometryHint:'The re-measured motion matches the claim: this ball, this start, this end.',
     tierWindowHint:'A ball really moved in this window, but not the one or where the claim said. Review it as a moment, not as the claimed shot.',
@@ -194,6 +197,9 @@ const COPY = {
     gateCensus:'球数', gateColourCensus:'声称颜色球数', gateVanish:'消失球',
     gateMove:'复测位移', gateMotion:'运动量', gateGap:'声称位置与实测球',
     gateDup:'合并的重复检测', gateNotes:'检测门备注',
+    gateNetPath:'净位移 / 路径', gatePeakSpeed:'峰值速度', gateDenseWindow:'轨迹窗口',
+    provenanceMachine:'机器产出，未经人工确认',
+    provenanceHuman:'已由人工确认',
     tierLabel:'确认层级', tierGeometry:'几何已核', tierWindow:'仅运动窗口',
     tierGeometryHint:'复测位移与声称一致：同这颗球、同起点、同终点。',
     tierWindowHint:'该窗口确有球在动，但不是声称的那颗，或不在声称的位置。请按「时刻」复核，而不是按声称的那次击球。',
@@ -371,6 +377,12 @@ function eventGeometry(item) {
       row('gateMove', Number.isFinite(n.disp_mm) ? `${Math.round(n.disp_mm)} mm${n.disp_color ? ` · ${n.disp_color}` : ''}` : '');
       row('gateGap', Number.isFinite(n.geometry_gap_px) ? `${Math.round(n.geometry_gap_px)} px` : '');
     }
+    // Net displacement vs path length is what separates a real shot from detector
+    // jitter: a ball that ends where it started travelled a path without moving.
+    row('gateNetPath', Number.isFinite(n.dense_net_displacement_px) || Number.isFinite(n.dense_path_length_px)
+      ? `${Number.isFinite(n.dense_net_displacement_px) ? Number(n.dense_net_displacement_px).toFixed(1) : '—'} / ${Number.isFinite(n.dense_path_length_px) ? Number(n.dense_path_length_px).toFixed(1) : '—'} px` : '');
+    row('gatePeakSpeed', Number.isFinite(n.dense_peak_speed_px_s)
+      ? `${Math.round(n.dense_peak_speed_px_s)} px/s${Number.isFinite(n.dense_duration_s) ? ` · ${Number(n.dense_duration_s).toFixed(2)} s` : ''}` : '');
     row('gateMotion', Number.isFinite(n.window_motion) ? String(n.window_motion) : '');
     row('gateDup', (item.dup_count || 1) > 1 ? String(item.dup_count) : '');
     row('gateNotes', (gate.reasons || []).join(' · '));
@@ -434,6 +446,23 @@ function chipsHTML(s) {
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
   <div class="vs-chipmeta">${freshness}<span class="vs-keys">${esc(t('keys'))}</span></div>${panel}`;
 }
+// Who made this candidate: one quiet line under the card's facts, never a badge.
+// A machine-produced candidate says so in its own words (translated in 中); an
+// event with no provenance block renders nothing at all - not "undefined".
+function provenanceLine(event) {
+  const p = event?.provenance;
+  if (!p || typeof p !== 'object') return '';
+  const parts = [];
+  if (p.detector) parts.push(`<span class="vs-mono vs-dim">${esc(p.detector)}</span>`);
+  const statement = p.statement ? String(p.statement) : (p.machine_produced && !p.human_confirmed ? t('provenanceMachine') : '');
+  if (statement) {
+    const known = statement === COPY.en.provenanceMachine || statement === COPY.zh.provenanceMachine;
+    parts.push(esc(known ? t('provenanceMachine') : statement));
+  }
+  if (p.human_confirmed) parts.push(esc(t('provenanceHuman')));
+  if (!parts.length) return '';
+  return `<div class="vs-prov${p.human_confirmed ? ' confirmed' : ''}" data-vs-provenance="${p.human_confirmed ? 'human' : 'machine'}" title="${esc(p.statement || '')}">${parts.join(' · ')}</div>`;
+}
 function tierBadge(event) {
   // The confirmation tier, on the card and in the inspector: geometry-verified
   // means the re-measured motion matches the claim, motion-window means a ball
@@ -470,6 +499,7 @@ function railHTML(s) {
   const cards = events.length ? events.map((e, i) => `<article class="vs-card tier-${esc(e.tier || 'none')}${e.id === s.selection.event?.id ? ' selected' : ''}" data-vs-action="select-event" data-vs-id="${esc(e.id)}">
       <div class="vs-card-row"><span class="vs-badge ${esc(e.type)}">${esc(e.type === 'pot' ? t('pots') : t('shots'))}</span>${tierBadge(e)}<span class="vs-mono">${esc(timecode(e.t))}</span><span class="vs-mono vs-dim">#${esc(e.id)}</span>${pocketTag(e)}</div>
       ${gateEvidence(e).length ? `<div class="vs-mono vs-dim fv-gate">${esc(gateEvidence(e).join(' · '))}</div>` : ''}
+      ${provenanceLine(e)}
       <div class="vs-verbs">${['correct','wrong','unsure'].map(v => `<button class="${e.verdict === v ? 'active' : ''}" data-vs-action="verdict" data-vs-id="${esc(e.id)}" data-vs-value="${v}" title="${esc(t(v))}" aria-label="${esc(t(v))}">${{correct:'✓',wrong:'✗',unsure:'?'}[v]}</button>`).join('')}<span class="vs-verb-label">${esc(e.verdict ? t(e.verdict) : t('notReviewed'))}</span></div>
     </article>`).join('') : `<p class="vs-empty" data-vs-empty="${esc(emptyMarker(s.eventFilter))}">${esc(t(emptyReasonKey(s.eventFilter)))}</p>`;
   const crops = s.balls.items;

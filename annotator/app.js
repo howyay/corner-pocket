@@ -1563,6 +1563,11 @@ function snapshot() {
       // Passed through as stored; the claim geometry itself is never rewritten.
       tier: e.tier === 'geometry' || e.tier === 'window' ? e.tier : null,
       geometry_check: e.geometry_check && typeof e.geometry_check === 'object' ? {...e.geometry_check} : null,
+      // Who made this candidate, and whether a human has confirmed it: passed
+      // through as stored (detector, statement, machine_produced, human_confirmed),
+      // so the rail can say a candidate is machine-produced instead of implying a
+      // reviewed result. Absent stays absent.
+      provenance: e.provenance && typeof e.provenance === 'object' ? {...e.provenance} : null,
       dup_count: Number.isFinite(Number(e.dup_count)) ? Number(e.dup_count) : null,
       projectable: !!(e.px_source || e.last_px || e.from_px)})), index: state.eventIndex,
     // Verdicts count only while their event is still in the queue: a verdict

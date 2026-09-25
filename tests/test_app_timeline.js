@@ -1683,6 +1683,52 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
     'and a focused field keeps its focus and caret across that rebuild');
 });
 
+function VSrail({events, lang = 'en'}) {
+  return adapterStage(lang, ROSTER).railHTML({eventFilter:'all', selection:{}, focus:'events',
+    events:{items: events, index: 0, reviewed: 0}, balls:{items:[], index:0},
+    persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
+}
+const VS = adapterStage('en', ROSTER);   // one handle for the pure formatters
+
+test('a machine-produced candidate says so on its card, and an event without provenance says nothing', () => {
+  const shot = {id:9002, type:'shot', t:1580.1, color:'blue', tier:'window',
+                provenance:{detector:'dense-track · trained 960×540 net @ ball@2', machine_produced:true, human_confirmed:false,
+                            statement:'machine-produced candidate; no human has confirmed it', ball_id:'t193-blue'},
+                gate:{status:'confirmed', gate:'motion', reasons:['dense_motion_onset'], tier:'window',
+                      numbers:{disp_mm:1308, disp_color:'blue', dense_net_displacement_px:159.1, dense_path_length_px:159.86,
+                               dense_peak_speed_px_s:491.63, dense_duration_s:0.733326}}};
+  const rail = VSrail({events:[shot]});
+  assert.ok(rail.includes('data-vs-provenance="machine"'), 'the provenance line is rendered');
+  assert.ok(rail.includes('dense-track · trained 960×540 net @ ball@2'), 'with the detector that produced it');
+  assert.ok(rail.includes('machine-produced candidate; no human has confirmed it'), 'and its own statement');
+  assert.ok(!rail.includes('undefined'), 'and never the word undefined');
+  // Quieter than the badge: the tier badge is a .vs-badge, provenance is a footnote.
+  assert.ok(rail.includes('vs-badge tier-window') && rail.includes('class="vs-prov"'), 'the two are different elements');
+  const zh = VSrail({events:[shot], lang:'zh'});
+  assert.ok(zh.includes('机器产出，未经人工确认'), '中 renders the statement in Chinese: ' + zh.slice(zh.indexOf('vs-prov'), zh.indexOf('vs-prov') + 120));
+  assert.ok(zh.includes('dense-track · trained 960×540 net @ ball@2'), 'and keeps the detector name, which is machine vocabulary');
+  // Absent provenance renders nothing at all - not an empty line, not "undefined".
+  const bare = VSrail({events:[{id:7, type:'shot', t:5.0, tier:'geometry'}]});
+  assert.ok(!bare.includes('data-vs-provenance'), 'no provenance block, no line');
+  assert.ok(!bare.includes('vs-prov'), 'and no empty footnote either');
+  assert.ok(!bare.includes('undefined'), 'and never undefined');
+  // A candidate a human confirmed says that instead.
+  const confirmed = VSrail({events:[{...shot, provenance:{...shot.provenance, human_confirmed:true}}]});
+  assert.ok(confirmed.includes('data-vs-provenance="human"') && confirmed.includes('confirmed by a person'),
+    'a human-confirmed candidate says so');
+  // The inspector's gate block carries the pair that separates a shot from jitter.
+  const numbers = VS.eventGeometry(shot);
+  assert.ok(numbers.includes('Net move / path') && numbers.includes('159.1 / 159.9 px'), 'net vs path is in the gate block: ' + numbers);
+  assert.ok(numbers.includes('Peak speed') && numbers.includes('492 px/s'), 'with the peak speed and window');
+  const jitter = VS.eventGeometry({...shot, gate:{...shot.gate, numbers:{...shot.gate.numbers, dense_net_displacement_px:0.2, dense_path_length_px:80.56}}});
+  assert.ok(jitter.includes('0.2 / 80.6 px'), 'a jittery candidate reads 0.2 / 80.6 px');
+  const legacy = VS.eventGeometry({id:11, type:'shot', t:9.0, gate:{status:'confirmed', gate:'displacement', reasons:[], numbers:{disp_mm:1837}}});
+  assert.ok(!legacy.includes('Net move / path'), 'an event without dense numbers grows no row');
+  // The engine hands the rail the payload as stored.
+  assert.ok(source.includes('provenance: e.provenance && typeof e.provenance === \'object\' ? {...e.provenance} : null'),
+    'app.js carries provenance into the event snapshot');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
 
