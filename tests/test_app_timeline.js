@@ -1592,6 +1592,64 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     'the refusal is a sentence, in operator language');
   assert.ok(refusedHTML.includes('single_face_only') && refusedHTML.includes('upload a second photo'), 'with the module code and its own sentence beside it');
   assert.ok(refusedHTML.includes('data-vs-crop="0"'), 'and it still shows the face it did see');
+  // A refusal on confirm (the server answers 200 ok:false: token_mismatch,
+  // preview_expired, player_name_required) reaches the operator as its real
+  // reason in both languages, and nothing about it looks like a success.
+  const confirmSource = source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state, enrollConfirm, snapshot, setRoot: host => { root = host; }}; })();');
+  // Runs the real async confirm against a stubbed server answer and returns the
+  // engine snapshot and what confirm resolved to.
+  const confirmWith = answer => {
+    const box = {document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
+                 window:{addEventListener() {}}, confirm: () => true, URL:{createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+                 setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+    box.globalThis = box;
+    // microtaskMode drains the confirm's awaits before runInContext returns, so the
+    // real async write runs to its end without an async test.
+    const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
+    vm.runInContext(confirmSource, context, {filename:'app.js'});
+    // The stub lives in the context's realm: an outer-realm promise would settle on
+    // the outer microtask queue, after runInContext has already returned.
+    vm.runInContext(`fetch = async () => ({ok:true, status:200, json: async () => (${JSON.stringify(answer)})});
+      E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+      E.state.enroll = {status:'ready', name:'Ana', startedAt:0, error:null, payload:${JSON.stringify(ready.payload)}};
+      E.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, context);
+    return {engineSnap: vm.runInContext('E.snapshot()', context), confirmed: box.confirmed, confirmError: box.confirmError};
+  };
+  // A confirm the server accepts is still a success: written, and one ✓ receipt.
+  const written = confirmWith({ok:true, player_id:'p9', player_name:'Ana', revision:8, embeddings:2});
+  assert.strictEqual(written.engineSnap.enroll.status, 'written');
+  const writtenReceipt = written.engineSnap.receipts.find(r => r.key === 'person');
+  assert.ok(writtenReceipt && writtenReceipt.error === false && writtenReceipt.text === 'Ana → regular', JSON.stringify(writtenReceipt));
+  for (const [reason, message, en, zh] of [
+    ['token_mismatch', 'these crops are not the ones you were shown; reload the frame', 'these crops are not the ones you were shown; preview again', '这些裁剪图与展示时不一致；请重新预览'],
+    ['preview_expired', 'this preview is no longer held; preview the track again before confirming', 'this preview is no longer held; preview again', '此预览已不再保留；请重新预览'],
+    ['player_name_required', 'a name is required to enrol a regular', 'a name is required to enrol a regular', '登记常客需要姓名']]) {
+    const {engineSnap, confirmed, confirmError} = confirmWith({ok:false, reason, message, detail:{}});
+    const box = {confirmed};
+    assert.strictEqual(confirmError, undefined, `${reason}: a refusal is an answer, not an exception`);
+    assert.strictEqual(engineSnap.enroll.status, 'refused', `${reason}: the block is refused`);
+    assert.strictEqual(box.confirmed, false, `${reason}: a refused confirm is not a successful write`);
+    const receipt = engineSnap.receipts.find(r => r.key === 'person');
+    assert.ok(receipt && receipt.error === true && receipt.text.includes(reason),
+      `${reason}: nothing was written, so the receipt is an error naming the refusal: ${JSON.stringify(engineSnap.receipts)}`);
+    const selection = {kind:'person', track:2, person:{track_id:2, cluster_id:null}};
+    for (const [lang, sentence] of [['en', en], ['zh', zh]]) {
+      // The adapter reads the receipts from the engine it is attached to (handed
+      // over after attach, so attach's own first render stays a no-op here).
+      let attached = false;
+      const VSe = adapterStage(lang, ROSTER, {review:{snapshot: () => attached ? engineSnap : null}});
+      attached = true;
+      const html = VSe.inspectorHTML(visionSnapshot({selection, enroll:engineSnap.enroll}));
+      assert.ok(!html.includes('✓'), `${reason} (${lang}): no success mark anywhere in the person block`);
+      const line = (html.match(/<p class="vs-receipt[^"]*"[^>]*>[^<]*<\/p>/) || [''])[0];
+      assert.ok(line.includes('vs-receipt error') && line.includes('>! ') && !/Saved|已保存/.test(line),
+        `${reason} (${lang}): the receipt is the red "!" line and never says Saved: ${line}`);
+      assert.ok(html.includes('data-vs-enrol="refused"') && html.includes(sentence),
+        `${reason} (${lang}): the refusal is the real reason: ` + html.slice(html.indexOf('data-vs-enrol'), html.indexOf('data-vs-enrol') + 160));
+      assert.ok(!html.includes(lang === 'zh' ? '未知' : 'Unknown'), `${reason} (${lang}): never "Unknown"`);
+      assert.ok(html.includes(reason), `${reason} (${lang}): with the module code beside it`);
+    }
+  }
   const none = {status:'refused', name:'', elapsed_ms:null, error:null, payload:{ok:false, reason:'no_face_in_track', message:'x', crops:[]}};
   assert.ok(adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:none}))
     .includes('no usable crop was kept'), 'a refusal with no crops says so instead of showing an empty box');

@@ -394,8 +394,10 @@ function receiptLine(kind) {
   const row = (snap()?.receipts || []).find(r => r.key === kind);
   if (!row) return '';
   if (!row.at) return `<p class="vs-receipt pending">· ${esc(engineText(row.text))}</p>`;
+  // A failed write is a red "!" line that never claims "Saved".
+  if (row.error) return `<p class="vs-receipt error">! ${esc(engineText(row.text))}</p>`;
   const age = Math.max(0, (Date.now() - row.at) / 1000);
-  return `<p class="vs-receipt${row.error ? ' error' : ''}" data-receipt-at="${row.at}">${row.error ? '!' : '✓'} ${esc(engineText(row.text))} · ${age.toFixed(1)} s ${esc(t('savedOk'))}</p>`;
+  return `<p class="vs-receipt" data-receipt-at="${row.at}">✓ ${esc(engineText(row.text))} · ${age.toFixed(1)} s ${esc(t('savedOk'))}</p>`;
 }
 // The footer's height is measured, never assumed: the scroll region reserves
 // exactly that much (CSS var --vs-footer-h) so no row hides under it.

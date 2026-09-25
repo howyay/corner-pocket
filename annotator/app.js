@@ -1185,8 +1185,14 @@ async function enrollConfirm(button) {
   const payload = state.enroll.payload;
   if (!payload?.token) { notice('Preview the person before confirming.', true); return false; }
   const name = String(state.enroll.name || '').trim();
+  // A refusal (200 ok:false: token_mismatch, preview_expired, player_name_required)
+  // wrote nothing: throwing inside the save keeps its ✓ receipt away, and the block
+  // shows the refusal's own reason, not the preview's.
   const ok = await save(button, '/api/identity/enroll-confirm', {token: payload.token, player_name: name},
-    data => { state.enroll = {status: data?.ok ? 'written' : 'refused', payload: {...payload, result: data}, name, startedAt: 0, error: null}; },
+    data => {
+      state.enroll = {status: data?.ok ? 'written' : 'refused', payload: data?.ok ? {...payload, result: data} : {...payload, ...data, result: data}, name, startedAt: 0, error: null};
+      if (!data?.ok) throw new Error(data?.reason || 'refused');
+    },
     'person', `${name || '—'} → regular`);
   if (ok && state.enroll.status === 'written' && opts?.reloadRoster) opts.reloadRoster();
   return ok;
