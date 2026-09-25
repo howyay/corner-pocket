@@ -69,6 +69,7 @@ const COPY = {
     enrolWrote:'enrolled; the roster was re-read', enrolRetry:'Preview again',
     enrolMismatch:'these crops are not the ones you were shown; preview again',
     inferenceNotStored:'run on this frame, not stored', inferenceFrom:'inference source',
+    inferenceSession:'inference \u00b7 this session',
     // Live detectors: the trained tiny ball net is a live stage, unlike the
     // CPU-heavy SAM3 frame detector, and the panel names the difference.
     boundManual:'manual bind', boundAuto:'automatic face match', boundIdentity:'identity binding',
@@ -164,6 +165,7 @@ const COPY = {
     enrolWrote:'已登记；名单已重新读取', enrolRetry:'重新预览',
     enrolMismatch:'这些裁剪图与展示时不一致；请重新预览',
     inferenceNotStored:'本次运行，未存储', inferenceFrom:'推理来源',
+    inferenceSession:'推理 \u00b7 本次会话',
     boundManual:'人工绑定', boundAuto:'自动人脸匹配', boundIdentity:'身份绑定',
     bindIdentityHint:'通过身份流程保存，人脸与体型匹配继续生效。',
     bindGuestHint:'把输入的姓名保存为该轨迹的标注。',
@@ -524,8 +526,14 @@ function factsLine(s) {
   const verdict = cloth.verdict || {};
   const refusal = cloth.refusal || null;
   const quad = cloth.quad || null;
+  // "stored inference" means a file an earlier run wrote, with its timestamp; a
+  // polygon produced by inference run on this frame now is this session's and is
+  // never called stored - that wording appears in exactly one place, here.
+  const storedInference = s.corrections?.inferenceAt && s.corrections?.storedInference
+    ? `${t('storedInference')} ${stampText(s.corrections.inferenceAt)}`
+    : null;
   const clothLabel = layer('cloth', t('cloth').toLowerCase())
-    + (cloth.polygon === 'inference' ? ` (${t('storedInference')})` : '');
+    + (cloth.polygon === 'inference' ? ` (${storedInference || t('inferenceSession')})` : '');
   parts.push(clothLabel, layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()));
   const pocketCount = Number(d.pockets || 0);
   const pocketSource = cloth.pockets?.source || null;
@@ -551,9 +559,10 @@ function factsLine(s) {
     parts.push(`${t('quadFallback')} (${quadReason(quad.reason)})`);
   }
   if (refusal) parts.push(`${t('correctionRefused')} (${refusal.owner})`);
-  // A stored inference file is an earlier run's evidence, and the line says so
-  // rather than letting it read as this session's detection.
-  if (s.corrections?.storedInference && s.corrections?.inferenceAt) parts.push(`${t('storedInference')} ${stampText(s.corrections.inferenceAt)}`);
+  // A stored inference file is an earlier run's evidence; the cloth token above
+  // already names it with its timestamp, and the box layer says the same thing in
+  // the inspector. Nothing else on this line repeats it.
+  if (storedInference && cloth.polygon !== 'inference' && (s.corrections?.modelBoxes ?? 0) > 0) parts.push(storedInference);
   const total = d.cloth + d.balls + d.persons + d.pockets + d.anchors + d.events;
   if (s.loading.overlay) parts.push(`${t('overlays')} ${t('loading')} (${((Date.now() - s.loading.since) / 1000).toFixed(1)} s)`);
   else if (s.busy) parts.push(`${t('overlays')} ${t('loading2')}`);

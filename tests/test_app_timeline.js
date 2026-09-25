@@ -939,7 +939,15 @@ test('the facts line states a refused quad reason in both languages', () => {
   // The stored-inference polygon names itself instead of hiding inside the total.
   const inference = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
                                  drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
-  assert.ok(inference.includes('cloth 1 (stored inference)'), 'I ' + inference);
+  // "stored inference" is reserved for a file an earlier run wrote; a polygon from
+  // inference run on this frame now is this session's, and says so.
+  assert.ok(inference.includes('cloth 1 (inference · this session)'), 'I ' + inference);
+  assert.ok(!inference.includes('stored inference'), 'I2 a session run is never called stored: ' + inference);
+  const stored = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
+                              corrections:{tool:'select', result:'inference', storedInference:true, inferenceAt:'2026-09-16T04:07:48+00:00'},
+                              drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
+  assert.ok(stored.includes('cloth 1 (stored inference') && /2026|9\/16/.test(stored),
+    'I3 a file from an earlier run keeps its own timestamp: ' + stored);
   assert.ok(V.factsLine({...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
                          drawn:{cloth:2, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}).includes('cloth 1 (+1 manual)'), 'M');
 });
@@ -1464,8 +1472,24 @@ test('an inference run says it was not stored, and a stored file is labelled as 
   const facts = adapterStage('en', ROSTER).factsLine(visionSnapshot({
     drawn:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
-    corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00'}}));
+    corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00', modelBoxes:2}}));
   assert.ok(facts.includes('stored inference'), 'the facts line names the earlier run too: ' + facts);
+  assert.ok(!adapterStage('en', ROSTER).factsLine(visionSnapshot({
+    drawn:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0}},
+    cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
+    corrections:{...boxes, storedInference:false, inferenceAt:'2026-09-23T21:10:00+00:00', modelBoxes:2}})).includes('stored inference'),
+    'a session run never says stored in the facts line either');
+  const zhStored = adapterStage('zh', ROSTER).factsLine(visionSnapshot({
+    drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}},
+    cloth:{verdict:{state:'none'}, polygon:'inference', quad:null, pockets:{}, refusal:null},
+    corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00', modelBoxes:0}}));
+  assert.ok(zhStored.includes('已存推理'), '中 says 已存推理 for a stored file: ' + zhStored);
+  const zhSession = adapterStage('zh', ROSTER).factsLine(visionSnapshot({
+    drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}},
+    cloth:{verdict:{state:'none'}, polygon:'inference', quad:null, pockets:{}, refusal:null},
+    corrections:{...boxes, storedInference:false, inferenceAt:'2026-09-23T21:10:00+00:00', modelBoxes:0}}));
+  assert.ok(zhSession.includes('推理 · 本次会话'), '中 says 本次会话 for a session run: ' + zhSession);
+  assert.ok(!zhSession.includes('已存推理'), 'and never 已存推理 for one: ' + zhSession);
 });
 
 test('the live ball detector is selectable and named as the trained net', () => {
