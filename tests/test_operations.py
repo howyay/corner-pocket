@@ -44,6 +44,24 @@ class OperationsTests(unittest.TestCase):
             self.call('player_save', id=player['id'], name='Ada', notes='x' * 4001)
         self.assertEqual(self.ops.path.read_bytes(), before)
 
+    def test_player_rating_is_optional_but_validated_when_present(self):
+        for n, extra in enumerate(({}, {'rating': None}, {'rating': ''})):
+            state = self.call('player_save', name=f'New {n}', **extra)
+            self.assertEqual(state['players'][-1]['rating'], 0)
+        state = self.call('player_save', name='Rated', rating=640, status=None)
+        ada = state['players'][-1]
+        self.assertEqual((ada['rating'], ada['status']), (640, 'Active'))
+        before = self.ops.path.read_bytes()
+        for bad in ('abc', -5, 1001, 12.5, True, ' '):
+            with self.assertRaisesRegex(ValueError, 'rating must be an integer from 0 to 1000'):
+                self.call('player_save', name='Bad', rating=bad)
+            with self.assertRaisesRegex(ValueError, 'rating must be an integer from 0 to 1000'):
+                self.call('player_save', id=ada['id'], name='Rated', rating=bad)
+        self.assertEqual(self.ops.path.read_bytes(), before)
+        for extra in ({}, {'rating': None}, {'rating': ''}):
+            state = self.call('player_save', id=ada['id'], name='Rated', notes=None, **extra)
+            self.assertEqual(state['players'][-1]['rating'], 640)
+
     def test_concurrency_and_validation_do_not_write(self):
         self.call('note_add', text='First')
         before = self.ops.path.read_bytes()

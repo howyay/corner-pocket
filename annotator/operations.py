@@ -30,6 +30,12 @@ def integer(value, low, high, name):
     return value
 
 
+def optional(payload, key, default):
+    """A missing, null or blank field was not collected: keep the default."""
+    value = payload.get(key)
+    return default if value is None or value == '' else value
+
+
 def text(value, name, maximum=200):
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
         raise ValueError(f'{name} must contain 1–{maximum} characters')
@@ -164,11 +170,11 @@ class Operations:
             if any(x['name'].casefold() == name.casefold() and x['id'] != p.get('id') for x in s['players']):
                 raise ValueError('Player name already exists')
             player = self._find(s['players'], p['id']) if p.get('id') else dict(id=uid(), joinedAt=timestamp(), rating=0, status='Active')
-            status = p.get('status', player['status'])
+            status = optional(p, 'status', player['status'])
             if status not in ('Active', 'Visitor', 'Prospect', 'Inactive'):
                 raise ValueError('Invalid player status')
-            player.update(name=name, rating=integer(p.get('rating', player['rating']), 0, 1000, 'rating'), status=status)
-            if 'notes' in p:
+            player.update(name=name, rating=integer(optional(p, 'rating', player['rating']), 0, 1000, 'rating'), status=status)
+            if p.get('notes') is not None:
                 if not isinstance(p['notes'], str) or len(p['notes']) > 4000:
                     raise ValueError('Player notes must be text up to 4000 characters')
                 player['notes'] = p['notes'].strip()
