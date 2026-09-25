@@ -7,6 +7,9 @@
 // chips, inspector and scrub strip from snapshot() and drives this engine
 // through the public API below; it owns no frame state and performs no fetch.
 let root = null, active = false, mounting = null, initialized = false;
+// What the embedding shell hands the engine at mount (e.g. reloadRoster); the
+// standalone page mounts without any.
+let hooks = {};
 const $ = (s, scope = root) => scope ? scope.querySelector(s) : null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const enc = encodeURIComponent;
@@ -709,14 +712,17 @@ function paintPlayChip() {
   parts.push(text(moving ? 'per-frame detections update on freeze' : 'per-frame detections return on freeze'));
   chip.textContent = parts.join(' · ');
 }
+// A Twitch VOD replay reaches the stage through the live path, but it is never
+// called live: the server's own status (kind 'vod-replay') decides the word.
+function liveIsReplay(live = state.live) { return live?.source?.kind === 'vod-replay' || live?.replay?.kind === 'vod-replay'; }
 function paintLiveChip() {
   const chip = $('#stage-live'); if (!chip) return;
-  const live = state.live;
+  const live = state.live, replay = liveIsReplay(live);
   chip.hidden = false;
   if (state.source.kind === 'live' && live.stale) chip.className = 'stage-live stale';
-  else if (state.source.kind === 'live') chip.className = 'stage-live on';
+  else if (state.source.kind === 'live') chip.className = replay ? 'stage-live replay' : 'stage-live on';
   else chip.hidden = true;
-  chip.textContent = state.source.kind !== 'live' ? '' : live.stale ? `${text('STALE')} ${live.frame_age_ms != null ? (live.frame_age_ms / 1000).toFixed(1) + ' s' : ''}`.trim() : `● ${text('live')}`;
+  chip.textContent = state.source.kind !== 'live' ? '' : live.stale ? `${text('STALE')} ${live.frame_age_ms != null ? (live.frame_age_ms / 1000).toFixed(1) + ' s' : ''}`.trim() : replay ? `▶ ${text('VOD replay')}` : `● ${text('live')}`;
 }
 function paintOverlay() {
   const svg = $('#t-overlay'); if (!svg) return;
@@ -731,7 +737,12 @@ function paintOverlay() {
   // geometry are drawn. A per-frame detection is not re-used here - it would be
   // a marker for a frame that is no longer on screen.
   const playing = !!state.playback.on;
-  const u = playing ? null : state.unified;
+  // A live or replay frame is described by what the live pipeline returned for it,
+  // and by nothing of the dataset frame the stage held before: its stored inference,
+  // correction, unified detections, anchors and the pockets derived from them all
+  // describe a different picture. They come back when the stage returns to it.
+  const liveFrame = isLive;
+  const u = playing || liveFrame ? null : state.unified;
   const liveBoxes = (live?.detections?.boxes || []);
   const livePoly = live?.detections?.table_polygon || null;
   // Clearance first: the automatic quad is painted only when its geometry is
@@ -741,7 +752,7 @@ function paintOverlay() {
   // quad is exactly what lands a rail-corner marker on top of a player.
   const autoCloth = (Array.isArray(u?.table_corners) && u.table_corners.length ? u.table_corners : null)
     || (isLive && Array.isArray(livePoly) && livePoly.length ? livePoly : null)
-    || staticQuad();
+    || (liveFrame ? null : staticQuad());
   const reference = state.source.kind === 'vod' ? state.cloth.reference : null;
   const clothVerdict = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : {state:'none',reason:'no detection',detail:'',mean:null,max:null,tolerance:null,source:null};
   clothVerdict.available = Number(u?.pockets?.length || 0);
@@ -811,12 +822,12 @@ function paintOverlay() {
   // is the from -> to displacement with its speed. Everything here is the
   // server's projection of the scan's millimetres (px_source travels with the
   // event); an event without pixels says "not projectable" instead.
-  const cue = ov.events ? (state.sel.kind === 'event' ? state.sel.event : null) : null;
+  const cue = ov.events && !liveFrame ? (state.sel.kind === 'event' ? state.sel.event : null) : null;
   if (cue && cueGeometryVisible(cue)) {
     const geometry = paintCueGeometry(cue);
     if (geometry) { layers.push(geometry.markup); auto.events++; }
   }
-  if (ov.anchors && state.anchors.loaded && state.dataset === 'vod30') {
+  if (ov.anchors && state.anchors.loaded && state.dataset === 'vod30' && !liveFrame) {
     const [ax, ay] = state.anchors.pts[0] || [0, 0];
     layers.push(state.anchors.pts.map(([x, y], i) => `<g class="u-anchor${state.sel.kind === 'anchor' && state.anchors.index === i ? ' selected' : ''}" data-anchor="${i}"><circle cx="${x}" cy="${y}" r="12"></circle><text x="${x + 18}" y="${y - 16}">${i + 1}</text></g>`).join(''));
     layers.push(sourceTag(ax + 16, Math.max(2, ay - 32), 'manual'));
@@ -829,9 +840,10 @@ function paintOverlay() {
   // Each box is counted and tagged by its own origin, so the facts-line split and
   // the on-stage tags come from one truth: the model's boxes stay MODEL/模型 and
   // only the boxes the operator actually made or touched read YOURS/人工.
-  const boxKinds = (playing ? [] : state.boxes).map(boxTagKind);
+  const editable = playing || liveFrame ? [] : state.boxes;
+  const boxKinds = editable.map(boxTagKind);
   const boxSource = boxKinds.length && boxKinds.every(kind => kind === boxKinds[0]) ? boxKinds[0] : boxKinds.length ? 'mixed' : 'auto';
-  for (const box of (playing ? [] : state.boxes)) {
+  for (const box of editable) {
     const manual = boxTagKind(box) === 'manual';
     if (box.label === 'person') { manual ? drawn.persons++ : auto.persons++; }
     else if (ballLabel(box.label)) { manual ? drawn.balls++ : auto.balls++; }
@@ -839,11 +851,12 @@ function paintOverlay() {
   // The editable polygon is counted by where it came from: the operator's own
   // correction is manual (so the facts split can fire), a stored inference polygon
   // is model-derived and counted as auto.
-  const polySource = polygonSource();
+  const editPolygon = liveFrame ? null : state.polygon;
+  const polySource = editPolygon ? polygonSource() : null;
   state.cloth.polygon = polySource;
-  if (state.polygon) polySource === 'manual' ? drawn.cloth++ : auto.cloth++;
+  if (editPolygon) polySource === 'manual' ? drawn.cloth++ : auto.cloth++;
   svg.dataset.boxes = boxSource;
-  const boxes = (playing ? [] : state.boxes).map((box, i) => {
+  const boxes = editable.map((box, i) => {
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
     const kind = boxTagKind(box);
     const selected = state.sel.kind === 'box' && state.sel.box === i && !box.frozen;
@@ -855,7 +868,7 @@ function paintOverlay() {
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
     return `${tagRow(x1, tagAt, kind, `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" data-origin="${kind}"${ghost ? ' data-ghost="1"' : ''} class="t-box ${kind}${faint ? ' faint' : ''}${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
   }).join('');
-  const poly = state.polygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
+  const poly = editPolygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
   svg.innerHTML = layers.join('') + poly + boxes + preview;
   svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { const index = Number(g.dataset.box); if (state.boxes[index]?.frozen) return; if (state.tool === 'select' && state.sel.box !== index) { selectBox(index); } });
@@ -867,7 +880,7 @@ function paintOverlay() {
   // honesty rule: at zero while the video runs, because nothing frame-shaped is
   // painted then.
   state.drawn = {...drawn, auto, on: true, source: state.drawn.source, playing,
-                 perFrame: playing ? 0 : boxes ? state.boxes.length : 0};
+                 perFrame: editable.length};
   paintStageNote();
 }
 // Why the detector produced no quad, in the operator's words. The server sends
@@ -1039,7 +1052,9 @@ function selectStagePerson(dataset) {
   const track = dataset.person === '' ? null : trackId(dataset.person);
   const bbox = String(dataset.bbox || '').split(',').map(Number);
   const identity = trackIdentity(track);
-  state.sel = {kind:'person', person:{track_id: track, bbox, cluster_id: dataset.cluster || identity.cluster_id, player_id: dataset.player || identity.player_id, bound_evidence: identity.bound_evidence}, crop:null, ball:null, event:null, track: track, anchor:0, box:-1};
+  // data-cluster is a DOM string ("148"); the server takes cluster_id as an integer.
+  const cluster = /^\d+$/.test(dataset.cluster || '') ? Number(dataset.cluster) : identity.cluster_id;
+  state.sel = {kind:'person', person:{track_id: track, bbox, cluster_id: cluster, player_id: dataset.player || identity.player_id, bound_evidence: identity.bound_evidence}, crop:null, ball:null, event:null, track: track, anchor:0, box:-1};
   state.focus = 'persons';
   if (!state.persons.windows.length) loadPersons().then(() => { if (state.persons.win) loadTracks(); });
   notify();
@@ -1185,10 +1200,16 @@ async function enrollConfirm(button) {
   const payload = state.enroll.payload;
   if (!payload?.token) { notice('Preview the person before confirming.', true); return false; }
   const name = String(state.enroll.name || '').trim();
+  // A refusal (200 ok:false: token_mismatch, preview_expired, player_name_required)
+  // wrote nothing: throwing inside the save keeps its ✓ receipt away, and the block
+  // shows the refusal's own reason, not the preview's.
   const ok = await save(button, '/api/identity/enroll-confirm', {token: payload.token, player_name: name},
-    data => { state.enroll = {status: data?.ok ? 'written' : 'refused', payload: {...payload, result: data}, name, startedAt: 0, error: null}; },
+    data => {
+      state.enroll = {status: data?.ok ? 'written' : 'refused', payload: data?.ok ? {...payload, result: data} : {...payload, ...data, result: data}, name, startedAt: 0, error: null};
+      if (!data?.ok) throw new Error(data?.reason || 'refused');
+    },
     'person', `${name || '—'} → regular`);
-  if (ok && state.enroll.status === 'written' && opts?.reloadRoster) opts.reloadRoster();
+  if (ok && state.enroll.status === 'written' && hooks.reloadRoster) hooks.reloadRoster();
   return ok;
 }
 // The typed name is a draft: it must not re-render the block while it is typed in.
@@ -1333,8 +1354,17 @@ function applyLiveStatus(status) {
   } else if (state.live.attempt?.error) {
     state.live.error = state.live.attempt.error;
   }
+  // An operator stop hands the stage back to the dataset frame it held, with that
+  // frame's own layers; a feed that stalls or ends keeps its last frame (stale).
+  if (state.live.state === 'stopped' && previous !== 'stopped' && state.source.kind === 'live') returnToDatasetFrame();
   if (previous !== state.live.state || state.live.stale) notify();
   paintLiveChip(); notify();
+}
+function returnToDatasetFrame() {
+  state.source = {kind:'vod', label: state.dataset, channel:null};
+  state.live.detections = null;
+  if (state.shotUrl) { renderStage(); scheduleUnified(state.frame, state.epoch, state.frameReq); }
+  else if (state.vmeta) loadFrame(state.frame);
 }
 // A live frame is one <img> fed from /api/live/frame, with the overlay
 // metadata that arrived in the same response headers.
@@ -1497,10 +1527,11 @@ function switchMode(mode) {
   state.mode = modes[mode];
   return true;
 }
-function mount(host) {
+function mount(host, shellHooks = {}) {
   if (root) return root === host ? mounting : false;
   if (!host || host.id !== 'review-root') return false;
   root = host;
+  hooks = shellHooks || {};
   bindControls();
   let lang = 'en', theme = 'dark';
   try { lang = localStorage.getItem('corner-pocket-lang') || lang; theme = localStorage.getItem('corner-pocket-theme') || theme; } catch (_) {}
@@ -1581,9 +1612,10 @@ function snapshot() {
     corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
       // Where this frame's inference came from: a stored file from an earlier run
       // (marked by the server, with its own timestamp) or the result of inference
-      // run on this frame now, which is never written to disk.
-      storedInference: state.fresult?.inference?.stored_inference === true,
-      inferenceAt: state.fresult?.inference?.saved_at || null},
+      // run on this frame now, which is never written to disk. A live or replay
+      // frame is not the dataset frame, so its stored result is not reported there.
+      storedInference: state.source.kind !== 'live' && state.fresult?.inference?.stored_inference === true,
+      inferenceAt: state.source.kind !== 'live' && state.fresult?.inference?.saved_at || null},
     cloth: {verdict: {...state.cloth.verdict}, quad: state.cloth.quad ? {...state.cloth.quad} : null, polygon: state.cloth.polygon || null, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, pockets: {...(state.cloth.pockets || {source:null, count:0, reference:null})}, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
     enroll: {status: state.enroll.status, payload: state.enroll.payload, name: state.enroll.name, error: state.enroll.error,
              // How long the preview has been collecting faces, so the rail can say
@@ -1621,7 +1653,7 @@ const zhCopy = {
 const editorCopy = {
   'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层',
   'Pick a moment on the scrub strip, or select a cue, then freeze it here.':'在拖动条上选择时刻，或选择一条线索，然后在此冻结。',
-  'STALE':'已过期', 'live':'直播', 'Close':'关闭', 'No crop at this frame':'此帧没有裁剪图',
+  'STALE':'已过期', 'live':'直播', 'VOD replay':'回放', 'Close':'关闭', 'No crop at this frame':'此帧没有裁剪图',
   'The label is written to this crop':'标注将写入此裁剪图', 'Select a crop cue in the rail to label it':'请在左栏选择裁剪图线索以标注',
   'Select a ball or a crop first.':'请先选择球或裁剪图。', 'Select a visible track first.':'请先选择可见的轨迹。',
   'This track has no identity cluster yet.':'此轨迹尚无身份聚类。', 'saving…':'保存中…', 'save failed':'保存失败',

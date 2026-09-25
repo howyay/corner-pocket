@@ -27,7 +27,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     pocketText, pocketWord, POCKET_LABELS, CLOTH_TOLERANCE_PX, clothTolerance, quadDistance, quadSanity, validateCloth,
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
-    playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip,
+    playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip, paintLiveChip,
     boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
     paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
@@ -1547,6 +1547,64 @@ test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => 
   assert.ok(zhRunning.includes('回放') && zhRunning.includes('漂移'), 'and the panel is bilingual');
 });
 
+test('a VOD replay is never called live on the stage chip, the freshness line, the facts line or the stagebar', () => {
+  // The replay's frames arrive through the live path, so the stage chrome used to
+  // read "● live" / "直播" while the panel said "live false". The server's own
+  // status (live.source / live.replay: kind 'vod-replay') decides the word.
+  const replayLive = {state:'running', error:null, attempt:null, frame_age_ms:240, receive_to_result_ms:33, skipped:0,
+    detectors:['table','person'], stale:false, seq:12, stages:[],
+    source:{kind:'vod-replay', vod_id:'1000000011', rate:2, start_s:30},
+    replay:{kind:'vod-replay', live:false, vod_id:'1000000011', rate:2, drift_s:-0.42}};
+  const shellLabel = source => {
+    // ops.js builds the frame label it hands to ingestLiveFrame; run its real code.
+    const opsSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+    const k = opsSource.indexOf('review()?.ingestLiveFrame(URL.createObjectURL(blob),meta,{label:');
+    const expr = opsSource.slice(opsSource.indexOf('label:', k) + 6, opsSource.indexOf(',channel:', k));
+    const liveSourceLabel = opsSource.slice(opsSource.indexOf('function liveSourceLabel('), opsSource.indexOf('function replayChoice('));
+    return lang => vm.runInNewContext(`const lang=${JSON.stringify(lang)};const liveText=(en,zh)=>lang==='zh'?zh:en;
+      const liveChoice='vod-replay', vodChoice={vod_id:'1000000011', start_s:30, rate:2}, channelOf=()=>null;
+      const source=${JSON.stringify(source)};
+      ${liveSourceLabel.replace(/\/\/[^\n]*\n/g, '\n')}
+      ${expr}`);
+  };
+  for (const [lang, liveWord] of [['en', 'live'], ['zh', '直播']]) {
+    // The frame label the shell hands to the stage (the stagebar's "Sources · …").
+    const label = shellLabel({kind:'vod-replay', vod_id:'1000000011', start_s:30, rate:2})(lang);
+    assert.ok(!label.includes(liveWord) && !label.includes('●'), `${lang}: the shell's frame label for a replay is not live: ${label}`);
+    assert.ok(label.includes('1000000011'), `${lang}: it still names the VOD: ${label}`);
+    const liveLabel = shellLabel({kind:'twitch', source_id:'x'})(lang);
+    assert.ok(liveLabel.startsWith(`● ${liveWord}`), `${lang}: a real channel is still live: ${liveLabel}`);
+    // The engine's stage chip.
+    const chip = {hidden:true, className:'', textContent:''};
+    T.setRoot({lang, querySelector: selector => selector === '#stage-live' ? chip : null, querySelectorAll: () => []});
+    T.state.source = {kind:'live', label, channel:null};
+    Object.assign(T.state.live, {stale:false, frame_age_ms:240, source:replayLive.source, replay:replayLive.replay});
+    T.paintLiveChip();
+    assert.ok(!chip.hidden && chip.textContent && !chip.textContent.includes(liveWord), `${lang}: the stage chip of a replay is not live: "${chip.textContent}"`);
+    assert.ok(!/\bon\b/.test(chip.className), `${lang}: nor styled as the live-on chip: ${chip.className}`);
+    Object.assign(T.state.live, {source:{kind:'twitch', source_id:'x', channel:'examplechannel'}, replay:null});
+    T.paintLiveChip();
+    assert.strictEqual(chip.textContent, `● ${lang === 'zh' ? '直播' : 'live'}`, `${lang}: a real channel keeps the live chip`);
+    Object.assign(T.state.live, {source:null, replay:null, stale:false, frame_age_ms:null});
+    T.state.source = {kind:'vod', label:'vod30', channel:null};
+    // The adapter's chip-row freshness and the facts line.
+    const snapshot = visionSnapshot({source:{kind:'live', label, channel:null}, live:replayLive,
+      loading:{overlay:false, since:0}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
+    const VSr = adapterStage(lang, ROSTER);
+    const fresh = (VSr.chipsHTML(snapshot).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
+    assert.ok(fresh && !fresh.includes(liveWord), `${lang}: the freshness line of a replay is not live: "${fresh}"`);
+    assert.ok(/240 ms/.test(fresh), `${lang}: and it still says how old the frame is: "${fresh}"`);
+    const facts = VSr.factsLine(snapshot);
+    assert.ok(!facts.toLowerCase().includes(liveWord), `${lang}: the facts line of a replay is not live: "${facts.slice(0, 80)}"`);
+    // A stale replay says stale, as a stale broadcast does.
+    const staleFresh = (VSr.chipsHTML({...snapshot, live:{...replayLive, stale:true}}).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
+    assert.ok(staleFresh.includes(lang === 'zh' ? '已过期' : 'STALE'), `${lang}: a stale replay says stale: "${staleFresh}"`);
+    // A real channel keeps its live word on both.
+    const channel = {...snapshot, live:{...replayLive, source:{kind:'twitch', source_id:'x', channel:'examplechannel'}, replay:null}};
+    assert.ok(((VSr.chipsHTML(channel).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '').startsWith(liveWord), `${lang}: a channel is live`);
+  }
+});
+
 test('the enrol block shows the evidence level, the crops and one confirm', () => {
   // The engine's two calls: a read for the preview, the write only on confirm.
   assert.ok(source.includes("api('/api/identity/enroll-preview', body)"), 'the preview is a read of its own endpoint');
@@ -1592,6 +1650,64 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     'the refusal is a sentence, in operator language');
   assert.ok(refusedHTML.includes('single_face_only') && refusedHTML.includes('upload a second photo'), 'with the module code and its own sentence beside it');
   assert.ok(refusedHTML.includes('data-vs-crop="0"'), 'and it still shows the face it did see');
+  // A refusal on confirm (the server answers 200 ok:false: token_mismatch,
+  // preview_expired, player_name_required) reaches the operator as its real
+  // reason in both languages, and nothing about it looks like a success.
+  const confirmSource = source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state, enrollConfirm, snapshot, setRoot: host => { root = host; }}; })();');
+  // Runs the real async confirm against a stubbed server answer and returns the
+  // engine snapshot and what confirm resolved to.
+  const confirmWith = answer => {
+    const box = {document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
+                 window:{addEventListener() {}}, confirm: () => true, URL:{createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+                 setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+    box.globalThis = box;
+    // microtaskMode drains the confirm's awaits before runInContext returns, so the
+    // real async write runs to its end without an async test.
+    const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
+    vm.runInContext(confirmSource, context, {filename:'app.js'});
+    // The stub lives in the context's realm: an outer-realm promise would settle on
+    // the outer microtask queue, after runInContext has already returned.
+    vm.runInContext(`fetch = async () => ({ok:true, status:200, json: async () => (${JSON.stringify(answer)})});
+      E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+      E.state.enroll = {status:'ready', name:'Ana', startedAt:0, error:null, payload:${JSON.stringify(ready.payload)}};
+      E.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, context);
+    return {engineSnap: vm.runInContext('E.snapshot()', context), confirmed: box.confirmed, confirmError: box.confirmError};
+  };
+  // A confirm the server accepts is still a success: written, and one ✓ receipt.
+  const written = confirmWith({ok:true, player_id:'p9', player_name:'Ana', revision:8, embeddings:2});
+  assert.strictEqual(written.engineSnap.enroll.status, 'written');
+  const writtenReceipt = written.engineSnap.receipts.find(r => r.key === 'person');
+  assert.ok(writtenReceipt && writtenReceipt.error === false && writtenReceipt.text === 'Ana → regular', JSON.stringify(writtenReceipt));
+  for (const [reason, message, en, zh] of [
+    ['token_mismatch', 'these crops are not the ones you were shown; reload the frame', 'these crops are not the ones you were shown; preview again', '这些裁剪图与展示时不一致；请重新预览'],
+    ['preview_expired', 'this preview is no longer held; preview the track again before confirming', 'this preview is no longer held; preview again', '此预览已不再保留；请重新预览'],
+    ['player_name_required', 'a name is required to enrol a regular', 'a name is required to enrol a regular', '登记常客需要姓名']]) {
+    const {engineSnap, confirmed, confirmError} = confirmWith({ok:false, reason, message, detail:{}});
+    const box = {confirmed};
+    assert.strictEqual(confirmError, undefined, `${reason}: a refusal is an answer, not an exception`);
+    assert.strictEqual(engineSnap.enroll.status, 'refused', `${reason}: the block is refused`);
+    assert.strictEqual(box.confirmed, false, `${reason}: a refused confirm is not a successful write`);
+    const receipt = engineSnap.receipts.find(r => r.key === 'person');
+    assert.ok(receipt && receipt.error === true && receipt.text.includes(reason),
+      `${reason}: nothing was written, so the receipt is an error naming the refusal: ${JSON.stringify(engineSnap.receipts)}`);
+    const selection = {kind:'person', track:2, person:{track_id:2, cluster_id:null}};
+    for (const [lang, sentence] of [['en', en], ['zh', zh]]) {
+      // The adapter reads the receipts from the engine it is attached to (handed
+      // over after attach, so attach's own first render stays a no-op here).
+      let attached = false;
+      const VSe = adapterStage(lang, ROSTER, {review:{snapshot: () => attached ? engineSnap : null}});
+      attached = true;
+      const html = VSe.inspectorHTML(visionSnapshot({selection, enroll:engineSnap.enroll}));
+      assert.ok(!html.includes('✓'), `${reason} (${lang}): no success mark anywhere in the person block`);
+      const line = (html.match(/<p class="vs-receipt[^"]*"[^>]*>[^<]*<\/p>/) || [''])[0];
+      assert.ok(line.includes('vs-receipt error') && line.includes('>! ') && !/Saved|已保存/.test(line),
+        `${reason} (${lang}): the receipt is the red "!" line and never says Saved: ${line}`);
+      assert.ok(html.includes('data-vs-enrol="refused"') && html.includes(sentence),
+        `${reason} (${lang}): the refusal is the real reason: ` + html.slice(html.indexOf('data-vs-enrol'), html.indexOf('data-vs-enrol') + 160));
+      assert.ok(!html.includes(lang === 'zh' ? '未知' : 'Unknown'), `${reason} (${lang}): never "Unknown"`);
+      assert.ok(html.includes(reason), `${reason} (${lang}): with the module code beside it`);
+    }
+  }
   const none = {status:'refused', name:'', elapsed_ms:null, error:null, payload:{ok:false, reason:'no_face_in_track', message:'x', crops:[]}};
   assert.ok(adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:none}))
     .includes('no usable crop was kept'), 'a refusal with no crops says so instead of showing an empty box');
@@ -1656,6 +1772,226 @@ test('two layers on one frame: model dashed, yours solid, and only yours are sav
   // The painter says the same thing the payload does.
   assert.ok(svg.innerHTML.includes('data-origin="auto"'), 'the model\u2019s layer is still on the stage after the edit');
   T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
+});
+
+// The painter and app.css must speak one vocabulary. The test above checks the
+// class names only, and model boxes shipped solid because app.css styled `.model`
+// while the painter emits `auto`. So resolve the emitted classes against app.css
+// the way the browser does: every `#t-overlay .<classes> <tag>` rule whose classes
+// are all on the element applies, more classes win, and a later rule wins a tie.
+function overlayRuleStyle(css, classes, tag) {
+  const rules = [];
+  for (const [, selectors, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    for (const selector of selectors.split(',')) {
+      const match = selector.trim().match(/^#t-overlay\s+((?:\.[\w-]+)+)\s+(\w+)$/);
+      if (!match || match[2] !== tag) continue;
+      const need = match[1].slice(1).split('.');
+      if (need.every(c => classes.includes(c))) rules.push({weight: need.length, order: rules.length, body});
+    }
+  }
+  const style = {};
+  for (const rule of rules.sort((a, b) => a.weight - b.weight || a.order - b.order)) {
+    for (const decl of rule.body.split(';')) {
+      const at = decl.indexOf(':');
+      if (at > 0) style[decl.slice(0, at).trim()] = decl.slice(at + 1).trim();
+    }
+  }
+  return style;
+}
+test('app.css styles the classes the painter emits: model dashed, yours solid, counterpart and ghost faint', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.css'), 'utf8');
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
+  T.state.cloth.reference = null; T.state.unified = null; T.state.polygon = null;
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  // One YOURS box with its model counterpart, one lone model box, and one model box
+  // the operator drags away (it becomes YOURS and leaves a frozen ghost behind).
+  T.state.fresult = {correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'ball', bbox:[100,100,120,120]}]},
+                     inference:{boxes:[{label:'ball', bbox:[101,101,121,121]}, {label:'ball', bbox:[400,300,420,320]},
+                                       {label:'ball', bbox:[600,300,620,320]}], table_polygon:null}};
+  T.state.dirty = false;
+  T.applyFrameResult();
+  const dragged = T.state.boxes[3];
+  T.ghostModelBox(dragged); dragged.bbox = [660, 300, 680, 320]; T.markBoxEdited(dragged);
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  const groups = [...html.matchAll(/<g data-box="(\d+)" data-origin="(\w+)"( data-ghost="1")? class="([^"]+)"/g)]
+    .map(([, index, origin, ghost, cls]) => ({index: Number(index), origin, ghost: !!ghost, classes: cls.split(/\s+/)}));
+  const group = index => groups.find(g => g.index === index);
+  const rect = index => overlayRuleStyle(css, group(index).classes, 'rect');
+  const dashed = style => !!style['stroke-dasharray'] && style['stroke-dasharray'] !== 'none';
+  const opacity = style => style.opacity === undefined ? 1 : Number(style.opacity);
+  const [yours, counterpart, model, edited, ghost] = [0, 1, 2, 3, 4].map(rect);
+  assert.ok(dashed(model) && opacity(model) < 1,
+    `a MODEL box (class "${group(2).classes.join(' ')}") is dashed and dimmed: ${JSON.stringify(model)}`);
+  assert.ok(!dashed(yours) && opacity(yours) === 1, `a YOURS box is solid at full opacity: ${JSON.stringify(yours)}`);
+  assert.ok(!dashed(edited) && opacity(edited) === 1, `so is the model box the operator dragged: ${JSON.stringify(edited)}`);
+  assert.ok(dashed(counterpart) && opacity(counterpart) < opacity(model),
+    `a matched counterpart (class "${group(1).classes.join(' ')}") is fainter than a lone model box: ${JSON.stringify(counterpart)}`);
+  assert.ok(group(4).ghost && dashed(ghost) && opacity(ghost) < opacity(model), `the drag ghost is faint too: ${JSON.stringify(ghost)}`);
+  // A box's MODEL tag wears the same brass stroke as every other MODEL tag.
+  const tags = [...html.matchAll(/<g class="(o-src [^"]+)" data-src="(\w+)">/g)].map(([, cls, src]) => ({src, classes: cls.split(/\s+/)}));
+  const modelTag = tags.find(tag => tag.src === 'auto'), yoursTag = tags.find(tag => tag.src === 'manual');
+  assert.strictEqual(overlayRuleStyle(css, modelTag.classes, 'rect').stroke, 'var(--brass)',
+    `a box's MODEL tag (class "${modelTag.classes.join(' ')}") has the brass stroke`);
+  assert.strictEqual(overlayRuleStyle(css, yoursTag.classes, 'rect').stroke, 'var(--green)', 'and a YOURS tag the green one');
+  T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
+});
+
+test('a successful enrol confirm resolves true and re-reads the roster through the hook the shell mounted', () => {
+  // enrollConfirm read `opts?.reloadRoster`, but the engine has no `opts`: the
+  // shell handed reloadRoster to the vision adapter only. So every successful
+  // confirm threw "opts is not defined" after the write, and the roster was never
+  // re-read. The engine now takes the hook through mount(host, hooks).
+  const host = {id:'review-root', lang:'en', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => [], addEventListener() {}};
+  const box = {document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
+               window:{addEventListener() {}}, confirm: () => true, URL:{createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+               localStorage:{getItem: () => null, setItem() {}}, setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
+  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state}; })();'), context, {filename:'app.js'});
+  // Only the enrol write answers; every other request mount() makes stays pending.
+  vm.runInContext(`fetch = (url, init) => url === '/api/identity/enroll-confirm'
+      ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true, player_id:'p9', player_name:'Nina', revision:8, embeddings:3})})
+      : new Promise(() => {});
+    globalThis.rosterReads = 0;`, context);
+  const review = box.window.CornerPocketReview;
+  review.mount(host, {reloadRoster: () => { box.rosterReads++; }});
+  vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
+    window.CornerPocketReview.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, context);
+  assert.strictEqual(box.confirmError, undefined, 'a successful confirm throws nothing');
+  assert.strictEqual(box.confirmed, true, 'and resolves true');
+  assert.strictEqual(vm.runInContext('E.state.enroll.status', context), 'written');
+  assert.strictEqual(box.rosterReads, 1, 'the roster is re-read once, through the mounted hook');
+  // A shell that mounts without hooks (the standalone review page) still confirms cleanly.
+  const bare = {...box, rosterReads:0, confirmed:undefined, confirmError:undefined};
+  bare.globalThis = bare;
+  const bareContext = vm.createContext(bare, {microtaskMode:'afterEvaluate'});
+  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state}; })();'), bareContext, {filename:'app.js'});
+  vm.runInContext(`fetch = (url) => url === '/api/identity/enroll-confirm'
+      ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true})}) : new Promise(() => {});`, bareContext);
+  bare.window.CornerPocketReview.mount({...host});
+  vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
+    window.CornerPocketReview.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, bareContext);
+  assert.strictEqual(bare.confirmError, undefined, 'without a hook there is still no exception');
+  assert.strictEqual(bare.confirmed, true);
+  // The shell passes its roster re-read to the engine's mount, not only to the adapter.
+  const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+  assert.ok(/review\(\)\.mount\(host\.querySelector\('#review-root'\),\{reloadRoster:/.test(shell), 'ops.js mounts the engine with the reloadRoster hook');
+});
+
+test('a stage click on a person sends the enrol preview an integer cluster, or none', () => {
+  // The painter writes the cluster into data-cluster, and a DOM dataset is always
+  // a string: the click stored cluster_id "148", and the preview refused it with
+  // 400 "cluster_id must be an integer" while a rail selection (a number) worked.
+  const box = {document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
+               window:{addEventListener() {}}, confirm: () => true, URL:{createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+               setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
+  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state, selectStagePerson, enrollPreview, setRoot: host => { root = host; }}; })();'), context, {filename:'app.js'});
+  // The preview body is recorded; loadPersons() and the preview answer at once.
+  vm.runInContext(`globalThis.bodies = [];
+    fetch = (url, init) => {
+      if (url === '/api/identity/enroll-preview') { bodies.push(JSON.parse(init.body)); return Promise.resolve({ok:true, status:200, json: async () => ({ok:true, token:'tok', crops:[]})}); }
+      return Promise.resolve({ok:true, status:200, json: async () => ({windows:[{win:'68-94', tracks:[1]}], seeds:{}})});
+    };
+    E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+    E.state.dataset = 'vod30'; E.state.frame = 0; E.state.unified = {persons:[]};`, context);
+  const click = dataset => vm.runInContext(`E.state.enroll = {status:'idle', payload:null, name:'', startedAt:0, error:null};
+    E.selectStagePerson(${JSON.stringify(dataset)}); E.enrollPreview(null); E.state.sel.person.cluster_id`, context);
+  // A clustered person, exactly as the painter writes it.
+  const clustered = click({person:'4', bbox:'796,197,928,418', cluster:'148', player:''});
+  assert.strictEqual(clustered, 148, 'the selection holds the cluster as a number');
+  const sent = vm.runInContext('bodies[bodies.length - 1]', context);
+  assert.strictEqual(sent.cluster_id, 148, 'and the preview is sent the integer the server requires');
+  assert.strictEqual(typeof sent.cluster_id, 'number');
+  assert.strictEqual(vm.runInContext('E.state.enroll.status', context), 'ready', 'so the preview is answered, not refused');
+  // A person with no cluster keeps the no-cluster path: no cluster_id at all.
+  const bare = click({person:'7', bbox:'10,20,110,220', cluster:'', player:''});
+  assert.strictEqual(bare, null, 'no cluster stays null');
+  const sentBare = vm.runInContext('bodies[bodies.length - 1]', context);
+  assert.ok(!('cluster_id' in sentBare), 'and the preview body carries no cluster_id: ' + JSON.stringify(sentBare));
+  same(sentBare.bbox, [10, 20, 110, 220]);
+  // A cluster the frame's identity row knows still wins when the click carries none.
+  vm.runInContext("E.state.unified = {persons:[{track_id:9, cluster_id:31, player_id:null}]}", context);
+  assert.strictEqual(click({person:'9', bbox:'1,2,3,4', cluster:'', player:''}), 31, 'the identity row fills an empty data-cluster');
+});
+
+test('a live or replay frame is drawn with its own detections only, never the dataset frame\'s layers', () => {
+  // The stage showed a VOD replay frame with vod30 frame 0's stored inference
+  // boxes, cloth polygon and facts ("stored inference …") painted over it: two
+  // sources on one picture. The overlay describes the picture it is drawn on.
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  const snapshot = () => sandbox.window.CornerPocketReview.snapshot();
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true};
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.state.playback = {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN};
+  // vod30 frame 0 as the stage holds it: a stored inference (boxes + polygon), the
+  // frame's unified detections, the dataset's saved anchors (calibration pockets).
+  const anchors = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
+  T.state.fresult = {inference:{stored_inference:true, saved_at:'2026-09-16T11:07:48Z', table_polygon:[[128,72],[1152,72],[1152,648],[128,648]],
+                                boxes:[{label:'ball', bbox:[680,484,702,507], score:0.86}, {label:'person', bbox:[33,134,200,591], score:0.89}]}, correction:null};
+  T.state.dirty = false;
+  T.applyFrameResult();
+  T.state.cloth.reference = anchors;
+  T.state.anchors.loaded = true; T.state.anchors.pts = [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]];
+  const frame0 = {table_corners:[[454,307],[799,319],[1023,573],[449,563]], pockets:[{name:'head-left', cx:455, cy:308}],
+                  persons:[{bbox:[33,134,200,591], track_id:4, cluster_id:148}], balls:[{cx:691, cy:495, r:11}], events:[]};
+  T.state.unified = frame0;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.paintOverlay();
+  const vodHtml = svg.innerHTML;
+  assert.ok(vodHtml.includes('t-box') && vodHtml.includes('t-poly') && vodHtml.includes('u-person'), 'the dataset frame draws its own layers');
+  // The replay frame arrives: its own detections are two persons and no polygon.
+  T.state.source = {kind:'live', label:'VOD replay 1000000011', channel:null};
+  T.state.live.detections = {boxes:[{label:'person', bbox:[500,200,600,500]}, {label:'person', bbox:[700,210,800,520]}], table_polygon:null};
+  T.state.unified = frame0;           // a unified answer for frame 0 that is still in state
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  assert.ok(!html.includes('t-box') && !html.includes('t-poly'), 'no stored-inference box or polygon over a live frame: ' + html.slice(0, 160));
+  assert.ok(!html.includes('u-cloth') && !html.includes('u-pocket') && !html.includes('u-anchor') && !html.includes('u-ball'),
+    'no dataset cloth, pockets, anchors or balls');
+  assert.ok(!html.includes('data-cluster="148"'), 'no dataset-frame person');
+  assert.strictEqual((html.match(/class="u-person/g) || []).length, 2, 'only the live frame\'s own two persons');
+  assert.ok(html.includes('data-src="model"'), 'drawn with their own MODEL provenance');
+  const d = T.state.drawn;
+  same([d.cloth, d.balls, d.persons, d.pockets, d.anchors, d.events], [0, 0, 2, 0, 0, 0]);
+  const snap = snapshot();
+  assert.strictEqual(snap.corrections.storedInference, false, 'the stored inference is not reported for a live frame');
+  const facts = adapterStage('en', ROSTER).factsLine({...visionSnapshot(), ...snap, live:{...snap.live, stale:false, seq:5, frame_age_ms:40, receive_to_result_ms:20}});
+  assert.ok(!/stored inference/.test(facts), 'the facts line never says stored inference over a live frame: ' + facts);
+  assert.ok(/persons 2\b/.test(facts) && /cloth 0\b/.test(facts) && /balls 0\b/.test(facts), 'and counts only what is drawn: ' + facts);
+  // No live detector on: nothing at all.
+  T.state.live.detections = null;
+  T.paintOverlay();
+  assert.ok(!/<(g|polygon|rect|circle)\b/.test(svg.innerHTML), 'no detections, nothing drawn: ' + svg.innerHTML.slice(0, 120));
+  // The operator stops the source: the stage goes back to the dataset frame it
+  // held, and that frame's layers return untouched.
+  T.state.live.state = 'running';
+  sandbox.window.CornerPocketReview.applyLiveStatus({state:'stopped', frames_skipped:0});
+  assert.strictEqual(T.state.source.kind, 'vod', 'a stop returns the stage to the dataset frame');
+  T.state.unified = frame0;           // the frame's unified answer, re-read after the stop
+  T.paintOverlay();
+  assert.strictEqual(svg.innerHTML, vodHtml, 'the dataset frame\'s layers come back exactly');
+  assert.strictEqual(snapshot().corrections.storedInference, true);
+  // A feed that stalls or ends is not a stop: its last frame stays, still live.
+  T.state.source = {kind:'live', label:'VOD replay 1000000011', channel:null};
+  T.state.live.state = 'running';
+  sandbox.window.CornerPocketReview.applyLiveStatus({state:'eos', frames_skipped:0});
+  assert.strictEqual(T.state.source.kind, 'live', 'end of stream keeps the last live frame on the stage');
+  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.live.state = 'idle';
+  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.unified = null; T.state.live.detections = null;
+  T.state.cloth.reference = null; T.state.anchors.loaded = false; T.state.anchors.pts = [];
 });
 
 test('the VOD fields are reachable and keep what the operator typed', () => {

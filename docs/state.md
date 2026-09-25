@@ -499,3 +499,109 @@ reads as this frame's correction. Frame 0 now draws only the model's boxes
 (`data-boxes="auto"`, 14 boxes, no manual split in the facts line) with its stored
 inference labelled as an earlier run (`9/16/2026, 4:07:48 AM`). No other
 correction file was touched and nothing was deleted.
+
+## 2026-09-25 — the shot/pot gate met its first real track: oscillation, millimetres, and the error bar
+
+The dense-track run over t 1350-1650 s (245 tracks, 19534 samples, 960x540) served
+3 "shots" and 1 "pot candidate" as queue ids 9001-9004. Two of the three shots were
+**detector oscillation** - id 9001 (white) peaked at 303.6 px/s with a net
+displacement of 0.20 px over an 80.6 px path, id 9003 (blue) had 19.7 px of net over
+59.9 px of path - and the pot candidate's two radius tests **disagreed with each
+other**: 9.62 px from the left-side pocket centre inside a 14.46 px pixel radius, but
+**148 mm** from the same centre against the project's 100 mm gate. `src/shot_pot_gate.py`
+was fixed for both, and the fixes are three rules, each with its basis stated.
+
+### Rule 1 - a shot must also go somewhere
+
+`min_net_displacement_diameters = 2.0` ball diameters, with the ball resolved **in
+the frame pixels of the track being judged**: `ball_diameter_px = 18.4 px x
+frame_size[0]/1280` (median ball diameter measured on vod30 at native 1280x720), so
+the dense run's 960x540 gives **13.8 px and a 27.6 px bar** with no change to the
+consumer's call site. Basis: a ball is the only honest ruler a track carries;
+detector localisation/identity noise is of order one ball (the rest bar's 0.2 px per
+frame sits under it); and the bar is deliberately *looser* than the repo's own
+mm-based shot gate (`src/event_gates.GateConfig.shot_min_disp_mm = 300`, i.e. 5.3
+ball diameters, measured 471 mm and 1345 mm for the two human-confirmed shots
+against <= 112 mm for every dead window) because this gate produces candidates for
+that gate to judge. A sustained run below the bar is now
+`oscillation_no_net_travel` - a rejection carrying net, path, net/path, diameters,
+peak speed and thresholds - and never a shot and never a roll rejection.
+
+### Rule 2 - the pocket test is decided in millimetres, and per pocket
+
+`PocketModel.measure()` un-projects the last sighting through the reference
+homography and compares the true table distance against the canonical `pocket_r_mm
+= 100 mm` gate (the repo's measured bar: vanished balls cluster at 39-86 mm and jump
+to >= 110 mm). The per-pocket pixel radius stays as a **reported diagnostic**, and
+so does the ellipse the projection actually makes of the 100 mm disc: at 960x540,
+`left-side 22.2 x 5.9 px`, `foot-right 39.7 x 15.3 px`, `head-left 15.9 x 3.1 px`.
+When the two tests disagree and the millimetre test is decisively outside, the
+record is a rejection `pocket_test_disagrees_px_vs_mm` with both numbers - never a
+pot-shaped candidate produced by the pixel radius alone.
+
+### Rule 3 - the detector's own error bar is propagated
+
+`localisation_error_px = 3.62` - the ball detector's **p90** localisation error at
+its r1 operating point 960x540 (median 1.48 px), measured in
+`out/tiny_ball_probe/report_960x540.json` (`operating.localisation_px_p90`,
+docs/near-real-time-ball-detector.md). That is the frame the dense run gates in.
+
+- **Shots**: net travel is the difference of two sightings, so its error is
+  `sqrt(2) x 3.62 = 5.12 px`. net <= 22.5 px -> `oscillation_no_net_travel`;
+  22.5-32.7 px -> **`GateReport.unresolved`** with `code="oscillation_unresolved"`
+  (a new record type in a new report channel: it is in neither `shots` nor
+  `rejections`, so a consumer cannot mistake it for a shot); >= 32.7 px -> shot.
+- **Pots**: the millimetre distance's uncertainty is `|J^T u| . 3.62` - the
+  pixel->millimetre Jacobian at the ball, projected along the pocket-to-ball
+  direction (the worst case over all directions would swamp the gate from every
+  direction at the head pockets, where 100 mm is 3.1 px). At the left-side pocket it
+  is 54 mm; at the foot pockets ~23 mm; at the head pockets 20-74 mm depending on the
+  approach. Verdicts are three-way: `d + u <= 100` -> inside, `d - u > 100` ->
+  outside, otherwise **`unknown / pocket_distance_within_uncertainty`**. The iron
+  rule keeps its own reason when it applies: a ball that vanishes while a person
+  covers the cloth is `unknown / cloth_occluded_at_disappearance` (its occlusion
+  status is in the record either way).
+
+### The four served events, before -> after (re-run of the same segment, `--output /tmp`)
+
+| id | before | after |
+|----|--------|-------|
+| 9001 t125-white | shot, net 0.20 px | **not a shot**: `oscillation_no_net_travel` (0.01 diameters) |
+| 9002 t193-blue | shot, net 159.10 px | **still a shot** (11.5 diameters, 491.6 px/s peak, 9.7 s of rest) |
+| 9003 t256-blue | shot, net 19.70 px | **not a shot**: `oscillation_no_net_travel` (1.43 diameters) |
+| 9004 t265-blue | unknown (occluded) | **unknown**, and now also 148.48 mm against 100 mm with a 54.11 mm error bar = `verdict_mm: ambiguous`: the pot candidate does **not** survive the millimetre test |
+
+Segment totals, before -> after: **shots 3 -> 1, pots 0 -> 0, unknown disappearances
+1 -> 8, unresolved 0 -> 6, rejections 713 -> 701, breaks 3 -> 1.**
+Rejection codes after: `disappeared_outside_pocket` 165, `motion_too_short` 161,
+`no_motion_onset` 78, `track_too_short` 68, `no_still_stretch` 47,
+`reappeared_after_gap` 154, **`oscillation_no_net_travel` 23**, `left_cloth` 2,
+`track_ends_at_window_end` 2, `roll_without_pocket` 1 (445 of these are on tracks
+other than the four above). The 6 unresolved runs sit at 23.6-31.6 px of net travel
+against the 27.6 px bar; the 8 unknowns are all occluded disappearances whose
+millimetre distance is also inside the error bar (31-54 mm).
+
+### Evidence and state
+
+- `tests/test_shot_pot_gate.py`: **63 tests + 9 subtests**, green. New coverage: a
+  jittering identity that exceeds the speed rule is not a shot (both served shapes);
+  an oscillation is refused by name; a run inside the bar's error bar is
+  `unresolved`, in neither `shots` nor `rejections`; the served candidate's 9.62 px /
+  148.5 mm / 54.1 mm ambiguity; a further sighting (12 px, 190 mm) is a named
+  disagreement rejection; a ball at the hole (2 px, 32 mm) is a confident pot; the
+  foot-rail ellipse; and the SAM3 census, whose 3 sparse chains near the left-side
+  pocket moved from `disappeared_outside_pocket` to ambiguous unknown.
+- Full suite after this work: **921 passed, 3 skipped** (the gate's 63 are part of
+  it; the rest of the growth is concurrent workers' test files in the same tree).
+- The wave: `tests/ball_dense_events.py` was **run read-only** (another worker owns
+  it; no line needed changing) with `--output /tmp/dense-after-fix2.json`, so
+  `out/dense-events/` and `out/scan30/events.json` are untouched by this work.
+- **What the error bar now forbids**: at the head pockets 100 mm is 3.1 px at
+  960x540, so with a 3.62 px p90 localisation error no head-pocket pot claim can be
+  confirmed from the compressed direction at all - it is `unknown`, and the honest
+  reading is that the far end cannot resolve this gate. The same 3.62 px also makes
+  a net travel within 5.12 px of the shot bar unresolved rather than a shot. The
+  gate cannot attribute a shot to a player, cannot separate a pot from a ball parked
+  in the jaws (`parked_in_jaws_possible` + `unknown`), and its pot rule is only as
+  good as the detector's identity persistence.
+
