@@ -1658,6 +1658,75 @@ test('two layers on one frame: model dashed, yours solid, and only yours are sav
   T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
 });
 
+// The painter and app.css must speak one vocabulary. The test above checks the
+// class names only, and model boxes shipped solid because app.css styled `.model`
+// while the painter emits `auto`. So resolve the emitted classes against app.css
+// the way the browser does: every `#t-overlay .<classes> <tag>` rule whose classes
+// are all on the element applies, more classes win, and a later rule wins a tie.
+function overlayRuleStyle(css, classes, tag) {
+  const rules = [];
+  for (const [, selectors, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    for (const selector of selectors.split(',')) {
+      const match = selector.trim().match(/^#t-overlay\s+((?:\.[\w-]+)+)\s+(\w+)$/);
+      if (!match || match[2] !== tag) continue;
+      const need = match[1].slice(1).split('.');
+      if (need.every(c => classes.includes(c))) rules.push({weight: need.length, order: rules.length, body});
+    }
+  }
+  const style = {};
+  for (const rule of rules.sort((a, b) => a.weight - b.weight || a.order - b.order)) {
+    for (const decl of rule.body.split(';')) {
+      const at = decl.indexOf(':');
+      if (at > 0) style[decl.slice(0, at).trim()] = decl.slice(at + 1).trim();
+    }
+  }
+  return style;
+}
+test('app.css styles the classes the painter emits: model dashed, yours solid, counterpart and ghost faint', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.css'), 'utf8');
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
+  T.state.cloth.reference = null; T.state.unified = null; T.state.polygon = null;
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  // One YOURS box with its model counterpart, one lone model box, and one model box
+  // the operator drags away (it becomes YOURS and leaves a frozen ghost behind).
+  T.state.fresult = {correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'ball', bbox:[100,100,120,120]}]},
+                     inference:{boxes:[{label:'ball', bbox:[101,101,121,121]}, {label:'ball', bbox:[400,300,420,320]},
+                                       {label:'ball', bbox:[600,300,620,320]}], table_polygon:null}};
+  T.state.dirty = false;
+  T.applyFrameResult();
+  const dragged = T.state.boxes[3];
+  T.ghostModelBox(dragged); dragged.bbox = [660, 300, 680, 320]; T.markBoxEdited(dragged);
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  const groups = [...html.matchAll(/<g data-box="(\d+)" data-origin="(\w+)"( data-ghost="1")? class="([^"]+)"/g)]
+    .map(([, index, origin, ghost, cls]) => ({index: Number(index), origin, ghost: !!ghost, classes: cls.split(/\s+/)}));
+  const group = index => groups.find(g => g.index === index);
+  const rect = index => overlayRuleStyle(css, group(index).classes, 'rect');
+  const dashed = style => !!style['stroke-dasharray'] && style['stroke-dasharray'] !== 'none';
+  const opacity = style => style.opacity === undefined ? 1 : Number(style.opacity);
+  const [yours, counterpart, model, edited, ghost] = [0, 1, 2, 3, 4].map(rect);
+  assert.ok(dashed(model) && opacity(model) < 1,
+    `a MODEL box (class "${group(2).classes.join(' ')}") is dashed and dimmed: ${JSON.stringify(model)}`);
+  assert.ok(!dashed(yours) && opacity(yours) === 1, `a YOURS box is solid at full opacity: ${JSON.stringify(yours)}`);
+  assert.ok(!dashed(edited) && opacity(edited) === 1, `so is the model box the operator dragged: ${JSON.stringify(edited)}`);
+  assert.ok(dashed(counterpart) && opacity(counterpart) < opacity(model),
+    `a matched counterpart (class "${group(1).classes.join(' ')}") is fainter than a lone model box: ${JSON.stringify(counterpart)}`);
+  assert.ok(group(4).ghost && dashed(ghost) && opacity(ghost) < opacity(model), `the drag ghost is faint too: ${JSON.stringify(ghost)}`);
+  // A box's MODEL tag wears the same brass stroke as every other MODEL tag.
+  const tags = [...html.matchAll(/<g class="(o-src [^"]+)" data-src="(\w+)">/g)].map(([, cls, src]) => ({src, classes: cls.split(/\s+/)}));
+  const modelTag = tags.find(tag => tag.src === 'auto'), yoursTag = tags.find(tag => tag.src === 'manual');
+  assert.strictEqual(overlayRuleStyle(css, modelTag.classes, 'rect').stroke, 'var(--brass)',
+    `a box's MODEL tag (class "${modelTag.classes.join(' ')}") has the brass stroke`);
+  assert.strictEqual(overlayRuleStyle(css, yoursTag.classes, 'rect').stroke, 'var(--green)', 'and a YOURS tag the green one');
+  T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
+});
+
 test('the VOD fields are reachable and keep what the operator typed', () => {
   // (1) The panel used to list the replay controls last, so at 1280x900 the button
   // sat below the panel's own scroll box: elementFromPoint on it returned the

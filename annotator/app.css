@@ -99,9 +99,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Two layers can be on one frame, so the style follows each box's own origin, not
    a frame-level flag: the model's boxes are dashed reference (fainter still when a
    manual box already describes the same object), the operator's are solid. */
-#t-overlay .t-box.model rect { stroke-dasharray: 10 7; opacity: .6; }
-#t-overlay .t-box.model text { opacity: .7; }
-#t-overlay .t-box.model.faint rect { stroke-dasharray: 6 6; opacity: .32; }
+#t-overlay .t-box.auto rect { stroke-dasharray: 10 7; opacity: .6; }
+#t-overlay .t-box.auto text { opacity: .7; }
+#t-overlay .t-box.auto.faint rect { stroke-dasharray: 6 6; opacity: .32; }
 #t-overlay .t-box.manual rect { stroke-dasharray: none; opacity: 1; }
 #t-overlay[data-boxes="auto"] .t-poly { stroke-dasharray: 12 8; opacity: .55; }
 /* Manual content stays solid with full opacity and keeps its grab handles. */
@@ -122,11 +122,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
    inherit the group's editable styling. */
 #t-overlay .o-src { pointer-events: none; }
 #t-overlay .o-src rect { fill: #0b0a08cc; stroke-width: 1.5; }
-#t-overlay .o-src.model rect { stroke: var(--brass); }
+#t-overlay .o-src.model rect, #t-overlay .o-src.auto rect { stroke: var(--brass); }
 #t-overlay .o-src.manual rect { stroke: var(--green); }
 #t-overlay .o-src.calib rect { stroke: var(--amber); }
 #t-overlay .o-src text { font: 700 14px var(--mono); letter-spacing: .08em; stroke: none; }
-#t-overlay .o-src.model text { fill: var(--brass-hi); }
+#t-overlay .o-src.model text, #t-overlay .o-src.auto text { fill: var(--brass-hi); }
 #t-overlay .o-src.manual text { fill: var(--green); }
 #t-overlay .o-src.calib text { fill: var(--amber); }
 #t-overlay .o-label { font: 500 14px var(--mono); fill: #fff4d5; }
