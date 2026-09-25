@@ -50,8 +50,11 @@ class InferencePathTests(unittest.TestCase):
                 if self.backend.inference_status('vod30')['status'] == 'completed':
                     break
                 time.sleep(0.02)
-            saved = json.loads(self.backend.frame_path('vod30', 2, 'inference').read_text())
+            saved = self.backend.inference_status('vod30')['result']
         self.assertEqual(self.backend.inference_status('vod30')['status'], 'completed')
+        # The result is in the response, not on disk: no file for this frame.
+        self.assertFalse(self.backend.frame_path('vod30', 2, 'inference').exists(),
+                         'on-the-spot inference writes nothing')
         self.assertEqual(seen['dataset'], 'vod30',
                          'without dataset= the saved polygon is the naive detector quad')
         self.assertEqual(saved['table_polygon'], polygon)

@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -690,6 +691,102 @@ class BackendTests(unittest.TestCase):
         handler.dispatch(post=True)
         self.assertEqual(handler.status, 403)
         pipeline.explicit_seed.assert_called_once()
+
+    def test_on_the_spot_inference_stores_nothing(self):
+        """Run inference on a frame: the result is in the response and nowhere else.
+
+        The endpoint used to atomic_save frame_results/<frame>/inference.json, so
+        every look wrote a file. Nothing under frame_results/ may appear or change
+        - no file, no directory - and the frame-result read still reports no
+        inference for that frame afterwards.
+        """
+        frames_root = self.out / 'scan30' / 'frame_results'
+        before = sorted(str(p.relative_to(frames_root)) for p in frames_root.rglob('*')) if frames_root.exists() else []
+        result = {'boxes': [{'label': 'ball', 'bbox': [10, 20, 30, 40], 'score': 0.8}], 'table_polygon': None}
+        meta = {'dataset': 'vod30', 'frame_index': 12345, 'timestamp_seconds': 1.0,
+                'timestamp_kind': 'nominal_cfr', 'width': 1280, 'height': 720}
+        with patch.object(self.backend, 'frame_metadata', return_value=meta), \
+             patch.object(self.backend, 'decode_frame', return_value=(object(), meta)), \
+             patch('src.frame_inference.infer_frame', return_value=dict(result)), \
+             patch('annotator.unified_server.atomic_save') as save:
+            job = self.backend.start_inference({'dataset': 'vod30', 'frame_index': 12345, 'detectors': ['balls']})
+            self.assertIn(job['status'], ('running', 'completed'), 'the job started')
+            deadline = time.time() + 10
+            while self.backend.inference_jobs['vod30']['status'] == 'running' and time.time() < deadline:
+                time.sleep(0.01)
+        done = self.backend.inference_jobs['vod30']
+        self.assertEqual(done['status'], 'completed', done)
+        self.assertEqual(done['result']['source'], 'inferred')
+        self.assertEqual(done['result']['boxes'], result['boxes'])
+        self.assertFalse(save.called, 'nothing is written for an inference run')
+        after = sorted(str(p.relative_to(frames_root)) for p in frames_root.rglob('*')) if frames_root.exists() else []
+        self.assertEqual(after, before, 'no file and no directory appeared under frame_results/')
+        self.assertNotIn('12345', ' '.join(after))
+        with patch.object(self.backend, 'frame_metadata', return_value=meta):
+            self.assertIsNone(self.backend.frame_result('vod30', 12345)['inference'])
+
+    def test_a_stored_inference_file_is_marked_as_an_earlier_run(self):
+        """Pre-existing files stay readable evidence, labelled as what they are."""
+        path = self.out / 'scan30' / 'frame_results' / '2100' / 'inference.json'
+        atomic_save(path, {'boxes': [{'label': 'ball', 'bbox': [1, 2, 3, 4]}], 'table_polygon': None,
+                           'source': 'inferred', 'saved_at': '2026-09-23T20:58:05+00:00'})
+        meta = {'dataset': 'vod30', 'frame_index': 2100, 'timestamp_seconds': 70.0,
+                'timestamp_kind': 'nominal_cfr', 'width': 1280, 'height': 720}
+        with patch.object(self.backend, 'frame_metadata', return_value=meta):
+            payload = self.backend.frame_result('vod30', 2100)
+        self.assertTrue(payload['inference']['stored_inference'], 'a file read is marked as stored')
+        self.assertEqual(payload['inference']['saved_at'], '2026-09-23T20:58:05+00:00')
+        self.assertEqual(payload['inference']['boxes'], [{'label': 'ball', 'bbox': [1, 2, 3, 4]}])
+        # A frame with no file keeps reporting none: the read never invents one.
+        with patch.object(self.backend, 'frame_metadata', return_value=dict(meta, frame_index=2101)):
+            self.assertIsNone(self.backend.frame_result('vod30', 2101)['inference'])
+
+    def test_enrol_preview_prefers_the_stored_cluster_and_says_which_evidence(self):
+        """A cluster id takes the fast path; the payload names the evidence level."""
+        from src.enroll_from_tracklet import Candidate, Enrollment, Selection
+        calls = {}
+        candidate = Candidate(frame_index=2010, t=67.0, bbox=[10, 10, 30, 30], person_bbox=[600, 130, 720, 320],
+                              det_score=0.7977, eye_px=12.7, embedding=np.zeros(8, np.float32))
+        enrollment = Enrollment(track_id=6, player_id='p', player_name='x', crops=[candidate],
+                                store_json={}, roster_json=None,
+                                evidence={'kept': 1, 'usable_faces': 1, 'evidence_source': 'cluster_face',
+                                          'cross_checked': False, 'purity_probes': 0, 'purity': None,
+                                          'kept_frame_indices': [2010]})
+        selection = Selection(dataset='vod30', frame_index=2010, track_id=6, selection_iou=1.0, frames_seen=1,
+                              enrollment=enrollment, source='cluster_face', frames_scanned=0)
+        def fake_cluster(root, cluster_id, **kwargs):
+            calls['cluster'] = (cluster_id, kwargs.get('dataset'), kwargs.get('fallback'))
+            return selection
+        with patch('src.enroll_from_tracklet.plan_for_cluster', side_effect=fake_cluster), \
+             patch('src.enroll_from_tracklet.crop_jpeg', return_value=b'jpeg'), \
+             patch('src.enroll_from_tracklet.plan_for_selection') as window:
+            payload = self.backend.enroll_preview({'dataset': 'vod30', 'frame_index': 2040,
+                                                   'bbox': [600, 130, 720, 320], 'cluster_id': 7})
+        self.assertTrue(payload['ok'])
+        self.assertEqual(calls['cluster'], (7, 'vod30', True), 'the cluster id takes the fast path, with a window-scan fallback')
+        self.assertFalse(window.called, 'the scan is not run when the stored evidence answers')
+        self.assertEqual(payload['evidence'], {'source': 'cluster_face', 'stored_face': True,
+                                               'cross_checked': False, 'crops': 1, 'frames_scanned': 0})
+        self.assertIn(payload['token'], self.backend._enroll_plans, 'the plan is held under the token the operator saw')
+
+    def test_enrol_confirm_refuses_a_token_mismatch_without_writing(self):
+        """The module re-checks the token against the recording; a mismatch is a
+        refusal, not a silent enrolment, and nothing is promoted."""
+        from src.enroll_from_tracklet import EnrollmentTokenError
+        plan = Mock()
+        plan.dataset = 'vod30'
+        self.backend._enroll_plans['tok'] = plan
+        with patch('src.enroll_from_tracklet.confirm_enrollment',
+                   side_effect=EnrollmentTokenError('token_mismatch', {'track_id': 6})), \
+             patch.object(self.backend, '_promote_enrollment') as promote:
+            result = self.backend.enroll_confirm({'token': 'tok', 'player_name': 'Ana'})
+        self.assertEqual(result['ok'], False)
+        self.assertEqual(result['reason'], 'token_mismatch')
+        self.assertIn('not the ones you were shown', result['message'])
+        self.assertFalse(promote.called, 'a refused confirm writes nothing')
+        self.assertIn('tok', self.backend._enroll_plans, 'and the plan stays available for another look')
+        # An unknown token is refused as expired rather than enrolling anything.
+        self.assertEqual(self.backend.enroll_confirm({'token': 'gone', 'player_name': 'Ana'})['reason'], 'preview_expired')
 
     def test_identity_frame_read_leaves_the_index_file_untouched(self):
         """GET /api/identity/frame runs the tracker over one frame. That is

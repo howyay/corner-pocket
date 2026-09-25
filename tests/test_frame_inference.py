@@ -66,7 +66,9 @@ class FrameTests(unittest.TestCase):
         headers, raw = self.request('/api/frame-correction', payload)
         self.assertEqual(headers['status'], 200)
         fresh = Backend(self.root).frame_result('vod30', 2)
-        self.assertEqual(fresh['inference'], inferred)
+        # A file an earlier run wrote is still readable evidence, and the read says
+        # so: stored_inference marks it as not this session's result.
+        self.assertEqual(fresh['inference'], {**inferred, 'stored_inference': True})
         self.assertEqual(fresh['correction']['boxes'][0]['center'], [5.5, 11])
         self.assertIsNone(self.backend.frame_result('highlight', 2)['correction'])
         self.assertEqual(list(self.root.rglob('.*.json')), [])
@@ -106,7 +108,11 @@ class FrameTests(unittest.TestCase):
             release.set()
             threads[-1].join(5)
         self.assertEqual(self.backend.inference_status('vod30')['status'], 'completed')
-        self.assertEqual(Backend(self.root).frame_result('vod30', 2)['inference']['source'], 'inferred')
+        # On-the-spot inference stores nothing: the result is in the job and in the
+        # page that asked for it, and a fresh read of that frame finds no inference.
+        self.assertEqual(self.backend.inference_status('vod30')['result']['source'], 'inferred')
+        self.assertIsNone(Backend(self.root).frame_result('vod30', 2)['inference'])
+        self.assertFalse(self.backend.frame_path('vod30', 2, 'inference').exists())
         with patch('src.frame_inference.infer_frame', side_effect=RuntimeError('fixture missing model')), patch('annotator.unified_server.threading.Thread', side_effect=thread_factory):
             self.backend.start_inference(dict(dataset='vod30', frame_index=3, detectors=['balls']))
             threads[-1].join(5)

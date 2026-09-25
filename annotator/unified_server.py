@@ -442,7 +442,7 @@ class Backend:
 
     def enroll_preview(self, payload):
         """Plan an enrolment for the clicked person. Reads only."""
-        from src.enroll_from_tracklet import Selection, plan_for_selection, preview_payload
+        from src.enroll_from_tracklet import Selection, plan_for_cluster, plan_for_selection, preview_payload
         dataset = payload.get("dataset", "vod30")
         if dataset not in DATASETS:
             raise APIError("unknown dataset")
@@ -456,9 +456,30 @@ class Backend:
         window_s = payload.get("window_s", ENROLL_WINDOW_S)
         if isinstance(window_s, bool) or not isinstance(window_s, (int, float)) or not 1 <= window_s <= ENROLL_WINDOW_S_MAX:
             raise APIError("window_s must be between 1 and %g seconds" % ENROLL_WINDOW_S_MAX)
-        plan = plan_for_selection(self.root, dataset, frame_index, [float(v) for v in bbox],
-                                  window_s=float(window_s))
+        cluster_id = payload.get("cluster_id")
+        if cluster_id is not None:
+            if isinstance(cluster_id, bool) or not isinstance(cluster_id, int):
+                raise APIError("cluster_id must be an integer")
+            # The fast path: the identity index already stored a face for this
+            # cluster, so the plan is built from it without decoding the video.
+            # It falls back to the window scan when the stored evidence is not
+            # enough, and the payload says which one produced the crops.
+            plan = plan_for_cluster(self.root, cluster_id, dataset=dataset, frame_index=frame_index,
+                                    bbox=[float(v) for v in bbox], fallback=True, window_s=float(window_s))
+        else:
+            plan = plan_for_selection(self.root, dataset, frame_index, [float(v) for v in bbox],
+                                      window_s=float(window_s))
         result = preview_payload(plan, root=self.root, dataset=dataset)
+        if isinstance(plan, Selection) and result.get("ok"):
+            evidence = plan.enrollment.evidence or {}
+            source = evidence.get("evidence_source") or getattr(plan, "source", None) or "window_scan"
+            # One stored face is weaker evidence than a gallery cross-checked over
+            # the track, and the operator is about to type a real name: say which.
+            result["evidence"] = {"source": source,
+                                  "stored_face": source == "cluster_face",
+                                  "cross_checked": bool(evidence.get("cross_checked", len(plan.enrollment.crops) > 1)),
+                                  "crops": len(plan.enrollment.crops),
+                                  "frames_scanned": int(getattr(plan, "frames_scanned", 0) or 0)}
         if isinstance(plan, Selection) and result.get("ok") and isinstance(result.get("token"), str):
             with self.lock:
                 self._enroll_plans[result["token"]] = plan
@@ -1083,7 +1104,14 @@ class Backend:
     def frame_result(self, dataset, frame_index):
         meta = self.frame_metadata(dataset, frame_index)
         index = meta['frame_index']
-        return dict(meta, inference=load(self.frame_path(dataset, index, 'inference')),
+        # A stored inference file is evidence from an earlier run - this endpoint
+        # no longer writes one. It stays readable and is marked as what it is
+        # (stored_inference + its own saved_at) so the UI can label it instead of
+        # presenting it as this session's detection.
+        stored = load(self.frame_path(dataset, index, 'inference'))
+        if isinstance(stored, dict):
+            stored = dict(stored, stored_inference=True)
+        return dict(meta, inference=stored,
                     correction=load(self.frame_path(dataset, index, 'correction')))
 
     def save_frame_correction(self, data):
@@ -1150,7 +1178,10 @@ class Backend:
                 # app.js painted it.
                 result = dict(infer_frame(frame, detectors, self.root, progress, dataset=dataset),
                               **decoded, source='inferred', saved_at=now())
-                atomic_save(self.frame_path(dataset, meta['frame_index'], 'inference'), result)
+                # On-the-spot inference stores nothing: the result lives in this
+                # response and in the page that asked for it, and no file or
+                # directory is created for it. Saving a frame is a human action
+                # (POST /api/frame-correction), not a side effect of looking.
                 with self.lock:
                     job.update(status='completed', stage='completed', result=result)
             except Exception as exc:
