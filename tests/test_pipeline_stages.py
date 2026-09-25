@@ -307,9 +307,16 @@ class TableStageTests(unittest.TestCase):
 
 
 class StubBallStage(BallStage):
-    """A BallStage whose net is one bright pixel at a chosen model-space point."""
+    """A BallStage whose net is one bright pixel at a chosen model-space point.
+
+    ``device='cpu'`` on purpose: the input build is the same code on both devices, and
+    a unit test has no business initialising a GPU context (it cost 20 s of the suite
+    when it did).  The CUDA path is checked in tests/ball_stack_ab.py, where the
+    bit-identity comparison runs on both.
+    """
 
     def __init__(self, root, peak=(100, 50), **kwargs):
+        kwargs.setdefault('device', 'cpu')
         super().__init__(root, model=object(), **kwargs)
         self.peak = peak
         self.stacks = []
@@ -379,7 +386,10 @@ class BallStageTests(unittest.TestCase):
         self.assertIsNone(first['ball_stack_span_frames'])
         self.assertEqual((second['ball_stack_span_frames'], third['ball_stack_span_frames']), (3, 6))
         self.assertEqual(len(stage.stacks), 3)
-        self.assertEqual([stack.shape for stack in stage.stacks], [(540, 960, 9)] * 3)
+        # the seam hands the net the CHW tensor the input path built, not an HWC array
+        self.assertEqual([tuple(stack.shape) for stack in stage.stacks],
+                         [(1, 9, 540, 960)] * 3)
+        self.assertEqual({str(stack.dtype) for stack in stage.stacks}, {'torch.float32'})
 
     def test_cadence_must_be_a_positive_integer(self):
         for value in (0, -1, 2.5, True, 'two'):

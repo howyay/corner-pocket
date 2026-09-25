@@ -93,11 +93,13 @@ class Reader(Stage):
 class StubBallStage(BallStage):
     """The real stage with a stub net: one bright pixel at a model-space point.
 
-    No torch, no weights, no GPU - the contract under test is the stage's, not the
-    CNN's (the net itself is measured by tests/ball_stack_ab.py and the envelope run).
+    No weights and no GPU: the contract under test is the stage's, not the CNN's (the
+    net itself is measured by tests/ball_stack_ab.py and the envelope run).  The input
+    build still runs for real, on the CPU, because that is part of the stage.
     """
 
     def __init__(self, root, peak=(480, 270), **kwargs):
+        kwargs.setdefault('device', 'cpu')
         super().__init__(root, model=object(), **kwargs)
         self.peak = peak
 

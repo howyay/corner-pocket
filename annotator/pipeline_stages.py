@@ -419,7 +419,8 @@ class BallStage(Stage):
     ``checkpoint`` under ``root``.  A missing checkpoint raises ``FileNotFoundError``
     naming the path - never a silent empty result, which would read as "no ball".
     ``model=``/``heatmap()`` exist so a test can exercise the contract without
-    torch, the weights, or a GPU.
+    torch, the weights, or a GPU; ``input_for()`` is the seam a bit-identity check
+    compares against the previous input path.
     """
 
     name = 'ball'
@@ -445,6 +446,9 @@ class BallStage(Stage):
         self._history = deque(maxlen=self.stack)
         self._loaded_from = None
         self._resolved_device = None
+        self._device_u8 = None       # resident uint8 planes, (stack, H, W, 3)
+        self._device_in = None       # resident float32 input, (1, stack*3, H, W)
+        self._device_f64 = None      # staging for the double-rounded /255
 
     def verify(self):
         """Raise unless the trained weights are readable here, naming the path."""
@@ -464,13 +468,15 @@ class BallStage(Stage):
         self._loaded = True
         self._loaded_from = dict(path=str(path), saved_size=list(saved), device=device)
 
-    def heatmap(self, stack):
-        """The net's heatmap for one ``H x W x 9`` float stack. Overridden in tests."""
-        import numpy as np
+    def heatmap(self, tensor):
+        """The net's heatmap for the resident input tensor. Overridden in tests.
+
+        ``tensor`` is the ``(1, stack*3, H, W)`` float32 tensor ``input_for`` built, so
+        the model call needs no conversion and no host-to-device copy of its own.
+        """
         import torch
-        tensor = torch.from_numpy(np.ascontiguousarray(stack.transpose(2, 0, 1)))[None]
         with torch.no_grad():
-            out = self._model(tensor.to(self._device)).cpu().numpy()
+            out = self._model(tensor).cpu().numpy()
         return out[0, 0]
 
     @property
@@ -481,33 +487,95 @@ class BallStage(Stage):
             self._resolved_device = pick_device(self.device)
         return self._resolved_device
 
-    def process(self, frame, context):
+    def _small(self, frame):
+        """The frame at the net's input size, one resize (none when it already is)."""
         import cv2
+        height, width = frame.shape[:2]
+        if (width, height) == self.size:
+            return frame
+        # INTER_AREA for the normal case (the pipeline caps at exactly this size); a
+        # *smaller* source is the one case that needs upscaling, and INTER_AREA
+        # degrades to nearest there - a real stream at 640x360 should not be fed a
+        # nearest-neighbour blow-up of two thirds of the net's expected pixels.
+        return cv2.resize(frame, self.size,
+                          interpolation=cv2.INTER_AREA if width >= self.size[0]
+                          else cv2.INTER_LINEAR)
+
+    def _planes(self, frame, context):
+        """The stack's RGB planes, oldest first, each converted once per frame.
+
+        A frame is converted to RGB on the call that first sees it and then reused as
+        the older plane of the next two calls, so three calls convert three planes and
+        not nine.  The opening frames of a run repeat the oldest available plane - the
+        net needs three and the stream has given fewer - and the evidence reports how
+        many were real.
+        """
+        import cv2
+        self._history.append((context.frame_number,
+                              cv2.cvtColor(self._small(frame), cv2.COLOR_BGR2RGB)))
+        planes = [entry[1] for entry in self._history]
+        while len(planes) < self.stack:
+            planes.insert(0, planes[0])
+        return planes
+
+    def input_for(self, frame, context):
+        """The exact tensor ``process`` hands the net for this frame.
+
+        Public because it is the seam the bit-identity check in
+        ``tests/ball_stack_ab.py`` compares against the old input path.
+        """
+        return self.input_tensor(self._planes(frame, context))
+
+    def input_tensor(self, planes):
+        """The CNN input, assembled without a CPU-side stack copy or a float H2D copy.
+
+        The previous path, per frame: concatenate three RGB planes into a
+        ``960x540x9`` uint8 array (~4.7 MB), ``astype(np.float32)`` and ``/255``
+        (~18.7 MB), ``transpose(2, 0, 1)`` + ``ascontiguousarray`` (another ~18.7 MB),
+        then copy 18.7 MB of float32 to the device.  This path copies the three planes
+        to the device as **uint8** (4.7 MB, and only one of the three actually
+        changed), expands them to float32 in a resident device tensor, and divides in
+        place.  Nothing is allocated per frame after the first.
+
+        **The division goes through float64 on purpose.** The old path's values came
+        from numpy, which divides ``float32(x) / 255.0`` with the scalar promoted to
+        double: the quotient is rounded to double and only then to float32 (double
+        rounding).  Torch on CUDA divides in float32 (single rounding) and disagrees
+        with numpy on **126 of the 256 possible uint8 values**, by 1 ULP
+        (~6e-8 at 0.5) - measured, not assumed, and it failed the bit-identity check
+        the first time this path was written.  ``uint8 -> float64 -> /255 -> float32``
+        reproduces numpy's rounding exactly on both devices, so the tensor the net
+        sees is the tensor it saw before.  Same pixels, same RGB order, same float32
+        division by 255 - the claim is only worth anything if it is measured
+        element by element, which ``tests/ball_stack_ab.py`` does.
+        """
+        import numpy as np
+        import torch
+        height, width = self.size[1], self.size[0]
+        shape = (self.stack, height, width, 3)
+        if self._device_u8 is None or tuple(self._device_u8.shape) != shape:
+            device = self._device
+            self._device_u8 = torch.empty(shape, dtype=torch.uint8, device=device)
+            self._device_in = torch.empty((1, self.stack * 3, height, width),
+                                          dtype=torch.float32, device=device)
+            self._device_f64 = torch.empty((1, self.stack * 3, height, width),
+                                           dtype=torch.float64, device=device)
+        for slot, plane in enumerate(planes):
+            self._device_u8[slot].copy_(torch.from_numpy(np.ascontiguousarray(plane)))
+        stacked = self._device_u8.permute(0, 3, 1, 2).reshape(1, self.stack * 3,
+                                                              height, width)
+        self._device_f64.copy_(stacked)      # uint8 -> float64, exact
+        self._device_f64.div_(255.0)         # the same double-rounded quotient numpy had
+        self._device_in.copy_(self._device_f64)   # float64 -> float32, one rounding
+        return self._device_in
+
+    def process(self, frame, context):
         import numpy as np
         from src.tiny_ball_net import pick_peaks
 
         self._load()
         height, width = frame.shape[:2]
-        if (width, height) == self.size:
-            small = frame
-        else:
-            # INTER_AREA for the normal case (the pipeline caps at exactly this size);
-            # a *smaller* source is the one case that needs upscaling, and INTER_AREA
-            # degrades to nearest there - a real stream at 640x360 should not be fed a
-            # nearest-neighbour blow-up of two thirds of the net's expected pixels.
-            small = cv2.resize(frame, self.size,
-                               interpolation=cv2.INTER_AREA if width >= self.size[0]
-                               else cv2.INTER_LINEAR)
-        self._history.append((context.frame_number, small))
-        planes = [entry[1] for entry in self._history]
-        while len(planes) < self.stack:
-            # Opening frames of a run: the net needs three planes and the stream has
-            # given fewer, so the oldest available frame is repeated.  Recorded, not
-            # hidden - the evidence reports how many planes were real.
-            planes.insert(0, planes[0])
-        stack = np.concatenate([cv2.cvtColor(plane, cv2.COLOR_BGR2RGB) for plane in planes],
-                               axis=2).astype(np.float32) / 255.0
-        heat = np.asarray(self.heatmap(stack))
+        heat = np.asarray(self.heatmap(self.input_for(frame, context)))
         peaks = pick_peaks(heat, self.threshold, nms_px=self.nms_px)[:self.max_balls]
         scale_x, scale_y = width / float(self.size[0]), height / float(self.size[1])
         balls = [{'x': round(px * scale_x, 2), 'y': round(py * scale_y, 2),
