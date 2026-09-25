@@ -39,6 +39,15 @@ Identity policy (small club, clusters never expire):
   best_match() and bind_face() call the same src.face_id.accept_match() rule,
   so the binding path is never more permissive than the matcher.
 
+Enrolment-face evidence contract: `record_face_sample()` stores the face the
+pipeline already computed for a tracked person (embedding + eye distance +
+detection score + face box + frame). It is memory only, deliberately separate from
+the body bank (no dim guard for a 512-d face), bounded to `face_samples_max` best
+samples by det_score * eye_px, and never an identity decision: no player_id, no
+evidence, no save. The samples reach JSON only when the index is written anyway
+for a real reason (bind_face / explicit_assign), so the read-only rule holds -
+a page load or a frame read still cannot rewrite the file.
+
 Persistence contract: register()/update() change memory only — they run while
 frames are observed, which includes read requests (GET /api/identity/frame,
 GET /api/unified), and a read must not write the index file. The file is written
@@ -64,6 +73,8 @@ except ImportError:  # pragma: no cover - tests/test_person_identity.py adds src
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "out" / "identity" / "clusters.json"
 BANK_SIZE = 32          # internal body-embedding bank bound per cluster
 PERSIST_BANK = 8        # body_bank entries written to JSON (spec: max 8)
+PERSIST_FACES = 3       # enrolment face samples kept per cluster (memory + JSON)
+FACE_SAMPLE_DECIMALS = 4  # face embeddings are stored rounded, like the face store
 
 # Body (OSNet 128-d) match bar. Calibrated on real footage by
 # tests/test_body_calibration.py (real YOLO boxes + vendored OSNet,
@@ -86,6 +97,13 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (na * nb))
 
 
+def _sample_rank(sample: dict[str, Any]) -> float:
+    """det_score * eye_px, the same ranking the enrolment module uses."""
+    if sample.get("eye_px") is None or sample.get("det_score") is None:
+        return 0.0
+    return float(sample["det_score"]) * float(sample["eye_px"])
+
+
 def _vec(embedding: Any, name: str) -> np.ndarray:
     v = np.asarray(embedding, dtype=np.float32).reshape(-1)
     if v.size == 0:
@@ -94,12 +112,16 @@ def _vec(embedding: Any, name: str) -> np.ndarray:
 
 
 class _Cluster:
-    __slots__ = ("cid", "bank", "face", "player_id", "evidence", "last_seen_frame")
+    __slots__ = ("cid", "bank", "face", "faces", "player_id", "evidence", "last_seen_frame")
 
     def __init__(self, cid: int):
         self.cid = cid
         self.bank: deque[np.ndarray] = deque(maxlen=BANK_SIZE)
         self.face: np.ndarray | None = None
+        # Enrolment evidence, deliberately NOT the body bank: 512-d face samples
+        # never meet the body dim guard (see record_face_sample). Bounded list,
+        # kept in memory, written to JSON only when the index is written anyway.
+        self.faces: list[dict[str, Any]] = []
         self.player_id: str | None = None
         self.evidence: dict[str, Any] | None = None
         self.last_seen_frame: int | None = None
@@ -124,6 +146,7 @@ class IdentityIndex:
         body_match_threshold: float = BODY_MATCH_THRESHOLD,
         body_margin: float = BODY_MARGIN,
         bind_bar: float | None = None,
+        face_samples_max: int = PERSIST_FACES,
     ):
         self.path = Path(path)
         # FACE bar (face_embedding binding via bind_face). The number bind_face
@@ -139,6 +162,9 @@ class IdentityIndex:
         # matching disabled, one cluster per tracker track (see module docstring)
         self.body_match_threshold = float(body_match_threshold)
         self.body_margin = float(body_margin)
+        # Enrolment face evidence bound (top-K by det_score * eye_px, K small):
+        # this is enrolment evidence, never an identity decision.
+        self.face_samples_max = max(1, int(face_samples_max))
         self._clusters: dict[int, _Cluster] = {}
         self._next_id = 1
         self._track_to_cluster: dict[int, int] = {}
@@ -194,6 +220,41 @@ class IdentityIndex:
         # i.e. in bind_face() / explicit_assign(), which write the whole
         # in-memory index (so accumulated observation goes out with them).
         return {track_id: cid}
+
+    def record_face_sample(self, cluster_id: int, embedding: Any, *, eye_px: Any = None,
+                           det_score: Any = None, bbox: Any = None,
+                           frame_index: int | None = None) -> dict[str, Any]:
+        """Record enrolment evidence for one cluster: MEMORY ONLY, never a decision.
+
+        A 512-d face embedding goes into `_Cluster.faces`, a separate list that is
+        never compared against the body bank, so the 128-d dim guard is not
+        consulted and a face can never be mistaken for a body embedding. This
+        writes no player_id, no evidence and no file: it is what the operator's
+        "click the person" button reads later, and a stored face still has to
+        clear the quality gates before it may be enrolled. Samples are kept
+        bounded, best first by det_score * eye_px (missing numbers rank 0, so a
+        sample without them can be evicted but never promoted).
+        """
+        cluster = self._require(cluster_id)
+        vector = np.asarray(embedding, dtype=np.float32).reshape(-1)
+        if vector.size == 0:
+            raise ValueError("face sample embedding is empty")
+        sample = {"embedding": vector,
+                  "eye_px": None if eye_px is None else float(eye_px),
+                  "det_score": None if det_score is None else float(det_score),
+                  "bbox": None if bbox is None else [float(v) for v in bbox],
+                  "frame_index": None if frame_index is None else int(frame_index)}
+        sample["rank"] = _sample_rank(sample)
+        cluster.faces.append(sample)
+        cluster.faces.sort(key=lambda row: row["rank"], reverse=True)
+        del cluster.faces[self.face_samples_max:]
+        return {"cluster_id": cluster.cid, "samples": len(cluster.faces),
+                "kept": any(row is sample for row in cluster.faces),
+                "rank": round(sample["rank"], 4)}
+
+    def face_samples(self, cluster_id: int) -> list[dict[str, Any]]:
+        """The cluster's stored enrolment samples, best first (read-only view)."""
+        return list(self._require(cluster_id).faces)
 
     def update(self, tracks: list[dict[str, Any]]) -> dict[int, int]:
         """Seam for tracker wiring: list of dicts with keys track_id,
@@ -311,6 +372,15 @@ class IdentityIndex:
                 "player_id": c.player_id,
                 "body_bank": [b.tolist() for b in list(c.bank)[-PERSIST_BANK:]],
                 "face": None if c.face is None else c.face.tolist(),
+                # Additive: bounded enrolment evidence (top-K by quality). Written
+                # here, i.e. only when the index is written for a real reason -
+                # never by an observation, so a read cannot rewrite this file.
+                "face_samples": [
+                    {"embedding": [round(float(v), FACE_SAMPLE_DECIMALS) for v in sample["embedding"]],
+                     "eye_px": sample["eye_px"], "det_score": sample["det_score"],
+                     "bbox": sample["bbox"], "frame_index": sample["frame_index"]}
+                    for sample in c.faces
+                ],
                 "last_seen_frame": c.last_seen_frame,
             }
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -336,6 +406,16 @@ class IdentityIndex:
             face = rec.get("face")
             if face is not None:
                 c.face = np.asarray(face, dtype=np.float32)
+            for sample in rec.get("face_samples") or []:
+                if not isinstance(sample, dict) or sample.get("embedding") is None:
+                    continue
+                restored = {"embedding": np.asarray(sample["embedding"], dtype=np.float32),
+                            "eye_px": sample.get("eye_px"), "det_score": sample.get("det_score"),
+                            "bbox": sample.get("bbox"), "frame_index": sample.get("frame_index")}
+                restored["rank"] = _sample_rank(restored)
+                c.faces.append(restored)
+            c.faces.sort(key=lambda row: row["rank"], reverse=True)
+            del c.faces[self.face_samples_max:]
             self._clusters[cid] = c
         if self._clusters:
             self._next_id = max(self._clusters) + 1
