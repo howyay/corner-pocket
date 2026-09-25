@@ -486,3 +486,16 @@ judged the moment it exists.
   `src/eval_events.py`, `src/tiny_ball_net.py`, `src/face_id.py`,
   `src/person_identity.py`, `annotator/live_processing.py`, `out/pid_seed.json`,
   `out/scan30/annotations.json`, the queue.
+
+## Archived correction on frame 0 (2026-09-25)
+
+`out/scan30/frame_results/0/correction.json` was a saved manual correction
+(`source: manual`, 2026-09-23T06:51:44Z, 4 person + 10 ball boxes, uniform ball
+sizes) that had been written from the model's own output, so frame 0 drew `人工`
+over balls that looked like model results. The owner chose to archive rather than
+delete it: it is now `out/scan30/frame_results/0/correction.superseded.json`
+(byte-identical, md5 `77777777777777777777777777777777`), which the app no longer
+reads as this frame's correction. Frame 0 now draws only the model's boxes
+(`data-boxes="auto"`, 14 boxes, no manual split in the facts line) with its stored
+inference labelled as an earlier run (`9/16/2026, 4:07:48 AM`). No other
+correction file was touched and nothing was deleted.
