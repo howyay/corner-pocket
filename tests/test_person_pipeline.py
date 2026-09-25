@@ -228,6 +228,81 @@ class FaceCacheStrideTests(unittest.TestCase):
         self.assertEqual(outs[1]['persons'], [])
 
 
+class FaceEvidenceTest(unittest.TestCase):
+    """The pipeline keeps the face it already computed, as enrolment evidence."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.index = IdentityIndex(Path(self.tmp.name) / 'clusters.json')
+        self.frame = np.zeros((720, 1280, 3), np.uint8)
+        self.box = [10, 10, 210, 610]
+        self.face_box = [40, 200, 100, 300]
+
+    def _pipeline(self, engine, boxes):
+        return PersonPipeline(Path(self.tmp.name), detector=FakeDetector(boxes),
+                              body_encoder=FakeEncoder([[ORTH_A]] * len(boxes)),
+                              face_engine=engine, identity=self.index, face_stride=1)
+
+    def _stamp(self):
+        path = Path(self.tmp.name) / 'clusters.json'
+        stat = path.stat()
+        return (stat.st_size, stat.st_mtime_ns)
+
+    def test_the_quality_face_is_recorded_and_nothing_is_written(self):
+        # boxes move between frames, so the face-stage signature cache re-analyzes
+        engine = FakeEngine([[face(self.face_box, eye=12.5, det=0.83)],
+                             [face(self.face_box, eye=12.6, det=0.84)]], None)
+        pipeline = self._pipeline(engine, [[self.box], [[12, 10, 212, 610]]])
+        first = pipeline.process_frame(self.frame, frame_index=7)
+        cluster = first['persons'][0]['cluster_id']
+        self.index.explicit_assign(cluster, 'playerW')          # a real write, to have a file
+        before = self._stamp()
+        pipeline.process_frame(self.frame, frame_index=8)
+        samples = self.index.face_samples(cluster)
+        self.assertEqual(len(samples), 2, 'one sample per analyzed frame')
+        newest = next(sample for sample in samples if sample['frame_index'] == 8)
+        self.assertAlmostEqual(newest['eye_px'], 12.6, places=3)
+        self.assertAlmostEqual(newest['det_score'], 0.84, places=3)
+        self.assertEqual([round(v) for v in newest['bbox']], [40, 200, 100, 300])
+        self.assertEqual(newest['embedding'].shape[0], 128)
+        self.assertEqual(self._stamp(), before, 'recording a face writes no file')
+
+    def test_recording_is_not_a_binding(self):
+        engine = FakeEngine([[face(self.face_box)]], None)
+        out = self._pipeline(engine, [[self.box]]).process_frame(self.frame, frame_index=0)
+        person = out['persons'][0]
+        self.assertIsNone(person['player_id'])
+        self.assertEqual(out['events'], [], 'a stored face emits no bind event')
+        self.assertIsNone(self.index.get(person['cluster_id'])['player_id'])
+
+    def test_evidence_accumulates_for_a_bound_person_too_and_stays_bounded(self):
+        engine = FakeEngine([[face(self.face_box, eye=10.0 + i, det=0.8)] for i in range(6)],
+                            {'player_id': 'p1', 'similarity': 0.9, 'margin': 0.5})
+        boxes = [[[10 + i, 10, 210 + i, 610]] for i in range(6)]   # moving box -> re-analyze
+        pipeline = self._pipeline(engine, boxes)
+        outcomes = [pipeline.process_frame(self.frame, frame_index=i) for i in range(6)]
+        cluster = outcomes[0]['persons'][0]['cluster_id']
+        self.assertEqual(outcomes[1]['persons'][0]['player_id'], 'p1', 'the binding still works')
+        samples = self.index.face_samples(cluster)
+        self.assertEqual(len(samples), 3, 'bounded to face_samples_max')
+        self.assertAlmostEqual(samples[0]['eye_px'], 15.0, places=3)  # best first
+
+    def test_a_face_without_an_embedding_is_neither_recorded_nor_matched(self):
+        """A malformed face must not crash a read path nor become evidence."""
+        bare = {'bbox': list(self.face_box), 'eye_px': 12.0, 'det_score': 0.9}
+        engine = FakeEngine([[face(self.face_box)], [bare]],
+                            {'player_id': 'p1', 'similarity': 0.9, 'margin': 0.5})
+        pipeline = self._pipeline(engine, [[self.box], [[12, 10, 212, 610]]])
+        first = pipeline.process_frame(self.frame, frame_index=0)
+        cluster = first['persons'][0]['cluster_id']
+        self.assertEqual(first['persons'][0]['player_id'], 'p1', 'the good face still binds')
+        second = pipeline.process_frame(self.frame, frame_index=1)
+        self.assertIsNone(second['persons'][0]['face_sim'], 'the bare face never reaches best_match')
+        self.assertEqual(len(self.index.face_samples(cluster)), 1,
+                         'no embedding, no enrolment evidence')
+
+
 class DetectorWeightsTest(unittest.TestCase):
     """The person detector must never fetch weights: ultralytics answers a
     missing weights path by downloading the release asset from GitHub, which

@@ -993,3 +993,65 @@ class EvidenceLevelTest(SelectionSeamTest):
         self.assertEqual(data["source"], "window_scan")
         self.assertTrue(data["cross_checked"])
         self.assertEqual(data["frames_scanned"], len(self.observations))
+
+
+class WriterReaderIntegrationTest(unittest.TestCase):
+    """The pipeline's recorder and the enrolment reader must agree on the format."""
+
+    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
+        (self.root / "out" / "identity").mkdir(parents=True)
+        (self.root / "out" / "corner-pocket").mkdir(parents=True)
+        (self.root / "out" / "corner-pocket" / "state.json").write_text(
+            json.dumps(state_with()), encoding="utf-8")
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from src.person_identity import IdentityIndex
+        self.index = IdentityIndex(self.root / "out" / "identity" / "clusters.json")
+        self.cluster = self.index.register(1, np.ones(128, np.float32), frame_index=1)[1]
+
+    def _record(self, seed, eye, det, frame_index):
+        from src.person_identity import IdentityIndex  # noqa: F401  (same API the pipeline uses)
+        return self.index.record_face_sample(
+            self.cluster, at(unit(151), 0.9, seed), eye_px=eye, det_score=det,
+            bbox=[150, 150, 190, 200], frame_index=frame_index)
+
+    def test_the_writer_and_the_reader_agree(self):
+        self._record(1, 12.0, 0.8, 100)
+        self.index.explicit_assign(self.cluster, "playerX")       # the durable transition
+        selection = plan_for_cluster(self.root, self.cluster, dataset="vod30")
+        self.assertIsInstance(selection, Selection)
+        self.assertEqual(selection.source, "cluster_face")
+        self.assertEqual(len(selection.enrollment.crops), 1)
+        self.assertFalse(selection.cross_checked)
+        payload = preview_payload(selection, root=self.root)
+        self.assertEqual(payload["evidence"]["source"], "cluster_face")
+        self.assertEqual(payload["evidence"]["frames_scanned"], 0)
+
+    def test_two_recorded_faces_are_cross_checked(self):
+        self._record(1, 12.0, 0.8, 100)
+        self._record(2, 12.5, 0.85, 250)
+        self.index.explicit_assign(self.cluster, "playerX")
+        selection = plan_for_cluster(self.root, self.cluster, dataset="vod30")
+        self.assertEqual(len(selection.enrollment.crops), 2)
+        self.assertTrue(selection.cross_checked)
+        self.assertTrue(preview_payload(selection, root=self.root)["evidence"]["cross_checked"])
+
+    def test_recorded_samples_survive_the_reload_the_reader_does(self):
+        self._record(1, 12.0, 0.8, 100)
+        self.index.bind_face(self.cluster, "playerY", similarity=0.9)
+        from src.person_identity import IdentityIndex
+        reloaded = IdentityIndex(self.root / "out" / "identity" / "clusters.json")
+        self.assertEqual(len(reloaded.face_samples(self.cluster)), 1)
+        self.assertIsInstance(plan_for_cluster(self.root, self.cluster, dataset="vod30"), Selection)
+
+    def test_the_shipped_index_still_has_no_usable_evidence(self):
+        """The coverage finding stays reproducible: production stores no face yet."""
+        production = load_cluster_evidence(Path(__file__).resolve().parents[1])
+        self.assertTrue(all(not record["samples"] for record in production.values()))
+        self.assertEqual(plan_for_cluster(Path(__file__).resolve().parents[1], 1).reason,
+                         "no_stored_evidence")

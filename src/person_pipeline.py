@@ -223,7 +223,19 @@ class PersonPipeline:
                       'cluster_id': cluster, 'player_id': state['player_id'],
                       'face_sim': None, 'bound_evidence': state['bound_evidence']}
             face = item['face']
-            if face is not None and person['player_id'] is None:
+            # Enrolment evidence, never a decision: keep the quality face this
+            # frame already produced for this person, in memory only (the 512-d
+            # face never meets the 128-d body bank, and nothing is written here).
+            # The operator's "click the person" button reads these samples.
+            if face is not None and face.get('embedding') is not None:
+                self.identity.record_face_sample(cluster, face['embedding'],
+                                                 eye_px=face.get('eye_px'),
+                                                 det_score=face.get('det_score'),
+                                                 bbox=face.get('bbox'),
+                                                 frame_index=frame_index)
+            # A face without an embedding cannot be matched; never raise on it.
+            if (face is not None and person['player_id'] is None
+                    and face.get('embedding') is not None):
                 match = self._get_engine().best_match(face['embedding'], self._gallery_data())
                 # runner_up is passed through so bind_face re-applies the same
                 # margin rule best_match used (the binding path used to check
