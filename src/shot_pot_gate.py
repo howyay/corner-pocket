@@ -1440,16 +1440,6 @@ def track_events(track: Track, pockets: PocketModel,
             distance_mm_uncertainty=(None if m.uncertainty_mm is None
                                      else round(m.uncertainty_mm, 2)),
             thresholds=pot_thresholds)
-        if mm_verdict == "ambiguous" and m.pocket is not None:
-            # With the ball's own localisation error propagated, the millimetre
-            # distance is not resolvable against the gate: a confident pot and a
-            # confident refusal are both unsupported, so the honest verdict is
-            # unknown.  This is the iron-rule shape - we cannot tell.
-            pots.append(PotEvent("pot", t.ball_id, "unknown",
-                                 "pocket_distance_within_uncertainty",
-                                 m.pocket.name, (m.pocket.x, m.pocket.y), m.pocket.radius_px, dist,
-                                 **common))
-            continue
         if internal:
             # the ball is seen again -> not a pot.  Inside a pocket radius for a whole
             # persistence window this is the signature of an identity swap, which the
@@ -1464,6 +1454,10 @@ def track_events(track: Track, pockets: PocketModel,
                 {"gap_s": round(gap, 4), "reappeared_t": round(float(samples[end].t), 4),
                  "pocket": None if pocket is None else pocket.name,
                  "distance_px": round(dist, 2),
+                 "verdict_mm": mm_verdict,
+                 "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
+                 "distance_mm_uncertainty": (None if m.uncertainty_mm is None
+                                             else round(m.uncertainty_mm, 2)),
                  "identity_swap_suspected": swap},
                 tuple(tail), pot_thresholds))
             if swap:
@@ -1471,6 +1465,20 @@ def track_events(track: Track, pockets: PocketModel,
                                      "reappeared_after_gap_inside_pocket",
                                      pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
                                      **dict(common, identity_swap_suspected=True)))
+            continue
+        if mm_verdict == "ambiguous" and m.pocket is not None:
+            # With the ball's own localisation error propagated, the millimetre
+            # distance is not resolvable against the gate: a confident pot and a
+            # confident refusal are both unsupported, so the honest verdict is
+            # unknown.  The scene fact keeps its own reason when it applies - a ball
+            # covered by a person when it vanishes is unknown whatever the geometry
+            # says - and the geometry is in the record either way.
+            reason = ("cloth_occluded_at_disappearance" if occ_status == "occluded"
+                      else "occlusion_channel_silent" if occ_status == "silent"
+                      else "pocket_distance_within_uncertainty")
+            pots.append(PotEvent("pot", t.ball_id, "unknown", reason,
+                                 m.pocket.name, (m.pocket.x, m.pocket.y), m.pocket.radius_px, dist,
+                                 **common))
             continue
         if not m.inside and m.disagrees:
             # The single pixel radius says "inside" and the millimetre test says
