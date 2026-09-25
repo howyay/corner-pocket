@@ -82,7 +82,7 @@ const COPY = {
     attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector',
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
     stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
-    liveNow:'live', staleNow:'STALE',
+    liveNow:'live', staleNow:'STALE', replayNow:'VOD replay',
     coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
     quadRefused:'quad refused', quadFallback:'quad from the naive fallback', storedInference:'stored inference',
@@ -179,7 +179,7 @@ const COPY = {
     attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器',
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
     stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
-    liveNow:'直播', staleNow:'已过期',
+    liveNow:'直播', staleNow:'已过期', replayNow:'回放',
     coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
     quadRefused:'四边形已拒绝', quadFallback:'四边形来自朴素回退', storedInference:'已存推理',
@@ -432,11 +432,14 @@ function windowBandHTML(s) {
     + (mark == null ? '' : `<span class="scrub-cue" style="left:${mark}%" title="${esc(timecode(at.t))}"></span>`)
     + `<span class="scrub-loop" data-playing="${playback.playing ? '1' : '0'}">↻ ${esc(playback.loops || 0)} · ${esc(playback.playing ? t('playingWord') : t('pausedWord'))}</span>`;
 }
+// A Twitch VOD replay reaches the stage through the live path but is never called
+// live: the server's own status (kind 'vod-replay') decides the word.
+function liveWordKey(s) { return s.live?.source?.kind === 'vod-replay' || s.live?.replay?.kind === 'vod-replay' ? 'replayNow' : 'live'; }
 function chipsHTML(s) {
   const channels = (opts.channels() || []).map(c => `<button class="vs-chip${s.source.kind === 'live' && s.source.channel === c.channel ? ' active' : ''}" data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${s.source.kind === 'live' && s.source.channel === c.channel ? '● ' : ''}${esc(t('live'))} · twitch ${esc(c.channel || '')}</button>`).join('');
   const datasets = (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
   const freshness = s.source.kind === 'live'
-    ? `<span class="vs-fresh${s.live.stale ? ' stale' : ''}">${s.live.stale ? esc(t('stale')) : esc(t('live'))} · ${esc(t('age'))} ${fmtAge(s.live.frame_age_ms)}</span>`
+    ? `<span class="vs-fresh${s.live.stale ? ' stale' : ''}">${s.live.stale ? esc(t('stale')) : esc(t(liveWordKey(s)))} · ${esc(t('age'))} ${fmtAge(s.live.frame_age_ms)}</span>`
     : `<span class="vs-fresh">${esc(s.source.label)}</span>`;
   // The source settings hang off the chip row itself: one chip opens the panel
   // that used to be the rail's nothing-selected state, so the rail stays about
@@ -537,7 +540,7 @@ function identityHTML(s) {
 function factsLine(s) {
   const parts = [];
   // One word per state: the strip says the same thing the chip says.
-  if (s.source.kind === 'live') parts.push(`${(s.live.stale ? t('stale') : t('live')).toLowerCase()}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
+  if (s.source.kind === 'live') parts.push(`${(s.live.stale ? t('stale') : t(liveWordKey(s))).toLowerCase()}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
   else parts.push(`${t('frameReadout')} ${s.frame.index}`, `t ${Number(s.frame.t).toFixed(1)} s`);
   const d = s.drawn, auto = d.auto;
   // Model vs operator provenance: `<model> (+<manual> manual)`. The two numbers

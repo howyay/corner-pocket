@@ -709,14 +709,17 @@ function paintPlayChip() {
   parts.push(text(moving ? 'per-frame detections update on freeze' : 'per-frame detections return on freeze'));
   chip.textContent = parts.join(' · ');
 }
+// A Twitch VOD replay reaches the stage through the live path, but it is never
+// called live: the server's own status (kind 'vod-replay') decides the word.
+function liveIsReplay(live = state.live) { return live?.source?.kind === 'vod-replay' || live?.replay?.kind === 'vod-replay'; }
 function paintLiveChip() {
   const chip = $('#stage-live'); if (!chip) return;
-  const live = state.live;
+  const live = state.live, replay = liveIsReplay(live);
   chip.hidden = false;
   if (state.source.kind === 'live' && live.stale) chip.className = 'stage-live stale';
-  else if (state.source.kind === 'live') chip.className = 'stage-live on';
+  else if (state.source.kind === 'live') chip.className = replay ? 'stage-live replay' : 'stage-live on';
   else chip.hidden = true;
-  chip.textContent = state.source.kind !== 'live' ? '' : live.stale ? `${text('STALE')} ${live.frame_age_ms != null ? (live.frame_age_ms / 1000).toFixed(1) + ' s' : ''}`.trim() : `● ${text('live')}`;
+  chip.textContent = state.source.kind !== 'live' ? '' : live.stale ? `${text('STALE')} ${live.frame_age_ms != null ? (live.frame_age_ms / 1000).toFixed(1) + ' s' : ''}`.trim() : replay ? `▶ ${text('VOD replay')}` : `● ${text('live')}`;
 }
 function paintOverlay() {
   const svg = $('#t-overlay'); if (!svg) return;
@@ -1627,7 +1630,7 @@ const zhCopy = {
 const editorCopy = {
   'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层',
   'Pick a moment on the scrub strip, or select a cue, then freeze it here.':'在拖动条上选择时刻，或选择一条线索，然后在此冻结。',
-  'STALE':'已过期', 'live':'直播', 'Close':'关闭', 'No crop at this frame':'此帧没有裁剪图',
+  'STALE':'已过期', 'live':'直播', 'VOD replay':'回放', 'Close':'关闭', 'No crop at this frame':'此帧没有裁剪图',
   'The label is written to this crop':'标注将写入此裁剪图', 'Select a crop cue in the rail to label it':'请在左栏选择裁剪图线索以标注',
   'Select a ball or a crop first.':'请先选择球或裁剪图。', 'Select a visible track first.':'请先选择可见的轨迹。',
   'This track has no identity cluster yet.':'此轨迹尚无身份聚类。', 'saving…':'保存中…', 'save failed':'保存失败',

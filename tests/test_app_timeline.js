@@ -27,7 +27,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     pocketText, pocketWord, POCKET_LABELS, CLOTH_TOLERANCE_PX, clothTolerance, quadDistance, quadSanity, validateCloth,
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
-    playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip,
+    playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip, paintLiveChip,
     boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
     paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
@@ -1545,6 +1545,64 @@ test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => 
   const zhRunning = adapterStage('zh', ROSTER).sourcePanelHTML(visionSnapshot({live:{...base, state:'running',
     source:{kind:'vod-replay', vod_id:'1000000011', rate:2, start_s:30}, replay:{kind:'vod-replay', live:false, vod_id:'1000000011', rate:2, drift_s:-0.42}}}));
   assert.ok(zhRunning.includes('回放') && zhRunning.includes('漂移'), 'and the panel is bilingual');
+});
+
+test('a VOD replay is never called live on the stage chip, the freshness line, the facts line or the stagebar', () => {
+  // The replay's frames arrive through the live path, so the stage chrome used to
+  // read "● live" / "直播" while the panel said "live false". The server's own
+  // status (live.source / live.replay: kind 'vod-replay') decides the word.
+  const replayLive = {state:'running', error:null, attempt:null, frame_age_ms:240, receive_to_result_ms:33, skipped:0,
+    detectors:['table','person'], stale:false, seq:12, stages:[],
+    source:{kind:'vod-replay', vod_id:'1000000011', rate:2, start_s:30},
+    replay:{kind:'vod-replay', live:false, vod_id:'1000000011', rate:2, drift_s:-0.42}};
+  const shellLabel = source => {
+    // ops.js builds the frame label it hands to ingestLiveFrame; run its real code.
+    const opsSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+    const k = opsSource.indexOf('review()?.ingestLiveFrame(URL.createObjectURL(blob),meta,{label:');
+    const expr = opsSource.slice(opsSource.indexOf('label:', k) + 6, opsSource.indexOf(',channel:', k));
+    const liveSourceLabel = opsSource.slice(opsSource.indexOf('function liveSourceLabel('), opsSource.indexOf('function replayChoice('));
+    return lang => vm.runInNewContext(`const lang=${JSON.stringify(lang)};const liveText=(en,zh)=>lang==='zh'?zh:en;
+      const liveChoice='vod-replay', vodChoice={vod_id:'1000000011', start_s:30, rate:2}, channelOf=()=>null;
+      const source=${JSON.stringify(source)};
+      ${liveSourceLabel.replace(/\/\/[^\n]*\n/g, '\n')}
+      ${expr}`);
+  };
+  for (const [lang, liveWord] of [['en', 'live'], ['zh', '直播']]) {
+    // The frame label the shell hands to the stage (the stagebar's "Sources · …").
+    const label = shellLabel({kind:'vod-replay', vod_id:'1000000011', start_s:30, rate:2})(lang);
+    assert.ok(!label.includes(liveWord) && !label.includes('●'), `${lang}: the shell's frame label for a replay is not live: ${label}`);
+    assert.ok(label.includes('1000000011'), `${lang}: it still names the VOD: ${label}`);
+    const liveLabel = shellLabel({kind:'twitch', source_id:'x'})(lang);
+    assert.ok(liveLabel.startsWith(`● ${liveWord}`), `${lang}: a real channel is still live: ${liveLabel}`);
+    // The engine's stage chip.
+    const chip = {hidden:true, className:'', textContent:''};
+    T.setRoot({lang, querySelector: selector => selector === '#stage-live' ? chip : null, querySelectorAll: () => []});
+    T.state.source = {kind:'live', label, channel:null};
+    Object.assign(T.state.live, {stale:false, frame_age_ms:240, source:replayLive.source, replay:replayLive.replay});
+    T.paintLiveChip();
+    assert.ok(!chip.hidden && chip.textContent && !chip.textContent.includes(liveWord), `${lang}: the stage chip of a replay is not live: "${chip.textContent}"`);
+    assert.ok(!/\bon\b/.test(chip.className), `${lang}: nor styled as the live-on chip: ${chip.className}`);
+    Object.assign(T.state.live, {source:{kind:'twitch', source_id:'x', channel:'examplechannel'}, replay:null});
+    T.paintLiveChip();
+    assert.strictEqual(chip.textContent, `● ${lang === 'zh' ? '直播' : 'live'}`, `${lang}: a real channel keeps the live chip`);
+    Object.assign(T.state.live, {source:null, replay:null, stale:false, frame_age_ms:null});
+    T.state.source = {kind:'vod', label:'vod30', channel:null};
+    // The adapter's chip-row freshness and the facts line.
+    const snapshot = visionSnapshot({source:{kind:'live', label, channel:null}, live:replayLive,
+      loading:{overlay:false, since:0}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
+    const VSr = adapterStage(lang, ROSTER);
+    const fresh = (VSr.chipsHTML(snapshot).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
+    assert.ok(fresh && !fresh.includes(liveWord), `${lang}: the freshness line of a replay is not live: "${fresh}"`);
+    assert.ok(/240 ms/.test(fresh), `${lang}: and it still says how old the frame is: "${fresh}"`);
+    const facts = VSr.factsLine(snapshot);
+    assert.ok(!facts.toLowerCase().includes(liveWord), `${lang}: the facts line of a replay is not live: "${facts.slice(0, 80)}"`);
+    // A stale replay says stale, as a stale broadcast does.
+    const staleFresh = (VSr.chipsHTML({...snapshot, live:{...replayLive, stale:true}}).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
+    assert.ok(staleFresh.includes(lang === 'zh' ? '已过期' : 'STALE'), `${lang}: a stale replay says stale: "${staleFresh}"`);
+    // A real channel keeps its live word on both.
+    const channel = {...snapshot, live:{...replayLive, source:{kind:'twitch', source_id:'x', channel:'examplechannel'}, replay:null}};
+    assert.ok(((VSr.chipsHTML(channel).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '').startsWith(liveWord), `${lang}: a channel is live`);
+  }
 });
 
 test('the enrol block shows the evidence level, the crops and one confirm', () => {
