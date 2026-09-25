@@ -159,43 +159,62 @@ cards. The serving rule is now written down in the report
 | channel | count | served | why not |
 |---|---|---|---|
 | `oscillation_unresolved` (net travel inside the error of the bar) | 6 | 0 | the gate cannot tell a shot from an oscillation; five sit 0.4–4.0 px under the 27.6 px bar and one (`t242-red`) is 4.03 px *over* it, all inside the 5.12 px error |
-| occluded unknowns (all `cloth_occluded_at_disappearance`) | 8 | 1 — the carried `#9004` | every one is `verdict_mm "ambiguous"`: the millimetre distance ± error straddles the 100 mm radius, so the gate itself will not call it a pot |
+| occluded unknowns (all `cloth_occluded_at_disappearance`) | 8 | **3** — `#9004`, `#9005`, `#9006` | every one is `verdict_mm "ambiguous"`; the three served were still moving when they vanished, the five left out move at ≤ 17.4 px/s |
 | `oscillation_no_net_travel` rejections | 23 | 0 | the gate said no |
 
 All of it is counted with numbers in
 `out/scan30/dense_queue_report.json` (`channels.unresolved.rows`,
 `channels.occluded_unknowns.rows` incl. `moving_at_last_sighting`,
-`not_served.unknowns_not_carded`, `channels.departed_entries`). **Argued, not
-added:** three of the eight unknowns were still *moving* when they vanished
-(211.3 / 312.8 / 734.2 px/s; the other five move at ≤ 17.4 px/s), which is the
-class the served `#9004` belongs to — two of them (`t200-blue` 148.5 ± 54.0 mm
-right-middle, `t202-blue` 84.5 ± 30.9 mm left-middle, `inside_mm` true) are the
-same shape as `#9004` and are *not* served, because the owner's default is that a
-new unknown does not become a card. If the owner wants the class, it is these
-three, not eight; `t202-blue` is the closest thing this segment has to a pot the
-gate could not call.
+`not_served.unknowns_not_carded`, `channels.departed_entries`).
 
-The served unknown now carries the gate's millimetre verdict with its error bar
-(`vanish_dist_mm` 148.48, `vanish_dist_mm_uncertainty` 54.11, `vanish_dist_mm_lo/hi`
-94.37/202.59, `vanish_radius_mm` 100.0, `vanish_verdict_mm` `ambiguous`,
-`vanish_inside_px` true vs `vanish_inside_mm` false, `vanish_pocket_test` `mm`,
-`vanish_distance_text` EN + 中), and the entry states why it is served while its
-seven siblings are not (`provenance.served_because`, `provenance.unknowns_in_channel`).
-The projected distance is kept as a cross-check (`vanish_dist_mm_projected`,
-delta ≤ 0.13 mm against the gate's own number): both use the verified hand-anchor
-geometry.
+**The class, argued and then decided (owner, same day).** Three of the eight
+unknowns were still *moving* when they vanished (211.3 / 312.8 / 734.2 px/s; the
+other five move at ≤ 17.4 px/s) and one of the three was already served, so
+serving one member and hiding its two siblings was an inconsistent rule. The owner
+decided the class is the rule — label the candidate honestly rather than hide it —
+so `t200-blue` (`#9005`, 148.5 ± 54.0 mm right-middle) and `t202-blue` (`#9006`,
+84.5 ± 30.9 mm left-middle, the only one whose millimetre test reads *inside*)
+joined `#9004`. `t202-blue` remains the closest thing this segment has to a pot
+the gate refuses to call. The five near-stationary disappearances stay out: a
+disappearance at rest is a detector dropout, not a ball running at a pocket. The
+rule is written in the report (`serving_rule`, incl. `moving_threshold_px_s`) and
+in the tool's own docstring, and each served unknown states why it is in the queue
+(`provenance.served_because`).
 
-### Measured on the fixture (`:8131`, session `queuegate2-521027f9b1ad`)
+Each served unknown carries the gate's millimetre verdict with its error bar
+(`vanish_dist_mm`, `vanish_dist_mm_uncertainty`, `vanish_dist_mm_lo/hi`,
+`vanish_radius_mm` 100.0, `vanish_verdict_mm` `ambiguous`, `vanish_inside_px` vs
+`vanish_inside_mm`, `vanish_pocket_test` `mm`, `vanish_distance_text` EN + 中) and
+states why it is in the queue (`provenance.served_because`,
+`provenance.unknowns_in_channel`). The projected distance is kept as a cross-check
+(`vanish_dist_mm_projected`, delta ≤ 0.13 mm against the gate's own number): both
+use the verified hand-anchor geometry.
+
+**Ids are dead for good, and now provably so.** The report is overwritten on every
+regeneration, so retirement needed its own store:
+`out/scan30/dense_queue_retired.json` (`t125-white` 9001, `t256-blue` 9003, each
+with the gate's code and numbers). `assign_ids` reserves those ids, the report
+carries `retired_ids` and `id_changes.reserved_never_reissued`, and the shrink case
+is pinned by a test: with the queue reduced to `#9002` alone, a new ball must not
+take the retired 9003 back. Adding `#9005`/`#9006` changed nothing that was already
+served (`md5` of the four entries 9002/9004 identical to the two-card queue's).
+
+### Measured on the fixture (`:8131`, sessions `queuegate2-…`, `queuegate3-…`)
+
+Two-card run (`queuegate2-521027f9b1ad`, before the owner's class decision) and
+four-card run (`queuegate3-521027f9b1ad`, after it):
 
 | # | Check | Measured | Verdict |
 |---|-------|----------|---------|
-| 1 | Rail shows the rebuilt queue | `.vs-card` = **2**: `SHOTS MOTION WINDOW ONLY 26:20.1 #9002 1308 mm blue` and `POTS 27:18.5 #9004 left-middle (148 ± 54mm) 148 mm left-side` | PASS |
-| 2 | The unknown's inspector shows the millimetre distance with its error bar, in words | `.vs-facts` = "Detection gate **unconfirmed** · occlusion", "Vanished ball 148 mm · left-side", "Gate notes `cloth_occluded_at_disappearance · pocket_distance_ambiguous_mm · pocket_test_disagrees_px_vs_mm · 148 ± 54 mm from the left-middle pocket -- too uncertain to call -- it straddles the 100 mm radius`" | PASS |
-| 3 | Console + overflow | `console --json` → `"messages":[]`, `errors` → `[]` at **1280×800** and **390×844**; `scrollWidth` 1280 and 390 (= innerWidth) | PASS |
-| 4 | Nothing outside the fixture was written | `annotations.json` `77777777777777777777777777777777…`, `state.json` `77777777777777777777777777777777…`, `pid_seed.json` `77777777777777777777777777777777…` byte-identical after | PASS |
-| 5 | The sentence is reachable without a UI change | rendered by the existing notes row (no `annotator/` edit); it wraps over 4 lines inside the inspector's own scroll area (`.vs-inspector-scroll` 349/741 px) | PASS |
+| 1 | Rail shows what was served | 2 cards, then **4**: `POTS 25:53.5 #9005 right-middle (148 ± 54mm)`, `POTS 25:54.6 #9006 left-middle (84 ± 31mm)`, `SHOTS MOTION WINDOW ONLY 26:20.1 #9002 1308 mm blue`, `POTS 27:18.5 #9004 left-middle (148 ± 54mm)` | PASS |
+| 2 | Every unknown's inspector shows its own millimetre distance with its error bar, in words | `#9005` "Vanished ball 148 mm · right-side" + "**148 ± 54 mm from the right-middle pocket -- too uncertain to call**"; `#9006` "84 mm · left-side" + "**84 ± 31 mm from the left-middle pocket**…"; `#9004` "148 mm · left-side" + "**148 ± 54 mm from the left-middle pocket**…"; each with "Detection gate **unconfirmed** · occlusion" | PASS |
+| 3 | The shot is untouched by the class rule | `#9002` still `MOTION WINDOW ONLY`, `1308 mm blue`, same evidence numbers as the two-card run | PASS |
+| 4 | Console + overflow | `console --json` → `"messages":[]`, `errors` → `[]` at **1280×800** and **390×844**; `scrollWidth` 1280 and 390 (= innerWidth), overflow 0 | PASS |
+| 5 | Nothing outside the fixture was written | `annotations.json` `77777777777777777777777777777777…`, `state.json` `77777777777777777777777777777777…`, `pid_seed.json` `77777777777777777777777777777777…` byte-identical after | PASS |
+| 6 | The sentence is reachable without a UI change | rendered by the existing notes row (no `annotator/` edit); it wraps inside the inspector's own scroll area (`.vs-inspector-scroll` 349/741 px) | PASS |
 
-Screenshots: `out/scan30/ui/{dense_queue_2cards_1280,dense_queue_unknown_inspector_1280,dense_queue_2cards_390}.png`.
+Screenshots: `out/scan30/ui/{dense_queue_4cards_1280,dense_queue_4cards_rail_1280,dense_queue_4cards_390}.png`
+(two-card run: `{dense_queue_2cards_1280,dense_queue_unknown_inspector_1280,dense_queue_2cards_390}.png`).
 
 **The UI ask, exactly** (not edited here; the UI worker owns `annotator/`): the
 mm line reaches the DOM only as the last element of `gate.reasons`, so the
@@ -210,7 +229,9 @@ Second nit: `gateVanish` and the `Pocket` row print the stored key
 sentence use the display word (`left-middle`); `pocketText()` already does that
 mapping, these two rows just do not call it.
 
-Suites after the rebuild: python `932 tests, 3 skipped`, all green
-(`tests/test_queue_decision.py` grew from 11 to 19 pins: id stability, id
-retirement, the not-carded unknowns, the unresolved runs, the rerun-is-identical
-property and the millimetre error bar).
+Suites after the rebuild and after the class decision: python `935 tests, 3
+skipped`, all green (`tests/test_queue_decision.py` grew from 11 to 22 pins: id
+stability, id retirement and the shrink case that would otherwise re-issue one,
+the class rule in both directions, the parked unknown that never becomes a card,
+the unresolved runs, the rerun-is-identical property, the rule written in words
+and the millimetre error bar).
