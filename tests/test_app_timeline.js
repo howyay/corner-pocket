@@ -1885,6 +1885,44 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
   assert.ok(/review\(\)\.mount\(host\.querySelector\('#review-root'\),\{reloadRoster:/.test(shell), 'ops.js mounts the engine with the reloadRoster hook');
 });
 
+test('a stage click on a person sends the enrol preview an integer cluster, or none', () => {
+  // The painter writes the cluster into data-cluster, and a DOM dataset is always
+  // a string: the click stored cluster_id "148", and the preview refused it with
+  // 400 "cluster_id must be an integer" while a rail selection (a number) worked.
+  const box = {document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
+               window:{addEventListener() {}}, confirm: () => true, URL:{createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+               setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
+  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state, selectStagePerson, enrollPreview, setRoot: host => { root = host; }}; })();'), context, {filename:'app.js'});
+  // The preview body is recorded; loadPersons() and the preview answer at once.
+  vm.runInContext(`globalThis.bodies = [];
+    fetch = (url, init) => {
+      if (url === '/api/identity/enroll-preview') { bodies.push(JSON.parse(init.body)); return Promise.resolve({ok:true, status:200, json: async () => ({ok:true, token:'tok', crops:[]})}); }
+      return Promise.resolve({ok:true, status:200, json: async () => ({windows:[{win:'68-94', tracks:[1]}], seeds:{}})});
+    };
+    E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+    E.state.dataset = 'vod30'; E.state.frame = 0; E.state.unified = {persons:[]};`, context);
+  const click = dataset => vm.runInContext(`E.state.enroll = {status:'idle', payload:null, name:'', startedAt:0, error:null};
+    E.selectStagePerson(${JSON.stringify(dataset)}); E.enrollPreview(null); E.state.sel.person.cluster_id`, context);
+  // A clustered person, exactly as the painter writes it.
+  const clustered = click({person:'4', bbox:'796,197,928,418', cluster:'148', player:''});
+  assert.strictEqual(clustered, 148, 'the selection holds the cluster as a number');
+  const sent = vm.runInContext('bodies[bodies.length - 1]', context);
+  assert.strictEqual(sent.cluster_id, 148, 'and the preview is sent the integer the server requires');
+  assert.strictEqual(typeof sent.cluster_id, 'number');
+  assert.strictEqual(vm.runInContext('E.state.enroll.status', context), 'ready', 'so the preview is answered, not refused');
+  // A person with no cluster keeps the no-cluster path: no cluster_id at all.
+  const bare = click({person:'7', bbox:'10,20,110,220', cluster:'', player:''});
+  assert.strictEqual(bare, null, 'no cluster stays null');
+  const sentBare = vm.runInContext('bodies[bodies.length - 1]', context);
+  assert.ok(!('cluster_id' in sentBare), 'and the preview body carries no cluster_id: ' + JSON.stringify(sentBare));
+  same(sentBare.bbox, [10, 20, 110, 220]);
+  // A cluster the frame's identity row knows still wins when the click carries none.
+  vm.runInContext("E.state.unified = {persons:[{track_id:9, cluster_id:31, player_id:null}]}", context);
+  assert.strictEqual(click({person:'9', bbox:'1,2,3,4', cluster:'', player:''}), 31, 'the identity row fills an empty data-cluster');
+});
+
 test('the VOD fields are reachable and keep what the operator typed', () => {
   // (1) The panel used to list the replay controls last, so at 1280x900 the button
   // sat below the panel's own scroll box: elementFromPoint on it returned the

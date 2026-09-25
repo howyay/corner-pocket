@@ -1045,7 +1045,9 @@ function selectStagePerson(dataset) {
   const track = dataset.person === '' ? null : trackId(dataset.person);
   const bbox = String(dataset.bbox || '').split(',').map(Number);
   const identity = trackIdentity(track);
-  state.sel = {kind:'person', person:{track_id: track, bbox, cluster_id: dataset.cluster || identity.cluster_id, player_id: dataset.player || identity.player_id, bound_evidence: identity.bound_evidence}, crop:null, ball:null, event:null, track: track, anchor:0, box:-1};
+  // data-cluster is a DOM string ("148"); the server takes cluster_id as an integer.
+  const cluster = /^\d+$/.test(dataset.cluster || '') ? Number(dataset.cluster) : identity.cluster_id;
+  state.sel = {kind:'person', person:{track_id: track, bbox, cluster_id: cluster, player_id: dataset.player || identity.player_id, bound_evidence: identity.bound_evidence}, crop:null, ball:null, event:null, track: track, anchor:0, box:-1};
   state.focus = 'persons';
   if (!state.persons.windows.length) loadPersons().then(() => { if (state.persons.win) loadTracks(); });
   notify();
