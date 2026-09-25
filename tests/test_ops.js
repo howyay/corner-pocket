@@ -157,6 +157,35 @@ test('dirty or busy review vetoes top-level and subtab navigation', async () => 
     assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify([tab,lang,theme])')), ['vision','en','dark']);
   }
 });
+test('the player modal stays open until an action actually dismisses it', async () => {
+  // Every shell click ran `selected=null` after the player-delete line, so the
+  // modal closed on the next render (a language switch, a failed write) and a
+  // cancelled delete closed it too.
+  const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset}}});
+  const h = harness();
+  h.evaluate("render=()=>{}; data.players=[{id:'p1',name:'Ana',status:'Active',rating:80,createdAt:'2026-09-01T00:00:00Z'}]");
+  await click(h, {action:'select-player', id:'p1'});
+  assert.equal(h.evaluate('selected'), 'p1', 'selecting a player opens the modal');
+  await click(h, {lang:'zh'});
+  assert.equal(h.evaluate('selected'), 'p1', 'a language switch keeps it open');
+  await click(h, {action:'filter', value:'Active'});
+  assert.equal(h.evaluate('selected'), 'p1', 'so does any other shell button');
+  h.context.confirm = () => false;
+  await click(h, {action:'player-delete', id:'p1'});
+  assert.equal(h.evaluate('selected'), 'p1', 'a cancelled delete keeps it open');
+  assert.equal(h.evaluate('calls.length'), 0, 'and deletes nothing');
+  h.context.confirm = () => true;
+  h.evaluate('action=async(name,payload)=>{calls.push({name,payload});return false}');
+  await click(h, {action:'player-delete', id:'p1'});
+  assert.equal(h.evaluate('selected'), 'p1', 'a refused delete keeps it open, beside its error');
+  h.evaluate('action=async(name,payload)=>{calls.push({name,payload});return true}');
+  await click(h, {action:'player-delete', id:'p1'});
+  assert.equal(h.evaluate('selected'), null, 'a delete that happened closes it');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c=>c.name))')), ['player_delete','player_delete']);
+  await click(h, {action:'select-player', id:'p1'});
+  await click(h, {action:'close-modal'});
+  assert.equal(h.evaluate('selected'), null, 'and so does the close button');
+});
 test('shell does not intercept review clicks or form submissions', async () => {
   const h = harness();
   const target = {closest: () => ({})};
