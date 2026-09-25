@@ -290,6 +290,21 @@ test('save-only and cancelled confirmation do not complete a match', async () =>
   await h.handlers.submit(submission('score-form', {id: 'match-1', a: '7', b: '4'}, {name: 'sign'}));
   assert.equal(h.evaluate('calls.length'), 1);
 });
+test('registration without a guest name or a regular is stopped at the guest field, in both languages', async () => {
+  const h = harness();
+  const guest = {validity: '', reported: 0, setCustomValidity(text) { this.validity = text; }, reportValidity() { this.reported++; return false; }};
+  const form = values => ({preventDefault() {}, target: {getAttribute: () => 'entrant-form', classList: {contains: () => false}, querySelector: sel => sel === '[name=guest0]' ? guest : null, querySelectorAll: () => [], values}});
+  for (const blank of [{pid0: '', guest0: ''}, {pid0: '', guest0: '   '}, {pid0: ''}]) await h.handlers.submit(form(blank));
+  assert.equal(h.evaluate('calls.length'), 0, 'a blank guest never reaches the server');
+  assert.equal(guest.reported, 3);
+  assert.equal(guest.validity, 'Type a guest name or choose a regular.');
+  h.evaluate("lang='zh'");
+  await h.handlers.submit(form({pid0: '', guest0: ''}));
+  assert.equal(guest.validity, '请输入访客姓名，或选择一位常客。');
+  await h.handlers.submit(form({pid0: '', guest0: '  Ann  '}));
+  await h.handlers.submit(form({pid0: 'p1', guest0: ''}));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => c.payload))')), [{members: [{name: 'Ann'}]}, {members: [{pid: 'p1'}]}]);
+});
 test('appearance form serializes numbers and unchecked diamonds correctly', async () => {
   const h = harness();
   await h.handlers.submit(submission('appearance-form', {clothColor: '#1f4a70', lampGlow: '0.4'}));
