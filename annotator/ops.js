@@ -108,6 +108,9 @@ function startLive(){visionAttempt=null;review()?.setLiveAttempt(null);liveActio
 function stopLive(){liveAction('stop')}
 function setLiveDetectors(list){liveDetectors=list.length?list:['table'];renderSurface()}
 async function forgetChannel(id){await action('source_delete',{id});renderSurface()}
-function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,forgetChannel,pickReplay,replayChoice})}
+function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,forgetChannel,pickReplay,replayChoice,
+// After a confirmed enrolment the roster must come from a fresh read, not from the
+// shell's copy: reload() re-reads /api/operations and re-renders.
+reloadRoster:()=>reload()})}
 function renderSurface(){attachSurface();visionAdapter?.render()}
 })();

@@ -55,7 +55,10 @@ backend.frame_jpeg = real.frame_jpeg
 # The live source allowlist resolves data/ through realpath, so the fixture's
 # symlinked data/ fails it. Point the live processor at the real root: live
 # decoding and detection only read media, they never write annotations.
-from annotator.live_processing import LiveProcessor
-backend._live = LiveProcessor(ROOT)
+from annotator.unified_server import vod_replay_processor_class
+# The same processor class the server builds (it also accepts the vod-replay
+# source); pointing it at the real root keeps live media resolution working while
+# every annotation write stays in the fixture.
+backend._live = vod_replay_processor_class()(ROOT)
 print('Isolated browser fixture: http://127.0.0.1:8131', flush=True)
 ThreadingHTTPServer(('127.0.0.1', 8131), make_handler(backend)).serve_forever()
