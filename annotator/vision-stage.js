@@ -681,6 +681,9 @@ function liveStageLine(s) {
   });
   return `<p class="vs-mono" data-vs-live-stages="${stages.length}">${rows.map(esc).join('<br>')}</p>`;
 }
+// The live detector ticks are the shell's: it holds what the operator ticked and
+// sends exactly that on Start (the engine's live.detectors is never written).
+function liveDetectorList(s) { return opts?.liveDetectors ? opts.liveDetectors() : (s.live.detectors || []); }
 function sourcePanelHTML(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
@@ -697,7 +700,7 @@ function sourcePanelHTML(s) {
     <p class="vs-mono" id="vs-live-status">${esc(stateText(liveRowState))}${(live.error || live.attempt?.error) ? ` · ${esc(live.error || live.attempt.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
     <div class="vs-row"><button class="primary" data-vs-action="live-start">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button></div>
     <div class="vs-chiprow">${channels}${(s.datasets || []).map(d => `<button class="vs-chip" data-vs-action="pick-live" data-vs-value="dataset:${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
-    <div class="vs-row">${['table','person','ball'].map(d => `<label class="vs-check" title="${d === 'ball' ? esc(t('liveBallNote')) : esc(t(d))}"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${(live.detectors || []).includes(d) ? 'checked' : ''}> ${esc(d === 'ball' ? t('liveBall') : t(d))}</label>`).join('')}</div>
+    <div class="vs-row">${['table','person','ball'].map(d => `<label class="vs-check" title="${d === 'ball' ? esc(t('liveBallNote')) : esc(t(d))}"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${liveDetectorList(s).includes(d) ? 'checked' : ''}> ${esc(d === 'ball' ? t('liveBall') : t(d))}</label>`).join('')}</div>
     <p class="vs-note" data-vs-live-ball="note">${esc(t('liveBallNote'))}</p>
     ${liveStageLine(s)}
     <p class="vs-note">${esc(t('latency'))}</p></div>
@@ -972,7 +975,7 @@ function act(action, value, node) {
     case 'live-start': opts.startLive(); break;
     case 'live-stop': opts.stopLive(); break;
     case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
-    case 'live-detector': { const list = new Set(s.live.detectors || []); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
+    case 'live-detector': { const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
     case 'pick-replay': {
       // A VOD id or URL, where in it to start, and how fast: the server resolves it
       // and the panel reports the capture's own kind/live/rate/drift afterwards.

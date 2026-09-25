@@ -51,6 +51,40 @@ test('live start and stop send only processor contract fields', async () => {
   await h.evaluate("liveAction('stop')");
   assert.deepEqual(h.context.sent.payload,{action:'stop'});
 });
+test('live detector ticks accumulate: the boxes show and Start sends exactly what the operator ticked', async () => {
+  // The panel derived the boxes from the engine's live.detectors, which nothing
+  // writes, so every click started again from ['table','person'] (untick Person,
+  // tick Ball -> table+person+ball) and the boxes never moved.
+  const h = harness();
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  vm.runInContext(adapter, h.context, {filename:'vision-stage.js'});
+  const engineSnap = {live:{state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person'], stale:false, seq:null, stages:[]},
+    source:{kind:'vod', label:'vod30', channel:null}, datasets:[{id:'vod30', label:'vod30'}], dataset:'vod30', frame:{count:54206}, detectors:{table:true, person:true, balls:false}};
+  // The snapshot is handed over after attach, so attach's own first render is a no-op.
+  let attached = false;
+  h.context.window.CornerPocketReview = {snapshot: () => attached ? engineSnap : null, setLiveAttempt() {}, clearLiveError() {}, applyLiveStatus() {}};
+  h.context.fetch = async (url, options) => { h.context.sent = JSON.parse(options.body); return {ok:true, json: async () => ({state:'starting'})}; };
+  // The shell's own attachSurface() wires the adapter, exactly as on the Vision tab.
+  const mount = {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}, contains: () => true};
+  const shellQuery = h.context.document.querySelector;
+  h.context.document.querySelector = selector => selector === '#vision-surface' ? mount : shellQuery(selector);
+  h.evaluate('attachSurface()');
+  h.evaluate('renderSurface=()=>{}');
+  const VS = h.context.window.VisionStage;
+  attached = true;
+  // Only the live row: the Frame detectors row below it has its own table/person boxes.
+  const ticked = () => ['table','person','ball'].filter(d => new RegExp(`data-vs-action="live-detector" data-vs-value="${d}" checked`).test(VS.sourcePanelHTML(engineSnap)));
+  const click = (value, checked) => VS.act('live-detector', value, {checked});
+  assert.deepEqual(ticked(), ['table','person'], 'the defaults are shown');
+  click('person', false);
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(liveDetectors)')), ['table']);
+  assert.deepEqual(ticked(), ['table'], 'an untick is shown');
+  click('ball', true);
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(liveDetectors)')), ['table','ball'], 'Person stays off when Ball goes on');
+  assert.deepEqual(ticked(), ['table','ball'], 'and the boxes say so');
+  await h.evaluate('liveAction("start")');
+  assert.deepEqual(h.context.sent.detectors, ['table','ball'], 'Start sends exactly the ticks');
+});
 test('live poll reports real status and hands the paired JPEG metadata to the stage', async () => {
   const h = harness(), statusNode = {}, seen = [];
   h.context.document.querySelector = selector => selector === '#live-status' ? statusNode : null;
