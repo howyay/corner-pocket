@@ -45,7 +45,7 @@ cannot stop an input the server will reject.
 | | | | the same channel twice | Rejected "Source already added" (untranslated) | **D4b** |
 | House note (`note-form`) → `note_add` | `text` (`required maxlength=4000`) | 1–4000 chars after trim | whitespace-only | Rejected "note must contain 1–4000 characters" (untranslated) | **D4a** |
 | Face photo (`enroll-form`) → `POST /api/identity/enroll` | file (`required`), `player_id` from the rendered profile | non-empty `player_id`, decodable image ≤8 MB | no file | Browser `required` blocks; handler also returns early | none |
-| | | | non-image / >12 MB body | Plain "Enrollment failed: …" + server sentence in EN, localized prefix only in 中 | out of scope (not a form-contract defect; server sentence is already plain) |
+| | | | non-image file / photo over 8 MB | Uploaded, then refused as raw server text ("image_base64 is not a decodable image" / "…decodes past the 8MB limit"); 中 translated only the "人脸录入失败" prefix | **D4d** |
 
 ## Ops click actions (no form)
 
@@ -72,6 +72,7 @@ these shapes, so they stay technical by design.
 | Enrol from track → `/api/identity/enroll-confirm` | `enroll-name` (`maxlength=60`) | `player_name` string ≤60; empty → module refusal `player_name_required` | blank name | Refusal shown in operator words, both languages | none |
 | VOD replay start → `/api/live` | `vod` text, `start` number (min 0), `rate` number (0.25–4) | `vod_id` parseable, `start_s` ≥0, `0 < rate ≤ 8` | blank start / rate | Client coerces `Number('')||0` → start 0 and `||1` → rate 1: the documented defaults, never an invalid value | none |
 | | | | blank VOD | Refused client-side (`vodId` prompt) | none |
+| | | | channel URL, `abc`, `0`, or rate above 8 (typed; the field's `max=4` is not enforced because the button is not a form submit) | Kept as the replay, then refused on Start as raw server text ("Expected a Twitch VOD id…", "rate must be between 0 and 8…"); 中 untranslated | **D4c** |
 
 ## Defects fixed (one commit each, test first)
 
@@ -83,6 +84,8 @@ these shapes, so they stay technical by design.
 | **D3** | `258acd8` | Send to table with every table live → "All tables are in use" / "所有球台都在使用中，请先释放一张球台。" (server half needs a restart; an explicit bad table number keeps the range message) |
 | **D4a** | `04123c5` | Any required text field holding only spaces (regular name, event name, house note) → no request; next to the field: "Fill this in — spaces alone don't count." / "请填写此项，仅有空格不算。" |
 | **D4b** | `dde7266` | Twitch pages the server refuses (subscriptions, inventory, wallet, jobs, turbo) get the existing bilingual source hint without a request; "Source already added" and "Use a Twitch channel or videos/<digits> URL" are translated |
+| **D4c** | `2d43e82` | The VOD replay picker applies the server's own rules (`vod_id_of`, rate ≤ 8) and refuses before Start: "Use a Twitch VOD id or https://www.twitch.tv/videos/<id>" / "Rate must be more than 0 and at most 8" (中 too) |
+| **D4d** | `7e12608` | Face photo that is not an image, or over 8 MB → no upload; next to the file input: "Choose an image file (JPEG or PNG)." / "Choose a photo of 8 MB or less." (中 too); a server "not a decodable image" is translated |
 
 In every case the raw server sentence, when there is one, stays behind
 "技术详情 / Technical details".
