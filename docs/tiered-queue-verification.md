@@ -84,3 +84,37 @@ translated reason; console messages **0** across load, tab switch, filter clicks
 switch; `scrollWidth` = 1280 at 1280×599 and **390 at 390×844** (no horizontal overflow).
 Screenshots: `out/scan30/ui/{empty_queue_1280,empty_queue_390,empty_queue_zh_1280,empty_pots_1280}.png`.
 `out/corner-pocket/state.json`, `out/pid_seed.json` and `out/scan30/annotations.json` are byte-identical after.
+
+
+## Round 5 — the dense-track events are served (commit `876e0a0`)
+
+The queue went from empty (round 4) to the four events of
+`out/dense-events/segment-1350-1650.after.json`: three motion events and one
+pot-shaped disappearance, all machine-produced by the trained ball detector on
+dense tracks (`ball@2`, 66.7 ms), copied by `src/dense_queue.py` with the
+provenance and the evidence the run measured. Ids 9001-9004; `annotations.json`
+md5 `77777777777777777777777777777777` unchanged.
+
+Measured on the fixture (`:8131`, session `dense-521027f9b1ad`):
+
+| # | Check | Measured | Verdict |
+|---|-------|----------|---------|
+| 1 | Cards + evidence lines | 4 cards; "24:42.3 · #9001 · 2 mm white", "#9002 · 1308 mm blue", "#9003 · 63 mm blue", pot "#9004 · left-middle (148mm) · 148 mm left-side" | PASS |
+| 2 | Tier badges | 3 badges, all `window` (`MOTION WINDOW ONLY`); no `geometry` badge invented | PASS |
+| 3 | Selecting plays the window | selecting #9002: `currentTime` 1580.62 s → 1579.11 s (wrapped the loop window [1579.1, 1581.1]), `paused: false`, loop counter `↻ 19 · playing`, scrub cue mark present | PASS |
+| 4 | Pot candidate is an unknown candidate | POTS tab carries exactly #9004; inspector: "Detection gate **unconfirmed** · occlusion", "Vanished ball 148 mm · left-side", "Gate notes `cloth_occluded_at_disappearance · pocket_test_disagrees_px_vs_mm`" | PASS |
+| 5 | Console + overflow | 0 console messages at 1280x599 and 390x844; `scrollWidth` 1280 and 390 (= innerWidth), no horizontal overflow | PASS |
+| 6 | Provenance notice | **not rendered**: `provenance.statement` / `provenance.detector` never reach the DOM — see the ask below | GAP |
+
+Screenshots: `out/scan30/ui/{dense_cards_1280,dense_cards_390,dense_pot_inspector_1280,dense_rail_1280}.png`.
+`out/corner-pocket/state.json`, `out/pid_seed.json` and `out/scan30/annotations.json` are byte-identical after.
+
+**The UI ask, exactly** (not edited here; the UI worker owns `annotator/`):
+`app.js` copies each event into the snapshot, and `provenance` is missing from
+that copy — add `provenance: e.provenance && typeof e.provenance === 'object' ? {...e.provenance} : null`
+next to `tier`/`geometry_check`, then render one line per card in
+`vision-stage.js` (`railHTML`), e.g.
+`provenance.detector` + the EN/中 statement `provenance.statement` (中: 「机器产出，未经人工确认」).
+The optional evidence numbers (`gate.numbers.dense_peak_speed_px_s`,
+`dense_net_displacement_px`, `dense_path_length_px`, `dense_duration_s`,
+`dense_frame_range`) ride in the same payload if the inspector wants them.
