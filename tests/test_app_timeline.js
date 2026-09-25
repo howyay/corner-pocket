@@ -1843,6 +1843,48 @@ test('app.css styles the classes the painter emits: model dashed, yours solid, c
   T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
 });
 
+test('a successful enrol confirm resolves true and re-reads the roster through the hook the shell mounted', () => {
+  // enrollConfirm read `opts?.reloadRoster`, but the engine has no `opts`: the
+  // shell handed reloadRoster to the vision adapter only. So every successful
+  // confirm threw "opts is not defined" after the write, and the roster was never
+  // re-read. The engine now takes the hook through mount(host, hooks).
+  const host = {id:'review-root', lang:'en', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => [], addEventListener() {}};
+  const box = {document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
+               window:{addEventListener() {}}, confirm: () => true, URL:{createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+               localStorage:{getItem: () => null, setItem() {}}, setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
+  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state}; })();'), context, {filename:'app.js'});
+  // Only the enrol write answers; every other request mount() makes stays pending.
+  vm.runInContext(`fetch = (url, init) => url === '/api/identity/enroll-confirm'
+      ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true, player_id:'p9', player_name:'Nina', revision:8, embeddings:3})})
+      : new Promise(() => {});
+    globalThis.rosterReads = 0;`, context);
+  const review = box.window.CornerPocketReview;
+  review.mount(host, {reloadRoster: () => { box.rosterReads++; }});
+  vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
+    window.CornerPocketReview.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, context);
+  assert.strictEqual(box.confirmError, undefined, 'a successful confirm throws nothing');
+  assert.strictEqual(box.confirmed, true, 'and resolves true');
+  assert.strictEqual(vm.runInContext('E.state.enroll.status', context), 'written');
+  assert.strictEqual(box.rosterReads, 1, 'the roster is re-read once, through the mounted hook');
+  // A shell that mounts without hooks (the standalone review page) still confirms cleanly.
+  const bare = {...box, rosterReads:0, confirmed:undefined, confirmError:undefined};
+  bare.globalThis = bare;
+  const bareContext = vm.createContext(bare, {microtaskMode:'afterEvaluate'});
+  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state}; })();'), bareContext, {filename:'app.js'});
+  vm.runInContext(`fetch = (url) => url === '/api/identity/enroll-confirm'
+      ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true})}) : new Promise(() => {});`, bareContext);
+  bare.window.CornerPocketReview.mount({...host});
+  vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
+    window.CornerPocketReview.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, bareContext);
+  assert.strictEqual(bare.confirmError, undefined, 'without a hook there is still no exception');
+  assert.strictEqual(bare.confirmed, true);
+  // The shell passes its roster re-read to the engine's mount, not only to the adapter.
+  const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+  assert.ok(/review\(\)\.mount\(host\.querySelector\('#review-root'\),\{reloadRoster:/.test(shell), 'ops.js mounts the engine with the reloadRoster hook');
+});
+
 test('the VOD fields are reachable and keep what the operator typed', () => {
   // (1) The panel used to list the replay controls last, so at 1280x900 the button
   // sat below the panel's own scroll box: elementFromPoint on it returned the

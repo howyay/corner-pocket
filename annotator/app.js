@@ -7,6 +7,9 @@
 // chips, inspector and scrub strip from snapshot() and drives this engine
 // through the public API below; it owns no frame state and performs no fetch.
 let root = null, active = false, mounting = null, initialized = false;
+// What the embedding shell hands the engine at mount (e.g. reloadRoster); the
+// standalone page mounts without any.
+let hooks = {};
 const $ = (s, scope = root) => scope ? scope.querySelector(s) : null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const enc = encodeURIComponent;
@@ -1197,7 +1200,7 @@ async function enrollConfirm(button) {
       if (!data?.ok) throw new Error(data?.reason || 'refused');
     },
     'person', `${name || '—'} → regular`);
-  if (ok && state.enroll.status === 'written' && opts?.reloadRoster) opts.reloadRoster();
+  if (ok && state.enroll.status === 'written' && hooks.reloadRoster) hooks.reloadRoster();
   return ok;
 }
 // The typed name is a draft: it must not re-render the block while it is typed in.
@@ -1506,10 +1509,11 @@ function switchMode(mode) {
   state.mode = modes[mode];
   return true;
 }
-function mount(host) {
+function mount(host, shellHooks = {}) {
   if (root) return root === host ? mounting : false;
   if (!host || host.id !== 'review-root') return false;
   root = host;
+  hooks = shellHooks || {};
   bindControls();
   let lang = 'en', theme = 'dark';
   try { lang = localStorage.getItem('corner-pocket-lang') || lang; theme = localStorage.getItem('corner-pocket-theme') || theme; } catch (_) {}
