@@ -1923,6 +1923,77 @@ test('a stage click on a person sends the enrol preview an integer cluster, or n
   assert.strictEqual(click({person:'9', bbox:'1,2,3,4', cluster:'', player:''}), 31, 'the identity row fills an empty data-cluster');
 });
 
+test('a live or replay frame is drawn with its own detections only, never the dataset frame\'s layers', () => {
+  // The stage showed a VOD replay frame with vod30 frame 0's stored inference
+  // boxes, cloth polygon and facts ("stored inference …") painted over it: two
+  // sources on one picture. The overlay describes the picture it is drawn on.
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  const snapshot = () => sandbox.window.CornerPocketReview.snapshot();
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true};
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.state.playback = {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN};
+  // vod30 frame 0 as the stage holds it: a stored inference (boxes + polygon), the
+  // frame's unified detections, the dataset's saved anchors (calibration pockets).
+  const anchors = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
+  T.state.fresult = {inference:{stored_inference:true, saved_at:'2026-09-16T11:07:48Z', table_polygon:[[128,72],[1152,72],[1152,648],[128,648]],
+                                boxes:[{label:'ball', bbox:[680,484,702,507], score:0.86}, {label:'person', bbox:[33,134,200,591], score:0.89}]}, correction:null};
+  T.state.dirty = false;
+  T.applyFrameResult();
+  T.state.cloth.reference = anchors;
+  T.state.anchors.loaded = true; T.state.anchors.pts = [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]];
+  const frame0 = {table_corners:[[454,307],[799,319],[1023,573],[449,563]], pockets:[{name:'head-left', cx:455, cy:308}],
+                  persons:[{bbox:[33,134,200,591], track_id:4, cluster_id:148}], balls:[{cx:691, cy:495, r:11}], events:[]};
+  T.state.unified = frame0;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.paintOverlay();
+  const vodHtml = svg.innerHTML;
+  assert.ok(vodHtml.includes('t-box') && vodHtml.includes('t-poly') && vodHtml.includes('u-person'), 'the dataset frame draws its own layers');
+  // The replay frame arrives: its own detections are two persons and no polygon.
+  T.state.source = {kind:'live', label:'VOD replay 1000000011', channel:null};
+  T.state.live.detections = {boxes:[{label:'person', bbox:[500,200,600,500]}, {label:'person', bbox:[700,210,800,520]}], table_polygon:null};
+  T.state.unified = frame0;           // a unified answer for frame 0 that is still in state
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  assert.ok(!html.includes('t-box') && !html.includes('t-poly'), 'no stored-inference box or polygon over a live frame: ' + html.slice(0, 160));
+  assert.ok(!html.includes('u-cloth') && !html.includes('u-pocket') && !html.includes('u-anchor') && !html.includes('u-ball'),
+    'no dataset cloth, pockets, anchors or balls');
+  assert.ok(!html.includes('data-cluster="148"'), 'no dataset-frame person');
+  assert.strictEqual((html.match(/class="u-person/g) || []).length, 2, 'only the live frame\'s own two persons');
+  assert.ok(html.includes('data-src="model"'), 'drawn with their own MODEL provenance');
+  const d = T.state.drawn;
+  same([d.cloth, d.balls, d.persons, d.pockets, d.anchors, d.events], [0, 0, 2, 0, 0, 0]);
+  const snap = snapshot();
+  assert.strictEqual(snap.corrections.storedInference, false, 'the stored inference is not reported for a live frame');
+  const facts = adapterStage('en', ROSTER).factsLine({...visionSnapshot(), ...snap, live:{...snap.live, stale:false, seq:5, frame_age_ms:40, receive_to_result_ms:20}});
+  assert.ok(!/stored inference/.test(facts), 'the facts line never says stored inference over a live frame: ' + facts);
+  assert.ok(/persons 2\b/.test(facts) && /cloth 0\b/.test(facts) && /balls 0\b/.test(facts), 'and counts only what is drawn: ' + facts);
+  // No live detector on: nothing at all.
+  T.state.live.detections = null;
+  T.paintOverlay();
+  assert.ok(!/<(g|polygon|rect|circle)\b/.test(svg.innerHTML), 'no detections, nothing drawn: ' + svg.innerHTML.slice(0, 120));
+  // The operator stops the source: the stage goes back to the dataset frame it
+  // held, and that frame's layers return untouched.
+  T.state.live.state = 'running';
+  sandbox.window.CornerPocketReview.applyLiveStatus({state:'stopped', frames_skipped:0});
+  assert.strictEqual(T.state.source.kind, 'vod', 'a stop returns the stage to the dataset frame');
+  T.state.unified = frame0;           // the frame's unified answer, re-read after the stop
+  T.paintOverlay();
+  assert.strictEqual(svg.innerHTML, vodHtml, 'the dataset frame\'s layers come back exactly');
+  assert.strictEqual(snapshot().corrections.storedInference, true);
+  // A feed that stalls or ends is not a stop: its last frame stays, still live.
+  T.state.source = {kind:'live', label:'VOD replay 1000000011', channel:null};
+  T.state.live.state = 'running';
+  sandbox.window.CornerPocketReview.applyLiveStatus({state:'eos', frames_skipped:0});
+  assert.strictEqual(T.state.source.kind, 'live', 'end of stream keeps the last live frame on the stage');
+  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.live.state = 'idle';
+  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.unified = null; T.state.live.detections = null;
+  T.state.cloth.reference = null; T.state.anchors.loaded = false; T.state.anchors.pts = [];
+});
+
 test('the VOD fields are reachable and keep what the operator typed', () => {
   // (1) The panel used to list the replay controls last, so at 1280x900 the button
   // sat below the panel's own scroll box: elementFromPoint on it returned the
