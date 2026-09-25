@@ -67,6 +67,28 @@ test('live poll reports real status and hands the paired JPEG metadata to the st
   assert.equal(seen[1].meta.seq, 12);
   assert.equal(seen[1].meta.detections.boxes[0].label, 'person');
 });
+test('a failed live poll is reported on the shell message line, not thrown from the catch', async () => {
+  // The catch wrote to #live-status, which the Vision tab no longer has, so a
+  // network error became "Cannot set properties of null" inside the catch itself.
+  for (const [lang, prefix] of [['en', 'Live poll failed: '], ['zh', '直播轮询失败: ']]) {
+    const h = harness(), messageNode = {textContent:'', className:''}, timers = [];
+    h.context.document.querySelector = selector => selector === '#message' ? messageNode : null;
+    h.context.setTimeout = (fn, ms) => { timers.push(ms); return 1; };
+    h.context.window.CornerPocketReview = {applyLiveStatus() { assert.fail('a failed poll has no status to apply'); }};
+    h.context.fetch = async () => { throw new TypeError('Failed to fetch'); };
+    h.evaluate(`lang='${lang}'; tab='vision'; document.hidden=false`);
+    await h.evaluate('pollLive(liveGeneration)');   // must resolve: nothing is thrown out of the catch
+    assert.equal(messageNode.textContent, `${prefix}Failed to fetch`, `${lang}: the error reaches the operator`);
+    assert.equal(messageNode.className, 'error', `${lang}: styled as an error`);
+    assert.deepEqual(timers.filter(ms => ms === 500), [500], `${lang}: and polling carries on`);
+  }
+  // A poll from a superseded generation says nothing: navigation already cancelled it.
+  const h = harness(), messageNode = {textContent:'', className:''};
+  h.context.document.querySelector = selector => selector === '#message' ? messageNode : null;
+  h.context.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await h.evaluate('pollLive(liveGeneration - 1)');
+  assert.equal(messageNode.textContent, '', 'a stale generation stays silent');
+});
 test('live JPEG bytes and their metadata stay atomically paired', () => {
   assert.ok(source.includes("frame.headers.get('X-Live-Metadata')"));
   assert.ok(source.includes("frame.headers.get('X-Live-Sequence')"));
