@@ -24,13 +24,21 @@ Rules
 **Shot** - a motion *onset*: a ball still for ``rest_window_s`` (every interval in
 the window at or below ``rest_speed_px_s``, at least ``rest_min_intervals``
 intervals, no gap longer than ``max_gap_s``), then ``onset_intervals`` consecutive
-intervals above ``motion_speed_px_s``.  The event reports the onset time (the
+intervals above ``motion_speed_px_s`` **that also go somewhere**: the run's net
+displacement must reach ``min_net_displacement_diameters`` ball diameters, because
+sustained speed without net travel is detector oscillation (an identity jittering
+inside its own footprint) and not a shot.  The event reports the onset time (the
 first sample of the sustained run, i.e. the last measured still position), the
-direction, the peak speed and the duration.
+direction, the peak speed and the duration; a refused oscillation is emitted as
+``oscillation_no_net_travel`` with its net, path, diameters and thresholds.
 
 **Pot** - the track terminates within a pocket radius, does not reappear for
 ``persistence_s``, and the occlusion channel is clear for that stretch.  A ball
-that is covered by a person when it vanishes is **unknown, never potted**.
+that is covered by a person when it vanishes is **unknown, never potted**.  The
+radius test is decided in **millimetres** (the pocket's canonical 100 mm gate,
+measured by un-projecting the last sighting through the reference homography);
+the per-pocket pixel radius is reported alongside it and a disagreement between
+the two is its own reason, never a pot of its own.
 
 **Break** - N shot events (one per moving identity, each with its own evidence),
 all sharing ``group_id``, plus one :class:`BreakGroup` record per simultaneous
@@ -43,7 +51,10 @@ either one cue or N.
 Nothing is silent: every disappearance, motion run, rest-only track and frame-edge
 exit the gate examines is emitted as a record with its reason, the samples used
 and the thresholds that decided it (:class:`Rejection` for non-events,
-:class:`PotEvent` with ``verdict="unknown"`` for the occluded cases).
+:class:`PotEvent` with ``verdict="unknown"`` for the occluded cases).  A run that
+tops the speed bar without net travel is ``oscillation_no_net_travel``; a ball
+whose pixel and millimetre pocket tests disagree is
+``pocket_test_disagrees_px_vs_mm`` and never a pot-shaped candidate.
 
 What the gate cannot do (stated, not hidden)
 --------------------------------------------
@@ -129,6 +140,16 @@ POCKET_R_MM = 100.0
 #: test, not by hope.
 OCC_DENSE_MIN = 0.30
 
+#: Median ball diameter measured on vod30 at the **native 1280x720** frame: 18.4 px.
+#: This is the only honest length unit a single track carries: the track has no
+#: ruler, but the thing being tracked does.  Every length bar below is stated as a
+#: multiple of it, and the gate resolves it into *the frame pixels of the track it
+#: is given* (the dense run samples at 960x540, so one ball is 13.8 px there and a
+#: bar left in native pixels would be 1.33x too strict).
+BALL_DIAMETER_NATIVE_PX = 18.4
+#: the frame that measurement was made in; the scale reference for the line above
+NATIVE_FRAME = (1280, 720)
+
 
 # ---------------------------------------------------------------------------
 # types
@@ -211,28 +232,109 @@ class Track:
 
 @dataclass(frozen=True)
 class Pocket:
+    """One pocket: its centre in pixels, its canonical place, and both radii.
+
+    ``radius_px`` is the mm gate at the *local mean* pixel-per-mm scale and is a
+    reported diagnostic: the honest pixel footprint of a 100 mm radius here is an
+    ellipse (``scale_x`` x ``scale_y``), because the projection compresses the
+    table length ~3x between the head and the foot rail.  The test the gate
+    decides with is the millimetre one - see :meth:`PocketModel.measure`.
+    """
+
     name: str
     x: float
     y: float
     radius_px: float
     r_mm: float
+    mm: tuple[float, float] = (0.0, 0.0)     # canonical centre (POCKETS_MM)
+    scale_x: float = 0.0                     # local px per canonical mm, x
+    scale_y: float = 0.0                     # local px per canonical mm, y
+    sigma_max: float = 0.0                   # px per mm, longest axis of the footprint
+    sigma_min: float = 0.0                   # px per mm, shortest axis
 
     def distance(self, x: float, y: float) -> float:
         return math.hypot(x - self.x, y - self.y)
 
     def contains(self, x: float, y: float) -> bool:
+        """The *pixel* test only - the gate's authority is ``PocketModel.measure``."""
         return self.distance(x, y) <= self.radius_px
 
+    def radius_px_axes(self) -> tuple[float, float]:
+        """The 100 mm disc as it actually appears here: (long, short) semi-axis in px."""
+        return (self.r_mm * self.sigma_max, self.r_mm * self.sigma_min)
+
     def as_dict(self) -> dict:
+        axes = self.radius_px_axes()
         return {"name": self.name, "x": round(self.x, 2), "y": round(self.y, 2),
-                "radius_px": round(self.radius_px, 2), "radius_mm": self.r_mm}
+                "mm": [round(v, 1) for v in self.mm],
+                "radius_px": round(self.radius_px, 2), "radius_mm": self.r_mm,
+                "radius_px_axes": [round(axes[0], 2), round(axes[1], 2)],
+                "px_per_mm": [round(self.scale_x, 5), round(self.scale_y, 5)]}
+
+
+@dataclass(frozen=True)
+class Membership:
+    """Where a point stands against a pocket, in pixels and in millimetres.
+
+    ``inside_mm`` is the authoritative answer; ``inside_px`` is the diagnostic that
+    a single pixel radius gives.  They disagree exactly where the projection is
+    anisotropic, and the gate then says so instead of letting the pixel test decide.
+    """
+
+    pocket: Pocket | None
+    distance_px: float | None
+    radius_px: float | None
+    distance_mm: float | None
+    radius_mm: float | None
+    inside_px: bool
+    inside_mm: bool
+    mm_available: bool
+    pocket_test: str = "mm"                 # "mm" | "px_only"
+    last_mm: tuple[float, float] | None = None
+
+    @property
+    def disagrees(self) -> bool:
+        return bool(self.mm_available and self.inside_px != self.inside_mm)
+
+    @property
+    def inside(self) -> bool:
+        """The verdict: millimetres when the geometry is there, pixels otherwise."""
+        return self.inside_mm if self.mm_available else self.inside_px
+
+    def as_dict(self) -> dict:
+        return {"pocket": None if self.pocket is None else self.pocket.name,
+                "pocket_px": None if self.pocket is None else [round(self.pocket.x, 2),
+                                                               round(self.pocket.y, 2)],
+                "distance_px": None if self.distance_px is None else round(self.distance_px, 3),
+                "radius_px": None if self.radius_px is None else round(self.radius_px, 3),
+                "distance_mm": None if self.distance_mm is None else round(self.distance_mm, 2),
+                "radius_mm": self.radius_mm,
+                "inside_px": bool(self.inside_px),
+                "inside_mm": bool(self.inside_mm),
+                "inside": bool(self.inside),
+                "mm_available": bool(self.mm_available),
+                "pocket_test": self.pocket_test,
+                "pocket_test_disagrees_px_vs_mm": bool(self.disagrees),
+                "last_mm": None if self.last_mm is None else [round(v, 1) for v in self.last_mm]}
 
 
 @dataclass(frozen=True)
 class PocketModel:
-    """The six pocket centres in source pixels with a per-pocket radius."""
+    """The six pocket centres, their radii and the reference homography.
+
+    Build it with :func:`default_pocket_model`, which carries the verified
+    reference geometry; a hand-built model without ``px_to_mm`` still works but its
+    pocket test degrades to pixels and says so (``pocket_test == "px_only"``).
+    """
 
     pockets: tuple[Pocket, ...]
+    quad: tuple[tuple[float, float], ...] | None = None
+    mm_to_px: tuple[float, ...] | None = None
+    px_to_mm: tuple[float, ...] | None = None
+
+    @property
+    def mm_available(self) -> bool:
+        return self.px_to_mm is not None
 
     def nearest(self, x: float, y: float) -> tuple[Pocket | None, float]:
         best, dist = None, float("inf")
@@ -242,12 +344,60 @@ class PocketModel:
                 best, dist = p, d
         return best, dist
 
+    def canonical(self, x: float, y: float) -> tuple[float, float] | None:
+        """The canonical-millimetre position of a pixel, or None without geometry."""
+        if self.px_to_mm is None:
+            return None
+        return project(self.px_to_mm, (x, y))
+
+    def distance_mm(self, pocket: Pocket, x: float, y: float) -> float | None:
+        """Millimetres from a pixel to a pocket centre, through the homography.
+
+        The pocket centre is un-projected with the same map, so this is the true
+        table distance and not a local-scale approximation.
+        """
+        here = self.canonical(x, y)
+        if here is None:
+            return None
+        centre = self.canonical(pocket.x, pocket.y)
+        if centre is None:
+            return None
+        return math.hypot(here[0] - centre[0], here[1] - centre[1])
+
+    def measure(self, x: float, y: float) -> Membership:
+        """Which pocket a point is in - millimetres first, pixels reported."""
+        best_px, best_px_dist = None, float("inf")
+        best_mm, best_mm_dist = None, float("inf")
+        inside_px_any, inside_mm_any = False, False
+        for p in self.pockets:
+            d_px = p.distance(x, y)
+            if d_px < best_px_dist:
+                best_px, best_px_dist = p, d_px
+            inside_px_any = inside_px_any or d_px <= p.radius_px
+            d_mm = self.distance_mm(p, x, y)
+            if d_mm is not None:
+                if d_mm < best_mm_dist:
+                    best_mm, best_mm_dist = p, d_mm
+                inside_mm_any = inside_mm_any or d_mm <= p.r_mm
+        chosen = best_mm if inside_mm_any else best_px
+        if chosen is None:
+            return Membership(None, None, None, None, None, False, False, self.mm_available)
+        d_px = chosen.distance(x, y)
+        d_mm = self.distance_mm(chosen, x, y)
+        return Membership(
+            pocket=chosen, distance_px=d_px, radius_px=chosen.radius_px,
+            distance_mm=d_mm, radius_mm=chosen.r_mm,
+            inside_px=inside_px_any, inside_mm=inside_mm_any,
+            mm_available=self.mm_available,
+            pocket_test="mm" if self.mm_available else "px_only",
+            last_mm=self.canonical(x, y))
+
     def inside(self, x: float, y: float) -> tuple[Pocket | None, float]:
-        """The pocket whose radius contains ``(x, y)``, nearest first."""
-        best, dist = self.nearest(x, y)
-        if best is not None and dist <= best.radius_px:
-            return best, dist
-        return None, dist
+        """``(pocket, distance_px)`` when the point is inside - millimetres decide."""
+        m = self.measure(x, y)
+        if m.pocket is None or not m.inside:
+            return None, (m.distance_px if m.distance_px is not None else float("inf"))
+        return m.pocket, m.distance_px
 
     def by_name(self, name: str) -> Pocket:
         for p in self.pockets:
@@ -256,7 +406,12 @@ class PocketModel:
         raise KeyError(name)
 
     def as_dict(self) -> dict:
-        return {"pockets": [p.as_dict() for p in self.pockets]}
+        return {"pockets": [p.as_dict() for p in self.pockets],
+                "pixel_frame": None if self.quad is None else [[round(v, 2) for v in q]
+                                                               for q in self.quad],
+                "mm_frame": {"width": CANON_W, "length": CANON_H,
+                             "convention": "src.pipeline.homography_to_canonical "
+                                           "(0..CANON_W-1 x 0..CANON_H-1)"}}
 
 
 # ---------------------------------------------------------------------------
@@ -309,24 +464,50 @@ def _canonical_dst() -> list[list[float]]:
     return [[0.0, 0.0], [CANON_W - 1, 0.0], [CANON_W - 1, CANON_H - 1], [0.0, CANON_H - 1]]
 
 
+def _singular_axes(jx: Sequence[float], jy: Sequence[float]) -> tuple[float, float]:
+    """The two semi-axes of the image of a unit disc under the 2x2 Jacobian [jx jy].
+
+    The image of the millimetre disc is an ellipse, and its semi-axes are the
+    singular values - *not* the two canonical-axis scales, because the projection
+    shears as well as compresses.  This is the number that says how far the honest
+    pixel footprint is from a single radius.
+    """
+    a, b, c, d = float(jx[0]), float(jx[1]), float(jy[0]), float(jy[1])
+    mean = (a * a + b * b + c * c + d * d) / 2.0
+    off = ((a * a + b * b - c * c - d * d) / 2.0) ** 2 + (a * c + b * d) ** 2
+    root = math.sqrt(max(0.0, off))
+    big = math.sqrt(max(0.0, mean + root))
+    small = math.sqrt(max(0.0, mean - root))
+    return big, small
+
+
 def pocket_pixels(quad: Sequence[Sequence[float]] = VOD30_REFERENCE_QUAD,
                   pocket_r_mm: float = POCKET_R_MM) -> dict[str, dict]:
     """Pocket centres and radii in source pixels for a cloth quad.
 
     ``quad`` is [TL, TR, BR, BL] in source pixels; the canonical destination is the
     cloth rectangle, so the four corners land on the four corner pockets and the
-    two side pockets land on the long rails' midpoints.  The radius is the mm
-    threshold times the *local* pixel-per-mm scale at that pocket, because the far
-    end of the table is foreshortened ~3x.
+    two side pockets land on the long rails' midpoints.  ``radius_px`` is the mm
+    threshold times the *local mean* pixel-per-mm scale at that pocket (the far end
+    of the table is foreshortened ~3x); ``radius_px_axes`` is the same disc as the
+    ellipse the projection actually makes of it.
     """
     h = homography(_canonical_dst(), quad)
     out: dict[str, dict] = {}
     for name, (mx, my) in POCKETS_MM.items():
         centre = project(h, (mx, my))
-        sx = math.dist(project(h, (mx + 1.0, my)), centre)
-        sy = math.dist(project(h, (mx, my + 1.0)), centre)
+        px_x, px_y = project(h, (mx + 1.0, my))
+        py_x, py_y = project(h, (mx, my + 1.0))
+        jx = (px_x - centre[0], px_y - centre[1])
+        jy = (py_x - centre[0], py_y - centre[1])
+        sx = math.hypot(*jx)
+        sy = math.hypot(*jy)
         scale = (sx + sy) / 2.0
-        out[name] = {"px": centre, "px_per_mm": scale, "radius_px": pocket_r_mm * scale}
+        big, small = _singular_axes(jx, jy)
+        out[name] = {"px": centre, "px_per_mm": scale, "scale_x": sx, "scale_y": sy,
+                     "sigma_max": big, "sigma_min": small,
+                     "radius_px": pocket_r_mm * scale,
+                     "radius_px_axes": (pocket_r_mm * big, pocket_r_mm * small)}
     return out
 
 
@@ -336,19 +517,27 @@ def default_pocket_model(quad: Sequence[Sequence[float]] = VOD30_REFERENCE_QUAD,
 
     With the reference quad the pinned :data:`VOD30_POCKETS_PX` table is used (so the
     model a reviewer reads in the source is the model the gate uses); any other quad
-    is projected here.  No file is read: the reference geometry is data.
+    - the dense run's 960x540 reference, for instance - is projected here.  Either
+    way the model carries the homography pair, because the pot test is decided in
+    millimetres.  No file is read: the reference geometry is data.
     """
+    table = pocket_pixels(quad, pocket_r_mm)
     if tuple(map(tuple, quad)) == VOD30_REFERENCE_QUAD:
-        derived = {n: (VOD30_POCKETS_PX[n]["px"], VOD30_POCKETS_PX[n]["px_per_mm"])
+        # the pinned table is the same projection, rounded for a reviewer to read
+        derived = {n: (VOD30_POCKETS_PX[n]["px"], VOD30_POCKETS_PX[n]["px_per_mm"], table[n])
                    for n in VOD30_POCKETS_PX}
     else:
-        table = pocket_pixels(quad, pocket_r_mm)
-        derived = {n: (table[n]["px"], table[n]["px_per_mm"]) for n in table}
+        derived = {n: (row["px"], row["px_per_mm"], row) for n, row in table.items()}
     pockets = tuple(
-        Pocket(name, centre[0], centre[1], pocket_r_mm * scale, pocket_r_mm)
-        for name, (centre, scale) in derived.items()
+        Pocket(name, centre[0], centre[1], pocket_r_mm * scale, pocket_r_mm,
+               mm=POCKETS_MM[name], scale_x=row["scale_x"], scale_y=row["scale_y"],
+               sigma_max=row["sigma_max"], sigma_min=row["sigma_min"])
+        for name, (centre, scale, row) in derived.items()
     )
-    return PocketModel(pockets)
+    frame = tuple((float(p[0]), float(p[1])) for p in quad)
+    return PocketModel(pockets, quad=frame,
+                       mm_to_px=tuple(homography(_canonical_dst(), quad)),
+                       px_to_mm=tuple(homography(quad, _canonical_dst())))
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +663,29 @@ class GateThresholds:
     #: frames, and "sustained" cannot be claimed across a stretch the ball was not
     #: seen in.  Also the reason a sparse (0.5 s) census can never form a run.
     max_gap_s: float = 0.25
+    #: The shot rule's second half: a sustained run must also **go somewhere**.  A
+    #: ball that jitters inside its own footprint while one interval after another
+    #: tops the speed bar is a detector oscillation, not a shot - measured on the
+    #: dense run: 80.6 px of path with 0.2 px of net travel (2 mm projected), and
+    #: 59.9 px of path with 19.7 px net.  The bar is in ball diameters, and the
+    #: default 2.0 is set from ball size and noise, not from those events:
+    #: detector localization/identity noise is of order one ball (that is what the
+    #: rest bar's 0.2 px/frame was chosen to sit under), so anything at or below
+    #: two diameters of *net* travel is indistinguishable from the ball's own
+    #: jitter; and it is deliberately *looser* than the repo's own mm shot bar
+    #: (``src.event_gates.GateConfig.shot_min_disp_mm = 300``, i.e. 5.3 ball
+    #: diameters, measured 471 mm and 1345 mm for the two human-confirmed shots
+    #: against <= 112 mm for every dead window) because this gate produces
+    #: candidates for that gate to judge.
+    min_net_displacement_diameters: float = 2.0
+    #: the ball's diameter in the *frame pixels of the track being judged*.  None
+    #: resolves it from the frame: 18.4 px x the scale below (or 18.4 px x
+    #: frame_size[0]/1280 when frame_size is stated, so the dense run's 960x540
+    #: gives 13.8 px without the caller repeating itself).
+    ball_diameter_px: float | None = None
+    #: linear scale of the track's frame against native 1280x720, used only when
+    #: neither ball_diameter_px nor frame_size is given (960x540 => 0.75).
+    frame_scale: float = 1.0
 
     # --- pot ------------------------------------------------------------------
     #: the repo's measured pot radius: src.event_gates.GateConfig.pot_pocket_r_mm.
@@ -518,6 +730,24 @@ class GateThresholds:
     #: how many of the ball's last samples a pot/unknown record carries as evidence.
     evidence_samples: int = 6
 
+    def frame_scale_effective(self) -> float:
+        """Linear scale of the track's frame against native 1280x720."""
+        if self.ball_diameter_px is not None:
+            return float(self.ball_diameter_px) / BALL_DIAMETER_NATIVE_PX
+        if self.frame_size:
+            return float(self.frame_size[0]) / float(NATIVE_FRAME[0])
+        return float(self.frame_scale)
+
+    def ball_diameter(self) -> float:
+        """The ball's diameter in the frame pixels of the track being judged."""
+        if self.ball_diameter_px is not None:
+            return float(self.ball_diameter_px)
+        return BALL_DIAMETER_NATIVE_PX * self.frame_scale_effective()
+
+    def min_net_displacement_px(self) -> float:
+        """Net travel a sustained run must show, in this frame's pixels."""
+        return self.min_net_displacement_diameters * self.ball_diameter()
+
     def as_dict(self) -> dict:
         return {k: (list(v) if isinstance(v, tuple) else v) for k, v in self.__dict__.items()}
 
@@ -536,7 +766,7 @@ class ShotEvent:
     onset_t: float
     onset_x: float
     onset_y: float
-    direction_deg: float | None          # image space: 0 = +x (right), 90 = +y (down)
+    direction_deg: float                 # image space: 0 = +x (right), 90 = +y (down)
     direction_x: float
     direction_y: float
     peak_speed_px_s: float
@@ -561,7 +791,7 @@ class ShotEvent:
                 "onset_frame_index": int(self.onset_frame_index),
                 "onset_t": round(self.onset_t, 6),
                 "onset": [round(self.onset_x, 2), round(self.onset_y, 2)],
-                "direction_deg": None if self.direction_deg is None else round(self.direction_deg, 2),
+                "direction_deg": round(self.direction_deg, 2),
                 "direction": [round(self.direction_x, 4), round(self.direction_y, 4)],
                 "peak_speed_px_s": round(self.peak_speed_px_s, 2),
                 "peak_t": round(self.peak_t, 6),
@@ -611,6 +841,14 @@ class PotEvent:
     occlusion_source: str
     samples_used: tuple[Sample, ...]
     thresholds: dict = field(default_factory=dict)
+    # both units, with the millimetre test as the authority (see PocketModel.measure)
+    distance_mm: float | None = None
+    radius_mm: float | None = None
+    inside_px: bool | None = None
+    inside_mm: bool | None = None
+    pocket_test: str = "mm"
+    pocket_test_disagrees: bool = False
+    last_mm: tuple[float, float] | None = None
 
     @property
     def is_pot(self) -> bool:
@@ -622,6 +860,13 @@ class PotEvent:
                 "pocket_px": None if self.pocket_px is None else [round(c, 2) for c in self.pocket_px],
                 "radius_px": None if self.radius_px is None else round(self.radius_px, 2),
                 "distance_px": None if self.distance_px is None else round(self.distance_px, 2),
+                "radius_mm": self.radius_mm,
+                "distance_mm": self.distance_mm,
+                "inside_px": self.inside_px,
+                "inside_mm": self.inside_mm,
+                "pocket_test": self.pocket_test,
+                "pocket_test_disagrees_px_vs_mm": bool(self.pocket_test_disagrees),
+                "last_mm": None if self.last_mm is None else [round(v, 1) for v in self.last_mm],
                 "last_frame_index": int(self.last_frame_index),
                 "last_t": round(self.last_t, 6),
                 "last": [round(self.last_x, 2), round(self.last_y, 2)],
@@ -862,10 +1107,16 @@ def track_events(track: Track, pockets: PocketModel,
 
     # ---- shot rule ---------------------------------------------------------
     runs = _motion_runs(samples, th)
+    ball_px = th.ball_diameter()
+    min_net_px = th.min_net_displacement_px()
     rest_thresholds = {"rest_speed_px_s": th.rest_speed_px_s, "rest_window_s": th.rest_window_s,
                        "rest_min_intervals": th.rest_min_intervals, "max_gap_s": th.max_gap_s,
                        "motion_speed_px_s": th.motion_speed_px_s,
-                       "onset_intervals": th.onset_intervals}
+                       "onset_intervals": th.onset_intervals,
+                       "min_net_displacement_px": round(min_net_px, 3),
+                       "min_net_displacement_diameters": th.min_net_displacement_diameters,
+                       "ball_diameter_px": round(ball_px, 3),
+                       "frame_scale": round(th.frame_scale_effective(), 4)}
     moved = False
     for start, end in runs:
         moved = True
@@ -888,12 +1139,32 @@ def track_events(track: Track, pockets: PocketModel,
         a, b = samples[start], samples[end]
         path = sum(iv.dist for iv in intervals)
         net = math.hypot(b.x - a.x, b.y - a.y)
-        if net <= 0:
-            direction = (0.0, 0.0)
-            deg = None                     # motion that returns to its start has no direction
-        else:
-            direction = ((b.x - a.x) / net, (b.y - a.y) / net)
-            deg = math.degrees(math.atan2(direction[1], direction[0])) % 360.0
+        if net < min_net_px:
+            # Sustained speed without net travel: an identity oscillating inside its
+            # own footprint.  Refused, and named - never silently a shot, and never a
+            # pot either (there is no run to end anywhere).
+            rejections.append(Rejection(
+                "rejection", "oscillation_no_net_travel", t.ball_id,
+                f"a sustained run at t={a.t:.3f} moves at up to "
+                f"{max(iv.speed for iv in intervals):.1f} px/s but its net displacement is "
+                f"{net:.2f} px ({net / ball_px:.2f} ball diameters of {ball_px:.1f} px) against the "
+                f"{min_net_px:.1f} px bar the ball's own size sets: the ball did not go anywhere, "
+                "so this is detector oscillation, not a shot",
+                float(a.t), int(a.frame_index),
+                {"net_displacement_px": round(net, 3),
+                 "net_displacement_diameters": round(net / ball_px, 3),
+                 "path_length_px": round(path, 3),
+                 "net_over_path": round(net / path, 4) if path > 0 else None,
+                 "path_over_net": round(path / net, 2) if net > 0 else None,
+                 "peak_speed_px_s": round(max(iv.speed for iv in intervals), 2),
+                 "duration_s": round(float(b.t) - float(a.t), 6),
+                 "run_intervals": len(intervals),
+                 "rest_window_measured_s": round(window, 4)},
+                tuple(samples[start:end + 1]), rest_thresholds))
+            continue
+        # net >= min_net_px > 0 past the criterion above, so the run has a direction
+        direction = ((b.x - a.x) / net, (b.y - a.y) / net)
+        deg = math.degrees(math.atan2(direction[1], direction[0])) % 360.0
         pocket, dist = pockets.inside(b.x, b.y)
         lasts = end == len(samples) - 1
         endless = bool(lasts and pocket is None)
@@ -912,7 +1183,9 @@ def track_events(track: Track, pockets: PocketModel,
                 {"rest_window_measured_s": round(window, 4), "rest_intervals": n_rest,
                  "max_rest_speed_px_s": round(max_rest, 3),
                  "peak_speed_px_s": round(peak_speed, 2),
-                 "net_displacement_px": round(net, 2), "endless_roll": endless},
+                 "net_displacement_px": round(net, 2),
+                 "net_displacement_diameters": round(net / ball_px, 3),
+                 "endless_roll": endless},
                 evidence, rest_thresholds))
             continue
         gid = (group_ids or {}).get(t.ball_id)
@@ -957,7 +1230,7 @@ def track_events(track: Track, pockets: PocketModel,
         # disappearance.  Either way nothing may be said about a pot - and saying
         # nothing at all would be a silent event.
         last0 = samples[-1]
-        pocket0, dist0 = pockets.inside(last0.x, last0.y)
+        m0 = pockets.measure(last0.x, last0.y)
         rejections.append(Rejection(
             "rejection", "track_ends_at_window_end", t.ball_id,
             f"the last sighting at t={last0.t:.3f} is not followed by a disappearance longer than "
@@ -967,9 +1240,16 @@ def track_events(track: Track, pockets: PocketModel,
             {"observed_until_t": round(until, 4),
              "gap_after_last_s": round(max(0.0, until - float(last0.t)), 4),
              "vanish_gap_s": round(vanish_gap, 4),
-             "pocket": None if pocket0 is None else pocket0.name,
-             "distance_px": round(dist0, 2),
-             "inside_pocket_radius": pocket0 is not None},
+             "pocket": None if m0.pocket is None else m0.pocket.name,
+             "inside_pocket": bool(m0.inside),
+             "inside_px": bool(m0.inside_px),
+             "inside_mm": bool(m0.inside_mm),
+             "distance_px": None if m0.distance_px is None else round(m0.distance_px, 2),
+             "radius_px": None if m0.radius_px is None else round(m0.radius_px, 2),
+             "distance_mm": None if m0.distance_mm is None else round(m0.distance_mm, 2),
+             "radius_mm": m0.radius_mm,
+             "pocket_test": m0.pocket_test,
+             "pocket_test_disagrees_px_vs_mm": bool(m0.disagrees)},
             tuple(samples[-th.evidence_samples:]), pot_thresholds))
     swap_seen = False
     for start, end, gap in candidates:
@@ -981,7 +1261,9 @@ def track_events(track: Track, pockets: PocketModel,
             dt = float(last.t) - float(samples[start - 1].t)
             prev_speed = d / dt if dt > 0 else 0.0
         internal = end != -1
-        pocket, dist = pockets.inside(last.x, last.y)
+        m = pockets.measure(last.x, last.y)
+        pocket = m.pocket if m.inside else None
+        dist = m.distance_px if m.distance_px is not None else float("inf")
         span_until = float(samples[end].t) if internal else until
         occ_status = occ.status_at_disappearance(float(last.t), span_until)
         parked = prev_speed <= th.rest_speed_px_s
@@ -992,7 +1274,10 @@ def track_events(track: Track, pockets: PocketModel,
             persistence_s=th.persistence_s, gap_s=gap, internal_gap=internal,
             identity_swap_suspected=False, occlusion_status=occ_status,
             occlusion_source=occ.source, samples_used=tuple(tail),
-            thresholds=pot_thresholds)
+            distance_mm=None if m.distance_mm is None else round(m.distance_mm, 2),
+            radius_mm=m.radius_mm, inside_px=bool(m.inside_px), inside_mm=bool(m.inside_mm),
+            pocket_test=m.pocket_test, pocket_test_disagrees=bool(m.disagrees),
+            last_mm=m.last_mm, thresholds=pot_thresholds)
         if internal:
             # the ball is seen again -> not a pot.  Inside a pocket radius for a whole
             # persistence window this is the signature of an identity swap, which the
@@ -1015,6 +1300,36 @@ def track_events(track: Track, pockets: PocketModel,
                                      pocket.name, (pocket.x, pocket.y), pocket.radius_px, dist,
                                      **dict(common, identity_swap_suspected=True)))
             continue
+        if not m.inside and m.disagrees:
+            # The single pixel radius says "inside" and the millimetre test says
+            # "outside" (or the other way round).  Millimetres are authoritative, so
+            # this is not a pot - it is a named disagreement, never a pot-shaped
+            # candidate produced by the pixel test alone.
+            rejections.append(Rejection(
+                "rejection", "pocket_test_disagrees_px_vs_mm", t.ball_id,
+                f"the last sighting is {m.distance_px:.2f} px from the "
+                f"{m.pocket.name if m.pocket else 'nearest'} pocket centre inside a "
+                f"{m.radius_px:.2f} px radius, but "
+                f"{m.distance_mm:.0f} mm from the same centre against the {m.radius_mm:.0f} mm "
+                "gate: one pixel radius cannot follow this projection (the true footprint is an "
+                "ellipse), so the millimetre test decides and this is not a pot",
+                float(last.t), int(last.frame_index),
+                {"pocket": None if m.pocket is None else m.pocket.name,
+                 "distance_px": None if m.distance_px is None else round(m.distance_px, 3),
+                 "radius_px": None if m.radius_px is None else round(m.radius_px, 3),
+                 "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
+                 "radius_mm": m.radius_mm,
+                 "inside_px": bool(m.inside_px), "inside_mm": bool(m.inside_mm),
+                 "inside": bool(m.inside),
+                 "ppx_vs_mm_ratio": (round(m.distance_mm / m.radius_mm, 3)
+                                     if m.distance_mm is not None and m.radius_mm else None),
+                 "pocket_test": m.pocket_test,
+                 "pocket_test_disagrees_px_vs_mm": True,
+                 "last_mm": None if m.last_mm is None else [round(v, 1) for v in m.last_mm],
+                 "gap_s": round(gap, 4),
+                 "occlusion_status": occ_status},
+                tuple(tail), pot_thresholds))
+            continue
         if _inside_frame(last.x, last.y, th) is False and pocket is None:
             rejections.append(Rejection(
                 "rejection", "left_frame_edge", t.ball_id,
@@ -1025,7 +1340,10 @@ def track_events(track: Track, pockets: PocketModel,
                  "frame_size": list(th.frame_size) if th.frame_size else None,
                  "nearest_pocket": pockets.nearest(last.x, last.y)[0].name,
                  "distance_px": round(dist, 2),
-                 "radius_px": round(pockets.nearest(last.x, last.y)[0].radius_px, 2)},
+                 "radius_px": round(pockets.nearest(last.x, last.y)[0].radius_px, 2),
+                 "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
+                 "radius_mm": m.radius_mm,
+                 "pocket_test": m.pocket_test},
                 tuple(tail), pot_thresholds))
             continue
         if _inside_quad(last.x, last.y, th.cloth_quad) is False and pocket is None:
@@ -1036,22 +1354,30 @@ def track_events(track: Track, pockets: PocketModel,
                 float(last.t), int(last.frame_index),
                 {"last_xy": [round(last.x, 2), round(last.y, 2)],
                  "nearest_pocket": pockets.nearest(last.x, last.y)[0].name,
-                 "distance_px": round(dist, 2)},
+                 "distance_px": round(dist, 2),
+                 "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
+                 "radius_mm": m.radius_mm,
+                 "pocket_test": m.pocket_test},
                 tuple(tail), pot_thresholds))
             continue
         if pocket is None:
             near, near_dist = pockets.nearest(last.x, last.y)
             rejections.append(Rejection(
                 "rejection", "disappeared_outside_pocket", t.ball_id,
-                f"the track ends {dist:.1f} px from the nearest pocket "
-                f"({near.name if near else 'none'}, radius "
-                f"{near.radius_px if near else float('nan'):.1f} px): a disappearance on open "
+                f"the track ends {dist:.1f} px / "
+                f"{m.distance_mm:.0f} mm from the nearest pocket "
+                f"({near.name if near else 'none'}, {near.radius_px if near else float('nan'):.1f} px"
+                f" / {near.r_mm if near else float('nan'):.0f} mm gate): a disappearance on open "
                 "cloth is a detector dropout, not a pot",
                 float(last.t), int(last.frame_index),
                 {"nearest_pocket": None if near is None else near.name,
                  "distance_px": round(dist, 2),
                  "nearest_distance_px": round(near_dist, 2),
                  "radius_px": None if near is None else round(near.radius_px, 2),
+                 "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
+                 "radius_mm": m.radius_mm,
+                 "inside_px": bool(m.inside_px), "inside_mm": bool(m.inside_mm),
+                 "pocket_test": m.pocket_test,
                  "gap_s": round(gap, 4),
                  "frame_edge": _inside_frame(last.x, last.y, th),
                  "inside_cloth": _inside_quad(last.x, last.y, th.cloth_quad)},

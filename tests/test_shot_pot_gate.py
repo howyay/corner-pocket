@@ -23,10 +23,10 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-from src.shot_pot_gate import (CANON_H, CANON_W, OCC_DENSE_MIN, POCKETS_MM, POCKET_R_MM,
-                               VOD30_POCKETS_PX, VOD30_REFERENCE_QUAD, BreakGroup,
-                               GateThresholds, Occlusion, PotEvent, Rejection, Sample, ShotEvent,
-                               Track, classify, default_pocket_model, homography,
+from src.shot_pot_gate import (BALL_DIAMETER_NATIVE_PX, CANON_H, CANON_W, OCC_DENSE_MIN,
+                               POCKETS_MM, POCKET_R_MM, VOD30_POCKETS_PX, VOD30_REFERENCE_QUAD,
+                               BreakGroup, GateThresholds, Occlusion, PotEvent, Rejection, Sample,
+                               ShotEvent, Track, classify, default_pocket_model, homography,
                                pocket_pixels, project, track_events)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +39,11 @@ DT = 1.0 / FPS
 PERSIST = 1.5                          # observation after a disappearance, > persistence_s
 OPEN = (690.0, 445.0)                  # open cloth: 163 px from the nearest pocket centre
 ONSET_TOL = 3.0                        # px/s slack on an expected interval speed
+#: the dense run's cloth quad in its own 960x540 frame (out/dense-events/segment-1350-1650.json,
+#: ``thresholds.cloth_quad`` = the native reference quad x 0.75)
+WORK_SIZE = (960, 540)
+WORK_QUAD = ((399.0, 242.25), (600.0, 243.0), (747.75, 426.75), (288.0, 422.25))
+POT_MAX_TRAVEL_PX = 400.0              # a pot track's walk stays inside the frame
 
 
 # --------------------------------------------------------------- track builders
@@ -61,16 +66,53 @@ def moving(x: float, y: float, dx: float, dy: float, n: int, start: int,
 
 def approach(pocket, x0: float, y0: float, start: int, n: int = 25,
              finish: float = 0.95) -> list[Sample]:
-    """Samples walking from ``(x0, y0)`` to just inside the pocket radius."""
-    ex = x0 + (pocket.x - x0) * finish
-    ey = y0 + (pocket.y - y0) * finish
+    """Samples walking from ``(x0, y0)`` to just inside the pocket radius.
+
+    ``pocket`` may be a :class:`Pocket` or any ``(x, y)`` pair, so a test can also
+    aim at a point outside the pocket (the pixel-radius-but-not-millimetre case).
+    """
+    tx, ty = (pocket.x, pocket.y) if hasattr(pocket, "x") else (pocket[0], pocket[1])
+    ex = x0 + (tx - x0) * finish
+    ey = y0 + (ty - y0) * finish
     return [sample(start + k, x0 + (ex - x0) * k / n, y0 + (ey - y0) * k / n)
             for k in range(1, n + 1)]
 
 
-def pot_track(name: str, pocket, x0: float = 700.0, y0: float = 400.0,
-              rest: int = 20) -> Track:
-    return Track(name, tuple(still(x0, y0, rest) + approach(pocket, x0, y0, rest)))
+#: a pot fixture starts here in canonical millimetres: the middle of the table
+TABLE_MIDDLE_MM = (CANON_W / 2.0, CANON_H / 2.0)
+#: ... and stops this far from the pocket centre, well inside the 100 mm gate in
+#: every direction (the repo's measured vanished-ball cluster is 39-86 mm)
+POT_END_MM = 40.0
+
+
+def mm_walk(model, pocket_name: str, end_mm: float = POT_END_MM,
+            start_mm: tuple[float, float] = TABLE_MIDDLE_MM, start: int = 20,
+            n: int = 25) -> list[Sample]:
+    """A straight walk in canonical millimetres, sampled in the model's pixels.
+
+    Pot fixtures are built in the frame the rule is stated in (millimetres), so the
+    final position is inside the gate whatever direction it comes from - a walk
+    aimed in *pixels* at a corner pocket can end 250 mm away.
+    """
+    pocket = model.by_name(pocket_name)
+    sx, sy = start_mm
+    cx, cy = pocket.mm
+    distance = math.hypot(cx - sx, cy - sy)
+    ux, uy = (cx - sx) / distance, (cy - sy) / distance
+    ex, ey = cx - ux * end_mm, cy - uy * end_mm
+    points = [project(model.mm_to_px, (sx + (ex - sx) * k / n, sy + (ey - sy) * k / n))
+              for k in range(1, n + 1)]
+    return [sample(start + k, x, y) for k, (x, y) in enumerate(points)]
+
+
+def pot_track(name: str, pocket_name: str, model=None, rest: int = 20,
+              end_mm: float = POT_END_MM) -> Track:
+    """A ball that sits still and then rolls into a pocket (in millimetres)."""
+    model = model or default_pocket_model()
+    start_px = project(model.mm_to_px, TABLE_MIDDLE_MM)
+    walk = mm_walk(model, pocket_name, end_mm=end_mm, start=rest)
+    rows = still(start_px[0], start_px[1], walk[0].frame_index) + walk
+    return Track(name, tuple(rows))
 
 
 def report_for(track: Track, **kw):
@@ -231,11 +273,12 @@ class ShotRuleTests(GateTestCase):
     """Onset, direction, peak speed, duration - and the refusals that look like one."""
 
     def test_a_single_shot_reports_onset_direction_peak_and_duration(self):
-        # ball at rest 0.63 s, then 25 intervals towards the head-left pocket,
-        # 7.02 px each (the approach helper's step) = 210.7 px/s at 30 fps
-        pocket = default_pocket_model().by_name("head-left")
-        track = pot_track("cue", pocket)
-        step = math.dist((700.0, 400.0), (pocket.x, pocket.y)) * 0.95 / 25.0
+        # ball still for 0.63 s, then 25 intervals of a straight walk in mm from the
+        # middle of the table towards the head-left pocket (155.8 px of travel)
+        track = pot_track("cue", "head-left")
+        run = track.samples[19:]                       # the last still sample, then the walk
+        measured = [math.dist((a.x, a.y), (b.x, b.y)) / (b.t - a.t)
+                    for a, b in zip(run, run[1:])]
         report = report_for(track)
         self.assertEqual(len(report.shots), 1)
         shot = report.shots[0]
@@ -243,8 +286,8 @@ class ShotRuleTests(GateTestCase):
         self.assertEqual(shot.ball_id, "cue")
         self.assertAlmostEqual(shot.onset_t, 19 * DT, delta=DT)          # the last still sample
         self.assertEqual(shot.onset_frame_index, 19)
-        self.assertAlmostEqual(shot.direction_deg, 204.6, delta=1.0)     # left and up, image space
-        self.assertAlmostEqual(shot.peak_speed_px_s, step * FPS, delta=ONSET_TOL)
+        self.assertAlmostEqual(shot.direction_deg, 207.9, delta=1.0)     # left and up, image space
+        self.assertAlmostEqual(shot.peak_speed_px_s, max(measured), delta=ONSET_TOL)
         self.assertGreater(shot.duration_s, 0.5)
         self.assertGreater(shot.net_displacement_px, 100.0)
         self.assertLessEqual(shot.path_length_px, shot.net_displacement_px * 1.05)
@@ -266,7 +309,8 @@ class ShotRuleTests(GateTestCase):
 
     def test_direction_is_image_space_x_right_y_down(self):
         for dx, dy, want in [(1, 0, 0.0), (0, 1, 90.0), (-1, 0, 180.0), (0, -1, 270.0)]:
-            track = Track("b", tuple(still(*OPEN, 20) + moving(OPEN[0], OPEN[1], dx, dy, 10, 20)))
+            # 15 intervals of 4 px = 60 px of net travel, past the 2-diameter bar
+            track = Track("b", tuple(still(*OPEN, 20) + moving(OPEN[0], OPEN[1], dx, dy, 16, 20)))
             report = report_for(track)
             self.assertEqual(len(report.shots), 1)
             self.assertAlmostEqual(report.shots[0].direction_deg, want, delta=1e-6)
@@ -327,7 +371,8 @@ class ShotRuleTests(GateTestCase):
                         GateThresholds().rest_window_s)
 
     def test_too_short_a_rest_is_not_a_shot(self):
-        rows = still(*OPEN, 5) + moving(OPEN[0], OPEN[1], 1, 0, 10, 5)
+        # the move itself is real (80 px net), so the rest stretch is what fails
+        rows = still(*OPEN, 5) + moving(OPEN[0], OPEN[1], 1, 0, 17, 5, px=5.0)
         report = report_for(Track("b", tuple(rows)))
         self.assertEqual(report.shots, [])
         self.assertIn("no_still_stretch", codes(report.rejections))
@@ -370,25 +415,89 @@ class ShotRuleTests(GateTestCase):
         self.assertEqual(th.break_min_balls, 3)
         self.assertEqual(th.simultaneous_window_s, 0.15)
         self.assertEqual(th.edge_margin_px, 20.0)
+        self.assertEqual(th.min_net_displacement_diameters, 2.0)
+        self.assertIsNone(th.ball_diameter_px)
+        self.assertEqual(th.frame_scale, 1.0)
         self.assertIsNone(th.frame_size)
         self.assertIsNone(th.cloth_quad)
         self.assertEqual(th.min_confidence, 0.0)
+        # the ball's size is resolved in the frame the track is given in
+        self.assertEqual(GateThresholds().ball_diameter(), BALL_DIAMETER_NATIVE_PX)
+        self.assertAlmostEqual(GateThresholds(frame_scale=0.75).ball_diameter(), 13.8, delta=1e-9)
+        self.assertAlmostEqual(GateThresholds(frame_size=(960, 540)).ball_diameter(), 13.8,
+                               delta=1e-9)
+        self.assertEqual(GateThresholds(ball_diameter_px=11.0).ball_diameter(), 11.0)
+        self.assertEqual(GateThresholds(ball_diameter_px=11.0).min_net_displacement_px(), 22.0)
+        self.assertAlmostEqual(GateThresholds(frame_size=(960, 540)).min_net_displacement_px(),
+                               27.6, delta=1e-9)
         # a raised bar really is used
         strict = GateThresholds(motion_speed_px_s=500.0)
         rows = still(*OPEN, 20) + moving(OPEN[0], OPEN[1], 1, 0, 20, 20, px=4.0)
         self.assertEqual(report_for(Track("b", tuple(rows)), thresholds=strict).shots, [])
         self.assertEqual(len(report_for(Track("b", tuple(rows))).shots), 1)
 
-    def test_motion_that_returns_to_its_start_has_no_direction(self):
+    def test_motion_that_returns_to_its_start_is_an_oscillation_not_a_shot(self):
+        """A run that ends where it began did not go anywhere, whatever its speed."""
         rows = (still(*OPEN, 20)
                 + [sample(20, OPEN[0] + 8, OPEN[1]), sample(21, OPEN[0] + 12, OPEN[1]),
                    sample(22, OPEN[0] + 4, OPEN[1]), sample(23, OPEN[0], OPEN[1])])
         report = report_for(Track("b", tuple(rows)))
-        self.assertEqual(len(report.shots), 1)
-        shot = report.shots[0]
-        self.assertEqual((shot.direction_x, shot.direction_y), (0.0, 0.0))
-        self.assertIsNone(shot.direction_deg)
+        self.assertEqual(report.shots, [])
+        self.assertIn("oscillation_no_net_travel", codes(report.rejections))
+        record = [r for r in report.rejections if r.code == "oscillation_no_net_travel"][0]
+        self.assertEqual(record.numbers["net_displacement_px"], 0.0)
+        self.assertGreater(record.numbers["path_length_px"], 0.0)
         self.assert_json_safe(report)
+
+    def test_an_identity_that_jitters_inside_its_own_footprint_is_not_a_shot(self):
+        """The two shapes the served queue carried, at the dense run's 960x540 frame.
+
+        Both exceed the speed rule on every interval; neither goes anywhere.  The bar
+        is 2 ball diameters and the frame resolves a ball to 18.4 x 960/1280 = 13.8 px,
+        so 27.6 px of net travel is required and neither shape comes close.
+        """
+        thresholds = GateThresholds(frame_size=(960, 540))
+        self.assertAlmostEqual(thresholds.ball_diameter(), 13.8, delta=0.01)
+        self.assertAlmostEqual(thresholds.min_net_displacement_px(), 27.6, delta=0.02)
+        # shape of the served white id 9001: peak 303.6 px/s, path 80.6 px, net 0.2 px
+        jitter = still(*OPEN, 20)
+        x = OPEN[0]
+        for k in range(28):
+            x += 2.0 if k % 2 == 0 else -2.0
+            jitter.append(sample(20 + k, x, OPEN[1]))
+        report = report_for(Track("white", tuple(jitter)), thresholds=thresholds)
+        self.assertEqual(report.shots, [])
+        record = [r for r in report.rejections if r.code == "oscillation_no_net_travel"][0]
+        self.assertLessEqual(record.numbers["net_displacement_px"], 2.0)
+        self.assertGreater(record.numbers["path_length_px"], 50.0)
+        self.assertLess(record.numbers["net_displacement_diameters"], 2.0)
+        self.assertGreater(record.numbers["peak_speed_px_s"], thresholds.motion_speed_px_s)
+        self.assertEqual(record.numbers["net_over_path"], 0.0)
+        self.assertIsNone(record.numbers["path_over_net"])   # no ratio when net is 0
+        # shape of the served blue id 9003: path 59.9 px, net 19.7 px = 1.43 diameters
+        drift = still(*OPEN, 20)
+        x, y = OPEN
+        for k in range(15):
+            x += 4.0 if k % 2 == 0 else -3.5
+            y += 1.4
+            drift.append(sample(20 + k, x, y))
+        report2 = report_for(Track("blue", tuple(drift)), thresholds=thresholds)
+        self.assertEqual(report2.shots, [])
+        record2 = [r for r in report2.rejections if r.code == "oscillation_no_net_travel"][0]
+        self.assertLess(record2.numbers["net_displacement_px"],
+                        thresholds.min_net_displacement_px())
+        self.assertGreater(record2.numbers["path_length_px"], 50.0)
+        # ... and the real move of the same run (net 159.1 px over a 159.9 px path)
+        real = still(*OPEN, 291) + moving(OPEN[0], OPEN[1], 1, 0, 23, 291, px=7.2)
+        report3 = report_for(Track("blue", tuple(real)), thresholds=thresholds)
+        self.assertEqual(len(report3.shots), 1)
+        self.assertGreater(report3.shots[0].net_displacement_px, 4 * thresholds.ball_diameter())
+        for name, rep in (("white", report), ("blue", report2), ("real move", report3)):
+            with self.subTest(shape=name):
+                self.assert_evidence_complete(rep)
+                self.assert_json_safe(rep)
+        self.assertIn("oscillation_no_net_travel", codes(report.rejections))
+        self.assertIn("oscillation_no_net_travel", codes(report2.rejections))
 
 
 # ------------------------------------------------------------------- pot rule
@@ -401,7 +510,7 @@ class PotRuleTests(GateTestCase):
         for name in POCKETS_MM:
             with self.subTest(pocket=name):
                 pocket = model.by_name(name)
-                report = report_for(pot_track("obj", pocket))
+                report = report_for(pot_track("obj", pocket.name))
                 pots = [p for p in report.pots if p.is_pot]
                 self.assertEqual(len(pots), 1,
                                  f"{name}: {[(p.verdict, p.reason) for p in report.pots]}")
@@ -410,6 +519,14 @@ class PotRuleTests(GateTestCase):
                 self.assertEqual(pot.verdict, "pot")
                 self.assertEqual(pot.reason, "inside_pocket_persistence_clear")
                 self.assertLessEqual(pot.distance_px, pot.radius_px)
+                # both units are reported, and the millimetre test is the authority
+                self.assertEqual(pot.pocket_test, "mm")
+                self.assertLessEqual(pot.distance_mm, pot.radius_mm)
+                self.assertAlmostEqual(pot.radius_mm, POCKET_R_MM)
+                self.assertTrue(pot.inside_mm)
+                self.assertTrue(pot.inside_px)
+                self.assertFalse(pot.pocket_test_disagrees)
+                self.assertIsNotNone(pot.last_mm)
                 self.assertEqual(tuple(pot.pocket_px), (pocket.x, pocket.y))
                 self.assertAlmostEqual(pot.persistence_s, GateThresholds().persistence_s)
                 self.assertGreaterEqual(pot.gap_s, pot.persistence_s)
@@ -422,9 +539,98 @@ class PotRuleTests(GateTestCase):
                 self.assert_evidence_complete(report)
                 self.assert_json_safe(report)
 
+    def test_a_ball_ending_inside_the_pixel_radius_but_outside_the_millimetre_gate(self):
+        """The served candidate: 9.62 px from the centre, 148 mm against a 100 mm gate.
+
+        The pixel radius cannot follow this projection, so the millimetre test is the
+        authority and the disagreement is the reason - not a pot-shaped candidate.
+        """
+        model = default_pocket_model(quad=WORK_QUAD, pocket_r_mm=POCKET_R_MM)
+        pocket = model.by_name("left-side")
+        self.assertAlmostEqual(pocket.radius_px, 14.46, delta=0.02)
+        target = (pocket.x + 3.2, pocket.y + 9.08)      # 9.62 px from the centre
+        rows = (still(*OPEN, 20)
+                + approach(target, OPEN[0], OPEN[1], 20, n=25, finish=1.0))
+        report = report_for(Track("t265-blue", tuple(rows)),
+                            thresholds=GateThresholds(frame_size=list(WORK_SIZE),
+                                                      cloth_quad=list(WORK_QUAD)))
+        self.assertEqual(report.pots, [], "a pocket-shaped candidate must not survive the mm test")
+        self.assertIn("pocket_test_disagrees_px_vs_mm", codes(report.rejections))
+        record = [r for r in report.rejections
+                  if r.code == "pocket_test_disagrees_px_vs_mm"][0]
+        self.assertAlmostEqual(record.numbers["distance_px"], 9.62, delta=0.05)
+        self.assertAlmostEqual(record.numbers["radius_px"], 14.46, delta=0.02)
+        self.assertAlmostEqual(record.numbers["distance_mm"], 148.0, delta=1.5)
+        self.assertEqual(record.numbers["radius_mm"], 100.0)
+        self.assertTrue(record.numbers["inside_px"])
+        self.assertFalse(record.numbers["inside_mm"])
+        self.assertFalse(record.numbers["inside"])
+        self.assertEqual(record.numbers["pocket"], "left-side")
+        self.assertAlmostEqual(record.numbers["ppx_vs_mm_ratio"], 1.485, delta=0.02)
+        self.assert_evidence_complete(report)
+        self.assert_json_safe(report)
+
+    def test_the_same_track_inside_the_millimetre_gate_is_a_pot_candidate_again(self):
+        """Half a radius towards the rail is 74 mm: inside, and both tests agree."""
+        model = default_pocket_model(quad=WORK_QUAD, pocket_r_mm=POCKET_R_MM)
+        pocket = model.by_name("left-side")
+        target = (pocket.x + 1.6, pocket.y + 4.54)      # 4.81 px = half the pixel radius
+        rows = (still(*OPEN, 20)
+                + approach(target, OPEN[0], OPEN[1], 20, n=25, finish=1.0))
+        report = report_for(Track("obj", tuple(rows)),
+                            thresholds=GateThresholds(frame_size=list(WORK_SIZE),
+                                                      cloth_quad=list(WORK_QUAD)))
+        self.assertEqual([p.verdict for p in report.pots], ["pot"])
+        pot = report.pots[0]
+        self.assertEqual(pot.pocket_test, "mm")
+        self.assertLessEqual(pot.distance_mm, pot.radius_mm)
+        self.assertTrue(pot.inside_px)
+        self.assertFalse(pot.pocket_test_disagrees)
+
+    def test_a_foot_rail_pocket_radius_agrees_with_the_millimetre_test(self):
+        """The foot pockets are where the projection compresses mm/px the most.
+
+        A single scalar pixel radius cannot be the image of the 100 mm disc: the true
+        footprint is an ellipse whose axes differ by ~2.5x here.  What must hold is
+        that the millimetre test is exact - every canonical point at 100 mm from the
+        pocket centre measures 100 mm, whatever its direction - and that the scalar
+        radius is reported next to it rather than deciding.
+        """
+        model = default_pocket_model(quad=WORK_QUAD, pocket_r_mm=POCKET_R_MM)
+        foot = model.by_name("foot-right")
+        head = model.by_name("head-left")
+        long_axis, short_axis = foot.radius_px_axes()
+        self.assertAlmostEqual(foot.radius_px, 29.09, delta=0.02)     # 100 mm at the mean scale
+        self.assertAlmostEqual(long_axis, 39.72, delta=0.05)
+        self.assertAlmostEqual(short_axis, 15.30, delta=0.05)
+        self.assertGreater(long_axis / short_axis, 2.4)
+        self.assertGreater(head.radius_px_axes()[0] / head.radius_px_axes()[1], 4.0)
+        # the mean scale itself changes ~3x between the rails (the reported reason)
+        self.assertAlmostEqual(foot.radius_px / head.radius_px, 3.0, delta=0.05)
+        read_inside, read_outside, scalar_agrees = 0, 0, 0
+        for step in range(72):
+            angle = 2.0 * math.pi * step / 72.0
+            mm = (foot.mm[0] + 0.99 * POCKET_R_MM * math.cos(angle),
+                  foot.mm[1] + 0.99 * POCKET_R_MM * math.sin(angle))
+            px = project(model.mm_to_px, mm)
+            measured = model.measure(*px)
+            self.assertAlmostEqual(measured.distance_mm, 0.99 * POCKET_R_MM, delta=0.5,
+                                   msg=f"angle {step}: the mm test must be exact")
+            self.assertTrue(measured.inside_mm)
+            self.assertEqual(measured.pocket.name, "foot-right")
+            read_inside += 1 if measured.inside_px else 0
+            scalar_agrees += 1 if measured.inside_px == measured.inside_mm else 0
+        # the scalar radius calls some of these inside and some outside: it is a
+        # diagnostic, and the millimetre test is what decides
+        self.assertTrue(0 < read_inside < 72)
+        self.assertLess(scalar_agrees, 72)
+        outside_mm = project(model.mm_to_px,
+                             (foot.mm[0] - 1.05 * POCKET_R_MM, foot.mm[1]))
+        self.assertFalse(model.measure(*outside_mm).inside)
+        self.assertFalse(model.measure(*outside_mm).inside_mm)
+
     def test_a_ball_vanishing_under_the_occlusion_flag_is_unknown_never_a_pot(self):
-        pocket = default_pocket_model().by_name("head-left")
-        rows = still(700.0, 400.0, 20) + approach(pocket, 700.0, 400.0, 20)
+        rows = list(pot_track("obj", "head-left").samples)   # ends 40 mm inside the gate
         last = rows[-1]
         rows[-1] = Sample(last.frame_index, last.t, last.x, last.y, last.confidence, True)
         report = report_for(Track("obj", tuple(rows)))
@@ -436,12 +642,13 @@ class PotRuleTests(GateTestCase):
         self.assertEqual(pot.occlusion_status, "occluded")
         self.assertEqual(pot.pocket, "head-left")
         self.assertEqual(pot.occlusion_source, "track_flags")
+        self.assertTrue(pot.inside_mm)                    # it was in the pocket in mm ...
         self.assertIn("occlusion_mode", pot.thresholds)
         self.assert_evidence_complete(report)
 
     def test_an_occlusion_series_over_the_persistence_window_blocks_a_pot(self):
         pocket = default_pocket_model().by_name("head-left")
-        track = pot_track("obj", pocket)
+        track = pot_track("obj", pocket.name)
         series = Occlusion.from_shares([track.samples[-1].t + 0.4], [0.55])
         report = report_for(track, occlusion=series)
         self.assertEqual([p for p in report.pots if p.is_pot], [])
@@ -452,7 +659,7 @@ class PotRuleTests(GateTestCase):
 
     def test_a_clear_series_still_gives_a_pot(self):
         pocket = default_pocket_model().by_name("foot-right")
-        track = pot_track("obj", pocket)
+        track = pot_track("obj", pocket.name)
         series = Occlusion.from_shares([track.samples[-1].t + 0.3, track.samples[-1].t + 1.1],
                                        [0.04, 0.09])
         report = report_for(track, occlusion=series)
@@ -461,7 +668,7 @@ class PotRuleTests(GateTestCase):
 
     def test_a_silent_occlusion_channel_is_unknown_not_a_pot(self):
         pocket = default_pocket_model().by_name("head-right")
-        track = pot_track("obj", pocket)
+        track = pot_track("obj", pocket.name)
         report = report_for(track, occlusion=Occlusion.none())
         self.assertEqual([p.verdict for p in report.pots], ["unknown"])
         self.assertEqual(report.pots[0].reason, "occlusion_channel_silent")
@@ -469,12 +676,12 @@ class PotRuleTests(GateTestCase):
 
     def test_a_persistence_window_the_caller_did_not_state_is_unknown(self):
         pocket = default_pocket_model().by_name("head-left")
-        track = pot_track("obj", pocket)
+        track = pot_track("obj", pocket.name)
         report = classify([track])                     # observation ends with the track
         self.assertEqual([p for p in report.pots if p.is_pot], [])
         self.assertIn("track_ends_at_window_end", codes(report.rejections))
         record = [r for r in report.rejections if r.code == "track_ends_at_window_end"][0]
-        self.assertTrue(record.numbers["inside_pocket_radius"])
+        self.assertTrue(record.numbers["inside_pocket"])
         self.assertEqual(record.numbers["pocket"], "head-left")
         # ... and an explicit short window is refused for the same reason
         short = classify([track], observed_until_t=track.samples[-1].t + 0.5)
@@ -501,7 +708,7 @@ class PotRuleTests(GateTestCase):
     def test_a_corner_pot_is_not_called_leaving_the_cloth(self):
         """A corner pocket sits *on* the cloth boundary: the pocket wins."""
         pocket = default_pocket_model().by_name("foot-right")
-        report = report_for(pot_track("obj", pocket),
+        report = report_for(pot_track("obj", pocket.name),
                             thresholds=GateThresholds(cloth_quad=VOD30_REFERENCE_QUAD,
                                                       frame_size=(1280, 720)))
         self.assertEqual([p.verdict for p in report.pots], ["pot"])
@@ -585,8 +792,7 @@ class PotRuleTests(GateTestCase):
         self.assertEqual(report_for(Track("obj", ())).rejections[0].code, "empty_track")
 
     def test_duplicate_frames_are_collapsed_and_counted(self):
-        rows = (still(700.0, 400.0, 20)
-                + approach(default_pocket_model().by_name("head-left"), 700.0, 400.0, 20))
+        rows = list(pot_track("obj", "head-left").samples)
         rows.append(Sample(rows[-2].frame_index, rows[-2].t, 0.0, 0.0, 0.5, False))
         track = Track("obj", tuple(rows))
         self.assertEqual(track.duplicates(), 1)
@@ -595,15 +801,14 @@ class PotRuleTests(GateTestCase):
         self.assertEqual([p.verdict for p in report.pots], ["pot"])
 
     def test_the_confidence_floor_is_a_parameter(self):
-        rows = (still(700.0, 400.0, 20)
-                + approach(default_pocket_model().by_name("head-left"), 700.0, 400.0, 20))
-        rows = [Sample(s.frame_index, s.t, s.x, s.y, 0.1, s.occluded) for s in rows]
+        rows = [Sample(s.frame_index, s.t, s.x, s.y, 0.1, s.occluded)
+                for s in pot_track("obj", "head-left").samples]
         report = report_for(Track("obj", tuple(rows)), thresholds=GateThresholds(min_confidence=0.5))
         self.assertEqual(report.shots, [])
         self.assertEqual(report.pots, [])
         self.assertEqual(codes(report.rejections), {"below_confidence_floor"})
-        # the default floor keeps every sample, and then the same track is a pot -
-        # which is what proves the floor, not the geometry, decided the refusal
+        # the default floor keeps every sample, and then the same track is a shot and
+        # a pot - which is what proves the floor, not the geometry, decided the refusal
         default = report_for(Track("obj", tuple(rows)))
         self.assertEqual([p.verdict for p in default.pots], ["pot"])
         self.assertEqual(len(default.shots), 1)
@@ -668,7 +873,7 @@ class ReportTests(GateTestCase):
     """The report is a complete account: every track, every refusal, JSON-safe."""
 
     def mixed_tracks(self) -> list[Track]:
-        return [pot_track("a", default_pocket_model().by_name("head-left")),
+        return [pot_track("a", "head-left"),
                 Track("b", tuple(still(*OPEN, 40))),
                 Track("c", tuple(still(*OPEN, 20) + moving(OPEN[0], OPEN[1], 1, 0, 20, 20)))]
 
@@ -697,7 +902,7 @@ class ReportTests(GateTestCase):
             self.assertGreaterEqual(count, 1)
 
     def test_the_observation_window_defaults_to_the_last_sample_in_the_batch(self):
-        a = pot_track("a", default_pocket_model().by_name("head-left"))
+        a = pot_track("a", "head-left")
         b = Track("b", tuple(still(*OPEN, 20) + [sample(40, OPEN[0], OPEN[1], t=10.0)]))
         report = classify([a, b])
         self.assertEqual(report.observed_until_t, 10.0)
@@ -706,7 +911,8 @@ class ReportTests(GateTestCase):
     def test_rejection_codes_are_the_documented_vocabulary(self):
         expected = {"empty_track", "track_too_short", "below_confidence_floor",
                     "no_motion_onset", "no_still_stretch", "motion_too_short",
-                    "roll_without_pocket", "reappeared_after_gap", "disappeared_outside_pocket",
+                    "oscillation_no_net_travel", "roll_without_pocket", "reappeared_after_gap",
+                    "disappeared_outside_pocket", "pocket_test_disagrees_px_vs_mm",
                     "left_frame_edge", "left_cloth", "track_ends_at_window_end"}
         scenarios = [
             (Track("a", ()), {}),
@@ -728,8 +934,20 @@ class ReportTests(GateTestCase):
              {"thresholds": GateThresholds(min_confidence=0.5)}),
             (Track("k", tuple(still(*OPEN, 20) + moving(OPEN[0], OPEN[1], -1, 0, 25, 20, px=4.0)
                               + still(OPEN[0] - 100, OPEN[1], 15, start=60))), {}),
-            (pot_track("l", default_pocket_model().by_name("head-left")),
+            (pot_track("l", "head-left"),
              {"observed_until_t": None}),
+            # a run that jitters inside its own footprint: oscillation, not a shot
+            (Track("m", tuple(still(*OPEN, 20) + [sample(20, OPEN[0] + 8, OPEN[1]),
+                                                 sample(21, OPEN[0] + 12, OPEN[1]),
+                                                 sample(22, OPEN[0] + 4, OPEN[1]),
+                                                 sample(23, OPEN[0], OPEN[1])])), {}),
+            # a ball inside the pixel radius but outside the millimetre gate
+            (Track("n", tuple(still(*OPEN, 20)
+                              + approach((default_pocket_model(quad=WORK_QUAD).by_name("left-side").x + 3.2,
+                                          default_pocket_model(quad=WORK_QUAD).by_name("left-side").y + 9.08),
+                                         OPEN[0], OPEN[1], 20, n=25, finish=1.0))),
+             {"thresholds": GateThresholds(frame_size=list(WORK_SIZE),
+                                           cloth_quad=list(WORK_QUAD))}),
         ]
         seen = set()
         for track, kw in scenarios:
@@ -739,7 +957,7 @@ class ReportTests(GateTestCase):
         self.assertEqual(seen, expected, expected - seen)
 
     def test_track_events_can_be_called_directly_on_one_track(self):
-        track = pot_track("obj", default_pocket_model().by_name("foot-left"))
+        track = pot_track("obj", "foot-left")
         shots, pots, rejections = track_events(track, default_pocket_model(),
                                                observed_until_t=track.samples[-1].t + PERSIST)
         self.assertEqual(len(shots), 1)
@@ -747,7 +965,7 @@ class ReportTests(GateTestCase):
         self.assertEqual(rejections, [])
 
     def test_every_record_is_a_plain_dict_after_as_dict(self):
-        report = classify([pot_track("obj", default_pocket_model().by_name("right-side"))])
+        report = classify([pot_track("obj", "right-side")])
         payload = report.as_dict()
         self.assertEqual(set(payload), {"shots", "pots", "rejections", "breaks", "counts",
                                         "observed_until_t", "notes"})
