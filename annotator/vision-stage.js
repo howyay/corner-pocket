@@ -204,6 +204,10 @@ let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerO
 // The source panel's open state and the half-typed guest name are adapter state,
 // not engine state: the engine owns no frame or source selection ambiguity.
 let sourceOpen = false, guestDraft = null;
+// The VOD fields keep what the operator typed: the panel is rebuilt whenever the
+// live status changes (every poll), so an input whose value only lives in the DOM
+// loses a half-typed id. Same idea as guestDraft.
+let replayDraft = null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const t = key => (COPY[opts?.lang] || COPY.en)[key] || COPY.en[key] || key;
 const $ = id => root ? root.querySelector(id) : null;
@@ -605,6 +609,10 @@ function replaySelfDescription(replay) {
 function replayBlock(s) {
   const live = s.live || {};
   const chosen = opts.replayChoice ? opts.replayChoice() : null;
+  const draft = replayDraft || {};
+  const vodValue = draft.vod != null ? draft.vod : (chosen?.vod_id || '');
+  const startValue = draft.start != null ? draft.start : String(chosen?.start_s ?? 0);
+  const rateValue = draft.rate != null ? draft.rate : String(chosen?.rate ?? 1);
   const running = live.replay || (live.source && live.source.kind === 'vod-replay' ? live.source : null);
   const failed = live.attempt?.error && String(live.attempt.source || '').startsWith('vod-replay');
   const state = running ? `<p class="vs-mono" data-vs-replay="running">${esc(replaySelfDescription(running))}</p>`
@@ -612,8 +620,8 @@ function replayBlock(s) {
     : chosen ? `<p class="vs-mono" data-vs-replay="chosen">${esc(t('vodChosen'))}: vod ${esc(chosen.vod_id)} · ${esc(t('vodStart'))} ${esc(chosen.start_s)} · ${esc(t('vodRate').split(' ')[0])} ×${esc(chosen.rate)} · ${esc(t('vodNotLive'))}</p>`
     : '';
   return `<div class="vs-block vs-replay"><h4>${esc(t('vodReplay'))}</h4>
-    <label class="vs-field">${esc(t('vodId'))}<input name="vod" type="text" data-vs-field="vod" placeholder="https://www.twitch.tv/videos/1234567890"></label>
-    <div class="vs-row"><label class="vs-field">${esc(t('vodStart'))}<input name="start" type="number" data-vs-field="vod-start" min="0" step="1" value="0"></label><label class="vs-field">${esc(t('vodRate'))}<input name="rate" type="number" data-vs-field="vod-rate" min="0.25" max="4" step="0.25" value="1"></label></div>
+    <label class="vs-field">${esc(t('vodId'))}<input name="vod" type="text" data-vs-field="vod" value="${esc(vodValue)}" placeholder="https://www.twitch.tv/videos/1234567890"></label>
+    <div class="vs-row"><label class="vs-field">${esc(t('vodStart'))}<input name="start" type="number" data-vs-field="vod-start" min="0" step="1" value="${esc(startValue)}"></label><label class="vs-field">${esc(t('vodRate'))}<input name="rate" type="number" data-vs-field="vod-rate" min="0.25" max="4" step="0.25" value="${esc(rateValue)}"></label></div>
     <div class="vs-row"><button data-vs-action="pick-replay">${esc(t('vodUse'))}</button></div>
     ${state}<p class="vs-note">${esc(t('vodNote'))}</p></div>`;
 }
@@ -638,6 +646,7 @@ function sourcePanelHTML(s) {
   const liveFailed = !!(live.error || live.attempt?.error);
   const liveRowState = liveFailed && live.state !== 'running' && live.state !== 'starting' ? 'error' : live.state;
   return `${attempt}
+  ${replayBlock(s)}
   <div class="vs-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <p class="vs-mono">${esc(s.source.kind === 'vod' ? s.source.label : '—')} · ${esc(t('frameCount'))} ${esc(s.frame.count)}</p></div>
   <div class="vs-block"><h4>${esc(t('liveState'))}</h4>
@@ -649,7 +658,6 @@ function sourcePanelHTML(s) {
     ${liveStageLine(s)}
     <p class="vs-note">${esc(t('latency'))}</p></div>
   <div class="vs-block"><h4>${esc(t('detectors'))}</h4><div class="vs-row">${[['table','table'],['person','person'],['balls','ball']].map(([k, l]) => `<label class="vs-check"><input type="checkbox" data-vs-action="detector" data-vs-value="${k}" ${s.detectors[k] ? 'checked' : ''}> ${esc(t(l))}</label>`).join('')}</div><p class="vs-note">${esc(t('detectorReason'))}</p></div>
-  ${replayBlock(s)}
   <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}
     <form id="source-form"><label class="vs-field">${esc(t('channelUrl'))}<input name="url" type="url" placeholder="https://www.twitch.tv/channel" required></label><button class="primary">${esc(t('addChannel'))}</button></form></div>`;
 }
@@ -846,7 +854,23 @@ function render() {
   const s = snap();
   if (!root || !s) return;
   const chips = chipsHTML(s);
-  if (chips !== sig.chips) { const node = $('#vs-chips'); if (node) node.innerHTML = chips; sig.chips = chips; }
+  if (chips !== sig.chips) {
+    const node = $('#vs-chips');
+    if (node) {
+      // The panel is rebuilt whenever the live status changes (every poll). A field
+      // the operator is typing in keeps its focus and its caret on top of keeping
+      // its value in replayDraft, so typing an id is never interrupted.
+      const active = typeof document !== 'undefined' ? document.activeElement : null;
+      const keep = active && node.contains && node.contains(active) && active.dataset
+        ? (active.dataset.vsField || active.dataset.vsAction || active.id || null) : null;
+      const caret = keep && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+      node.innerHTML = chips; sig.chips = chips;
+      if (keep) {
+        const again = node.querySelector(`[data-vs-field="${keep}"], [data-vs-action="${keep}"], #${keep}`);
+        if (again) { if (again.focus) again.focus(); if (caret != null && again.setSelectionRange) again.setSelectionRange(caret, caret); }
+      }
+    } else { sig.chips = chips; }
+  }
   const railSig = `${s.focus}|${s.eventFilter}|${s.events.index}|${s.events.items.map(e => `${e.id}:${e.verdict}`).join(',')}|${s.balls.items.length}|${s.balls.index}|${s.selection.crop?.file || ''}|${s.persons.win}|${s.persons.tracks.map(x => `${x.id}:${x.seed || ''}`).join(',')}|${s.persons.track || ''}|${s.events.reviewed}|${opts.lang}`;
   if (railSig !== sig.rail) { const node = $('#vs-cues'); if (node) node.innerHTML = railHTML(s); sig.rail = railSig; }
   const layersSig = `${s.dataset}|${Object.entries(s.overlay).map(([k, v]) => `${k}${v ? 1 : 0}`).join('')}`;
@@ -911,6 +935,7 @@ function act(action, value, node) {
       const field = name => (root.querySelector(`[data-vs-field="${name}"]`) || {}).value || '';
       const vod = String(field('vod')).trim();
       if (!vod) { opts.notice?.(t('vodId')); break; }
+      replayDraft = {vod, start: field('vod-start'), rate: field('vod-rate')};
       opts.pickReplay({vod_id: vod, start_s: Number(field('vod-start')) || 0, rate: Number(field('vod-rate')) || 1});
       break;
     }
@@ -999,9 +1024,12 @@ function syncGuestField(value) {
   if (hint) hint.textContent = off ? (snap()?.selection?.person?.cluster_id == null ? t('noCluster') : t('bindIdentityHint')) : t('bindGuestHint');
 }
 function onInput(event) {
-  if (!root || !root.contains(event.target)) return;
-  const node = event.target.closest ? event.target.closest('[data-vs-action="guest-name"]') : null;
-  if (node) guestDraft = {track: String(snap()?.persons?.track ?? ''), value: node.value};
+  if (!root || (root.contains && !root.contains(event.target))) return;
+  const target = event.target;
+  const guest = target.closest ? target.closest('[data-vs-action="guest-name"]') : null;
+  if (guest) { guestDraft = {track: String(snap()?.persons?.track ?? ''), value: guest.value}; return; }
+  const field = target.dataset?.vsField;
+  if (field) { replayDraft = {...(replayDraft || {}), [field === 'vod' ? 'vod' : field === 'vod-start' ? 'start' : 'rate']: target.value}; }
 }
 function onClick(event) {
   if (!root || !root.contains(event.target)) return;
@@ -1033,5 +1061,5 @@ function attach(options) {
   render();
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput); }};
 }
-window.VisionStage = {attach, render, act, actionsHTML, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
+window.VisionStage = {attach, render, act, onInput, actionsHTML, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
 })();

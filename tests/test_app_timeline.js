@@ -1634,6 +1634,31 @@ test('two layers on one frame: model dashed, yours solid, and only yours are sav
   T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
 });
 
+test('the VOD fields are reachable and keep what the operator typed', () => {
+  // (1) The panel used to list the replay controls last, so at 1280x900 the button
+  // sat below the panel's own scroll box: elementFromPoint on it returned the
+  // frame-index input and a mouse click never reached it. The block is first now.
+  const panel = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot());
+  assert.ok(panel.indexOf('data-vs-replay=') > 0 || panel.indexOf('data-vs-field="vod"') > 0, 'the replay block is in the panel');
+  assert.ok(panel.indexOf('data-vs-field="vod"') < panel.indexOf('data-vs-action="pick-dataset"'),
+    'and it comes before the dataset block, so its controls are inside the panel\u2019s visible box');
+  assert.ok(panel.indexOf('data-vs-action="pick-replay"') < panel.indexOf('id="source-form"'),
+    'above the saved-channels form too');
+  // (2) The value lives in adapter state, not only in the DOM: the panel is rebuilt
+  // on every live-status poll, and a half-typed id used to vanish with it.
+  const VS = adapterStage('en', ROSTER);
+  VS.onInput({target: {dataset: {vsField: 'vod'}, closest: () => null, value: 'https://www.twitch.tv/videos/1000000011'}});
+  VS.onInput({target: {dataset: {vsField: 'vod-start'}, closest: () => null, value: '30'}});
+  const again = VS.sourcePanelHTML(visionSnapshot());
+  assert.ok(again.includes('value="https://www.twitch.tv/videos/1000000011"'), 'the typed id survives a rebuild');
+  assert.ok(/data-vs-field="vod-start"[^>]*value="30"/.test(again), 'and so does the start offset');
+  VS.act('source-panel');   // the panel is open while an id is being typed
+  assert.ok(VS.chipsHTML(visionSnapshot()).includes('value="https://www.twitch.tv/videos/1000000011"'),
+    'including a chips re-render, which is what the poll triggers');
+  assert.ok(ADAPTER_SOURCE.includes('document.activeElement') && ADAPTER_SOURCE.includes('setSelectionRange'),
+    'and a focused field keeps its focus and caret across that rebuild');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
 
