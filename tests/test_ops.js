@@ -210,6 +210,17 @@ test('appearance form serializes numbers and unchecked diamonds correctly', asyn
   await h.handlers.submit(submission('appearance-form', {clothColor: '#1f4a70', lampGlow: '0.4'}));
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls[0])')), {name: 'settings_update', payload: {clothColor: '#1f4a70', lampGlow: 0.4, showDiamonds: false}});
 });
+test('adding a regular never sends a rating the form did not collect; editing keeps it', async () => {
+  const h = harness();
+  const playerForm = values => ({preventDefault() {}, target: {getAttribute: () => null, classList: {contains: c => c === 'player-form'}, values}});
+  assert.ok(!h.evaluate('playerForm()').includes('name="rating"'), 'create form has no rating field');
+  await h.handlers.submit(playerForm({name: 'Ada', status: 'Active'}));
+  h.evaluate('realCall=calls[0]');
+  assert.equal(h.evaluate("'rating' in realCall.payload"), false, 'no rating key, so JSON never carries NaN as null');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls[0])')), {name: 'player_save', payload: {name: 'Ada', status: 'Active'}});
+  await h.handlers.submit(playerForm({id: 'p1', name: 'Ada', rating: '640', status: 'Active', notes: ''}));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls[1])')), {name: 'player_save', payload: {id: 'p1', name: 'Ada', rating: 640, status: 'Active', notes: ''}});
+});
 test('failed API response localizes primary copy and preserves exact optional detail', async () => {
   const h = harness();
   h.evaluate("lang='zh'; render=()=>{}; errors=[]; message=(text,error,detail)=>errors.push({text,error,detail}); action=realAction");
