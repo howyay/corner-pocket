@@ -416,6 +416,30 @@ test('a Twitch VOD picker sends the replay source the server accepts, never a li
   assert.equal(h.evaluate('errors.length'), 1);
   assert.equal(h.evaluate('replayChoice()'), null);
 });
+test('a face photo that is too large or not an image is explained at the file field, in both languages', async () => {
+  const h = harness();
+  let read = 0;
+  h.context.FileReader = function() { this.readAsDataURL = () => { read++; }; };
+  const photo = {validity: '', files: [], setCustomValidity(text) { this.validity = text; }, reportValidity() { return false; }};
+  const form = {preventDefault() {}, target: {id: 'enroll-form', dataset: {player: 'p1'}, querySelector: () => photo, querySelectorAll: () => [], values: {}}};
+  photo.files = [{size: 8 * 1024 * 1024 + 1, type: 'image/jpeg'}];
+  await h.handlers.submit(form);
+  assert.equal(photo.validity, 'Choose a photo of 8 MB or less.');
+  photo.files = [{size: 1000, type: 'application/pdf'}];
+  await h.handlers.submit(form);
+  assert.equal(photo.validity, 'Choose an image file (JPEG or PNG).');
+  h.evaluate("lang='zh'");
+  await h.handlers.submit(form);
+  assert.equal(photo.validity, '请选择图片文件（JPEG 或 PNG）。');
+  photo.files = [{size: 8 * 1024 * 1024 + 1, type: 'image/png'}];
+  await h.handlers.submit(form);
+  assert.equal(photo.validity, '请选择不超过 8 MB 的照片。');
+  assert.equal(read, 0, 'nothing is read or uploaded');
+  photo.files = [{size: 1000, type: 'image/jpeg'}];
+  await h.handlers.submit(form);
+  assert.equal(read, 1, 'a normal photo is read and sent');
+  assert.equal(h.evaluate("validationMessage('image_base64 is not a decodable image')"), '无法读取这张图片，请换一张 JPEG 或 PNG 照片。');
+});
 test('a VOD replay the server would refuse is explained before Start, in both languages', () => {
   const h = harness();
   h.evaluate("errors=[]; message=(text,error)=>errors.push({text,error})");
