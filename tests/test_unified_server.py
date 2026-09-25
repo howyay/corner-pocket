@@ -788,6 +788,89 @@ class BackendTests(unittest.TestCase):
         # An unknown token is refused as expired rather than enrolling anything.
         self.assertEqual(self.backend.enroll_confirm({'token': 'gone', 'player_name': 'Ana'})['reason'], 'preview_expired')
 
+    def _enrol_selection(self, track_id=6, seed=11):
+        """A real Selection (three mutually consistent faces) for the real confirm path."""
+        from src.enroll_from_tracklet import Candidate, Selection, plan_enrollment
+        rng = np.random.RandomState(seed)
+        base = rng.standard_normal(512).astype(np.float32)
+        base /= np.linalg.norm(base)
+        crops = []
+        for n in range(3):
+            noise = rng.standard_normal(512).astype(np.float32) * 0.02
+            crops.append(Candidate(frame_index=2000 + 30 * n, t=66.7 + n, bbox=[10, 10, 30, 30],
+                                   person_bbox=[0, 0, 100, 200], det_score=0.8, eye_px=12.0,
+                                   embedding=(base + noise) / np.linalg.norm(base + noise)))
+        enrollment = plan_enrollment(crops, track_id=track_id, player_name='preview', state={})
+        return Selection(dataset='vod30', frame_index=2000, track_id=track_id, selection_iou=1.0,
+                         frames_seen=3, enrollment=enrollment), base
+
+    def _confirm(self, name, selection):
+        """Preview (holds the plan under its token), then confirm, with crops rendered
+        from fixed bytes instead of the recording - the token logic is unchanged."""
+        from src.enroll_from_tracklet import enrollment_token
+        crops = [{'frame_index': c.frame_index, 'jpeg': b'crop-%d' % c.frame_index}
+                 for c in selection.enrollment.crops]
+        token = enrollment_token(selection.dataset, selection.track_id, crops)
+        self.backend._enroll_plans[token] = selection
+        with patch('src.enroll_from_tracklet.crop_jpeg',
+                   side_effect=lambda root, dataset, frame_index, bbox, **k: b'crop-%d' % frame_index):
+            return self.backend.enroll_confirm({'token': token, 'player_name': name})
+
+    def test_operations_writes_landing_during_a_confirm_survive_the_enrolment(self):
+        """The confirm reads the roster, renders and writes its scratch files, then
+        promotes. It must not overwrite state.json from that earlier read: a note or
+        an entrant posted in between is kept, the revision advances from the CURRENT
+        one, and the enrolment is one more event on the same log."""
+        from src import enroll_from_tracklet
+        self.backend.post(['api', 'operations'], {'action': 'player_save', 'revision': 0, 'name': 'Early'})
+        selection, _ = self._enrol_selection()
+        real_load_state = enroll_from_tracklet.load_state
+
+        def others_write_after_the_read(root):
+            snapshot = real_load_state(root)
+            now = self.backend.get(['api', 'operations'], {})['revision']
+            self.backend.post(['api', 'operations'], {'action': 'note_add', 'revision': now,
+                                                      'text': 'table 2 cloth replaced'})
+            self.backend.post(['api', 'operations'], {'action': 'entrant_add', 'revision': now + 1,
+                                                      'members': [{'name': 'Walk-in'}]})
+            return snapshot
+
+        with patch('src.enroll_from_tracklet.load_state', side_effect=others_write_after_the_read):
+            result = self._confirm('Ana', selection)
+        self.assertTrue(result['ok'], result)
+        before = {'revision': 3}   # player_save, note_add, entrant_add
+        state = json.loads((self.out / 'corner-pocket' / 'state.json').read_text())
+        self.assertEqual(state, self.backend.get(['api', 'operations'], {}))
+        self.assertEqual([n['text'] for n in state['notes']], ['table 2 cloth replaced'], 'the note survives')
+        self.assertEqual([m['name'] for e in state['tournament']['entrants'] for m in e['members']],
+                         ['Walk-in'], 'the entrant survives')
+        self.assertEqual([p['name'] for p in state['players']], ['Early', 'Ana'])
+        self.assertEqual(state['revision'], before['revision'] + 1, 'one revision past the current one')
+        self.assertEqual(result['revision'], state['revision'])
+        self.assertEqual([e['revision'] for e in state['events']], list(range(1, state['revision'] + 1)))
+        event = state['events'][-1]
+        self.assertEqual(event['action'], 'player_enroll_from_tracklet')
+        self.assertEqual(event['context']['player_id'], result['player_id'])
+        self.assertEqual(event['context']['name'], 'Ana')
+        # a client still holding the pre-enrolment revision is told to reload
+        with self.assertRaises(APIError) as stale_write:
+            self.backend.post(['api', 'operations'], {'action': 'note_add', 'revision': before['revision'],
+                                                      'text': 'late'})
+        self.assertEqual(stale_write.exception.status, 409)
+
+    def test_enrolling_an_existing_regular_adds_no_second_roster_row(self):
+        """A confirm that names a regular already on the roster gives that regular
+        faces; the roster keeps one row and the enrolment is still logged."""
+        saved = self.backend.post(['api', 'operations'], {'action': 'player_save', 'revision': 0, 'name': 'Ana'})
+        selection, _ = self._enrol_selection()
+        result = self._confirm('ana', selection)
+        self.assertTrue(result['ok'], result)
+        state = self.backend.get(['api', 'operations'], {})
+        self.assertEqual([(p['id'], p['name']) for p in state['players']], [(saved['players'][0]['id'], 'Ana')])
+        self.assertEqual(result['player_id'], saved['players'][0]['id'])
+        self.assertEqual(state['events'][-1]['action'], 'player_enroll_from_tracklet')
+        self.assertEqual(state['revision'], 2)
+
     def test_identity_frame_read_leaves_the_index_file_untouched(self):
         """GET /api/identity/frame runs the tracker over one frame. That is
         observation: the index file used to be rewritten by every register()

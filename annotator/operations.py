@@ -83,22 +83,46 @@ class Operations:
             self._apply(state, payload)
             if payload.get('action') != 'tournament_new':
                 context.update(self._event_context(state, payload))
-            state['revision'] += 1
-            state['events'] = (state['events'] + [dict(id=uid(), createdAt=timestamp(),
-                revision=state['revision'], action=payload['action'], context=context)])[-500:]
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            fd, name = tempfile.mkstemp(prefix='.state-', dir=self.path.parent)
-            try:
-                with os.fdopen(fd, 'w') as stream:
-                    json.dump(state, stream, indent=2, allow_nan=False)
-                    stream.write('\n')
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                os.replace(name, self.path)
-            finally:
-                if os.path.exists(name):
-                    os.unlink(name)
-            return state
+            return self._commit(state, payload['action'], context)
+
+    def enroll_player(self, player, context):
+        """Add a player confirmed from the footage: one read-modify-write under the
+        store lock, at the CURRENT revision, never a stale document written over it.
+
+        `player` is the roster record the enrolment planned; it is added only when its
+        id is not on the roster yet (an existing regular gains faces, not a row), and
+        a name that another player already holds (casefold) is refused, the rule
+        `player_save` enforces. The event is appended to the same log."""
+        with self.lock:
+            state = self._load()
+            if not any(existing.get('id') == player['id'] for existing in state['players']):
+                name = text(player.get('name'), 'name')
+                if any(existing['name'].casefold() == name.casefold() for existing in state['players']):
+                    raise ValueError('Player name already exists')
+                # the defaults player_save gives a new regular: the plan carries only
+                # {id, name} when it matched a regular who has since been deleted
+                state['players'].append({'joinedAt': timestamp(), 'rating': 0, 'status': 'Active',
+                                         **player, 'name': name})
+            return self._commit(state, 'player_enroll_from_tracklet', context)
+
+    def _commit(self, state, action, context):
+        """Advance the revision, log the event, write the file atomically."""
+        state['revision'] += 1
+        state['events'] = (state['events'] + [dict(id=uid(), createdAt=timestamp(),
+            revision=state['revision'], action=action, context=context)])[-500:]
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix='.state-', dir=self.path.parent)
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                json.dump(state, stream, indent=2, allow_nan=False)
+                stream.write('\n')
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(name, self.path)
+        finally:
+            if os.path.exists(name):
+                os.unlink(name)
+        return state
 
     @staticmethod
     def _event_context(state, payload):

@@ -513,7 +513,8 @@ class Backend:
         except EnrollmentTokenError as exc:
             return exc.to_dict()
         if result.get("ok"):
-            result = dict(result, promoted=self._promote_enrollment(result.get("written") or {}))
+            promoted = self._promote_enrollment(result.get("written") or {})
+            result = dict(result, promoted=promoted, revision=promoted.get("revision", result.get("revision")))
             with self.lock:
                 self._enroll_plans.pop(token, None)
         return result
@@ -523,20 +524,36 @@ class Backend:
 
         ``write_enrollment()`` writes to a scratch root on purpose - "the caller
         decides when the enrolment becomes real". The operator's confirm click is
-        that decision, so the two files it wrote are promoted here, atomically and
-        in the same format Operations writes. A refusal never reaches this method.
+        that decision. The roster is NOT copied over state.json: the scratch copy
+        was built from a roster read before the confirm, and any operations write
+        since then would be lost. The new player and its event go through the
+        Operations store instead - a locked read-modify-write at the current
+        revision. A refusal never reaches this method.
         """
         promoted = {}
-        for key, name in (("state", "state.json"), ("store", "face_embeddings.json")):
-            source = written.get(key)
-            if not source:
-                continue
+        source = written.get("state")
+        if source:
+            scratch = load(Path(source))
+            if scratch is None:
+                raise APIError("enrolment scratch file is missing: %s" % source, 500)
+            event = (scratch.get("events") or [None])[-1] or {}
+            if event.get("action") != "player_enroll_from_tracklet":
+                raise APIError("enrolment scratch roster carries no enrolment event", 500)
+            player_id = event["context"]["player_id"]
+            player = next(p for p in scratch["players"] if p.get("id") == player_id)
+            try:
+                state = self.operations().enroll_player(player, event["context"])
+            except ValueError as error:
+                raise APIError(str(error), 409) from error
+            promoted.update(state=str(self.operations().path), revision=state["revision"])
+        source = written.get("store")
+        if source:
             payload = load(Path(source))
             if payload is None:
                 raise APIError("enrolment scratch file is missing: %s" % source, 500)
-            target = self.out / "corner-pocket" / name
+            target = self.out / "corner-pocket" / "face_embeddings.json"
             atomic_save(target, payload)
-            promoted[key] = str(target)
+            promoted["store"] = str(target)
         return promoted
 
     # -- unified viewer: one overlay payload per frozen frame ---------------
