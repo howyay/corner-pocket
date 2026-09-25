@@ -32,3 +32,46 @@ new identity by construction.  That is the defect the predictor has to remove.
 
 Link counts are a lower bound: they are built from the evidence samples each
 rejection carries (up to 6 per row), not from the full tracks.
+
+## After — the same segment, the same harness, prediction instead of a fixed gate
+
+`PYTHONPATH=. .venv/bin/python tests/ball_dense_events.py --start 1350 --seconds 300` (two
+decodes; the frame-level facts agree exactly — 19534 balls, occlusion share 0.1512 — so the
+comparison is controlled on everything the association cannot touch).
+
+| measure | before (fixed 30 px) | after (prediction) |
+|---|---|---|
+| identities | 248 | 245 |
+| single-sample identities | 37 | 30 |
+| stable (≥ 2 samples) | 211 | 215 |
+| longest identity | 1381 samples / 104.7 s | **1632 samples / 114.4 s** |
+| terminations on open cloth | 170 | 172 (120 clean · 52 occluded) |
+| reappearances | 162 | 154 (108 clean · 46 occluded) |
+| gate | 3 shots, **0 pots, 0 unknown**, 721 rejections | 3 shots, **0 pots, 1 unknown**, 713 rejections |
+| purity: shared detections | 0 | **0** |
+| purity: kink-like speed changes in the evidence tails | 110 | 121 |
+
+**The honest answer on pots: still zero confirmed — and one pot-shaped event now exists.**
+`t265-blue` ends at (368.3, 306.3), **9.6 px from the left-side pocket centre** (radius
+14.5 px), having run (325, 381) → (344, 349) → (368, 306) at 734 px/s when the track
+stops; it is seen nowhere in the remaining 11.4 s of the segment and no identity swap is
+suspected. The gate returns `unknown` / `cloth_occluded_at_disappearance`, which is the
+project's iron rule: the cloth was occluded at that moment, and a ball that vanishes under
+a person is unknown, not potted. Before the fix this path was fragmented and never reached
+the pocket radius.
+
+**Why the gain is modest, measured.** The residual after constant-velocity prediction is
+still a median 123 px over all candidate links (p90 276), i.e. the ball's motion *changes
+inside* the gap — it is struck, or it bounces — and a straight-line predictor cannot follow
+that. Bridging those would be fusing two balls, not tracking one. And only 28 % of the
+candidate links are same-colour (216 same / 551 cross), so a misread colour still blocks
+most cross-colour fragments. The kink proxy rose 110 → 121: some of those are real cushion
+bounces the wider gate now keeps as one identity (correct), and the counter cannot tell
+them from a fusion — it is a review signal, not a verdict.
+
+Reproduce: `src/ball_association_audit.py` (per-side diagnosis) and
+`src/ball_association_ab.py` (one decode, both associators; its post-harness phase was
+killed by the host's OOM killer at load 89, so the comparison above is the two artifacts).
+Artifacts: `out/dense-events/segment-1350-1650.{before,after}.json` and the matching
+`.audit.json` files.
+

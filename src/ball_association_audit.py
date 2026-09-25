@@ -49,6 +49,50 @@ FRAGMENT_GAP_S = 2.5
 FRAGMENT_PX = 60.0
 
 
+def purity_proxies(report, share_px: float = 3.0) -> dict:
+    """What the artifact can still say about the association's purity.
+
+    The exact counters live inside ``ball_census.associate`` (and are pinned by
+    its synthetic tests); a report only carries the samples each rejection kept.
+    Two proxies are still measurable from those:
+
+    * ``shared_detections`` -- two identities whose evidence samples sit at the
+      same frame and within ``share_px`` of each other: one detection claimed
+      twice, the failure mode that double-counts a ball.
+    * ``tail_kinks`` -- a speed change above ``ball_census.KINK_SPEED_PX_S``
+      between consecutive samples *inside* one identity's own evidence: the
+      signature of two different balls fused into one path.
+    """
+    from src import ball_census as bc
+
+    seen: dict = {}
+    shared = 0
+    kinks = 0
+    per_identity: dict = {}
+    for row in report.get("gate", {}).get("rejections", []):
+        samples = sorted(row.get("samples_used") or (), key=lambda s: s["t"])
+        per_identity.setdefault(row["ball_id"], []).extend(samples)
+        for sample in samples:
+            key = (sample.get("frame_index"), round(sample["x"] / share_px), round(sample["y"] / share_px))
+            owner = seen.get(key)
+            if owner is not None and owner != row["ball_id"]:
+                shared += 1
+            seen.setdefault(key, row["ball_id"])
+    for ball_id, samples in per_identity.items():
+        samples.sort(key=lambda s: s["t"])
+        velocities = []
+        for a, b in zip(samples, samples[1:]):
+            dt = b["t"] - a["t"]
+            if dt <= 1e-6:
+                continue
+            velocities.append(((b["x"] - a["x"]) / dt, (b["y"] - a["y"]) / dt))
+        for v1, v2 in zip(velocities, velocities[1:]):
+            if math.hypot(v2[0] - v1[0], v2[1] - v1[1]) > bc.KINK_SPEED_PX_S:
+                kinks += 1
+    return {"shared_detections": shared, "tail_kinks": kinks,
+            "identities_seen": len(per_identity), "kink_bar_px_s": bc.KINK_SPEED_PX_S}
+
+
 def _percentile(values, fraction):
     if not values:
         return None
@@ -197,6 +241,7 @@ def diagnose(report) -> dict:
             "examples": links[:10],
         },
         "prediction": prediction_residuals(report),
+        "purity": purity_proxies(report),
         "rejection_codes": report.get("rejection_codes", {}),
         "gate_counts": report.get("gate", {}).get("counts", {}),
     }
@@ -225,6 +270,7 @@ def format_audit(audit) -> str:
         f"prediction residual, same colour: {json.dumps(audit['prediction']['same_colour'])}",
         f"                    cross colour: {json.dumps(audit['prediction']['cross_colour'])} "
         f"(same-colour share {audit['prediction']['same_colour_share']})",
+        f"purity: {json.dumps(audit['purity'])}",
         f"gate: {json.dumps(audit['gate_counts'])}",
     ]
     return "\n".join(lines)
