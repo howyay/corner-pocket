@@ -1211,7 +1211,7 @@ class Backend:
         if isinstance(stored, dict):
             stored = dict(stored, stored_inference=True)
         return dict(meta, inference=stored,
-                    correction=load(self.frame_path(dataset, index, 'correction')))
+                    correction=self.store().correction_get(meta['dataset'], index))
 
     def save_frame_correction(self, data):
         meta = self.frame_metadata(data.get('dataset'), data.get('frame_index'))
@@ -1242,7 +1242,7 @@ class Backend:
                 raise APIError('table_polygon must have nonzero area')
         correction = dict(meta, boxes=cleaned, table_polygon=polygon, source='manual', saved_at=now())
         with self.lock:
-            atomic_save(self.frame_path(meta['dataset'], meta['frame_index'], 'correction'), correction)
+            self.store().correction_put(meta['dataset'], meta['frame_index'], correction)
         return dict(ok=True, correction=correction)
 
     def inference_status(self, dataset):
