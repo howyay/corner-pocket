@@ -491,3 +491,32 @@ test('the regular profile deletes face data only after a confirm that says what 
     assert.equal(messageNode.className, 'error');
   }
 });
+test('a renamed regular reads by their current name on every screen, archive included (R12)', () => {
+  const h = harness();
+  // Draw-time snapshot says "Ada"; the roster now says "Ada Lovelace". The guest keeps their typed name.
+  h.evaluate(`data.players=[{id:'p1',name:'Ada Lovelace',status:'Active',rating:700},{id:'p2',name:'Bo',status:'Active',rating:600}];
+    const night=()=>({id:'t1',name:'Friday',format:'singles',raceTo:3,status:'complete',
+      entrants:[{id:'e1',members:[{pid:'p1',name:'Ada'}]},{id:'e2',members:[{pid:'p2',name:'Bo'}]},{id:'e3',members:[{pid:null,name:'Walk-in Wu'}]}],
+      matches:[{id:'m1',round:1,sides:['e1',null],score:[0,0],status:'complete',result:'bye',winnerId:'e1',absent:[]},
+               {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',absent:[]},
+               {id:'m3',round:2,sides:['e1','e2'],score:[3,2],status:'complete',result:'played',winnerId:'e1',absent:[]}]});
+    data.tournament=night();data.history=[Object.assign(night(),{id:'h1',archivedAt:'2026-09-01T00:00:00Z'})];data.events=[];data.notes=[]`);
+  const views = {floor: h.evaluate('floorScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('matchesScreen()')};
+  for (const [name, html] of Object.entries(views)) assert.ok(!/>Ada</.test(html) && !/\bAda \//.test(html), `${name}: the stale snapshot name never shows`);
+  assert.ok(views.matches.includes('Ada Lovelace'), 'bracket shows the current name');
+  const archive = views.matches.slice(views.matches.indexOf('<details'));
+  assert.ok(archive.includes('Ada Lovelace'), 'the archived event reads the live roster name for a regular');
+  assert.ok(!/Ada —|— Ada\b|>Ada</.test(archive), 'the archive never falls back to the draw-time copy while the regular exists');
+  assert.ok(archive.includes('Walk-in Wu'), 'a guest keeps the name typed at the desk');
+  // a deleted regular (no roster row) still reads by the snapshot, never "Unknown"
+  h.evaluate("data.players=data.players.filter(p=>p.id!=='p2')");
+  assert.ok(h.evaluate('matchesScreen()').includes('>Bo'), 'the snapshot is the fallback when the regular is gone');
+  assert.equal(h.evaluate('JSON.stringify(resultStats("p1"))'), '{"wins":2,"losses":0}', 'the rename leaves the record whole; the bye is not a win');
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("validationMessage('Name held by a guest in this event; add the guest to the regulars instead')"), '这个名字属于本场赛事的一位访客；请把该访客加入常客，而不是给常客改成同名。');
+});
+test('a refusal is readable over an open modal: the message sits above the backdrop', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const z = selector => Number(css.match(new RegExp(`${selector.replace(/[.#()]/g, '\\$&')}\\{[^}]*z-index:(\\d+)`))[1]);
+  assert.ok(z(':is(#ops-shell, #ops-footer) #message') > z('.modal-backdrop'), 'the player modal must not cover the reason it was refused');
+});

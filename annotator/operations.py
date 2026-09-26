@@ -193,6 +193,9 @@ class Operations:
             name = text(p.get('name'), 'name')
             if any(x['name'].casefold() == name.casefold() and x['id'] != p.get('id') for x in s['players']):
                 raise ValueError('Player name already exists')
+            # A guest's name is a claim too: two different people must never read the same.
+            if any(m['name'].casefold() == name.casefold() for e in t['entrants'] for m in e['members'] if not m['pid']):
+                raise ValueError('Name held by a guest in this event; add the guest to the regulars instead')
             player = self._find(s['players'], p['id']) if p.get('id') else dict(id=uid(), joinedAt=timestamp(), rating=0, status='Active')
             status = optional(p, 'status', player['status'])
             if status not in ('Active', 'Visitor', 'Prospect', 'Inactive'):

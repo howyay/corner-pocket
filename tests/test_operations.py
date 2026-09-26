@@ -241,7 +241,12 @@ class OperationsTests(unittest.TestCase):
 
     def test_guest_promotion_rejects_existing_roster_name(self):
         self.call('entrant_add', members=[{'name': 'Ada'}])
-        self.call('player_save', name='ADA')
+        with self.assertRaisesRegex(ValueError, 'guest in this event'):
+            self.call('player_save', name='ADA')
+        # A store written before that guard can still hold the collision: build it by hand.
+        legacy = json.loads(self.ops.path.read_text())
+        legacy['players'].append(dict(id='legacy', name='ADA', joinedAt='2026-01-01T00:00:00+00:00', rating=0, status='Active'))
+        self.ops.path.write_text(json.dumps(legacy))
         before = self.ops.path.read_bytes()
         with self.assertRaisesRegex(ValueError, 'cannot infer guest identity'):
             self.call('guest_promote', name='ada')
@@ -353,6 +358,79 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.call('entrant_add', members=[{'pid': pid}])
         self.assertEqual(before, self.ops.path.read_bytes())
+
+    def test_regular_cannot_take_a_current_guest_name(self):
+        """R12: two different people must never read the same in tonight's draw."""
+        state = self.call('player_save', name='Ada')
+        pid = state['players'][0]['id']
+        self.call('entrant_add', members=[{'name': 'Walk-in Wu'}])
+        before = self.ops.path.read_bytes()
+        for name in ('Walk-in Wu', ' walk-in wu '):
+            with self.assertRaisesRegex(ValueError, '^Name held by a guest in this event; add the guest to the regulars instead$'):
+                self.call('player_save', id=pid, name=name)
+            with self.assertRaisesRegex(ValueError, 'guest in this event'):
+                self.call('player_save', name=name)
+        self.assertEqual(before, self.ops.path.read_bytes())
+        # an archived guest no longer blocks the name, and the regular keeps their own name
+        self.call('player_save', id=pid, name='Ada')
+        self.call('entrant_add', members=[{'name': 'Bo'}])
+        self.call('tournament_start')
+        self.call('tournament_new', confirm=True)
+        self.assertEqual(self.call('player_save', id=pid, name='Walk-in Wu')['players'][0]['name'], 'Walk-in Wu')
+
+    def test_rename_between_rounds_keeps_champion_stats_and_every_match(self):
+        """R12 property: renaming never detaches a player from their matches or stats.
+
+        Same seeds, same scores; the only difference is a rename of every regular after
+        round 1. The champion, the per-player W-L and every match's sides are identical,
+        and the stored entrant snapshot is never rewritten (ids stay authoritative)."""
+        def run(rename):
+            self.call('tournament_new', confirm=True)
+            state = self.call('tournament_setup', raceTo=7)
+            ids = {p['name'].split(' ')[0]: p['id'] for p in state['players']}
+            for name in ('Ada', 'Bo', 'Cy', 'Di', 'Eve'):
+                self.call('entrant_add', members=[{'pid': ids[name]}])
+            self.call('entrant_add', members=[{'name': 'Walk-in Wu'}])
+            state = self.call('tournament_start')
+            renamed = False
+            while state['tournament']['status'] != 'complete':
+                match = next(m for m in state['tournament']['matches'] if m['status'] == 'scheduled')
+                if rename and match['round'] == 2 and not renamed:
+                    for player in list(state['players']):
+                        state = self.call('player_save', id=player['id'], name=player['name'] + f' #{rename}')
+                    renamed = True
+                self.call('match_schedule', id=match['id'])
+                self.call('match_score', id=match['id'], score=[7, 3])
+                state = self.call('match_complete', id=match['id'])
+            self.assertEqual(renamed, bool(rename))
+            t = state['tournament']
+            by_pid = {m['pid']: e['id'] for e in t['entrants'] for m in e['members'] if m['pid']}
+            names = {e['id']: e['members'][0]['name'] for e in t['entrants']}
+            final = t['matches'][-1]
+            stats = {}
+            for pid, eid in by_pid.items():
+                won = sum(1 for m in t['matches'] if m.get('result') == 'played' and m['winnerId'] == eid)
+                lost = sum(1 for m in t['matches'] if m.get('result') == 'played' and eid in m['sides'] and m['winnerId'] != eid)
+                stats[pid] = (won, lost)
+            return dict(champion=names[final['winnerId']], stats=stats,
+                        sides=[[names.get(s) for s in m['sides']] for m in t['matches']],
+                        results=[(m['result'], m['score']) for m in t['matches']])
+
+        for name in ('Ada', 'Bo', 'Cy', 'Di', 'Eve'):
+            self.call('player_save', name=name)
+        plain = run(rename=None)
+        for player in self.ops.get()['players']:
+            self.call('player_save', id=player['id'], name=player['name'].split(' ')[0])
+        renamed = run(rename=1)
+        self.assertEqual(plain, renamed)
+        state = self.call('tournament_new', confirm=True)
+        self.assertEqual(len(state['history']), 2)
+        # the archived snapshot keeps the draw-time name; the id links it to the live roster
+        roster = {p['id']: p['name'] for p in state['players']}
+        archived = state['history'][-1]
+        linked = [m for e in archived['entrants'] for m in e['members'] if m['pid']]
+        self.assertEqual(len(linked), 5)
+        self.assertTrue(all(roster[m['pid']] == m['name'] + ' #1' for m in linked))
 
     def test_registration_absence_holds_first_round(self):
         self.call('entrant_add', members=[{'name': 'Ada'}])
