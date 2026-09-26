@@ -21,6 +21,18 @@ No schema, no import, no cutover happens until this document is reviewed.*
 4. **Biometric data** (face embeddings) gets its own table and its own delete path; it
    stays out of the operations event log, as today (`src/face_id.py:5-7`).
 
+**Review outcome (2026-09-25): approved**, with these decisions:
+1. User data (§2–§4) cuts over first; §5–§6 follow as separate steps.
+2. Operations keeps the revision/409 contract exactly as §2.3 maps it.
+3. Both defects were fixed immediately on the JSON store, not later in the store layer:
+   the enrolment promote goes through `Operations` (`19a3625`), and a confirm merges into
+   the face store and refreshes the running gallery (`2fdca1c`).
+4. A GET never writes, face binds included: a bind found while serving a GET is held in
+   memory and written by the next genuine mutation (`1255cc1`).
+5. `identity_clusters.player_id REFERENCES players(id) ON DELETE SET NULL` (§3.1).
+6. Face data is deleted per person on request, no auto-expiry:
+   `POST /api/identity/forget` (`3684d8e`, UI `531c485`).
+
 ## 1. Inventory — every data set, its size today, and who touches it
 
 Production sizes measured 2026-09-25 (md5s of the five tracked files are in the Phase A
@@ -272,15 +284,19 @@ CREATE TABLE identity_face_samples (
 
 `save()` today rewrites all clusters; the Postgres implementation upserts only the
 clusters marked dirty since the last save (in one transaction), so a bind no longer rewrites
-682 kB.  `player_id` gains a foreign key: an id that is not in the roster can no longer be
-assigned (today a typo in `/api/identity/seed` is stored).  **Open point:** the seed
-endpoint also accepts legacy role ids; if the owner wants to keep binding to ids that are not
-roster players, the FK is dropped and a `CHECK` on format is kept instead.
+682 kB.  **Decided in review (2026-09-25):** `player_id REFERENCES players(id) ON DELETE
+SET NULL` — an id that is not in the roster can no longer be assigned (today a typo in
+`/api/identity/seed` is stored), and deleting a regular unbinds their clusters.  The import
+(§7.3) reports cluster bindings to ids that are not on the roster instead of inserting them.
+Implemented in `db/migrations/0002_user_data.sql`.
 
-`real[]` rather than `pgvector`: the matching runs in NumPy against a gallery of a few dozen
-vectors (`src/face_id.py:209-252`); nothing queries by vector distance in SQL.  If a later
-feature needs nearest-neighbour search in the database, `pgvector` is a separate decision
-(it is not in the official image).
+Arrays of `double precision` rather than `real` (changed in `0002`, measured): `real`
+(float4) returns the 4-dp values the files hold as e.g. `0.9120000004768372`, so the
+file → database → file round trip that §7.3 verifies could not be exact; `double precision`
+returns every stored value unchanged.  Not `pgvector` either: the matching runs in NumPy
+against a gallery of a few dozen vectors (`src/face_id.py:209-252`); nothing queries by
+vector distance in SQL.  If a later feature needs nearest-neighbour search in the database,
+`pgvector` is a separate decision (it is not in the official image).
 
 ### 3.2 Face store — `out/corner-pocket/face_embeddings.json`
 
