@@ -89,3 +89,25 @@ picture. The adapter now measures where the frame ends (`--vs-stage-bottom`, set
 `syncFooterHeight()` hook, re-measured when the frame resizes) and the sheet's `max-height` gives way
 to it. After: sheet 391–668 / 395–668, frame 181–391 / 185–395, **0 px overlap**, page 390/390, in
 EN and 中 and in both sheets (`adapt/after-stage-bottom-390-*.png`). Test extended.
+
+## Requirements from the trace matrix (`docs/requirements-traceability.md`, rows R9, R13, R14)
+
+**R13 (P1), roster search, and R14, local and instant.** Before: one case-insensitive substring over
+`name + status` (`playersScreen()`), so `ann-marie lee` did not find `Ann-Marie (Annie) Lee`, and a
+status word matched names; the registration desk was a plain `<select>`. After (`ops.js`, anchor-unique):
+`searchFold()` = NFKC → accent strip (NFD, combining marks removed) → lower case → punctuation to
+spaces; `nameMatches(name, query)` requires **every** query word in the name (AND), and CJK names match
+with or without spaces. The roster searches the **name only** (status keeps its own *Everyone / Active*
+filter — a deliberate change to inventory item 49's "name or status", requested by R13; finding a
+player by status still works through the filter). The **registration desk** gets a type-to-filter field
+per member slot (`.desk-search`, `aria-controls` the select) over the same matcher: it hides
+non-matching options in place, selects a single match, says *No regular matches* when none, and the
+form still posts `pid` exactly as before. EN/中 parity: `Search names` / `搜索姓名`, `Type to find a
+regular` / `输入以查找常客`, `No regular matches` / `没有匹配的常客`. **R14**: no network call on a
+keystroke — the matcher and the desk filter are pure DOM work; measured with Resource Timing while
+typing: **0 requests** (roster and desk). Browser, throwaway `:8142`: roster `ann-marie lee` → Ann-Marie
+(Annie) Lee, caret kept; desk `ＪＯＳＥ` (full-width) → José Núñez selected; 中 desk `磊` → 王磊
+selected → submitted as an entrant. Tests (`test_ops.js`): the Ann-Marie case, word order, AND,
+full-width, accents both ways, Chinese with/without spaces, empty query, name-only roster, no `fetch`,
+EN/中 keys, and the desk filter (visible set, single-match select, rating never matched, clear).
+Evidence `out/impeccable/ledger/r13/`.

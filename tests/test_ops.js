@@ -231,6 +231,56 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+test('R13: every query word must match the name, after NFKC, accent and case folding', () => {
+  const h = harness();
+  const m = (name, q) => h.evaluate(`nameMatches(${JSON.stringify(name)}, ${JSON.stringify(q)})`);
+  // the reported case: words in any order, punctuation is only a separator
+  assert.equal(m('Ann-Marie (Annie) Lee', 'ann-marie lee'), true);
+  assert.equal(m('Ann-Marie (Annie) Lee', 'lee annie'), true, 'order does not matter');
+  assert.equal(m('Ann-Marie (Annie) Lee', 'ann lee bo'), false, 'every word must match (AND)');
+  // full-width forms and accents fold to their plain letters
+  assert.equal(m('Ann-Marie (Annie) Lee', 'ＡＮＮ－ＭＡＲＩＥ'), true, 'full-width input');
+  assert.equal(m('José Núñez', 'jose nunez'), true, 'accents fold');
+  assert.equal(m('Jose Nunez', 'JOSÉ'), true, 'and fold in the query too');
+  // Chinese names: substring, with or without spaces between the characters
+  assert.equal(m('王磊', '磊'), true);
+  assert.equal(m('王磊', '王 磊'), true);
+  assert.equal(m('欧阳娜娜', '欧阳'), true);
+  assert.equal(m('王磊', '李'), false);
+  assert.equal(m('Anyone', '   '), true, 'an empty query matches everyone');
+  // the roster searches the name only: status has its own filter
+  h.evaluate("data.players=[{id:'p1',name:'Bo Active',rating:50,status:'Visitor'},{id:'p2',name:'Cai',rating:40,status:'Active'}];query='active';filter=''");
+  const html = h.evaluate('playersScreen()');
+  assert.ok(html.includes('Bo Active') && !html.includes('>Cai<'), 'a status word no longer matches a name');
+  // R14: the matcher is local; neither it nor the desk filter makes a request
+  assert.ok(!/fetch\(/.test(h.evaluate('nameMatches.toString()+deskFilter.toString()')), 'no network call on a keystroke');
+  // EN/中 placeholder parity for both fields
+  for (const key of ['search', 'deskSearch', 'deskNone']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
+});
+test('R13: the registration desk filters its regulars in place with the same matcher', () => {
+  const h = harness();
+  h.evaluate("data.players=[{id:'p1',name:'Ann-Marie (Annie) Lee',rating:70,status:'Active'},{id:'p2',name:'王磊',rating:60,status:'Active'},{id:'p3',name:'Bo',rating:50,status:'Active'}];data.tournament={id:'t1',status:'registration',format:'singles',raceTo:3,entrants:[],matches:[]}");
+  const html = h.evaluate('setupScreen()');
+  assert.ok(html.includes('class="desk-search" data-desk="0"'), 'the desk has a type-to-filter field');
+  assert.ok(html.includes('aria-controls="desk-pid0"') && html.includes('id="desk-pid0"'), 'tied to its select');
+  assert.ok(html.includes('data-name="Ann-Marie (Annie) Lee"'), 'options carry the bare name, so the rating is never matched');
+  // drive deskFilter against a stub select
+  h.evaluate(`const opts=[{value:'',textContent:'Guest',dataset:{},hidden:false},
+    {value:'p1',textContent:'Ann-Marie (Annie) Lee · 70',dataset:{name:'Ann-Marie (Annie) Lee'},hidden:false},
+    {value:'p2',textContent:'王磊 · 60',dataset:{name:'王磊'},hidden:false},
+    {value:'p3',textContent:'Bo · 50',dataset:{name:'Bo'},hidden:false}];
+    const sel={options:opts,value:'',get selectedOptions(){return opts.filter(o=>o.value===this.value)}};
+    const none={hidden:true};
+    document.getElementById=id=>id==='desk-pid0'?sel:id==='desk-none0'?none:null;
+    deskSelect=sel;deskNone=none;`);
+  h.evaluate("deskFilter({value:'ann-marie lee',dataset:{desk:'0'}})");
+  assert.equal(h.evaluate("opts.filter(o=>!o.hidden).map(o=>o.value).join(',')"), ',p1', 'only the match (and Guest) stay visible');
+  assert.equal(h.evaluate('deskSelect.value'), 'p1', 'a single match is selected');
+  h.evaluate("deskFilter({value:'７０',dataset:{desk:'0'}})");
+  assert.equal(h.evaluate('deskNone.hidden'), false, 'the rating is not part of the name: nothing matches, and it says so');
+  h.evaluate("deskFilter({value:'',dataset:{desk:'0'}})");
+  assert.equal(h.evaluate("opts.every(o=>!o.hidden)"), true, 'clearing the field shows everyone again');
+});
 test('onboard: an empty club gets three real steps on the Floor, and they leave once the draw exists', () => {
   const h = harness();
   const guide = () => { const html = h.evaluate('floorScreen()'); const m = html.match(/<article class="first-run"[\s\S]*?<\/article>/); return m ? m[0] : ''; };
