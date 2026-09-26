@@ -525,7 +525,9 @@ function layersHTML(s) {
   const layers = [['cloth','cloth'],['balls','balls'],['persons','persons'],['pockets','pockets'],['anchors','anchors'],['events','events']];
   return layers.map(([key, label]) => {
     const gated = key === 'anchors' && s.dataset !== 'vod30';
-    return `<button class="vs-layer${s.overlay[key] && !gated ? ' on' : ''}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))}</button>`;
+    // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.
+    const shown = s.overlay[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
+    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))}</button>`;
   }).join('');
 }
 function identityHTML(s) {
@@ -926,7 +928,7 @@ function render() {
   }
   const railSig = `${s.focus}|${s.eventFilter}|${s.events.index}|${s.events.items.map(e => `${e.id}:${e.verdict}`).join(',')}|${s.balls.items.length}|${s.balls.index}|${s.selection.crop?.file || ''}|${s.persons.win}|${s.persons.tracks.map(x => `${x.id}:${x.seed || ''}`).join(',')}|${s.persons.track || ''}|${s.events.reviewed}|${opts.lang}`;
   if (railSig !== sig.rail) { const node = $('#vs-cues'); if (node) node.innerHTML = railHTML(s); sig.rail = railSig; }
-  const layersSig = `${s.dataset}|${Object.entries(s.overlay).map(([k, v]) => `${k}${v ? 1 : 0}`).join('')}`;
+  const layersSig = `${s.dataset}|${s.anchors?.loaded ? 1 : 0}|${Object.entries(s.overlay).map(([k, v]) => `${k}${v ? 1 : 0}`).join('')}`;
   if (layersSig !== sig.layers) { const node = $('#vs-layers'); if (node) node.innerHTML = layersHTML(s); sig.layers = layersSig; }
   const identity = identityHTML(s);
   if (identity !== sig.identity) { const node = $('#vs-identity'); if (node) node.innerHTML = identity; sig.identity = identity; }
@@ -996,7 +998,8 @@ function act(action, value, node) {
     }
     case 'detector': target.setDetector(value, node.checked); break;
     case 'layer': {
-      const on = target.toggleOverlay(value);
+      // F2: the Anchors chip reads off until anchors are loaded, so its first click loads them.
+      const on = value === 'anchors' && s.overlay.anchors && !s.anchors.loaded ? true : target.toggleOverlay(value);
       // Calibration is a layer: turning it on loads the anchors for their saved
       // time and seeks the one stage there, and the inspector echoes the anchor.
       if (value === 'anchors' && on) {

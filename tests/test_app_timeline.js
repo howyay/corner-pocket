@@ -1302,9 +1302,11 @@ test('the pots tab explains its empty state instead of showing a bare list', () 
 // blocks can be rendered without a browser or a live engine.
 function adapterStage(lang, roster, extra) {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  // setInterval is a no-op: a full render starts the receipt-age ticker, which would
+  // otherwise keep this test process alive.
   const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []},
                location:{hostname:'127.0.0.1'}, URL:{}, fetch: () => Promise.reject(new Error('no network in tests')),
-               setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+               setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {}, console, Math, Number, Object, JSON, Date};
   box.globalThis = box;
   vm.createContext(box);
   vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
@@ -2017,6 +2019,26 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
     'including a chips re-render, which is what the poll triggers');
   assert.ok(ADAPTER_SOURCE.includes('document.activeElement') && ADAPTER_SOURCE.includes('setSelectionRange'),
     'and a focused field keeps its focus and caret across that rebuild');
+});
+
+test('F2: the Anchors chip reads off until anchors are drawn, and one click loads them', () => {
+  const calls = [];
+  let s = visionSnapshot({dataset:'vod30', overlay:{cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true},
+                          anchors:{loaded:false, pts:[], index:0}, events:{items:[], index:0, reviewed:0}, balls:{items:[], index:0},
+                          playback:{on:false, event:null, from:0, to:0, loops:0, playing:false}});
+  const review = {snapshot: () => s,
+                  toggleOverlay: kind => { calls.push('toggle ' + kind); s.overlay[kind] = !s.overlay[kind]; return s.overlay[kind]; },
+                  loadAnchors: t => { calls.push('load ' + t); return Promise.resolve(); },
+                  selectAnchor() {}, seekTime() {}};
+  const VSx = adapterStage('en', ROSTER, {review});
+  assert.ok(ADAPTER_SOURCE.includes("(key !== 'anchors' || s.anchors.loaded)"), 'the chip is on only when anchors are loaded');
+  assert.ok(ADAPTER_SOURCE.includes('aria-pressed="${shown ? \'true\' : \'false\'}"'), 'and says so to a screen reader');
+  VSx.act('layer', 'anchors');
+  assert.deepStrictEqual(calls, ['load 70'], 'the first click loads the anchors; it does not switch the layer off');
+  assert.strictEqual(s.overlay.anchors, true, 'and the layer stays on');
+  s.anchors.loaded = true;
+  VSx.act('layer', 'anchors');
+  assert.deepStrictEqual(calls, ['load 70', 'toggle anchors'], 'once drawn, a click hides them as before');
 });
 
 test('F6: Use this VOD with an empty id says what to do instead of doing nothing', () => {
