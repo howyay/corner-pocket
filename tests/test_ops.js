@@ -231,6 +231,37 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+test('clarify: the night log names entrants and sources instead of printing hex ids', () => {
+  const h = harness();
+  const present = 'a51461c2c94649988a2995e9b27c69a8', removed = 'b0000000c94649988a2995e9b27c69ff', source = '77777777777777777777777777777777';
+  h.evaluate(`data.players=[{id:'p1',name:'王磊',rating:60,status:'Active'}];
+    data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'registration',
+      entrants:[{id:'${present}',members:[{pid:'p1',name:'王磊'}]}],matches:[]};
+    data.history=[];data.sources=[];
+    data.events=[
+      {action:'entrant_add',createdAt:'2026-09-26T01:00:00Z',revision:4,context:{id:'${present}'}},
+      {action:'entrant_remove',createdAt:'2026-09-26T01:01:00Z',revision:5,context:{id:'${removed}'}},
+      {action:'source_add',createdAt:'2026-09-26T01:02:00Z',revision:2,context:{id:'${source}'}}]`);
+  for (const [lang, gone, aSource, added, removedLabel] of [
+    ['en', 'an entrant who was removed', 'a source', 'Entrant registered', 'Entrant removed'],
+    ['zh', '已移除的参赛者', '一个来源', '参赛报名', '移除参赛者']]) {
+    h.evaluate(`lang='${lang}'`);
+    const line = i => h.evaluate(`auditLine(data.events[${i}])`);
+    assert.ok(line(0).includes(`${added} · 王磊 · v4`), `${lang}: a present entrant reads by name: ${line(0)}`);
+    assert.ok(line(1).includes(`${removedLabel} · ${gone} · v5`), `${lang}: a removed entrant reads as a plain phrase: ${line(1)}`);
+    assert.ok(line(2).includes(aSource), `${lang}: a removed source reads as a plain phrase: ${line(2)}`);
+    for (const i of [0, 1, 2]) assert.ok(!/[0-9a-f]{8}/.test(line(i)), `${lang}: no hex id in the visible line: ${line(i)}`);
+    // never dropped: the id stays inspectable in the list item's title
+    const html = h.evaluate('matchesScreen()');
+    for (const id of [present, removed, source]) assert.ok(html.includes(`title="${id}"`), `${lang}: ${id.slice(0, 8)} is kept in the title`);
+  }
+  // a name the server recorded wins; a source still present reads by its URL; an archived entrant resolves from history
+  h.evaluate(`lang='en';data.sources=[{id:'${source}',url:'https://www.twitch.tv/examplechannel'}]`);
+  assert.ok(h.evaluate('auditLine(data.events[2])').includes('https://www.twitch.tv/examplechannel'));
+  h.evaluate(`data.history=[{id:'h1',name:'Thursday',entrants:[{id:'${removed}',members:[{pid:null,name:'Bo'}]}],matches:[]}]`);
+  assert.ok(h.evaluate('auditLine(data.events[1])').includes('Entrant removed · Bo · v5'), 'an archived night still knows the name');
+  assert.ok(h.evaluate(`auditLine({action:'player_save',createdAt:'2026-09-26T01:00:00Z',revision:6,context:{id:'x',name:'Ann'}})`).includes('Player saved · Ann · v6'));
+});
 test('R9: the compact bracket is one line per side with a status dot; the full card is still there', () => {
   const h = harness();
   h.evaluate(`data.players=[];data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',

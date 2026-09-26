@@ -144,3 +144,30 @@ margins, alignment, pre-wrap; 16 older + main's) became scale utility classes (`
 an exact-string swap, so audit P2 #1 ("21 inline style=") is closed except the one dynamic
 `transform:scaleX(${…})` on the clock bar. The second-chance card was measured in its live state; the
 event table only exists while a night has signed results (both checked in their states).
+
+**Clarify: the Night log / 赛事日志 prints names, not hex ids** (found in the ship13 production shot,
+Matches 中 1280: `移除参赛者 · a51461c2c94649988a2995e9b27c69a8 · v5`). `auditLine()` printed
+`context.name || context.id`. What the server's audit context records, measured by calling
+`Operations._event_context` for every action on a state that has one of everything
+(`ledger/clarify/audit-context-probe.txt`):
+
+| Records a name | Records an id only | Records nothing |
+|---|---|---|
+| `player_save`, `player_delete`, `guest_promote`, `tournament_*` (setup/start/rename/delete/hide/new), `pair_draw`/`pair_accept` (teams by name), `revival_*` (entrant id + the draw) | `entrant_add`, `entrant_remove`, `entrant_absence`, `match_*` (schedule, unschedule, score, complete, absence, forfeit), `source_add`, `source_delete`, `note_add`, `note_delete` | `settings_update`, `solo_add`, `pool_remove`, `pair_clear` |
+
+**For the director (server code not changed, as asked):** the write paths in the middle column never
+record a name, so once the entrant, source or match is gone from tonight's state *and* from the archived
+nights, its line can only say "an entrant who was removed" / "a source". Recording the display name at
+write time in `_event_context` for `entrant_*`, `source_*` and `match_*` (and the person for `solo_add` /
+`pool_remove`) would make those lines permanent. `note_*` deliberately records no text (the whitelist
+comment: never copy note contents), so "a note" is correct there.
+
+Client fix (`ops.js`, anchor-unique): `auditSubject(e)` resolves in this order, never guessing:
+the context's own name → tonight's state → archived nights (`data.history`) → a plain phrase
+(`an entrant who was removed` / `已移除的参赛者`, `a source` / `一个来源`, `a match` / `一场比赛`,
+`a player who was removed` / `已删除的球员`, `a note` / `一条备注`). A match reads by both sides'
+names when both resolve; a source still saved reads by its URL. The raw id is kept on the list item's
+`title` (and the revival's entrant id), so nothing is dropped. Browser, throwaway `:8142`, 中 and EN:
+`参赛报名 · 王磊 · v2`, `移除参赛者 · 已移除的参赛者 · v4`, `删除来源 · 一个来源 · v5`; 0 hex ids in
+the visible log; every line with an id has it in `title`. Test added (present + removed entrant, removed
+and present source, archived-night lookup, recorded name wins; EN and 中).
