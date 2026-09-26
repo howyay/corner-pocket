@@ -111,8 +111,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #t-overlay .o-src.manual text { fill: var(--green); }
 #t-overlay .o-src.calib text { fill: var(--amber); }
 #t-overlay .o-label { font: 500 14px var(--mono); fill: var(--stage-ink); }
-#t-overlay .u-person text.u-chip { fill: var(--green); opacity: .85; }
-#t-overlay .u-person text.u-chip.bound { fill: var(--stage-bound); opacity: 1; }
+/* The chip is drawn beside its MODEL tag, not inside .u-person (it is placed with the
+   other tag rows), so the rule names it directly: it had no fill before (black). */
+#t-overlay text.u-chip { fill: var(--green); opacity: .85; }
+#t-overlay text.u-chip.bound { fill: var(--stage-bound); opacity: 1; }
 
 /* Ball label popover: attached to the ball it labels, dimming around it. */
 .stage-popover { position: absolute; z-index: 5; min-width: 168px; padding: var(--sp-2); border: 1px solid var(--brass); border-radius: 2px; background: var(--panel); box-shadow: 0 6px 26px var(--shadow); line-height: 1.3; }

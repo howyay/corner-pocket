@@ -283,16 +283,47 @@ function glyphWidth(value, size) {
 }
 function sourceTagLabel(kind) { return text(kind === 'manual' ? 'YOURS' : kind === 'calib' ? 'CALIB' : kind === 'event' ? 'EVENT' : 'MODEL'); }
 function sourceTagWidth(kind) { return Math.round(glyphWidth(sourceTagLabel(kind), SRC_TAG_FONT) + 14); }
-function sourceTag(x, y, kind) {
-  const label = sourceTagLabel(kind), width = sourceTagWidth(kind);
-  return `<g class="o-src ${kind}" data-src="${kind}"><rect x="${Math.round(x)}" y="${Math.round(y)}" width="${width}" height="${SRC_TAG_HEIGHT}" rx="3"></rect><text x="${Math.round(x + 7)}" y="${Math.round(y + 13)}">${esc(label)}</text></g>`;
-}
+// Tag placement. During one paintOverlay() every tag row (provenance tag + its label)
+// registers here with the spot its owner asked for; placeTags() then settles them
+// before the one innerHTML write, so no two rows are drawn over each other. Outside a
+// paint (tests, other callers) a row is drawn where it was asked for.
+let tagQueue = null;
+const TAG_ORDER = {manual:0, calib:1, event:2, model:3, auto:3};
+function sourceTag(x, y, kind) { return tagRow(x, y, kind, ''); }
 // The tag and the group's own label share one line, so two sources drawn on the
 // same spot stay readable instead of stacking four rows of small text.
 function tagRow(x, y, kind, label, cls = 'o-label') {
-  const row = sourceTag(x, y, kind);
-  if (!label) return row;
-  return `${row}<text class="${cls}" x="${Math.round(x + sourceTagWidth(kind) + 6)}" y="${Math.round(y + 13)}">${esc(label)}</text>`;
+  const width = sourceTagWidth(kind) + (label ? 6 + Math.round(glyphWidth(label, SRC_TAG_FONT)) : 0);
+  const draw = (px, py) => {
+    const tag = `<g class="o-src ${kind}" data-src="${kind}"><rect x="${Math.round(px)}" y="${Math.round(py)}" width="${sourceTagWidth(kind)}" height="${SRC_TAG_HEIGHT}" rx="3"></rect><text x="${Math.round(px + 7)}" y="${Math.round(py + 13)}">${esc(sourceTagLabel(kind))}</text></g>`;
+    return label ? `${tag}<text class="${cls}" x="${Math.round(px + sourceTagWidth(kind) + 6)}" y="${Math.round(py + 13)}">${esc(label)}</text>` : tag;
+  };
+  if (!tagQueue) return draw(x, y);
+  const token = `\u0000tag${tagQueue.length}\u0000`;
+  tagQueue.push({token, x, y, width, kind, draw});
+  return token;
+}
+// Settle the queued rows: the operator's and calibration tags keep their spot first,
+// then events, then model tags. A row that would cover an earlier one moves to the
+// nearest free spot in 20 px steps: down, up, then right and left. It never leaves the
+// frame, and if nothing is free within 6 steps it keeps its asked-for spot.
+function placeTags(markup, frameW, frameH) {
+  const queue = tagQueue || []; tagQueue = null;
+  const taken = [], H = SRC_TAG_HEIGHT + 2;
+  const hits = (x, y, w) => taken.some(r => x < r.x + r.w && r.x < x + w && y < r.y + r.h && r.y < y + H);
+  const fit = (x, y, w) => [Math.max(0, Math.min(frameW - w, x)), Math.max(0, Math.min(frameH - H, y))];
+  const moves = [[0,0]];
+  for (let s = 1; s <= 6; s++) moves.push([0, s * 20], [0, -s * 20], [s * 24, 0], [-s * 24, 0]);
+  const order = queue.map((q, i) => i).sort((i, j) => (TAG_ORDER[queue[i].kind] ?? 9) - (TAG_ORDER[queue[j].kind] ?? 9) || i - j);
+  const out = new Map();
+  for (const i of order) {
+    const q = queue[i];
+    let spot = fit(q.x, q.y, q.width);
+    for (const [dx, dy] of moves) { const s = fit(q.x + dx, q.y + dy, q.width); if (!hits(s[0], s[1], q.width)) { spot = s; break; } }
+    taken.push({x: spot[0], y: spot[1], w: q.width, h: H});
+    out.set(q.token, q.draw(spot[0], spot[1]));
+  }
+  return markup.replace(/\u0000tag\d+\u0000/g, token => out.get(token) ?? '');
 }
 function quadOrigin(points) {
   const xs = points.map(p => Number(p[0])), ys = points.map(p => Number(p[1]));
@@ -726,6 +757,7 @@ function paintLiveChip() {
 }
 function paintOverlay() {
   const svg = $('#t-overlay'); if (!svg) return;
+  tagQueue = [];
   const drawn = {cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0};
   // Provenance: `auto` holds what the model drew (unified detection or the live
   // metadata stream); the manual polygon and correction boxes are counted into
@@ -792,8 +824,8 @@ function paintOverlay() {
       const [x1, y1, x2, y2] = per.bbox;
       const track = per.track_id ?? per.track;
       const selected = state.sel.kind === 'person' && track !== undefined && String(state.sel.person?.track_id ?? state.sel.person?.track) === String(track);
-      const chip = ov ? `<text class="u-chip${per.player_id ? ' bound' : ''}" x="${x1 + 2 + sourceTagWidth('model') + 6}" y="${Math.max(16, y1 - 8)}">${esc(personChip(per, track))}</text>` : '';
-      return `${sourceTag(x1 + 2, Math.max(2, y1 - 26), 'model')}${chip}<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect></g>`;
+      const chip = ov ? tagRow(x1 + 2, Math.max(2, y1 - 26), 'model', personChip(per, track), `u-chip${per.player_id ? ' bound' : ''}`) : sourceTag(x1 + 2, Math.max(2, y1 - 26), 'model');
+      return `${chip}<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect></g>`;
     }).join(''));
     auto.persons = persons.length;
   }
@@ -870,7 +902,7 @@ function paintOverlay() {
   }).join('');
   const poly = editPolygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
-  svg.innerHTML = layers.join('') + poly + boxes + preview;
+  svg.innerHTML = placeTags(layers.join('') + poly + boxes + preview, state.frameWidth || 1280, state.frameHeight || 720);
   svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { const index = Number(g.dataset.box); if (state.boxes[index]?.frozen) return; if (state.tool === 'select' && state.sel.box !== index) { selectBox(index); } });
   svg.querySelectorAll('g.u-ball').forEach(g => g.onclick = event => { event.stopPropagation(); selectStageBall(Number(g.dataset.ball), Number(g.dataset.cx), Number(g.dataset.cy), Number(g.dataset.r)); });
   svg.querySelectorAll('g.u-person').forEach(g => g.onclick = event => { event.stopPropagation(); selectStagePerson(g.dataset); });

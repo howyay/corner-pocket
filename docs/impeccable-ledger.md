@@ -64,3 +64,20 @@ three suites at or above the post-merge floor: unittest 944 OK (skipped=13), `te
 
 Detector false positives kept as-is (recorded in the audit report): cloth swatches and rail colour
 (physical depictions), dashed/solid provenance edges (`side-tab`), scoreboard lamp glow.
+
+## Step 3 detail: the directive items that are not one of the 24 commands
+
+**Overlay label collision avoidance (painter).** Measured with `out/impeccable/measure_overlap.sh`
+(every visible SVG text box on the stage, pairs intersecting by more than 2 px²), vod30 frame 0,
+1280 and 390: **56 tags, 25 overlapping pairs** (`MODEL × MODEL`, `top-right × ball 0.84`, …). The
+painter now queues every tag row (provenance tag + its label) during one `paintOverlay()` and a
+single `placeTags()` settles them before the one `innerHTML` write: the operator's (YOURS) and
+calibration tags keep their spot first, then events, then model tags; a row that would cover an
+earlier one moves to the nearest free spot (20 px steps down/up, 24 px right/left, at most 6), never
+leaves the frame, and keeps its spot if nothing is free. After: **56 tags, 0 overlaps** at both
+widths (`overlay/overlap-{before,after}.tsv`, `overlay/overlay-before-after-1280.png`). Found on the
+way: the person chip (`unbound · track 4`) was drawn beside `.u-person`, not inside it, so
+`#t-overlay .u-person text.u-chip` never matched and the chip rendered **black** on the video; the
+rule now names `text.u-chip` directly (green; bound = `--stage-bound`), and the chip is placed as the
+MODEL tag's label. Provenance classes, dashed/solid edges and box coordinates are unchanged. Test
+added (YOURS first, no overlapping rows, inside the frame, unqueued rows draw where asked).

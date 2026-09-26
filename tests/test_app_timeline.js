@@ -28,7 +28,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
     playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip, paintLiveChip,
-    boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
+    placeTags, tagRow, beginTags: () => { tagQueue = []; }, boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
     paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
@@ -227,6 +227,30 @@ test('form and video targets never double-consume the stage keys', () => {
   assert.strictEqual(T.state.frame, before, 'a form field keeps its own arrow keys');
   T.state.vmeta = null; T.state.dirty = false;
   review.deactivate();
+});
+
+test('overlay tags never overprint: YOURS keeps its spot, the rest move to free space inside the frame', () => {
+  T.beginTags();
+  const markup = [T.tagRow(100, 100, 'auto', 'ball 0.84'), T.tagRow(100, 100, 'manual', 'ball'), T.tagRow(102, 104, 'model', 'person 0.97'),
+                  T.tagRow(1270, 710, 'model', 'ball 0.50')].join('');
+  const html = T.placeTags(markup, 1280, 720);
+  assert.ok(!html.includes('\u0000'), 'every queued row is drawn');
+  const rows = [...html.matchAll(/<g class="o-src (\w+)" data-src="\w+"><rect x="(-?\d+)" y="(-?\d+)" width="(\d+)"/g)]
+    .map(([, kind, x, y, w]) => ({kind, x: +x, y: +y, w: +w}));
+  assert.strictEqual(rows.length, 4);
+  const yours = rows.find(r => r.kind === 'manual');
+  assert.deepStrictEqual([yours.x, yours.y], [100, 100], 'the operator\u2019s tag is placed first, where it was asked for');
+  // A row is its tag plus the label text after it: measure where each label ends.
+  const ends = [...html.matchAll(/<text class="o-label" x="(-?\d+)" y="(-?\d+)">([^<]*)<\/text>/g)].map(([, x, y, s]) => ({x: +x, y: +y, end: +x + s.length * 14 * 0.62}));
+  const full = rows.map(r => { const l = ends.find(e => e.y === r.y + 13 && e.x === r.x + r.w + 6); return {...r, w: l ? Math.ceil(l.end - r.x) : r.w}; });
+  for (let i = 0; i < full.length; i++) for (let j = i + 1; j < full.length; j++) {
+    const a = full[i], b = full[j];
+    const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + 20 && b.y < a.y + 20;
+    assert.ok(!overlap, `rows ${a.kind}@${a.x},${a.y} and ${b.kind}@${b.x},${b.y} do not overlap`);
+  }
+  for (const r of rows) assert.ok(r.x >= 0 && r.y >= 0 && r.y + 20 <= 720, `${r.kind} stays inside the frame`);
+  assert.strictEqual(T.tagRow(5, 6, 'model', ''), T.tagRow(5, 6, 'model', ''), 'outside a paint a row is drawn where asked (no queue)');
+  assert.ok(T.tagRow(5, 6, 'model', '').includes('x="5" y="6"'));
 });
 
 test('F3: with a box selected the arrows nudge it both ways (Shift = 10 px); with none, ←/→ step frames', () => {
