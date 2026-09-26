@@ -716,3 +716,66 @@ test('a player record is all-time and read-only, with head-to-head from signed m
   await click({action: 'record-back'});
   assert.ok(h.evaluate('playersScreen()').includes('data-action="player-record"'), 'back returns to the profile');
 });
+test('a results sheet prints the whole bracket and copies as text, champion from the final (R10)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.players=[{id:'pa',name:'Ada',status:'Active',rating:1}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t0',name:'',format:'singles',tables:1,raceTo:3,status:'registration',entrants:[],matches:[]};
+    data.history=[{id:'h1',name:'Friday 8-Ball',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-26T12:00:00Z',
+      entrants:[E('a','pa','Ada (old)'),E('b',null,'Bo'),E('c',null,'Cy')],
+      matches:[{id:'m1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[]},
+               {id:'m2',round:1,sides:['b','c'],score:[0,0],status:'complete',result:'forfeit',winnerId:'b',absent:[]},
+               {id:'m3',round:2,sides:['a','b'],score:[3,2],status:'complete',result:'played',winnerId:'a',absent:[],sources:['m1','m2']}]}]`);
+  assert.equal(h.evaluate("resultsText(data.history[0])"), [
+    'Friday 8-Ball · 2026-09-26', 'Singles · Race to 3', 'Champion: Ada', '',
+    'Round 1', 'Ada: bye (advances, not a win)', 'Bo wins by forfeit vs Cy', '',
+    'Final', 'Ada 3–2 Bo', '', 'Signed results only. A bye advances a player but is not a win.'].join('\n'));
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("resultsText(data.history[0])"), [
+    'Friday 8-Ball · 2026-09-26', '单打 · 抢3', '冠军：Ada', '',
+    '轮次 1', 'Ada：轮空晋级（不计胜场）', 'Cy 弃权，Bo 晋级', '',
+    '决赛', 'Ada 3–2 Bo', '', '仅含已签赛果。轮空晋级不计为胜场。'].join('\n'));
+  // an unfinished bracket never names a champion
+  h.evaluate("lang='en';data.history[0].matches[2]={...data.history[0].matches[2],status:'scheduled',result:undefined,winnerId:null,score:[0,0]}");
+  assert.ok(h.evaluate("resultsText(data.history[0])").includes('Champion: not decided yet'));
+  assert.ok(h.evaluate("resultsText(data.history[0])").includes('Ada vs Bo: not played yet'));
+  h.evaluate("data.history[0].matches[2].sides=['a',null]");
+  assert.ok(h.evaluate("resultsText(data.history[0])").includes('Ada vs TBD: not played yet'), 'an undecided side is TBD, never Waiting');
+  h.evaluate("data.history[0].matches[2].sides=['a','b']");
+  h.evaluate("data.history[0].matches[2]={...data.history[0].matches[2],status:'complete',result:'played',winnerId:'a',score:[3,2]}");
+  // the sheet view: reached from the archive, read-only, full bracket, print + copy controls
+  h.evaluate('render=()=>{}');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  assert.ok(h.evaluate('matchesScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
+  h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['x','y'],score:[0,0],status:'scheduled',absent:[]}]");
+  assert.ok(h.evaluate('matchesScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  h.evaluate('data.tournament.matches=[]');
+  assert.ok(!h.evaluate('matchesScreen()').includes('data-id="t0"'), 'no sheet before the draw');
+  await click({action: 'results-sheet', id: 'h1'});
+  assert.equal(h.evaluate('sheetId'), 'h1', 'the click opens the sheet');
+  const sheet = h.evaluate('matchesScreen()');
+  assert.ok(sheet.includes('class="stack results-sheet"'), 'the sheet replaces the Matches view');
+  assert.ok(/class="champion"[^]*?Ada/.test(sheet), 'the champion is the final winner, by the live roster name');
+  assert.equal((sheet.match(/class="sheet-round"/g) || []).length, 2, 'every round is on the sheet');
+  assert.ok(sheet.includes('data-action="print-sheet"') && sheet.includes('data-action="copy-results"'));
+  assert.ok(!/<form|<input/.test(sheet), 'the sheet is read-only');
+  let copied = null;
+  h.context.navigator = {clipboard: {writeText: async text => { copied = text; }}};
+  await click({action: 'copy-results', id: 'h1'});
+  assert.equal(copied, h.evaluate("resultsText(data.history[0])"));
+  let printed = 0;
+  h.context.print = () => { printed++; };
+  await click({action: 'print-sheet'});
+  assert.equal(printed, 1);
+  assert.equal(h.evaluate('calls.length'), 0, 'a sheet never writes');
+  await click({action: 'sheet-back'});
+  assert.ok(!h.evaluate('matchesScreen()').includes('class="stack results-sheet"'), 'back returns to the bracket');
+  await click({action: 'results-sheet', id: 'h1'});
+  h.evaluate('canNavigate=()=>true');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {tab: 'floor'}}}});
+  assert.equal(h.evaluate('sheetId'), null, 'leaving Matches closes the sheet');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const print = css.slice(css.indexOf('@media print'));
+  assert.ok(print.length > 20 && /header[^{]*\{[^}]*display:none/.test(print) && /\.no-print[^{]*\{[^}]*display:none/.test(print), 'print hides the shell chrome and the sheet buttons');
+  assert.ok(/\.results-sheet[^{]*\.note[^{]*\{[^}]*background:#fff/.test(print), 'the scope note prints on white, not on the dark panel');
+});

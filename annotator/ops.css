@@ -401,3 +401,19 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell) .vs-clock{display:inline-flex;align-items:baseline;gap:4px;flex:none}
   :is(#ops-shell) .vs-strip{position:sticky;bottom:44px}
 }
+/* R10 results sheet: one full bracket on screen, and on paper / PDF */
+:is(#ops-shell) .results-sheet h2{margin:0 0 4px}
+:is(#ops-shell) .results-sheet .champion{display:flex;flex-direction:column;gap:2px;margin:14px 0 0}
+:is(#ops-shell) .results-sheet .champion strong{font:600 26px var(--display);color:var(--brass-hi)}
+:is(#ops-shell) .sheet-rounds{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+:is(#ops-shell) .sheet-match{margin:6px 0;font-variant-numeric:tabular-nums}
+:is(#ops-shell) .sheet-match.bye{color:var(--ink-dim)}
+@media print{
+  :is(#ops-shell) header,:is(#ops-shell) #strip,:is(#ops-shell) #message,#vision-host,:is(#ops-shell) .no-print{display:none!important}
+  html,body,:is(#ops-shell),:is(#ops-shell) main{background:#fff!important;color:#000!important}
+  :is(#ops-shell) main{padding:0}
+  :is(#ops-shell) .results-sheet article{border:1px solid #999;background:#fff;color:#000;break-inside:avoid}
+  :is(#ops-shell) .results-sheet :is(h2,h3,p,small,strong){color:#000!important}
+  :is(#ops-shell) .results-sheet .note{background:#fff!important;border-left-color:#999}
+  :is(#ops-shell) .sheet-rounds{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+}
