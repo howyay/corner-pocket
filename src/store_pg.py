@@ -30,7 +30,7 @@ from pathlib import Path
 import json
 
 from src import db
-from src.store import BALL_SETS, DATASETS, JsonStore
+from src.store import BALL_SETS, DATASETS, JsonStore, StoreConstraintError
 from src.store_files import dump, fmt_of, get_document, put_document
 
 MAX_EVENTS = 500
@@ -77,9 +77,19 @@ class PostgresStore:
 
     @contextmanager
     def _write(self):
+        """One write transaction. A constraint the 0002 projection enforces (FK, CHECK,
+        unique) that the application rules let through rolls the whole write back and
+        raises StoreConstraintError naming it - never a silent success."""
+        import psycopg
         conn = self._conn()
-        with conn.transaction():
-            yield conn
+        try:
+            with conn.transaction():
+                yield conn
+        except psycopg.errors.IntegrityError as error:
+            diag = error.diag
+            raise StoreConstraintError(diag.constraint_name,
+                                       f"{type(error).__name__}: {(diag.message_primary or str(error)).strip()}"
+                                       + (f" ({diag.message_detail})" if diag.message_detail else "")) from error
 
     @contextmanager
     def _read(self):

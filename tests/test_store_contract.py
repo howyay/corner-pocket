@@ -286,6 +286,55 @@ class PostgresContract(Contract, unittest.TestCase):
         self.addCleanup(self._drop)
         self.store = PostgresStore(self.root, search_path=self.schema)
         self.addCleanup(self.store.close)
+        self._checked_writes = 0
+        self._install_projection_check()
+
+    def _install_projection_check(self):
+        """After every write, the 0002 rows must equal a fresh projection of the stored
+        documents (condition 1 of the 0003 review). src.store_check runs at the end of
+        the write's own transaction - it sees exactly that write's documents and rows,
+        and a concurrent writer cannot interleave (a check after commit could race one).
+        Failures are collected and asserted in the test thread, so a worker thread
+        cannot hide one."""
+        from contextlib import contextmanager
+        from src.store_check import check
+        original = self.store._write
+        self._projection_problems = []
+        self.addCleanup(lambda: self.assertEqual(self._projection_problems, [],
+                                                 "the projection must equal the stored documents after every write"))
+
+        @contextmanager
+        def checked_write():
+            with original() as conn:
+                yield conn
+                self._projection_problems.extend(check(conn))
+                self._checked_writes += 1
+
+        self.store._write = checked_write
+
+    def test_the_projection_check_runs_after_every_write_and_catches_drift(self):
+        from src.store_check import check
+        self.post("player_save", name="Ada")
+        self.store.verdict_put("vod30", 1, {"verdict": "correct"})
+        self.assertEqual(self._checked_writes, 2, "each write was followed by a projection check")
+        with db.connect() as conn:
+            conn.execute(f"SET search_path TO {self.schema}")
+            conn.execute("UPDATE event_verdicts SET verdict = 'wrong'")          # a projection drifting away
+            self.assertTrue(any("event_verdicts" in p for p in check(conn)), "the check reports the drift")
+
+    def test_a_write_the_rules_allow_but_a_constraint_refuses_rolls_back_and_names_it(self):
+        """Real path: Python's casefold and PostgreSQL's lower() disagree on 'İlker' vs
+        'ilker' (measured: casefold unequal, lower() equal), so player_save accepts the
+        second name and the players_name_ci backstop refuses it."""
+        from src.store import StoreConstraintError
+        first = self.store.ops_post({"action": "player_save", "revision": 0, "name": "İlker"})
+        with self.assertRaises(StoreConstraintError) as refused:
+            self.store.ops_post({"action": "player_save", "revision": 1, "name": "ilker"})
+        self.assertEqual(refused.exception.constraint, "players_name_ci")
+        self.assertIn("players_name_ci", str(refused.exception))
+        self.assertIn("nothing was written", str(refused.exception))
+        self.assertIsInstance(refused.exception, ValueError, "the server answers it as a 4xx, not a 500")
+        self.assertEqual(self.store.ops_get(), first, "the refused write left the document as it was")
 
     def _drop(self):
         with db.connect() as conn:

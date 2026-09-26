@@ -32,6 +32,21 @@ from typing import Any, Protocol, runtime_checkable
 from src.face_id import add_faces, load_faces, remove_faces
 
 ENV = "POOL_DATABASE_URL"
+
+
+class StoreConstraintError(ValueError):
+    """A write the application rules accepted but a database constraint refused.
+
+    The transaction was rolled back, so nothing was written. It is a ValueError, so
+    the server's existing handlers answer 4xx; the message says it is a storage
+    constraint and `constraint` names it for the technical detail."""
+
+    def __init__(self, constraint: str | None, detail: str):
+        self.constraint = constraint
+        super().__init__(f"Refused by the database constraint {constraint or '(unnamed)'}; "
+                         f"nothing was written. {detail}")
+
+
 # dataset -> the scan folder under out/ that holds its queue, verdicts and frame results
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
