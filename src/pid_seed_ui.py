@@ -212,6 +212,10 @@ def _rebuild():
 
 
 if __name__ == "__main__":
+    # legacy seed UI: writes out/pid_seed.json directly
+    sys.path.insert(0, str(ROOT.parent))
+    from src.store import refuse_file_writes_under_postgres
+    refuse_file_writes_under_postgres("src/pid_seed_ui.py")
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8127
     print(f"serving on http://127.0.0.1:{port}")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

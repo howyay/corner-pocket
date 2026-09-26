@@ -25,8 +25,10 @@ def run(root=ROOT):
     from annotator.unified_server import atomic_save
     out = root / "out"
     tracklets = json.loads((out / "pid2_tracklets.json").read_text())
-    seed_file = out / "pid_seed.json"
-    seeds = json.loads(seed_file.read_text()).get("seeds", {}) if seed_file.exists() else {}
+    # the operator's seeds come from the store the server writes them to: the file by
+    # default, Postgres when POOL_DATABASE_URL is set (inherited from the service)
+    from src.store import open_store
+    seeds = open_store(root).seeds_get("vod30")
     labels = explicit_seeds(tracklets, seeds)
     mapping = {f'{tk["id"]}:{win}': "?" for win, window in tracklets.items() for tk in window["tracklets"]}
     if not {"A", "B"}.issubset(set(labels.values())):

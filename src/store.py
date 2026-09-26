@@ -102,6 +102,21 @@ def open_store(root) -> Store:
     return JsonStore(root)
 
 
+def refuse_file_writes_under_postgres(tool: str) -> None:
+    """Exit with a clear message when POOL_DATABASE_URL is set.
+
+    For the legacy tools that write user-data JSON files directly (their own small
+    servers and one-off scripts). With the database as the store, a file they write
+    is read by nothing and silently diverges, so they refuse to start instead. To
+    use one anyway: unset POOL_DATABASE_URL and point it at an exported copy
+    (python -m src.store_export --to DIR), never at the live out/."""
+    if os.environ.get(ENV):
+        raise SystemExit(f"{tool}: POOL_DATABASE_URL is set, so the user data lives in Postgres and this "
+                         f"tool's file writes would silently diverge from it. Refusing to run. To use it on "
+                         f"a copy: python -m src.store_export --to DIR, then run it against DIR with the "
+                         f"variable unset (docs/postgres.md).")
+
+
 def _read(path: Path, default):
     return json.loads(path.read_text()) if path.is_file() else default
 

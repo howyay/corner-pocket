@@ -9,6 +9,11 @@ import shutil
 import sys
 from pathlib import Path
 
+# writes a labels.json: with the database as the store, run it on an exported copy
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.store import refuse_file_writes_under_postgres  # noqa: E402
+refuse_file_writes_under_postgres("src/merge_sets.py")
+
 d1, d2, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 out.mkdir(parents=True, exist_ok=True)
 (out / 'ctx').mkdir(exist_ok=True)
