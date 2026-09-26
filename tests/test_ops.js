@@ -231,6 +231,21 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+test('narrow: record totals are 2x2 in a narrow modal, one row when wide; wide tables scroll inside', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('#ops-shell .record .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}'), 'the four totals are 2x2 by default');
+  assert.ok(css.includes('#ops-shell .record{container-type:inline-size}') && css.includes('@container (min-width:460px){#ops-shell .record .tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}'),
+    'and one row of four when the record itself is wide (the modal caps at 540 px, so the container decides, not the viewport)');
+  assert.ok(css.includes('#ops-shell .table-wrap{overflow:auto;contain:inline-size}'), 'main\u2019s wrapper still keeps a wide table inside');
+  assert.ok(css.includes('#ops-shell .table-wrap{-webkit-mask-image:') && css.includes('animation-timeline:scroll(self inline)'), 'a clipped table says it scrolls');
+  const h = harness();
+  h.evaluate("data.players=[{id:'p1',name:'Maximiliana Alexandrovna Konstantinopolskaya-Wrightington',rating:50,status:'Active',joinedAt:'2026-09-26'}];data.history=[]");
+  const record = h.evaluate("recordView(data.players[0])");
+  assert.ok(record.includes('<div class="record">') && /<div class="tiles">(<div class="tile">[\s\S]*?){4}/.test(record), 'the record has its four totals tiles');
+  for (const table of ['per-event', 'h2h']) {
+    if (record.includes(`class="${table}"`)) assert.ok(record.includes(`<div class="table-wrap"><table class="${table}"`), `${table} is wrapped`);
+  }
+});
 test('clarify: the night log names entrants and sources instead of printing hex ids', () => {
   const h = harness();
   const present = 'a51461c2c94649988a2995e9b27c69a8', removed = 'b0000000c94649988a2995e9b27c69ff', source = '77777777777777777777777777777777';

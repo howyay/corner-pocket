@@ -171,3 +171,21 @@ names when both resolve; a source still saved reads by its URL. The raw id is ke
 `参赛报名 · 王磊 · v2`, `移除参赛者 · 已移除的参赛者 · v4`, `删除来源 · 一个来源 · v5`; 0 hex ids in
 the visible log; every line with an id has it in `title`. Test added (present + removed entrant, removed
 and present source, archived-night lookup, recorded name wins; EN and 中).
+
+**Narrow widths: the player record's totals, and wide tables** (ship13 screenshots of main's new
+surfaces). Seeded on a throwaway `:8142`: four regulars with long names (up to 57 characters, one
+Chinese), one archived night played to the end, tonight in progress (`ledger/narrow/`).
+
+1. *Player record at 390.* The totals tiles used the shared `minmax(168px,1fr)` grid, so in the 358 px
+   modal they were **one per row**: 4 rows, 317 px, *By event* starting at 534 px (EN). Now the record's
+   tiles are **2×2** by default and **one row of four** when the record itself is ≥ 460 px — a container
+   query on `.record`, because the modal caps at 540 px and the viewport is the wrong signal — with
+   compact tile padding. After: 390 → 2×2, 117 px, *By event* at **334 px** (中 321 px), *Head-to-head* at
+   522 px, both above the fold; 1280 → one row, 59 px (was 2×2, 159 px).
+2. *Tables at 390.* Main's `.table-wrap` wrappers (`6943ecc`: standings, event table, head-to-head,
+   by-event) are on this branch since the merge `882ffe1` and kept. Checked with long names:
+   `scrollWidth == innerWidth` on **Matches and Player record, 390 and 1280, EN and 中** (390/390,
+   1280/1280); the wide tables scroll inside their wrappers (standings 443 in 332 px, head-to-head 368 in
+   308 px). Added: a wrapper that is clipped **fades its right edge** (same cue as the Vision stagebar),
+   and the fade leaves when it is scrolled to the end (scroll-driven; kept under reduced motion because it
+   only follows the user's own scroll; no fade where unsupported). Test added.

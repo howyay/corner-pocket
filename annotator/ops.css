@@ -183,7 +183,7 @@ html{scroll-padding-top:var(--sp-4)}
    motion the user did not cause, so it is kept (it only follows their own scroll). */
 @media(prefers-reduced-motion:reduce){
 #ops-shell,#ops-shell *{transition-duration:0s!important;scroll-behavior:auto!important}
-#ops-shell *:not(.vs-stagebar){animation-duration:0s!important;animation-iteration-count:1!important}
+#ops-shell *:not(.vs-stagebar,.table-wrap){animation-duration:0s!important;animation-iteration-count:1!important}
 }
 /* --- Fidelity pass vs design/corner-pocket/Corner Pocket Ops standalone-src.dc.html --- */
 html,body{-webkit-font-smoothing:antialiased}
@@ -537,3 +537,19 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .mb-3{margin-bottom:var(--sp-3)}#ops-shell .mb-4{margin-bottom:var(--sp-4)}#ops-shell .m-0{margin:0}
 #ops-shell .bare{border:0;padding:0;margin:0}#ops-shell .items-end{align-items:end}#ops-shell .items-center{align-items:center}
 #ops-shell .justify-between{justify-content:space-between}#ops-shell .w-full{width:100%}#ops-shell .text-left{text-align:left}#ops-shell .pre-wrap{white-space:pre-wrap}
+/* Player record totals: four short numbers. A 168 px minimum made them one per row in a
+   350 px phone modal (four full-width rows before By event). Here they are 2x2 when the
+   modal is narrow and one row of four when it has room; the tiles are compact (numbers,
+   not paragraphs), so the tables below stay near the top. */
+#ops-shell .record .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+#ops-shell .record{container-type:inline-size}
+@container (min-width:460px){#ops-shell .record .tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+#ops-shell .record .tile{min-height:0;padding:var(--sp-2) var(--sp-3)}
+#ops-shell .record .tile small{margin-bottom:var(--sp-1)}
+/* A wide table scrolls inside its wrapper (main's .table-wrap), never the page. At 390 a
+   long-name head-to-head is ~60 px wider than the modal, and a cut-off column gave no sign
+   that it scrolls: the wrapper fades its clipped end, the same cue as the Vision stagebar,
+   and the fade leaves once it is scrolled to the end (scroll-driven). Where scroll-driven
+   animation is unsupported there is no fade, so the last column is never masked. */
+#ops-shell .table-wrap{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);animation:vs-row-end linear both;animation-timeline:scroll(self inline)}
+@supports not (animation-timeline:scroll()){#ops-shell .table-wrap{-webkit-mask-image:none;mask-image:none}}
