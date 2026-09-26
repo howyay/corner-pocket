@@ -12,7 +12,7 @@ https://pool.example.com uses the existing `pool-tunnel` Cloudflare Tunnel:
 
 Cloudflare Access application `Corner Pocket` protects the entire hostname,
 including API/media routes. Pocket ID SSO is the only enabled identity provider;
-allow policy is restricted to `owner@example.com`, matching the existing Kaneo SSO
+allow policy is restricted to the owner's address, matching the existing Kaneo SSO
 setup. Session duration: 168 hours. There is no public bypass policy.
 
 Origin runs as enabled user service `pool-workbench.service`, with restart on
