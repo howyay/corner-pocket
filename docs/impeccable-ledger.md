@@ -111,3 +111,21 @@ selected → submitted as an entrant. Tests (`test_ops.js`): the Ann-Marie case,
 full-width, accents both ways, Chinese with/without spaces, empty query, name-only roster, no `fetch`,
 EN/中 keys, and the desk filter (visible set, single-match select, rating never matched, clear).
 Evidence `out/impeccable/ledger/r13/`.
+
+**R9 (P1), bracket density.** Before: every match card was `min-height:98px` with its own table/id row
+and status badge, rounds in a horizontal flex of `min-width:260px` columns. Measured on a 16-entrant
+draw (15 matches, throwaway `:8142`, `out/impeccable/measure_bracket.sh`): at 1280×900 **10 of 15**
+matchups fully on the first screen, round 1 column **1,962 px** tall; at 390, **3 of 15**. After:
+a **compact density** (default; *Compact / Full cards* toggle with `aria-pressed`, remembered per device
+in `cp-ops-density`, EN/中 `Bracket density / 对阵表密度`). Compact cards are **one line per side**
+(name + score, winner still brass) with a **status dot** on the first line in the badge's own colour
+(on table / delayed amber, scheduled blue, signed green, bye dashed); the rounds share the **viewport
+width** (`grid-auto-columns:minmax(180px,1fr)`), scrolling sideways only below 180 px a round. The
+header row (table · id · status badge), *Send to table*, *Not here / Here now* and *Forfeit* stay in the
+card and open on **hover, keyboard focus (`tabindex=0`, Tab reaches the controls) or tap**, below the
+side lines so the line under the pointer never moves; the card's `aria-label` carries both names and the
+status word. Full cards render exactly as before. After: at 1280 **15 of 15** on one screen, round 1
+**554 px** (EN; 559 中); at 390 **12 of 15**; page overflow 0 at both widths. Inventory item 44
+(table, id, badge, names, scores, winner in brass, Send / Here now) holds: every part is in each card.
+Test added (`test_ops.js`: dot, name, header and controls present, toggle, full cards unchanged, CSS
+contract, EN/中 keys). Evidence `out/impeccable/ledger/r9/` (`density.tsv`, full/compact shots).

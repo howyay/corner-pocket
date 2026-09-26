@@ -119,7 +119,37 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell input[type=checkbox]{width:20px;min-height:20px}
 #ops-shell .rounds{display:flex;gap:var(--sp-3);overflow:auto;padding-bottom:var(--sp-3)}
 #ops-shell .round{min-width:260px;flex:1}
-#ops-shell .round .entry{min-height:98px}
+#ops-shell .rounds[data-density=full] .round .entry{min-height:98px}
+/* R9 compact bracket: the rounds share the viewport width (no sideways scroll until a
+   round would be narrower than 180 px), and each card is one line per side: a status dot,
+   the name, the score. The header row (table · id · status word) and the controls stay in
+   the card and open on hover, keyboard focus or selection, so nothing is removed. */
+#ops-shell .rounds[data-density=compact]{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(180px,1fr)}
+#ops-shell .rounds[data-density=compact] .round{min-width:0}
+#ops-shell .rounds[data-density=compact] .round h3{font-size:var(--fs-lg);margin:0 0 var(--sp-2)}
+#ops-shell .rounds[data-density=compact] .entry{padding:var(--sp-1) var(--sp-2);position:relative;display:flex;flex-direction:column}
+/* Details open below the side lines, so the line under the pointer never moves. */
+#ops-shell .rounds[data-density=compact] .card-head{order:3}
+#ops-shell .rounds[data-density=compact] .card-actions{order:4}
+#ops-shell .rounds[data-density=compact] .entry+.entry{margin-top:var(--sp-1)}
+#ops-shell .rounds[data-density=compact] .card-side{gap:var(--sp-1h);min-height:24px;flex-wrap:nowrap}
+#ops-shell .rounds[data-density=compact] .card-side strong{font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ops-shell .rounds[data-density=compact] .card-side strong.grow{min-width:0}
+#ops-shell .rounds[data-density=compact] .card-head,#ops-shell .rounds[data-density=compact] .card-actions{display:none}
+#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected) :is(.card-head,.card-actions){display:flex}
+#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected) .card-actions{flex-direction:column;align-items:stretch;gap:var(--sp-1);margin-top:var(--sp-1)}
+#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected){z-index:2}
+/* Status is a dot on the first side's line; the colour matches the badge it stands for,
+   and the badge word itself is in the card's accessible name and in the opened header. */
+#ops-shell .status-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ink-faint);visibility:hidden}
+#ops-shell .rounds[data-density=compact] .card-side.first .status-dot{visibility:visible}
+#ops-shell .bracket-card[data-status=live] .status-dot,#ops-shell .bracket-card[data-status=delayed] .status-dot{background:var(--amber)}
+#ops-shell .bracket-card[data-status=complete] .status-dot{background:var(--green)}
+#ops-shell .bracket-card[data-status=scheduled] .status-dot{background:var(--blue)}
+#ops-shell .bracket-card[data-status=bye] .status-dot{background:transparent;border:1px dashed var(--ink-dim)}
+#ops-shell .rounds[data-density=full] .status-dot{display:none}
+#ops-shell .bracket-density{gap:0}
+#ops-shell .bracket-density button{min-height:32px;font-size:var(--fs-sm)}
 #ops-shell .timeline{max-height:340px;overflow:auto;padding-left:var(--sp-5);color:var(--ink-mid)}
 #ops-shell .timeline li{padding:var(--sp-1h)}
 #ops-shell table{width:100%;border-collapse:collapse;text-align:left}

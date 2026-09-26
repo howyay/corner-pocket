@@ -231,6 +231,33 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+test('R9: the compact bracket is one line per side with a status dot; the full card is still there', () => {
+  const h = harness();
+  h.evaluate(`data.players=[];data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+    entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]},{id:'e3',members:[{pid:null,name:'Cai'}]},{id:'e4',members:[{pid:null,name:'Dee'}]}],
+    matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]},
+             {id:'m2',round:1,sides:['e3','e4'],score:[0,0],status:'scheduled',table:null,absent:[]},
+             {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[]}]}`);
+  const compact = h.evaluate("density='compact';matchesScreen()");
+  assert.ok(compact.includes('<div class="rounds" data-density="compact">'), 'compact is the default density');
+  const card = compact.slice(compact.indexOf('data-status="live"'), compact.indexOf('data-status="scheduled"'));
+  assert.ok(card.includes('class="row card-side first"') && card.includes('class="status-dot"'), 'a side line carries the status dot');
+  assert.ok(card.includes('aria-label="Ann – Bo · On table"'), 'the whole match, with its status word, is the card\u2019s name');
+  // nothing is removed: the header, the badge and every control are in the card, shown on hover/focus
+  assert.ok(card.includes('class="row card-head"') && card.includes('Table 1 · m1') && card.includes('>On table<'), 'header row and badge stay');
+  for (const action of ['absence', 'forfeit']) assert.ok(card.includes(`data-action="${action}"`), `${action} stays reachable`);
+  assert.ok(compact.includes('data-action="schedule" data-id="m2"'), 'Send to table stays reachable');
+  assert.ok(compact.includes('tabindex="0"'), 'a keyboard user can open a card');
+  // the toggle, and the full density renders the same cards
+  assert.ok(compact.includes('data-action="density" data-value="full" aria-pressed="false"'), 'a pressed-state toggle offers full cards');
+  const full = h.evaluate("density='full';matchesScreen()");
+  assert.ok(full.includes('data-density="full"') && full.includes('Table 1 · m1'), 'full cards render as before');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('.rounds[data-density=full] .round .entry{min-height:98px}'), 'the 98 px card height applies to full cards only');
+  assert.ok(css.includes('.entry:is(:hover,:focus-within,.selected) :is(.card-head,.card-actions){display:flex}'), 'hover or focus opens the full card');
+  assert.ok(/grid-auto-columns:minmax\(180px,1fr\)/.test(css), 'rounds share the viewport width');
+  for (const key of ['density', 'densityCompact', 'densityFull']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
+});
 test('R13: every query word must match the name, after NFKC, accent and case folding', () => {
   const h = harness();
   const m = (name, q) => h.evaluate(`nameMatches(${JSON.stringify(name)}, ${JSON.stringify(q)})`);
