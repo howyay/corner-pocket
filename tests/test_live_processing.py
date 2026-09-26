@@ -310,6 +310,44 @@ class LiveProcessingTests(unittest.TestCase):
             _capture('trusted-media')
         constructor.assert_called_once_with('trusted-media', cv2.CAP_FFMPEG, [
             cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000])
+        with patch.object(cv2, 'VideoCapture', return_value=Capture()) as live:
+            _capture('live-media', read_timeout_ms=20000)
+        live.assert_called_once_with('live-media', cv2.CAP_FFMPEG, [
+            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 20000])
+
+    def test_read_timeout_follows_the_source_kind(self):
+        """A live segment gap must not be read as 'the stream ended' (measured 2026-09-26)."""
+        with patch('annotator.live_processing._capture', return_value=Capture(count=1)) as opener:
+            processor = self.processor(resolver=lambda url: 'https://media.ttvnw.net/live.m3u8')
+            processor.start(dict(kind='twitch', source_id='saved'))
+            self.finished(processor)
+        self.assertEqual(opener.call_args.kwargs, {'read_timeout_ms': 20000})
+        with patch('annotator.live_processing._capture', return_value=Capture(count=1)) as opener:
+            processor = self.processor()
+            processor.start(self.source)
+            self.finished(processor)
+        self.assertEqual(opener.call_args.kwargs, {'read_timeout_ms': 2000})
+
+    def test_live_burst_is_published_without_a_notify_storm(self):
+        """The decoder may outrun a live source; the worker must not be woken per frame.
+
+        A 200-frame instant burst stands in for ffmpeg draining its buffered segments:
+        at 30 fps only the first publish is due inside the burst, so the worker is woken
+        at most twice instead of once per frame (which starved it in production).
+        """
+        processor = self.processor(capture_factory=lambda _: Capture(count=200),
+                                   resolver=lambda url: 'https://media.ttvnw.net/live.m3u8')
+        notifies = []
+        original = processor._condition.notify_all
+        processor._condition.notify_all = lambda: (notifies.append(1), original())[1]
+        processor.start(dict(kind='twitch', source_id='saved'))
+        status = self.finished(processor)
+        self.assertEqual(status['frames_received'], 200)
+        # 1 publish + the end-of-stream failure + the done flag: far below one per frame.
+        self.assertLessEqual(len(notifies), 4)
+        self.assertIsNotNone(status['latest'])
+        self.assertEqual(status['frames_processed'] + sum(status['drop_reasons'].values()), 200)
+        self.assertGreater(status['drop_reasons']['no_frame_ready'], 0)
 
     def test_capture_read_and_release_failures_are_sanitized(self):
         class BrokenCapture(Capture):

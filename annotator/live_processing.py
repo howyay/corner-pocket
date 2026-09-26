@@ -73,11 +73,19 @@ def _resolve_twitch(url):
         raise _SourceError(str(error)) from None
 
 
-def _capture(media):
+def _capture(media, *, open_timeout_ms=5000, read_timeout_ms=2000):
+    """OpenCV capture with explicit timeouts.
+
+    The defaults suit a local file.  A live HLS stream needs a much larger read
+    timeout: its segments arrive on the broadcaster's cadence (2-12 s), so a 2 s
+    read deadline turns a normal segment gap into a decoder failure - measured on
+    the owner's live channel as ``Live stream ended or read timed out`` after ~200 s
+    (docs/live-processing-verification.md, 2026-09-26).
+    """
     import cv2
     return cv2.VideoCapture(media, cv2.CAP_FFMPEG, [
-        cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000,
-        cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000,
+        cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, open_timeout_ms,
+        cv2.CAP_PROP_READ_TIMEOUT_MSEC, read_timeout_ms,
     ])
 
 
@@ -107,11 +115,13 @@ class LiveProcessor:
     def __init__(self, root, *, capture_factory=None, resolver=None, infer=None, stages=None,
                  clock=time.monotonic, wall_clock=time.time, stop_timeout=2.0,
                  frame_budget_ms=None, budget_enforcement=True, latency_window=120,
-                 table_measure_every_n=30, ball_every_n=1):
+                 table_measure_every_n=30, ball_every_n=1, live_read_timeout_ms=20000):
         if infer is not None and stages is not None:
             raise ValueError('Pass either infer or stages, not both')
         self.root = Path(root).resolve()
         self._capture_factory = capture_factory or _capture
+        self._default_capture = capture_factory is None
+        self._live_read_timeout_ms = live_read_timeout_ms
         self._resolver = resolver or _resolve_twitch
         self._infer = infer
         self._stage_spec = None if stages is None else list(stages)
@@ -140,6 +150,7 @@ class LiveProcessor:
         self._stage_skips = {}
         self._stage_evidence = {}
         self._fps = None
+        self._last_published = None
         self._previous_received = None
         self._last_received = None
         self._done = False
@@ -211,6 +222,7 @@ class LiveProcessor:
             self._stage_evidence = {stage.name: None for stage in stages}
             self._fps = None
             self._previous_received = None
+            self._last_published = None
             self._last_received = None
             self._frame_budget_ms = self._configured_budget
             self._latency = LatencyWindow(self._latency.size)
@@ -258,7 +270,8 @@ class LiveProcessor:
                 media = self._resolver(media)
             if self._stop.is_set():
                 return
-            capture = self._capture_factory(media)
+            capture = self._capture_factory(media) if not self._default_capture else _capture(
+                media, read_timeout_ms=2000 if replay else self._live_read_timeout_ms)
             if not capture.isOpened():
                 raise _SourceError('Could not open the selected media source')
             fps = float(capture.get(cv2.CAP_PROP_FPS)) if replay else 0
@@ -304,7 +317,16 @@ class LiveProcessor:
                     if self._pending is not None:
                         self._drop('no_frame_ready', self._pending[0])
                     self._pending = (self._received, frame, received, received_at, frame_index)
-                    self._condition.notify_all()
+                    # A live decoder can outrun the source: ffmpeg drains the segments it has
+                    # buffered at hundreds of frames per second, and an unconditional notify
+                    # per frame then starves the worker in lock contention - measured on the
+                    # live channel as 2.4 fps published with 1.1-1.9 s frame age while each
+                    # frame cost 20 ms.  Publish the slot (always the newest frame) but wake
+                    # the worker at most once per source frame period.
+                    if replay or self._last_published is None or \
+                            (received - self._last_published) >= 1.0 / fps:
+                        self._last_published = received
+                        self._condition.notify_all()
                 # Do not burst through a backlog after a decoder stall.
                 deadline = max(deadline + 1 / fps, received)
         except _SourceError as exc:
