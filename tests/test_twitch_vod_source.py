@@ -28,11 +28,11 @@ MEDIA_HEAD = '\n'.join([
     '#EXT-X-PLAYLIST-TYPE:EVENT', '#EXT-X-MEDIA-SEQUENCE:0',
     '#EXTINF:10.000,', 'https://d2nvs31859zcd8.cloudfront.net/000.ts',
 ]) + '\n'
-GQL_VOD = {'data': {'video': {'id': '1000000011', 'title': '260918', 'lengthSeconds': 31137,
+GQL_VOD = {'data': {'video': {'id': '1000000001', 'title': '260918', 'lengthSeconds': 31137,
                               'createdAt': '2026-09-19T01:29:07Z', 'owner': {'login': 'examplechannel'},
                               'playbackAccessToken': {'signature': 'S' * 40, 'value': 'V' * 444}}}}
 GQL_CHANNEL = {'data': {'user': {'login': 'examplechannel', 'videos': {'edges': [
-    {'node': {'id': '1000000011', 'title': '260918', 'lengthSeconds': 31137,
+    {'node': {'id': '1000000001', 'title': '260918', 'lengthSeconds': 31137,
               'createdAt': '2026-09-19T01:29:07Z'}}]}}}}
 
 
@@ -64,11 +64,11 @@ class Network:
 
 class VodIdTests(unittest.TestCase):
     def test_accepted_forms(self):
-        for argument in ('1000000011', 'v1000000011', 'V1000000011',
-                         'https://www.twitch.tv/videos/1000000011',
-                         'https://www.twitch.tv/videos/1000000011/', 1000000011):
+        for argument in ('1000000001', 'v1000000001', 'V1000000001',
+                         'https://www.twitch.tv/videos/1000000001',
+                         'https://www.twitch.tv/videos/1000000001/', 1000000001):
             with self.subTest(argument=argument):
-                self.assertEqual(vod.vod_id_of(argument), '1000000011')
+                self.assertEqual(vod.vod_id_of(argument), '1000000001')
 
     def test_rejected_forms(self):
         for argument in ('', 'abc', 'v', None, [], {}, 0, -1, True,
@@ -104,7 +104,7 @@ class MediaAllowlistTests(unittest.TestCase):
 
 class EvidenceTests(unittest.TestCase):
     def test_never_prints_a_token_or_a_signed_url(self):
-        result = {'vod_id': '1000000011', 'signature': 'S' * 40, 'value': 'V' * 444,
+        result = {'vod_id': '1000000001', 'signature': 'S' * 40, 'value': 'V' * 444,
                   'media_url': 'https://d2nvs31859zcd8.cloudfront.net/secret/path.m3u8?nauth=SECRET',
                   'variant': {'height': 720, 'url': 'https://d2nvs31859zcd8.cloudfront.net/x.m3u8?t=1'},
                   'variants': [{'height': 480, 'url': 'https://d2nvs31859zcd8.cloudfront.net/y.m3u8'}]}
@@ -147,7 +147,7 @@ class TokenTests(unittest.TestCase):
     def test_token_is_extracted_and_evidence_is_redacted(self):
         network = Network()
         with patch('annotator.twitch_vod_source._raw', network):
-            token = vod.vod_token('1000000011')
+            token = vod.vod_token('1000000001')
         self.assertTrue(token['ok'])
         self.assertEqual(token['signature'], 'S' * 40)
         self.assertEqual(token['channel'], 'examplechannel')
@@ -158,7 +158,7 @@ class TokenTests(unittest.TestCase):
         query = network.calls[0][1]['query']
         self.assertIn('playbackAccessToken(params: {platform: "web"', query)
         self.assertIn('playerBackend: "mediaplayer"', query)
-        self.assertIn('video(id: "1000000011")', query)
+        self.assertIn('video(id: "1000000001")', query)
 
     def test_missing_token_is_a_safe_error_or_a_recorded_failure(self):
         network = Network(gql_body={'data': {'video': {'id': '1'}},
@@ -188,7 +188,7 @@ class ChannelTests(unittest.TestCase):
         network = Network(gql_body=GQL_CHANNEL)
         with patch('annotator.twitch_vod_source._raw', network):
             vods = vod.channel_recent_vods('examplechannel', 1)
-        self.assertEqual(vods, [{'id': '1000000011', 'title': '260918', 'length_s': 31137,
+        self.assertEqual(vods, [{'id': '1000000001', 'title': '260918', 'length_s': 31137,
                                  'created_at': '2026-09-19T01:29:07Z', 'channel': 'examplechannel'}])
         self.assertIn('videos(first: 1, type: ARCHIVE)', network.calls[0][1]['query'])
 
@@ -205,7 +205,7 @@ class ResolveTests(unittest.TestCase):
     def test_resolves_the_best_variant_at_or_below_720p(self):
         network = Network()
         with patch('annotator.twitch_vod_source._raw', network):
-            resolved = vod.resolve_vod('1000000011')
+            resolved = vod.resolve_vod('1000000001')
         self.assertEqual(resolved['master_status'], 200)
         self.assertEqual(resolved['variant']['height'], 720)
         self.assertTrue(resolved['media_url'].startswith('https://d2nvs31859zcd8.cloudfront.net/'))
@@ -216,14 +216,14 @@ class ResolveTests(unittest.TestCase):
         self.assertFalse(resolved['playlist']['has_endlist'])
         self.assertEqual(vod.evidence(resolved)['media_url_host'], 'd2nvs31859zcd8.cloudfront.net')
         usher = [url for url, payload in network.calls if payload is None][0]
-        self.assertIn('https://usher.ttvnw.net/vod/1000000011.m3u8?', usher)
+        self.assertIn('https://usher.ttvnw.net/vod/1000000001.m3u8?', usher)
         self.assertIn('nauthsig=', usher)
 
     def test_usher_failure_is_a_safe_error(self):
         network = Network(status={'usher': 404})
         with patch('annotator.twitch_vod_source._raw', network):
             with self.assertRaises(TwitchVodError) as caught:
-                vod.resolve_vod('1000000011')
+                vod.resolve_vod('1000000001')
         self.assertIn('404', str(caught.exception))
         self.assertNotIn('nauth', str(caught.exception))
 
@@ -232,14 +232,14 @@ class ResolveTests(unittest.TestCase):
         network = Network(media=live_head)
         with patch('annotator.twitch_vod_source._raw', network):
             with self.assertRaises(TwitchVodError) as caught:
-                vod.resolve_vod('1000000011')
+                vod.resolve_vod('1000000001')
         self.assertIn('not a finished VOD', str(caught.exception))
 
     def test_no_variants_is_a_safe_error(self):
         network = Network(master='#EXTM3U\n')
         with patch('annotator.twitch_vod_source._raw', network):
             with self.assertRaises(TwitchVodError):
-                vod.resolve_vod('1000000011')
+                vod.resolve_vod('1000000001')
 
 
 class FakeCapture:
@@ -293,7 +293,7 @@ class PacingTests(unittest.TestCase):
                                        if key in ('frames', 'fps', 'opened')})
         clock = FakeClock()
         capture = vod.VodRealtimeCapture('https://d2nvs31859zcd8.cloudfront.net/vod.m3u8',
-                                         vod_id='1000000011', capture=inner, clock=clock,
+                                         vod_id='1000000001', capture=inner, clock=clock,
                                          sleep=clock.sleep, **{key: value for key, value in kwargs.items()
                                                                if key not in ('frames', 'fps', 'opened')})
         return capture, inner, clock
@@ -352,7 +352,7 @@ class PacingTests(unittest.TestCase):
         state = capture.state()
         self.assertEqual(state['kind'], 'vod-replay')
         self.assertFalse(state['live'])
-        self.assertEqual(state['vod_id'], '1000000011')
+        self.assertEqual(state['vod_id'], '1000000001')
         self.assertEqual(state['pacing'], 'wall-clock')
         self.assertEqual(state['network'], 'hls')
         self.assertEqual(state['fps'], 30.0)
