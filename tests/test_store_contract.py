@@ -43,6 +43,40 @@ class Contract:
         self.assertEqual((doc["revision"], doc["players"], doc["history"], doc["events"]), (0, [], [], []))
         self.assertEqual(doc["tournament"]["status"], "registration")
 
+    # The application's "same name" rule is casefold of the trimmed name; both stores
+    # must accept and refuse exactly the same second name (measured before the fix:
+    # 'İlker' then 'ilker' was accepted by JsonStore and refused by PostgreSQL's lower()).
+    def assert_name_rule(self, first, second, same):
+        self.post("player_save", name=first)
+        if same:
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                self.post("player_save", name=second)
+            self.assertEqual([p["name"] for p in self.store.ops_get()["players"]], [first])
+        else:
+            self.post("player_save", name=second)
+            self.assertEqual([p["name"] for p in self.store.ops_get()["players"]], [first, second])
+
+    def test_dotted_capital_i_is_another_name_than_plain_i(self):
+        self.assertNotEqual("İlker".casefold(), "ilker".casefold())
+        self.assert_name_rule("İlker", "ilker", same=False)
+
+    def test_sharp_s_is_the_same_name_as_ss(self):
+        self.assertEqual("Straße".casefold(), "STRASSE".casefold())
+        self.assert_name_rule("Straße", "STRASSE", same=True)
+
+    def test_full_width_letters_are_another_name_than_ascii(self):
+        self.assertNotEqual("ＡＮＡ".casefold(), "ana".casefold())
+        self.assert_name_rule("ＡＮＡ", "ana", same=False)
+
+    def test_a_rename_that_swaps_two_players_names_is_one_valid_write(self):
+        """Both stores apply the document as a whole: rename B to a free name, A to B's
+        old one - the key moves between rows inside one projection rewrite."""
+        a = self.post("player_save", name="Ann")["players"][0]["id"]
+        b = self.post("player_save", name="Bea")["players"][1]["id"]
+        self.post("player_save", id=b, name="Cat")
+        state = self.post("player_save", id=a, name="bea")
+        self.assertEqual([(p["id"], p["name"]) for p in state["players"]], [(a, "bea"), (b, "Cat")])
+
     def test_the_revision_advances_and_a_stale_one_is_a_conflict_that_writes_nothing(self):
         saved = self.store.ops_post({"action": "player_save", "revision": 0, "name": "Ada"})
         self.assertEqual(saved["revision"], 1)
@@ -323,15 +357,23 @@ class PostgresContract(Contract, unittest.TestCase):
             self.assertTrue(any("event_verdicts" in p for p in check(conn)), "the check reports the drift")
 
     def test_a_write_the_rules_allow_but_a_constraint_refuses_rolls_back_and_names_it(self):
-        """Real path: Python's casefold and PostgreSQL's lower() disagree on 'İlker' vs
-        'ilker' (measured: casefold unequal, lower() equal), so player_save accepts the
-        second name and the players_name_ci backstop refuses it."""
+        """Synthetic: no legitimate input reaches the name backstop any more (it enforces
+        the application's own rule), so a rule bug is simulated - Operations._apply is
+        patched to append a duplicate name unchecked - and players_name_key must refuse
+        it: rolled back, named, a 4xx-class error, never a silent success."""
+        from unittest import mock
+        from annotator.operations import Operations
         from src.store import StoreConstraintError
-        first = self.store.ops_post({"action": "player_save", "revision": 0, "name": "İlker"})
-        with self.assertRaises(StoreConstraintError) as refused:
-            self.store.ops_post({"action": "player_save", "revision": 1, "name": "ilker"})
-        self.assertEqual(refused.exception.constraint, "players_name_ci")
-        self.assertIn("players_name_ci", str(refused.exception))
+        first = self.store.ops_post({"action": "player_save", "revision": 0, "name": "Ana"})
+
+        def buggy_apply(self_ops, state, payload):          # a rule that forgot the name check
+            state["players"].append(dict(id="dup", name="ANA", joinedAt="t", rating=0, status="Active"))
+
+        with mock.patch.object(Operations, "_apply", buggy_apply), \
+                self.assertRaises(StoreConstraintError) as refused:
+            self.store.ops_post({"action": "player_save", "revision": 1, "name": "ignored"})
+        self.assertEqual(refused.exception.constraint, "players_name_key")
+        self.assertIn("players_name_key", str(refused.exception))
         self.assertIn("nothing was written", str(refused.exception))
         self.assertIsInstance(refused.exception, ValueError, "the server answers it as a 4xx, not a 500")
         self.assertEqual(self.store.ops_get(), first, "the refused write left the document as it was")

@@ -36,6 +36,7 @@ import json
 import sys
 from pathlib import Path
 
+from annotator.operations import name_key
 from src.store_files import DOCUMENT_SETS, document_paths, get_document, has_documents_table, put_document
 
 REPO = Path(__file__).resolve().parent.parent
@@ -185,15 +186,21 @@ class OperationsSet(DataSet):
         # players are upserted, not recreated: a delete would unbind their identity clusters
         conn.execute("DELETE FROM players WHERE NOT (id = ANY(%s::text[]))", ([p.get("id") for p in players],))
         conn.execute("UPDATE players SET position = -1 - position")        # free the positions
+        # a rename can move a name key between two players in one write (A->B, B->A):
+        # park every kept player's key on its id first, as the positions are parked.
+        # ' parked:' starts with a space, which no real key has (names are trimmed).
+        conn.execute("UPDATE players SET name_key = ' parked:' || id")
         for position, p in enumerate(players):
+            name = p.get("name")
             conn.execute(
-                "INSERT INTO players (id, name, status, rating, joined_at, notes, position, extra) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET "
+                "INSERT INTO players (id, name, status, rating, joined_at, notes, position, extra, name_key) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET "
                 "name = EXCLUDED.name, status = EXCLUDED.status, rating = EXCLUDED.rating, "
                 "joined_at = EXCLUDED.joined_at, notes = EXCLUDED.notes, position = EXCLUDED.position, "
-                "extra = EXCLUDED.extra",
-                (p.get("id"), p.get("name"), p.get("status"), p.get("rating"), p.get("joinedAt"),
-                 p.get("notes"), position, _jsonb({k: v for k, v in p.items() if k not in self.PLAYER})))
+                "extra = EXCLUDED.extra, name_key = EXCLUDED.name_key",
+                (p.get("id"), name, p.get("status"), p.get("rating"), p.get("joinedAt"),
+                 p.get("notes"), position, _jsonb({k: v for k, v in p.items() if k not in self.PLAYER}),
+                 name_key(name) if isinstance(name, str) else name))
         tournaments = [(s.get("tournament"), None)] + [(t, i) for i, t in enumerate(s.get("history", []))]
         for t, position in tournaments:
             self._tournament(conn, t, position)

@@ -43,6 +43,14 @@ def text(value, name, maximum=200):
     return value.strip()
 
 
+def name_key(name):
+    """The key under which two player names are the same name: the rule every name
+    check here applies (casefold of the trimmed name). The database stores it in
+    players.name_key and enforces uniqueness on it, so both stores accept exactly the
+    same names."""
+    return name.strip().casefold()
+
+
 # Typed stand-ins for "no opponent": the draw records a bye itself, so a guest
 # with one of these names would be a fake person (R5).
 PLACEHOLDER_NAMES = {'na', 'n/a', 'bye', 'tbd', '轮空', '輪空'}
