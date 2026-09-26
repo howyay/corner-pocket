@@ -1,63 +1,141 @@
-# pool — single-camera pool video → calibrated 2D recreation + events + attribution
+# Corner Pocket
 
-Track shots, pots and players from a fixed single-camera Twitch pool stream
-(`examplechannel`, Rasson Victory III 9 ft), project everything into a calibrated
-2D top-down recreation, and attribute each shot/pot to the player who made it.
+Corner Pocket is a workbench for a pool hall. It has two halves:
 
-| | |
-|---|---|
-| Forgejo | https://git.example.com/operator/pool |
-| Kaneo | https://proj.example.com (project `pool`) |
-| Worktree | `~/projects/pool` (NOT a git repo before this repo; data/ and out/ are gitignored) |
+- **Operations**: players, events and entrants, match draws, table assignment,
+  a shot clock, and each regular's profile. It runs in the browser.
+- **Vision**: analysis of video from one fixed camera over a pool table. It
+  calibrates the table, projects everything onto a top-down 2D table in
+  millimetres, detects balls, shots and pots, and attributes each shot to the
+  player who made it. Detector output stays a candidate until a person reviews
+  it.
 
-## Unified Corner Pocket workbench
+It is a working research tool, not a finished product. The measured accuracy
+of each part, and what is still unvalidated, is in `docs/`.
 
-The new workbench adapts the supplied `Corner Pocket redesign (1).zip` into a
-single annotation application. Source: `annotator/app.html`, `annotator/app.css`,
-`annotator/app.js`, and `annotator/unified_server.py`. It combines event/shooter
-review, ball crop labeling, pocket-anchor correction, and explicit player seeds.
-Start it from the repository root:
+## Architecture
+
+- `annotator/unified_server.py`: one stdlib HTTP server. It serves the web app
+  (`ops.html`, `app.html`) and a JSON API.
+- `annotator/*.js`, `*.css`: the browser UI, plain JavaScript with no build
+  step.
+- `src/`: the vision pipeline: table detection and calibration, ball
+  detection, shot and pot events, and player identity (YOLOv8n person
+  detection, OSNet body re-identification, InsightFace faces).
+- `annotator/live_processing.py`: runs the same pipeline stages on a live
+  video source, one decoded frame at a time.
+- State lives in JSON files under `out/` (ignored by git); an optional Postgres
+  store is in `src/db.py`.
+
+## Setup
+
+You need Python 3.12 or newer (3.14 is tested), Node.js 20 or newer for the
+UI tests, and FFmpeg if you want event clips.
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python scripts/fetch_weights.py
+```
+
+- `requirements.txt` explains how to pick a CPU-only or ROCm build of torch.
+- `scripts/fetch_weights.py` downloads the two model files the code expects,
+  `yolov8n.pt` and `src/reid/weights/osnet_x0_25_msmt17.pth`, and checks their
+  pinned SHA-256. Re-running it is safe; it skips files that are already
+  correct.
+- InsightFace downloads its `buffalo_l` models into `~/.insightface` the first
+  time face identification runs.
+- **SAM 3 is optional.** Only the SAM-based ball detector and labelling tools
+  use it. To use them, install the `sam3` package from a clone of
+  <https://github.com/facebookresearch/sam3>, request access to the gated
+  checkpoint at <https://huggingface.co/facebook/sam3>, and save it as
+  `data/sam3.safetensors`.
+
+**Pulling into an existing checkout.** Model weights used to be committed; they
+are now ignored by git. When you pull the commit that untracked them, git
+deletes `yolov8n.pt` and `src/reid/weights/osnet_x0_25_msmt17.pth` from your
+working tree. Run `.venv/bin/python scripts/fetch_weights.py` to get them back.
+
+## Running
+
+From the repository root:
 
 ```sh
 .venv/bin/python annotator/unified_server.py --port 8130
 ```
 
-Open `http://127.0.0.1:8130`. The server binds to loopback by default; do not
-expose these local annotation endpoints publicly. Existing per-dataset JSON
-annotations remain the source of truth. Pocket saves record anchor annotations;
-they do not yet refit the pipeline calibration. Player rebuild requires explicit
-A **and** B labels, never an automatically chosen spectator.
+Open <http://127.0.0.1:8130/>. The server listens on `127.0.0.1` by default
+and has **no built-in authentication**. Do not expose it to a network without
+an authenticating reverse proxy in front of it (see `SECURITY.md`).
 
-These are correction tools, not accuracy certification. Highlight event output
-used the wrong calibration and must not be treated as validated. Candidate
-reviews alone cannot measure recall; independent missed-event truth is required.
+Two fixtures run the same UI on scratch copies, so trying things out never
+changes real state:
 
-## Areas and priority (2026-09)
+```sh
+# the operations app with an empty club; its state is deleted on exit
+PYTHONPATH=. .venv/bin/python tests/serve_operations_fixture.py   # :8132
+# the review workbench on a copy of your own review data: it needs video in
+# data/ and scan output in out/, which a fresh clone does not have
+PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py    # :8131
+```
 
-See `docs/roadmap.md` for the decomposition into issues/tasks, acceptance bars
-and current measured state. Summary:
+## Tests
 
-| Area | Status | Priority |
-|---|---|---|
-| Homography / calibration | PnP rectangle-constrained, 13.1 mm mean / 4.9 mm median holdout on 6 anchors (highlight) | P0 — verify per-segment across 30-min footage, cushion-nose alignment |
-| Projection | portrait top-down, physical mm (1270×2540), ball diameter 57.15 mm | P0 — audit vs pocket geometry |
-| Shot & pot detection | scan_events artifacts exist but **never human-validated** (all `verified:false`); causality 0 violations | P0 — GT review + P/R + fixes |
-| Player identification & shot association | research done (`research/player-attribution-research.md`); **no implementation** | P1 — person/cue sensing → tracklets → geometry actor → OSNet x0.25 prototypes → association |
-| Ball-ID ≥90 % (smallest model) | pipeline + labelers live; needs finished labels + diverse frames | Backlog |
+```sh
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+node --test tests/test_ops.js
+node tests/test_app_timeline.js
+```
 
-## Layout
+Tests that need SAM 3 or a local recording mostly skip themselves when it is
+missing. A few still expect the maintainers' own recordings under `data/` and
+scan output under `out/` (both ignored by git), so on a fresh clone about
+twenty tests in `test_enroll_from_tracklet`, `test_eval_table_detect`,
+`test_eval_faces`, `test_queue_decision` and `test_sam3_ball_cache` fail with a
+missing-file error. Everything else passes.
 
-- `src/` — pipeline scripts (calibration, table detect, SAM3 CPU wrapper, scan/events,
-  ball-ID training, crop collection, player-attribution to come)
-- `annotator/` — tiny review/label servers (`server.py`; set-1 labels :8124, set-2 :8125)
-- `research/` — literature reviews (player attribution)
-- `docs/` — roadmap, state, handoff notes
-- `data/`, `out/` — gitignored (videos live here; artifacts regenerable)
+## Video sources and Twitch
 
-## Environment
+The pipeline reads any video that OpenCV/FFmpeg can open: a file under `data/`,
+or a stream URL.
 
-- CPU python env: `.venv` (torch cpu + SAM3 patched for CPU)
-- ROCm env: `.venv-rocm` (GPU experiments)
-- Videos: `data/vod_30min_260815.mp4` (30-min slice, Aug-15 stream),
-  `data/vod_highlight.mp4` (377 s game used for the label sets)
-- SAM3 weights: `data/sam3.safetensors` (from `1038lab/sam3` HF mirror, ungated)
+The Twitch ingest (`annotator/twitch_source.py`,
+`annotator/twitch_vod_source.py`) uses Twitch's **unofficial web-player
+endpoints** (`gql.twitch.tv`, `usher.ttvnw.net`). Use it **only for streams
+you own**. It **may break at any time**, and automated access may **conflict
+with Twitch's Terms of Service**. The official alternative is to capture your
+own camera or encoder feed (RTSP, OBS or NDI output) before it goes to Twitch.
+Configure the channel yourself; none is built in.
+
+The Twitch chat panel in the UI uses Twitch's official embed.
+
+## Face identification: non-commercial models
+
+Face identification uses InsightFace's `buffalo_l` models. The InsightFace
+library is MIT, but its pretrained models are licensed **"for non-commercial
+research only"**. This project uses them non-commercially. If you use Corner
+Pocket commercially, replace the face model or get a commercial licence from
+InsightFace first.
+
+The app stores face and body embeddings of the people it identifies under
+`out/`. Check the biometric-privacy law where you run it (for example GDPR,
+BIPA or CCPA), and tell the people on camera. A regular's profile can delete
+their face data.
+
+## Licence
+
+Our own code is dedicated to the public domain under **CC0-1.0** (`LICENSE`).
+
+- `NOTICE` lists every third-party component and its licence.
+- `src/reid/osnet.py` is copied from torchreid and stays under the **MIT**
+  licence in its header.
+- **AGPL caveat:** the program imports `ultralytics`, which is
+  **AGPL-3.0** (`LICENSE-AGPL-3.0.txt`). CC0 does not remove the AGPL from
+  the combined program. If you convey it, or run a modified version as a
+  network service, the AGPL applies to the whole program, including section
+  13: users who interact with it over the network must be offered its
+  complete source.
+- The model weights are not in this repository and have their own terms:
+  `yolov8n.pt` is AGPL-3.0; the OSNet weights were trained on MSMT17, whose
+  terms are academic and non-commercial; `buffalo_l` is non-commercial
+  research only; SAM 3 is under Meta's SAM License. Details are in `NOTICE`.
