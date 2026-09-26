@@ -310,6 +310,8 @@ class Backend:
         with self.lock:
             if self._live is None:
                 self._live = vod_replay_processor_class()(self.root)
+                # the saved Twitch channel is read from the store, like everything else
+                self._live.operations_document = self.store().ops_get
             return self._live
 
     def close(self):

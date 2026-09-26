@@ -119,6 +119,9 @@ class LiveProcessor:
         if infer is not None and stages is not None:
             raise ValueError('Pass either infer or stages, not both')
         self.root = Path(root).resolve()
+        # callable returning the operations document (the server sets its store's
+        # ops_get); None = read out/corner-pocket/state.json, as before
+        self.operations_document = None
         self._capture_factory = capture_factory or _capture
         self._default_capture = capture_factory is None
         self._live_read_timeout_ms = live_read_timeout_ms
@@ -169,7 +172,10 @@ class LiveProcessor:
             return dict(source), str(path)
         if source.get('kind') == 'twitch' and set(source) == {'kind', 'source_id'}:
             try:
-                state = json.loads((self.root / 'out/corner-pocket/state.json').read_text())
+                # the saved channel is in the operations document: the server's store
+                # when one was given, else the state.json file under root
+                state = (self.operations_document() if self.operations_document is not None
+                         else json.loads((self.root / 'out/corner-pocket/state.json').read_text()))
             except (OSError, ValueError):
                 raise ValueError('Saved Twitch channel is unavailable') from None
             saved = next((item for item in state.get('sources', [])
