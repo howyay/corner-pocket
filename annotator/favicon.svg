@@ -6,7 +6,7 @@
 <stop offset="100%" stop-color="#0d0b09"/>
 </radialGradient>
 </defs>
-<rect width="64" height="64" rx="12" fill="#14110f"/>
+<rect width="64" height="64" rx="12" fill="#16120f"/>
 <circle cx="32" cy="33" r="22" fill="url(#g)"/>
 <circle cx="32" cy="26" r="9" fill="#f4efe4"/>
 <text x="32" y="31" text-anchor="middle" font-family="Georgia,serif" font-weight="bold" font-size="13" fill="#1b1614">8</text>

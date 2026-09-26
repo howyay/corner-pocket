@@ -1,6 +1,11 @@
 #ops-shell #live-frame{display:block;width:100%;height:auto;background:#000}#ops-shell #live-frame[hidden]{display:none}#ops-shell #live-panel input[type=checkbox]{width:auto}#ops-shell #live-status{overflow-wrap:anywhere}
-:root{--display:'Zilla Slab','Noto Serif SC',Georgia,serif;--body:'Barlow','Noto Sans SC',Arial,sans-serif;--mono:'DM Mono','Noto Sans SC',monospace;--bg:#14110f;--panel:#1a1613;--panel2:#100e0c;--rail:#241e19;--line:#2e2620;--line2:#262019;--btn-line:#4a3f33;--ink-hi:#f6f1e6;--ink:#f2e9dd;--ink-mid:#b6a693;--ink-dim:#8a7a68;--ink-faint:#6d5f51;--brass:#c9a227;--brass-hi:#e3c877;--brass-hover:#dcbb46;--brass-fg:#17120c;--pip-off:#2b241d;--green:#7fc39a;--green-bg:#16241c;--green-line:#3d5f4c;--blue:#8fb4cf;--blue-bg:#171f26;--blue-line:#31495b;--amber:#dfa93a;--amber-bg:#2a2013;--amber-line:#5c4a1e;--red:#cf5b4d;--live-bg:#221a10;--neutral-bg:#17130f;--lamp:rgba(240,214,150,.08)}
-:root[data-theme=light]{--bg:#eee6d8;--panel:#faf6ee;--panel2:#fffdf8;--rail:#e9e0d0;--line:#d8cbb6;--line2:#e3d9c7;--btn-line:#c2b299;--ink-hi:#171208;--ink:#241c12;--ink-mid:#5b4f41;--ink-dim:#7c6d5b;--ink-faint:#9b8b77;--brass:#8a6a12;--brass-hi:#6d5210;--brass-hover:#a07d18;--brass-fg:#fdf8ee;--pip-off:#d9cdb8;--green:#256a45;--green-bg:#dfeade;--green-line:#a6c2ac;--blue:#25587c;--blue-bg:#dde7ef;--blue-line:#a8bfd2;--amber:#8a5307;--amber-bg:#f6e9cf;--amber-line:#d6bd8a;--red:#a4382b;--live-bg:#f8eed4;--neutral-bg:#f0e8db;--lamp:rgba(255,206,110,.2)}
+/* The one token source for the shell and the stage (app.css keeps no palette of its own).
+   Own values, derived in OKLCH: walnut neutrals h≈60, brass h≈88, felt green h≈155,
+   chalk blue h≈240, amber h≈70, red h≈30. Every text/surface pair is ≥4.5:1 in both
+   themes and control borders ≥3:1 (out/impeccable/palette.js is the gate). The
+   --stage-* inks sit on the video frame, which is dark in both themes. */
+:root{color-scheme:dark;--display:'Zilla Slab','Noto Serif SC',Georgia,serif;--body:'Barlow','Noto Sans SC',Arial,sans-serif;--mono:'DM Mono','Noto Sans SC',monospace;--bg:#16120f;--panel:#1c1814;--panel2:#110e0b;--rail:#251f1b;--line:#2f2923;--line2:#29231f;--btn-line:#73665b;--ink-hi:#f6f3ec;--ink:#efe9de;--ink-mid:#bdb0a1;--ink-dim:#a6998a;--ink-faint:#968a7d;--brass:#cca632;--brass-hi:#e3cb7e;--brass-hover:#dbb64c;--brass-fg:#15110c;--pip-off:#312a24;--green:#85ca9d;--green-bg:#122219;--green-line:#355643;--blue:#90b8d5;--blue-bg:#151e25;--blue-line:#354d61;--amber:#ebae51;--amber-bg:#291e10;--amber-line:#684d21;--red:#e87a69;--red-bg:#361a16;--red-ink:#fdcac0;--live-bg:#251c11;--neutral-bg:#181411;--lamp:rgba(240,214,150,.08);--track:var(--panel2);--thumb:var(--btn-line);--shadow:rgba(0,0,0,.45);--scrim:rgba(8,6,4,.62);--stage-bg:#0b0907;--stage-plate:#100c0acc;--stage-note:#100c0aee;--stage-ink:#faf1dc;--stage-ink-hi:#fbedb8;--stage-dim:#c1b5a6;--stage-mark:#1f160f;--stage-event:#f2b7ad;--stage-bound:#9bdcb1;--stage-halo:#0b090799;--stage-brass:#cca632;--stage-brass-hi:#e3cb7e;--stage-green:#85ca9d;--stage-amber:#ebae51;--stage-red:#e87a69;--ball:#cfa72b;--ball-hi:#eed780;--ball-edge:rgba(0,0,0,.4);--ball-face:#f7f3eb;--ball-num:#15110c;--ball-black:#13100e;--ball-black-hi:#47413c;--rail-wood:#552d1b;--diamond:#e4cc84}
+:root[data-theme=light]{color-scheme:light;--bg:#eee7dc;--panel:#faf6ef;--panel2:#fefcf8;--rail:#e9e2d6;--line:#d5cbbb;--line2:#e0d8cb;--btn-line:#938470;--ink-hi:#1a120a;--ink:#251e15;--ink-mid:#564b3e;--ink-dim:#665a4d;--ink-faint:#6d6153;--brass:#755706;--brass-hi:#624902;--brass-hover:#866617;--brass-fg:#fcfaf4;--pip-off:#d9d0c1;--green:#296944;--green-bg:#daebdf;--green-line:#a5c4ae;--blue:#255b7d;--blue-bg:#dce8f1;--blue-line:#a7becf;--amber:#804d0c;--amber-bg:#f8e9d2;--amber-line:#d6b98a;--red:#9a3326;--red-bg:#fde3de;--red-ink:#7c271c;--live-bg:#f6ecd7;--neutral-bg:#efeae2;--lamp:rgba(255,206,110,.2);--shadow:rgba(60,40,15,.18);--scrim:rgba(40,30,18,.45)}
 /* Self-hosted faces (annotator/fonts/, OFL texts alongside; regenerate with fonts/build_fonts.py).
    Only the faces the app renders; the CJK files are subset to the app's Chinese copy. */
 @font-face{font-family:'Zilla Slab';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/zilla-slab-400.woff2) format('woff2')}
@@ -42,9 +47,9 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 :is(#ops-shell, #ops-footer) .brand strong{display:block;font:500 var(--fs-xl)/1.1 var(--display)}
 :is(#ops-shell, #ops-footer) small,:is(#ops-shell, #ops-footer) .kicker,:is(#ops-shell, #ops-footer) .badge,:is(#ops-shell, #ops-footer) label>span,:is(#ops-shell, #ops-footer) th{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 :is(#ops-shell, #ops-footer) small{display:block;margin-top:4px}
-:is(#ops-shell, #ops-footer) .ball{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#f0d879,#c9a227 74%);box-shadow:inset 0 0 0 1px #0006;flex:none}
-:is(#ops-shell, #ops-footer) .ball i{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#f6f1e6;color:#17120c;font:10px var(--mono)}
-:is(#ops-shell, #ops-footer) .black{width:40px;height:40px;background:radial-gradient(circle at 34% 30%,#4a423c,#141110 72%)}
+:is(#ops-shell, #ops-footer) .ball{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 34% 30%,var(--ball-hi),var(--ball) 74%);box-shadow:inset 0 0 0 1px var(--ball-edge);flex:none}
+:is(#ops-shell, #ops-footer) .ball i{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--ball-face);color:var(--ball-num);font:10px var(--mono)}
+:is(#ops-shell, #ops-footer) .black{width:40px;height:40px;background:radial-gradient(circle at 34% 30%,var(--ball-black-hi),var(--ball-black) 72%)}
 :is(#ops-shell, #ops-footer) nav{padding-top:0;padding-bottom:10px}
 :is(#ops-shell, #ops-footer) nav button{display:flex;align-items:center;gap:9px;min-height:44px;padding-left:8px}
 :is(#ops-shell, #ops-footer) nav button.active{background:var(--rail);color:var(--ink-hi)}
@@ -103,13 +108,13 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 :is(#ops-shell, #ops-footer) table{width:100%;border-collapse:collapse;text-align:left}
 :is(#ops-shell, #ops-footer) td,:is(#ops-shell, #ops-footer) th{padding:10px;border-bottom:1px solid var(--line)}
 :is(#ops-shell, #ops-footer) .table-wrap{overflow:auto}
-:is(#ops-shell, #ops-footer) .embed{width:100%;height:540px;border:1px solid var(--line);background:#100e0c}
-:is(#ops-shell, #ops-footer) .cloth-preview{min-height:200px;margin-top:18px;border:18px solid #59331d;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:10px;gap:24px;color:#f6f1e6;text-align:center}
-:is(#ops-shell, #ops-footer) .rail-diamonds{color:#e3c877;letter-spacing:.2em;font-size:var(--fs-sm)}
+:is(#ops-shell, #ops-footer) .embed{width:100%;height:540px;border:1px solid var(--line);background:var(--stage-bg)}
+:is(#ops-shell, #ops-footer) .cloth-preview{min-height:200px;margin-top:18px;border:18px solid var(--rail-wood);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:10px;gap:24px;color:var(--ball-face);text-align:center}
+:is(#ops-shell, #ops-footer) .rail-diamonds{color:var(--diamond);letter-spacing:.2em;font-size:var(--fs-sm)}
 :is(#ops-shell, #ops-footer) .stream-grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) 320px}
 :is(#ops-shell, #ops-footer) .stream-grid.no-chat{grid-template-columns:1fr}
 :is(#ops-shell, #ops-footer) .note{border-left:3px solid var(--brass);padding:12px;background:var(--panel2)}
-:is(#ops-shell, #ops-footer) #message{position:fixed;right:18px;bottom:18px;max-width:min(560px,90vw);z-index:50;background:var(--panel2);border:1px solid var(--brass);padding:14px;box-shadow:0 5px 30px #0005}
+:is(#ops-shell, #ops-footer) #message{position:fixed;right:18px;bottom:18px;max-width:min(560px,90vw);z-index:50;background:var(--panel2);border:1px solid var(--brass);padding:14px;box-shadow:0 5px 30px var(--shadow)}
 :is(#ops-shell, #ops-footer) #message:empty{display:none}
 :is(#ops-shell, #ops-footer) #message.error{border-color:var(--red)}
 :is(#ops-shell, #ops-footer) footer{border-top:1px solid var(--line);color:var(--ink-dim);font-size:var(--fs-sm)}
@@ -132,8 +137,6 @@ html{scroll-padding-top:16px}
 :is(#ops-shell, #ops-footer),:is(#ops-shell, #ops-footer) *{animation:none!important;transition:none!important}
 }
 /* --- Fidelity pass vs design/corner-pocket/Corner Pocket Ops standalone-src.dc.html --- */
-:root{--code-bg:#0e1411;--code-ink:#cfe0d4;--code-line:#26302a;--track:#100e0c;--thumb:#3a3129}
-:root[data-theme=light]{--code-bg:#f2f5ef;--code-ink:#243029;--code-line:#cdd8cd;--track:#e6dccb;--thumb:#c2b299}
 html,body{-webkit-font-smoothing:antialiased}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:var(--track)}::-webkit-scrollbar-thumb{background:var(--thumb)}
 :is(#ops-shell,#ops-footer) ::selection{background:var(--brass);color:var(--brass-fg)}
@@ -145,13 +148,13 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell,#ops-footer) .bar{padding-top:12px;padding-bottom:12px}
 :is(#ops-shell,#ops-footer) .brand strong{color:var(--ink-hi)}
 :is(#ops-shell,#ops-footer) .brand small{margin-top:0;font-size:var(--fs-xs)}
-:is(#ops-shell,#ops-footer) .black{box-shadow:inset 0 0 0 1px var(--btn-line),0 2px 6px rgba(0,0,0,.35)}
+:is(#ops-shell,#ops-footer) .black{box-shadow:inset 0 0 0 1px var(--btn-line),0 2px 6px var(--ball-edge)}
 :is(#ops-shell,#ops-footer) .black i{width:20px;height:20px;font-size:var(--fs-sm)}
 :is(#ops-shell,#ops-footer) .ball{position:relative}
 :is(#ops-shell,#ops-footer) .ball i{position:relative}
-:is(#ops-shell,#ops-footer) #nav .ball{width:26px;height:26px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}
+:is(#ops-shell,#ops-footer) #nav .ball{width:26px;height:26px;box-shadow:inset 0 0 0 1px var(--ball-edge)}
 :is(#ops-shell,#ops-footer) #nav .ball i{width:15px;height:15px;font-size:9px}
-:is(#ops-shell,#ops-footer) #nav .ball::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.5),rgba(255,255,255,0) 74%);pointer-events:none}
+:is(#ops-shell,#ops-footer) #nav .ball::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.5),transparent 74%);pointer-events:none}
 :is(#ops-shell,#ops-footer) .chip-group{display:flex;gap:1px;padding:1px;background:var(--line);border-radius:2px}
 :is(#ops-shell,#ops-footer) .tools{gap:10px}
 :is(#ops-shell,#ops-footer) .tools .badge{padding:5px 10px;letter-spacing:.14em}
@@ -188,7 +191,7 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell,#ops-footer) .name{font-size:clamp(34px,5.8vw,80px);letter-spacing:-.01em}
 :is(#ops-shell,#ops-footer) .vs{margin:clamp(8px,1.2vw,14px) 0;font:italic var(--fs-body) var(--display)}
 :is(#ops-shell,#ops-footer) .score-buttons button{min-height:46px}
-:is(#ops-shell,#ops-footer) .pip{box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+:is(#ops-shell,#ops-footer) .pip{box-shadow:inset 0 0 0 1px var(--ball-edge)}
 :is(#ops-shell,#ops-footer) .tiles{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
 :is(#ops-shell,#ops-footer) .tile{min-height:78px}
 :is(#ops-shell,#ops-footer) .tile small{margin-top:0;margin-bottom:6px;font-size:var(--fs-xs);letter-spacing:.18em}
@@ -207,8 +210,8 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell,#ops-footer) .brand small{line-height:1.5}
 
 /* Regulars modal (plus-icon entry) */
-.modal-backdrop{position:fixed;inset:0;background:rgba(10,8,6,.62);display:grid;place-items:center;z-index:60;padding:16px}
-.modal{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--brass);border-radius:3px;box-shadow:0 14px 44px rgba(0,0,0,.5);width:min(540px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;padding:20px 22px}
+.modal-backdrop{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:60;padding:16px}
+.modal{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--brass);border-radius:3px;box-shadow:0 14px 44px var(--shadow);width:min(540px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;padding:20px 22px}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
 .modal-head h3{margin:0;font:600 var(--fs-lg) var(--display);letter-spacing:-.01em}
 .modal .close-x{min-width:36px;min-height:36px;padding:0 10px;font-size:var(--fs-body);color:var(--ink-dim)}
@@ -231,7 +234,7 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-source-chip{border-color:var(--brass);color:var(--brass-hi);text-transform:uppercase;letter-spacing:.12em}
 :is(#ops-shell) .vs-source-chip::after{content:' ▾'}
 :is(#ops-shell) .vs-source-chip.active::after{content:' ▴'}
-:is(#ops-shell) .vs-source-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:24;max-height:min(72vh,560px);overflow:auto;padding:12px 14px;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);box-shadow:0 16px 48px rgba(0,0,0,.55)}
+:is(#ops-shell) .vs-source-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:24;max-height:min(72vh,560px);overflow:auto;padding:12px 14px;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);box-shadow:0 16px 48px var(--shadow)}
 :is(#ops-shell) .vs-source-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 :is(#ops-shell) .vs-source-head strong{font:600 var(--fs-md) var(--display);letter-spacing:.02em;text-transform:uppercase;color:var(--ink-hi)}
 :is(#ops-shell) .vs-source-close{min-height:28px;min-width:30px;padding:0;font-size:var(--fs-body);line-height:1;color:var(--ink-dim)}
@@ -261,8 +264,8 @@ html,body{-webkit-font-smoothing:antialiased}
    on desktop is hidden (mobile Vision). Same [data-clock] element, same tick. */
 :is(#ops-shell) .vs-clock{display:none;font:var(--fs-xs) var(--mono);color:var(--ink-dim)}
 :is(#ops-shell) .vs-clock .clock{font-size:var(--fs-md);color:var(--ink-hi)}
-:is(#ops-shell) .vs-clock .clock.low{color:var(--red,#cf5b4d)}
-:is(#ops-shell) .vs-frame{position:relative;aspect-ratio:16/9;background:#090806;border:1px solid var(--line);overflow:hidden}
+:is(#ops-shell) .vs-clock .clock.low{color:var(--red)}
+:is(#ops-shell) .vs-frame{position:relative;aspect-ratio:16/9;background:var(--stage-bg);border:1px solid var(--line);overflow:hidden}
 :is(#ops-shell) .vs-frame>#vision-host{display:block;width:100%}
 :is(#ops-shell) .vs-sheettabs{display:none}
 :is(#ops-shell) .vs-strip{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);padding:6px 12px 8px}
@@ -349,10 +352,10 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-nudge{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:8px 0}
 :is(#ops-shell) .vs-nudge button{min-height:32px;padding:0}
 :is(#ops-shell) .vs-receipt{margin:8px 0 0;padding:6px 8px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font:var(--fs-xs) var(--mono);overflow-wrap:anywhere}
-:is(#ops-shell) .vs-receipt.error{border-left-color:var(--red);background:#3d231d;color:#ffd0c5}
+:is(#ops-shell) .vs-receipt.error{border-left-color:var(--red);background:var(--red-bg);color:var(--red-ink)}
 :is(#ops-shell) .vs-receipt.pending{border-left-color:var(--ink-faint);background:var(--panel2);color:var(--ink-dim)}
 :is(#ops-shell) .vs-notice{margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font-size:var(--fs-sm)}
-:is(#ops-shell) .vs-notice.error{border-left-color:var(--red);background:#3d231d;color:#ffd0c5}
+:is(#ops-shell) .vs-notice.error{border-left-color:var(--red);background:var(--red-bg);color:var(--red-ink)}
 :is(#ops-shell) .vs-error-block{margin:0 0 10px;padding:10px;border:1px solid var(--amber-line);background:var(--amber-bg);color:var(--ink)}
 :is(#ops-shell) .vs-error-block h4{margin:0 0 4px;font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
 :is(#ops-shell) .vs-error-block p{margin:0 0 6px;font-size:var(--fs-sm)}
@@ -366,15 +369,15 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-rail .scrub-marks{position:static;height:auto}
 :is(#ops-shell) .scrub-marks{position:absolute;left:0;right:0;top:0;height:16px;pointer-events:none}
 :is(#ops-shell) .scrub-mark{position:absolute;top:0;transform:translateX(-50%);width:4px;height:14px;padding:0;min-height:0;border-radius:1px;pointer-events:auto;border:0;cursor:pointer}
-:is(#ops-shell) .scrub-mark.shot{background:var(--blue,#8fb4cf)}
+:is(#ops-shell) .scrub-mark.shot{background:var(--blue)}
 :is(#ops-shell) .scrub-mark.pot{background:var(--green)}
 /* The stage's playback window on the strip: the cue's [t-before, t+after] band,
    the cue's own time inside it, and the loop counter. One window, one picture -
    the band and the playing video can never describe two different moments. */
-:is(#ops-shell) .scrub-window{position:absolute;top:0;height:16px;background:color-mix(in srgb,var(--brass,#c9a227) 28%,transparent);border-left:1px solid var(--brass,#c9a227);border-right:1px solid var(--brass,#c9a227);pointer-events:none}
-:is(#ops-shell) .scrub-cue{position:absolute;top:0;width:2px;height:16px;transform:translateX(-50%);background:var(--red,#cf5b4d);pointer-events:none}
-:is(#ops-shell) .scrub-loop{position:absolute;right:0;top:18px;padding:0 5px;border-radius:2px;background:var(--panel2,#100e0c);border:1px solid var(--brass,#c9a227);color:var(--brass-hi,#e3c877);font:var(--fs-sm) var(--mono);letter-spacing:.08em;text-transform:uppercase;pointer-events:none;white-space:nowrap}
-:is(#ops-shell) .scrub-loop[data-playing="0"]{color:var(--amber,#dfa93a);border-color:var(--amber-line,#5c4a1e)}
+:is(#ops-shell) .scrub-window{position:absolute;top:0;height:16px;background:color-mix(in srgb,var(--brass) 28%,transparent);border-left:1px solid var(--brass);border-right:1px solid var(--brass);pointer-events:none}
+:is(#ops-shell) .scrub-cue{position:absolute;top:0;width:2px;height:16px;transform:translateX(-50%);background:var(--red);pointer-events:none}
+:is(#ops-shell) .scrub-loop{position:absolute;right:0;top:18px;padding:0 5px;border-radius:2px;background:var(--panel2);border:1px solid var(--brass);color:var(--brass-hi);font:var(--fs-sm) var(--mono);letter-spacing:.08em;text-transform:uppercase;pointer-events:none;white-space:nowrap}
+:is(#ops-shell) .scrub-loop[data-playing="0"]{color:var(--amber);border-color:var(--amber-line)}
 @media(max-width:1100px){
   :is(#ops-shell) .vs-grid{grid-template-columns:minmax(0,1fr)}
   :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{max-height:none}
