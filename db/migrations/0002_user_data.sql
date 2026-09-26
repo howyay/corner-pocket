@@ -22,11 +22,14 @@ CREATE TABLE players (
     joined_at  text,                     -- the ISO string as written (round-trip exact)
     notes      text CHECK (length(notes) <= 4000),
     position   integer NOT NULL UNIQUE,  -- array order in state.players
-    extra      jsonb NOT NULL DEFAULT '{}'   -- any key not modelled above, preserved
+    extra      jsonb NOT NULL DEFAULT '{}',  -- any key not modelled above, preserved
+    -- annotator.operations.name_key(name): the application's own "same name" rule
+    -- (casefold of the trimmed name), written by the store. PostgreSQL's lower() is a
+    -- different rule (it folds 'İ' to 'i', and not 'ß' to 'ss'), so a unique index on
+    -- lower(name) refused names the JSON store accepts; this one never disagrees.
+    name_key   text NOT NULL CHECK (name_key <> '')
 );
--- backstop for the application's casefold name rule (lower() is weaker than
--- casefold(); the application check stays authoritative)
-CREATE UNIQUE INDEX players_name_ci ON players (lower(name));
+CREATE UNIQUE INDEX players_name_key ON players (name_key);
 
 CREATE TABLE tournaments (
     id          text PRIMARY KEY,

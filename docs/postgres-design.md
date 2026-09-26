@@ -130,10 +130,15 @@ CREATE TABLE players (
     joined_at  text NOT NULL,            -- the ISO string as written (round-trip exact)
     notes      text CHECK (length(notes) <= 4000),
     position   integer NOT NULL,         -- array order in state.players
-    extra      jsonb NOT NULL DEFAULT '{}'   -- any key not modelled above, preserved
+    extra      jsonb NOT NULL DEFAULT '{}',  -- any key not modelled above, preserved
+    name_key   text NOT NULL             -- operations.name_key(name): the app's casefold rule
 );
-CREATE UNIQUE INDEX players_name_ci ON players (lower(name));   -- backstop for the casefold rule at :170
-                                         -- (lower() is weaker than casefold(): the app check stays authoritative)
+CREATE UNIQUE INDEX players_name_key ON players (name_key);   -- backstop for the same rule
+-- Review change (2026-09-26): the first draft indexed lower(name). PostgreSQL's lower()
+-- is not Python's casefold() ('İlker'/'ilker' equal under lower(), different under
+-- casefold; 'ß'/'ss' the reverse), so the database refused names the JSON store
+-- accepted. The store now writes the application's own key and the index enforces
+-- exactly that rule; StoreConstraintError remains the backstop for genuine bugs.
 CREATE TABLE tournaments (
     id          text PRIMARY KEY,
     name        text NOT NULL,

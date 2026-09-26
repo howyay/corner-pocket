@@ -126,9 +126,12 @@ class Database(unittest.TestCase):
                       "frame_corrections", "pocket_anchors"):
             self.assertTrue(self.exists(table), table)
         run = self.conn.execute
-        run("INSERT INTO players (id, name, status, rating, position) VALUES ('p1', 'Ana', 'Active', 0, 0)")
+        # the name backstop is on name_key, the application's casefold key (written by the store)
+        run("INSERT INTO players (id, name, status, rating, position, name_key) VALUES ('p1', 'Ana', 'Active', 0, 0, 'ana')")
         with self.assertRaises(psycopg.errors.UniqueViolation), self.conn.transaction():
-            run("INSERT INTO players (id, name, status, rating, position) VALUES ('p2', 'ANA', 'Active', 0, 1)")
+            run("INSERT INTO players (id, name, status, rating, position, name_key) VALUES ('p2', 'ANA', 'Active', 0, 1, 'ana')")
+        with self.assertRaises(psycopg.errors.NotNullViolation), self.conn.transaction():
+            run("INSERT INTO players (id, name, status, rating, position) VALUES ('p3', 'Cy', 'Active', 0, 2)")
         # reviewed FK: a cluster can only name a roster player, and deleting the player unbinds it
         with self.assertRaises(psycopg.errors.ForeignKeyViolation), self.conn.transaction():
             run("INSERT INTO identity_clusters (cluster_id, player_id, body_bank) VALUES (9, 'typo', '{}')")
