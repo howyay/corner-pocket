@@ -481,3 +481,509 @@ test('a VOD replay the server would refuse is explained before Start, in both la
     assert.notEqual(h.evaluate('replayChoice()'), null, `${good} is accepted`);
   }
 });
+
+test('the regular profile deletes face data only after a confirm that says what goes, and shows the counts', async () => {
+  const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset}}});
+  for (const [lang, button, receipt, kept] of [
+    ['en', 'Delete face data', 'Face data deleted: 3 stored faces, 1 matched person unbound, 2 face samples', 'name and results stay'],
+    ['zh', '删除人脸数据', '人脸数据已删除：3 张人脸，解除 1 个匹配人物，2 个人脸样本', '姓名和成绩保留']]) {
+    const h = harness(), messageNode = {textContent:'', className:''}, asked = [], sent = [];
+    h.context.document.querySelector = selector => selector === '#message' ? messageNode : null;
+    h.evaluate(`lang='${lang}'; data.players=[{id:'p1',name:'Ana',status:'Active',rating:0}]; selected='p1'`);
+    assert.ok(h.evaluate('playersScreen()').includes(`data-action="face-forget" data-id="p1"`), `${lang}: the profile offers it`);
+    assert.ok(h.evaluate('playersScreen()').includes(`>${button}</button>`), `${lang}: labelled ${button}`);
+    // cancelled: nothing is sent
+    h.context.confirm = text => { asked.push(text); return false; };
+    h.context.fetch = async (url, options) => { sent.push([url, JSON.parse(options.body)]); return {ok:true, json: async () => ({})}; };
+    await click(h, {action:'face-forget', id:'p1'});
+    assert.equal(sent.length, 0, `${lang}: a cancelled confirm sends nothing`);
+    assert.ok(asked[0].includes(kept), `${lang}: the confirm says the operations record stays`);
+    // confirmed: one POST with the player id, and a receipt with the counts
+    h.context.confirm = () => true;
+    h.context.fetch = async (url, options) => { sent.push([url, JSON.parse(options.body)]);
+      return {ok:true, json: async () => ({forgotten:true, player_id:'p1', removed:{store_faces:3, scratch_faces:0, clusters_unbound:1, face_samples:2, faces:1}})}; };
+    await click(h, {action:'face-forget', id:'p1'});
+    assert.deepEqual(sent, [['/api/identity/forget', {player_id:'p1'}]]);
+    assert.equal(messageNode.textContent, receipt);
+    assert.equal(messageNode.className, '');
+    // refused: the reason reaches the operator as an error
+    h.context.fetch = async () => ({ok:false, status:404, json: async () => ({error:'no face data for this player'})});
+    await click(h, {action:'face-forget', id:'p1'});
+    assert.ok(messageNode.textContent.includes('no face data for this player') || lang === 'zh', `${lang}: the reason is shown`);
+    assert.equal(messageNode.className, 'error');
+  }
+});
+test('a renamed regular reads by their current name on every screen, archive included (R12)', () => {
+  const h = harness();
+  // Draw-time snapshot says "Ada"; the roster now says "Ada Lovelace". The guest keeps their typed name.
+  h.evaluate(`data.players=[{id:'p1',name:'Ada Lovelace',status:'Active',rating:700},{id:'p2',name:'Bo',status:'Active',rating:600}];
+    const night=()=>({id:'t1',name:'Friday',format:'singles',raceTo:3,status:'complete',
+      entrants:[{id:'e1',members:[{pid:'p1',name:'Ada'}]},{id:'e2',members:[{pid:'p2',name:'Bo'}]},{id:'e3',members:[{pid:null,name:'Walk-in Wu'}]}],
+      matches:[{id:'m1',round:1,sides:['e1',null],score:[0,0],status:'complete',result:'bye',winnerId:'e1',absent:[]},
+               {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',absent:[]},
+               {id:'m3',round:2,sides:['e1','e2'],score:[3,2],status:'complete',result:'played',winnerId:'e1',absent:[]}]});
+    data.tournament=night();data.history=[Object.assign(night(),{id:'h1',archivedAt:'2026-09-01T00:00:00Z'})];data.events=[];data.notes=[]`);
+  const views = {floor: h.evaluate('floorScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('matchesScreen()')};
+  for (const [name, html] of Object.entries(views)) assert.ok(!/>Ada</.test(html) && !/\bAda \//.test(html), `${name}: the stale snapshot name never shows`);
+  assert.ok(views.matches.includes('Ada Lovelace'), 'bracket shows the current name');
+  const archive = views.matches.slice(views.matches.indexOf('<details'));
+  assert.ok(archive.includes('Ada Lovelace'), 'the archived event reads the live roster name for a regular');
+  assert.ok(!/Ada —|— Ada\b|>Ada</.test(archive), 'the archive never falls back to the draw-time copy while the regular exists');
+  assert.ok(archive.includes('Walk-in Wu'), 'a guest keeps the name typed at the desk');
+  // a deleted regular (no roster row) still reads by the snapshot, never "Unknown"
+  h.evaluate("data.players=data.players.filter(p=>p.id!=='p2')");
+  assert.ok(h.evaluate('matchesScreen()').includes('>Bo'), 'the snapshot is the fallback when the regular is gone');
+  assert.equal(h.evaluate('JSON.stringify(resultStats("p1"))'), '{"wins":2,"losses":0}', 'the rename leaves the record whole; the bye is not a win');
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("validationMessage('Name held by a guest in this event; add the guest to the regulars instead')"), '这个名字属于本场赛事的一位访客；请把该访客加入常客，而不是给常客改成同名。');
+});
+test('a refusal is readable over an open modal: the message sits above the backdrop', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const z = selector => Number(css.match(new RegExp(`${selector.replace(/[.#()]/g, '\\$&')}\\{[^}]*z-index:(\\d+)`))[1]);
+  // The polish's distill step wrote `:is(#ops-shell, #ops-footer)` as `#ops-shell` (same specificity).
+  assert.ok(z('#ops-shell #message') > z('.modal-backdrop'), 'the player modal must not cover the reason it was refused');
+});
+test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', () => {
+  const h = harness();
+  h.evaluate(`data.players=[];data.events=[];data.notes=[];
+    const night=()=>({id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+      entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bea'}]},{id:'e3',members:[{pid:null,name:'Cai'}]}],
+      matches:[{id:'m1',round:1,sides:['e1',null],score:[0,0],status:'complete',result:'bye',winnerId:'e1',table:null,absent:[]},
+               {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',table:null,absent:[]},
+               {id:'m3',round:2,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[],sources:['m1','m2']}]});
+    data.tournament=night();data.history=[Object.assign(night(),{id:'h1',status:'complete',archivedAt:'2026-09-01T00:00:00Z'})]`);
+  for (const [lang, bye, signed, waiting, cards] of [['en', 'Bye', 'Signed', 'Waiting', 'Cards signed'], ['zh', '轮空', '已签', '待定', '已签赛果']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('matchesScreen()');
+    const card = html.slice(html.indexOf('class="rounds"'));
+    const first = card.slice(0, card.indexOf('<h3>', card.indexOf('<h3>') + 1));
+    assert.ok(first.includes(`>${bye}<`), `${lang}: the bye card is labelled ${bye}`);
+    assert.equal((first.match(new RegExp(`>${signed}<`, 'g')) || []).length, 1, `${lang}: only the played card says ${signed}`);
+    assert.ok(!first.includes(`>${waiting}<`), `${lang}: the empty side of a bye never reads ${waiting}`);
+    const tile = html.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1];
+    assert.equal(tile, '1/2', `${lang}: byes are left out of the signed count and its total`);
+    const archive = html.slice(html.indexOf('<details'));
+    assert.ok(archive.includes(`>${bye}<`) && !archive.includes(`${esc_(waiting)}`), `${lang}: the archive labels the bye too`);
+    const floor = h.evaluate('floorScreen()');
+    assert.equal(floor.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1], '1/2', `${lang}: the Floor tile agrees`);
+  }
+  assert.equal(h.evaluate('JSON.stringify(resultStats("x"))'), '{"wins":0,"losses":0}');
+});
+function esc_(s) { return `>${s}<`; }
+test('a placeholder guest name is stopped at the field, in both languages (R5)', async () => {
+  const h = harness();
+  const guest = {validity: '', reported: 0, setCustomValidity(text) { this.validity = text; }, reportValidity() { this.reported++; return false; }};
+  const form = values => ({preventDefault() {}, target: {getAttribute: () => 'entrant-form', classList: {contains: () => false}, querySelector: sel => sel === '[name=guest0]' ? guest : null, querySelectorAll: () => [], values}});
+  for (const name of ['na', ' N/A ', 'Bye', 'TBD', '轮空', '輪空']) await h.handlers.submit(form({pid0: '', guest0: name}));
+  assert.equal(h.evaluate('calls.length'), 0, 'a placeholder never reaches the server');
+  assert.equal(guest.reported, 6);
+  assert.equal(guest.validity, 'Byes are added by the draw automatically. Type the guest’s real name.');
+  h.evaluate("lang='zh'");
+  await h.handlers.submit(form({pid0: '', guest0: 'bye'}));
+  assert.equal(guest.validity, '轮空由抽签自动安排，请输入访客的真实姓名。');
+  assert.equal(h.evaluate(`validationMessage("A bye is added by the draw; type the guest's real name")`), '轮空由抽签自动安排，请输入访客的真实姓名。');
+  await h.handlers.submit(form({pid0: '', guest0: 'Nadia'}));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => c.payload))')), [{members: [{name: 'Nadia'}]}]);
+});
+test('racking an unsaved event saves the name the form shows first (R2)', async () => {
+  const h = harness();
+  const nameField = {value: '8-Ball Open · Fri 9/26'};
+  h.context.document.querySelector = sel => sel === '#settings-form [name=name]' ? nameField : null;
+  h.evaluate("data.tournament={id:'t1',name:'',format:'singles',tables:1,raceTo:1,status:'registration',entrants:[{id:'e1',members:[]},{id:'e2',members:[]}],matches:[]}");
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'tournament-start'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_setup', payload: {name: '8-Ball Open · Fri 9/26'}}, {name: 'tournament_start'}]);
+  // an event that already has a name is racked as is
+  h.evaluate("calls=[];data.tournament.name='Friday 8-Ball'");
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'tournament-start'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_start'}]);
+});
+test('after the draw and in the archive only the name can be edited, and it is audited (R2)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[{action:'tournament_rename',createdAt:'2026-09-26T10:00:00Z',revision:9,context:{id:'t1',name:'New'}}];data.notes=[];data.players=[];
+    data.tournament={id:'t1',name:'Friday',format:'singles',tables:1,raceTo:3,status:'active',entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bea'}]}],matches:[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]}]};
+    data.history=[{id:'h1',name:'',format:'singles',raceTo:1,status:'complete',archivedAt:'2026-09-01T00:00:00Z',entrants:[],matches:[]}]`);
+  for (const [lang, rename, label] of [['en', 'Rename event', 'Event renamed'], ['zh', '重命名赛事', '赛事已重命名']]) {
+    h.evaluate(`lang='${lang}'`);
+    const setup = h.evaluate('setupScreen()');
+    const form = setup.match(/<form id="rename-form"[^]*?<\/form>/);
+    assert.ok(form, `${lang}: a rename form is offered after the draw`);
+    assert.ok(/name="name"/.test(form[0]) && !/name="(format|raceTo|tables)"/.test(form[0]), `${lang}: the rename form carries the name only`);
+    assert.ok(form[0].includes(`>${rename}<`), `${lang}: the button says ${rename}`);
+    assert.ok(/<fieldset disabled/.test(setup), `${lang}: the rules stay locked`);
+    assert.equal((setup.match(/name="name"/g) || []).length, 1, `${lang}: the name is edited in one place only`);
+    const matches = h.evaluate('matchesScreen()');
+    assert.ok(matches.includes('data-action="rename-archived"') && matches.includes('data-id="h1"'), `${lang}: an archived event can be renamed`);
+    assert.ok(!/<summary>h1 /.test(matches), `${lang}: an unnamed archive never shows its raw id`);
+    assert.ok(h.evaluate('auditLine(data.events[0])').includes(label), `${lang}: the audit line reads ${label}`);
+  }
+  const submit = values => h.handlers.submit({preventDefault() {}, target: {getAttribute: () => 'rename-form', classList: {contains: () => false}, querySelector: () => null, querySelectorAll: () => [], values}});
+  await submit({id: 't1', name: '  Friday Final '});
+  h.context.prompt = () => ' July night ';
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'rename-archived', id: 'h1'}}}});
+  h.context.prompt = () => null;
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'rename-archived', id: 'h1'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_rename', payload: {id: 't1', name: 'Friday Final'}}, {name: 'tournament_rename', payload: {id: 'h1', name: 'July night'}}]);
+});
+test('forfeit and in-match absence are reachable from the Matches bracket, each behind a confirm (F1, R7)', async () => {
+  const h = harness();
+  h.evaluate(`data.players=[];data.events=[];data.notes=[];data.history=[];
+    data.tournament={id:'t1',name:'Friday',format:'singles',tables:2,raceTo:3,status:'active',
+      entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bea'}]},{id:'e3',members:[{pid:null,name:'Cai'}]},{id:'e4',members:[{pid:null,name:'Dee'}]}],
+      matches:[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]},
+               {id:'m2',round:1,sides:['e3','e4'],score:[1,0],status:'live',table:1,absent:[]},
+               {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[],sources:['m1','m2']}]}`);
+  const html = h.evaluate('matchesScreen()');
+  const card = id => html.slice(html.indexOf(`${id.slice(0, 8)}</small>`), html.indexOf('</div></div>', html.indexOf(`${id.slice(0, 8)}</small>`)) + 400);
+  for (const id of ['m1', 'm2']) {
+    const c = card(id);
+    assert.ok(/data-action="forfeit"[^>]*data-side="0"/.test(c) && /data-action="forfeit"[^>]*data-side="1"/.test(c), `${id}: forfeit for either side`);
+    assert.ok(/data-action="absence"[^>]*data-absent="true"/.test(c), `${id}: a side can be marked not here`);
+  }
+  assert.ok(!/m3[^]*data-action="forfeit"/.test(html.slice(html.indexOf('m3'.slice(0, 8)))), 'a pending match (no sides yet) offers no forfeit');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  const asked = [];
+  h.context.confirm = msg => { asked.push(msg); return false; };
+  await click({action: 'forfeit', id: 'm1', side: '0'});
+  await click({action: 'absence', id: 'm1', side: '1', absent: 'true'});
+  await click({action: 'absence', id: 'm1', side: '1', absent: 'false'});
+  assert.equal(h.evaluate('calls.length'), 0, 'a cancelled confirm sends nothing');
+  assert.deepEqual(asked, ['Record a forfeit for this side and advance the opponent?', 'Mark this player as not here? The match is held until they return; the table is released.', 'Mark this player as here again? The match can then go to a table.']);
+  h.context.confirm = msg => { asked.push(msg); return true; };
+  h.evaluate("lang='zh'");
+  await click({action: 'absence', id: 'm2', side: '0', absent: 'true'});
+  await click({action: 'forfeit', id: 'm2', side: '1'});
+  assert.equal(asked[3], '将此球员标记为未到场？比赛将暂缓直到其返回，球台会被释放。');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'match_absence', payload: {id: 'm2', side: 0, absent: true}}, {name: 'match_forfeit', payload: {id: 'm2', side: 1}}]);
+});
+test('standings count results, not ratings; the event table sorts wins, win %, name (R4)', () => {
+  const h = harness();
+  // Ann beats Bea (played) and Cai (forfeit: Cai no-show); Dee has a bye then loses to Ann... (sizes kept small)
+  h.evaluate(`data.events=[];data.notes=[];
+    data.players=[{id:'pa',name:'Ann',status:'Active',rating:100},{id:'pb',name:'Bea',status:'Active',rating:900},{id:'pc',name:'Cai',status:'Active',rating:500},{id:'pd',name:'Dee',status:'Active',rating:400}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t2',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'active',
+      entrants:[E('a','pa','Ann'),E('b','pb','Bea'),E('c','pc','Cai'),E('d','pd','Dee'),E('g',null,'Gus')],
+      matches:[{id:'x1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[]},
+               {id:'x2',round:1,sides:['b','c'],score:[3,1],status:'complete',result:'played',winnerId:'b',absent:[]},
+               {id:'x3',round:1,sides:['d','g'],score:[0,0],status:'complete',result:'forfeit',winnerId:'d',absent:[]},
+               {id:'x4',round:2,sides:['a','b'],score:[3,2],status:'complete',result:'played',winnerId:'a',absent:[]},
+               {id:'x5',round:2,sides:['d',null],score:[0,0],status:'pending',absent:[]}]};
+    data.history=[{id:'t1',name:'Last week',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-01T00:00:00Z',
+      entrants:[E('a1','pa','Ann'),E('b1','pb','Bea')],
+      matches:[{id:'y1',round:1,sides:['a1','b1'],score:[1,3],status:'complete',result:'played',winnerId:'b1',absent:[]}]}]`);
+  assert.equal(h.evaluate('JSON.stringify(record(tournament(),"a"))'), '{"wins":1,"losses":0,"played":1}', 'a bye is neither a win nor a played match');
+  assert.equal(h.evaluate('JSON.stringify(record(tournament(),"d"))'), '{"wins":1,"losses":0,"played":1}', 'a forfeit win counts as a signed result');
+  assert.equal(h.evaluate('JSON.stringify(record(tournament(),"g"))'), '{"wins":0,"losses":1,"played":1}');
+  for (const [lang, rating, table, wins, played, rate] of [['en', 'House rating (manual)', 'Event table', 'Wins', 'Played', 'Win %'], ['zh', '球房评分（手动）', '本场战绩表', '胜场', '场次', '胜率']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('matchesScreen()');
+    const standings = html.slice(html.indexOf(`<table class="standings"`), html.indexOf('</table>', html.indexOf(`<table class="standings"`)));
+    for (const head of [rating, wins, played, rate]) assert.ok(standings.includes(`>${head}<`), `${lang}: standings column ${head}`);
+    // all-time rows: Ann 1-1 (bye excluded), Bea 2-1, Cai 0-1, Dee 1-0 (forfeit win)
+    const row = name => standings.match(new RegExp(`>${name}<[^]*?</tr>`))[0].replace(/<[^>]+>/g, '|').split('|').filter(Boolean);
+    assert.deepEqual(row('Bea').slice(-4), ['900', '2', '3', '67%']);
+    assert.deepEqual(row('Ann').slice(-4), ['100', '1', '2', '50%']);
+    assert.deepEqual(row('Dee').slice(-4), ['400', '1', '1', '100%']);
+    const ev = html.slice(html.indexOf(`<table class="event-table"`), html.indexOf('</table>', html.indexOf(`<table class="event-table"`)));
+    assert.ok(html.includes(`>${table}<`), `${lang}: event table heading`);
+    const order = [...ev.matchAll(/<tr><td>\d+<\/td><td>([^<]+)</g)].map(m => m[1]);
+    assert.deepEqual(order, ['Ann', 'Dee', 'Bea', 'Cai', 'Gus'], `${lang}: wins, then win %, then name`);
+  }
+});
+test('a player record is all-time and read-only, with head-to-head from signed matches only (R15, R8)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];
+    data.players=[{id:'pa',name:'Ann',status:'Active',rating:100,joinedAt:'2026-01-01T00:00:00Z'},{id:'pb',name:'Bea',status:'Active',rating:900},{id:'pc',name:'Cai',status:'Active',rating:500}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t3',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'active',
+      entrants:[E('a','pa','Ann'),E('b','pb','Bea'),E('g',null,'Gus')],
+      matches:[{id:'x1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[]},
+               {id:'x2',round:1,sides:['b','g'],score:[0,0],status:'complete',result:'forfeit',winnerId:'b',absent:[],completedAt:'2026-09-26T20:00:00Z'},
+               {id:'x3',round:2,sides:['a','b'],score:[3,1],status:'complete',result:'played',winnerId:'a',absent:[],completedAt:'2026-09-26T21:00:00Z'}]};
+    data.history=[
+      {id:'t1',name:'First',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-01T12:00:00Z',entrants:[E('a1','pa','Ann'),E('b1','pb','Bea')],
+       matches:[{id:'y1',round:1,sides:['a1','b1'],score:[1,3],status:'complete',result:'played',winnerId:'b1',absent:[],completedAt:'2026-09-01T20:00:00Z'}]},
+      {id:'t2',name:'Second',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-10T00:00:00Z',entrants:[E('a2','pa','Ann'),E('c2','pc','Cai'),E('g2',null,'Gus')],
+       matches:[{id:'z1',round:1,sides:['a2','c2'],score:[3,0],status:'complete',result:'played',winnerId:'a2',absent:[],completedAt:'2026-09-10T20:00:00Z'},
+                {id:'z2',round:1,sides:['g2',null],score:[0,0],status:'complete',result:'bye',winnerId:'g2',absent:[]},
+                {id:'z3',round:2,sides:['a2','g2'],score:[0,0],status:'complete',result:'forfeit',winnerId:'g2',absent:[],completedAt:'2026-09-10T21:00:00Z'}]}]`);
+  // Ann: vs Bea 1-1 (played), vs Cai 1-0 (played); forfeit loss to Gus and the bye stay out of head-to-head.
+  assert.equal(h.evaluate('JSON.stringify(headToHead("pa"))'), JSON.stringify([
+    {opponent: 'Bea', guest: false, wins: 1, losses: 1, played: 2, forfeits: 0, last: '2026-09-26T21:00:00Z'},
+    {opponent: 'Cai', guest: false, wins: 1, losses: 0, played: 1, forfeits: 0, last: '2026-09-10T20:00:00Z'},
+    {opponent: 'Gus', guest: true, wins: 0, losses: 0, played: 0, forfeits: 1, last: '2026-09-10T21:00:00Z'}]));
+  h.evaluate('render=()=>{}');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  await click({action: 'select-player', id: 'pa'});
+  const modal = h.evaluate('playersScreen()');
+  assert.ok(modal.includes('data-action="player-record"') && modal.includes('data-id="pa"'), 'the regular profile links to the record');
+  await click({action: 'player-record', id: 'pa'});
+  for (const [lang, title, h2h, scope, sample, guest] of [
+    ['en', 'Player record', 'Head-to-head', 'Signed results in 3 events since 2026-09-01. Read-only.', 'Sample', 'guest, matched by name'],
+    ['zh', '球员战绩', '交手记录', '自 2026-09-01 起 3 场赛事的已签赛果', '样本', '访客，按姓名匹配']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('playersScreen()');
+    assert.ok(html.includes(`>${title}<`) || html.includes(`${title} ·`), `${lang}: record title`);
+    assert.ok(html.includes(scope), `${lang}: the scope is stated: ${scope}`);
+    assert.ok(html.includes(`>${h2h}<`), `${lang}: head-to-head section`);
+    assert.ok(html.includes(sample), `${lang}: sample size is labelled`);
+    assert.ok(html.includes(guest), `${lang}: a guest opponent is labelled as matched by name`);
+    const table = html.slice(html.indexOf('<table class="h2h"'), html.indexOf('</table>', html.indexOf('<table class="h2h"')));
+    assert.ok(/>Bea<\/td><td>1–1<\/td><td>50%<\/td><td>2<\/td>/.test(table), `${lang}: Bea row W–L, %, n`);
+    assert.ok(/Gus[^]*?<td>0–0<\/td><td>—<\/td><td>0<\/td><td>1<\/td>/.test(table), `${lang}: a forfeit-only opponent has no win % and the forfeit is shown apart`);
+    assert.ok(!/<form|<input|data-action="player-(save|delete)"/.test(html.slice(html.indexOf('class="record"'))), `${lang}: the record is read-only`);
+    const totals = html.slice(html.indexOf('class="record"')).match(/<small>[^<]*<\/small><strong>([^<]*)<\/strong>/g).slice(0, 4).map(s => s.replace(/<[^>]+>/g, '|').split('|').filter(Boolean)[1]);
+    assert.deepEqual(totals, ['4', '2', '2', '50%'], `${lang}: totals are resultStats: signed results, a forfeit counts, a bye does not`);
+  }
+  assert.equal(h.evaluate('calls.length'), 0, 'reading a record never writes');
+  await click({action: 'record-back'});
+  assert.ok(h.evaluate('playersScreen()').includes('data-action="player-record"'), 'back returns to the profile');
+});
+test('a results sheet prints the whole bracket and copies as text, champion from the final (R10)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.players=[{id:'pa',name:'Ada',status:'Active',rating:1}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t0',name:'',format:'singles',tables:1,raceTo:3,status:'registration',entrants:[],matches:[]};
+    data.history=[{id:'h1',name:'Friday 8-Ball',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-26T12:00:00Z',
+      entrants:[E('a','pa','Ada (old)'),E('b',null,'Bo'),E('c',null,'Cy')],
+      matches:[{id:'m1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[]},
+               {id:'m2',round:1,sides:['b','c'],score:[0,0],status:'complete',result:'forfeit',winnerId:'b',absent:[]},
+               {id:'m3',round:2,sides:['a','b'],score:[3,2],status:'complete',result:'played',winnerId:'a',absent:[],sources:['m1','m2']}]}]`);
+  assert.equal(h.evaluate("resultsText(data.history[0])"), [
+    'Friday 8-Ball · 2026-09-26', 'Singles · Race to 3', 'Champion: Ada', '',
+    'Round 1', 'Ada: bye (advances, not a win)', 'Bo wins by forfeit vs Cy', '',
+    'Final', 'Ada 3–2 Bo', '', 'Signed results only. A bye advances a player but is not a win.'].join('\n'));
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("resultsText(data.history[0])"), [
+    'Friday 8-Ball · 2026-09-26', '单打 · 抢3', '冠军：Ada', '',
+    '轮次 1', 'Ada：轮空晋级（不计胜场）', 'Cy 弃权，Bo 晋级', '',
+    '决赛', 'Ada 3–2 Bo', '', '仅含已签赛果。轮空晋级不计为胜场。'].join('\n'));
+  // an unfinished bracket never names a champion
+  h.evaluate("lang='en';data.history[0].matches[2]={...data.history[0].matches[2],status:'scheduled',result:undefined,winnerId:null,score:[0,0]}");
+  assert.ok(h.evaluate("resultsText(data.history[0])").includes('Champion: not decided yet'));
+  assert.ok(h.evaluate("resultsText(data.history[0])").includes('Ada vs Bo: not played yet'));
+  h.evaluate("data.history[0].matches[2].sides=['a',null]");
+  assert.ok(h.evaluate("resultsText(data.history[0])").includes('Ada vs TBD: not played yet'), 'an undecided side is TBD, never Waiting');
+  h.evaluate("data.history[0].matches[2].sides=['a','b']");
+  h.evaluate("data.history[0].matches[2]={...data.history[0].matches[2],status:'complete',result:'played',winnerId:'a',score:[3,2]}");
+  // the sheet view: reached from the archive, read-only, full bracket, print + copy controls
+  h.evaluate('render=()=>{}');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  assert.ok(h.evaluate('matchesScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
+  h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['x','y'],score:[0,0],status:'scheduled',absent:[]}]");
+  assert.ok(h.evaluate('matchesScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  h.evaluate('data.tournament.matches=[]');
+  assert.ok(!h.evaluate('matchesScreen()').includes('data-id="t0"'), 'no sheet before the draw');
+  await click({action: 'results-sheet', id: 'h1'});
+  assert.equal(h.evaluate('sheetId'), 'h1', 'the click opens the sheet');
+  const sheet = h.evaluate('matchesScreen()');
+  assert.ok(sheet.includes('class="stack results-sheet"'), 'the sheet replaces the Matches view');
+  assert.ok(/class="champion"[^]*?Ada/.test(sheet), 'the champion is the final winner, by the live roster name');
+  assert.equal((sheet.match(/class="sheet-round"/g) || []).length, 2, 'every round is on the sheet');
+  assert.ok(sheet.includes('data-action="print-sheet"') && sheet.includes('data-action="copy-results"'));
+  assert.ok(!/<form|<input/.test(sheet), 'the sheet is read-only');
+  let copied = null;
+  h.context.navigator = {clipboard: {writeText: async text => { copied = text; }}};
+  await click({action: 'copy-results', id: 'h1'});
+  assert.equal(copied, h.evaluate("resultsText(data.history[0])"));
+  let printed = 0;
+  h.context.print = () => { printed++; };
+  await click({action: 'print-sheet'});
+  assert.equal(printed, 1);
+  assert.equal(h.evaluate('calls.length'), 0, 'a sheet never writes');
+  await click({action: 'sheet-back'});
+  assert.ok(!h.evaluate('matchesScreen()').includes('class="stack results-sheet"'), 'back returns to the bracket');
+  await click({action: 'results-sheet', id: 'h1'});
+  h.evaluate('canNavigate=()=>true');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {tab: 'floor'}}}});
+  assert.equal(h.evaluate('sheetId'), null, 'leaving Matches closes the sheet');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const print = css.slice(css.indexOf('@media print'));
+  assert.ok(print.length > 20 && /header[^{]*\{[^}]*display:none/.test(print) && /\.no-print[^{]*\{[^}]*display:none/.test(print), 'print hides the shell chrome and the sheet buttons');
+  assert.ok(/\.results-sheet[^{]*\.note[^{]*\{[^}]*background:#fff/.test(print), 'the scope note prints on white, not on the dark panel');
+});
+test('delete only an unsigned event; otherwise hide it from history, which erases nothing (R1)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.players=[{id:'pa',name:'Ada',status:'Active',rating:1}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t0',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'registration',entrants:[E('x',null,'Xu')],matches:[]};
+    data.history=[
+      {id:'h1',name:'Signed night',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-01T12:00:00Z',entrants:[E('a','pa','Ada'),E('b',null,'Bo')],
+       matches:[{id:'m1',round:1,sides:['a','b'],score:[3,1],status:'complete',result:'played',winnerId:'a',absent:[]}]},
+      {id:'h2',name:'Mistake',format:'singles',raceTo:1,status:'active',archivedAt:'2026-09-02T12:00:00Z',entrants:[E('c',null,'Cy')],matches:[]},
+      {id:'h3',name:'Hidden night',hidden:true,format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-03T12:00:00Z',entrants:[E('a3','pa','Ada'),E('d',null,'Di')],
+       matches:[{id:'m3',round:1,sides:['a3','d'],score:[0,0],status:'complete',result:'forfeit',winnerId:'a3',absent:[]}]}]`);
+  h.evaluate('render=()=>{}');
+  for (const [lang, del, hide, unhide, showHidden] of [['en', 'Delete event', 'Hide from history', 'Show in history', 'Show 1 hidden'], ['zh', '删除赛事', '从历史中隐藏', '恢复显示', '显示 1 场已隐藏']]) {
+    h.evaluate(`lang='${lang}';showHidden=false`);
+    const html = h.evaluate('matchesScreen()');
+    const block = id => { const i = html.indexOf(`data-id="${id}"`); return i < 0 ? '' : html.slice(html.lastIndexOf('<details', i), html.indexOf('</details>', i)); };
+    assert.ok(block('h1').includes(`>${hide}<`) && !block('h1').includes(`>${del}<`), `${lang}: a signed event can only be hidden`);
+    assert.ok(block('h2').includes(`>${del}<`), `${lang}: an unsigned event can be deleted`);
+    assert.ok(!html.includes('Hidden night'), `${lang}: a hidden event is out of the list`);
+    assert.ok(html.includes(`>${showHidden}<`), `${lang}: the hidden count is offered`);
+    h.evaluate('showHidden=true');
+    const all = h.evaluate('matchesScreen()');
+    assert.ok(all.includes('Hidden night') && all.includes(`>${unhide}<`), `${lang}: hidden events can be shown and restored`);
+    assert.ok(h.evaluate('setupScreen()').includes('data-action="event-delete" data-id="t0"'), `${lang}: tonight, unsigned, can be deleted from Set up`);
+  }
+  assert.equal(h.evaluate('JSON.stringify(resultStats("pa"))'), '{"wins":2,"losses":0}', 'a hidden event still counts: hiding erases nothing');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  const asked = [];
+  h.context.confirm = msg => { asked.push(msg); return false; };
+  h.evaluate("lang='en'");
+  await click({action: 'event-delete', id: 'h2'});
+  await click({action: 'event-hide', id: 'h1', hidden: 'true'});
+  assert.equal(h.evaluate('calls.length'), 0, 'a cancelled confirm sends nothing');
+  assert.deepEqual(asked, ['Delete “Mistake”? No result was signed in it. This cannot be undone.', 'Hide “Signed night” from history? Its results and every player’s stats stay; you can show it again.']);
+  h.context.confirm = msg => { asked.push(msg); return true; };
+  h.evaluate("lang='zh'");
+  await click({action: 'event-delete', id: 'h2'});
+  await click({action: 'event-hide', id: 'h1', hidden: 'true'});
+  await click({action: 'event-hide', id: 'h3', hidden: 'false'});
+  assert.equal(asked[2], '删除“Mistake”？该赛事没有已签赛果。此操作无法撤销。');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [
+    {name: 'tournament_delete', payload: {id: 'h2', confirm: true}},
+    {name: 'tournament_hide', payload: {id: 'h1', hidden: true, confirm: true}},
+    {name: 'tournament_hide', payload: {id: 'h3', hidden: false, confirm: true}}]);
+  for (const [action, en, zh] of [['tournament_delete', 'Event deleted (nothing was signed)', '删除赛事（无已签赛果）'], ['tournament_hide', 'Event hidden / shown in history', '赛事在历史中隐藏 / 恢复']]) {
+    h.evaluate(`lang='en'`); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'X'}})`).includes(en));
+    h.evaluate(`lang='zh'`); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'X'}})`).includes(zh));
+  }
+  assert.equal(h.evaluate(`validationMessage('An event with a signed result cannot be deleted; hide it from history instead')`), '有已签赛果的赛事不能删除，请改为从历史中隐藏。');
+});
+test('a second chance is a labelled random draw, confirmed, undoable, never a result (R6)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.history=[];data.players=[];
+    const E=(id,name)=>({id,members:[{pid:null,name}]});
+    data.tournament={id:'t1',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'active',
+      entrants:[E('a','Ann'),E('b','Bea'),E('c','Cai'),E('d','Dee'),E('e','Eve'),E('f','Fay')],
+      matches:[{id:'m1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[],sources:[]},
+               {id:'m2',round:1,sides:['b',null],score:[0,0],status:'complete',result:'bye',winnerId:'b',absent:[],sources:[]},
+               {id:'m3',round:1,sides:['c','d'],score:[3,1],status:'complete',result:'played',winnerId:'c',absent:[],sources:[]},
+               {id:'m4',round:1,sides:['e','f'],score:[3,0],status:'complete',result:'played',winnerId:'e',absent:[],sources:[]},
+               {id:'m5',round:2,sides:['a','b'],score:[0,0],status:'scheduled',absent:[],sources:['m1','m2']},
+               {id:'m6',round:2,sides:['c','e'],score:[0,0],status:'scheduled',absent:[],sources:['m3','m4']}]}`);
+  h.evaluate('render=()=>{}');
+  for (const [lang, title, drawBtn, label] of [['en', 'Second chance', 'Draw a round-1 loser', 'Random draw, not a result'], ['zh', '复活赛', '抽取一名首轮负者', '随机抽签，不是赛果']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('matchesScreen()');
+    assert.ok(html.includes(`>${title}<`) && html.includes(`>${drawBtn}<`), `${lang}: the draw is offered while round 2 is unsigned`);
+    assert.ok(html.includes(label), `${lang}: it is labelled as a random draw`);
+  }
+  h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'scheduled',result:undefined,winnerId:null}");
+  assert.ok(!h.evaluate('matchesScreen()').includes('data-action="revival-draw"'), 'no draw until every round-1 loser is known');
+  h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'complete',result:'played',winnerId:'e'}");
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  const asked = [];
+  h.context.confirm = msg => { asked.push(msg); return false; };
+  h.evaluate("lang='en'");
+  await click({action: 'revival-draw'});
+  assert.equal(h.evaluate('calls.length'), 0, 'a cancelled confirm draws nothing');
+  assert.equal(asked[0], 'Draw one round-1 loser at random to re-enter the bracket in a bye slot? The draw is recorded with its seed; no result changes.');
+  h.context.confirm = msg => { asked.push(msg); return true; };
+  await click({action: 'revival-draw'});
+  // after the draw the card shows who, the pool and the seed, and offers undo
+  h.evaluate(`data.tournament.revival={seed:12345,pool:['d','f'],entrant:'f',name:'Fay',match:'m2',next:'m5',side:1,holder:'b',signed:2,drawnAt:'2026-09-26T20:00:00Z'};
+    Object.assign(data.tournament.matches[1],{sides:['b','f'],status:'scheduled',winnerId:null});delete data.tournament.matches[1].result;
+    Object.assign(data.tournament.matches[4],{sides:['a',null],status:'pending'})`);
+  h.evaluate("lang='zh'");
+  const drawn = h.evaluate('matchesScreen()');
+  assert.ok(drawn.includes('抽中：Fay') && drawn.includes('种子 12345') && drawn.includes('候选：Dee、Fay'), '中: who, the seed and the pool are shown');
+  assert.ok(drawn.includes('data-action="revival-undo"'), 'undo is offered until the next result');
+  assert.ok(!drawn.includes('data-action="revival-draw"'), 'one draw per event');
+  await click({action: 'revival-undo'});
+  assert.equal(asked.at(-1), '撤销这次复活抽签？该空位将恢复为轮空，签过的赛果不受影响。');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'revival_draw', payload: {confirm: true}}, {name: 'revival_undo', payload: {confirm: true}}]);
+  // after a newer signed result, undo is gone and the drawn line stays as history
+  h.evaluate("data.tournament.matches[5]={...data.tournament.matches[5],status:'complete',result:'played',winnerId:'c',score:[3,2]}");
+  const closed = h.evaluate('matchesScreen()');
+  assert.ok(!closed.includes('data-action="revival-undo"') && closed.includes('抽中：Fay'));
+  for (const [action, en, zh] of [['revival_draw', 'Second chance drawn (random, audited)', '复活赛抽签（随机，已记录）'], ['revival_undo', 'Second chance undone', '撤销复活赛抽签']]) {
+    h.evaluate("lang='en'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}})`).includes(en));
+    h.evaluate("lang='zh'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}})`).includes(zh));
+  }
+  assert.equal(h.evaluate(`validationMessage('No round-2 bye slot to fill')`), '没有可填补的第二轮轮空位。');
+});
+test('doubles can pair solo sign-ups at random: seed shown, re-roll, accept (R3)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.history=[];data.players=[{id:'pa',name:'Ada',status:'Active',rating:5}];
+    data.tournament={id:'t1',name:'Doubles night',format:'doubles',tables:1,raceTo:3,status:'registration',entrants:[],matches:[],
+      pool:[{pid:'pa',name:'Ada'},{pid:null,name:'Bo'},{pid:null,name:'Cy'}],pairing:null}`);
+  for (const [lang, title, add, draw, odd] of [['en', 'Random pairing', 'Add solo player', 'Pair at random', 'An even number of solo players is needed'], ['zh', '随机配对', '添加单人报名', '随机配对搭档', '需要偶数名单人报名者']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('setupScreen()');
+    assert.ok(html.includes(`>${title}<`) && html.includes(`>${add}<`), `${lang}: a doubles event offers a solo pool`);
+    assert.ok(/<button[^>]*data-action="pair-draw"[^>]*disabled/.test(html) && html.includes(odd), `${lang}: an odd pool cannot be paired, and says why`);
+    assert.ok(html.includes('Ada') && html.includes('Bo') && html.includes('Cy'));
+    assert.ok(html.includes(`>${draw}<`));
+  }
+  h.evaluate("data.tournament.format='singles'");
+  assert.ok(!h.evaluate('setupScreen()').includes('id="solo-form"'), 'singles has no pairing step');
+  h.evaluate("data.tournament.format='doubles';data.tournament.pool.push({pid:null,name:'Di'});data.tournament.pairing={seed:424242,teams:[[{pid:null,name:'Cy'},{pid:'pa',name:'Ada'}],[{pid:null,name:'Di'},{pid:null,name:'Bo'}]]}");
+  for (const [lang, seed, accept, reroll, label] of [['en', 'seed 424242', 'Use these teams', 'Re-roll', 'Random draw of partners only; results are never drawn.'], ['zh', '种子 424242', '采用这些组合', '重新抽签', '只随机决定搭档，比赛结果从不抽签。']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('setupScreen()');
+    assert.ok(html.includes(seed) && html.includes(`>${accept}<`) && html.includes(`>${reroll}<`) && html.includes(label), `${lang}: the preview shows the seed, accept and re-roll`);
+    assert.ok(html.includes('Cy / Ada') && html.includes('Di / Bo'), `${lang}: the teams are shown before they count`);
+    assert.ok(!html.includes('id="entrant-form"'), `${lang}: registration is locked while a pairing is shown`);
+  }
+  h.evaluate('render=()=>{}');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  await click({action: 'pair-draw'});
+  await click({action: 'pair-accept', seed: '424242'});
+  await click({action: 'pair-clear'});
+  await click({action: 'pool-remove', name: 'Bo'});
+  const submit = values => h.handlers.submit({preventDefault() {}, target: {getAttribute: () => 'solo-form', classList: {contains: () => false}, querySelector: () => ({setCustomValidity() {}, reportValidity() {}}), querySelectorAll: () => [], values}});
+  await submit({solo_pid: '', solo_name: '  Eve '});
+  await submit({solo_pid: 'pa', solo_name: ''});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [
+    {name: 'pair_draw'}, {name: 'pair_accept', payload: {seed: 424242}}, {name: 'pair_clear'},
+    {name: 'pool_remove', payload: {name: 'Bo'}}, {name: 'solo_add', payload: {member: {name: 'Eve'}}}, {name: 'solo_add', payload: {member: {pid: 'pa'}}}]);
+  for (const [action, en, zh] of [['pair_draw', 'Partners drawn at random', '随机抽取搭档'], ['pair_accept', 'Random pairs registered', '随机组合已报名']]) {
+    h.evaluate("lang='en'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{seed:1}})`).includes(en));
+    h.evaluate("lang='zh'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{seed:1}})`).includes(zh));
+  }
+  assert.equal(h.evaluate(`validationMessage('The pairing changed; review the teams again')`), '配对已变化，请重新查看组合。');
+});
+test('a redrawn second chance says so on the card, the sheet and the copied text (R6 follow-up)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.history=[];data.players=[];
+    const E=(id,name)=>({id,members:[{pid:null,name}]});
+    data.tournament={id:'t1',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'active',
+      entrants:[E('a','Ann'),E('b','Bea'),E('c','Cai'),E('d','Dee'),E('e','Eve'),E('f','Fay')],
+      matches:[{id:'m1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[],sources:[]},
+               {id:'m2',round:1,sides:['b','f'],score:[0,0],status:'scheduled',absent:[],sources:[]},
+               {id:'m3',round:1,sides:['c','d'],score:[3,1],status:'complete',result:'played',winnerId:'c',absent:[],sources:[]},
+               {id:'m4',round:1,sides:['e','f'],score:[3,0],status:'complete',result:'played',winnerId:'e',absent:[],sources:[]},
+               {id:'m5',round:2,sides:['a',null],score:[0,0],status:'pending',absent:[],sources:['m1','m2']},
+               {id:'m6',round:2,sides:['c','e'],score:[0,0],status:'scheduled',absent:[],sources:['m3','m4']}],
+      revival:{seed:777,pool:['d','f'],entrant:'f',name:'Fay',match:'m2',next:'m5',side:1,holder:'b',signed:2,drawnAt:'2026-09-26T20:00:00Z',attempt:1},revival_draws:1}`);
+  h.evaluate("lang='en'");
+  let card = h.evaluate('revivalCard()');
+  assert.ok(card.includes('Draw 1') && !card.includes('Redrawn'), 'a first draw says draw 1 and nothing more');
+  h.evaluate('data.tournament.revival.attempt=2;data.tournament.revival_draws=2;data.tournament.revival.seed=888');
+  for (const [lang, n, note] of [['en', 'Draw 2', 'Redrawn after an undo — earlier draws are in the audit log'], ['zh', '第 2 次抽签', '撤销后重抽——之前的抽签记录在日志里']]) {
+    h.evaluate(`lang='${lang}'`);
+    card = h.evaluate('revivalCard()');
+    assert.ok(card.includes(n) && card.includes(note), `${lang}: the card shows ${n} and the redraw note`);
+  }
+  // an undone draw with no current pick still says the count, so the history is not lost
+  h.evaluate("lang='en';const r=data.tournament.revival;delete data.tournament.revival");
+  assert.ok(h.evaluate('revivalCard()').includes('Draws so far: 2 — each one is in the audit log'), 'after an undo the card keeps the count');
+  h.evaluate('data.tournament.revival_draws=1');
+  assert.ok(h.evaluate('revivalCard()').includes('Draws so far: 1 — each one is in the audit log'), 'one undone draw still shows');
+  h.evaluate("lang='zh'");
+  assert.ok(h.evaluate('revivalCard()').includes('已抽签 1 次——每次都记录在日志里'));
+  h.evaluate("lang='en';data.tournament.revival_draws=2");
+  h.evaluate('data.tournament.revival=r');
+  for (const [lang, line] of [['en', 'Second chance (random draw, not a result): Fay · seed 888 · draw 2'], ['zh', '复活赛（随机抽签，不是赛果）：Fay · 种子 888 · 第 2 次抽签']]) {
+    h.evaluate(`lang='${lang}'`);
+    const text = h.evaluate('resultsText(tournament())');
+    assert.ok(text.split('\n').includes(line), `${lang}: the copied text carries the second-chance line: ${line}`);
+    const sheet = h.evaluate('resultsSheet(tournament())');
+    assert.ok(sheet.includes(line), `${lang}: the sheet carries it too`);
+  }
+  h.evaluate("delete data.tournament.revival;data.tournament.revival_draws=0");
+  assert.ok(!h.evaluate('resultsText(tournament())').includes('Second chance'), 'no second chance, no line');
+});

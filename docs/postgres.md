@@ -95,6 +95,24 @@ variable is unset, so the default suite needs no database.
   file.  (`CREATE INDEX CONCURRENTLY` cannot run inside the transaction; when one is
   needed, run it by hand and record it in a follow-up migration that uses `IF NOT EXISTS`.)
 
+### Importing the JSON files (not done yet — the files are still the live store)
+
+```sh
+PYTHONPATH=. .venv/bin/python -m src.db                       # 0001 + 0002
+PYTHONPATH=. .venv/bin/python -m src.store_import --dry-run   # import + verify, roll back
+PYTHONPATH=. .venv/bin/python -m src.store_import             # import for real
+```
+
+`src/store_import.py` reads each file once (read-only, md5 reported), imports each data
+set in its own transaction, and commits only when the row counts match and every record
+renders back to exactly the file's JSON.  A second run reports `unchanged` and writes
+nothing.  Data the database already holds that differs from the files is `refused` unless
+`--replace` (after cutover the database is the live store).  Exit code 0 only when every
+set is `imported`/`unchanged`/`absent` (`verified` in a dry run) and no file changed.
+Dry run against a copy of production on 2026-09-25: operations (revision 5, 1 source, 5
+events), 48 identity clusters, 1 verdict, 76 ball labels, 1 anchor set verified; face
+store absent; seeds and corrections empty.
+
 ## Backup
 
 Logical dumps, custom format, taken from inside the container (the dump tool then always

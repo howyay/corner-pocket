@@ -131,7 +131,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .stream-grid{display:grid;gap:var(--sp-4);grid-template-columns:minmax(0,1fr) 320px}
 #ops-shell .stream-grid.no-chat{grid-template-columns:1fr}
 #ops-shell .note{border-left:3px solid var(--brass);padding:var(--sp-3);background:var(--panel2)}
-#ops-shell #message{position:fixed;right:18px;bottom:18px;z-index:50;box-shadow:0 5px 30px var(--shadow)}
+#ops-shell #message{position:fixed;right:18px;bottom:18px;z-index:70;box-shadow:0 5px 30px var(--shadow)}
 #ops-shell #message:empty{display:none}
 #ops-shell .empty{padding:var(--sp-5) var(--sp-2);color:var(--ink-dim)}
 #vision-host{display:block;width:100%}
@@ -454,4 +454,34 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell) .vs-frame-input input{width:72px}
   :is(#ops-shell) .vs-transport button{padding:0 var(--sp-2)}
   :is(#ops-shell) .vs-facts{max-height:calc(2 * 1.45em);overflow-y:auto;line-height:1.45}
+}
+
+/* From main (R2-R15): bye badge, match controls, random pairing, standings, head-to-head,
+   the record modal and the R10 results sheet, expressed in the shell's tokens. */
+#ops-shell .badge.bye{color:var(--ink-dim);border-style:dashed;background:transparent}
+#ops-shell .match-controls{flex-wrap:wrap;gap:var(--sp-1h);margin-top:var(--sp-2)}
+#ops-shell .match-controls button{padding:var(--sp-1) var(--sp-2);font-size:var(--fs-sm)}
+#ops-shell .pairing .row{flex-wrap:wrap;gap:var(--sp-1h)}
+#ops-shell .pairing .badge{text-transform:none;letter-spacing:0;font:var(--fs-md) var(--body)}
+#ops-shell .pairing .badge button{padding:0 var(--sp-1h);margin-left:var(--sp-1);min-height:0}
+#ops-shell .pair-teams li{padding:var(--sp-1h) 0;border-bottom:1px solid var(--line)}
+#ops-shell :is(.standings,.event-table) td:nth-child(n+3),#ops-shell :is(.standings,.event-table) th:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
+#ops-shell :is(.standings,.h2h,.per-event) td small{display:block}
+#ops-shell :is(.h2h,.per-event) td:nth-child(n+2),#ops-shell :is(.h2h,.per-event) th:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
+.modal .record h3{margin-top:var(--sp-4)}
+/* R10 results sheet: one full bracket on screen, and on paper / PDF */
+#ops-shell .results-sheet h2{margin:0 0 var(--sp-1)}
+#ops-shell .results-sheet .champion{display:flex;flex-direction:column;gap:2px;margin:var(--sp-3) 0 0}
+#ops-shell .results-sheet .champion strong{font:600 26px var(--display);color:var(--brass-hi)}
+#ops-shell .sheet-rounds{display:grid;gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+#ops-shell .sheet-match{margin:var(--sp-1h) 0;font-variant-numeric:tabular-nums}
+#ops-shell .sheet-match.bye{color:var(--ink-dim)}
+@media print{
+  #ops-shell header,#ops-shell #strip,#ops-shell #message,#vision-host,#ops-shell .no-print{display:none!important}
+  html,body,#ops-shell,#ops-shell main{background:#fff!important;color:#000!important}
+  #ops-shell main{padding:0}
+  #ops-shell .results-sheet article{border:1px solid #999;background:#fff;color:#000;break-inside:avoid}
+  #ops-shell .results-sheet :is(h2,h3,p,small,strong){color:#000!important}
+  #ops-shell .results-sheet .note{background:#fff!important;border-left-color:#999}
+  #ops-shell .sheet-rounds{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 }

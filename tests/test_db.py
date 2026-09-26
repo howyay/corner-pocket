@@ -117,6 +117,41 @@ class Database(unittest.TestCase):
             tx.execute(f"INSERT INTO {self.schema}.kept VALUES ('kept')")
         self.assertEqual(self.conn.execute("SELECT v FROM kept").fetchall(), [("kept",)])
 
+    def test_0002_user_data_schema_applies_and_enforces_the_reviewed_rules(self):
+        import psycopg   # the driver is only needed when a database is configured
+        db.migrate(self.conn)
+        for table in ("ops_meta", "players", "tournaments", "entrants", "entrant_members", "matches",
+                      "notes", "sources", "ops_events", "identity_clusters", "identity_face_samples",
+                      "face_embeddings", "track_seeds", "event_verdicts", "ball_labels",
+                      "frame_corrections", "pocket_anchors"):
+            self.assertTrue(self.exists(table), table)
+        run = self.conn.execute
+        run("INSERT INTO players (id, name, status, rating, position) VALUES ('p1', 'Ana', 'Active', 0, 0)")
+        with self.assertRaises(psycopg.errors.UniqueViolation), self.conn.transaction():
+            run("INSERT INTO players (id, name, status, rating, position) VALUES ('p2', 'ANA', 'Active', 0, 1)")
+        # reviewed FK: a cluster can only name a roster player, and deleting the player unbinds it
+        with self.assertRaises(psycopg.errors.ForeignKeyViolation), self.conn.transaction():
+            run("INSERT INTO identity_clusters (cluster_id, player_id, body_bank) VALUES (9, 'typo', '{}')")
+        run("INSERT INTO identity_clusters (cluster_id, player_id, body_bank) VALUES (1, 'p1', '{}')")
+        run("DELETE FROM players WHERE id = 'p1'")
+        self.assertIsNone(run("SELECT player_id FROM identity_clusters WHERE cluster_id = 1").fetchone()[0])
+        # the embeddings round-trip exactly (double precision, not real)
+        run("INSERT INTO face_embeddings (player_id, embedding, eye_px, det_score, created_at, position) "
+            "VALUES ('p9', %s, 10.4, 0.912, 't', 0)", ([0.9120] * 512,))
+        emb, eye, det = run("SELECT embedding, eye_px, det_score FROM face_embeddings").fetchone()
+        self.assertEqual((emb[0], eye, det), (0.912, 10.4, 0.912))
+        with self.assertRaises(psycopg.errors.CheckViolation), self.conn.transaction():
+            run("INSERT INTO face_embeddings (player_id, embedding, created_at, position) VALUES ('p9', %s, 't', 1)",
+                ([0.1] * 128,))
+        # one current tournament, one match per live table, ball label vocabulary
+        run("INSERT INTO tournaments (id, name, format, tables, race_to, status) VALUES ('t1', '', 'singles', 1, 1, 'registration')")
+        with self.assertRaises(psycopg.errors.UniqueViolation), self.conn.transaction():
+            run("INSERT INTO tournaments (id, name, format, tables, race_to, status) VALUES ('t2', '', 'singles', 1, 1, 'registration')")
+        for bad in ('16', '"x"', '-1'):
+            with self.assertRaises(psycopg.errors.CheckViolation), self.conn.transaction():
+                run("INSERT INTO ball_labels (crop_set, crop_key, crop_file, label) "
+                    "VALUES ('unlabeled_crops', %s, 'f', %s::jsonb)", ("k" + bad, bad))
+
 
 if __name__ == "__main__":
     unittest.main()

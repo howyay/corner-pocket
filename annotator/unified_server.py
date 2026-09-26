@@ -433,6 +433,37 @@ class Backend:
             raise APIError(f"identity models unavailable: {exc}", 503) from exc
         return {"unbound": True, "cluster_id": cluster_id}
 
+    def identity_forget(self, payload):
+        """Delete one player's face data, on the operator's explicit request.
+
+        Removes every face row of the player from the face store (and from the
+        enrolment scratch copy, which holds the last confirm's embeddings), unbinds
+        the player's clusters and drops their stored faces and face samples from
+        the identity index, and makes the running pipeline re-read the gallery, so
+        the player is not auto-bound again. The operations record (name, results)
+        is not touched. 404 when there is no face data for this player at all."""
+        from src.face_id import remove_faces
+        from src.person_identity import IdentityIndex
+        player_id = payload.get("player_id")
+        if not isinstance(player_id, str) or not player_id.strip():
+            raise APIError("player_id must be a non-empty string")
+        store = self.out / "corner-pocket" / "face_embeddings.json"
+        scratch = self.out / "enroll-eval" / "scratch" / "out" / "corner-pocket" / "face_embeddings.json"
+        with self._identity_lock:
+            pipeline = self._identity_pipeline
+            index = pipeline.identity if pipeline is not None else IdentityIndex(
+                self.out / "identity" / "clusters.json")
+            gallery = load(store, {}) or {}
+            bound = any(index.get(cid)["player_id"] == player_id for cid in index.clusters())
+            if player_id not in gallery and not bound and player_id not in (load(scratch, {}) or {}):
+                raise APIError("no face data for this player", 404)
+            removed = {"store_faces": remove_faces(store, player_id),
+                       "scratch_faces": remove_faces(scratch, player_id)}
+            removed.update(index.forget_player(player_id))
+            if pipeline is not None:
+                pipeline.reload_gallery()
+        return {"forgotten": True, "player_id": player_id, "removed": removed}
+
     # -- enrolling a regular from the person on screen ----------------------
     # Two steps on purpose: the preview only reads (no file is touched) and the
     # confirm is the one write, made by the operator's explicit click. The plan
@@ -513,7 +544,8 @@ class Backend:
         except EnrollmentTokenError as exc:
             return exc.to_dict()
         if result.get("ok"):
-            result = dict(result, promoted=self._promote_enrollment(result.get("written") or {}))
+            promoted = self._promote_enrollment(result.get("written") or {})
+            result = dict(result, promoted=promoted, revision=promoted.get("revision", result.get("revision")))
             with self.lock:
                 self._enroll_plans.pop(token, None)
         return result
@@ -523,20 +555,42 @@ class Backend:
 
         ``write_enrollment()`` writes to a scratch root on purpose - "the caller
         decides when the enrolment becomes real". The operator's confirm click is
-        that decision, so the two files it wrote are promoted here, atomically and
-        in the same format Operations writes. A refusal never reaches this method.
+        that decision. The roster is NOT copied over state.json: the scratch copy
+        was built from a roster read before the confirm, and any operations write
+        since then would be lost. The new player and its event go through the
+        Operations store instead - a locked read-modify-write at the current
+        revision. A refusal never reaches this method.
         """
         promoted = {}
-        for key, name in (("state", "state.json"), ("store", "face_embeddings.json")):
-            source = written.get(key)
-            if not source:
-                continue
+        source = written.get("state")
+        if source:
+            scratch = load(Path(source))
+            if scratch is None:
+                raise APIError("enrolment scratch file is missing: %s" % source, 500)
+            event = (scratch.get("events") or [None])[-1] or {}
+            if event.get("action") != "player_enroll_from_tracklet":
+                raise APIError("enrolment scratch roster carries no enrolment event", 500)
+            player_id = event["context"]["player_id"]
+            player = next(p for p in scratch["players"] if p.get("id") == player_id)
+            try:
+                state = self.operations().enroll_player(player, event["context"])
+            except ValueError as error:
+                raise APIError(str(error), 409) from error
+            promoted.update(state=str(self.operations().path), revision=state["revision"])
+        source = written.get("store")
+        if source:
             payload = load(Path(source))
             if payload is None:
                 raise APIError("enrolment scratch file is missing: %s" % source, 500)
-            target = self.out / "corner-pocket" / name
-            atomic_save(target, payload)
-            promoted[key] = str(target)
+            # The scratch store holds only this enrolment's rows: merge them in
+            # under the store lock, never write them over the whole gallery.
+            from src.face_id import add_faces
+            target = self.out / "corner-pocket" / "face_embeddings.json"
+            with self._identity_lock:
+                add_faces(target, payload)
+                if self._identity_pipeline is not None:
+                    self._identity_pipeline.reload_gallery()
+            promoted["store"] = str(target)
         return promoted
 
     # -- unified viewer: one overlay payload per frozen frame ---------------
@@ -1360,6 +1414,8 @@ class Backend:
             return self.identity_seed(payload)
         if parts == ['api', 'identity', 'unbind']:
             return self.identity_unbind(payload)
+        if parts == ['api', 'identity', 'forget']:
+            return self.identity_forget(payload)
         if parts == ['api', 'identity', 'enroll-preview']:
             return self.enroll_preview(payload)
         if parts == ['api', 'identity', 'enroll-confirm']:

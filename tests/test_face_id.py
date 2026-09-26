@@ -18,6 +18,7 @@ from src.face_id import (
     FaceEngine,
     FaceRecord,
     _cosine,
+    add_faces,
     best_match,
     embed_image,
     get_face_engine,
@@ -232,6 +233,31 @@ class Persistence(unittest.TestCase):
         self.assertEqual(row["det_score"], 0.912)
         self.assertEqual(row["source"], "vod_30min_260815.png")
         self.assertTrue(datetime.fromisoformat(row["created_at"]))  # valid ISO timestamp
+
+    def test_add_faces_merges_and_concurrent_adds_lose_nothing(self):
+        """add_faces is a locked read-modify-write: existing players keep their rows,
+        a player's new rows follow the old ones, and 8 threads adding at once lose none."""
+        import threading
+        store_faces(self.path, {"P1": [self.entry(source="p1-a")]})
+        add_faces(self.path, {"P2": [self.entry(source="p2-a")]})
+        stored = add_faces(self.path, {"P1": [self.entry(source="p1-b")]})
+        self.assertEqual({pid: [r["source"] for r in rows] for pid, rows in stored.items()},
+                         {"P1": ["p1-a", "p1-b"], "P2": ["p2-a"]})
+        self.assertEqual(load_faces(self.path), stored)
+        barrier = threading.Barrier(8)
+
+        def worker(n):
+            barrier.wait()
+            add_faces(self.path, {f"T{n}": [self.entry(source=f"t{n}")]})
+
+        threads = [threading.Thread(target=worker, args=(n,)) for n in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        final = load_faces(self.path)
+        self.assertEqual(sorted(final), sorted(["P1", "P2"] + [f"T{n}" for n in range(8)]))
+        self.assertEqual([r["source"] for r in final["P1"]], ["p1-a", "p1-b"])
 
     def test_store_accepts_embedding_lists_and_fills_created_at_once(self):
         first = store_faces(self.path, {"P1": [{"embedding": self.entry()["embedding"].tolist(),

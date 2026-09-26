@@ -1,0 +1,207 @@
+Corner Pocket: NOTICE
+=====================
+
+Our own code
+------------
+Unless a file or an entry below says otherwise, the files in this repository
+are our own work, dedicated to the public domain under CC0-1.0 (see LICENSE).
+
+CC0 covers only our own work. The third-party components below keep their own
+licences, and CC0 does not change them. src/reid/osnet.py is third-party code
+copied into this repository and stays under its MIT licence (entry 6). Model
+weights are not committed: they are downloaded at setup, either by
+scripts/fetch_weights.py or by the library that uses them.
+
+
+1. ultralytics
+--------------
+Package:  ultralytics 8.4.142, with its dependencies ultralytics-thop and
+          ultralytics-platform. Installed with pip; not vendored, not modified.
+Licence:  GNU Affero General Public License v3.0 (AGPL-3.0). Full text:
+          LICENSE-AGPL-3.0.txt
+Source:   https://github.com/ultralytics/ultralytics
+Used by:  src/frame_inference.py, src/person_pipeline.py, src/yolo_track.py
+          and other scripts (`from ultralytics import YOLO`).
+
+Our source files are our own work and stay CC0. The program that actually runs
+is our code combined with ultralytics, and that combined program is a work
+based on an AGPL-3.0 program. CC0 cannot remove the AGPL's conditions from it.
+Anyone who conveys the combined program, or runs a modified version of it as a
+network service (for example, the web server used by other people), must
+honour the AGPL-3.0 for the whole program. That includes section 13: "your
+modified version must prominently offer all users interacting with it remotely
+through a computer network (if your version supports such interaction) an
+opportunity to receive the Corresponding Source of your version". In practice,
+publishing the complete source of your version meets this. Ultralytics sells an
+Enterprise licence for uses that cannot meet the AGPL:
+https://www.ultralytics.com/license
+
+
+2. YOLOv8n weights (yolov8n.pt)
+-------------------------------
+Copyright: Ultralytics
+Licence:   AGPL-3.0, the licence of the ultralytics/assets repository. Full
+           text: LICENSE-AGPL-3.0.txt
+Download:  https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt
+SHA-256:   f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36
+Size:      6,549,796 bytes
+Corresponding Source:
+           https://github.com/ultralytics/ultralytics, the training code and
+           the model configuration (ultralytics/cfg/models/v8/yolov8.yaml; see
+           tag v8.3.0, the release this file is published with)
+Stored at: yolov8n.pt in the repository root, written by
+           scripts/fetch_weights.py and ignored by git.
+
+If a commit in this repository's history contains yolov8n.pt, it is this same
+file (same SHA-256), and this entry applies to it.
+
+
+3. OSNet x0.25 weights trained on MSMT17 (osnet_x0_25_msmt17.pth)
+-----------------------------------------------------------------
+Author:    Kaiyang Zhou (torchreid, https://github.com/KaiyangZhou/deep-person-reid)
+Licence:   the Hugging Face model card says "license: mit"
+           (https://huggingface.co/kaiyangzhou/osnet).
+Dataset:   the weights were trained on MSMT17. Its release agreement
+           (https://www.pkuvmc.com/agreement/RELEASE_AGREEMENT-MSMT17.pdf) says
+           the dataset "is now available for the academic purpose only",
+           "(2) The database will not be further distributed, published,
+           copied, or further disseminated in any way or form whatsoever,
+           regardless of whether the dataset is modified or not", and
+           "(3) ... will not be used for any commercial purpose in any form".
+Status:    NOT redistributed by this repository. Whether trained weights are a
+           modified form of the dataset is unsettled, so we do not host them.
+           scripts/fetch_weights.py downloads them from the author's Hugging
+           Face repository:
+             repository  kaiyangzhou/osnet
+             revision    a5c5cc037c24235cda3b21085b93ad77c9616224
+             file        osnet_x0_25_msmt17_combineall_256x128_amsgrad_ep150_stp60_lr0.0015_b64_fb10_softmax_labelsmooth_flip_jitter.pth
+             SHA-256     cf55163d78fc44c62c82f85ab62d39f10438679b5abe8c698ae08cfa84aa6e18
+             size        9,336,983 bytes
+           and stores them as src/reid/weights/osnet_x0_25_msmt17.pth, which
+           git ignores. You obtain them from the author. Check that your use
+           fits the MSMT17 terms (academic, non-commercial) before you
+           download them.
+
+
+4. InsightFace library and the buffalo_l models
+-----------------------------------------------
+Package:  insightface 2.0. Installed with pip; imported by src/face_id.py.
+Licence:  the library is MIT: "The library code is released under the MIT
+          License, for academic and commercial use."
+          (https://github.com/deepinsight/insightface/blob/master/python-package/README.md)
+Models:   buffalo_l (a face detector and an ArcFace recognition model).
+          insightface fetches them into ~/.insightface/models/buffalo_l on
+          first use; they are never committed or redistributed here. Their
+          licence is separate from the library's: "The pretrained models
+          provided with this library are for non-commercial research only,
+          whether downloaded automatically or manually."
+
+This project uses buffalo_l non-commercially. Revisit this before any
+commercial use.
+
+
+5. SAM 3 (Segment Anything Model 3)
+-----------------------------------
+Code:     the sam3 package from https://github.com/facebookresearch/sam3,
+          installed separately from a local clone in src/sam3/ (ignored by
+          git).
+Weights:  Meta publishes them as a gated download at
+          https://huggingface.co/facebook/sam3 (request access first). The
+          code expects a safetensors checkpoint at data/sam3.safetensors
+          (ignored by git). The development copy is the sam3.safetensors
+          conversion from the 1038lab/sam3 Hugging Face repository, which is
+          not published by Meta.
+Licence:  SAM License (Meta; "Last Updated: November 19, 2025"), a custom
+          licence. Anyone who distributes the SAM Materials or derivative
+          works "may only do so under the terms of this Agreement and you
+          shall provide a copy of this Agreement".
+Status:   neither the code nor the weights are redistributed here. Our shim
+          src/sam3_cpu.py is our own work: it imports and patches sam3 at run
+          time. A patched SAM file, if one is ever committed here, must carry
+          the SAM License. Only the SAM-based detection paths need SAM 3
+          (src/pipeline.py, src/frame_inference.py and the scripts built on
+          them).
+
+
+6. src/reid/osnet.py (OSNet model code from torchreid)
+------------------------------------------------------
+Source:   https://github.com/KaiyangZhou/deep-person-reid,
+          torchreid/models/osnet.py, copied verbatim.
+Licence:  MIT, Copyright (c) 2018 Kaiyang Zhou. This file is NOT CC0. It stays
+          under the MIT licence below, which is also reproduced at the top of
+          the file.
+
+MIT License
+
+Copyright (c) 2018 Kaiyang Zhou
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+7. psycopg
+----------
+Package:  psycopg 3.3.6 and psycopg-binary 3.3.6. Installed with pip.
+Licence:  GNU Lesser General Public License v3.0 only (LGPL-3.0-only)
+Source:   https://github.com/psycopg/psycopg
+Use:      imported at run time by src/db.py (the optional Postgres store). It
+          is used dynamically, through import; it is not modified and not
+          distributed here, and the LGPL does not extend to our code.
+
+
+8. Web fonts
+------------
+Fonts:    Zilla Slab, Barlow, DM Mono, Noto Sans SC, Noto Serif SC
+Licence:  SIL Open Font License 1.1 (OFL-1.1)
+Use:      annotator/app.html and annotator/ops.html load them from
+          fonts.googleapis.com at run time. No font file is in this
+          repository. Anyone who self-hosts them must ship each font's OFL.txt
+          with it; OFL fonts cannot be relicensed under CC0.
+
+
+9. Other Python packages
+------------------------
+Other packages in the development environment. They are installed with pip
+and never vendored. Licences as declared by each package:
+
+  numpy                    BSD-3-Clause (bundled parts: 0BSD, MIT, Zlib,
+                           CC0-1.0)
+  opencv-python(-headless) Apache-2.0
+  torch, torchvision       BSD-3-Clause
+  Pillow                   MIT-CMU (the historical PIL licence)
+  gdown                    MIT
+  scipy, scikit-image,     BSD-3-Clause
+  scikit-learn, httpx
+  lap                      BSD-2-Clause
+  lapx, filterpy, einops,  MIT
+  onnxruntime
+  requests, timm, onnx,    Apache-2.0
+  huggingface_hub,
+  safetensors
+  matplotlib               matplotlib licence (PSF-based)
+  tqdm                     MPL-2.0 AND MIT
+  certifi                  MPL-2.0
+
+None of these is copyleft over our code: MPL-2.0 applies file by file, and we
+do not modify those files. The opencv-python wheels bundle FFmpeg, which is
+LGPL; that matters only to someone who redistributes the wheels, and this
+repository does not.
+
+The web server can also run an external ffmpeg program, if one is installed,
+to cut event clips. It is not distributed here. Its own licence (LGPL or GPL,
+depending on the build) applies to that program only.

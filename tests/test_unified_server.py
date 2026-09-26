@@ -822,6 +822,188 @@ class BackendTests(unittest.TestCase):
         # An unknown token is refused as expired rather than enrolling anything.
         self.assertEqual(self.backend.enroll_confirm({'token': 'gone', 'player_name': 'Ana'})['reason'], 'preview_expired')
 
+    def _enrol_selection(self, track_id=6, seed=11):
+        """A real Selection (three mutually consistent faces) for the real confirm path."""
+        from src.enroll_from_tracklet import Candidate, Selection, plan_enrollment
+        rng = np.random.RandomState(seed)
+        base = rng.standard_normal(512).astype(np.float32)
+        base /= np.linalg.norm(base)
+        crops = []
+        for n in range(3):
+            noise = rng.standard_normal(512).astype(np.float32) * 0.02
+            crops.append(Candidate(frame_index=2000 + 30 * n, t=66.7 + n, bbox=[10, 10, 30, 30],
+                                   person_bbox=[0, 0, 100, 200], det_score=0.8, eye_px=12.0,
+                                   embedding=(base + noise) / np.linalg.norm(base + noise)))
+        enrollment = plan_enrollment(crops, track_id=track_id, player_name='preview', state={})
+        return Selection(dataset='vod30', frame_index=2000, track_id=track_id, selection_iou=1.0,
+                         frames_seen=3, enrollment=enrollment), base
+
+    def _confirm(self, name, selection):
+        """Preview (holds the plan under its token), then confirm, with crops rendered
+        from fixed bytes instead of the recording - the token logic is unchanged."""
+        from src.enroll_from_tracklet import enrollment_token
+        crops = [{'frame_index': c.frame_index, 'jpeg': b'crop-%d' % c.frame_index}
+                 for c in selection.enrollment.crops]
+        token = enrollment_token(selection.dataset, selection.track_id, crops)
+        self.backend._enroll_plans[token] = selection
+        with patch('src.enroll_from_tracklet.crop_jpeg',
+                   side_effect=lambda root, dataset, frame_index, bbox, **k: b'crop-%d' % frame_index):
+            return self.backend.enroll_confirm({'token': token, 'player_name': name})
+
+    def test_operations_writes_landing_during_a_confirm_survive_the_enrolment(self):
+        """The confirm reads the roster, renders and writes its scratch files, then
+        promotes. It must not overwrite state.json from that earlier read: a note or
+        an entrant posted in between is kept, the revision advances from the CURRENT
+        one, and the enrolment is one more event on the same log."""
+        from src import enroll_from_tracklet
+        self.backend.post(['api', 'operations'], {'action': 'player_save', 'revision': 0, 'name': 'Early'})
+        selection, _ = self._enrol_selection()
+        real_load_state = enroll_from_tracklet.load_state
+
+        def others_write_after_the_read(root):
+            snapshot = real_load_state(root)
+            now = self.backend.get(['api', 'operations'], {})['revision']
+            self.backend.post(['api', 'operations'], {'action': 'note_add', 'revision': now,
+                                                      'text': 'table 2 cloth replaced'})
+            self.backend.post(['api', 'operations'], {'action': 'entrant_add', 'revision': now + 1,
+                                                      'members': [{'name': 'Walk-in'}]})
+            return snapshot
+
+        with patch('src.enroll_from_tracklet.load_state', side_effect=others_write_after_the_read):
+            result = self._confirm('Ana', selection)
+        self.assertTrue(result['ok'], result)
+        before = {'revision': 3}   # player_save, note_add, entrant_add
+        state = json.loads((self.out / 'corner-pocket' / 'state.json').read_text())
+        self.assertEqual(state, self.backend.get(['api', 'operations'], {}))
+        self.assertEqual([n['text'] for n in state['notes']], ['table 2 cloth replaced'], 'the note survives')
+        self.assertEqual([m['name'] for e in state['tournament']['entrants'] for m in e['members']],
+                         ['Walk-in'], 'the entrant survives')
+        self.assertEqual([p['name'] for p in state['players']], ['Early', 'Ana'])
+        self.assertEqual(state['revision'], before['revision'] + 1, 'one revision past the current one')
+        self.assertEqual(result['revision'], state['revision'])
+        self.assertEqual([e['revision'] for e in state['events']], list(range(1, state['revision'] + 1)))
+        event = state['events'][-1]
+        self.assertEqual(event['action'], 'player_enroll_from_tracklet')
+        self.assertEqual(event['context']['player_id'], result['player_id'])
+        self.assertEqual(event['context']['name'], 'Ana')
+        # a client still holding the pre-enrolment revision is told to reload
+        with self.assertRaises(APIError) as stale_write:
+            self.backend.post(['api', 'operations'], {'action': 'note_add', 'revision': before['revision'],
+                                                      'text': 'late'})
+        self.assertEqual(stale_write.exception.status, 409)
+
+    def test_enrolling_an_existing_regular_adds_no_second_roster_row(self):
+        """A confirm that names a regular already on the roster gives that regular
+        faces; the roster keeps one row and the enrolment is still logged."""
+        saved = self.backend.post(['api', 'operations'], {'action': 'player_save', 'revision': 0, 'name': 'Ana'})
+        selection, _ = self._enrol_selection()
+        result = self._confirm('ana', selection)
+        self.assertTrue(result['ok'], result)
+        state = self.backend.get(['api', 'operations'], {})
+        self.assertEqual([(p['id'], p['name']) for p in state['players']], [(saved['players'][0]['id'], 'Ana')])
+        self.assertEqual(result['player_id'], saved['players'][0]['id'])
+        self.assertEqual(state['events'][-1]['action'], 'player_enroll_from_tracklet')
+        self.assertEqual(state['revision'], 2)
+
+    def test_a_second_enrolment_keeps_the_first_players_faces_and_matches_at_once(self):
+        """Enrol A, then B, through the real confirm. The face store keeps both
+        players' samples (a confirm used to replace the whole gallery with the new
+        player's rows), and the running pipeline matches B on the next frame - no
+        restart - because the promote refreshes the gallery it had cached."""
+        from src.face_id import best_match, load_faces
+        from src.person_pipeline import PersonPipeline
+        pipeline = PersonPipeline(self.root, face_engine=Mock())
+        self.backend._identity_pipeline = pipeline
+        self.assertEqual(pipeline._gallery_data(), {}, 'the running pipeline caches an empty gallery')
+        first, a_face = self._enrol_selection(track_id=6, seed=11)
+        second, b_face = self._enrol_selection(track_id=9, seed=23)
+        a = self._confirm('Ana', first)
+        b = self._confirm('Bo', second)
+        self.assertTrue(a['ok'] and b['ok'], (a, b))
+        store = load_faces(self.out / 'corner-pocket' / 'face_embeddings.json')
+        self.assertEqual(sorted(store), sorted([a['player_id'], b['player_id']]), 'both players are in the store')
+        self.assertEqual([len(store[a['player_id']]), len(store[b['player_id']])], [3, 3])
+        match = best_match(b_face, pipeline._gallery_data())
+        self.assertIsNotNone(match, 'the running pipeline sees the new enrolment without a restart')
+        self.assertEqual(match['player_id'], b['player_id'])
+        self.assertEqual(best_match(a_face, pipeline._gallery_data())['player_id'], a['player_id'])
+
+    def _two_enrolled_with_a_live_pipeline(self):
+        """Ana and Bo enrolled through the real confirm; a running pipeline whose
+        index holds a cluster bound to each, with stored faces and face samples."""
+        from src.person_identity import IdentityIndex
+        from src.person_pipeline import PersonPipeline
+        index = IdentityIndex(self.out / 'identity' / 'clusters.json')
+        pipeline = PersonPipeline(self.root, face_engine=Mock(), identity=index)
+        self.backend._identity_pipeline = pipeline
+        (first, a_face), (second, b_face) = self._enrol_selection(6, 11), self._enrol_selection(9, 23)
+        a, b = self._confirm('Ana', first), self._confirm('Bo', second)
+        for cid, (who, emb) in enumerate(((a, a_face), (b, b_face)), start=1):
+            index.register(cid, [1.0] * 128, frame_index=cid)
+            index._clusters[cid].face = np.asarray(emb, np.float32)   # the persisted `face` slot
+            index.record_face_sample(cid, emb, eye_px=12.0, det_score=0.9, bbox=[1, 2, 3, 4], frame_index=cid)
+            index.explicit_assign(cid, who['player_id'])
+        return pipeline, index, a, b, a_face, b_face
+
+    def test_forget_removes_one_players_faces_everywhere_and_leaves_the_rest(self):
+        from src.face_id import best_match, load_faces
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        ops_before = self.backend.get(['api', 'operations'], {})
+        result = self.backend.post(['api', 'identity', 'forget'], {'player_id': a['player_id']})
+        self.assertEqual(result['removed'], {'store_faces': 3, 'scratch_faces': 0, 'clusters_unbound': 1,
+                                             'face_samples': 1, 'faces': 1})
+        store = load_faces(self.out / 'corner-pocket' / 'face_embeddings.json')
+        self.assertEqual(list(store), [b['player_id']], "Ana's rows are gone, Bo's stay")
+        self.assertEqual(len(store[b['player_id']]), 3)
+        saved = json.loads((self.out / 'identity' / 'clusters.json').read_text())
+        self.assertEqual((saved['1']['player_id'], saved['1']['face'], saved['1']['face_samples']), (None, None, []))
+        self.assertEqual(saved['2']['player_id'], b['player_id'])
+        self.assertEqual(len(saved['2']['face_samples']), 1)
+        self.assertIsNotNone(saved['2']['face'])
+        a_bytes = json.dumps([round(float(v), 4) for v in a_face])[1:40]
+        for path in self.out.rglob('*.json'):
+            self.assertNotIn(a_bytes, path.read_text(), f"none of Ana's embedding survives in {path}")
+        # the running pipeline no longer matches Ana, still matches Bo
+        self.assertIsNone(best_match(a_face, pipeline._gallery_data()))
+        self.assertEqual(best_match(b_face, pipeline._gallery_data())['player_id'], b['player_id'])
+        self.assertEqual(self.backend.get(['api', 'operations'], {}), ops_before, 'the roster is not touched')
+
+    def test_a_forgotten_player_is_not_auto_bound_on_the_next_frame(self):
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        self.backend.post(['api', 'identity', 'forget'], {'player_id': a['player_id']})
+        engine = pipeline._face_engine
+        engine.analyze.return_value = [{'bbox': [150, 150, 190, 200], 'eye_px': 12.0, 'det_score': 0.9,
+                                        'embedding': a_face}]
+        engine.quality.return_value = True
+        from src.face_id import best_match
+        engine.best_match.side_effect = best_match
+        pipeline.detector = lambda frame: [{'bbox': [100.0, 100.0, 300.0, 600.0], 'conf': 0.9}]
+        pipeline.body_encoder = lambda crops: [np.ones(128, np.float32)] * len(crops)
+        out = pipeline.process_frame(np.zeros((720, 1280, 3), np.uint8), frame_index=40)
+        self.assertEqual([p['player_id'] for p in out['persons']], [None])
+        self.assertEqual(out['events'], [], 'no bind event for a forgotten player')
+
+    def test_forget_of_an_unknown_player_is_404_and_writes_nothing(self):
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        paths = [self.out / 'corner-pocket' / 'face_embeddings.json', self.out / 'identity' / 'clusters.json',
+                 self.out / 'corner-pocket' / 'state.json']
+        before = [file_stamp(p) for p in paths]
+        for bad in ('no-such-player', ''):
+            with self.assertRaises(APIError) as error:
+                self.backend.post(['api', 'identity', 'forget'], {'player_id': bad})
+            self.assertEqual(error.exception.status, 404 if bad else 400)
+        self.assertEqual([file_stamp(p) for p in paths], before)
+
+    def test_reads_after_a_forget_still_write_nothing(self):
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        self.backend.post(['api', 'identity', 'forget'], {'player_id': a['player_id']})
+        paths = [self.out / 'corner-pocket' / 'face_embeddings.json', self.out / 'identity' / 'clusters.json',
+                 self.out / 'corner-pocket' / 'state.json']
+        before = [file_stamp(p) for p in paths]
+        self.backend.get(['api', 'identity', 'status'], {})
+        self.backend.get(['api', 'operations'], {})
+        self.assertEqual([file_stamp(p) for p in paths], before)
+
     def test_identity_frame_read_leaves_the_index_file_untouched(self):
         """GET /api/identity/frame runs the tracker over one frame. That is
         observation: the index file used to be rewritten by every register()
@@ -952,6 +1134,50 @@ class UnifiedViewTests(unittest.TestCase):
         self.assertEqual(data['persons'], persons, 'the overlay read really ran the identity seam')
         self.assertIsNone(data['persons_error'])
         self.assertEqual(file_stamp(path), before, 'reading a frame must not rewrite the identity index')
+
+    def test_a_face_bind_found_while_reading_is_returned_but_not_written(self):
+        """A GET never writes, even when the frame produces a face bind. The real
+        pipeline (fake models, a one-player gallery) binds while serving
+        GET /api/unified and GET /api/identity/frame: the payload shows the bind,
+        clusters.json keeps its bytes, size and mtime, and the bind is persisted by
+        the next genuine mutation (an explicit POST), not by the read."""
+        from src.face_id import store_faces
+        from src.person_identity import IdentityIndex
+        from src.person_pipeline import PersonPipeline
+        self.patch_pipeline()
+        rng = np.random.RandomState(5)
+        emb = rng.standard_normal(512).astype(np.float32)
+        emb /= np.linalg.norm(emb)
+        store_faces(self.root / 'out' / 'corner-pocket' / 'face_embeddings.json',
+                    {'playerF': [{'embedding': emb, 'eye_px': 12.0, 'det_score': 0.9}]})
+        path = self.root / 'out' / 'identity' / 'clusters.json'
+        index = IdentityIndex(path)
+        index.register(99, [1.0] * 128, frame_index=0)
+        index.explicit_assign(1, 'someone-else')           # a real file to compare bytes against
+        before = file_stamp(path)
+        box = [100.0, 100.0, 300.0, 600.0]
+        engine = Mock()
+        engine.analyze.return_value = [{'bbox': [150, 150, 190, 200], 'eye_px': 12.0, 'det_score': 0.9,
+                                        'embedding': emb}]
+        engine.quality.return_value = True
+        engine.best_match.side_effect = lambda probe, gallery: (
+            {'player_id': 'playerF', 'similarity': 0.99, 'runner_up': None} if gallery else None)
+        pipeline = PersonPipeline(self.root, detector=lambda frame: [{'bbox': list(box), 'conf': 0.9}],
+                                  body_encoder=lambda crops: [np.ones(128, np.float32) / np.sqrt(128)] * len(crops),
+                                  face_engine=engine, identity=index)
+        self.backend._identity_pipeline = pipeline
+        data = self.backend.get(['api', 'unified'], {'dataset': ['vod30'], 'frame': ['150']})
+        self.assertEqual([p['player_id'] for p in data['persons']], ['playerF'], 'the read shows the bind')
+        self.assertEqual(file_stamp(path), before, 'GET /api/unified must not write the bind')
+        cluster = data['persons'][0]['cluster_id']
+        frame = self.backend.get(['api', 'identity', 'frame'], {'dataset': ['vod30'], 'frame': ['151']})
+        self.assertEqual([p['player_id'] for p in frame['persons']], ['playerF'], 'the bind holds in memory')
+        self.assertEqual(file_stamp(path), before, 'GET /api/identity/frame must not write the bind')
+        # the next genuine mutation persists what the reads decided
+        self.backend.post(['api', 'identity', 'unbind'], {'cluster_id': 1})
+        saved = json.loads(path.read_text())
+        self.assertEqual(saved[str(cluster)]['player_id'], 'playerF')
+        self.assertIsNone(saved['1']['player_id'])
 
     def test_payload_shape_scales_detection_back_to_full_res(self):
         data = self.payload()

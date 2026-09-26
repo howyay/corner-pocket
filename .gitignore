@@ -24,3 +24,27 @@ src/sam3/
 .pm/
 design/
 Corner Pocket redesign (1).zip
+
+# model weights: never committed; scripts/fetch_weights.py downloads them
+*.pt
+*.pth
+*.onnx
+*.npy
+
+# archives
+*.zip
+
+# secrets and credentials
+.env
+.env.*
+*.env
+*.pem
+*.key
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+secrets.json
+
+# tool caches
+.pytest_cache/

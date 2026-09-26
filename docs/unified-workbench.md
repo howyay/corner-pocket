@@ -149,7 +149,25 @@ out/identity/clusters.json` before and after a read.
   `/api/identity/status`, `/api/live` and `/api/live/frame`,
   `/api/review-template`, `/media/*`, static assets. Writes live in the POST
   handlers (`annotate`, `seeds`, `anchors`, `frame-correction`,
-  `identity/{seed,unbind,enroll}`, and the inference job the POST starts).
+  `identity/{seed,unbind,enroll,enroll-confirm,forget}`, and the inference job
+  the POST starts).
+- Fixed 2026-09-25: a face match inside `GET /api/unified` /
+  `GET /api/identity/frame` called `bind_face()`, which saved the index. The
+  pipeline now binds with `persist=False`: the bind is in the payload and in
+  memory, and the next genuine mutation (seed, unbind, forget, an enrolment)
+  writes it (`1255cc1`).
+- `POST /api/identity/forget {"player_id": "…"}` — per-person delete of face
+  data, on the operator's explicit request (no auto-expiry). Under the identity
+  lock it removes every row of that player from
+  `out/corner-pocket/face_embeddings.json` (and from the enrolment scratch copy
+  under `out/enroll-eval/scratch/`), unbinds the player's clusters in
+  `out/identity/clusters.json` and drops their stored `face` and `face_samples`
+  (the 128-d body bank is not a face and stays), and makes the running pipeline
+  re-read the gallery, so the player is not auto-bound again. The operations
+  record (name, results, events) is not touched. Returns
+  `{"forgotten": true, "player_id", "removed": {"store_faces", "scratch_faces",
+  "clusters_unbound", "face_samples", "faces"}}`; `400` without a `player_id`,
+  `404` (nothing written) when the player has no face data anywhere.
 - Fixture measurement (`tests/serve_workbench_fixture.py`, :8131). Before: one
   `GET /api/identity/frame?dataset=vod30&frame=2040` moved the index from md5
   `77777777777777777777777777777777…` / 1,855,684 B / 20:43:21 to `77777777777777777777777777777777…` / 1,865,607 B / 20:58:05.

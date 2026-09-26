@@ -1,0 +1,40 @@
+# Corner Pocket: the third-party packages the code imports directly.
+# Needs Python 3.12 or newer (numpy 2.5). The test suites pass with these
+# versions on Python 3.14, Linux.
+#
+#   python -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+#   .venv/bin/python scripts/fetch_weights.py
+#
+# torch and torchvision: plain PyPI gives the default Linux build (CUDA). For
+# a CPU-only or an AMD ROCm build, install them from the PyTorch index first,
+# then this file; the pins below match "2.9.1+cpu" and "2.9.1+rocm6.4" too,
+# so the build you installed stays.
+#   CPU only:  pip install torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cpu
+#   AMD ROCm:  pip install torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/rocm6.4
+# Everything runs on the CPU; a GPU, when torch sees one, only makes some
+# detectors faster. (Development uses the ROCm 6.4 build.)
+#
+# Licences: see NOTICE. ultralytics is AGPL-3.0, psycopg is LGPL-3.0, and the
+# insightface buffalo_l models are for non-commercial research only.
+
+numpy==2.5.2
+opencv-python-headless==5.0.0.93  # import cv2
+pillow==12.3.0                    # import PIL
+torch==2.9.1
+torchvision==0.24.1
+ultralytics==8.4.142              # YOLOv8n person detector
+insightface==2.0                  # face identification (src/face_id.py)
+psycopg[binary]==3.3.6            # optional Postgres store (src/db.py)
+gdown==5.2.2                      # src/reid/osnet.py (upstream download helper)
+
+# ultralytics and insightface also pull in opencv-python, which installs the
+# same cv2 module. If "import cv2" then fails for want of libGL, run:
+#   pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93
+#
+# Not listed:
+# - sam3 (SAM 3), imported only by the SAM-based tools (src/pipeline.py's
+#   detector, src/frame_inference.py, the ball-labelling scripts). It is
+#   optional and installed separately; see README. Its metadata pins numpy<2,
+#   which conflicts with numpy 2.5.2, so it cannot go in this file.
+# - boxmot: installed in the development environment but never imported.
