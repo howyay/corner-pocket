@@ -92,8 +92,9 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) :is(.standings,.event-table) td:nth-child(n+3),:is(#ops-shell, #ops-footer) :is(.standings,.event-table) th:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
 :is(#ops-shell, #ops-footer) :is(.standings,.h2h,.per-event) td small{display:block}
 :is(#ops-shell, #ops-footer) :is(.h2h,.per-event) td:nth-child(n+2),:is(#ops-shell, #ops-footer) :is(.h2h,.per-event) th:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
+:is(#ops-shell, #ops-footer) :is(.standings,.event-table) td:nth-child(n+3),:is(#ops-shell, #ops-footer) :is(.h2h,.per-event) td:nth-child(n+2){white-space:nowrap}
 .modal .record h3{margin-top:18px}
-:is(#ops-shell, #ops-footer) .table-wrap{overflow:auto}
+:is(#ops-shell, #ops-footer) .table-wrap{overflow:auto;contain:inline-size}
 :is(#ops-shell, #ops-footer) .embed{width:100%;height:540px;border:1px solid var(--line);background:#100e0c}
 :is(#ops-shell, #ops-footer) .cloth-preview{min-height:200px;margin-top:18px;border:18px solid #59331d;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:10px;gap:24px;color:#f6f1e6;text-align:center}
 :is(#ops-shell, #ops-footer) .rail-diamonds{color:#e3c877;letter-spacing:.2em;font-size:12px}

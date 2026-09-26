@@ -964,3 +964,28 @@ test('a redrawn second chance says so on the card, the sheet and the copied text
   h.evaluate("delete data.tournament.revival;data.tournament.revival_draws=0");
   assert.ok(!h.evaluate('resultsText(tournament())').includes('Second chance'), 'no second chance, no line');
 });
+test('every table the operations screens add sits in a .table-wrap, so a wide table never widens the page', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];
+    data.players=[{id:'pa',name:'Alexandria Montgomery-Smythe',status:'Active',rating:720},{id:'pb',name:'Bo',status:'Active',rating:650},{id:'pc',name:'Cy',status:'Active',rating:600}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t2',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'active',entrants:[E('a','pa','Alexandria Montgomery-Smythe'),E('b','pb','Bo')],
+      matches:[{id:'x1',round:1,sides:['a','b'],score:[3,1],status:'complete',result:'played',winnerId:'a',absent:[]}]};
+    data.history=[{id:'t1',name:'Last week',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-01T12:00:00Z',entrants:[E('a1','pa','Alexandria Montgomery-Smythe'),E('c1','pc','Cy')],
+      matches:[{id:'y1',round:1,sides:['a1','c1'],score:[1,3],status:'complete',result:'played',winnerId:'c1',absent:[]}]}];render=()=>{}`);
+  const bare = html => [...html.matchAll(/(.{0,40})<table\b[^>]*>/g)].filter(m => !m[1].endsWith('<div class="table-wrap">')).map(m => m[0].slice(-60));
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'player-record', id: 'pa'}}}});
+  const screens = {matches: h.evaluate('matchesScreen()'), record: h.evaluate('playersScreen()')};
+  assert.ok(/class="standings"/.test(screens.matches) && /class="event-table"/.test(screens.matches), 'the Matches tables render');
+  assert.ok(/class="h2h"/.test(screens.record) && /class="per-event"/.test(screens.record), 'the Player record tables render');
+  for (const [name, html] of Object.entries(screens)) assert.deepEqual(bare(html), [], `${name}: no table outside a .table-wrap`);
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(/\.table-wrap\{[^}]*overflow:auto/.test(css), 'the wrapper scrolls, the page does not');
+  // overflow alone is not enough in a grid: an auto track still sizes to the table's min-content
+  assert.ok(/\.table-wrap\{[^}]*contain:inline-size/.test(css), 'the wrapper does not lend its table\'s width to the grid track');
+  const rules = (css.match(/[^{}]+\{[^}]*\}/g) || []).map(r => ({selectors: r.slice(0, r.indexOf('{')).split(',').map(x => x.trim()), body: r.slice(r.indexOf('{'))}));
+  // selectors contain commas inside :is(...), so match the rule's full selector text
+  const nowrap = part => rules.some(r => r.body.includes('white-space:nowrap') && r.selectors.join(',').includes(part));
+  for (const part of [':is(.standings,.event-table) td:nth-child(n+3)', ':is(.h2h,.per-event) td:nth-child(n+2)']) assert.ok(nowrap(part), `numbers such as 1–0 never break inside a cell: ${part}`);
+  for (const part of [':is(.standings,.event-table) th:nth-child(n+3)', ':is(.h2h,.per-event) th:nth-child(n+2)']) assert.ok(!nowrap(part), `a long header such as House rating (manual) may wrap: ${part}`);
+});
