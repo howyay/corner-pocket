@@ -12,7 +12,7 @@ the fixture at `http://127.0.0.1:8137` (or a throwaway port where stated) on thi
 | 2 | Performance | 3 | **4** | Cold load vs pre-polish (`optimize/payload-summary.tsv`): EN Floor 878,789 → 516,955 B, EN Vision 1,183,338 → 841,269 B; third-party requests 11 → 0; `ops.css` 41,142 → 51,368 B (tokens, `@font-face` rules, the first-run and main's R-series rules), no per-glyph range. The one animated property is `transform` (was `width`). Not 4+: 3 unminified JS files (~276 KB), by the directive's no-reformat rule. |
 | 3 | Responsive design | 2 | **4** | 0 horizontal overflow in all 180 final shots (1280/390 × EN/中 × dark/light). 390: the strip sits above the tab bar and the sheet above the strip (`--vs-strip-h` measured), the stagebar scrolls with an end fade; the first-run guide and overlay tags fit. |
 | 4 | Theming | 2 | **4** | One token source (`ops.css :root` + `[data-theme=light]`), `color-scheme` per theme, 0 palette blocks in `app.css`; the stage keeps its own dark plate on purpose. Gated by `tests/test_palette_contrast.py` (5 tests). |
-| 5 | Implementation integrity | 2 | **3** | `#ops-footer` selectors 219 → 0; conflicting redeclarations 13 → 0 (pixel-proven); dead tokens and empty rules gone; P-6 zip-derived hex 40 → 0. Still: 21 inline `style=` in `ops.js` (16 + 5 from main), one magic `max-height`. |
+| 5 | Implementation integrity | 2 | **3** | `#ops-footer` selectors 219 → 0; conflicting redeclarations 13 → 0 (pixel-proven); dead tokens and empty rules gone; P-6 zip-derived hex 40 → 0. Inline `style=` 17 → 0 (scale classes, `1d398ee`); one magic `max-height` remains (P2). |
 | **Total** | | **11/20** | **19/20** | **Excellent** |
 
 ## Detector (CLI, same four files)
@@ -34,8 +34,9 @@ the fixture at `http://127.0.0.1:8137` (or a throwaway port where stated) on thi
 ## Findings by severity (after)
 
 - **P0**: none. **P1**: none.
-- **P2**: 21 inline `style=` strings in `ops.js` (`ops.js` is edited only by unique anchors, never
-  reformatted); `.vs-rail`/`.vs-inspector` `max-height: min(calc(100vh - 356px), 620px)`.
+- **P2**: `.vs-rail`/`.vs-inspector` `max-height: min(calc(100vh - 356px), 620px)`. (The 21 inline
+  `style=` strings are gone: 17 literal ones became scale classes in `1d398ee`; the clock bar keeps its
+  dynamic `transform`.)
 - **P3**: amber means *live/delayed* on club badges and *stale/CALIB* on Vision (a product decision,
   recorded in DESIGN.md); 4 user-typed rare hanzi (e.g. 鑫) outside the 3,500 common set still draw
   in a system CJK face (measured 28/32 web-only).
@@ -44,3 +45,11 @@ the fixture at `http://127.0.0.1:8137` (or a throwaway port where stated) on thi
 
 `unittest` 1045 OK (skipped 36; 23 are Postgres tests, no `POOL_DATABASE_URL`), `node --test
 tests/test_ops.js` 52/52, `node tests/test_app_timeline.js` 71 passed.
+
+
+## Addendum after the merges of main (`882ffe1`, `baa7f8a`) and `1d398ee`
+
+Main's new surfaces (standings, event table, results sheet, player record, second-chance and
+random-pairing cards) measured at 1280/390 × EN/中 × dark/light: 0 of 736 text nodes below AA, all on
+the ramp, 0 of 48 focusables without visible focus, 0 overflow. The re-shot set (180 PNG) has 0 overflow.
+Suites: 1063 OK (skipped 47) / 56 / 71.
