@@ -150,7 +150,7 @@ class Import(unittest.TestCase):
         self.assertEqual(first["identity"]["actual"], {"identity_clusters": 3, "identity_face_samples": 1})
         self.assertEqual(first["faces"]["actual"], {"face_embeddings": 3})
         self.assertEqual(first["labels"]["actual"], {"ball_labels": 3})
-        self.assertIn("1 cluster(s) without face_samples compared as []", first["identity"]["notes"])
+        self.assertIn("1 cluster(s) written before face samples (no face_samples key)", first["identity"]["notes"])
         self.assertTrue(all(r["files_unchanged"] for r in first.values()))
         self.assertEqual(self.files(), before, "the import only reads the files")
         second = self.by_name(run(self.conn, self.root))
