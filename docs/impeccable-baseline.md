@@ -146,3 +146,24 @@ light theme. A full-page capture is added whenever the page is taller than the v
   internet renders today; the typeset step self-hosts the fonts.
 - The Vision facts line settled (identical across 4 reads 1.5 s apart) in every shot;
   `facts.tsv` holds the settled text.
+
+## Step 4: after the polish (final)
+
+- **Branch** `impeccable-polish`, main `d527160` merged (`b761265`). Not pushed.
+- **Scores**: critique **27/40 → 37/40** (P1 3 → 0; `.impeccable/critique/2026-09-26T08-55-47Z__annotator-ops-html.md`),
+  audit **11/20 → 19/20** (`docs/impeccable-final/audit-after.md`).
+- **Final screenshot set**: `out/impeccable/final/{dark,light}/` — 180 PNG, 1280×900 and 390×844, EN and 中,
+  every tab and key panel; 0 horizontal overflow. Contact sheets: `docs/impeccable-final/contact-*.png`.
+- **Measured**: rendered contrast 0 of 1,560 text elements below AA (lowest 4.91:1); 0 focusable elements
+  without visible focus (9 surfaces); overlay tags 25 overlapping pairs → 0; cold load EN Floor
+  878,789 → 516,955 B, 11 → 0 third-party requests; detector 27 → 16 (each remaining one classified).
+- **Inventory**: 0 of 167 items removed or broken (`docs/impeccable-final/inventory-check.txt`).
+- **Suites**: `unittest` 1045 OK (skipped 36: +23 Postgres tests without `POOL_DATABASE_URL`),
+  `node --test tests/test_ops.js` 52/52, `node tests/test_app_timeline.js` 71 passed.
+- **Production** untouched: `/home/operator/projects/pool/annotator/` never edited, `pool-workbench.service`
+  never restarted; the five production data md5s are identical at the start and the end
+  (`77777777777777777777777777777777…` state.json, `77777777777777777777777777777777…` pid_seed.json, `77777777777777777777777777777777…` scan30/annotations.json,
+  `77777777777777777777777777777777…` identity/clusters.json, `77777777777777777777777777777777…` scan30/events.json).
+- **Not done, needs a human**: `overdrive` (3 directions recorded; the playbook needs the user's pick),
+  `shape` (an interview). Open by design: amber's two meanings (product decision); 21 inline `style=`
+  in `ops.js` (never reformatted, per the rules).
