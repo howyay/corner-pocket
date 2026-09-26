@@ -617,15 +617,16 @@ class Backend:
             payload = load(Path(source))
             if payload is None:
                 raise APIError("enrolment scratch file is missing: %s" % source, 500)
-            # The scratch store holds only this enrolment's rows: merge them in
-            # under the store lock, never write them over the whole gallery.
-            from src.face_id import add_faces
-            target = self.out / "corner-pocket" / "face_embeddings.json"
+            # The scratch store holds only this enrolment's rows: merge them into the
+            # face store (a locked append, never a write over the whole gallery).
+            store = self.store()
             with self._identity_lock:
-                add_faces(target, payload)
+                store.faces_add(payload)
                 if self._identity_pipeline is not None:
                     self._identity_pipeline.reload_gallery()
-            promoted["store"] = str(target)
+            promoted["store"] = (str(self.out / "corner-pocket" / "face_embeddings.json")
+                                 if type(store).__name__ == "JsonStore"
+                                 else "postgres:face_embeddings")
         return promoted
 
     # -- unified viewer: one overlay payload per frozen frame ---------------
