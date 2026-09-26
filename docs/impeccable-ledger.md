@@ -81,3 +81,11 @@ way: the person chip (`unbound · track 4`) was drawn beside `.u-person`, not in
 rule now names `text.u-chip` directly (green; bound = `--stage-bound`), and the chip is placed as the
 MODEL tag's label. Provenance classes, dashed/solid edges and box coordinates are unchanged. Test
 added (YOURS first, no overlapping rows, inside the frame, unqueued rows draw where asked).
+
+**Adapt follow-up found in step 4 (390 px Vision).** The final 390 shots showed the bottom sheet
+over the stage: the sheet's height reserve was a fixed `240px`, while the 16:9 frame actually ends
+at 391 px (EN) / 395 px (中) at 390×844, so the sheet (top 297) covered the lower **94 px** of the
+picture. The adapter now measures where the frame ends (`--vs-stage-bottom`, set in the same
+`syncFooterHeight()` hook, re-measured when the frame resizes) and the sheet's `max-height` gives way
+to it. After: sheet 391–668 / 395–668, frame 181–391 / 185–395, **0 px overlap**, page 390/390, in
+EN and 中 and in both sheets (`adapt/after-stage-bottom-390-*.png`). Test extended.

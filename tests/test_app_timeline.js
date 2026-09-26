@@ -328,6 +328,12 @@ test('app.css styles the one stage surface, ops.css styles the rails and strip',
   assert.ok(ops.includes('.vs-inspector-actions{flex:none'), 'the footer is a flex sibling, not an overlay');
   assert.ok(ops.includes(':is(#ops-shell) .vs-rail{overflow:auto}'), 'only the rail keeps its own mobile scroll');
   assert.ok(!/bottom:44px;max-height:44vh;overflow:auto/.test(ops), 'the mobile aside must not scroll under the footer');
+  // On a phone the sheet stops where the 16:9 stage ends (measured), so it never covers the picture.
+  assert.ok(ops.includes('var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))') && !ops.includes('var(--vs-strip-h,150px) - 240px)'),
+    'the sheet height gives way to the measured stage bottom, not a fixed 240 px');
+  const adapterCode = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  assert.ok(adapterCode.includes("root.style.setProperty('--vs-stage-bottom'") && adapterCode.includes("footerObserver.observe(frame)"),
+    'the stage bottom is measured and re-measured when the frame resizes');
 });
 
 test('editor translation preserves dirty values, focus, selection and pending save state', () => {

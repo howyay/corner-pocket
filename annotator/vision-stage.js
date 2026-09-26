@@ -465,6 +465,10 @@ function syncFooterHeight() {
   if (root && strip) {   // root is the mount, #vision-surface
     const stripHeight = `${strip.offsetHeight}px`;
     if (root.style.getPropertyValue('--vs-strip-h') !== stripHeight) root.style.setProperty('--vs-strip-h', stripHeight);
+    // Where the 16:9 stage ends on screen: on a phone the bottom sheet must stop here,
+    // not at a fixed 240 px, so it never covers the picture it is about.
+    const frame = $('.vs-frame');
+    if (frame) { const stageBottom = `${Math.round(frame.getBoundingClientRect().bottom + (typeof scrollY === 'number' ? scrollY : 0))}px`; if (root.style.getPropertyValue('--vs-stage-bottom') !== stageBottom) root.style.setProperty('--vs-stage-bottom', stageBottom); }
   }
   if (!inspector || !footer) return;
   const height = `${footer.offsetHeight}px`;
@@ -1176,6 +1180,7 @@ function attach(options) {
   if (footer && typeof ResizeObserver !== 'undefined') {
     footerObserver = new ResizeObserver(syncFooterHeight); footerObserver.observe(footer);
     const strip = root.querySelector('#vs-strip'); if (strip) footerObserver.observe(strip);
+    const frame = root.querySelector('.vs-frame'); if (frame) footerObserver.observe(frame);
   }
   root.addEventListener('click', onClick);
   root.addEventListener('change', onChange);

@@ -410,7 +410,7 @@ html,body{-webkit-font-smoothing:antialiased}
 }
 @media(max-width:750px){
   :is(#ops-shell)[data-tab=vision] nav,:is(#ops-shell)[data-tab=vision] #strip{display:none}
-  :is(#ops-shell)[data-tab=vision] main{padding:var(--sp-1) var(--sp-2) calc(44px + var(--vs-strip-h,150px) + min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - 240px)) + 12px)}
+  :is(#ops-shell)[data-tab=vision] main{padding:var(--sp-1) var(--sp-2) calc(44px + var(--vs-strip-h,150px) + min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))) + 12px)}
   :is(#ops-shell) .vision-surface{gap:var(--sp-1h)}
   :is(#ops-shell) .vs-chip{min-height:28px;padding:var(--sp-1) var(--sp-2)}
   :is(#ops-shell) .vs-layer{min-height:26px;padding:var(--sp-1) var(--sp-2)}
@@ -421,7 +421,7 @@ html,body{-webkit-font-smoothing:antialiased}
   /* The sheet stacks above the strip, which stacks above the 44px sheet tabs: the
      strip's height is measured (--vs-strip-h, vision-stage.js), so the sheet never
      covers the scrubber, and the sheet gives up height before the stage does. */
-  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{position:fixed;left:0;right:0;bottom:calc(44px + var(--vs-strip-h,150px));max-height:min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - 240px));z-index:30;border-left:0;border-right:0;border-bottom:0}
+  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{position:fixed;left:0;right:0;bottom:calc(44px + var(--vs-strip-h,150px));max-height:min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px)));z-index:30;border-left:0;border-right:0;border-bottom:0}
   /* Only the scroll region scrolls on mobile: the footer stays a fixed band, so
      rows can never end up underneath it. */
   :is(#ops-shell) .vs-rail{overflow:auto}
