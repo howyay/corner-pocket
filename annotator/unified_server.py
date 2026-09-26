@@ -1395,7 +1395,7 @@ class Backend:
                     match = next((a for a in raw if abs(a["t"] - event["t"]) < 0.01), None)
                     if match:
                         actors[str(event["id"])] = match
-            return {"events": events, "annotations": load(base / "annotations.json", {}),
+            return {"events": events, "annotations": self.store().verdicts_get(dataset),
                     "actors": actors, "geometry": geometry}
         if dataset != "vod30":
             raise APIError("feature only available for vod30", 404)
@@ -1493,12 +1493,8 @@ class Backend:
                 raise APIError("invalid shooter")
             if "note" in p and (not isinstance(p["note"], str) or len(p["note"]) > 10000):
                 raise APIError("invalid note")
-            annotations = load(base / "annotations.json", {})
-            record = dict(annotations.get(key, {}))
-            record.update({k: p[k] for k in ("verdict", "note", "shooter") if k in p})
-            record["updated_at"] = datetime.now(timezone.utc).isoformat()
-            annotations[key] = record
-            atomic_save(base / "annotations.json", annotations)
+            # merge + updated_at, one locked read-modify-write in the store
+            record = self.store().verdict_put(dataset, key, {k: p[k] for k in ("verdict", "note", "shooter") if k in p})
             return {"ok": True, "annotation": record}
         if dataset != "vod30":
             raise APIError("feature only available for vod30", 404)
