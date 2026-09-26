@@ -496,3 +496,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .first-run li button{min-height:36px;text-align:left}
 #ops-shell .first-run li.done button{color:var(--ink-dim);border-color:var(--line)}
 #ops-shell .first-run p{margin:var(--sp-3) 0 0;font-size:var(--fs-md)}
+/* live/generate fallback, variant A (chosen): with no match on the table the board's two
+   name slots hold the placeholder, not players, so they drop from 80 px ink to a dim
+   44 px. Structure, badges and the disabled Win frame stay; only the placeholder quiets. */
+#ops-shell .scoreboard:not(:has(.side button:not([disabled]))) .side .name{font-size:clamp(28px,3.2vw,44px);color:var(--ink-dim)}
