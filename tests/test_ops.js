@@ -601,3 +601,34 @@ test('after the draw and in the archive only the name can be edited, and it is a
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'rename-archived', id: 'h1'}}}});
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_rename', payload: {id: 't1', name: 'Friday Final'}}, {name: 'tournament_rename', payload: {id: 'h1', name: 'July night'}}]);
 });
+test('forfeit and in-match absence are reachable from the Matches bracket, each behind a confirm (F1, R7)', async () => {
+  const h = harness();
+  h.evaluate(`data.players=[];data.events=[];data.notes=[];data.history=[];
+    data.tournament={id:'t1',name:'Friday',format:'singles',tables:2,raceTo:3,status:'active',
+      entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bea'}]},{id:'e3',members:[{pid:null,name:'Cai'}]},{id:'e4',members:[{pid:null,name:'Dee'}]}],
+      matches:[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]},
+               {id:'m2',round:1,sides:['e3','e4'],score:[1,0],status:'live',table:1,absent:[]},
+               {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[],sources:['m1','m2']}]}`);
+  const html = h.evaluate('matchesScreen()');
+  const card = id => html.slice(html.indexOf(`${id.slice(0, 8)}</small>`), html.indexOf('</div></div>', html.indexOf(`${id.slice(0, 8)}</small>`)) + 400);
+  for (const id of ['m1', 'm2']) {
+    const c = card(id);
+    assert.ok(/data-action="forfeit"[^>]*data-side="0"/.test(c) && /data-action="forfeit"[^>]*data-side="1"/.test(c), `${id}: forfeit for either side`);
+    assert.ok(/data-action="absence"[^>]*data-absent="true"/.test(c), `${id}: a side can be marked not here`);
+  }
+  assert.ok(!/m3[^]*data-action="forfeit"/.test(html.slice(html.indexOf('m3'.slice(0, 8)))), 'a pending match (no sides yet) offers no forfeit');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  const asked = [];
+  h.context.confirm = msg => { asked.push(msg); return false; };
+  await click({action: 'forfeit', id: 'm1', side: '0'});
+  await click({action: 'absence', id: 'm1', side: '1', absent: 'true'});
+  await click({action: 'absence', id: 'm1', side: '1', absent: 'false'});
+  assert.equal(h.evaluate('calls.length'), 0, 'a cancelled confirm sends nothing');
+  assert.deepEqual(asked, ['Record a forfeit for this side and advance the opponent?', 'Mark this player as not here? The match is held until they return; the table is released.', 'Mark this player as here again? The match can then go to a table.']);
+  h.context.confirm = msg => { asked.push(msg); return true; };
+  h.evaluate("lang='zh'");
+  await click({action: 'absence', id: 'm2', side: '0', absent: 'true'});
+  await click({action: 'forfeit', id: 'm2', side: '1'});
+  assert.equal(asked[3], '将此球员标记为未到场？比赛将暂缓直到其返回，球台会被释放。');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'match_absence', payload: {id: 'm2', side: 0, absent: true}}, {name: 'match_forfeit', payload: {id: 'm2', side: 1}}]);
+});
