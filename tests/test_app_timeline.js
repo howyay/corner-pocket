@@ -2066,6 +2066,21 @@ test('F2: the Anchors chip reads off until anchors are drawn, and one click load
   assert.deepStrictEqual(calls, ['load 70', 'toggle anchors'], 'once drawn, a click hides them as before');
 });
 
+test('F5: a saved VOD URL is listed, can fill the replay form, and can be removed', () => {
+  const vods = () => [{id:'s9', url:'https://www.twitch.tv/videos/1234567890', video:'1234567890'}];
+  const VSx = adapterStage('en', ROSTER, {vods, forgetChannel() {}});
+  const panel = VSx.sourcePanelHTML(visionSnapshot());
+  assert.ok(panel.includes('Saved VODs') && panel.includes('https://www.twitch.tv/videos/1234567890'), 'the saved VOD is listed');
+  assert.ok(panel.includes('data-vs-action="use-saved-vod" data-vs-value="1234567890"'), 'with a Use button');
+  assert.ok(panel.includes('data-vs-action="forget-channel" data-vs-id="s9"'), 'and a Remove button');
+  const none = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot());
+  assert.ok(!none.includes('Saved VODs'), 'no heading when nothing is saved');
+  const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+  assert.ok(shell.includes("parsed.kind==='vod'?{id:s.id,url:s.url,video:parsed.video}") && shell.includes('channels,vods,regulars'),
+    'the shell passes saved VODs to the adapter');
+  assert.strictEqual((ADAPTER_SOURCE.match(/savedVods:'/g) || []).length, 2, 'the heading exists in both languages');
+});
+
 test('F6: Use this VOD with an empty id says what to do instead of doing nothing', () => {
   for (const [lang, sentence] of [['en', 'Enter a Twitch VOD id or URL first.'], ['zh', '请先输入 Twitch 回放 id 或网址。']]) {
     const notices = [], picked = [];

@@ -13,7 +13,7 @@ const COPY = {
     freeze:'Freeze', play:'Play', pause:'Pause', ticks:'Event ticks', dataset:'Dataset',
     start:'Start', stop:'Stop', detectors:'Frame detectors', table:'Table', person:'Person', ball:'Balls',
     latency:'Twitch upstream delay: UNKNOWN. Receive-to-result is local processing latency, not glass-to-glass latency.',
-    freshness:'Freshness', saved:'Saved channels', savedOk:'Saved', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
+    freshness:'Freshness', saved:'Saved channels', savedVods:'Saved VODs', useInForm:'Use', savedOk:'Saved', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
     select:'Select', remove:'Remove', chat:'Chat', showChat:'Show chat', hideChat:'Hide chat',
     startFailed:'Start attempt', cause:'Cause', remedy:'Remedy', retry:'Retry',
     remedyText:'Check that the source is a saved canonical Twitch channel, or that the allowlisted dataset media exists.',
@@ -118,7 +118,7 @@ const COPY = {
     freeze:'冻结', play:'播放', pause:'暂停', ticks:'事件刻度', dataset:'数据集',
     start:'开始', stop:'停止', detectors:'帧检测器', table:'球桌', person:'人物', ball:'球',
     latency:'Twitch 上游延迟：未知。接收到结果仅为本地处理耗时，不是端到端延迟。',
-    freshness:'新鲜度', saved:'已保存频道', savedOk:'已保存', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
+    freshness:'新鲜度', saved:'已保存频道', savedVods:'已保存回放', useInForm:'填入', savedOk:'已保存', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
     select:'选择', remove:'移除', chat:'聊天', showChat:'显示聊天', hideChat:'隐藏聊天',
     startFailed:'启动尝试', cause:'原因', remedy:'处理', retry:'重试',
     remedyText:'请确认来源是已保存的标准 Twitch 频道，或数据集媒体确实存在。',
@@ -694,6 +694,7 @@ function liveStageLine(s) {
 function liveDetectorList(s) { return opts?.liveDetectors ? opts.liveDetectors() : (s.live.detectors || []); }
 function sourcePanelHTML(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
+  const vodRows = (opts.vods?.() || []).map(v => `<div class="vs-channel"><span class="vs-mono">${esc(v.url)}</span><button data-vs-action="use-saved-vod" data-vs-value="${esc(v.video)}">${esc(t('useInForm'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(v.id)}">${esc(t('remove'))}</button></div>`).join('');
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
   const live = s.live;
   // A start that failed must not leave the row reading "idle": the row states
@@ -713,7 +714,7 @@ function sourcePanelHTML(s) {
     ${liveStageLine(s)}
     <p class="vs-note">${esc(t('latency'))}</p></div>
   <div class="vs-block"><h4>${esc(t('detectors'))}</h4><div class="vs-row">${[['table','table'],['person','person'],['balls','ball']].map(([k, l]) => `<label class="vs-check"><input type="checkbox" data-vs-action="detector" data-vs-value="${k}" ${s.detectors[k] ? 'checked' : ''}> ${esc(t(l))}</label>`).join('')}</div><p class="vs-note">${esc(t('detectorReason'))}</p></div>
-  <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}
+  <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}${vodRows ? `<h4>${esc(t('savedVods'))}</h4>${vodRows}` : ''}
     <form id="source-form"><label class="vs-field">${esc(t('channelUrl'))}<input name="url" type="url" placeholder="https://www.twitch.tv/channel" required></label><button class="primary">${esc(t('addChannel'))}</button></form></div>`;
 }
 function eventBlock(s) {
@@ -985,6 +986,7 @@ function act(action, value, node) {
     case 'live-start': opts.startLive(); break;
     case 'live-stop': opts.stopLive(); break;
     case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
+    case 'use-saved-vod': { replayDraft = {...(replayDraft || {}), vod: `https://www.twitch.tv/videos/${value}`}; render(); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
     case 'live-detector': { const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
     case 'pick-replay': {
       // A VOD id or URL, where in it to start, and how fast: the server resolves it

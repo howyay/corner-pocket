@@ -108,6 +108,8 @@ setInterval(tick,200);window.addEventListener('storage',e=>{if(e.key==='cp-ops-c
 // live source lifecycle and hands the vision-stage adapter its callbacks.
 function reviewState(){try{return review()?.snapshot?.()||{}}catch(_){return {}}}
 function channels(){return (data?.sources||[]).map(s=>{const parsed=parseSource(s.url);return parsed&&parsed.kind==='channel'?{id:s.id,url:s.url,channel:parsed.channel}:null}).filter(Boolean)}
+// F5: saved VOD URLs are listed too (the form accepts them), so they can be used and removed.
+function vods(){return (data?.sources||[]).map(s=>{const parsed=parseSource(s.url);return parsed&&parsed.kind==='vod'?{id:s.id,url:s.url,video:parsed.video}:null}).filter(Boolean)}
 function channelOf(id){return channels().find(c=>c.id===id)?.channel||null}
 // The roster the Vision rail labels person tracks from: every regular who is
 // not retired, Active ones first, each with the rating that tells two similar
@@ -123,7 +125,7 @@ function startLive(){visionAttempt=null;review()?.setLiveAttempt(null);liveActio
 function stopLive(){liveAction('stop')}
 function setLiveDetectors(list){liveDetectors=list.length?list:['table'];renderSurface()}
 async function forgetChannel(id){await action('source_delete',{id});renderSurface()}
-function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,pickReplay,replayChoice,notice:text=>message(text,true),
+function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,pickReplay,replayChoice,notice:text=>message(text,true),
 // After a confirmed enrolment the roster must come from a fresh read, not from the
 // shell's copy: reload() re-reads /api/operations and re-renders.
 reloadRoster:()=>reload()})}
