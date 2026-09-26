@@ -88,10 +88,16 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .pip{width:11px;height:11px;border-radius:50%;background:var(--pip-off)}
 #ops-shell .pip.on{background:var(--brass)}
 #ops-shell .clock{font:500 clamp(30px,4vw,60px)/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--brass-hi)}
-#ops-shell #strip .clock{}
 #ops-shell .clock.low{color:var(--red)}
 #ops-shell .progress{height:6px;background:var(--rail);margin-top:var(--sp-2)}
-#ops-shell .progress span{display:block;height:100%;background:var(--brass)}
+#ops-shell .progress span{display:block;height:100%;background:var(--brass);transition:width .2s linear,background-color .3s ease-out}
+/* The last seconds are a state, not decoration: the bar turns red with the digits.
+   (:has keeps it CSS-only; the clock element already carries .low.) */
+#ops-shell .score-top:has(.clock.low) .progress span{background:var(--red)}
+/* A message arrives from the corner it lives in, so a signed result or an error is
+   noticed; reduced motion makes it appear in place. */
+#ops-shell #message:not(:empty){animation:cp-note-in .22s cubic-bezier(.2,.8,.2,1)}
+@keyframes cp-note-in{from{opacity:0;transform:translateY(8px)}}
 #ops-shell .tiles{display:grid;gap:1px;background:var(--line);border:1px solid var(--line)}
 #ops-shell .tile{padding:var(--sp-3) var(--sp-4);background:var(--panel)}
 #ops-shell .tile strong{display:block;font:500 var(--fs-xl) var(--display);overflow-wrap:anywhere}
@@ -125,7 +131,6 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .note{border-left:3px solid var(--brass);padding:var(--sp-3);background:var(--panel2)}
 #ops-shell #message{position:fixed;right:18px;bottom:18px;z-index:50;box-shadow:0 5px 30px var(--shadow)}
 #ops-shell #message:empty{display:none}
-#ops-shell #message.error{}
 #ops-shell .empty{padding:var(--sp-5) var(--sp-2);color:var(--ink-dim)}
 #vision-host{display:block;width:100%}
 #ops-shell[hidden],#ops-shell [hidden],#vision-host[hidden],#review-root[hidden]{display:none!important}
