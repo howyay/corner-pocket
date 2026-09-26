@@ -63,8 +63,9 @@ has its own real directories; no symlink anywhere points at a directory.
   `:8131`, the port main's own fixture uses; the wrapper asserts that `8131` appears
   exactly twice before replacing it. `__file__` is the worktree copy, so `ROOT` is the
   worktree and the scratch tree is `pool-impeccable/out/ui-browser-fixture`.
-- Process: started with `setsid nohup … &`. pid in `out/impeccable/fixture.pid`, log in
-  `out/impeccable/fixture.log`.
+- Process: the transient systemd user unit `impeccable-fixture-8137`, started with
+  `systemd-run --user --collect` (DSH kills `setsid` children when a session ends; a
+  unit survives). pid in `out/impeccable/fixture.pid`, log in `out/impeccable/fixture.log`.
 - Checks run at start: served `/app.js` sha256 `77777777777777777777777777777777…294364e` equals the worktree's
   `annotator/app.js` (and main's); `ops.js`, `ops.css`, `app.css`, `vision-stage.js` and
   `ops.html` (served at `/`) also match; the scratch tree has 1086 real files and 0
@@ -91,7 +92,8 @@ these steps in order and aborts on any failed check:
 4. Re-points the worktree inputs at `inputs-r0/`, copies `identity/clusters.json`
    (deleting any link there first, so the copy can never write through), and checks
    that every input link resolves into the snapshot and that no directory symlink exists.
-5. Starts the wrapper detached on `:8137` with `setsid nohup`, then waits for HTTP 200.
+5. Starts the wrapper on `:8137` as `systemd-run --user --collect --unit=impeccable-fixture-8137`
+   (step 2 stops that unit first), then waits for HTTP 200.
 6. Places `yolov8n.pt` in the fixture root: temp copy, md5 check, `mv -n`.
 7. Verifies:
    - served `/app.js` sha256 equals the worktree's `annotator/app.js`;
@@ -103,16 +105,39 @@ Run it: `bash /home/operator/projects/pool-impeccable/out/impeccable/reset_fixtu
 The last line prints the URL, pid, `app.js` sha256 and the `events.json` md5 prefix,
 and a success line is appended to `out/impeccable/reset.log`.
 
-## Known fixture limitation (not a product defect)
+## Saved Twitch channels in the fixture (fixed in `ede4052`)
 
-A Twitch channel saved in the fixture cannot be started. The attempt fails with "Saved
-Twitch channel is unavailable" because the tracked fixture points the live processor
-at `ROOT` (`serve_workbench_fixture.py:62`), which reads saved channels from
-`ROOT/out/corner-pocket/state.json`, while the UI saves channels into the fixture's own
-state. In production, the processor and the saved channels share one root. The fix is
-scheduled as a separate commit to `tests/serve_workbench_fixture.py` after round 0.
+Round 0 could not start a Twitch channel saved in the fixture ("Saved Twitch channel is
+unavailable"): the live processor was rooted at `ROOT` and read saved channels from
+`ROOT/out/corner-pocket/state.json`, while the UI saves them into the fixture's own
+state. Commit `ede4052` keeps the processor at `ROOT`, so dataset media still resolves,
+and looks a `{kind:'twitch'}` source up in the fixture's state. Checked on a throwaway
+fixture on `:8141` (`out/impeccable/verify_fixture_channel.sh`): the vod30 replay
+reaches `running`, and a channel saved through `#source-form` resolves; its start then
+fails only at Twitch ("Twitch channel is offline or has no public playable stream").
 
 ## Screenshots
 
-Pending. They are taken after round 0, from a freshly reset fixture:
-1280×900 and 390×844, EN and 中, into `out/impeccable/baseline/`.
+Script `out/impeccable/shoot_baseline.sh` (untracked, read-only: it opens tabs and
+panels and never POSTs), run against a freshly reset fixture. Per language and
+viewport (1280×900 and 390×844, EN and 中): Floor, Setup, Matches, Players, the
+new-player modal, Status, Vision settled, Vision with the first cue selected, the Vision
+source panel, the 390 px bottom-sheet cues and inspector, and Floor and Vision in the
+light theme. A full-page capture is added whenever the page is taller than the viewport.
+
+| Set | Files | Horizontal overflow | Page errors | Console lines | Web fonts loaded |
+|---|---|---|---|---|---|
+| Online, `out/impeccable/baseline/` | 66 PNG (48 viewport + 18 full-page) | 0 of 48 | 0 | 0 | Barlow, DM Mono, Noto Sans SC, Noto Serif SC, Zilla Slab |
+| Offline, `out/impeccable/baseline/offline/` (`OFFLINE=1`: `fonts.googleapis.com` and `fonts.gstatic.com` aborted) | 66 PNG (48 + 18) | 0 of 48 | 0 | 0 | none |
+
+- Overflow is `scrollWidth > clientWidth` on the document, recorded per viewport shot in
+  `checks.tsv`. Page errors and console lines are in `page-errors.txt` and `console.txt`.
+- Online, all 8 Google Fonts stylesheet requests (one per page load) and 236 font-file
+  requests returned 200 (`font-requests.txt`). Offline, the 8 stylesheet requests were
+  aborted, no font file was requested, and no web font loaded.
+- Offline, the stacks fall back to fontconfig matches: `--body` (Barlow, …, Arial) to
+  Liberation Sans, `--display` (Zilla Slab, …, Georgia) to DejaVu Serif, `--mono`
+  (DM Mono, …, monospace) to DejaVu Sans Mono. This is what a club machine without
+  internet renders today; the typeset step self-hosts the fonts.
+- The Vision facts line settled (identical across 4 reads 1.5 s apart) in every shot;
+  `facts.tsv` holds the settled text.
