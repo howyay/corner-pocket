@@ -55,10 +55,29 @@ backend.frame_jpeg = real.frame_jpeg
 # The live source allowlist resolves data/ through realpath, so the fixture's
 # symlinked data/ fails it. Point the live processor at the real root: live
 # decoding and detection only read media, they never write annotations.
-from annotator.unified_server import vod_replay_processor_class
-# The same processor class the server builds (it also accepts the vod-replay
-# source); pointing it at the real root keeps live media resolution working while
-# every annotation write stays in the fixture.
-backend._live = vod_replay_processor_class()(ROOT)
+from annotator.live_processing import LiveProcessor
+from annotator.unified_server import VodReplaySourceMixin
+# Saved Twitch channels are the one exception: the UI saves them into the
+# fixture's own state, so they are looked up there by a processor rooted at the
+# fixture that is never started. Datasets and stages still resolve under ROOT.
+saved_sources = LiveProcessor(fixture)
+
+
+class FixtureSources(LiveProcessor):
+    def _source_media(self, source):
+        if isinstance(source, dict) and source.get('kind') == 'twitch':
+            return saved_sources._source_media(source)
+        return super()._source_media(source)
+
+
+# The server's processor (the vod-replay mixin over LiveProcessor, as built by
+# vod_replay_processor_class) with that one lookup; pointing it at the real root
+# keeps live media resolution working while every annotation write stays in the
+# fixture.
+class FixtureLive(VodReplaySourceMixin, FixtureSources):
+    pass
+
+
+backend._live = FixtureLive(ROOT)
 print('Isolated browser fixture: http://127.0.0.1:8131', flush=True)
 ThreadingHTTPServer(('127.0.0.1', 8131), make_handler(backend)).serve_forever()
