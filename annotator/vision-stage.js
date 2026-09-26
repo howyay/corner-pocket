@@ -319,7 +319,9 @@ function bindingLine(s) {
 }
 // Pocket names are pool-table rail terms in stored data; every displayed label
 // is the position word the engine maps them to, never the raw key.
-function pocketName(event) { return event?.nearest_pocket_text || event?.nearest_pocket || ''; }
+// A selected event can be the engine's raw object (no nearest_pocket_text), so a raw
+// value still goes through the engine's words (pocketLabel, defined below, runs at call time).
+function pocketName(event) { return event?.nearest_pocket_text || (event?.nearest_pocket ? pocketLabel(event.nearest_pocket) : ''); }
 // One name per pocket on every surface: a stored rail key (right-side, foot-left...) is
 // shown as the engine's position word (right-middle, bottom-left...; 中 右中, 左下...).
 const pocketLabel = token => token ? (engine()?.pocketText ? engine().pocketText(String(token)) : String(token)) : '';
