@@ -7,18 +7,20 @@ crop, embeds with MSMT17-pretrained osnet_x0_25, and reports:
   - mean colour distance for comparison.
 """
 import json
+import os
 import sys
 
 import cv2
 import numpy as np
 import torch
 
-sys.path.insert(0, "/home/operator/projects/pool/src/reid")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "src", "reid"))
 import osnet as O  # noqa
 
-VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
-FEATS = json.load(open("/home/operator/projects/pool/out/pid_identity_v0.json"))["feats"]
-W = "/home/operator/projects/pool/src/reid/weights/osnet_x0_25_msmt17.pth"
+VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
+FEATS = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))["feats"]
+W = os.path.join(REPO, "src", "reid", "weights", "osnet_x0_25_msmt17.pth")
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 
@@ -74,5 +76,5 @@ json.dump({"n": len(embs),
            "intra_cos": round(float(np.nanmean(intra)), 3),
            "inter_cos": round(float(np.nanmean(inter)), 3),
            "nn_same_cluster": f"{sum(nn_same)}/{len(embs)}"},
-          open("/home/operator/projects/pool/out/pid_osnet_eval.json", "w"), indent=1)
+          open(os.path.join(REPO, "out", "pid_osnet_eval.json"), "w"), indent=1)
 print("wrote out/pid_osnet_eval.json")

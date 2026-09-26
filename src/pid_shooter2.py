@@ -21,10 +21,11 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 from pid_identity import torso_color, in_table_zone
 
-VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
+REPO = os.path.dirname(ROOT)
+VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO("yolov8n.pt")
-EVENTS = json.load(open("/home/operator/projects/pool/out/scan30/events_v2.json"))
-ID = json.load(open("/home/operator/projects/pool/out/pid_identity_v0.json"))
+EVENTS = json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))
+ID = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))
 centers = np.array(ID["centers_bgr"])  # BGR
 order = np.argsort(centers.mean(axis=1))
 B_CLUSTER, A_CLUSTER = int(order[0]), int(order[1])
@@ -116,7 +117,7 @@ def main():
              if seq[i] in "AB" and seq[i - 1] in "AB" and seq[i] != seq[i - 1])
     print("actor seq:", seq)
     print("A/B switches:", sw)
-    json.dump(out, open("/home/operator/projects/pool/out/events_actors.json", "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", "events_actors.json"), "w"), indent=1)
     print("wrote out/events_actors.json")
 
 

@@ -18,16 +18,17 @@ import torch
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
 from ultralytics import YOLO
 
-sys.path.insert(0, "/home/operator/projects/pool/src/reid")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "src", "reid"))
 import osnet as O  # noqa
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 from pid_identity import in_table_zone, torso_color  # noqa
 
-VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
+VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO("yolov8n.pt")
-W = "/home/operator/projects/pool/src/reid/weights/osnet_x0_25_msmt17.pth"
+W = os.path.join(REPO, "src", "reid", "weights", "osnet_x0_25_msmt17.pth")
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 
@@ -62,7 +63,7 @@ def track_colour(bgr, box):
 
 def build_prototypes():
     """Mean embeddings + names for the two colour-separated track pairs."""
-    tr = json.load(open("/home/operator/projects/pool/out/pid2_tracklets.json"))
+    tr = json.load(open(os.path.join(REPO, "out", "pid2_tracklets.json")))
     cap = cv2.VideoCapture(VIDEO)
     proto = []  # (name, mean_emb, colour)
     for win in ["68-94", "330-356"]:
@@ -110,7 +111,7 @@ def main():
     from table_detect import detect_cloth_mask
     proto = build_prototypes()
     print("prototypes:", {k: round(float(v.mean()), 3) for k, v in proto.items()}, flush=True)
-    ev = json.load(open("/home/operator/projects/pool/out/scan30/events_v2.json"))
+    ev = json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))
     shots = [e for e in ev if e["type"] == "shot"]
     cap = cv2.VideoCapture(VIDEO)
     out = []
@@ -177,7 +178,7 @@ def main():
     print(f"shots {len(shots)} assigned {n_embed} | geo {n_geo} | low-margin {low}")
     print("seq:", seq)
     print("switches:", sw)
-    json.dump(out, open("/home/operator/projects/pool/out/events_actors.json", "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", "events_actors.json"), "w"), indent=1)
     print("wrote out/events_actors.json")
 
 

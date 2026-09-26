@@ -7,10 +7,12 @@ side there. Iterate twice. Robust for static cameras: per-frame refinements are
 small, so a MAD-filtered temporal median gives the segment corners.
 """
 import sys
+from pathlib import Path
 import numpy as np
 import cv2
 
-sys.path.insert(0, '/home/operator/projects/pool/src')
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 from quad_fit import cloth_mask_tight
 
 
@@ -85,9 +87,9 @@ def refine_quad(bgr, prior, band_px=70, n_steps=25, iters=2):
 
 if __name__ == "__main__":
     import json
-    ref = np.array(json.load(open("/home/operator/projects/pool/out/corners_30min.json"))["corners"], np.float32)
+    ref = np.array(json.load(open(ROOT / "out" / "corners_30min.json"))["corners"], np.float32)
     TIMES = list(range(60, 1741, 120))
-    cap = cv2.VideoCapture("/home/operator/projects/pool/data/vod_30min_260815.mp4")
+    cap = cv2.VideoCapture(str(ROOT / "data" / "vod_30min_260815.mp4"))
     errs, fails = [], []
     for t in TIMES:
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)

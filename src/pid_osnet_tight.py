@@ -6,18 +6,20 @@ max bbox IoU; its tight crop is embedded. Reports intra/inter cosine for the
 two colour-separated tracks per window and compares with the full-crop run.
 """
 import json
+import os
 import sys
 
 import cv2
 import numpy as np
 import torch
 
-sys.path.insert(0, "/home/operator/projects/pool/src/reid")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "src", "reid"))
 import osnet as O  # noqa
 
-META = json.load(open("/home/operator/projects/pool/out/pid_masks/meta.json"))
-TR = json.load(open("/home/operator/projects/pool/out/pid2_tracklets.json"))
-W = "/home/operator/projects/pool/src/reid/weights/osnet_x0_25_msmt17.pth"
+META = json.load(open(os.path.join(REPO, "out", "pid_masks", "meta.json")))
+TR = json.load(open(os.path.join(REPO, "out", "pid2_tracklets.json")))
+W = os.path.join(REPO, "src", "reid", "weights", "osnet_x0_25_msmt17.pth")
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 
@@ -129,5 +131,5 @@ if __name__ == "__main__":
         r = analyse(w)
         if r:
             out.append(r)
-    json.dump(out, open("/home/operator/projects/pool/out/pid_osnet_tight.json", "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", "pid_osnet_tight.json"), "w"), indent=1)
     print("wrote out/pid_osnet_tight.json")

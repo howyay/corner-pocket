@@ -25,14 +25,15 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 from pid_identity import torso_color, in_table_zone
 
-VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
+REPO = os.path.dirname(ROOT)
+VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO("yolov8n.pt")
-EVENTS = json.load(open("/home/operator/projects/pool/out/scan30/events_v2.json"))
-CAL = json.load(open("/home/operator/projects/pool/out/calib_vod30.json"))
+EVENTS = json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))
+CAL = json.load(open(os.path.join(REPO, "out", "calib_vod30.json")))
 H = np.array(CAL["H"])  # mm -> px
-QUAD = np.array(json.load(open("/home/operator/projects/pool/out/corners_30min_v2.json"))["corners"], np.float32)
+QUAD = np.array(json.load(open(os.path.join(REPO, "out", "corners_30min_v2.json")))["corners"], np.float32)
 
-ID = json.load(open("/home/operator/projects/pool/out/pid_identity_v0.json"))
+ID = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))
 centers_bgr = np.array(ID["centers_bgr"])
 # cluster labels: 0/1 from pid_identity; brightness decides A(light)/B(dark)
 order = np.argsort(centers_bgr.mean(axis=1))  # dim -> bright
@@ -108,7 +109,7 @@ def main():
     # switches
     sw = sum(1 for i in range(1, len(seq)) if seq[i] in "AB" and seq[i - 1] in "AB" and seq[i] != seq[i - 1])
     print("A/B switches:", sw)
-    json.dump(out, open("/home/operator/projects/pool/out/events_actors.json", "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", "events_actors.json"), "w"), indent=1)
     print("wrote out/events_actors.json")
 
 

@@ -5,18 +5,20 @@ per track (every ~2 s) and report intra-track vs inter-track cosine separation:
 this measures whether the tracker + embedder keep the two identities apart.
 """
 import json
+import os
 import sys
 
 import cv2
 import numpy as np
 import torch
 
-sys.path.insert(0, "/home/operator/projects/pool/src/reid")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "src", "reid"))
 import osnet as O  # noqa
 
-VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
-TR = json.load(open("/home/operator/projects/pool/out/pid2_tracklets.json"))
-W = "/home/operator/projects/pool/src/reid/weights/osnet_x0_25_msmt17.pth"
+VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
+TR = json.load(open(os.path.join(REPO, "out", "pid2_tracklets.json")))
+W = os.path.join(REPO, "src", "reid", "weights", "osnet_x0_25_msmt17.pth")
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 
@@ -130,5 +132,5 @@ if __name__ == "__main__":
             r = analyze(w, mode)
             if r:
                 out.append(r)
-    json.dump(out, open("/home/operator/projects/pool/out/pid_osnet_tracks.json", "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", "pid_osnet_tracks.json"), "w"), indent=1)
     print("wrote out/pid_osnet_tracks.json")
