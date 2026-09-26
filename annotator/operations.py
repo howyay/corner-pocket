@@ -469,9 +469,13 @@ class Operations:
             holder = match['winnerId']
             members = self._find(t['entrants'], entrant)['members']
             names = {x['id']: x['name'] for x in s['players']}
+            # Every successful draw counts, and undo never lowers it: a re-roll until a
+            # wanted loser comes up stays visible on the card, the sheet and in the log.
+            t['revival_draws'] = t.get('revival_draws', 0) + 1
             t['revival'] = dict(seed=seed, pool=pool, entrant=entrant, match=match['id'], next=following['id'],
                                 side=side, holder=holder, signed=signed, drawnAt=timestamp(),
-                                name=' / '.join(names.get(x['pid'], x['name']) for x in members))
+                                name=' / '.join(names.get(x['pid'], x['name']) for x in members),
+                                attempt=t['revival_draws'])
             match['sides'][side] = entrant
             match.pop('result')
             match.update(status='pending', winnerId=None, table=None, absent=[])

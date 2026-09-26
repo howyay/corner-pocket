@@ -923,3 +923,44 @@ test('doubles can pair solo sign-ups at random: seed shown, re-roll, accept (R3)
   }
   assert.equal(h.evaluate(`validationMessage('The pairing changed; review the teams again')`), '配对已变化，请重新查看组合。');
 });
+test('a redrawn second chance says so on the card, the sheet and the copied text (R6 follow-up)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.history=[];data.players=[];
+    const E=(id,name)=>({id,members:[{pid:null,name}]});
+    data.tournament={id:'t1',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'active',
+      entrants:[E('a','Ann'),E('b','Bea'),E('c','Cai'),E('d','Dee'),E('e','Eve'),E('f','Fay')],
+      matches:[{id:'m1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[],sources:[]},
+               {id:'m2',round:1,sides:['b','f'],score:[0,0],status:'scheduled',absent:[],sources:[]},
+               {id:'m3',round:1,sides:['c','d'],score:[3,1],status:'complete',result:'played',winnerId:'c',absent:[],sources:[]},
+               {id:'m4',round:1,sides:['e','f'],score:[3,0],status:'complete',result:'played',winnerId:'e',absent:[],sources:[]},
+               {id:'m5',round:2,sides:['a',null],score:[0,0],status:'pending',absent:[],sources:['m1','m2']},
+               {id:'m6',round:2,sides:['c','e'],score:[0,0],status:'scheduled',absent:[],sources:['m3','m4']}],
+      revival:{seed:777,pool:['d','f'],entrant:'f',name:'Fay',match:'m2',next:'m5',side:1,holder:'b',signed:2,drawnAt:'2026-09-26T20:00:00Z',attempt:1},revival_draws:1}`);
+  h.evaluate("lang='en'");
+  let card = h.evaluate('revivalCard()');
+  assert.ok(card.includes('Draw 1') && !card.includes('Redrawn'), 'a first draw says draw 1 and nothing more');
+  h.evaluate('data.tournament.revival.attempt=2;data.tournament.revival_draws=2;data.tournament.revival.seed=888');
+  for (const [lang, n, note] of [['en', 'Draw 2', 'Redrawn after an undo — earlier draws are in the audit log'], ['zh', '第 2 次抽签', '撤销后重抽——之前的抽签记录在日志里']]) {
+    h.evaluate(`lang='${lang}'`);
+    card = h.evaluate('revivalCard()');
+    assert.ok(card.includes(n) && card.includes(note), `${lang}: the card shows ${n} and the redraw note`);
+  }
+  // an undone draw with no current pick still says the count, so the history is not lost
+  h.evaluate("lang='en';const r=data.tournament.revival;delete data.tournament.revival");
+  assert.ok(h.evaluate('revivalCard()').includes('Draws so far: 2 — each one is in the audit log'), 'after an undo the card keeps the count');
+  h.evaluate('data.tournament.revival_draws=1');
+  assert.ok(h.evaluate('revivalCard()').includes('Draws so far: 1 — each one is in the audit log'), 'one undone draw still shows');
+  h.evaluate("lang='zh'");
+  assert.ok(h.evaluate('revivalCard()').includes('已抽签 1 次——每次都记录在日志里'));
+  h.evaluate("lang='en';data.tournament.revival_draws=2");
+  h.evaluate('data.tournament.revival=r');
+  for (const [lang, line] of [['en', 'Second chance (random draw, not a result): Fay · seed 888 · draw 2'], ['zh', '复活赛（随机抽签，不是赛果）：Fay · 种子 888 · 第 2 次抽签']]) {
+    h.evaluate(`lang='${lang}'`);
+    const text = h.evaluate('resultsText(tournament())');
+    assert.ok(text.split('\n').includes(line), `${lang}: the copied text carries the second-chance line: ${line}`);
+    const sheet = h.evaluate('resultsSheet(tournament())');
+    assert.ok(sheet.includes(line), `${lang}: the sheet carries it too`);
+  }
+  h.evaluate("delete data.tournament.revival;data.tournament.revival_draws=0");
+  assert.ok(!h.evaluate('resultsText(tournament())').includes('Second chance'), 'no second chance, no line');
+});

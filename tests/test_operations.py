@@ -638,6 +638,34 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '^No revival draw to undo$'):
             self.call('revival_undo', confirm=True)
 
+    def test_a_redraw_after_undo_is_counted_and_never_forgotten(self):
+        """R6 follow-up: draw -> undo -> draw is attempt 2; undo never lowers the count,
+        and every seed stays in the audit, so a re-roll for a wanted loser is visible."""
+        self.play_round_one(6)
+        first = self.call('revival_draw', confirm=True)
+        self.assertEqual(first['tournament']['revival_draws'], 1)
+        self.assertEqual(first['events'][-1]['context']['attempt'], 1)
+        undone = self.call('revival_undo', confirm=True)
+        self.assertEqual(undone['tournament']['revival_draws'], 1, 'undo never decrements the counter')
+        self.assertEqual(undone['events'][-1]['context']['attempt'], 1)
+        second = self.call('revival_draw', confirm=True)
+        self.assertEqual(second['tournament']['revival_draws'], 2)
+        self.assertEqual(second['tournament']['revival']['attempt'], 2)
+        self.assertEqual(second['events'][-1]['context']['attempt'], 2)
+        draws = [e['context'] for e in second['events'] if e['action'] == 'revival_draw']
+        self.assertEqual([d['attempt'] for d in draws], [1, 2])
+        self.assertEqual([d['seed'] for d in draws],
+                         [first['tournament']['revival']['seed'], second['tournament']['revival']['seed']],
+                         'both seeds are in the audit log')
+        # a refused draw is not an attempt
+        saved = self.ops.path.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'already drawn'):
+            self.call('revival_draw', confirm=True)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+        self.assertEqual(self.ops.get()['tournament']['revival_draws'], 2)
+        # the counter belongs to the event: a new event starts at none
+        self.assertNotIn('revival_draws', self.call('tournament_new', confirm=True)['tournament'])
+
     def test_random_doubles_pairing_is_seeded_shown_and_rerollable(self):
         """R3: solo sign-ups are paired by a seeded draw shown before it becomes the teams."""
         ada = self.call('player_save', name='Ada')['players'][0]['id']
