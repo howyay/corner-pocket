@@ -638,6 +638,75 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '^No revival draw to undo$'):
             self.call('revival_undo', confirm=True)
 
+    def test_random_doubles_pairing_is_seeded_shown_and_rerollable(self):
+        """R3: solo sign-ups are paired by a seeded draw shown before it becomes the teams."""
+        ada = self.call('player_save', name='Ada')['players'][0]['id']
+        with self.assertRaisesRegex(ValueError, '^Random pairing is for doubles$'):
+            self.call('solo_add', member={'name': 'Bo'})
+        self.call('tournament_setup', format='doubles', raceTo=3)
+        self.call('solo_add', member={'pid': ada})
+        for name in ('Bo', 'Cy', 'Di'):
+            self.call('solo_add', member={'name': name})
+        # the pool follows the entrant rules: no duplicates, no placeholders, no alias of a regular
+        saved = self.ops.path.read_bytes()
+        for bad, reason in (({'name': ' bo '}, 'Person already registered'), ({'pid': ada}, 'Person already registered'),
+                            ({'name': 'TBD'}, 'A bye is added by the draw'), ({'name': 'ADA'}, 'select the regular by id')):
+            with self.assertRaisesRegex(ValueError, reason):
+                self.call('solo_add', member=bad)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+        self.call('solo_add', member={'name': 'Eve'})
+        with self.assertRaisesRegex(ValueError, '^An even number of solo players is needed to pair$'):
+            self.call('pair_draw')
+        state = self.call('solo_add', member={'name': 'Fay'})
+        pool = state['tournament']['pool']
+        self.assertEqual([m['name'] for m in pool], ['Ada', 'Bo', 'Cy', 'Di', 'Eve', 'Fay'])
+        state = self.call('pair_draw')
+        preview = state['tournament']['pairing']
+        self.assertEqual(state['events'][-1]['action'], 'pair_draw')
+        self.assertEqual(state['events'][-1]['context']['seed'], preview['seed'])
+        self.assertEqual(len(preview['teams']), 3)
+        # reproducible from the seed: shuffle the pool in sign-up order, pair neighbours
+        order = list(range(len(pool)))
+        random.Random(preview['seed']).shuffle(order)
+        self.assertEqual(preview['teams'], [[pool[order[i]], pool[order[i + 1]]] for i in range(0, 6, 2)])
+        self.assertEqual(state['tournament']['entrants'], [], 'a preview is not a registration')
+        with self.assertRaisesRegex(ValueError, 'Registration is locked while a pairing is shown'):
+            self.call('solo_add', member={'name': 'Gus'})
+        # a re-roll draws a new seed and is audited too
+        state = self.call('pair_draw')
+        self.assertEqual(state['events'][-1]['action'], 'pair_draw')
+        self.assertEqual(state['events'][-1]['context']['seed'], state['tournament']['pairing']['seed'])
+        teams = state['tournament']['pairing']['teams']
+        state = self.call('pair_accept', seed=state['tournament']['pairing']['seed'])
+        t = state['tournament']
+        self.assertEqual([e['members'] for e in t['entrants']], teams)
+        self.assertEqual((t.get('pool'), t.get('pairing')), ([], None))
+        self.assertEqual(state['events'][-1]['context']['seed'], state['events'][-2]['context']['seed'])
+        # the draw of the bracket stays as it was: registration order seeds it
+        state = self.call('tournament_start')
+        self.assertEqual(state['tournament']['status'], 'active')
+
+    def test_pairing_accept_must_match_the_shown_seed(self):
+        """R3: an operator accepts exactly the pairing they saw; a stale screen is refused."""
+        self.call('tournament_setup', format='doubles')
+        for name in ('Ann', 'Bea'):
+            self.call('solo_add', member={'name': name})
+        with self.assertRaisesRegex(ValueError, '^No pairing to accept$'):
+            self.call('pair_accept', seed=1)
+        seed = self.call('pair_draw')['tournament']['pairing']['seed']
+        saved = self.ops.path.read_bytes()
+        with self.assertRaisesRegex(ValueError, '^The pairing changed; review the teams again$'):
+            self.call('pair_accept', seed=seed + 1)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+        # clearing the preview returns to the pool; a solo can then be removed
+        state = self.call('pair_clear')
+        self.assertIsNone(state['tournament']['pairing'])
+        solo = state['tournament']['pool'][0]
+        state = self.call('pool_remove', name=solo['name'])
+        self.assertEqual([m['name'] for m in state['tournament']['pool']], ['Bea'])
+        with self.assertRaisesRegex(ValueError, 'Remove solo players before changing format'):
+            self.call('tournament_setup', format='singles')
+
     def test_hide_from_history_is_a_flag_that_erases_nothing(self):
         """R1: hiding keeps every match and every stat; it can be undone; it is audited."""
         state = self.register(2)

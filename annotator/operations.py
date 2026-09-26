@@ -157,6 +157,10 @@ class Operations:
         if action in ('revival_draw', 'revival_undo'):
             # the whole draw is audited, so anyone can re-run it: seed, sorted pool, pick, slot
             return dict(t['revival']) if t.get('revival') else context
+        if action in ('pair_draw', 'pair_accept') and t.get('pairing'):
+            # R3: the seed and the teams it made (names only; pool order is sign-up order)
+            return dict(seed=t['pairing']['seed'],
+                        teams=[' / '.join(m['name'] for m in team) for team in t['pairing']['teams']])
         if action in ('tournament_rename', 'tournament_delete', 'tournament_hide'):
             night = next((n for n in [t] + state['history'] if n['id'] == payload.get('id')), None)
             if night and action == 'tournament_hide' and 'hidden' in night:
@@ -190,6 +194,28 @@ class Operations:
         if item is None:
             raise ValueError('Unknown id')
         return item
+
+    @classmethod
+    def _person(cls, s, t, member, team=()):
+        """One registrant, by the entrant rules: a known active regular by id, or a guest
+        with a real name; nobody twice across tonight's entrants, the solo pool and `team`."""
+        if not isinstance(member, dict):
+            raise ValueError('Invalid member')
+        if member.get('pid'):
+            player = cls._find(s['players'], member['pid'])
+            if player['status'] == 'Inactive':
+                raise ValueError('Inactive player')
+            person = dict(pid=player['id'], name=player['name'])
+        else:
+            person = dict(pid=None, name=text(member.get('name'), 'guest name'))
+            if person['name'].casefold() in PLACEHOLDER_NAMES:
+                raise ValueError("A bye is added by the draw; type the guest's real name")
+            if any(player['name'].casefold() == person['name'].casefold() for player in s['players']):
+                raise ValueError('Player name already exists; select the regular by id')
+        taken = [m for e in t['entrants'] for m in e['members']] + t.get('pool', []) + list(team)
+        if any(m['name'].casefold() == person['name'].casefold() or person['pid'] and m['pid'] == person['pid'] for m in taken):
+            raise ValueError('Person already registered')
+        return person
 
     @staticmethod
     def _propagate(t):
@@ -259,13 +285,49 @@ class Operations:
                 raise ValueError('Invalid format')
             if fmt != t['format'] and t['entrants']:
                 raise ValueError('Remove entrants before changing format')
+            if fmt != t['format'] and t.get('pool'):
+                raise ValueError('Remove solo players before changing format')
             t.update(format=fmt, tables=integer(p.get('tables', t['tables']), 1, 32, 'tables'),
                      raceTo=integer(p.get('raceTo', t['raceTo']), 1, 99, 'raceTo'))
             if 'name' in p:
                 t['name'] = text(p['name'], 'name')
+        elif action in ('solo_add', 'pool_remove', 'pair_draw', 'pair_clear', 'pair_accept'):
+            # R3: an optional random pairing of solo sign-ups; pairing only, never a result.
+            if t['status'] != 'registration':
+                raise ValueError('Registration is closed')
+            if t['format'] != 'doubles':
+                raise ValueError('Random pairing is for doubles')
+            pool, pairing = t.setdefault('pool', []), t.get('pairing')
+            if action == 'pair_clear':
+                t['pairing'] = None
+            elif action == 'pair_accept':
+                if not pairing:
+                    raise ValueError('No pairing to accept')
+                if p.get('seed') != pairing['seed']:
+                    raise ValueError('The pairing changed; review the teams again')
+                if len(t['entrants']) + len(pairing['teams']) > 128:
+                    raise ValueError('Maximum 128 entrants')
+                t['entrants'].extend(dict(id=uid(), members=team) for team in pairing['teams'])
+                t.update(pool=[], pairing=None)
+            elif pairing and action != 'pair_draw':
+                raise ValueError('Registration is locked while a pairing is shown; accept or clear it first')
+            elif action == 'solo_add':
+                pool.append(self._person(s, t, p.get('member')))
+            elif action == 'pool_remove':
+                name = text(p.get('name'), 'name').casefold()
+                pool.remove(next((m for m in pool if m['name'].casefold() == name), None) or self._find([], None))
+            else:
+                if len(pool) < 2 or len(pool) % 2:
+                    raise ValueError('An even number of solo players is needed to pair')
+                seed = random.SystemRandom().randrange(2 ** 31)
+                order = list(range(len(pool)))
+                random.Random(seed).shuffle(order)
+                t['pairing'] = dict(seed=seed, teams=[[pool[order[i]], pool[order[i + 1]]] for i in range(0, len(order), 2)])
         elif action in ('entrant_add', 'entrant_remove', 'entrant_absence'):
             if t['status'] != 'registration':
                 raise ValueError('Registration is closed')
+            if t.get('pairing'):
+                raise ValueError('Registration is locked while a pairing is shown; accept or clear it first')
             if action == 'entrant_absence':
                 if type(p.get('absent')) is not bool:
                     raise ValueError('absent must be boolean')
@@ -279,29 +341,9 @@ class Operations:
                 raise ValueError('Wrong number of team members')
             if len(t['entrants']) >= 128:
                 raise ValueError('Maximum 128 entrants')
-            occupied = {m['name'].casefold() for e in t['entrants'] for m in e['members']}
-            occupied_ids = {m['pid'] for e in t['entrants'] for m in e['members'] if m['pid']}
             result = []
             for member in members:
-                if not isinstance(member, dict):
-                    raise ValueError('Invalid member')
-                if member.get('pid'):
-                    player = self._find(s['players'], member['pid'])
-                    if player['status'] == 'Inactive':
-                        raise ValueError('Inactive player')
-                    person = dict(pid=player['id'], name=player['name'])
-                else:
-                    person = dict(pid=None, name=text(member.get('name'), 'guest name'))
-                    if person['name'].casefold() in PLACEHOLDER_NAMES:
-                        raise ValueError("A bye is added by the draw; type the guest's real name")
-                    if any(player['name'].casefold() == person['name'].casefold() for player in s['players']):
-                        raise ValueError('Player name already exists; select the regular by id')
-                if person['name'].casefold() in occupied or person['pid'] and person['pid'] in occupied_ids:
-                    raise ValueError('Person already registered')
-                occupied.add(person['name'].casefold())
-                if person['pid']:
-                    occupied_ids.add(person['pid'])
-                result.append(person)
+                result.append(self._person(s, t, member, result))
             t['entrants'].append(dict(id=uid(), members=result))
         elif action == 'tournament_start':
             if t['status'] != 'registration' or len(t['entrants']) < 2:

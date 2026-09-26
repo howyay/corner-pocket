@@ -882,3 +882,44 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
   }
   assert.equal(h.evaluate(`validationMessage('No round-2 bye slot to fill')`), '没有可填补的第二轮轮空位。');
 });
+test('doubles can pair solo sign-ups at random: seed shown, re-roll, accept (R3)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.history=[];data.players=[{id:'pa',name:'Ada',status:'Active',rating:5}];
+    data.tournament={id:'t1',name:'Doubles night',format:'doubles',tables:1,raceTo:3,status:'registration',entrants:[],matches:[],
+      pool:[{pid:'pa',name:'Ada'},{pid:null,name:'Bo'},{pid:null,name:'Cy'}],pairing:null}`);
+  for (const [lang, title, add, draw, odd] of [['en', 'Random pairing', 'Add solo player', 'Pair at random', 'An even number of solo players is needed'], ['zh', '随机配对', '添加单人报名', '随机配对搭档', '需要偶数名单人报名者']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('setupScreen()');
+    assert.ok(html.includes(`>${title}<`) && html.includes(`>${add}<`), `${lang}: a doubles event offers a solo pool`);
+    assert.ok(/<button[^>]*data-action="pair-draw"[^>]*disabled/.test(html) && html.includes(odd), `${lang}: an odd pool cannot be paired, and says why`);
+    assert.ok(html.includes('Ada') && html.includes('Bo') && html.includes('Cy'));
+    assert.ok(html.includes(`>${draw}<`));
+  }
+  h.evaluate("data.tournament.format='singles'");
+  assert.ok(!h.evaluate('setupScreen()').includes('id="solo-form"'), 'singles has no pairing step');
+  h.evaluate("data.tournament.format='doubles';data.tournament.pool.push({pid:null,name:'Di'});data.tournament.pairing={seed:424242,teams:[[{pid:null,name:'Cy'},{pid:'pa',name:'Ada'}],[{pid:null,name:'Di'},{pid:null,name:'Bo'}]]}");
+  for (const [lang, seed, accept, reroll, label] of [['en', 'seed 424242', 'Use these teams', 'Re-roll', 'Random draw of partners only; results are never drawn.'], ['zh', '种子 424242', '采用这些组合', '重新抽签', '只随机决定搭档，比赛结果从不抽签。']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('setupScreen()');
+    assert.ok(html.includes(seed) && html.includes(`>${accept}<`) && html.includes(`>${reroll}<`) && html.includes(label), `${lang}: the preview shows the seed, accept and re-roll`);
+    assert.ok(html.includes('Cy / Ada') && html.includes('Di / Bo'), `${lang}: the teams are shown before they count`);
+    assert.ok(!html.includes('id="entrant-form"'), `${lang}: registration is locked while a pairing is shown`);
+  }
+  h.evaluate('render=()=>{}');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  await click({action: 'pair-draw'});
+  await click({action: 'pair-accept', seed: '424242'});
+  await click({action: 'pair-clear'});
+  await click({action: 'pool-remove', name: 'Bo'});
+  const submit = values => h.handlers.submit({preventDefault() {}, target: {getAttribute: () => 'solo-form', classList: {contains: () => false}, querySelector: () => ({setCustomValidity() {}, reportValidity() {}}), querySelectorAll: () => [], values}});
+  await submit({solo_pid: '', solo_name: '  Eve '});
+  await submit({solo_pid: 'pa', solo_name: ''});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [
+    {name: 'pair_draw'}, {name: 'pair_accept', payload: {seed: 424242}}, {name: 'pair_clear'},
+    {name: 'pool_remove', payload: {name: 'Bo'}}, {name: 'solo_add', payload: {member: {name: 'Eve'}}}, {name: 'solo_add', payload: {member: {pid: 'pa'}}}]);
+  for (const [action, en, zh] of [['pair_draw', 'Partners drawn at random', '随机抽取搭档'], ['pair_accept', 'Random pairs registered', '随机组合已报名']]) {
+    h.evaluate("lang='en'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{seed:1}})`).includes(en));
+    h.evaluate("lang='zh'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{seed:1}})`).includes(zh));
+  }
+  assert.equal(h.evaluate(`validationMessage('The pairing changed; review the teams again')`), '配对已变化，请重新查看组合。');
+});

@@ -81,6 +81,10 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) .round .entry{min-height:98px}
 :is(#ops-shell, #ops-footer) .match-controls{flex-wrap:wrap;gap:6px;margin-top:8px}
 :is(#ops-shell, #ops-footer) .match-controls button{padding:4px 8px;font-size:12px}
+:is(#ops-shell, #ops-footer) .pairing .row{flex-wrap:wrap;gap:6px}
+:is(#ops-shell, #ops-footer) .pairing .badge{text-transform:none;letter-spacing:0;font:13px var(--body,inherit)}
+:is(#ops-shell, #ops-footer) .pairing .badge button{padding:0 6px;margin-left:4px;min-height:0}
+:is(#ops-shell, #ops-footer) .pair-teams li{padding:6px 0;border-bottom:1px solid var(--line)}
 :is(#ops-shell, #ops-footer) .timeline{max-height:340px;overflow:auto;padding-left:22px;color:var(--ink-mid)}
 :is(#ops-shell, #ops-footer) .timeline li{padding:6px}
 :is(#ops-shell, #ops-footer) table{width:100%;border-collapse:collapse;text-align:left}
