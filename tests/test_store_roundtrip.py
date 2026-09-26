@@ -16,6 +16,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 import uuid
 from pathlib import Path
 
@@ -185,6 +186,30 @@ class RoundTrip(unittest.TestCase):
         if not copied:
             self.skipTest("no production files in this checkout")
         self.assert_round_trip()
+
+    def test_a_rollback_export_over_old_files_cannot_bring_deleted_faces_back(self):
+        """After the last player's faces are deleted in the database, the face store has
+        no rows, so the export writes no face file. Exported over the old out/ (the
+        rollback), --prune must delete the stale face file, or the deleted biometrics
+        would return."""
+        from src.store_export import main as export_main
+        from src.store_pg import PostgresStore
+        workspace(self.source)
+        self.assertTrue(all(r["status"] != "failed" for r in self.run(self.conn, self.source)))
+        rollback_target = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, rollback_target, True)
+        shutil.copytree(self.source / "out", rollback_target / "out")        # the old files
+        faces = "out/corner-pocket/face_embeddings.json"
+        self.assertTrue((rollback_target / faces).is_file())
+        store = PostgresStore(self.source, search_path=self.schema)
+        self.addCleanup(store.close)
+        for player in list(store.faces_load()):
+            store.faces_remove(player)                                        # forget, through the store
+        with unittest.mock.patch.dict(os.environ, {"PGOPTIONS": f"-c search_path={self.schema}"}):
+            code = export_main(["--to", str(rollback_target), "--prune"])
+        self.assertEqual(code, 0)
+        self.assertFalse((rollback_target / faces).exists(), "the deleted face data did not come back")
+        self.assertTrue((rollback_target / "out/corner-pocket/state.json").is_file())
 
 
 def _blank(value, key):

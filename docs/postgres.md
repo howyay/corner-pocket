@@ -113,6 +113,39 @@ Dry run against a copy of production on 2026-09-25: operations (revision 5, 1 so
 events), 48 identity clusters, 1 verdict, 76 ball labels, 1 anchor set verified; face
 store absent; seeds and corrections empty.
 
+`python -m src.store_export --to DIR [--compare ROOT]` writes every user-data file back,
+byte-exact (proven on a production copy), and `python -m src.store_check` confirms the
+0002 row projection equals the stored documents (exit 1 and `MISMATCH` lines otherwise).
+
+### Who reads and writes the user-data files
+
+Every reader and writer in the repository of `state.json`, `clusters.json`,
+`face_embeddings.json`, `pid_seed.json`, `pid_anchors_<ds>.json`, `annotations.json`,
+`labels.json` and `frame_results/*/correction.json`, with its decision for the Postgres
+cutover (audit of 2026-09-26; `tests/*` use temp roots and are not listed):
+
+| Code | Data | Decision |
+|---|---|---|
+| `annotator/unified_server.py` (the service) | all of them | **store** — every read/write via `Backend.store()` (switches `1d4af9f`…`7592ef6`) |
+| `annotator/operations.py` | state | **store** — it is `JsonStore`'s operations implementation |
+| `src/person_identity.py`, `src/person_pipeline.py` | clusters, faces | **store** — `store=` parameter; the server passes its store (`8fed832`) |
+| `src/face_id.py` | faces | **store** — `add_faces`/`remove_faces`/`load_faces` are `JsonStore`'s face store |
+| `annotator/live_processing.py` | state (saved channel) | **store** — `operations_document` set by the server (`7592ef6`) |
+| `src/enroll_from_tracklet.py` | state, faces, clusters | **store** for the confirm (`load_state(store=)`, `e15396a`); its scratch writes go to `out/enroll-eval/scratch` (a working dir), the offline harness reads files |
+| `src/frame_inference.py` | anchors | **store** for the server (`anchor_quad`, `6c41f6b`); `app_prior_for(root=)` stays a file read for the batch tools below |
+| `src/pid_seed_rebuild.py` | seeds | **store** — the rebuild the server starts reads seeds via `open_store` (`f07dd42`) |
+| `annotator/server.py`, `src/pid_seed_ui.py`, `src/pid_anchor_ui.py` | verdicts, labels, seeds, anchors (**write**) | **refuse** with a clear error when `POOL_DATABASE_URL` is set (`f07dd42`) |
+| `src/merge_sets.py` | labels (**write**, new dir) | **refuse** likewise (`f07dd42`) |
+| `src/dense_queue.py` | verdicts (md5 only) | **batch, read-only** — records the verdict file's md5; after cutover export first |
+| `src/eval_events.py` | verdicts, anchors | **batch, read-only** — offline evaluation; after cutover run `src.store_export --to DIR` and point it at `DIR` |
+| `src/eval_faces.py` | state, clusters, faces, seeds, verdicts | **batch, read-only** — offline evaluation (it records their md5s); after cutover export first |
+| `src/eval_table_detect.py`, `src/check_app_quad.py`, `src/table_refine.py`, `src/motion_scan.py`, `src/shot_pot_gate.py`, `src/timing_verify.py`, `src/calib_mapping_audit.py`, `src/calib_segment_fit.py`, `src/calib_segment_measure.py`, `src/sam3_ball_cache.py`, `src/sam3_frame_audit.py` | anchors | **batch, read-only** — read `pid_anchors_<ds>.json` via `app_prior_for`/directly; after cutover export first |
+| `src/train_ball_id.py`, `src/confusion.py`, `src/tiny_ball_net.py`, `src/recut_crops.py`, `src/fast_ball_labels.py` | labels | **batch, read-only** — training/analysis inputs (`recut_crops` rewrites crop `meta.json`/`ctx.json`, not labels); after cutover export first |
+
+"Export first" is one command: `PYTHONPATH=. .venv/bin/python -m src.store_export --to
+/tmp/pool-export-$(date +%F)`, then pass that directory as the tool's root.  The shot clock
+(`annotator/shot_clock.py`) is not user data and stays a file (design §9).
+
 ## Backup
 
 Logical dumps, custom format, taken from inside the container (the dump tool then always
@@ -158,6 +191,98 @@ podman exec pool-postgres dropdb -U pool --if-exists pool_restore
 
 (The `-U pool` commands connect to the maintenance database `postgres`, not to `pool`,
 when they create or drop `pool`.)
+
+## Cutover runbook (files → Postgres) — needs the owner's go-ahead
+
+Approved as a draft on 2026-09-26; nothing here has been run against the live `pool`
+database.  Preconditions: the caller switch has landed (`1d4af9f`…`f07dd42`), the suites
+are green, the owner has said go, and no operator is mid-night.  All commands run from
+the repository; `$ts` names this cutover's artifacts.
+
+```sh
+cd /home/operator/projects/pool
+ts=$(date +%Y%m%d-%H%M%S); B=$POOL_PG_ROOT/pool-postgres/backups
+set -a; . ~/.config/pool/postgres.env; set +a
+```
+
+**0. Pre-flight** — the database is up, the backup restores, the files are saved.
+
+```sh
+systemctl --user is-active pool-postgres                                   # active
+podman exec pool-postgres pg_isready -h 127.0.0.1 -p 5432 -U pool -d pool  # accepting connections
+podman exec pool-postgres pg_dump -U pool -d pool -Fc -Z 6 > $B/pool-pre-cutover-$ts.dump
+podman exec pool-postgres createdb -U pool pool_restore_check              # restore test, scratch db
+podman exec -i pool-postgres pg_restore -U pool -d pool_restore_check --no-owner --exit-on-error \
+  < $B/pool-pre-cutover-$ts.dump
+podman exec pool-postgres psql -U pool -d pool_restore_check -tAc \
+  "SELECT string_agg(name, ',' ORDER BY version) FROM schema_migrations"   # same list as pool
+podman exec pool-postgres dropdb -U pool pool_restore_check
+mkdir -p ~/pool-cutover-$ts && cp -a --parents out/corner-pocket out/identity out/pid_seed.json \
+  out/pid_anchors_vod30.json out/scan30/annotations.json out/unlabeled_crops/labels.json ~/pool-cutover-$ts/
+(cd ~/pool-cutover-$ts && find . -type f -exec md5sum {} + > MD5SUMS)
+```
+
+(The restore test was exercised on 2026-09-26 against a scratch database: dump, restore,
+the migration list matched, the scratch database dropped; `pool` itself was only read.)
+
+**1. Migrate** — `PYTHONPATH=. .venv/bin/python -m src.db` (applies 0002 and 0003).
+
+**2. Stop the writer** — `systemctl --user stop pool-workbench`.  Every user-data write
+goes through the service (the legacy writers refuse to run once the variable is set), so
+the files are frozen from here.
+
+**3. Import and verify** — each must exit 0:
+
+```sh
+PYTHONPATH=. .venv/bin/python -m src.store_import --dry-run
+PYTHONPATH=. .venv/bin/python -m src.store_import                       # imported/unchanged/absent
+PYTHONPATH=. .venv/bin/python -m src.store_export --to /tmp/pool-verify-$ts --compare .   # all identical
+PYTHONPATH=. .venv/bin/python -m src.store_check                        # projection consistent
+```
+
+**4. Point the service at the database** — a drop-in, so the unit file itself is untouched:
+
+```sh
+cat > ~/.config/systemd/user/pool-workbench.service.d/20-postgres.conf <<'EOF'
+[Unit]
+Requires=pool-postgres.service
+After=pool-postgres.service
+
+[Service]
+EnvironmentFile=%h/.config/pool/postgres.env
+EOF
+systemctl --user daemon-reload && systemctl --user start pool-workbench
+```
+
+**5. Post-cutover checks**
+
+- a. `systemctl --user is-active pool-postgres pool-workbench` → `active` twice;
+  `journalctl --user -u pool-workbench -n 50` shows no traceback.
+- b. `GET http://127.0.0.1:8130/api/operations` returns the `revision` the file had
+  (`python3 -c 'import json;print(json.load(open("out/corner-pocket/state.json"))["revision"])'`).
+- c. One harmless write, then its removal.  First
+  `md5sum out/corner-pocket/state.json > /tmp/pool-5c-$ts.md5`.  In Operations → Notes add
+  the note **`cutover check — delete me`**, then delete that same note (its × button).  Then:
+  `md5sum -c /tmp/pool-5c-$ts.md5` → `OK` (the file was not written), and
+  `GET /api/operations` shows `revision` = the value from b + 2 and no note with that text
+  (the add and the delete are both in the database's event log).
+- d. `PYTHONPATH=. .venv/bin/python -m src.store_check` → consistent.
+- e. Open Floor, Matches and Vision once; `md5sum -c ~/pool-cutover-$ts/MD5SUMS` from
+  `~/pool-cutover-$ts` still matches the untouched files in `out/` (nothing writes them).
+
+**6. Rollback** (design §7.6)
+
+- *Before any write through Postgres*: `rm ~/.config/systemd/user/pool-workbench.service.d/20-postgres.conf
+  && systemctl --user daemon-reload && systemctl --user restart pool-workbench` — the
+  untouched files take over.
+- *After writes through Postgres* (5c counts): stop the service, then
+  `PYTHONPATH=. .venv/bin/python -m src.store_export --to . --prune` writes every user-data
+  file back byte-exact over `out/` and deletes the ones the database holds nothing for
+  (so deleted face data cannot come back from the old file); review `git status`/`diff -r`
+  against `~/pool-cutover-$ts`, then remove the drop-in, `daemon-reload`, start.
+
+Not covered by the database: the shot clock (`annotator/shot_clock.py`) keeps its own
+file (design §9); it needs nothing at cutover.
 
 ## Password rotation
 

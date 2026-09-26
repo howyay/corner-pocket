@@ -7,6 +7,11 @@ writer produces (src/store_files.py): documents come back as their stored text; 
 identity index and the face store are rendered from their rows in the writers' fixed
 key order. Files are written atomically and only under <dir>; nothing else is touched.
 
+A user-data file the database holds nothing for (the face store after the last
+player's faces were deleted, say) is not written; it is listed as "not_in_database",
+and --prune deletes it under <dir>, so exporting over an older copy (the rollback)
+cannot bring deleted data back.
+
 --compare <root> checks the export byte for byte against the files under <root>/out
 (each file: identical, or the first differing byte offset and the text around it)
 and prints the row count of every user-data table.  Uses: rollback after the
@@ -67,6 +72,32 @@ def export(conn, to: Path) -> list[str]:
     return written
 
 
+# Files that exist only as rows: when their table is empty there is nothing to write.
+ROW_FILES = ("out/identity/clusters.json", "out/corner-pocket/face_embeddings.json")
+
+
+def not_in_database(written) -> list[str]:
+    """The fixed user-data files the export did not write because the database holds
+    nothing for them (e.g. the face store after the last player's faces were deleted).
+    Frame corrections are not listed: one file per corrected frame, never deleted."""
+    from src.store_files import DOCUMENT_SETS, document_paths
+    fixed = {p for name in DOCUMENT_SETS for p in document_paths(name)} | set(ROW_FILES)
+    return sorted(fixed - set(written))
+
+
+def prune(to: Path, relatives) -> list[str]:
+    """Remove those files under `to`, so an export applied over an older copy (the
+    rollback) cannot bring back data the database no longer holds - deleted face data
+    above all. Returns the paths removed."""
+    removed = []
+    for relative in relatives:
+        target = Path(to) / relative
+        if target.is_file():
+            target.unlink()
+            removed.append(relative)
+    return removed
+
+
 def first_byte_difference(a: bytes, b: bytes):
     """None when equal, else (offset, reason) for the first differing byte."""
     if a == b:
@@ -103,6 +134,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--to", required=True, help="directory to write <to>/out/... into")
     parser.add_argument("--compare", help="workspace root whose out/ files the export must equal byte for byte")
+    parser.add_argument("--prune", action="store_true",
+                        help="also delete, under --to, the user-data files the database holds nothing for "
+                             "(use when exporting over an existing copy: the rollback)")
     args = parser.parse_args(argv)
     try:
         with db.connect() as conn:
@@ -113,7 +147,9 @@ def main(argv=None) -> int:
     except db.DatabaseNotConfigured as error:
         print(error, file=sys.stderr)
         return 2
-    print(json.dumps({"written": written, "rows": counts}, indent=1))
+    absent = not_in_database(written)
+    removed = prune(Path(args.to), absent) if args.prune else []
+    print(json.dumps({"written": written, "not_in_database": absent, "removed": removed, "rows": counts}, indent=1))
     if args.compare:
         rows = compare(Path(args.to), Path(args.compare), written)
         for row in rows:

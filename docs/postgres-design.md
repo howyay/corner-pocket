@@ -737,6 +737,10 @@ the database has taken writes** (§7.6).
 
 ### 7.5 Cutover
 
+The executable runbook (approved as a draft 2026-09-25; pre-flight, restore test,
+projection check and the exact commands) is **`docs/postgres.md` → "Cutover runbook"**.
+The outline below is the original design.
+
 1. `python -m src.store import` → verified, report archived.
 2. `pg_dump` (runbook) → first backup.
 3. Edit `~/.config/systemd/user/pool-workbench.service`:
@@ -782,7 +786,15 @@ touching production; 7 is the only step that changes the running service.
 * Media (videos, frames, crops, evidence images, clip cache) and model weights.
 * Offline evaluation artifacts and logs (`out/dense-events/`, `out/*eval*`, `*.log`) — they
   are inputs/outputs of batch tools nobody serves; importing them adds nothing.
-* The legacy single-purpose servers (`annotator/server.py`, `src/pid_seed_ui.py`) keep
-  their file I/O; they are not part of the workbench service.  They must not be run against
-  the same `out/` after cutover (they would write files the service no longer reads).
+* The legacy single-purpose tools that write user-data files (`annotator/server.py`,
+  `src/pid_seed_ui.py`, `src/pid_anchor_ui.py`, `src/merge_sets.py`) keep their file I/O
+  and are not part of the workbench service.  Since `f07dd42` they **refuse to start when
+  `POOL_DATABASE_URL` is set** (`src.store.refuse_file_writes_under_postgres`), so none of
+  them can write a file the service no longer reads; to use one after cutover, export to a
+  directory and run it there with the variable unset.  Every reader and writer of the
+  user-data files and its decision is in the table in `docs/postgres.md`.
+* **The shot clock stays a file** (decided in review, 2026-09-25).  `annotator/shot_clock.py`
+  persists one small, ephemeral state (the running shared clock) atomically to its own
+  file; it is outside the §2–§4 schema, and losing it — a crash, a rollback — costs at most
+  a clock the operator restarts.  It is not imported, exported or stored in Postgres.
 * `pgvector`, replication, remote access, connection pooling — not needed at this size.
