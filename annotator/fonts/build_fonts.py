@@ -12,7 +12,9 @@ Chinese copy changes, so the two CJK subsets still cover every character:
     ofl/dmmono/DMMono-{Regular,Medium}.ttf
     ofl/notosanssc/NotoSansSC[wght].ttf      (variable; instanced at 400 and 500)
     ofl/notoserifsc/NotoSerifSC[wght].ttf    (variable; instanced at 400, 500, 700)
-laid out as <src-dir>/<family-dir>/<file>. fontTools is in the project venv; the
+and tygfhzb/level-1.txt: level 1 (3,500 hanzi) of 通用规范汉字表, from
+github.com/shengdoushi/common-standard-chinese-characters-table at d9b599a.
+Laid out as <src-dir>/<family-dir>/<file>. fontTools is in the project venv; the
 woff2 writer also needs the `brotli` module (on this host:
 /nix/store/gwyaqilhj7najkz88dkmzd7n2npf9kks-python3.14-brotli-1.2.0/lib/python3.14/site-packages).
 
@@ -60,6 +62,44 @@ CJK_FACES = (
     ('noto-serif-sc-500.woff2', 'notoserifsc/NotoSerifSC[wght].ttf', 500),
     ('noto-serif-sc-700.woff2', 'notoserifsc/NotoSerifSC[wght].ttf', 700),
 )
+# The common-hanzi files exist only for the faces that draw text staff type, measured
+# on every tab in 中 and EN (out/impeccable/ledger/typeset/cjk-census.txt): names and
+# notes in Barlow 400 (Sans 300-400 face), bold match rows in Barlow 700 (Sans
+# 500-900 face), names and the event name in Zilla Slab 500 (Serif 500-600 face;
+# the strip's current-match label is set in that same name weight, so no Serif 400
+# file is needed). Each is declared with exactly its UI face's weight range: the
+# browser composes faces by unicode-range only when every other descriptor matches.
+COMMON_FACES = (
+    ('noto-sans-sc-400-common.woff2', 'notosanssc/NotoSansSC[wght].ttf', 400),
+    ('noto-sans-sc-500-common.woff2', 'notosanssc/NotoSansSC[wght].ttf', 500),
+    ('noto-serif-sc-500-common.woff2', 'notoserifsc/NotoSerifSC[wght].ttf', 500),
+)
+
+
+def common_codepoints(src, ui):
+    """Level 1 of 通用规范汉字表 (3,500 common hanzi) plus CJK punctuation and the
+    full-width forms, minus what the UI file already has: the text staff type
+    (names, event names, notes). Served as a second file per face and declared
+    with a unicode-range, so a page downloads it only when it shows one of these."""
+    level1 = (src / 'tygfhzb' / 'level-1.txt').read_text(encoding='utf-8')
+    points = {ord(ch) for ch in level1 if 0x3400 <= ord(ch) <= 0x9FFF}
+    assert len(points) == 3500, f'level-1.txt should hold 3500 hanzi, found {len(points)}'
+    points |= set(range(0x3000, 0x3040)) | set(range(0xFF01, 0xFF5F))
+    return points - ui
+
+
+def unicode_range(points):
+    """A compact CSS unicode-range for a set of code points (runs become U+A-B)."""
+    runs, start, prev = [], None, None
+    for p in sorted(points):
+        if start is None:
+            start = prev = p
+        elif p == prev + 1:
+            prev = p
+        else:
+            runs.append((start, prev)); start = prev = p
+    runs.append((start, prev))
+    return ','.join(f'U+{a:X}' if a == b else f'U+{a:X}-{b:X}' for a, b in runs)
 
 
 def copy_codepoints():
@@ -100,11 +140,15 @@ def main(src):
     sizes = []
     for out, rel in LATIN_FACES:
         sizes.append((out, build(TTFont(src / rel), LATIN, HERE / out)))
-    for out, rel, weight in CJK_FACES:
-        # updateFontNames renames the instance from STAT (e.g. "Noto Sans SC Medium"),
-        # so a 500 file is not left carrying the default instance's "Thin" name.
-        font = instancer.instantiateVariableFont(TTFont(src / rel), {'wght': weight}, updateFontNames=True)
-        sizes.append((out, build(font, cjk, HERE / out)))
+    common = common_codepoints(src, cjk)
+    for faces, points in ((CJK_FACES, cjk), (COMMON_FACES, common)):
+        for out, rel, weight in faces:
+            # updateFontNames renames the instance from STAT (e.g. "Noto Sans SC Medium"),
+            # so a 500 file is not left carrying the default instance's "Thin" name.
+            font = instancer.instantiateVariableFont(TTFont(src / rel), {'wght': weight}, updateFontNames=True)
+            sizes.append((out, build(font, points, HERE / out)))
+    (HERE / 'common-unicode-range.txt').write_text(unicode_range(common) + '\n')
+    print(f'common subset: {len(common)} code points; unicode-range in fonts/common-unicode-range.txt')
     print(f'CJK subset: {len(cjk)} code points ({len(cjk - LATIN)} from the copy beyond the Latin set)')
     for out, size in sizes:
         print(f'{size:>9,} B  {out}')

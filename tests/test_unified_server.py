@@ -553,6 +553,19 @@ class BackendTests(unittest.TestCase):
         self.assertNotIn('fonts.gstatic.com', pages)
         for url in re.findall(r'url\((/fonts/[^)]+)\)', (assets / 'ops.css').read_text()):
             self.assertTrue((assets / url.lstrip('/')).is_file(), url)
+        # User-typed hanzi: each common-hanzi face is a unicode-range extension of a UI
+        # face with identical family, style and weight (else the browser will not
+        # compose them), and its range is the one build_fonts.py generated.
+        faces = re.findall(r"@font-face\{font-family:'([^']+)';font-style:(\w+);font-weight:([0-9 ]+);"
+                           r"font-display:swap;src:url\(/fonts/([a-z0-9-]+)\.woff2\) format\('woff2'\)"
+                           r"(?:;unicode-range:([^}]+))?\}", (assets / 'ops.css').read_text())
+        plain = {(family, style, weight) for family, style, weight, _, urange in faces if not urange}
+        common = [face for face in faces if face[3].endswith('-common')]
+        self.assertTrue(common)
+        generated = (assets / 'fonts' / 'common-unicode-range.txt').read_text().strip()
+        for family, style, weight, name, urange in common:
+            self.assertIn((family, style, weight), plain, name)
+            self.assertEqual(urange, generated, name)
 
     def test_event_clip_bounded_and_cached(self):
         encoded = []
