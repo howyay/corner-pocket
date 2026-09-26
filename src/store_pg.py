@@ -317,9 +317,10 @@ class PostgresStore:
         with self._read() as conn:
             return self._load_doc(conn, _doc_path("labels", crop_set), {})
 
-    def label_put(self, crop_set: str, crop_file: str, label) -> None:
+    def label_put(self, crop_set: str, crop_file: str, label, new_key: str | None = None) -> None:
         """Set or clear (None) one crop's label, matched by basename; an existing key keeps
-        its original spelling and a new key is appended - JsonStore.label_put exactly."""
+        its original spelling and a new key (`new_key`, else the basename) is appended -
+        JsonStore.label_put exactly."""
         from src.store_import import LabelsSet
         self._crop_set(crop_set)
         path = _doc_path("labels", crop_set)
@@ -327,7 +328,7 @@ class PostgresStore:
             self._lock_doc(conn, path)
             labels = self._load_doc(conn, path, {})
             keys = [k for k in labels if Path(k).name == crop_file]
-            key = keys[0] if keys else crop_file
+            key = keys[0] if keys else (new_key or crop_file)
             for old in keys:
                 labels.pop(old)
             if label is not None:

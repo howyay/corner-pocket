@@ -1374,7 +1374,7 @@ class Backend:
                     "ball_sets": [{"id": k, "label": k} for k in BALL_SETS]}
         if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "meta":
             base = self.crops(parts[2])
-            labels = load(base / "labels.json", {})
+            labels = self.store().labels_get(parts[2])
             ctx = load(base / "ctx.json", {})
             items = []
             for row in load(base / "meta.json", []):
@@ -1470,14 +1470,10 @@ class Backend:
             label = p["label"]
             if isinstance(label, bool) or not (label in (None, "u", "clear", -1, -2) or type(label) is int and 0 <= label <= 15):
                 raise APIError("invalid ball label")
-            labels = load(base / "labels.json", {})
-            keys = [k for k in labels if Path(k).name == p["file"]]
-            key = keys[0] if keys else row["file"]
-            for old in keys:
-                labels.pop(old)
-            if label not in (None, "clear", -2):
-                labels[key] = "u" if label == -1 else label
-            atomic_save(base / "labels.json", labels)
+            # None / "clear" / -2 clear the label; -1 is "u" (unknown). A crop labelled for
+            # the first time is keyed by its meta.json path, as before.
+            stored = None if label in (None, "clear", -2) else ("u" if label == -1 else label)
+            self.store().label_put(parts[2], p["file"], stored, new_key=row["file"])
             return {"ok": True}
         if len(parts) != 3 or parts[0] != "api":
             raise APIError("route not found", 404)

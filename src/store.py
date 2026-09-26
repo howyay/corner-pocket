@@ -80,7 +80,7 @@ class Store(Protocol):
     def verdicts_get(self, dataset: str) -> dict: ...
     def verdict_put(self, dataset: str, event_id, fields: dict) -> dict: ...
     def labels_get(self, crop_set: str) -> dict: ...
-    def label_put(self, crop_set: str, crop_file: str, label) -> None: ...
+    def label_put(self, crop_set: str, crop_file: str, label, new_key: str | None = None) -> None: ...
     def correction_get(self, dataset: str, frame_index: int) -> dict | None: ...
     def correction_put(self, dataset: str, frame_index: int, payload: dict) -> None: ...
     def anchors_get(self, dataset: str) -> dict: ...
@@ -229,14 +229,16 @@ class JsonStore:
     def labels_get(self, crop_set: str) -> dict:
         return _read(self._labels_path(crop_set), {})
 
-    def label_put(self, crop_set: str, crop_file: str, label) -> None:
+    def label_put(self, crop_set: str, crop_file: str, label, new_key: str | None = None) -> None:
         """Set or clear (None) the label of one crop, matched by basename; an existing
-        key keeps its original (often absolute) spelling, as the server does today."""
+        key keeps its original (often absolute) spelling, as the server does today, and
+        a crop labelled for the first time is keyed `new_key` (the server passes the
+        crop's meta.json path) or else its basename."""
         path = self._labels_path(crop_set)
         with self._lock(path):
             labels = _read(path, {})
             keys = [k for k in labels if Path(k).name == crop_file]
-            key = keys[0] if keys else crop_file
+            key = keys[0] if keys else (new_key or crop_file)
             for old in keys:
                 labels.pop(old)
             if label is not None:
