@@ -45,11 +45,13 @@ and R12.
 
 | Status | Count | Items |
 |---|---|---|
-| covered | 3 | R3 (with a caveat), R7, R11 |
-| partial | 6 | R2, R4, R8, R9, R13, R15 |
-| missing | 3 | R1, R10, R12 |
-| conflicts | 2 | R5, R6 |
+| covered | 12 | R1, R2, R3, R4, R5, R6 (honest version), R7, R8, R10, R11, R12, R15 — landed on `main` by the tournament-operations worker; see each row for its commit |
+| partial | 2 | R9, R13 (design branch, track (b)) |
+| missing | 0 | — |
+| conflicts | 0 | — (R5 and R6 were resolved by the honest versions the rows describe) |
 | not applicable | 1 | R14 |
+
+The counts above were first taken at `8fe1af1` (covered 3, partial 6, missing 3, conflicts 2, not applicable 1). Track (c) still has to carry R1's `hidden` flag and delete rule, and R12's `player_id` authority, into Postgres.
 
 | Track (primary) | Count | Items |
 |---|---|---|
