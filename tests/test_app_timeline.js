@@ -2019,6 +2019,18 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
     'and a focused field keeps its focus and caret across that rebuild');
 });
 
+test('F6: Use this VOD with an empty id says what to do instead of doing nothing', () => {
+  for (const [lang, sentence] of [['en', 'Enter a Twitch VOD id or URL first.'], ['zh', '请先输入 Twitch 回放 id 或网址。']]) {
+    const notices = [], picked = [];
+    const VSx = adapterStage(lang, ROSTER, {notice: text => notices.push(text), pickReplay: choice => picked.push(choice)});
+    VSx.act('pick-replay');
+    assert.deepStrictEqual(notices, [sentence], `${lang}: one notice, a sentence, not the field label`);
+    assert.strictEqual(picked.length, 0, 'and no replay is requested');
+  }
+  const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+  assert.ok(shell.includes('notice:text=>message(text,true)'), 'the shell passes notice, so the adapter is heard');
+});
+
 function VSrail({events, lang = 'en'}) {
   return adapterStage(lang, ROSTER).railHTML({eventFilter:'all', selection:{}, focus:'events',
     events:{items: events, index: 0, reviewed: 0}, balls:{items:[], index:0},

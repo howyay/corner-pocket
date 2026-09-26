@@ -51,7 +51,7 @@ const COPY = {
     stageEvery:'every', stageAbsent:'not run on the skipped frames', stageRuns:'runs',
     // Twitch VOD replay: a source, never a broadcast. The panel prints the
     // server's and the capture's own words (kind, live, rate, drift), not ours.
-    vodReplay:'Twitch VOD replay', vodId:'VOD id or URL', vodStart:'Start at (s)', vodRate:'Rate (VOD s per wall s)',
+    vodReplay:'Twitch VOD replay', vodId:'VOD id or URL', vodIdNeeded:'Enter a Twitch VOD id or URL first.', vodStart:'Start at (s)', vodRate:'Rate (VOD s per wall s)',
     vodUse:'Use this VOD', vodChosen:'Chosen', vodNotLive:'a replay, never a live broadcast',
     vodNote:'The server resolves the VOD with Twitch and replays it in real time. The panel reports what the server and the capture say it is: kind, live, the VOD id, the rate and the drift it is carrying.',
     vodResolving:'resolving the VOD with Twitch…', vodFailed:'the VOD could not be resolved',
@@ -150,7 +150,7 @@ const COPY = {
     liveBall:'球（训练网络）',
     liveBallNote:'实时球检测使用训练好的小型网络（流水线的 ball 阶段，启动前校验权重）。帧检测器里的「球」是 CPU 密集的 SAM3 扫描：它属于帧工具，从不作为实时阶段运行。',
     stageEvery:'每', stageAbsent:'跳过的帧上不运行', stageRuns:'次运行',
-    vodReplay:'Twitch 回放', vodId:'回放 id 或网址', vodStart:'起始秒', vodRate:'倍速（回放秒/墙钟秒）',
+    vodReplay:'Twitch 回放', vodId:'回放 id 或网址', vodIdNeeded:'请先输入 Twitch 回放 id 或网址。', vodStart:'起始秒', vodRate:'倍速（回放秒/墙钟秒）',
     vodUse:'使用该回放', vodChosen:'已选择', vodNotLive:'回放，绝不是直播',
     vodNote:'由服务端向 Twitch 解析该回放并实时播放。面板只报服务端与采集器的原话：类型、是否直播、回放 id、倍速以及当前漂移。',
     vodResolving:'正在向 Twitch 解析该回放…', vodFailed:'该回放无法解析',
@@ -989,7 +989,7 @@ function act(action, value, node) {
       // and the panel reports the capture's own kind/live/rate/drift afterwards.
       const field = name => (root.querySelector(`[data-vs-field="${name}"]`) || {}).value || '';
       const vod = String(field('vod')).trim();
-      if (!vod) { opts.notice?.(t('vodId')); break; }
+      if (!vod) { opts.notice?.(t('vodIdNeeded')); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
       replayDraft = {vod, start: field('vod-start'), rate: field('vod-rate')};
       opts.pickReplay({vod_id: vod, start_s: Number(field('vod-start')) || 0, rate: Number(field('vod-rate')) || 1});
       break;
