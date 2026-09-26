@@ -17,7 +17,7 @@ setup. Session duration: 168 hours. There is no public bypass policy.
 
 Origin runs as enabled user service `pool-workbench.service`, with restart on
 failure and user lingering enabled. Unit:
-`/home/operator/.config/systemd/user/pool-workbench.service`.
+`~/.config/systemd/user/pool-workbench.service`.
 Manage with `systemctl --user {status,restart,stop} pool-workbench.service`.
 
 Verified unauthenticated public root/API requests return HTTP 302 to Access;

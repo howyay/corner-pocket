@@ -30,7 +30,7 @@ Latest predeployment regression: 79 Python tests, 16 review frontend tests, and 
 
 ## Reproduce
 
-From `/home/operator/projects/pool`:
+From `<repo>`:
 
 ```sh
 .venv/bin/python -B tests/live_processing_e2e.py \
@@ -47,7 +47,7 @@ The agreed public seams are `LiveProcessor.start`, `status`, `latest_jpeg`, and 
 4. Repeat HTTP HLS and stop while running after four outputs.
 5. Resolve the saved source to an HTTP 404 playlist and verify open failure, zero frames, and no JPEG.
 
-All fixture, library-config/cache, and temporary files live under `/home/operator/projects/pool/.live-e2e-*` and are removed on exit. The temporary model is a symlink to existing weights. The helper shuts down its HTTP server and joins its thread, stops every processor in `finally`, and verifies the saved Operations fixture is unchanged. It does not edit server/UI/module files or persistent Operations data.
+All fixture, library-config/cache, and temporary files live under `<repo>/.live-e2e-*` and are removed on exit. The temporary model is a symlink to existing weights. The helper shuts down its HTTP server and joins its thread, stops every processor in `finally`, and verifies the saved Operations fixture is unchanged. It does not edit server/UI/module files or persistent Operations data.
 
 ## Capped-frame re-verification (current module)
 

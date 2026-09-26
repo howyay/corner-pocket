@@ -316,7 +316,7 @@ that edge and stops short, exactly as the halving + 2-iteration budget predicts
 ## 13. Reproduce
 
 ```bash
-cd /home/operator/projects/pool
+cd <repo>
 export PYTHONPATH=.:out/table-detect-eval
 .venv/bin/python out/table-detect-eval/verify_sample.py
 .venv/bin/python out/table-detect-eval/verify_falsify_prior.py

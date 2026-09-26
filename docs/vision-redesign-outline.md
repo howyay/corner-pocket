@@ -1,7 +1,7 @@
 # Vision tab — redesign outline
 
 **Status:** design artifact. No product code changed, no commits. Companion mockup: `out/vision-redesign/mockup.html`; screenshots in `out/vision-redesign/*.png`.
-**Workspace:** `/home/operator/projects/pool`. **Audit this redesign answers:** `docs/vision-audit.md` (2026-09-21).
+**Workspace:** `<repo>`. **Audit this redesign answers:** `docs/vision-audit.md` (2026-09-21).
 **Visual language:** tokens, palette and type copied from `annotator/ops.css` `:root` and `annotator/app.css` (brass `#c9a227` / cream `#f6f1e6` / brown `#14110f`), reference `design/corner-pocket/Corner Pocket Ops.html` (2 px radius, `.14–.18em` tracking on 10 px mono labels, Zilla Slab headings, Barlow body, DM Mono numerals).
 
 ---
@@ -157,7 +157,7 @@ One engine, one stage, one coordinate system, one status line.
 Overlay geometry in the mockup is measured, not eyeballed: the cloth quad `532,323 → 800,324 → 997,569 → 384,563` is the calibrated pocket-anchor set, and every ball/person/event mark was placed by reading a coordinate grid over the actual frames. Screenshot command:
 
 ```bash
-export PATH="/home/operator/.local/share/npm/bin:$PATH"
+export PATH="$HOME/.local/share/npm/bin:$PATH"
 export AGENT_BROWSER_SESSION="$(agent-browser session id --scope worktree --prefix vision-mockup)"
 agent-browser set viewport 1280 900
 agent-browser open "http://127.0.0.1:8143/out/vision-redesign/mockup.html"
