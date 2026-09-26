@@ -1481,10 +1481,14 @@ function onKeydown(e) {
   const key = e.key;
   if (key === ' ' || key === 'Spacebar') { e.preventDefault(); setPlaying(!state.playing); return; }
   if (key === ',' || key === '.') { e.preventDefault(); stepFrame(key === ',' ? -1 : 1); return; }
-  if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); stepFrame((key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 10 : 1)); return; }
-  if (key === 'ArrowUp' || key === 'ArrowDown') {
-    if (state.sel.kind === 'anchor') { e.preventDefault(); nudgeAnchor(0, key === 'ArrowUp' ? -1 : 1); return; }
-    if (state.sel.box >= 0) { e.preventDefault(); nudgeBox(0, key === 'ArrowUp' ? -1 : 1); }
+  // F3: with a box or an anchor selected the arrows nudge it, in all four directions
+  // (Shift = 10 px); with nothing to nudge, ←/→ step frames (Shift = 10 frames).
+  if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown') {
+    const step = e.shiftKey ? 10 : 1;
+    const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0, dy = key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0;
+    if (state.sel.kind === 'anchor') { e.preventDefault(); nudgeAnchor(dx, dy); return; }
+    if (state.sel.box >= 0) { e.preventDefault(); nudgeBox(dx, dy); return; }
+    if (dx) { e.preventDefault(); stepFrame((dx < 0 ? -1 : 1) * step); }
     return;
   }
   if (key === 'Escape') { clearSelection(); return; }

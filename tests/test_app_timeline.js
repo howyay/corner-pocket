@@ -228,6 +228,31 @@ test('form and video targets never double-consume the stage keys', () => {
   review.deactivate();
 });
 
+test('F3: with a box selected the arrows nudge it both ways (Shift = 10 px); with none, ←/→ step frames', () => {
+  const review = sandbox.window.CornerPocketReview;
+  T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
+  assert.strictEqual(review.activate('timeline'), true);
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  T.setRoot({lang:'en', dataset:{}, querySelector: s => s === '#t-overlay' ? svg : s === '#stage-note' ? note : null, querySelectorAll: () => []});
+  T.state.vmeta = {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080};
+  T.state.frameWidth = 1920; T.state.frameHeight = 1080;
+  T.state.boxes = [{label:'ball', bbox:[100, 100, 140, 140], source:'manual'}];
+  T.state.sel.kind = 'box'; T.state.sel.box = 0;
+  const frame = T.state.frame;
+  const key = (k, shift = false) => T.onKeydown({key:k, shiftKey:shift, preventDefault() {}, target:{closest: () => null}});
+  key('ArrowRight');
+  assert.deepStrictEqual([...T.state.boxes[0].bbox], [101, 100, 141, 140], '→ moves the box 1 px right');
+  key('ArrowLeft', true);
+  assert.deepStrictEqual([...T.state.boxes[0].bbox], [91, 100, 131, 140], 'Shift+← moves it 10 px left');
+  key('ArrowDown', true);
+  assert.deepStrictEqual([...T.state.boxes[0].bbox], [91, 110, 131, 150], 'Shift+↓ moves it 10 px down');
+  assert.strictEqual(T.state.frame, frame, 'and the frame never steps while a box is selected');
+  T.state.sel.kind = 'none'; T.state.sel.box = -1; T.state.boxes = [];
+  T.state.vmeta = null; T.state.dirty = false;
+  review.deactivate();
+});
+
 test('engine copy localizes notices, statuses and save receipts', () => {
   const host = {lang:'zh', querySelector: () => elementStub(), querySelectorAll: () => []};
   T.setRoot(host);
