@@ -575,9 +575,13 @@ class Backend:
             return {"ok": False, "reason": "preview_expired",
                     "message": "this preview is no longer held; preview the track again before confirming"}
         try:
+            store = self.store()
             result = confirm_enrollment(self.root, plan, token, name,
                                         scratch_root=self.out / "enroll-eval" / "scratch",
-                                        dataset=plan.dataset)
+                                        dataset=plan.dataset,
+                                        # the roster comes from the store; None keeps the
+                                        # module's own file read (the JSON default)
+                                        store=None if type(store).__name__ == "JsonStore" else store)
         except EnrollmentTokenError as exc:
             return exc.to_dict()
         if result.get("ok"):

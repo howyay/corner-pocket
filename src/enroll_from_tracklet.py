@@ -157,7 +157,11 @@ def stats(values) -> dict:
             "max": round(float(arr.max()), 4)}
 
 
-def load_state(root=REPO) -> dict:
+def load_state(root=REPO, store=None) -> dict:
+    """The operations document: from `store` (a src.store Store) when given, else the
+    state.json file under `root` ({} when it does not exist)."""
+    if store is not None:
+        return store.ops_get()
     path = Path(root) / DEFAULT_STATE
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
@@ -905,7 +909,7 @@ def preview_payload(plan_or_refusal, *, root=REPO, dataset=None, player_name=Non
 
 
 def confirm_enrollment(root, plan, token, player_name, *, scratch_root=None, dataset=None,
-                       state=None, created_at=None) -> dict:
+                       state=None, created_at=None, store=None) -> dict:
     """Confirm the preview: verify the token, then write through `write_enrollment`.
 
     The token is recomputed from the plan's crops (re-rendered from the recording,
@@ -931,7 +935,8 @@ def confirm_enrollment(root, plan, token, player_name, *, scratch_root=None, dat
                                     "received": token if isinstance(token, str) else None,
                                     "crops": len(crops),
                                     "frame_indices": [crop["frame_index"] for crop in crops]})
-    state = state if state is not None else load_state(root)
+    if state is None:
+        state = load_state(root) if store is None else load_state(root, store=store)
     preview = plan.enrollment.evidence or {}
     enrollment = plan_enrollment(plan.enrollment.crops, track_id=plan.track_id,
                                  player_name=player_name, state=state, created_at=created_at,
