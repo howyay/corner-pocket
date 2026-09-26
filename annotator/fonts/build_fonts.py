@@ -89,17 +89,15 @@ def common_codepoints(src, ui):
 
 
 def unicode_range(points):
-    """A compact CSS unicode-range for a set of code points (runs become U+A-B)."""
-    runs, start, prev = [], None, None
-    for p in sorted(points):
-        if start is None:
-            start = prev = p
-        elif p == prev + 1:
-            prev = p
-        else:
-            runs.append((start, prev)); start = prev = p
-    runs.append((start, prev))
-    return ','.join(f'U+{a:X}' if a == b else f'U+{a:X}-{b:X}' for a, b in runs)
+    """The unicode-range for the -common faces: the blocks their code points fall in.
+
+    Coarse on purpose. The UI face of the same family/weight has no unicode-range, so it
+    covers everything and is tried first; the browser fetches a -common file only for a
+    character the UI face lacks *and* the range includes. An exact per-character list
+    (about 18 KB, repeated in each rule) would change nothing but the CSS size."""
+    blocks = ((0x3000, 0x303F), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xFF00, 0xFFEF))
+    used = [(a, b) for a, b in blocks if any(a <= p <= b for p in points)]
+    return ','.join(f'U+{a:X}-{b:X}' for a, b in used)
 
 
 def copy_codepoints():
