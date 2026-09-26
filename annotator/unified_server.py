@@ -673,12 +673,24 @@ class Backend:
         if dataset in cache:
             return cache[dataset]
         try:
-            from src.frame_inference import app_prior_for
-            value = app_prior_for(dataset, root=self.root)
+            # the hand anchors come from the store (the file by default); the quad rule
+            # is src.frame_inference's (earliest saved time, first four points, ordered)
+            from src.frame_inference import anchor_quad
+            value = anchor_quad(self.store().anchors_get(dataset))
         except Exception:
             value = None
         cache[dataset] = value
         return value
+
+    def _prior_source(self, dataset):
+        """Where the hand anchors behind the prior live (shown with the quad), or None."""
+        if self._prior_for(dataset) is None:
+            return None
+        from src.frame_inference import app_prior_source
+        source = app_prior_source(dataset, root=self.root)
+        if source is not None and type(self.store()).__name__ == "JsonStore":
+            return source
+        return f"postgres:json_documents/out/pid_anchors_{dataset}.json"
 
     def _unified_detection(self, dataset, frame_index, frame):
         """Table quad + ball candidates in full-res frame pixels. Detection
@@ -694,8 +706,7 @@ class Backend:
         import cv2
         import numpy as np
         from src.table_detect import detect_table
-        from src.frame_inference import (app_prior_source, detect_table_for_frame,
-                                         table_quad_note)
+        from src.frame_inference import detect_table_for_frame, table_quad_note
         from src.ball_detect import detect_ball_candidates
         scale = 2.0
         small = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2), interpolation=cv2.INTER_AREA)
@@ -720,8 +731,7 @@ class Backend:
         # The operator cannot see why a frame has no quad unless the reason travels
         # with the payload: corners=null alone is a silent absence.  Additive field,
         # localized in the viewer.
-        note = table_quad_note(table, seed_file=app_prior_source(dataset, root=self.root),
-                               refused=refused)
+        note = table_quad_note(table, seed_file=self._prior_source(dataset), refused=refused)
         corners, balls = None, []
         if table.get('corners') is not None:
             quad = np.asarray(table['corners'], np.float32) * scale
@@ -1294,7 +1304,7 @@ class Backend:
         t = number(t, 0, 1800, "t")
         frame = self.frame(t)
         height, width = frame.shape[:2]
-        saved = load(self.out / "pid_anchors_vod30.json", {"anchors": {}})
+        saved = self.store().anchors_get("vod30")
         points = next((v for k, v in saved["anchors"].items() if float(k) == t), None)
         suggested = None
         calib = load(self.out / "calib_vod30.json", {})
@@ -1504,11 +1514,8 @@ class Backend:
                 if not isinstance(point, list) or len(point) != 2:
                     raise APIError("each anchor must be [x,y]")
                 clean.append([number(point[0], 0, info["width"] - 1, "x"), number(point[1], 0, info["height"] - 1, "y")])
-            path = self.out / "pid_anchors_vod30.json"
-            saved = load(path, {"anchors": {}})
-            key = next((k for k in saved["anchors"] if float(k) == info["t"]), str(info["t"]))
-            saved["anchors"][key] = clean
-            atomic_save(path, saved)
+            # an existing time keeps its key spelling, a new one is keyed str(t) - as before
+            self.store().anchors_put("vod30", str(info["t"]), clean)
             return {"ok": True, "t": info["t"], "pts": clean}
         if route == "seeds":
             if self.job["status"] == "running":

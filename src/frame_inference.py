@@ -23,8 +23,19 @@ def _saved_anchor_quad(path, n=4):
     and that is the time the viewer opens on.
     """
     try:
+        saved = json.loads(Path(path).read_text())
+    except Exception:
+        return None
+    return anchor_quad(saved, n)
+
+
+def anchor_quad(saved, n=4):
+    """The ordered quad of the earliest saved anchor set in ``{"anchors": {t: pts}}``,
+    or None - the same rule as :func:`_saved_anchor_quad`, for a document already
+    read (the server reads it through the store)."""
+    try:
         import numpy as np
-        anchors = json.loads(Path(path).read_text())['anchors']
+        anchors = saved['anchors']
         key = min(anchors, key=float)
         pts = np.asarray(anchors[key][:n], np.float32)
     except Exception:

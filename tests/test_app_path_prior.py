@@ -85,17 +85,20 @@ class PriorResolutionTests(unittest.TestCase):
         self.save('pid_anchors_vod30.json', {'anchors': {'70.0': ANCHORS}})
         backend = Backend(self.root)
         calls = []
-        import src.frame_inference as frame_inference
-        original = frame_inference.app_prior_for
+        store = backend.store()                     # the anchors come through the store now
+        original = store.anchors_get
 
-        def counting(dataset, root=None):
+        def counting(dataset):
             calls.append(dataset)
-            return original(dataset, root=root)
+            return original(dataset)
 
-        with patch.object(frame_inference, 'app_prior_for', side_effect=counting):
+        with patch.object(store, 'anchors_get', side_effect=counting):
             first = backend._prior_for('vod30')
             second = backend._prior_for('vod30')
         self.assertEqual(calls, ['vod30'], 'the reference is read once per dataset')
+        from src.frame_inference import app_prior_for
+        np.testing.assert_allclose(np.asarray(first), np.asarray(app_prior_for('vod30', root=self.root)),
+                                   err_msg='the same quad the offline harness resolves')
         np.testing.assert_allclose(np.asarray(first), np.asarray(second))
         self.assertIsNone(backend._prior_for('highlight'))
 
