@@ -61,7 +61,7 @@ class PaletteContrast(unittest.TestCase):
     def test_stage_labels_read_on_the_dark_frame_in_both_themes(self):
         plate = over(self.dark['stage-plate'], self.dark['stage-bg'])
         plate = '#%02x%02x%02x' % tuple(plate)
-        for ink in ('stage-ink', 'stage-ink-hi', 'stage-dim', 'stage-event', 'stage-bound',
+        for ink in ('stage-ink', 'stage-ink-hi', 'stage-event', 'stage-bound',
                     'stage-brass-hi', 'stage-green', 'stage-amber', 'stage-red'):
             with self.subTest(ink=ink):
                 self.assertGreaterEqual(ratio(self.dark[ink], plate), 4.5)

@@ -44,7 +44,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .stage-note[data-live="1"] { top: 42px; }
 .stage-note[hidden] { display: none; }
 .stage-note.error { border-color: var(--stage-red); color: var(--stage-red); }
-#t-overlay circle, #t-overlay .u-player { }
 /* The overlay is drawn on the video frame, which is dark in both themes: inside it
    the accent tokens resolve to the stage accents, so a light page never puts dark
    brass or red on the picture. */
