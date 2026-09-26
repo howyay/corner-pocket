@@ -779,3 +779,53 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   assert.ok(print.length > 20 && /header[^{]*\{[^}]*display:none/.test(print) && /\.no-print[^{]*\{[^}]*display:none/.test(print), 'print hides the shell chrome and the sheet buttons');
   assert.ok(/\.results-sheet[^{]*\.note[^{]*\{[^}]*background:#fff/.test(print), 'the scope note prints on white, not on the dark panel');
 });
+test('delete only an unsigned event; otherwise hide it from history, which erases nothing (R1)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.players=[{id:'pa',name:'Ada',status:'Active',rating:1}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t0',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'registration',entrants:[E('x',null,'Xu')],matches:[]};
+    data.history=[
+      {id:'h1',name:'Signed night',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-01T12:00:00Z',entrants:[E('a','pa','Ada'),E('b',null,'Bo')],
+       matches:[{id:'m1',round:1,sides:['a','b'],score:[3,1],status:'complete',result:'played',winnerId:'a',absent:[]}]},
+      {id:'h2',name:'Mistake',format:'singles',raceTo:1,status:'active',archivedAt:'2026-09-02T12:00:00Z',entrants:[E('c',null,'Cy')],matches:[]},
+      {id:'h3',name:'Hidden night',hidden:true,format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-03T12:00:00Z',entrants:[E('a3','pa','Ada'),E('d',null,'Di')],
+       matches:[{id:'m3',round:1,sides:['a3','d'],score:[0,0],status:'complete',result:'forfeit',winnerId:'a3',absent:[]}]}]`);
+  h.evaluate('render=()=>{}');
+  for (const [lang, del, hide, unhide, showHidden] of [['en', 'Delete event', 'Hide from history', 'Show in history', 'Show 1 hidden'], ['zh', '删除赛事', '从历史中隐藏', '恢复显示', '显示 1 场已隐藏']]) {
+    h.evaluate(`lang='${lang}';showHidden=false`);
+    const html = h.evaluate('matchesScreen()');
+    const block = id => { const i = html.indexOf(`data-id="${id}"`); return i < 0 ? '' : html.slice(html.lastIndexOf('<details', i), html.indexOf('</details>', i)); };
+    assert.ok(block('h1').includes(`>${hide}<`) && !block('h1').includes(`>${del}<`), `${lang}: a signed event can only be hidden`);
+    assert.ok(block('h2').includes(`>${del}<`), `${lang}: an unsigned event can be deleted`);
+    assert.ok(!html.includes('Hidden night'), `${lang}: a hidden event is out of the list`);
+    assert.ok(html.includes(`>${showHidden}<`), `${lang}: the hidden count is offered`);
+    h.evaluate('showHidden=true');
+    const all = h.evaluate('matchesScreen()');
+    assert.ok(all.includes('Hidden night') && all.includes(`>${unhide}<`), `${lang}: hidden events can be shown and restored`);
+    assert.ok(h.evaluate('setupScreen()').includes('data-action="event-delete" data-id="t0"'), `${lang}: tonight, unsigned, can be deleted from Set up`);
+  }
+  assert.equal(h.evaluate('JSON.stringify(resultStats("pa"))'), '{"wins":2,"losses":0}', 'a hidden event still counts: hiding erases nothing');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  const asked = [];
+  h.context.confirm = msg => { asked.push(msg); return false; };
+  h.evaluate("lang='en'");
+  await click({action: 'event-delete', id: 'h2'});
+  await click({action: 'event-hide', id: 'h1', hidden: 'true'});
+  assert.equal(h.evaluate('calls.length'), 0, 'a cancelled confirm sends nothing');
+  assert.deepEqual(asked, ['Delete “Mistake”? No result was signed in it. This cannot be undone.', 'Hide “Signed night” from history? Its results and every player’s stats stay; you can show it again.']);
+  h.context.confirm = msg => { asked.push(msg); return true; };
+  h.evaluate("lang='zh'");
+  await click({action: 'event-delete', id: 'h2'});
+  await click({action: 'event-hide', id: 'h1', hidden: 'true'});
+  await click({action: 'event-hide', id: 'h3', hidden: 'false'});
+  assert.equal(asked[2], '删除“Mistake”？该赛事没有已签赛果。此操作无法撤销。');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [
+    {name: 'tournament_delete', payload: {id: 'h2', confirm: true}},
+    {name: 'tournament_hide', payload: {id: 'h1', hidden: true, confirm: true}},
+    {name: 'tournament_hide', payload: {id: 'h3', hidden: false, confirm: true}}]);
+  for (const [action, en, zh] of [['tournament_delete', 'Event deleted (nothing was signed)', '删除赛事（无已签赛果）'], ['tournament_hide', 'Event hidden / shown in history', '赛事在历史中隐藏 / 恢复']]) {
+    h.evaluate(`lang='en'`); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'X'}})`).includes(en));
+    h.evaluate(`lang='zh'`); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'X'}})`).includes(zh));
+  }
+  assert.equal(h.evaluate(`validationMessage('An event with a signed result cannot be deleted; hide it from history instead')`), '有已签赛果的赛事不能删除，请改为从历史中隐藏。');
+});

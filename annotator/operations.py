@@ -99,7 +99,7 @@ class Operations:
                     t['name'] = default_name()
             context = self._event_context(state, payload)
             self._apply(state, payload)
-            if payload.get('action') != 'tournament_new':
+            if payload.get('action') not in ('tournament_new', 'tournament_delete'):
                 context.update(self._event_context(state, payload))
             return self._commit(state, payload['action'], context)
 
@@ -153,8 +153,10 @@ class Operations:
                   ('note_', state['notes'])]
         if not isinstance(action, str):
             return context
-        if action == 'tournament_rename':
+        if action in ('tournament_rename', 'tournament_delete', 'tournament_hide'):
             night = next((n for n in [t] + state['history'] if n['id'] == payload.get('id')), None)
+            if night and action == 'tournament_hide' and 'hidden' in night:
+                return dict(id=night['id'], name=night['name'], hidden=night['hidden'])
             return dict(id=night['id'], name=night['name']) if night else context
         if action.startswith('tournament_'):
             return dict(id=t['id'], name=t['name'])
@@ -376,6 +378,27 @@ class Operations:
         elif action == 'tournament_rename':
             # Name only, current or archived: format, race, tables and results stay locked.
             self._find([t] + s['history'], p.get('id'))['name'] = text(p.get('name'), 'name', 120)
+        elif action == 'tournament_delete':
+            # R1: only a mistake with nothing signed may go; a signed result is permanent.
+            night = self._find([t] + s['history'], p.get('id'))
+            if p.get('confirm') is not True:
+                raise ValueError('Explicit confirmation required')
+            if any(m.get('result') in ('played', 'forfeit') for m in night['matches']):
+                raise ValueError('An event with a signed result cannot be deleted; hide it from history instead')
+            if night is t:
+                s['tournament'] = tournament()
+            else:
+                s['history'].remove(night)
+        elif action == 'tournament_hide':
+            # R1: a flag on an archived event; every match and stat stays.
+            night = self._find(s['history'] + [t], p.get('id'))
+            if p.get('confirm') is not True:
+                raise ValueError('Explicit confirmation required')
+            if night is t:
+                raise ValueError('Only an archived event can be hidden')
+            if type(p.get('hidden')) is not bool:
+                raise ValueError('hidden must be boolean')
+            night['hidden'] = p['hidden']
         elif action == 'tournament_new':
             if p.get('confirm') is not True:
                 raise ValueError('Explicit confirmation required')

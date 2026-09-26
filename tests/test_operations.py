@@ -500,6 +500,72 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(state['history'][-1]['name'], 'Friday 8-Ball')
         self.assertTrue(all(night['name'].strip() for night in state['history']))
 
+    def test_delete_only_an_event_with_no_signed_result(self):
+        """R1: a mistaken event can be removed while nothing was signed; never after."""
+        # current event in registration: delete resets it, nothing archived
+        self.call('tournament_setup', name='Oops')
+        self.call('entrant_add', members=[{'name': 'Ada'}])
+        old = self.ops.get()['tournament']['id']
+        with self.assertRaisesRegex(ValueError, '^Explicit confirmation required$'):
+            self.call('tournament_delete', id=old)
+        state = self.call('tournament_delete', id=old, confirm=True)
+        self.assertEqual((state['tournament']['entrants'], state['tournament']['name'], state['history']), ([], '', []))
+        self.assertNotEqual(state['tournament']['id'], old)
+        self.assertEqual(state['events'][-1]['action'], 'tournament_delete')
+        self.assertEqual(state['events'][-1]['context'], {'id': old, 'name': 'Oops'})
+        # an unplayed draw (byes only) is still deletable; it was archived by mistake
+        self.call('tournament_setup', name='Empty draw')
+        self.register(3)
+        state = self.call('tournament_new', confirm=True)
+        archived = state['history'][-1]['id']
+        self.assertTrue(any(m.get('result') == 'bye' for m in state['history'][-1]['matches']))
+        state = self.call('tournament_delete', id=archived, confirm=True)
+        self.assertEqual(state['history'], [])
+        self.assertEqual(state['events'][-1]['context'], {'id': archived, 'name': 'Empty draw'})
+        # one signed result (played or forfeit) makes it permanent: current and archived
+        for finish in ('match_complete', 'match_forfeit'):
+            with self.subTest(finish=finish):
+                state = self.register(2)
+                match = state['tournament']['matches'][0]
+                if finish == 'match_complete':
+                    self.call('match_schedule', id=match['id'])
+                    self.call('match_score', id=match['id'], score=[7, 1])
+                    self.call('match_complete', id=match['id'])
+                else:
+                    self.call('match_forfeit', id=match['id'], side=1)
+                current = self.ops.get()['tournament']['id']
+                saved = self.ops.path.read_bytes()
+                with self.assertRaisesRegex(ValueError, '^An event with a signed result cannot be deleted; hide it from history instead$'):
+                    self.call('tournament_delete', id=current, confirm=True)
+                self.assertEqual(self.ops.path.read_bytes(), saved)
+                archived = self.call('tournament_new', confirm=True)['history'][-1]['id']
+                with self.assertRaisesRegex(ValueError, 'cannot be deleted'):
+                    self.call('tournament_delete', id=archived, confirm=True)
+        with self.assertRaisesRegex(ValueError, '^Unknown id$'):
+            self.call('tournament_delete', id='missing', confirm=True)
+
+    def test_hide_from_history_is_a_flag_that_erases_nothing(self):
+        """R1: hiding keeps every match and every stat; it can be undone; it is audited."""
+        state = self.register(2)
+        match = state['tournament']['matches'][0]
+        self.call('match_forfeit', id=match['id'], side=0)
+        archived = self.call('tournament_new', confirm=True)['history'][-1]
+        with self.assertRaisesRegex(ValueError, '^Explicit confirmation required$'):
+            self.call('tournament_hide', id=archived['id'], hidden=True)
+        with self.assertRaisesRegex(ValueError, 'Only an archived event can be hidden'):
+            self.call('tournament_hide', id=self.ops.get()['tournament']['id'], hidden=True, confirm=True)
+        with self.assertRaisesRegex(ValueError, 'hidden must be boolean'):
+            self.call('tournament_hide', id=archived['id'], hidden='yes', confirm=True)
+        state = self.call('tournament_hide', id=archived['id'], hidden=True, confirm=True)
+        hidden = state['history'][-1]
+        self.assertIs(hidden['hidden'], True)
+        self.assertEqual({k: v for k, v in hidden.items() if k != 'hidden'}, archived)
+        self.assertEqual(state['events'][-1]['action'], 'tournament_hide')
+        self.assertEqual(state['events'][-1]['context'], {'id': archived['id'], 'name': archived['name'], 'hidden': True})
+        state = self.call('tournament_hide', id=archived['id'], hidden=False, confirm=True)
+        self.assertIs(state['history'][-1]['hidden'], False)
+        self.assertEqual(state['events'][-1]['context']['hidden'], False)
+
     def test_rename_changes_only_the_name_and_is_audited(self):
         """R2: a name-only rename after the draw and for archived events; rules stay locked."""
         self.call('tournament_setup', name='Old name', raceTo=5, tables=2)
