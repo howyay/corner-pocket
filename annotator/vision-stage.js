@@ -33,7 +33,7 @@ const COPY = {
     selectCueHint:'Selecting a cue plays its window on the stage and loops in it; freeze to inspect one frame.',
     noCrops:'No crops in this queue.', noTracks:'No track windows are available for this VOD.',
     noEvents:'No event candidates in this filter.', vodOnlyAnchors:'Anchors are available for the vod30 dataset only.',
-    keys:'SPACE play · ←/→ step · 0–9/U/C label · A/B identity · V verdict · ⏎ save',
+    keys:'SPACE play · ←/→ or ,/. step (Shift ×10) · F freeze · arrows nudge the selection (Shift 10 px) · Esc deselect · 0–9/U/C label · A/B identity · V verdict · ⏎ save',
     cropAtFrame:'crop at this frame', selectedBall:'Ball', trackWord:'Track', box:'Box', anchorWord:'Anchor',
     seedA:'Player A', seedB:'Player B',
     // Identity labelling: one regular (the identity pipeline), or a guest name
@@ -138,7 +138,7 @@ const COPY = {
     selectCueHint:'选择线索会在舞台上播放其片段并循环；冻结后可检查单帧。',
     noCrops:'此队列没有裁剪图。', noTracks:'此录像没有可用的轨迹窗口。',
     noEvents:'此筛选下没有事件候选。', vodOnlyAnchors:'锚点仅适用于 vod30 数据集。',
-    keys:'空格 播放 · ←/→ 步进 · 0–9/U/C 标注 · A/B 身份 · V 判定 · ⏎ 保存',
+    keys:'空格 播放 · ←/→ 或 ,/. 步进（Shift ×10）· F 冻结 · 方向键 微移选中项（Shift 10 px）· Esc 取消选择 · 0–9/U/C 标注 · A/B 身份 · V 判定 · ⏎ 保存',
     cropAtFrame:'此帧的裁剪图', selectedBall:'球', trackWord:'轨迹', box:'标注框', anchorWord:'锚点',
     seedA:'选手 A', seedB:'选手 B',
     whichRegular:'选择常客', guestOption:'— 不是常客（访客）—', guestName:'访客姓名',
@@ -455,7 +455,7 @@ function chipsHTML(s) {
     <div class="vs-source-head"><strong>${esc(t('sources'))}</strong><button class="vs-source-close" data-vs-action="source-panel" aria-label="${esc(t('closePanel'))}">×</button></div>
     ${sourcePanelHTML(s)}</div>` : '';
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
-  <div class="vs-chipmeta">${freshness}<span class="vs-keys">${esc(t('keys'))}</span></div>${panel}`;
+  <div class="vs-chipmeta">${freshness}<span class="vs-keys" role="note" aria-label="${esc(t('keyMap'))}: ${esc(t('keys'))}">${esc(t('keys'))}</span></div>${panel}`;
 }
 // Who made this candidate: one quiet line under the card's facts, never a badge.
 // A machine-produced candidate says so in its own words (translated in 中); an
