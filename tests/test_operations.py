@@ -1,6 +1,7 @@
 """Fixture-only operations invariants; python -m unittest discover -s tests."""
 import json
 from pathlib import Path
+import random
 import tempfile
 import threading
 import unittest
@@ -543,6 +544,99 @@ class OperationsTests(unittest.TestCase):
                     self.call('tournament_delete', id=archived, confirm=True)
         with self.assertRaisesRegex(ValueError, '^Unknown id$'):
             self.call('tournament_delete', id='missing', confirm=True)
+
+    def play_round_one(self, count):
+        """Register `count` guests, rack, and sign every played round-1 match 7-2 (side A wins)."""
+        state = self.register(count)
+        for match in [m for m in state['tournament']['matches'] if m['round'] == 1 and m.get('result') != 'bye']:
+            self.call('match_schedule', id=match['id'])
+            self.call('match_score', id=match['id'], score=[7, 2])
+            state = self.call('match_complete', id=match['id'])
+        return state
+
+    def test_revival_draw_fills_a_bye_and_is_audited(self):
+        """R6: a seeded draw picks WHO re-enters (into a round-1 bye whose winner has not
+        played round 2); it never writes a result and never changes a signed one."""
+        state = self.play_round_one(6)  # 6 entrants: 2 byes, 2 played round-1 matches
+        t = state['tournament']
+        signed_before = {m['id']: json.dumps(m, sort_keys=True) for m in t['matches'] if m.get('result') in ('played', 'forfeit')}
+        losers = sorted(next(side for side in m['sides'] if side != m['winnerId'])
+                        for m in t['matches'] if m['round'] == 1 and m.get('result') == 'played')
+        with self.assertRaisesRegex(ValueError, '^Explicit confirmation required$'):
+            self.call('revival_draw')
+        before_draw = json.loads(json.dumps(t['matches']))
+        state = self.call('revival_draw', confirm=True)
+        t = state['tournament']
+        event = state['events'][-1]
+        self.assertEqual(event['action'], 'revival_draw')
+        context = event['context']
+        self.assertEqual(context['pool'], losers)
+        self.assertIsInstance(context['seed'], int)
+        # the audit alone reproduces the draw: same seed, same sorted pool, same pick
+        self.assertEqual(context['entrant'], random.Random(context['seed']).choice(context['pool']))
+        entrant = next(e for e in t['entrants'] if e['id'] == context['entrant'])
+        self.assertEqual(context['name'], entrant['members'][0]['name'])
+        # the bye becomes a real round-1 match; its winner takes the round-2 place
+        target = self.ops._find(t['matches'], context['match'])
+        self.assertEqual(target['round'], 1)
+        self.assertIn(context['entrant'], target['sides'])
+        self.assertTrue(all(target['sides']))
+        self.assertEqual(target['status'], 'scheduled')
+        self.assertNotIn('result', target)
+        downstream = self.ops._find(t['matches'], context['next'])
+        self.assertIn(context['match'], downstream['sources'])
+        self.assertEqual((downstream['round'], downstream['status']), (2, 'pending'))
+        self.assertIn(None, downstream['sides'])
+        self.assertEqual(t['revival']['entrant'], context['entrant'])
+        # every signed result is byte-identical, and the revived loss still stands
+        self.assertEqual({m['id']: json.dumps(m, sort_keys=True) for m in t['matches'] if m['id'] in signed_before}, signed_before)
+        lost = next(m for m in t['matches'] if m.get('result') == 'played' and context['entrant'] in m['sides'])
+        self.assertNotEqual(lost['winnerId'], context['entrant'])
+        with self.assertRaisesRegex(ValueError, 'already drawn'):
+            self.call('revival_draw', confirm=True)
+        # undo restores the bracket exactly, until the next signed result
+        state = self.call('revival_undo', confirm=True)
+        self.assertEqual(state['tournament']['matches'], before_draw)
+        self.assertNotIn('revival', state['tournament'])
+        self.assertEqual(state['events'][-1]['action'], 'revival_undo')
+        self.assertEqual(state['events'][-1]['context']['seed'], context['seed'])
+        state = self.call('revival_draw', confirm=True)
+        match = self.ops._find(state['tournament']['matches'], state['events'][-1]['context']['match'])
+        self.call('match_schedule', id=match['id'])
+        self.call('match_score', id=match['id'], score=[7, 0])
+        self.call('match_complete', id=match['id'])
+        saved = self.ops.path.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'a result has been signed since the draw'):
+            self.call('revival_undo', confirm=True)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+
+    def test_revival_draw_refuses_with_a_reason(self):
+        """R6: unfinished round 1, no played loser, no bye slot, or a signed round-2 result."""
+        self.register(5)
+        saved = self.ops.path.read_bytes()
+        with self.assertRaisesRegex(ValueError, '^Finish round 1 first; every round-1 loser must be in the draw$'):
+            self.call('revival_draw', confirm=True)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+        self.call('tournament_new', confirm=True)
+        state = self.register(3)  # the only played round-1 match ends in a forfeit
+        real = next(m for m in state['tournament']['matches'] if m['round'] == 1 and all(m['sides']))
+        self.call('match_forfeit', id=real['id'], side=1)
+        with self.assertRaisesRegex(ValueError, '^No round-1 loser to draw from$'):
+            self.call('revival_draw', confirm=True)
+        self.call('tournament_new', confirm=True)
+        self.play_round_one(4)  # a power of two has no bye to fill
+        with self.assertRaisesRegex(ValueError, '^No round-2 bye slot to fill$'):
+            self.call('revival_draw', confirm=True)
+        self.call('tournament_new', confirm=True)
+        state = self.play_round_one(6)
+        second = next(m for m in state['tournament']['matches'] if m['round'] == 2 and all(m['sides']))
+        self.call('match_schedule', id=second['id'])
+        self.call('match_score', id=second['id'], score=[7, 1])
+        self.call('match_complete', id=second['id'])
+        with self.assertRaisesRegex(ValueError, '^Round 2 has a signed result; the draw is closed$'):
+            self.call('revival_draw', confirm=True)
+        with self.assertRaisesRegex(ValueError, '^No revival draw to undo$'):
+            self.call('revival_undo', confirm=True)
 
     def test_hide_from_history_is_a_flag_that_erases_nothing(self):
         """R1: hiding keeps every match and every stat; it can be undone; it is audited."""

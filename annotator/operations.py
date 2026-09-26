@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import math
+import random
 import re
 from urllib.parse import urlsplit
 from pathlib import Path
@@ -153,6 +154,9 @@ class Operations:
                   ('note_', state['notes'])]
         if not isinstance(action, str):
             return context
+        if action in ('revival_draw', 'revival_undo'):
+            # the whole draw is audited, so anyone can re-run it: seed, sorted pool, pick, slot
+            return dict(t['revival']) if t.get('revival') else context
         if action in ('tournament_rename', 'tournament_delete', 'tournament_hide'):
             night = next((n for n in [t] + state['history'] if n['id'] == payload.get('id')), None)
             if night and action == 'tournament_hide' and 'hidden' in night:
@@ -375,6 +379,62 @@ class Operations:
                 match.update(status='complete', winnerId=match['sides'][winner], table=None,
                              result='forfeit' if action == 'match_forfeit' else 'played', completedAt=timestamp())
                 self._propagate(t)
+        elif action in ('revival_draw', 'revival_undo'):
+            if p.get('confirm') is not True:
+                raise ValueError('Explicit confirmation required')
+            signed = sum(1 for m in t['matches'] if m.get('result') in ('played', 'forfeit'))
+            if action == 'revival_undo':
+                drawn = t.get('revival')
+                if not drawn:
+                    raise ValueError('No revival draw to undo')
+                if signed != drawn['signed']:
+                    raise ValueError('Undo is closed: a result has been signed since the draw')
+                match = self._find(t['matches'], drawn['match'])
+                match['sides'][drawn['side']] = None
+                match.update(status='complete', winnerId=drawn['holder'], result='bye', table=None, absent=[], score=[0, 0])
+                self._find(t['matches'], drawn['next']).update(status='pending', table=None, absent=[], score=[0, 0])
+                del t['revival']
+                self._propagate(t)
+                return
+            # R6, the honest version: chance picks WHO re-enters, never who wins.
+            if t.get('revival'):
+                raise ValueError('A second chance was already drawn for this event')
+            if not t['matches']:
+                raise ValueError('The draw has not started')
+            if any(m['round'] >= 2 and m.get('result') in ('played', 'forfeit') for m in t['matches']):
+                raise ValueError('Round 2 has a signed result; the draw is closed')
+            first = [m for m in t['matches'] if m['round'] == 1]
+            if any(all(m['sides']) and m['status'] != 'complete' for m in first):
+                raise ValueError('Finish round 1 first; every round-1 loser must be in the draw')
+            # a forfeit loser did not play (no-show or withdrawal) and is not revived
+            pool = sorted(next(side for side in m['sides'] if side != m['winnerId'])
+                          for m in first if m.get('result') == 'played')
+            if not pool:
+                raise ValueError('No round-1 loser to draw from')
+            slots = []
+            for m in first:
+                following = next((d for d in t['matches'] if m['id'] in d['sources']), None)
+                if (m.get('result') == 'bye' and following and following['status'] in ('pending', 'scheduled', 'delayed')
+                        and not following['table'] and following['score'] == [0, 0]):
+                    slots.append((m, following))
+            if not slots:
+                raise ValueError('No round-2 bye slot to fill')
+            # the last bye in the draw belongs to the lowest seed that has one
+            match, following = slots[-1]
+            seed = random.SystemRandom().randrange(2 ** 31)
+            entrant = random.Random(seed).choice(pool)
+            side = match['sides'].index(None)
+            holder = match['winnerId']
+            members = self._find(t['entrants'], entrant)['members']
+            names = {x['id']: x['name'] for x in s['players']}
+            t['revival'] = dict(seed=seed, pool=pool, entrant=entrant, match=match['id'], next=following['id'],
+                                side=side, holder=holder, signed=signed, drawnAt=timestamp(),
+                                name=' / '.join(names.get(x['pid'], x['name']) for x in members))
+            match['sides'][side] = entrant
+            match.pop('result')
+            match.update(status='pending', winnerId=None, table=None, absent=[])
+            following.update(status='pending', table=None, absent=[])
+            self._propagate(t)
         elif action == 'tournament_rename':
             # Name only, current or archived: format, race, tables and results stay locked.
             self._find([t] + s['history'], p.get('id'))['name'] = text(p.get('name'), 'name', 120)

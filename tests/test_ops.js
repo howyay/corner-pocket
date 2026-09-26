@@ -829,3 +829,56 @@ test('delete only an unsigned event; otherwise hide it from history, which erase
   }
   assert.equal(h.evaluate(`validationMessage('An event with a signed result cannot be deleted; hide it from history instead')`), '有已签赛果的赛事不能删除，请改为从历史中隐藏。');
 });
+test('a second chance is a labelled random draw, confirmed, undoable, never a result (R6)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[];data.notes=[];data.history=[];data.players=[];
+    const E=(id,name)=>({id,members:[{pid:null,name}]});
+    data.tournament={id:'t1',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'active',
+      entrants:[E('a','Ann'),E('b','Bea'),E('c','Cai'),E('d','Dee'),E('e','Eve'),E('f','Fay')],
+      matches:[{id:'m1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[],sources:[]},
+               {id:'m2',round:1,sides:['b',null],score:[0,0],status:'complete',result:'bye',winnerId:'b',absent:[],sources:[]},
+               {id:'m3',round:1,sides:['c','d'],score:[3,1],status:'complete',result:'played',winnerId:'c',absent:[],sources:[]},
+               {id:'m4',round:1,sides:['e','f'],score:[3,0],status:'complete',result:'played',winnerId:'e',absent:[],sources:[]},
+               {id:'m5',round:2,sides:['a','b'],score:[0,0],status:'scheduled',absent:[],sources:['m1','m2']},
+               {id:'m6',round:2,sides:['c','e'],score:[0,0],status:'scheduled',absent:[],sources:['m3','m4']}]}`);
+  h.evaluate('render=()=>{}');
+  for (const [lang, title, drawBtn, label] of [['en', 'Second chance', 'Draw a round-1 loser', 'Random draw, not a result'], ['zh', '复活赛', '抽取一名首轮负者', '随机抽签，不是赛果']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('matchesScreen()');
+    assert.ok(html.includes(`>${title}<`) && html.includes(`>${drawBtn}<`), `${lang}: the draw is offered while round 2 is unsigned`);
+    assert.ok(html.includes(label), `${lang}: it is labelled as a random draw`);
+  }
+  h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'scheduled',result:undefined,winnerId:null}");
+  assert.ok(!h.evaluate('matchesScreen()').includes('data-action="revival-draw"'), 'no draw until every round-1 loser is known');
+  h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'complete',result:'played',winnerId:'e'}");
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  const asked = [];
+  h.context.confirm = msg => { asked.push(msg); return false; };
+  h.evaluate("lang='en'");
+  await click({action: 'revival-draw'});
+  assert.equal(h.evaluate('calls.length'), 0, 'a cancelled confirm draws nothing');
+  assert.equal(asked[0], 'Draw one round-1 loser at random to re-enter the bracket in a bye slot? The draw is recorded with its seed; no result changes.');
+  h.context.confirm = msg => { asked.push(msg); return true; };
+  await click({action: 'revival-draw'});
+  // after the draw the card shows who, the pool and the seed, and offers undo
+  h.evaluate(`data.tournament.revival={seed:12345,pool:['d','f'],entrant:'f',name:'Fay',match:'m2',next:'m5',side:1,holder:'b',signed:2,drawnAt:'2026-09-26T20:00:00Z'};
+    Object.assign(data.tournament.matches[1],{sides:['b','f'],status:'scheduled',winnerId:null});delete data.tournament.matches[1].result;
+    Object.assign(data.tournament.matches[4],{sides:['a',null],status:'pending'})`);
+  h.evaluate("lang='zh'");
+  const drawn = h.evaluate('matchesScreen()');
+  assert.ok(drawn.includes('抽中：Fay') && drawn.includes('种子 12345') && drawn.includes('候选：Dee、Fay'), '中: who, the seed and the pool are shown');
+  assert.ok(drawn.includes('data-action="revival-undo"'), 'undo is offered until the next result');
+  assert.ok(!drawn.includes('data-action="revival-draw"'), 'one draw per event');
+  await click({action: 'revival-undo'});
+  assert.equal(asked.at(-1), '撤销这次复活抽签？该空位将恢复为轮空，签过的赛果不受影响。');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'revival_draw', payload: {confirm: true}}, {name: 'revival_undo', payload: {confirm: true}}]);
+  // after a newer signed result, undo is gone and the drawn line stays as history
+  h.evaluate("data.tournament.matches[5]={...data.tournament.matches[5],status:'complete',result:'played',winnerId:'c',score:[3,2]}");
+  const closed = h.evaluate('matchesScreen()');
+  assert.ok(!closed.includes('data-action="revival-undo"') && closed.includes('抽中：Fay'));
+  for (const [action, en, zh] of [['revival_draw', 'Second chance drawn (random, audited)', '复活赛抽签（随机，已记录）'], ['revival_undo', 'Second chance undone', '撤销复活赛抽签']]) {
+    h.evaluate("lang='en'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}})`).includes(en));
+    h.evaluate("lang='zh'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}})`).includes(zh));
+  }
+  assert.equal(h.evaluate(`validationMessage('No round-2 bye slot to fill')`), '没有可填补的第二轮轮空位。');
+});
