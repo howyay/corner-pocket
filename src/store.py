@@ -76,6 +76,7 @@ class Store(Protocol):
     def faces_remove(self, player_id: str) -> int: ...
     def seeds_get(self, dataset: str) -> dict: ...
     def seed_put(self, dataset: str, key: str, record: dict | None) -> dict: ...
+    def seed_file(self, dataset: str) -> dict: ...
     # operator records (section 4)
     def verdicts_get(self, dataset: str) -> dict: ...
     def verdict_put(self, dataset: str, event_id, fields: dict) -> dict: ...
@@ -192,7 +193,11 @@ class JsonStore:
         return self.out / "pid_seed.json"
 
     def seeds_get(self, dataset: str) -> dict:
-        return _read(self._seeds_path(dataset), {"seeds": {}}).get("seeds", {})
+        return self.seed_file(dataset).get("seeds", {})
+
+    def seed_file(self, dataset: str) -> dict:
+        """The whole pid_seed.json document ({"seeds": {...}} plus any top-level keys)."""
+        return _read(self._seeds_path(dataset), {"seeds": {}})
 
     def seed_put(self, dataset: str, key: str, record: dict | None) -> dict:
         path = self._seeds_path(dataset)

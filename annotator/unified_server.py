@@ -1329,7 +1329,7 @@ class Backend:
         return load(self.out / "pid2_tracklets.json", {})
 
     def seeds(self):
-        return load(self.out / "pid_seed.json", {"seeds": {}})
+        return self.store().seed_file("vod30")
 
     # A person track's label is one of the legacy role values the identity
     # pipeline reads (A / B / ignore), a guest name the operator typed, or null
@@ -1526,14 +1526,10 @@ class Backend:
             label = self.seed_label(p.get("label"))
             if p.get("label") is not None and label is None:
                 raise APIError("label must be A, B, ignore, a guest name up to 60 characters, or null")
-            saved = self.seeds()
-            key = f"{tid}:{win}"
-            if label is None:
-                saved["seeds"].pop(key, None)
-            else:
-                saved["seeds"][key] = dict(saved["seeds"].get(key, {}), win=win, t=t, track_id=tid, label=label)
-            atomic_save(self.out / "pid_seed.json", saved)
-            return {"ok": True, "seeds": saved["seeds"]}
+            # the same merge (existing keys kept, these four set) or removal, one locked write
+            seeds = self.store().seed_put("vod30", f"{tid}:{win}",
+                                          None if label is None else dict(win=win, t=t, track_id=tid, label=label))
+            return {"ok": True, "seeds": seeds}
         if route == "rebuild":
             if self.job["status"] == "running":
                 raise APIError("rebuild already running", 409)

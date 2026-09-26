@@ -251,9 +251,13 @@ class PostgresStore:
         conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("pool:doc:" + path,))
 
     def seeds_get(self, dataset: str) -> dict:
+        return self.seed_file(dataset).get("seeds", {})
+
+    def seed_file(self, dataset: str) -> dict:
+        """The whole pid_seed.json document, as stored."""
         self._seeds_dataset(dataset)
         with self._read() as conn:
-            return self._load_doc(conn, _doc_path("seeds", dataset), {"seeds": {}}).get("seeds", {})
+            return self._load_doc(conn, _doc_path("seeds", dataset), {"seeds": {}})
 
     def seed_put(self, dataset: str, key: str, record: dict | None) -> dict:
         from src.store_import import SeedsSet
