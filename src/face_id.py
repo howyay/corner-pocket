@@ -341,6 +341,20 @@ def add_faces(path, additions):
         return store_faces(path, gallery)
 
 
+def remove_faces(path, player_id):
+    """Delete every stored face of one player; returns how many rows were removed.
+
+    Same lock as add_faces. Other players' rows are rewritten unchanged; nothing is
+    written when the player had no rows (a missing store stays missing)."""
+    with _store_lock(path):
+        gallery = load_faces(path)
+        rows = gallery.pop(str(player_id), None)
+        if rows is None:
+            return 0
+        store_faces(path, gallery)
+        return len(rows)
+
+
 def load_faces(path):
     """Load the gallery; {} on missing or corrupted file (tolerant by design)."""
     path = Path(path)

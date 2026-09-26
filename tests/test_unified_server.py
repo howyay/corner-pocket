@@ -894,6 +894,82 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(match['player_id'], b['player_id'])
         self.assertEqual(best_match(a_face, pipeline._gallery_data())['player_id'], a['player_id'])
 
+    def _two_enrolled_with_a_live_pipeline(self):
+        """Ana and Bo enrolled through the real confirm; a running pipeline whose
+        index holds a cluster bound to each, with stored faces and face samples."""
+        from src.person_identity import IdentityIndex
+        from src.person_pipeline import PersonPipeline
+        index = IdentityIndex(self.out / 'identity' / 'clusters.json')
+        pipeline = PersonPipeline(self.root, face_engine=Mock(), identity=index)
+        self.backend._identity_pipeline = pipeline
+        (first, a_face), (second, b_face) = self._enrol_selection(6, 11), self._enrol_selection(9, 23)
+        a, b = self._confirm('Ana', first), self._confirm('Bo', second)
+        for cid, (who, emb) in enumerate(((a, a_face), (b, b_face)), start=1):
+            index.register(cid, [1.0] * 128, frame_index=cid)
+            index._clusters[cid].face = np.asarray(emb, np.float32)   # the persisted `face` slot
+            index.record_face_sample(cid, emb, eye_px=12.0, det_score=0.9, bbox=[1, 2, 3, 4], frame_index=cid)
+            index.explicit_assign(cid, who['player_id'])
+        return pipeline, index, a, b, a_face, b_face
+
+    def test_forget_removes_one_players_faces_everywhere_and_leaves_the_rest(self):
+        from src.face_id import best_match, load_faces
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        ops_before = self.backend.get(['api', 'operations'], {})
+        result = self.backend.post(['api', 'identity', 'forget'], {'player_id': a['player_id']})
+        self.assertEqual(result['removed'], {'store_faces': 3, 'scratch_faces': 0, 'clusters_unbound': 1,
+                                             'face_samples': 1, 'faces': 1})
+        store = load_faces(self.out / 'corner-pocket' / 'face_embeddings.json')
+        self.assertEqual(list(store), [b['player_id']], "Ana's rows are gone, Bo's stay")
+        self.assertEqual(len(store[b['player_id']]), 3)
+        saved = json.loads((self.out / 'identity' / 'clusters.json').read_text())
+        self.assertEqual((saved['1']['player_id'], saved['1']['face'], saved['1']['face_samples']), (None, None, []))
+        self.assertEqual(saved['2']['player_id'], b['player_id'])
+        self.assertEqual(len(saved['2']['face_samples']), 1)
+        self.assertIsNotNone(saved['2']['face'])
+        a_bytes = json.dumps([round(float(v), 4) for v in a_face])[1:40]
+        for path in self.out.rglob('*.json'):
+            self.assertNotIn(a_bytes, path.read_text(), f"none of Ana's embedding survives in {path}")
+        # the running pipeline no longer matches Ana, still matches Bo
+        self.assertIsNone(best_match(a_face, pipeline._gallery_data()))
+        self.assertEqual(best_match(b_face, pipeline._gallery_data())['player_id'], b['player_id'])
+        self.assertEqual(self.backend.get(['api', 'operations'], {}), ops_before, 'the roster is not touched')
+
+    def test_a_forgotten_player_is_not_auto_bound_on_the_next_frame(self):
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        self.backend.post(['api', 'identity', 'forget'], {'player_id': a['player_id']})
+        engine = pipeline._face_engine
+        engine.analyze.return_value = [{'bbox': [150, 150, 190, 200], 'eye_px': 12.0, 'det_score': 0.9,
+                                        'embedding': a_face}]
+        engine.quality.return_value = True
+        from src.face_id import best_match
+        engine.best_match.side_effect = best_match
+        pipeline.detector = lambda frame: [{'bbox': [100.0, 100.0, 300.0, 600.0], 'conf': 0.9}]
+        pipeline.body_encoder = lambda crops: [np.ones(128, np.float32)] * len(crops)
+        out = pipeline.process_frame(np.zeros((720, 1280, 3), np.uint8), frame_index=40)
+        self.assertEqual([p['player_id'] for p in out['persons']], [None])
+        self.assertEqual(out['events'], [], 'no bind event for a forgotten player')
+
+    def test_forget_of_an_unknown_player_is_404_and_writes_nothing(self):
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        paths = [self.out / 'corner-pocket' / 'face_embeddings.json', self.out / 'identity' / 'clusters.json',
+                 self.out / 'corner-pocket' / 'state.json']
+        before = [file_stamp(p) for p in paths]
+        for bad in ('no-such-player', ''):
+            with self.assertRaises(APIError) as error:
+                self.backend.post(['api', 'identity', 'forget'], {'player_id': bad})
+            self.assertEqual(error.exception.status, 404 if bad else 400)
+        self.assertEqual([file_stamp(p) for p in paths], before)
+
+    def test_reads_after_a_forget_still_write_nothing(self):
+        pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
+        self.backend.post(['api', 'identity', 'forget'], {'player_id': a['player_id']})
+        paths = [self.out / 'corner-pocket' / 'face_embeddings.json', self.out / 'identity' / 'clusters.json',
+                 self.out / 'corner-pocket' / 'state.json']
+        before = [file_stamp(p) for p in paths]
+        self.backend.get(['api', 'identity', 'status'], {})
+        self.backend.get(['api', 'operations'], {})
+        self.assertEqual([file_stamp(p) for p in paths], before)
+
     def test_identity_frame_read_leaves_the_index_file_untouched(self):
         """GET /api/identity/frame runs the tracker over one frame. That is
         observation: the index file used to be rewritten by every register()

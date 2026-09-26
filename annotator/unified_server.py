@@ -433,6 +433,37 @@ class Backend:
             raise APIError(f"identity models unavailable: {exc}", 503) from exc
         return {"unbound": True, "cluster_id": cluster_id}
 
+    def identity_forget(self, payload):
+        """Delete one player's face data, on the operator's explicit request.
+
+        Removes every face row of the player from the face store (and from the
+        enrolment scratch copy, which holds the last confirm's embeddings), unbinds
+        the player's clusters and drops their stored faces and face samples from
+        the identity index, and makes the running pipeline re-read the gallery, so
+        the player is not auto-bound again. The operations record (name, results)
+        is not touched. 404 when there is no face data for this player at all."""
+        from src.face_id import remove_faces
+        from src.person_identity import IdentityIndex
+        player_id = payload.get("player_id")
+        if not isinstance(player_id, str) or not player_id.strip():
+            raise APIError("player_id must be a non-empty string")
+        store = self.out / "corner-pocket" / "face_embeddings.json"
+        scratch = self.out / "enroll-eval" / "scratch" / "out" / "corner-pocket" / "face_embeddings.json"
+        with self._identity_lock:
+            pipeline = self._identity_pipeline
+            index = pipeline.identity if pipeline is not None else IdentityIndex(
+                self.out / "identity" / "clusters.json")
+            gallery = load(store, {}) or {}
+            bound = any(index.get(cid)["player_id"] == player_id for cid in index.clusters())
+            if player_id not in gallery and not bound and player_id not in (load(scratch, {}) or {}):
+                raise APIError("no face data for this player", 404)
+            removed = {"store_faces": remove_faces(store, player_id),
+                       "scratch_faces": remove_faces(scratch, player_id)}
+            removed.update(index.forget_player(player_id))
+            if pipeline is not None:
+                pipeline.reload_gallery()
+        return {"forgotten": True, "player_id": player_id, "removed": removed}
+
     # -- enrolling a regular from the person on screen ----------------------
     # Two steps on purpose: the preview only reads (no file is touched) and the
     # confirm is the one write, made by the operator's explicit click. The plan
@@ -1383,6 +1414,8 @@ class Backend:
             return self.identity_seed(payload)
         if parts == ['api', 'identity', 'unbind']:
             return self.identity_unbind(payload)
+        if parts == ['api', 'identity', 'forget']:
+            return self.identity_forget(payload)
         if parts == ['api', 'identity', 'enroll-preview']:
             return self.enroll_preview(payload)
         if parts == ['api', 'identity', 'enroll-confirm']:

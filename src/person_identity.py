@@ -339,6 +339,29 @@ class IdentityIndex:
     def clusters(self) -> list[int]:
         return sorted(self._clusters)
 
+    def forget_player(self, player_id: str) -> dict[str, int]:
+        """Remove a player's face data from the index and unbind their clusters.
+
+        Every cluster bound to `player_id` loses its binding, its stored face and its
+        enrolment face samples (the 512-d biometrics); the body bank (128-d OSNet,
+        not a face) and the cluster itself stay, so tracking is unaffected. Saves
+        once when anything changed. Returns what was removed.
+        """
+        removed = {"clusters_unbound": 0, "face_samples": 0, "faces": 0}
+        for cluster in self._clusters.values():
+            if cluster.player_id != player_id:
+                continue
+            removed["clusters_unbound"] += 1
+            removed["face_samples"] += len(cluster.faces)
+            removed["faces"] += int(cluster.face is not None)
+            cluster.player_id = None
+            cluster.evidence = None
+            cluster.face = None
+            cluster.faces = []
+        if removed["clusters_unbound"]:
+            self.save()
+        return removed
+
     # -- internals ---------------------------------------------------------
 
     def _check_dim(self, v: np.ndarray) -> None:
