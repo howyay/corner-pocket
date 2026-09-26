@@ -20,7 +20,7 @@ STATIC_ROOT = EVENTS_FILE.parent  # evidence images live next to events.json
 ANNOT_FILE = STATIC_ROOT / "annotations.json"
 # optional third arg: crop-set base dir (defaults to the first label set)
 CROP_BASE = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else \
-    Path("/home/operator/projects/pool/out/unlabeled_crops")
+    ROOT.parent / "out" / "unlabeled_crops"
 LABEL_META = CROP_BASE / "meta.json"
 LABELS_FILE = CROP_BASE / "labels.json"
 CROP_DIR = CROP_BASE

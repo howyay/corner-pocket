@@ -11,7 +11,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-sys.path.insert(0, '/home/operator/projects/pool/src')
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 from PIL import Image
 from sam3_cpu import load_sam3_image_model, make_processor
 
@@ -23,7 +24,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 CTX.mkdir(exist_ok=True)
 
 print('loading SAM3...', flush=True)
-model = load_sam3_image_model('/home/operator/projects/pool/data/sam3.safetensors', device='cpu')
+model = load_sam3_image_model(str(ROOT / 'data' / 'sam3.safetensors'), device='cpu')
 model.float()
 proc = make_processor(model, device='cpu')
 
