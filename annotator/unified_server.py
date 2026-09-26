@@ -261,6 +261,31 @@ def vod_replay_processor_class():
     return VodReplayLiveProcessor
 
 
+class _StoreOperations:
+    """The operations interface the handlers use (get / post / enroll_player), backed
+    by the store. ConflictError and ValueError reach the handlers unchanged."""
+
+    def __init__(self, store):
+        self._store = store
+
+    def get(self):
+        return self._store.ops_get()
+
+    def post(self, payload):
+        return self._store.ops_post(payload)
+
+    def enroll_player(self, player, context):
+        return self._store.enroll_player(player, context)
+
+    @property
+    def path(self):
+        """Where the document lives, for receipts: the file, or the database table."""
+        root = getattr(self._store, "root", None)
+        if type(self._store).__name__ == "JsonStore" and root is not None:
+            return root / "out" / "corner-pocket" / "state.json"
+        return "postgres:json_documents/out/corner-pocket/state.json"
+
+
 class Backend:
     def __init__(self, root=ROOT):
         self.root = Path(root)
@@ -272,6 +297,7 @@ class Backend:
         self.video_cache = {}
         self._clip_semaphore = threading.Semaphore(2)
         self._operations = None
+        self._store = None
         self._live = None
         self._identity_pipeline = None
         self._identity_error = None
@@ -312,11 +338,20 @@ class Backend:
 
     def operations(self):
         # Keep operations optional until requested; annotation-only fixtures remain usable.
+        # The operations document lives in the store (src/store.py): the JSON files by
+        # default, Postgres when POOL_DATABASE_URL is set - the same get/post contract.
         with self.lock:
             if self._operations is None:
-                from annotator.operations import Operations
-                self._operations = Operations(self.root)
+                self._operations = _StoreOperations(self.store())
             return self._operations
+
+    def store(self):
+        """The user-data store for this root, opened once (src.store.open_store)."""
+        with self.lock:
+            if self._store is None:
+                from src.store import open_store
+                self._store = open_store(self.root)
+            return self._store
 
     # -- identity pipeline (constructed lazily on first identity API use) ----
 
