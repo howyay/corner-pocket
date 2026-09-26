@@ -142,8 +142,12 @@ html{scroll-padding-top:var(--sp-4)}
 :is(#ops-shell, #ops-footer) nav button small{display:none}
 :is(#ops-shell, #ops-footer) .bar{gap:var(--sp-3)}
 }
+/* Reduced motion: state changes stay (colour, border, the fade that says "more to
+   scroll"), movement goes. Transitions become instant; the scroll-linked fade is not
+   motion the user did not cause, so it is kept (it only follows their own scroll). */
 @media(prefers-reduced-motion:reduce){
-:is(#ops-shell, #ops-footer),:is(#ops-shell, #ops-footer) *{animation:none!important;transition:none!important}
+:is(#ops-shell, #ops-footer),:is(#ops-shell, #ops-footer) *{transition-duration:0s!important;scroll-behavior:auto!important}
+:is(#ops-shell, #ops-footer) *:not(.vs-stagebar){animation-duration:0s!important;animation-iteration-count:1!important}
 }
 /* --- Fidelity pass vs design/corner-pocket/Corner Pocket Ops standalone-src.dc.html --- */
 html,body{-webkit-font-smoothing:antialiased}
@@ -208,7 +212,11 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell,#ops-footer) h3{font:600 var(--fs-xl) var(--display)}
 :is(#ops-shell,#ops-footer) label>span{font-size:var(--fs-xs);letter-spacing:.18em}
 :is(#ops-shell,#ops-footer) input:not([type=checkbox]),:is(#ops-shell,#ops-footer) select:not([multiple]),:is(#ops-shell,#ops-footer) textarea{padding:0 var(--sp-3);border-bottom:2px solid var(--line)}
-:is(#ops-shell,#ops-footer) input:focus,:is(#ops-shell,#ops-footer) select:focus,:is(#ops-shell,#ops-footer) textarea:focus{outline:none;border-bottom-color:var(--brass)}
+/* Fields show focus with a brass edge plus an inset ring. The ring is a box-shadow, so
+   a later `border` shorthand (e.g. .vs-field inputs) cannot erase it; the selector
+   carries an id so it outranks every per-surface field rule. */
+:is(#ops-shell,#ops-footer) input:focus,:is(#ops-shell,#ops-footer) select:focus,:is(#ops-shell,#ops-footer) textarea:focus{outline:none;border-color:var(--brass);box-shadow:inset 0 -2px 0 var(--brass),0 0 0 1px var(--brass)}
+:is(#ops-shell,#ops-footer) input[type=checkbox]:focus-visible,:is(#ops-shell,#ops-footer) input[type=range]:focus-visible{outline:2px solid var(--brass);outline-offset:3px;box-shadow:none}
 :is(#ops-shell,#ops-footer) select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-dim) 50%),linear-gradient(135deg,var(--ink-dim) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 :is(#ops-shell,#ops-footer) #message{background:var(--rail);border:1px solid var(--line);border-left:3px solid var(--brass);padding:var(--sp-3) var(--sp-4);max-width:min(400px,calc(100vw - 40px));font-size:var(--fs-md)}
 :is(#ops-shell,#ops-footer) #message.error{border-color:var(--line);border-left-color:var(--red)}

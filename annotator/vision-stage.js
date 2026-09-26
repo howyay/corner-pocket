@@ -79,7 +79,7 @@ const COPY = {
     noCluster:'No identity cluster on this track yet — pick a person box on the stage that has one.',
     loading2:'loading…', reviewedCount:'reviewed', inQueue:'in queue', crops:'crops', reviewedWord:'reviewed',
     prediction:'prediction', seed:'saved seed', liveState:'Live state', manual:'manual', detectorReason:'The balls detector (SAM3) is CPU-heavy and stays an explicit opt-in.',
-    attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector',
+    attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector', cuesRegion:'Vision cues', stageRegion:'Vision stage', inspectorRegion:'Vision inspector', sheetTabs:'Vision panels', twitchChat:'Twitch chat', stepBack:'Previous frame', stepForward:'Next frame',
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
     stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
     liveNow:'live', staleNow:'STALE', replayNow:'VOD replay',
@@ -176,7 +176,7 @@ const COPY = {
     noCluster:'此轨迹尚无身份聚类——请在舞台上选择带有聚类的球员框。',
     loading2:'读取中…', reviewedCount:'已复核', inQueue:'队列中', crops:'张裁剪图', reviewedWord:'已复核',
     prediction:'预测', seed:'已保存种子', liveState:'直播状态', manual:'人工', detectorReason:'球检测器（SAM3）为 CPU 密集，需显式开启。',
-    attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器',
+    attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器', cuesRegion:'视觉线索', stageRegion:'视觉舞台', inspectorRegion:'视觉检查器', sheetTabs:'视觉面板', twitchChat:'Twitch 聊天', stepBack:'上一帧', stepForward:'下一帧',
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
     stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
     liveNow:'直播', staleNow:'已过期', replayNow:'回放',
@@ -896,9 +896,9 @@ function inspectorHTML(s) {
   const kind = s.selection.kind;
   const body = kind === 'event' ? eventBlock(s) : kind === 'ball' ? ballBlock(s) : kind === 'person' ? personBlock(s) : kind === 'anchor' ? anchorBlock(s) : kind === 'box' ? boxBlock(s) : emptyRailBlock(s);
   const liveChat = s.source.kind === 'live' && s.source.channel && opts.chat();
-  const chat = liveChat ? `<div class="vs-chat"><iframe title="Twitch chat" src="https://www.twitch.tv/embed/${esc(s.source.channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
+  const chat = liveChat ? `<div class="vs-chat"><iframe title="${esc(t('twitchChat'))}" src="https://www.twitch.tv/embed/${esc(s.source.channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
   const chatToggle = s.source.kind === 'live' && s.source.channel ? `<button class="vs-chat-toggle" data-vs-action="chat">${esc(opts.chat() ? t('hideChat') : t('showChat'))}</button>` : '';
-  const close = kind === 'none' ? '' : `<button class="vs-close" data-vs-action="deselect" aria-label="×">×</button>`;
+  const close = kind === 'none' ? '' : `<button class="vs-close" data-vs-action="deselect" aria-label="${esc(t('closePanel'))}">×</button>`;
   const notice = s.notice.text ? `<div class="vs-notice${s.notice.error ? ' error' : ''}" role="status">${esc(engineText(s.notice.text))}</div>` : '';
   return `${chat}${chatToggle}${close}${notice}${body}`;
 }
@@ -959,6 +959,8 @@ function render() {
   const edge = $('#vs-edge'); if (edge) { edge.dataset.live = s.source.kind === 'live' ? '1' : '0'; edge.style.left = `${s.source.kind === 'live' ? 100 : (s.frame.duration ? Math.min(100, Math.max(0, s.frame.t / s.frame.duration * 100)) : 0)}%`; }
   const play = $('#vs-play'); if (play) play.textContent = s.frame.playing ? `❚❚ ${t('pause')}` : `▶ ${t('play')}`;
   root.querySelectorAll('[data-vs-label]').forEach(node => { const copy = t(node.dataset.vsLabel); if (node.textContent !== copy) node.textContent = copy; });
+  // Accessible names follow the language toggle too (data-vs-aria names the COPY key).
+  root.querySelectorAll('[data-vs-aria]').forEach(node => { const copy = t(node.dataset.vsAria); if (node.getAttribute('aria-label') !== copy) node.setAttribute('aria-label', copy); });
   const frameField = $('#vs-frame-index');
   if (frameField) { const max = String(Math.max(0, s.frame.count - 1)); if (frameField.getAttribute('max') !== max) frameField.setAttribute('max', max); frameField.disabled = s.source.kind === 'live'; }
   // The strip is the VOD timeline; a live edge has no frame index to step.
@@ -967,7 +969,7 @@ function render() {
   root.querySelectorAll('[data-vs-action="step"],[data-vs-action="freeze"],[data-vs-action="play"],#vs-scrub').forEach(node => { node.disabled = liveStrip; });
   syncFooterHeight();
   const grid = $('.vs-grid'); if (grid) grid.dataset.sheet = sheet;
-  root.querySelectorAll('[data-sheet-tab]').forEach(b => b.classList.toggle('active', b.dataset.sheetTab === sheet));
+  root.querySelectorAll('[data-sheet-tab]').forEach(b => { const on = b.dataset.sheetTab === sheet; b.classList.toggle('active', on); b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(on)); });
   if (!ageTimer) ageTimer = setInterval(receiptAge, 1000);
 }
 // ---- actions -------------------------------------------------------------

@@ -231,6 +231,28 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+test('harden: fields show focus that a border shorthand cannot erase; names and states are announced', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const focus = css.match(/input:focus,[^{]*textarea:focus\{([^}]*)\}/);
+  assert.ok(focus, 'one field focus rule');
+  assert.match(focus[1], /box-shadow:[^;]*var\(--brass\)/, 'the focus ring is a box-shadow, so .vs-field border:1px cannot remove it');
+  assert.ok(!/animation:none!important;transition:none!important/.test(css), 'reduced motion keeps state changes instead of a global kill');
+  const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
+  assert.ok(!html.includes('aria-label="Color theme"'), 'the theme group name is bilingual');
+  const surface = harness().evaluate('visionSurface()');
+  assert.ok(surface.includes('role="tab" aria-selected="true" aria-controls="vs-cues"'), 'the sheet bar holds real tabs');
+  for (const key of ['cuesRegion', 'stageRegion', 'inspectorRegion', 'sheetTabs', 'stepBack', 'stepForward']) {
+    assert.ok(surface.includes(`data-vs-aria="${key}"`), `${key} follows the language toggle`);
+  }
+  assert.ok(!surface.includes('aria-label="-1"') && !surface.includes('aria-label="+1"'), 'step buttons say what they do');
+  assert.ok(source.includes("b.setAttribute('aria-pressed',String(b.dataset.lang===lang))"), 'EN|中 announce the pressed one');
+  assert.ok(source.includes("b.setAttribute('aria-pressed',String(b.dataset.theme===theme))"), 'dark|light announce the pressed one');
+  const stage = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  for (const key of ['cuesRegion', 'stageRegion', 'inspectorRegion', 'sheetTabs', 'twitchChat', 'stepBack', 'stepForward']) {
+    assert.equal((stage.match(new RegExp(`\\b${key}:'`, 'g')) || []).length, 2, `${key} has an EN and a 中 string`);
+  }
+  assert.ok(!stage.includes('title="Twitch chat"') && !stage.includes('aria-label="×"'), 'no English-only frame title or glyph-only close name');
+});
 test('player notes are editable and safely escaped', () => {
   const h = harness();
   const html = h.evaluate("playerForm({id:'p1',name:'A',notes:'</textarea><script>x</script>'})");

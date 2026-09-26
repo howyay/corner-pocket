@@ -1651,7 +1651,7 @@ const zhCopy = {
 };
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorCopy = {
-  'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层',
+  'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层', 'Stage':'舞台',
   'Pick a moment on the scrub strip, or select a cue, then freeze it here.':'在拖动条上选择时刻，或选择一条线索，然后在此冻结。',
   'STALE':'已过期', 'live':'直播', 'VOD replay':'回放', 'Close':'关闭', 'No crop at this frame':'此帧没有裁剪图',
   'The label is written to this crop':'标注将写入此裁剪图', 'Select a crop cue in the rail to label it':'请在左栏选择裁剪图线索以标注',
@@ -1762,7 +1762,7 @@ function translateEditor() {
   root.querySelectorAll('#content label, #content button, #content option, #content .empty, #content .hint, #content .facts, #stage-popover .pop-head, #stage-popover .pop-note').forEach(el => {
     for (const node of el.childNodes) if (node.nodeType === 3) translate(node, 'nodeValue');
   });
-  root.querySelectorAll('#content [aria-label], #content img[alt]').forEach(el => {
+  root.querySelectorAll('#content[aria-label], #content [aria-label], #content img[alt]').forEach(el => {
     for (const attribute of ['aria-label', 'alt']) {
       if (!el.hasAttribute(attribute)) continue;
       const current = el.getAttribute(attribute), previous = translatedCopy.get(el)?.[attribute];
