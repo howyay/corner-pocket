@@ -3,7 +3,7 @@
 ## Where things stand (2026-09-24)
 
 The club-operations app and the vision pipeline both ship from this repo, served on
-`http://127.0.0.1:8130/` behind Cloudflare Access (`systemctl --user restart pool-workbench.service`).
+`http://127.0.0.1:8130/` behind Cloudflare Access (the workbench service: `systemctl --user restart <workbench-service>`).
 The headline since the last handoff: **the ball detector the pipeline was blocked on now exists and
 clears its accuracy bars, while the served event queue is empty on purpose** — 0 events, because
 every one of the 15 previously served candidates was measured to be an occlusion artefact, not a
@@ -164,7 +164,7 @@ Quiet host (`loadavg` 4.0–5.8), 90 frames/case, budget 33.33 ms; `ball` is a 1
 
 ```bash
 # app lifecycle
-systemctl --user restart pool-workbench.service      # port 8130, loopback only
+systemctl --user restart <workbench-service>         # the workbench service: port 8130, loopback only
 
 # suites
 PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'

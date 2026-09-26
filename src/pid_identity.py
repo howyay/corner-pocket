@@ -16,8 +16,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
-QUAD = np.array(json.load(open("/home/operator/projects/pool/out/corners_30min_v2.json"))["corners"], np.float32)
+ROOT = Path(__file__).resolve().parents[1]
+VIDEO = str(ROOT / "data" / "vod_30min_260815.mp4")
+QUAD = np.array(json.load(open(ROOT / "out" / "corners_30min_v2.json"))["corners"], np.float32)
 
 
 def torso_color(bgr, bb):
@@ -35,8 +36,8 @@ def torso_color(bgr, bb):
 
 def persons():
     out = []
-    for p in ["/home/operator/projects/pool/out/pid1_persons/report.json",
-              "/home/operator/projects/pool/out/pid1_persons2/report2.json"]:
+    for p in [str(ROOT / "out" / "pid1_persons" / "report.json"),
+              str(ROOT / "out" / "pid1_persons2" / "report2.json")]:
         if not Path(p).exists():
             continue
         for r in json.load(open(p)):
@@ -141,13 +142,13 @@ def main():
         all_cells = [cv2.copyMakeBorder(r, 0, 0, 0, wmax - r.shape[1], cv2.BORDER_CONSTANT,
                                         value=(30, 30, 30)) for r in all_cells]
         mont = np.vstack(all_cells)
-        Path("/home/operator/projects/pool/out/pid_identity_montage.png").parent.mkdir(exist_ok=True)
-        cv2.imwrite("/home/operator/projects/pool/out/pid_identity_montage.png", mont)
+        (ROOT / "out" / "pid_identity_montage.png").parent.mkdir(exist_ok=True)
+        cv2.imwrite(str(ROOT / "out" / "pid_identity_montage.png"), mont)
         print("wrote out/pid_identity_montage.png")
     json.dump({"feats": feats,
                "centers_bgr": np.round(cen, 0).tolist(),
                "between": round(d_between, 1), "within": [round(w, 1) for w in within]},
-              open("/home/operator/projects/pool/out/pid_identity_v0.json", "w"), indent=1)
+              open(ROOT / "out" / "pid_identity_v0.json", "w"), indent=1)
     print("wrote out/pid_identity_v0.json")
 
 

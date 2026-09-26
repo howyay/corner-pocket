@@ -57,6 +57,25 @@ class Selection(StoreTestCase):
     def test_constructing_a_store_writes_nothing(self):
         self.assertFalse(self.out.exists())
 
+    def test_legacy_file_writers_refuse_to_start_when_the_database_is_the_store(self):
+        """annotator/server.py, src/pid_seed_ui.py and src/pid_anchor_ui.py write user-data
+        files directly; with POOL_DATABASE_URL set they must exit with a clear reason
+        before serving anything (checked by actually starting each as a script)."""
+        import subprocess
+        import sys
+        repo = Path(__file__).resolve().parents[1]
+        env = dict(os.environ, POOL_DATABASE_URL="postgresql://u@127.0.0.1:1/x", PYTHONPATH=str(repo))
+        for script in ("annotator/server.py", "src/pid_seed_ui.py", "src/pid_anchor_ui.py"):
+            run = subprocess.run([sys.executable, str(repo / script), "0"], env=env, capture_output=True,
+                                 text=True, timeout=120, cwd=self.root)
+            self.assertNotEqual(run.returncode, 0, script)
+            self.assertIn("Refusing to run", run.stderr, script)
+            self.assertIn("src.store_export", run.stderr, f"{script} says how to use it on a copy")
+        from src.store import refuse_file_writes_under_postgres
+        with mock.patch.dict(os.environ):
+            os.environ.pop("POOL_DATABASE_URL", None)
+            refuse_file_writes_under_postgres("x")          # without the variable: no-op
+
 
 class OperationsContract(StoreTestCase):
     def test_the_document_and_its_revision_contract_are_the_operations_module(self):

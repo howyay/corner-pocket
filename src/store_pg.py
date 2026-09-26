@@ -27,10 +27,27 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
+import json
+
 from src import db
-from src.store import BALL_SETS, DATASETS, JsonStore
+from src.store import BALL_SETS, DATASETS, JsonStore, StoreConstraintError
+from src.store_files import dump, fmt_of, get_document, put_document
 
 MAX_EVENTS = 500
+STATE = "out/corner-pocket/state.json"
+
+
+def _doc_path(kind: str, key: str) -> str:
+    """The file a document-backed record set lives in (same names as JsonStore)."""
+    if kind == "seeds":
+        return "out/pid_seed.json"
+    if kind == "verdicts":
+        return f"out/{DATASETS[key]}/annotations.json"
+    if kind == "labels":
+        return f"out/{key}/labels.json"
+    if kind == "anchors":
+        return f"out/pid_anchors_{key}.json"
+    raise ValueError(kind)
 
 
 class PostgresStore:
@@ -60,9 +77,19 @@ class PostgresStore:
 
     @contextmanager
     def _write(self):
+        """One write transaction. A constraint the 0002 projection enforces (FK, CHECK,
+        unique) that the application rules let through rolls the whole write back and
+        raises StoreConstraintError naming it - never a silent success."""
+        import psycopg
         conn = self._conn()
-        with conn.transaction():
-            yield conn
+        try:
+            with conn.transaction():
+                yield conn
+        except psycopg.errors.IntegrityError as error:
+            diag = error.diag
+            raise StoreConstraintError(diag.constraint_name,
+                                       f"{type(error).__name__}: {(diag.message_primary or str(error)).strip()}"
+                                       + (f" ({diag.message_detail})" if diag.message_detail else "")) from error
 
     @contextmanager
     def _read(self):
@@ -77,31 +104,34 @@ class PostgresStore:
 
     # -- operations (design 2) ------------------------------------------------
     def _document(self, conn):
-        """The operations document; before anything was imported, the default document
-        Operations would create for a missing state.json (it is written by the first post)."""
-        from src.store_import import OperationsSet
-        doc = OperationsSet().render(conn)
-        if doc is None:
-            from annotator.operations import Operations
-            empty = Operations(self.root / "nonexistent-root")   # its state.json never exists
-            return empty._load()
-        return doc
+        """The operations document: the stored state.json text (key order as written,
+        0003); before anything was imported, the default document Operations creates
+        for a missing state.json (it is written by the first post)."""
+        text = get_document(conn, STATE)
+        if text is not None:
+            return json.loads(text)
+        if conn.execute("SELECT 1 FROM ops_meta").fetchone() is not None:
+            raise RuntimeError("operations rows exist without their document (imported before migration 0003?); "
+                               "re-run `python -m src.store_import --only operations --replace`")
+        from annotator.operations import Operations
+        return Operations(self.root / "nonexistent-root")._load()   # its state.json never exists
 
     def _save(self, conn, doc, action, context):
-        """Write the mutated document and append its event, in the caller's transaction.
-        Every table but players and ops_events is rewritten from the document (players
-        are upserted so their identity bindings survive); the event log only grows."""
+        """Operations._commit, in the caller's transaction: advance the revision, append
+        the event (the document keeps the last 500, the table keeps every one), store the
+        document in _commit's exact format, and rewrite the row projection from it
+        (players are upserted so their identity bindings survive)."""
         from annotator.operations import timestamp, uid
         from src.store_import import OperationsSet
         doc["revision"] += 1
         event = dict(id=uid(), createdAt=timestamp(), revision=doc["revision"], action=action, context=context)
-        spec = OperationsSet()
+        doc["events"] = (doc.get("events", []) + [event])[-MAX_EVENTS:]
         for table in ("matches", "entrant_members", "entrants", "tournaments", "notes", "sources", "ops_meta"):
             conn.execute(f"DELETE FROM {table}")
-        spec.write(conn, dict(doc, events=[]))             # ops_meta, players, tournaments, notes, sources
+        OperationsSet().write(conn, dict(doc, events=[]))  # ops_meta, players, tournaments, notes, sources
         conn.execute("INSERT INTO ops_events (revision, id, created_at, action, context) VALUES (%s, %s, %s, %s, %s)",
                      (event["revision"], event["id"], event["createdAt"], action, _jsonb(context)))
-        doc["events"] = (doc.get("events", []) + [event])[-MAX_EVENTS:]
+        put_document(conn, STATE, dump(doc, fmt_of(STATE)))
         return doc
 
     def _locked(self, conn):
@@ -166,12 +196,17 @@ class PostgresStore:
             return IdentitySet().render(conn)
 
     def identity_save(self, clusters: dict) -> None:
-        """Replace the identity index with `clusters` (the IdentityIndex.save payload)."""
-        from src.store_import import IdentitySet
+        """Replace the identity index with `clusters` (the IdentityIndex.save payload).
+        A cluster bound to an id that is not on the roster is refused by the reviewed
+        foreign key (identity_clusters_player_id_fkey) with StoreConstraintError."""
+        from src.store_import import IdentitySet, Mismatch
         spec = IdentitySet()
         with self._write() as conn:
             spec.clear(conn)
-            spec.write(conn, clusters)
+            try:
+                spec.write(conn, clusters)
+            except Mismatch as error:        # the importer's check for the same foreign key
+                raise StoreConstraintError("identity_clusters_player_id_fkey", str(error)) from error
 
     def faces_load(self) -> dict:
         from src.store_import import FacesSet
@@ -202,38 +237,57 @@ class PostgresStore:
         with self._write() as conn:
             return conn.execute("DELETE FROM face_embeddings WHERE player_id = %s", (str(player_id),)).rowcount
 
+    # -- seeds and operator records: documents (0003) + their row projection ------
+    # Each write is JsonStore's read-modify-write of the same file, on the stored
+    # document, under a per-document advisory lock; the document is stored in the
+    # writer's exact format, and the 0002 rows of that set are rewritten from it in
+    # the same transaction (their constraints check every write).
+
+    def _load_doc(self, conn, path, default):
+        text = get_document(conn, path)
+        return default if text is None else json.loads(text)
+
+    def _store_doc(self, conn, path, value, project):
+        put_document(conn, path, dump(value, fmt_of(path)))
+        project(conn)
+
+    @staticmethod
+    def _lock_doc(conn, path):
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("pool:doc:" + path,))
+
     def seeds_get(self, dataset: str) -> dict:
+        return self.seed_file(dataset).get("seeds", {})
+
+    def seed_file(self, dataset: str) -> dict:
+        """The whole pid_seed.json document, as stored."""
         self._seeds_dataset(dataset)
-        from src.store_import import SeedsSet
         with self._read() as conn:
-            return SeedsSet().render(conn)["seeds"]
+            return self._load_doc(conn, _doc_path("seeds", dataset), {"seeds": {}})
 
     def seed_put(self, dataset: str, key: str, record: dict | None) -> dict:
-        self._seeds_dataset(dataset)
         from src.store_import import SeedsSet
+        self._seeds_dataset(dataset)
+        path = _doc_path("seeds", dataset)
         with self._write() as conn:
+            self._lock_doc(conn, path)
+            saved = self._load_doc(conn, path, {"seeds": {}})
+            seeds = saved.setdefault("seeds", {})
             if record is None:
-                conn.execute("DELETE FROM track_seeds WHERE dataset = 'vod30' AND seed_key = %s", (key,))
+                seeds.pop(key, None)
             else:
-                old = conn.execute("SELECT win, track_id, t, label, extra FROM track_seeds WHERE dataset = 'vod30' "
-                                   "AND seed_key = %s FOR UPDATE", (key,)).fetchone()
-                merged = {}
-                if old:
-                    win, track_id, t, label, extra = old
-                    merged = {**extra, "win": win, "track_id": track_id, "label": label}
-                    if t is not None:
-                        merged["t"] = t
-                merged.update(record)
-                conn.execute("DELETE FROM track_seeds WHERE dataset = 'vod30' AND seed_key = %s", (key,))
-                SeedsSet().write(conn, {"seeds": {key: merged}})
-            return SeedsSet().render(conn)["seeds"]
+                seeds[key] = dict(seeds.get(key, {}), **record)
+
+            def project(c):
+                c.execute("DELETE FROM track_seeds WHERE dataset = 'vod30'")
+                SeedsSet().write(c, saved)
+            self._store_doc(conn, path, saved, project)
+            return seeds
 
     @staticmethod
     def _seeds_dataset(dataset):
         if dataset != "vod30":
             raise ValueError("seeds exist for vod30 only")
 
-    # -- operator records (design 4) --------------------------------------------
     @staticmethod
     def _dataset(dataset):
         if dataset not in DATASETS:
@@ -241,22 +295,25 @@ class PostgresStore:
 
     def verdicts_get(self, dataset: str) -> dict:
         self._dataset(dataset)
-        from src.store_import import VerdictsSet
         with self._read() as conn:
-            return VerdictsSet().render(conn).get(dataset, {})
+            return self._load_doc(conn, _doc_path("verdicts", dataset), {})
 
     def verdict_put(self, dataset: str, event_id, fields: dict) -> dict:
         from datetime import datetime, timezone
         from src.store_import import VerdictsSet
         self._dataset(dataset)
-        key = str(event_id)
+        path, key = _doc_path("verdicts", dataset), str(event_id)
         with self._write() as conn:
-            conn.execute("SELECT pg_advisory_xact_lock(hashtext('event_verdicts:' || %s || ':' || %s))", (dataset, key))
-            current = VerdictsSet().render(conn).get(dataset, {}).get(key, {})
-            record = dict(current, **fields)
+            self._lock_doc(conn, path)
+            annotations = self._load_doc(conn, path, {})
+            record = dict(annotations.get(key, {}), **fields)
             record["updated_at"] = datetime.now(timezone.utc).isoformat()
-            conn.execute("DELETE FROM event_verdicts WHERE dataset = %s AND event_id = %s", (dataset, key))
-            VerdictsSet().write(conn, {dataset: {key: record}})
+            annotations[key] = record
+
+            def project(c):
+                c.execute("DELETE FROM event_verdicts WHERE dataset = %s", (dataset,))
+                VerdictsSet().write(c, {dataset: annotations})
+            self._store_doc(conn, path, annotations, project)
             return record
 
     @staticmethod
@@ -267,49 +324,69 @@ class PostgresStore:
     def labels_get(self, crop_set: str) -> dict:
         self._crop_set(crop_set)
         with self._read() as conn:
-            return {key: label for key, label in conn.execute(
-                "SELECT crop_key, label FROM ball_labels WHERE crop_set = %s ORDER BY crop_key", (crop_set,)).fetchall()}
+            return self._load_doc(conn, _doc_path("labels", crop_set), {})
 
-    def label_put(self, crop_set: str, crop_file: str, label) -> None:
+    def label_put(self, crop_set: str, crop_file: str, label, new_key: str | None = None) -> None:
+        """Set or clear (None) one crop's label, matched by basename; an existing key keeps
+        its original spelling and a new key (`new_key`, else the basename) is appended -
+        JsonStore.label_put exactly."""
+        from src.store_import import LabelsSet
         self._crop_set(crop_set)
+        path = _doc_path("labels", crop_set)
         with self._write() as conn:
-            conn.execute("SELECT pg_advisory_xact_lock(hashtext('ball_labels:' || %s || ':' || %s))", (crop_set, crop_file))
-            keys = [row[0] for row in conn.execute(
-                "SELECT crop_key FROM ball_labels WHERE crop_set = %s AND crop_file = %s ORDER BY crop_key",
-                (crop_set, crop_file)).fetchall()]
-            key = keys[0] if keys else crop_file
-            conn.execute("DELETE FROM ball_labels WHERE crop_set = %s AND crop_file = %s", (crop_set, crop_file))
+            self._lock_doc(conn, path)
+            labels = self._load_doc(conn, path, {})
+            keys = [k for k in labels if Path(k).name == crop_file]
+            key = keys[0] if keys else (new_key or crop_file)
+            for old in keys:
+                labels.pop(old)
             if label is not None:
-                conn.execute("INSERT INTO ball_labels (crop_set, crop_key, crop_file, label) VALUES (%s, %s, %s, %s)",
-                             (crop_set, key, crop_file, _jsonb(label)))
+                labels[key] = label
+
+            def project(c):
+                c.execute("DELETE FROM ball_labels WHERE crop_set = %s", (crop_set,))
+                LabelsSet().write(c, {crop_set: labels})
+            self._store_doc(conn, path, labels, project)
 
     def correction_get(self, dataset: str, frame_index: int) -> dict | None:
         self._dataset(dataset)
         with self._read() as conn:
-            row = conn.execute("SELECT payload FROM frame_corrections WHERE dataset = %s AND frame_index = %s",
-                               (dataset, int(frame_index))).fetchone()
-            return None if row is None else row[0]
+            return self._load_doc(conn, self._correction_path(dataset, frame_index), None)
 
     def correction_put(self, dataset: str, frame_index: int, payload: dict) -> None:
         self._dataset(dataset)
+        path = self._correction_path(dataset, frame_index)
         with self._write() as conn:
-            conn.execute("INSERT INTO frame_corrections (dataset, frame_index, payload, saved_at) VALUES (%s, %s, %s, %s) "
-                         "ON CONFLICT (dataset, frame_index) DO UPDATE SET payload = EXCLUDED.payload, "
-                         "saved_at = EXCLUDED.saved_at",
-                         (dataset, int(frame_index), _jsonb(payload), (payload or {}).get("saved_at")))
+            def project(c):
+                c.execute("INSERT INTO frame_corrections (dataset, frame_index, payload, saved_at) "
+                          "VALUES (%s, %s, %s, %s) ON CONFLICT (dataset, frame_index) DO UPDATE SET "
+                          "payload = EXCLUDED.payload, saved_at = EXCLUDED.saved_at",
+                          (dataset, int(frame_index), _jsonb(payload), (payload or {}).get("saved_at")))
+            self._store_doc(conn, path, payload, project)
+
+    @staticmethod
+    def _correction_path(dataset, frame_index):
+        return f"out/{DATASETS[dataset]}/frame_results/{int(frame_index)}/correction.json"
 
     def anchors_get(self, dataset: str) -> dict:
         self._dataset(dataset)
         with self._read() as conn:
-            return {"anchors": {t_key: pts for t_key, pts in conn.execute(
-                "SELECT t_key, pts FROM pocket_anchors WHERE dataset = %s ORDER BY t", (dataset,)).fetchall()}}
+            return self._load_doc(conn, _doc_path("anchors", dataset), {"anchors": {}})
 
     def anchors_put(self, dataset: str, t_key: str, pts: list) -> None:
+        from src.store_import import AnchorsSet
         self._dataset(dataset)
+        path = _doc_path("anchors", dataset)
         with self._write() as conn:
-            conn.execute("INSERT INTO pocket_anchors (dataset, t_key, t, pts) VALUES (%s, %s, %s, %s) "
-                         "ON CONFLICT (dataset, t) DO UPDATE SET pts = EXCLUDED.pts, updated_at = now()",
-                         (dataset, str(t_key), float(t_key), _jsonb(pts)))
+            self._lock_doc(conn, path)
+            saved = self._load_doc(conn, path, {"anchors": {}})
+            key = next((k for k in saved["anchors"] if float(k) == float(t_key)), str(t_key))
+            saved["anchors"][key] = pts
+
+            def project(c):
+                c.execute("DELETE FROM pocket_anchors WHERE dataset = %s", (dataset,))
+                AnchorsSet().write(c, {dataset: saved})
+            self._store_doc(conn, path, saved, project)
 
     # -- precomputed (design 5, 6): still the JSON files, see the module doc --
     def artifact(self, kind: str, dataset: str):

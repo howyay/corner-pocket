@@ -20,7 +20,7 @@ STATIC_ROOT = EVENTS_FILE.parent  # evidence images live next to events.json
 ANNOT_FILE = STATIC_ROOT / "annotations.json"
 # optional third arg: crop-set base dir (defaults to the first label set)
 CROP_BASE = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else \
-    Path("/home/operator/projects/pool/out/unlabeled_crops")
+    ROOT.parent / "out" / "unlabeled_crops"
 LABEL_META = CROP_BASE / "meta.json"
 LABELS_FILE = CROP_BASE / "labels.json"
 CROP_DIR = CROP_BASE
@@ -146,5 +146,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    # legacy single-page annotator: writes annotations.json / labels.json directly
+    sys.path.insert(0, str(ROOT.parent))
+    from src.store import refuse_file_writes_under_postgres
+    refuse_file_writes_under_postgres("annotator/server.py")
     print(f"annotator: open http://127.0.0.1:{PORT}  (events: {EVENTS_FILE})")
     HTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

@@ -11,7 +11,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-sys.path.insert(0, '/home/operator/projects/pool/src')
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 from table_detect import detect_cloth_mask, fit_quadrilateral
 
 
@@ -74,9 +75,9 @@ def build(video, tag, every_s=6.0, max_frames=400, mad_px=6.0):
 if __name__ == "__main__":
     tag = sys.argv[1] if len(sys.argv) > 1 else "30min"
     video = sys.argv[2] if len(sys.argv) > 2 else \
-        "/home/operator/projects/pool/data/vod_30min_260815.mp4"
+        str(ROOT / "data" / "vod_30min_260815.mp4")
     res = build(video, tag)
     if res:
-        Path(f"/home/operator/projects/pool/out/corners_{tag}_v2.json").write_text(
+        (ROOT / "out" / f"corners_{tag}_v2.json").write_text(
             json.dumps(res, indent=1))
         print("wrote out/corners_%s_v2.json" % tag)

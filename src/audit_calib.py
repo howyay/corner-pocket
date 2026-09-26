@@ -14,7 +14,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-sys.path.insert(0, '/home/operator/projects/pool/src')
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 from table_detect import detect_cloth_mask, fit_quadrilateral
 
 TABLE_W, TABLE_H = 2540.0, 1270.0  # Rasson Victory III playing surface (mm)
@@ -66,10 +67,10 @@ def audit(video, ref_corners, times, tag):
     return rows
 
 
-HL = "/home/operator/projects/pool/data/vod_highlight.mp4"
-V30 = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
-fixed_hl = json.load(open("/home/operator/projects/pool/out/fixed_corners.json"))["corners"]
-fixed_30 = json.load(open("/home/operator/projects/pool/out/corners_30min.json"))["corners"]
+HL = str(ROOT / "data" / "vod_highlight.mp4")
+V30 = str(ROOT / "data" / "vod_30min_260815.mp4")
+fixed_hl = json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"]
+fixed_30 = json.load(open(ROOT / "out" / "corners_30min.json"))["corners"]
 
 hl_times = [5, 28, 60, 90, 150, 200]
 v30_times = list(range(60, 1741, 120))
@@ -77,5 +78,5 @@ out = {
     "highlight_1080p": audit(HL, fixed_hl, hl_times, "HIGHLIGHT 1080p"),
     "vod30_720p": audit(V30, fixed_30, v30_times, "VOD30 720p"),
 }
-Path("/home/operator/projects/pool/out/audit_homography.json").write_text(json.dumps(out, indent=1))
+(ROOT / "out" / "audit_homography.json").write_text(json.dumps(out, indent=1))
 print("\nwrote out/audit_homography.json")

@@ -1,7 +1,7 @@
 # Vision tab — factual audit
 
 **Scope:** the Vision tab of the Corner Pocket operations/review app. Audit only; no product code was changed.
-**Workspace:** `/home/operator/projects/pool`. **Date of capture:** 2026-09-21 (local, PDT).
+**Workspace:** `<repo>`. **Date of capture:** 2026-09-21 (local, PDT).
 **Evidence convention:** every claim is backed by `file:line` quoted from the working tree, or by a screenshot in `out/vision-audit/` that was captured in this audit.
 
 > Line-number caveat: `annotator/ops.html` is 2 physical lines and `annotator/ops.js` is 64 physical lines of semi-minified code. Line numbers below are physical lines in the current file; the `function`/`identifier` name is given with each one so it survives reformatting.

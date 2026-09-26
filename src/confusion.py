@@ -10,11 +10,12 @@ from torch.utils.data import DataLoader, Dataset
 import torchvision
 from torchvision import transforms
 
-sys.path.insert(0, '/home/operator/projects/pool/src')
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 from train_ball_id import BallCrops, make_model, N_CLASSES, IMG  # noqa
 
 NAME = 'resnet18'
-labels_dir = Path('/home/operator/projects/pool/out/unlabeled_crops')
+labels_dir = ROOT / 'out' / 'unlabeled_crops'
 lab = json.load(open(labels_dir / 'labels.json'))
 meta = json.load(open(labels_dir / 'meta.json'))
 by_file = {r['file']: r for r in meta}

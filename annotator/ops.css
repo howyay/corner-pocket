@@ -124,7 +124,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .timeline li{padding:var(--sp-1h)}
 #ops-shell table{width:100%;border-collapse:collapse;text-align:left}
 #ops-shell td,#ops-shell th{padding:var(--sp-2);border-bottom:1px solid var(--line)}
-#ops-shell .table-wrap{overflow:auto}
+#ops-shell .table-wrap{overflow:auto;contain:inline-size}
 #ops-shell .embed{width:100%;height:540px;border:1px solid var(--line);background:var(--stage-bg)}
 #ops-shell .cloth-preview{min-height:200px;margin-top:var(--sp-4);border:18px solid var(--rail-wood);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:var(--sp-2);gap:var(--sp-5);color:var(--ball-face);text-align:center}
 #ops-shell .rail-diamonds{color:var(--diamond);letter-spacing:.2em;font-size:var(--fs-sm)}
@@ -467,6 +467,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .pair-teams li{padding:var(--sp-1h) 0;border-bottom:1px solid var(--line)}
 #ops-shell :is(.standings,.event-table) td:nth-child(n+3),#ops-shell :is(.standings,.event-table) th:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
 #ops-shell :is(.standings,.h2h,.per-event) td small{display:block}
+#ops-shell :is(.standings,.event-table) td:nth-child(n+3),#ops-shell :is(.h2h,.per-event) td:nth-child(n+2){white-space:nowrap}
 #ops-shell :is(.h2h,.per-event) td:nth-child(n+2),#ops-shell :is(.h2h,.per-event) th:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
 .modal .record h3{margin-top:var(--sp-4)}
 /* R10 results sheet: one full bracket on screen, and on paper / PDF */

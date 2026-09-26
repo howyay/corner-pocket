@@ -99,7 +99,7 @@ def _validate_media(url):
 
 
 def vod_id_of(argument):
-    """``1000000011`` / ``v1000000011`` / ``https://www.twitch.tv/videos/1000000011`` -> id."""
+    """``1000000001`` / ``v1000000001`` / ``https://www.twitch.tv/videos/1000000001`` -> id."""
     if isinstance(argument, int) and not isinstance(argument, bool) and argument > 0:
         return str(argument)
     if not isinstance(argument, str):

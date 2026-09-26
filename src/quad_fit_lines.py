@@ -199,14 +199,16 @@ def fit_quad_lines(bgr):
 if __name__ == "__main__":
     import json
     import sys
+    from pathlib import Path
+    ROOT = Path(__file__).resolve().parents[1]
     which = sys.argv[1] if len(sys.argv) > 1 else "v30"
     if which == "v30":
-        VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
-        REF = np.array(json.load(open("/home/operator/projects/pool/out/corners_30min.json"))["corners"], np.float32)
+        VIDEO = str(ROOT / "data" / "vod_30min_260815.mp4")
+        REF = np.array(json.load(open(ROOT / "out" / "corners_30min.json"))["corners"], np.float32)
         TIMES = list(range(60, 1741, 120))
     else:
-        VIDEO = "/home/operator/projects/pool/data/vod_highlight.mp4"
-        REF = np.array(json.load(open("/home/operator/projects/pool/out/fixed_corners.json"))["corners"], np.float32)
+        VIDEO = str(ROOT / "data" / "vod_highlight.mp4")
+        REF = np.array(json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"], np.float32)
         TIMES = [5, 28, 60, 90, 150, 200]
     cap = cv2.VideoCapture(VIDEO)
     errs, fails = [], []

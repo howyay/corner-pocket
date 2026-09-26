@@ -17,9 +17,9 @@ hostnames only):
 
 | step | request | result |
 |---|---|---|
-| 1. channel VODs | `POST https://gql.twitch.tv/gql` `{user(login:"examplechannel"){videos(first:3,type:ARCHIVE){edges{node{id title lengthSeconds createdAt}}}}}` | **HTTP 200**, `errors: null`; one VOD: `id 1000000011`, title `260918`, `lengthSeconds 31137`, `createdAt 2026-09-19T01:29:07Z` |
-| 2. playback token | `{video(id:"1000000011"){playbackAccessToken(params:{platform:"web",playerBackend:"mediaplayer",playerType:"site"}){signature value}}}` | **HTTP 200**, `errors: null`, token present (`signature_len 40`, `value_len 444`) |
-| 3. usher | `GET https://usher.ttvnw.net/vod/1000000011.m3u8?nauth=…&nauthsig=…&allow_source=true&playlist_include_framerate=true&supported_codecs=avc1` | **HTTP 200**, 5 lines, one variant: `RESOLUTION=1280x720`, `FRAME-RATE=30.000`, `BANDWIDTH=3161420`, `CODECS="avc1.4D001F,mp4a.40.2"` |
+| 1. channel VODs | `POST https://gql.twitch.tv/gql` `{user(login:"examplechannel"){videos(first:3,type:ARCHIVE){edges{node{id title lengthSeconds createdAt}}}}}` | **HTTP 200**, `errors: null`; one VOD: `id 1000000001`, title `260918`, `lengthSeconds 31137`, `createdAt 2026-09-19T01:29:07Z` |
+| 2. playback token | `{video(id:"1000000001"){playbackAccessToken(params:{platform:"web",playerBackend:"mediaplayer",playerType:"site"}){signature value}}}` | **HTTP 200**, `errors: null`, token present (`signature_len 40`, `value_len 444`) |
+| 3. usher | `GET https://usher.ttvnw.net/vod/1000000001.m3u8?nauth=…&nauthsig=…&allow_source=true&playlist_include_framerate=true&supported_codecs=avc1` | **HTTP 200**, 5 lines, one variant: `RESOLUTION=1280x720`, `FRAME-RATE=30.000`, `BANDWIDTH=3161420`, `CODECS="avc1.4D001F,mp4a.40.2"` |
 | 4. media playlist | the signed variant URL | **HTTP 200**, `#EXT-X-PLAYLIST-TYPE:EVENT`, `#EXT-X-TARGETDURATION:12`, `#ID3-EQUIV-TDTG:2026-09-19T10:08:07`, 53 `#EXTINF` in the first 4 KB, host `d2nvs31859zcd8.cloudfront.net` |
 | 5. decode | `cv2.VideoCapture(media_url, CAP_FFMPEG, [open 15 s, read 8 s])` | `isOpened True`, `fps 30.0`, `frames 934137` (≈8.65 h), 1280x720; first read 0.04 s, then 60 frames in 0.10 s = **607 fps free-run** |
 
@@ -73,7 +73,7 @@ was **shared and busy** (`loadavg` in the table); the last envelope section of
 
 | | Twitch VOD as live | local file as live |
 |---|---|---|
-| source | VOD `1000000011`, 720p30 HLS, `examplechannel` | `data/vod_30min_260815.mp4` from 267 s || host `loadavg` (1/5/15 min, 12 cores) | 35.5 / 33.3 / 23.8 | 37.0 / 34.6 / 29.0 |
+| source | VOD `1000000001`, 720p30 HLS, `examplechannel` | `data/vod_30min_260815.mp4` from 267 s || host `loadavg` (1/5/15 min, 12 cores) | 35.5 / 33.3 / 23.8 | 37.0 / 34.6 / 29.0 |
 | open (first frame) | 0.7 s | 0.6 s |
 | frames received | 5488 (**29.61 fps**) | 5435 (**29.34 fps**) |
 | frames published | 3697 (**19.95 fps**) | 671 (**3.62 fps**) |

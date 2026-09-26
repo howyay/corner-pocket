@@ -6,19 +6,19 @@ remain behind Cloudflare Access.
 
 ## Hosted access
 
-https://pool.example.com uses the existing `pool-tunnel` Cloudflare Tunnel:
-`pool.example.com` → `http://127.0.0.1:8130`. Proxied CNAME points to
-`11111111-1111-1111-1111-111111111111.cfargotunnel.com`.
+https://<site> uses the existing `<tunnel>` Cloudflare Tunnel:
+`<site>` → `http://127.0.0.1:8130`. Proxied CNAME points to
+`<tunnel-id>.cfargotunnel.com`.
 
 Cloudflare Access application `Corner Pocket` protects the entire hostname,
 including API/media routes. Pocket ID SSO is the only enabled identity provider;
-allow policy is restricted to `owner@example.com`, matching the existing Kaneo SSO
+allow policy is restricted to the owner's address, matching the existing Kaneo SSO
 setup. Session duration: 168 hours. There is no public bypass policy.
 
-Origin runs as enabled user service `pool-workbench.service`, with restart on
+Origin runs as the workbench service, an enabled user service, with restart on
 failure and user lingering enabled. Unit:
-`/home/operator/.config/systemd/user/pool-workbench.service`.
-Manage with `systemctl --user {status,restart,stop} pool-workbench.service`.
+`~/.config/systemd/user/<workbench-service>`.
+Manage with `systemctl --user {status,restart,stop} <workbench-service>`.
 
 Verified unauthenticated public root/API requests return HTTP 302 to Access;
 local metadata returns HTTP 200 and port 8130 listens only on 127.0.0.1.

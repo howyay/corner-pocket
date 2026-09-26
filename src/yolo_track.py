@@ -14,12 +14,13 @@ import cv2
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
 from ultralytics import YOLO
 
-VIDEO = "/home/operator/projects/pool/data/vod_30min_260815.mp4"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO("yolov8n.pt")
 
 SAM3 = {}
-for p in ["/home/operator/projects/pool/out/pid1_persons/report.json",
-          "/home/operator/projects/pool/out/pid1_persons2/report2.json"]:
+for p in [os.path.join(REPO, "out", "pid1_persons", "report.json"),
+          os.path.join(REPO, "out", "pid1_persons2", "report2.json")]:
     if not os.path.exists(p):
         continue
     for r in json.load(open(p)):
@@ -125,7 +126,7 @@ def main():
             print(f"   tid {x['track_id']}: dur {x['duration_s']}s n={x['n']}")
         for (t, m, n) in sam3_agreement(tls, a, b):
             print(f"   SAM3 t={t}: yolo matched {m}/{n}")
-    json.dump(out, open("/home/operator/projects/pool/out/pid2_tracklets.json", "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", "pid2_tracklets.json"), "w"), indent=1)
     print("wrote out/pid2_tracklets.json")
 
 

@@ -19,12 +19,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-sys.path.insert(0, '/home/operator/projects/pool/src')
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 from PIL import Image
 from sam3_cpu import load_sam3_image_model, make_processor
 
-VIDEO = Path('/home/operator/projects/pool/data/vod_highlight.mp4')
-CROP_DIR = Path('/home/operator/projects/pool/out/unlabeled_crops')
+VIDEO = ROOT / 'data' / 'vod_highlight.mp4'
+CROP_DIR = ROOT / 'out' / 'unlabeled_crops'
 CTX_DIR = CROP_DIR / 'ctx'
 META = CROP_DIR / 'meta.json'
 TIMES = [5, 28, 60, 90, 150, 200]
@@ -32,7 +33,7 @@ TIMES = [5, 28, 60, 90, 150, 200]
 os.makedirs(CTX_DIR, exist_ok=True)
 
 print('loading SAM3 on cpu...', flush=True)
-model = load_sam3_image_model('/home/operator/projects/pool/data/sam3.safetensors', device='cpu')
+model = load_sam3_image_model(str(ROOT / 'data' / 'sam3.safetensors'), device='cpu')
 model.float()
 proc = make_processor(model, device='cpu')
 

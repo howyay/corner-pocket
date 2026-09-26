@@ -261,6 +261,31 @@ def vod_replay_processor_class():
     return VodReplayLiveProcessor
 
 
+class _StoreOperations:
+    """The operations interface the handlers use (get / post / enroll_player), backed
+    by the store. ConflictError and ValueError reach the handlers unchanged."""
+
+    def __init__(self, store):
+        self._store = store
+
+    def get(self):
+        return self._store.ops_get()
+
+    def post(self, payload):
+        return self._store.ops_post(payload)
+
+    def enroll_player(self, player, context):
+        return self._store.enroll_player(player, context)
+
+    @property
+    def path(self):
+        """Where the document lives, for receipts: the file, or the database table."""
+        root = getattr(self._store, "root", None)
+        if type(self._store).__name__ == "JsonStore" and root is not None:
+            return root / "out" / "corner-pocket" / "state.json"
+        return "postgres:json_documents/out/corner-pocket/state.json"
+
+
 class Backend:
     def __init__(self, root=ROOT):
         self.root = Path(root)
@@ -272,6 +297,7 @@ class Backend:
         self.video_cache = {}
         self._clip_semaphore = threading.Semaphore(2)
         self._operations = None
+        self._store = None
         self._live = None
         self._identity_pipeline = None
         self._identity_error = None
@@ -284,6 +310,8 @@ class Backend:
         with self.lock:
             if self._live is None:
                 self._live = vod_replay_processor_class()(self.root)
+                # the saved Twitch channel is read from the store, like everything else
+                self._live.operations_document = self.store().ops_get
             return self._live
 
     def close(self):
@@ -312,11 +340,20 @@ class Backend:
 
     def operations(self):
         # Keep operations optional until requested; annotation-only fixtures remain usable.
+        # The operations document lives in the store (src/store.py): the JSON files by
+        # default, Postgres when POOL_DATABASE_URL is set - the same get/post contract.
         with self.lock:
             if self._operations is None:
-                from annotator.operations import Operations
-                self._operations = Operations(self.root)
+                self._operations = _StoreOperations(self.store())
             return self._operations
+
+    def store(self):
+        """The user-data store for this root, opened once (src.store.open_store)."""
+        with self.lock:
+            if self._store is None:
+                from src.store import open_store
+                self._store = open_store(self.root)
+            return self._store
 
     # -- identity pipeline (constructed lazily on first identity API use) ----
 
@@ -335,7 +372,8 @@ class Backend:
             if self._identity_pipeline is None:
                 try:
                     from src.person_pipeline import PersonPipeline
-                    self._identity_pipeline = PersonPipeline(self.root)
+                    # the identity index and the face gallery live in the store too
+                    self._identity_pipeline = PersonPipeline(self.root, store=self.store())
                 except RuntimeError as exc:
                     self._identity_error = str(exc)
                     raise APIError(f"identity models unavailable: {exc}", 503) from exc
@@ -447,17 +485,18 @@ class Backend:
         player_id = payload.get("player_id")
         if not isinstance(player_id, str) or not player_id.strip():
             raise APIError("player_id must be a non-empty string")
-        store = self.out / "corner-pocket" / "face_embeddings.json"
+        faces = self.store()
+        # the enrolment scratch copy is a working file under out/enroll-eval, not a store
         scratch = self.out / "enroll-eval" / "scratch" / "out" / "corner-pocket" / "face_embeddings.json"
         with self._identity_lock:
             pipeline = self._identity_pipeline
             index = pipeline.identity if pipeline is not None else IdentityIndex(
-                self.out / "identity" / "clusters.json")
-            gallery = load(store, {}) or {}
+                self.out / "identity" / "clusters.json", store=faces)
+            gallery = faces.faces_load()
             bound = any(index.get(cid)["player_id"] == player_id for cid in index.clusters())
             if player_id not in gallery and not bound and player_id not in (load(scratch, {}) or {}):
                 raise APIError("no face data for this player", 404)
-            removed = {"store_faces": remove_faces(store, player_id),
+            removed = {"store_faces": faces.faces_remove(player_id),
                        "scratch_faces": remove_faces(scratch, player_id)}
             removed.update(index.forget_player(player_id))
             if pipeline is not None:
@@ -538,9 +577,13 @@ class Backend:
             return {"ok": False, "reason": "preview_expired",
                     "message": "this preview is no longer held; preview the track again before confirming"}
         try:
+            store = self.store()
             result = confirm_enrollment(self.root, plan, token, name,
                                         scratch_root=self.out / "enroll-eval" / "scratch",
-                                        dataset=plan.dataset)
+                                        dataset=plan.dataset,
+                                        # the roster comes from the store; None keeps the
+                                        # module's own file read (the JSON default)
+                                        store=None if type(store).__name__ == "JsonStore" else store)
         except EnrollmentTokenError as exc:
             return exc.to_dict()
         if result.get("ok"):
@@ -582,15 +625,16 @@ class Backend:
             payload = load(Path(source))
             if payload is None:
                 raise APIError("enrolment scratch file is missing: %s" % source, 500)
-            # The scratch store holds only this enrolment's rows: merge them in
-            # under the store lock, never write them over the whole gallery.
-            from src.face_id import add_faces
-            target = self.out / "corner-pocket" / "face_embeddings.json"
+            # The scratch store holds only this enrolment's rows: merge them into the
+            # face store (a locked append, never a write over the whole gallery).
+            store = self.store()
             with self._identity_lock:
-                add_faces(target, payload)
+                store.faces_add(payload)
                 if self._identity_pipeline is not None:
                     self._identity_pipeline.reload_gallery()
-            promoted["store"] = str(target)
+            promoted["store"] = (str(self.out / "corner-pocket" / "face_embeddings.json")
+                                 if type(store).__name__ == "JsonStore"
+                                 else "postgres:face_embeddings")
         return promoted
 
     # -- unified viewer: one overlay payload per frozen frame ---------------
@@ -638,12 +682,24 @@ class Backend:
         if dataset in cache:
             return cache[dataset]
         try:
-            from src.frame_inference import app_prior_for
-            value = app_prior_for(dataset, root=self.root)
+            # the hand anchors come from the store (the file by default); the quad rule
+            # is src.frame_inference's (earliest saved time, first four points, ordered)
+            from src.frame_inference import anchor_quad
+            value = anchor_quad(self.store().anchors_get(dataset))
         except Exception:
             value = None
         cache[dataset] = value
         return value
+
+    def _prior_source(self, dataset):
+        """Where the hand anchors behind the prior live (shown with the quad), or None."""
+        if self._prior_for(dataset) is None:
+            return None
+        from src.frame_inference import app_prior_source
+        source = app_prior_source(dataset, root=self.root)
+        if source is not None and type(self.store()).__name__ == "JsonStore":
+            return source
+        return f"postgres:json_documents/out/pid_anchors_{dataset}.json"
 
     def _unified_detection(self, dataset, frame_index, frame):
         """Table quad + ball candidates in full-res frame pixels. Detection
@@ -659,8 +715,7 @@ class Backend:
         import cv2
         import numpy as np
         from src.table_detect import detect_table
-        from src.frame_inference import (app_prior_source, detect_table_for_frame,
-                                         table_quad_note)
+        from src.frame_inference import detect_table_for_frame, table_quad_note
         from src.ball_detect import detect_ball_candidates
         scale = 2.0
         small = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2), interpolation=cv2.INTER_AREA)
@@ -685,8 +740,7 @@ class Backend:
         # The operator cannot see why a frame has no quad unless the reason travels
         # with the payload: corners=null alone is a silent absence.  Additive field,
         # localized in the viewer.
-        note = table_quad_note(table, seed_file=app_prior_source(dataset, root=self.root),
-                               refused=refused)
+        note = table_quad_note(table, seed_file=self._prior_source(dataset), refused=refused)
         corners, balls = None, []
         if table.get('corners') is not None:
             quad = np.asarray(table['corners'], np.float32) * scale
@@ -1166,7 +1220,7 @@ class Backend:
         if isinstance(stored, dict):
             stored = dict(stored, stored_inference=True)
         return dict(meta, inference=stored,
-                    correction=load(self.frame_path(dataset, index, 'correction')))
+                    correction=self.store().correction_get(meta['dataset'], index))
 
     def save_frame_correction(self, data):
         meta = self.frame_metadata(data.get('dataset'), data.get('frame_index'))
@@ -1197,7 +1251,7 @@ class Backend:
                 raise APIError('table_polygon must have nonzero area')
         correction = dict(meta, boxes=cleaned, table_polygon=polygon, source='manual', saved_at=now())
         with self.lock:
-            atomic_save(self.frame_path(meta['dataset'], meta['frame_index'], 'correction'), correction)
+            self.store().correction_put(meta['dataset'], meta['frame_index'], correction)
         return dict(ok=True, correction=correction)
 
     def inference_status(self, dataset):
@@ -1259,7 +1313,7 @@ class Backend:
         t = number(t, 0, 1800, "t")
         frame = self.frame(t)
         height, width = frame.shape[:2]
-        saved = load(self.out / "pid_anchors_vod30.json", {"anchors": {}})
+        saved = self.store().anchors_get("vod30")
         points = next((v for k, v in saved["anchors"].items() if float(k) == t), None)
         suggested = None
         calib = load(self.out / "calib_vod30.json", {})
@@ -1294,7 +1348,7 @@ class Backend:
         return load(self.out / "pid2_tracklets.json", {})
 
     def seeds(self):
-        return load(self.out / "pid_seed.json", {"seeds": {}})
+        return self.store().seed_file("vod30")
 
     # A person track's label is one of the legacy role values the identity
     # pipeline reads (A / B / ignore), a guest name the operator typed, or null
@@ -1339,7 +1393,7 @@ class Backend:
                     "ball_sets": [{"id": k, "label": k} for k in BALL_SETS]}
         if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "meta":
             base = self.crops(parts[2])
-            labels = load(base / "labels.json", {})
+            labels = self.store().labels_get(parts[2])
             ctx = load(base / "ctx.json", {})
             items = []
             for row in load(base / "meta.json", []):
@@ -1360,7 +1414,7 @@ class Backend:
                     match = next((a for a in raw if abs(a["t"] - event["t"]) < 0.01), None)
                     if match:
                         actors[str(event["id"])] = match
-            return {"events": events, "annotations": load(base / "annotations.json", {}),
+            return {"events": events, "annotations": self.store().verdicts_get(dataset),
                     "actors": actors, "geometry": geometry}
         if dataset != "vod30":
             raise APIError("feature only available for vod30", 404)
@@ -1435,14 +1489,10 @@ class Backend:
             label = p["label"]
             if isinstance(label, bool) or not (label in (None, "u", "clear", -1, -2) or type(label) is int and 0 <= label <= 15):
                 raise APIError("invalid ball label")
-            labels = load(base / "labels.json", {})
-            keys = [k for k in labels if Path(k).name == p["file"]]
-            key = keys[0] if keys else row["file"]
-            for old in keys:
-                labels.pop(old)
-            if label not in (None, "clear", -2):
-                labels[key] = "u" if label == -1 else label
-            atomic_save(base / "labels.json", labels)
+            # None / "clear" / -2 clear the label; -1 is "u" (unknown). A crop labelled for
+            # the first time is keyed by its meta.json path, as before.
+            stored = None if label in (None, "clear", -2) else ("u" if label == -1 else label)
+            self.store().label_put(parts[2], p["file"], stored, new_key=row["file"])
             return {"ok": True}
         if len(parts) != 3 or parts[0] != "api":
             raise APIError("route not found", 404)
@@ -1458,12 +1508,8 @@ class Backend:
                 raise APIError("invalid shooter")
             if "note" in p and (not isinstance(p["note"], str) or len(p["note"]) > 10000):
                 raise APIError("invalid note")
-            annotations = load(base / "annotations.json", {})
-            record = dict(annotations.get(key, {}))
-            record.update({k: p[k] for k in ("verdict", "note", "shooter") if k in p})
-            record["updated_at"] = datetime.now(timezone.utc).isoformat()
-            annotations[key] = record
-            atomic_save(base / "annotations.json", annotations)
+            # merge + updated_at, one locked read-modify-write in the store
+            record = self.store().verdict_put(dataset, key, {k: p[k] for k in ("verdict", "note", "shooter") if k in p})
             return {"ok": True, "annotation": record}
         if dataset != "vod30":
             raise APIError("feature only available for vod30", 404)
@@ -1477,11 +1523,8 @@ class Backend:
                 if not isinstance(point, list) or len(point) != 2:
                     raise APIError("each anchor must be [x,y]")
                 clean.append([number(point[0], 0, info["width"] - 1, "x"), number(point[1], 0, info["height"] - 1, "y")])
-            path = self.out / "pid_anchors_vod30.json"
-            saved = load(path, {"anchors": {}})
-            key = next((k for k in saved["anchors"] if float(k) == info["t"]), str(info["t"]))
-            saved["anchors"][key] = clean
-            atomic_save(path, saved)
+            # an existing time keeps its key spelling, a new one is keyed str(t) - as before
+            self.store().anchors_put("vod30", str(info["t"]), clean)
             return {"ok": True, "t": info["t"], "pts": clean}
         if route == "seeds":
             if self.job["status"] == "running":
@@ -1499,14 +1542,10 @@ class Backend:
             label = self.seed_label(p.get("label"))
             if p.get("label") is not None and label is None:
                 raise APIError("label must be A, B, ignore, a guest name up to 60 characters, or null")
-            saved = self.seeds()
-            key = f"{tid}:{win}"
-            if label is None:
-                saved["seeds"].pop(key, None)
-            else:
-                saved["seeds"][key] = dict(saved["seeds"].get(key, {}), win=win, t=t, track_id=tid, label=label)
-            atomic_save(self.out / "pid_seed.json", saved)
-            return {"ok": True, "seeds": saved["seeds"]}
+            # the same merge (existing keys kept, these four set) or removal, one locked write
+            seeds = self.store().seed_put("vod30", f"{tid}:{win}",
+                                          None if label is None else dict(win=win, t=t, track_id=tid, label=label))
+            return {"ok": True, "seeds": seeds}
         if route == "rebuild":
             if self.job["status"] == "running":
                 raise APIError("rebuild already running", 409)

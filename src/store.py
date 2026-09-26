@@ -32,6 +32,21 @@ from typing import Any, Protocol, runtime_checkable
 from src.face_id import add_faces, load_faces, remove_faces
 
 ENV = "POOL_DATABASE_URL"
+
+
+class StoreConstraintError(ValueError):
+    """A write the application rules accepted but a database constraint refused.
+
+    The transaction was rolled back, so nothing was written. It is a ValueError, so
+    the server's existing handlers answer 4xx; the message says it is a storage
+    constraint and `constraint` names it for the technical detail."""
+
+    def __init__(self, constraint: str | None, detail: str):
+        self.constraint = constraint
+        super().__init__(f"Refused by the database constraint {constraint or '(unnamed)'}; "
+                         f"nothing was written. {detail}")
+
+
 # dataset -> the scan folder under out/ that holds its queue, verdicts and frame results
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
@@ -61,11 +76,12 @@ class Store(Protocol):
     def faces_remove(self, player_id: str) -> int: ...
     def seeds_get(self, dataset: str) -> dict: ...
     def seed_put(self, dataset: str, key: str, record: dict | None) -> dict: ...
+    def seed_file(self, dataset: str) -> dict: ...
     # operator records (section 4)
     def verdicts_get(self, dataset: str) -> dict: ...
     def verdict_put(self, dataset: str, event_id, fields: dict) -> dict: ...
     def labels_get(self, crop_set: str) -> dict: ...
-    def label_put(self, crop_set: str, crop_file: str, label) -> None: ...
+    def label_put(self, crop_set: str, crop_file: str, label, new_key: str | None = None) -> None: ...
     def correction_get(self, dataset: str, frame_index: int) -> dict | None: ...
     def correction_put(self, dataset: str, frame_index: int, payload: dict) -> None: ...
     def anchors_get(self, dataset: str) -> dict: ...
@@ -84,6 +100,21 @@ def open_store(root) -> Store:
         from src.store_pg import PostgresStore
         return PostgresStore(root)
     return JsonStore(root)
+
+
+def refuse_file_writes_under_postgres(tool: str) -> None:
+    """Exit with a clear message when POOL_DATABASE_URL is set.
+
+    For the legacy tools that write user-data JSON files directly (their own small
+    servers and one-off scripts). With the database as the store, a file they write
+    is read by nothing and silently diverges, so they refuse to start instead. To
+    use one anyway: unset POOL_DATABASE_URL and point it at an exported copy
+    (python -m src.store_export --to DIR), never at the live out/."""
+    if os.environ.get(ENV):
+        raise SystemExit(f"{tool}: POOL_DATABASE_URL is set, so the user data lives in Postgres and this "
+                         f"tool's file writes would silently diverge from it. Refusing to run. To use it on "
+                         f"a copy: python -m src.store_export --to DIR, then run it against DIR with the "
+                         f"variable unset (docs/postgres.md).")
 
 
 def _read(path: Path, default):
@@ -177,7 +208,11 @@ class JsonStore:
         return self.out / "pid_seed.json"
 
     def seeds_get(self, dataset: str) -> dict:
-        return _read(self._seeds_path(dataset), {"seeds": {}}).get("seeds", {})
+        return self.seed_file(dataset).get("seeds", {})
+
+    def seed_file(self, dataset: str) -> dict:
+        """The whole pid_seed.json document ({"seeds": {...}} plus any top-level keys)."""
+        return _read(self._seeds_path(dataset), {"seeds": {}})
 
     def seed_put(self, dataset: str, key: str, record: dict | None) -> dict:
         path = self._seeds_path(dataset)
@@ -214,14 +249,16 @@ class JsonStore:
     def labels_get(self, crop_set: str) -> dict:
         return _read(self._labels_path(crop_set), {})
 
-    def label_put(self, crop_set: str, crop_file: str, label) -> None:
+    def label_put(self, crop_set: str, crop_file: str, label, new_key: str | None = None) -> None:
         """Set or clear (None) the label of one crop, matched by basename; an existing
-        key keeps its original (often absolute) spelling, as the server does today."""
+        key keeps its original (often absolute) spelling, as the server does today, and
+        a crop labelled for the first time is keyed `new_key` (the server passes the
+        crop's meta.json path) or else its basename."""
         path = self._labels_path(crop_set)
         with self._lock(path):
             labels = _read(path, {})
             keys = [k for k in labels if Path(k).name == crop_file]
-            key = keys[0] if keys else crop_file
+            key = keys[0] if keys else (new_key or crop_file)
             for old in keys:
                 labels.pop(old)
             if label is not None:

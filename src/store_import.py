@@ -20,10 +20,13 @@ Equality is strict JSON equality, with these exceptions - each one a case the
 application itself already treats as the same value:
   * an int equals a float of the same value (a double precision column returns 68
     as 68.0); a bool never equals a number;
-  * a cluster without "face_samples" equals one with [] (the older index writer);
   * a face-store player with an empty list equals an absent player;
   * a missing annotations / labels / anchors file equals the empty default the
     server reads it with.
+Operations and operator-record files are also stored as their exact text
+(json_documents, migration 0003), and a set whose stored text differs from its file
+is not "unchanged"; the export (src/store_export.py) writes that text back, so the
+file -> database -> file round trip is byte-exact (tests/test_store_roundtrip.py).
 """
 from __future__ import annotations
 
@@ -32,6 +35,8 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+
+from src.store_files import DOCUMENT_SETS, document_paths, get_document, has_documents_table, put_document
 
 REPO = Path(__file__).resolve().parent.parent
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
@@ -96,11 +101,12 @@ def first_difference(file_value, db_value, path="$"):
 
 
 class Snapshot:
-    """Reads each file once and remembers the md5 of exactly the bytes it parsed."""
+    """Reads each file once and remembers the md5 and the exact text it parsed."""
 
     def __init__(self, root):
         self.root = Path(root)
         self.md5s: dict[str, str | None] = {}
+        self.texts: dict[str, str] = {}
 
     def json(self, relative: str, default=None):
         path = self.root / relative
@@ -109,6 +115,7 @@ class Snapshot:
             return default
         data = path.read_bytes()
         self.md5s[relative] = hashlib.md5(data).hexdigest()
+        self.texts[relative] = data.decode("utf-8")
         return json.loads(data)
 
     def changed(self) -> list[str]:
@@ -322,8 +329,7 @@ class IdentitySet(DataSet):
         if raw is None:
             return None, []
         bare = sum(1 for rec in raw.values() if "face_samples" not in rec)
-        doc = {cid: {"face_samples": [], **rec} for cid, rec in raw.items()}
-        return doc, ([f"{bare} cluster(s) without face_samples compared as []"] if bare else [])
+        return raw, ([f"{bare} cluster(s) written before face samples (no face_samples key)"] if bare else [])
 
     def write(self, conn, doc):
         roster = {row[0] for row in conn.execute("SELECT id FROM players").fetchall()}
@@ -338,10 +344,10 @@ class IdentitySet(DataSet):
             if any(len(vector) != dim for vector in bank):
                 raise Mismatch(f"cluster {cid}: body_bank vectors differ in length")
             conn.execute(
-                "INSERT INTO identity_clusters (cluster_id, player_id, body_bank, body_dim, face, last_seen_frame) "
-                "VALUES (%s, %s, %s::double precision[], %s, %s::double precision[], %s)",
+                "INSERT INTO identity_clusters (cluster_id, player_id, body_bank, body_dim, face, last_seen_frame, "
+                "has_face_samples) VALUES (%s, %s, %s::double precision[], %s, %s::double precision[], %s, %s)",
                 (int(cid), rec.get("player_id"), [float(v) for vector in bank for v in vector], dim,
-                 _floats(rec.get("face")), rec.get("last_seen_frame")))
+                 _floats(rec.get("face")), rec.get("last_seen_frame"), "face_samples" in rec))
             for rank, sample in enumerate(rec.get("face_samples") or []):
                 conn.execute(
                     "INSERT INTO identity_face_samples (cluster_id, rank, embedding, eye_px, det_score, bbox, "
@@ -357,12 +363,17 @@ class IdentitySet(DataSet):
             samples.setdefault(cid, []).append({"embedding": embedding, "eye_px": eye_px, "det_score": det_score,
                                                 "bbox": bbox, "frame_index": frame_index})
         doc = {}
-        for cid, player_id, bank, dim, face, last_seen in conn.execute(
-                "SELECT cluster_id, player_id, body_bank, body_dim, face, last_seen_frame FROM identity_clusters "
-                "ORDER BY cluster_id").fetchall():
+        for cid, player_id, bank, dim, face, last_seen, has_samples in conn.execute(
+                "SELECT cluster_id, player_id, body_bank, body_dim, face, last_seen_frame, has_face_samples "
+                "FROM identity_clusters ORDER BY cluster_id").fetchall():
             vectors = [bank[i:i + dim] for i in range(0, len(bank), dim)] if dim else []
-            doc[str(cid)] = {"player_id": player_id, "body_bank": vectors, "face": face,
-                             "last_seen_frame": last_seen, "face_samples": samples.get(cid, [])}
+            # IdentityIndex.save's key order; an index written before face samples existed
+            # has no face_samples key, and keeps that layout
+            record = {"player_id": player_id, "body_bank": vectors, "face": face}
+            if has_samples:
+                record["face_samples"] = samples.get(cid, [])
+            record["last_seen_frame"] = last_seen
+            doc[str(cid)] = record
         return doc
 
     def expected(self, doc):
@@ -578,10 +589,14 @@ def import_set(conn, spec: DataSet, root, *, replace=False) -> dict:
     report.update(files=dict(snap.md5s), notes=notes)
     if doc is None:
         return dict(report, status="absent", files_unchanged=not snap.changed())
+    documented = spec.name in DOCUMENT_SETS and has_documents_table(conn)
+    texts = {rel: text for rel, text in snap.texts.items()} if documented else {}
     try:
         with conn.transaction():
             status = "unchanged"
-            if first_difference(doc, spec.render(conn)) is not None:
+            stored = {rel: get_document(conn, rel) for rel in texts}
+            if first_difference(doc, spec.render(conn)) is not None or any(
+                    stored[rel] is not None and stored[rel] != text for rel, text in texts.items()):
                 held = sum(spec.actual(conn).values())
                 if held and not replace:
                     detail = ""
@@ -594,6 +609,25 @@ def import_set(conn, spec: DataSet, root, *, replace=False) -> dict:
                 spec.clear(conn)
                 spec.write(conn, doc)
                 status = "imported"
+            if documented:
+                # the exact text of each file: the byte-exact source for reads and the export;
+                # a document whose file no longer exists is removed (absent = the default)
+                if spec.name == "corrections":
+                    known = [row[0] for row in conn.execute(
+                        "SELECT path FROM json_documents WHERE path LIKE %s", ("%/frame_results/%",)).fetchall()]
+                else:
+                    known = document_paths(spec.name)
+                for rel in known:
+                    if rel not in texts and get_document(conn, rel) is not None:
+                        conn.execute("DELETE FROM json_documents WHERE path = %s", (rel,))
+                        status = "imported"
+                for rel, text in texts.items():
+                    if get_document(conn, rel) != text:
+                        put_document(conn, rel, text)
+                        status = "imported"
+                for rel, text in texts.items():
+                    if get_document(conn, rel) != text:
+                        raise Mismatch(f"{rel}: the stored document is not the file's exact text")
             expected, actual = spec.expected(doc), spec.actual(conn)
             report.update(expected=expected, actual=actual)
             if expected != actual:

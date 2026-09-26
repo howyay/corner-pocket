@@ -33,7 +33,7 @@ sys.dont_write_bytecode = True
 from annotator import twitch_vod_source as vod  # noqa: E402
 
 SAVED_CHANNEL_ID = '77777777777777777777777777777777'   # out/corner-pocket/state.json
-SAVED_CHANNEL_LOGIN = 'examplechannel'
+SAVED_CHANNEL_LOGIN = 'examplechannel'   # placeholder; pass --channel <login> for a real run
 
 
 class BallStandIn:

@@ -16,8 +16,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-VIDEO = Path("/home/operator/projects/pool/data/vod_highlight.mp4")
-CROP_DIR = Path("/home/operator/projects/pool/out/unlabeled_crops")
+ROOT = Path(__file__).resolve().parents[1]
+VIDEO = ROOT / "data" / "vod_highlight.mp4"
+CROP_DIR = ROOT / "out" / "unlabeled_crops"
 META = CROP_DIR / "meta.json"
 CTX_DIR = CROP_DIR / "ctx"
 OUT_JSON = CROP_DIR / "ctx.json"
