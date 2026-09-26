@@ -336,6 +336,23 @@ class PostgresContract(Contract, unittest.TestCase):
         self.assertIsInstance(refused.exception, ValueError, "the server answers it as a 4xx, not a 500")
         self.assertEqual(self.store.ops_get(), first, "the refused write left the document as it was")
 
+    def test_binding_a_cluster_to_an_id_off_the_roster_is_refused_by_the_foreign_key(self):
+        """The reviewed FK on identity_clusters.player_id: POST /api/identity/seed with a
+        typo used to be stored in the file; on Postgres it is refused, nothing written."""
+        import numpy as np
+        from src.person_identity import IdentityIndex
+        from src.store import StoreConstraintError
+        self.store.enroll_player({"id": "p1", "name": "Ana"}, {"player_id": "p1"})
+        index = IdentityIndex(self.root / "unused.json", store=self.store)
+        index.register(1, np.ones(128, np.float32), frame_index=1)
+        index.explicit_assign(1, "p1")
+        before = self.store.identity_load()
+        with self.assertRaises(StoreConstraintError) as refused:
+            index.explicit_assign(1, "no-such-player")
+        self.assertEqual(refused.exception.constraint, "identity_clusters_player_id_fkey")
+        self.assertIsInstance(refused.exception, ValueError)
+        self.assertEqual(self.store.identity_load(), before, "the index kept its last good state")
+
     def _drop(self):
         with db.connect() as conn:
             conn.execute(f"DROP SCHEMA IF EXISTS {self.schema} CASCADE")

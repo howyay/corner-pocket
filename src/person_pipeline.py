@@ -53,12 +53,15 @@ def _center_inside(box, person):
 
 class PersonPipeline:
     def __init__(self, root, detector=None, body_encoder=None, face_engine=None, identity=None,
-                 face_stride=4):
+                 face_stride=4, store=None):
         self.root = Path(root)
         self.detector = detector
         self.body_encoder = body_encoder
         self._face_engine = face_engine
-        self.identity = identity or IdentityIndex(self.root / 'out' / 'identity' / 'clusters.json')
+        # store: a src.store Store for the identity index and the face gallery; None =
+        # the JSON files under root (the default, as always)
+        self.store = store
+        self.identity = identity or IdentityIndex(self.root / 'out' / 'identity' / 'clusters.json', store=store)
         repo = Path(__file__).resolve().parents[1]
         self.face_store = self.root / Path(DEFAULT_FACE_STORE).relative_to(repo)
         self._gallery = None
@@ -264,7 +267,7 @@ class PersonPipeline:
 
     def _gallery_data(self):
         if self._gallery is None:
-            self._gallery = load_faces(self.face_store)
+            self._gallery = self.store.faces_load() if self.store is not None else load_faces(self.face_store)
         return self._gallery
 
     def reload_gallery(self):
@@ -276,8 +279,10 @@ class PersonPipeline:
         engine = self._get_engine()
         analyze = getattr(engine, 'analyze_resilient', engine.analyze)
         records = [f for f in analyze(image) if engine.quality(f)]
-        # merge into the store on disk, never write the cached copy over it
-        self._gallery = add_faces(self.face_store, {str(player_id): records})
+        # merge into the store, never write the cached copy over it
+        additions = {str(player_id): records}
+        self._gallery = (self.store.faces_add(additions) if self.store is not None
+                         else add_faces(self.face_store, additions))
         return len(records)
 
     def explicit_seed(self, cluster_id, player_id, reason='seed'):

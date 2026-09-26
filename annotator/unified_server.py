@@ -370,7 +370,8 @@ class Backend:
             if self._identity_pipeline is None:
                 try:
                     from src.person_pipeline import PersonPipeline
-                    self._identity_pipeline = PersonPipeline(self.root)
+                    # the identity index and the face gallery live in the store too
+                    self._identity_pipeline = PersonPipeline(self.root, store=self.store())
                 except RuntimeError as exc:
                     self._identity_error = str(exc)
                     raise APIError(f"identity models unavailable: {exc}", 503) from exc
@@ -482,17 +483,18 @@ class Backend:
         player_id = payload.get("player_id")
         if not isinstance(player_id, str) or not player_id.strip():
             raise APIError("player_id must be a non-empty string")
-        store = self.out / "corner-pocket" / "face_embeddings.json"
+        faces = self.store()
+        # the enrolment scratch copy is a working file under out/enroll-eval, not a store
         scratch = self.out / "enroll-eval" / "scratch" / "out" / "corner-pocket" / "face_embeddings.json"
         with self._identity_lock:
             pipeline = self._identity_pipeline
             index = pipeline.identity if pipeline is not None else IdentityIndex(
-                self.out / "identity" / "clusters.json")
-            gallery = load(store, {}) or {}
+                self.out / "identity" / "clusters.json", store=faces)
+            gallery = faces.faces_load()
             bound = any(index.get(cid)["player_id"] == player_id for cid in index.clusters())
             if player_id not in gallery and not bound and player_id not in (load(scratch, {}) or {}):
                 raise APIError("no face data for this player", 404)
-            removed = {"store_faces": remove_faces(store, player_id),
+            removed = {"store_faces": faces.faces_remove(player_id),
                        "scratch_faces": remove_faces(scratch, player_id)}
             removed.update(index.forget_player(player_id))
             if pipeline is not None:

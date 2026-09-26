@@ -147,8 +147,13 @@ class IdentityIndex:
         body_margin: float = BODY_MARGIN,
         bind_bar: float | None = None,
         face_samples_max: int = PERSIST_FACES,
+        store: Any = None,
     ):
         self.path = Path(path)
+        # Where the index is persisted: None = the JSON file at `path` (default, as
+        # always); a src.store Store = its identity_load / identity_save (the server
+        # passes its store, so the index follows it to Postgres).
+        self.store = store
         # FACE bar (face_embedding binding via bind_face). The number bind_face
         # actually applies is bind_bar; None keeps the composed default
         # (match_threshold + margin = 0.47), so tuning the matcher threshold
@@ -409,6 +414,9 @@ class IdentityIndex:
                 ],
                 "last_seen_frame": c.last_seen_frame,
             }
+        if self.store is not None:
+            self.store.identity_save(payload)
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:
@@ -416,9 +424,12 @@ class IdentityIndex:
         os.replace(tmp, self.path)  # atomic
 
     def _load(self) -> None:
-        if not self.path.exists():
+        if self.store is not None:
+            raw = self.store.identity_load()
+        elif not self.path.exists():
             return
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        else:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
         for cid_s, rec in raw.items():
             cid = int(cid_s)
             c = _Cluster(cid)

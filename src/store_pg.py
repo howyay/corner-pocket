@@ -196,12 +196,17 @@ class PostgresStore:
             return IdentitySet().render(conn)
 
     def identity_save(self, clusters: dict) -> None:
-        """Replace the identity index with `clusters` (the IdentityIndex.save payload)."""
-        from src.store_import import IdentitySet
+        """Replace the identity index with `clusters` (the IdentityIndex.save payload).
+        A cluster bound to an id that is not on the roster is refused by the reviewed
+        foreign key (identity_clusters_player_id_fkey) with StoreConstraintError."""
+        from src.store_import import IdentitySet, Mismatch
         spec = IdentitySet()
         with self._write() as conn:
             spec.clear(conn)
-            spec.write(conn, clusters)
+            try:
+                spec.write(conn, clusters)
+            except Mismatch as error:        # the importer's check for the same foreign key
+                raise StoreConstraintError("identity_clusters_player_id_fkey", str(error)) from error
 
     def faces_load(self) -> dict:
         from src.store_import import FacesSet
