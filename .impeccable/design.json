@@ -1,550 +1,539 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-25T13:57:59.707Z",
+  "generatedAt": "2026-09-26T08:37:27.682Z",
   "title": "Design System: Corner Pocket",
   "extensions": {
     "colorMeta": {
       "walnut-night": {
         "role": "neutral",
         "displayName": "Walnut Night",
-        "canonical": "#14110f",
-        "oklch": "oklch(18.1% 0.006 55.9)",
+        "canonical": "#16120f",
+        "oklch": "oklch(18.6% 0.009 59.1)",
         "tonalRamp": [
-          "#0d0a09",
-          "#282422",
-          "#45413f",
-          "#64605e",
-          "#85817f",
-          "#a8a4a1",
-          "#cdc8c5",
-          "#f2edea"
+          "#080503",
+          "#1e1a17",
+          "#36322e",
+          "#56514e",
+          "#79736f",
+          "#9d9793",
+          "#c2bcb8",
+          "#ede7e2"
         ],
         "cssVar": "--bg",
-        "light": "#eee6d8",
+        "light": "#eee7dc",
         "description": "Page ground."
       },
       "felt-panel": {
         "role": "neutral",
         "displayName": "Felt Panel",
-        "canonical": "#1a1613",
-        "oklch": "oklch(20.4% 0.009 59.1)",
+        "canonical": "#1c1814",
+        "oklch": "oklch(21.2% 0.010 67.2)",
         "tonalRamp": [
-          "#0e0a08",
-          "#282421",
-          "#46413d",
-          "#65605c",
-          "#86817d",
-          "#a9a4a0",
-          "#cec8c4",
-          "#f3ede9"
+          "#080503",
+          "#1e1a16",
+          "#36322e",
+          "#56524d",
+          "#79736e",
+          "#9d9792",
+          "#c2bdb7",
+          "#ede7e1"
         ],
         "cssVar": "--panel",
-        "light": "#faf6ee",
+        "light": "#faf6ef",
         "description": "Panels, header, rails, inspector, modal, popover."
       },
       "pocket-well": {
         "role": "neutral",
         "displayName": "Pocket Well",
-        "canonical": "#100e0c",
-        "oklch": "oklch(16.5% 0.005 67.4)",
+        "canonical": "#110e0b",
+        "oklch": "oklch(16.6% 0.008 67.2)",
         "tonalRamp": [
-          "#0d0b09",
-          "#272522",
-          "#44413f",
-          "#63615e",
-          "#84827f",
-          "#a7a4a1",
-          "#cbc8c5",
-          "#f1eeeb"
+          "#070504",
+          "#1d1a17",
+          "#36322f",
+          "#56524e",
+          "#787470",
+          "#9c9793",
+          "#c1bdb8",
+          "#ece7e2"
         ],
         "cssVar": "--panel2",
-        "light": "#fffdf8",
+        "light": "#fefcf8",
         "description": "Recessed layer: inputs, entries, cue cards, bars, sheet tabs."
       },
       "rail-wood": {
-        "role": "neutral",
-        "displayName": "Rail Wood",
-        "canonical": "#241e19",
-        "oklch": "oklch(24.0% 0.013 61.9)",
-        "tonalRamp": [
-          "#0f0a06",
-          "#2a241f",
-          "#47413b",
-          "#67605a",
-          "#88817a",
-          "#aba39d",
-          "#d0c7c1",
-          "#f5ede6"
-        ],
-        "cssVar": "--rail",
-        "light": "#e9e0d0",
-        "description": "Hover / selected fill, active nav and layer, toast."
+        "role": "semantic",
+        "displayName": "rail-wood",
+        "canonical": "#552d1b",
+        "cssVar": "--rail-wood",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "oklch": "oklch(34.5% 0.066 44.3)"
       },
       "seam": {
         "role": "neutral",
         "displayName": "Seam",
-        "canonical": "#2e2620",
-        "oklch": "oklch(27.6% 0.016 58.9)",
+        "canonical": "#2f2923",
+        "oklch": "oklch(28.5% 0.014 67.2)",
         "tonalRamp": [
-          "#100a05",
-          "#2b231d",
-          "#49403a",
-          "#695f58",
-          "#8a8079",
-          "#ada39b",
-          "#d2c7bf",
-          "#f7ece4"
+          "#090502",
+          "#1f1914",
+          "#38322b",
+          "#58514b",
+          "#7a736c",
+          "#9e978f",
+          "#c4bcb5",
+          "#eee6de"
         ],
         "cssVar": "--line",
-        "light": "#d8cbb6",
+        "light": "#d5cbbb",
         "description": "Default 1px border and divider."
       },
       "seam-soft": {
         "role": "neutral",
         "displayName": "Seam Soft",
-        "canonical": "#262019",
-        "oklch": "oklch(24.8% 0.016 71.3)",
+        "canonical": "#29231f",
+        "oklch": "oklch(26.1% 0.012 55.8)",
         "tonalRamp": [
-          "#0f0a05",
-          "#2a241d",
-          "#474139",
-          "#676058",
-          "#888178",
-          "#aba49b",
-          "#d0c8be",
-          "#f5ede3"
+          "#090503",
+          "#1f1915",
+          "#38312d",
+          "#58514c",
+          "#7a736e",
+          "#9e9791",
+          "#c4bcb7",
+          "#eee6e1"
         ],
         "cssVar": "--line2",
-        "light": "#e3d9c7",
+        "light": "#e0d8cb",
         "description": "Borders of entries, cue cards, items."
       },
       "button-rim": {
         "role": "neutral",
         "displayName": "Button Rim",
-        "canonical": "#4a3f33",
-        "oklch": "oklch(37.5% 0.025 69.4)",
+        "canonical": "#73665b",
+        "oklch": "oklch(51.9% 0.024 62.5)",
         "tonalRamp": [
-          "#120902",
-          "#2d2318",
-          "#4b4034",
-          "#6b5f52",
-          "#8c8073",
-          "#b0a395",
-          "#d4c7b8",
-          "#faecdd"
+          "#0c0401",
+          "#23180f",
+          "#3c3026",
+          "#5c5045",
+          "#7f7267",
+          "#a3958a",
+          "#c9bbaf",
+          "#f4e5d8"
         ],
         "cssVar": "--btn-line",
-        "light": "#c2b299",
+        "light": "#938470",
         "description": "Default button border, link underline, vs-badge border."
       },
       "chalk-bright": {
         "role": "neutral",
         "displayName": "Chalk Bright",
-        "canonical": "#f6f1e6",
-        "oklch": "oklch(95.9% 0.016 86.4)",
+        "canonical": "#f6f3ec",
+        "oklch": "oklch(96.5% 0.010 87.5)",
         "tonalRamp": [
-          "#0e0b05",
-          "#28251d",
-          "#464239",
-          "#656157",
-          "#868278",
-          "#a9a59a",
-          "#cdc9be",
-          "#f3eee3"
+          "#070603",
+          "#1c1a15",
+          "#35332d",
+          "#55524c",
+          "#77746e",
+          "#9b9892",
+          "#c0bdb7",
+          "#ebe8e1"
         ],
         "cssVar": "--ink-hi",
-        "light": "#171208",
+        "light": "#1a120a",
         "description": "Headings and active text."
       },
       "chalk": {
         "role": "neutral",
         "displayName": "Chalk",
-        "canonical": "#f2e9dd",
-        "oklch": "oklch(93.8% 0.019 75.3)",
+        "canonical": "#efe9de",
+        "oklch": "oklch(93.6% 0.016 82.8)",
         "tonalRamp": [
-          "#100a04",
-          "#2a241b",
-          "#484137",
-          "#686056",
-          "#898176",
-          "#aca498",
-          "#d0c8bc",
-          "#f6ede1"
+          "#080502",
+          "#1e1a12",
+          "#37322a",
+          "#575249",
+          "#79746a",
+          "#9d988d",
+          "#c3bdb2",
+          "#ede7dc"
         ],
         "cssVar": "--ink",
-        "light": "#241c12",
+        "light": "#251e15",
         "description": "Body text."
       },
       "cue-shaft": {
         "role": "neutral",
         "displayName": "Cue Shaft",
-        "canonical": "#b6a693",
-        "oklch": "oklch(73.4% 0.033 72.0)",
+        "canonical": "#bdb0a1",
+        "oklch": "oklch(76.4% 0.026 71.4)",
         "tonalRamp": [
-          "#130900",
-          "#2f2213",
-          "#4d3f2f",
-          "#6d5f4d",
-          "#8f806d",
-          "#b2a28f",
-          "#d7c6b3",
-          "#fdecd7"
+          "#0b0400",
+          "#22190d",
+          "#3b3124",
+          "#5c5043",
+          "#7e7264",
+          "#a39687",
+          "#c9bbac",
+          "#f3e5d6"
         ],
         "cssVar": "--ink-mid",
-        "light": "#5b4f41",
+        "light": "#564b3e",
         "description": "Paragraphs, facts line."
       },
       "worn-leather": {
         "role": "neutral",
         "displayName": "Worn Leather",
-        "canonical": "#8a7a68",
-        "oklch": "oklch(58.9% 0.033 70.4)",
+        "canonical": "#a6998a",
+        "oklch": "oklch(69.0% 0.026 71.3)",
         "tonalRamp": [
-          "#140800",
-          "#2f2213",
-          "#4d3f2f",
-          "#6e5e4d",
-          "#8f7f6d",
-          "#b3a28f",
-          "#d7c6b2",
-          "#fdebd7"
+          "#0b0400",
+          "#22190d",
+          "#3b3124",
+          "#5c5043",
+          "#7f7264",
+          "#a39687",
+          "#c9bbac",
+          "#f3e5d5"
         ],
         "cssVar": "--ink-dim",
-        "light": "#7c6d5b",
+        "light": "#665a4d",
         "description": "Labels and meta."
       },
       "old-varnish": {
         "role": "neutral",
         "displayName": "Old Varnish",
-        "canonical": "#6d5f51",
-        "oklch": "oklch(49.5% 0.028 67.1)",
+        "canonical": "#968a7d",
+        "oklch": "oklch(64.0% 0.024 69.6)",
         "tonalRamp": [
-          "#130901",
-          "#2e2216",
-          "#4c3f32",
-          "#6c5e50",
-          "#8e7f71",
-          "#b1a293",
-          "#d6c6b6",
-          "#fcebdb"
+          "#0b0400",
+          "#22190e",
+          "#3b3126",
+          "#5b5045",
+          "#7e7266",
+          "#a29689",
+          "#c8bbae",
+          "#f3e5d7"
         ],
         "cssVar": "--ink-faint",
-        "light": "#9b8b77",
+        "light": "#6d6153",
         "description": "Footnotes, placeholders, provenance (below 4.5:1)."
       },
       "rail-brass": {
         "role": "primary",
         "displayName": "Rail Brass",
-        "canonical": "#c9a227",
-        "oklch": "oklch(72.8% 0.138 89.7)",
+        "canonical": "#cca632",
+        "oklch": "oklch(74.0% 0.135 89.8)",
         "tonalRamp": [
-          "#100a00",
-          "#2f2302",
-          "#524005",
-          "#775e0c",
-          "#9e7e15",
-          "#c7a024",
-          "#ecc452",
-          "#feedc1"
+          "#160000",
+          "#301200",
+          "#4a2c00",
+          "#6c4d00",
+          "#907000",
+          "#b59432",
+          "#dcba5c",
+          "#ffe586"
         ],
         "cssVar": "--brass",
-        "light": "#8a6a12",
+        "light": "#755706",
         "description": "The only accent: current / selected / primary, 3px panel top edges, focus ring."
       },
       "polished-brass": {
         "role": "primary",
         "displayName": "Polished Brass",
-        "canonical": "#e3c877",
-        "oklch": "oklch(83.8% 0.105 91.6)",
+        "canonical": "#e3cb7e",
+        "oklch": "oklch(84.5% 0.100 92.7)",
         "tonalRamp": [
-          "#100a00",
-          "#2f2400",
-          "#514000",
-          "#765e02",
-          "#99802c",
-          "#bda352",
-          "#e2c776",
-          "#ffeebc"
+          "#120100",
+          "#2b1600",
+          "#452f00",
+          "#665000",
+          "#897222",
+          "#ae974a",
+          "#d4bc70",
+          "#ffe799"
         ],
         "cssVar": "--brass-hi",
-        "light": "#6d5210",
+        "light": "#624902",
         "description": "Brass as text: links, clock digits, MODEL tag text, active sub-labels."
       },
       "brass-hover": {
         "role": "primary",
         "displayName": "Brass Hover",
-        "canonical": "#dcbb46",
-        "oklch": "oklch(80.0% 0.138 93.1)",
+        "canonical": "#dbb64c",
+        "oklch": "oklch(78.9% 0.130 89.7)",
         "tonalRamp": [
-          "#100b00",
-          "#2e2402",
-          "#504105",
-          "#745f0d",
-          "#9c7f00",
-          "#c3a225",
-          "#e8c753",
-          "#ffeeb9"
+          "#160000",
+          "#301200",
+          "#4a2c00",
+          "#6c4d00",
+          "#907000",
+          "#b59432",
+          "#dcba5c",
+          "#ffe586"
         ],
         "cssVar": "--brass-hover",
-        "light": "#a07d18",
+        "light": "#866617",
         "description": "Hover of the clock-toggle button only."
       },
       "brass-ink": {
         "role": "primary",
         "displayName": "Brass Ink",
-        "canonical": "#17120c",
-        "oklch": "oklch(18.6% 0.014 71.9)",
+        "canonical": "#15110c",
+        "oklch": "oklch(18.1% 0.012 73.1)",
         "tonalRamp": [
-          "#0f0a05",
-          "#29241e",
-          "#47413a",
-          "#666059",
-          "#888179",
-          "#aba49c",
-          "#cfc8bf",
-          "#f5ede4"
+          "#080503",
+          "#1e1a15",
+          "#37322c",
+          "#57524b",
+          "#79746d",
+          "#9d9790",
+          "#c2bdb6",
+          "#ede7df"
         ],
         "cssVar": "--brass-fg",
-        "light": "#fdf8ee",
+        "light": "#fcfaf4",
         "description": "Text on a brass fill."
       },
       "pip-off": {
         "role": "neutral",
         "displayName": "Pip Off",
-        "canonical": "#2b241d",
-        "oklch": "oklch(26.6% 0.016 67.0)",
+        "canonical": "#312a24",
+        "oklch": "oklch(29.1% 0.015 62.8)",
         "tonalRamp": [
-          "#100a05",
-          "#2b241d",
-          "#484039",
-          "#686058",
-          "#898178",
-          "#aca39a",
-          "#d1c7be",
-          "#f6ede3"
+          "#090502",
+          "#201914",
+          "#38312b",
+          "#59514a",
+          "#7b736c",
+          "#9f968f",
+          "#c5bcb4",
+          "#efe6de"
         ],
         "cssVar": "--pip-off",
-        "light": "#d9cdb8"
+        "light": "#d9d0c1"
       },
       "baize-green": {
         "role": "signal",
         "displayName": "Baize Green",
-        "canonical": "#7fc39a",
-        "oklch": "oklch(76.0% 0.091 157.0)",
+        "canonical": "#85ca9d",
+        "oklch": "oklch(78.1% 0.095 155.0)",
         "tonalRamp": [
-          "#000f05",
-          "#022d19",
-          "#074f2f",
-          "#2c714c",
-          "#50936c",
-          "#73b78e",
-          "#97dcb1",
-          "#c6fedb"
+          "#000d00",
+          "#002604",
+          "#00401b",
+          "#1a623a",
+          "#41855b",
+          "#66aa7e",
+          "#8bd0a3",
+          "#b5fbcc"
         ],
         "cssVar": "--green",
-        "light": "#256a45",
+        "light": "#296944",
         "description": "Complete / confirmed / live edge / pot / geometry-verified / YOURS."
       },
       "baize-green-bg": {
         "role": "signal",
         "displayName": "Baize Green Bg",
-        "canonical": "#16241c",
-        "oklch": "oklch(24.5% 0.025 158.9)",
+        "canonical": "#122219",
+        "oklch": "oklch(23.4% 0.028 158.7)",
         "tonalRamp": [
-          "#030e07",
-          "#1b2921",
-          "#37463d",
-          "#56665c",
-          "#76877d",
-          "#99aa9f",
-          "#bccec3",
-          "#e1f4e8"
+          "#000803",
+          "#0f1f16",
+          "#27372e",
+          "#46574d",
+          "#677a6e",
+          "#8a9e92",
+          "#afc4b7",
+          "#d9eee1"
         ],
         "cssVar": "--green-bg",
-        "light": "#dfeade"
+        "light": "#daebdf"
       },
       "baize-green-line": {
         "role": "signal",
         "displayName": "Baize Green Line",
-        "canonical": "#3d5f4c",
-        "oklch": "oklch(45.3% 0.051 159.1)",
+        "canonical": "#355643",
+        "oklch": "oklch(42.2% 0.050 158.1)",
         "tonalRamp": [
-          "#000f06",
-          "#0a2c1c",
-          "#294a38",
-          "#486a57",
-          "#688c77",
-          "#8baf9a",
-          "#aed4bd",
-          "#d3fae2"
+          "#000a01",
+          "#012111",
+          "#1a3b29",
+          "#3a5b48",
+          "#5b7e69",
+          "#7fa28d",
+          "#a3c8b2",
+          "#cdf3db"
         ],
         "cssVar": "--green-line",
-        "light": "#a6c2ac"
+        "light": "#a5c4ae"
       },
       "chalk-blue": {
         "role": "signal",
         "displayName": "Chalk Blue",
-        "canonical": "#8fb4cf",
-        "oklch": "oklch(75.2% 0.056 240.1)",
+        "canonical": "#90b8d5",
+        "oklch": "oklch(76.4% 0.060 240.0)",
         "tonalRamp": [
-          "#000d18",
-          "#04283d",
-          "#24465d",
-          "#43667e",
-          "#6487a1",
-          "#86aac5",
-          "#a9cfea",
-          "#e0f1ff"
+          "#00061a",
+          "#001d33",
+          "#10364e",
+          "#325770",
+          "#537994",
+          "#779eba",
+          "#9bc4e1",
+          "#c5eeff"
         ],
         "cssVar": "--blue",
-        "light": "#25587c",
+        "light": "#255b7d",
         "description": "Scheduled status; shot marks on the scrub strip (ops.css only)."
       },
       "chalk-blue-bg": {
         "role": "signal",
         "displayName": "Chalk Blue Bg",
-        "canonical": "#171f26",
-        "oklch": "oklch(23.5% 0.018 245.1)",
+        "canonical": "#151e25",
+        "oklch": "oklch(23.0% 0.019 242.0)",
         "tonalRamp": [
-          "#050c12",
-          "#1e262d",
-          "#3a434b",
-          "#59636b",
-          "#7a848d",
-          "#9ca6b0",
-          "#c0cbd4",
-          "#e5f0fa"
+          "#02060c",
+          "#131c23",
+          "#2b343c",
+          "#4a545c",
+          "#6b767f",
+          "#8f9aa3",
+          "#b4c0c9",
+          "#ddeaf4"
         ],
         "cssVar": "--blue-bg",
-        "light": "#dde7ef"
+        "light": "#dce8f1"
       },
       "chalk-blue-line": {
         "role": "signal",
         "displayName": "Chalk Blue Line",
-        "canonical": "#31495b",
-        "oklch": "oklch(39.4% 0.043 241.6)",
+        "canonical": "#354d61",
+        "oklch": "oklch(40.9% 0.045 244.3)",
         "tonalRamp": [
-          "#000d19",
-          "#102738",
-          "#2d4557",
-          "#4c6578",
-          "#6c869a",
-          "#8ea9be",
-          "#b2cde3",
-          "#e0f1ff"
+          "#000615",
+          "#051c2e",
+          "#1e3548",
+          "#3d556a",
+          "#5e788d",
+          "#819cb3",
+          "#a6c2d9",
+          "#d0ecff"
         ],
         "cssVar": "--blue-line",
-        "light": "#a8bfd2"
+        "light": "#a7becf"
       },
       "lamp-amber": {
         "role": "signal",
         "displayName": "Lamp Amber",
-        "canonical": "#dfa93a",
-        "oklch": "oklch(76.6% 0.138 81.5)",
+        "canonical": "#ebae51",
+        "oklch": "oklch(79.1% 0.130 75.3)",
         "tonalRamp": [
-          "#120900",
-          "#322200",
-          "#563d06",
-          "#7e5a01",
-          "#a87903",
-          "#d09b27",
-          "#f6bf54",
-          "#ffeccc"
+          "#1c0000",
+          "#380800",
+          "#542400",
+          "#784600",
+          "#9d6800",
+          "#c38d37",
+          "#ebb25f",
+          "#ffdd89"
         ],
         "cssVar": "--amber",
-        "light": "#8a5307",
+        "light": "#804d0c",
         "description": "Club live + delayed badges; Vision stale, paused, CALIB, error blocks."
       },
       "lamp-amber-bg": {
         "role": "signal",
         "displayName": "Lamp Amber Bg",
-        "canonical": "#2a2013",
-        "oklch": "oklch(25.1% 0.027 73.4)",
+        "canonical": "#291e10",
+        "oklch": "oklch(24.4% 0.030 72.4)",
         "tonalRamp": [
-          "#120901",
-          "#2d2316",
-          "#4b4032",
-          "#6b5f50",
-          "#8d8071",
-          "#b0a393",
-          "#d4c7b6",
-          "#faecdb"
+          "#0c0400",
+          "#23180a",
+          "#3c3122",
+          "#5d5041",
+          "#807262",
+          "#a49685",
+          "#cabba9",
+          "#f5e5d3"
         ],
         "cssVar": "--amber-bg",
-        "light": "#f6e9cf"
+        "light": "#f8e9d2"
       },
       "lamp-amber-line": {
         "role": "signal",
         "displayName": "Lamp Amber Line",
-        "canonical": "#5c4a1e",
-        "oklch": "oklch(41.8% 0.066 86.9)",
+        "canonical": "#684d21",
+        "oklch": "oklch(44.0% 0.070 77.3)",
         "tonalRamp": [
-          "#110a00",
-          "#302300",
-          "#513f12",
-          "#715f33",
-          "#938054",
-          "#b7a375",
-          "#dcc798",
-          "#ffedc4"
+          "#130100",
+          "#2c1400",
+          "#462d00",
+          "#684d21",
+          "#8c6f43",
+          "#b19366",
+          "#d7b98b",
+          "#ffe3b4"
         ],
         "cssVar": "--amber-line",
-        "light": "#d6bd8a"
+        "light": "#d6b98a"
       },
       "red-ball": {
         "role": "signal",
         "displayName": "Red Ball",
-        "canonical": "#cf5b4d",
-        "oklch": "oklch(61.4% 0.150 29.1)",
+        "canonical": "#e87a69",
+        "oklch": "oklch(70.0% 0.139 30.1)",
         "tonalRamp": [
-          "#1f0000",
-          "#4c0202",
-          "#7f0705",
-          "#a5352a",
-          "#cd594b",
-          "#f47d6d",
-          "#feb3a8",
-          "#ffe9e5"
+          "#240000",
+          "#430000",
+          "#620b05",
+          "#883327",
+          "#b05648",
+          "#d87a6b",
+          "#ffa08f",
+          "#ffc9b8"
         ],
         "cssVar": "--red",
-        "light": "#a4382b",
+        "light": "#9a3326",
         "description": "Errors, danger, low clock, the cue under review."
       },
       "live-glow-bg": {
         "role": "neutral",
         "displayName": "Live Glow Bg",
-        "canonical": "#221a10",
-        "oklch": "oklch(22.4% 0.022 72.5)",
+        "canonical": "#251c11",
+        "oklch": "oklch(23.4% 0.024 71.8)",
         "tonalRamp": [
-          "#110a03",
-          "#2c2319",
-          "#494035",
-          "#695f54",
-          "#8b8174",
-          "#aea396",
-          "#d2c7ba",
-          "#f8eddf"
+          "#0b0400",
+          "#22190e",
+          "#3b3125",
+          "#5b5144",
+          "#7e7265",
+          "#a29688",
+          "#c8bcad",
+          "#f2e6d7"
         ],
         "cssVar": "--live-bg",
-        "light": "#f8eed4"
+        "light": "#f6ecd7"
       },
       "neutral-bg": {
         "role": "neutral",
         "displayName": "Neutral Bg",
-        "canonical": "#17130f",
-        "oklch": "oklch(19.0% 0.010 67.1)",
+        "canonical": "#181411",
+        "oklch": "oklch(19.5% 0.009 59.1)",
         "tonalRamp": [
-          "#0e0a07",
-          "#292420",
-          "#46413c",
-          "#65605b",
-          "#87817c",
-          "#aaa49e",
-          "#cec8c2",
-          "#f3ede7"
+          "#080504",
+          "#1e1a17",
+          "#36322e",
+          "#56514e",
+          "#79736f",
+          "#9d9793",
+          "#c2bcb8",
+          "#ede7e2"
         ],
         "cssVar": "--neutral-bg",
-        "light": "#f0e8db"
+        "light": "#efeae2"
       },
       "lamp-haze": {
         "role": "neutral",
@@ -557,7 +546,7 @@
       "scroll-track": {
         "role": "neutral",
         "displayName": "Scroll Track",
-        "canonical": "#100e0c",
+        "canonical": "var(--panel2)",
         "oklch": "oklch(16.5% 0.005 67.4)",
         "tonalRamp": [
           "#0d0b09",
@@ -569,13 +558,12 @@
           "#cbc8c5",
           "#f1eeeb"
         ],
-        "cssVar": "--track",
-        "light": "#e6dccb"
+        "cssVar": "--track"
       },
       "scroll-thumb": {
         "role": "neutral",
         "displayName": "Scroll Thumb",
-        "canonical": "#3a3129",
+        "canonical": "var(--btn-line)",
         "oklch": "oklch(32.0% 0.019 63.7)",
         "tonalRamp": [
           "#110904",
@@ -587,8 +575,7 @@
           "#d2c7bd",
           "#f8ece2"
         ],
-        "cssVar": "--thumb",
-        "light": "#c2b299"
+        "cssVar": "--thumb"
       },
       "stage-black": {
         "role": "literal",
@@ -657,6 +644,212 @@
           "#fee9e4"
         ],
         "description": "Hard-coded error text (dark in both themes)."
+      },
+      "red-bg": {
+        "role": "semantic",
+        "displayName": "red-bg",
+        "canonical": "#361a16",
+        "cssVar": "--red-bg",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "#fde3de",
+        "oklch": "oklch(25.6% 0.045 29.2)"
+      },
+      "red-ink": {
+        "role": "semantic",
+        "displayName": "red-ink",
+        "canonical": "#fdcac0",
+        "cssVar": "--red-ink",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "#7c271c",
+        "oklch": "oklch(88.1% 0.060 31.1)"
+      },
+      "shadow": {
+        "role": "semantic",
+        "displayName": "shadow",
+        "canonical": "rgba(0,0,0,.45)",
+        "cssVar": "--shadow",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "rgba(60,40,15,.18)"
+      },
+      "scrim": {
+        "role": "semantic",
+        "displayName": "scrim",
+        "canonical": "rgba(8,6,4,.62)",
+        "cssVar": "--scrim",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "rgba(40,30,18,.45)"
+      },
+      "stage-bg": {
+        "role": "stage",
+        "displayName": "stage-bg",
+        "canonical": "#0b0907",
+        "cssVar": "--stage-bg",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(14.1% 0.006 70.6)"
+      },
+      "stage-plate": {
+        "role": "stage",
+        "displayName": "stage-plate",
+        "canonical": "#100c0acc",
+        "cssVar": "--stage-plate",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "stage-note": {
+        "role": "stage",
+        "displayName": "stage-note",
+        "canonical": "#100c0aee",
+        "cssVar": "--stage-note",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "stage-ink": {
+        "role": "stage",
+        "displayName": "stage-ink",
+        "canonical": "#faf1dc",
+        "cssVar": "--stage-ink",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(96.0% 0.029 87.5)"
+      },
+      "stage-ink-hi": {
+        "role": "stage",
+        "displayName": "stage-ink-hi",
+        "canonical": "#fbedb8",
+        "cssVar": "--stage-ink-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(94.4% 0.070 95.0)"
+      },
+      "stage-mark": {
+        "role": "stage",
+        "displayName": "stage-mark",
+        "canonical": "#1f160f",
+        "cssVar": "--stage-mark",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(20.9% 0.020 59.3)"
+      },
+      "stage-event": {
+        "role": "stage",
+        "displayName": "stage-event",
+        "canonical": "#f2b7ad",
+        "cssVar": "--stage-event",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(83.1% 0.070 29.6)"
+      },
+      "stage-bound": {
+        "role": "stage",
+        "displayName": "stage-bound",
+        "canonical": "#9bdcb1",
+        "cssVar": "--stage-bound",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(83.9% 0.089 155.0)"
+      },
+      "stage-halo": {
+        "role": "stage",
+        "displayName": "stage-halo",
+        "canonical": "#0b090799",
+        "cssVar": "--stage-halo",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "stage-brass": {
+        "role": "stage",
+        "displayName": "stage-brass",
+        "canonical": "#cca632",
+        "cssVar": "--stage-brass",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(74.0% 0.135 89.8)"
+      },
+      "stage-brass-hi": {
+        "role": "stage",
+        "displayName": "stage-brass-hi",
+        "canonical": "#e3cb7e",
+        "cssVar": "--stage-brass-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(84.5% 0.100 92.7)"
+      },
+      "stage-green": {
+        "role": "stage",
+        "displayName": "stage-green",
+        "canonical": "#85ca9d",
+        "cssVar": "--stage-green",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(78.1% 0.095 155.0)"
+      },
+      "stage-amber": {
+        "role": "stage",
+        "displayName": "stage-amber",
+        "canonical": "#ebae51",
+        "cssVar": "--stage-amber",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(79.1% 0.130 75.3)"
+      },
+      "stage-red": {
+        "role": "stage",
+        "displayName": "stage-red",
+        "canonical": "#e87a69",
+        "cssVar": "--stage-red",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(70.0% 0.139 30.1)"
+      },
+      "ball": {
+        "role": "stage",
+        "displayName": "ball",
+        "canonical": "#cfa72b",
+        "cssVar": "--ball",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(74.5% 0.140 89.6)"
+      },
+      "ball-hi": {
+        "role": "stage",
+        "displayName": "ball-hi",
+        "canonical": "#eed780",
+        "cssVar": "--ball-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(88.0% 0.110 95.0)"
+      },
+      "ball-edge": {
+        "role": "stage",
+        "displayName": "ball-edge",
+        "canonical": "rgba(0,0,0,.4)",
+        "cssVar": "--ball-edge",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "ball-face": {
+        "role": "stage",
+        "displayName": "ball-face",
+        "canonical": "#f7f3eb",
+        "cssVar": "--ball-face",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(96.5% 0.011 84.6)"
+      },
+      "ball-num": {
+        "role": "stage",
+        "displayName": "ball-num",
+        "canonical": "#15110c",
+        "cssVar": "--ball-num",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(18.1% 0.012 73.1)"
+      },
+      "ball-black": {
+        "role": "stage",
+        "displayName": "ball-black",
+        "canonical": "#13100e",
+        "cssVar": "--ball-black",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(17.6% 0.006 55.9)"
+      },
+      "ball-black-hi": {
+        "role": "stage",
+        "displayName": "ball-black-hi",
+        "canonical": "#47413c",
+        "cssVar": "--ball-black-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(38.0% 0.012 62.3)"
+      },
+      "diamond": {
+        "role": "semantic",
+        "displayName": "diamond",
+        "canonical": "#e4cc84",
+        "cssVar": "--diamond",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "oklch": "oklch(84.9% 0.095 91.7)"
       }
     },
     "typographyMeta": {
@@ -708,8 +901,8 @@
     "shadows": [
       {
         "name": "toast",
-        "value": "0 5px 30px #0005",
-        "purpose": "#message, bottom-right (declared ops.css:92, survives the later restyle)."
+        "value": "0 5px 30px var(--shadow)",
+        "purpose": "#message, bottom-right; --shadow is theme-aware."
       },
       {
         "name": "modal",
@@ -737,28 +930,10 @@
         "purpose": "The brand 8-ball mark."
       }
     ],
-    "motion": [
-      {
-        "name": "none",
-        "value": "no transition, no @keyframes",
-        "purpose": "State changes are instant; the CSS declares no motion."
-      },
-      {
-        "name": "reduced-motion-guard",
-        "value": "ops.css: animation/transition none !important; app.css: durations 1ms",
-        "purpose": "Guards exist in both stylesheets; nothing animates today."
-      },
-      {
-        "name": "clock-tick",
-        "value": "setInterval 200ms",
-        "purpose": "Shot-clock digits and progress bar (ops.js:89)."
-      },
-      {
-        "name": "receipt-age",
-        "value": "setInterval 1000ms",
-        "purpose": "Re-renders the \"… s saved\" age on receipts."
-      }
-    ],
+    "motion": {
+      "summary": "The clock is the one moving thing: its bar follows the 200 ms tick with a 0.2 s linear transform: scaleX() transition and turns red in the last 5 s; #message rises 8 px in 0.22 s; the narrow stagebar fades its clipped end with a scroll-driven mask. Nothing animates on load.",
+      "reducedMotion": "Transitions become instant and animations run 0 s; state changes (the red low clock) stay; the scroll-linked stagebar fade is kept because it only follows the user’s scroll."
+    },
     "breakpoints": [
       {
         "name": "stack",
@@ -779,7 +954,7 @@
       "refersTo": "button",
       "description": "Default (secondary) button: transparent, 1px rim, brass on hover and focus.",
       "html": "<button class=\"ds-btn\">Reset</button>",
-      "css": ".ds-btn{min-height:40px;padding:0 14px;border:1px solid #4a3f33;border-radius:2px;background:transparent;color:#f2e9dd;font:15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn:hover{border-color:#c9a227;background:#241e19}.ds-btn:focus-visible{outline:2px solid #c9a227;outline-offset:3px}.ds-btn:disabled{opacity:.45;cursor:not-allowed}"
+      "css": ".ds-btn{min-height:40px;padding:0 14px;border:1px solid #73665b;border-radius:2px;background:transparent;color:#efe9de;font:15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn:hover{border-color:#cca632;background:#251f1b}.ds-btn:focus-visible{outline:2px solid #cca632;outline-offset:3px}.ds-btn:disabled{opacity:.45;cursor:not-allowed}"
     },
     {
       "name": "Primary Button",
@@ -787,7 +962,7 @@
       "refersTo": "button-primary",
       "description": "Brass fill with brass-ink text; the one thing to press (Freeze, Save, Start).",
       "html": "<button class=\"ds-btn-primary\">Freeze</button>",
-      "css": ".ds-btn-primary{min-height:40px;padding:0 14px;border:1px solid #c9a227;border-radius:2px;background:#c9a227;color:#17120c;font:500 15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:#dcbb46;border-color:#c9a227}.ds-btn-primary:focus-visible{outline:2px solid #c9a227;outline-offset:3px}"
+      "css": ".ds-btn-primary{min-height:40px;padding:0 14px;border:1px solid #cca632;border-radius:2px;background:#cca632;color:#15110c;font:500 15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:#dbb64c;border-color:#cca632}.ds-btn-primary:focus-visible{outline:2px solid #cca632;outline-offset:3px}"
     },
     {
       "name": "Segmented chip group",
@@ -795,7 +970,7 @@
       "refersTo": "chip-group-button",
       "description": "EN | 中 and clock presets: 1px-gap segments on a seam ground, active segment brass.",
       "html": "<div class=\"ds-chipgroup\" role=\"group\" aria-label=\"Language / 语言\"><button class=\"ds-chipgroup-btn ds-active\">EN</button><button class=\"ds-chipgroup-btn\">中</button></div>",
-      "css": ".ds-chipgroup{display:inline-flex;gap:1px;padding:1px;background:#2e2620;border-radius:2px}.ds-chipgroup-btn{min-height:34px;padding:0 12px;border:0;border-radius:2px;background:#100e0c;color:#8a7a68;font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em;cursor:pointer}.ds-chipgroup-btn.ds-active{background:#c9a227;color:#17120c}.ds-chipgroup-btn:focus-visible{outline:2px solid #c9a227;outline-offset:3px}"
+      "css": ".ds-chipgroup{display:inline-flex;gap:1px;padding:1px;background:#2f2923;border-radius:2px}.ds-chipgroup-btn{min-height:34px;padding:0 12px;border:0;border-radius:2px;background:#110e0b;color:#a6998a;font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em;cursor:pointer}.ds-chipgroup-btn.ds-active{background:#cca632;color:#15110c}.ds-chipgroup-btn:focus-visible{outline:2px solid #cca632;outline-offset:3px}"
     },
     {
       "name": "Status badge",
@@ -803,7 +978,7 @@
       "refersTo": "badge",
       "description": "Word + tinted triplet: live (On table) and delayed amber, complete (Signed) green, scheduled (Racked) blue.",
       "html": "<span class=\"ds-badge ds-badge-live\">On table</span> <span class=\"ds-badge ds-badge-complete\">Signed</span> <span class=\"ds-badge ds-badge-scheduled\">Racked</span>",
-      "css": ".ds-badge{display:inline-block;padding:4px 9px;border:1px solid #2e2620;background:#100e0c;color:#8a7a68;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.16em;text-transform:uppercase}.ds-badge-live{color:#dfa93a;border-color:#5c4a1e;background:#2a2013}.ds-badge-complete{color:#7fc39a;border-color:#3d5f4c;background:#16241c}.ds-badge-scheduled{color:#8fb4cf;border-color:#31495b;background:#171f26}"
+      "css": ".ds-badge{display:inline-block;padding:4px 9px;border:1px solid #2f2923;background:#110e0b;color:#a6998a;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.16em;text-transform:uppercase}.ds-badge-live{color:#ebae51;border-color:#684d21;background:#291e10}.ds-badge-complete{color:#85ca9d;border-color:#355643;background:#122219}.ds-badge-scheduled{color:#90b8d5;border-color:#354d61;background:#151e25}"
     },
     {
       "name": "Text field",
@@ -811,7 +986,7 @@
       "refersTo": "input",
       "description": "Well-filled field with a 2px bottom border that turns brass on focus; 9.5px uppercase mono label.",
       "html": "<label class=\"ds-field\"><span>Name</span><input class=\"ds-input\" placeholder=\"Guest\"></label>",
-      "css": ".ds-field{display:grid;gap:6px}.ds-field>span{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.18em;text-transform:uppercase;color:#8a7a68}.ds-input{min-height:42px;padding:0 12px;background:#100e0c;color:#f2e9dd;border:1px solid #2e2620;border-bottom:2px solid #2e2620;border-radius:2px;font:15px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-input::placeholder{color:#6d5f51}.ds-input:focus{outline:none;border-bottom-color:#c9a227}"
+      "css": ".ds-field{display:grid;gap:6px}.ds-field>span{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.18em;text-transform:uppercase;color:#a6998a}.ds-input{min-height:42px;padding:0 12px;background:#110e0b;color:#efe9de;border:1px solid #2f2923;border-bottom:2px solid #2f2923;border-radius:2px;font:15px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-input::placeholder{color:#968a7d}.ds-input:focus{outline:none;border-bottom-color:#cca632}"
     },
     {
       "name": "Nav tab",
@@ -819,7 +994,7 @@
       "refersTo": "button",
       "description": "Numbered pool-ball tab; active = rail fill, brass border, brass-hi count.",
       "html": "<nav class=\"ds-nav\"><button class=\"ds-tab ds-active\" aria-current=\"page\"><span class=\"ds-ball\" style=\"background:#e3b52a\"><i>1</i></span>Floor<small></small></button><button class=\"ds-tab\"><span class=\"ds-ball\" style=\"background:#23527c\"><i>2</i></span>Set up<small>12</small></button></nav>",
-      "css": ".ds-nav{display:flex;gap:10px;flex-wrap:wrap}.ds-tab{display:flex;align-items:center;gap:9px;min-height:44px;padding:0 9px 0 8px;border:1px solid #2e2620;border-radius:2px;background:transparent;color:#f2e9dd;font:14.5px 'Barlow','Noto Sans SC',Arial,sans-serif;letter-spacing:.01em;cursor:pointer}.ds-tab:hover{border-color:#c9a227;background:#241e19}.ds-tab.ds-active{background:#241e19;border-color:#c9a227;color:#f6f1e6}.ds-tab small{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.12em;color:#6d5f51}.ds-tab.ds-active small{color:#e3c877}.ds-ball{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}.ds-ball i{display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#f6f1e6;color:#17120c;font:9px 'DM Mono','Noto Sans SC',monospace;font-style:normal}"
+      "css": ".ds-nav{display:flex;gap:10px;flex-wrap:wrap}.ds-tab{display:flex;align-items:center;gap:9px;min-height:44px;padding:0 9px 0 8px;border:1px solid #2f2923;border-radius:2px;background:transparent;color:#efe9de;font:14.5px 'Barlow','Noto Sans SC',Arial,sans-serif;letter-spacing:.01em;cursor:pointer}.ds-tab:hover{border-color:#cca632;background:#251f1b}.ds-tab.ds-active{background:#251f1b;border-color:#cca632;color:#f6f3ec}.ds-tab small{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.12em;color:#968a7d}.ds-tab.ds-active small{color:#e3cb7e}.ds-ball{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}.ds-ball i{display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#f6f3ec;color:#15110c;font:9px 'DM Mono','Noto Sans SC',monospace;font-style:normal}"
     },
     {
       "name": "Cue card",
@@ -827,7 +1002,7 @@
       "refersTo": "cue-card",
       "description": "Vision rail card; tier sets the left edge (solid green geometry-verified, dashed brass motion-window).",
       "html": "<article class=\"ds-cue ds-tier-geometry\"><div class=\"ds-cue-row\"><span class=\"ds-vbadge ds-pot\">Pots</span><span class=\"ds-vbadge ds-geo\">geometry-verified</span><span class=\"ds-mono\">0:41.1</span><span class=\"ds-mono ds-dim\">#e12</span></div><p class=\"ds-prov\">machine-produced candidate; no human has confirmed it</p></article>",
-      "css": ".ds-cue{border:1px solid #262019;border-left:3px solid #7fc39a;background:#100e0c;padding:8px;color:#f2e9dd}.ds-cue:hover{border-color:#c9a227;border-left-color:#7fc39a}.ds-cue-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ds-vbadge{border:1px solid #4a3f33;border-radius:2px;padding:2px 6px;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;color:#e3c877}.ds-pot,.ds-geo{color:#7fc39a;border-color:#3d5f4c}.ds-mono{font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em}.ds-dim{color:#8a7a68}.ds-prov{margin:4px 0 0;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em;color:#6d5f51}"
+      "css": ".ds-cue{border:1px solid #29231f;border-left:3px solid #85ca9d;background:#110e0b;padding:8px;color:#efe9de}.ds-cue:hover{border-color:#cca632;border-left-color:#85ca9d}.ds-cue-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ds-vbadge{border:1px solid #73665b;border-radius:2px;padding:2px 6px;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;color:#e3cb7e}.ds-pot,.ds-geo{color:#85ca9d;border-color:#355643}.ds-mono{font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em}.ds-dim{color:#a6998a}.ds-prov{margin:4px 0 0;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em;color:#968a7d}"
     },
     {
       "name": "Layer toggle",
@@ -835,7 +1010,7 @@
       "refersTo": "layer-toggle",
       "description": "Stagebar overlay toggles; on = rail fill, brass border, bright ink.",
       "html": "<div class=\"ds-layers\"><button class=\"ds-layer ds-on\">Cloth</button><button class=\"ds-layer\">Balls</button><button class=\"ds-layer\" disabled>Anchors</button></div>",
-      "css": ".ds-layers{display:flex;gap:4px;flex-wrap:wrap}.ds-layer{min-height:28px;padding:4px 10px;border:1px solid #4a3f33;border-radius:2px;background:transparent;color:#8a7a68;font:10.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}.ds-layer:hover{border-color:#c9a227}.ds-layer.ds-on{background:#241e19;border-color:#c9a227;color:#f6f1e6}.ds-layer:disabled{opacity:.4;cursor:not-allowed}.ds-layer:focus-visible{outline:2px solid #c9a227;outline-offset:3px}"
+      "css": ".ds-layers{display:flex;gap:4px;flex-wrap:wrap}.ds-layer{min-height:28px;padding:4px 10px;border:1px solid #73665b;border-radius:2px;background:transparent;color:#a6998a;font:10.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}.ds-layer:hover{border-color:#cca632}.ds-layer.ds-on{background:#251f1b;border-color:#cca632;color:#f6f3ec}.ds-layer:disabled{opacity:.4;cursor:not-allowed}.ds-layer:focus-visible{outline:2px solid #cca632;outline-offset:3px}"
     },
     {
       "name": "Overlay source tags",
@@ -843,7 +1018,7 @@
       "refersTo": "overlay-tag",
       "description": "MODEL (brass, dashed geometry), YOURS (green, solid), CALIB (amber): the provenance tag beside every drawn shape.",
       "html": "<svg class=\"ds-tags\" viewBox=\"0 0 330 70\" width=\"330\" height=\"70\" role=\"img\" aria-label=\"Source tags\"><rect x=\"1\" y=\"1\" width=\"328\" height=\"68\" fill=\"#090806\"/><g class=\"ds-src ds-model\"><rect x=\"10\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"17\" y=\"23\">MODEL</text></g><g class=\"ds-src ds-yours\"><rect x=\"80\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"87\" y=\"23\">YOURS</text></g><g class=\"ds-src ds-calib\"><rect x=\"150\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"157\" y=\"23\">CALIB</text></g><rect class=\"ds-geom-model\" x=\"10\" y=\"38\" width=\"100\" height=\"24\"/><rect class=\"ds-geom-yours\" x=\"120\" y=\"38\" width=\"100\" height=\"24\"/></svg>",
-      "css": ".ds-src rect{fill:#0b0a08cc;stroke-width:1.5}.ds-src text{font:700 14px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em}.ds-model rect{stroke:#c9a227}.ds-model text{fill:#e3c877}.ds-yours rect{stroke:#7fc39a}.ds-yours text{fill:#7fc39a}.ds-calib rect{stroke:#dfa93a}.ds-calib text{fill:#dfa93a}.ds-geom-model{fill:#c9a22722;stroke:#c9a227;stroke-width:3;stroke-dasharray:10 7;opacity:.6}.ds-geom-yours{fill:#c9a22722;stroke:#c9a227;stroke-width:3}.ds-tags:hover .ds-geom-model{opacity:1}"
+      "css": ".ds-src rect{fill:#0b0a08cc;stroke-width:1.5}.ds-src text{font:700 14px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em}.ds-model rect{stroke:#cca632}.ds-model text{fill:#e3cb7e}.ds-yours rect{stroke:#85ca9d}.ds-yours text{fill:#85ca9d}.ds-calib rect{stroke:#ebae51}.ds-calib text{fill:#ebae51}.ds-geom-model{fill:#c9a22722;stroke:#cca632;stroke-width:3;stroke-dasharray:10 7;opacity:.6}.ds-geom-yours{fill:#c9a22722;stroke:#cca632;stroke-width:3}.ds-tags:hover .ds-geom-model{opacity:1}"
     },
     {
       "name": "Toast",
@@ -851,7 +1026,7 @@
       "refersTo": "panel",
       "description": "#message: fixed bottom-right, rail fill, 3px brass left edge (red on error), role=status.",
       "html": "<div class=\"ds-toast\" role=\"status\">Saved.</div><div class=\"ds-toast ds-error\" role=\"status\">Action failed</div>",
-      "css": ".ds-toast{max-width:400px;margin:0 0 8px;padding:12px 16px;background:#241e19;border:1px solid #2e2620;border-left:3px solid #c9a227;box-shadow:0 5px 30px #0005;color:#f2e9dd;font:14px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-toast.ds-error{border-left-color:#cf5b4d}"
+      "css": ".ds-toast{max-width:400px;margin:0 0 8px;padding:12px 16px;background:#251f1b;border:1px solid #2f2923;border-left:3px solid #cca632;box-shadow:0 5px 30px #0005;color:#efe9de;font:14px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-toast.ds-error{border-left-color:#e87a69}"
     }
   ],
   "narrative": {
@@ -920,5 +1095,6 @@
       "**Don't** hard-code theme-dependent colours in CSS or in template strings (see *Recorded inconsistencies* for the existing ones). The stage letterbox `#090806` is the one intentional theme-invariant colour.",
       "**Don't** use rounded pills or large radii. 12px belongs to the pool-table illustration and 50% to balls and pips."
     ]
-  }
+  },
+  "redocumented": "After the impeccable-polish pass: colours, motion and the toast shadow regenerated from annotator/ops.css (out/impeccable/redocument_json.js)."
 }

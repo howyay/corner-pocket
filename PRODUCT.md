@@ -96,7 +96,7 @@ The hierarchy is binding (`docs/corner-pocket-operations.md`). Every tab shares 
 
 - **Stack.** Plain HTML/CSS/JS served as static files by a Python stdlib server (`http.server`). No frontend framework, no build step, and no new frontend dependencies. `annotator/app.js` stays the single stage engine, with its dirty / busy / frame-token guards; never write a second one.
 - **Navigation.** Moving between tabs must preserve unsaved edits, in-flight saves, frame-request guards and keyboard focus. Visual parity alone does not count as done.
-- **Offline assets.** Served pages must not fetch fonts or assets from a CDN. Known gap: `annotator/ops.html` and `annotator/app.html` still link `fonts.googleapis.com` / `fonts.gstatic.com`.
+- **Offline assets.** Served pages must not fetch fonts or assets from a CDN. Met on `impeccable-polish` (`82db63f`, `534d4ac`): fonts are self-hosted under `annotator/fonts/` (OFL texts alongside), 0 third-party requests on a cold load; the CJK faces are subset to the app copy plus the 3,500 common hanzi, fetched only when a page shows one.
 - **Tournament safety.**
   - Never generate random winners.
   - Reaching the race target does not finalise a match; staff complete it explicitly.
@@ -128,7 +128,7 @@ The hierarchy is binding (`docs/corner-pocket-operations.md`). Every tab shares 
 
 ### Open
 
-- **OPEN:** shot clock scope. It is device-local by design; a server-synchronised shared clock is neither built nor decided.
+- **OPEN:** shot clock scope. The UI clock is device-local (the Floor says "local timer, not shared"). `main` added a server-authoritative shared clock module (`annotator/shot_clock.py`, tested), but no route or UI uses it yet, so for staff the clock is still per device.
 - **OPEN:** correcting a signed result. Completed results cannot change, and the correction/undo policy (roadmap: *result undo trail*, P1) is not designed.
 - **OPEN:** real time. 28.0 fps end to end has been measured with the trained net, against a 30 fps bar; the re-measurement is not final.
 - **OPEN:** live broadcast. Whether and when a real live path returns is undecided; until then, Twitch VOD replay is the live input.

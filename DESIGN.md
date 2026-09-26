@@ -3,46 +3,73 @@ version: alpha
 name: Corner Pocket
 description: "Pool hall operations and vision review: one dark walnut-and-brass instrument, bilingual EN / 中."
 colors:
-  # Dark theme (the default). Canonical source: annotator/ops.css :root.
-  # The light theme is a full swap of the same names; its values are listed
-  # in the Colors section (tokens are dark-canonical here).
-  walnut-night: "#14110f"        # --bg
-  felt-panel: "#1a1613"          # --panel
-  pocket-well: "#100e0c"         # --panel2
-  rail-wood: "#241e19"           # --rail
-  seam: "#2e2620"                # --line
-  seam-soft: "#262019"           # --line2
-  button-rim: "#4a3f33"          # --btn-line
-  chalk-bright: "#f6f1e6"        # --ink-hi
-  chalk: "#f2e9dd"               # --ink
-  cue-shaft: "#b6a693"           # --ink-mid
-  worn-leather: "#8a7a68"        # --ink-dim
-  old-varnish: "#6d5f51"         # --ink-faint
-  rail-brass: "#c9a227"          # --brass
-  polished-brass: "#e3c877"      # --brass-hi
-  brass-hover: "#dcbb46"         # --brass-hover
-  brass-ink: "#17120c"           # --brass-fg
-  pip-off: "#2b241d"             # --pip-off
-  baize-green: "#7fc39a"         # --green
-  baize-green-bg: "#16241c"      # --green-bg
-  baize-green-line: "#3d5f4c"    # --green-line
-  chalk-blue: "#8fb4cf"          # --blue
-  chalk-blue-bg: "#171f26"       # --blue-bg
-  chalk-blue-line: "#31495b"     # --blue-line
-  lamp-amber: "#dfa93a"          # --amber
-  lamp-amber-bg: "#2a2013"       # --amber-bg
-  lamp-amber-line: "#5c4a1e"     # --amber-line
-  red-ball: "#cf5b4d"            # --red
-  live-glow-bg: "#221a10"        # --live-bg
-  neutral-bg: "#17130f"          # --neutral-bg
-  lamp-haze: "rgba(240,214,150,.08)"  # --lamp
-  scroll-track: "#100e0c"        # --track
-  scroll-thumb: "#3a3129"        # --thumb
-  stage-black: "#090806"         # literal, not a token (.stage, .vs-frame)
-  overlay-cream: "#fff4d5"       # literal, not a token (SVG overlay text/cue ball)
-  error-wash: "#3d231d"          # literal, not a token (.vs-receipt.error / .vs-notice.error)
-  error-ink: "#ffd0c5"           # literal, not a token (same)
+  # One token source: annotator/ops.css `:root` (dark, the default) and
+  # `:root[data-theme=light]`, OKLCH-derived and gated for contrast by
+  # tests/test_palette_contrast.py. app.css holds no palette: the stage remaps
+  # these under #t-overlay. Values below are the dark theme; each comment gives
+  # the token and its light value (stage-* and ball* are the same in both themes).
+  walnut-night: "#16120f"             # --bg; light #eee7dc
+  felt-panel: "#1c1814"               # --panel; light #faf6ef
+  pocket-well: "#110e0b"              # --panel2; light #fefcf8
+  rail-wood: "#251f1b"                # --rail; light #e9e2d6
+  seam: "#2f2923"                     # --line; light #d5cbbb
+  seam-soft: "#29231f"                # --line2; light #e0d8cb
+  button-rim: "#73665b"               # --btn-line; light #938470
+  chalk-bright: "#f6f3ec"             # --ink-hi; light #1a120a
+  chalk: "#efe9de"                    # --ink; light #251e15
+  cue-shaft: "#bdb0a1"                # --ink-mid; light #564b3e
+  worn-leather: "#a6998a"             # --ink-dim; light #665a4d
+  old-varnish: "#968a7d"              # --ink-faint; light #6d6153
+  rail-brass: "#cca632"               # --brass; light #755706
+  polished-brass: "#e3cb7e"           # --brass-hi; light #624902
+  brass-hover: "#dbb64c"              # --brass-hover; light #866617
+  brass-ink: "#15110c"                # --brass-fg; light #fcfaf4
+  pip-off: "#312a24"                  # --pip-off; light #d9d0c1
+  baize-green: "#85ca9d"              # --green; light #296944
+  baize-green-bg: "#122219"           # --green-bg; light #daebdf
+  baize-green-line: "#355643"         # --green-line; light #a5c4ae
+  chalk-blue: "#90b8d5"               # --blue; light #255b7d
+  chalk-blue-bg: "#151e25"            # --blue-bg; light #dce8f1
+  chalk-blue-line: "#354d61"          # --blue-line; light #a7becf
+  lamp-amber: "#ebae51"               # --amber; light #804d0c
+  lamp-amber-bg: "#291e10"            # --amber-bg; light #f8e9d2
+  lamp-amber-line: "#684d21"          # --amber-line; light #d6b98a
+  red-ball: "#e87a69"                 # --red; light #9a3326
+  error-wash: "#361a16"               # --red-bg; light #fde3de
+  error-ink: "#fdcac0"                # --red-ink; light #7c271c
+  live-glow-bg: "#251c11"             # --live-bg; light #f6ecd7
+  neutral-bg: "#181411"               # --neutral-bg; light #efeae2
+  lamp-haze: "rgba(240,214,150,.08)"  # --lamp; light rgba(255,206,110,.2)
+  scroll-track: "var(--panel2)"       # --track; same in both themes
+  scroll-thumb: "var(--btn-line)"     # --thumb; same in both themes
+  drop-shadow: "rgba(0,0,0,.45)"      # --shadow; light rgba(60,40,15,.18)
+  modal-scrim: "rgba(8,6,4,.62)"      # --scrim; light rgba(40,30,18,.45)
+  stage-bg: "#0b0907"                 # --stage-bg; same in both themes
+  stage-plate: "#100c0acc"            # --stage-plate; same in both themes
+  stage-note: "#100c0aee"             # --stage-note; same in both themes
+  stage-ink: "#faf1dc"                # --stage-ink; same in both themes
+  stage-ink-hi: "#fbedb8"             # --stage-ink-hi; same in both themes
+  stage-mark: "#1f160f"               # --stage-mark; same in both themes
+  stage-event: "#f2b7ad"              # --stage-event; same in both themes
+  stage-bound: "#9bdcb1"              # --stage-bound; same in both themes
+  stage-halo: "#0b090799"             # --stage-halo; same in both themes
+  stage-brass: "#cca632"              # --stage-brass; same in both themes
+  stage-brass-hi: "#e3cb7e"           # --stage-brass-hi; same in both themes
+  stage-green: "#85ca9d"              # --stage-green; same in both themes
+  stage-amber: "#ebae51"              # --stage-amber; same in both themes
+  stage-red: "#e87a69"                # --stage-red; same in both themes
+  ball: "#cfa72b"                     # --ball; same in both themes
+  ball-hi: "#eed780"                  # --ball-hi; same in both themes
+  ball-edge: "rgba(0,0,0,.4)"         # --ball-edge; same in both themes
+  ball-face: "#f7f3eb"                # --ball-face; same in both themes
+  ball-num: "#15110c"                 # --ball-num; same in both themes
+  ball-black: "#13100e"               # --ball-black; same in both themes
+  ball-black-hi: "#47413c"            # --ball-black-hi; same in both themes
+  preview-rail-wood: "#552d1b"        # --rail-wood; same in both themes
+  diamond: "#e4cc84"                  # --diamond; same in both themes
 typography:
+  # The UI type ramp (annotator/ops.css :root): --fs-xs 11px, --fs-sm 12px, --fs-md 13px,
+  # --fs-body 15px, --fs-lg 17px, --fs-xl 20px; display sizes are clamp()s below.
   display:
     fontFamily: "Zilla Slab, Noto Serif SC, Georgia, serif"
     fontSize: "clamp(34px, 5.8vw, 80px)"
@@ -105,17 +132,15 @@ rounded:
   md: "3px"
   cloth: "12px"
 spacing:
-  px: "1px"
-  xxs: "3px"
-  xs: "4px"
-  sm: "6px"
-  md: "8px"
-  lg: "10px"
-  xl: "12px"
-  xxl: "14px"
-  section: "16px"
-  panel: "18px"
-  gutter: "clamp(14px, 2.4vw, 30px)"
+  # annotator/ops.css :root, the step-2 layout scale (every margin, padding and gap uses it).
+  sp-1: "4px"
+  sp-1h: "6px"
+  sp-2: "8px"
+  sp-3: "12px"
+  sp-4: "16px"
+  sp-5: "24px"
+  sp-6: "32px"
+  gutter: "clamp(var(--sp-3), 2.4vw, var(--sp-6))"
 components:
   button:
     backgroundColor: "transparent"
@@ -212,7 +237,7 @@ components:
 
 # Design System: Corner Pocket
 
-> **How this file was made.** Generated by the Impeccable `document` command (v4.4.0, scan mode) from the code in `annotator/` on branch `impeccable-polish` (at `f2f0e45`). Every value, token, selector and line reference below comes from `ops.css`, `app.css`, `ops.html`, `app.html`, `ops.js`, `app.js` and `vision-stage.js` as they are now. Nothing here is a proposal. The qualitative wording (the North Star, the descriptive colour names, the named rules) is **inferred from the code**, because the interview step could not reach a human in this delegated run. Treat those names as provisional, and change them freely. Line numbers such as `ops.css:223` refer to this commit. The final section, **Recorded inconsistencies**, lists the places where the code disagrees with itself. It is input for the polish pass, and nothing in it has been fixed here.
+> **How this file was made.** Generated by the Impeccable `document` command (v4.4.0, scan mode) from the code in `annotator/` on branch `impeccable-polish` (at `f2f0e45`). Every value, token, selector and line reference below comes from `ops.css`, `app.css`, `ops.html`, `app.html`, `ops.js`, `app.js` and `vision-stage.js` as they are now. Nothing here is a proposal. The qualitative wording (the North Star, the descriptive colour names, the named rules) is **inferred from the code**, because the interview step could not reach a human in this delegated run. Treat those names as provisional, and change them freely. Line numbers such as `ops.css:223` refer to that commit. **Re-documented after the polish** (step 3 of the Impeccable pass): the frontmatter colours, type ramp and spacing scale are regenerated from the shipped `ops.css` tokens (`out/impeccable/redocument_colors.js`), Motion is rewritten, and the final section records the status of each inconsistency. Body sections that were not re-measured keep their original wording; `docs/impeccable-ledger.md` is the per-change record.
 
 ## Overview
 
@@ -407,7 +432,7 @@ The panel drops down from the Source chip (`.vs-source-panel`, `z-index: 24`, br
 `.vs-receipt` and `.vs-notice` use a 3px left edge in green on `--green-bg` with green mono text. `.error` switches to a red edge on the hard-coded `#3d231d` / `#ffd0c5`, and `.pending` to an `ink-faint` edge on `--panel2`. Receipts age live (a `setInterval` re-renders the "… s saved" age every second). A pending write never shows a success word.
 
 ### Motion
-There is effectively none. The CSS declares no `transition` and no `@keyframes`. State changes are instant. The only moving parts are data-driven: the 200ms shot-clock tick (`ops.js:89`), the 1s receipt-age timer, the playback loop counter and the video itself. Both stylesheets carry a reduced-motion guard. `ops.css` sets `animation: none !important; transition: none !important` and `app.css` sets durations to 1ms. Neither changes anything today, because nothing animates.
+The clock is the one moving thing. Its bar follows the 200 ms tick with a 0.2 s linear `transform: scaleX()` transition (composited, no layout) and turns red with the digits in the last 5 s (`:has(.clock.low)`). `#message` rises 8 px into place in 0.22 s. On narrow screens the stagebar fades its clipped end with a scroll-driven mask (`vs-row-end`). Nothing animates on load; there are no hover lifts or scroll reveals. **Reduced motion**: transitions become instant and animations run 0 s (state changes such as the red low clock stay), except the stagebar fade, which only follows the user's own scroll.
 
 ### Bilingual copy conventions (EN / 中)
 - **Mechanism, three dictionaries:** `ops.js` has `words` (131 keys, key → `[en, zh]`, `t()`, persisted `cp-ops-lang` and `cp-ops-theme`). `vision-stage.js` has `COPY.en` and `COPY.zh` objects (251 EN keys) through `t(key)`. `app.js` has `text(copy)`, an English-source-string → Chinese map (`editorCopy`) plus regex `editorTemplates` for composed strings. The shell pushes its choice into the engine with `review().setAppearance(lang, theme)`, which also writes `corner-pocket-lang` and `corner-pocket-theme`. The toggle sets `<html lang>` to `en` or `zh-CN`.
@@ -436,16 +461,19 @@ There is effectively none. The CSS declares no `transition` and no `@keyframes`.
 - **Don't** hard-code theme-dependent colours in CSS or in template strings (see *Recorded inconsistencies* for the existing ones). The stage letterbox `#090806` is the one intentional theme-invariant colour.
 - **Don't** use rounded pills or large radii. 12px belongs to the pool-table illustration and 50% to balls and pips.
 
-## Recorded inconsistencies (input for the polish; not fixed here)
+## Recorded inconsistencies: status after the polish (branch `impeccable-polish`)
 
-Listed in order of how much they affect the next polish pass.
+The nine items the first documentation pass recorded, with the commit that settled each, or why it stays.
+The per-command record is `docs/impeccable-ledger.md`.
 
-1. **Two copies of the palette.** `app.css:8–31` duplicates the `ops.css` tokens under `#review-root` in both themes. The copies have already drifted. `app.css` lacks `--blue*`, `--live-bg`, `--neutral-bg` and `--code-*`, and its font stacks differ (`app.css` adds `"Helvetica Neue"` and `ui-monospace`). The two files also switch themes differently: `ops.css` uses `:root[data-theme=light]` and `app.css` uses `#review-root[data-theme="light"]`, set separately by `setAppearance()`. Only `app.css` declares `color-scheme` (dark and light), so native controls and scrollbars in the shell do not follow the light theme.
-2. **The fidelity pass left two layers of overrides.** `ops.css:114` onward re-declares earlier rules with different values. There are 13 conflicting redeclarations across 8 selectors, all in effect as last-wins. Examples: `h3` 500 → 600, `.badge` padding `4px 8px` → `4px 9px` and tracking `.1em` → `.16em`, `#strip` padding 8 → 9px and its clock 24 → 22px, `.side` gap and padding, `.tiles` 150 → 168px, `.tools` gap 5 → 10px (which also silently beats the ≤750px `gap: 5px`). `#message` is restyled almost entirely: panel2 → rail, brass border → line + brass left edge, 560 → 400px. Its old `0 5px 30px #0005` shadow survives because the later rule does not reset it.
-3. **The type and control scales are near-continuous.** There are 19 distinct pixel font sizes (9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 16, 19, 20, 21, 22, 24), 13 of them at 15px or below, and 13 letter-spacing values (−.01 to .2em). The "uppercase mono label" alone comes in 9.5, 10, 10.5 and 11px with tracking .1, .12, .14, .16 and .18em. Button and control heights take about 13 values (20 to 46px). The spacing values step by 1–2px (3, 4, 5, 6, 7, 8, 9, 10, 11, 12…) rather than following a scale.
-4. **The light theme is incomplete.** These values are hard-coded dark and ignore the theme: `.vs-receipt.error` and `.vs-notice.error` (`#3d231d` / `#ffd0c5`), `.stage-play` (`#0b0a08cc`), `.stage-note` (`#14110fee`), the SVG tag plates (`#0b0a08cc`) and the overlay creams (`#fff4d5`, `#fff2bd`, `#20160d`, `#f3b3aa`, `#8fd6a8`). The theme-aware inks on those fixed dark plates drop to about 2.7–3.1:1 in light (for example `--brass-hi #6d5210` on `#0b0a08`). The `.cloth-preview` rail `#59331d` and diamonds `#e3c877`, the nav ball colours, and the cloth swatches (`#1d5c44`, `#1f4a70`, `#6a2130`, `#2f3a3f`) are also literals, but those are depictions of physical objects.
-5. **Tokens and styles that do nothing.** The `--code-bg`, `--code-ink` and `--code-line` tokens are defined in both themes and used nowhere. `--neutral-bg`, `--brass-hover`, `--pip-off` and `--lamp` are each used once. The `#ops-footer` scope appears in 219 selectors, but no `#ops-footer` element exists (the only footer rule targets a `footer` that the shell never renders). There is an empty rule, `#t-overlay circle, #t-overlay .u-player {}`, and `.u-player` is never emitted. JS emits classes that have no CSS: `vs-frame-tools`, `vs-replay`, `vs-cropgrid`, `vs-cropcard`, `vs-enrol`, `vs-layers-note`, `fv-gate`, `player-form`.
-6. **Amber carries two meanings.** In the club badges amber means `live` / `delayed`, while in Vision green means `live` and amber means `stale` / paused / CALIB. The same word, *live*, is amber on the Matches badge and green on the stage chip.
-7. **Focus treatment is split.** The shell uses a 2px brass `outline` with a 3px offset. Text fields remove the outline and use a brass bottom border. The inspector's `.vs-field` inputs, selects and textareas show **no visible focus at all**. `ops.css:179` removes the outline. `ops.css:309` (`.vs-field … {border:1px solid var(--line)}`) has the same specificity (1,1,1) and comes later, so its `border` shorthand overrides both the 2px bottom border and the brass focus colour. Some chip-group and score buttons suppress the hover border (`border: 0`), so hover changes nothing there.
-8. **Accessible names are only partly bilingual.** The language and theme segments use a bilingual `aria-label` ("Dark / 暗色"). Seven landmark and frame names are English-only and do not follow the toggle: `aria-label="Color theme"`, `"Vision review"` (`ops.html`), `"Vision cues"`, `"Vision inspector"`, `"Vision stage"` (`ops.js`), `"Stage"` (`app.html`), and the chat iframe `title="Twitch chat"`.
-9. **Scattered one-offs.** There are 16 inline `style=` strings in `ops.js` (margins 10, 12, 14, 16 and 20px, and flex rows) and fallback literals inside `var()` (`var(--red,#cf5b4d)`, `var(--blue,#8fb4cf)`, `var(--brass,#c9a227)`…) in the scrub rules only. Radius is 2px everywhere except `.modal` and `.rounds .empty` (3px). Headings are the 600 slab, except the inspector `h3` (15px, mixed case), the modal head (19px, −.01em) and the base `h3` (20px). The `.vs-rail` and `.vs-inspector` `max-height` uses a magic `100vh - 356px`, and the shell uses `scroll-padding-top: 270px`. State is marked by the `.active` class alone. The EN|中 and ☾|☀ segments, layer toggles and filters do not set `aria-pressed` (only `setAppearance()` in `app.js` sets it, for engine buttons that the shell does not render). The mobile sheet bar declares `role="tablist"`, but its buttons have no `role="tab"` or `aria-selected`.
+1. **Two copies of the palette: resolved** (`85ea701`). One OKLCH token source in `ops.css` `:root` / `:root[data-theme=light]`; `app.css` holds no palette and remaps the stage tokens under `#t-overlay`. Gated by `tests/test_palette_contrast.py` (AA text pairs, 3:1 controls, one token source).
+2. **Fidelity-pass overrides: resolved** (`485b70a`). The 14 dead early declarations are gone; the values that rendered stay. Pixel diff before/after: 20/20 identical.
+3. **Near-continuous type and spacing scales: resolved** (`82db63f`, `079e983`). Six UI sizes (`--fs-xs` 11 … `--fs-xl` 20) plus the display clamps, and a seven-step spacing scale (`--sp-1` 4 … `--sp-6` 32). The 9 px number inside a nav ball is a ball numeral, not text, and stays.
+4. **Incomplete light theme: resolved** (`85ea701`). Every former dark literal is a token; the stage keeps its own dark plate in both themes on purpose (`--stage-*`), because it sits on video.
+5. **Tokens and styles that do nothing: resolved** (`85ea701`, `485b70a`, `b6e0c9a`). `--code-*`, `--stage-dim`, the `#ops-footer` scope (222 selectors), the `footer` rules and the empty rules are gone.
+6. **Amber carries two meanings: open, on purpose.** Club badges keep amber for `live` / `delayed` (a match waiting on people); Vision keeps green for a live feed and amber for stale / CALIB. Changing either is a product decision (PRODUCT.md), not a polish.
+7. **Focus treatment is split: resolved** (`01c598e`). Fields use a brass border plus a `box-shadow` ring that a later `border` shorthand cannot remove; checkboxes and ranges use the shell's 2 px outline. Measured: 0 focusable elements without visible focus on nine surfaces.
+8. **Accessible names partly bilingual: resolved** (`01c598e`, `b761265`). Region, frame, step and close names follow the language toggle (`data-vs-aria`, `closeLabel`); the sheet tabs are `role=tab` with `aria-selected`; EN|中, ☾|☀ and the layer chips carry `aria-pressed`.
+9. **Scattered one-offs: partly open.** The `var(--x,#fallback)` literals are gone and radius is 2 px except `.modal` (3 px, a raised surface). Still open: 21 inline `style=` strings in `ops.js` (16 before, +5 from main's R-series; `ops.js` is edited by unique anchors only, never reformatted) and the `.vs-rail` / `.vs-inspector` `max-height: min(calc(100vh - 356px), 620px)`.
+
+**New since the first pass** (each recorded in the ledger): self-hosted fonts with CJK subsets and a common-hanzi file per face (no CDN); overlay tag rows are placed without overprinting (`placeTags()`); the person chip's colour rule now matches; the clock bar scales (`transform`) instead of resizing; the Floor has a first-run guide until the draw exists; the empty board's placeholder names are dim.
