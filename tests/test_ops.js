@@ -231,6 +231,23 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+test('onboard: an empty club gets three real steps on the Floor, and they leave once the draw exists', () => {
+  const h = harness();
+  const guide = () => { const html = h.evaluate('floorScreen()'); const m = html.match(/<article class="first-run"[\s\S]*?<\/article>/); return m ? m[0] : ''; };
+  const first = guide();
+  assert.ok(first, 'an empty club sees the guide');
+  assert.deepEqual([...first.matchAll(/data-tab="([a-z]+)"/g)].map(m => m[1]), ['players', 'setup', 'setup'], 'each step is the tab button that does it');
+  assert.ok(!first.includes('class="done"'), 'nothing is ticked before anything happened');
+  h.evaluate("data.players=[{id:'p1',name:'Ana',rating:50,status:'Active'}]");
+  assert.equal((guide().match(/class="done"/g) || []).length, 1, 'a saved regular ticks step 1');
+  h.evaluate("data.tournament.entrants=[{id:'e1',members:[{pid:'p1',name:'Ana'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}]");
+  assert.equal((guide().match(/class="done"/g) || []).length, 2, 'two entrants tick step 2');
+  h.evaluate("data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]}]");
+  assert.equal(guide(), '', 'the guide leaves once the draw exists');
+  for (const key of ['firstRunTitle', 'firstRunRegulars', 'firstRunEntrants', 'firstRunRack', 'firstRunNote']) {
+    assert.match(source, new RegExp(`${key}:\\['[^']+','[^']+'\\]`), `${key} has an EN and a 中 string`);
+  }
+});
 test('harden: fields show focus that a border shorthand cannot erase; names and states are announced', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   const focus = css.match(/input:focus,[^{]*textarea:focus\{([^}]*)\}/);

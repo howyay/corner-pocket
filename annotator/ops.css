@@ -485,3 +485,14 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .results-sheet .note{background:#fff!important;border-left-color:#999}
   #ops-shell .sheet-rounds{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 }
+/* Onboard: the empty club's first run. A panel in the shell's own terms: brass step
+   numbers, the dashed "not yet" edge the cue cards use, real tab buttons as steps. */
+#ops-shell .first-run{border:1px dashed var(--btn-line);background:var(--panel);padding:var(--sp-4) var(--sp-5)}
+#ops-shell .first-run h3{margin:0 0 var(--sp-3)}
+#ops-shell .first-run ol{margin:0;padding:0;list-style:none;counter-reset:step;display:grid;gap:var(--sp-2)}
+#ops-shell .first-run li{counter-increment:step;display:flex;align-items:center;gap:var(--sp-3)}
+#ops-shell .first-run li::before{content:counter(step);flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:1px solid var(--brass);color:var(--brass-hi);font:500 var(--fs-md) var(--mono)}
+#ops-shell .first-run li.done::before{background:var(--brass);color:var(--brass-fg)}
+#ops-shell .first-run li button{min-height:36px;text-align:left}
+#ops-shell .first-run li.done button{color:var(--ink-dim);border-color:var(--line)}
+#ops-shell .first-run p{margin:var(--sp-3) 0 0;font-size:var(--fs-md)}
