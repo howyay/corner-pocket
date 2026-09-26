@@ -52,6 +52,13 @@ def tournament():
                 entrants=[], matches=[], status='registration')
 
 
+def default_name(now=None):
+    """The name the Set up form displays before anyone types one (autoEventName, EN)."""
+    now = now or datetime.now().astimezone()
+    day = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')[now.weekday()]
+    return f'8-Ball Open · {day} {now.month}/{now.day}'
+
+
 class Operations:
     # Share a lock across backend instances for the same store in this process.
     _locks = {}
@@ -84,6 +91,12 @@ class Operations:
                 raise ValueError('integer revision required')
             if payload['revision'] != state['revision']:
                 raise ConflictError('State changed; reload before retrying')
+            if payload.get('action') in ('tournament_start', 'tournament_new'):
+                # R2: an event that is drawn or archived is never nameless; the
+                # server fills the default the form displays (the audit reads it).
+                t = state['tournament']
+                if not t['name'].strip() and (payload['action'] == 'tournament_start' or t['entrants'] or t['matches']):
+                    t['name'] = default_name()
             context = self._event_context(state, payload)
             self._apply(state, payload)
             if payload.get('action') != 'tournament_new':
@@ -140,6 +153,9 @@ class Operations:
                   ('note_', state['notes'])]
         if not isinstance(action, str):
             return context
+        if action == 'tournament_rename':
+            night = next((n for n in [t] + state['history'] if n['id'] == payload.get('id')), None)
+            return dict(id=night['id'], name=night['name']) if night else context
         if action.startswith('tournament_'):
             return dict(id=t['id'], name=t['name'])
         if action == 'guest_promote':
@@ -357,6 +373,9 @@ class Operations:
                 match.update(status='complete', winnerId=match['sides'][winner], table=None,
                              result='forfeit' if action == 'match_forfeit' else 'played', completedAt=timestamp())
                 self._propagate(t)
+        elif action == 'tournament_rename':
+            # Name only, current or archived: format, race, tables and results stay locked.
+            self._find([t] + s['history'], p.get('id'))['name'] = text(p.get('name'), 'name', 120)
         elif action == 'tournament_new':
             if p.get('confirm') is not True:
                 raise ValueError('Explicit confirmation required')

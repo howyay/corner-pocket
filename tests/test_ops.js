@@ -562,3 +562,42 @@ test('a placeholder guest name is stopped at the field, in both languages (R5)',
   await h.handlers.submit(form({pid0: '', guest0: 'Nadia'}));
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => c.payload))')), [{members: [{name: 'Nadia'}]}]);
 });
+test('racking an unsaved event saves the name the form shows first (R2)', async () => {
+  const h = harness();
+  const nameField = {value: '8-Ball Open · Fri 9/26'};
+  h.context.document.querySelector = sel => sel === '#settings-form [name=name]' ? nameField : null;
+  h.evaluate("data.tournament={id:'t1',name:'',format:'singles',tables:1,raceTo:1,status:'registration',entrants:[{id:'e1',members:[]},{id:'e2',members:[]}],matches:[]}");
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'tournament-start'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_setup', payload: {name: '8-Ball Open · Fri 9/26'}}, {name: 'tournament_start'}]);
+  // an event that already has a name is racked as is
+  h.evaluate("calls=[];data.tournament.name='Friday 8-Ball'");
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'tournament-start'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_start'}]);
+});
+test('after the draw and in the archive only the name can be edited, and it is audited (R2)', async () => {
+  const h = harness();
+  h.evaluate(`data.events=[{action:'tournament_rename',createdAt:'2026-09-26T10:00:00Z',revision:9,context:{id:'t1',name:'New'}}];data.notes=[];data.players=[];
+    data.tournament={id:'t1',name:'Friday',format:'singles',tables:1,raceTo:3,status:'active',entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bea'}]}],matches:[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]}]};
+    data.history=[{id:'h1',name:'',format:'singles',raceTo:1,status:'complete',archivedAt:'2026-09-01T00:00:00Z',entrants:[],matches:[]}]`);
+  for (const [lang, rename, label] of [['en', 'Rename event', 'Event renamed'], ['zh', '重命名赛事', '赛事已重命名']]) {
+    h.evaluate(`lang='${lang}'`);
+    const setup = h.evaluate('setupScreen()');
+    const form = setup.match(/<form id="rename-form"[^]*?<\/form>/);
+    assert.ok(form, `${lang}: a rename form is offered after the draw`);
+    assert.ok(/name="name"/.test(form[0]) && !/name="(format|raceTo|tables)"/.test(form[0]), `${lang}: the rename form carries the name only`);
+    assert.ok(form[0].includes(`>${rename}<`), `${lang}: the button says ${rename}`);
+    assert.ok(/<fieldset disabled/.test(setup), `${lang}: the rules stay locked`);
+    assert.equal((setup.match(/name="name"/g) || []).length, 1, `${lang}: the name is edited in one place only`);
+    const matches = h.evaluate('matchesScreen()');
+    assert.ok(matches.includes('data-action="rename-archived"') && matches.includes('data-id="h1"'), `${lang}: an archived event can be renamed`);
+    assert.ok(!/<summary>h1 /.test(matches), `${lang}: an unnamed archive never shows its raw id`);
+    assert.ok(h.evaluate('auditLine(data.events[0])').includes(label), `${lang}: the audit line reads ${label}`);
+  }
+  const submit = values => h.handlers.submit({preventDefault() {}, target: {getAttribute: () => 'rename-form', classList: {contains: () => false}, querySelector: () => null, querySelectorAll: () => [], values}});
+  await submit({id: 't1', name: '  Friday Final '});
+  h.context.prompt = () => ' July night ';
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'rename-archived', id: 'h1'}}}});
+  h.context.prompt = () => null;
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'rename-archived', id: 'h1'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_rename', payload: {id: 't1', name: 'Friday Final'}}, {name: 'tournament_rename', payload: {id: 'h1', name: 'July night'}}]);
+});

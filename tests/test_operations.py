@@ -480,6 +480,62 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(state['events'][-1]['context']['id'], old)
         self.assertNotEqual(state['tournament']['id'], old)
 
+    def test_an_archived_event_always_has_a_name(self):
+        """R2: no path through the API archives a nameless event, and the audit line names it."""
+        # racked without ever saving the form, then archived
+        state = self.register(3)
+        self.assertTrue(state['tournament']['name'].strip(), 'the draw fills a name the operator never saved')
+        state = self.call('tournament_new', confirm=True)
+        self.assertTrue(state['history'][-1]['name'].strip())
+        self.assertEqual(state['events'][-1]['context']['name'], state['history'][-1]['name'])
+        # archived during registration, never racked
+        self.call('entrant_add', members=[{'name': 'Ada'}])
+        state = self.call('tournament_new', confirm=True)
+        self.assertTrue(state['history'][-1]['name'].strip())
+        self.assertNotEqual(state['events'][-1]['context']['name'], '')
+        # a saved name is kept exactly
+        self.call('tournament_setup', name='Friday 8-Ball')
+        self.register(2)
+        state = self.call('tournament_new', confirm=True)
+        self.assertEqual(state['history'][-1]['name'], 'Friday 8-Ball')
+        self.assertTrue(all(night['name'].strip() for night in state['history']))
+
+    def test_rename_changes_only_the_name_and_is_audited(self):
+        """R2: a name-only rename after the draw and for archived events; rules stay locked."""
+        self.call('tournament_setup', name='Old name', raceTo=5, tables=2)
+        state = self.register(4, race_to=5)
+        current = state['tournament']
+        match = next(m for m in current['matches'] if m['status'] == 'scheduled')
+        self.call('match_schedule', id=match['id'])
+        self.call('match_score', id=match['id'], score=[5, 1])
+        state = self.call('match_complete', id=match['id'])
+        before = {k: v for k, v in state['tournament'].items() if k != 'name'}
+        with self.assertRaisesRegex(ValueError, '^Tournament already started$'):
+            self.call('tournament_setup', name='Blocked')
+        state = self.call('tournament_rename', id=current['id'], name='  New name ', raceTo=1, format='doubles', tables=9)
+        self.assertEqual(state['tournament']['name'], 'New name')
+        self.assertEqual({k: v for k, v in state['tournament'].items() if k != 'name'}, before)
+        self.assertEqual(state['events'][-1]['action'], 'tournament_rename')
+        self.assertEqual(state['events'][-1]['context'], {'id': current['id'], 'name': 'New name'})
+        # archived events, including a legacy one stored with an empty name
+        state = self.call('tournament_new', confirm=True)
+        legacy = json.loads(self.ops.path.read_text())
+        legacy['history'].insert(0, dict(id='legacy', name='', format='singles', tables=1, raceTo=1,
+                                         entrants=[], matches=[], status='complete', archivedAt='2026-01-01'))
+        self.ops.path.write_text(json.dumps(legacy))
+        archived = json.loads(json.dumps(self.ops.get()['history']))
+        state = self.call('tournament_rename', id='legacy', name='January night')
+        self.assertEqual(state['history'][0]['name'], 'January night')
+        self.assertEqual(state['history'][1:], archived[1:])
+        self.assertEqual({k: v for k, v in state['history'][0].items() if k != 'name'},
+                         {k: v for k, v in archived[0].items() if k != 'name'})
+        self.assertEqual(state['events'][-1]['context'], {'id': 'legacy', 'name': 'January night'})
+        saved = self.ops.path.read_bytes()
+        for bad in (dict(id='missing', name='x'), dict(id='legacy', name='   '), dict(id='legacy')):
+            with self.assertRaises(ValueError):
+                self.call('tournament_rename', **bad)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+
 
 if __name__ == '__main__':
     unittest.main()
