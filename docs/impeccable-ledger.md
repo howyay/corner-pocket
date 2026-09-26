@@ -189,3 +189,13 @@ Chinese), one archived night played to the end, tonight in progress (`ledger/nar
    308 px). Added: a wrapper that is clipped **fades its right edge** (same cue as the Vision stagebar),
    and the fade leaves when it is scrolled to the end (scroll-driven; kept under reduced motion because it
    only follows the user's own scroll; no fade where unsupported). Test added.
+
+**`6943ecc` (390 px table overflow) — confirmed present and effective.** Main's fix arrived with the merge
+`882ffe1`; `main` has nothing newer than `3b65543` (merged in `baa7f8a`), so there was nothing further to
+merge. All three parts are on the branch: `#ops-shell .table-wrap{overflow:auto;contain:inline-size}`
+(restated in the polish's scope), the four wrappers (standings, event table, head-to-head, by-event), and
+`white-space:nowrap` on the numeric cells; main's test for them passes. Recheck on a fresh throwaway `:8142`
+with long regulars seeded (57/48-char Latin names and a Chinese name), 390×844:
+`scrollWidth == innerWidth` → **390/390 on Matches and on Player record, EN and 中**. Control, same page:
+removing `contain` (`contain:none` injected) makes Matches **489/390** — the worker's finding reproduced
+(`overflow:auto` alone lets the grid track grow to the table's min-content).
