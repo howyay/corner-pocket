@@ -400,9 +400,15 @@ function receiptLine(kind) {
   return `<p class="vs-receipt" data-receipt-at="${row.at}">✓ ${esc(engineText(row.text))} · ${age.toFixed(1)} s ${esc(t('savedOk'))}</p>`;
 }
 // The footer's height is measured, never assumed: the scroll region reserves
-// exactly that much (CSS var --vs-footer-h) so no row hides under it.
+// exactly that much (CSS var --vs-footer-h) so no row hides under it. The strip is
+// measured the same way (--vs-strip-h): on a phone the sheet sits above it, never on it.
 function syncFooterHeight() {
   const inspector = $('#vs-inspector'), footer = $('#vs-inspector-actions');
+  const strip = $('#vs-strip');
+  if (root && strip) {   // root is the mount, #vision-surface
+    const stripHeight = `${strip.offsetHeight}px`;
+    if (root.style.getPropertyValue('--vs-strip-h') !== stripHeight) root.style.setProperty('--vs-strip-h', stripHeight);
+  }
   if (!inspector || !footer) return;
   const height = `${footer.offsetHeight}px`;
   if (inspector.style.getPropertyValue('--vs-footer-h') !== height) inspector.style.setProperty('--vs-footer-h', height);
@@ -1100,7 +1106,10 @@ function attach(options) {
   sig = {}; // the shell rebuilds #main on every render: never trust cached regions
   const footer = root.querySelector('#vs-inspector-actions');
   if (footerObserver) { footerObserver.disconnect(); footerObserver = null; }
-  if (footer && typeof ResizeObserver !== 'undefined') { footerObserver = new ResizeObserver(syncFooterHeight); footerObserver.observe(footer); }
+  if (footer && typeof ResizeObserver !== 'undefined') {
+    footerObserver = new ResizeObserver(syncFooterHeight); footerObserver.observe(footer);
+    const strip = root.querySelector('#vs-strip'); if (strip) footerObserver.observe(strip);
+  }
   root.addEventListener('click', onClick);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);
