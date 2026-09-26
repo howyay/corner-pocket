@@ -66,7 +66,7 @@ From the repository root:
 
 Open <http://127.0.0.1:8130/>. The server listens on `127.0.0.1` by default
 and has **no built-in authentication**. Do not expose it to a network without
-an authenticating reverse proxy in front of it (see `SECURITY.md`).
+an authenticating reverse proxy in front of it (see [SECURITY.md](SECURITY.md)).
 
 Two fixtures run the same UI on scratch copies, so trying things out never
 changes real state:
@@ -124,13 +124,14 @@ their face data.
 
 ## Licence
 
-Our own code is dedicated to the public domain under **CC0-1.0** (`LICENSE`).
+Our own code is dedicated to the public domain under **CC0-1.0**
+([LICENSE](LICENSE)).
 
-- `NOTICE` lists every third-party component and its licence.
+- [NOTICE](NOTICE) lists every third-party component and its licence.
 - `src/reid/osnet.py` is copied from torchreid and stays under the **MIT**
   licence in its header.
 - **AGPL caveat:** the program imports `ultralytics`, which is
-  **AGPL-3.0** (`LICENSE-AGPL-3.0.txt`). CC0 does not remove the AGPL from
+  **AGPL-3.0** ([LICENSE-AGPL-3.0.txt](LICENSE-AGPL-3.0.txt)). CC0 does not remove the AGPL from
   the combined program. If you convey it, or run a modified version as a
   network service, the AGPL applies to the whole program, including section
   13: users who interact with it over the network must be offered its
@@ -138,4 +139,5 @@ Our own code is dedicated to the public domain under **CC0-1.0** (`LICENSE`).
 - The model weights are not in this repository and have their own terms:
   `yolov8n.pt` is AGPL-3.0; the OSNet weights were trained on MSMT17, whose
   terms are academic and non-commercial; `buffalo_l` is non-commercial
-  research only; SAM 3 is under Meta's SAM License. Details are in `NOTICE`.
+  research only; SAM 3 is under Meta's SAM License. Details are in
+  [NOTICE](NOTICE).
