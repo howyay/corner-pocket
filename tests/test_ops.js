@@ -459,3 +459,35 @@ test('a VOD replay the server would refuse is explained before Start, in both la
     assert.notEqual(h.evaluate('replayChoice()'), null, `${good} is accepted`);
   }
 });
+
+test('the regular profile deletes face data only after a confirm that says what goes, and shows the counts', async () => {
+  const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset}}});
+  for (const [lang, button, receipt, kept] of [
+    ['en', 'Delete face data', 'Face data deleted: 3 stored faces, 1 matched person unbound, 2 face samples', 'name and results stay'],
+    ['zh', '删除人脸数据', '人脸数据已删除：3 张人脸，解除 1 个匹配人物，2 个人脸样本', '姓名和成绩保留']]) {
+    const h = harness(), messageNode = {textContent:'', className:''}, asked = [], sent = [];
+    h.context.document.querySelector = selector => selector === '#message' ? messageNode : null;
+    h.evaluate(`lang='${lang}'; data.players=[{id:'p1',name:'Ana',status:'Active',rating:0}]; selected='p1'`);
+    assert.ok(h.evaluate('playersScreen()').includes(`data-action="face-forget" data-id="p1"`), `${lang}: the profile offers it`);
+    assert.ok(h.evaluate('playersScreen()').includes(`>${button}</button>`), `${lang}: labelled ${button}`);
+    // cancelled: nothing is sent
+    h.context.confirm = text => { asked.push(text); return false; };
+    h.context.fetch = async (url, options) => { sent.push([url, JSON.parse(options.body)]); return {ok:true, json: async () => ({})}; };
+    await click(h, {action:'face-forget', id:'p1'});
+    assert.equal(sent.length, 0, `${lang}: a cancelled confirm sends nothing`);
+    assert.ok(asked[0].includes(kept), `${lang}: the confirm says the operations record stays`);
+    // confirmed: one POST with the player id, and a receipt with the counts
+    h.context.confirm = () => true;
+    h.context.fetch = async (url, options) => { sent.push([url, JSON.parse(options.body)]);
+      return {ok:true, json: async () => ({forgotten:true, player_id:'p1', removed:{store_faces:3, scratch_faces:0, clusters_unbound:1, face_samples:2, faces:1}})}; };
+    await click(h, {action:'face-forget', id:'p1'});
+    assert.deepEqual(sent, [['/api/identity/forget', {player_id:'p1'}]]);
+    assert.equal(messageNode.textContent, receipt);
+    assert.equal(messageNode.className, '');
+    // refused: the reason reaches the operator as an error
+    h.context.fetch = async () => ({ok:false, status:404, json: async () => ({error:'no face data for this player'})});
+    await click(h, {action:'face-forget', id:'p1'});
+    assert.ok(messageNode.textContent.includes('no face data for this player') || lang === 'zh', `${lang}: the reason is shown`);
+    assert.equal(messageNode.className, 'error');
+  }
+});
