@@ -2,8 +2,9 @@
 
 `Store` is the interface every storage backend implements; `JsonStore` is today's
 file storage behind it and stays the default, so the suite and a server without
-POOL_DATABASE_URL behave exactly as before.  The Postgres implementation is added
-by later, reviewed steps; until then `open_store` refuses to pretend it exists.
+POOL_DATABASE_URL behave exactly as before.  With POOL_DATABASE_URL set,
+`open_store` returns `src.store_pg.PostgresStore`, which passes the same contract
+(tests/test_store_contract.py).
 
 Nothing calls this module yet: the server and the tools still use their own file
 code, and they switch to `open_store(root)` one caller at a time.
@@ -54,6 +55,7 @@ class Store(Protocol):
     def enroll_player(self, player: dict, context: dict) -> dict: ...
     # identity (section 3)
     def identity_load(self) -> dict: ...
+    def identity_save(self, clusters: dict) -> None: ...
     def faces_load(self) -> dict: ...
     def faces_add(self, additions: dict) -> dict: ...
     def faces_remove(self, player_id: str) -> int: ...
@@ -79,9 +81,8 @@ class Store(Protocol):
 def open_store(root) -> Store:
     """The store for `root`: Postgres when POOL_DATABASE_URL is set, else the JSON files."""
     if os.environ.get(ENV):
-        raise NotImplementedError(
-            f"{ENV} is set, but the Postgres store is not built yet (docs/postgres-design.md "
-            "section 8); unset it to use the JSON files")
+        from src.store_pg import PostgresStore
+        return PostgresStore(root)
     return JsonStore(root)
 
 
@@ -148,6 +149,15 @@ class JsonStore:
 
     def identity_load(self) -> dict:
         return _read(self.identity_path(), {})
+
+    def identity_save(self, clusters: dict) -> None:
+        """Replace the index with `clusters`, in IdentityIndex.save's format (indent=1)."""
+        path = self.identity_path()
+        with self._lock(path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(clusters, indent=1), encoding="utf-8")
+            os.replace(tmp, path)
 
     def _faces_path(self) -> Path:
         return self.out / "corner-pocket" / "face_embeddings.json"

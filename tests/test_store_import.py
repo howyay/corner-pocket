@@ -67,7 +67,12 @@ def fixture(root: Path):
                      "matches": [{"id": "m9", "round": 1, "sides": ["e9", None], "score": [0, 0], "table": None,
                                   "status": "complete", "winnerId": "e9", "absent": [], "sources": [],
                                   "result": "bye"}],
-                     "status": "complete", "archivedAt": "2026-09-03T01:00:00+00:00"}],
+                     "status": "complete", "archivedAt": "2026-09-03T01:00:00+00:00"},
+                    # tournament_hide (7285584): the key is absent until a hide, then true or false
+                    {"id": "t0", "name": "Hidden", "format": "singles", "tables": 1, "raceTo": 1, "entrants": [],
+                     "matches": [], "status": "complete", "archivedAt": "2026-09-02T01:00:00+00:00", "hidden": True},
+                    {"id": "t00", "name": "Unhidden", "format": "singles", "tables": 1, "raceTo": 1, "entrants": [],
+                     "matches": [], "status": "complete", "archivedAt": "2026-09-01T01:00:00+00:00", "hidden": False}],
         "settings": {"shotClock": 30, "autoFrame": False, "clothColor": "#1d5c44", "lampGlow": 0.22,
                      "showDiamonds": True},
         "notes": [{"id": "n1", "text": "cloth replaced", "createdAt": "2026-09-04T10:00:00+00:00"}],
@@ -134,8 +139,14 @@ class Import(unittest.TestCase):
                           "seeds": "imported", "verdicts": "imported", "labels": "imported",
                           "corrections": "imported", "anchors": "imported"}, first)
         self.assertEqual(first["operations"]["actual"],
-                         {"ops_meta": 1, "players": 2, "tournaments": 2, "entrants": 3, "entrant_members": 4,
+                         {"ops_meta": 1, "players": 2, "tournaments": 4, "entrants": 3, "entrant_members": 4,
                           "matches": 3, "notes": 1, "sources": 1, "ops_events": 7})
+        # hidden: absent, true and false survive as written (kept in tournaments.extra)
+        from src.store_import import OperationsSet
+        rendered = {t["id"]: t.get("hidden", "absent") for t in OperationsSet().render(self.conn)["history"]}
+        self.assertEqual(rendered, {"t1": "absent", "t0": True, "t00": False})
+        self.assertEqual(sorted(self.conn.execute("SELECT id, extra FROM tournaments WHERE archived_at IS NOT NULL")
+                                .fetchall()), [("t0", {"hidden": True}), ("t00", {"hidden": False}), ("t1", {})])
         self.assertEqual(first["identity"]["actual"], {"identity_clusters": 3, "identity_face_samples": 1})
         self.assertEqual(first["faces"]["actual"], {"face_embeddings": 3})
         self.assertEqual(first["labels"]["actual"], {"ball_labels": 3})

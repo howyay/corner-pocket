@@ -49,8 +49,10 @@ class Selection(StoreTestCase):
         self.assertIsInstance(chosen, JsonStore)
         self.assertIsInstance(chosen, Store)
         with mock.patch.dict(os.environ, {"POOL_DATABASE_URL": "postgresql://u@127.0.0.1:1/x"}):
-            with self.assertRaises(NotImplementedError):
-                open_store(self.root)          # no Postgres store until the reviewed steps land
+            chosen = open_store(self.root)     # constructing it connects to nothing
+        from src.store_pg import PostgresStore
+        self.assertIsInstance(chosen, PostgresStore)
+        self.assertIsInstance(chosen, Store)
 
     def test_constructing_a_store_writes_nothing(self):
         self.assertFalse(self.out.exists())
