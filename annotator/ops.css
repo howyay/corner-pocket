@@ -1,10 +1,30 @@
 #ops-shell #live-frame{display:block;width:100%;height:auto;background:#000}#ops-shell #live-frame[hidden]{display:none}#ops-shell #live-panel input[type=checkbox]{width:auto}#ops-shell #live-status{overflow-wrap:anywhere}
 :root{--display:'Zilla Slab','Noto Serif SC',Georgia,serif;--body:'Barlow','Noto Sans SC',Arial,sans-serif;--mono:'DM Mono','Noto Sans SC',monospace;--bg:#14110f;--panel:#1a1613;--panel2:#100e0c;--rail:#241e19;--line:#2e2620;--line2:#262019;--btn-line:#4a3f33;--ink-hi:#f6f1e6;--ink:#f2e9dd;--ink-mid:#b6a693;--ink-dim:#8a7a68;--ink-faint:#6d5f51;--brass:#c9a227;--brass-hi:#e3c877;--brass-hover:#dcbb46;--brass-fg:#17120c;--pip-off:#2b241d;--green:#7fc39a;--green-bg:#16241c;--green-line:#3d5f4c;--blue:#8fb4cf;--blue-bg:#171f26;--blue-line:#31495b;--amber:#dfa93a;--amber-bg:#2a2013;--amber-line:#5c4a1e;--red:#cf5b4d;--live-bg:#221a10;--neutral-bg:#17130f;--lamp:rgba(240,214,150,.08)}
 :root[data-theme=light]{--bg:#eee6d8;--panel:#faf6ee;--panel2:#fffdf8;--rail:#e9e0d0;--line:#d8cbb6;--line2:#e3d9c7;--btn-line:#c2b299;--ink-hi:#171208;--ink:#241c12;--ink-mid:#5b4f41;--ink-dim:#7c6d5b;--ink-faint:#9b8b77;--brass:#8a6a12;--brass-hi:#6d5210;--brass-hover:#a07d18;--brass-fg:#fdf8ee;--pip-off:#d9cdb8;--green:#256a45;--green-bg:#dfeade;--green-line:#a6c2ac;--blue:#25587c;--blue-bg:#dde7ef;--blue-line:#a8bfd2;--amber:#8a5307;--amber-bg:#f6e9cf;--amber-line:#d6bd8a;--red:#a4382b;--live-bg:#f8eed4;--neutral-bg:#f0e8db;--lamp:rgba(255,206,110,.2)}
+/* Self-hosted faces (annotator/fonts/, OFL texts alongside; regenerate with fonts/build_fonts.py).
+   Only the faces the app renders; the CJK files are subset to the app's Chinese copy. */
+@font-face{font-family:'Zilla Slab';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/zilla-slab-400.woff2) format('woff2')}
+@font-face{font-family:'Zilla Slab';font-style:italic;font-weight:400;font-display:swap;src:url(/fonts/zilla-slab-400-italic.woff2) format('woff2')}
+@font-face{font-family:'Zilla Slab';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/zilla-slab-500.woff2) format('woff2')}
+@font-face{font-family:'Zilla Slab';font-style:normal;font-weight:600 700;font-display:swap;src:url(/fonts/zilla-slab-600.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:300 400;font-display:swap;src:url(/fonts/barlow-400.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/barlow-500.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/barlow-600.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/barlow-700.woff2) format('woff2')}
+@font-face{font-family:'DM Mono';font-style:normal;font-weight:300 400;font-display:swap;src:url(/fonts/dm-mono-400.woff2) format('woff2')}
+@font-face{font-family:'DM Mono';font-style:normal;font-weight:500 900;font-display:swap;src:url(/fonts/dm-mono-500.woff2) format('woff2')}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 400;font-display:swap;src:url(/fonts/noto-sans-sc-400.woff2) format('woff2')}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:500 900;font-display:swap;src:url(/fonts/noto-sans-sc-500.woff2) format('woff2')}
+@font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:300 400;font-display:swap;src:url(/fonts/noto-serif-sc-400.woff2) format('woff2')}
+@font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:500 600;font-display:swap;src:url(/fonts/noto-serif-sc-500.woff2) format('woff2')}
+@font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/noto-serif-sc-700.woff2) format('woff2')}
+/* Type scale: six fixed steps for a dense operating surface (plus the fluid scoreboard
+   sizes). 11px is the floor for any functional text; tracked uppercase mono labels use 12. */
+:root{--fs-xs:11px;--fs-sm:12px;--fs-md:13px;--fs-body:15px;--fs-lg:17px;--fs-xl:20px}
 :is(#ops-shell, #ops-footer),:is(#ops-shell, #ops-footer) *{box-sizing:border-box}
 html{scroll-padding-top:270px}
 :is(#ops-shell, #ops-footer) button,:is(#ops-shell, #ops-footer) input,:is(#ops-shell, #ops-footer) select,:is(#ops-shell, #ops-footer) textarea,:is(#ops-shell, #ops-footer) article{scroll-margin-top:270px}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body)}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5 var(--body)}
 :is(#ops-shell, #ops-footer) button,:is(#ops-shell, #ops-footer) input,:is(#ops-shell, #ops-footer) select,:is(#ops-shell, #ops-footer) textarea{font:inherit}
 :is(#ops-shell, #ops-footer) button,:is(#ops-shell, #ops-footer) a,:is(#ops-shell, #ops-footer) input,:is(#ops-shell, #ops-footer) select,:is(#ops-shell, #ops-footer) textarea{touch-action:manipulation}
 :is(#ops-shell, #ops-footer) button{min-height:40px;padding:0 14px;border:1px solid var(--btn-line);border-radius:2px;background:transparent;color:var(--ink);cursor:pointer}
@@ -19,8 +39,8 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) .bar,:is(#ops-shell, #ops-footer) .tools,:is(#ops-shell, #ops-footer) nav,:is(#ops-shell, #ops-footer) .row,:is(#ops-shell, #ops-footer) .heading,:is(#ops-shell, #ops-footer) .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 :is(#ops-shell, #ops-footer) .bar,:is(#ops-shell, #ops-footer) .heading{justify-content:space-between}
 :is(#ops-shell, #ops-footer) .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink)}
-:is(#ops-shell, #ops-footer) .brand strong{display:block;font:500 21px/1.1 var(--display)}
-:is(#ops-shell, #ops-footer) small,:is(#ops-shell, #ops-footer) .kicker,:is(#ops-shell, #ops-footer) .badge,:is(#ops-shell, #ops-footer) label>span,:is(#ops-shell, #ops-footer) th{font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell, #ops-footer) .brand strong{display:block;font:500 var(--fs-xl)/1.1 var(--display)}
+:is(#ops-shell, #ops-footer) small,:is(#ops-shell, #ops-footer) .kicker,:is(#ops-shell, #ops-footer) .badge,:is(#ops-shell, #ops-footer) label>span,:is(#ops-shell, #ops-footer) th{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 :is(#ops-shell, #ops-footer) small{display:block;margin-top:4px}
 :is(#ops-shell, #ops-footer) .ball{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#f0d879,#c9a227 74%);box-shadow:inset 0 0 0 1px #0006;flex:none}
 :is(#ops-shell, #ops-footer) .ball i{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#f6f1e6;color:#17120c;font:10px var(--mono)}
@@ -34,7 +54,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) main.short{min-height:0;padding-bottom:12px}
 :is(#ops-shell, #ops-footer) h1,:is(#ops-shell, #ops-footer) h2,:is(#ops-shell, #ops-footer) h3,:is(#ops-shell, #ops-footer) p{margin-top:0}
 :is(#ops-shell, #ops-footer) h2{font:400 clamp(28px,3.2vw,38px)/1.1 var(--display);color:var(--ink-hi);margin-bottom:18px}
-:is(#ops-shell, #ops-footer) h3{font:500 20px var(--display);color:var(--ink-hi);margin-bottom:14px}
+:is(#ops-shell, #ops-footer) h3{font:500 var(--fs-xl) var(--display);color:var(--ink-hi);margin-bottom:14px}
 :is(#ops-shell, #ops-footer) p{color:var(--ink-mid)}
 :is(#ops-shell, #ops-footer) .kicker{margin-bottom:8px}
 :is(#ops-shell, #ops-footer) .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
@@ -47,20 +67,20 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) .name{display:block;font:500 clamp(32px,5.5vw,80px)/1.02 var(--display);overflow-wrap:anywhere}
 :is(#ops-shell, #ops-footer) .digits{font:500 clamp(52px,7.2vw,110px)/.9 var(--display)}
 :is(#ops-shell, #ops-footer) .score-buttons{display:grid;gap:8px}
-:is(#ops-shell, #ops-footer) .score-buttons button{width:54px;font:20px var(--mono)}
+:is(#ops-shell, #ops-footer) .score-buttons button{width:54px;font:var(--fs-xl) var(--mono)}
 :is(#ops-shell, #ops-footer) .vs{display:flex;align-items:center;gap:14px;color:var(--ink-faint);padding:0 28px}
 :is(#ops-shell, #ops-footer) .vs:before,:is(#ops-shell, #ops-footer) .vs:after{content:'';height:1px;background:var(--line);flex:1}
 :is(#ops-shell, #ops-footer) .pips{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
 :is(#ops-shell, #ops-footer) .pip{width:11px;height:11px;border-radius:50%;background:var(--pip-off)}
 :is(#ops-shell, #ops-footer) .pip.on{background:var(--brass)}
 :is(#ops-shell, #ops-footer) .clock{font:500 clamp(30px,4vw,60px)/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--brass-hi)}
-:is(#ops-shell, #ops-footer) #strip .clock{font-size:24px}
+:is(#ops-shell, #ops-footer) #strip .clock{font-size:var(--fs-xl)}
 :is(#ops-shell, #ops-footer) .clock.low{color:var(--red)}
 :is(#ops-shell, #ops-footer) .progress{height:6px;background:var(--rail);margin-top:10px}
 :is(#ops-shell, #ops-footer) .progress span{display:block;height:100%;background:var(--brass)}
 :is(#ops-shell, #ops-footer) .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
 :is(#ops-shell, #ops-footer) .tile{padding:12px 15px;background:var(--panel)}
-:is(#ops-shell, #ops-footer) .tile strong{display:block;font:500 22px var(--display);overflow-wrap:anywhere}
+:is(#ops-shell, #ops-footer) .tile strong{display:block;font:500 var(--fs-xl) var(--display);overflow-wrap:anywhere}
 :is(#ops-shell, #ops-footer) .badge{display:inline-block;border:1px solid var(--line);padding:4px 8px;background:var(--panel2);letter-spacing:.1em}
 :is(#ops-shell, #ops-footer) .live,:is(#ops-shell, #ops-footer) .delayed{color:var(--amber);border-color:var(--amber-line);background:var(--amber-bg)}
 :is(#ops-shell, #ops-footer) .complete{color:var(--green);border-color:var(--green-line);background:var(--green-bg)}
@@ -85,14 +105,14 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) .table-wrap{overflow:auto}
 :is(#ops-shell, #ops-footer) .embed{width:100%;height:540px;border:1px solid var(--line);background:#100e0c}
 :is(#ops-shell, #ops-footer) .cloth-preview{min-height:200px;margin-top:18px;border:18px solid #59331d;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:10px;gap:24px;color:#f6f1e6;text-align:center}
-:is(#ops-shell, #ops-footer) .rail-diamonds{color:#e3c877;letter-spacing:.2em;font-size:12px}
+:is(#ops-shell, #ops-footer) .rail-diamonds{color:#e3c877;letter-spacing:.2em;font-size:var(--fs-sm)}
 :is(#ops-shell, #ops-footer) .stream-grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) 320px}
 :is(#ops-shell, #ops-footer) .stream-grid.no-chat{grid-template-columns:1fr}
 :is(#ops-shell, #ops-footer) .note{border-left:3px solid var(--brass);padding:12px;background:var(--panel2)}
 :is(#ops-shell, #ops-footer) #message{position:fixed;right:18px;bottom:18px;max-width:min(560px,90vw);z-index:50;background:var(--panel2);border:1px solid var(--brass);padding:14px;box-shadow:0 5px 30px #0005}
 :is(#ops-shell, #ops-footer) #message:empty{display:none}
 :is(#ops-shell, #ops-footer) #message.error{border-color:var(--red)}
-:is(#ops-shell, #ops-footer) footer{border-top:1px solid var(--line);color:var(--ink-dim);font-size:12px}
+:is(#ops-shell, #ops-footer) footer{border-top:1px solid var(--line);color:var(--ink-dim);font-size:var(--fs-sm)}
 :is(#ops-shell, #ops-footer) .empty{padding:28px 10px;color:var(--ink-dim)}
 #vision-host{display:block;width:100%}
 :is(#ops-shell, #ops-footer)[hidden],:is(#ops-shell, #ops-footer) [hidden],#vision-host[hidden],#review-root[hidden]{display:none!important}
@@ -124,9 +144,9 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell,#ops-footer) .brand{text-decoration:none;border-bottom:0}
 :is(#ops-shell,#ops-footer) .bar{padding-top:12px;padding-bottom:12px}
 :is(#ops-shell,#ops-footer) .brand strong{color:var(--ink-hi)}
-:is(#ops-shell,#ops-footer) .brand small{margin-top:0;font-size:10.5px}
+:is(#ops-shell,#ops-footer) .brand small{margin-top:0;font-size:var(--fs-xs)}
 :is(#ops-shell,#ops-footer) .black{box-shadow:inset 0 0 0 1px var(--btn-line),0 2px 6px rgba(0,0,0,.35)}
-:is(#ops-shell,#ops-footer) .black i{width:20px;height:20px;font-size:12px}
+:is(#ops-shell,#ops-footer) .black i{width:20px;height:20px;font-size:var(--fs-sm)}
 :is(#ops-shell,#ops-footer) .ball{position:relative}
 :is(#ops-shell,#ops-footer) .ball i{position:relative}
 :is(#ops-shell,#ops-footer) #nav .ball{width:26px;height:26px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}
@@ -135,28 +155,28 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell,#ops-footer) .chip-group{display:flex;gap:1px;padding:1px;background:var(--line);border-radius:2px}
 :is(#ops-shell,#ops-footer) .tools{gap:10px}
 :is(#ops-shell,#ops-footer) .tools .badge{padding:5px 10px;letter-spacing:.14em}
-:is(#ops-shell,#ops-footer) .tools .chip-group button{min-height:34px;padding:0 12px;border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font-family:var(--mono);font-size:11px;letter-spacing:.08em}
+:is(#ops-shell,#ops-footer) .tools .chip-group button{min-height:34px;padding:0 12px;border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font-family:var(--mono);font-size:var(--fs-xs);letter-spacing:.08em}
 :is(#ops-shell,#ops-footer) .tools .chip-group button:hover{background:var(--panel2);border-color:var(--panel2)}
 :is(#ops-shell,#ops-footer) .tools .chip-group button.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
 :is(#ops-shell,#ops-footer) .tools .chip-group button[data-theme]{display:grid;place-items:center;width:40px;padding:0}
 :is(#ops-shell,#ops-footer) .tools .chip-group button[data-theme] svg{display:block}
-:is(#ops-shell,#ops-footer) nav button{font-size:14.5px;letter-spacing:.01em;border-color:var(--line)}
+:is(#ops-shell,#ops-footer) nav button{font-size:var(--fs-body);letter-spacing:.01em;border-color:var(--line)}
 :is(#ops-shell,#ops-footer) nav button.active{border-color:var(--brass)}
-:is(#ops-shell,#ops-footer) nav button small{margin-top:0;font-size:9.5px;letter-spacing:.12em;color:var(--ink-faint)}
+:is(#ops-shell,#ops-footer) nav button small{margin-top:0;font-size:var(--fs-xs);letter-spacing:.12em;color:var(--ink-faint)}
 :is(#ops-shell,#ops-footer) nav button.active small{color:var(--brass-hi)}
 :is(#ops-shell,#ops-footer) #strip{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;padding:9px clamp(14px,2.4vw,30px)}
-:is(#ops-shell,#ops-footer) #strip .clock{font-size:22px}
-:is(#ops-shell,#ops-footer) #strip .kicker{font-size:9.5px;letter-spacing:.16em}
-:is(#ops-shell,#ops-footer) #strip button{min-height:32px;padding:0 11px;font-size:12.5px}
+:is(#ops-shell,#ops-footer) #strip .clock{font-size:var(--fs-xl)}
+:is(#ops-shell,#ops-footer) #strip .kicker{font-size:var(--fs-xs);letter-spacing:.16em}
+:is(#ops-shell,#ops-footer) #strip button{min-height:32px;padding:0 11px;font-size:var(--fs-sm)}
 :is(#ops-shell,#ops-footer) #strip button[data-action=clock-reset]{color:var(--ink-dim)}
-:is(#ops-shell,#ops-footer) #strip button[data-action=floor]{flex:1;min-width:200px;min-height:36px;border-color:var(--line);background:var(--panel);font-family:var(--display);font-size:16px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:is(#ops-shell,#ops-footer) #strip button[data-action=floor]{flex:1;min-width:200px;min-height:36px;border-color:var(--line);background:var(--panel);font-family:var(--display);font-size:var(--fs-body);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :is(#ops-shell,#ops-footer) .kicker{letter-spacing:.18em}
 :is(#ops-shell,#ops-footer) .clock{font-size:clamp(36px,4.4vw,60px)}
-:is(#ops-shell,#ops-footer) .score-top [data-action=clock-toggle]{margin-left:auto;min-width:92px;min-height:44px;padding:0 16px;border:0;background:var(--brass);color:var(--brass-fg);font-size:14px;font-weight:500}
+:is(#ops-shell,#ops-footer) .score-top [data-action=clock-toggle]{margin-left:auto;min-width:92px;min-height:44px;padding:0 16px;border:0;background:var(--brass);color:var(--brass-fg);font-size:var(--fs-md);font-weight:500}
 :is(#ops-shell,#ops-footer) .score-top [data-action=clock-toggle]:hover{background:var(--brass-hover);border-color:var(--brass)}
-:is(#ops-shell,#ops-footer) .score-top [data-action=clock-reset]{min-height:44px;padding:0 14px;font-size:14px}
+:is(#ops-shell,#ops-footer) .score-top [data-action=clock-reset]{min-height:44px;padding:0 14px;font-size:var(--fs-md)}
 :is(#ops-shell,#ops-footer) .score-top .row .row{gap:1px;padding:1px;background:var(--line);border-radius:2px}
-:is(#ops-shell,#ops-footer) .score-top .row .row button{min-width:40px;min-height:34px;padding:0 8px;border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font:12.5px var(--mono)}
+:is(#ops-shell,#ops-footer) .score-top .row .row button{min-width:40px;min-height:34px;padding:0 8px;border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
 :is(#ops-shell,#ops-footer) .score-top .row .row button:hover{background:var(--panel2);border:0}
 :is(#ops-shell,#ops-footer) .score-top .row .row button.active{background:var(--brass);color:var(--brass-fg)}
 :is(#ops-shell,#ops-footer) .progress{border:1px solid var(--line)}
@@ -166,33 +186,33 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell,#ops-footer) .side{gap:clamp(12px,2vw,26px);padding:clamp(14px,2.1vw,22px) clamp(16px,2.4vw,28px)}
 :is(#ops-shell,#ops-footer) .side small{margin-top:0;margin-bottom:8px;letter-spacing:.16em}
 :is(#ops-shell,#ops-footer) .name{font-size:clamp(34px,5.8vw,80px);letter-spacing:-.01em}
-:is(#ops-shell,#ops-footer) .vs{margin:clamp(8px,1.2vw,14px) 0;font:italic 16px var(--display)}
+:is(#ops-shell,#ops-footer) .vs{margin:clamp(8px,1.2vw,14px) 0;font:italic var(--fs-body) var(--display)}
 :is(#ops-shell,#ops-footer) .score-buttons button{min-height:46px}
 :is(#ops-shell,#ops-footer) .pip{box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
 :is(#ops-shell,#ops-footer) .tiles{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
 :is(#ops-shell,#ops-footer) .tile{min-height:78px}
-:is(#ops-shell,#ops-footer) .tile small{margin-top:0;margin-bottom:6px;font-size:9.5px;letter-spacing:.18em}
+:is(#ops-shell,#ops-footer) .tile small{margin-top:0;margin-bottom:6px;font-size:var(--fs-xs);letter-spacing:.18em}
 :is(#ops-shell,#ops-footer) .tile strong{line-height:1.15}
-:is(#ops-shell,#ops-footer) h3{font:600 20px var(--display)}
-:is(#ops-shell,#ops-footer) label>span{font-size:9.5px;letter-spacing:.18em}
+:is(#ops-shell,#ops-footer) h3{font:600 var(--fs-xl) var(--display)}
+:is(#ops-shell,#ops-footer) label>span{font-size:var(--fs-xs);letter-spacing:.18em}
 :is(#ops-shell,#ops-footer) input:not([type=checkbox]),:is(#ops-shell,#ops-footer) select:not([multiple]),:is(#ops-shell,#ops-footer) textarea{padding:0 12px;border-bottom:2px solid var(--line)}
 :is(#ops-shell,#ops-footer) input:focus,:is(#ops-shell,#ops-footer) select:focus,:is(#ops-shell,#ops-footer) textarea:focus{outline:none;border-bottom-color:var(--brass)}
 :is(#ops-shell,#ops-footer) select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-dim) 50%),linear-gradient(135deg,var(--ink-dim) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
-:is(#ops-shell,#ops-footer) #message{background:var(--rail);border:1px solid var(--line);border-left:3px solid var(--brass);padding:12px 16px;max-width:min(400px,calc(100vw - 40px));font-size:14px}
+:is(#ops-shell,#ops-footer) #message{background:var(--rail);border:1px solid var(--line);border-left:3px solid var(--brass);padding:12px 16px;max-width:min(400px,calc(100vw - 40px));font-size:var(--fs-md)}
 :is(#ops-shell,#ops-footer) #message.error{border-color:var(--line);border-left-color:var(--red)}
 :is(#ops-shell,#ops-footer) #strip .row .row{gap:1px;padding:1px;background:var(--line);border-radius:2px}
-:is(#ops-shell,#ops-footer) #strip .row .row button{min-width:40px;min-height:30px;padding:0 8px;border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font:12.5px var(--mono)}
+:is(#ops-shell,#ops-footer) #strip .row .row button{min-width:40px;min-height:30px;padding:0 8px;border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
 :is(#ops-shell,#ops-footer) #strip .row .row button.active{background:var(--brass);color:var(--brass-fg)}
-:is(#ops-shell,#ops-footer) .score-top.row .grow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+:is(#ops-shell,#ops-footer) .score-top.row .grow{font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.14em;text-transform:uppercase}
 :is(#ops-shell,#ops-footer) .brand small{line-height:1.5}
 
 /* Regulars modal (plus-icon entry) */
 .modal-backdrop{position:fixed;inset:0;background:rgba(10,8,6,.62);display:grid;place-items:center;z-index:60;padding:16px}
 .modal{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--brass);border-radius:3px;box-shadow:0 14px 44px rgba(0,0,0,.5);width:min(540px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;padding:20px 22px}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
-.modal-head h3{margin:0;font:600 19px var(--display);letter-spacing:-.01em}
-.modal .close-x{min-width:36px;min-height:36px;padding:0 10px;font-size:16px;color:var(--ink-dim)}
-.add-player{min-width:44px;font:500 20px var(--body);line-height:1;padding:4px 12px}
+.modal-head h3{margin:0;font:600 var(--fs-lg) var(--display);letter-spacing:-.01em}
+.modal .close-x{min-width:36px;min-height:36px;padding:0 10px;font-size:var(--fs-body);color:var(--ink-dim)}
+.add-player{min-width:44px;font:500 var(--fs-xl) var(--body);line-height:1;padding:4px 12px}
 
 /* UX polish: native control accents and empty-state paneling */
 :is(#ops-shell,#ops-footer) input[type=range],:is(#ops-shell,#ops-footer) input[type=checkbox]{accent-color:var(--brass)}
@@ -202,7 +222,7 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vision-surface{display:flex;flex-direction:column;gap:10px;max-width:1560px;margin:0 auto}
 :is(#ops-shell) .vs-chips{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;position:relative}
 :is(#ops-shell) .vs-chiprow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-:is(#ops-shell) .vs-chip{padding:5px 10px;min-height:32px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);color:var(--ink-mid);font:11px var(--mono);letter-spacing:.06em;cursor:pointer}
+:is(#ops-shell) .vs-chip{padding:5px 10px;min-height:32px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);color:var(--ink-mid);font:var(--fs-xs) var(--mono);letter-spacing:.06em;cursor:pointer}
 :is(#ops-shell) .vs-chip:hover{border-color:var(--brass);background:var(--rail)}
 :is(#ops-shell) .vs-chip.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
 /* The Source chip owns the settings that used to be the rail's nothing-selected
@@ -213,9 +233,9 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-source-chip.active::after{content:' ▴'}
 :is(#ops-shell) .vs-source-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:24;max-height:min(72vh,560px);overflow:auto;padding:12px 14px;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);box-shadow:0 16px 48px rgba(0,0,0,.55)}
 :is(#ops-shell) .vs-source-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
-:is(#ops-shell) .vs-source-head strong{font:600 13.5px var(--display);letter-spacing:.02em;text-transform:uppercase;color:var(--ink-hi)}
-:is(#ops-shell) .vs-source-close{min-height:28px;min-width:30px;padding:0;font-size:15px;line-height:1;color:var(--ink-dim)}
-:is(#ops-shell) .vs-chipmeta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font:10.5px var(--mono);color:var(--ink-dim)}
+:is(#ops-shell) .vs-source-head strong{font:600 var(--fs-md) var(--display);letter-spacing:.02em;text-transform:uppercase;color:var(--ink-hi)}
+:is(#ops-shell) .vs-source-close{min-height:28px;min-width:30px;padding:0;font-size:var(--fs-body);line-height:1;color:var(--ink-dim)}
+:is(#ops-shell) .vs-chipmeta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font:var(--fs-xs) var(--mono);color:var(--ink-dim)}
 :is(#ops-shell) .vs-fresh{padding:4px 8px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);letter-spacing:.1em;text-transform:uppercase}
 :is(#ops-shell) .vs-fresh.stale{border-color:var(--amber-line);background:var(--amber-bg);color:var(--amber)}
 :is(#ops-shell) .vs-keys{color:var(--ink-faint);letter-spacing:.04em}
@@ -233,56 +253,56 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-stage{min-width:0;display:flex;flex-direction:column;gap:8px}
 :is(#ops-shell) .vs-stagebar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 :is(#ops-shell) .vs-layers{display:flex;gap:4px;flex-wrap:wrap}
-:is(#ops-shell) .vs-layer{padding:4px 10px;min-height:28px;border:1px solid var(--btn-line);border-radius:2px;background:transparent;color:var(--ink-dim);font:10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+:is(#ops-shell) .vs-layer{padding:4px 10px;min-height:28px;border:1px solid var(--btn-line);border-radius:2px;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 :is(#ops-shell) .vs-layer.on{background:var(--rail);border-color:var(--brass);color:var(--ink-hi)}
 :is(#ops-shell) .vs-layer:disabled{opacity:.4;cursor:not-allowed}
-:is(#ops-shell) .vs-identity{font:11px var(--mono);color:var(--ink-mid);overflow-wrap:anywhere}
+:is(#ops-shell) .vs-identity{font:var(--fs-xs) var(--mono);color:var(--ink-mid);overflow-wrap:anywhere}
 /* The one shot clock, shown in the stagebar only where the strip that carries it
    on desktop is hidden (mobile Vision). Same [data-clock] element, same tick. */
-:is(#ops-shell) .vs-clock{display:none;font:11px var(--mono);color:var(--ink-dim)}
-:is(#ops-shell) .vs-clock .clock{font-size:13px;color:var(--ink-hi)}
+:is(#ops-shell) .vs-clock{display:none;font:var(--fs-xs) var(--mono);color:var(--ink-dim)}
+:is(#ops-shell) .vs-clock .clock{font-size:var(--fs-md);color:var(--ink-hi)}
 :is(#ops-shell) .vs-clock .clock.low{color:var(--red,#cf5b4d)}
 :is(#ops-shell) .vs-frame{position:relative;aspect-ratio:16/9;background:#090806;border:1px solid var(--line);overflow:hidden}
 :is(#ops-shell) .vs-frame>#vision-host{display:block;width:100%}
 :is(#ops-shell) .vs-sheettabs{display:none}
 :is(#ops-shell) .vs-strip{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);padding:6px 12px 8px}
 :is(#ops-shell) .vs-transport{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-:is(#ops-shell) .vs-transport button{min-height:30px;padding:0 11px;font-size:12.5px}
+:is(#ops-shell) .vs-transport button{min-height:30px;padding:0 11px;font-size:var(--fs-sm)}
 :is(#ops-shell) .vs-transport .primary{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
-:is(#ops-shell) .vs-frame-input{display:flex;align-items:center;gap:6px;font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
-:is(#ops-shell) .vs-frame-input input{width:96px;min-height:32px;padding:0 8px;font:12.5px var(--mono)}
-:is(#ops-shell) .vs-rate{color:var(--ink-faint);font-size:10.5px;min-width:56px}
+:is(#ops-shell) .vs-frame-input{display:flex;align-items:center;gap:6px;font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-frame-input input{width:96px;min-height:32px;padding:0 8px;font:var(--fs-sm) var(--mono)}
+:is(#ops-shell) .vs-rate{color:var(--ink-faint);font-size:var(--fs-xs);min-width:56px}
 :is(#ops-shell) .vs-track{position:relative;padding:15px 0 0}
 :is(#ops-shell) .vs-track input[type=range]{width:100%;margin:0;min-height:22px}
 :is(#ops-shell) .vs-strip[data-live="1"] .vs-track input[type=range]{opacity:.35}
 :is(#ops-shell) .vs-strip[data-live="1"] .vs-transport button{opacity:.55}
 :is(#ops-shell) .vs-edge{position:absolute;top:0;bottom:14px;width:3px;transform:translateX(-50%);background:var(--live-bg);border-left:2px solid var(--neutral-bg)}
 :is(#ops-shell) .vs-edge[data-live="1"]{border-color:var(--green);background:var(--green)}
-:is(#ops-shell) .vs-facts{margin:0;font:11px var(--mono);color:var(--ink-mid);overflow-wrap:anywhere}
+:is(#ops-shell) .vs-facts{margin:0;font:var(--fs-xs) var(--mono);color:var(--ink-mid);overflow-wrap:anywhere}
 :is(#ops-shell) .vs-group{margin-bottom:14px}
 :is(#ops-shell) .vs-group header{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
-:is(#ops-shell) .vs-group h3,:is(#ops-shell) .vs-rail h3,:is(#ops-shell) .vs-inspector h3{margin:0;font:600 13.5px var(--display);letter-spacing:.02em;text-transform:uppercase;color:var(--ink-mid)}
+:is(#ops-shell) .vs-group h3,:is(#ops-shell) .vs-rail h3,:is(#ops-shell) .vs-inspector h3{margin:0;font:600 var(--fs-md) var(--display);letter-spacing:.02em;text-transform:uppercase;color:var(--ink-mid)}
 :is(#ops-shell) .vs-group.focused h3{color:var(--brass-hi)}
-:is(#ops-shell) .vs-group select{min-height:30px;font-size:12px;padding:0 26px 0 8px}
+:is(#ops-shell) .vs-group select{min-height:30px;font-size:var(--fs-sm);padding:0 26px 0 8px}
 :is(#ops-shell) .vs-filters{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
-:is(#ops-shell) .vs-filter{padding:3px 8px;min-height:26px;border:1px solid var(--line);border-radius:2px;background:transparent;color:var(--ink-dim);font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+:is(#ops-shell) .vs-filter{padding:3px 8px;min-height:26px;border:1px solid var(--line);border-radius:2px;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 :is(#ops-shell) .vs-filter.active{border-color:var(--brass);color:var(--ink-hi);background:var(--rail)}
 :is(#ops-shell) .vs-card{border:1px solid var(--line2);background:var(--panel2);padding:8px;margin-bottom:6px}
 :is(#ops-shell) .vs-card.selected{border-color:var(--brass)}
 :is(#ops-shell) .vs-card-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 :is(#ops-shell) .vs-verbs{display:flex;align-items:center;gap:4px;margin-top:7px}
-:is(#ops-shell) .vs-verbs button{min-height:26px;min-width:30px;padding:0 6px;border:1px solid var(--line);border-radius:2px;background:transparent;color:var(--ink-dim);font:12px var(--mono);cursor:pointer}
+:is(#ops-shell) .vs-verbs button{min-height:26px;min-width:30px;padding:0 6px;border:1px solid var(--line);border-radius:2px;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);cursor:pointer}
 :is(#ops-shell) .vs-verbs button:hover{border-color:var(--brass);color:var(--ink-hi)}
 :is(#ops-shell) .vs-verbs button.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
-:is(#ops-shell) .vs-verb-label{margin-left:auto;font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
-:is(#ops-shell) .vs-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;margin-bottom:3px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--ink);font-size:12px;cursor:pointer;min-height:0}
+:is(#ops-shell) .vs-verb-label{margin-left:auto;font:var(--fs-sm) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px;margin-bottom:3px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--ink);font-size:var(--fs-sm);cursor:pointer;min-height:0}
 :is(#ops-shell) .vs-item.selected{border-color:var(--brass);background:var(--rail)}
-:is(#ops-shell) .vs-item .vs-tag{margin-left:auto;font:10px var(--mono);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.1em}
+:is(#ops-shell) .vs-item .vs-tag{margin-left:auto;font:var(--fs-sm) var(--mono);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.1em}
 :is(#ops-shell) .vs-item .vs-tag.done{color:var(--green)}
 :is(#ops-shell) .vs-items{display:grid;gap:3px;margin-bottom:8px}
-:is(#ops-shell) .vs-mono{font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+:is(#ops-shell) .vs-mono{font-family:var(--mono);font-size:var(--fs-xs);letter-spacing:.04em}
 :is(#ops-shell) .vs-dim{color:var(--ink-dim)}
-:is(#ops-shell) .vs-badge{border:1px solid var(--btn-line);border-radius:2px;padding:2px 6px;font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass-hi)}
+:is(#ops-shell) .vs-badge{border:1px solid var(--btn-line);border-radius:2px;padding:2px 6px;font:var(--fs-sm) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass-hi)}
 :is(#ops-shell) .vs-badge.pot{color:var(--green);border-color:var(--green-line)}
 /* The confirmation tier, scannable in the rail: a solid green edge for
    geometry-verified, a dashed brass edge for motion-window-only. */
@@ -292,24 +312,24 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-card.tier-window{border-left:3px dashed var(--brass)}
 /* Provenance is a footnote, not a badge: who produced the candidate, and whether
    a human has confirmed it. Quieter than the tier badge on purpose. */
-:is(#ops-shell) .vs-prov{margin-top:4px;font:10px var(--mono);letter-spacing:.04em;color:var(--ink-faint);overflow-wrap:anywhere}
+:is(#ops-shell) .vs-prov{margin-top:4px;font:var(--fs-xs) var(--mono);letter-spacing:.04em;color:var(--ink-faint);overflow-wrap:anywhere}
 :is(#ops-shell) .vs-prov.confirmed{color:var(--green)}
-:is(#ops-shell) .vs-empty{margin:0;padding:10px;border:1px dashed var(--line);color:var(--ink-dim);font-size:12px}
-:is(#ops-shell) .vs-inspector h3{font-size:15px;margin-bottom:6px;color:var(--ink-hi);text-transform:none}
+:is(#ops-shell) .vs-empty{margin:0;padding:10px;border:1px dashed var(--line);color:var(--ink-dim);font-size:var(--fs-sm)}
+:is(#ops-shell) .vs-inspector h3{font-size:var(--fs-body);margin-bottom:6px;color:var(--ink-hi);text-transform:none}
 :is(#ops-shell) .vs-block{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
-:is(#ops-shell) .vs-block h4{margin:0 0 6px;font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-block h4{margin:0 0 6px;font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 :is(#ops-shell) .vs-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-:is(#ops-shell) .vs-row button{min-height:30px;padding:0 10px;font-size:12px}
+:is(#ops-shell) .vs-row button{min-height:30px;padding:0 10px;font-size:var(--fs-sm)}
 :is(#ops-shell) .vs-row button.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
 :is(#ops-shell) .vs-row button.primary{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
 /* The inspector footer is a flex sibling of the scroller, so its buttons are
    inside the inspector box at every viewport height (measured at 1280x599). */
 :is(#ops-shell) .vs-inspector-actions button{min-height:34px}
-:is(#ops-shell) .vs-field{display:grid;gap:4px;margin:8px 0;font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
-:is(#ops-shell) .vs-field select,:is(#ops-shell) .vs-field textarea,:is(#ops-shell) .vs-field input{min-height:32px;padding:6px 8px;font:13px var(--body);text-transform:none;letter-spacing:0;background:var(--panel2);border:1px solid var(--line);color:var(--ink);width:100%}
-:is(#ops-shell) .vs-check{display:flex;align-items:center;gap:6px;font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-dim)}
+:is(#ops-shell) .vs-field{display:grid;gap:4px;margin:8px 0;font:var(--fs-sm) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
+:is(#ops-shell) .vs-field select,:is(#ops-shell) .vs-field textarea,:is(#ops-shell) .vs-field input{min-height:32px;padding:6px 8px;font:var(--fs-md) var(--body);text-transform:none;letter-spacing:0;background:var(--panel2);border:1px solid var(--line);color:var(--ink);width:100%}
+:is(#ops-shell) .vs-check{display:flex;align-items:center;gap:6px;font:var(--fs-sm) var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-dim)}
 :is(#ops-shell) .vs-check input{width:auto;min-height:0}
-:is(#ops-shell) .vs-note{margin:6px 0 0;font-size:11.5px;line-height:1.5;color:var(--ink-dim)}
+:is(#ops-shell) .vs-note{margin:6px 0 0;font-size:var(--fs-xs);line-height:1.5;color:var(--ink-dim)}
 /* Identity labelling: the regular dropdown and the guest box are the only two
    naming options, so a chosen regular turns the guest box off instead of
    leaving two competing inputs; "not a player" stays a quiet secondary action. */
@@ -317,32 +337,32 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-guest-off{opacity:.5}
 :is(#ops-shell) .vs-quiet{margin-top:14px;border-top:1px dashed var(--line)}
 :is(#ops-shell) .vs-quiet .vs-row{margin-top:8px}
-:is(#ops-shell) .vs-quiet .vs-row button{min-height:28px;padding:0 8px;font-size:11px;color:var(--ink-dim)}
-:is(#ops-shell) .vs-quiet .vs-note{font-size:11px}
+:is(#ops-shell) .vs-quiet .vs-row button{min-height:28px;padding:0 8px;font-size:var(--fs-xs);color:var(--ink-dim)}
+:is(#ops-shell) .vs-quiet .vs-note{font-size:var(--fs-xs)}
 :is(#ops-shell) .vs-item .vs-tag.guest{text-transform:none;letter-spacing:.02em}
 :is(#ops-shell) .vs-crop{display:flex;gap:8px;align-items:center;justify-content:center;background:var(--panel2);border:1px solid var(--line2);padding:6px;margin-bottom:6px}
 :is(#ops-shell) .vs-crop img{width:118px;height:118px;object-fit:contain}
 :is(#ops-shell) .vs-crop img.ctx{width:158px;height:158px}
 :is(#ops-shell) .vs-ballgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:8px 0}
-:is(#ops-shell) .vs-ballgrid button{min-height:34px;padding:0;font:13px var(--mono)}
+:is(#ops-shell) .vs-ballgrid button{min-height:34px;padding:0;font:var(--fs-md) var(--mono)}
 :is(#ops-shell) .vs-ballgrid button.active{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
 :is(#ops-shell) .vs-nudge{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:8px 0}
 :is(#ops-shell) .vs-nudge button{min-height:32px;padding:0}
-:is(#ops-shell) .vs-receipt{margin:8px 0 0;padding:6px 8px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font:11px var(--mono);overflow-wrap:anywhere}
+:is(#ops-shell) .vs-receipt{margin:8px 0 0;padding:6px 8px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font:var(--fs-xs) var(--mono);overflow-wrap:anywhere}
 :is(#ops-shell) .vs-receipt.error{border-left-color:var(--red);background:#3d231d;color:#ffd0c5}
 :is(#ops-shell) .vs-receipt.pending{border-left-color:var(--ink-faint);background:var(--panel2);color:var(--ink-dim)}
-:is(#ops-shell) .vs-notice{margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font-size:12.5px}
+:is(#ops-shell) .vs-notice{margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--green);background:var(--green-bg);color:var(--green);font-size:var(--fs-sm)}
 :is(#ops-shell) .vs-notice.error{border-left-color:var(--red);background:#3d231d;color:#ffd0c5}
 :is(#ops-shell) .vs-error-block{margin:0 0 10px;padding:10px;border:1px solid var(--amber-line);background:var(--amber-bg);color:var(--ink)}
-:is(#ops-shell) .vs-error-block h4{margin:0 0 4px;font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
-:is(#ops-shell) .vs-error-block p{margin:0 0 6px;font-size:12px}
+:is(#ops-shell) .vs-error-block h4{margin:0 0 4px;font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+:is(#ops-shell) .vs-error-block p{margin:0 0 6px;font-size:var(--fs-sm)}
 :is(#ops-shell) .vs-chat{height:260px;border:1px solid var(--line2);margin-bottom:10px}
 :is(#ops-shell) .vs-chat iframe{width:100%;height:100%;border:0}
-:is(#ops-shell) .vs-chat-toggle{position:sticky;top:0;float:right;z-index:2;min-height:26px;padding:0 8px;font:10px var(--mono);text-transform:uppercase;letter-spacing:.1em}
-:is(#ops-shell) .vs-close{float:right;min-height:26px;min-width:28px;padding:0;font-size:15px;line-height:1;color:var(--ink-dim)}
+:is(#ops-shell) .vs-chat-toggle{position:sticky;top:0;float:right;z-index:2;min-height:26px;padding:0 8px;font:var(--fs-sm) var(--mono);text-transform:uppercase;letter-spacing:.1em}
+:is(#ops-shell) .vs-close{float:right;min-height:26px;min-width:28px;padding:0;font-size:var(--fs-body);line-height:1;color:var(--ink-dim)}
 :is(#ops-shell) .vs-channel{display:flex;align-items:center;gap:6px;margin:4px 0}
 :is(#ops-shell) .vs-channel .vs-mono{flex:1;min-width:0;overflow-wrap:anywhere}
-:is(#ops-shell) .vs-channel button{min-height:26px;padding:0 8px;font-size:11px}
+:is(#ops-shell) .vs-channel button{min-height:26px;padding:0 8px;font-size:var(--fs-xs)}
 :is(#ops-shell) .vs-rail .scrub-marks{position:static;height:auto}
 :is(#ops-shell) .scrub-marks{position:absolute;left:0;right:0;top:0;height:16px;pointer-events:none}
 :is(#ops-shell) .scrub-mark{position:absolute;top:0;transform:translateX(-50%);width:4px;height:14px;padding:0;min-height:0;border-radius:1px;pointer-events:auto;border:0;cursor:pointer}
@@ -353,7 +373,7 @@ html,body{-webkit-font-smoothing:antialiased}
    the band and the playing video can never describe two different moments. */
 :is(#ops-shell) .scrub-window{position:absolute;top:0;height:16px;background:color-mix(in srgb,var(--brass,#c9a227) 28%,transparent);border-left:1px solid var(--brass,#c9a227);border-right:1px solid var(--brass,#c9a227);pointer-events:none}
 :is(#ops-shell) .scrub-cue{position:absolute;top:0;width:2px;height:16px;transform:translateX(-50%);background:var(--red,#cf5b4d);pointer-events:none}
-:is(#ops-shell) .scrub-loop{position:absolute;right:0;top:18px;padding:0 5px;border-radius:2px;background:var(--panel2,#100e0c);border:1px solid var(--brass,#c9a227);color:var(--brass-hi,#e3c877);font:10px var(--mono);letter-spacing:.08em;text-transform:uppercase;pointer-events:none;white-space:nowrap}
+:is(#ops-shell) .scrub-loop{position:absolute;right:0;top:18px;padding:0 5px;border-radius:2px;background:var(--panel2,#100e0c);border:1px solid var(--brass,#c9a227);color:var(--brass-hi,#e3c877);font:var(--fs-sm) var(--mono);letter-spacing:.08em;text-transform:uppercase;pointer-events:none;white-space:nowrap}
 :is(#ops-shell) .scrub-loop[data-playing="0"]{color:var(--amber,#dfa93a);border-color:var(--amber-line,#5c4a1e)}
 @media(max-width:1100px){
   :is(#ops-shell) .vs-grid{grid-template-columns:minmax(0,1fr)}
@@ -374,7 +394,7 @@ html,body{-webkit-font-smoothing:antialiased}
      rows can never end up underneath it. */
   :is(#ops-shell) .vs-rail{overflow:auto}
   :is(#ops-shell) .vs-sheettabs{display:flex;position:fixed;left:0;right:0;bottom:0;height:44px;z-index:31;background:var(--panel2);border-top:1px solid var(--line)}
-  :is(#ops-shell) .vs-sheettabs button{flex:1;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;min-height:44px}
+  :is(#ops-shell) .vs-sheettabs button{flex:1;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;min-height:44px}
   :is(#ops-shell) .vs-sheettabs button.active{background:var(--rail);color:var(--brass-hi)}
   :is(#ops-shell) .vs-grid[data-sheet=cues] .vs-inspector{display:none}
   :is(#ops-shell) .vs-grid[data-sheet=inspector] .vs-rail{display:none}

@@ -4,6 +4,7 @@ import io
 import json
 import math
 from pathlib import Path
+import re
 import tempfile
 import time
 import unittest
@@ -532,6 +533,26 @@ class BackendTests(unittest.TestCase):
         handler.do_GET()
         self.assertEqual(handler.status, 200)
         self.assertEqual(json.loads(handler.wfile.getvalue())['html'], (assets / 'app.html').read_text())
+    def test_self_hosted_fonts_and_their_licences_are_served_nothing_else(self):
+        assets = Path(__file__).resolve().parents[1] / 'annotator'
+        (self.root / 'annotator').symlink_to(assets, target_is_directory=True)
+        for path, kind in (('/fonts/barlow-400.woff2', 'font/woff2'), ('/fonts/OFL-Barlow.txt', 'text/plain')):
+            handler = self.handler(path)
+            handler.do_GET()
+            self.assertEqual(handler.status, 200, path)
+            self.assertEqual(handler.response_headers['Content-Type'], kind)
+            self.assertEqual(handler.wfile.getvalue(), (assets / path.lstrip('/')).read_bytes())
+        # The build script, unknown names and nested paths are not assets.
+        for path in ('/fonts/build_fonts.py', '/fonts/missing.woff2', '/fonts/x/barlow-400.woff2'):
+            handler = self.handler(path)
+            handler.do_GET()
+            self.assertEqual(handler.status, 404, path)
+        # The pages reference no font CDN; every @font-face points at /fonts/.
+        pages = (assets / 'ops.html').read_text() + (assets / 'app.html').read_text() + (assets / 'ops.css').read_text()
+        self.assertNotIn('fonts.googleapis.com', pages)
+        self.assertNotIn('fonts.gstatic.com', pages)
+        for url in re.findall(r'url\((/fonts/[^)]+)\)', (assets / 'ops.css').read_text()):
+            self.assertTrue((assets / url.lstrip('/')).is_file(), url)
 
     def test_event_clip_bounded_and_cached(self):
         encoded = []

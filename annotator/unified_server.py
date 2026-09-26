@@ -1607,6 +1607,9 @@ def make_handler(backend):
                         'X-Frame-Width': str(meta['width']), 'X-Frame-Height': str(meta['height'])})
                 if path in ("/favicon.svg", "/favicon-32.png", "/favicon-16.png", "/favicon.ico"):
                     return self.file(safe_file(backend.root / "annotator", path[1:]))
+                # Self-hosted web fonts and their OFL texts: one flat directory, no build script.
+                if len(parts) == 2 and parts[0] == "fonts" and parts[1].endswith((".woff2", ".txt")):
+                    return self.file(safe_file(backend.root / "annotator" / "fonts", parts[1]))
                 if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js"): 
                     return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
