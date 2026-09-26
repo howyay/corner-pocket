@@ -520,3 +520,45 @@ test('a refusal is readable over an open modal: the message sits above the backd
   const z = selector => Number(css.match(new RegExp(`${selector.replace(/[.#()]/g, '\\$&')}\\{[^}]*z-index:(\\d+)`))[1]);
   assert.ok(z(':is(#ops-shell, #ops-footer) #message') > z('.modal-backdrop'), 'the player modal must not cover the reason it was refused');
 });
+test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', () => {
+  const h = harness();
+  h.evaluate(`data.players=[];data.events=[];data.notes=[];
+    const night=()=>({id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+      entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bea'}]},{id:'e3',members:[{pid:null,name:'Cai'}]}],
+      matches:[{id:'m1',round:1,sides:['e1',null],score:[0,0],status:'complete',result:'bye',winnerId:'e1',table:null,absent:[]},
+               {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',table:null,absent:[]},
+               {id:'m3',round:2,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[],sources:['m1','m2']}]});
+    data.tournament=night();data.history=[Object.assign(night(),{id:'h1',status:'complete',archivedAt:'2026-09-01T00:00:00Z'})]`);
+  for (const [lang, bye, signed, waiting, cards] of [['en', 'Bye', 'Signed', 'Waiting', 'Cards signed'], ['zh', '轮空', '已签', '待定', '已签赛果']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('matchesScreen()');
+    const card = html.slice(html.indexOf('class="rounds"'));
+    const first = card.slice(0, card.indexOf('<h3>', card.indexOf('<h3>') + 1));
+    assert.ok(first.includes(`>${bye}<`), `${lang}: the bye card is labelled ${bye}`);
+    assert.equal((first.match(new RegExp(`>${signed}<`, 'g')) || []).length, 1, `${lang}: only the played card says ${signed}`);
+    assert.ok(!first.includes(`>${waiting}<`), `${lang}: the empty side of a bye never reads ${waiting}`);
+    const tile = html.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1];
+    assert.equal(tile, '1/2', `${lang}: byes are left out of the signed count and its total`);
+    const archive = html.slice(html.indexOf('<details'));
+    assert.ok(archive.includes(`>${bye}<`) && !archive.includes(`${esc_(waiting)}`), `${lang}: the archive labels the bye too`);
+    const floor = h.evaluate('floorScreen()');
+    assert.equal(floor.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1], '1/2', `${lang}: the Floor tile agrees`);
+  }
+  assert.equal(h.evaluate('JSON.stringify(resultStats("x"))'), '{"wins":0,"losses":0}');
+});
+function esc_(s) { return `>${s}<`; }
+test('a placeholder guest name is stopped at the field, in both languages (R5)', async () => {
+  const h = harness();
+  const guest = {validity: '', reported: 0, setCustomValidity(text) { this.validity = text; }, reportValidity() { this.reported++; return false; }};
+  const form = values => ({preventDefault() {}, target: {getAttribute: () => 'entrant-form', classList: {contains: () => false}, querySelector: sel => sel === '[name=guest0]' ? guest : null, querySelectorAll: () => [], values}});
+  for (const name of ['na', ' N/A ', 'Bye', 'TBD', '轮空', '輪空']) await h.handlers.submit(form({pid0: '', guest0: name}));
+  assert.equal(h.evaluate('calls.length'), 0, 'a placeholder never reaches the server');
+  assert.equal(guest.reported, 6);
+  assert.equal(guest.validity, 'Byes are added by the draw automatically. Type the guest’s real name.');
+  h.evaluate("lang='zh'");
+  await h.handlers.submit(form({pid0: '', guest0: 'bye'}));
+  assert.equal(guest.validity, '轮空由抽签自动安排，请输入访客的真实姓名。');
+  assert.equal(h.evaluate(`validationMessage("A bye is added by the draw; type the guest's real name")`), '轮空由抽签自动安排，请输入访客的真实姓名。');
+  await h.handlers.submit(form({pid0: '', guest0: 'Nadia'}));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => c.payload))')), [{members: [{name: 'Nadia'}]}]);
+});

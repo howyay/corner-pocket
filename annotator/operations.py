@@ -42,6 +42,11 @@ def text(value, name, maximum=200):
     return value.strip()
 
 
+# Typed stand-ins for "no opponent": the draw records a bye itself, so a guest
+# with one of these names would be a fake person (R5).
+PLACEHOLDER_NAMES = {'na', 'n/a', 'bye', 'tbd', '轮空', '輪空'}
+
+
 def tournament():
     return dict(id=uid(), name='', format='singles', tables=1, raceTo=1,
                 entrants=[], matches=[], status='registration')
@@ -265,6 +270,8 @@ class Operations:
                     person = dict(pid=player['id'], name=player['name'])
                 else:
                     person = dict(pid=None, name=text(member.get('name'), 'guest name'))
+                    if person['name'].casefold() in PLACEHOLDER_NAMES:
+                        raise ValueError("A bye is added by the draw; type the guest's real name")
                     if any(player['name'].casefold() == person['name'].casefold() for player in s['players']):
                         raise ValueError('Player name already exists; select the regular by id')
                 if person['name'].casefold() in occupied or person['pid'] and person['pid'] in occupied_ids:

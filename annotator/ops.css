@@ -65,6 +65,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--bod
 :is(#ops-shell, #ops-footer) .live,:is(#ops-shell, #ops-footer) .delayed{color:var(--amber);border-color:var(--amber-line);background:var(--amber-bg)}
 :is(#ops-shell, #ops-footer) .complete{color:var(--green);border-color:var(--green-line);background:var(--green-bg)}
 :is(#ops-shell, #ops-footer) .scheduled{color:var(--blue);border-color:var(--blue-line);background:var(--blue-bg)}
+:is(#ops-shell, #ops-footer) .badge.bye{color:var(--ink-dim);border-style:dashed;background:transparent}
 :is(#ops-shell, #ops-footer) .entry{padding:12px;background:var(--panel2);border:1px solid var(--line2)}
 :is(#ops-shell, #ops-footer) .entry+.entry{margin-top:8px}
 :is(#ops-shell, #ops-footer) .entry.selected{border-color:var(--brass);background:var(--live-bg)}

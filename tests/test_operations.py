@@ -342,6 +342,34 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.call('entrant_absence', id=ident, absent=True)
 
+    def test_placeholder_guest_names_are_refused(self):
+        """R5: a bye is recorded by the draw, never typed in as a player."""
+        before = self.ops.path.read_bytes() if self.ops.path.exists() else None
+        for name in ('NA', ' n/a ', 'N/A', 'Bye', 'BYE', 'tbd', 'TBD ', '轮空', '輪空', ' 轮空 '):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(ValueError, '^A bye is added by the draw; type the guest\'s real name$'):
+                    self.call('entrant_add', members=[{'name': name}])
+        self.assertEqual(before, self.ops.path.read_bytes() if self.ops.path.exists() else None)
+        self.call('tournament_setup', format='doubles')
+        with self.assertRaisesRegex(ValueError, 'A bye is added by the draw'):
+            self.call('entrant_add', members=[{'name': 'Ada'}, {'name': 'tbd'}])
+        self.assertEqual(self.ops.get()['tournament']['entrants'], [])
+        # names that merely contain the letters stay valid
+        for name in ('Nadia', 'Byers', 'Na Li'):
+            self.call('entrant_add', members=[{'name': name}, {'name': name + ' 2'}])
+        self.assertEqual(len(self.ops.get()['tournament']['entrants']), 3)
+
+    def test_bye_matches_are_never_signed_results(self):
+        """R5: a bye completes with result 'bye' and one side; it is not a played match."""
+        state = self.register(5)
+        byes = [m for m in state['tournament']['matches'] if m.get('result') == 'bye']
+        self.assertEqual(len(byes), 3)
+        for match in byes:
+            self.assertEqual(sum(1 for side in match['sides'] if side), 1)
+            self.assertNotIn('completedAt', match)
+            with self.assertRaises(ValueError):
+                self.call('match_forfeit', id=match['id'], side=0)
+
     def test_guest_name_cannot_alias_regular(self):
         self.call('player_save', name='Ada', rating=500)
         before = self.ops.path.read_bytes()
