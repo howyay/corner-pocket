@@ -557,4 +557,81 @@ Candidates, ranked by saving-per-risk:
 
 **Verification, with what already exists.** `tests/ball_stack_ab.py` gives the held-out truth in about 90 s: the centred column must still read F1 0.927 / P 0.940 / R 0.914, tp/fp/fn 235/15/22 at threshold 0.425 for (1) and (2), and a full re-sweep is the tool for (4). The same file's `stage_cost_ms` times the stage with the forward stubbed and needs one addition — timing the transpose and H2D pieces too — so the 19.7/24.6 split stops hiding them. `tests/live_envelope_run.py --ball real` gives the live frame's p50/p95, published/90 and drop reasons at the chosen cadence. And `tests/ball_dense_events.py` re-runs the 5-minute segment through the gate, which is the only end-to-end guard that an "numerically identical" optimisation really is one: the same 3 shots at t=1482.25 / 1580.12 / 1621.52 with the same 721 rejection codes is the pass condition, not a faster clock.
 
+## Live broadcast on the owner's channel (2026-09-26 measured, while it lasted)
+
+The owner's channel was live, so for the first time the live path was tested against a real broadcast rather than a VOD replay. Everything below is a real measurement on `https://www.twitch.tv/examplechannel` (the only saved source in `out/corner-pocket/state.json`), taken from a Python shell, the production API on `127.0.0.1:8130`, and a read-only browser session. Two bugs were found and fixed; one design limit was found and is **not** fixed (see the last part).
+
+### Reachability (the live path works; it was the channel that was offline before)
+
+`annotator.twitch_source.resolve_twitch('https://www.twitch.tv/examplechannel')` → media playlist on `usw23.playlist.ttvnw.net` (a later call resolved `usw22`), **1280x720 @ 30.0 fps**, first frame in 0.02 s. The playlist is unambiguously live: `#EXT-X-TWITCH-ELAPSED-SECS:4778.4` (stream up ~79.6 min), `#EXT-X-MEDIA-SEQUENCE:2498`, `#EXT-X-TARGETDURATION:6`, **no `#EXT-X-ENDLIST`**. So the earlier `404 {"error":"Can not find channel"}` was an offline channel, not a broken resolver: today the same call succeeds.
+
+### The production session, driven exactly as the Vision UI does
+
+`POST /api/live {"action":"start","source":{"kind":"twitch","source_id":"77777777777777777777777777777777…"},"detectors":["table","person"]}` with `Origin: http://127.0.0.1:8130` (matching `liveAction()` in `annotator/ops.js`), then `GET /api/live` every 2 s for 200 s (`out/live-test/live-session.json`).
+
+| what | measured |
+|---|---|
+| frames received / processed | 5495 / 380 (**1.9 published fps**), `no_frame_ready` 5102, `stage_overrun` 13, `stale` 0 |
+| partition invariant | **holds** (380 + 5115 = 5495) |
+| `receive_to_result` p50 / p95 / max | **19.87 / 29.77 / 44.61 ms** — inside the 33.33 ms budget at p50 **and** p95 |
+| `decode` p50 / p95 / max | 0.40 / 2.04 / **1942.6 ms** — bursts through buffered segments, then blocks for the next one |
+| `inter_frame` p50 / p95 | 0.41 / 2.05 ms — frames arrive in bursts, not at 30 fps |
+| `resize` / `encode` p50 | 4.24 / 1.56 ms |
+| `table` p50 / p95 / max | **0.01 / 0.02 / 12.14 ms** (`table_source: measured`, `table_age_frames` ≤ 21) |
+| `person` p50 / p95 / max | 10.64 / 14.93 / 16.92 ms |
+| `frame_age_ms` during the run | 280 ms → 1933 ms, swinging with each burst |
+| detections on the published frames | 4 person boxes (scores 0.72-0.89), a table polygon, no ball stage in the detector list |
+
+The session then **died twice, reproducibly**, at ~200 s and at ~4 min, with `state: error` and the exact message `Live stream ended or read timed out; restart to reconnect` (received 5495/633, processed 380/45). That is a decoder read timeout, not the stream ending: the stream was still live afterwards (resolved again successfully, `#EXT-X-TWITCH-ELAPSED-SECS` still advancing).
+
+### The UI, read-only (screenshots in `out/live-test/`)
+
+`agent-browser` (0.38.1, run from the local bun cache — the `~/.local/bin/agent-browser` symlink is broken on this host) against `http://127.0.0.1:8130`, `location.origin === 'http://127.0.0.1:8130'` asserted before anything else. No production state was written; only the Vision tab was opened.
+
+| check | result |
+|---|---|
+| live frame on the stage | ✅ `img[src^="blob:"]`, natural 1280x720, parent `.stage` |
+| MODEL boxes dashed | ✅ 3 person rects in group `o-src model` with computed `stroke-dasharray: 10px, 7px`, green stroke. (Attribute-based checks see nothing here — the dash comes from CSS, which is why `getComputedStyle` is the right test.) |
+| live state text, EN | `live · seq 390 · frame age 359 ms · receive-to-result 24 ms · cloth 0 · balls 0 · persons 3 · pockets 0 (quad rejected)` |
+| live state text, 中 | `直播 · seq 633 · 帧龄 1.8 s · 接收到结果 27 ms · 台呢 0 · 球 0 · 人物 3 · 袋口 0 (四边形被拒绝) · 锚点 0 · 事件 0 · 模型四边形偏离已保存角点 · 叠加层 开` |
+| facts line | present, bilingual, carries frame age and receive-to-result — the honest numbers the earlier section asked for |
+| no dataset layers over the live frame | ⚠️ the *pocket* markers (`u-pocket` + `o-src model` groups, `MODELtop-left…right-middle`) are drawn over the live frame and **do not move** (identical coordinates 6 s apart) — they are the saved-anchor projection, i.e. dataset/calibration geometry over live video. The 50-rect SVG present before the live frames arrived is that layer, not a person layer |
+| chat panel / Twitch embed | there is **no `<iframe>` in the DOM** at all while the live session runs (0 iframes), so nothing loaded and no `parent=` frame error could occur; no console error either way |
+| console errors | none (`agent-browser errors` empty) |
+| screenshots | `live-vision-en-1280.png`, `live-vision-en-1280-live.png`, `live-vision-zh-1280.png`, `live-vision-zh-390.png`, `live-vision-en-390.png`; live frames `live-frame-01..03.jpg`; session data `live-session.json`; fix verification `verification.json` |
+
+### Detection sanity and upstream delay on real live frames
+
+- **People**: on `live-frame-02.jpg` the detector reports **4 person boxes** while **5 people are clearly visible** in the wide shot (left with cue, left-centre, leaning at the back, right-centre at the table, far right) — one person missed. The boxes it does return are tight and plausible (scores 0.72-0.89).
+- **Table quad**: on live frames there is no saved reference (live has no dataset), so the stage measures it on its 30-frame cadence (`table_source: measured`, `table_age_frames` ≤ 21, p50 0.01 ms, 12 ms at each refresh) and the app then **refuses** the measured quad against the saved anchors — the facts line says `pockets 0 (quad rejected)` / `袋口 0 (四边形被拒绝)` and `模型四边形偏离已保存角点`. The label is honest: the quad exists in the API metadata (`table_polygon: true`) but is not drawn or used, and the UI says why.
+- **Ball stage**: not offered on the live detectors list (`['table','person']`), so no live ball fps comparison was possible — no detector, nothing to time.
+- **Upstream delay** (broadcast → our receive), from two probes of the HLS media playlist comparing the newest segment's `#EXT-X-PROGRAM-DATE-TIME + #EXTINF` against our wall clock: **0.308 s and 1.367 s**. Caveat: `PROGRAM-DATE-TIME` comes from the broadcaster's/encoder's clock, so this measures *playlist age*, not verifiably the true broadcast lag; a wrong encoder clock moves this number with it. Combined with the measured `receive_to_result` p50 19.9-20.9 ms, approximate **glass-to-result ≈ 0.33-1.4 s**. `upstream_delay_ms` in the status payload is still `None`; the number above is measured externally, as instructed.
+
+### Sample kept for offline re-testing
+
+`data/live-samples/examplechannel-20260926T081051Z.ts` — `ffmpeg -c copy` of the live stream, **665.2 s (11 min 5 s)**, 1280x720 h264 30 fps + aac, **274.7 MB** (ffprobe-verified; `data/` is gitignored and was not committed). It exists so the live path can be re-tested through the VOD-as-live source (`annotator/twitch_vod_source.py`) after the stream ends, with the same pacing semantics.
+
+### Two bugs found and fixed (`4a9654b`)
+
+1. **A live segment gap was fatal.** `_capture()` used a 2 s `CAP_PROP_READ_TIMEOUT_MSEC` for every source. A live HLS stream delivers a segment every 2-6 s, so a normal gap between segments surfaced as `read` returning false and `_fail('Live stream ended or read timed out')` — the session died twice in production, reproducibly, while the stream stayed up. Fix: the default capture now takes a read timeout that follows the source kind — 2000 ms for a local replay (unchanged, its test still pins those exact values) and `live_read_timeout_ms` (default 20000 ms) for a live stream. Verified against the live stream in-process for **240 s: `state=running` throughout, `error=None`, crossing the ~200 s point where production died twice** (`out/live-test/verification.json`).
+2. **One notify per decoded frame.** A live decoder outruns the source when ffmpeg has segments buffered (measured `decode` p50 0.4 ms, i.e. thousands of frames per second during a burst) and the decode loop woke the worker for every frame. The loop now still publishes every frame into the single pending slot but wakes the worker at most once per source frame period. Test: a 200-frame instant burst produces **≤4 notifies** (previously one per frame).
+
+### The design limit that is NOT fixed: published rate on a bursty live source
+
+The published rate stayed at **1.8-1.9 fps** after both fixes, while each published frame cost only 20.9 ms p50 (`receive_to_result`) and the source delivered 30.4 fps. The cause is the interaction, not the fixes: HLS delivers ~30 frames per 1-2 s segment as a burst; the single latest-frame-only slot means the worker — which needs 20.9 ms per frame — is superseded for all but the newest frame of each burst, so it publishes roughly **one frame per segment** and each published frame carries a `frame_age` of 0.5-1.8 s. This is the design working as specified (never queue, never fall behind) meeting a source that arrives in bursts. Three options, each with a cost, for the owner/director to choose:
+
+- **Pace the live decode loop** to the source frame period (the replay path already does this): publishes ~30 fps at ~20 ms each, but permanently sits one buffer depth (~2-6 s) behind the live edge.
+- **A bounded queue of 2-4 frames** for live sources: the worker drains a burst at ~45 fps (its own limit) with ~0.2-0.5 s added latency, at the cost of the "one pending frame" invariant that the whole backpressure design rests on.
+- **Leave it**: 1.8 fps with ≤1.8 s frame age is honest and bounded, and it is what the operator sees today.
+
+### What this round did not prove
+
+- **Real glass-to-glass latency.** The 0.33-1.4 s figure depends on the encoder's `PROGRAM-DATE-TIME`; nothing here measures the camera-to-encoder leg.
+- **Live ball detection.** No ball stage was in the detectors list, so no fps with/without it was measured on live video.
+- **The fix in production.** Production still runs the pre-fix code (a restart is the director's call); the fix is verified in-process against the live stream instead.
+- **Chat embed behaviour.** With no `<iframe>` in the DOM there was nothing to load or refuse; whether the Twitch embed works on `127.0.0.1` with `parent=` remains untested.
+
+Cleanup and integrity: the session I started is `stopped` (`decoder_alive`/`worker_alive` false). All five protected files are byte-identical to their pre-test values — `out/corner-pocket/state.json` `77777777777777777777777777777777`, `out/pid_seed.json` `77777777777777777777777777777777`, `out/scan30/annotations.json` `77777777777777777777777777777777`, `out/scan30/events.json` `77777777777777777777777777777777`, `out/identity/clusters.json` `77777777777777777777777777777777` (682485 bytes, mtime 2026-09-23). The service journal since the test started contains only GETs plus **four** `POST /api/live` — the stops and starts of this test, and nothing else.
+
+
 
