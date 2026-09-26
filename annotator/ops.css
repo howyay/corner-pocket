@@ -92,7 +92,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .clock{font:500 clamp(30px,4vw,60px)/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--brass-hi)}
 #ops-shell .clock.low{color:var(--red)}
 #ops-shell .progress{height:6px;background:var(--rail);margin-top:var(--sp-2)}
-#ops-shell .progress span{display:block;height:100%;background:var(--brass);transition:width .2s linear,background-color .3s ease-out}
+#ops-shell .progress span{display:block;height:100%;background:var(--brass);transform-origin:left;transition:transform .2s linear,background-color .3s ease-out}
 /* The last seconds are a state, not decoration: the bar turns red with the digits.
    (:has keeps it CSS-only; the clock element already carries .low.) */
 #ops-shell .score-top:has(.clock.low) .progress span{background:var(--red)}

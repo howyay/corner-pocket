@@ -422,7 +422,8 @@ test('the clock paints the true remaining time on the first render, in every vie
   const painted = h.evaluate('clockHTML()');
   assert.ok(painted.includes('>0:13<'), 'the first paint is the real remaining time: ' + painted);
   assert.ok(!painted.includes('>0:30<'), 'never the hardcoded 0:30');
-  assert.ok(painted.includes('width:20.666'), 'the progress bar paints the live value too: ' + painted);
+  // The bar scales (transform) rather than resizing (width) since the polish step: 12.4 / 60 = 0.2067.
+  assert.ok(painted.includes('transform:scaleX(0.2067)'), 'the progress bar paints the live value too: ' + painted);
   // A running clock paints from the same source, and the interval writes with the
   // same formatter, so a paint and a tick can never disagree.
   h.evaluate("timer={duration:60,remaining:12.4,deadline:Date.now()+7400}");
