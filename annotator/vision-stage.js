@@ -320,7 +320,25 @@ function bindingLine(s) {
 // Pocket names are pool-table rail terms in stored data; every displayed label
 // is the position word the engine maps them to, never the raw key.
 function pocketName(event) { return event?.nearest_pocket_text || event?.nearest_pocket || ''; }
-function pocketTag(event) { const name = pocketName(event); return name ? `<span class="vs-mono vs-dim">${esc(name)}</span>` : ''; }
+// One name per pocket on every surface: a stored rail key (right-side, foot-left...) is
+// shown as the engine's position word (right-middle, bottom-left...; 中 右中, 左下...).
+const pocketLabel = token => token ? (engine()?.pocketText ? engine().pocketText(String(token)) : String(token)) : '';
+// Ball colours in the operator's language (the engine's table); unknown ones stay as data.
+const colourLabel = value => value ? (engine()?.colourWord?.(value) || String(value)) : '';
+// A vanish distance with its uncertainty and the pocket, e.g. '148 ± 54 mm · left-middle'.
+function vanishText(n) {
+  if (!Number.isFinite(n?.vanish_dist_mm)) return '';
+  const unc = Number.isFinite(n.vanish_dist_mm_uncertainty) ? ` ± ${Math.round(n.vanish_dist_mm_uncertainty)}` : '';
+  const pocket = pocketLabel(n.vanish_pocket);
+  return `${Math.round(n.vanish_dist_mm)}${unc} mm${pocket ? ` · ${pocket}` : ''}`;
+}
+function pocketTag(event) {
+  const n = event?.gate?.numbers;
+  // With a vanish reading the gate line below already names the pocket with its mm;
+  // the tag then names only the pocket, never a second spelling of the same one.
+  const name = n && Number.isFinite(n.vanish_dist_mm) && n.vanish_pocket ? pocketLabel(n.vanish_pocket) : pocketName(event);
+  return name ? `<span class="vs-mono vs-dim">${esc(name)}</span>` : '';
+}
 // What the scan actually measured for this cue, and whether the server could
 // project it into frame pixels. An event the dataset cannot project says so:
 // there is no second, browser-side guess at where the ball was.
@@ -336,13 +354,48 @@ function gateEvidence(event) {
   const out = [];
   if (event.type === 'pot') {
     if (Number.isFinite(n.census_pre) && Number.isFinite(n.census_post)) out.push(`${n.census_pre}→${n.census_post}`);
-    if (Number.isFinite(n.vanish_dist_mm)) out.push(`${Math.round(n.vanish_dist_mm)} mm ${n.vanish_pocket || ''}`.trim());
+    if (Number.isFinite(n.vanish_dist_mm)) out.push(vanishText(n));
   } else if (Number.isFinite(n.disp_mm)) {
-    out.push(`${Math.round(n.disp_mm)} mm${n.disp_color ? ` ${n.disp_color}` : ''}`);
+    out.push(`${Math.round(n.disp_mm)} mm${n.disp_color ? ` ${colourLabel(n.disp_color)}` : ''}`);
   }
   if (Number.isFinite(n.window_motion)) out.push(`${t('gateMotion')} ${n.window_motion}`);
   if ((event.dup_count || 1) > 1) out.push(`×${event.dup_count}`);
   return out;
+}
+// Gate reason codes in words. A code the table does not know stays verbatim (it is
+// evidence), and a reason that is already a sentence from the scan is kept, in 中
+// replaced by the scan's own Chinese sentence when it wrote one.
+const REASONS = {
+  cloth_occluded_at_disappearance: ['a person covered the cloth when the ball vanished', '球消失时有人挡住了台呢'],
+  pocket_distance_ambiguous_mm: ['the pocket distance is within its error of the pocket edge', '袋口距离落在误差范围内，无法判定'],
+  pocket_distance_outside_mm: ['the ball vanished outside the pocket radius', '球在袋口半径之外消失'],
+  pocket_distance_within_uncertainty: ['the pocket distance is within its uncertainty', '袋口距离在不确定度之内'],
+  pocket_test_agrees: ['pixel and millimetre pocket tests agree', '像素与毫米袋口判定一致'],
+  pocket_test_disagrees_px_vs_mm: ['pixel and millimetre pocket tests disagree', '像素与毫米袋口判定不一致'],
+  dense_motion_onset: ['motion onset found in the dense track', '密集跟踪中找到了起动'],
+  window_grade_no_claim_to_check: ['motion-window grade: no separate claim to check the move against', '仅运动窗口：没有可对照的独立声明'],
+  census_recovered: ['the ball count recovered afterwards', '之后球数恢复了'],
+  displacement_corroborated: ['the move was re-measured and agrees', '位移已重新测量并一致'],
+  geometry_mismatch: ['the claimed geometry and the measured move differ', '声称的几何与实测位移不一致'],
+  identity_swap_suspected: ['two balls may have swapped identity', '可能有两颗球身份互换'],
+  parked_in_jaws_possible: ['the ball may be parked in the pocket jaws', '球可能停在袋口颚部'],
+  disappeared_outside_pocket: ['the ball disappeared away from any pocket', '球在远离袋口处消失'],
+  no_motion_onset: ['no motion onset was found', '未找到起动'],
+  motion_too_short: ['the motion was too short to count', '运动太短，不计入'],
+  mm_projection_mismatch: ['the millimetre projection disagrees with the pixels', '毫米投影与像素不一致'],
+};
+// The gate that decided, in words (the code stays when it is new).
+const GATES = {census:['census','球数'], occlusion:['occlusion','遮挡'], displacement:['displacement','位移'], motion:['motion','运动'], geometry:['geometry','几何']};
+const gateName = code => { const row = GATES[String(code)]; return row ? (opts?.lang === 'zh' ? row[1] : row[0]) : String(code ?? ''); };
+function reasonText(code) {
+  const raw = String(code ?? '');
+  const row = REASONS[raw];
+  if (row) return opts?.lang === 'zh' ? row[1] : row[0];
+  if (opts?.lang === 'zh') {
+    const m = raw.match(/^([\d.]+) ± ([\d.]+) mm from the ([\w-]+) pocket -- too uncertain to call/);
+    if (m) return `距${pocketLabel(m[3])}袋 ${m[1]} ± ${m[2]} mm，误差跨过袋口半径，无法判定`;
+  }
+  return raw;
 }
 function gateStatusWord(status) {
   return t(status === 'confirmed' ? 'gateConfirmed' : status === 'rejected' ? 'gateRejected' : 'gateUnconfirmed');
@@ -350,10 +403,10 @@ function gateStatusWord(status) {
 function eventGeometry(item) {
   const rows = [];
   const row = (key, value) => { if (value) rows.push(`<li class="vs-mono"><span class="vs-dim">${esc(t(key))}</span> ${esc(value)}</li>`); };
-  row('colour', item.color || '');
+  row('colour', colourLabel(item.color));
   if (item.type === 'pot') {
     row('ballLast', `${pxText(item.last_px)} px`);
-    row('pocket', item.pocket_name || pocketName(item));
+    row('pocket', item.pocket_name ? pocketLabel(item.pocket_name) : pocketName(item));
     row('pocketAt', `${pxText(item.pocket_px)} px`);
   } else {
     row('shotFrom', `${pxText(item.from_px)} px`);
@@ -366,15 +419,15 @@ function eventGeometry(item) {
   const gate = item.gate;
   if (gate) {
     const n = gate.numbers || {};
-    row('gateCheck', `${gateStatusWord(gate.status)}${gate.gate ? ` · ${gate.gate}` : ''}`);
+    row('gateCheck', `${gateStatusWord(gate.status)}${gate.gate ? ` · ${gateName(gate.gate)}` : ''}`);
     if (item.tier === 'geometry' || item.tier === 'window') row('tierLabel', t(item.tier === 'geometry' ? 'tierGeometry' : 'tierWindow'));
     if (item.type === 'pot') {
       row('gateCensus', Number.isFinite(n.census_pre) && Number.isFinite(n.census_post) ? `${n.census_pre} → ${n.census_post}` : '');
       row('gateColourCensus', Number.isFinite(n.color_census_pre) && Number.isFinite(n.color_census_post) ? `${n.color_census_pre} → ${n.color_census_post}` : '');
       row('gateVanish', Number.isFinite(n.vanish_dist_mm)
-        ? `${Math.round(n.vanish_dist_mm)} mm${n.vanish_pocket ? ` · ${n.vanish_pocket}` : ''}${Number.isFinite(n.approach_mm) ? ` · ${Math.round(n.approach_mm)} mm` : ''}` : '');
+        ? `${vanishText(n)}${Number.isFinite(n.approach_mm) ? ` · ${Math.round(n.approach_mm)} mm` : ''}` : '');
     } else {
-      row('gateMove', Number.isFinite(n.disp_mm) ? `${Math.round(n.disp_mm)} mm${n.disp_color ? ` · ${n.disp_color}` : ''}` : '');
+      row('gateMove', Number.isFinite(n.disp_mm) ? `${Math.round(n.disp_mm)} mm${n.disp_color ? ` · ${colourLabel(n.disp_color)}` : ''}` : '');
       row('gateGap', Number.isFinite(n.geometry_gap_px) ? `${Math.round(n.geometry_gap_px)} px` : '');
     }
     // Net displacement vs path length is what separates a real shot from detector
@@ -385,7 +438,9 @@ function eventGeometry(item) {
       ? `${Math.round(n.dense_peak_speed_px_s)} px/s${Number.isFinite(n.dense_duration_s) ? ` · ${Number(n.dense_duration_s).toFixed(2)} s` : ''}` : '');
     row('gateMotion', Number.isFinite(n.window_motion) ? String(n.window_motion) : '');
     row('gateDup', (item.dup_count || 1) > 1 ? String(item.dup_count) : '');
-    row('gateNotes', (gate.reasons || []).join(' · '));
+    // Words first; the gate's own code stays in brackets, because it is the evidence
+    // a report or a bug refers to.
+    row('gateNotes', (gate.reasons || []).map(code => { const words = reasonText(code); return words === String(code) || !REASONS[code] ? words : `${words} (${code})`; }).join(' · '));
   }
   const body = rows.length ? `<ul class="vs-facts">${rows.join('')}</ul>` : '';
   return `${body}<p class="vs-note">${esc(item.projectable ? t('projectedNote') : t('notProjectable'))}</p>`;
@@ -549,7 +604,8 @@ function factsLine(s) {
   const parts = [];
   // One word per state: the strip says the same thing the chip says.
   if (s.source.kind === 'live') parts.push(`${(s.live.stale ? t('stale') : t(liveWordKey(s))).toLowerCase()}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
-  else parts.push(`${t('frameReadout')} ${s.frame.index}`, `t ${Number(s.frame.t).toFixed(1)} s`);
+  // The frame's time in the same m:ss.d the cue cards use (25:53.5), not a bare second count.
+  else parts.push(`${t('frameReadout')} ${s.frame.index}`, timecode(s.frame.t));
   const d = s.drawn, auto = d.auto;
   // Model vs operator provenance: `<model> (+<manual> manual)`. The two numbers
   // add up to exactly what the painter drew, so the totals stay honest. Without
@@ -851,7 +907,9 @@ function anchorBlock(s) {
 // Where this frame's detection came from, said out loud: a stored file is
 // evidence from an earlier run and keeps its own timestamp; a result run on this
 // frame now was never written to disk.
-const stampText = value => { if (!value) return ''; const at = new Date(value); return Number.isNaN(at.getTime()) ? String(value) : at.toLocaleString(); };
+// A stored result's time in the operator's language: 2026-09-16 04:07 (the same in 中),
+// not the browser's default locale, which printed '9/16/2026, 4:07:48 AM' inside Chinese copy.
+const stampText = value => { if (!value) return ''; const at = new Date(value); if (Number.isNaN(at.getTime())) return String(value); const p = n => String(n).padStart(2, '0'); return `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())} ${p(at.getHours())}:${p(at.getMinutes())}`; };
 function inferenceLine(s) {
   const c = s.corrections || {};
   if (!c.inferenceAt || c.result === 'none') return '';

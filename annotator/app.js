@@ -1817,7 +1817,10 @@ window.CornerPocketReview = {
   setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,
   applyLiveStatus, ingestLiveFrame, setLiveAttempt, clearLiveError, liveStateText,
   counts,
-  text: copy => text(copy)
+  text: copy => text(copy),
+  // One pocket vocabulary for every surface: the adapter names pockets through this.
+  pocketText: value => pocketText(value),
+  colourWord: value => colourWord(value)
 };
 const standaloneRoot = document.querySelector('#review-root');
 if (standaloneRoot) { mount(standaloneRoot); activate(); }

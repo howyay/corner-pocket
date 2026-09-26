@@ -44,8 +44,9 @@ function test(name, fn) {
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
-  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
-  assert.strictEqual(api.length, 67, 'the engine exposes exactly its lifecycle + one-stage API');
+  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts','pocketText','colourWord']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  // +2 for the polish's clarify step: pocketText and colourWord, so the adapter names pockets and colours in one vocabulary.
+  assert.strictEqual(api.length, 69, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -1204,7 +1205,8 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
                 gate:{status:'confirmed', gate:'displacement',
                       reasons:['displacement_corroborated', 'geometry_mismatch'],
                       numbers:{disp_mm:777, disp_color:'white', window_motion:16.85, geometry_gap_px:386.5}}};
-  same(VS.gateEvidence(pot), ['3→2', '60 mm foot-right', '×3']);
+  // Without an engine the adapter prints the stored pocket key; with one (below), the position word.
+  same(VS.gateEvidence(pot), ['3→2', '60 mm · foot-right', '×3']);
   same(VS.gateEvidence(shot), ['777 mm white', 'motion 16.85']);
   same(VS.gateEvidence({id:3, type:'pot'}), []);          // no gate block: no invented numbers
   const potFacts = VS.eventGeometry(pot);
@@ -2064,6 +2066,30 @@ test('F2: the Anchors chip reads off until anchors are drawn, and one click load
   s.anchors.loaded = true;
   VSx.act('layer', 'anchors');
   assert.deepStrictEqual(calls, ['load 70', 'toggle anchors'], 'once drawn, a click hides them as before');
+});
+
+test('clarify: one pocket name per card, the distance with its error, reasons in words beside their codes', () => {
+  const pot = {id:9005, type:'pot', t:1553.5, color:'blue', nearest_pocket:'right-side (148 ± 54mm)',
+               gate:{status:'unconfirmed', gate:'occlusion', reasons:['cloth_occluded_at_disappearance', 'pocket_test_agrees'],
+                     numbers:{vanish_dist_mm:148.49, vanish_dist_mm_uncertainty:54.2, vanish_pocket:'right-side'}}};
+  const words = {'right-side':['right-middle','右中']}, colours = {blue:['blue','蓝']};
+  for (const [lang, pocket, colour, reason] of [['en', 'right-middle', 'blue', 'a person covered the cloth when the ball vanished'],
+                                                ['zh', '右中', '蓝', '球消失时有人挡住了台呢']]) {
+    const review = {snapshot: () => null, text: s => s,
+                    pocketText: v => (words[String(v).replace(/ \(.*\)$/, '')] || [v, v])[lang === 'zh' ? 1 : 0],
+                    colourWord: v => (colours[v] || ['', ''])[lang === 'zh' ? 1 : 0]};
+    const VSx = adapterStage(lang, ROSTER, {review});
+    same(VSx.gateEvidence(pot), [`148 ± 54 mm · ${pocket}`]);
+    const card = VSx.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[pot], index:0, reviewed:0},
+      balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
+    const row = card.match(/<div class="vs-card-row">[\s\S]*?<\/div>/)[0];
+    assert.ok(row.includes(`>${pocket}<`), `${lang}: the card names the pocket once, as a position word`);
+    assert.ok(!card.includes('right-side') && !/\(148 ± 54mm\)/.test(card), `${lang}: no second spelling of the same pocket`);
+    const inspector = VSx.eventGeometry(pot);
+    assert.ok(inspector.includes(`148 ± 54 mm · ${pocket}`), `${lang}: the inspector reads the same distance`);
+    assert.ok(inspector.includes(`${reason} (cloth_occluded_at_disappearance)`), `${lang}: reasons in words, the code kept as evidence`);
+    assert.ok(inspector.includes(colour), `${lang}: the colour is a word, not a raw key`);
+  }
 });
 
 test('F5: a saved VOD URL is listed, can fill the replay form, and can be removed', () => {
