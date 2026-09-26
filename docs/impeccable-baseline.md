@@ -22,6 +22,11 @@ Worktree: `/home/operator/projects/pool-impeccable`; the app code under test is
   worktree lacked the read-only input `out/fixed_corners.json`. After it was linked in,
   the full rerun was green. They were a gap in how the worktree was set up; the code
   was not at fault.
+- **After `git merge main` (`90438ac`) and the fixture fix (`ede4052`), at `541fac5`:**
+  unittest **944 tests, OK (skipped=13)**; `test_ops.js` **35 / 35 pass**;
+  `test_app_timeline.js` **65 passed, 0 failed**. The 5 new skips are
+  `test_db.Database` ("POOL_DATABASE_URL is not set"), which arrived with main; the
+  other 8 are the ones above. Every polish commit is held to these counts or higher.
 - Logs (untracked): `out/impeccable/suites/{unittest,node-test-ops,app-timeline}.log`,
   and `unittest.run1-missing-fixed_corners.log` for the first run.
 - The five production files (main checkout: `out/corner-pocket/state.json`,
