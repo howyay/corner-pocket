@@ -286,7 +286,7 @@ class IdentityIndex:
         self.save()
 
     def bind_face(self, cluster_id: int, player_id: str, similarity: float, evidence: Any = None,
-                  runner_up: float | None = None) -> bool:
+                  runner_up: float | None = None, persist: bool = True) -> bool:
         """Bind player via face match; first confident match only.
 
         The accept decision is src.face_id.accept_match(), the same rule
@@ -302,9 +302,11 @@ class IdentityIndex:
         single-player gallery case).
 
         Returns True on new binding, False when rejected (no rebinding ever).
-        Persists here and not in register(): an automatic match may happen while
-        serving a read, but the binding is a durable decision, so it is written
-        where it is made rather than by whichever request comes later.
+        persist=True writes the index here. The person pipeline passes
+        persist=False because it binds while serving reads (GET /api/unified,
+        GET /api/identity/frame) and a GET never writes: the bind then lives in
+        memory and is written by the next genuine mutation (explicit_assign, an
+        enrolment, forget), which saves the whole index.
         """
         cluster = self._require(cluster_id)
         if cluster.player_id is not None:
@@ -321,7 +323,8 @@ class IdentityIndex:
             "evidence": evidence,
             "player_id": player_id,
         }
-        self.save()
+        if persist:
+            self.save()
         return True
 
     def get(self, cluster_id: int) -> dict[str, Any]:

@@ -1025,6 +1025,50 @@ class UnifiedViewTests(unittest.TestCase):
         self.assertIsNone(data['persons_error'])
         self.assertEqual(file_stamp(path), before, 'reading a frame must not rewrite the identity index')
 
+    def test_a_face_bind_found_while_reading_is_returned_but_not_written(self):
+        """A GET never writes, even when the frame produces a face bind. The real
+        pipeline (fake models, a one-player gallery) binds while serving
+        GET /api/unified and GET /api/identity/frame: the payload shows the bind,
+        clusters.json keeps its bytes, size and mtime, and the bind is persisted by
+        the next genuine mutation (an explicit POST), not by the read."""
+        from src.face_id import store_faces
+        from src.person_identity import IdentityIndex
+        from src.person_pipeline import PersonPipeline
+        self.patch_pipeline()
+        rng = np.random.RandomState(5)
+        emb = rng.standard_normal(512).astype(np.float32)
+        emb /= np.linalg.norm(emb)
+        store_faces(self.root / 'out' / 'corner-pocket' / 'face_embeddings.json',
+                    {'playerF': [{'embedding': emb, 'eye_px': 12.0, 'det_score': 0.9}]})
+        path = self.root / 'out' / 'identity' / 'clusters.json'
+        index = IdentityIndex(path)
+        index.register(99, [1.0] * 128, frame_index=0)
+        index.explicit_assign(1, 'someone-else')           # a real file to compare bytes against
+        before = file_stamp(path)
+        box = [100.0, 100.0, 300.0, 600.0]
+        engine = Mock()
+        engine.analyze.return_value = [{'bbox': [150, 150, 190, 200], 'eye_px': 12.0, 'det_score': 0.9,
+                                        'embedding': emb}]
+        engine.quality.return_value = True
+        engine.best_match.side_effect = lambda probe, gallery: (
+            {'player_id': 'playerF', 'similarity': 0.99, 'runner_up': None} if gallery else None)
+        pipeline = PersonPipeline(self.root, detector=lambda frame: [{'bbox': list(box), 'conf': 0.9}],
+                                  body_encoder=lambda crops: [np.ones(128, np.float32) / np.sqrt(128)] * len(crops),
+                                  face_engine=engine, identity=index)
+        self.backend._identity_pipeline = pipeline
+        data = self.backend.get(['api', 'unified'], {'dataset': ['vod30'], 'frame': ['150']})
+        self.assertEqual([p['player_id'] for p in data['persons']], ['playerF'], 'the read shows the bind')
+        self.assertEqual(file_stamp(path), before, 'GET /api/unified must not write the bind')
+        cluster = data['persons'][0]['cluster_id']
+        frame = self.backend.get(['api', 'identity', 'frame'], {'dataset': ['vod30'], 'frame': ['151']})
+        self.assertEqual([p['player_id'] for p in frame['persons']], ['playerF'], 'the bind holds in memory')
+        self.assertEqual(file_stamp(path), before, 'GET /api/identity/frame must not write the bind')
+        # the next genuine mutation persists what the reads decided
+        self.backend.post(['api', 'identity', 'unbind'], {'cluster_id': 1})
+        saved = json.loads(path.read_text())
+        self.assertEqual(saved[str(cluster)]['player_id'], 'playerF')
+        self.assertIsNone(saved['1']['player_id'])
+
     def test_payload_shape_scales_detection_back_to_full_res(self):
         data = self.payload()
         self.assertEqual(sorted(data), ["balls", "events", "frame_index", "height", "persons",

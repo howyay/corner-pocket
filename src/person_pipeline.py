@@ -242,10 +242,13 @@ class PersonPipeline:
                 # only the similarity; see src/person_identity.py:bind_face).
                 # .get() keeps a matcher that predates the field (or a test
                 # double) working: no runner-up means no competing enrolment.
+                # persist=False: process_frame serves GETs, and a GET never
+                # writes; the next genuine mutation saves the bind.
                 if match and self.identity.bind_face(cluster, match['player_id'],
                                                      match['similarity'],
                                                      {'frame_index': frame_index},
-                                                     runner_up=match.get('runner_up')):
+                                                     runner_up=match.get('runner_up'),
+                                                     persist=False):
                     person['player_id'] = match['player_id']
                     person['face_sim'] = match['similarity']
                     events.append({'kind': 'bind', 'player_id': match['player_id'],
