@@ -502,8 +502,8 @@ html,body{-webkit-font-smoothing:antialiased}
 .modal .record h3{margin-top:var(--sp-4)}
 /* R10 results sheet: one full bracket on screen, and on paper / PDF */
 #ops-shell .results-sheet h2{margin:0 0 var(--sp-1)}
-#ops-shell .results-sheet .champion{display:flex;flex-direction:column;gap:2px;margin:var(--sp-3) 0 0}
-#ops-shell .results-sheet .champion strong{font:600 26px var(--display);color:var(--brass-hi)}
+#ops-shell .results-sheet .champion{display:flex;flex-direction:column;gap:var(--sp-1);margin:var(--sp-3) 0 0}
+#ops-shell .results-sheet .champion strong{font:600 clamp(var(--fs-xl),2.2vw,28px) var(--display);color:var(--brass-hi)}
 #ops-shell .sheet-rounds{display:grid;gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
 #ops-shell .sheet-match{margin:var(--sp-1h) 0;font-variant-numeric:tabular-nums}
 #ops-shell .sheet-match.bye{color:var(--ink-dim)}
@@ -531,3 +531,9 @@ html,body{-webkit-font-smoothing:antialiased}
    name slots hold the placeholder, not players, so they drop from 80 px ink to a dim
    44 px. Structure, badges and the disabled Win frame stay; only the placeholder quiets. */
 #ops-shell .scoreboard:not(:has(.side button:not([disabled]))) .side .name{font-size:clamp(28px,3.2vw,44px);color:var(--ink-dim)}
+/* Spacing utilities for markup built in ops.js (were 17 inline style="" strings in
+   10/12/14/16/18/20 px); every value is a step of the --sp-* scale. */
+#ops-shell .mt-3{margin-top:var(--sp-3)}#ops-shell .mt-4{margin-top:var(--sp-4)}#ops-shell .mt-5{margin-top:var(--sp-5)}
+#ops-shell .mb-3{margin-bottom:var(--sp-3)}#ops-shell .mb-4{margin-bottom:var(--sp-4)}#ops-shell .m-0{margin:0}
+#ops-shell .bare{border:0;padding:0;margin:0}#ops-shell .items-end{align-items:end}#ops-shell .items-center{align-items:center}
+#ops-shell .justify-between{justify-content:space-between}#ops-shell .w-full{width:100%}#ops-shell .text-left{text-align:left}#ops-shell .pre-wrap{white-space:pre-wrap}

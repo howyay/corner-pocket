@@ -129,3 +129,18 @@ status word. Full cards render exactly as before. After: at 1280 **15 of 15** on
 (table, id, badge, names, scores, winner in brass, Send / Here now) holds: every part is in each card.
 Test added (`test_ops.js`: dot, name, header and controls present, toggle, full cards unchanged, CSS
 contract, EN/中 keys). Evidence `out/impeccable/ledger/r9/` (`density.tsv`, full/compact shots).
+
+**Main's new surfaces under the polish (director's step 5, after merges `b761265`, `882ffe1`, `baa7f8a`).**
+Measured on a throwaway `:8142` driven into each state (an archived night with a bye and a signed match,
+a doubles night with a drawn random pairing): standings and event table, results sheet (live and
+archived), player record, second-chance card, random-pairing card — 1280/390 × EN/中 × dark/light
+(`out/impeccable/check_new_surfaces.sh`, `ledger/new-surfaces/`). Every rendered text node is on the
+type ramp (no off-ramp size below display), **0 below AA** (736 text nodes), **0 focusables without
+visible focus** (48), **0 page overflow**. They inherited the tokens, fonts and focus rules because
+main's rules were restated in `#ops-shell` and the scales at merge time. Two things were still off the
+scales and are fixed here: the results-sheet champion (`26px` literal → `clamp(var(--fs-xl),2.2vw,28px)`)
+and its `gap:2px` (→ `--sp-1`); and **all 17 inline `style=` strings in `ops.js`** (10/12/14/16/18/20 px
+margins, alignment, pre-wrap; 16 older + main's) became scale utility classes (`.mt-3`, `.mb-4`, …) by
+an exact-string swap, so audit P2 #1 ("21 inline style=") is closed except the one dynamic
+`transform:scaleX(${…})` on the clock bar. The second-chance card was measured in its live state; the
+event table only exists while a night has signed results (both checked in their states).
