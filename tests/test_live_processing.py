@@ -331,23 +331,61 @@ class LiveProcessingTests(unittest.TestCase):
     def test_live_burst_is_published_without_a_notify_storm(self):
         """The decoder may outrun a live source; the worker must not be woken per frame.
 
-        A 200-frame instant burst stands in for ffmpeg draining its buffered segments:
-        at 30 fps only the first publish is due inside the burst, so the worker is woken
-        at most twice instead of once per frame (which starved it in production).
+        A 200-frame instant burst stands in for ffmpeg draining its buffered segments.  The
+        clock is injected and advances a fixed tiny step per call, so how much *clock* time
+        the burst covers is a property of the code, not of the machine: under load a real
+        clock let the burst span more than one 33 ms frame period and the notify count moved
+        with it (0/3 under load ~8 on a clean export of 3b65543).  With a scripted clock the
+        count is exact.
         """
-        processor = self.processor(capture_factory=lambda _: Capture(count=200),
-                                   resolver=lambda url: 'https://media.ttvnw.net/live.m3u8')
+        class StepClock:
+            """Monotone clock: a fixed step per call, never sleeps, never reads wall time."""
+
+            def __init__(self, start=1000.0, step=1e-7):
+                self.value, self.step = start, step
+
+            def __call__(self):
+                self.value += self.step
+                return self.value
+
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        class BurstThenHold(Capture):
+            """200 instant frames, then hold the stream open until the test says go.
+
+            Without the hold, the burst and the end-of-stream failure race the worker, so
+            whether anything is published at all is a coin toss - that, not the notify
+            count, is what made the original version of this test flaky.
+            """
+
+            def read(self):
+                if self.index >= self.count:
+                    release.wait(5)
+                    return False, None
+                return super().read()
+
+        processor = self.processor(capture_factory=lambda _: BurstThenHold(count=200),
+                                   resolver=lambda url: 'https://media.ttvnw.net/live.m3u8',
+                                   clock=StepClock(), wall_clock=StepClock(start=1.7e9))
         notifies = []
         original = processor._condition.notify_all
         processor._condition.notify_all = lambda: (notifies.append(1), original())[1]
         processor.start(dict(kind='twitch', source_id='saved'))
+        self.wait_for(processor, lambda status: status['frames_processed'] >= 1)
+        release.set()
         status = self.finished(processor)
         self.assertEqual(status['frames_received'], 200)
-        # 1 publish + the end-of-stream failure + the done flag: far below one per frame.
-        self.assertLessEqual(len(notifies), 4)
+        # Exactly three wakeups: the one due publish, the end-of-stream failure notification
+        # and the done flag.  One per frame would be 200.
+        self.assertEqual(len(notifies), 3)
+        self.assertLess(len(notifies) * 10, status['frames_received'])
+        # While the decoder is held, the worker publishes exactly the one frame it was woken
+        # for; *which* sequence it wins is a scheduling race (the burst is still filling the
+        # slot when it wakes), so that is not asserted here - the notify count is.
+        self.assertEqual(status['frames_processed'], 1)
         self.assertIsNotNone(status['latest'])
         self.assertEqual(status['frames_processed'] + sum(status['drop_reasons'].values()), 200)
-        self.assertGreater(status['drop_reasons']['no_frame_ready'], 0)
 
     def test_capture_read_and_release_failures_are_sanitized(self):
         class BrokenCapture(Capture):
