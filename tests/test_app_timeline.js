@@ -1994,6 +1994,115 @@ test('a live or replay frame is drawn with its own detections only, never the da
   T.state.cloth.reference = null; T.state.anchors.loaded = false; T.state.anchors.pts = [];
 });
 
+test('the saved-anchor pockets and anchor marks never land on a live picture, whatever the source flag says', () => {
+  // Production, 2026-09-26: the owner's live frame carried six CALIB pocket markers
+  // that never moved. The pockets came from the dataset's saved anchors whenever the
+  // engine's source still read 'vod' - and a live picture is on the stage under a
+  // 'vod' source after a live error and a Stop, after a dataset chip click while the
+  // feed runs, and while Vision mounts during a running session. The overlay has to
+  // follow the picture that is actually on the stage.
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const img = {hidden:false, _src:'', getAttribute() { return this._src; }};
+  Object.defineProperty(img, 'src', {get() { return this._src; }, set(value) { this._src = value; }});
+  svg.setAttribute = () => {}; svg.dataset.bound = '1';
+  const content = {dataset:{stage:'1'}, innerHTML:''};   // a mounted stage: renderStage() runs for real
+  T.setRoot({lang:'en', dataset:{}, querySelector: selector => ({'#t-overlay': svg, '#stage-note': note, '#t-img': img, '#content': content})[selector] || null, querySelectorAll: () => []});
+  const review = sandbox.window.CornerPocketReview;
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true};
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.state.playback = {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN};
+  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.unified = null;
+  // The dataset's saved-anchor document is loaded, and the anchors layer is on.
+  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
+  T.state.anchors.loaded = true; T.state.anchors.pts = [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]];
+  const layers = () => ({pockets:(svg.innerHTML.match(/class="u-pocket"/g) || []).length, calib:(svg.innerHTML.match(/data-src="calib"/g) || []).length,
+                         anchors:(svg.innerHTML.match(/class="u-anchor/g) || []).length, cloth:(svg.innerHTML.match(/class="u-cloth"/g) || []).length});
+  // Frame 0 on the stage: its calibration pockets and anchor marks are its own.
+  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.shotUrl = 'blob:frame0'; img.src = 'blob:frame0';
+  T.paintOverlay();
+  const frameHtml = svg.innerHTML;
+  same(layers(), {pockets:6, calib:7, anchors:6, cloth:1});
+  // Vision mounts while a session runs: the first live frame lands before the stage
+  // has its picture element; the stage built after it shows that frame, not frame 0.
+  const noStage = {lang:'en', dataset:{}, querySelector: () => null, querySelectorAll: () => []};
+  T.setRoot(noStage);
+  T.state.live.state = 'running';
+  review.ingestLiveFrame('blob:live-0', {seq:0, detections:{boxes:[], table_polygon:null}}, {label:'live', channel:null});
+  assert.ok(T.stageHTML().includes('src="blob:live-0"'), 'a stage built after the first live frame shows that frame');
+  T.setRoot({lang:'en', dataset:{}, querySelector: selector => ({'#t-overlay': svg, '#stage-note': note, '#t-img': img, '#content': content})[selector] || null, querySelectorAll: () => []});
+  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.live.state = 'idle'; T.state.live.shown = null;
+  // The live feed runs; its detector measured a quad and it was refused (as on 09-26).
+  T.state.live.state = 'running';
+  review.ingestLiveFrame('blob:live-1', {seq:1, detections:{boxes:[{label:'person', bbox:[500,200,600,500]}], table_polygon:[[0,0],[10,0],[10,10],[0,10]]}}, {label:'● live · twitch examplechannel', channel:'examplechannel'});
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'the live frame: no saved-anchor pockets, marks or quad');
+  assert.strictEqual(T.state.drawn.pockets, 0); assert.strictEqual(T.state.drawn.anchors, 0);
+  // (1) The picture is live but the source flag says 'vod' (mount order; a dataset
+  // chip clicked while the feed runs; Stop after a live error): still nothing.
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.paintOverlay();
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'a live picture under a vod source flag gets no dataset layers');
+  assert.strictEqual(T.state.drawn.pockets, 0, 'and the facts line counts none');
+  assert.strictEqual(T.state.drawn.anchors, 0);
+  T.state.source = {kind:'live', label:'● live · twitch examplechannel', channel:'examplechannel'};
+  // A re-render while live (a language switch, a rebuilt stage markup) keeps the live
+  // picture: the dataset still never slips under the live overlay.
+  T.state.source = {kind:'live', label:'● live · twitch examplechannel', channel:'examplechannel'};
+  const vmeta = T.state.vmeta; T.state.vmeta = vmeta || {width:1280, height:720, fps:30, duration:1800, frame_count:54000};
+  review.setAppearance('zh', 'dark');           // a language switch re-renders the stage
+  assert.strictEqual(img.src, 'blob:live-1', 'a re-render keeps the live picture');
+  review.setAppearance('en', 'dark');
+  T.state.vmeta = vmeta;
+  assert.ok(T.stageHTML().includes('src="blob:live-1"'), 'and so does a rebuilt stage');
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0});
+  // (2) The feed dies (state error, the last live picture stays), then the operator stops.
+  review.applyLiveStatus({state:'error', error:'Live stream ended or read timed out; restart to reconnect', frames_skipped:0});
+  T.paintOverlay();
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'a dead feed keeps its last live picture without dataset layers');
+  review.applyLiveStatus({state:'stopped', frames_skipped:0});
+  assert.strictEqual(T.state.source.kind, 'vod', 'a stop after an error hands the stage back as well');
+  assert.strictEqual(img.src, 'blob:frame0', 'with the dataset picture on it');
+  T.paintOverlay();
+  assert.strictEqual(svg.innerHTML, frameHtml, 'frame 0\'s layers come back byte-identical');
+  // (3) A live measured quad that passes its check: its pockets are the model's own.
+  T.state.live.state = 'running';
+  review.ingestLiveFrame('blob:live-2', {seq:2, detections:{boxes:[], table_polygon:[[455,308],[799,320],[1023,573],[450,563]], pockets:[{name:'head-left', cx:455, cy:308}]}}, {label:'live', channel:'examplechannel'});
+  assert.ok(!svg.innerHTML.includes('data-src="calib"'), 'never a CALIB tag on a live frame');
+  assert.strictEqual((svg.innerHTML.match(/class="u-anchor/g) || []).length, 0, 'never a saved anchor mark on a live frame');
+  review.applyLiveStatus({state:'stopped', frames_skipped:0});
+  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.live.state = 'idle'; T.state.live.detections = null; T.state.shotUrl = null;
+  T.state.cloth.reference = null; T.state.anchors.loaded = false; T.state.anchors.pts = [];
+});
+
+test('a running Twitch channel has its chat toggle and embed, named by the processor', () => {
+  // Production, 2026-09-26: the owner's channel ran live and the page had no chat
+  // iframe at all. The inspector took the channel only from the shell's label for the
+  // frame, and that label is built from the Source picker - which stays on the
+  // dataset when the session was started elsewhere or the page was reloaded. The
+  // processor's own status names the channel it is reading.
+  let chatOn = true;
+  const toggles = [];
+  const VSc = adapterStage('en', ROSTER, {chat: () => chatOn, toggleChat: () => { toggles.push(1); chatOn = !chatOn; }});
+  const running = {...visionSnapshot().live, state:'running', source:{kind:'twitch', source_id:'77777777777777777777777777777777', channel:'examplechannel'}, replay:null};
+  // The frame arrived with no channel from the shell (its picker said dataset:vod30).
+  const shot = visionSnapshot({source:{kind:'live', label:'● live · dataset vod30', channel:null}, live:running});
+  const html = VSc.inspectorHTML(shot);
+  const frame = (html.match(/<iframe[^>]*src="([^"]+)"/) || [])[1] || '';
+  assert.ok(frame.startsWith('https://www.twitch.tv/embed/examplechannel/chat?parent=127.0.0.1'), 'the chat embed names the running channel and this host: ' + (frame || html.slice(0, 160)));
+  assert.ok(/data-vs-action="chat"[^>]*>Hide chat</.test(html), 'with a toggle that says what it does');
+  chatOn = false;
+  const hidden = VSc.inspectorHTML(shot);
+  assert.ok(!hidden.includes('<iframe'), 'hidden: no embed');
+  assert.ok(/data-vs-action="chat"[^>]*>Show chat</.test(hidden), 'and the toggle offers it back');
+  // A VOD replay and a dataset feed have no chat to show.
+  const replay = visionSnapshot({source:{kind:'live', label:'VOD replay 1000000001', channel:null},
+                                 live:{...running, source:{kind:'vod-replay', vod_id:'1000000001', start_s:600, rate:1}}});
+  chatOn = true;
+  assert.ok(!/<iframe|data-vs-action="chat"/.test(VSc.inspectorHTML(replay)), 'a replay has no chat');
+  assert.ok(!/<iframe|data-vs-action="chat"/.test(VSc.inspectorHTML(visionSnapshot())), 'a dataset frame has no chat');
+});
+
 test('the VOD fields are reachable and keep what the operator typed', () => {
   // (1) The panel used to list the replay controls last, so at 1280x900 the button
   // sat below the panel's own scroll box: elementFromPoint on it returned the

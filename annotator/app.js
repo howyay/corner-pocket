@@ -669,7 +669,7 @@ function stageHTML() {
   const w = state.frameWidth || 1280, h = state.frameHeight || 720;
   return `<figure class="stage" id="stage">
     <video id="t-video" playsinline muted preload="metadata" hidden></video>
-    <img id="t-img" alt="${esc(text('Raw decoded frame'))}" ${state.shotUrl ? `src="${esc(state.shotUrl)}"` : ''}>
+    <img id="t-img" alt="${esc(text('Raw decoded frame'))}" ${liveStill() ? `src="${esc(liveStill())}"` : state.shotUrl ? `src="${esc(state.shotUrl)}"` : ''}>
     <svg id="t-overlay" role="group" aria-label="${esc(text('Frame overlays'))}" viewBox="0 0 ${w} ${h}"></svg>
     <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text('Pick a moment on the scrub strip, or select a cue, then freeze it here.'))}</div>
     <div class="stage-live" id="stage-live" ${state.source.kind === 'live' ? '' : 'hidden'}></div>
@@ -690,10 +690,14 @@ function renderStage() {
     video.hidden = !videoShown;
   }
   const img = $('#t-img');
-  if (img && state.shotUrl && img.getAttribute('src') !== state.shotUrl) img.src = state.shotUrl;
+  // While the source is live the live frame owns the picture: a re-render (a
+  // language switch, a rebuilt stage, a late frame decode) keeps the last live
+  // frame and never slips the dataset still under the live overlay.
+  const picture = liveStill() || state.shotUrl;
+  if (img && picture && img.getAttribute('src') !== picture) img.src = picture;
   const showStill = !!state.shotUrl && !videoShown;
-  if (img) img.hidden = !showStill;
-  const empty = $('#stage-empty'); if (empty) empty.hidden = !!state.shotUrl || videoShown;
+  if (img) img.hidden = !showStill && !liveStill();
+  const empty = $('#stage-empty'); if (empty) empty.hidden = !!state.shotUrl || !!liveStill() || videoShown;
   const svg = $('#t-overlay'); if (svg) { svg.setAttribute('viewBox', `0 0 ${state.frameWidth || 1280} ${state.frameHeight || 720}`); if (!svg.dataset.bound) { svg.dataset.bound = '1'; svg.onpointerdown = overlayPointerDown; svg.onpointermove = overlayPointerMove; svg.onpointerup = svg.onpointercancel = overlayPointerUp; } }
   paintOverlay(); paintLiveChip(); paintPlayChip(); paintPopover(); notify();
 }
@@ -741,7 +745,9 @@ function paintOverlay() {
   // and by nothing of the dataset frame the stage held before: its stored inference,
   // correction, unified detections, anchors and the pockets derived from them all
   // describe a different picture. They come back when the stage returns to it.
-  const liveFrame = isLive;
+  // The picture decides, not the source flag: a live frame can still be on the
+  // stage while the flag already reads 'vod' (see liveOnStage).
+  const liveFrame = isLive || liveOnStage();
   const u = playing || liveFrame ? null : state.unified;
   const liveBoxes = (live?.detections?.boxes || []);
   const livePoly = live?.detections?.table_polygon || null;
@@ -753,7 +759,7 @@ function paintOverlay() {
   const autoCloth = (Array.isArray(u?.table_corners) && u.table_corners.length ? u.table_corners : null)
     || (isLive && Array.isArray(livePoly) && livePoly.length ? livePoly : null)
     || (liveFrame ? null : staticQuad());
-  const reference = state.source.kind === 'vod' ? state.cloth.reference : null;
+  const reference = state.source.kind === 'vod' && !liveFrame ? state.cloth.reference : null;
   const clothVerdict = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : {state:'none',reason:'no detection',detail:'',mean:null,max:null,tolerance:null,source:null};
   clothVerdict.available = Number(u?.pockets?.length || 0);
   state.cloth.verdict = clothVerdict;
@@ -1356,10 +1362,19 @@ function applyLiveStatus(status) {
   }
   // An operator stop hands the stage back to the dataset frame it held, with that
   // frame's own layers; a feed that stalls or ends keeps its last frame (stale).
-  if (state.live.state === 'stopped' && previous !== 'stopped' && state.source.kind === 'live') returnToDatasetFrame();
+  if (state.live.state === 'stopped' && previous !== 'stopped' && (state.source.kind === 'live' || liveOnStage())) returnToDatasetFrame();
   if (previous !== state.live.state || state.live.stale) notify();
   paintLiveChip(); notify();
 }
+// Whether the picture on the stage is a live frame, whatever the source flag says:
+// the flag reads 'vod' before the dataset still is back (a stop while the frame
+// is still decoding, a dataset chip clicked while the feed runs).
+function liveOnStage() {
+  const still = $('#t-img');
+  return !!(state.live.shown && still && !still.hidden && still.getAttribute('src') === state.live.shown);
+}
+// The last live frame, while the source is live: it is the picture on the stage.
+function liveStill() { return state.source.kind === 'live' ? state.live.shown || null : null; }
 function returnToDatasetFrame() {
   state.source = {kind:'vod', label: state.dataset, channel:null};
   state.live.detections = null;
@@ -1375,6 +1390,7 @@ function ingestLiveFrame(url, meta, source = {}) {
   state.live.seq = meta?.seq ?? state.live.seq;
   state.live.receivedAt = Date.now();
   const img = $('#t-img'); const svg = $('#t-overlay');
+  state.live.shown = url;
   if (img) { img.src = url; img.hidden = false; }
   if (epoch === state.epoch) { state.unified = null; state.cloth.refusal = null; state.cloth.verdict = {state:'none',reason:'no detection'}; paintOverlay(); paintLiveChip(); notify(); }
 }

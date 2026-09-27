@@ -889,9 +889,12 @@ function actionsHTML(s) {
 function inspectorHTML(s) {
   const kind = s.selection.kind;
   const body = kind === 'event' ? eventBlock(s) : kind === 'ball' ? ballBlock(s) : kind === 'person' ? personBlock(s) : kind === 'anchor' ? anchorBlock(s) : kind === 'box' ? boxBlock(s) : emptyRailBlock(s);
-  const liveChat = s.source.kind === 'live' && s.source.channel && opts.chat();
-  const chat = liveChat ? `<div class="vs-chat"><iframe title="Twitch chat" src="https://www.twitch.tv/embed/${esc(s.source.channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
-  const chatToggle = s.source.kind === 'live' && s.source.channel ? `<button class="vs-chat-toggle" data-vs-action="chat">${esc(opts.chat() ? t('hideChat') : t('showChat'))}</button>` : '';
+  // The channel on the stage: the processor's own status names it (the shell's frame
+  // label only knows the Source picker, which can still read the dataset).
+  const channel = s.source.kind === 'live' ? (s.live.source?.kind === 'twitch' && s.live.source.channel) || s.source.channel : null;
+  const liveChat = channel && opts.chat();
+  const chat = liveChat ? `<div class="vs-chat"><iframe title="Twitch chat" src="https://www.twitch.tv/embed/${esc(channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
+  const chatToggle = channel ? `<button class="vs-chat-toggle" data-vs-action="chat">${esc(opts.chat() ? t('hideChat') : t('showChat'))}</button>` : '';
   const close = kind === 'none' ? '' : `<button class="vs-close" data-vs-action="deselect" aria-label="×">×</button>`;
   const notice = s.notice.text ? `<div class="vs-notice${s.notice.error ? ' error' : ''}" role="status">${esc(engineText(s.notice.text))}</div>` : '';
   return `${chat}${chatToggle}${close}${notice}${body}`;
@@ -926,7 +929,7 @@ function render() {
   if (identity !== sig.identity) { const node = $('#vs-identity'); if (node) node.innerHTML = identity; sig.identity = identity; }
   // The identity block reads the saved seed and the track's binding, so both
   // belong in the signature: a save must repaint the block that saved it.
-  const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.person?.cluster_id ?? ''}|${s.selection.person?.player_id ?? ''}|${s.selection.person?.bound_evidence?.source ?? ''}|${(s.persons.tracks || []).find(x => String(x.id) === String(s.persons.track))?.seed ?? ''}|${s.enroll?.status || ''}|${s.enroll?.payload?.token || ''}|${s.enroll?.payload?.reason || ''}|${s.enroll?.elapsed_ms == null ? '' : Math.round(s.enroll.elapsed_ms / 1000)}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.corrections.manualBoxes ?? ''}/${s.corrections.modelBoxes ?? ''}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
+  const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.person?.cluster_id ?? ''}|${s.selection.person?.player_id ?? ''}|${s.selection.person?.bound_evidence?.source ?? ''}|${(s.persons.tracks || []).find(x => String(x.id) === String(s.persons.track))?.seed ?? ''}|${s.enroll?.status || ''}|${s.enroll?.payload?.token || ''}|${s.enroll?.payload?.reason || ''}|${s.enroll?.elapsed_ms == null ? '' : Math.round(s.enroll.elapsed_ms / 1000)}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.corrections.manualBoxes ?? ''}/${s.corrections.modelBoxes ?? ''}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${s.source.channel || ''}|${s.live.source?.channel || ''}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
   if (insSig !== sig.inspector) {
     const body = $('#vs-inspector-scroll'), actions = $('#vs-inspector-actions');
     if (body) body.innerHTML = inspectorHTML(s);
