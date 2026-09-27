@@ -553,3 +553,12 @@ html,body{-webkit-font-smoothing:antialiased}
    animation is unsupported there is no fade, so the last column is never masked. */
 #ops-shell .table-wrap{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);animation:vs-row-end linear both;animation-timeline:scroll(self inline)}
 @supports not (animation-timeline:scroll()){#ops-shell .table-wrap{-webkit-mask-image:none;mask-image:none}}
+/* Overdrive A (instant bracket): a score step is drawn at once and marked pending until the
+   server confirms it. The cue is static — a dashed brass edge and a quiet "saving…" line — never
+   an animation, so it is the same under reduced motion, and it never borrows the look of a
+   signed card (no green, no Signed badge). */
+#ops-shell .pending-note{margin:0;font:var(--fs-sm) var(--mono);letter-spacing:.08em;color:var(--ink-dim)}
+#ops-shell .scoreboard.pending{outline:1px dashed var(--brass);outline-offset:-1px}
+#ops-shell .scoreboard .pending-note{padding:var(--sp-1) clamp(var(--sp-4),2.4vw,var(--sp-5)) 0}
+#ops-shell .bracket-card.pending{border-style:dashed;border-color:var(--brass)}
+#ops-shell .bracket-card .pending-note{order:0;font-size:var(--fs-xs)}

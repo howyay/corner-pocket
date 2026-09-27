@@ -231,6 +231,129 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+// ---- Overdrive A: instant bracket -------------------------------------------------------
+// A harness with the real action(), a scripted server, and a capture of every render.
+function instantHarness(lang = 'en') {
+  const h = harness();
+  h.evaluate(`lang='${lang}';action=realAction;errors=[];message=(text,error,detail)=>errors.push({text,error,detail});
+    renders=[];render=()=>renders.push({score:JSON.stringify(data.tournament.matches[0].score),status:data.tournament.matches[0].status,pending:isPending('m1'),revision:data.revision});
+    data={revision:3,settings:{},players:[],history:[],events:[],notes:[],
+      tournament:{id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+        entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}],
+        matches:[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'live',table:1,absent:[]}]}};
+    confirm=()=>true;reloads=0;`);
+  // queue of scripted answers: {status, body} | 'network' ; resolved manually via release()
+  h.evaluate(`pendingAnswers=[];posted=[];
+    fetch=(url,opts)=>{if(!opts||opts.method!=='POST'){reloads++;return Promise.resolve({ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(serverState))})}
+      const body=JSON.parse(opts.body);posted.push(body);return new Promise((resolve,reject)=>pendingAnswers.push({body,resolve,reject}))};
+    serverState=JSON.parse(JSON.stringify(data));
+    answer=(kind,extra)=>{const p=pendingAnswers.shift();if(kind==='network')return p.reject(new TypeError('Failed to fetch'));
+      if(kind==='ok'){const s=JSON.parse(JSON.stringify(serverState));s.revision++;const m=s.tournament.matches[0];if(p.body.action==='match_score')m.score=p.body.score;if(p.body.action==='match_complete'){m.status='complete';m.winnerId=m.score[0]>m.score[1]?'e1':'e2'}serverState=s;return p.resolve({ok:true,status:200,json:async()=>s})}
+      return p.resolve({ok:false,status:kind,json:async()=>extra||{}})};`);
+  h.context.window.document = h.context.document;
+  return h;
+}
+const flush = () => new Promise(r => setImmediate(r));
+const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset, classList:{contains:()=>false}}}});
+
+test('instant: a score step shows at once as pending, then the server\u2019s answer confirms it', async () => {
+  const h = instantHarness();
+  const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+  await flush();
+  const shown = JSON.parse(h.evaluate('JSON.stringify(renders.at(-1))'));
+  assert.deepEqual([shown.score, shown.pending, shown.status], ['[1,0]', true, 'live'], 'the new score is on screen before the server answered, marked pending');
+  assert.equal(h.evaluate('posted[0].revision'), 3);
+  h.evaluate("answer('ok')"); await done; await flush();
+  const final = JSON.parse(h.evaluate('JSON.stringify(renders.at(-1))'));
+  assert.deepEqual([final.score, final.pending, final.revision], ['[1,0]', false, 4], 'confirmed: same score, not pending, the server\u2019s revision');
+});
+test('instant: a signature is never shown before the server signs it', async () => {
+  const h = instantHarness();
+  h.evaluate("data.tournament.matches[0].score=[3,1];serverState=JSON.parse(JSON.stringify(data))");
+  const done = click(h, {action:'sign', id:'m1'});
+  await flush();
+  assert.equal(h.evaluate('renders.at(-1).status'), 'live', 'while the signature is unconfirmed the match is still live');
+  assert.equal(h.evaluate('renders.at(-1).pending'), true, 'and says it is saving');
+  h.evaluate("answer('ok')"); await done; await flush();
+  assert.equal(h.evaluate('renders.at(-1).status'), 'complete', 'signed only once the server said so');
+});
+test('instant: 409 rolls back to the exact previous render, reloads, and says why', async () => {
+  const h = instantHarness();
+  const before = h.evaluate('JSON.stringify(data)');
+  const done = click(h, {action:'score', id:'m1', side:'1', delta:'1'});
+  await flush();
+  assert.equal(h.evaluate('renders.at(-1).score'), '[0,1]');
+  h.evaluate("answer(409,{error:'State changed; reload before retrying'})"); await done; await flush();
+  assert.equal(h.evaluate('reloads'), 1, 'the document is reloaded from the server');
+  assert.equal(h.evaluate('JSON.stringify(data)'), before, 'the state is exactly the pre-tap state (the server had not moved)');
+  assert.deepEqual([h.evaluate('renders.at(-1).score'), h.evaluate('renders.at(-1).pending')], ['[0,0]', false]);
+  assert.match(h.evaluate('errors.at(-1).text'), /Another operator changed the data/);
+});
+test('instant: 400 rolls back and shows the server\u2019s reason in both languages', async () => {
+  for (const [lang, reason] of [['en', 'Schedule match before scoring'], ['zh', '请先安排比赛上台，再记录比分']]) {
+    const h = instantHarness(lang);
+    const before = h.evaluate('JSON.stringify(data)');
+    const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+    await flush();
+    h.evaluate("answer(400,{error:'Schedule match before scoring'})"); await done; await flush();
+    assert.equal(h.evaluate('JSON.stringify(data)'), before, `${lang}: exact rollback`);
+    assert.equal(h.evaluate('renders.at(-1).score'), '[0,0]', `${lang}: the screen shows the pre-tap score`);
+    assert.ok(h.evaluate('errors.at(-1).text').includes(reason), `${lang}: ${h.evaluate('errors.at(-1).text')}`);
+    assert.equal(h.evaluate('reloads'), 0, `${lang}: a validation refusal does not reload`);
+  }
+});
+test('instant: a network failure rolls back and says so, with no retry', async () => {
+  for (const [lang, said] of [['en', 'network did not answer'], ['zh', '网络无响应']]) {
+    const h = instantHarness(lang);
+    const before = h.evaluate('JSON.stringify(data)');
+    const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+    await flush();
+    h.evaluate("answer('network')"); await done; await flush();
+    assert.equal(h.evaluate('JSON.stringify(data)'), before, `${lang}: exact rollback`);
+    assert.ok(h.evaluate('errors.at(-1).text').includes(said), `${lang}: ${h.evaluate('errors.at(-1).text')}`);
+    assert.equal(h.evaluate('posted.length'), 1, `${lang}: posted once, never retried`);
+  }
+});
+test('instant: two rapid taps are serialised; the final state is the server\u2019s', async () => {
+  const h = instantHarness();
+  const first = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+  const second = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+  await flush();
+  assert.equal(h.evaluate('posted.length'), 1, 'the second write waits for the first');
+  h.evaluate("answer('ok')"); await first; await flush(); await flush();
+  assert.equal(h.evaluate('posted.length'), 2, 'then it goes');
+  assert.equal(h.evaluate('posted[1].revision'), 4, 'carrying the revision the first answer returned (no race)');
+  assert.equal(h.evaluate('JSON.stringify(posted[1].score)'), '[2,0]', 'and built on the confirmed score');
+  h.evaluate("answer('ok')"); await second; await flush();
+  assert.equal(h.evaluate('JSON.stringify(data.tournament.matches[0].score)'), h.evaluate('JSON.stringify(serverState.tournament.matches[0].score)'), 'final state = server state');
+  assert.equal(h.evaluate('renders.at(-1).pending'), false);
+  // a refused second write rolls back only itself
+  const h2 = instantHarness();
+  const a = click(h2, {action:'score', id:'m1', side:'0', delta:'1'}), b = click(h2, {action:'score', id:'m1', side:'0', delta:'1'});
+  await flush(); h2.evaluate("answer('ok')"); await a; await flush(); await flush();
+  h2.evaluate("answer(400,{error:'Score out of range'})"); await b; await flush();
+  assert.equal(h2.evaluate('JSON.stringify(data.tournament.matches[0].score)'), '[1,0]', 'the confirmed first step stays; only the refused one is undone');
+});
+test('instant: the pending state is readable by a screen reader, in EN and 中', () => {
+  for (const [lang, saving] of [['en', 'saving…'], ['zh', '保存中…']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+      entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}],
+      matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]}]};focusId='m1';pendingMatches.set('m1',1)`);
+    const floor = h.evaluate('floorScreen()');
+    assert.ok(floor.includes('class="scoreboard pending" aria-busy="true"'), `${lang}: the scoreboard is busy`);
+    assert.ok(floor.includes(`<p class="pending-note" role="status">${saving}</p>`), `${lang}: and says ${saving}`);
+    const bracket = h.evaluate("density='compact';matchesScreen()");
+    assert.ok(bracket.includes('bracket-card pending') && bracket.includes('aria-busy="true"'), `${lang}: the bracket card is busy`);
+    assert.ok(bracket.includes(` · ${saving}"`) && bracket.includes(`role="status">${saving}</span>`), `${lang}: its name and live region say ${saving}`);
+    assert.ok(!/class="badge complete"/.test(floor), `${lang}: pending never looks signed`);
+    h.evaluate("pendingMatches.clear()");
+    assert.ok(!h.evaluate('floorScreen()').includes('aria-busy'), `${lang}: gone once confirmed`);
+  }
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const pendingRules = css.match(/#ops-shell [^{]*pending[^{]*\{[^}]*\}/g) || [];
+  assert.ok(pendingRules.length && pendingRules.every(r => !/animation|transition/.test(r)), 'the pending cue is static (same under reduced motion)');
+});
 test('narrow: record totals are 2x2 in a narrow modal, one row when wide; wide tables scroll inside', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   assert.ok(css.includes('#ops-shell .record .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}'), 'the four totals are 2x2 by default');
