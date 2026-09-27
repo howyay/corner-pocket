@@ -256,6 +256,30 @@ function instantHarness(lang = 'en') {
 const flush = () => new Promise(r => setImmediate(r));
 const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset, classList:{contains:()=>false}}}});
 
+test('round 1 · empty states: no fake names, no blank tiles, no list-item empties, every panel headed', () => {
+  for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register entrants and rack the night', 'default name · saved when you rack'],
+                                             ['zh', '暂无比赛上台', '登记参赛者并生成对阵', '默认名称 · 生成对阵时保存']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';data.players=[];data.history=[];data.events=[];data.tournament={id:'t1',name:'',format:'singles',raceTo:1,status:'registration',entrants:[],matches:[]}`);
+    const floor = h.evaluate('floorScreen()');
+    const names = [...floor.matchAll(/<strong class="name"[^>]*>([^<]*)<\/strong>/g)].map(m => m[1]);
+    assert.deepEqual(names, ['—', '—'], `${lang}: an empty board shows no name, not "Tables open"`);
+    assert.ok(floor.includes('class="empty-note board-empty"') && floor.includes(noMatch) && floor.includes(wait), `${lang}: it says there is no match and what to do`);
+    assert.ok(floor.includes('data-tab="setup"'), `${lang}: with no draw, the step is Set up`);
+    assert.ok(/<h2 class="sr-only">/.test(floor), `${lang}: the scoreboard has a heading`);
+    assert.ok(!/Tables open|球台空闲/.test(floor.replace(/<div id="strip"[\s\S]*?<\/div>/, '')), `${lang}: never a placeholder name on the board`);
+    const matches = h.evaluate('matchesScreen()');
+    assert.ok(matches.includes(dflt), `${lang}: an unsaved event name is shown, and said to be the default`);
+    assert.ok(!/<li>[^<]*(Nothing|暂无|尚无)[^<]*<\/li>/.test(matches), `${lang}: no empty state inside a list`);
+    assert.ok(!/Nothing here yet|暂无记录/.test(matches + floor + h.evaluate('setupScreen()') + h.evaluate('playersScreen()')), `${lang}: the generic empty line is gone`);
+    assert.ok(matches.includes('<article class="empty"><h3>'), `${lang}: the empty bracket panel has a heading`);
+    // with a racked night and nothing on a table, the step is Matches
+    h.evaluate(`data.tournament.name='Friday';data.tournament.entrants=[{id:'e1',members:[{name:'A'}]},{id:'e2',members:[{name:'B'}]}];data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',absent:[]}];data.tournament.status='active'`);
+    const floor2 = h.evaluate('floorScreen()');
+    assert.ok(floor2.includes('data-tab="matches"'), `${lang}: a racked match can be sent from Matches`);
+    assert.ok(!h.evaluate('matchesScreen()').includes(dflt), `${lang}: a saved name is not called a default`);
+  }
+});
 test('round 1 · numbers: every figure in the shell is lining and tabular, past any font: shorthand', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   // Zilla Slab's default figures are old-style ("0" reads as "o"); a font: shorthand resets
