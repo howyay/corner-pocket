@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+import unittest.mock
 
 from annotator.unified_server import Backend, make_handler
 
@@ -102,6 +103,112 @@ class SecurityHeaderTests(unittest.TestCase):
             self.assertNotIn(source, csp.get('script-src', []))
             self.assertNotIn(source, csp.get('default-src', []))
         self.assertNotIn('*', ' '.join(' '.join(values) for values in csp.values()))
+
+
+class ConnectionBoundTests(unittest.TestCase):
+    """B-7: idle or slow clients cannot pin threads forever, nor grow them without bound."""
+
+    def serve(self, **handler_attributes):
+        from annotator import unified_server
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        server = LoopbackServer(fixture_root(temp.name), server_class=unified_server.BoundedHTTPServer,
+                                **handler_attributes)
+        self.addCleanup(server.close)
+        return server
+
+    def test_the_production_defaults_outlast_a_15_second_heartbeat(self):
+        from annotator import unified_server
+        handler = make_handler(Backend(Path(tempfile.gettempdir())))
+        self.assertGreaterEqual(handler.timeout, 60)
+        self.assertLessEqual(handler.timeout, 120)
+        self.assertGreaterEqual(unified_server.BoundedHTTPServer.max_handlers, 16)
+        self.assertLessEqual(unified_server.BoundedHTTPServer.max_handlers, 256)
+
+    def test_a_half_open_request_is_dropped_after_the_timeout(self):
+        import socket
+        import time
+        server = self.serve(timeout=1)
+        client = socket.create_connection(('127.0.0.1', server.port), timeout=5)
+        self.addCleanup(client.close)
+        client.sendall(b'GET / HTTP/1.1\r\nHost: x\r\n')          # headers never finish
+        started = time.monotonic()
+        self.assertEqual(client.recv(1024), b'')                   # server closed the socket
+        self.assertLess(time.monotonic() - started, 4)
+
+    def test_a_slow_body_is_dropped_after_the_timeout(self):
+        import socket
+        import time
+        server = self.serve(timeout=1)
+        client = socket.create_connection(('127.0.0.1', server.port), timeout=5)
+        self.addCleanup(client.close)
+        client.sendall(b'POST /api/operations HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n'
+                       b'Content-Length: 100\r\n\r\n{')
+        started = time.monotonic()
+        data = b''
+        while True:
+            chunk = client.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+        self.assertLess(time.monotonic() - started, 4)
+        self.assertNotIn(b'200 OK', data)
+
+    def test_a_stream_that_keeps_writing_is_not_cut(self):
+        # A long response that writes a heartbeat more often than the timeout
+        # (the shape of an SSE stream) outlives the timeout several times over.
+        import time
+
+        def do_GET(self):
+            if self.path != '/stream':
+                return self.dispatch()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.end_headers()
+            for _ in range(8):
+                self.wfile.write(b': heartbeat\n\n')
+                self.wfile.flush()
+                time.sleep(0.5)
+            self.wfile.write(b'data: done\n\n')
+
+        server = self.serve(timeout=1, do_GET=do_GET)
+        started = time.monotonic()
+        response, body = server.request('GET', '/stream')
+        self.assertEqual(response.status, 200)
+        self.assertGreater(time.monotonic() - started, 3.5)
+        self.assertEqual(body.count(b': heartbeat'), 8)
+        self.assertTrue(body.endswith(b'data: done\n\n'))
+
+    def test_handler_threads_are_capped_and_the_excess_is_refused(self):
+        import socket
+        import threading
+        import time
+        from annotator import unified_server
+        with unittest.mock.patch.object(unified_server.BoundedHTTPServer, 'max_handlers', 4):
+            server = self.serve(timeout=30)
+        before = threading.active_count()
+        idle = []
+        for _ in range(12):
+            sock = socket.create_connection(('127.0.0.1', server.port), timeout=5)
+            sock.sendall(b'GET / HTTP/1.1\r\nHost: x\r\n')           # hold a handler
+            idle.append(sock)
+            self.addCleanup(sock.close)
+        time.sleep(0.5)
+        self.assertLessEqual(threading.active_count() - before, 4 + 1)
+        refused = 0
+        for sock in idle:
+            sock.settimeout(0.2)
+            try:
+                if sock.recv(64).startswith(b'HTTP/1.0 503'):
+                    refused += 1
+            except socket.timeout:
+                pass
+        self.assertGreaterEqual(refused, 8)
+        for sock in idle:
+            sock.close()
+        time.sleep(0.5)
+        response, _ = server.request('GET', '/')                     # capacity is released
+        self.assertEqual(response.status, 200)
 
 
 if __name__ == '__main__':

@@ -1619,8 +1619,50 @@ SECURITY_HEADERS = (
 )
 
 
+class BoundedHTTPServer(ThreadingHTTPServer):
+    """Thread-per-connection with a ceiling (docs/private-audit.md B-7).
+
+    At most ``max_handlers`` connections are handled at once; one more is
+    answered ``503`` and closed at once instead of spawning another thread.
+    Paired with the handler's socket timeout, idle or trickling clients free
+    their slot within ``Handler.timeout`` seconds.
+    """
+    max_handlers = 64
+    request_queue_size = 64
+
+    def __init__(self, *args, **kwargs):
+        self._slots = threading.BoundedSemaphore(self.max_handlers)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
+                                b"Content-Length: 5\r\nRetry-After: 5\r\nConnection: close\r\n\r\nbusy\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+
 def make_handler(backend):
     class Handler(BaseHTTPRequestHandler):
+        # Per-socket timeout: a request whose headers or body stall this long is
+        # dropped. It must outlast any stream's heartbeat interval (the shot-clock
+        # SSE stream sends one every 15 s); a stream that keeps writing is never cut.
+        timeout = 60
+
         def end_headers(self):
             for key, value in SECURITY_HEADERS:
                 self.send_header(key, value)
@@ -1767,7 +1809,7 @@ def main():
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args()
     backend = Backend(args.root)
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(backend))
+    server = BoundedHTTPServer((args.host, args.port), make_handler(backend))
     print(f"Unified annotator: http://{args.host}:{args.port}", flush=True)
     try:
         server.serve_forever()
