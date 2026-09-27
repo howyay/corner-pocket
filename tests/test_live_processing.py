@@ -38,6 +38,11 @@ def infer(frame, detectors, root):
     return {'pixel': int(frame[0, 0, 0])}
 
 
+def status_finished(status):
+    """Both pipeline threads have exited (the source ended or failed)."""
+    return not status['decoder_alive'] and not status['worker_alive'] and status['state'] in ('eos', 'error')
+
+
 class LiveDetectorRequestTests(unittest.TestCase):
     """`ball` is requestable at runtime, and an un-runnable request is refused."""
 
@@ -444,6 +449,112 @@ class LiveProcessingTests(unittest.TestCase):
         self.assertEqual(status['latest']['inference_ms'], 0)
         self.assertEqual(status['latest']['receive_to_process_ms'], 0)
         self.assertEqual(status['frame_age_ms'], 0)
+        # A replay has no upstream to be behind: the delay stays None and says so.
+        self.assertIsNone(status['upstream_delay_ms'])
+        self.assertIsNone(status['latest']['upstream_delay_ms'])
+        self.assertIsNone(status['upstream_clock'])
+
+
+class UpstreamDelayTests(unittest.TestCase):
+    """upstream_delay_ms is computed in-process from the live playlist, or stays None."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / 'data').mkdir()
+        (self.root / 'data/vod_30min_260815.mp4').touch()
+        state = self.root / 'out/corner-pocket/state.json'
+        state.parent.mkdir(parents=True)
+        state.write_text(json.dumps({'sources': [dict(id='saved', kind='channel', channel='pool',
+                                                     url='https://www.twitch.tv/pool')]}))
+        self.source = dict(kind='dataset', dataset='vod30')
+
+    def live_playlist(self, lag_s):
+        import datetime
+        now = time.time()
+        duration, segments = 2.0, 3
+        start = now - lag_s - duration - (segments - 1) * duration
+        lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:2', '#EXT-X-MEDIA-SEQUENCE:99']
+        for index in range(segments):
+            stamp = datetime.datetime.fromtimestamp(start + index * duration, datetime.timezone.utc)
+            lines += ['#EXT-X-PROGRAM-DATE-TIME:' + stamp.isoformat().replace('+00:00', 'Z'),
+                      '#EXTINF:%.3f,' % duration, 'https://cdn.ttvnw.net/seg%d.ts' % index]
+        return '\n'.join(lines) + '\n'
+
+    def processor(self, **kwargs):
+        kwargs.setdefault('infer', infer)
+        kwargs.setdefault('budget_enforcement', False)
+        processor = LiveProcessor(self.root, **kwargs)
+        self.addCleanup(processor.stop)
+        return processor
+
+    def wait_for(self, processor, predicate, timeout=5):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            status = processor.status()
+            if predicate(status):
+                return status
+            time.sleep(.002)
+        self.fail('Timed out: ' + repr(processor.status()))
+
+    def test_live_playlist_gives_a_labelled_delay_per_frame(self):
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+
+        class Gated(Capture):
+            """Holds the second frame until the test releases it, so a frame arriving after
+            the probe's first reading can be asserted without any timing assumption."""
+
+            def read(self):
+                if self.index >= 1 and not gate.is_set():
+                    gate.wait(5)
+                return super().read()
+
+        with patch('annotator.live_processing._fetch_playlist', return_value=self.live_playlist(1.5)):
+            processor = self.processor(capture_factory=lambda _: Gated(count=3, fps=30),
+                                       resolver=lambda url: 'https://cdn.ttvnw.net/live.m3u8')
+            processor.start(dict(kind='twitch', source_id='saved'))
+            status = self.wait_for(processor, lambda s: s['upstream_delay_ms'] is not None)
+            self.assertAlmostEqual(status['upstream_delay_ms'], 1500, delta=700)
+            self.assertEqual(status['upstream_clock'], 'broadcaster')
+            gate.set()
+            status = self.wait_for(processor, lambda s: (s['latest'] or {}).get('upstream_delay_ms') is not None)
+            self.assertAlmostEqual(status['latest']['upstream_delay_ms'], 1500, delta=700)
+            self.assertEqual(status['latest']['upstream_clock'], 'broadcaster')
+            status = self.wait_for(processor, lambda s: status_finished(s))
+        # A live source that stops delivering is an error here, by design.
+        self.assertIn('stream ended', status['error'])
+
+    def test_playlist_without_program_date_time_stays_none(self):
+        plain = '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nhttps://cdn.ttvnw.net/a.ts\n'
+        with patch('annotator.live_processing._fetch_playlist', return_value=plain):
+            processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30),
+                                       resolver=lambda url: 'https://cdn.ttvnw.net/live.m3u8')
+            processor.start(dict(kind='twitch', source_id='saved'))
+            status = self.wait_for(processor, lambda s: status_finished(s))
+        self.assertIsNone(status['upstream_delay_ms'])
+        self.assertIsNone(status['upstream_clock'])
+
+    def test_unreachable_playlist_stays_none_and_never_invents(self):
+        def broken(url):
+            raise RuntimeError('unreachable')
+        with patch('annotator.live_processing._fetch_playlist', side_effect=broken):
+            processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30),
+                                       resolver=lambda url: 'https://cdn.ttvnw.net/live.m3u8')
+            processor.start(dict(kind='twitch', source_id='saved'))
+            status = self.wait_for(processor, lambda s: status_finished(s))
+        self.assertIsNone(status['upstream_delay_ms'])
+        self.assertIsNone(status['upstream_clock'])
+
+    def test_dataset_source_never_starts_a_probe(self):
+        with patch('annotator.live_processing._fetch_playlist') as fetch:
+            processor = self.processor(capture_factory=lambda _: Capture(count=3))
+            processor.start(self.source)
+            status = self.wait_for(processor, lambda s: status_finished(s))
+        self.assertFalse(fetch.called)
+        self.assertIsNone(status['upstream_delay_ms'])
+        self.assertIsNone(processor._upstream_probe)
 
 
 if __name__ == '__main__':

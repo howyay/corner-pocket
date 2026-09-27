@@ -89,6 +89,70 @@ def _capture(media, *, open_timeout_ms=5000, read_timeout_ms=2000):
     ])
 
 
+def _fetch_playlist(media_url):
+    """The live media playlist text (module-level so a test can stand in for the network)."""
+    from annotator.twitch_source import playlist_text
+    return playlist_text(media_url)
+
+
+class _UpstreamDelayProbe:
+    """Age of the live edge, from ``#EXT-X-PROGRAM-DATE-TIME`` + ``#EXTINF``.
+
+    The media playlist is the only thing that says when the broadcast produced what we
+    receive, so the probe reads it on a cadence and reports ``now - (newest segment start
+    + its duration)``: how long ago the newest segment finished being produced.  Between
+    refreshes the age keeps advancing (the segment's end is a fixed instant), which is what
+    makes it usable per frame.
+
+    It never invents a value: a playlist without ``PROGRAM-DATE-TIME``, a recording
+    (``PLAYLIST-TYPE``/``ENDLIST``) or an unreachable playlist leaves ``delay_ms()`` None.
+    ``PROGRAM-DATE-TIME`` is the broadcaster's encoder clock, so the number carries that
+    clock's error - the status payload therefore labels it ``upstream_clock: 'broadcaster'``.
+    Fetching is a plain GET; nothing here writes.
+    """
+
+    def __init__(self, media_url, *, fetch=None, clock=time.time, refresh_s=5.0):
+        self.media_url = media_url
+        self._fetch = fetch or _fetch_playlist
+        self._clock = clock
+        self.refresh_s = max(0.5, float(refresh_s))
+        self._lag_s = None
+        self._fetched_at = None
+        self._newest_end = None
+
+    def refresh(self):
+        """Fetch and re-read the playlist; returns the current delay in ms or None."""
+        now = self._clock()
+        self._fetched_at = now
+        try:
+            text = self._fetch(self.media_url)
+        except Exception:
+            # Unreachable or unsafe playlist: say nothing rather than repeat an old number.
+            self._lag_s = self._newest_end = None
+            return None
+        lag = _playlist_lag(text, now=now)
+        if lag is None:
+            self._lag_s = self._newest_end = None
+            return None
+        self._lag_s = lag['lag_s']
+        self._newest_end = lag['newest_segment_end']
+        return max(0.0, self._lag_s) * 1000.0
+
+    def delay_ms(self):
+        """Current delay, or None when the playlist cannot say."""
+        if self._lag_s is None or self._fetched_at is None:
+            return None
+        return max(0.0, self._lag_s + (self._clock() - self._fetched_at)) * 1000.0
+
+    def label(self):
+        return 'broadcaster' if self._lag_s is not None else None
+
+
+def _playlist_lag(text, *, now):
+    from annotator.twitch_source import playlist_lag
+    return playlist_lag(text, now=now)
+
+
 class LiveProcessor:
     """One decoder + one ordered stage registry, one pending frame + one result.
 
@@ -115,7 +179,8 @@ class LiveProcessor:
     def __init__(self, root, *, capture_factory=None, resolver=None, infer=None, stages=None,
                  clock=time.monotonic, wall_clock=time.time, stop_timeout=2.0,
                  frame_budget_ms=None, budget_enforcement=True, latency_window=120,
-                 table_measure_every_n=30, ball_every_n=1, live_read_timeout_ms=20000):
+                 table_measure_every_n=30, ball_every_n=1, live_read_timeout_ms=20000,
+                 upstream_refresh_s=5.0):
         if infer is not None and stages is not None:
             raise ValueError('Pass either infer or stages, not both')
         self.root = Path(root).resolve()
@@ -154,6 +219,11 @@ class LiveProcessor:
         self._stage_evidence = {}
         self._fps = None
         self._last_published = None
+        self._upstream_probe = None
+        self._upstream_delay_ms = None
+        self._upstream_clock = None
+        self._upstream_refresh_s = upstream_refresh_s
+        self._probe_thread = None
         self._previous_received = None
         self._last_received = None
         self._done = False
@@ -196,7 +266,7 @@ class LiveProcessor:
             raise ValueError('Live detectors must be table, person and/or ball; SAM balls are not supported')
         safe_source, media = self._source_media(source)
         with self._condition:
-            if any(t and t.is_alive() for t in (self._decoder, self._worker)):
+            if any(t and t.is_alive() for t in (self._decoder, self._worker, self._probe_thread)):
                 raise RuntimeError('Previous live processing threads have not exited; stop and retry')
             requested = list(dict.fromkeys(detectors))
             if self._stage_spec is not None:
@@ -229,6 +299,10 @@ class LiveProcessor:
             self._fps = None
             self._previous_received = None
             self._last_published = None
+            self._upstream_probe = None
+            self._upstream_delay_ms = None
+            self._upstream_clock = None
+            self._probe_thread = None
             self._last_received = None
             self._frame_budget_ms = self._configured_budget
             self._latency = LatencyWindow(self._latency.size)
@@ -267,6 +341,43 @@ class LiveProcessor:
                     self._drop('stale', dropped[0])
                 self._condition.notify_all()
 
+    def _probe_upstream(self, generation, probe):
+        """Refresh the live-edge age on its own cadence, off the frame path.
+
+        A playlist fetch is a network round trip; doing it in the decoder or the worker
+        would stall frames, so it gets its own thread and only the *value* crosses back.
+        """
+        while not self._stop.is_set():
+            delay = probe.refresh()
+            with self._condition:
+                if generation != self._generation or self._stop.is_set():
+                    return
+                # Publish the reading even when frames are not flowing, so status() reports
+                # the current live-edge age; the worker refreshes it per received frame.
+                self._upstream_delay_ms = delay
+                self._upstream_clock = probe.label()
+            if self._stop.wait(probe.refresh_s):
+                return
+
+    def _start_upstream_probe(self, generation, media):
+        """Start the live-edge probe for a Twitch source; nothing for a replay.
+
+        The playlist itself decides: a recording, a playlist without
+        ``#EXT-X-PROGRAM-DATE-TIME`` or an unreachable one leaves the delay None, and only
+        a live playlist with timing tags ever produces a number.
+        """
+        if self._source.get('kind') != 'twitch' or not isinstance(media, str):
+            return None
+        probe = _UpstreamDelayProbe(media, refresh_s=self._upstream_refresh_s)
+        with self._condition:
+            if self._stop.is_set() or generation != self._generation:
+                return None
+            self._upstream_probe = probe
+            self._probe_thread = threading.Thread(target=self._probe_upstream,
+                                                  args=(generation, probe), daemon=True)
+            self._probe_thread.start()
+        return probe
+
     def _decode(self, generation, media):
         capture = None
         try:
@@ -280,6 +391,9 @@ class LiveProcessor:
                 media, read_timeout_ms=2000 if replay else self._live_read_timeout_ms)
             if not capture.isOpened():
                 raise _SourceError('Could not open the selected media source')
+            if not replay:
+                # Live-edge age, measured in-process from the playlist's own timing tags.
+                self._start_upstream_probe(generation, media)
             fps = float(capture.get(cv2.CAP_PROP_FPS)) if replay else 0
             fps = fps if math.isfinite(fps) and fps > 0 else 30.0
             deadline = self._clock()
@@ -367,6 +481,12 @@ class LiveProcessor:
                     budget_ms = self._frame_budget_ms if self._enforce_budget else None
                     fps = self._fps
                 started = self._clock()
+                # The live-edge age is read per frame, at receive time, so a consumer can
+                # pair a frame with the delay that applied when it arrived.  None unless a
+                # live playlist with PROGRAM-DATE-TIME has actually answered.
+                if self._upstream_probe is not None:
+                    self._upstream_delay_ms = self._upstream_probe.delay_ms()
+                    self._upstream_clock = self._upstream_probe.label()
                 if budget_ms is not None and (started - received) * 1000 > budget_ms:
                     # Older than a whole frame period at pickup: publishing it now
                     # would show a moment the decoder has already moved past.
@@ -420,7 +540,8 @@ class LiveProcessor:
                                 # skipped by cadence (evidence absent, not stale) and
                                 # what each executed stage's result was made of.
                                 stage_evidence=copy.deepcopy(run.evidence),
-                                upstream_delay_ms=None)
+                                upstream_delay_ms=self._upstream_delay_ms,
+                                upstream_clock=self._upstream_clock)
                 published = False
                 with self._condition:
                     if generation == self._generation and not self._stop.is_set():
@@ -445,7 +566,7 @@ class LiveProcessor:
                 dropped, self._pending = self._pending, None
                 self._drop('stale', dropped[0])
             self._condition.notify_all()
-            threads = (self._decoder, self._worker)
+            threads = (self._decoder, self._worker, self._probe_thread)
         deadline = time.monotonic() + self._stop_timeout
         for thread in threads:
             if thread is not None:
@@ -465,7 +586,11 @@ class LiveProcessor:
                         frames_received=self._received, frames_processed=self._processed,
                         frames_skipped=self._skipped, last_received_at=self._last_received,
                         latest=latest, frame_age_ms=max(0, self._clock() - self._latest[2]) * 1000 if self._latest else None,
-                        upstream_delay_ms=None,
+                        upstream_delay_ms=self._upstream_delay_ms,
+                        # Which clock that delay is measured on: the broadcaster's own,
+                        # because #EXT-X-PROGRAM-DATE-TIME is stamped by its encoder.  None
+                        # whenever there is no live playlist timing to read.
+                        upstream_clock=self._upstream_clock,
                         # Additive: per-stage rolling latency in registry order, the
                         # same window for the non-stage steps, and why frames went.
                         # Each stage also carries its cadence, how often it actually

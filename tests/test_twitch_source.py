@@ -96,5 +96,65 @@ class TwitchSourceTests(unittest.TestCase):
                 source._request(MEDIA)
 
 
+class PlaylistLagTests(unittest.TestCase):
+    """Live-edge age from #EXT-X-PROGRAM-DATE-TIME, and every case where it must say None."""
+
+    NOW = 1_790_410_000.0            # fixed: no wall clock in these assertions
+
+    def live_playlist(self, *, lag_s=1.5, duration=2.0, segments=3, now=None):
+        import datetime
+        now = self.NOW if now is None else now
+        lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:2',
+                 '#EXT-X-MEDIA-SEQUENCE:2498', '#EXT-X-TWITCH-LIVE-SEQUENCE:2498',
+                 '#EXT-X-TWITCH-ELAPSED-SECS:4778.352']
+        # The newest segment ended `lag_s` ago, so its start is lag+duration before now.
+        start = now - lag_s - duration - (segments - 1) * duration
+        for index in range(segments):
+            moment = start + index * duration
+            stamp = datetime.datetime.fromtimestamp(moment, datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
+            lines += ['#EXT-X-PROGRAM-DATE-TIME:' + stamp, '#EXTINF:%.3f,' % duration,
+                      'https://cdn.ttvnw.net/seg%d.ts' % index]
+        return '\n'.join(lines) + '\n'
+
+    def test_lag_is_the_age_of_the_newest_segment_end(self):
+        lag = source.playlist_lag(self.live_playlist(lag_s=1.5), now=self.NOW)
+        self.assertAlmostEqual(lag['lag_s'], 1.5, places=3)
+        self.assertEqual(lag['segments'], 3)
+        self.assertTrue(lag['live'])
+        self.assertIn('+00:00', lag['newest_segment_end'])
+
+    def test_a_different_lag_is_read_back(self):
+        self.assertAlmostEqual(source.playlist_lag(self.live_playlist(lag_s=4.25), now=self.NOW)['lag_s'],
+                               4.25, places=3)
+
+    def test_playlist_without_program_date_time_says_nothing(self):
+        for body in (PLAYLIST,                                    # segments, no PDT
+                     '#EXTM3U\n#EXT-X-TWITCH-ELAPSED-SECS:4778.352\n#EXTINF:2,\na.ts\n',
+                     '#EXTM3U\n#EXT-X-PROGRAM-DATE-TIME:not-a-time\n#EXTINF:2,\na.ts\n'):
+            with self.subTest(body=body[:40]):
+                self.assertIsNone(source.playlist_lag(body, now=self.NOW))
+
+    def test_a_recording_is_not_an_upstream(self):
+        for kind in ('#EXT-X-PLAYLIST-TYPE:EVENT', '#EXT-X-PLAYLIST-TYPE:VOD'):
+            body = self.live_playlist().replace('#EXT-X-VERSION:3', '#EXT-X-VERSION:3\n' + kind)
+            with self.subTest(kind=kind):
+                self.assertIsNone(source.playlist_lag(body, now=self.NOW))
+        ended = self.live_playlist() + '#EXT-X-ENDLIST\n'
+        self.assertIsNone(source.playlist_lag(ended, now=self.NOW))
+
+    def test_garbage_is_not_a_playlist(self):
+        for body in ('', 'not a playlist', '<html>403</html>', '#EXTM3U\n'):
+            with self.subTest(body=body[:20]):
+                self.assertIsNone(source.playlist_lag(body, now=self.NOW))
+
+    def test_playlist_text_uses_the_validated_request_path(self):
+        with patch.object(source, '_request', return_value=PLAYLIST) as request:
+            self.assertEqual(source.playlist_text(MEDIA, timeout=2), PLAYLIST)
+        self.assertEqual(request.call_args.kwargs, {'timeout': 2})
+        # Unpatched: the host allowlist refuses before any socket is opened.
+        with self.assertRaisesRegex(source.TwitchSourceError, 'unsafe'):
+            source.playlist_text('https://evil.example/playlist.m3u8')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -5,9 +5,11 @@ Returns a direct media playlist, not decoded frames or a latency guarantee.
 FFmpeg/OpenCV need not implement Twitch's EXT-X-TWITCH-PREFETCH extension.
 Signed URLs are private, short-lived decoder inputs: never log or persist them.
 """
+import datetime
 import json
 import re
 import ssl
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -46,7 +48,7 @@ def _validate_url(url, *, media=False):
     return url
 
 
-def _request(url, payload=None):
+def _request(url, payload=None, *, timeout=_TIMEOUT):
     _validate_url(url, media=payload is None)
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*'}
     data = None
@@ -58,7 +60,7 @@ def _request(url, payload=None):
         # Bundled Python installations may not locate the host CA bundle.
         if Path('/etc/ssl/certs/ca-certificates.crt').is_file():
             context.load_verify_locations('/etc/ssl/certs/ca-certificates.crt')
-        with build_opener(_NoRedirect(), HTTPSHandler(context=context)).open(Request(url, data=data, headers=headers), timeout=_TIMEOUT) as response:
+        with build_opener(_NoRedirect(), HTTPSHandler(context=context)).open(Request(url, data=data, headers=headers), timeout=timeout) as response:
             body = response.read(_MAX_BYTES + 1)
         if len(body) > _MAX_BYTES:
             raise TwitchSourceError('Twitch playback response exceeds the size limit')
@@ -73,6 +75,69 @@ def _request(url, payload=None):
         raise TwitchSourceError(message) from None
     except (URLError, OSError, UnicodeError, ValueError):
         raise TwitchSourceError('Twitch playback request failed; check network and TLS connectivity') from None
+
+
+def _playlist(text):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines or lines[0] != '#EXTM3U':
+        raise TwitchSourceError('Twitch returned an invalid playback playlist')
+    return lines
+
+
+def playlist_text(media_url, *, timeout=3):
+    """The media playlist behind a resolved URL, for reading its timing tags.
+
+    Same host allowlist and no-redirect policy as every other fetch here; a short
+    timeout because this is metadata, never frame data.
+    """
+    return _request(media_url, timeout=timeout)
+
+
+def _pdt(text):
+    try:
+        stamp = text.strip().replace('Z', '+00:00')
+        return datetime.datetime.fromisoformat(stamp)
+    except (ValueError, AttributeError):
+        return None
+
+
+def playlist_lag(text, *, now=None):
+    """How long ago the newest segment of a **live** playlist ended, in seconds.
+
+    ``{'lag_s', 'newest_segment_start', 'newest_segment_end', 'segments', 'live'}``, or
+    ``None`` when the playlist cannot say: it is not an HLS media playlist, it is a
+    recording (``#EXT-X-PLAYLIST-TYPE`` or ``#EXT-X-ENDLIST`` present), or it carries no
+    ``#EXT-X-PROGRAM-DATE-TIME``.  Nothing is inferred from ``#EXT-X-TWITCH-ELAPSED-SECS``,
+    which is a stream-relative counter, not a wall clock.
+
+    ``#EXT-X-PROGRAM-DATE-TIME`` is stamped by the broadcaster's encoder, so this measures
+    *playlist age* on the encoder's clock: if that clock is wrong, this number moves with
+    it.  It is the live edge's age, i.e. the freshest a received frame can be.
+    """
+    try:
+        lines = _playlist(text)
+    except TwitchSourceError:
+        return None
+    if any(line.startswith('#EXT-X-PLAYLIST-TYPE:') or line == '#EXT-X-ENDLIST' for line in lines):
+        return None
+    started, latest, segments = None, None, 0
+    for line in lines:
+        if line.startswith('#EXT-X-PROGRAM-DATE-TIME:'):
+            started = _pdt(line.split(':', 1)[1])
+        elif line.startswith('#EXTINF:') and started is not None:
+            try:
+                duration = float(line.split(':', 1)[1].split(',')[0])
+            except (ValueError, IndexError):
+                continue
+            segments += 1
+            latest = (started, started + datetime.timedelta(seconds=duration))
+            started = None
+    if latest is None:
+        return None
+    moment = now if now is not None else time.time()
+    end = latest[1].timestamp()
+    return {'lag_s': moment - end, 'newest_segment_start': latest[0].isoformat(),
+            'newest_segment_end': latest[1].isoformat(), 'segments': segments, 'live': True}
 
 
 def _playlist(text):
