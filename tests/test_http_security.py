@@ -255,5 +255,92 @@ class ContentLengthTests(unittest.TestCase):
                 self.assertEqual(body, b'{"error": "invalid request size"}')
 
 
+class ErrorBodyTests(unittest.TestCase):
+    """B-11: error bodies carry operator sentences, never internals.
+
+    Unexpected exceptions become a generic body with a reference; the detail,
+    traceback included, goes to stderr (the service journal). Sentences written
+    for the operator keep their words but lose absolute paths.
+    """
+
+    SECRET = '/home/someone/private/models/weights.pth'
+
+    def setUp(self):
+        import contextlib
+        import io
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.server = LoopbackServer(fixture_root(temp.name))
+        self.addCleanup(self.server.close)
+        self.log = io.StringIO()                         # the service's stderr is the journal
+        quiet = contextlib.redirect_stderr(self.log)
+        quiet.__enter__()
+        self.addCleanup(quiet.__exit__, None, None, None)
+
+    def get_json(self, path):
+        import json
+        response, body = self.server.request('GET', path)
+        return response.status, json.loads(body)
+
+    def fail_with(self, error):
+        from annotator import unified_server
+        patcher = unittest.mock.patch.object(unified_server.Backend, 'operations', side_effect=error)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return self.get_json('/api/operations')
+
+    def test_an_unexpected_exception_is_a_generic_500_and_is_logged(self):
+        status, body = self.fail_with(OSError(2, 'No such file or directory', self.SECRET))
+        self.assertEqual(status, 500)
+        self.assertEqual(body['error'], 'internal error')
+        self.assertRegex(body.get('ref', ''), r'^[0-9a-f]{8}$')
+        self.assertNotIn(self.SECRET, str(body))
+        self.assertIn(f"error {body['ref']}: FileNotFoundError", self.log.getvalue())
+        self.assertIn(self.SECRET, self.log.getvalue())
+        self.assertIn('Traceback', self.log.getvalue())
+
+    def test_type_and_key_errors_do_not_echo_their_text(self):
+        for error in (TypeError("'NoneType' object is not subscriptable: " + self.SECRET),
+                      KeyError(self.SECRET)):
+            with self.subTest(error=type(error).__name__):
+                status, body = self.fail_with(error)
+                self.assertEqual(status, 400)
+                self.assertEqual(body['error'], 'invalid request')
+                self.assertNotIn(self.SECRET, str(body))
+                self.assertIn(body['ref'], self.log.getvalue())
+                unittest.mock.patch.stopall()
+
+    def test_validation_messages_are_kept_without_paths(self):
+        self.assertEqual(self.fail_with(ValueError('rating must be an integer from 0 to 1000')),
+                         (400, {'error': 'rating must be an integer from 0 to 1000'}))
+        unittest.mock.patch.stopall()
+        status, body = self.fail_with(ValueError('cannot read ' + self.SECRET))
+        self.assertEqual((status, body), (400, {'error': 'cannot read weights.pth'}))
+
+    def test_urls_survive_path_stripping(self):
+        from annotator.unified_server import operator_message
+        text = 'Use https://www.twitch.tv/videos/123 or https://www.twitch.tv/channel, not ' + self.SECRET
+        self.assertEqual(operator_message(ValueError(text)),
+                         'Use https://www.twitch.tv/videos/123 or https://www.twitch.tv/channel, not weights.pth')
+        self.assertEqual(operator_message(ValueError('ratio 3/4 and a/b stay')), 'ratio 3/4 and a/b stay')
+
+    def test_a_failed_job_keeps_its_sentence_but_not_internals(self):
+        from annotator.unified_server import APIError, Backend, public_error
+        self.assertEqual(public_error(APIError('rebuild already running', 409)), 'rebuild already running')
+        self.assertEqual(public_error(RuntimeError('OSNet weights not found: ' + self.SECRET)),
+                         'OSNet weights not found: weights.pth')
+        text = public_error(OSError(13, 'Permission denied', self.SECRET))
+        self.assertRegex(text, r'^internal error \(ref [0-9a-f]{8}\)$')
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            stderr = f'Traceback (most recent call last):\n  File "{self.SECRET}", line 1\nRuntimeError: boom\n'
+            with unittest.mock.patch('annotator.unified_server.subprocess.run',
+                                     return_value=unittest.mock.Mock(returncode=1, stderr=stderr, stdout='')):
+                backend._rebuild()
+            self.assertEqual(backend.job['status'], 'failed')
+            self.assertRegex(backend.job['error'], r'^rebuild failed \(exit 1; ref [0-9a-f]{8}\)$')
+            self.assertIn(self.SECRET, self.log.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()

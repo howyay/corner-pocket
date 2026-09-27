@@ -40,6 +40,40 @@ class APIError(Exception):
         self.status = status
 
 
+def error_reference(exc):
+    """Log an unexpected exception with its traceback; return the short id the
+    client is shown instead of the text (docs/private-audit.md B-11)."""
+    import traceback
+    import uuid
+    ref = uuid.uuid4().hex[:8]
+    print(f"error {ref}: {type(exc).__name__}: {exc}\n"
+          + "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+          file=sys.stderr, flush=True)
+    return ref
+
+
+#: An absolute POSIX path (not a URL's path: '//' and 'host/...' do not match).
+_ABSOLUTE_PATH = re.compile(r"(?<![\w.:/~])/(?:[^\s/'\"():,;]+/)+([^\s/'\"():,;]+)")
+
+
+def operator_message(exc):
+    """The sentence an operator is shown, with absolute paths cut to their file
+    name: 'weights not found: /home/.../yolov8n.pt' says 'yolov8n.pt'."""
+    return _ABSOLUTE_PATH.sub(r"\1", str(exc))
+
+
+def public_error(exc):
+    """What a job may report: sentences written for the operator, nothing else.
+
+    ``APIError``/``ValueError`` are validation, and ``RuntimeError`` is how the
+    model loaders say 'weights missing'; all three keep their sentence, minus
+    absolute paths. Anything else is logged and replaced by a reference.
+    """
+    if isinstance(exc, (APIError, ValueError, RuntimeError)):
+        return operator_message(exc)
+    return f"internal error (ref {error_reference(exc)})"
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -796,7 +830,7 @@ class Backend:
             return [{key: person.get(key) for key in self._PERSON_FIELDS}
                     for person in result['persons']], None
         except Exception as exc:
-            return [], f'identity unavailable: {exc}'
+            return [], f'identity unavailable: {operator_message(exc)}'
 
     def _unified_events(self, dataset, timestamp):
         """Info-complete scan candidates within ±3s of the frame time."""
@@ -1294,7 +1328,7 @@ class Backend:
                     job.update(status='completed', stage='completed', result=result)
             except Exception as exc:
                 with self.lock:
-                    job.update(status='failed', stage='failed', error=str(exc))
+                    job.update(status='failed', stage='failed', error=public_error(exc))
             finally:
                 with self.lock:
                     job['finished_at'] = now()
@@ -1559,12 +1593,15 @@ class Backend:
             result = subprocess.run([sys.executable, str(self.root / "src" / "pid_seed_rebuild.py"), "--root", str(self.root)],
                                     capture_output=True, text=True, timeout=1800)
             if result.returncode:
-                raise RuntimeError((result.stderr or result.stdout or f"exit {result.returncode}")[-4000:])
+                # The child's stderr is a traceback with absolute paths: log it, report a reference.
+                detail = (result.stderr or result.stdout or "")[-4000:]
+                ref = error_reference(RuntimeError(f"pid_seed_rebuild exit {result.returncode}: {detail}"))
+                raise APIError(f"rebuild failed (exit {result.returncode}; ref {ref})", 500)
             with self.lock:
                 self.job = {"status": "completed", "error": None, "output": result.stdout[-4000:]}
         except Exception as exc:
             with self.lock:
-                self.job = {"status": "failed", "error": str(exc)}
+                self.job = {"status": "failed", "error": public_error(exc)}
 
     def media(self, parts):
         if len(parts) == 4 and parts[:2] == ["media", "balls"]:
@@ -1791,13 +1828,18 @@ def make_handler(backend):
                     return self.json(200, backend.get(parts, query))
                 return self.file(backend.media(parts))
             except APIError as exc:
-                self.json(exc.status, {"error": str(exc)})
-            except (ValueError, TypeError, KeyError) as exc:
-                self.json(400, {"error": str(exc)})
+                self.json(exc.status, {"error": operator_message(exc)})
+            except ValueError as exc:
+                # Validation sentences written for the operator (and JSON decode positions).
+                self.json(400, {"error": operator_message(exc)})
+            except (TypeError, KeyError) as exc:
+                # A malformed request that reached code expecting another shape: the
+                # message names internals (types, keys), so it is logged, not returned.
+                self.json(400, {"error": "invalid request", "ref": error_reference(exc)})
             except (BrokenPipeError, ConnectionResetError):
                 pass
             except Exception as exc:
-                self.json(500, {"error": str(exc)})
+                self.json(500, {"error": "internal error", "ref": error_reference(exc)})
 
         def do_GET(self):
             self.dispatch()
