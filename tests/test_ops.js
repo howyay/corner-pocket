@@ -256,6 +256,14 @@ function instantHarness(lang = 'en') {
 const flush = () => new Promise(r => setImmediate(r));
 const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset, classList:{contains:()=>false}}}});
 
+test('round 1 · numbers: every figure in the shell is lining and tabular, past any font: shorthand', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  // Zilla Slab's default figures are old-style ("0" reads as "o"); a font: shorthand resets
+  // font-variant-numeric, so the rule must reach every element, not just be inherited.
+  assert.ok(css.includes('#ops-shell,#ops-shell *{font-variant-numeric:lining-nums tabular-nums!important}'));
+  const displayFaces = (css.match(/url\(\/fonts\/zilla-slab-[^)]+\.woff2\)/g) || []).length;
+  assert.ok(displayFaces >= 3, 'the self-hosted Zilla Slab faces are the ones whose subset keeps lnum/tnum');
+});
 test('instant: a score step shows at once as pending, then the server\u2019s answer confirms it', async () => {
   const h = instantHarness();
   const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});

@@ -38,6 +38,12 @@
    (calc) and structural reserves (>=40px) stay literal. */
 :root{--sp-1:4px;--sp-1h:6px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px}
 #ops-shell,#ops-shell *{box-sizing:border-box}
+/* Round-1 finding 1: every number is lining and tabular. Zilla Slab defaults to old-style
+   figures ("0" reads as the letter o, "1" as a dotless i); its self-hosted subset keeps lnum/tnum
+   (checked with fontTools), and Barlow/DM Mono are lining already. The rule is set on every element (and marked
+   !important) because each font: shorthand resets font-variant-numeric to normal; it covers every
+   tile, score, clock, table and sheet in EN and 中, and nothing in the shell wants other figures. */
+#ops-shell,#ops-shell *{font-variant-numeric:lining-nums tabular-nums!important}
 html{scroll-padding-top:270px}
 #ops-shell button,#ops-shell input,#ops-shell select,#ops-shell textarea,#ops-shell article{scroll-margin-top:270px}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5 var(--body)}
