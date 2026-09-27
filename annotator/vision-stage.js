@@ -86,7 +86,7 @@ const COPY = {
     coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
     quadRefused:'quad refused', quadFallback:'quad from the naive fallback', storedInference:'stored inference',
-    quadDrift:'quad drift vs saved corners',
+    quadDrift:'quad drift vs saved corners', tableFits:'table outline matches the saved corners',
     pocketsHeldRejected:'quad rejected', pocketsHeldUnverified:'unverified',
     correctionRefused:'saved correction refused', tolerance:'tol',
     playInStage:'▶ Play in stage', geometry:'Detected geometry', colour:'Colour',
@@ -101,7 +101,7 @@ const COPY = {
     gateMove:'Re-measured move', gateMotion:'motion', gateGap:'Claim vs measured ball',
     gateDup:'Duplicate detections merged', gateNotes:'Gate notes',
     gateNetPath:'Net move / path', gatePeakSpeed:'Peak speed', gateDenseWindow:'Track window',
-    provenanceMachine:'machine-produced candidate; no human has confirmed it',
+    provenanceMachine:'suggested by the computer · not yet confirmed by a person', provenanceMachineLegacy:'machine-produced candidate; no human has confirmed it', detectedBy:'detected by', technicalDetails:'Technical details',
     provenanceHuman:'confirmed by a person',
     tierLabel:'Confirmation tier', tierGeometry:'geometry-verified', tierWindow:'motion window only',
     tierGeometryHint:'The re-measured motion matches the claim: this ball, this start, this end.',
@@ -183,7 +183,7 @@ const COPY = {
     coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
     quadRefused:'四边形已拒绝', quadFallback:'四边形来自朴素回退', storedInference:'已存推理',
-    quadDrift:'四边形相对已保存角点漂移',
+    quadDrift:'四边形相对已保存角点漂移', tableFits:'球台轮廓与已保存角点一致',
     pocketsHeldRejected:'四边形被拒绝', pocketsHeldUnverified:'未校验',
     correctionRefused:'已保存修正被拒绝', tolerance:'容差',
     playInStage:'▶ 在舞台播放', geometry:'检测几何', colour:'颜色',
@@ -198,7 +198,7 @@ const COPY = {
     gateMove:'复测位移', gateMotion:'运动量', gateGap:'声称位置与实测球',
     gateDup:'合并的重复检测', gateNotes:'检测门备注',
     gateNetPath:'净位移 / 路径', gatePeakSpeed:'峰值速度', gateDenseWindow:'轨迹窗口',
-    provenanceMachine:'机器产出，未经人工确认',
+    provenanceMachine:'电脑识别的候选 · 尚未经人工确认', provenanceMachineLegacy:'机器产出，未经人工确认', detectedBy:'识别来源', technicalDetails:'技术细节',
     provenanceHuman:'已由人工确认',
     tierLabel:'确认层级', tierGeometry:'几何已核', tierWindow:'仅运动窗口',
     tierGeometryHint:'复测位移与声称一致：同这颗球、同起点、同终点。',
@@ -404,7 +404,7 @@ function gateStatusWord(status) {
 }
 function eventGeometry(item) {
   const rows = [];
-  const row = (key, value) => { if (value) rows.push(`<li class="vs-mono"><span class="vs-dim">${esc(t(key))}</span> ${esc(value)}</li>`); };
+  const row = (key, value) => { if (value) rows.push({key, html: `<li class="vs-mono"><span class="vs-dim">${esc(t(key))}</span> ${esc(value)}</li>`}); };
   row('colour', colourLabel(item.color));
   if (item.type === 'pot') {
     row('ballLast', `${pxText(item.last_px)} px`);
@@ -444,7 +444,12 @@ function eventGeometry(item) {
     // a report or a bug refers to.
     row('gateNotes', (gate.reasons || []).map(code => { const words = reasonText(code); return words === String(code) || !REASONS[code] ? words : `${words} (${code})`; }).join(' · '));
   }
-  const body = rows.length ? `<ul class="vs-facts">${rows.join('')}</ul>` : '';
+  // Round 1: plain rows first; rows that are measurement plumbing (pixel positions, projection
+  // source, the gate's raw notes and numbers) go under one "Technical details" disclosure.
+  const technical = new Set(['ballLast', 'pocketAt', 'shotFrom', 'shotTo', 'projectedFrom', 'gateNotes', 'gateCensus', 'gateColourCensus', 'gateMove', 'gateGap', 'gateNetPath', 'gatePeakSpeed', 'gateMotion', 'gateDup']);
+  const plain = rows.filter(r => !technical.has(r.key)).map(r => r.html), tech = rows.filter(r => technical.has(r.key)).map(r => r.html);
+  const body = (plain.length ? `<ul class="vs-facts">${plain.join('')}</ul>` : '') +
+    (tech.length ? `<details class="vs-tech"><summary>${esc(t('technicalDetails'))}</summary><ul class="vs-facts">${tech.join('')}</ul></details>` : '');
   return `${body}<p class="vs-note">${esc(item.projectable ? t('projectedNote') : t('notProjectable'))}</p>`;
 }
 function receiptLine(kind) {
@@ -525,15 +530,19 @@ function provenanceLine(event) {
   const p = event?.provenance;
   if (!p || typeof p !== 'object') return '';
   const parts = [];
-  if (p.detector) parts.push(`<span class="vs-mono vs-dim">${esc(p.detector)}</span>`);
+  // Round 1: operators read the plain statement; the detector string (machine vocabulary) is kept one
+  // step away - in the line's title and a visually hidden span - never removed.
+  const detector = p.detector ? String(p.detector) : '';
   const statement = p.statement ? String(p.statement) : (p.machine_produced && !p.human_confirmed ? t('provenanceMachine') : '');
   if (statement) {
-    const known = statement === COPY.en.provenanceMachine || statement === COPY.zh.provenanceMachine;
+    const known = [COPY.en.provenanceMachine, COPY.zh.provenanceMachine, COPY.en.provenanceMachineLegacy, COPY.zh.provenanceMachineLegacy].includes(statement);
     parts.push(esc(known ? t('provenanceMachine') : statement));
   }
   if (p.human_confirmed) parts.push(esc(t('provenanceHuman')));
-  if (!parts.length) return '';
-  return `<div class="vs-prov${p.human_confirmed ? ' confirmed' : ''}" data-vs-provenance="${p.human_confirmed ? 'human' : 'machine'}" title="${esc(p.statement || '')}">${parts.join(' · ')}</div>`;
+  if (!parts.length && !detector) return '';
+  // the hidden detector span joins with a space, so the visible line ends on the statement, not on " · "
+  const hidden = detector ? ` <span class="vs-sr-only">${esc(t('detectedBy'))}: ${esc(detector)}</span>` : '';
+  return `<div class="vs-prov${p.human_confirmed ? ' confirmed' : ''}" data-vs-provenance="${p.human_confirmed ? 'human' : 'machine'}" title="${esc([detector ? `${t('detectedBy')}: ${detector}` : '', p.statement || ''].filter(Boolean).join(' · '))}">${parts.join(' · ')}${hidden}</div>`;
 }
 function tierBadge(event) {
   // The confirmation tier, on the card and in the inspector: geometry-verified
@@ -653,7 +662,7 @@ function factsLine(s) {
   else if (verdict.state === 'unverified') parts.push(t('quadUnverified'));
   // The detector searches around the saved hand anchors, so a pass is a drift
   // measurement, not a verdict on the table: report the number, not just "ok".
-  else if (verdict.state === 'ok' && verdict.mean != null) parts.push(`${t('quadDrift')} ${verdict.mean.toFixed(1)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
+  else if (verdict.state === 'ok' && verdict.mean != null) parts.push(`${t('tableFits')} (${verdict.mean.toFixed(1)} px · ${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
   // Why there is no quad at all. The detector's codes stay machine-side; the
   // operator reads the phrase, plus how many sides were left unverified (the
   // per-side list is the tooltip on this line).

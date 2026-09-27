@@ -253,6 +253,37 @@ test('overlay tags never overprint: YOURS keeps its spot, the rest move to free 
   assert.ok(T.tagRow(5, 6, 'model', '').includes('x="5" y="6"'));
 });
 
+test('round 1 · overlay tags stay legible at the displayed scale and never overprint; nothing they said is lost', () => {
+  // A 1280-wide frame shown 372 px wide (the 390 phone): tags scale so the text is >= 11 px on screen.
+  const src = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  assert.ok(/const MIN_TAG_PX = 11;/.test(src) && /tagScale = measureTagScale\(svg, state\.frameWidth \|\| 1280\);/.test(src), 'the scale is measured every paint');
+  // measureTagScale: 14 px frame text shown at 372/1280 would be 4 px; the tag scales so it is 11 px.
+  const measure = new Function(`${src.slice(src.indexOf('const SRC_TAG_HEIGHT'), src.indexOf('function glyphWidth'))}; return measureTagScale;`)();
+  const k = measure({getBoundingClientRect: () => ({width: 372})}, 1280);
+  assert.ok(Math.abs(14 * k * 372 / 1280 - 11) < 0.01, `14 px x ${k.toFixed(2)} x 372/1280 = 11 px on screen`);
+  assert.strictEqual(measure({getBoundingClientRect: () => ({width: 1280})}, 1280), 1, 'a full-size frame is not scaled');
+  // Crowded frame: 12 model rows asked for the same spot, plus the operator's and a calibration row.
+  T.beginTags();
+  const asks = [T.tagRow(100, 100, 'manual', 'ball'), T.tagRow(100, 100, 'calib', 'top-left')];
+  for (let i = 0; i < 12; i++) asks.push(T.tagRow(100 + i, 100, 'auto', 'person'));
+  const html = T.placeTags(asks.join(''), 1280, 720);
+  assert.ok(!html.includes('\u0000'), 'every queued row resolves');
+  const rows = [...html.matchAll(/<g class="o-src (\w+)" data-src="\w+">(<title>([^<]*)<\/title>)?<rect x="(-?\d+)" y="(-?\d+)" width="(\d+)" height="(\d+)"/g)]
+    .map(([, kind, , title, x, y, w, h]) => ({kind, title, x: +x, y: +y, w: +w, h: +h}));
+  const labels = [...html.matchAll(/<text class="o-label" x="(-?\d+)" y="(-?\d+)"[^>]*>([^<]*)<\/text>/g)].map(([, x, y, s]) => ({x: +x, y: +y, s}));
+  const full = rows.map(r => { const l = labels.find(e => e.x > r.x && e.x <= r.x + r.w + 12 && e.y > r.y && e.y <= r.y + r.h); return {...r, w: l ? Math.ceil(l.x + l.s.length * 14 * 0.62 - r.x) : r.w}; });
+  for (let i = 0; i < full.length; i++) for (let j = i + 1; j < full.length; j++) {
+    const a = full[i], b = full[j];
+    assert.ok(!(a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + a.h && b.y < a.y + b.h), `rows ${a.kind}@${a.x},${a.y} and ${b.kind}@${b.x},${b.y} never overprint`);
+  }
+  assert.ok(rows.some(r => r.kind === 'manual') && rows.some(r => r.kind === 'calib'), 'the operator\u2019s and calibration rows always keep a spot');
+  // A row with no room for its label keeps its chip, with the label as the chip's title (one hover away).
+  for (const r of rows.filter(r => r.title)) assert.strictEqual(r.title, 'person', 'a chip-only row keeps its label in <title>');
+  // Confidence is not printed on the frame any more; it is in the box's <title>, with who drew it.
+  assert.ok(!/\bperson 0\.\d\d\b/.test(src.slice(src.indexOf('function paintOverlay'))), 'the score left the tag text');
+  assert.ok(src.includes("text('confidence')") && src.includes("'confidence':'置信度'"), 'and is in the box title, EN and 中');
+});
+
 test('F3: with a box selected the arrows nudge it both ways (Shift = 10 px); with none, ←/→ step frames', () => {
   const review = sandbox.window.CornerPocketReview;
   T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
@@ -436,7 +467,9 @@ test('an accepted quad prints its measured drift, not just a pass', () => {
            pockets:{source:'model', count:6, reference:null}, reference:{source:'saved anchors', width:1280, height:720}}
   };
   const fresh = context.window.VisionStage.factsLine(base);
-  assert.ok(fresh.includes('quad drift vs saved corners 6.4 px (tol 40 px)'), fresh);
+  // Round 1 (pin changed deliberately): the plain check leads, the measured drift and the
+  // tolerance still follow it, so an accepted quad still prints its number, not just a pass.
+  assert.ok(fresh.includes('table outline matches the saved corners (6.4 px · tol 40 px)'), fresh);
   const unverified = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
   assert.ok(unverified.includes('model quad unverified') && !unverified.includes('quad drift'), unverified);
   const off = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}});
@@ -990,7 +1023,7 @@ test('the facts line states a refused quad reason in both languages', () => {
   const ok = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
                           cloth:{...base.cloth, quad:{...quad, state:'refined', reason:null, verified_sides:4, sides:[]},
                                  verdict:{state:'ok', reason:'within tolerance', mean:5.7, tolerance:40, source:'saved anchors'}}});
-  assert.ok(ok.includes('quad drift vs saved corners 5.7 px (tol 40 px)'), 'O ' + ok);
+  assert.ok(ok.includes('table outline matches the saved corners (5.7 px · tol 40 px)'), 'O ' + ok);
   assert.ok(!ok.includes('refused') && !ok.includes('fallback'), 'O2 ' + ok);
   // The stored-inference polygon names itself instead of hiding inside the total.
   const inference = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
@@ -2166,12 +2199,17 @@ test('a machine-produced candidate says so on its card, and an event without pro
   const rail = VSrail({events:[shot]});
   assert.ok(rail.includes('data-vs-provenance="machine"'), 'the provenance line is rendered');
   assert.ok(rail.includes('dense-track · trained 960×540 net @ ball@2'), 'with the detector that produced it');
-  assert.ok(rail.includes('machine-produced candidate; no human has confirmed it'), 'and its own statement');
+  // Round 1 (pins changed deliberately): the card leads with plain words that keep the honesty
+  // ("not yet confirmed by a person"); the detector and the stored statement stay one step away,
+  // in the line's title (hover) and a visually hidden span (screen readers), never removed.
+  assert.ok(rail.includes('>suggested by the computer · not yet confirmed by a person'), 'the plain statement is what the operator reads');
+  assert.ok(rail.includes('machine-produced candidate; no human has confirmed it'), 'and its own stored statement is kept (title)');
+  assert.ok(/title="detected by: dense-track · trained 960×540 net @ ball@2/.test(rail), 'the detector is one hover away');
   assert.ok(!rail.includes('undefined'), 'and never the word undefined');
   // Quieter than the badge: the tier badge is a .vs-badge, provenance is a footnote.
   assert.ok(rail.includes('vs-badge tier-window') && rail.includes('class="vs-prov"'), 'the two are different elements');
   const zh = VSrail({events:[shot], lang:'zh'});
-  assert.ok(zh.includes('机器产出，未经人工确认'), '中 renders the statement in Chinese: ' + zh.slice(zh.indexOf('vs-prov'), zh.indexOf('vs-prov') + 120));
+  assert.ok(zh.includes('电脑识别的候选 · 尚未经人工确认'), '中 renders the plain statement in Chinese: ' + zh.slice(zh.indexOf('vs-prov'), zh.indexOf('vs-prov') + 120));
   assert.ok(zh.includes('dense-track · trained 960×540 net @ ball@2'), 'and keeps the detector name, which is machine vocabulary');
   // Absent provenance renders nothing at all - not an empty line, not "undefined".
   const bare = VSrail({events:[{id:7, type:'shot', t:5.0, tier:'geometry'}]});
