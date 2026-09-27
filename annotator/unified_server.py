@@ -1590,8 +1590,42 @@ class Backend:
         raise APIError("route not found", 404)
 
 
+#: Sent on every response, error paths included (docs/private-audit.md B-4).
+#: The page runs only its own scripts, paints frames from blob:/data: URLs,
+#: embeds the Twitch chat iframe and talks to this origin only (fetch and the
+#: clock EventSource). 'unsafe-inline' in style-src covers style attributes, not
+#: scripts. Drop fonts.googleapis.com and fonts.gstatic.com once the fonts are
+#: self-hosted.
+SECURITY_HEADERS = (
+    ("Content-Security-Policy", "; ".join((
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' blob: data:",
+        "media-src 'self' blob:",
+        "connect-src 'self'",
+        "frame-src https://www.twitch.tv",
+        "frame-ancestors 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "object-src 'none'"))),
+    ("X-Frame-Options", "DENY"),
+    ("Referrer-Policy", "no-referrer"),
+    ("Permissions-Policy", "accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), "
+                           "hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=()"),
+    ("Cross-Origin-Opener-Policy", "same-origin"),
+    ("X-Content-Type-Options", "nosniff"),
+)
+
+
 def make_handler(backend):
     class Handler(BaseHTTPRequestHandler):
+        def end_headers(self):
+            for key, value in SECURITY_HEADERS:
+                self.send_header(key, value)
+            super().end_headers()
+
         def send(self, status, body, content_type="application/json", headers=None):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -1602,7 +1636,6 @@ def make_handler(backend):
             self.send_header("Content-Length", str(len(body)))
             for key, value in (headers or {}).items():
                 self.send_header(key, value)
-            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(body)
 
@@ -1638,7 +1671,6 @@ def make_handler(backend):
                 self.send_header("Cache-Control", "no-store")
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Content-Length", str(max(0, end - start + 1)))
-            self.send_header("X-Content-Type-Options", "nosniff")
             if status == 206:
                 self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
             self.end_headers()
