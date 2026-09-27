@@ -256,6 +256,26 @@ function instantHarness(lang = 'en') {
 const flush = () => new Promise(r => setImmediate(r));
 const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset, classList:{contains:()=>false}}}});
 
+test('round 1 · Vision loading: the first paint is labelled and says what is loading, in EN and 中', () => {
+  for (const [lang, loading, play, freeze, cues] of [['en', 'Loading the review workspace…', 'Play', 'Freeze', 'Cues'], ['zh', '正在加载复核工作区…', '播放', '冻结', '线索']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';visionAdapter=null`);
+    const html = h.evaluate('visionSurface()');
+    assert.ok(html.includes('aria-busy="true" data-loading="true"'), `${lang}: the surface is marked busy until the adapter attaches`);
+    assert.equal((html.match(new RegExp(`<p class="vs-loading" role="status">${loading}</p>`, 'g')) || []).length, 2, `${lang}: both rails say what is loading`);
+    // no control is unlabelled on the first paint
+    for (const button of html.match(/<button[^>]*>[^<]*<\/button>/g) || []) {
+      const named = /aria-label="[^"]+"/.test(button) || />[^<\s][^<]*<\/button>$/.test(button);
+      assert.ok(named, `${lang}: unlabelled control ${button.slice(0, 80)}`);
+    }
+    assert.ok(html.includes(`>▶ ${play}</button>`) && html.includes(`>${freeze}</button>`) && html.includes(`>${cues}</button>`), `${lang}: Play, Freeze and the sheet tab read from the start`);
+    h.evaluate('visionAdapter={render(){}}');
+    assert.ok(!h.evaluate('visionSurface()').includes('data-loading'), `${lang}: once attached, no loading state`);
+  }
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(/\.vision-surface\[data-loading\] \.vs-rail,#ops-shell \.vision-surface\[data-loading\] \.vs-inspector\{min-height:/.test(css), 'the rails hold their loaded size while loading');
+  assert.ok(css.includes('.vision-surface[data-loading] .vs-stagebar{min-height:50px}'), 'the stagebar row is reserved');
+});
 test('round 1 · Back room: operator panels first; system status and roadmap under a collapsed, labelled maintainers section', () => {
   for (const [lang, maint, status] of [['en', 'For maintainers', 'System status'], ['zh', '维护人员', '系统状态']]) {
     const h = harness();

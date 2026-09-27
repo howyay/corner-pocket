@@ -589,3 +589,16 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell details.maintainers>summary h2{margin:0;font:500 var(--fs-lg) var(--display);color:var(--ink)}
 #ops-shell details.maintainers>summary:focus-visible{outline:2px solid var(--brass);outline-offset:-2px}
 #ops-shell details.maintainers>.stack{padding:0 var(--sp-4) var(--sp-4)}
+/* Round 1, finding 5: while the review engine loads, the surface is a deliberate state, not a
+   broken skeleton: every control is labelled from the first paint, the rails say what is loading,
+   and they already hold their loaded size, so filling them does not move the page. */
+#ops-shell .vs-loading{margin:0;padding:var(--sp-3) 0;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.08em}
+#ops-shell .vision-surface[data-loading] .vs-rail,#ops-shell .vision-surface[data-loading] .vs-inspector{min-height:min(calc(100vh - 356px),620px)}
+@media(max-width:1100px){#ops-shell .vision-surface[data-loading] .vs-rail,#ops-shell .vision-surface[data-loading] .vs-inspector{min-height:min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px)))}}
+/* ...and the rows the adapter fills first reserve their loaded height (measured at 1280: chips 92
+   EN / 64 中, stagebar 50, facts 28 EN / 16 中; at 390: chips 40-42, facts 32). The larger value,
+   so the stage never moves down when they fill; a shorter 中 row only leaves space below it. */
+#ops-shell .vision-surface[data-loading] .vs-chips{min-height:92px}
+#ops-shell .vision-surface[data-loading] .vs-stagebar{min-height:50px}
+#ops-shell .vision-surface[data-loading] .vs-facts{min-height:28px}
+@media(max-width:1100px){#ops-shell .vision-surface[data-loading] .vs-chips{min-height:40px}#ops-shell .vision-surface[data-loading] .vs-facts{min-height:32px}}
