@@ -332,6 +332,8 @@ class Backend:
         self._clip_semaphore = threading.Semaphore(2)
         self._operations = None
         self._store = None
+        self._clock = None
+        self._clock_lock = threading.Lock()
         self._live = None
         self._identity_pipeline = None
         self._identity_error = None
@@ -357,6 +359,8 @@ class Backend:
             self._vod_importer.close()  # stops a running import and removes its partial file
         if self._live is not None:
             self._live.stop()
+        if self._clock is not None:
+            self._clock.close()  # releases every open /api/clock/stream
 
     def live_action(self, payload):
         from annotator.twitch_vod_source import TwitchVodError
@@ -394,6 +398,49 @@ class Backend:
                 from src.store import open_store
                 self._store = open_store(self.root)
             return self._store
+
+    # -- shared shot clock (annotator/shot_clock.py) --------------------------
+    def clock(self):
+        """The one shot clock every device shows. It is its own small file under
+        this root - outside the revisioned operations state, so a Start never makes
+        another operator's write stale, and outside the store (docs/postgres.md:
+        the shot clock stays a file). It has its own lock, and a stream waits on the
+        clock's own Condition, never on self.lock or the operations lock; the only
+        operations read is settings.shotClock, for a clock that was never written."""
+        with self._clock_lock:
+            if self._clock is None:
+                from annotator.shot_clock import ShotClock
+                try:
+                    self._clock = ShotClock(self.out / "corner-pocket" / "clock.json", self._shot_clock_setting)
+                except ValueError as error:  # a damaged clock.json is reported, never silently reset
+                    raise APIError(str(error), 500) from error
+            return self._clock
+    def _shot_clock_setting(self):
+        """settings.shotClock: the duration of a clock that was never written."""
+        try:
+            return self.operations().get().get("settings", {}).get("shotClock")
+        except Exception:
+            return None  # the clock falls back to 30 s; the operations routes report the fault
+    def clock_state(self):
+        """GET /api/clock and every stream event: the clock now, plus the server's
+        epoch ms so a device can measure its own offset. Never writes."""
+        from annotator.shot_clock import epoch_ms
+        clock = self.clock()
+        now = epoch_ms()
+        return dict(clock.snapshot(now), server_now_ms=now)
+    def clock_action(self, payload):
+        """POST /api/clock {action: start|pause|reset|set, duration?}: an explicit
+        intent, so two people pressing at once cannot cancel each other out."""
+        if set(payload) - {"action", "duration"}:
+            raise APIError("clock accepts only action and duration")
+        from annotator.shot_clock import epoch_ms
+        clock = self.clock()
+        now = epoch_ms()
+        try:
+            state = clock.apply(payload.get("action"), payload.get("duration"), now_ms=now)
+        except ValueError as error:
+            raise APIError(str(error)) from error
+        return dict(state, server_now_ms=now)
 
     # -- identity pipeline (constructed lazily on first identity API use) ----
 
@@ -1457,6 +1504,8 @@ class Backend:
     def get(self, parts, query):
         if parts == ['api', 'operations']:
             return self.operations().get()
+        if parts == ['api', 'clock']:
+            return self.clock_state()
         dataset = query.get('dataset', ['vod30'])[0]
         frame_index = query.get('frame', [None])[0]
         if parts == ['api', 'identity', 'frame']:
@@ -1541,6 +1590,8 @@ class Backend:
     def post(self, parts, payload):
         if not isinstance(payload, dict):
             raise APIError("JSON object required")
+        if parts == ['api', 'clock']:
+            return self.clock_action(payload)
         if parts == ['api', 'operations']:
             from annotator.operations import ConflictError
             try:
@@ -1823,6 +1874,22 @@ def make_handler(backend):
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
 
+        def clock_stream(self):
+            """GET /api/clock/stream: Server-Sent Events. Headers go out now; the
+            clock then writes one event per change and a heartbeat every 15 s
+            until the client leaves or the server closes the clock."""
+            from annotator.shot_clock import SSE_HEADERS
+            clock = backend.clock()
+            self.send_response(200)
+            for key, value in SSE_HEADERS.items():
+                self.send_header(key, value)
+            self.end_headers()
+            self.close_connection = True
+            try:
+                clock.serve_events(backend.clock_state, self.wfile)
+            except OSError:
+                pass  # the client left (tab closed, network lost, a proxy timed it out)
+
         def dispatch(self, post=False):
             self.response_started = False
             try:
@@ -1854,6 +1921,8 @@ def make_handler(backend):
                     return self.send(308, b'', 'text/plain', {'Location': '/'})
                 if path == '/api/review-template':
                     return self.json(200, {'html': (backend.root / 'annotator' / 'app.html').read_text()})
+                if path == '/api/clock/stream':
+                    return self.clock_stream()
                 if path == '/api/live':
                     return self.json(200, backend.live_processor().status())
                 if path == '/api/live/frame':
