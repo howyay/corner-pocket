@@ -342,5 +342,56 @@ class ErrorBodyTests(unittest.TestCase):
             self.assertIn(self.SECRET, self.log.getvalue())
 
 
+class EnrollPreviewSingleFlightTests(unittest.TestCase):
+    """B-9: one enrolment preview at a time (each is ~6.5 CPU-s); the next gets 409."""
+
+    PAYLOAD = {'dataset': 'vod30', 'frame_index': 30, 'bbox': [10, 10, 50, 90]}
+
+    def test_a_second_preview_while_one_runs_is_refused_then_allowed(self):
+        from annotator.unified_server import APIError
+        started, release = threading.Event(), threading.Event()
+
+        def slow_plan(*args, **kwargs):
+            started.set()
+            release.wait(10)
+            return None
+
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            with unittest.mock.patch('src.enroll_from_tracklet.plan_for_selection', side_effect=slow_plan), \
+                    unittest.mock.patch('src.enroll_from_tracklet.preview_payload', return_value={'ok': False}):
+                first = threading.Thread(target=backend.enroll_preview, args=(dict(self.PAYLOAD),))
+                first.start()
+                self.assertTrue(started.wait(5))
+                with self.assertRaises(APIError) as refused:
+                    backend.enroll_preview(dict(self.PAYLOAD))
+                self.assertEqual(refused.exception.status, 409)
+                self.assertIn('preview', str(refused.exception))
+                release.set()
+                first.join(5)
+                self.assertEqual(backend.enroll_preview(dict(self.PAYLOAD)), {'ok': False})
+
+    def test_a_failed_preview_frees_the_slot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            with unittest.mock.patch('src.enroll_from_tracklet.plan_for_selection',
+                                     side_effect=[RuntimeError('decode failed'), None]), \
+                    unittest.mock.patch('src.enroll_from_tracklet.preview_payload', return_value={'ok': False}):
+                with self.assertRaises(RuntimeError):
+                    backend.enroll_preview(dict(self.PAYLOAD))
+                self.assertEqual(backend.enroll_preview(dict(self.PAYLOAD)), {'ok': False})
+
+    def test_invalid_input_is_rejected_without_taking_the_slot(self):
+        from annotator.unified_server import APIError
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            with self.assertRaises(APIError) as bad:
+                backend.enroll_preview({'dataset': 'vod30', 'frame_index': -1, 'bbox': [0, 0, 1, 1]})
+            self.assertEqual(bad.exception.status, 400)
+            with unittest.mock.patch('src.enroll_from_tracklet.plan_for_selection', return_value=None), \
+                    unittest.mock.patch('src.enroll_from_tracklet.preview_payload', return_value={'ok': False}):
+                self.assertEqual(backend.enroll_preview(dict(self.PAYLOAD)), {'ok': False})
+
+
 if __name__ == '__main__':
     unittest.main()

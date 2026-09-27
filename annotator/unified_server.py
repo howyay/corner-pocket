@@ -339,6 +339,9 @@ class Backend:
         self._unified_cache = OrderedDict()
         self._projection_cache = {}
         self._enroll_plans = OrderedDict()
+        # One enrolment preview at a time: each scans frames with the person
+        # detector and face engine (~6.5 CPU-s); a second click waits for a 409.
+        self._preview_busy = threading.Lock()
 
     def live_processor(self):
         with self.lock:
@@ -546,7 +549,6 @@ class Backend:
 
     def enroll_preview(self, payload):
         """Plan an enrolment for the clicked person. Reads only."""
-        from src.enroll_from_tracklet import Selection, plan_for_cluster, plan_for_selection, preview_payload
         dataset = payload.get("dataset", "vod30")
         if dataset not in DATASETS:
             raise APIError("unknown dataset")
@@ -561,9 +563,18 @@ class Backend:
         if isinstance(window_s, bool) or not isinstance(window_s, (int, float)) or not 1 <= window_s <= ENROLL_WINDOW_S_MAX:
             raise APIError("window_s must be between 1 and %g seconds" % ENROLL_WINDOW_S_MAX)
         cluster_id = payload.get("cluster_id")
+        if cluster_id is not None and (isinstance(cluster_id, bool) or not isinstance(cluster_id, int)):
+            raise APIError("cluster_id must be an integer")
+        if not self._preview_busy.acquire(blocking=False):
+            raise APIError("another enrolment preview is running; try again when it finishes", 409)
+        try:
+            return self._enroll_preview_scan(dataset, frame_index, bbox, window_s, cluster_id)
+        finally:
+            self._preview_busy.release()
+
+    def _enroll_preview_scan(self, dataset, frame_index, bbox, window_s, cluster_id):
+        from src.enroll_from_tracklet import Selection, plan_for_cluster, plan_for_selection, preview_payload
         if cluster_id is not None:
-            if isinstance(cluster_id, bool) or not isinstance(cluster_id, int):
-                raise APIError("cluster_id must be an integer")
             # The fast path: the identity index already stored a face for this
             # cluster, so the plan is built from it without decoding the video.
             # It falls back to the window scan when the stored evidence is not
