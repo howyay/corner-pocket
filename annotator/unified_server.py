@@ -1737,7 +1737,12 @@ def make_handler(backend):
                     origin = self.headers.get("Origin")
                     if origin and origin not in ("http://" + self.headers.get("Host", ""), "https://" + self.headers.get("Host", "")):
                         raise APIError("cross-origin write rejected", 403)
-                    size = int(self.headers.get("Content-Length", "0"))
+                    # Content-Length = 1*DIGIT (RFC 9110): '+2', ' 2', '1.5' and Unicode
+                    # digits all reach int() otherwise, and its message is not an API answer.
+                    length = self.headers.get("Content-Length", "0")
+                    if not (length.isascii() and length.isdigit()):
+                        raise APIError("invalid Content-Length", 400)
+                    size = int(length)
                     limit = 12 * 1024 * 1024 if parts[:3] == ["api", "identity", "enroll"] else 65536
                     if not 0 < size <= limit:
                         raise APIError("invalid request size", 413)

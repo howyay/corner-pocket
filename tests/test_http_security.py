@@ -211,5 +211,49 @@ class ConnectionBoundTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
 
 
+class ContentLengthTests(unittest.TestCase):
+    """B-8: a malformed Content-Length is a plain 400, never Python's exception text."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.server = LoopbackServer(fixture_root(temp.name))
+        self.addCleanup(self.server.close)
+
+    def post(self, length, body=b'{}'):
+        import socket
+        client = socket.create_connection(('127.0.0.1', self.server.port), timeout=10)
+        try:
+            head = b'POST /api/operations HTTP/1.0\r\nHost: x\r\nContent-Type: application/json\r\n'
+            if length is not None:
+                head += b'Content-Length: ' + length + b'\r\n'
+            client.sendall(head + b'\r\n' + body)
+            data = b''
+            while chunk := client.recv(4096):
+                data += chunk
+        finally:
+            client.close()
+        status = int(data.split(b' ', 2)[1])
+        return status, data.split(b'\r\n\r\n', 1)[1]
+
+    def test_malformed_lengths_are_a_plain_400(self):
+        # RFC 9110: Content-Length = 1*DIGIT. '²' (latin-1 0xb2) passes str.isdigit()
+        # but not int(); '-5' and '+2' are not digits at all.
+        for length in (b'abc', b'1.5', b'+2', b'-5', b' 2 x', b'0x10', b'2, 2', b'\xb2', b'\xd9\xa2'):
+            with self.subTest(length=length):
+                status, body = self.post(length)
+                self.assertEqual(status, 400)
+                self.assertEqual(body, b'{"error": "invalid Content-Length"}')
+
+    def test_well_formed_lengths_keep_their_meaning(self):
+        self.assertEqual(self.post(b'2')[0], 400)                    # {} reaches validation: revision required
+        self.assertIn(b'revision', self.post(b'2')[1])
+        for length in (None, b'0', b'65537', b'99999999999999999999'):
+            with self.subTest(length=length):
+                status, body = self.post(length)
+                self.assertEqual(status, 413)
+                self.assertEqual(body, b'{"error": "invalid request size"}')
+
+
 if __name__ == '__main__':
     unittest.main()
