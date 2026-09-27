@@ -412,8 +412,10 @@ class Backend:
                 from annotator.shot_clock import ShotClock
                 try:
                     self._clock = ShotClock(self.out / "corner-pocket" / "clock.json", self._shot_clock_setting)
-                except ValueError as error:  # a damaged clock.json is reported, never silently reset
-                    raise APIError(str(error), 500) from error
+                except ValueError as error:
+                    # A damaged clock.json is reported, never silently reset; the detail
+                    # (path, reason) goes to the log, the operator gets a reference.
+                    raise APIError(f"the shared shot clock file is damaged (ref {error_reference(error)})", 500) from error
             return self._clock
     def _shot_clock_setting(self):
         """settings.shotClock: the duration of a clock that was never written."""

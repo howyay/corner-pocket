@@ -4,9 +4,9 @@ root; the stream tests bind an ephemeral loopback port (127.0.0.1:0), never a
 fixed one, and nothing under the repository's out/ is touched."""
 import hashlib
 import http.client
-from http.server import ThreadingHTTPServer
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -14,7 +14,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from annotator.unified_server import Backend, make_handler
+from annotator.unified_server import Backend, BoundedHTTPServer, make_handler
 
 
 def file_stamp(path):
@@ -129,9 +129,12 @@ class ClockApiTests(unittest.TestCase):
         self.file.parent.mkdir(parents=True)
         self.file.write_text('{"duration": 3}')
         stamp = file_stamp(self.file)
-        status, body = self.request('/api/clock')
+        with patch('sys.stderr', io.StringIO()) as log:
+            status, body = self.request('/api/clock')
         self.assertEqual(status, 500)
-        self.assertIn('invalid shot clock file', body['error'])
+        self.assertRegex(body['error'], r'^the shared shot clock file is damaged \(ref [0-9a-f]{8}\)$')
+        self.assertNotIn(str(self.root), body['error'], 'no path or parser text reaches the client')
+        self.assertIn('invalid shot clock file', log.getvalue(), 'the detail is in the server log')
         self.assertEqual(file_stamp(self.file), stamp)
 
 
@@ -139,14 +142,17 @@ class ClockStreamTests(unittest.TestCase):
     """A real loopback server on an ephemeral port: the stream is a long-lived
     response that the in-memory handler above cannot exercise."""
 
-    def setUp(self):
+    def setUp(self, timeout=None):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
         self.backend = Backend(self.root)
         handler = make_handler(self.backend)
         handler.log_message = lambda *args: None
-        self.server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+        if timeout is not None:
+            handler.timeout = timeout
+        # The production server class: a per-read socket timeout and a slot cap.
+        self.server = BoundedHTTPServer(('127.0.0.1', 0), handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
@@ -195,6 +201,8 @@ class ClockStreamTests(unittest.TestCase):
         self.assertEqual(response.getheader('Cache-Control'), 'no-cache, no-transform')
         self.assertEqual(response.getheader('X-Accel-Buffering'), 'no')
         self.assertIsNone(response.getheader('Content-Length'))
+        self.assertEqual(response.msg.get_all('X-Content-Type-Options'), ['nosniff'], 'nosniff exactly once')
+        self.assertIn("connect-src 'self'", response.getheader('Content-Security-Policy'))
         name, first, _ = self.next_event(response)
         self.assertEqual((name, first['seq'], first['running']), ('clock', 0, False))
         self.assertIn('server_now_ms', first)
@@ -205,7 +213,9 @@ class ClockStreamTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual((name, event['seq'], event['running'], event['deadline_ms']),
                          ('clock', 1, True, posted['deadline_ms']))
-        self.assertLess(latency, 1.0, 'a change reaches an open stream at once, not at the next heartbeat')
+        # The heartbeat is 15 s, so anything well under it proves the change woke the
+        # stream; 5 s leaves room for a loaded machine (typically ~10 ms here).
+        self.assertLess(latency, 5.0, 'a change reaches an open stream at once, not at the next heartbeat')
         self.assertTrue((self.root / 'out' / 'corner-pocket' / 'clock.json').exists(), 'the POST, not the stream, wrote it')
 
     def test_heartbeats_keep_an_idle_stream_talking(self):
@@ -252,6 +262,48 @@ class ClockStreamTests(unittest.TestCase):
             while streams() and time.monotonic() < deadline:
                 time.sleep(0.05)
         self.assertEqual(streams(), [], 'the next heartbeat write fails and the thread ends')
+
+    def outlives_the_socket_timeout(self, timeout, heartbeat, seconds):
+        """Restart the server with a per-read socket timeout, open a stream and
+        read it for `seconds`: it must still be open, must have carried a
+        heartbeat at least every `heartbeat` seconds, and must deliver a change."""
+        self.doCleanups()
+        self.setUp(timeout=timeout)
+        with patch('annotator.shot_clock.HEARTBEAT_S', heartbeat):
+            connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=heartbeat * 3)
+            self.addCleanup(connection.close)
+            connection.request('GET', '/api/clock/stream')
+            response = connection.getresponse()
+            self.assertEqual(self.next_event(response)[0], 'clock')
+            began = last = time.monotonic()
+            beats, gaps = 0, []
+            while time.monotonic() - began < seconds:
+                name, data, _ = self.next_event(response)
+                now = time.monotonic()
+                gaps.append(now - last)
+                last = now
+                beats += name == 'heartbeat'
+            self.assertEqual(self.post({'action': 'start'})[0], 200)
+            name, data, _ = self.next_event(response)
+        self.assertGreater(time.monotonic() - began, timeout, 'open past the handler timeout')
+        self.assertEqual((name, data['seq'], data['running']), ('clock', 1, True), 'and still delivering changes')
+        self.assertGreaterEqual(beats, int(seconds / heartbeat) - 1)
+        self.assertLess(max(gaps), heartbeat + 1.5, 'never silent for longer than the heartbeat')
+        return beats, max(gaps)
+
+    def test_a_stream_outlives_the_socket_timeout(self):
+        # The handler drops a read that stalls for `timeout` s (B-7). A stream reads
+        # nothing after its request line - it only writes - so it is never cut.
+        self.outlives_the_socket_timeout(timeout=1, heartbeat=0.3, seconds=3.5)
+
+    @unittest.skipUnless(os.environ.get('CLOCK_LONG_STREAM'), 'CLOCK_LONG_STREAM=1 runs the 75 s production-timeout check')
+    def test_a_stream_outlives_the_production_timeout(self):
+        from annotator.shot_clock import HEARTBEAT_S
+        timeout = make_handler(self.backend).timeout
+        self.assertLess(HEARTBEAT_S, timeout)
+        beats, gap = self.outlives_the_socket_timeout(timeout=timeout, heartbeat=HEARTBEAT_S, seconds=timeout + 15)
+        print(f'\nproduction timeout {timeout} s, heartbeat {HEARTBEAT_S} s: {beats} heartbeats, '
+              f'longest silence {gap:.2f} s, stream open {timeout + 15}+ s')
 
 
 if __name__ == '__main__':

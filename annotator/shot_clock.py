@@ -36,10 +36,10 @@ DEFAULT_DURATION = 30
 # Cloudflare drops an idle proxied connection at ~100 s, and a page that hears
 # nothing for 30 s falls back to polling.
 HEARTBEAT_S = 15
+# nosniff and the other policy headers come from the server's end_headers(), once.
 SSE_HEADERS = {'Content-Type': 'text/event-stream',
                'Cache-Control': 'no-cache, no-transform',
-               'X-Accel-Buffering': 'no',
-               'X-Content-Type-Options': 'nosniff'}
+               'X-Accel-Buffering': 'no'}
 
 
 def epoch_ms():
