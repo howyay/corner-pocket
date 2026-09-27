@@ -256,6 +256,22 @@ function instantHarness(lang = 'en') {
 const flush = () => new Promise(r => setImmediate(r));
 const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset, classList:{contains:()=>false}}}});
 
+test('round 1 · Back room: operator panels first; system status and roadmap under a collapsed, labelled maintainers section', () => {
+  for (const [lang, maint, status] of [['en', 'For maintainers', 'System status'], ['zh', '维护人员', '系统状态']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';data.notes=[]`);
+    const html = h.evaluate('statusScreen()');
+    const at = s => html.indexOf(s);
+    assert.ok(at('id="appearance-form"') < at('id="note-form"') && at('id="note-form"') < at('<details class="maintainers">'), `${lang}: operator panels come first`);
+    assert.ok(!/<details class="maintainers" open/.test(html), `${lang}: the maintainer section starts collapsed`);
+    assert.ok(html.includes(`<summary><h2>${maint}</h2>`), `${lang}: it is labelled ${maint}`);
+    const inside = html.slice(at('<details class="maintainers">'));
+    assert.ok(inside.includes(`<h3>${status}</h3>`) && inside.includes('/api/operations'), `${lang}: the status table is inside, headed, and keeps its facts`);
+    assert.ok(inside.includes('data-action="reload"'), `${lang}: Refresh is still there`);
+    assert.equal((inside.match(/<tr><td>[^<]*<\/td><td>[^<]*<\/td><td>P[12]<\/td><\/tr>/g) || []).length, 9, `${lang}: the roadmap keeps its nine rows`);
+    for (const table of html.match(/<table[\s\S]*?<\/table>/g) || []) assert.ok(/<caption|<thead/.test(table), `${lang}: every table has headers`);
+  }
+});
 test('round 1 · empty states: no fake names, no blank tiles, no list-item empties, every panel headed', () => {
   for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register entrants and rack the night', 'default name · saved when you rack'],
                                              ['zh', '暂无比赛上台', '登记参赛者并生成对阵', '默认名称 · 生成对阵时保存']]) {
