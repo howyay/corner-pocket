@@ -13,7 +13,7 @@ const COPY = {
     freeze:'Freeze', play:'Play', pause:'Pause', ticks:'Event ticks', dataset:'Dataset',
     start:'Start', stop:'Stop', detectors:'Frame detectors', table:'Table', person:'Person', ball:'Balls',
     latency:'Twitch upstream delay: UNKNOWN. Receive-to-result is local processing latency, not glass-to-glass latency.',
-    freshness:'Freshness', saved:'Saved channels', savedOk:'Saved', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
+    freshness:'Freshness', saved:'Saved channels', savedVods:'Saved VODs', useInForm:'Use', savedOk:'Saved', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
     select:'Select', remove:'Remove', chat:'Chat', showChat:'Show chat', hideChat:'Hide chat',
     startFailed:'Start attempt', cause:'Cause', remedy:'Remedy', retry:'Retry',
     remedyText:'Check that the source is a saved canonical Twitch channel, or that the allowlisted dataset media exists.',
@@ -33,7 +33,7 @@ const COPY = {
     selectCueHint:'Selecting a cue plays its window on the stage and loops in it; freeze to inspect one frame.',
     noCrops:'No crops in this queue.', noTracks:'No track windows are available for this VOD.',
     noEvents:'No event candidates in this filter.', vodOnlyAnchors:'Anchors are available for the vod30 dataset only.',
-    keys:'SPACE play · ←/→ step · 0–9/U/C label · A/B identity · V verdict · ⏎ save',
+    keys:'SPACE play · ←/→ or ,/. step (Shift ×10) · F freeze · arrows nudge the selection (Shift 10 px) · Esc deselect · 0–9/U/C label · A/B identity · V verdict · ⏎ save',
     cropAtFrame:'crop at this frame', selectedBall:'Ball', trackWord:'Track', box:'Box', anchorWord:'Anchor',
     seedA:'Player A', seedB:'Player B',
     // Identity labelling: one regular (the identity pipeline), or a guest name
@@ -51,7 +51,7 @@ const COPY = {
     stageEvery:'every', stageAbsent:'not run on the skipped frames', stageRuns:'runs',
     // Twitch VOD replay: a source, never a broadcast. The panel prints the
     // server's and the capture's own words (kind, live, rate, drift), not ours.
-    vodReplay:'Twitch VOD replay', vodId:'VOD id or URL', vodStart:'Start at (s)', vodRate:'Rate (VOD s per wall s)',
+    vodReplay:'Twitch VOD replay', vodId:'VOD id or URL', vodIdNeeded:'Enter a Twitch VOD id or URL first.', vodStart:'Start at (s)', vodRate:'Rate (VOD s per wall s)',
     vodUse:'Use this VOD', vodChosen:'Chosen', vodNotLive:'a replay, never a live broadcast',
     vodNote:'The server resolves the VOD with Twitch and replays it in real time. The panel reports what the server and the capture say it is: kind, live, the VOD id, the rate and the drift it is carrying.',
     vodResolving:'resolving the VOD with Twitch…', vodFailed:'the VOD could not be resolved',
@@ -79,14 +79,14 @@ const COPY = {
     noCluster:'No identity cluster on this track yet — pick a person box on the stage that has one.',
     loading2:'loading…', reviewedCount:'reviewed', inQueue:'in queue', crops:'crops', reviewedWord:'reviewed',
     prediction:'prediction', seed:'saved seed', liveState:'Live state', manual:'manual', detectorReason:'The balls detector (SAM3) is CPU-heavy and stays an explicit opt-in.',
-    attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector',
+    attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector', cuesRegion:'Vision cues', stageRegion:'Vision stage', inspectorRegion:'Vision inspector', sheetTabs:'Vision panels', twitchChat:'Twitch chat', stepBack:'Previous frame', stepForward:'Next frame',
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
     stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
     liveNow:'live', staleNow:'STALE', replayNow:'VOD replay',
     coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
     quadRefused:'quad refused', quadFallback:'quad from the naive fallback', storedInference:'stored inference',
-    quadDrift:'quad drift vs saved corners',
+    quadDrift:'quad drift vs saved corners', tableFits:'table outline matches the saved corners',
     pocketsHeldRejected:'quad rejected', pocketsHeldUnverified:'unverified',
     correctionRefused:'saved correction refused', tolerance:'tol',
     playInStage:'▶ Play in stage', geometry:'Detected geometry', colour:'Colour',
@@ -101,7 +101,7 @@ const COPY = {
     gateMove:'Re-measured move', gateMotion:'motion', gateGap:'Claim vs measured ball',
     gateDup:'Duplicate detections merged', gateNotes:'Gate notes',
     gateNetPath:'Net move / path', gatePeakSpeed:'Peak speed', gateDenseWindow:'Track window',
-    provenanceMachine:'machine-produced candidate; no human has confirmed it',
+    provenanceMachine:'suggested by the computer · not yet confirmed by a person', provenanceMachineLegacy:'machine-produced candidate; no human has confirmed it', detectedBy:'detected by', technicalDetails:'Technical details',
     provenanceHuman:'confirmed by a person',
     tierLabel:'Confirmation tier', tierGeometry:'geometry-verified', tierWindow:'motion window only',
     tierGeometryHint:'The re-measured motion matches the claim: this ball, this start, this end.',
@@ -118,7 +118,7 @@ const COPY = {
     freeze:'冻结', play:'播放', pause:'暂停', ticks:'事件刻度', dataset:'数据集',
     start:'开始', stop:'停止', detectors:'帧检测器', table:'球桌', person:'人物', ball:'球',
     latency:'Twitch 上游延迟：未知。接收到结果仅为本地处理耗时，不是端到端延迟。',
-    freshness:'新鲜度', saved:'已保存频道', savedOk:'已保存', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
+    freshness:'新鲜度', saved:'已保存频道', savedVods:'已保存回放', useInForm:'填入', savedOk:'已保存', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
     select:'选择', remove:'移除', chat:'聊天', showChat:'显示聊天', hideChat:'隐藏聊天',
     startFailed:'启动尝试', cause:'原因', remedy:'处理', retry:'重试',
     remedyText:'请确认来源是已保存的标准 Twitch 频道，或数据集媒体确实存在。',
@@ -138,7 +138,7 @@ const COPY = {
     selectCueHint:'选择线索会在舞台上播放其片段并循环；冻结后可检查单帧。',
     noCrops:'此队列没有裁剪图。', noTracks:'此录像没有可用的轨迹窗口。',
     noEvents:'此筛选下没有事件候选。', vodOnlyAnchors:'锚点仅适用于 vod30 数据集。',
-    keys:'空格 播放 · ←/→ 步进 · 0–9/U/C 标注 · A/B 身份 · V 判定 · ⏎ 保存',
+    keys:'空格 播放 · ←/→ 或 ,/. 步进（Shift ×10）· F 冻结 · 方向键 微移选中项（Shift 10 px）· Esc 取消选择 · 0–9/U/C 标注 · A/B 身份 · V 判定 · ⏎ 保存',
     cropAtFrame:'此帧的裁剪图', selectedBall:'球', trackWord:'轨迹', box:'标注框', anchorWord:'锚点',
     seedA:'选手 A', seedB:'选手 B',
     whichRegular:'选择常客', guestOption:'— 不是常客（访客）—', guestName:'访客姓名',
@@ -150,7 +150,7 @@ const COPY = {
     liveBall:'球（训练网络）',
     liveBallNote:'实时球检测使用训练好的小型网络（流水线的 ball 阶段，启动前校验权重）。帧检测器里的「球」是 CPU 密集的 SAM3 扫描：它属于帧工具，从不作为实时阶段运行。',
     stageEvery:'每', stageAbsent:'跳过的帧上不运行', stageRuns:'次运行',
-    vodReplay:'Twitch 回放', vodId:'回放 id 或网址', vodStart:'起始秒', vodRate:'倍速（回放秒/墙钟秒）',
+    vodReplay:'Twitch 回放', vodId:'回放 id 或网址', vodIdNeeded:'请先输入 Twitch 回放 id 或网址。', vodStart:'起始秒', vodRate:'倍速（回放秒/墙钟秒）',
     vodUse:'使用该回放', vodChosen:'已选择', vodNotLive:'回放，绝不是直播',
     vodNote:'由服务端向 Twitch 解析该回放并实时播放。面板只报服务端与采集器的原话：类型、是否直播、回放 id、倍速以及当前漂移。',
     vodResolving:'正在向 Twitch 解析该回放…', vodFailed:'该回放无法解析',
@@ -176,14 +176,14 @@ const COPY = {
     noCluster:'此轨迹尚无身份聚类——请在舞台上选择带有聚类的球员框。',
     loading2:'读取中…', reviewedCount:'已复核', inQueue:'队列中', crops:'张裁剪图', reviewedWord:'已复核',
     prediction:'预测', seed:'已保存种子', liveState:'直播状态', manual:'人工', detectorReason:'球检测器（SAM3）为 CPU 密集，需显式开启。',
-    attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器',
+    attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器', cuesRegion:'视觉线索', stageRegion:'视觉舞台', inspectorRegion:'视觉检查器', sheetTabs:'视觉面板', twitchChat:'Twitch 聊天', stepBack:'上一帧', stepForward:'下一帧',
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
     stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
     liveNow:'直播', staleNow:'已过期', replayNow:'回放',
     coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
     quadRefused:'四边形已拒绝', quadFallback:'四边形来自朴素回退', storedInference:'已存推理',
-    quadDrift:'四边形相对已保存角点漂移',
+    quadDrift:'四边形相对已保存角点漂移', tableFits:'球台轮廓与已保存角点一致',
     pocketsHeldRejected:'四边形被拒绝', pocketsHeldUnverified:'未校验',
     correctionRefused:'已保存修正被拒绝', tolerance:'容差',
     playInStage:'▶ 在舞台播放', geometry:'检测几何', colour:'颜色',
@@ -198,7 +198,7 @@ const COPY = {
     gateMove:'复测位移', gateMotion:'运动量', gateGap:'声称位置与实测球',
     gateDup:'合并的重复检测', gateNotes:'检测门备注',
     gateNetPath:'净位移 / 路径', gatePeakSpeed:'峰值速度', gateDenseWindow:'轨迹窗口',
-    provenanceMachine:'机器产出，未经人工确认',
+    provenanceMachine:'电脑识别的候选 · 尚未经人工确认', provenanceMachineLegacy:'机器产出，未经人工确认', detectedBy:'识别来源', technicalDetails:'技术细节',
     provenanceHuman:'已由人工确认',
     tierLabel:'确认层级', tierGeometry:'几何已核', tierWindow:'仅运动窗口',
     tierGeometryHint:'复测位移与声称一致：同这颗球、同起点、同终点。',
@@ -319,8 +319,28 @@ function bindingLine(s) {
 }
 // Pocket names are pool-table rail terms in stored data; every displayed label
 // is the position word the engine maps them to, never the raw key.
-function pocketName(event) { return event?.nearest_pocket_text || event?.nearest_pocket || ''; }
-function pocketTag(event) { const name = pocketName(event); return name ? `<span class="vs-mono vs-dim">${esc(name)}</span>` : ''; }
+// A selected event can be the engine's raw object (no nearest_pocket_text), so a raw
+// value still goes through the engine's words (pocketLabel, defined below, runs at call time).
+function pocketName(event) { return event?.nearest_pocket_text || (event?.nearest_pocket ? pocketLabel(event.nearest_pocket) : ''); }
+// One name per pocket on every surface: a stored rail key (right-side, foot-left...) is
+// shown as the engine's position word (right-middle, bottom-left...; 中 右中, 左下...).
+const pocketLabel = token => token ? (engine()?.pocketText ? engine().pocketText(String(token)) : String(token)) : '';
+// Ball colours in the operator's language (the engine's table); unknown ones stay as data.
+const colourLabel = value => value ? (engine()?.colourWord?.(value) || String(value)) : '';
+// A vanish distance with its uncertainty and the pocket, e.g. '148 ± 54 mm · left-middle'.
+function vanishText(n) {
+  if (!Number.isFinite(n?.vanish_dist_mm)) return '';
+  const unc = Number.isFinite(n.vanish_dist_mm_uncertainty) ? ` ± ${Math.round(n.vanish_dist_mm_uncertainty)}` : '';
+  const pocket = pocketLabel(n.vanish_pocket);
+  return `${Math.round(n.vanish_dist_mm)}${unc} mm${pocket ? ` · ${pocket}` : ''}`;
+}
+function pocketTag(event) {
+  const n = event?.gate?.numbers;
+  // With a vanish reading the gate line below already names the pocket with its mm;
+  // the tag then names only the pocket, never a second spelling of the same one.
+  const name = n && Number.isFinite(n.vanish_dist_mm) && n.vanish_pocket ? pocketLabel(n.vanish_pocket) : pocketName(event);
+  return name ? `<span class="vs-mono vs-dim">${esc(name)}</span>` : '';
+}
 // What the scan actually measured for this cue, and whether the server could
 // project it into frame pixels. An event the dataset cannot project says so:
 // there is no second, browser-side guess at where the ball was.
@@ -336,24 +356,59 @@ function gateEvidence(event) {
   const out = [];
   if (event.type === 'pot') {
     if (Number.isFinite(n.census_pre) && Number.isFinite(n.census_post)) out.push(`${n.census_pre}→${n.census_post}`);
-    if (Number.isFinite(n.vanish_dist_mm)) out.push(`${Math.round(n.vanish_dist_mm)} mm ${n.vanish_pocket || ''}`.trim());
+    if (Number.isFinite(n.vanish_dist_mm)) out.push(vanishText(n));
   } else if (Number.isFinite(n.disp_mm)) {
-    out.push(`${Math.round(n.disp_mm)} mm${n.disp_color ? ` ${n.disp_color}` : ''}`);
+    out.push(`${Math.round(n.disp_mm)} mm${n.disp_color ? ` ${colourLabel(n.disp_color)}` : ''}`);
   }
   if (Number.isFinite(n.window_motion)) out.push(`${t('gateMotion')} ${n.window_motion}`);
   if ((event.dup_count || 1) > 1) out.push(`×${event.dup_count}`);
   return out;
+}
+// Gate reason codes in words. A code the table does not know stays verbatim (it is
+// evidence), and a reason that is already a sentence from the scan is kept, in 中
+// replaced by the scan's own Chinese sentence when it wrote one.
+const REASONS = {
+  cloth_occluded_at_disappearance: ['a person covered the cloth when the ball vanished', '球消失时有人挡住了台呢'],
+  pocket_distance_ambiguous_mm: ['the pocket distance is within its error of the pocket edge', '袋口距离落在误差范围内，无法判定'],
+  pocket_distance_outside_mm: ['the ball vanished outside the pocket radius', '球在袋口半径之外消失'],
+  pocket_distance_within_uncertainty: ['the pocket distance is within its uncertainty', '袋口距离在不确定度之内'],
+  pocket_test_agrees: ['pixel and millimetre pocket tests agree', '像素与毫米袋口判定一致'],
+  pocket_test_disagrees_px_vs_mm: ['pixel and millimetre pocket tests disagree', '像素与毫米袋口判定不一致'],
+  dense_motion_onset: ['motion onset found in the dense track', '密集跟踪中找到了起动'],
+  window_grade_no_claim_to_check: ['motion-window grade: no separate claim to check the move against', '仅运动窗口：没有可对照的独立声明'],
+  census_recovered: ['the ball count recovered afterwards', '之后球数恢复了'],
+  displacement_corroborated: ['the move was re-measured and agrees', '位移已重新测量并一致'],
+  geometry_mismatch: ['the claimed geometry and the measured move differ', '声称的几何与实测位移不一致'],
+  identity_swap_suspected: ['two balls may have swapped identity', '可能有两颗球身份互换'],
+  parked_in_jaws_possible: ['the ball may be parked in the pocket jaws', '球可能停在袋口颚部'],
+  disappeared_outside_pocket: ['the ball disappeared away from any pocket', '球在远离袋口处消失'],
+  no_motion_onset: ['no motion onset was found', '未找到起动'],
+  motion_too_short: ['the motion was too short to count', '运动太短，不计入'],
+  mm_projection_mismatch: ['the millimetre projection disagrees with the pixels', '毫米投影与像素不一致'],
+};
+// The gate that decided, in words (the code stays when it is new).
+const GATES = {census:['census','球数'], occlusion:['occlusion','遮挡'], displacement:['displacement','位移'], motion:['motion','运动'], geometry:['geometry','几何']};
+const gateName = code => { const row = GATES[String(code)]; return row ? (opts?.lang === 'zh' ? row[1] : row[0]) : String(code ?? ''); };
+function reasonText(code) {
+  const raw = String(code ?? '');
+  const row = REASONS[raw];
+  if (row) return opts?.lang === 'zh' ? row[1] : row[0];
+  if (opts?.lang === 'zh') {
+    const m = raw.match(/^([\d.]+) ± ([\d.]+) mm from the ([\w-]+) pocket -- too uncertain to call/);
+    if (m) return `距${pocketLabel(m[3])}袋 ${m[1]} ± ${m[2]} mm，误差跨过袋口半径，无法判定`;
+  }
+  return raw;
 }
 function gateStatusWord(status) {
   return t(status === 'confirmed' ? 'gateConfirmed' : status === 'rejected' ? 'gateRejected' : 'gateUnconfirmed');
 }
 function eventGeometry(item) {
   const rows = [];
-  const row = (key, value) => { if (value) rows.push(`<li class="vs-mono"><span class="vs-dim">${esc(t(key))}</span> ${esc(value)}</li>`); };
-  row('colour', item.color || '');
+  const row = (key, value) => { if (value) rows.push({key, html: `<li class="vs-mono"><span class="vs-dim">${esc(t(key))}</span> ${esc(value)}</li>`}); };
+  row('colour', colourLabel(item.color));
   if (item.type === 'pot') {
     row('ballLast', `${pxText(item.last_px)} px`);
-    row('pocket', item.pocket_name || pocketName(item));
+    row('pocket', item.pocket_name ? pocketLabel(item.pocket_name) : pocketName(item));
     row('pocketAt', `${pxText(item.pocket_px)} px`);
   } else {
     row('shotFrom', `${pxText(item.from_px)} px`);
@@ -366,15 +421,15 @@ function eventGeometry(item) {
   const gate = item.gate;
   if (gate) {
     const n = gate.numbers || {};
-    row('gateCheck', `${gateStatusWord(gate.status)}${gate.gate ? ` · ${gate.gate}` : ''}`);
+    row('gateCheck', `${gateStatusWord(gate.status)}${gate.gate ? ` · ${gateName(gate.gate)}` : ''}`);
     if (item.tier === 'geometry' || item.tier === 'window') row('tierLabel', t(item.tier === 'geometry' ? 'tierGeometry' : 'tierWindow'));
     if (item.type === 'pot') {
       row('gateCensus', Number.isFinite(n.census_pre) && Number.isFinite(n.census_post) ? `${n.census_pre} → ${n.census_post}` : '');
       row('gateColourCensus', Number.isFinite(n.color_census_pre) && Number.isFinite(n.color_census_post) ? `${n.color_census_pre} → ${n.color_census_post}` : '');
       row('gateVanish', Number.isFinite(n.vanish_dist_mm)
-        ? `${Math.round(n.vanish_dist_mm)} mm${n.vanish_pocket ? ` · ${n.vanish_pocket}` : ''}${Number.isFinite(n.approach_mm) ? ` · ${Math.round(n.approach_mm)} mm` : ''}` : '');
+        ? `${vanishText(n)}${Number.isFinite(n.approach_mm) ? ` · ${Math.round(n.approach_mm)} mm` : ''}` : '');
     } else {
-      row('gateMove', Number.isFinite(n.disp_mm) ? `${Math.round(n.disp_mm)} mm${n.disp_color ? ` · ${n.disp_color}` : ''}` : '');
+      row('gateMove', Number.isFinite(n.disp_mm) ? `${Math.round(n.disp_mm)} mm${n.disp_color ? ` · ${colourLabel(n.disp_color)}` : ''}` : '');
       row('gateGap', Number.isFinite(n.geometry_gap_px) ? `${Math.round(n.geometry_gap_px)} px` : '');
     }
     // Net displacement vs path length is what separates a real shot from detector
@@ -385,9 +440,16 @@ function eventGeometry(item) {
       ? `${Math.round(n.dense_peak_speed_px_s)} px/s${Number.isFinite(n.dense_duration_s) ? ` · ${Number(n.dense_duration_s).toFixed(2)} s` : ''}` : '');
     row('gateMotion', Number.isFinite(n.window_motion) ? String(n.window_motion) : '');
     row('gateDup', (item.dup_count || 1) > 1 ? String(item.dup_count) : '');
-    row('gateNotes', (gate.reasons || []).join(' · '));
+    // Words first; the gate's own code stays in brackets, because it is the evidence
+    // a report or a bug refers to.
+    row('gateNotes', (gate.reasons || []).map(code => { const words = reasonText(code); return words === String(code) || !REASONS[code] ? words : `${words} (${code})`; }).join(' · '));
   }
-  const body = rows.length ? `<ul class="vs-facts">${rows.join('')}</ul>` : '';
+  // Round 1: plain rows first; rows that are measurement plumbing (pixel positions, projection
+  // source, the gate's raw notes and numbers) go under one "Technical details" disclosure.
+  const technical = new Set(['ballLast', 'pocketAt', 'shotFrom', 'shotTo', 'projectedFrom', 'gateNotes', 'gateCensus', 'gateColourCensus', 'gateMove', 'gateGap', 'gateNetPath', 'gatePeakSpeed', 'gateMotion', 'gateDup']);
+  const plain = rows.filter(r => !technical.has(r.key)).map(r => r.html), tech = rows.filter(r => technical.has(r.key)).map(r => r.html);
+  const body = (plain.length ? `<ul class="vs-facts">${plain.join('')}</ul>` : '') +
+    (tech.length ? `<details class="vs-tech"><summary>${esc(t('technicalDetails'))}</summary><ul class="vs-facts">${tech.join('')}</ul></details>` : '');
   return `${body}<p class="vs-note">${esc(item.projectable ? t('projectedNote') : t('notProjectable'))}</p>`;
 }
 function receiptLine(kind) {
@@ -400,9 +462,19 @@ function receiptLine(kind) {
   return `<p class="vs-receipt" data-receipt-at="${row.at}">✓ ${esc(engineText(row.text))} · ${age.toFixed(1)} s ${esc(t('savedOk'))}</p>`;
 }
 // The footer's height is measured, never assumed: the scroll region reserves
-// exactly that much (CSS var --vs-footer-h) so no row hides under it.
+// exactly that much (CSS var --vs-footer-h) so no row hides under it. The strip is
+// measured the same way (--vs-strip-h): on a phone the sheet sits above it, never on it.
 function syncFooterHeight() {
   const inspector = $('#vs-inspector'), footer = $('#vs-inspector-actions');
+  const strip = $('#vs-strip');
+  if (root && strip) {   // root is the mount, #vision-surface
+    const stripHeight = `${strip.offsetHeight}px`;
+    if (root.style.getPropertyValue('--vs-strip-h') !== stripHeight) root.style.setProperty('--vs-strip-h', stripHeight);
+    // Where the 16:9 stage ends on screen: on a phone the bottom sheet must stop here,
+    // not at a fixed 240 px, so it never covers the picture it is about.
+    const frame = $('.vs-frame');
+    if (frame) { const stageBottom = `${Math.round(frame.getBoundingClientRect().bottom + (typeof scrollY === 'number' ? scrollY : 0))}px`; if (root.style.getPropertyValue('--vs-stage-bottom') !== stageBottom) root.style.setProperty('--vs-stage-bottom', stageBottom); }
+  }
   if (!inspector || !footer) return;
   const height = `${footer.offsetHeight}px`;
   if (inspector.style.getPropertyValue('--vs-footer-h') !== height) inspector.style.setProperty('--vs-footer-h', height);
@@ -449,7 +521,7 @@ function chipsHTML(s) {
     <div class="vs-source-head"><strong>${esc(t('sources'))}</strong><button class="vs-source-close" data-vs-action="source-panel" aria-label="${esc(t('closePanel'))}">×</button></div>
     ${sourcePanelHTML(s)}</div>` : '';
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
-  <div class="vs-chipmeta">${freshness}<span class="vs-keys">${esc(t('keys'))}</span></div>${panel}`;
+  <div class="vs-chipmeta">${freshness}<span class="vs-keys" role="note" aria-label="${esc(t('keyMap'))}: ${esc(t('keys'))}">${esc(t('keys'))}</span></div>${panel}`;
 }
 // Who made this candidate: one quiet line under the card's facts, never a badge.
 // A machine-produced candidate says so in its own words (translated in 中); an
@@ -458,15 +530,19 @@ function provenanceLine(event) {
   const p = event?.provenance;
   if (!p || typeof p !== 'object') return '';
   const parts = [];
-  if (p.detector) parts.push(`<span class="vs-mono vs-dim">${esc(p.detector)}</span>`);
+  // Round 1: operators read the plain statement; the detector string (machine vocabulary) is kept one
+  // step away - in the line's title and a visually hidden span - never removed.
+  const detector = p.detector ? String(p.detector) : '';
   const statement = p.statement ? String(p.statement) : (p.machine_produced && !p.human_confirmed ? t('provenanceMachine') : '');
   if (statement) {
-    const known = statement === COPY.en.provenanceMachine || statement === COPY.zh.provenanceMachine;
+    const known = [COPY.en.provenanceMachine, COPY.zh.provenanceMachine, COPY.en.provenanceMachineLegacy, COPY.zh.provenanceMachineLegacy].includes(statement);
     parts.push(esc(known ? t('provenanceMachine') : statement));
   }
   if (p.human_confirmed) parts.push(esc(t('provenanceHuman')));
-  if (!parts.length) return '';
-  return `<div class="vs-prov${p.human_confirmed ? ' confirmed' : ''}" data-vs-provenance="${p.human_confirmed ? 'human' : 'machine'}" title="${esc(p.statement || '')}">${parts.join(' · ')}</div>`;
+  if (!parts.length && !detector) return '';
+  // the hidden detector span joins with a space, so the visible line ends on the statement, not on " · "
+  const hidden = detector ? ` <span class="vs-sr-only">${esc(t('detectedBy'))}: ${esc(detector)}</span>` : '';
+  return `<div class="vs-prov${p.human_confirmed ? ' confirmed' : ''}" data-vs-provenance="${p.human_confirmed ? 'human' : 'machine'}" title="${esc([detector ? `${t('detectedBy')}: ${detector}` : '', p.statement || ''].filter(Boolean).join(' · '))}">${parts.join(' · ')}${hidden}</div>`;
 }
 function tierBadge(event) {
   // The confirmation tier, on the card and in the inspector: geometry-verified
@@ -519,7 +595,9 @@ function layersHTML(s) {
   const layers = [['cloth','cloth'],['balls','balls'],['persons','persons'],['pockets','pockets'],['anchors','anchors'],['events','events']];
   return layers.map(([key, label]) => {
     const gated = key === 'anchors' && s.dataset !== 'vod30';
-    return `<button class="vs-layer${s.overlay[key] && !gated ? ' on' : ''}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))}</button>`;
+    // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.
+    const shown = s.overlay[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
+    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))}</button>`;
   }).join('');
 }
 function identityHTML(s) {
@@ -541,7 +619,8 @@ function factsLine(s) {
   const parts = [];
   // One word per state: the strip says the same thing the chip says.
   if (s.source.kind === 'live') parts.push(`${(s.live.stale ? t('stale') : t(liveWordKey(s))).toLowerCase()}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
-  else parts.push(`${t('frameReadout')} ${s.frame.index}`, `t ${Number(s.frame.t).toFixed(1)} s`);
+  // The frame's time in the same m:ss.d the cue cards use (25:53.5), not a bare second count.
+  else parts.push(`${t('frameReadout')} ${s.frame.index}`, timecode(s.frame.t));
   const d = s.drawn, auto = d.auto;
   // Model vs operator provenance: `<model> (+<manual> manual)`. The two numbers
   // add up to exactly what the painter drew, so the totals stay honest. Without
@@ -583,7 +662,7 @@ function factsLine(s) {
   else if (verdict.state === 'unverified') parts.push(t('quadUnverified'));
   // The detector searches around the saved hand anchors, so a pass is a drift
   // measurement, not a verdict on the table: report the number, not just "ok".
-  else if (verdict.state === 'ok' && verdict.mean != null) parts.push(`${t('quadDrift')} ${verdict.mean.toFixed(1)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
+  else if (verdict.state === 'ok' && verdict.mean != null) parts.push(`${t('tableFits')} (${verdict.mean.toFixed(1)} px · ${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
   // Why there is no quad at all. The detector's codes stay machine-side; the
   // operator reads the phrase, plus how many sides were left unverified (the
   // per-side list is the tooltip on this line).
@@ -686,6 +765,7 @@ function liveStageLine(s) {
 function liveDetectorList(s) { return opts?.liveDetectors ? opts.liveDetectors() : (s.live.detectors || []); }
 function sourcePanelHTML(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
+  const vodRows = (opts.vods?.() || []).map(v => `<div class="vs-channel"><span class="vs-mono">${esc(v.url)}</span><button data-vs-action="use-saved-vod" data-vs-value="${esc(v.video)}">${esc(t('useInForm'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(v.id)}">${esc(t('remove'))}</button></div>`).join('');
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
   const live = s.live;
   // A start that failed must not leave the row reading "idle": the row states
@@ -705,7 +785,7 @@ function sourcePanelHTML(s) {
     ${liveStageLine(s)}
     <p class="vs-note">${esc(t('latency'))}</p></div>
   <div class="vs-block"><h4>${esc(t('detectors'))}</h4><div class="vs-row">${[['table','table'],['person','person'],['balls','ball']].map(([k, l]) => `<label class="vs-check"><input type="checkbox" data-vs-action="detector" data-vs-value="${k}" ${s.detectors[k] ? 'checked' : ''}> ${esc(t(l))}</label>`).join('')}</div><p class="vs-note">${esc(t('detectorReason'))}</p></div>
-  <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}
+  <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}${vodRows ? `<h4>${esc(t('savedVods'))}</h4>${vodRows}` : ''}
     <form id="source-form"><label class="vs-field">${esc(t('channelUrl'))}<input name="url" type="url" placeholder="https://www.twitch.tv/channel" required></label><button class="primary">${esc(t('addChannel'))}</button></form></div>`;
 }
 function eventBlock(s) {
@@ -842,7 +922,9 @@ function anchorBlock(s) {
 // Where this frame's detection came from, said out loud: a stored file is
 // evidence from an earlier run and keeps its own timestamp; a result run on this
 // frame now was never written to disk.
-const stampText = value => { if (!value) return ''; const at = new Date(value); return Number.isNaN(at.getTime()) ? String(value) : at.toLocaleString(); };
+// A stored result's time in the operator's language: 2026-09-16 04:07 (the same in 中),
+// not the browser's default locale, which printed '9/16/2026, 4:07:48 AM' inside Chinese copy.
+const stampText = value => { if (!value) return ''; const at = new Date(value); if (Number.isNaN(at.getTime())) return String(value); const p = n => String(n).padStart(2, '0'); return `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())} ${p(at.getHours())}:${p(at.getMinutes())}`; };
 function inferenceLine(s) {
   const c = s.corrections || {};
   if (!c.inferenceAt || c.result === 'none') return '';
@@ -893,9 +975,9 @@ function inspectorHTML(s) {
   // label only knows the Source picker, which can still read the dataset).
   const channel = s.source.kind === 'live' ? (s.live.source?.kind === 'twitch' && s.live.source.channel) || s.source.channel : null;
   const liveChat = channel && opts.chat();
-  const chat = liveChat ? `<div class="vs-chat"><iframe title="Twitch chat" src="https://www.twitch.tv/embed/${esc(channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
+  const chat = liveChat ? `<div class="vs-chat"><iframe title="${esc(t('twitchChat'))}" src="https://www.twitch.tv/embed/${esc(channel)}/chat?parent=${esc(location.hostname)}&darkpopout"></iframe></div>` : '';
   const chatToggle = channel ? `<button class="vs-chat-toggle" data-vs-action="chat">${esc(opts.chat() ? t('hideChat') : t('showChat'))}</button>` : '';
-  const close = kind === 'none' ? '' : `<button class="vs-close" data-vs-action="deselect" aria-label="×">×</button>`;
+  const close = kind === 'none' ? '' : `<button class="vs-close" data-vs-action="deselect" aria-label="${esc(t('closePanel'))}">×</button>`;
   const notice = s.notice.text ? `<div class="vs-notice${s.notice.error ? ' error' : ''}" role="status">${esc(engineText(s.notice.text))}</div>` : '';
   return `${chat}${chatToggle}${close}${notice}${body}`;
 }
@@ -923,7 +1005,7 @@ function render() {
   }
   const railSig = `${s.focus}|${s.eventFilter}|${s.events.index}|${s.events.items.map(e => `${e.id}:${e.verdict}`).join(',')}|${s.balls.items.length}|${s.balls.index}|${s.selection.crop?.file || ''}|${s.persons.win}|${s.persons.tracks.map(x => `${x.id}:${x.seed || ''}`).join(',')}|${s.persons.track || ''}|${s.events.reviewed}|${opts.lang}`;
   if (railSig !== sig.rail) { const node = $('#vs-cues'); if (node) node.innerHTML = railHTML(s); sig.rail = railSig; }
-  const layersSig = `${s.dataset}|${Object.entries(s.overlay).map(([k, v]) => `${k}${v ? 1 : 0}`).join('')}`;
+  const layersSig = `${s.dataset}|${s.anchors?.loaded ? 1 : 0}|${Object.entries(s.overlay).map(([k, v]) => `${k}${v ? 1 : 0}`).join('')}`;
   if (layersSig !== sig.layers) { const node = $('#vs-layers'); if (node) node.innerHTML = layersHTML(s); sig.layers = layersSig; }
   const identity = identityHTML(s);
   if (identity !== sig.identity) { const node = $('#vs-identity'); if (node) node.innerHTML = identity; sig.identity = identity; }
@@ -956,6 +1038,8 @@ function render() {
   const edge = $('#vs-edge'); if (edge) { edge.dataset.live = s.source.kind === 'live' ? '1' : '0'; edge.style.left = `${s.source.kind === 'live' ? 100 : (s.frame.duration ? Math.min(100, Math.max(0, s.frame.t / s.frame.duration * 100)) : 0)}%`; }
   const play = $('#vs-play'); if (play) play.textContent = s.frame.playing ? `❚❚ ${t('pause')}` : `▶ ${t('play')}`;
   root.querySelectorAll('[data-vs-label]').forEach(node => { const copy = t(node.dataset.vsLabel); if (node.textContent !== copy) node.textContent = copy; });
+  // Accessible names follow the language toggle too (data-vs-aria names the COPY key).
+  root.querySelectorAll('[data-vs-aria]').forEach(node => { const copy = t(node.dataset.vsAria); if (node.getAttribute('aria-label') !== copy) node.setAttribute('aria-label', copy); });
   const frameField = $('#vs-frame-index');
   if (frameField) { const max = String(Math.max(0, s.frame.count - 1)); if (frameField.getAttribute('max') !== max) frameField.setAttribute('max', max); frameField.disabled = s.source.kind === 'live'; }
   // The strip is the VOD timeline; a live edge has no frame index to step.
@@ -964,7 +1048,7 @@ function render() {
   root.querySelectorAll('[data-vs-action="step"],[data-vs-action="freeze"],[data-vs-action="play"],#vs-scrub').forEach(node => { node.disabled = liveStrip; });
   syncFooterHeight();
   const grid = $('.vs-grid'); if (grid) grid.dataset.sheet = sheet;
-  root.querySelectorAll('[data-sheet-tab]').forEach(b => b.classList.toggle('active', b.dataset.sheetTab === sheet));
+  root.querySelectorAll('[data-sheet-tab]').forEach(b => { const on = b.dataset.sheetTab === sheet; b.classList.toggle('active', on); b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(on)); });
   if (!ageTimer) ageTimer = setInterval(receiptAge, 1000);
 }
 // ---- actions -------------------------------------------------------------
@@ -978,20 +1062,22 @@ function act(action, value, node) {
     case 'live-start': opts.startLive(); break;
     case 'live-stop': opts.stopLive(); break;
     case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
+    case 'use-saved-vod': { replayDraft = {...(replayDraft || {}), vod: `https://www.twitch.tv/videos/${value}`}; render(); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
     case 'live-detector': { const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
     case 'pick-replay': {
       // A VOD id or URL, where in it to start, and how fast: the server resolves it
       // and the panel reports the capture's own kind/live/rate/drift afterwards.
       const field = name => (root.querySelector(`[data-vs-field="${name}"]`) || {}).value || '';
       const vod = String(field('vod')).trim();
-      if (!vod) { opts.notice?.(t('vodId')); break; }
+      if (!vod) { opts.notice?.(t('vodIdNeeded')); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
       replayDraft = {vod, start: field('vod-start'), rate: field('vod-rate')};
       opts.pickReplay({vod_id: vod, start_s: Number(field('vod-start')) || 0, rate: Number(field('vod-rate')) || 1});
       break;
     }
     case 'detector': target.setDetector(value, node.checked); break;
     case 'layer': {
-      const on = target.toggleOverlay(value);
+      // F2: the Anchors chip reads off until anchors are loaded, so its first click loads them.
+      const on = value === 'anchors' && s.overlay.anchors && !s.anchors.loaded ? true : target.toggleOverlay(value);
       // Calibration is a layer: turning it on loads the anchors for their saved
       // time and seeks the one stage there, and the inspector echoes the anchor.
       if (value === 'anchors' && on) {
@@ -1103,7 +1189,11 @@ function attach(options) {
   sig = {}; // the shell rebuilds #main on every render: never trust cached regions
   const footer = root.querySelector('#vs-inspector-actions');
   if (footerObserver) { footerObserver.disconnect(); footerObserver = null; }
-  if (footer && typeof ResizeObserver !== 'undefined') { footerObserver = new ResizeObserver(syncFooterHeight); footerObserver.observe(footer); }
+  if (footer && typeof ResizeObserver !== 'undefined') {
+    footerObserver = new ResizeObserver(syncFooterHeight); footerObserver.observe(footer);
+    const strip = root.querySelector('#vs-strip'); if (strip) footerObserver.observe(strip);
+    const frame = root.querySelector('.vs-frame'); if (frame) footerObserver.observe(frame);
+  }
   root.addEventListener('click', onClick);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);

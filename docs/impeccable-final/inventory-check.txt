@@ -1,0 +1,15 @@
+Inventory check after the polish (branch impeccable-polish, 5f13a8c) vs pre-polish e383d37.
+Method: every backticked identifier in docs/impeccable-feature-inventory.md (#ids, .classes,
+data-*/aria-*/role=, snake_case actions, camelCase keys, css prop:value) = 72 tokens, looked up
+in the shipped annotator/ code and in the pre-polish code.
+- present before, absent now: 1 -> scroll-padding-top:16px (item 13). The layout step tokenized it
+  to scroll-padding-top:var(--sp-4) = 16px; the rule and its value are unchanged. Item 13 holds.
+- absent before and after: 7 (descriptive tokens that were never literal code).
+- deliberate, recorded renames of visible strings (not identifiers): aria-label "-1"/"+1" ->
+  Previous/Next frame (harden); "t 41.1 s" -> m:ss.d and the stored-inference time format (clarify);
+  ':is(#ops-shell, #ops-footer)' -> '#ops-shell' (distill, same specificity).
+Behaviour: every item with a test is covered by the three suites, green at every commit
+(1045 OK / 52 / 71 at the end). Items changed on purpose and re-verified in the browser:
+F2 (anchors chip), F3 (nudge), F4 (key map), F5 (saved VODs), F6 (empty VOD id), 162 (mobile
+sheet: now also clears the stage), 27/31 (empty board keeps its A/B slots and Win frame).
+Result: 0 of 167 items removed or broken.

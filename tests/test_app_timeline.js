@@ -28,7 +28,7 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
     playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip, paintLiveChip,
-    boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
+    placeTags, tagRow, beginTags: () => { tagQueue = []; }, boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
     paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
@@ -44,8 +44,9 @@ function test(name, fn) {
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
-  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts']) assert.ok(api.includes(name), `missing engine API: ${name}`);
-  assert.strictEqual(api.length, 67, 'the engine exposes exactly its lifecycle + one-stage API');
+  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts','pocketText','colourWord']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  // +2 for the polish's clarify step: pocketText and colourWord, so the adapter names pockets and colours in one vocabulary.
+  assert.strictEqual(api.length, 69, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -228,6 +229,86 @@ test('form and video targets never double-consume the stage keys', () => {
   review.deactivate();
 });
 
+test('overlay tags never overprint: YOURS keeps its spot, the rest move to free space inside the frame', () => {
+  T.beginTags();
+  const markup = [T.tagRow(100, 100, 'auto', 'ball 0.84'), T.tagRow(100, 100, 'manual', 'ball'), T.tagRow(102, 104, 'model', 'person 0.97'),
+                  T.tagRow(1270, 710, 'model', 'ball 0.50')].join('');
+  const html = T.placeTags(markup, 1280, 720);
+  assert.ok(!html.includes('\u0000'), 'every queued row is drawn');
+  const rows = [...html.matchAll(/<g class="o-src (\w+)" data-src="\w+"><rect x="(-?\d+)" y="(-?\d+)" width="(\d+)"/g)]
+    .map(([, kind, x, y, w]) => ({kind, x: +x, y: +y, w: +w}));
+  assert.strictEqual(rows.length, 4);
+  const yours = rows.find(r => r.kind === 'manual');
+  assert.deepStrictEqual([yours.x, yours.y], [100, 100], 'the operator\u2019s tag is placed first, where it was asked for');
+  // A row is its tag plus the label text after it: measure where each label ends.
+  const ends = [...html.matchAll(/<text class="o-label" x="(-?\d+)" y="(-?\d+)">([^<]*)<\/text>/g)].map(([, x, y, s]) => ({x: +x, y: +y, end: +x + s.length * 14 * 0.62}));
+  const full = rows.map(r => { const l = ends.find(e => e.y === r.y + 13 && e.x === r.x + r.w + 6); return {...r, w: l ? Math.ceil(l.end - r.x) : r.w}; });
+  for (let i = 0; i < full.length; i++) for (let j = i + 1; j < full.length; j++) {
+    const a = full[i], b = full[j];
+    const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + 20 && b.y < a.y + 20;
+    assert.ok(!overlap, `rows ${a.kind}@${a.x},${a.y} and ${b.kind}@${b.x},${b.y} do not overlap`);
+  }
+  for (const r of rows) assert.ok(r.x >= 0 && r.y >= 0 && r.y + 20 <= 720, `${r.kind} stays inside the frame`);
+  assert.strictEqual(T.tagRow(5, 6, 'model', ''), T.tagRow(5, 6, 'model', ''), 'outside a paint a row is drawn where asked (no queue)');
+  assert.ok(T.tagRow(5, 6, 'model', '').includes('x="5" y="6"'));
+});
+
+test('round 1 · overlay tags stay legible at the displayed scale and never overprint; nothing they said is lost', () => {
+  // A 1280-wide frame shown 372 px wide (the 390 phone): tags scale so the text is >= 11 px on screen.
+  const src = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  assert.ok(/const MIN_TAG_PX = 11;/.test(src) && /tagScale = measureTagScale\(svg, state\.frameWidth \|\| 1280\);/.test(src), 'the scale is measured every paint');
+  // measureTagScale: 14 px frame text shown at 372/1280 would be 4 px; the tag scales so it is 11 px.
+  const measure = new Function(`${src.slice(src.indexOf('const SRC_TAG_HEIGHT'), src.indexOf('function glyphWidth'))}; return measureTagScale;`)();
+  const k = measure({getBoundingClientRect: () => ({width: 372})}, 1280);
+  assert.ok(Math.abs(14 * k * 372 / 1280 - 11) < 0.01, `14 px x ${k.toFixed(2)} x 372/1280 = 11 px on screen`);
+  assert.strictEqual(measure({getBoundingClientRect: () => ({width: 1280})}, 1280), 1, 'a full-size frame is not scaled');
+  // Crowded frame: 12 model rows asked for the same spot, plus the operator's and a calibration row.
+  T.beginTags();
+  const asks = [T.tagRow(100, 100, 'manual', 'ball'), T.tagRow(100, 100, 'calib', 'top-left')];
+  for (let i = 0; i < 12; i++) asks.push(T.tagRow(100 + i, 100, 'auto', 'person'));
+  const html = T.placeTags(asks.join(''), 1280, 720);
+  assert.ok(!html.includes('\u0000'), 'every queued row resolves');
+  const rows = [...html.matchAll(/<g class="o-src (\w+)" data-src="\w+">(<title>([^<]*)<\/title>)?<rect x="(-?\d+)" y="(-?\d+)" width="(\d+)" height="(\d+)"/g)]
+    .map(([, kind, , title, x, y, w, h]) => ({kind, title, x: +x, y: +y, w: +w, h: +h}));
+  const labels = [...html.matchAll(/<text class="o-label" x="(-?\d+)" y="(-?\d+)"[^>]*>([^<]*)<\/text>/g)].map(([, x, y, s]) => ({x: +x, y: +y, s}));
+  const full = rows.map(r => { const l = labels.find(e => e.x > r.x && e.x <= r.x + r.w + 12 && e.y > r.y && e.y <= r.y + r.h); return {...r, w: l ? Math.ceil(l.x + l.s.length * 14 * 0.62 - r.x) : r.w}; });
+  for (let i = 0; i < full.length; i++) for (let j = i + 1; j < full.length; j++) {
+    const a = full[i], b = full[j];
+    assert.ok(!(a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + a.h && b.y < a.y + b.h), `rows ${a.kind}@${a.x},${a.y} and ${b.kind}@${b.x},${b.y} never overprint`);
+  }
+  assert.ok(rows.some(r => r.kind === 'manual') && rows.some(r => r.kind === 'calib'), 'the operator\u2019s and calibration rows always keep a spot');
+  // A row with no room for its label keeps its chip, with the label as the chip's title (one hover away).
+  for (const r of rows.filter(r => r.title)) assert.strictEqual(r.title, 'person', 'a chip-only row keeps its label in <title>');
+  // Confidence is not printed on the frame any more; it is in the box's <title>, with who drew it.
+  assert.ok(!/\bperson 0\.\d\d\b/.test(src.slice(src.indexOf('function paintOverlay'))), 'the score left the tag text');
+  assert.ok(src.includes("text('confidence')") && src.includes("'confidence':'置信度'"), 'and is in the box title, EN and 中');
+});
+
+test('F3: with a box selected the arrows nudge it both ways (Shift = 10 px); with none, ←/→ step frames', () => {
+  const review = sandbox.window.CornerPocketReview;
+  T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
+  assert.strictEqual(review.activate('timeline'), true);
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  T.setRoot({lang:'en', dataset:{}, querySelector: s => s === '#t-overlay' ? svg : s === '#stage-note' ? note : null, querySelectorAll: () => []});
+  T.state.vmeta = {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080};
+  T.state.frameWidth = 1920; T.state.frameHeight = 1080;
+  T.state.boxes = [{label:'ball', bbox:[100, 100, 140, 140], source:'manual'}];
+  T.state.sel.kind = 'box'; T.state.sel.box = 0;
+  const frame = T.state.frame;
+  const key = (k, shift = false) => T.onKeydown({key:k, shiftKey:shift, preventDefault() {}, target:{closest: () => null}});
+  key('ArrowRight');
+  assert.deepStrictEqual([...T.state.boxes[0].bbox], [101, 100, 141, 140], '→ moves the box 1 px right');
+  key('ArrowLeft', true);
+  assert.deepStrictEqual([...T.state.boxes[0].bbox], [91, 100, 131, 140], 'Shift+← moves it 10 px left');
+  key('ArrowDown', true);
+  assert.deepStrictEqual([...T.state.boxes[0].bbox], [91, 110, 131, 150], 'Shift+↓ moves it 10 px down');
+  assert.strictEqual(T.state.frame, frame, 'and the frame never steps while a box is selected');
+  T.state.sel.kind = 'none'; T.state.sel.box = -1; T.state.boxes = [];
+  T.state.vmeta = null; T.state.dirty = false;
+  review.deactivate();
+});
+
 test('engine copy localizes notices, statuses and save receipts', () => {
   const host = {lang:'zh', querySelector: () => elementStub(), querySelectorAll: () => []};
   T.setRoot(host);
@@ -278,6 +359,12 @@ test('app.css styles the one stage surface, ops.css styles the rails and strip',
   assert.ok(ops.includes('.vs-inspector-actions{flex:none'), 'the footer is a flex sibling, not an overlay');
   assert.ok(ops.includes(':is(#ops-shell) .vs-rail{overflow:auto}'), 'only the rail keeps its own mobile scroll');
   assert.ok(!/bottom:44px;max-height:44vh;overflow:auto/.test(ops), 'the mobile aside must not scroll under the footer');
+  // On a phone the sheet stops where the 16:9 stage ends (measured), so it never covers the picture.
+  assert.ok(ops.includes('var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))') && !ops.includes('var(--vs-strip-h,150px) - 240px)'),
+    'the sheet height gives way to the measured stage bottom, not a fixed 240 px');
+  const adapterCode = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  assert.ok(adapterCode.includes("root.style.setProperty('--vs-stage-bottom'") && adapterCode.includes("footerObserver.observe(frame)"),
+    'the stage bottom is measured and re-measured when the frame resizes');
 });
 
 test('editor translation preserves dirty values, focus, selection and pending save state', () => {
@@ -380,7 +467,9 @@ test('an accepted quad prints its measured drift, not just a pass', () => {
            pockets:{source:'model', count:6, reference:null}, reference:{source:'saved anchors', width:1280, height:720}}
   };
   const fresh = context.window.VisionStage.factsLine(base);
-  assert.ok(fresh.includes('quad drift vs saved corners 6.4 px (tol 40 px)'), fresh);
+  // Round 1 (pin changed deliberately): the plain check leads, the measured drift and the
+  // tolerance still follow it, so an accepted quad still prints its number, not just a pass.
+  assert.ok(fresh.includes('table outline matches the saved corners (6.4 px · tol 40 px)'), fresh);
   const unverified = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
   assert.ok(unverified.includes('model quad unverified') && !unverified.includes('quad drift'), unverified);
   const off = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}});
@@ -934,7 +1023,7 @@ test('the facts line states a refused quad reason in both languages', () => {
   const ok = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
                           cloth:{...base.cloth, quad:{...quad, state:'refined', reason:null, verified_sides:4, sides:[]},
                                  verdict:{state:'ok', reason:'within tolerance', mean:5.7, tolerance:40, source:'saved anchors'}}});
-  assert.ok(ok.includes('quad drift vs saved corners 5.7 px (tol 40 px)'), 'O ' + ok);
+  assert.ok(ok.includes('table outline matches the saved corners (5.7 px · tol 40 px)'), 'O ' + ok);
   assert.ok(!ok.includes('refused') && !ok.includes('fallback'), 'O2 ' + ok);
   // The stored-inference polygon names itself instead of hiding inside the total.
   const inference = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
@@ -1179,7 +1268,8 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
                 gate:{status:'confirmed', gate:'displacement',
                       reasons:['displacement_corroborated', 'geometry_mismatch'],
                       numbers:{disp_mm:777, disp_color:'white', window_motion:16.85, geometry_gap_px:386.5}}};
-  same(VS.gateEvidence(pot), ['3→2', '60 mm foot-right', '×3']);
+  // Without an engine the adapter prints the stored pocket key; with one (below), the position word.
+  same(VS.gateEvidence(pot), ['3→2', '60 mm · foot-right', '×3']);
   same(VS.gateEvidence(shot), ['777 mm white', 'motion 16.85']);
   same(VS.gateEvidence({id:3, type:'pot'}), []);          // no gate block: no invented numbers
   const potFacts = VS.eventGeometry(pot);
@@ -1302,9 +1392,11 @@ test('the pots tab explains its empty state instead of showing a bare list', () 
 // blocks can be rendered without a browser or a live engine.
 function adapterStage(lang, roster, extra) {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  // setInterval is a no-op: a full render starts the receipt-age ticker, which would
+  // otherwise keep this test process alive.
   const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []},
                location:{hostname:'127.0.0.1'}, URL:{}, fetch: () => Promise.reject(new Error('no network in tests')),
-               setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
+               setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {}, console, Math, Number, Object, JSON, Date};
   box.globalThis = box;
   vm.createContext(box);
   vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
@@ -2128,6 +2220,77 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
     'and a focused field keeps its focus and caret across that rebuild');
 });
 
+test('F2: the Anchors chip reads off until anchors are drawn, and one click loads them', () => {
+  const calls = [];
+  let s = visionSnapshot({dataset:'vod30', overlay:{cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true},
+                          anchors:{loaded:false, pts:[], index:0}, events:{items:[], index:0, reviewed:0}, balls:{items:[], index:0},
+                          playback:{on:false, event:null, from:0, to:0, loops:0, playing:false}});
+  const review = {snapshot: () => s,
+                  toggleOverlay: kind => { calls.push('toggle ' + kind); s.overlay[kind] = !s.overlay[kind]; return s.overlay[kind]; },
+                  loadAnchors: t => { calls.push('load ' + t); return Promise.resolve(); },
+                  selectAnchor() {}, seekTime() {}};
+  const VSx = adapterStage('en', ROSTER, {review});
+  assert.ok(ADAPTER_SOURCE.includes("(key !== 'anchors' || s.anchors.loaded)"), 'the chip is on only when anchors are loaded');
+  assert.ok(ADAPTER_SOURCE.includes('aria-pressed="${shown ? \'true\' : \'false\'}"'), 'and says so to a screen reader');
+  VSx.act('layer', 'anchors');
+  assert.deepStrictEqual(calls, ['load 70'], 'the first click loads the anchors; it does not switch the layer off');
+  assert.strictEqual(s.overlay.anchors, true, 'and the layer stays on');
+  s.anchors.loaded = true;
+  VSx.act('layer', 'anchors');
+  assert.deepStrictEqual(calls, ['load 70', 'toggle anchors'], 'once drawn, a click hides them as before');
+});
+
+test('clarify: one pocket name per card, the distance with its error, reasons in words beside their codes', () => {
+  const pot = {id:9005, type:'pot', t:1553.5, color:'blue', nearest_pocket:'right-side (148 ± 54mm)',
+               gate:{status:'unconfirmed', gate:'occlusion', reasons:['cloth_occluded_at_disappearance', 'pocket_test_agrees'],
+                     numbers:{vanish_dist_mm:148.49, vanish_dist_mm_uncertainty:54.2, vanish_pocket:'right-side'}}};
+  const words = {'right-side':['right-middle','右中']}, colours = {blue:['blue','蓝']};
+  for (const [lang, pocket, colour, reason] of [['en', 'right-middle', 'blue', 'a person covered the cloth when the ball vanished'],
+                                                ['zh', '右中', '蓝', '球消失时有人挡住了台呢']]) {
+    const review = {snapshot: () => null, text: s => s,
+                    pocketText: v => (words[String(v).replace(/ \(.*\)$/, '')] || [v, v])[lang === 'zh' ? 1 : 0],
+                    colourWord: v => (colours[v] || ['', ''])[lang === 'zh' ? 1 : 0]};
+    const VSx = adapterStage(lang, ROSTER, {review});
+    same(VSx.gateEvidence(pot), [`148 ± 54 mm · ${pocket}`]);
+    const card = VSx.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[pot], index:0, reviewed:0},
+      balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
+    const row = card.match(/<div class="vs-card-row">[\s\S]*?<\/div>/)[0];
+    assert.ok(row.includes(`>${pocket}<`), `${lang}: the card names the pocket once, as a position word`);
+    assert.ok(!card.includes('right-side') && !/\(148 ± 54mm\)/.test(card), `${lang}: no second spelling of the same pocket`);
+    const inspector = VSx.eventGeometry(pot);
+    assert.ok(inspector.includes(`148 ± 54 mm · ${pocket}`), `${lang}: the inspector reads the same distance`);
+    assert.ok(inspector.includes(`${reason} (cloth_occluded_at_disappearance)`), `${lang}: reasons in words, the code kept as evidence`);
+    assert.ok(inspector.includes(colour), `${lang}: the colour is a word, not a raw key`);
+  }
+});
+
+test('F5: a saved VOD URL is listed, can fill the replay form, and can be removed', () => {
+  const vods = () => [{id:'s9', url:'https://www.twitch.tv/videos/1234567890', video:'1234567890'}];
+  const VSx = adapterStage('en', ROSTER, {vods, forgetChannel() {}});
+  const panel = VSx.sourcePanelHTML(visionSnapshot());
+  assert.ok(panel.includes('Saved VODs') && panel.includes('https://www.twitch.tv/videos/1234567890'), 'the saved VOD is listed');
+  assert.ok(panel.includes('data-vs-action="use-saved-vod" data-vs-value="1234567890"'), 'with a Use button');
+  assert.ok(panel.includes('data-vs-action="forget-channel" data-vs-id="s9"'), 'and a Remove button');
+  const none = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot());
+  assert.ok(!none.includes('Saved VODs'), 'no heading when nothing is saved');
+  const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+  assert.ok(shell.includes("parsed.kind==='vod'?{id:s.id,url:s.url,video:parsed.video}") && shell.includes('channels,vods,regulars'),
+    'the shell passes saved VODs to the adapter');
+  assert.strictEqual((ADAPTER_SOURCE.match(/savedVods:'/g) || []).length, 2, 'the heading exists in both languages');
+});
+
+test('F6: Use this VOD with an empty id says what to do instead of doing nothing', () => {
+  for (const [lang, sentence] of [['en', 'Enter a Twitch VOD id or URL first.'], ['zh', '请先输入 Twitch 回放 id 或网址。']]) {
+    const notices = [], picked = [];
+    const VSx = adapterStage(lang, ROSTER, {notice: text => notices.push(text), pickReplay: choice => picked.push(choice)});
+    VSx.act('pick-replay');
+    assert.deepStrictEqual(notices, [sentence], `${lang}: one notice, a sentence, not the field label`);
+    assert.strictEqual(picked.length, 0, 'and no replay is requested');
+  }
+  const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
+  assert.ok(shell.includes('notice:text=>message(text,true)'), 'the shell passes notice, so the adapter is heard');
+});
+
 function VSrail({events, lang = 'en'}) {
   return adapterStage(lang, ROSTER).railHTML({eventFilter:'all', selection:{}, focus:'events',
     events:{items: events, index: 0, reviewed: 0}, balls:{items:[], index:0},
@@ -2145,12 +2308,17 @@ test('a machine-produced candidate says so on its card, and an event without pro
   const rail = VSrail({events:[shot]});
   assert.ok(rail.includes('data-vs-provenance="machine"'), 'the provenance line is rendered');
   assert.ok(rail.includes('dense-track · trained 960×540 net @ ball@2'), 'with the detector that produced it');
-  assert.ok(rail.includes('machine-produced candidate; no human has confirmed it'), 'and its own statement');
+  // Round 1 (pins changed deliberately): the card leads with plain words that keep the honesty
+  // ("not yet confirmed by a person"); the detector and the stored statement stay one step away,
+  // in the line's title (hover) and a visually hidden span (screen readers), never removed.
+  assert.ok(rail.includes('>suggested by the computer · not yet confirmed by a person'), 'the plain statement is what the operator reads');
+  assert.ok(rail.includes('machine-produced candidate; no human has confirmed it'), 'and its own stored statement is kept (title)');
+  assert.ok(/title="detected by: dense-track · trained 960×540 net @ ball@2/.test(rail), 'the detector is one hover away');
   assert.ok(!rail.includes('undefined'), 'and never the word undefined');
   // Quieter than the badge: the tier badge is a .vs-badge, provenance is a footnote.
   assert.ok(rail.includes('vs-badge tier-window') && rail.includes('class="vs-prov"'), 'the two are different elements');
   const zh = VSrail({events:[shot], lang:'zh'});
-  assert.ok(zh.includes('机器产出，未经人工确认'), '中 renders the statement in Chinese: ' + zh.slice(zh.indexOf('vs-prov'), zh.indexOf('vs-prov') + 120));
+  assert.ok(zh.includes('电脑识别的候选 · 尚未经人工确认'), '中 renders the plain statement in Chinese: ' + zh.slice(zh.indexOf('vs-prov'), zh.indexOf('vs-prov') + 120));
   assert.ok(zh.includes('dense-track · trained 960×540 net @ ball@2'), 'and keeps the detector name, which is machine vocabulary');
   // Absent provenance renders nothing at all - not an empty line, not "undefined".
   const bare = VSrail({events:[{id:7, type:'shot', t:5.0, tier:'geometry'}]});

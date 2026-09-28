@@ -231,6 +231,359 @@ test('sticky header scroll inset belongs to the document scrolling root', () => 
   assert.ok(css.includes('html{scroll-padding-top:270px}'));
   assert.ok(!css.includes(':is(#ops-shell, #ops-footer){scroll-padding-top'));
 });
+// ---- Overdrive A: instant bracket -------------------------------------------------------
+// A harness with the real action(), a scripted server, and a capture of every render.
+function instantHarness(lang = 'en') {
+  const h = harness();
+  h.evaluate(`lang='${lang}';action=realAction;errors=[];message=(text,error,detail)=>errors.push({text,error,detail});
+    renders=[];render=()=>renders.push({score:JSON.stringify(data.tournament.matches[0].score),status:data.tournament.matches[0].status,pending:isPending('m1'),revision:data.revision});
+    data={revision:3,settings:{},players:[],history:[],events:[],notes:[],
+      tournament:{id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+        entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}],
+        matches:[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'live',table:1,absent:[]}]}};
+    confirm=()=>true;reloads=0;`);
+  // queue of scripted answers: {status, body} | 'network' ; resolved manually via release()
+  h.evaluate(`pendingAnswers=[];posted=[];
+    fetch=(url,opts)=>{if(!opts||opts.method!=='POST'){reloads++;return Promise.resolve({ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(serverState))})}
+      const body=JSON.parse(opts.body);posted.push(body);return new Promise((resolve,reject)=>pendingAnswers.push({body,resolve,reject}))};
+    serverState=JSON.parse(JSON.stringify(data));
+    answer=(kind,extra)=>{const p=pendingAnswers.shift();if(kind==='network')return p.reject(new TypeError('Failed to fetch'));
+      if(kind==='ok'){const s=JSON.parse(JSON.stringify(serverState));s.revision++;const m=s.tournament.matches[0];if(p.body.action==='match_score')m.score=p.body.score;if(p.body.action==='match_complete'){m.status='complete';m.winnerId=m.score[0]>m.score[1]?'e1':'e2'}serverState=s;return p.resolve({ok:true,status:200,json:async()=>s})}
+      return p.resolve({ok:false,status:kind,json:async()=>extra||{}})};`);
+  h.context.window.document = h.context.document;
+  return h;
+}
+const flush = () => new Promise(r => setImmediate(r));
+const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset, classList:{contains:()=>false}}}});
+
+test('round 1 · Vision loading: the first paint is labelled and says what is loading, in EN and 中', () => {
+  for (const [lang, loading, play, freeze, cues] of [['en', 'Loading the review workspace…', 'Play', 'Freeze', 'Cues'], ['zh', '正在加载复核工作区…', '播放', '冻结', '线索']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';visionAdapter=null`);
+    const html = h.evaluate('visionSurface()');
+    assert.ok(html.includes('aria-busy="true" data-loading="true"'), `${lang}: the surface is marked busy until the adapter attaches`);
+    assert.equal((html.match(new RegExp(`<p class="vs-loading" role="status">${loading}</p>`, 'g')) || []).length, 2, `${lang}: both rails say what is loading`);
+    // no control is unlabelled on the first paint
+    for (const button of html.match(/<button[^>]*>[^<]*<\/button>/g) || []) {
+      const named = /aria-label="[^"]+"/.test(button) || />[^<\s][^<]*<\/button>$/.test(button);
+      assert.ok(named, `${lang}: unlabelled control ${button.slice(0, 80)}`);
+    }
+    assert.ok(html.includes(`>▶ ${play}</button>`) && html.includes(`>${freeze}</button>`) && html.includes(`>${cues}</button>`), `${lang}: Play, Freeze and the sheet tab read from the start`);
+    h.evaluate('visionAdapter={render(){}}');
+    assert.ok(!h.evaluate('visionSurface()').includes('data-loading'), `${lang}: once attached, no loading state`);
+  }
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(/\.vision-surface\[data-loading\] \.vs-rail,#ops-shell \.vision-surface\[data-loading\] \.vs-inspector\{min-height:/.test(css), 'the rails hold their loaded size while loading');
+  assert.ok(css.includes('.vision-surface[data-loading] .vs-stagebar{min-height:50px}'), 'the stagebar row is reserved');
+});
+test('round 1 · Back room: operator panels first; system status and roadmap under a collapsed, labelled maintainers section', () => {
+  for (const [lang, maint, status] of [['en', 'For maintainers', 'System status'], ['zh', '维护人员', '系统状态']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';data.notes=[]`);
+    const html = h.evaluate('statusScreen()');
+    const at = s => html.indexOf(s);
+    assert.ok(at('id="appearance-form"') < at('id="note-form"') && at('id="note-form"') < at('<details class="maintainers">'), `${lang}: operator panels come first`);
+    assert.ok(!/<details class="maintainers" open/.test(html), `${lang}: the maintainer section starts collapsed`);
+    assert.ok(html.includes(`<summary><h2>${maint}</h2>`), `${lang}: it is labelled ${maint}`);
+    const inside = html.slice(at('<details class="maintainers">'));
+    assert.ok(inside.includes(`<h3>${status}</h3>`) && inside.includes('/api/operations'), `${lang}: the status table is inside, headed, and keeps its facts`);
+    assert.ok(inside.includes('data-action="reload"'), `${lang}: Refresh is still there`);
+    assert.equal((inside.match(/<tr><td>[^<]*<\/td><td>[^<]*<\/td><td>P[12]<\/td><\/tr>/g) || []).length, 9, `${lang}: the roadmap keeps its nine rows`);
+    for (const table of html.match(/<table[\s\S]*?<\/table>/g) || []) assert.ok(/<caption|<thead/.test(table), `${lang}: every table has headers`);
+  }
+});
+test('round 1 · empty states: no fake names, no blank tiles, no list-item empties, every panel headed', () => {
+  for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register entrants and rack the night', 'default name · saved when you rack'],
+                                             ['zh', '暂无比赛上台', '登记参赛者并生成对阵', '默认名称 · 生成对阵时保存']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';data.players=[];data.history=[];data.events=[];data.tournament={id:'t1',name:'',format:'singles',raceTo:1,status:'registration',entrants:[],matches:[]}`);
+    const floor = h.evaluate('floorScreen()');
+    const names = [...floor.matchAll(/<strong class="name"[^>]*>([^<]*)<\/strong>/g)].map(m => m[1]);
+    assert.deepEqual(names, ['—', '—'], `${lang}: an empty board shows no name, not "Tables open"`);
+    assert.ok(floor.includes('class="empty-note board-empty"') && floor.includes(noMatch) && floor.includes(wait), `${lang}: it says there is no match and what to do`);
+    assert.ok(floor.includes('data-tab="setup"'), `${lang}: with no draw, the step is Set up`);
+    assert.ok(/<h2 class="sr-only">/.test(floor), `${lang}: the scoreboard has a heading`);
+    assert.ok(!/Tables open|球台空闲/.test(floor.replace(/<div id="strip"[\s\S]*?<\/div>/, '')), `${lang}: never a placeholder name on the board`);
+    const matches = h.evaluate('matchesScreen()');
+    assert.ok(matches.includes(dflt), `${lang}: an unsaved event name is shown, and said to be the default`);
+    assert.ok(!/<li>[^<]*(Nothing|暂无|尚无)[^<]*<\/li>/.test(matches), `${lang}: no empty state inside a list`);
+    assert.ok(!/Nothing here yet|暂无记录/.test(matches + floor + h.evaluate('setupScreen()') + h.evaluate('playersScreen()')), `${lang}: the generic empty line is gone`);
+    assert.ok(matches.includes('<article class="empty"><h3>'), `${lang}: the empty bracket panel has a heading`);
+    // with a racked night and nothing on a table, the step is Matches
+    h.evaluate(`data.tournament.name='Friday';data.tournament.entrants=[{id:'e1',members:[{name:'A'}]},{id:'e2',members:[{name:'B'}]}];data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',absent:[]}];data.tournament.status='active'`);
+    const floor2 = h.evaluate('floorScreen()');
+    assert.ok(floor2.includes('data-tab="matches"'), `${lang}: a racked match can be sent from Matches`);
+    assert.ok(!h.evaluate('matchesScreen()').includes(dflt), `${lang}: a saved name is not called a default`);
+  }
+});
+test('round 1 · numbers: every figure in the shell is lining and tabular, past any font: shorthand', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  // Zilla Slab's default figures are old-style ("0" reads as "o"); a font: shorthand resets
+  // font-variant-numeric, so the rule must reach every element, not just be inherited.
+  assert.ok(css.includes('#ops-shell,#ops-shell *{font-variant-numeric:lining-nums tabular-nums!important}'));
+  const displayFaces = (css.match(/url\(\/fonts\/zilla-slab-[^)]+\.woff2\)/g) || []).length;
+  assert.ok(displayFaces >= 3, 'the self-hosted Zilla Slab faces are the ones whose subset keeps lnum/tnum');
+});
+test('instant: a score step shows at once as pending, then the server\u2019s answer confirms it', async () => {
+  const h = instantHarness();
+  const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+  await flush();
+  const shown = JSON.parse(h.evaluate('JSON.stringify(renders.at(-1))'));
+  assert.deepEqual([shown.score, shown.pending, shown.status], ['[1,0]', true, 'live'], 'the new score is on screen before the server answered, marked pending');
+  assert.equal(h.evaluate('posted[0].revision'), 3);
+  h.evaluate("answer('ok')"); await done; await flush();
+  const final = JSON.parse(h.evaluate('JSON.stringify(renders.at(-1))'));
+  assert.deepEqual([final.score, final.pending, final.revision], ['[1,0]', false, 4], 'confirmed: same score, not pending, the server\u2019s revision');
+});
+test('instant: a signature is never shown before the server signs it', async () => {
+  const h = instantHarness();
+  h.evaluate("data.tournament.matches[0].score=[3,1];serverState=JSON.parse(JSON.stringify(data))");
+  const done = click(h, {action:'sign', id:'m1'});
+  await flush();
+  assert.equal(h.evaluate('renders.at(-1).status'), 'live', 'while the signature is unconfirmed the match is still live');
+  assert.equal(h.evaluate('renders.at(-1).pending'), true, 'and says it is saving');
+  h.evaluate("answer('ok')"); await done; await flush();
+  assert.equal(h.evaluate('renders.at(-1).status'), 'complete', 'signed only once the server said so');
+});
+test('instant: 409 rolls back to the exact previous render, reloads, and says why', async () => {
+  const h = instantHarness();
+  const before = h.evaluate('JSON.stringify(data)');
+  const done = click(h, {action:'score', id:'m1', side:'1', delta:'1'});
+  await flush();
+  assert.equal(h.evaluate('renders.at(-1).score'), '[0,1]');
+  h.evaluate("answer(409,{error:'State changed; reload before retrying'})"); await done; await flush();
+  assert.equal(h.evaluate('reloads'), 1, 'the document is reloaded from the server');
+  assert.equal(h.evaluate('JSON.stringify(data)'), before, 'the state is exactly the pre-tap state (the server had not moved)');
+  assert.deepEqual([h.evaluate('renders.at(-1).score'), h.evaluate('renders.at(-1).pending')], ['[0,0]', false]);
+  assert.match(h.evaluate('errors.at(-1).text'), /Another operator changed the data/);
+});
+test('instant: 400 rolls back and shows the server\u2019s reason in both languages', async () => {
+  for (const [lang, reason] of [['en', 'Schedule match before scoring'], ['zh', '请先安排比赛上台，再记录比分']]) {
+    const h = instantHarness(lang);
+    const before = h.evaluate('JSON.stringify(data)');
+    const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+    await flush();
+    h.evaluate("answer(400,{error:'Schedule match before scoring'})"); await done; await flush();
+    assert.equal(h.evaluate('JSON.stringify(data)'), before, `${lang}: exact rollback`);
+    assert.equal(h.evaluate('renders.at(-1).score'), '[0,0]', `${lang}: the screen shows the pre-tap score`);
+    assert.ok(h.evaluate('errors.at(-1).text').includes(reason), `${lang}: ${h.evaluate('errors.at(-1).text')}`);
+    assert.equal(h.evaluate('reloads'), 0, `${lang}: a validation refusal does not reload`);
+  }
+});
+test('instant: a network failure rolls back and says so, with no retry', async () => {
+  for (const [lang, said] of [['en', 'network did not answer'], ['zh', '网络无响应']]) {
+    const h = instantHarness(lang);
+    const before = h.evaluate('JSON.stringify(data)');
+    const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+    await flush();
+    h.evaluate("answer('network')"); await done; await flush();
+    assert.equal(h.evaluate('JSON.stringify(data)'), before, `${lang}: exact rollback`);
+    assert.ok(h.evaluate('errors.at(-1).text').includes(said), `${lang}: ${h.evaluate('errors.at(-1).text')}`);
+    assert.equal(h.evaluate('posted.length'), 1, `${lang}: posted once, never retried`);
+  }
+});
+test('instant: two rapid taps are serialised; the final state is the server\u2019s', async () => {
+  const h = instantHarness();
+  const first = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+  const second = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
+  await flush();
+  assert.equal(h.evaluate('posted.length'), 1, 'the second write waits for the first');
+  h.evaluate("answer('ok')"); await first; await flush(); await flush();
+  assert.equal(h.evaluate('posted.length'), 2, 'then it goes');
+  assert.equal(h.evaluate('posted[1].revision'), 4, 'carrying the revision the first answer returned (no race)');
+  assert.equal(h.evaluate('JSON.stringify(posted[1].score)'), '[2,0]', 'and built on the confirmed score');
+  h.evaluate("answer('ok')"); await second; await flush();
+  assert.equal(h.evaluate('JSON.stringify(data.tournament.matches[0].score)'), h.evaluate('JSON.stringify(serverState.tournament.matches[0].score)'), 'final state = server state');
+  assert.equal(h.evaluate('renders.at(-1).pending'), false);
+  // a refused second write rolls back only itself
+  const h2 = instantHarness();
+  const a = click(h2, {action:'score', id:'m1', side:'0', delta:'1'}), b = click(h2, {action:'score', id:'m1', side:'0', delta:'1'});
+  await flush(); h2.evaluate("answer('ok')"); await a; await flush(); await flush();
+  h2.evaluate("answer(400,{error:'Score out of range'})"); await b; await flush();
+  assert.equal(h2.evaluate('JSON.stringify(data.tournament.matches[0].score)'), '[1,0]', 'the confirmed first step stays; only the refused one is undone');
+});
+test('instant: the pending state is readable by a screen reader, in EN and 中', () => {
+  for (const [lang, saving] of [['en', 'saving…'], ['zh', '保存中…']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+      entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}],
+      matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]}]};focusId='m1';pendingMatches.set('m1',1)`);
+    const floor = h.evaluate('floorScreen()');
+    assert.ok(floor.includes('class="scoreboard pending" aria-busy="true"'), `${lang}: the scoreboard is busy`);
+    assert.ok(floor.includes(`<p class="pending-note" role="status">${saving}</p>`), `${lang}: and says ${saving}`);
+    const bracket = h.evaluate("density='compact';matchesScreen()");
+    assert.ok(bracket.includes('bracket-card pending') && bracket.includes('aria-busy="true"'), `${lang}: the bracket card is busy`);
+    assert.ok(bracket.includes(` · ${saving}"`) && bracket.includes(`role="status">${saving}</span>`), `${lang}: its name and live region say ${saving}`);
+    assert.ok(!/class="badge complete"/.test(floor), `${lang}: pending never looks signed`);
+    h.evaluate("pendingMatches.clear()");
+    assert.ok(!h.evaluate('floorScreen()').includes('aria-busy'), `${lang}: gone once confirmed`);
+  }
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const pendingRules = css.match(/#ops-shell [^{]*pending[^{]*\{[^}]*\}/g) || [];
+  assert.ok(pendingRules.length && pendingRules.every(r => !/animation|transition/.test(r)), 'the pending cue is static (same under reduced motion)');
+});
+test('narrow: record totals are 2x2 in a narrow modal, one row when wide; wide tables scroll inside', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('#ops-shell .record .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}'), 'the four totals are 2x2 by default');
+  assert.ok(css.includes('#ops-shell .record{container-type:inline-size}') && css.includes('@container (min-width:460px){#ops-shell .record .tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}'),
+    'and one row of four when the record itself is wide (the modal caps at 540 px, so the container decides, not the viewport)');
+  assert.ok(css.includes('#ops-shell .table-wrap{overflow:auto;contain:inline-size}'), 'main\u2019s wrapper still keeps a wide table inside');
+  assert.ok(css.includes('#ops-shell .table-wrap{-webkit-mask-image:') && css.includes('animation-timeline:scroll(self inline)'), 'a clipped table says it scrolls');
+  const h = harness();
+  h.evaluate("data.players=[{id:'p1',name:'Maximiliana Alexandrovna Konstantinopolskaya-Wrightington',rating:50,status:'Active',joinedAt:'2026-09-26'}];data.history=[]");
+  const record = h.evaluate("recordView(data.players[0])");
+  assert.ok(record.includes('<div class="record">') && /<div class="tiles">(<div class="tile">[\s\S]*?){4}/.test(record), 'the record has its four totals tiles');
+  for (const table of ['per-event', 'h2h']) {
+    if (record.includes(`class="${table}"`)) assert.ok(record.includes(`<div class="table-wrap"><table class="${table}"`), `${table} is wrapped`);
+  }
+});
+test('clarify: the night log names entrants and sources instead of printing hex ids', () => {
+  const h = harness();
+  const present = 'a51461c2c94649988a2995e9b27c69a8', removed = 'b0000000c94649988a2995e9b27c69ff', source = '77777777777777777777777777777777';
+  h.evaluate(`data.players=[{id:'p1',name:'王磊',rating:60,status:'Active'}];
+    data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'registration',
+      entrants:[{id:'${present}',members:[{pid:'p1',name:'王磊'}]}],matches:[]};
+    data.history=[];data.sources=[];
+    data.events=[
+      {action:'entrant_add',createdAt:'2026-09-26T01:00:00Z',revision:4,context:{id:'${present}'}},
+      {action:'entrant_remove',createdAt:'2026-09-26T01:01:00Z',revision:5,context:{id:'${removed}'}},
+      {action:'source_add',createdAt:'2026-09-26T01:02:00Z',revision:2,context:{id:'${source}'}}]`);
+  for (const [lang, gone, aSource, added, removedLabel] of [
+    ['en', 'an entrant who was removed', 'a source', 'Entrant registered', 'Entrant removed'],
+    ['zh', '已移除的参赛者', '一个来源', '参赛报名', '移除参赛者']]) {
+    h.evaluate(`lang='${lang}'`);
+    const line = i => h.evaluate(`auditLine(data.events[${i}])`);
+    assert.ok(line(0).includes(`${added} · 王磊 · v4`), `${lang}: a present entrant reads by name: ${line(0)}`);
+    assert.ok(line(1).includes(`${removedLabel} · ${gone} · v5`), `${lang}: a removed entrant reads as a plain phrase: ${line(1)}`);
+    assert.ok(line(2).includes(aSource), `${lang}: a removed source reads as a plain phrase: ${line(2)}`);
+    for (const i of [0, 1, 2]) assert.ok(!/[0-9a-f]{8}/.test(line(i)), `${lang}: no hex id in the visible line: ${line(i)}`);
+    // never dropped: the id stays inspectable in the list item's title
+    const html = h.evaluate('matchesScreen()');
+    for (const id of [present, removed, source]) assert.ok(html.includes(`title="${id}"`), `${lang}: ${id.slice(0, 8)} is kept in the title`);
+  }
+  // a name the server recorded wins; a source still present reads by its URL; an archived entrant resolves from history
+  h.evaluate(`lang='en';data.sources=[{id:'${source}',url:'https://www.twitch.tv/examplechannel'}]`);
+  assert.ok(h.evaluate('auditLine(data.events[2])').includes('https://www.twitch.tv/examplechannel'));
+  h.evaluate(`data.history=[{id:'h1',name:'Thursday',entrants:[{id:'${removed}',members:[{pid:null,name:'Bo'}]}],matches:[]}]`);
+  assert.ok(h.evaluate('auditLine(data.events[1])').includes('Entrant removed · Bo · v5'), 'an archived night still knows the name');
+  assert.ok(h.evaluate(`auditLine({action:'player_save',createdAt:'2026-09-26T01:00:00Z',revision:6,context:{id:'x',name:'Ann'}})`).includes('Player saved · Ann · v6'));
+});
+test('R9: the compact bracket is one line per side with a status dot; the full card is still there', () => {
+  const h = harness();
+  h.evaluate(`data.players=[];data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+    entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]},{id:'e3',members:[{pid:null,name:'Cai'}]},{id:'e4',members:[{pid:null,name:'Dee'}]}],
+    matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]},
+             {id:'m2',round:1,sides:['e3','e4'],score:[0,0],status:'scheduled',table:null,absent:[]},
+             {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[]}]}`);
+  const compact = h.evaluate("density='compact';matchesScreen()");
+  assert.ok(compact.includes('<div class="rounds" data-density="compact">'), 'compact is the default density');
+  const card = compact.slice(compact.indexOf('data-status="live"'), compact.indexOf('data-status="scheduled"'));
+  assert.ok(card.includes('class="row card-side first"') && card.includes('class="status-dot"'), 'a side line carries the status dot');
+  assert.ok(card.includes('aria-label="Ann – Bo · On table"'), 'the whole match, with its status word, is the card\u2019s name');
+  // nothing is removed: the header, the badge and every control are in the card, shown on hover/focus
+  assert.ok(card.includes('class="row card-head"') && card.includes('Table 1 · m1') && card.includes('>On table<'), 'header row and badge stay');
+  for (const action of ['absence', 'forfeit']) assert.ok(card.includes(`data-action="${action}"`), `${action} stays reachable`);
+  assert.ok(compact.includes('data-action="schedule" data-id="m2"'), 'Send to table stays reachable');
+  assert.ok(compact.includes('tabindex="0"'), 'a keyboard user can open a card');
+  // the toggle, and the full density renders the same cards
+  assert.ok(compact.includes('data-action="density" data-value="full" aria-pressed="false"'), 'a pressed-state toggle offers full cards');
+  const full = h.evaluate("density='full';matchesScreen()");
+  assert.ok(full.includes('data-density="full"') && full.includes('Table 1 · m1'), 'full cards render as before');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('.rounds[data-density=full] .round .entry{min-height:98px}'), 'the 98 px card height applies to full cards only');
+  assert.ok(css.includes('.entry:is(:hover,:focus-within,.selected) :is(.card-head,.card-actions){display:flex}'), 'hover or focus opens the full card');
+  assert.ok(/grid-auto-columns:minmax\(180px,1fr\)/.test(css), 'rounds share the viewport width');
+  for (const key of ['density', 'densityCompact', 'densityFull']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
+});
+test('R13: every query word must match the name, after NFKC, accent and case folding', () => {
+  const h = harness();
+  const m = (name, q) => h.evaluate(`nameMatches(${JSON.stringify(name)}, ${JSON.stringify(q)})`);
+  // the reported case: words in any order, punctuation is only a separator
+  assert.equal(m('Ann-Marie (Annie) Lee', 'ann-marie lee'), true);
+  assert.equal(m('Ann-Marie (Annie) Lee', 'lee annie'), true, 'order does not matter');
+  assert.equal(m('Ann-Marie (Annie) Lee', 'ann lee bo'), false, 'every word must match (AND)');
+  // full-width forms and accents fold to their plain letters
+  assert.equal(m('Ann-Marie (Annie) Lee', 'ＡＮＮ－ＭＡＲＩＥ'), true, 'full-width input');
+  assert.equal(m('José Núñez', 'jose nunez'), true, 'accents fold');
+  assert.equal(m('Jose Nunez', 'JOSÉ'), true, 'and fold in the query too');
+  // Chinese names: substring, with or without spaces between the characters
+  assert.equal(m('王磊', '磊'), true);
+  assert.equal(m('王磊', '王 磊'), true);
+  assert.equal(m('欧阳娜娜', '欧阳'), true);
+  assert.equal(m('王磊', '李'), false);
+  assert.equal(m('Anyone', '   '), true, 'an empty query matches everyone');
+  // the roster searches the name only: status has its own filter
+  h.evaluate("data.players=[{id:'p1',name:'Bo Active',rating:50,status:'Visitor'},{id:'p2',name:'Cai',rating:40,status:'Active'}];query='active';filter=''");
+  const html = h.evaluate('playersScreen()');
+  assert.ok(html.includes('Bo Active') && !html.includes('>Cai<'), 'a status word no longer matches a name');
+  // R14: the matcher is local; neither it nor the desk filter makes a request
+  assert.ok(!/fetch\(/.test(h.evaluate('nameMatches.toString()+deskFilter.toString()')), 'no network call on a keystroke');
+  // EN/中 placeholder parity for both fields
+  for (const key of ['search', 'deskSearch', 'deskNone']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
+});
+test('R13: the registration desk filters its regulars in place with the same matcher', () => {
+  const h = harness();
+  h.evaluate("data.players=[{id:'p1',name:'Ann-Marie (Annie) Lee',rating:70,status:'Active'},{id:'p2',name:'王磊',rating:60,status:'Active'},{id:'p3',name:'Bo',rating:50,status:'Active'}];data.tournament={id:'t1',status:'registration',format:'singles',raceTo:3,entrants:[],matches:[]}");
+  const html = h.evaluate('setupScreen()');
+  assert.ok(html.includes('class="desk-search" data-desk="0"'), 'the desk has a type-to-filter field');
+  assert.ok(html.includes('aria-controls="desk-pid0"') && html.includes('id="desk-pid0"'), 'tied to its select');
+  assert.ok(html.includes('data-name="Ann-Marie (Annie) Lee"'), 'options carry the bare name, so the rating is never matched');
+  // drive deskFilter against a stub select
+  h.evaluate(`const opts=[{value:'',textContent:'Guest',dataset:{},hidden:false},
+    {value:'p1',textContent:'Ann-Marie (Annie) Lee · 70',dataset:{name:'Ann-Marie (Annie) Lee'},hidden:false},
+    {value:'p2',textContent:'王磊 · 60',dataset:{name:'王磊'},hidden:false},
+    {value:'p3',textContent:'Bo · 50',dataset:{name:'Bo'},hidden:false}];
+    const sel={options:opts,value:'',get selectedOptions(){return opts.filter(o=>o.value===this.value)}};
+    const none={hidden:true};
+    document.getElementById=id=>id==='desk-pid0'?sel:id==='desk-none0'?none:null;
+    deskSelect=sel;deskNone=none;`);
+  h.evaluate("deskFilter({value:'ann-marie lee',dataset:{desk:'0'}})");
+  assert.equal(h.evaluate("opts.filter(o=>!o.hidden).map(o=>o.value).join(',')"), ',p1', 'only the match (and Guest) stay visible');
+  assert.equal(h.evaluate('deskSelect.value'), 'p1', 'a single match is selected');
+  h.evaluate("deskFilter({value:'７０',dataset:{desk:'0'}})");
+  assert.equal(h.evaluate('deskNone.hidden'), false, 'the rating is not part of the name: nothing matches, and it says so');
+  h.evaluate("deskFilter({value:'',dataset:{desk:'0'}})");
+  assert.equal(h.evaluate("opts.every(o=>!o.hidden)"), true, 'clearing the field shows everyone again');
+});
+test('onboard: an empty club gets three real steps on the Floor, and they leave once the draw exists', () => {
+  const h = harness();
+  const guide = () => { const html = h.evaluate('floorScreen()'); const m = html.match(/<article class="first-run"[\s\S]*?<\/article>/); return m ? m[0] : ''; };
+  const first = guide();
+  assert.ok(first, 'an empty club sees the guide');
+  assert.deepEqual([...first.matchAll(/data-tab="([a-z]+)"/g)].map(m => m[1]), ['players', 'setup', 'setup'], 'each step is the tab button that does it');
+  assert.ok(!first.includes('class="done"'), 'nothing is ticked before anything happened');
+  h.evaluate("data.players=[{id:'p1',name:'Ana',rating:50,status:'Active'}]");
+  assert.equal((guide().match(/class="done"/g) || []).length, 1, 'a saved regular ticks step 1');
+  h.evaluate("data.tournament.entrants=[{id:'e1',members:[{pid:'p1',name:'Ana'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}]");
+  assert.equal((guide().match(/class="done"/g) || []).length, 2, 'two entrants tick step 2');
+  h.evaluate("data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]}]");
+  assert.equal(guide(), '', 'the guide leaves once the draw exists');
+  for (const key of ['firstRunTitle', 'firstRunRegulars', 'firstRunEntrants', 'firstRunRack', 'firstRunNote']) {
+    assert.match(source, new RegExp(`${key}:\\['[^']+','[^']+'\\]`), `${key} has an EN and a 中 string`);
+  }
+});
+test('harden: fields show focus that a border shorthand cannot erase; names and states are announced', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const focus = css.match(/input:focus,[^{]*textarea:focus\{([^}]*)\}/);
+  assert.ok(focus, 'one field focus rule');
+  assert.match(focus[1], /box-shadow:[^;]*var\(--brass\)/, 'the focus ring is a box-shadow, so .vs-field border:1px cannot remove it');
+  assert.ok(!/animation:none!important;transition:none!important/.test(css), 'reduced motion keeps state changes instead of a global kill');
+  const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
+  assert.ok(!html.includes('aria-label="Color theme"'), 'the theme group name is bilingual');
+  const surface = harness().evaluate('visionSurface()');
+  assert.ok(surface.includes('role="tab" aria-selected="true" aria-controls="vs-cues"'), 'the sheet bar holds real tabs');
+  for (const key of ['cuesRegion', 'stageRegion', 'inspectorRegion', 'sheetTabs', 'stepBack', 'stepForward']) {
+    assert.ok(surface.includes(`data-vs-aria="${key}"`), `${key} follows the language toggle`);
+  }
+  assert.ok(!surface.includes('aria-label="-1"') && !surface.includes('aria-label="+1"'), 'step buttons say what they do');
+  assert.ok(source.includes("b.setAttribute('aria-pressed',String(b.dataset.lang===lang))"), 'EN|中 announce the pressed one');
+  assert.ok(source.includes("b.setAttribute('aria-pressed',String(b.dataset.theme===theme))"), 'dark|light announce the pressed one');
+  const stage = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  for (const key of ['cuesRegion', 'stageRegion', 'inspectorRegion', 'sheetTabs', 'twitchChat', 'stepBack', 'stepForward']) {
+    assert.equal((stage.match(new RegExp(`\\b${key}:'`, 'g')) || []).length, 2, `${key} has an EN and a 中 string`);
+  }
+  assert.ok(!stage.includes('title="Twitch chat"') && !stage.includes('aria-label="×"'), 'no English-only frame title or glyph-only close name');
+});
 test('player notes are editable and safely escaped', () => {
   const h = harness();
   const html = h.evaluate("playerForm({id:'p1',name:'A',notes:'</textarea><script>x</script>'})");
@@ -383,7 +736,8 @@ test('the clock paints the true remaining time on the first render, in every vie
   const painted = h.evaluate('clockHTML()');
   assert.ok(painted.includes('>0:13<'), 'the first paint is the real remaining time: ' + painted);
   assert.ok(!painted.includes('>0:30<'), 'never the hardcoded 0:30');
-  assert.ok(painted.includes('width:20.666'), 'the progress bar paints the live value too: ' + painted);
+  // The bar scales (transform) rather than resizing (width) since the polish step: 12.4 / 60 = 0.2067.
+  assert.ok(painted.includes('transform:scaleX(0.2067)'), 'the progress bar paints the live value too: ' + painted);
   // A running clock paints from the same source, and the interval writes with the
   // same formatter, so a paint and a tick can never disagree.
   h.evaluate("timer={duration:60,remaining:12.4,deadline:Date.now()+7400}");
@@ -518,7 +872,8 @@ test('a renamed regular reads by their current name on every screen, archive inc
 test('a refusal is readable over an open modal: the message sits above the backdrop', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   const z = selector => Number(css.match(new RegExp(`${selector.replace(/[.#()]/g, '\\$&')}\\{[^}]*z-index:(\\d+)`))[1]);
-  assert.ok(z(':is(#ops-shell, #ops-footer) #message') > z('.modal-backdrop'), 'the player modal must not cover the reason it was refused');
+  // The polish's distill step wrote `:is(#ops-shell, #ops-footer)` as `#ops-shell` (same specificity).
+  assert.ok(z('#ops-shell #message') > z('.modal-backdrop'), 'the player modal must not cover the reason it was refused');
 });
 test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', () => {
   const h = harness();

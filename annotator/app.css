@@ -3,71 +3,52 @@
    ONE frame surface the review engine paints: image + overlay SVG + popover. */
 #review-root {
 &[data-embedded] { min-height: 0; display: block; }
-& {
-  color-scheme: dark;
-  --display: "Zilla Slab", "Noto Serif SC", Georgia, serif;
-  --body: "Barlow", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
-  --mono: "DM Mono", "Noto Sans SC", ui-monospace, monospace;
-  --bg: #14110f; --panel: #1a1613; --panel2: #100e0c; --rail: #241e19;
-  --line: #2e2620; --line2: #262019; --btn-line: #4a3f33;
-  --ink-hi: #f6f1e6; --ink: #f2e9dd; --ink-mid: #b6a693; --ink-dim: #8a7a68; --ink-faint: #6d5f51;
-  --brass: #c9a227; --brass-hi: #e3c877; --brass-hover: #dcbb46; --brass-fg: #17120c; --pip-off: #2b241d;
-  --green: #7fc39a; --green-bg: #16241c; --green-line: #3d5f4c;
-  --amber: #dfa93a; --amber-bg: #2a2013; --amber-line: #5c4a1e;
-  --red: #cf5b4d;
-  --lamp: rgba(240,214,150,.08);
-  --track: #100e0c; --thumb: #3a3129;
-}
-&[data-theme="light"] {
-  color-scheme: light;
-  --bg: #eee6d8; --panel: #faf6ee; --panel2: #fffdf8; --rail: #e9e0d0;
-  --line: #d8cbb6; --line2: #e3d9c7; --btn-line: #c2b299;
-  --ink-hi: #171208; --ink: #241c12; --ink-mid: #5b4f41; --ink-dim: #7c6d5b; --ink-faint: #9b8b77;
-  --brass: #8a6a12; --brass-hi: #6d5210; --brass-hover: #a07d18; --brass-fg: #fdf8ee; --pip-off: #d9cdb8;
-  --green: #256a45; --green-bg: #dfeade; --green-line: #a6c2ac;
-  --amber: #8a5307; --amber-bg: #f6e9cf; --amber-line: #d6bd8a;
-  --red: #a4382b;
-  --lamp: rgba(255,206,110,.2);
-  --track: #e6dccb; --thumb: #c2b299;
-}
+/* No palette here: every colour comes from the tokens in ops.css (:root), so the
+   stage follows the shell's theme and there is nothing to drift. */
 * { box-sizing: border-box; }
-& { background: transparent; color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+& { background: transparent; color: var(--ink); font-family: var(--body); font-size: var(--fs-body); line-height: 1.5; -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; color: inherit; }
-.empty { padding: 40px 18px; text-align: center; border: 1px dashed var(--line); color: var(--ink-dim); line-height: 1.8; }
+.empty { padding: 40px var(--sp-4); text-align: center; border: 1px dashed var(--line); color: var(--ink-dim); line-height: 1.8; }
 ::selection { background: var(--brass); color: var(--brass-fg); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
 
 /* One frame surface: the video and the still share one coordinate system with
    the overlay SVG, because all three are the full width of the figure and keep
    the frame's aspect ratio. Exactly one of video/still is visible at a time. */
-.stage { position: relative; margin: 0; background: #090806; line-height: 0; }
+.stage { position: relative; margin: 0; background: var(--stage-bg); line-height: 0; }
 .stage > img { display: block; width: 100%; height: auto; }
 .stage > img[hidden] { display: none; }
-.stage > video { display: block; width: 100%; height: auto; background: #090806; }
+.stage > video { display: block; width: 100%; height: auto; background: var(--stage-bg); }
 .stage > video[hidden] { display: none; }
 .stage > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 26px; margin: 0; line-height: 1.6; text-align: center; color: var(--ink-dim); background: var(--panel2); }
+.stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--sp-5); margin: 0; line-height: 1.6; text-align: center; color: var(--ink-dim); background: var(--panel2); }
 .stage-empty[hidden] { display: none; }
-.stage-live { position: absolute; left: 10px; top: 10px; padding: 4px 8px; border-radius: 2px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; background: var(--panel2); color: var(--green); border: 1px solid var(--green-line); }
+.stage-live { position: absolute; left: 10px; top: 10px; padding: var(--sp-1) var(--sp-2); border-radius: 2px; font-family: var(--mono); font-size: var(--fs-sm); letter-spacing: .14em; text-transform: uppercase; background: var(--panel2); color: var(--green); border: 1px solid var(--green-line); }
 .stage-live.stale { color: var(--amber); border-color: var(--amber-line); background: var(--amber-bg); }
 .stage-live[hidden] { display: none; }
 /* What the stage is doing to the picture it is showing: playing or paused, the
    window it loops in, and that per-frame detections only come back on a freeze.
    Bottom-left, so it never covers the table or the live chip. */
-.stage-play { position: absolute; left: 10px; bottom: 10px; padding: 4px 8px; border-radius: 2px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; background: #0b0a08cc; color: var(--brass-hi); border: 1px solid var(--brass); }
-.stage-play[data-playing="0"] { color: var(--amber); border-color: var(--amber-line); }
+.stage-play { position: absolute; left: 10px; bottom: 10px; padding: var(--sp-1) var(--sp-2); border-radius: 2px; font-family: var(--mono); font-size: var(--fs-sm); letter-spacing: .1em; text-transform: uppercase; background: var(--stage-plate); color: var(--stage-brass-hi); border: 1px solid var(--stage-brass); }
+.stage-play[data-playing="0"] { color: var(--stage-amber); border-color: var(--stage-amber); }
+/* .stage sets line-height 0 (so the image leaves no gap); the chips set their own, or
+   a chip that wraps draws its second line on top of its first. */
+.stage-live, .stage-play { line-height: 1.4; max-width: calc(100% - 20px); }
 .stage-play[hidden] { display: none; }
 /* Why a layer is missing is said on the stage itself, in the operator's
    language, instead of leaving an unexplained empty layer. It sits at the top
    because the stage is taller than a short viewport: a notice below the fold is
    a notice nobody reads. The live chip owns the top-left corner, so the notice
    steps below it while the live edge is on screen. */
-.stage-note { position: absolute; left: 10px; right: 10px; top: 10px; padding: 6px 9px; border-radius: 2px; border: 1px solid var(--amber-line); background: #14110fee; color: var(--amber); font-size: 11.5px; line-height: 1.45; }
+.stage-note { position: absolute; left: 10px; right: 10px; top: 10px; padding: var(--sp-1h) var(--sp-2); border-radius: 2px; border: 1px solid var(--stage-amber); background: var(--stage-note); color: var(--stage-amber); font-size: var(--fs-xs); line-height: 1.45; }
 .stage-note[data-live="1"] { top: 42px; }
 .stage-note[hidden] { display: none; }
-.stage-note.error { border-color: var(--red); color: var(--red); }
-#t-overlay circle, #t-overlay .u-player { }
-#t-overlay text { font: 500 14px var(--mono); paint-order: stroke; stroke: #09080699; stroke-width: 3; pointer-events: none; }
+.stage-note.error { border-color: var(--stage-red); color: var(--stage-red); }
+/* The overlay is drawn on the video frame, which is dark in both themes: inside it
+   the accent tokens resolve to the stage accents, so a light page never puts dark
+   brass or red on the picture. */
+#t-overlay { --brass: var(--stage-brass); --brass-hi: var(--stage-brass-hi); --green: var(--stage-green); --amber: var(--stage-amber); --red: var(--stage-red); }
+#t-overlay text { font: 500 14px var(--mono); paint-order: stroke; stroke: var(--stage-halo); stroke-width: 3; pointer-events: none; }
 /* Provenance: automatic results (unified detection / live metadata) are a
    dashed, dimmed reference layer; the operator's own polygon and boxes below
    keep solid strokes and grab handles, so a corrected frame never shows two
@@ -80,7 +61,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #t-overlay .u-ball > circle:last-child { opacity: .6; }
 #t-overlay .u-ball { cursor: pointer; }
 #t-overlay .u-ball:hover > circle:first-child { opacity: 1; stroke-dasharray: none; }
-#t-overlay .u-person rect { cursor: pointer; stroke-dasharray: 10 7; opacity: .6; }
+#t-overlay .u-person rect { cursor: pointer; stroke: var(--stage-bound); stroke-dasharray: 10 7; opacity: .6; }
 #t-overlay .u-person.selected rect { stroke-width: 4; stroke-dasharray: none; opacity: 1; }
 #t-overlay .u-person text { fill: var(--green); opacity: .7; }
 #t-overlay .u-person:hover rect { opacity: 1; }
@@ -89,13 +70,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
    the pocket it names, and the highlight on that pocket. Solid, because this is
    the event under review - not a dimmed reference layer. */
 #t-overlay .u-cue-line { stroke: var(--red); stroke-width: 3; stroke-dasharray: 10 6; opacity: .9; }
-#t-overlay .u-cue-ball circle:first-child { fill: none; stroke: #fff4d5; stroke-width: 3; }
-#t-overlay .u-cue-ball circle:last-child { fill: #fff4d5; }
+#t-overlay .u-cue-ball circle:first-child { fill: none; stroke: var(--stage-ink); stroke-width: 3; }
+#t-overlay .u-cue-ball circle:last-child { fill: var(--stage-ink); }
 #t-overlay .u-cue-pocket { fill: none; stroke: var(--red); stroke-width: 3.5; opacity: .95; }
-#t-overlay .u-cue-takeoff { fill: none; stroke: #fff4d5; stroke-width: 2.5; opacity: .8; stroke-dasharray: 6 4; }
+#t-overlay .u-cue-takeoff { fill: none; stroke: var(--stage-ink); stroke-width: 2.5; opacity: .8; stroke-dasharray: 6 4; }
 #t-overlay .u-cue-head { fill: var(--red); opacity: .95; }
 #t-overlay .o-src.event rect { stroke: var(--red); }
-#t-overlay .o-src.event text { fill: #f3b3aa; }
+#t-overlay .o-src.event text { fill: var(--stage-event); }
 /* Two layers can be on one frame, so the style follows each box's own origin, not
    a frame-level flag: the model's boxes are dashed reference (fainter still when a
    manual box already describes the same object), the operator's are solid. */
@@ -105,23 +86,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #t-overlay .t-box.manual rect { stroke-dasharray: none; opacity: 1; }
 #t-overlay[data-boxes="auto"] .t-poly { stroke-dasharray: 12 8; opacity: .55; }
 /* Manual content stays solid with full opacity and keeps its grab handles. */
-#t-overlay .u-anchor circle { fill: #20160d; stroke: var(--brass-hi); stroke-width: 3; cursor: grab; }
-#t-overlay .u-anchor text { fill: #fff4d5; font: 700 16px var(--mono); }
-#t-overlay .u-anchor.selected circle { fill: var(--brass); stroke: #fff; }
-#t-overlay rect.t-box, #t-overlay .t-box rect { fill: #c9a22722; stroke: var(--brass); stroke-width: 3; cursor: pointer; }
-#t-overlay .t-box.selected rect { fill: #c9a22744; stroke: #fff2bd; stroke-width: 5; }
-#t-overlay .t-box text { fill: #fff4d5; }
-#t-overlay rect.handle { fill: var(--brass-hi); stroke: #20160d; stroke-width: 2; cursor: nwse-resize; }
-#t-overlay .center-dot { fill: #fff; stroke: #20160d; stroke-width: 2; pointer-events: none; }
+#t-overlay .u-anchor circle { fill: var(--stage-mark); stroke: var(--stage-brass-hi); stroke-width: 3; cursor: grab; }
+#t-overlay .u-anchor text { fill: var(--stage-ink); font: 700 16px var(--mono); }
+#t-overlay .u-anchor.selected circle { fill: var(--stage-brass); stroke: var(--stage-ink); }
+#t-overlay rect.t-box, #t-overlay .t-box rect { fill: color-mix(in srgb, var(--stage-brass) 13%, transparent); stroke: var(--stage-brass); stroke-width: 3; cursor: pointer; }
+#t-overlay .t-box.selected rect { fill: color-mix(in srgb, var(--stage-brass) 27%, transparent); stroke: var(--stage-ink-hi); stroke-width: 5; }
+#t-overlay .t-box text { fill: var(--stage-ink); }
+#t-overlay rect.handle { fill: var(--stage-brass-hi); stroke: var(--stage-mark); stroke-width: 2; cursor: nwse-resize; }
+#t-overlay .center-dot { fill: var(--stage-ink); stroke: var(--stage-mark); stroke-width: 2; pointer-events: none; }
 #t-overlay .t-poly { fill: none; stroke: var(--green); stroke-width: 3; pointer-events: none; }
-#t-overlay .draw-preview { fill: #8bb89a22; stroke: var(--green); stroke-dasharray: 6 4; }
+#t-overlay .draw-preview { fill: color-mix(in srgb, var(--stage-green) 13%, transparent); stroke: var(--stage-green); stroke-dasharray: 6 4; }
 /* Source tags: every drawn geometry group says which source it came from -
    MODEL output, the operator's own mark, or geometry projected from the saved
    calibration (CALIB), which is trusted but is not a detection on this frame.
    The tag sits next to the shape, never inside its group, so it can never
    inherit the group's editable styling. */
 #t-overlay .o-src { pointer-events: none; }
-#t-overlay .o-src rect { fill: #0b0a08cc; stroke-width: 1.5; }
+#t-overlay .o-src rect { fill: var(--stage-plate); stroke-width: 1.5; }
 #t-overlay .o-src.model rect, #t-overlay .o-src.auto rect { stroke: var(--brass); }
 #t-overlay .o-src.manual rect { stroke: var(--green); }
 #t-overlay .o-src.calib rect { stroke: var(--amber); }
@@ -129,19 +110,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #t-overlay .o-src.model text, #t-overlay .o-src.auto text { fill: var(--brass-hi); }
 #t-overlay .o-src.manual text { fill: var(--green); }
 #t-overlay .o-src.calib text { fill: var(--amber); }
-#t-overlay .o-label { font: 500 14px var(--mono); fill: #fff4d5; }
-#t-overlay .u-person text.u-chip { fill: var(--green); opacity: .85; }
-#t-overlay .u-person text.u-chip.bound { fill: #8fd6a8; opacity: 1; }
+#t-overlay .o-label { font: 500 14px var(--mono); fill: var(--stage-ink); }
+/* The chip is drawn beside its MODEL tag, not inside .u-person (it is placed with the
+   other tag rows), so the rule names it directly: it had no fill before (black). */
+#t-overlay text.u-chip { fill: var(--green); opacity: .85; }
+#t-overlay text.u-chip.bound { fill: var(--stage-bound); opacity: 1; }
 
 /* Ball label popover: attached to the ball it labels, dimming around it. */
-.stage-popover { position: absolute; z-index: 5; min-width: 168px; padding: 8px; border: 1px solid var(--brass); border-radius: 2px; background: var(--panel); box-shadow: 0 6px 26px #0009; line-height: 1.3; }
+.stage-popover { position: absolute; z-index: 5; min-width: 168px; padding: var(--sp-2); border: 1px solid var(--brass); border-radius: 2px; background: var(--panel); box-shadow: 0 6px 26px var(--shadow); line-height: 1.3; }
 .stage-popover[hidden] { display: none; }
-.pop-head { font: 500 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--brass-hi); margin-bottom: 6px; overflow-wrap: anywhere; }
-.pop-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
-.pop-grid button { min-height: 30px; padding: 0; border-radius: 2px; background: var(--panel2); border: 1px solid var(--btn-line); color: var(--ink); font: 12.5px var(--mono); cursor: pointer; }
+.pop-head { font: 500 var(--fs-sm) var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--brass-hi); margin-bottom: var(--sp-1h); overflow-wrap: anywhere; }
+.pop-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-1); }
+.pop-grid button { min-height: 30px; padding: 0; border-radius: 2px; background: var(--panel2); border: 1px solid var(--btn-line); color: var(--ink); font: var(--fs-sm) var(--mono); cursor: pointer; }
 .pop-grid button:hover { border-color: var(--brass); }
 .pop-grid button:disabled { opacity: .4; }
-.pop-row { display: flex; gap: 4px; margin-top: 4px; }
-.pop-row button { flex: 1; min-height: 28px; padding: 0 6px; border-radius: 2px; background: var(--panel2); border: 1px solid var(--btn-line); color: var(--ink); font: 11px var(--mono); cursor: pointer; }
-.pop-note { margin: 6px 0 0; font-size: 10.5px; color: var(--ink-dim); }
+.pop-row { display: flex; gap: var(--sp-1); margin-top: var(--sp-1); }
+.pop-row button { flex: 1; min-height: 28px; padding: 0 var(--sp-1h); border-radius: 2px; background: var(--panel2); border: 1px solid var(--btn-line); color: var(--ink); font: var(--fs-xs) var(--mono); cursor: pointer; }
+.pop-note { margin: var(--sp-1h) 0 0; font-size: var(--fs-xs); color: var(--ink-dim); }
 }

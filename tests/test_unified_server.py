@@ -4,6 +4,7 @@ import io
 import json
 import math
 from pathlib import Path
+import re
 import tempfile
 import time
 import unittest
@@ -532,6 +533,39 @@ class BackendTests(unittest.TestCase):
         handler.do_GET()
         self.assertEqual(handler.status, 200)
         self.assertEqual(json.loads(handler.wfile.getvalue())['html'], (assets / 'app.html').read_text())
+    def test_self_hosted_fonts_and_their_licences_are_served_nothing_else(self):
+        assets = Path(__file__).resolve().parents[1] / 'annotator'
+        (self.root / 'annotator').symlink_to(assets, target_is_directory=True)
+        for path, kind in (('/fonts/barlow-400.woff2', 'font/woff2'), ('/fonts/OFL-Barlow.txt', 'text/plain')):
+            handler = self.handler(path)
+            handler.do_GET()
+            self.assertEqual(handler.status, 200, path)
+            self.assertEqual(handler.response_headers['Content-Type'], kind)
+            self.assertEqual(handler.wfile.getvalue(), (assets / path.lstrip('/')).read_bytes())
+        # The build script, unknown names and nested paths are not assets.
+        for path in ('/fonts/build_fonts.py', '/fonts/missing.woff2', '/fonts/x/barlow-400.woff2'):
+            handler = self.handler(path)
+            handler.do_GET()
+            self.assertEqual(handler.status, 404, path)
+        # The pages reference no font CDN; every @font-face points at /fonts/.
+        pages = (assets / 'ops.html').read_text() + (assets / 'app.html').read_text() + (assets / 'ops.css').read_text()
+        self.assertNotIn('fonts.googleapis.com', pages)
+        self.assertNotIn('fonts.gstatic.com', pages)
+        for url in re.findall(r'url\((/fonts/[^)]+)\)', (assets / 'ops.css').read_text()):
+            self.assertTrue((assets / url.lstrip('/')).is_file(), url)
+        # User-typed hanzi: each common-hanzi face is a unicode-range extension of a UI
+        # face with identical family, style and weight (else the browser will not
+        # compose them), and its range is the one build_fonts.py generated.
+        faces = re.findall(r"@font-face\{font-family:'([^']+)';font-style:(\w+);font-weight:([0-9 ]+);"
+                           r"font-display:swap;src:url\(/fonts/([a-z0-9-]+)\.woff2\) format\('woff2'\)"
+                           r"(?:;unicode-range:([^}]+))?\}", (assets / 'ops.css').read_text())
+        plain = {(family, style, weight) for family, style, weight, _, urange in faces if not urange}
+        common = [face for face in faces if face[3].endswith('-common')]
+        self.assertTrue(common)
+        generated = (assets / 'fonts' / 'common-unicode-range.txt').read_text().strip()
+        for family, style, weight, name, urange in common:
+            self.assertIn((family, style, weight), plain, name)
+            self.assertEqual(urange, generated, name)
 
     def test_event_clip_bounded_and_cached(self):
         encoded = []

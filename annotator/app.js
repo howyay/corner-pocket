@@ -276,23 +276,71 @@ function correctionScope(correction, frame) {
 // model vs solid editable styling stays; the tag is what makes the difference
 // readable without the facts line.
 const SRC_TAG_HEIGHT = 18, SRC_TAG_FONT = 14;
+// Round 1: tags are drawn in frame pixels, so they shrink with the frame. tagScale (set per paint from
+// the overlay's displayed width) keeps a tag at least MIN_TAG_PX tall on screen at any viewport.
+const MIN_TAG_PX = 11;
+let tagScale = 1;
+function measureTagScale(svg, frameW) {
+  const shown = svg && svg.getBoundingClientRect ? svg.getBoundingClientRect().width : 0;
+  const display = shown && frameW ? shown / frameW : 1;
+  return Math.max(1, MIN_TAG_PX / (SRC_TAG_FONT * display));
+}
 function glyphWidth(value, size) {
   let width = 0;
   for (const ch of String(value ?? '')) width += /[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? size : size * 0.62;
   return width;
 }
 function sourceTagLabel(kind) { return text(kind === 'manual' ? 'YOURS' : kind === 'calib' ? 'CALIB' : kind === 'event' ? 'EVENT' : 'MODEL'); }
-function sourceTagWidth(kind) { return Math.round(glyphWidth(sourceTagLabel(kind), SRC_TAG_FONT) + 14); }
-function sourceTag(x, y, kind) {
-  const label = sourceTagLabel(kind), width = sourceTagWidth(kind);
-  return `<g class="o-src ${kind}" data-src="${kind}"><rect x="${Math.round(x)}" y="${Math.round(y)}" width="${width}" height="${SRC_TAG_HEIGHT}" rx="3"></rect><text x="${Math.round(x + 7)}" y="${Math.round(y + 13)}">${esc(label)}</text></g>`;
-}
+function sourceTagWidth(kind) { return Math.round((glyphWidth(sourceTagLabel(kind), SRC_TAG_FONT) + 14) * tagScale); }
+// Tag placement. During one paintOverlay() every tag row (provenance tag + its label)
+// registers here with the spot its owner asked for; placeTags() then settles them
+// before the one innerHTML write, so no two rows are drawn over each other. Outside a
+// paint (tests, other callers) a row is drawn where it was asked for.
+let tagQueue = null;
+const TAG_ORDER = {manual:0, calib:1, event:2, model:3, auto:3};
+function sourceTag(x, y, kind) { return tagRow(x, y, kind, ''); }
 // The tag and the group's own label share one line, so two sources drawn on the
 // same spot stay readable instead of stacking four rows of small text.
 function tagRow(x, y, kind, label, cls = 'o-label') {
-  const row = sourceTag(x, y, kind);
-  if (!label) return row;
-  return `${row}<text class="${cls}" x="${Math.round(x + sourceTagWidth(kind) + 6)}" y="${Math.round(y + 13)}">${esc(label)}</text>`;
+  const k = tagScale, width = sourceTagWidth(kind) + (label ? Math.round((6 + glyphWidth(label, SRC_TAG_FONT)) * k) : 0);
+  const draw = (px, py, chip = false) => {
+    const fs = k === 1 ? '' : ` style="font-size:${Math.round(SRC_TAG_FONT * k)}px"`;
+    const tag = `<g class="o-src ${kind}" data-src="${kind}">${chip && label ? `<title>${esc(label)}</title>` : ''}<rect x="${Math.round(px)}" y="${Math.round(py)}" width="${sourceTagWidth(kind)}" height="${Math.round(SRC_TAG_HEIGHT * k)}" rx="3"></rect><text x="${Math.round(px + 7 * k)}" y="${Math.round(py + 13 * k)}"${fs}>${esc(sourceTagLabel(kind))}</text></g>`;
+    return label && !chip ? `${tag}<text class="${cls}" x="${Math.round(px + sourceTagWidth(kind) + 6 * k)}" y="${Math.round(py + 13 * k)}"${fs}>${esc(label)}</text>` : tag;
+  };
+  if (!tagQueue) return draw(x, y);
+  const token = `\u0000tag${tagQueue.length}\u0000`;
+  tagQueue.push({token, x, y, width, chipWidth: sourceTagWidth(kind), kind, draw});
+  return token;
+}
+// Settle the queued rows: the operator's and calibration tags keep their spot first,
+// then events, then model tags. A row that would cover an earlier one moves to the
+// nearest free spot in 20 px steps: down, up, then right and left. It never leaves the
+// frame, and if nothing is free within 6 steps it keeps its asked-for spot.
+function placeTags(markup, frameW, frameH) {
+  const queue = tagQueue || []; tagQueue = null;
+  const k = tagScale, taken = [], H = Math.round((SRC_TAG_HEIGHT + 2) * k);
+  const hits = (x, y, w) => taken.some(r => x < r.x + r.w && r.x < x + w && y < r.y + r.h && r.y < y + H);
+  const fit = (x, y, w) => [Math.max(0, Math.min(frameW - w, x)), Math.max(0, Math.min(frameH - H, y))];
+  const moves = [[0,0]];
+  for (let s = 1; s <= 6; s++) moves.push([0, s * 20 * k], [0, -s * 20 * k], [s * 24 * k, 0], [-s * 24 * k, 0]);
+  const order = queue.map((q, i) => i).sort((i, j) => (TAG_ORDER[queue[i].kind] ?? 9) - (TAG_ORDER[queue[j].kind] ?? 9) || i - j);
+  const out = new Map();
+  for (const i of order) {
+    const q = queue[i];
+    let spot = null, w = q.width, chip = false;
+    for (const [dx, dy] of moves) { const s = fit(q.x + dx, q.y + dy, q.width); if (!hits(s[0], s[1], q.width)) { spot = s; break; } }
+    if (!spot && q.chipWidth < q.width) for (const [dx, dy] of moves) { const s = fit(q.x + dx, q.y + dy, q.chipWidth); if (!hits(s[0], s[1], q.chipWidth)) { spot = s; w = q.chipWidth; chip = true; break; } }
+    // Round 1: never overprint. A row that has no free spot tries its bare source chip (the label moves
+    // into the chip's <title>). The operator's, calibration and selected-cue rows always keep a spot
+    // (they are placed first); a MODEL row with no room at all is left out of this paint - its geometry
+    // (dashed = model) and its box <title> stay, so what it says is one hover away, not lost.
+    if (!spot && (q.kind === 'manual' || q.kind === 'calib' || q.kind === 'event')) spot = fit(q.x, q.y, q.width);
+    if (!spot) { out.set(q.token, ''); continue; }
+    taken.push({x: spot[0], y: spot[1], w, h: H});
+    out.set(q.token, q.draw(spot[0], spot[1], chip));
+  }
+  return markup.replace(/\u0000tag\d+\u0000/g, token => out.get(token) ?? '');
 }
 function quadOrigin(points) {
   const xs = points.map(p => Number(p[0])), ys = points.map(p => Number(p[1]));
@@ -730,6 +778,8 @@ function paintLiveChip() {
 }
 function paintOverlay() {
   const svg = $('#t-overlay'); if (!svg) return;
+  tagQueue = [];
+  tagScale = measureTagScale(svg, state.frameWidth || 1280);
   const drawn = {cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0};
   // Provenance: `auto` holds what the model drew (unified detection or the live
   // metadata stream); the manual polygon and correction boxes are counted into
@@ -798,8 +848,8 @@ function paintOverlay() {
       const [x1, y1, x2, y2] = per.bbox;
       const track = per.track_id ?? per.track;
       const selected = state.sel.kind === 'person' && track !== undefined && String(state.sel.person?.track_id ?? state.sel.person?.track) === String(track);
-      const chip = ov ? `<text class="u-chip${per.player_id ? ' bound' : ''}" x="${x1 + 2 + sourceTagWidth('model') + 6}" y="${Math.max(16, y1 - 8)}">${esc(personChip(per, track))}</text>` : '';
-      return `${sourceTag(x1 + 2, Math.max(2, y1 - 26), 'model')}${chip}<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect></g>`;
+      const chip = ov ? tagRow(x1 + 2, Math.max(2, y1 - 26), 'model', personChip(per, track), `u-chip${per.player_id ? ' bound' : ''}`) : sourceTag(x1 + 2, Math.max(2, y1 - 26), 'model');
+      return `${chip}<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><title>${esc(`${personChip(per, track)} · ${sourceTagLabel('model')}`)}</title><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect></g>`;
     }).join(''));
     auto.persons = persons.length;
   }
@@ -872,11 +922,11 @@ function paintOverlay() {
     // top of each other: agreement keeps one clean pair of rectangles.
     const tagAt = faint && kind === 'auto' ? y2 + 18 : Math.max(2, y1 - 26);
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
-    return `${tagRow(x1, tagAt, kind, `${box.label}${box.score != null ? ` ${Number(box.score).toFixed(2)}` : ''}`)}<g data-box="${i}" data-origin="${kind}"${ghost ? ' data-ghost="1"' : ''} class="t-box ${kind}${faint ? ' faint' : ''}${selected ? ' selected' : ''}"><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
+    return `${tagRow(x1, tagAt, kind, `${box.label}`)}<g data-box="${i}" data-origin="${kind}"${ghost ? ' data-ghost="1"' : ''} class="t-box ${kind}${faint ? ' faint' : ''}${selected ? ' selected' : ''}"><title>${esc(`${box.label}${box.score != null ? ` · ${text('confidence')} ${Number(box.score).toFixed(2)}` : ''} · ${sourceTagLabel(kind)}`)}</title><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
   }).join('');
   const poly = editPolygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
-  svg.innerHTML = layers.join('') + poly + boxes + preview;
+  svg.innerHTML = placeTags(layers.join('') + poly + boxes + preview, state.frameWidth || 1280, state.frameHeight || 720);
   svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { const index = Number(g.dataset.box); if (state.boxes[index]?.frozen) return; if (state.tool === 'select' && state.sel.box !== index) { selectBox(index); } });
   svg.querySelectorAll('g.u-ball').forEach(g => g.onclick = event => { event.stopPropagation(); selectStageBall(Number(g.dataset.ball), Number(g.dataset.cx), Number(g.dataset.cy), Number(g.dataset.r)); });
   svg.querySelectorAll('g.u-person').forEach(g => g.onclick = event => { event.stopPropagation(); selectStagePerson(g.dataset); });
@@ -1497,10 +1547,14 @@ function onKeydown(e) {
   const key = e.key;
   if (key === ' ' || key === 'Spacebar') { e.preventDefault(); setPlaying(!state.playing); return; }
   if (key === ',' || key === '.') { e.preventDefault(); stepFrame(key === ',' ? -1 : 1); return; }
-  if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); stepFrame((key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 10 : 1)); return; }
-  if (key === 'ArrowUp' || key === 'ArrowDown') {
-    if (state.sel.kind === 'anchor') { e.preventDefault(); nudgeAnchor(0, key === 'ArrowUp' ? -1 : 1); return; }
-    if (state.sel.box >= 0) { e.preventDefault(); nudgeBox(0, key === 'ArrowUp' ? -1 : 1); }
+  // F3: with a box or an anchor selected the arrows nudge it, in all four directions
+  // (Shift = 10 px); with nothing to nudge, ←/→ step frames (Shift = 10 frames).
+  if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown') {
+    const step = e.shiftKey ? 10 : 1;
+    const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0, dy = key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0;
+    if (state.sel.kind === 'anchor') { e.preventDefault(); nudgeAnchor(dx, dy); return; }
+    if (state.sel.box >= 0) { e.preventDefault(); nudgeBox(dx, dy); return; }
+    if (dx) { e.preventDefault(); stepFrame((dx < 0 ? -1 : 1) * step); }
     return;
   }
   if (key === 'Escape') { clearSelection(); return; }
@@ -1667,7 +1721,7 @@ const zhCopy = {
 };
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorCopy = {
-  'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层',
+  'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层', 'Stage':'舞台',
   'Pick a moment on the scrub strip, or select a cue, then freeze it here.':'在拖动条上选择时刻，或选择一条线索，然后在此冻结。',
   'STALE':'已过期', 'live':'直播', 'VOD replay':'回放', 'Close':'关闭', 'No crop at this frame':'此帧没有裁剪图',
   'The label is written to this crop':'标注将写入此裁剪图', 'Select a crop cue in the rail to label it':'请在左栏选择裁剪图线索以标注',
@@ -1709,7 +1763,7 @@ Object.assign(editorCopy, {
   'Selected label':'所选标注', 'New box label':'新框标注', 'Add table polygon':'添加球桌多边形', 'Clear polygon':'清除多边形',
   'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌',
   // Source tags the engine paints on the imagery, and the identity chip.
-  'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'EVENT':'事件', 'track':'轨迹', 'unbound':'未绑定',
+  'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'EVENT':'事件', 'track':'轨迹', 'unbound':'未绑定', 'confidence':'置信度',
   'saved anchors':'已保存锚点', 'saved calibration':'已保存标定',
   // Stage video state and the honesty rule that goes with it: what is drawn over
   // moving video, and what only comes back on a freeze.
@@ -1778,7 +1832,7 @@ function translateEditor() {
   root.querySelectorAll('#content label, #content button, #content option, #content .empty, #content .hint, #content .facts, #stage-popover .pop-head, #stage-popover .pop-note').forEach(el => {
     for (const node of el.childNodes) if (node.nodeType === 3) translate(node, 'nodeValue');
   });
-  root.querySelectorAll('#content [aria-label], #content img[alt]').forEach(el => {
+  root.querySelectorAll('#content[aria-label], #content [aria-label], #content img[alt]').forEach(el => {
     for (const attribute of ['aria-label', 'alt']) {
       if (!el.hasAttribute(attribute)) continue;
       const current = el.getAttribute(attribute), previous = translatedCopy.get(el)?.[attribute];
@@ -1829,7 +1883,10 @@ window.CornerPocketReview = {
   setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,
   applyLiveStatus, ingestLiveFrame, setLiveAttempt, clearLiveError, liveStateText,
   counts,
-  text: copy => text(copy)
+  text: copy => text(copy),
+  // One pocket vocabulary for every surface: the adapter names pockets through this.
+  pocketText: value => pocketText(value),
+  colourWord: value => colourWord(value)
 };
 const standaloneRoot = document.querySelector('#review-root');
 if (standaloneRoot) { mount(standaloneRoot); activate(); }

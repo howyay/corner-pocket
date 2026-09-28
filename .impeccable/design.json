@@ -1,0 +1,1100 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-26T08:37:27.682Z",
+  "title": "Design System: Corner Pocket",
+  "extensions": {
+    "colorMeta": {
+      "walnut-night": {
+        "role": "neutral",
+        "displayName": "Walnut Night",
+        "canonical": "#16120f",
+        "oklch": "oklch(18.6% 0.009 59.1)",
+        "tonalRamp": [
+          "#080503",
+          "#1e1a17",
+          "#36322e",
+          "#56514e",
+          "#79736f",
+          "#9d9793",
+          "#c2bcb8",
+          "#ede7e2"
+        ],
+        "cssVar": "--bg",
+        "light": "#eee7dc",
+        "description": "Page ground."
+      },
+      "felt-panel": {
+        "role": "neutral",
+        "displayName": "Felt Panel",
+        "canonical": "#1c1814",
+        "oklch": "oklch(21.2% 0.010 67.2)",
+        "tonalRamp": [
+          "#080503",
+          "#1e1a16",
+          "#36322e",
+          "#56524d",
+          "#79736e",
+          "#9d9792",
+          "#c2bdb7",
+          "#ede7e1"
+        ],
+        "cssVar": "--panel",
+        "light": "#faf6ef",
+        "description": "Panels, header, rails, inspector, modal, popover."
+      },
+      "pocket-well": {
+        "role": "neutral",
+        "displayName": "Pocket Well",
+        "canonical": "#110e0b",
+        "oklch": "oklch(16.6% 0.008 67.2)",
+        "tonalRamp": [
+          "#070504",
+          "#1d1a17",
+          "#36322f",
+          "#56524e",
+          "#787470",
+          "#9c9793",
+          "#c1bdb8",
+          "#ece7e2"
+        ],
+        "cssVar": "--panel2",
+        "light": "#fefcf8",
+        "description": "Recessed layer: inputs, entries, cue cards, bars, sheet tabs."
+      },
+      "rail-wood": {
+        "role": "semantic",
+        "displayName": "rail-wood",
+        "canonical": "#552d1b",
+        "cssVar": "--rail-wood",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "oklch": "oklch(34.5% 0.066 44.3)"
+      },
+      "seam": {
+        "role": "neutral",
+        "displayName": "Seam",
+        "canonical": "#2f2923",
+        "oklch": "oklch(28.5% 0.014 67.2)",
+        "tonalRamp": [
+          "#090502",
+          "#1f1914",
+          "#38322b",
+          "#58514b",
+          "#7a736c",
+          "#9e978f",
+          "#c4bcb5",
+          "#eee6de"
+        ],
+        "cssVar": "--line",
+        "light": "#d5cbbb",
+        "description": "Default 1px border and divider."
+      },
+      "seam-soft": {
+        "role": "neutral",
+        "displayName": "Seam Soft",
+        "canonical": "#29231f",
+        "oklch": "oklch(26.1% 0.012 55.8)",
+        "tonalRamp": [
+          "#090503",
+          "#1f1915",
+          "#38312d",
+          "#58514c",
+          "#7a736e",
+          "#9e9791",
+          "#c4bcb7",
+          "#eee6e1"
+        ],
+        "cssVar": "--line2",
+        "light": "#e0d8cb",
+        "description": "Borders of entries, cue cards, items."
+      },
+      "button-rim": {
+        "role": "neutral",
+        "displayName": "Button Rim",
+        "canonical": "#73665b",
+        "oklch": "oklch(51.9% 0.024 62.5)",
+        "tonalRamp": [
+          "#0c0401",
+          "#23180f",
+          "#3c3026",
+          "#5c5045",
+          "#7f7267",
+          "#a3958a",
+          "#c9bbaf",
+          "#f4e5d8"
+        ],
+        "cssVar": "--btn-line",
+        "light": "#938470",
+        "description": "Default button border, link underline, vs-badge border."
+      },
+      "chalk-bright": {
+        "role": "neutral",
+        "displayName": "Chalk Bright",
+        "canonical": "#f6f3ec",
+        "oklch": "oklch(96.5% 0.010 87.5)",
+        "tonalRamp": [
+          "#070603",
+          "#1c1a15",
+          "#35332d",
+          "#55524c",
+          "#77746e",
+          "#9b9892",
+          "#c0bdb7",
+          "#ebe8e1"
+        ],
+        "cssVar": "--ink-hi",
+        "light": "#1a120a",
+        "description": "Headings and active text."
+      },
+      "chalk": {
+        "role": "neutral",
+        "displayName": "Chalk",
+        "canonical": "#efe9de",
+        "oklch": "oklch(93.6% 0.016 82.8)",
+        "tonalRamp": [
+          "#080502",
+          "#1e1a12",
+          "#37322a",
+          "#575249",
+          "#79746a",
+          "#9d988d",
+          "#c3bdb2",
+          "#ede7dc"
+        ],
+        "cssVar": "--ink",
+        "light": "#251e15",
+        "description": "Body text."
+      },
+      "cue-shaft": {
+        "role": "neutral",
+        "displayName": "Cue Shaft",
+        "canonical": "#bdb0a1",
+        "oklch": "oklch(76.4% 0.026 71.4)",
+        "tonalRamp": [
+          "#0b0400",
+          "#22190d",
+          "#3b3124",
+          "#5c5043",
+          "#7e7264",
+          "#a39687",
+          "#c9bbac",
+          "#f3e5d6"
+        ],
+        "cssVar": "--ink-mid",
+        "light": "#564b3e",
+        "description": "Paragraphs, facts line."
+      },
+      "worn-leather": {
+        "role": "neutral",
+        "displayName": "Worn Leather",
+        "canonical": "#a6998a",
+        "oklch": "oklch(69.0% 0.026 71.3)",
+        "tonalRamp": [
+          "#0b0400",
+          "#22190d",
+          "#3b3124",
+          "#5c5043",
+          "#7f7264",
+          "#a39687",
+          "#c9bbac",
+          "#f3e5d5"
+        ],
+        "cssVar": "--ink-dim",
+        "light": "#665a4d",
+        "description": "Labels and meta."
+      },
+      "old-varnish": {
+        "role": "neutral",
+        "displayName": "Old Varnish",
+        "canonical": "#968a7d",
+        "oklch": "oklch(64.0% 0.024 69.6)",
+        "tonalRamp": [
+          "#0b0400",
+          "#22190e",
+          "#3b3126",
+          "#5b5045",
+          "#7e7266",
+          "#a29689",
+          "#c8bbae",
+          "#f3e5d7"
+        ],
+        "cssVar": "--ink-faint",
+        "light": "#6d6153",
+        "description": "Footnotes, placeholders, provenance (below 4.5:1)."
+      },
+      "rail-brass": {
+        "role": "primary",
+        "displayName": "Rail Brass",
+        "canonical": "#cca632",
+        "oklch": "oklch(74.0% 0.135 89.8)",
+        "tonalRamp": [
+          "#160000",
+          "#301200",
+          "#4a2c00",
+          "#6c4d00",
+          "#907000",
+          "#b59432",
+          "#dcba5c",
+          "#ffe586"
+        ],
+        "cssVar": "--brass",
+        "light": "#755706",
+        "description": "The only accent: current / selected / primary, 3px panel top edges, focus ring."
+      },
+      "polished-brass": {
+        "role": "primary",
+        "displayName": "Polished Brass",
+        "canonical": "#e3cb7e",
+        "oklch": "oklch(84.5% 0.100 92.7)",
+        "tonalRamp": [
+          "#120100",
+          "#2b1600",
+          "#452f00",
+          "#665000",
+          "#897222",
+          "#ae974a",
+          "#d4bc70",
+          "#ffe799"
+        ],
+        "cssVar": "--brass-hi",
+        "light": "#624902",
+        "description": "Brass as text: links, clock digits, MODEL tag text, active sub-labels."
+      },
+      "brass-hover": {
+        "role": "primary",
+        "displayName": "Brass Hover",
+        "canonical": "#dbb64c",
+        "oklch": "oklch(78.9% 0.130 89.7)",
+        "tonalRamp": [
+          "#160000",
+          "#301200",
+          "#4a2c00",
+          "#6c4d00",
+          "#907000",
+          "#b59432",
+          "#dcba5c",
+          "#ffe586"
+        ],
+        "cssVar": "--brass-hover",
+        "light": "#866617",
+        "description": "Hover of the clock-toggle button only."
+      },
+      "brass-ink": {
+        "role": "primary",
+        "displayName": "Brass Ink",
+        "canonical": "#15110c",
+        "oklch": "oklch(18.1% 0.012 73.1)",
+        "tonalRamp": [
+          "#080503",
+          "#1e1a15",
+          "#37322c",
+          "#57524b",
+          "#79746d",
+          "#9d9790",
+          "#c2bdb6",
+          "#ede7df"
+        ],
+        "cssVar": "--brass-fg",
+        "light": "#fcfaf4",
+        "description": "Text on a brass fill."
+      },
+      "pip-off": {
+        "role": "neutral",
+        "displayName": "Pip Off",
+        "canonical": "#312a24",
+        "oklch": "oklch(29.1% 0.015 62.8)",
+        "tonalRamp": [
+          "#090502",
+          "#201914",
+          "#38312b",
+          "#59514a",
+          "#7b736c",
+          "#9f968f",
+          "#c5bcb4",
+          "#efe6de"
+        ],
+        "cssVar": "--pip-off",
+        "light": "#d9d0c1"
+      },
+      "baize-green": {
+        "role": "signal",
+        "displayName": "Baize Green",
+        "canonical": "#85ca9d",
+        "oklch": "oklch(78.1% 0.095 155.0)",
+        "tonalRamp": [
+          "#000d00",
+          "#002604",
+          "#00401b",
+          "#1a623a",
+          "#41855b",
+          "#66aa7e",
+          "#8bd0a3",
+          "#b5fbcc"
+        ],
+        "cssVar": "--green",
+        "light": "#296944",
+        "description": "Complete / confirmed / live edge / pot / geometry-verified / YOURS."
+      },
+      "baize-green-bg": {
+        "role": "signal",
+        "displayName": "Baize Green Bg",
+        "canonical": "#122219",
+        "oklch": "oklch(23.4% 0.028 158.7)",
+        "tonalRamp": [
+          "#000803",
+          "#0f1f16",
+          "#27372e",
+          "#46574d",
+          "#677a6e",
+          "#8a9e92",
+          "#afc4b7",
+          "#d9eee1"
+        ],
+        "cssVar": "--green-bg",
+        "light": "#daebdf"
+      },
+      "baize-green-line": {
+        "role": "signal",
+        "displayName": "Baize Green Line",
+        "canonical": "#355643",
+        "oklch": "oklch(42.2% 0.050 158.1)",
+        "tonalRamp": [
+          "#000a01",
+          "#012111",
+          "#1a3b29",
+          "#3a5b48",
+          "#5b7e69",
+          "#7fa28d",
+          "#a3c8b2",
+          "#cdf3db"
+        ],
+        "cssVar": "--green-line",
+        "light": "#a5c4ae"
+      },
+      "chalk-blue": {
+        "role": "signal",
+        "displayName": "Chalk Blue",
+        "canonical": "#90b8d5",
+        "oklch": "oklch(76.4% 0.060 240.0)",
+        "tonalRamp": [
+          "#00061a",
+          "#001d33",
+          "#10364e",
+          "#325770",
+          "#537994",
+          "#779eba",
+          "#9bc4e1",
+          "#c5eeff"
+        ],
+        "cssVar": "--blue",
+        "light": "#255b7d",
+        "description": "Scheduled status; shot marks on the scrub strip (ops.css only)."
+      },
+      "chalk-blue-bg": {
+        "role": "signal",
+        "displayName": "Chalk Blue Bg",
+        "canonical": "#151e25",
+        "oklch": "oklch(23.0% 0.019 242.0)",
+        "tonalRamp": [
+          "#02060c",
+          "#131c23",
+          "#2b343c",
+          "#4a545c",
+          "#6b767f",
+          "#8f9aa3",
+          "#b4c0c9",
+          "#ddeaf4"
+        ],
+        "cssVar": "--blue-bg",
+        "light": "#dce8f1"
+      },
+      "chalk-blue-line": {
+        "role": "signal",
+        "displayName": "Chalk Blue Line",
+        "canonical": "#354d61",
+        "oklch": "oklch(40.9% 0.045 244.3)",
+        "tonalRamp": [
+          "#000615",
+          "#051c2e",
+          "#1e3548",
+          "#3d556a",
+          "#5e788d",
+          "#819cb3",
+          "#a6c2d9",
+          "#d0ecff"
+        ],
+        "cssVar": "--blue-line",
+        "light": "#a7becf"
+      },
+      "lamp-amber": {
+        "role": "signal",
+        "displayName": "Lamp Amber",
+        "canonical": "#ebae51",
+        "oklch": "oklch(79.1% 0.130 75.3)",
+        "tonalRamp": [
+          "#1c0000",
+          "#380800",
+          "#542400",
+          "#784600",
+          "#9d6800",
+          "#c38d37",
+          "#ebb25f",
+          "#ffdd89"
+        ],
+        "cssVar": "--amber",
+        "light": "#804d0c",
+        "description": "Club live + delayed badges; Vision stale, paused, CALIB, error blocks."
+      },
+      "lamp-amber-bg": {
+        "role": "signal",
+        "displayName": "Lamp Amber Bg",
+        "canonical": "#291e10",
+        "oklch": "oklch(24.4% 0.030 72.4)",
+        "tonalRamp": [
+          "#0c0400",
+          "#23180a",
+          "#3c3122",
+          "#5d5041",
+          "#807262",
+          "#a49685",
+          "#cabba9",
+          "#f5e5d3"
+        ],
+        "cssVar": "--amber-bg",
+        "light": "#f8e9d2"
+      },
+      "lamp-amber-line": {
+        "role": "signal",
+        "displayName": "Lamp Amber Line",
+        "canonical": "#684d21",
+        "oklch": "oklch(44.0% 0.070 77.3)",
+        "tonalRamp": [
+          "#130100",
+          "#2c1400",
+          "#462d00",
+          "#684d21",
+          "#8c6f43",
+          "#b19366",
+          "#d7b98b",
+          "#ffe3b4"
+        ],
+        "cssVar": "--amber-line",
+        "light": "#d6b98a"
+      },
+      "red-ball": {
+        "role": "signal",
+        "displayName": "Red Ball",
+        "canonical": "#e87a69",
+        "oklch": "oklch(70.0% 0.139 30.1)",
+        "tonalRamp": [
+          "#240000",
+          "#430000",
+          "#620b05",
+          "#883327",
+          "#b05648",
+          "#d87a6b",
+          "#ffa08f",
+          "#ffc9b8"
+        ],
+        "cssVar": "--red",
+        "light": "#9a3326",
+        "description": "Errors, danger, low clock, the cue under review."
+      },
+      "live-glow-bg": {
+        "role": "neutral",
+        "displayName": "Live Glow Bg",
+        "canonical": "#251c11",
+        "oklch": "oklch(23.4% 0.024 71.8)",
+        "tonalRamp": [
+          "#0b0400",
+          "#22190e",
+          "#3b3125",
+          "#5b5144",
+          "#7e7265",
+          "#a29688",
+          "#c8bcad",
+          "#f2e6d7"
+        ],
+        "cssVar": "--live-bg",
+        "light": "#f6ecd7"
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Neutral Bg",
+        "canonical": "#181411",
+        "oklch": "oklch(19.5% 0.009 59.1)",
+        "tonalRamp": [
+          "#080504",
+          "#1e1a17",
+          "#36322e",
+          "#56514e",
+          "#79736f",
+          "#9d9793",
+          "#c2bcb8",
+          "#ede7e2"
+        ],
+        "cssVar": "--neutral-bg",
+        "light": "#efeae2"
+      },
+      "lamp-haze": {
+        "role": "neutral",
+        "displayName": "Lamp Haze",
+        "canonical": "rgba(240,214,150,.08)",
+        "cssVar": "--lamp",
+        "light": "rgba(255,206,110,.2)",
+        "description": "Scoreboard lamp glow."
+      },
+      "scroll-track": {
+        "role": "neutral",
+        "displayName": "Scroll Track",
+        "canonical": "var(--panel2)",
+        "oklch": "oklch(16.5% 0.005 67.4)",
+        "tonalRamp": [
+          "#0d0b09",
+          "#272522",
+          "#44413f",
+          "#63615e",
+          "#84827f",
+          "#a7a4a1",
+          "#cbc8c5",
+          "#f1eeeb"
+        ],
+        "cssVar": "--track"
+      },
+      "scroll-thumb": {
+        "role": "neutral",
+        "displayName": "Scroll Thumb",
+        "canonical": "var(--btn-line)",
+        "oklch": "oklch(32.0% 0.019 63.7)",
+        "tonalRamp": [
+          "#110904",
+          "#2c231c",
+          "#494038",
+          "#695f56",
+          "#8b8077",
+          "#aea399",
+          "#d2c7bd",
+          "#f8ece2"
+        ],
+        "cssVar": "--thumb"
+      },
+      "stage-black": {
+        "role": "literal",
+        "displayName": "Stage Black",
+        "canonical": "#090806",
+        "oklch": "oklch(13.5% 0.006 86.9)",
+        "tonalRamp": [
+          "#0c0b09",
+          "#262522",
+          "#43423f",
+          "#62615e",
+          "#84827f",
+          "#a6a5a1",
+          "#cbc9c5",
+          "#f0eeea"
+        ],
+        "description": "Stage letterbox; identical in both themes."
+      },
+      "overlay-cream": {
+        "role": "literal",
+        "displayName": "Overlay Cream",
+        "canonical": "#fff4d5",
+        "oklch": "oklch(96.8% 0.042 90.8)",
+        "tonalRamp": [
+          "#100a00",
+          "#2d240a",
+          "#4a4127",
+          "#6a6146",
+          "#8c8266",
+          "#afa587",
+          "#d3c9ab",
+          "#f9eecf"
+        ],
+        "description": "SVG overlay label text and the cue ball."
+      },
+      "error-wash": {
+        "role": "literal",
+        "displayName": "Error Wash",
+        "canonical": "#3d231d",
+        "oklch": "oklch(28.8% 0.042 33.7)",
+        "tonalRamp": [
+          "#190402",
+          "#371d17",
+          "#563a33",
+          "#775952",
+          "#9a7a72",
+          "#be9c94",
+          "#e3c0b8",
+          "#ffe9e4"
+        ],
+        "description": "Hard-coded error background (dark in both themes)."
+      },
+      "error-ink": {
+        "role": "literal",
+        "displayName": "Error Ink",
+        "canonical": "#ffd0c5",
+        "oklch": "oklch(89.5% 0.055 33.4)",
+        "tonalRamp": [
+          "#1d0100",
+          "#3c1a12",
+          "#5c372e",
+          "#7e564d",
+          "#a1776d",
+          "#c5998f",
+          "#ebbdb2",
+          "#fee9e4"
+        ],
+        "description": "Hard-coded error text (dark in both themes)."
+      },
+      "red-bg": {
+        "role": "semantic",
+        "displayName": "red-bg",
+        "canonical": "#361a16",
+        "cssVar": "--red-bg",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "#fde3de",
+        "oklch": "oklch(25.6% 0.045 29.2)"
+      },
+      "red-ink": {
+        "role": "semantic",
+        "displayName": "red-ink",
+        "canonical": "#fdcac0",
+        "cssVar": "--red-ink",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "#7c271c",
+        "oklch": "oklch(88.1% 0.060 31.1)"
+      },
+      "shadow": {
+        "role": "semantic",
+        "displayName": "shadow",
+        "canonical": "rgba(0,0,0,.45)",
+        "cssVar": "--shadow",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "rgba(60,40,15,.18)"
+      },
+      "scrim": {
+        "role": "semantic",
+        "displayName": "scrim",
+        "canonical": "rgba(8,6,4,.62)",
+        "cssVar": "--scrim",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "light": "rgba(40,30,18,.45)"
+      },
+      "stage-bg": {
+        "role": "stage",
+        "displayName": "stage-bg",
+        "canonical": "#0b0907",
+        "cssVar": "--stage-bg",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(14.1% 0.006 70.6)"
+      },
+      "stage-plate": {
+        "role": "stage",
+        "displayName": "stage-plate",
+        "canonical": "#100c0acc",
+        "cssVar": "--stage-plate",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "stage-note": {
+        "role": "stage",
+        "displayName": "stage-note",
+        "canonical": "#100c0aee",
+        "cssVar": "--stage-note",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "stage-ink": {
+        "role": "stage",
+        "displayName": "stage-ink",
+        "canonical": "#faf1dc",
+        "cssVar": "--stage-ink",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(96.0% 0.029 87.5)"
+      },
+      "stage-ink-hi": {
+        "role": "stage",
+        "displayName": "stage-ink-hi",
+        "canonical": "#fbedb8",
+        "cssVar": "--stage-ink-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(94.4% 0.070 95.0)"
+      },
+      "stage-mark": {
+        "role": "stage",
+        "displayName": "stage-mark",
+        "canonical": "#1f160f",
+        "cssVar": "--stage-mark",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(20.9% 0.020 59.3)"
+      },
+      "stage-event": {
+        "role": "stage",
+        "displayName": "stage-event",
+        "canonical": "#f2b7ad",
+        "cssVar": "--stage-event",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(83.1% 0.070 29.6)"
+      },
+      "stage-bound": {
+        "role": "stage",
+        "displayName": "stage-bound",
+        "canonical": "#9bdcb1",
+        "cssVar": "--stage-bound",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(83.9% 0.089 155.0)"
+      },
+      "stage-halo": {
+        "role": "stage",
+        "displayName": "stage-halo",
+        "canonical": "#0b090799",
+        "cssVar": "--stage-halo",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "stage-brass": {
+        "role": "stage",
+        "displayName": "stage-brass",
+        "canonical": "#cca632",
+        "cssVar": "--stage-brass",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(74.0% 0.135 89.8)"
+      },
+      "stage-brass-hi": {
+        "role": "stage",
+        "displayName": "stage-brass-hi",
+        "canonical": "#e3cb7e",
+        "cssVar": "--stage-brass-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(84.5% 0.100 92.7)"
+      },
+      "stage-green": {
+        "role": "stage",
+        "displayName": "stage-green",
+        "canonical": "#85ca9d",
+        "cssVar": "--stage-green",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(78.1% 0.095 155.0)"
+      },
+      "stage-amber": {
+        "role": "stage",
+        "displayName": "stage-amber",
+        "canonical": "#ebae51",
+        "cssVar": "--stage-amber",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(79.1% 0.130 75.3)"
+      },
+      "stage-red": {
+        "role": "stage",
+        "displayName": "stage-red",
+        "canonical": "#e87a69",
+        "cssVar": "--stage-red",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(70.0% 0.139 30.1)"
+      },
+      "ball": {
+        "role": "stage",
+        "displayName": "ball",
+        "canonical": "#cfa72b",
+        "cssVar": "--ball",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(74.5% 0.140 89.6)"
+      },
+      "ball-hi": {
+        "role": "stage",
+        "displayName": "ball-hi",
+        "canonical": "#eed780",
+        "cssVar": "--ball-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(88.0% 0.110 95.0)"
+      },
+      "ball-edge": {
+        "role": "stage",
+        "displayName": "ball-edge",
+        "canonical": "rgba(0,0,0,.4)",
+        "cssVar": "--ball-edge",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes."
+      },
+      "ball-face": {
+        "role": "stage",
+        "displayName": "ball-face",
+        "canonical": "#f7f3eb",
+        "cssVar": "--ball-face",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(96.5% 0.011 84.6)"
+      },
+      "ball-num": {
+        "role": "stage",
+        "displayName": "ball-num",
+        "canonical": "#15110c",
+        "cssVar": "--ball-num",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(18.1% 0.012 73.1)"
+      },
+      "ball-black": {
+        "role": "stage",
+        "displayName": "ball-black",
+        "canonical": "#13100e",
+        "cssVar": "--ball-black",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(17.6% 0.006 55.9)"
+      },
+      "ball-black-hi": {
+        "role": "stage",
+        "displayName": "ball-black-hi",
+        "canonical": "#47413c",
+        "cssVar": "--ball-black-hi",
+        "description": "Stage token: the overlay sits on video, so it is the same in both themes.",
+        "oklch": "oklch(38.0% 0.012 62.3)"
+      },
+      "diamond": {
+        "role": "semantic",
+        "displayName": "diamond",
+        "canonical": "#e4cc84",
+        "cssVar": "--diamond",
+        "description": "Added by the polish (see DESIGN.md colours).",
+        "oklch": "oklch(84.9% 0.095 91.7)"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Player names on the scoreboard (.name)."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Score digits (.digits)."
+      },
+      "clock": {
+        "displayName": "Clock",
+        "purpose": "Shot clock; 22px in the strip, 13px in the mobile stagebar."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "h2; only the offline / error screen."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "h3 article and card heads."
+      },
+      "panel-heading": {
+        "displayName": "Panel heading",
+        "purpose": "Vision rail / inspector group heads, Source panel head; uppercase."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Document default, 15/1.5; paragraphs in ink-mid."
+      },
+      "body-compact": {
+        "displayName": "Body compact",
+        "purpose": "Vision list items (.vs-item), 12px."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Facts line, identity, chips, readouts (11-12.5px mono)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "small / .kicker / .badge / label>span / th; uppercase, tracked."
+      },
+      "overlay-tag": {
+        "displayName": "Overlay tag",
+        "purpose": "SVG source tags MODEL / YOURS / CALIB / EVENT, in frame pixels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "toast",
+        "value": "0 5px 30px var(--shadow)",
+        "purpose": "#message, bottom-right; --shadow is theme-aware."
+      },
+      {
+        "name": "modal",
+        "value": "0 14px 44px rgba(0,0,0,.5)",
+        "purpose": ".modal over a rgba(10,8,6,.62) backdrop."
+      },
+      {
+        "name": "source-panel",
+        "value": "0 16px 48px rgba(0,0,0,.55)",
+        "purpose": ".vs-source-panel dropping from the chip row."
+      },
+      {
+        "name": "stage-popover",
+        "value": "0 6px 26px #0009",
+        "purpose": ".stage-popover on the frame."
+      },
+      {
+        "name": "ball-bevel",
+        "value": "inset 0 0 0 1px #0006",
+        "purpose": "Pool-ball icons and pips; skeuomorphic detail, not elevation."
+      },
+      {
+        "name": "eight-ball",
+        "value": "inset 0 0 0 1px var(--btn-line),0 2px 6px rgba(0,0,0,.35)",
+        "purpose": "The brand 8-ball mark."
+      }
+    ],
+    "motion": {
+      "summary": "The clock is the one moving thing: its bar follows the 200 ms tick with a 0.2 s linear transform: scaleX() transition and turns red in the last 5 s; #message rises 8 px in 0.22 s; the narrow stagebar fades its clipped end with a scroll-driven mask. Nothing animates on load.",
+      "reducedMotion": "Transitions become instant and animations run 0 s; state changes (the red low clock) stay; the scroll-linked stagebar fade is kept because it only follows the user’s scroll."
+    },
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "1100px",
+        "purpose": "max-width: .vs-grid collapses to one column."
+      },
+      {
+        "name": "mobile",
+        "value": "750px",
+        "purpose": "max-width: static header; on Vision the nav and strip hide, rail/inspector become fixed bottom sheets (44vh) over a 44px sheet-tab bar."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default (secondary) button: transparent, 1px rim, brass on hover and focus.",
+      "html": "<button class=\"ds-btn\">Reset</button>",
+      "css": ".ds-btn{min-height:40px;padding:0 14px;border:1px solid #73665b;border-radius:2px;background:transparent;color:#efe9de;font:15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn:hover{border-color:#cca632;background:#251f1b}.ds-btn:focus-visible{outline:2px solid #cca632;outline-offset:3px}.ds-btn:disabled{opacity:.45;cursor:not-allowed}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Brass fill with brass-ink text; the one thing to press (Freeze, Save, Start).",
+      "html": "<button class=\"ds-btn-primary\">Freeze</button>",
+      "css": ".ds-btn-primary{min-height:40px;padding:0 14px;border:1px solid #cca632;border-radius:2px;background:#cca632;color:#15110c;font:500 15px/1.5 'Barlow','Noto Sans SC',Arial,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:#dbb64c;border-color:#cca632}.ds-btn-primary:focus-visible{outline:2px solid #cca632;outline-offset:3px}"
+    },
+    {
+      "name": "Segmented chip group",
+      "kind": "chip",
+      "refersTo": "chip-group-button",
+      "description": "EN | 中 and clock presets: 1px-gap segments on a seam ground, active segment brass.",
+      "html": "<div class=\"ds-chipgroup\" role=\"group\" aria-label=\"Language / 语言\"><button class=\"ds-chipgroup-btn ds-active\">EN</button><button class=\"ds-chipgroup-btn\">中</button></div>",
+      "css": ".ds-chipgroup{display:inline-flex;gap:1px;padding:1px;background:#2f2923;border-radius:2px}.ds-chipgroup-btn{min-height:34px;padding:0 12px;border:0;border-radius:2px;background:#110e0b;color:#a6998a;font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em;cursor:pointer}.ds-chipgroup-btn.ds-active{background:#cca632;color:#15110c}.ds-chipgroup-btn:focus-visible{outline:2px solid #cca632;outline-offset:3px}"
+    },
+    {
+      "name": "Status badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Word + tinted triplet: live (On table) and delayed amber, complete (Signed) green, scheduled (Racked) blue.",
+      "html": "<span class=\"ds-badge ds-badge-live\">On table</span> <span class=\"ds-badge ds-badge-complete\">Signed</span> <span class=\"ds-badge ds-badge-scheduled\">Racked</span>",
+      "css": ".ds-badge{display:inline-block;padding:4px 9px;border:1px solid #2f2923;background:#110e0b;color:#a6998a;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.16em;text-transform:uppercase}.ds-badge-live{color:#ebae51;border-color:#684d21;background:#291e10}.ds-badge-complete{color:#85ca9d;border-color:#355643;background:#122219}.ds-badge-scheduled{color:#90b8d5;border-color:#354d61;background:#151e25}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Well-filled field with a 2px bottom border that turns brass on focus; 9.5px uppercase mono label.",
+      "html": "<label class=\"ds-field\"><span>Name</span><input class=\"ds-input\" placeholder=\"Guest\"></label>",
+      "css": ".ds-field{display:grid;gap:6px}.ds-field>span{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.18em;text-transform:uppercase;color:#a6998a}.ds-input{min-height:42px;padding:0 12px;background:#110e0b;color:#efe9de;border:1px solid #2f2923;border-bottom:2px solid #2f2923;border-radius:2px;font:15px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-input::placeholder{color:#968a7d}.ds-input:focus{outline:none;border-bottom-color:#cca632}"
+    },
+    {
+      "name": "Nav tab",
+      "kind": "nav",
+      "refersTo": "button",
+      "description": "Numbered pool-ball tab; active = rail fill, brass border, brass-hi count.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-tab ds-active\" aria-current=\"page\"><span class=\"ds-ball\" style=\"background:#e3b52a\"><i>1</i></span>Floor<small></small></button><button class=\"ds-tab\"><span class=\"ds-ball\" style=\"background:#23527c\"><i>2</i></span>Set up<small>12</small></button></nav>",
+      "css": ".ds-nav{display:flex;gap:10px;flex-wrap:wrap}.ds-tab{display:flex;align-items:center;gap:9px;min-height:44px;padding:0 9px 0 8px;border:1px solid #2f2923;border-radius:2px;background:transparent;color:#efe9de;font:14.5px 'Barlow','Noto Sans SC',Arial,sans-serif;letter-spacing:.01em;cursor:pointer}.ds-tab:hover{border-color:#cca632;background:#251f1b}.ds-tab.ds-active{background:#251f1b;border-color:#cca632;color:#f6f3ec}.ds-tab small{font:9.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.12em;color:#968a7d}.ds-tab.ds-active small{color:#e3cb7e}.ds-ball{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}.ds-ball i{display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#f6f3ec;color:#15110c;font:9px 'DM Mono','Noto Sans SC',monospace;font-style:normal}"
+    },
+    {
+      "name": "Cue card",
+      "kind": "card",
+      "refersTo": "cue-card",
+      "description": "Vision rail card; tier sets the left edge (solid green geometry-verified, dashed brass motion-window).",
+      "html": "<article class=\"ds-cue ds-tier-geometry\"><div class=\"ds-cue-row\"><span class=\"ds-vbadge ds-pot\">Pots</span><span class=\"ds-vbadge ds-geo\">geometry-verified</span><span class=\"ds-mono\">0:41.1</span><span class=\"ds-mono ds-dim\">#e12</span></div><p class=\"ds-prov\">machine-produced candidate; no human has confirmed it</p></article>",
+      "css": ".ds-cue{border:1px solid #29231f;border-left:3px solid #85ca9d;background:#110e0b;padding:8px;color:#efe9de}.ds-cue:hover{border-color:#cca632;border-left-color:#85ca9d}.ds-cue-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ds-vbadge{border:1px solid #73665b;border-radius:2px;padding:2px 6px;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;color:#e3cb7e}.ds-pot,.ds-geo{color:#85ca9d;border-color:#355643}.ds-mono{font:11px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em}.ds-dim{color:#a6998a}.ds-prov{margin:4px 0 0;font:10px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.04em;color:#968a7d}"
+    },
+    {
+      "name": "Layer toggle",
+      "kind": "chip",
+      "refersTo": "layer-toggle",
+      "description": "Stagebar overlay toggles; on = rail fill, brass border, bright ink.",
+      "html": "<div class=\"ds-layers\"><button class=\"ds-layer ds-on\">Cloth</button><button class=\"ds-layer\">Balls</button><button class=\"ds-layer\" disabled>Anchors</button></div>",
+      "css": ".ds-layers{display:flex;gap:4px;flex-wrap:wrap}.ds-layer{min-height:28px;padding:4px 10px;border:1px solid #73665b;border-radius:2px;background:transparent;color:#a6998a;font:10.5px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}.ds-layer:hover{border-color:#cca632}.ds-layer.ds-on{background:#251f1b;border-color:#cca632;color:#f6f3ec}.ds-layer:disabled{opacity:.4;cursor:not-allowed}.ds-layer:focus-visible{outline:2px solid #cca632;outline-offset:3px}"
+    },
+    {
+      "name": "Overlay source tags",
+      "kind": "custom",
+      "refersTo": "overlay-tag",
+      "description": "MODEL (brass, dashed geometry), YOURS (green, solid), CALIB (amber): the provenance tag beside every drawn shape.",
+      "html": "<svg class=\"ds-tags\" viewBox=\"0 0 330 70\" width=\"330\" height=\"70\" role=\"img\" aria-label=\"Source tags\"><rect x=\"1\" y=\"1\" width=\"328\" height=\"68\" fill=\"#090806\"/><g class=\"ds-src ds-model\"><rect x=\"10\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"17\" y=\"23\">MODEL</text></g><g class=\"ds-src ds-yours\"><rect x=\"80\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"87\" y=\"23\">YOURS</text></g><g class=\"ds-src ds-calib\"><rect x=\"150\" y=\"10\" width=\"57\" height=\"18\" rx=\"3\"/><text x=\"157\" y=\"23\">CALIB</text></g><rect class=\"ds-geom-model\" x=\"10\" y=\"38\" width=\"100\" height=\"24\"/><rect class=\"ds-geom-yours\" x=\"120\" y=\"38\" width=\"100\" height=\"24\"/></svg>",
+      "css": ".ds-src rect{fill:#0b0a08cc;stroke-width:1.5}.ds-src text{font:700 14px 'DM Mono','Noto Sans SC',monospace;letter-spacing:.08em}.ds-model rect{stroke:#cca632}.ds-model text{fill:#e3cb7e}.ds-yours rect{stroke:#85ca9d}.ds-yours text{fill:#85ca9d}.ds-calib rect{stroke:#ebae51}.ds-calib text{fill:#ebae51}.ds-geom-model{fill:#c9a22722;stroke:#cca632;stroke-width:3;stroke-dasharray:10 7;opacity:.6}.ds-geom-yours{fill:#c9a22722;stroke:#cca632;stroke-width:3}.ds-tags:hover .ds-geom-model{opacity:1}"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "#message: fixed bottom-right, rail fill, 3px brass left edge (red on error), role=status.",
+      "html": "<div class=\"ds-toast\" role=\"status\">Saved.</div><div class=\"ds-toast ds-error\" role=\"status\">Action failed</div>",
+      "css": ".ds-toast{max-width:400px;margin:0 0 8px;padding:12px 16px;background:#251f1b;border:1px solid #2f2923;border-left:3px solid #cca632;box-shadow:0 5px 30px #0005;color:#efe9de;font:14px 'Barlow','Noto Sans SC',Arial,sans-serif}.ds-toast.ds-error{border-left-color:#e87a69}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lamp-Lit Scoreboard",
+    "overview": "Corner Pocket looks like the back room of a pool hall at night. The ground is dark walnut (`#14110f`) under a faint warm lamp haze (`--lamp`, a radial gradient over the scoreboard). The text is chalk. One metal accent, rail brass (`#c9a227`), marks whatever is current, chosen or primary. The mark is a real 8-ball. Each tab in the nav carries a numbered, coloured pool ball (1 yellow, 2 blue, 3 red, 4 purple, 5 orange, 6 green). The one signature illustration, the cloth preview, is drawn as a table: an 18 px walnut rail around the cloth colour. The club side of the product (Floor, Set up, Matches, Regulars, Back room) uses this material language at full size. Player names and scores are set in Zilla Slab at up to 80 px and 110 px.\n\nThe Vision side is the same room with a different job, and a much denser type scale. It is a review instrument in three columns: a cues rail, a 16:9 stage and an inspector. Every panel wears the same 3 px brass top edge. Most text is DM Mono at 10–12.5 px, uppercase and tracked. The design has one moral axis: **who said this**. Machine output is drawn dashed and dimmed. The operator's own work is drawn solid. Calibration is labelled as calibration. A small source tag (MODEL / YOURS / CALIB, 模型 / 人工 / 标定) sits beside every drawn shape. Status is a word inside a bordered chip, never colour alone. The facts line spells out what is on the stage in one ` · `-joined sentence.\n\nThe system is flat. Depth comes from four tonal steps (`pocket-well` < `walnut-night` < `felt-panel` < `rail-wood`) and from 1 px seams. Shadows appear only on things that float: toasts, modals, the source panel and the stage popover. Corners are nearly square (2 px). Motion is effectively absent. Both themes and both languages are first-class. Dark/EN is the default. Light is a warm-paper swap of every colour token.",
+    "keyCharacteristics": [
+      "Warm near-black walnut ground with chalk ink; one brass accent for *current / selected / primary*.",
+      "Three voices: Zilla Slab for names, headings and big numerals; Barlow for body text; DM Mono for every label, readout and status word (uppercase, tracked .1–.18em).",
+      "Square-ish: 2 px radius almost everywhere; 50% only for balls and pips.",
+      "Flat tonal layering plus 1 px seams; a 3 px brass top edge marks a working panel.",
+      "Provenance is encoded in stroke: dashed = machine / reference, solid = human / under review.",
+      "Status = word + tinted chip (green complete / amber live-or-stale / blue scheduled / red error).",
+      "Bilingual EN / 中 everywhere, including SVG overlay tags; the Noto SC families sit inside every font stack."
+    ],
+    "rules": [
+      {
+        "name": "The One Brass Rule",
+        "body": "Brass means *current, selected or primary*, and nothing else is brass. When two things on screen are brass, one of them is the active state of the other.",
+        "section": "colors"
+      },
+      {
+        "name": "The Word-Not-Colour Rule",
+        "body": "Every status colour ships with its word (`LIVE`, `STALE`, `COMPLETE`, `geometry-verified`, `CALIB`) inside a bordered chip or tag. The hue only reinforces the word.",
+        "section": "colors"
+      },
+      {
+        "name": "The Triplet Rule",
+        "body": "A signal hue is used as text + tinted background + darker border together (`--green` / `--green-bg` / `--green-line`), never as a bare fill.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono-Means-Machine Rule",
+        "body": "Measured values, identifiers, counts, times and state words are set in DM Mono. Prose and editable names are not.",
+        "section": "typography"
+      },
+      {
+        "name": "The Uppercase-Label Rule",
+        "body": "Labels are small, uppercase and tracked (≥ .1em). Content (names, notes, guest names, via `.vs-tag.guest`) is never uppercased.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Until-It-Floats Rule",
+        "body": "Resting surfaces never cast shadows. A shadow means the element sits on top of other content and can be dismissed.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Brass-Lintel Rule",
+        "body": "A surface you work *in* gets a 3px brass top edge. A message you *read* gets a 3px left edge.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** take every colour from the `--*` tokens so both themes follow. A new status needs its `-bg` / `-line` pair in both `:root` blocks, and `app.css` must mirror it (see *Recorded inconsistencies*).",
+      "**Do** keep brass for current / selected / primary only. Put the 3px brass top edge on any new working panel and the 3px left edge on any new callout.",
+      "**Do** draw machine output dashed and dimmed and operator output solid. Put a MODEL / YOURS / CALIB tag beside every drawn geometry group (not inside it), and keep the tag bilingual (模型 / 人工 / 标定).",
+      "**Do** set measured values, IDs, counts and state words in DM Mono. Labels go 10px uppercase with ≥ .1em tracking. Names go in Zilla Slab, and prose in Barlow 15/1.5.",
+      "**Do** ship every string in EN and 中, join readouts with ` · `, keep units Latin, and give icon-only controls a bilingual `aria-label`.",
+      "**Do** keep 2px corners, 1px seams and flat tonal layers. Use a shadow only on floating, dismissable layers, and follow the existing z-index ladder (10 / 24 / 30 / 31 / 50 / 60).",
+      "**Do** keep controls ≥ 44px wherever they are the primary touch target on mobile (nav, sheet tabs, clock toggle)."
+    ],
+    "donts": [
+      "**Don't** add a second accent hue, gradients on UI chrome, or brass as decoration. The lamp glow on the scoreboard and the ball icons are the only atmosphere.",
+      "**Don't** show status by colour alone, and don't let a pending write show a success word.",
+      "**Don't** call a replay \"live\", show a machine candidate as confirmed, or show an unlabelled event as verified. Provenance must read correctly in the overlay, the rail and the facts line.",
+      "**Don't** add `transition` or `@keyframes` for decoration. The instrument has no motion today, and the reduced-motion guards assume that.",
+      "**Don't** hard-code theme-dependent colours in CSS or in template strings (see *Recorded inconsistencies* for the existing ones). The stage letterbox `#090806` is the one intentional theme-invariant colour.",
+      "**Don't** use rounded pills or large radii. 12px belongs to the pool-table illustration and 50% to balls and pips."
+    ]
+  },
+  "redocumented": "After the impeccable-polish pass: colours, motion and the toast shadow regenerated from annotator/ops.css (out/impeccable/redocument_json.js)."
+}
