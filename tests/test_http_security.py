@@ -87,7 +87,9 @@ class SecurityHeaderTests(unittest.TestCase):
                 self.assertEqual(csp.get('object-src'), ["'none'"])
                 self.assertIn('blob:', csp.get('img-src', []))
                 self.assertIn('blob:', csp.get('media-src', []))
-                self.assertIn("'self'", csp.get('font-src', []))
+                # Fonts are self-hosted: no font CDN in either directive.
+                self.assertEqual(csp.get('font-src'), ["'self'"])
+                self.assertEqual(csp.get('style-src'), ["'self'", "'unsafe-inline'"])
                 self.assertEqual(response.getheader('X-Frame-Options'), 'DENY')
                 self.assertEqual(response.getheader('Referrer-Policy'), 'no-referrer')
                 permissions = response.getheader('Permissions-Policy') or ''

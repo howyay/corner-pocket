@@ -1642,14 +1642,13 @@ class Backend:
 #: The page runs only its own scripts, paints frames from blob:/data: URLs,
 #: embeds the Twitch chat iframe and talks to this origin only (fetch and the
 #: clock EventSource). 'unsafe-inline' in style-src covers style attributes, not
-#: scripts. Drop fonts.googleapis.com and fonts.gstatic.com once the fonts are
-#: self-hosted.
+#: scripts. Fonts are self-hosted under /fonts/, so no font CDN is allowed.
 SECURITY_HEADERS = (
     ("Content-Security-Policy", "; ".join((
         "default-src 'self'",
         "script-src 'self'",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self'",
         "img-src 'self' blob: data:",
         "media-src 'self' blob:",
         "connect-src 'self'",
