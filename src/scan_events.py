@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from ball_detect import detect_ball_candidates
-from pipeline import homography_to_canonical, CANON_W, CANON_H
+from table_geometry import homography_to_canonical, CANON_W, CANON_H
 from table_detect import detect_table
 
 # physical geometry (Rasson Victory III 9ft, playing surface 2540 x 1270 mm)

@@ -25,11 +25,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ball_detect import BALL_COLORS, detect_ball_candidates
 from sam3_cpu import load_sam3_image_model, make_processor
 from table_detect import detect_table
+from table_geometry import CANON_W, CANON_H, homography_to_canonical
 
-# Rasson Victory III, 9 ft: playing surface 2540 x 1270 mm (100" x 50", WPA).
-# Canonical frame is in MILLIMETRES, portrait: width 1270 (x, left-right),
-# length 2540 (y, head at top, foot at bottom) -- matches the camera view.
-CANON_W, CANON_H = 1270, 2540  # mm
 CANON_BALL_R = 28.6  # mm (57.15 mm ball)
 POCKET_R = 24
 MIN_SCORE = 0.62
@@ -59,22 +56,6 @@ def extract_frame(video_path: str, t_sec: float) -> np.ndarray:
     if not ok:
         raise RuntimeError(f"could not read frame at t={t_sec}")
     return frame
-
-
-def homography_to_canonical(corners: np.ndarray) -> np.ndarray:
-    """Map the cloth quad [TL, TR, BR, BL] to the canonical table.
-
-    The canonical frame is width x length = CANON_W x CANON_H, oriented like
-    the camera view: head rail at the top, foot rail at the bottom, left long
-    rail on the left.  TL -> (0,0) [head-left], TR -> (W,0) [head-right],
-    BR -> (W,H) [foot-right], BL -> (0,H) [foot-left].  The long rails run
-    vertically (x=0 and x=W) and the side pockets sit at their midpoints.
-    """
-    dst = np.array(
-        [[0, 0], [CANON_W - 1, 0], [CANON_W - 1, CANON_H - 1], [0, CANON_H - 1]],
-        dtype=np.float32,
-    )
-    return cv2.getPerspectiveTransform(corners.astype(np.float32), dst)
 
 
 def classify_ball(bgr: np.ndarray, mask: np.ndarray) -> dict:

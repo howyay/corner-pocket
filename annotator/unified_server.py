@@ -821,7 +821,7 @@ class Backend:
             return []
         try:
             import numpy as np
-            from src.pipeline import homography_to_canonical
+            from src.table_geometry import homography_to_canonical
             from src.scan_events import POCKETS_MM
             inverse = np.linalg.inv(homography_to_canonical(np.array(corners, np.float32)))
             points = []
@@ -972,7 +972,7 @@ class Backend:
 
     def _fit_event_projection(self, sources):
         import numpy as np
-        from src.pipeline import homography_to_canonical
+        from src.table_geometry import homography_to_canonical
         pairs = []
         for path, _ in sources:
             if path.name != 'sam3_results.json':
