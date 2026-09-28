@@ -30,9 +30,6 @@ SAFE_LOAD_FLAG = re.compile(
 # The ultralytics importers that import without side effects; the offline scripts
 # run on import, so the source-order check covers them.
 MODULES = ('src.person_pipeline', 'src.frame_inference', 'src.info_complete_scan')
-# Offline scripts still to switch (D-2, second commit). Nothing else may.
-PENDING = {'src/fast_ball_labels.py', 'src/pid_associate.py', 'src/pid_osnet.py',
-           'src/pid_osnet_tight.py', 'src/pid_osnet_tracks.py'}
 
 
 def own_sources():
@@ -69,7 +66,7 @@ class WeightsOnlyTest(unittest.TestCase):
 
     def test_no_checkpoint_load_unpickles_freely(self):
         hits = [f'{path.relative_to(REPO)}:{number}'
-                for path in own_sources() if str(path.relative_to(REPO)) not in PENDING
+                for path in own_sources()
                 for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1)
                 if UNSAFE_LOAD.search(line)]
         self.assertEqual(hits, [], 'load checkpoints with weights_only=True')

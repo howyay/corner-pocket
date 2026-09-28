@@ -24,7 +24,7 @@ MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 
 model = O.osnet_x0_25(pretrained=False, num_classes=1000)
-sd = torch.load(W, map_location="cpu", weights_only=False)
+sd = torch.load(W, map_location="cpu", weights_only=True)
 sd = sd.get("state_dict", sd)
 model.load_state_dict({k: v for k, v in sd.items()
                        if not k.startswith("classifier")}, strict=False)

@@ -487,7 +487,7 @@ def cmd_prelabel(args) -> int:
     from src.tiny_ball_net import build_model, load_labels, parse_size, split_for_rounds
 
     size = parse_size(args.size)
-    ckpt = torch.load(str(args.bitmap), map_location="cpu", weights_only=False)
+    ckpt = torch.load(str(args.bitmap), map_location="cpu", weights_only=True)
     model = build_model()
     model.load_state_dict(ckpt["state"])
     device = args.device
