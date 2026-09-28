@@ -143,7 +143,7 @@ class Segments:
         seg = self.resolve(t)
         if seg is None:
             return None, None, None
-        from src.pipeline import homography_to_canonical
+        from src.table_geometry import homography_to_canonical
         try:
             forward = homography_to_canonical(seg.quad)
             return forward, np.linalg.inv(forward), seg

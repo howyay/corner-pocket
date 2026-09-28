@@ -91,6 +91,34 @@ class TableGeometryTests(unittest.TestCase):
         self.assertEqual(report['result'], {'source': 'scan cloth quad', 'pocket': 'left-side', 'pockets': 6})
         self.assertEqual(report['heavy'], [])
 
+    def test_split_segment_projection_never_loads_torch(self):
+        # A measured camera move sends each event through its own segment's quad
+        # (Segments.homographies). Synthetic artifact, only the fields
+        # src/calib_segments.py reads: segmentation_verdict, segments[].id/t_start/
+        # t_end/quad_px/source.
+        quads = {'A': SCAN_QUAD, 'B': [[300, 150], [1000, 160], [1060, 560], [250, 550]]}
+        report = run_fresh(self, f"""
+            import tempfile
+            from pathlib import Path
+            from annotator.unified_server import Backend, atomic_save
+            quads = {quads!r}
+            with tempfile.TemporaryDirectory() as tmp:
+                atomic_save(Path(tmp) / 'out' / 'calib_vod30_segments.json', {{
+                    'segmentation_verdict': 'split_supported',
+                    'segments': [{{'id': 'A', 't_start': 0, 't_end': 100, 'quad_px': quads['A'], 'source': 'human_anchors'}},
+                                 {{'id': 'B', 't_start': 101, 't_end': 200, 'quad_px': quads['B'], 'source': 'refined'}}]}})
+                events = [{{'id': 1, 't': 50, 'type': 'pot', 'last_mm': [635, 1270]}},
+                          {{'id': 2, 't': 150, 'type': 'pot', 'last_mm': [635, 1270]}}]
+                items, _ = Backend(Path(tmp))._event_geometry('vod30', events)
+                result = [[item.get('px_segment'), item.get('px_source'), item.get('last_px')] for item in items]
+        """)
+        expected = []
+        for name, source in (('A', 'human anchors'), ('B', 'refined')):
+            x, y, w = np.linalg.inv(pipeline_homography(np.array(quads[name]))) @ [635.0, 1270.0, 1.0]
+            expected.append([name, f'segment {name} · {source}', [round(x / w, 1), round(y / w, 1)]])
+        self.assertEqual(report['result'], expected)
+        self.assertEqual(report['heavy'], [])
+
     @unittest.skipUnless(importlib.util.find_spec('torch'), 'src.pipeline imports torch')
     def test_pipeline_still_exports_the_geometry(self):
         from src.pipeline import CANON_H, CANON_W, homography_to_canonical
