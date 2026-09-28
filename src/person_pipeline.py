@@ -22,6 +22,8 @@ whenever an unbound person has a quality face); fresh observations, and thus
 most new bindings, arrive on stride frames. det_size stays 640 (median eye
 ~10px would not survive a smaller detector input).
 """
+import os
+
 import cv2
 import numpy as np
 from pathlib import Path
@@ -29,6 +31,10 @@ import torch
 
 from src.face_id import DEFAULT_FACE_STORE, add_faces, get_face_engine, load_faces
 from src.person_identity import IdentityIndex
+
+# YOLO weights load weights-only: ultralytics reads this once, on its first import
+# (lazy, in _get_detector); unset, it unpickles checkpoints freely (audit D-2).
+os.environ.setdefault('ULTRALYTICS_SAFE_LOAD', '1')
 
 _MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 _STD = np.array([0.229, 0.224, 0.225], np.float32)
@@ -122,7 +128,7 @@ class PersonPipeline:
         from src.reid.osnet import osnet_x0_25
         model = osnet_x0_25(num_classes=4101, pretrained=False)
         state = torch.load(root / 'src' / 'reid' / 'weights' / 'osnet_x0_25_msmt17.pth',
-                           map_location='cpu', weights_only=False)
+                           map_location='cpu', weights_only=True)
         state = {(k[7:] if k.startswith('module.') else k): v for k, v in state.items()}
         model.load_state_dict(state, strict=True)
         model.eval()

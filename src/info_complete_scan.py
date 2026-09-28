@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 import math
+import os
 from pathlib import Path
 import sys
 import time
@@ -24,6 +25,10 @@ from typing import Iterator
 
 import cv2
 import numpy as np
+
+# YOLO weights load weights-only: ultralytics reads this once, on its first import
+# (lazy, in person_boxes_fn); unset, it unpickles checkpoints freely (audit D-2).
+os.environ.setdefault('ULTRALYTICS_SAFE_LOAD', '1')
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

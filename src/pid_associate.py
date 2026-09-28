@@ -16,6 +16,7 @@ import numpy as np
 import torch
 
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
+os.environ.setdefault("ULTRALYTICS_SAFE_LOAD", "1")  # weights-only YOLO load (audit D-2)
 from ultralytics import YOLO
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

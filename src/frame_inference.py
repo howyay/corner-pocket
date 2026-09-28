@@ -1,6 +1,11 @@
 """Lazy, local-weights-only selected-frame inference. No temporal event claims."""
 import json
+import os
 from pathlib import Path
+
+# YOLO weights load weights-only: ultralytics reads this once, on its first import
+# (lazy, in infer_frame); unset, it unpickles checkpoints freely (audit D-2).
+os.environ.setdefault('ULTRALYTICS_SAFE_LOAD', '1')
 
 
 def inference_device():

@@ -713,7 +713,7 @@ def reference_quad():
 
 def load_checkpoint(path, size: tuple):
     import torch
-    payload = torch.load(str(path), map_location="cpu", weights_only=False)
+    payload = torch.load(str(path), map_location="cpu", weights_only=True)
     model = build_model()
     model.load_state_dict(payload["state"])
     return model, payload.get("size") or list(size)
