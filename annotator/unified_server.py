@@ -1751,6 +1751,98 @@ class BoundedHTTPServer(ThreadingHTTPServer):
             self._slots.release()
 
 
+#: The public board's CSP (docs/public-board.md): no inline script or style, this
+#: origin only, never framed, no forms.
+BOARD_CSP = "; ".join((
+    "default-src 'self'", "connect-src 'self'", "img-src 'self' data:", "style-src 'self'", "font-src 'self'",
+    "frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'", "object-src 'none'"))
+#: SECURITY_HEADERS with the board's CSP. The board shows players' names, so it
+#: also asks search engines to stay away.
+BOARD_SECURITY_HEADERS = tuple((key, BOARD_CSP if key == "Content-Security-Policy" else value)
+                               for key, value in SECURITY_HEADERS) + (("X-Robots-Tag", "noindex, nofollow"),)
+#: The fonts board.css loads. Every other file under fonts/ stays off the public port.
+BOARD_FONTS = ("barlow-500.woff2", "barlow-600.woff2", "barlow-700.woff2",
+               "noto-sans-sc-400-common.woff2", "noto-sans-sc-500-common.woff2")
+#: Public request path -> file under annotator/. With /api/board, the whole public surface.
+BOARD_FILES = {"/": "board.html", "/board.js": "board.js", "/board.css": "board.css",
+               **{f"/{name}": name for name in ("favicon.svg", "favicon-32.png", "favicon-16.png", "favicon.ico")},
+               **{f"/fonts/{name}": f"fonts/{name}" for name in BOARD_FONTS}}
+_BOARD_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+                ".ico": "image/x-icon", ".woff2": "font/woff2"}
+
+
+class PublicBoardServer(BoundedHTTPServer):
+    """The public listener's own, smaller pool: however many phones poll the
+    board, they cannot take the operator console's slots."""
+    max_handlers = 16
+    request_queue_size = 16
+
+
+def make_public_handler(backend):
+    """The handler behind --public-port: GET/HEAD of BOARD_FILES and /api/board, nothing else.
+
+    It shares no code path with make_handler's dispatch. Paths are compared exactly
+    as sent, before any decoding or normalisation, so an encoded, doubled or
+    traversing spelling of a public path is just another unknown path: 404. The
+    query string is never read. Every other method is 405.
+    """
+    class PublicHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.0"  # one request per connection: nothing pipelined rides along
+        timeout = 10  # an idle or trickling client frees its slot within 10 s
+        # The standard library's malformed-request answers, as inert text rather than HTML.
+        error_content_type, error_message_format = "text/plain; charset=utf-8", "%(code)d %(message)s\n"
+
+        def version_string(self):
+            return "board"
+
+        def end_headers(self):
+            for key, value in BOARD_SECURITY_HEADERS:
+                self.send_header(key, value)
+            super().end_headers()
+
+        def log_request(self, code="-", size="-"):
+            # Pollers ask every 3 s: log what was refused, not every board served.
+            if not (isinstance(code, int) and code < 400):
+                super().log_request(code, size)
+
+        def send(self, status, body, content_type="text/plain; charset=utf-8", headers=()):
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            for key, value in headers:
+                self.send_header(key, value)
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+
+        def do_GET(self):
+            if self.request_version == "HTTP/0.9":
+                return  # a 0.9 answer has no headers, so no CSP: send nothing
+            name = BOARD_FILES.get(self.path.partition("?")[0])
+            try:
+                body = (backend.root / "annotator" / name).read_bytes() if name else None
+            except OSError:
+                body = None
+            if body is None:
+                return self.send(404, b"not found\n")
+            cache = "public, max-age=86400" if name.startswith(("fonts/", "favicon")) else "no-cache"
+            self.send(200, body, _BOARD_TYPES[Path(name).suffix], (("Cache-Control", cache),))
+
+        do_HEAD = do_GET
+
+        def refuse(self):
+            self.send(405, b"method not allowed\n", headers=(("Allow", "GET, HEAD"),))
+
+        def __getattr__(self, name):
+            # The base class looks up do_<METHOD>: every method but GET and HEAD lands here.
+            if name.startswith("do_"):
+                return self.refuse
+            raise AttributeError(name)
+
+    return PublicHandler
+
+
 def make_handler(backend):
     class Handler(BaseHTTPRequestHandler):
         # Per-socket timeout: a request whose headers or body stall this long is
@@ -1882,6 +1974,9 @@ def make_handler(backend):
                 # Self-hosted web fonts and their OFL texts: one flat directory, no build script.
                 if len(parts) == 2 and parts[0] == "fonts" and parts[1].endswith((".woff2", ".txt")):
                     return self.file(safe_file(backend.root / "annotator" / "fonts", parts[1]))
+                # The public board, for a TV logged in here (--public-port serves it without login).
+                if path in ("/display", "/board.js", "/board.css"):
+                    return self.file(safe_file(backend.root / "annotator", "board.html" if path == "/display" else path[1:]))
                 if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js"): 
                     return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
@@ -1926,15 +2021,26 @@ def main():
     parser.add_argument("--port", type=int, default=8130)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--public-port", type=int, help="also serve the read-only public board on this port, "
+                        "on its own listener and pool (docs/public-board.md)")
     args = parser.parse_args()
     backend = Backend(args.root)
     server = BoundedHTTPServer((args.host, args.port), make_handler(backend))
+    public = None
+    if args.public_port:
+        public = PublicBoardServer((args.host, args.public_port), make_public_handler(backend))
+        threading.Thread(target=public.serve_forever, name="public-board", daemon=True).start()
     print(f"Unified annotator: http://{args.host}:{args.port}", flush=True)
+    if public:
+        print(f"Public board: http://{args.host}:{args.public_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        if public:
+            public.shutdown()
+            public.server_close()
         backend.close()
         server.server_close()
 
