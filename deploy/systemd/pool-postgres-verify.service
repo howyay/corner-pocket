@@ -1,0 +1,14 @@
+# Corner Pocket: weekly sanity read of the newest backup (pg_restore --list), and a
+# loud failure when the newest dump is older than 48 h (the daily backup stopped).
+[Unit]
+Description=Corner Pocket PostgreSQL backup sanity read (newest dump)
+Requires=pool-postgres.service
+After=pool-postgres.service
+
+[Service]
+Type=oneshot
+Environment=PODMAN=/run/current-system/sw/bin/podman
+Environment=POOL_BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups
+ExecStart=/home/operator/projects/pool/scripts/pool-postgres-backup.sh verify
+UMask=0077
+Nice=10

@@ -1,0 +1,12 @@
+# Corner Pocket: run pool-postgres-backup.service every day at 05:30 (after the night's play).
+[Unit]
+Description=Daily Corner Pocket PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+RandomizedDelaySec=10min
+# a boot or a lingering-session start after a missed run catches up once
+Persistent=true
+
+[Install]
+WantedBy=timers.target

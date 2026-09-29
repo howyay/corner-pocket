@@ -161,12 +161,70 @@ podman exec -i pool-postgres pg_restore --list \
 
 Roles and the password are not in a `pg_dump`; they come from the env file and the
 secret.  Until cutover the JSON files in `out/` are the system of record, so a dump is a
-copy of imported data, not the only copy.  After cutover, schedule the dump (a user
-timer) and keep the files from the last import as the cold backup.
+copy of imported data, not the only copy.  From the cutover on, the database is the only
+live copy of the user data, so the dump is scheduled (below) and the files from the last
+import stay as the cold backup.
 
 A file-level copy of `$POOL_PG_ROOT/pool-postgres/data` is only consistent with the unit
 **stopped** (`systemctl --user stop pool-postgres`, copy with `podman unshare cp -a …`,
 start again).
+
+### Scheduled backups (enabled at cutover, step 4)
+
+No `pg_dump` was scheduled anywhere before the cutover (checked 2026-09-28: no user timer,
+no crontab entry).  Two user timers do it, both driven by
+`scripts/pool-postgres-backup.sh`:
+
+| unit | when | what |
+|---|---|---|
+| `pool-postgres-backup.timer` → `.service` | daily 05:30 (±10 min, catches up after downtime) | `pg_dump -Fc -Z 6` of `pool` to `$POOL_PG_ROOT/pool-postgres/backups/pool-<ts>.dump` (dir mode 700, files 600), read back with `pg_restore --list` before it counts, then dumps older than 14 days are deleted (never the newest) |
+| `pool-postgres-verify.timer` → `.service` | Mondays 06:00 | `pg_restore --list` of the newest dump; fails if it is unreadable or older than 48 h (the daily run stopped) |
+
+Every failure exits non-zero with a `pool-postgres-backup: FAILED: <reason>` line, so the
+unit turns `failed` and the journal says why (`systemctl --user --failed`,
+`journalctl --user -u pool-postgres-backup -n 20`).  A dump goes to a `.partial` file first
+and replaces nothing until it reads back.  The unit files are in the repository
+(`deploy/systemd/`); install and enable them — at cutover, not before:
+
+```sh
+cp deploy/systemd/pool-postgres-backup.{service,timer} deploy/systemd/pool-postgres-verify.{service,timer} \
+   ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now pool-postgres-backup.timer pool-postgres-verify.timer
+systemctl --user start pool-postgres-backup.service                  # the first backup, now
+systemctl --user is-active pool-postgres-backup.service; journalctl --user -u pool-postgres-backup -n 3 --no-pager
+systemctl --user list-timers pool-postgres-\* --no-pager              # both timers with a NEXT time
+```
+
+(The script's `dump` and `verify`, their pruning and their failure paths — wrong directory
+mode, database down, no dump — were exercised on 2026-09-28 against a scratch directory.)
+
+### Proving a read wrote nothing (after cutover)
+
+Before the cutover a read-only smoke proved itself with the md5 of `out/…/state.json`; after
+it, writes go to the database and those md5s prove nothing.  The proof is then three checks
+around the smoke:
+
+1. **The write fingerprint is identical before and after.**
+   `scripts/pool-write-fingerprint.sql` prints one line per user-data table: its name, row
+   count, and an md5 over every row's `xmin` and content.  `xmin` is the transaction that
+   last wrote the row, so *any* write changes a line — an insert, a delete, even an UPDATE
+   that rewrites the same values (measured) — while reads never do.  It covers `ops_meta`
+   (the revision) and all 18 user-data tables.
+
+   ```sh
+   fp() { podman exec -i pool-postgres psql -U pool -d pool -tA -F' ' < scripts/pool-write-fingerprint.sql; }
+   fp > /tmp/fp-before.txt
+   # … the read-only smoke: GETs, page loads …
+   fp > /tmp/fp-after.txt && diff /tmp/fp-before.txt /tmp/fp-after.txt && echo "NO WRITE"
+   ```
+
+2. **The projection is consistent**: `PYTHONPATH=. .venv/bin/python -m src.store_check` →
+   `projection consistent with the stored documents`.
+
+3. **No POST reached the service** in the smoke's window:
+   `journalctl --user -u pool-workbench --since "<start>" --no-pager | grep -c '"POST '` → `0`
+   (the request log line is `"POST /api/…`; GETs are logged the same way).
 
 ## Restore
 
@@ -234,9 +292,34 @@ then `podman exec pool-postgres psql -U pool -d pool -tAc "SELECT string_agg(nam
 version) FROM schema_migrations"` must print
 `0001_schema_migrations,0002_user_data,0003_json_documents,0004_imported_datasets`).
 
+**1b. Guards — all three must hold right before the stop** (stopping the service kills a
+running live session and a running VOD import).  If one fails: poll every 2 min for up to
+30 min; if it still fails, stop here and report — do not proceed.
+
+```sh
+W=http://127.0.0.1:8130
+guards() {
+  PYTHONPATH=. .venv/bin/python - "$W" <<'PY'
+import json, sys, urllib.request
+base = sys.argv[1]
+get = lambda p: json.load(urllib.request.urlopen(base + p, timeout=10))
+live = get("/api/live").get("state")
+job = (get("/api/vods/job") or {}).get("state")
+print(f"live={live} vods_job={job}")
+sys.exit(0 if live in ("idle", "stopped", None) and job != "running" else 1)
+PY
+  [ $? -eq 0 ] || return 1
+  n=$(journalctl --user -u pool-workbench --since '-10min' --no-pager | grep -c '"POST ')
+  echo "POSTs in the last 10 min: $n"; [ "$n" -eq 0 ]
+}
+for i in $(seq 1 16); do guards && break; [ $i -eq 16 ] && { echo "GUARDS STILL FAIL after 30 min - stop and report"; exit 1; }; sleep 120; done
+```
+
 **2. Stop the writer** — `systemctl --user stop pool-workbench`.  Every user-data write
 goes through the service (the legacy writers refuse to run once the variable is set), so
-the files are frozen from here.
+the files are frozen from here.  Record the revision the file has now — the database must
+show exactly this after the start:
+`PYTHONPATH=. .venv/bin/python -c 'import json;s=json.load(open("out/corner-pocket/state.json"));print(s["revision"], len(s["players"]))'`.
 
 **3. Import and verify** — each must exit 0:
 
@@ -247,7 +330,8 @@ PYTHONPATH=. .venv/bin/python -m src.store_export --to /tmp/pool-verify-$ts --co
 PYTHONPATH=. .venv/bin/python -m src.store_check                        # projection consistent
 ```
 
-**4. Point the service at the database** — a drop-in, so the unit file itself is untouched:
+**4. Point the service at the database, and schedule the backups** — a drop-in (the unit
+file itself is untouched; the same text is `deploy/systemd/pool-workbench.service.d/20-postgres.conf`):
 
 ```sh
 cat > ~/.config/systemd/user/pool-workbench.service.d/20-postgres.conf <<'EOF'
@@ -258,8 +342,14 @@ After=pool-postgres.service
 [Service]
 EnvironmentFile=%h/.config/pool/postgres.env
 EOF
+cp deploy/systemd/pool-postgres-backup.{service,timer} deploy/systemd/pool-postgres-verify.{service,timer} \
+   ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user start pool-workbench
+systemctl --user enable --now pool-postgres-backup.timer pool-postgres-verify.timer
 ```
+
+The downtime is the stop in step 2 to `active` here; the import in step 3 is the long part
+(seconds on today's data).
 
 **5. Post-cutover checks**
 
@@ -276,6 +366,19 @@ systemctl --user daemon-reload && systemctl --user start pool-workbench
 - d. `PYTHONPATH=. .venv/bin/python -m src.store_check` → consistent.
 - e. Open Floor, Matches and Vision once; `md5sum -c ~/pool-cutover-$ts/MD5SUMS` from
   `~/pool-cutover-$ts` still matches the untouched files in `out/` (nothing writes them).
+- f. The service runs on the database: `pid=$(systemctl --user show pool-workbench -p MainPID
+  --value); tr '\0' '\n' < /proc/$pid/environ | grep -o '^POOL_DATABASE_URL='` prints the
+  name (never print the value), and `systemctl --user show pool-workbench -p Requires` lists
+  `pool-postgres.service`.
+- g. `GET /api/operations` → the revision and the number of regulars recorded at step 2
+  (the same as the file), *before* 5c adds its two revisions.
+- h. `GET /api/vods/recent` answers 200; `GET /api/frame?dataset=vod30&frame=0` answers 200
+  `image/jpeg` (the Vision stage's first frame).
+- i. The backups: `systemctl --user list-timers pool-postgres-\*` shows both timers, and
+  `systemctl --user start pool-postgres-backup.service` succeeds (`journalctl --user -u
+  pool-postgres-backup -n 3` ends with `pool-postgres-backup: ok …`).
+- j. The no-write proof from here on is the fingerprint, not a file md5 ("Proving a read
+  wrote nothing" above).
 
 **6. Rollback** (design §7.6)
 
