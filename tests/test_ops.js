@@ -140,7 +140,7 @@ test('live JPEG bytes and their metadata stay atomically paired', () => {
 test('Vision is one stage with two rails and no sub-tab navigation left', () => {
   const h = harness();
   assert.equal(h.evaluate("t('vision')"), 'Vision');
-  assert.ok(source.includes("['floor','setup','matches','vision','players','status']"));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')), ['floor','setup','matches','records','vision','players','status']);
   assert.ok(!source.includes('review-frame'));
   assert.ok(!source.includes('src="/app.html"'));
   // The sub-tab machinery is gone: no mode table, no data-vision buttons, no dead host.
@@ -464,7 +464,7 @@ test('clarify: the night log names entrants and sources instead of printing hex 
     assert.ok(line(2).includes(aSource), `${lang}: a removed source reads as a plain phrase: ${line(2)}`);
     for (const i of [0, 1, 2]) assert.ok(!/[0-9a-f]{8}/.test(line(i)), `${lang}: no hex id in the visible line: ${line(i)}`);
     // never dropped: the id stays inspectable in the list item's title
-    const html = h.evaluate('matchesScreen()');
+    const html = h.evaluate('recordsScreen()');
     for (const id of [present, removed, source]) assert.ok(html.includes(`title="${id}"`), `${lang}: ${id.slice(0, 8)} is kept in the title`);
   }
   // a name the server recorded wins; a source still present reads by its URL; an archived entrant resolves from history
@@ -861,16 +861,17 @@ test('a renamed regular reads by their current name on every screen, archive inc
                {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',absent:[]},
                {id:'m3',round:2,sides:['e1','e2'],score:[3,2],status:'complete',result:'played',winnerId:'e1',absent:[]}]});
     data.tournament=night();data.history=[Object.assign(night(),{id:'h1',archivedAt:'2026-09-01T00:00:00Z'})];data.events=[];data.notes=[]`);
-  const views = {floor: h.evaluate('floorScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('matchesScreen()')};
+  const views = {floor: h.evaluate('floorScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('matchesScreen()'), records: h.evaluate('recordsScreen()')};
   for (const [name, html] of Object.entries(views)) assert.ok(!/>Ada</.test(html) && !/\bAda \//.test(html), `${name}: the stale snapshot name never shows`);
   assert.ok(views.matches.includes('Ada Lovelace'), 'bracket shows the current name');
-  const archive = views.matches.slice(views.matches.indexOf('<details'));
+  const archive = views.records.slice(views.records.indexOf('<details'));
   assert.ok(archive.includes('Ada Lovelace'), 'the archived event reads the live roster name for a regular');
   assert.ok(!/Ada —|— Ada\b|>Ada</.test(archive), 'the archive never falls back to the draw-time copy while the regular exists');
   assert.ok(archive.includes('Walk-in Wu'), 'a guest keeps the name typed at the desk');
   // a deleted regular (no roster row) still reads by the snapshot, never "Unknown"
   h.evaluate("data.players=data.players.filter(p=>p.id!=='p2')");
   assert.ok(h.evaluate('matchesScreen()').includes('>Bo'), 'the snapshot is the fallback when the regular is gone');
+  assert.ok(/· Bo — Walk-in Wu ·/.test(h.evaluate('recordsScreen()')), 'the archive in Records falls back to the snapshot too');
   assert.equal(h.evaluate('JSON.stringify(resultStats("p1"))'), '{"wins":2,"losses":0}', 'the rename leaves the record whole; the bye is not a win');
   h.evaluate("lang='zh'");
   assert.equal(h.evaluate("validationMessage('Name held by a guest in this event; add the guest to the regulars instead')"), '这个名字属于本场赛事的一位访客；请把该访客加入常客，而不是给常客改成同名。');
@@ -900,7 +901,7 @@ test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', 
     assert.ok(!first.includes(`>${waiting}<`), `${lang}: the empty side of a bye never reads ${waiting}`);
     const tile = html.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1];
     assert.equal(tile, '1/2', `${lang}: byes are left out of the signed count and its total`);
-    const archive = html.slice(html.indexOf('<details'));
+    const rec = h.evaluate('recordsScreen()'), archive = rec.slice(rec.indexOf('<details'));
     assert.ok(archive.includes(`>${bye}<`) && !archive.includes(`${esc_(waiting)}`), `${lang}: the archive labels the bye too`);
     const floor = h.evaluate('floorScreen()');
     assert.equal(floor.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1], '1/2', `${lang}: the Floor tile agrees`);
@@ -949,7 +950,7 @@ test('after the draw and in the archive only the name can be edited, and it is a
     assert.ok(form[0].includes(`>${rename}<`), `${lang}: the button says ${rename}`);
     assert.ok(/<fieldset disabled/.test(setup), `${lang}: the rules stay locked`);
     assert.equal((setup.match(/name="name"/g) || []).length, 1, `${lang}: the name is edited in one place only`);
-    const matches = h.evaluate('matchesScreen()');
+    const matches = h.evaluate('recordsScreen()');
     assert.ok(matches.includes('data-action="rename-archived"') && matches.includes('data-id="h1"'), `${lang}: an archived event can be renamed`);
     assert.ok(!/<summary>h1 /.test(matches), `${lang}: an unnamed archive never shows its raw id`);
     assert.ok(h.evaluate('auditLine(data.events[0])').includes(label), `${lang}: the audit line reads ${label}`);
@@ -1014,7 +1015,7 @@ test('standings count results, not ratings; the event table sorts wins, win %, n
   assert.equal(h.evaluate('JSON.stringify(record(tournament(),"g"))'), '{"wins":0,"losses":1,"played":1}');
   for (const [lang, rating, table, wins, played, rate] of [['en', 'House rating (manual)', 'Event table', 'Wins', 'Played', 'Win %'], ['zh', '球房评分（手动）', '本场战绩表', '胜场', '场次', '胜率']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('matchesScreen()');
+    const html = h.evaluate('recordsScreen()') + h.evaluate('matchesScreen()');
     const standings = html.slice(html.indexOf(`<table class="standings"`), html.indexOf('</table>', html.indexOf(`<table class="standings"`)));
     for (const head of [rating, wins, played, rate]) assert.ok(standings.includes(`>${head}<`), `${lang}: standings column ${head}`);
     // all-time rows: Ann 1-1 (bye excluded), Bea 2-1, Cai 0-1, Dee 1-0 (forfeit win)
@@ -1107,7 +1108,7 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   // the sheet view: reached from the archive, read-only, full bracket, print + copy controls
   h.evaluate('render=()=>{}');
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
-  assert.ok(h.evaluate('matchesScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
+  assert.ok(h.evaluate('recordsScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
   h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['x','y'],score:[0,0],status:'scheduled',absent:[]}]");
   assert.ok(h.evaluate('matchesScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
   h.evaluate('data.tournament.matches=[]');
@@ -1154,14 +1155,14 @@ test('delete only an unsigned event; otherwise hide it from history, which erase
   h.evaluate('render=()=>{}');
   for (const [lang, del, hide, unhide, showHidden] of [['en', 'Delete event', 'Hide from history', 'Show in history', 'Show 1 hidden'], ['zh', '删除赛事', '从历史中隐藏', '恢复显示', '显示 1 场已隐藏']]) {
     h.evaluate(`lang='${lang}';showHidden=false`);
-    const html = h.evaluate('matchesScreen()');
+    const html = h.evaluate('recordsScreen()');
     const block = id => { const i = html.indexOf(`data-id="${id}"`); return i < 0 ? '' : html.slice(html.lastIndexOf('<details', i), html.indexOf('</details>', i)); };
     assert.ok(block('h1').includes(`>${hide}<`) && !block('h1').includes(`>${del}<`), `${lang}: a signed event can only be hidden`);
     assert.ok(block('h2').includes(`>${del}<`), `${lang}: an unsigned event can be deleted`);
     assert.ok(!html.includes('Hidden night'), `${lang}: a hidden event is out of the list`);
     assert.ok(html.includes(`>${showHidden}<`), `${lang}: the hidden count is offered`);
     h.evaluate('showHidden=true');
-    const all = h.evaluate('matchesScreen()');
+    const all = h.evaluate('recordsScreen()');
     assert.ok(all.includes('Hidden night') && all.includes(`>${unhide}<`), `${lang}: hidden events can be shown and restored`);
     assert.ok(h.evaluate('setupScreen()').includes('data-action="event-delete" data-id="t0"'), `${lang}: tonight, unsigned, can be deleted from Set up`);
   }
@@ -1336,8 +1337,8 @@ test('every table the operations screens add sits in a .table-wrap, so a wide ta
       matches:[{id:'y1',round:1,sides:['a1','c1'],score:[1,3],status:'complete',result:'played',winnerId:'c1',absent:[]}]}];render=()=>{}`);
   const bare = html => [...html.matchAll(/(.{0,40})<table\b[^>]*>/g)].filter(m => !m[1].endsWith('<div class="table-wrap">')).map(m => m[0].slice(-60));
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'player-record', id: 'pa'}}}});
-  const screens = {matches: h.evaluate('matchesScreen()'), record: h.evaluate('playersScreen()')};
-  assert.ok(/class="standings"/.test(screens.matches) && /class="event-table"/.test(screens.matches), 'the Matches tables render');
+  const screens = {matches: h.evaluate('matchesScreen()'), records: h.evaluate('recordsScreen()'), record: h.evaluate('playersScreen()')};
+  assert.ok(/class="event-table"/.test(screens.matches) && /class="standings"/.test(screens.records), 'the Matches and Records tables render');
   assert.ok(/class="h2h"/.test(screens.record) && /class="per-event"/.test(screens.record), 'the Player record tables render');
   for (const [name, html] of Object.entries(screens)) assert.deepEqual(bare(html), [], `${name}: no table outside a .table-wrap`);
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
@@ -1497,4 +1498,75 @@ test('routes: a dirty or busy review vetoes back/forward too, and the URL is put
   h.evaluate('busy=false');
   browserBack(h, '#/floor');
   assert.equal(h.evaluate('tab'), 'floor');
+});
+// ---- IA C′ stage 3: Records holds the history half of Matches (house standings, night log, archived events).
+function recordsNight(h) {
+  h.evaluate(`data.players=[{id:'pa',name:'Ann',status:'Active',rating:100},{id:'pb',name:'Bea',status:'Active',rating:900}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t0',name:'Tonight',format:'singles',raceTo:3,tables:2,status:'active',entrants:[E('a','pa','Ann'),E('b','pb','Bea')],
+      matches:[{id:'m1',round:1,sides:['a','b'],score:[1,0],status:'live',table:1,absent:[]}]};
+    data.history=[{id:'h1',name:'Last week',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-09-01T00:00:00Z',entrants:[E('a1','pa','Ann'),E('b1','pb','Bea')],
+      matches:[{id:'y1',round:1,sides:['a1','b1'],score:[1,3],status:'complete',result:'played',winnerId:'b1',absent:[]}]},
+      {id:'h2',name:'Hidden night',hidden:true,format:'singles',raceTo:3,status:'complete',archivedAt:'2026-08-25T00:00:00Z',entrants:[E('a2','pa','Ann'),E('b2','pb','Bea')],
+      matches:[{id:'y2',round:1,sides:['a2','b2'],score:[3,0],status:'complete',result:'played',winnerId:'a2',absent:[]}]}];
+    data.events=[{id:'e1',action:'match_complete',revision:7,at:'2026-09-01T21:00:00Z',context:{id:'y1'}}];data.notes=[]`);
+}
+test('Records is a top-level tab with its own route, between the live night and Vision', async () => {
+  const h = harness({hash: '#/records'});
+  assert.equal(h.evaluate('tab'), 'records', 'the URL opens Records');
+  assert.equal(h.context.location.hash, '#/records');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')).slice(0, 5), ['floor', 'setup', 'matches', 'records', 'vision'], 'Records sits after the live night, before Vision');
+  for (const [lang, label] of [['en', 'Records'], ['zh', '战绩档案']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("t('records')"), label); }
+  h.evaluate('render=()=>{}');
+  await tabClick(h, 'floor');
+  await tabClick(h, 'records');
+  assert.equal(h.context.location.hash, '#/records', 'a click pushes the route');
+  assert.equal(h.evaluate("routeOf('records')"), 'records');
+});
+test('Records holds house standings, the night log and the archive; Matches keeps tonight only', () => {
+  const h = harness();
+  recordsNight(h);
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}';showHidden=false`);
+    const rec = h.evaluate('recordsScreen()'), matches = h.evaluate('matchesScreen()');
+    for (const key of ['standings', 'timeline', 'history']) {
+      const heading = h.evaluate(`t('${key}')`);
+      assert.ok(rec.includes(`>${heading}</h3>`) || rec.includes(`>${heading}</h2>`), `${lang}: Records has ${heading}`);
+      assert.ok(!matches.includes(`>${heading}</h3>`), `${lang}: Matches no longer carries ${heading}`);
+    }
+    assert.ok(rec.includes('<table class="standings"'), `${lang}: the all-time table`);
+    assert.ok(rec.includes('<ol class="timeline"'), `${lang}: the log`);
+    assert.ok(rec.includes('data-action="results-sheet" data-id="h1"') && rec.includes('data-action="rename-archived" data-id="h1"') && rec.includes('data-action="event-hide" data-id="h1"'), `${lang}: every archive control stays`);
+    assert.ok(!rec.includes('Hidden night') && rec.includes('data-action="toggle-hidden"'), `${lang}: hidden nights stay hidden behind the toggle`);
+    assert.ok(matches.includes('<table class="event-table"'), `${lang}: tonight's event table stays with the bracket`);
+    assert.ok(matches.includes('class="rounds"'), `${lang}: the bracket stays`);
+  }
+  h.evaluate('showHidden=true');
+  assert.ok(h.evaluate('recordsScreen()').includes('Hidden night'), 'the toggle shows hidden nights in Records');
+});
+test('a Records standings name opens that regular\'s player record, read-only', async () => {
+  const h = harness();
+  recordsNight(h);
+  h.evaluate('render=()=>{}');
+  const rec = h.evaluate('recordsScreen()');
+  assert.ok(rec.includes('data-action="player-record" data-id="pb"'), 'each standings row links to the record');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'player-record', id: 'pb'}}}});
+  const open = h.evaluate('recordsScreen()');
+  assert.ok(/class="modal"[^]*Player record · Bea/.test(open), 'the record opens over Records');
+  assert.ok(!open.includes('data-action="player-delete"') && !open.includes('player-form'), 'read-only: no edit or delete controls');
+  assert.ok(open.includes('data-action="close-modal"'), 'it closes');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'close-modal'}}}});
+  assert.ok(!h.evaluate('recordsScreen()').includes('class="modal"'), 'closed');
+  assert.equal(h.evaluate('calls.length'), 0, 'reading a record never writes');
+});
+test('Records empty states say what fills each panel, in EN and 中, with no fake rows', () => {
+  const h = harness();
+  h.evaluate("data.players=[];data.history=[];data.events=[];data.tournament={id:'t1',name:'',format:'singles',raceTo:1,status:'registration',entrants:[],matches:[]}");
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    const rec = h.evaluate('recordsScreen()');
+    for (const key of ['emptyStandings', 'emptyNightLog', 'emptyHistory']) assert.ok(rec.includes(h.evaluate(`esc(t('${key}'))`)), `${lang}: ${key}`);
+    assert.ok(!/<tr><td>\d/.test(rec) && !/<li[ >]/.test(rec), `${lang}: no rows on an empty club`);
+    assert.ok(rec.includes('data-tab="players"'), `${lang}: the standings empty state opens Regulars`);
+  }
 });

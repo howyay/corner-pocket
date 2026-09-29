@@ -511,6 +511,10 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .pair-teams li{padding:var(--sp-1h) 0;border-bottom:1px solid var(--line)}
 #ops-shell :is(.standings,.event-table) td:nth-child(n+3),#ops-shell :is(.standings,.event-table) th:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
 #ops-shell :is(.standings,.h2h,.per-event) td small{display:block}
+/* Records: a standings name opens the read-only player record. It reads as the name (a link, not a
+   bordered button) and keeps the 40px touch height and the shared focus ring. */
+#ops-shell button.link{min-height:40px;padding:0;border:0;background:none;color:var(--ink-hi);text-align:left;text-decoration:underline;text-decoration-color:var(--btn-line);text-underline-offset:3px}
+#ops-shell button.link:hover{color:var(--brass-hi);text-decoration-color:var(--brass)}
 #ops-shell :is(.standings,.event-table) td:nth-child(n+3),#ops-shell :is(.h2h,.per-event) td:nth-child(n+2){white-space:nowrap}
 #ops-shell :is(.h2h,.per-event) td:nth-child(n+2),#ops-shell :is(.h2h,.per-event) th:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
 .modal .record h3{margin-top:var(--sp-4)}
