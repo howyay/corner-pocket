@@ -209,6 +209,9 @@ class LiveProcessor:
         self._source = None
         self._detectors = []
         self._error = None
+        # A stopped session's failure, kept as history: ``error`` only ever describes the
+        # session that is current, so a stop moves it here (with when it failed).
+        self._error_at = self._last_error = self._last_error_at = None
         self._pending = self._latest = None
         self._received = self._processed = self._skipped = 0
         self._dropped = {reason: 0 for reason in _DROP_REASONS}
@@ -288,6 +291,7 @@ class LiveProcessor:
             generation = self._generation
             self._source = safe_source
             self._state, self._error = 'starting', None
+            self._error_at = self._last_error = self._last_error_at = None
             self._pending = self._latest = None
             self._received = self._processed = self._skipped = 0
             self._dropped = {reason: 0 for reason in _DROP_REASONS}
@@ -333,7 +337,7 @@ class LiveProcessor:
     def _fail(self, generation, message):
         with self._condition:
             if generation == self._generation and not self._stop.is_set():
-                self._state, self._error = 'error', message
+                self._state, self._error, self._error_at = 'error', message, self._wall_clock()
                 self._stop.set()
                 if self._pending is not None:
                     dropped, self._pending = self._pending, None
@@ -589,6 +593,10 @@ class LiveProcessor:
             self._stop.set()
             if self._state != 'idle':
                 self._state = 'stopping'
+            if self._error is not None:
+                # That failure belonged to the session being stopped: history now, not current.
+                self._last_error, self._last_error_at = self._error, self._error_at
+                self._error = self._error_at = None
             if self._pending is not None:
                 dropped, self._pending = self._pending, None
                 self._drop('stale', dropped[0])
@@ -609,6 +617,7 @@ class LiveProcessor:
             latest = copy.deepcopy(self._latest[1]) if self._latest else None
             return dict(state=self._state, generation=self._generation, source=copy.deepcopy(self._source),
                         detectors=list(self._detectors), error=self._error,
+                        last_error=self._last_error, last_error_at=self._last_error_at,
                         decoder_alive=decoder_alive, worker_alive=worker_alive,
                         frames_received=self._received, frames_processed=self._processed,
                         frames_skipped=self._skipped, last_received_at=self._last_received,

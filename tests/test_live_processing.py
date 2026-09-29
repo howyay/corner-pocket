@@ -309,6 +309,30 @@ class LiveProcessingTests(unittest.TestCase):
         self.assertIn('offline', status['error'])
         self.assertNotIn('Streamlink', status['error'])
 
+    def test_a_stopped_error_is_history_and_a_new_start_clears_it(self):
+        """``error`` describes the current session only (ship14: a stopped session's error
+        read as "Live start failed" on every fresh page load)."""
+        from annotator.twitch_source import TwitchSourceError
+        processor = self.processor(wall_clock=lambda: 1790506028.5)
+        with patch('annotator.twitch_source.resolve_twitch', side_effect=TwitchSourceError('Twitch channel is offline')):
+            processor.start(dict(kind='twitch', source_id='saved'))
+            status = self.finished(processor)
+        # While the session is in error, the error is current and nothing is history yet.
+        self.assertEqual((status['state'], status['last_error']), ('error', None))
+        self.assertIn('offline', status['error'])
+        status = processor.stop()
+        self.assertEqual(status['state'], 'stopped')
+        self.assertIsNone(status['error'])
+        self.assertIn('offline', status['last_error'])
+        self.assertEqual(status['last_error_at'], 1790506028.5)
+        # A second stop keeps that history; it never invents or loses one.
+        self.assertIn('offline', processor.stop()['last_error'])
+        processor = self.processor(capture_factory=lambda media: Capture(count=1))
+        processor._last_error, processor._last_error_at = 'earlier', 1.0
+        status = processor.start(self.source)
+        self.assertEqual((status['error'], status['last_error'], status['last_error_at']), (None, None, None))
+        self.finished(processor)
+
     def test_default_capture_configures_ffmpeg_timeouts(self):
         from annotator.live_processing import _capture
         with patch.object(cv2, 'VideoCapture', return_value=Capture()) as constructor:

@@ -1386,7 +1386,9 @@ function applyLiveStatus(status) {
   if (!status || typeof status !== 'object') return;
   const previous = state.live.state;
   state.live.state = status.state || 'idle';
-  state.live.error = status.error || null;
+  // An error describes the current session only while it is in error; any other
+  // state's error field is a previous session's (see last_error below).
+  state.live.error = state.live.state === 'error' ? status.error || null : null;
   state.live.skipped = status.frames_skipped ?? 0;
   // Per-stage evidence from the processor: the panel names which detectors ran and
   // at what cadence, instead of implying all of them ran on every frame.
@@ -1402,12 +1404,20 @@ function applyLiveStatus(status) {
   state.live.frame_age_ms = age;
   state.live.stale = age != null && age > 2000;
   // A failed start stays stated until a start succeeds: status polls of an
-  // idle/stopped processor must not erase the attempt that failed.
-  const failure = status.error || (state.live.state === 'error' ? state.live.error : null);
+  // idle/stopped processor must not erase the attempt that failed.  The processor's
+  // error is a failure only while its state is 'error': a fresh page load that polls
+  // a stopped processor reads the previous session's cause as history (last_error),
+  // never as a start this page made.
+  state.live.last_error = status.last_error ? {error: status.last_error, at: status.last_error_at ?? null} : null;
+  const failure = state.live.error;
   if (failure) {
-    state.live.attempt = {at: Date.now(), error: failure, source: state.live.attempt?.source || null};
+    // This page's own refused start (the shell sets it just before) stays stated; a
+    // failure only read off a poll is the processor's, and lasts while it is in error.
+    const own = !!state.live.attempt?.error && !state.live.attempt.observed;
+    state.live.attempt = {at: Date.now(), error: failure, source: state.live.attempt?.source || null, observed: !own};
     notice(`Live start failed: ${failure}`, true);
-  } else if (state.live.state === 'running' || state.live.state === 'starting') {
+  } else if (state.live.state === 'running' || state.live.state === 'starting' || state.live.attempt?.observed) {
+    if (state.live.attempt?.observed && state.notice.text.startsWith('Live start failed')) state.notice = {text:'', error:false};
     state.live.attempt = null;
   } else if (state.live.attempt?.error) {
     state.live.error = state.live.attempt.error;
@@ -1643,7 +1653,7 @@ function snapshot() {
     frame: {index: state.frame, t: state.t, fps: meta?.fps ?? 0, count: meta?.frame_count ?? 0, duration: meta?.duration ?? 0, kind: meta?.timestamp_kind || '', has: !!state.shotUrl, decoding: state.decoding, playing: state.playing, rate: playbackRate(), video: !!state.playback.on},
     playback: {on: !!state.playback.on, playing: videoPlaying(), loops: state.playback.loops || 0, from: state.playback.from || 0, to: state.playback.to || 0, event: state.playback.event ? state.playback.event.id : null, before: CLIP_BEFORE_S, after: CLIP_AFTER_S},
     source: {kind: state.source.kind, label: state.source.kind === 'vod' ? `${state.dataset} · ${meta ? `${Math.round(meta.duration)} s · ${Number(meta.fps).toFixed(3)} fps` : '—'}` : state.source.label, channel: state.source.channel},
-    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null},
+    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, last_error: state.live.last_error || null, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null},
     overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading},
     selection: selected, focus: state.focus, eventFilter: state.eventFilter,
     detectors: {...state.detectors}, eventsAnalysed: state.eventsAnalysed !== false,

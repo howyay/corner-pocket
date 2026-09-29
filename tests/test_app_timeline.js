@@ -1617,6 +1617,56 @@ test('the live ball detector is selectable and named as the trained net', () => 
   assert.ok(refusalPanel.includes('Start attempt'), 'and is labelled as the attempt that failed');
 });
 
+test('a fresh load of a stopped processor shows no failure box, only its history, muted', () => {
+  // ship14, production: an earlier session died in error and was stopped; every fresh
+  // Vision load then showed "Live start failed" from that session's leftover error.
+  const review = sandbox.window.CornerPocketReview;
+  const snapshotLive = () => visionSnapshot().live;
+  const before = {attempt: T.state.live.attempt, notice: {...T.state.notice}};
+  T.state.live.attempt = null; T.state.notice = {text:'', error:false};
+  // The exact ship14 payload: a stopped processor still carrying the dead session's error.
+  review.applyLiveStatus({state:'stopped', error:'Live stream ended or read timed out; restart to reconnect', frames_skipped:0});
+  assert.strictEqual(T.state.live.attempt, null, 'a stopped processor\'s leftover error is not a start this page made');
+  assert.ok(!/Live start failed/.test(T.state.notice.text), 'no failure notice on a fresh load: ' + T.state.notice.text);
+  const stale = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!stale.includes('vs-error-block') && !stale.includes('restart to reconnect'), 'and the panel claims no failure at all');
+  review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0,
+                          last_error:'Live stream ended or read timed out; restart to reconnect', last_error_at:1790506028.8});
+  assert.strictEqual(T.state.live.attempt, null, 'no start attempt is invented for this page');
+  assert.ok(!/Live start failed/.test(T.state.notice.text), 'and no failure notice: ' + T.state.notice.text);
+  const panel = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!panel.includes('vs-error-block') && !panel.includes('Start attempt'), 'no red failure box on a fresh load');
+  assert.ok(panel.includes('data-vs-last-live-error') && panel.includes('Last live session ended with an error at '),
+    'the previous session\'s cause is a muted line that says it is history');
+  assert.ok(panel.includes('restart to reconnect'), 'with its own sentence');
+  const zh = adapterStage('zh', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(zh.includes('上一次直播会话于'), 'in Chinese too');
+  // The same status while it is still in error is the current failure, stated as such.
+  review.applyLiveStatus({state:'error', error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue',
+                          frames_skipped:0, last_error:null, last_error_at:null});
+  assert.ok(T.state.live.attempt?.error.startsWith('Replay stalled'), 'a session in error is a failure now');
+  assert.ok(/Live start failed/.test(T.state.notice.text));
+  // Another tab (or the operator) stops that session: this page made no start, so the
+  // box it only observed goes with it; the cause stays as the muted history line.
+  review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0,
+                          last_error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue', last_error_at:1790506028.8});
+  assert.strictEqual(T.state.live.attempt, null, 'an observed failure does not outlive its session');
+  assert.ok(!/Live start failed/.test(T.state.notice.text), 'nor does its notice: ' + T.state.notice.text);
+  const after = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!after.includes('vs-error-block') && after.includes('data-vs-last-live-error'), 'history line only');
+  // This page's own refused start is different: it stays stated until a start succeeds.
+  review.setLiveAttempt({source:'twitch:saved', error:'Select a saved canonical Twitch channel', at:1});
+  review.applyLiveStatus({state:'error', error:'Select a saved canonical Twitch channel', frames_skipped:0});
+  review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0});
+  assert.strictEqual(T.state.live.attempt?.error, 'Select a saved canonical Twitch channel', 'a start this page made keeps its box');
+  // A clean idle processor: nothing at all.
+  review.applyLiveStatus({state:'idle', error:null, frames_skipped:0, last_error:null});
+  T.state.live.attempt = null;
+  const idle = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!idle.includes('vs-error-block') && !idle.includes('data-vs-last-live-error'), 'an idle processor with no history shows neither');
+  T.state.live.attempt = before.attempt; T.state.notice = before.notice; T.state.live.state = 'idle'; T.state.live.error = null; T.state.live.last_error = null;
+});
+
 test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => {
   const base = {state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0,
                 detectors:['table','person'], stale:false, seq:null, stages:[], source:null, replay:null};
