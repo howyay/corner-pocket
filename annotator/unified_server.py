@@ -342,6 +342,7 @@ class Backend:
         # One enrolment preview at a time: each scans frames with the person
         # detector and face engine (~6.5 CPU-s); a second click waits for a 409.
         self._preview_busy = threading.Lock()
+        self._vod_importer = None
 
     def live_processor(self):
         with self.lock:
@@ -352,6 +353,8 @@ class Backend:
             return self._live
 
     def close(self):
+        if self._vod_importer is not None:
+            self._vod_importer.close()  # stops a running import and removes its partial file
         if self._live is not None:
             self._live.stop()
 
@@ -1099,6 +1102,35 @@ class Backend:
                                                  'total': len(items)}
         return items, report
 
+    def vod_importer(self):
+        """The one import job of this root (annotator/vod_import.py), made on first use."""
+        with self.lock:
+            if self._vod_importer is None:
+                from annotator.vod_import import VodImporter
+                ffmpeg = lambda: [self._ffmpeg()]  # noqa: E731 - resolved when an import starts
+                self._vod_importer = VodImporter(self.root, self.store().ops_get, ffmpeg=ffmpeg,
+                                                 public_error=public_error)
+            return self._vod_importer
+
+    def vod_request(self, action, payload):
+        """/api/vods/{recent,estimate,job} (reads) and {import,cancel,delete} (writes)."""
+        from annotator.vod_import import VodImportError
+        importer = self.vod_importer()
+        try:
+            if action == "recent":
+                return importer.recent()
+            if action == "job":
+                return importer.job()
+            if action == "estimate":
+                return importer.estimate(payload)
+            if action == "import":
+                return importer.start(payload)
+            if action == "cancel":
+                return importer.cancel(payload)
+            return importer.delete(payload)
+        except VodImportError as exc:
+            raise APIError(str(exc), exc.status) from exc
+
     def registered(self, dataset):
         """The registry entry of ``dataset`` (src/datasets.py), or a 404."""
         found = dataset_lookup(self.root, dataset)
@@ -1444,6 +1476,8 @@ class Backend:
             if index_error:
                 listed["datasets_error"] = index_error
             return listed
+        if len(parts) == 3 and parts[:2] == ["api", "vods"] and parts[2] in ("recent", "job", "estimate"):
+            return self.vod_request(parts[2], {key: values[0] for key, values in query.items()})
         if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "meta":
             base = self.crops(parts[2])
             labels = self.store().labels_get(parts[2])
@@ -1458,6 +1492,9 @@ class Backend:
             raise APIError("route not found", 404)
         _, dataset, route = parts
         base = self.dataset(dataset)
+        if route == "events" and dataset not in STATIC_DATASETS:
+            # An imported broadcast is browsed and inferred frame by frame; no event scan ran.
+            return {"events": [], "annotations": {}, "analysed": False}
         if route == "events":
             events, geometry = self._event_geometry(dataset, load(base / "events.json", []))
             actors = {}
@@ -1527,6 +1564,8 @@ class Backend:
             return self.enroll_preview(payload)
         if parts == ['api', 'identity', 'enroll-confirm']:
             return self.enroll_confirm(payload)
+        if len(parts) == 3 and parts[:2] == ['api', 'vods'] and parts[2] in ('import', 'cancel', 'delete'):
+            return self.vod_request(parts[2], payload)
         with self.lock:
             return self._post(parts, payload)
 
@@ -1846,8 +1885,8 @@ def make_handler(backend):
                     return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
                     return self.send(200, backend.event_frame(parts[1], parts[3]), "image/jpeg")
-                if parts == ["media", "vod30", "frame"]:
-                    return self.send(200, backend.frame_jpeg(query.get("t", [None])[0]), "image/jpeg")
+                if len(parts) == 3 and parts[0] == "media" and parts[2] == "frame":
+                    return self.send(200, backend.frame_jpeg(query.get("t", [None])[0], parts[1]), "image/jpeg")
                 if parts[0] == "api":
                     return self.json(200, backend.get(parts, query))
                 return self.file(backend.media(parts))
