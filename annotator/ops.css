@@ -428,6 +428,13 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-channel{display:flex;align-items:center;gap:var(--sp-1h);margin:var(--sp-1) 0}
 :is(#ops-shell) .vs-channel .vs-mono{flex:1;min-width:0;overflow-wrap:anywhere}
 :is(#ops-shell) .vs-channel button{min-height:26px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
+/* VOD selector: the import row wraps under its text at phone width; the refusal reads like the other failures */
+:is(#ops-shell) .vs-broadcasts .vs-channel{flex-wrap:wrap}
+:is(#ops-shell) .vs-bc-job progress{flex:1 1 120px;min-width:0;height:8px;accent-color:var(--brass)}
+:is(#ops-shell) .vs-bc-form{margin:var(--sp-1h) 0;padding:var(--sp-2);border:1px solid var(--line)}
+:is(#ops-shell) .vs-bc-form .vs-row .vs-field{flex:1 1 140px;min-width:0}
+:is(#ops-shell) .vs-broadcasts .vs-row .vs-field{flex:1 1 180px;min-width:0;margin:var(--sp-1) 0}
+:is(#ops-shell) .vs-bc-refusal{color:var(--amber);overflow-wrap:anywhere}
 :is(#ops-shell) .vs-rail .scrub-marks{position:static;height:auto}
 :is(#ops-shell) .scrub-marks{position:absolute;left:0;right:0;top:0;height:16px;pointer-events:none}
 :is(#ops-shell) .scrub-mark{position:absolute;top:0;transform:translateX(-50%);width:4px;height:14px;padding:0;min-height:0;border-radius:1px;pointer-events:auto;border:0;cursor:pointer}

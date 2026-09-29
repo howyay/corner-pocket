@@ -1344,3 +1344,83 @@ test('every table the operations screens add sits in a .table-wrap, so a wide ta
   for (const part of [':is(.standings,.event-table) td:nth-child(n+3)', ':is(.h2h,.per-event) td:nth-child(n+2)']) assert.ok(nowrap(part), `numbers such as 1–0 never break inside a cell: ${part}`);
   for (const part of [':is(.standings,.event-table) th:nth-child(n+3)', ':is(.h2h,.per-event) th:nth-child(n+2)']) assert.ok(!nowrap(part), `a long header such as House rating (manual) may wrap: ${part}`);
 });
+// ---- VOD selector: the Broadcasts block of the Source panel -------------------------------
+function broadcastsHarness(lang = 'en') {
+  const h = harness();
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  vm.runInContext(adapter, h.context, {filename:'vision-stage.js'});
+  const VS = h.context.window.VisionStage;
+  const vodRow = {id:'tw-1000000001-3600-3900', label:'examplechannel · 2026-09-26 · 1:00:00–1:05:00', kind:'vod', vod_id:'1000000001', channel:'examplechannel',
+    title:'260918', created_at:'2026-09-26T06:46:33Z', range:{start_s:3600, end_s:3900, whole:false}, fps:30, frames:9002, width:1280, height:720, media:true};
+  const snap = {live:{state:'idle', error:null, attempt:null, detectors:['table','person'], stages:[], skipped:0}, source:{kind:'vod', label:'x', channel:null},
+    datasets:[{id:'vod30', label:'vod30'}, {id:'highlight', label:'highlight'}, vodRow], dataset:'vod30', frame:{count:9002, t:0, index:0}, detectors:{table:true, person:true, balls:false}};
+  const calls = [];
+  const replies = {
+    '/api/vods/recent': {channels:[{channel:'examplechannel', error:null, vods:[{id:'1000000001', title:'260918', created_at:'2026-09-26T06:46:33Z', length_s:13397, imported:['tw-1000000001-3600-3900']}]}]},
+    '/api/vods/job': {state:'running', id:'tw-1000000001-0-600', percent:42.5, mb:51.2, rate_mb_s:12.3, eta_s:95}};
+  h.context.fetch = async (url, options) => { calls.push({url, body: options?.body ? JSON.parse(options.body) : null});
+    const key = String(url).split('?')[0];
+    if (key === '/api/vods/import' && calls.at(-1).body.vod === '1111111111') return {ok:false, status:400, json: async () => ({error:'This VOD belongs to someoneelse. Only saved channels can be analysed; add the channel under Source first.'})};
+    return {ok:true, status:200, json: async () => replies[key] || {}}; };
+  h.context.setInterval = () => 1; h.context.clearInterval = () => {};
+  h.context.setTimeout = fn => { fn(); return 0; }; h.context.URLSearchParams = URLSearchParams;
+  // render() reads the engine snapshot; a null one keeps it a no-op, and the tests call the block renderers directly.
+  h.context.window.CornerPocketReview = {snapshot: () => null, subscribe: () => () => {}, reloadDatasets: async () => true};
+  const mount = {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}, contains: () => true};
+  VS.attach({mount, lang, review: h.context.window.CornerPocketReview, channels: () => [{id:'c1', channel:'examplechannel', url:'https://www.twitch.tv/examplechannel'}], vods: () => [], notice() {}});
+  VS.bcReset();
+  return {h, VS, snap, calls, replies, vodRow};
+}
+const settle = () => new Promise(resolve => setImmediate(resolve));
+test('Broadcasts lists each saved channel\'s recent VODs, the job progress and every existing Source control', async () => {
+  const {VS, snap, calls} = broadcastsHarness();
+  VS.sourcePanelHTML(snap);                       // first render asks the server
+  await settle(); await settle();
+  const html = VS.sourcePanelHTML(snap);
+  assert.ok(calls.some(c => c.url === '/api/vods/recent'), 'recent broadcasts are fetched');
+  assert.match(html, /<h4>Broadcasts<\/h4>/);
+  assert.match(html, /examplechannel · 2026-09-26 · 3:43:17 · 260918 · imported 1/, 'title, date, duration and imported state');
+  assert.match(html, /data-vs-action="bc-open" data-vs-value="1000000001" aria-label="Import… examplechannel 260918"/);
+  assert.match(html, /data-vs-field="bc-paste"/, 'a paste box for a link or id');
+  assert.match(html, /42\.5% · 51\.2 MB · 12\.3 MB\/s · 1 min 35 s left/, 'real progress: percent, MB, rate, ETA');
+  assert.match(html, /<progress max="100" value="42.5"/);
+  assert.match(html, /data-vs-action="bc-cancel"/);
+  assert.match(html, /data-vs-bc-dataset="tw-1000000001-3600-3900"[\s\S]*data-vs-action="bc-delete"/, 'an imported VOD can be deleted');
+  // nothing that was there before is gone
+  for (const kept of ['data-vs-action="pick-replay"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-dataset" data-vs-value="vod30"', 'data-vs-action="pick-dataset" data-vs-value="highlight"', 'id="source-form"'])
+    assert.ok(html.includes(kept), `kept: ${kept}`);
+  assert.ok(html.includes('data-vs-action="pick-dataset" data-vs-value="tw-1000000001-3600-3900"'), 'the imported VOD is a dataset chip');
+});
+test('Import asks for a range, shows the estimated size before confirming, and maps the other-channel refusal to 中文', async () => {
+  const {h, VS, snap, calls, replies} = broadcastsHarness('zh');
+  replies['/api/vods/estimate'] = {id:'tw-1000000001', vod_id:'1000000001', channel:'examplechannel', range:{start_s:0, end_s:13397, whole:true},
+    estimate_bytes:5505302893, disk:{ok:true, free_bytes:52196323328, needed_bytes:8606363471, refusal:null}, already_imported:false, eta_s:442};
+  VS.bcState().recent = replies['/api/vods/recent'];
+  VS.act('bc-open', '1000000001', {dataset:{}});
+  await settle(); await settle();
+  assert.ok(calls.some(c => c.url === '/api/vods/estimate?vod=1000000001&start_s=0'), 'the default is the whole VOD');
+  const html = VS.sourcePanelHTML(snap);
+  assert.match(html, /examplechannel · 整场回放 · 约 5\.5 GB, 约 7 min 22 s · 52\.2 GB 可用/, 'size and time before committing');
+  assert.match(html, /data-vs-action="bc-import"[^>]*>导入 · 5\.5 GB</);
+  assert.match(html, /data-vs-field="bc-start"/);
+  assert.match(html, /data-vs-field="bc-minutes"/);
+  VS.bcState().estimate = {...replies['/api/vods/estimate'], vod_id:'1111111111'};
+  VS.act('bc-import', '', {dataset:{}});
+  await settle(); await settle();
+  assert.equal(VS.bcState().error, '此回放属于 someoneelse。只能分析已保存的频道；请先在“来源”中添加该频道。');
+  assert.match(VS.sourcePanelHTML(snap), /role="alert">此回放属于 someoneelse/);
+  h.context.window.VisionStage.bcReset();
+});
+test('an imported VOD reads as a recorded broadcast in broadcast time, and its empty rail says why', () => {
+  const {VS, snap, vodRow} = broadcastsHarness();
+  const on = {...snap, dataset: vodRow.id, frame: {count:9002, t:144.03, index:4321}, eventsAnalysed: false};
+  assert.equal(VS.recordedLabel(on), 'recorded broadcast of examplechannel · from 2026-09-26 · 1:00:00–1:05:00');
+  assert.ok(!/live/i.test(VS.recordedLabel(on)), 'never "live"');
+  const facts = VS.factsLine({...on, loading: {overlay: false, since: 0}, busy: false, live: {stale: false},
+    drawn: {cloth: 1, balls: 1, persons: 2, pockets: 6, anchors: 0, events: 0, auto: {cloth: 1, balls: 1, persons: 2, pockets: 6, anchors: 0, events: 0}}});
+  assert.ok(facts.includes('broadcast time 1:02:24'), `broadcast time = range start + t: ${facts}`);
+  const rail = VS.railHTML({...on, events: {items: [], index: 0, reviewed: 0}, eventFilter: 'all', selection: {}, balls: {items: [], index: 0}, persons: {tracks: [], windows: [], win: ''}, focus: 'events'});
+  assert.match(rail, /data-vs-empty="not-scanned">Not scanned for events — browse frames and run inference on a frozen frame\./);
+  assert.equal(VS.recordedLabel(snap), '', 'vod30 keeps its own label');
+  assert.equal(VS.serverText('some other sentence'), 'some other sentence');
+});

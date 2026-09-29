@@ -403,6 +403,8 @@ async function loadVideo() {
 }
 async function loadEvents() {
   const data = await api(`/api/${enc(state.dataset)}/events`);
+  // analysed:false = an imported broadcast nobody scanned: its rail says so instead of "0 events".
+  state.eventsAnalysed = data.analysed !== false;
   state.events = data.events || []; state.annotations = data.annotations || {}; notify();
   if (state.dataset === 'highlight') notice('Highlight candidates were generated with the wrong-resolution calibration. They are not valid accuracy evidence; inspect the source before judging.', true);
 }
@@ -1644,7 +1646,7 @@ function snapshot() {
     live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null},
     overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading},
     selection: selected, focus: state.focus, eventFilter: state.eventFilter,
-    detectors: {...state.detectors},
+    detectors: {...state.detectors}, eventsAnalysed: state.eventsAnalysed !== false,
     events: {items: state.events.map(e => ({id: e.id, type: e.type, t: e.t, nearest_pocket: e.nearest_pocket ?? null, nearest_pocket_text: e.nearest_pocket ? pocketText(e.nearest_pocket) : null, evidence: e.evidence ?? null, verdict: state.annotations[String(e.id)]?.verdict || '', annotation: state.annotations[String(e.id)] || null,
       // Everything the inspector and the stage need to show what was detected:
       // the scan's own millimetres, and the server's projection of them (absent
@@ -1881,6 +1883,8 @@ window.CornerPocketReview = {
   saveAnchors, saveCorrections, runInference, rebuild, refreshRebuild, setWindow,
   setTool, setBoxLabel, deleteBox, addPolygon, clearPolygon, setNewBoxLabel, nudgeAnchor,
   setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,
+  // After a VOD import or delete: re-list the datasets, keeping the current one if it still exists.
+  reloadDatasets: async () => { const current = state.dataset; await loadDatasets(); if (state.datasets.some(d => d.id === current)) { state.dataset = current; notify(); return true; } return setDataset(state.dataset); },
   applyLiveStatus, ingestLiveFrame, setLiveAttempt, clearLiveError, liveStateText,
   counts,
   text: copy => text(copy),

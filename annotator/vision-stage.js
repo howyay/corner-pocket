@@ -53,6 +53,17 @@ const COPY = {
     // server's and the capture's own words (kind, live, rate, drift), not ours.
     vodReplay:'Twitch VOD replay', vodId:'VOD id or URL', vodIdNeeded:'Enter a Twitch VOD id or URL first.', vodStart:'Start at (s)', vodRate:'Rate (VOD s per wall s)',
     vodUse:'Use this VOD', vodChosen:'Chosen', vodNotLive:'a replay, never a live broadcast',
+    // Imported broadcasts: a past VOD of a saved channel, downloaded once and browsed frame by frame.
+    bcTitle:'Broadcasts', bcNote:'Recent broadcasts of your saved channels. Import one (or a range of it) to browse it frame by frame and run inference on any frozen frame.',
+    bcNone:'No recent broadcasts listed.', bcError:'Twitch did not answer for this channel', bcRefresh:'Refresh list', bcLoading:'Asking Twitch…',
+    bcImported:'imported', bcImport:'Import…', bcPaste:'VOD link or id', bcPasteGo:'Check', bcStart:'Start at (h:mm:ss)', bcDuration:'Length (min, empty = to the end)',
+    bcEstimate:'Estimate', bcConfirm:'Import', bcCancelForm:'Close', bcWhole:'whole broadcast', bcSize:'about', bcTime:'about', bcTimeUnknown:'time unknown until one import has run',
+    bcFree:'free', bcAlready:'already imported', bcJob:'Import', bcCancel:'Cancel import', bcCancelAsk:'Cancel this import? The partial file is deleted and nothing is listed.',
+    bcMb:'MB', bcEta:'left', bcDelete:'Delete…', bcDeleteAsk:'Delete this imported broadcast? Its video file and its list entry are removed. Your saved corrections are kept.',
+    bcRecorded:'recorded broadcast', bcOf:'of', bcFrom:'from', bcAt:'broadcast time',
+    bcAria:'Import progress',
+    bcEventsNone:'Not scanned for events — browse frames and run inference on a frozen frame.',
+    bcOtherChannel:'This VOD belongs to {channel}. Only saved channels can be analysed; add the channel under Source first.',
     vodNote:'The server resolves the VOD with Twitch and replays it in real time. The panel reports what the server and the capture say it is: kind, live, the VOD id, the rate and the drift it is carrying.',
     vodResolving:'resolving the VOD with Twitch…', vodFailed:'the VOD could not be resolved',
     vodDrift:'drift', vodVideoAt:'video at', vodWall:'wall', liveFlag:'live', pace:'pacing',
@@ -152,6 +163,16 @@ const COPY = {
     stageEvery:'每', stageAbsent:'跳过的帧上不运行', stageRuns:'次运行',
     vodReplay:'Twitch 回放', vodId:'回放 id 或网址', vodIdNeeded:'请先输入 Twitch 回放 id 或网址。', vodStart:'起始秒', vodRate:'倍速（回放秒/墙钟秒）',
     vodUse:'使用该回放', vodChosen:'已选择', vodNotLive:'回放，绝不是直播',
+    bcTitle:'回放', bcNote:'已保存频道的近期直播回放。导入整场（或其中一段）后，可逐帧浏览，并对任意冻结帧运行推理。',
+    bcNone:'没有列出近期回放。', bcError:'Twitch 未回应此频道', bcRefresh:'刷新列表', bcLoading:'正在询问 Twitch…',
+    bcImported:'已导入', bcImport:'导入…', bcPaste:'回放链接或 id', bcPasteGo:'检查', bcStart:'起点（时:分:秒）', bcDuration:'时长（分钟，留空＝到结尾）',
+    bcEstimate:'估算', bcConfirm:'导入', bcCancelForm:'关闭', bcWhole:'整场回放', bcSize:'约', bcTime:'约', bcTimeUnknown:'完成一次导入前无法估计用时',
+    bcFree:'可用', bcAlready:'已导入', bcJob:'导入', bcCancel:'取消导入', bcCancelAsk:'取消此次导入？未完成的文件会被删除，不会列出。',
+    bcMb:'MB', bcEta:'剩余', bcDelete:'删除…', bcDeleteAsk:'删除这场已导入的回放？视频文件和列表条目会被移除，已保存的修正会保留。',
+    bcRecorded:'录制回放', bcOf:'·', bcFrom:'日期', bcAt:'直播时间',
+    bcAria:'导入进度',
+    bcEventsNone:'未做事件扫描——可逐帧浏览，并对冻结帧运行推理。',
+    bcOtherChannel:'此回放属于 {channel}。只能分析已保存的频道；请先在“来源”中添加该频道。',
     vodNote:'由服务端向 Twitch 解析该回放并实时播放。面板只报服务端与采集器的原话：类型、是否直播、回放 id、倍速以及当前漂移。',
     vodResolving:'正在向 Twitch 解析该回放…', vodFailed:'该回放无法解析',
     vodDrift:'漂移', vodVideoAt:'视频位置', vodWall:'墙钟', liveFlag:'直播', pace:'节拍',
@@ -512,7 +533,7 @@ function chipsHTML(s) {
   const datasets = (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
   const freshness = s.source.kind === 'live'
     ? `<span class="vs-fresh${s.live.stale ? ' stale' : ''}">${s.live.stale ? esc(t('stale')) : esc(t(liveWordKey(s)))} · ${esc(t('age'))} ${fmtAge(s.live.frame_age_ms)}</span>`
-    : `<span class="vs-fresh">${esc(s.source.label)}</span>`;
+    : `<span class="vs-fresh">${esc(recordedLabel(s) || s.source.label)}</span>`;
   // The source settings hang off the chip row itself: one chip opens the panel
   // that used to be the rail's nothing-selected state, so the rail stays about
   // the selection and the settings are still one click away at any width.
@@ -582,7 +603,8 @@ function railHTML(s) {
       ${gateEvidence(e).length ? `<div class="vs-mono vs-dim fv-gate">${esc(gateEvidence(e).join(' · '))}</div>` : ''}
       ${provenanceLine(e)}
       <div class="vs-verbs">${['correct','wrong','unsure'].map(v => `<button class="${e.verdict === v ? 'active' : ''}" data-vs-action="verdict" data-vs-id="${esc(e.id)}" data-vs-value="${v}" title="${esc(t(v))}" aria-label="${esc(t(v))}">${{correct:'✓',wrong:'✗',unsure:'?'}[v]}</button>`).join('')}<span class="vs-verb-label">${esc(e.verdict ? t(e.verdict) : t('notReviewed'))}</span></div>
-    </article>`).join('') : `<p class="vs-empty" data-vs-empty="${esc(emptyMarker(s.eventFilter))}">${esc(t(emptyReasonKey(s.eventFilter)))}</p>`;
+    </article>`).join('') : s.eventsAnalysed === false ? `<p class="vs-empty" data-vs-empty="not-scanned">${esc(t('bcEventsNone'))}</p>`
+    : `<p class="vs-empty" data-vs-empty="${esc(emptyMarker(s.eventFilter))}">${esc(t(emptyReasonKey(s.eventFilter)))}</p>`;
   const crops = s.balls.items;
   const cropRows = crops.length ? crops.map(c => `<button class="vs-item${s.selection.crop && c.file === s.selection.crop.file ? ' selected' : ''}" data-vs-action="select-crop" data-vs-value="${esc(c.file)}"><span class="vs-mono">${esc(c.file)}</span><span class="vs-mono vs-dim">${esc(timecode(c.t))}</span><span class="vs-tag${c.label == null ? '' : ' done'}">${esc(c.label == null ? t('unlabeled') : labelText(c.label))}</span></button>`).join('') : `<p class="vs-empty">${esc(t('noCrops'))}</p>`;
   const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => { const label = x.seed || x.label; return `<button class="vs-item${String(s.persons.track) === String(x.id) ? ' selected' : ''}" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span><span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>`; }).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
@@ -615,8 +637,18 @@ function identityHTML(s) {
   if (sel.kind === 'box') return `${esc(t('box'))} ${sel.box + 1} · ${esc(s.corrections.boxLabel || '')}`;
   return `${esc(t('sources'))} · ${esc(s.source.label)}`;
 }
+// An imported VOD is a recorded broadcast, never live: say whose and from when,
+// and give times as broadcast time (range start + t).
+function importedRow(s) { return s.source.kind === 'vod' ? (s.datasets || []).find(d => d.id === s.dataset && d.kind === 'vod') || null : null; }
+function recordedLabel(s) {
+  const d = importedRow(s); if (!d) return '';
+  const span = d.range?.whole ? t('bcWhole') : `${hms(d.range?.start_s)}–${hms(d.range?.end_s)}`;
+  return `${t('bcRecorded')} ${t('bcOf')} ${d.channel || '?'} · ${t('bcFrom')} ${String(d.created_at || '').slice(0, 10)} · ${span}`.replace(/\s+/g, ' ');
+}
 function factsLine(s) {
   const parts = [];
+  const imported = importedRow(s);
+  if (imported) parts.push(recordedLabel(s), `${t('bcAt')} ${hms((imported.range?.start_s || 0) + Number(s.frame.t || 0))}`);
   // One word per state: the strip says the same thing the chip says.
   if (s.source.kind === 'live') parts.push(`${(s.live.stale ? t('stale') : t(liveWordKey(s))).toLowerCase()}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
   // The frame's time in the same m:ss.d the cue cards use (25:53.5), not a bare second count.
@@ -763,6 +795,112 @@ function liveStageLine(s) {
 // The live detector ticks are the shell's: it holds what the operator ticked and
 // sends exactly that on Start (the engine's live.detectors is never written).
 function liveDetectorList(s) { return opts?.liveDetectors ? opts.liveDetectors() : (s.live.detectors || []); }
+// ---- Broadcasts: import a past VOD of a saved channel (annotator/vod_import.py) ----
+// The panel owns this small state; every number shown is the server's.
+let bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false};
+const hms = s => { const v = Math.max(0, Math.round(Number(s) || 0)); return `${Math.floor(v / 3600)}:${String(Math.floor(v % 3600 / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
+const parseHms = text => { const parts = String(text || '').trim().split(':').map(Number); if (!parts.length || parts.some(n => !Number.isFinite(n) || n < 0)) return null; return parts.reduce((a, n) => a * 60 + n, 0); };
+const sizeText = bytes => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
+const minutesText = s => { const v = Math.max(0, Math.round(Number(s) || 0)); return v >= 600 ? `${Math.round(v / 60)} min` : v >= 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v} s`; };
+// The one refusal the owner asked to have in both languages; any other server sentence is shown as sent.
+function serverText(message) {
+  const other = /^This VOD belongs to (\S+)\. Only saved channels can be analysed; add the channel under Source first\.$/.exec(String(message || ''));
+  return other ? t('bcOtherChannel').replace('{channel}', other[1]) : String(message || '');
+}
+async function bcApi(path, body) {
+  const response = await fetch(path, body === undefined ? {cache: 'no-store'} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  let data = null; try { data = await response.json(); } catch (_) { /* a non-JSON body is reported below */ }
+  if (!response.ok || !data || data.error) throw new Error(serverText(data?.error) || `HTTP ${response.status}`);
+  return data;
+}
+function bcRender() { sig.chips = null; render(); }
+async function bcLoadRecent() {
+  bc.loading = true; bc.error = ''; bcRender();
+  try { bc.recent = await bcApi('/api/vods/recent'); } catch (error) { bc.error = error.message; }
+  bc.loading = false; bcRender();
+}
+// The server's job, polled every second while it runs (an import started in another tab too).
+async function bcPollJob() {
+  const was = bc.job?.state;
+  try { bc.job = await bcApi('/api/vods/job'); } catch (error) { bc.error = error.message; }
+  const running = bc.job?.state === 'running';
+  if (running && !bc.poll) bc.poll = setInterval(bcPollJob, 1000);
+  if (!running && bc.poll) { clearInterval(bc.poll); bc.poll = null; }
+  if (was === 'running' && bc.job?.state === 'done') { await engine()?.reloadDatasets?.(); bcLoadRecent(); }
+  bcRender();
+}
+function bcWatch() { bcPollJob(); }
+async function bcEstimate() {
+  const form = bc.form || {};
+  const start = parseHms(form.start || '0');
+  const minutes = String(form.minutes ?? '').trim();
+  if (start == null || (minutes && !(Number(minutes) > 0))) { bc.error = t('bcStart'); bcRender(); return; }
+  const query = new URLSearchParams({vod: form.vod, start_s: String(Math.floor(start))});
+  if (minutes) query.set('duration_s', String(Math.round(Number(minutes) * 60)));
+  bc.busy = true; bc.error = ''; bc.estimate = null; bcRender();
+  try { bc.estimate = await bcApi(`/api/vods/estimate?${query}`); } catch (error) { bc.error = error.message; }
+  bc.busy = false; bcRender();
+}
+async function bcImport() {
+  const e = bc.estimate; if (!e) return bcEstimate();   // the range changed: show the new estimate first
+  bc.busy = true; bc.error = ''; bcRender();
+  try {
+    bc.job = await bcApi('/api/vods/import', {vod: e.vod_id, start_s: e.range.start_s, duration_s: e.range.end_s - e.range.start_s});
+    bc.form = null; bc.estimate = null; bcWatch();
+  } catch (error) { bc.error = error.message; }
+  bc.busy = false; bcRender();
+}
+async function bcCancel() {
+  if (!confirm(t('bcCancelAsk'))) return;
+  try { bc.job = await bcApi('/api/vods/cancel', {confirm: true}); } catch (error) { bc.error = error.message; }
+  bcPollJob();
+}
+async function bcDelete(id) {
+  if (!confirm(t('bcDeleteAsk'))) return;
+  try { const done = await bcApi('/api/vods/delete', {id, confirm: true}); opts.notice?.(done.message); await engine()?.reloadDatasets?.(); bcLoadRecent(); }
+  catch (error) { bc.error = error.message; bcRender(); }
+}
+function bcJobHTML() {
+  const job = bc.job;
+  if (!job || job.state === 'idle') return '';
+  const running = job.state === 'running';
+  const facts = running
+    ? [`${Number(job.percent || 0).toFixed(1)}%`, `${job.mb ?? 0} ${t('bcMb')}`, job.rate_mb_s ? `${job.rate_mb_s} MB/s` : '', job.eta_s != null ? `${minutesText(job.eta_s)} ${t('bcEta')}` : ''].filter(Boolean).join(' · ')
+    : (job.error || job.message || job.state);
+  const bar = running ? `<progress max="100" value="${esc(Number(job.percent || 0))}" aria-label="${esc(`${t('bcAria')} ${job.id}`)}"></progress>` : '';
+  return `<div class="vs-channel vs-bc-job" data-vs-bc-job="${esc(job.state)}" role="status" aria-live="polite"><span class="vs-mono">${esc(t('bcJob'))} ${esc(job.id || '')}: ${esc(serverText(facts))}</span>${bar}${running ? `<button data-vs-action="bc-cancel" aria-label="${esc(t('bcCancel'))}">${esc(t('bcCancel'))}</button>` : ''}</div>`;
+}
+function bcFormHTML() {
+  const form = bc.form; if (!form) return '';
+  const e = bc.estimate;
+  const span = e ? (e.range.whole ? t('bcWhole') : `${hms(e.range.start_s)}–${hms(e.range.end_s)}`) : '';
+  const eta = e ? (e.eta_s != null ? `${t('bcTime')} ${minutesText(e.eta_s)}` : t('bcTimeUnknown')) : '';
+  const summary = e ? `<p class="vs-mono" data-vs-bc-estimate="${esc(e.id)}">${esc(e.channel)} · ${esc(span)} · ${esc(t('bcSize'))} ${esc(sizeText(e.estimate_bytes))}, ${esc(eta)} · ${esc(sizeText(e.disk.free_bytes))} ${esc(t('bcFree'))}${e.already_imported ? ` · ${esc(t('bcAlready'))}` : ''}</p>${e.disk.ok ? '' : `<p class="vs-mono vs-bc-refusal">${esc(e.disk.refusal)}</p>`}` : '';
+  return `<div class="vs-bc-form" data-vs-bc-form="${esc(form.vod)}">
+    <p class="vs-mono">vod ${esc(form.vod)}${form.title ? ` · ${esc(form.title)}` : ''}</p>
+    <div class="vs-row"><label class="vs-field">${esc(t('bcStart'))}<input type="text" inputmode="numeric" data-vs-field="bc-start" value="${esc(form.start ?? '0:00:00')}"></label>
+    <label class="vs-field">${esc(t('bcDuration'))}<input type="number" min="1" step="1" data-vs-field="bc-minutes" value="${esc(form.minutes ?? '')}"></label></div>
+    ${summary}
+    <div class="vs-row"><button data-vs-action="bc-estimate"${bc.busy ? ' disabled' : ''}>${esc(t('bcEstimate'))}</button>${e && e.disk.ok && !e.already_imported ? `<button class="primary" data-vs-action="bc-import"${bc.busy ? ' disabled' : ''}>${esc(t('bcConfirm'))} · ${esc(sizeText(e.estimate_bytes))}</button>` : ''}<button data-vs-action="bc-close">${esc(t('bcCancelForm'))}</button></div></div>`;
+}
+function broadcastsBlock(s) {
+  if (bc.recent == null && !bc.loading && !bc.error) setTimeout(bcLoadRecent, 0);
+  if (bc.job == null) { bc.job = {state: 'idle'}; setTimeout(bcPollJob, 0); }
+  const rows = (bc.recent?.channels || []).map(channel => {
+    if (!channel.vods) return `<p class="vs-mono vs-bc-refusal" data-vs-bc-channel="${esc(channel.channel)}">${esc(channel.channel)}: ${esc(t('bcError'))} — ${esc(channel.error)}</p>`;
+    if (!channel.vods.length) return `<p class="vs-empty">${esc(channel.channel)}: ${esc(t('bcNone'))}</p>`;
+    return channel.vods.map(v => `<div class="vs-channel" data-vs-bc-vod="${esc(v.id)}"><span class="vs-mono">${esc(channel.channel)} · ${esc(String(v.created_at || '').slice(0, 10))} · ${esc(hms(v.length_s))} · ${esc(v.title || '')}${v.imported.length ? ` · ${esc(t('bcImported'))} ${esc(v.imported.length)}` : ''}</span><button data-vs-action="bc-open" data-vs-value="${esc(v.id)}" aria-label="${esc(`${t('bcImport')} ${channel.channel} ${v.title || v.id}`)}">${esc(t('bcImport'))}</button></div>`).join('');
+  }).join('');
+  const imported = (s.datasets || []).filter(d => d.kind === 'vod').map(d => `<div class="vs-channel" data-vs-bc-dataset="${esc(d.id)}"><span class="vs-mono">${esc(d.label)}${d.title ? ` · ${esc(d.title)}` : ''}</span><button data-vs-action="bc-delete" data-vs-value="${esc(d.id)}" aria-label="${esc(`${t('bcDelete')} ${d.label}`)}">${esc(t('bcDelete'))}</button></div>`).join('');
+  return `<div class="vs-block vs-broadcasts" role="group" aria-label="${esc(t('bcTitle'))}"><h4>${esc(t('bcTitle'))}</h4>
+    <p class="vs-note">${esc(t('bcNote'))}</p>
+    ${bc.loading ? `<p class="vs-note">${esc(t('bcLoading'))}</p>` : rows}
+    ${bcFormHTML()}
+    <div class="vs-row"><label class="vs-field">${esc(t('bcPaste'))}<input type="text" data-vs-field="bc-paste" value="${esc(bc.paste || '')}" placeholder="https://www.twitch.tv/videos/1234567890"></label><button data-vs-action="bc-paste">${esc(t('bcPasteGo'))}</button><button data-vs-action="bc-refresh">${esc(t('bcRefresh'))}</button></div>
+    ${bcJobHTML()}
+    ${bc.error ? `<p class="vs-mono vs-bc-refusal" role="alert">${esc(bc.error)}</p>` : ''}
+    ${imported}</div>`;
+}
 function sourcePanelHTML(s) {
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
   const vodRows = (opts.vods?.() || []).map(v => `<div class="vs-channel"><span class="vs-mono">${esc(v.url)}</span><button data-vs-action="use-saved-vod" data-vs-value="${esc(v.video)}">${esc(t('useInForm'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(v.id)}">${esc(t('remove'))}</button></div>`).join('');
@@ -773,6 +911,7 @@ function sourcePanelHTML(s) {
   const liveFailed = !!(live.error || live.attempt?.error);
   const liveRowState = liveFailed && live.state !== 'running' && live.state !== 'starting' ? 'error' : live.state;
   return `${attempt}
+  ${broadcastsBlock(s)}
   ${replayBlock(s)}
   <div class="vs-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <p class="vs-mono">${esc(s.source.kind === 'vod' ? s.source.label : '—')} · ${esc(t('frameCount'))} ${esc(s.frame.count)}</p></div>
@@ -1058,6 +1197,14 @@ function act(action, value, node) {
   const num = Number(value);
   switch (action) {
     case 'pick-dataset': target.setDataset(value); break;
+    case 'bc-refresh': bcLoadRecent(); break;
+    case 'bc-open': { const vod = (bc.recent?.channels || []).flatMap(c => c.vods || []).find(v => v.id === value); bc.form = {vod: value, title: vod?.title || '', start: '0:00:00', minutes: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
+    case 'bc-paste': { const vod = String(bc.paste || '').trim(); if (!vod) { root.querySelector('[data-vs-field="bc-paste"]')?.focus(); break; } bc.form = {vod, title: '', start: '0:00:00', minutes: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
+    case 'bc-estimate': bcEstimate(); break;
+    case 'bc-import': bcImport(); break;
+    case 'bc-close': bc.form = null; bc.estimate = null; bc.error = ''; bcRender(); break;
+    case 'bc-cancel': bcCancel(); break;
+    case 'bc-delete': bcDelete(value); break;
     case 'pick-live': opts.pickLive(value); break;
     case 'live-start': opts.startLive(); break;
     case 'live-stop': opts.stopLive(); break;
@@ -1165,6 +1312,8 @@ function onInput(event) {
   const guest = target.closest ? target.closest('[data-vs-action="guest-name"]') : null;
   if (guest) { guestDraft = {track: String(snap()?.persons?.track ?? ''), value: guest.value}; return; }
   const field = target.dataset?.vsField;
+  if (field === 'bc-paste') { bc.paste = target.value; return; }
+  if (field === 'bc-start' || field === 'bc-minutes') { if (bc.form) bc.form[field === 'bc-start' ? 'start' : 'minutes'] = target.value; bc.estimate = null; return; }
   if (field) { replayDraft = {...(replayDraft || {}), [field === 'vod' ? 'vod' : field === 'vod-start' ? 'start' : 'rate']: target.value}; }
 }
 function onClick(event) {
@@ -1202,4 +1351,6 @@ function attach(options) {
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput); }};
 }
 window.VisionStage = {attach, render, act, onInput, actionsHTML, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
+// The Broadcasts block, for tests: its state, the renderers and the refusal mapping.
+Object.assign(window.VisionStage, {broadcastsBlock, recordedLabel, serverText, bcState: () => bc, bcReset: () => { if (bc.poll) clearInterval(bc.poll); bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false}; }});
 })();

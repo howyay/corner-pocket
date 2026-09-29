@@ -46,7 +46,9 @@ test('lifecycle is the only public namespace and absent host does not mount', ()
   const api = Object.keys(sandbox.window.CornerPocketReview);
   for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts','pocketText','colourWord']) assert.ok(api.includes(name), `missing engine API: ${name}`);
   // +2 for the polish's clarify step: pocketText and colourWord, so the adapter names pockets and colours in one vocabulary.
-  assert.strictEqual(api.length, 69, 'the engine exposes exactly its lifecycle + one-stage API');
+  // +1 for the VOD selector: reloadDatasets, so the Source panel can list a VOD it just imported or deleted.
+  assert.ok(api.includes('reloadDatasets'));
+  assert.strictEqual(api.length, 70, 'the engine exposes exactly its lifecycle + one-stage API');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
