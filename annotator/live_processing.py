@@ -371,7 +371,9 @@ class LiveProcessor:
         """
         if not self._live() or not isinstance(media, str):
             return None
-        probe = _UpstreamDelayProbe(media, refresh_s=self._upstream_refresh_s)
+        # The broadcaster's timestamps are wall-clock instants: the probe reads the same
+        # wall clock the processor was given, so a test can pin the delay exactly.
+        probe = _UpstreamDelayProbe(media, clock=self._wall_clock, refresh_s=self._upstream_refresh_s)
         with self._condition:
             if self._stop.is_set() or generation != self._generation:
                 return None

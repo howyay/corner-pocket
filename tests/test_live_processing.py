@@ -1,3 +1,4 @@
+import itertools
 import json
 from pathlib import Path
 import tempfile
@@ -41,6 +42,16 @@ def infer(frame, detectors, root):
 def status_finished(status):
     """Both pipeline threads have exited (the source ended or failed)."""
     return not status['decoder_alive'] and not status['worker_alive'] and status['state'] in ('eos', 'error')
+
+
+def setUpModule():
+    """No test here reaches Twitch: a Twitch source starts the live-edge probe, whose
+    playlist fetch would otherwise go to the network (three tests did, measured).  A
+    test that wants a playlist patches ``_fetch_playlist`` itself, over this default."""
+    blocked = patch('annotator.live_processing._fetch_playlist',
+                    side_effect=RuntimeError('network is not available in unit tests'))
+    blocked.start()
+    unittest.addModuleCleanup(blocked.stop)
 
 
 class LiveDetectorRequestTests(unittest.TestCase):
@@ -429,10 +440,12 @@ class LiveProcessingTests(unittest.TestCase):
         # and the done flag.  One per frame would be 200.
         self.assertEqual(len(notifies), 3)
         self.assertLess(len(notifies) * 10, status['frames_received'])
-        # While the decoder is held, the worker publishes exactly the one frame it was woken
-        # for; *which* sequence it wins is a scheduling race (the burst is still filling the
-        # slot when it wakes), so that is not asserted here - the notify count is.
-        self.assertEqual(status['frames_processed'], 1)
+        # The property, not a count: one wakeup publishes the newest frame, but a worker
+        # the scheduler lets run mid-burst may find the slot refilled and publish a few
+        # more (2-11 were measured under load) - never one per frame.  Every received frame
+        # is still published or dropped under exactly one reason.
+        self.assertGreaterEqual(status['frames_processed'], 1)
+        self.assertLess(status['frames_processed'] * 10, status['frames_received'])
         self.assertIsNotNone(status['latest'])
         self.assertEqual(status['frames_processed'] + sum(status['drop_reasons'].values()), 200)
 
@@ -514,9 +527,9 @@ class UpstreamDelayTests(unittest.TestCase):
                                                      url='https://www.twitch.tv/pool')]}))
         self.source = dict(kind='dataset', dataset='vod30')
 
-    def live_playlist(self, lag_s):
+    def live_playlist(self, lag_s, now=None):
         import datetime
-        now = time.time()
+        now = time.time() if now is None else now
         duration, segments = 2.0, 3
         start = now - lag_s - duration - (segments - 1) * duration
         lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:2', '#EXT-X-MEDIA-SEQUENCE:99']
@@ -543,30 +556,46 @@ class UpstreamDelayTests(unittest.TestCase):
         self.fail('Timed out: ' + repr(processor.status()))
 
     def test_live_playlist_gives_a_labelled_delay_per_frame(self):
-        gate = threading.Event()
+        """Ordered by events and read off a fixed wall clock - no timing assumption.
+
+        The playlist is stamped against a frozen wall clock that the processor (and so
+        the probe) is given, so the delay is exactly 1500 ms however slow the host is.
+        The capture holds its second frame until the probe has published a reading, then
+        its end until that frame is out; the frame is therefore always one that arrived
+        after the reading.  Under load the old version raced both (the first wait missed,
+        or the frame was taken before the probe answered and the capture ran out).
+        """
+        now = 1790000000.0
+        gate, done = threading.Event(), threading.Event()
         self.addCleanup(gate.set)
+        self.addCleanup(done.set)
 
         class Gated(Capture):
-            """Holds the second frame until the test releases it, so a frame arriving after
-            the probe's first reading can be asserted without any timing assumption."""
-
             def read(self):
-                if self.index >= 1 and not gate.is_set():
-                    gate.wait(5)
+                if self.index == 1:
+                    gate.wait(10)          # the second frame waits for the probe's reading
+                if self.index >= self.count:
+                    done.wait(10)          # the end waits until that frame is published
                 return super().read()
 
-        with patch('annotator.live_processing._fetch_playlist', return_value=self.live_playlist(1.5)):
-            processor = self.processor(capture_factory=lambda _: Gated(count=3, fps=30),
+        # The processor's own clock steps 100 ms per reading, so the second frame is always
+        # more than one frame period after the first and wakes the idle worker (a live
+        # decoder wakes it at most once per period; a real clock made that a race).
+        steps = itertools.count(1000.0, 0.1)
+        with patch('annotator.live_processing._fetch_playlist', return_value=self.live_playlist(1.5, now=now)):
+            processor = self.processor(capture_factory=lambda _: Gated(count=2, fps=30), wall_clock=lambda: now,
+                                       clock=lambda: next(steps),
                                        resolver=lambda url: 'https://cdn.ttvnw.net/live.m3u8')
             processor.start(dict(kind='twitch', source_id='saved'))
-            status = self.wait_for(processor, lambda s: s['upstream_delay_ms'] is not None)
-            self.assertAlmostEqual(status['upstream_delay_ms'], 1500, delta=700)
+            status = self.wait_for(processor, lambda s: s['upstream_delay_ms'] is not None, timeout=20)
+            self.assertEqual(status['upstream_delay_ms'], 1500)
             self.assertEqual(status['upstream_clock'], 'broadcaster')
             gate.set()
-            status = self.wait_for(processor, lambda s: (s['latest'] or {}).get('upstream_delay_ms') is not None)
-            self.assertAlmostEqual(status['latest']['upstream_delay_ms'], 1500, delta=700)
+            status = self.wait_for(processor, lambda s: (s['latest'] or {}).get('seq') == 2, timeout=20)
+            done.set()
+            self.assertEqual(status['latest']['upstream_delay_ms'], 1500)
             self.assertEqual(status['latest']['upstream_clock'], 'broadcaster')
-            status = self.wait_for(processor, lambda s: status_finished(s))
+            status = self.wait_for(processor, lambda s: status_finished(s), timeout=20)
         # A live source that stops delivering is an error here, by design.
         self.assertIn('stream ended', status['error'])
 

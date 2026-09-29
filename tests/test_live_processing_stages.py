@@ -392,12 +392,34 @@ class LiveStageHarnessTests(unittest.TestCase):
         proves the same property survives the real decode loop.
         """
         stage = StubBallStage(self.root, peak=(480, 270), every_n_frames=2)
-        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30),
-                                   stages=[stage], frame_budget_ms=1000)
+        seen, holder = {}, {}
+
+        class Lockstep(Capture):
+            """Hands over the next frame only once the previous one is published, and records
+            each published payload, so every frame reaches the stage in order.  Under load a
+            stalled worker let the decoder supersede them all (0 published, measured).  The
+            budget is a different contract, pinned by the budget tests above; it is off here
+            so a slow host cannot drop the evidence under test."""
+            def read(self):
+                if self.index:
+                    deadline = time.monotonic() + 30
+                    while holder['p'].status()['frames_processed'] < self.index and time.monotonic() < deadline:
+                        time.sleep(.002)
+                    pair = holder['p'].latest_jpeg()
+                    if pair is not None:
+                        seen[pair[1]['seq']] = pair[1]
+                return super().read()
+
+        processor = holder['p'] = self.processor(capture_factory=lambda _: Lockstep(count=6, fps=30),
+                                                 stages=[stage], budget_enforcement=False)
         processor.start(self.source)
-        seen = self.published(processor, 3)
-        status = self.finished(processor)
-        self.assertGreaterEqual(len(seen), 1)
+        status = self.wait_for(processor, lambda s: not s['decoder_alive'] and not s['worker_alive'], timeout=60)
+        seen[status['latest']['seq']] = status['latest']
+        self.assertEqual((status['frames_received'], status['frames_processed']), (6, 6), status['drop_reasons'])
+        self.assertEqual(sorted(seen), [1, 2, 3, 4, 5, 6], 'every frame was published and read')
+        # Cadence 2 on six frames: the stage ran on exactly half, alternating.
+        self.assertEqual([seen[seq]['stage_evidence']['ball']['ran'] for seq in range(1, 7)],
+                         [True, False, True, False, True, False])
         for seq, metadata in seen.items():
             evidence = metadata['stage_evidence']['ball']
             self.assertEqual('balls' in metadata['detections'], bool(evidence['ran']), seq)
