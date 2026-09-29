@@ -6,15 +6,21 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
-function harness() {
-  const handlers = {}, storage = {};
+function harness(opts = {}) {
+  const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [];
   const document = {addEventListener(event, fn) { handlers[event] = fn; }, querySelector() { return {}; }, querySelectorAll() { return []; }, documentElement: {}};
-  const context = {document, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener() {}}, setInterval() {}, setTimeout() {}, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
+  // The URL is a hash route: pushState/replaceState update location.hash, and a test drives back/forward by
+  // setting location.hash and calling the captured hashchange listener, as the browser does.
+  const location = {hash: opts.hash || ''};
+  const history = {pushState(state, title, url) { location.hash = url; visits.push(['push', url]); }, replaceState(state, title, url) { location.hash = url; visits.push(['replace', url]); }};
+  const context = {document, location, history, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener(event, fn) { windowHandlers[event] = fn; }}, setInterval() {}, setTimeout() {}, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
   vm.createContext(context);
   vm.runInContext(source.replace("(() => {", '').replace('});reload();', '});').replace(/\}\)\(\);\s*$/, ''), context);
   vm.runInContext("data={revision:1,settings:{},tournament:{raceTo:7,entrants:[],matches:[]},players:[],history:[]}; calls=[]; realAction=action; action=async(name,payload)=>{calls.push({name,payload});return true}", context);
-  return {context, handlers, evaluate: expression => vm.runInContext(expression, context)};
+  return {context, handlers, windowHandlers, visits, storage, evaluate: expression => vm.runInContext(expression, context)};
 }
+const tabClick = (h, name) => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {tab: name}}}});
+const browserBack = (h, hash) => { h.context.location.hash = hash; h.windowHandlers.hashchange(); };
 test('live controls keep the dataset/channel allowlist and the latency caveat', () => {
   const h = harness();
   assert.deepEqual(JSON.parse(h.evaluate("JSON.stringify(liveSource('dataset:highlight'))")), {kind:'dataset', dataset:'highlight'});
@@ -1430,4 +1436,65 @@ test('Refresh list also re-reads the import job, so an import started in another
   await settle(); await settle();
   assert.ok(calls.some(c => c.url === '/api/vods/recent') && calls.some(c => c.url === '/api/vods/job'));
   assert.equal(VS.bcState().job.state, 'running');
+});
+// ---- IA C′ stage 2: hash routes. The URL names the screen; back/forward walk it; old ids map onto it.
+test('routes: every tab has a hash route, a tab click pushes it, and back/forward walk the screens', async () => {
+  const h = harness();
+  h.evaluate('render=()=>{}');
+  assert.equal(h.context.location.hash, '#/floor', 'a cold load names its screen without adding a history entry');
+  assert.deepEqual(h.visits, [['replace', '#/floor']]);
+  const expected = {floor: '#/floor', setup: '#/setup', matches: '#/matches', vision: '#/vision', players: '#/regulars', status: '#/backroom'};
+  for (const [id, hash] of Object.entries(expected)) {
+    await tabClick(h, id);
+    assert.equal(h.evaluate('tab'), id);
+    assert.equal(h.context.location.hash, hash, `${id} is ${hash}`);
+  }
+  assert.equal(h.visits.filter(v => v[0] === 'push').length, 5, 'each tab change is one history entry (floor was already open)');
+  await tabClick(h, 'status');
+  assert.equal(h.visits.filter(v => v[0] === 'push').length, 5, 'the same tab again adds no entry');
+  browserBack(h, '#/regulars');
+  assert.equal(h.evaluate('tab'), 'players', 'Back returns to Regulars');
+  browserBack(h, '#/setup');
+  assert.equal(h.evaluate('tab'), 'setup');
+  browserBack(h, '#/backroom');
+  assert.equal(h.evaluate('tab'), 'status', 'Forward works the same way');
+  // the score button in the strip is a route change like any other
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'floor'}}}});
+  assert.equal(h.context.location.hash, '#/floor');
+});
+test('routes: a URL opens its screen; old tab ids and old hashes map onto the routes; unknown ones fall back', () => {
+  const cases = [['#/regulars', 'players', '#/regulars'], ['#/backroom', 'status', '#/backroom'], ['#/vision', 'vision', '#/vision'],
+    ['#players', 'players', '#/regulars'], ['#/status', 'status', '#/backroom'], ['#setup', 'setup', '#/setup'], ['#/matches', 'matches', '#/matches'],
+    ['#/nowhere', 'floor', '#/floor'], ['', 'floor', '#/floor'], ['#', 'floor', '#/floor']];
+  for (const [hash, tab, canonical] of cases) {
+    const h = harness({hash});
+    assert.equal(h.evaluate('tab'), tab, `${hash || '(none)'} opens ${tab}`);
+    assert.equal(h.context.location.hash, canonical, `${hash || '(none)'} is rewritten in place to ${canonical}`);
+    assert.ok(h.visits.every(v => v[0] === 'replace'), 'loading never adds a history entry');
+  }
+  // a typed or old-style hash while running is the same as a click
+  const h = harness();
+  h.evaluate('render=()=>{}');
+  browserBack(h, '#players');
+  assert.equal(h.evaluate('tab'), 'players');
+  assert.equal(h.context.location.hash, '#/regulars');
+  // in-app links that still carry an old id (empty states, the first-night guide) resolve the same way
+  assert.equal(h.evaluate("routeOf('setup')"), 'setup');
+  assert.equal(h.evaluate("routeOf('regulars')"), 'players');
+  assert.equal(h.evaluate("routeOf('nope')"), null);
+});
+test('routes: a dirty or busy review vetoes back/forward too, and the URL is put back', () => {
+  const h = harness({hash: '#/vision'});
+  h.evaluate('render=()=>{}');
+  h.context.window.CornerPocketReview = {canLeave: () => false, activate: () => false};
+  browserBack(h, '#/floor');
+  assert.equal(h.evaluate('tab'), 'vision', 'the review keeps its screen');
+  assert.equal(h.context.location.hash, '#/vision', 'the address bar says so');
+  h.context.window.CornerPocketReview = {canLeave: () => true, activate: () => false};
+  h.evaluate('busy=true');
+  browserBack(h, '#/floor');
+  assert.equal(h.evaluate('tab'), 'vision', 'a write in flight also holds the screen');
+  h.evaluate('busy=false');
+  browserBack(h, '#/floor');
+  assert.equal(h.evaluate('tab'), 'floor');
 });
