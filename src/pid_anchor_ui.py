@@ -24,6 +24,12 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+if __name__ == "__main__":
+    # legacy anchor UI: writes out/pid_anchors_vod30.json directly. Refuse before
+    # anything is read, so the refusal never depends on which data files exist.
+    sys.path.insert(0, str(ROOT.parent))
+    from src.store import refuse_file_writes_under_postgres
+    refuse_file_writes_under_postgres("src/pid_anchor_ui.py")
 from calibrate import OBJECT_MM, project  # noqa
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
@@ -180,10 +186,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    # legacy anchor UI: writes out/pid_anchors_vod30.json directly
-    sys.path.insert(0, str(ROOT.parent))
-    from src.store import refuse_file_writes_under_postgres
-    refuse_file_writes_under_postgres("src/pid_anchor_ui.py")
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8126
     print(f"serving on http://127.0.0.1:{port}")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
