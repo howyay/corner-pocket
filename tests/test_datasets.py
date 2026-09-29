@@ -1,0 +1,164 @@
+"""The dataset registry (src/datasets.py): built-in ids, imported ids, safe paths, pure reads."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from src import datasets
+from src.datasets import imported_id, listing, lookup, parse_imported_id, read_index
+
+ENTRY = {"vod_id": "1000000001", "channel": "examplechannel", "title": "Friday 8-ball",
+         "created_at": "2026-09-19T01:02:03Z", "length_s": 13400, "fps": 30.0, "frames": 9000,
+         "width": 1280, "height": 720, "bytes": 123456789, "imported_at": "2026-09-28T00:00:00+00:00"}
+
+
+def tree_stamp(root):
+    """Every path under root with its bytes and mtime: what a read must never change."""
+    stamp = {}
+    for folder, dirs, files in os.walk(root):
+        for name in dirs + files:
+            path = Path(folder) / name
+            if path.is_file():
+                stamp[str(path)] = (hashlib.md5(path.read_bytes()).hexdigest(), path.stat().st_mtime_ns)
+            else:
+                stamp[str(path)] = "dir"
+    return stamp
+
+
+class DatasetRegistryTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+
+    def write_index(self, vods):
+        path = self.root / "out" / "vods" / "index.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"vods": vods}))
+        return path
+
+    def test_built_in_recordings_keep_their_folders_and_media(self):
+        self.assertEqual(datasets.STATIC_OUT, {"vod30": "scan30", "highlight": "scan_highlight"})
+        vod30, highlight = lookup(self.root, "vod30"), lookup(self.root, "highlight")
+        self.assertEqual((vod30.kind, vod30.out_dir, vod30.media_dir, vod30.media_name),
+                         ("recording", self.root / "out" / "scan30", self.root / "data", "vod_30min_260815.mp4"))
+        self.assertEqual((highlight.out_dir, highlight.media_name),
+                         (self.root / "out" / "scan_highlight", "vod_highlight.mp4"))
+        self.assertIsNone(vod30.media_file())
+        (self.root / "data").mkdir()
+        (self.root / "data" / "vod_30min_260815.mp4").write_bytes(b"mp4")
+        self.assertEqual(vod30.media_file(), (self.root / "data" / "vod_30min_260815.mp4").resolve())
+
+    def test_built_in_ids_never_read_the_index(self):
+        self.write_index("damaged")
+        with patch.object(datasets, "read_index", side_effect=AssertionError("index read")):
+            self.assertEqual(lookup(self.root, "vod30").kind, "recording")
+            self.assertEqual(lookup(self.root, "highlight").kind, "recording")
+
+    def test_imported_ids_are_built_from_numbers_only(self):
+        self.assertEqual(imported_id(1000000001), "tw-1000000001")
+        self.assertEqual(imported_id("1000000001", 3600, 3900), "tw-1000000001-3600-3900")
+        self.assertEqual(imported_id("1000000001", 3600.0, 3900.0), "tw-1000000001-3600-3900")
+        for bad in (0, -1, True, 1.5, "abc", "12a", "1" * 13, "../1", "１２", None):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                imported_id(bad)
+        for start, end in ((10, 10), (10, 5), (-1, 5), (1.5, 9), (None, 9), (1, None), (True, 9)):
+            with self.assertRaises(ValueError, msg=repr((start, end))):
+                imported_id("1", start, end)
+
+    def test_only_canonical_ids_parse(self):
+        self.assertEqual(parse_imported_id("tw-1000000001"), ("1000000001", None, None))
+        self.assertEqual(parse_imported_id("tw-1000000001-3600-3900"), ("1000000001", 3600, 3900))
+        for bad in ("tw-0123", "tw-1-9-5", "tw-1-01-5", "tw-1\n", "tw-1-1", "TW-1", "tw-", "vod30",
+                    "../tw-1", "tw-1/..", "tw-" + "1" * 13, "tw-1-1-" + "9" * 60, "", None, 7):
+            self.assertIsNone(parse_imported_id(bad), repr(bad))
+
+    def test_an_imported_vod_resolves_only_while_the_index_lists_it(self):
+        key = "tw-1000000001-3600-3900"
+        self.assertIsNone(lookup(self.root, key))
+        self.write_index({key: ENTRY})
+        found = lookup(self.root, key)
+        self.assertEqual((found.kind, found.out_dir, found.media_dir, found.media_name),
+                         ("vod", self.root / "out" / "vods" / key, self.root / "data" / "vods", key + ".mp4"))
+        self.assertIsNone(found.media_file())
+        media = self.root / "data" / "vods" / (key + ".mp4")
+        media.parent.mkdir(parents=True)
+        media.write_bytes(b"mp4")
+        self.assertEqual(found.media_file(), media.resolve())
+        self.assertIsNone(lookup(self.root, "tw-1000000001"))       # the whole VOD is another id
+        self.write_index({})
+        self.assertIsNone(lookup(self.root, key))                  # deleted from the index: unknown
+        with self.assertRaises(TypeError):
+            lookup(self.root, ["vod30"])                            # as `in DATASETS` always did
+
+    def test_media_that_escapes_its_folder_is_refused(self):
+        key = "tw-5"
+        self.write_index({key: dict(ENTRY, vod_id="5")})
+        outside = self.root / "secret.mp4"
+        outside.write_bytes(b"x")
+        (self.root / "data" / "vods").mkdir(parents=True)
+        (self.root / "data" / "vods" / "tw-5.mp4").symlink_to(outside)
+        self.assertIsNone(lookup(self.root, key).media_file())
+        (self.root / "data" / "vods" / "tw-5.mp4").unlink()
+        (self.root / "data" / "vods" / "tw-5.mp4").mkdir()            # a folder is not media
+        self.assertIsNone(lookup(self.root, key).media_file())
+
+    def test_the_index_is_read_honestly(self):
+        self.assertEqual(read_index(self.root), ({}, None))
+        path = self.write_index({})
+        path.write_text("{not json")
+        entries, error = read_index(self.root)
+        self.assertEqual(entries, {})
+        self.assertIn("not valid JSON", error)
+        path.write_text(json.dumps(["tw-1"]))
+        self.assertIn("no 'vods' object", read_index(self.root)[1])
+        self.write_index({"tw-1": dict(ENTRY, vod_id="1"), "tw-01": dict(ENTRY, vod_id="1"),
+                          "tw-2": dict(ENTRY, vod_id="3"), "../x": {}, "tw-4": "text"})
+        entries, error = read_index(self.root)
+        self.assertEqual(list(entries), ["tw-1"])
+        self.assertEqual(error, "4 entries in out/vods/index.json are not valid and not listed")
+
+    def test_listing_keeps_the_built_in_rows_and_describes_imports(self):
+        rows, error = listing(self.root)
+        self.assertEqual((rows, error), ([{"id": "vod30", "label": "vod30"},
+                                          {"id": "highlight", "label": "highlight"}], None))
+        self.write_index({"tw-1000000001-3600-3900": ENTRY, "tw-7": dict(ENTRY, vod_id="7", length_s=60)})
+        rows, error = listing(self.root)
+        self.assertIsNone(error)
+        self.assertEqual([row["id"] for row in rows], ["vod30", "highlight", "tw-1000000001-3600-3900", "tw-7"])
+        row = rows[2]
+        self.assertEqual(row["label"], "examplechannel · 2026-09-19 · 1:00:00–1:05:00")
+        self.assertEqual((row["kind"], row["vod_id"], row["channel"], row["title"]),
+                         ("vod", "1000000001", "examplechannel", "Friday 8-ball"))
+        self.assertEqual(row["range"], {"start_s": 3600, "end_s": 3900, "whole": False})
+        self.assertEqual((row["fps"], row["frames"], row["width"], row["height"], row["media"]),
+                         (30.0, 9000, 1280, 720, False))
+        self.assertEqual(rows[3]["range"], {"start_s": 0, "end_s": 60, "whole": True})
+        self.assertTrue(rows[3]["label"].endswith("whole broadcast"))
+
+    def test_reading_never_writes(self):
+        key = "tw-1000000001-3600-3900"
+        before = tree_stamp(self.root)
+        for dataset_id in ("vod30", "highlight", key, "tw-9", "nope", "../x"):
+            lookup(self.root, dataset_id)
+        listing(self.root)
+        read_index(self.root)
+        self.assertEqual(tree_stamp(self.root), before)
+        self.assertFalse((self.root / "out").exists())              # not even a folder
+        self.write_index({key: ENTRY})
+        before = tree_stamp(self.root)
+        for dataset_id in ("vod30", key, "tw-9"):
+            found = lookup(self.root, dataset_id)
+            if found is not None:
+                found.media_file()
+        listing(self.root)
+        self.assertEqual(tree_stamp(self.root), before)
+        self.assertFalse((self.root / "out" / "vods" / key).exists())
+        self.assertFalse((self.root / "data").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
