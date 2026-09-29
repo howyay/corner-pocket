@@ -160,5 +160,51 @@ class DatasetRegistryTests(unittest.TestCase):
         self.assertFalse((self.root / "data").exists())
 
 
+class RegistryConsumerTests(unittest.TestCase):
+    """The server and the JSON store resolve every dataset through the registry."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.key = "tw-1000000001-3600-3900"
+        path = self.root / "out" / "vods" / "index.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"vods": {self.key: ENTRY}}))
+
+    def test_server_resolves_built_in_and_imported_datasets(self):
+        from annotator.unified_server import APIError, Backend
+        backend = Backend(self.root)
+        self.assertEqual(backend.dataset("vod30"), self.root / "out" / "scan30")
+        self.assertEqual(backend.dataset(self.key), self.root / "out" / "vods" / self.key)
+        for unknown in ("tw-9", "nope", "../scan30", None):
+            with self.assertRaises(APIError) as caught:
+                backend.dataset(unknown)
+            self.assertEqual(caught.exception.status, 404)
+        with self.assertRaises(APIError) as caught:
+            backend.video(self.key)                                  # listed, media not there yet
+        self.assertEqual((caught.exception.status, str(caught.exception)), (404, "media not found"))
+        listed = backend.get(["api", "datasets"], {})
+        self.assertEqual([row["id"] for row in listed["datasets"]], ["vod30", "highlight", self.key])
+        self.assertNotIn("datasets_error", listed)
+        (self.root / "out" / "vods" / "index.json").write_text("{")
+        listed = backend.get(["api", "datasets"], {})
+        self.assertEqual([row["id"] for row in listed["datasets"]], ["vod30", "highlight"])
+        self.assertIn("not valid JSON", listed["datasets_error"])
+
+    def test_json_store_keeps_an_imported_vods_corrections_in_its_own_folder(self):
+        from src.store import JsonStore
+        store = JsonStore(self.root)
+        store.correction_put(self.key, 12, {"balls": [], "saved_at": "now"})
+        self.assertEqual(store.correction_get(self.key, 12), {"balls": [], "saved_at": "now"})
+        saved = self.root.resolve() / "out" / "vods" / self.key / "frame_results" / "12" / "correction.json"
+        self.assertTrue(saved.is_file())
+        self.assertEqual(store.verdicts_get(self.key), {})
+        with self.assertRaises(ValueError):
+            store.correction_put("tw-9", 1, {})                      # not in the index
+        with self.assertRaises(ValueError):
+            store.seeds_get(self.key)                               # seeds stay vod30-only
+
+
 if __name__ == "__main__":
     unittest.main()

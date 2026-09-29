@@ -47,8 +47,10 @@ class StoreConstraintError(ValueError):
                          f"nothing was written. {detail}")
 
 
-# dataset -> the scan folder under out/ that holds its queue, verdicts and frame results
-DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
+# The built-in recordings: dataset -> the scan folder under out/ that holds its queue,
+# verdicts and frame results. JsonStore resolves every dataset, imported VODs included
+# (out/vods/<id>/), through src/datasets.py; PostgresStore still accepts these two only.
+from src.datasets import STATIC_OUT as DATASETS, lookup as dataset_lookup  # noqa: E402
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 # precomputed artifacts the server reads whole: kind -> file under out/ ({ds} = dataset)
 ARTIFACTS = {
@@ -154,9 +156,10 @@ class JsonStore:
             return self._locks.setdefault(path.resolve(), threading.RLock())
 
     def _scan(self, dataset: str) -> Path:
-        if dataset not in DATASETS:
+        found = dataset_lookup(self.root, dataset)
+        if found is None:
             raise ValueError(f"unknown dataset: {dataset}")
-        return self.out / DATASETS[dataset]
+        return found.out_dir
 
     def _operations(self):
         if self._ops is None:

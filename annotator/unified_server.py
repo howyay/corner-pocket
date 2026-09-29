@@ -26,8 +26,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-DATASETS = {"vod30": ("scan30", "vod_30min_260815.mp4"),
-            "highlight": ("scan_highlight", "vod_highlight.mp4")}
+# Datasets (the two recordings and imported VODs) resolve through src/datasets.py.
+from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, lookup as dataset_lookup  # noqa: E402
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
@@ -550,7 +550,7 @@ class Backend:
     def enroll_preview(self, payload):
         """Plan an enrolment for the clicked person. Reads only."""
         dataset = payload.get("dataset", "vod30")
-        if dataset not in DATASETS:
+        if dataset not in STATIC_DATASETS:
             raise APIError("unknown dataset")
         frame_index = payload.get("frame_index")
         if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
@@ -1099,10 +1099,15 @@ class Backend:
                                                  'total': len(items)}
         return items, report
 
-    def dataset(self, dataset):
-        if dataset not in DATASETS:
+    def registered(self, dataset):
+        """The registry entry of ``dataset`` (src/datasets.py), or a 404."""
+        found = dataset_lookup(self.root, dataset)
+        if found is None:
             raise APIError("unknown dataset", 404)
-        return self.out / DATASETS[dataset][0]
+        return found
+
+    def dataset(self, dataset):
+        return self.registered(dataset).out_dir
 
     def crops(self, name):
         if name not in BALL_SETS:
@@ -1110,8 +1115,8 @@ class Backend:
         return self.out / name
 
     def video(self, dataset):
-        self.dataset(dataset)
-        return safe_file(self.root / "data", DATASETS[dataset][1])
+        found = self.registered(dataset)
+        return safe_file(found.media_dir, found.media_name)
 
     def frame(self, t, dataset="vod30"):
         import cv2
@@ -1434,8 +1439,11 @@ class Backend:
         if parts == ['api', 'inference']:
             return self.inference_status(dataset)
         if parts == ["api", "datasets"]:
-            return {"datasets": [{"id": k, "label": k} for k in DATASETS],
-                    "ball_sets": [{"id": k, "label": k} for k in BALL_SETS]}
+            rows, index_error = dataset_listing(self.root)
+            listed = {"datasets": rows, "ball_sets": [{"id": k, "label": k} for k in BALL_SETS]}
+            if index_error:
+                listed["datasets_error"] = index_error
+            return listed
         if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "meta":
             base = self.crops(parts[2])
             labels = self.store().labels_get(parts[2])
