@@ -8,7 +8,7 @@ This is research and a proposal. **No app code was changed.**
 |---|---|---|
 | 1. Desk | Tab/feature map from code, content-overlap audit, external patterns, multi-device reality | **done** (`c571d67`) |
 | 2. Measure | Task costs at 1280 and 390 on a seeded scratch fixture, screenshots `out/ia/current-*.png` (§8) | **done** |
-| 3. Propose | 2–3 structures, mapping of all 167 + 14 items, estimated costs, recommendation, wireframes `out/ia/` | pending |
+| 3. Propose | Three structures, mapping of all 167 + 14 items, estimated costs, recommendation, wireframes `out/ia/` (§10–§13) | **done** |
 
 Evidence base: `main` at **`b3f542d`**, which includes the Impeccable design merge `ae1c185`. Line references such as `ops.js:140` are to that commit. `annotator/ops.js` renders each screen as one very long line, so a line number names the screen, not the exact spot.
 
@@ -147,6 +147,21 @@ Pass 2 will attach measured costs and may re-rank.
 
 *§9 re-ranks these problems with the measured costs.*
 
+## 7. Method and rules followed
+
+- **Pass 1 (desk):**
+  - Read `annotator/ops.js` (the `render()` nav and every `*Screen`/card renderer) and `ops.css`.
+  - Read `docs/impeccable-feature-inventory.md`, `docs/corner-pocket-functional-inventory.md` and `docs/unified-workbench.md`.
+  - Checked git history (`clock-sync` not merged).
+  - No browser, no fixture, no requests.
+- **Pass 2 (measurement):** see §8. One VM, one fixture on `:8210`, one browser. **Production `:8130` received 0 requests in the whole session** (journal checked from a saved cursor).
+- **Pass 3 (proposal):**
+  - Built from passes 1 and 2.
+  - The option costs in §12 are estimates, labelled as such.
+  - The wireframes are low-fidelity and are not app code.
+- **No app code was changed.** The only committed file is this document. The screenshots, harness and wireframes are in `out/ia/`, which is gitignored like the rest of `out/`.
+- **Web sources** were fetched read-only and are cited inline. Anything I did not read is marked *unverified*. Where no primary source was found, the text says so and marks the claim as opinion.
+
 ## 8. Measured task costs (current structure)
 
 ### Harness
@@ -183,7 +198,7 @@ Pass 2 will attach measured costs and may re-rank.
 
 ### What the numbers show
 
-1. **Send is the loop's weak point: 4 tab changes per 2 matches sent.** Every *Send to table* is on Matches and throws the operator to Floor (`matches→floor`, twice in T2). Floor has no Send button, so each next match costs another trip back to Matches (measured `Floor offers a Send button: false`). The cost grows with the table count: one round trip per match, about 7 per 8-entrant night and about 15 per 16-entrant night. **This is exactly the Floor ↔ Matches alternation.**
+1. **Send is the loop's weak point: 4 tab changes per 2 matches sent.** Every *Send to table* is on Matches and throws the operator to Floor (`matches→floor`, twice in T2). Floor has no Send button, so each next match costs another trip back to Matches (measured `Floor offers a Send button: false`). The cost grows with the number of matches: one round trip per match, about 7 per 8-entrant night and about 15 per 16-entrant night. **This is exactly the Floor ↔ Matches alternation.**
 2. **Scoring itself is cheap once you are on Floor.** T2b, with 2 live tables, costs 3 clicks and 0 tab switches at 1280. The focus picker works. **Merging tabs will not make scoring cheaper. It will make *getting to the right thing to score* cheaper.**
 3. **Racking the night leaves the operator on Set up.** The drawn bracket is on Matches (measured: `after Rack the night the app shows: setup`). Then, at 390, the operator must scroll 549 px to reach the tab bar (the header is `position:static` at ≤750 px, `ops.css:176`) and 598 px more to reach the bracket.
 4. **At 390 the tab bar costs a scroll almost every time.** The header plus nav is **344 px tall on Set up and Matches**, 41 % of an 844 px screen: the nav wraps to two rows of 3 (104 px), with the strip below. After any scroll, the tabs are off-screen.
@@ -237,8 +252,172 @@ The md5 alone would not prove this, because the owner legitimately changes `stat
 
 **The owner's question, answered on the evidence: yes, combine the first three tabs, but for the loop, not for tidiness.** The measured cost is concentrated in one place, Send (Matches) ↔ Score (Floor). Registration (T1) and scoring (T2b) are cheap or form-bound. Pass 3 tests how much each structure removes.
 
-## 7. Method and rules followed
+## 10. Three alternative structures
 
-- Pass 2 (measurement) is described in §8 and did not contact production either. Pass 1 was desk-only: `annotator/ops.js` (the `render()` nav and every `*Screen`/card renderer), `ops.css`, `docs/impeccable-feature-inventory.md`, `docs/corner-pocket-functional-inventory.md`, `docs/unified-workbench.md`, and git history (`clock-sync` not merged).
-- **Production (`:8130`) was not touched in this pass:** no browser, no fixture, no requests.
-- Web sources were fetched read-only and are cited inline. Anything I did not read is marked *unverified* or *pending*.
+All three keep every one of the 181 items (§11). They differ in what they merge and in whom they serve.
+
+### Option A: one "Tonight" workspace, phase-driven (a merge of Floor, Set up and Matches)
+
+```
+Tonight  ─┬─ phase strip: Register · Rack · Play · Close   (all four always clickable; default = the night's phase)
+          ├─ Register : The night · Random pairing · Registration desk · Entrants/attendance · Rack the night
+          ├─ Play     : Queue (ready/held, Send → table) │ Tables (scoreboard, focus) │ Bracket + tonight's table
+          └─ Close    : Results sheet · Second chance · Archive & new / Delete event
+Records   (history half of Matches: House standings · Night log · Archived events · player record link)
+Vision    (unchanged, one surface)
+Regulars  (roster, profiles, faces; Guests tonight moves to Tonight › attendance)
+Back room (appearance, notes, maintainers)
+```
+
+5 tabs instead of 6. One device model: the same app for everyone, laid out responsively.
+
+### Option B: separate tabs by role (Desk / Table / Board)
+
+```
+Desk   (front-desk operator): The night · Registration · Entrants · Queue + Send · Close/Archive
+Table  (staff phone)        : pick my table → scoreboard, +/−, Sign, Release, Forfeit, Away/Here, shot clock
+Board  (anyone)             : Bracket · tonight's table · House standings · Night log · Results sheet · Archive
+Vision · Regulars · Back room (unchanged)
+```
+
+6 tabs. Each tab is one role's whole job. Send lives on Desk, scoring on Table.
+
+### Option C′ (recommended): a Tonight console plus a read-only Display
+
+This is A's operator console, plus a separate read-only surface for the two roles that have none today.
+
+```
+/            Operator console (front desk + staff phones)
+             Tonight (phase strip; Play = Queue │ Tables │ Bracket) · Records · Vision · Regulars · Back room
+             ≤750 px: fixed bottom bar  Tonight · Records · Vision · More(Regulars, Back room)
+/display     Read-only Display (TV and players' phones)
+             Tables in play (big type) · Next up · Bracket · Tonight's table · auto-refresh · no controls
+             Same page, one column at phone width = the players' bracket view
+```
+
+C′ is A for the operator plus the missing Display. The Display is also the natural home for a later *per-table* view, like DigitalPool's per-table TV/Tablet links and Challonge's per-station Full Screen.
+
+## 11. Where every inventory item goes (167 + 14 = 181, none homeless)
+
+Legend: **T** = Tonight (sub-area in brackets), **R** = Records, **V** = Vision, **Rg** = Regulars, **BR** = Back room, **Sh** = shell (every screen), **D** = Display (C′ only, read-only *copy*: the item's home and its write path stay in the console). For B: **Desk / Table / Board**.
+
+| Items | Today | A: Tonight | B: by role | C′: console + Display |
+|---|---|---|---|---|
+| 1 Brand, 2 connection badge, 5 EN/中, 6 theme, 8 message line, 9 conflict, 10 busy lock, 11 navigation veto, 12 leave guard, 14 offline screen, 15 reduced motion | Shell | Sh | Sh | Sh; D shows 2, 5, 6, 15 (read-only) |
+| **3** six tabs | Shell | **changes**: 5 tabs (Tonight, Records, Vision, Regulars, Back room). The check becomes "each tab gets `.active` and `aria-current`". | Changes: 6 role tabs | Changes: 5 tabs, bottom bar ≤750 px |
+| **4** nav counters | Shell | Tonight = entrants before the draw / matches not complete after; Regulars = players | Desk = entrants, Table = live, Board = not complete | as A |
+| **7** header strip (clock + focused score → Floor) | Tabs 2–6 | On every tab except Tonight › Play; the score button opens Tonight › Play | On every tab except Table | as A |
+| **13** sticky header | Shell | Sh (at ≤750 px the bottom bar replaces it as the always-reachable nav) | Sh | as A |
+| 16–26 shot clock (one state, 3 views; 26 label "local timer, not shared") | Floor, strip, Vision stagebar | T›Play scoreboard, strip, Vision stagebar | Table, strip, Vision | as A. **D shows no clock until `clock-sync` merges**, because a local timer on a TV would lie (item 26, rule 167). |
+| 27 scoreboard, 28 focus picker, 29 sides A/B, 30 +/−, 31 Win frame, 33 footer actions | Floor | T›Play (Tables) | Table | T›Play; D mirrors 27 and 29 read-only |
+| 32 Waiting on … / Here now | Floor | T›Play (Tables) + T›Register attendance | Table + Desk | as A |
+| 34 Floor tiles (signed, up next, entrants, guests) | Floor | T›Play header line; *Up next* becomes the Queue, **with Send** | Desk | as A; D: "Next up" |
+| **S1** first-night guide | Floor | T›Register (empty state) | Desk | as A |
+| 35 the night, 36 locked notice, **S2** rename after the draw | Set up | T›Register (locked after the draw; rename stays) | Desk | as A |
+| 37 registration desk, **S4** desk search | Set up | T›Register | Desk | as A |
+| **S5** random doubles pairing | Set up | T›Register | Desk | as A |
+| 38 Rack the night | Set up | T›Rack, **then shows T›Play** (the draw) | Desk, then shows Board | as A |
+| 39 entrants list (here/not here, remove) | Set up | T›Register + attendance panel | Desk | as A |
+| 40 archive & new event, **S3** delete event | Set up | T›Close | Desk | as A (console only; never on D) |
+| 41 Matches tiles | Matches | T›Play header line | Board | as A; D header |
+| 42 scorekeeper's card, 43 score select sync | Matches | T›Play, as the keyboard/number-entry mode of the focused table (kept, not removed) | Table | as A |
+| 44 bracket by round (Send, Here now) | Matches | T›Play: queue actions (Send, Here now) + read-only bracket; full bracket in R too | Board (view) + Desk (Send) | as A; D: bracket, read-only |
+| **S8** bracket density | Matches | T›Play bracket + R | Board | as A |
+| **S10** per-match Away/Here + Forfeit | Matches (card) | T›Play (focused table, under "More") | Table | as A |
+| **S7** second chance | Matches | T›Close (it opens after round 1) | Desk | as A |
+| **S6** results sheet (print, copy) | Matches | T›Close + R | Board | as A |
+| **S9** event table (tonight) | Matches | T›Play side panel + R | Board | as A; D |
+| 45 house standings | Matches | R | Board | R; D optional |
+| 46 night log | Matches | R | Board | R |
+| 47 archived events, **S11** archived rename/hide/delete | Matches | R | Board | R (console only) |
+| 48 Regulars tiles, 49 roster, 50 add, 51 profile, 52 edit, 53 delete, 54 enrol face, 55 modal close, **S12** player record, **S13** forget face | Regulars | Rg (S12 also linked from R standings) | Rg | as A (≤750 px: under More) |
+| 56 guests tonight (add to regulars) | Regulars | T›Register attendance, with a link to Rg | Desk | as A |
+| 57 table appearance, 58 roadmap, 59 status table, 60 operator notes, **S14** maintainers | Back room | BR | BR | BR (≤750 px: under More) |
+| 61–160 Vision (stage, overlays, chip row and SOURCE panel, live vocabulary, cues rail, inspector, identity, enrol from footage, scrub strip, keyboard) | Vision | V, **unchanged**: one surface (item 61) | V | V; at ≤750 px the bottom bar stays visible, which fixes the dead end |
+| 161 中/EN parity, 164 touch targets, 165 read-only API, 166 shell does not intercept the review, 167 no fake data | Cross-cutting | unchanged; they now also bind the new surfaces | unchanged | unchanged; D must satisfy 161, 165 and 167 (its GETs are read-only by construction) |
+| **162** mobile 390 px, **163** tablet ≤1100 px | Cross-cutting | re-checked for the Tonight layout; Vision's bottom sheets are unchanged | re-checked | as A, plus the 44 px bottom bar sits above Vision's sheet tabs |
+
+Count: 11 shell items + 3 changed (3, 4, 7) + 13 = 15; 16–26 = 11; 27–34 = 8; 35–40 = 6; 41–47 = 7; 48–56 = 9; 57–60 = 4; 61–160 = 100; 161–167 = 7. **Total 167. S1–S14 = 14, each placed once above. 181 in all, with no item removed.** Items whose *check line* names a tab (3, 7, 34, 44, and the "Floor opens" checks) need their check reworded, **not** their behaviour. This is the no-removal contract's own rule: "An item may move to another place only if the check on its line still passes."
+
+## 12. Estimated task costs for each option
+
+These are **estimates**, not measurements. They are derived by walking each wireframe with the same counting rules as §8, from the same starting state: cold load, and the same seeded night. At 390 in A and C′ the nav is a fixed bottom bar, so no scroll is ever spent reaching it.
+
+| Task | Width | Today, **measured** (tabs + jumps / clicks / scrolls) | A: Tonight | B: by role | C′: console + Display |
+|---|---|---|---|---|---|
+| T1 register 8 + check-in + rack + see the draw | 1280 | 2 + 0 / 25 / 2 | **0** / 23 (the cold load lands on Tonight › Register; rack shows Play) / 1 | 1 / 24 (Desk, then Board to see the draw) / 1 | **0** / 23 / 1 |
+| | 390 | 2 + 0 / 25 / 4 (2,111 px) | 0 / 23 / 3 (about 1,000 px: form, entrants, rack) | 1 / 24 / 3 | 0 / 23 / 3 |
+| T2 send A → score → sign → send B | 1280 | **2 + 2** / 9 / 0 | **0** / 7 (Send in the queue, 4 score taps, Sign, Send) / 0 | **2** / 9 (Desk Send → Table: score, Sign → Desk Send) / 0 | **0** / 7 / 0 |
+| | 390 | **2 + 2** / 9 / 2 (+1 reveal tap per send) | 0 / 7–8 (8 if the table has to be picked) / 1 | 2 / 9–10 / 1 | 0 / 7–8 / 1 |
+| T2b score + sign table 2 of 2 | 1280 | 0 / 3 / 0 | 0 / 3 (click the table tile, +1, sign) / 0 | 1 (to Table) / 3 / 0 | 0 / 3 / 0 |
+| | 390 | 0 / 3 / 1 | 0 / 3 / 1 | 1 / 3 / 1 | 0 / 3 / 1 |
+| T3 bracket + tonight's table + standings | 1280 | 1 / 1 / 3 (886 px) | bracket + tonight's table: **0 / 0 / 0** (on Play); all-time standings: 1 (Records) / 1 / 0–1 | 1 / 1 / 2 (all on Board) | as A on the console; **0 interactions on the TV** (always on screen) |
+| | 390 | 1 / 1 / 3 (1,978 px) | bracket + tonight's table: 0 / 1 (expand the bracket) / 1; standings: 1 (Records) / 1 / 1 | 1 / 1 / 3 | players: **0**, the Display on their own phone; staff as A |
+| T4 Vision and back | 1280 | 2 / 2 / 0 | 2 / 2 / 0 | 2 / 2 / 0 | 2 / 2 / 0 |
+| | 390 | 1 + **no way back** (full reload) | 2 / 2 / 0 (bottom bar) | 2 / 2 / 0 only if the nav stays visible; not in B's scope | 2 / 2 / 0 (bottom bar) |
+
+**Per night** (8 entrants means 7 matches, all on tables, no forfeits): today costs about **14 tab changes on Send alone** (7 × (1 tab + 1 app jump)), versus 0 in A and C′ and about 14 in B, because B only moves the split. That is why B is ruled out as the main structure: it names the problem by role but keeps Send and Score apart.
+
+## 13. Risks and build effort
+
+| | A: Tonight | B: by role | C′: console + Display |
+|---|---|---|---|
+| **Removes the measured #1 cost** (the Send ↔ Score split) | Yes | **No**: it moves it (Desk ↔ Table) | Yes |
+| **Serves the TV and players** (#2) | No | Partly: Board is still a control surface, with no auto-refresh | **Yes** |
+| **Phone** (#3) | Yes (bottom bar; Records makes Tonight shorter) | Partly (Table is good; Desk is still long) | Yes |
+| **Main risks** | *Mode slips* (NN/g): a phase that hides controls. Mitigation: all four phases are always clickable siblings, and the default phase follows the state. Also: rewording about 10 check lines in the 167 list, and rewriting `tests/test_ops.js` (69 tests, **15 references to tab ids**). | Two tabs for one night, so the split remains. Role labels do not match one operator doing every role at a small hall. | Everything in A, plus: **(1) the Display needs a refresh path.** Polling `GET /api/operations` every 2–5 s is enough at this scale. Server-sent events exist only on the unmerged `clock-sync` branch. **(2) Access:** players' phones cannot get past Cloudflare Access today (owner-only allow policy, per the docs). A read-only public path is a security decision for the owner, *not* an IA one. **(3) Shot clock on the TV:** hidden until `clock-sync` merges (rule 167, no fake data). **(4)** The CSP and security headers must cover `/display`. |
+| **Build effort (1 engineer, including tests and a 1280/390 browser check)** | **4–6 days**: 2 for the Tonight shell and phase strip, 1 for Play (queue + tables + side panel), 1 for Records and the bottom bar, 1–2 for tests, rewording the inventory checks, and the EN/中 strings. | **3–4 days**: mostly regrouping existing sections. | **6–9 days**: A (4–6), plus the read-only Display route and polling (1–2), plus the phone layout of the Display and auto-scaling type for the TV (1). Access policy work, if the owner wants the Display public, is separate and not estimated here. |
+
+Estimates are opinions. They assume the current single-file `ops.js` renderer is kept, not rewritten. An owner decision on public access could move C′ by more than any other factor.
+
+## 14. Recommendation
+
+**Build C′: merge Floor, Set up and Matches into one *Tonight* console, whose *Play* view puts the queue, the tables and the bracket on one screen, and add a separate read-only `/display` for the TV and players' phones.** One-sentence justification: the measured cost sits almost entirely in the Send (Matches) ↔ Score (Floor) round trip, which only a merge removes, and two of the four device roles have no surface at all, which only a Display fixes.
+
+**Answer to the owner:** yes, combine the first three tabs, but as **one live-night workspace**, not as one long page. Keep the phases visible, move history to *Records*, and give the TV and players their own screen.
+
+**What to prototype first, to prove it (about 1–1.5 days, throwaway, on a fixture ≥8210):** only **Tonight › Play**, with the queue (Send), the table tiles (focus + scoreboard) and the read-only bracket on one screen, at 1280 and 390, plus a 30-line `/display` page that polls `GET /api/operations`. Re-run this doc's T2 and T3 driver against it. The prototype passes if **T2 goes from 2 tab switches + 2 jumps to 0** at both widths, with no new scroll at 390, and the Display updates within 5 s of a score change. If T2 does not reach 0, do not build the rest.
+
+## 15. Wireframes
+
+- **HTML, low-fidelity, open in a browser:** `out/ia/wireframe-recommended.html`, with 4 frames:
+  1. Tonight › Play at 1280;
+  2. Tonight › Register at 1280;
+  3. staff phone at 390 beside a player's phone (Display) at 390;
+  4. the TV Display.
+- **ASCII**, the same structure:
+
+```
+1280 · Tonight › Play (operator console)
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│ ● Corner Pocket   [Tonight] Records  Vision  Regulars  Back room     EN|中 ☾|☀ [Display↗]│
+├──────────────────────────────────────────────────────────────────────────────────────────┤
+│ ✓Register(8) ✓Rack [Play · 2 on table · 1/7 signed] Close      Clock 0:30 ▶ ↺ 20 30 45 60│
+├──────────────────────┬─────────────────────────────────────────┬─────────────────────────┤
+│ QUEUE                │ TABLES                                  │ BRACKET (read-only)     │
+│ Rico–Keiko [Send→T3] │ [T1 Lulu 1–1 Alan] [T2 TJJ 2–0 Haoye]  │ R1 Wanwan 3–1 Su ✓      │
+│ Yuefu–Nadia  held    │ [T3 free]          [T4 free]            │ R1 Lulu–Alan  T1        │
+│   Nadia [Here now]   │ ┌ SCOREBOARD · T2 ─────────────────────┐│ R1 TJJ–Haoye  T2        │
+│ R2 … waiting         │ │ A TJJ   ●●○  2  [+][−]               ││ R2 …  R3 …              │
+│ ATTENDANCE           │ │ B Haoye ○○○  0  [+][−]               ││ TONIGHT'S TABLE         │
+│ Nadia  not here      │ │ [Clear] [Release] [More▾] [Sign]     ││ 1 Wanwan 1/1  2 Su 0/1  │
+│                      │ └──────────────────────────────────────┘│ → Records for the rest  │
+└──────────────────────┴─────────────────────────────────────────┴─────────────────────────┘
+
+390 · staff phone                         390 · player's phone = /display
+┌──────────────────────────────┐          ┌──────────────────────────────┐
+│ ● Corner Pocket      EN ☾    │          │ ● Friday 8-Ball Open   live  │
+│ ✓Reg ✓Rack [Play 2·1/7] Close│          │ ON THE TABLES                │
+│ Clock 0:30 [Start][Reset]    │          │  T1 Lulu 1–1 Alan            │
+│ Table ▾ T2 · TJJ / Haoye     │          │  T2 TJJ 2–0 Haoye            │
+│  A TJJ    2   [+][−]         │          │ BRACKET                      │
+│  B Haoye  0   [+][−]         │          │  R1 Wanwan 3–1 Su ✓ …        │
+│  [Sign scorecard] [More▾]    │          │ TONIGHT'S TABLE              │
+│ NEXT UP                      │          │  1 Wanwan 1/1 …              │
+│  Rico–Keiko      [Send→T3]   │          │ (no controls, auto-refresh)  │
+│ Bracket ▸                    │          │                              │
+├──────────────────────────────┤          └──────────────────────────────┘
+│ Tonight │Records│Vision│More │  ← fixed bottom bar, always reachable
+└──────────────────────────────┘
+```
+
