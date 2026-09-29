@@ -187,8 +187,7 @@ class LiveProcessor:
         # callable returning the operations document (the server sets its store's
         # ops_get); None = read out/corner-pocket/state.json, as before
         self.operations_document = None
-        self._capture_factory = capture_factory or _capture
-        self._default_capture = capture_factory is None
+        self._capture_factory = capture_factory or self._open_capture
         self._live_read_timeout_ms = live_read_timeout_ms
         self._resolver = resolver or _resolve_twitch
         self._infer = infer
@@ -366,7 +365,7 @@ class LiveProcessor:
         ``#EXT-X-PROGRAM-DATE-TIME`` or an unreachable one leaves the delay None, and only
         a live playlist with timing tags ever produces a number.
         """
-        if self._source.get('kind') != 'twitch' or not isinstance(media, str):
+        if not self._live() or not isinstance(media, str):
             return None
         probe = _UpstreamDelayProbe(media, refresh_s=self._upstream_refresh_s)
         with self._condition:
@@ -378,17 +377,43 @@ class LiveProcessor:
             self._probe_thread.start()
         return probe
 
+    def _live(self):
+        """Whether the running source is a live broadcast: the one place a kind decides it.
+
+        A recording (an allowlisted ``dataset`` file or a ``vod-replay``) is paced at its
+        own frame rate, has no live edge to probe and can end; only a broadcast gets the
+        long read deadline and the probe.  An unknown kind is refused, never guessed live.
+        """
+        kind = self._source['kind']
+        if kind not in ('twitch', 'dataset', 'vod-replay'):
+            raise _SourceError('Unsupported live source kind')
+        return kind == 'twitch'
+
+    def _open_capture(self, media):
+        """The default capture factory: OpenCV with the read deadline the source needs."""
+        return _capture(media, read_timeout_ms=self._live_read_timeout_ms if self._live() else 2000)
+
+    def _replay_stall(self, capture, waited_s):
+        """Why a recording that stopped delivering has not reached its end, or None.
+
+        None means it ended: a local file that runs out is over.  A source that knows its
+        own length (the Twitch VOD replay in ``annotator/unified_server.py``) overrides
+        this with the operator's sentence, and the stop becomes an error, not ``eos``.
+        """
+        return None
+
     def _decode(self, generation, media):
         capture = None
         try:
             import cv2
-            replay = self._source['kind'] == 'dataset'
+            replay = not self._live()
             if not replay:
                 media = self._resolver(media)
             if self._stop.is_set():
                 return
-            capture = self._capture_factory(media) if not self._default_capture else _capture(
-                media, read_timeout_ms=2000 if replay else self._live_read_timeout_ms)
+            # Always through the factory: a subclass or mixin may have installed its own
+            # (the vod-replay pacer does), and the default one picks the read deadline.
+            capture = self._capture_factory(media)
             if not capture.isOpened():
                 raise _SourceError('Could not open the selected media source')
             if not replay:
@@ -411,8 +436,10 @@ class LiveProcessor:
                 decoded = self._clock()
                 self._latency.add('decode', (decoded - read_started) * 1000)
                 if not ok:
-                    if not replay:
-                        self._fail(generation, 'Live stream ended or read timed out; restart to reconnect')
+                    stalled = 'Live stream ended or read timed out; restart to reconnect' if not replay \
+                        else self._replay_stall(capture, decoded - read_started)
+                    if stalled:
+                        self._fail(generation, stalled)
                     break
                 if frame is None or len(frame.shape) != 3 or frame.shape[2] != 3 or not (0 < frame.shape[0] <= 2160 and 0 < frame.shape[1] <= 3840):
                     raise _SourceError('Decoded frame must be a color image no larger than 3840 × 2160')

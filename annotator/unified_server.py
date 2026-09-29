@@ -243,6 +243,22 @@ class VodReplaySourceMixin:
         self._replay_capture = capture
         return capture
 
+    def _replay_stall(self, capture, waited_s):
+        """A VOD knows its length (Twitch's own ``length_s``): stopping short of it is a
+        stall the operator can resume from, not the end of the replay."""
+        if self._replay is None:
+            return super()._replay_stall(capture, waited_s)
+        length = (self._replay_resolution or {}).get("length_s")
+        position = capture.state()["video_s"]
+        known = isinstance(length, (int, float)) and length > 0
+        # The pacer counts frames, which under-reads a broadcast that dropped some: allow
+        # 1% of the VOD, at least 15 s (one Twitch segment is <= 12 s), before calling it short.
+        if known and position >= length - max(15.0, 0.01 * length):
+            return None
+        hms = lambda seconds: "%d:%02d:%02d" % (seconds // 3600, seconds % 3600 // 60, seconds % 60)
+        return "Replay stalled: no data from Twitch for %d s at %s of %s; restart with start_s=%d to continue" % (
+            round(waited_s), hms(int(position)), hms(int(length)) if known else "an unknown length", int(position))
+
     def _source_media(self, source):
         if isinstance(source, dict) and source.get("kind") == "vod-replay":
             from annotator.twitch_vod_source import TwitchVodError, evidence, resolve_vod

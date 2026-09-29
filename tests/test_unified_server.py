@@ -335,6 +335,126 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(payload['replay']['drift_s'], -1.5)
         self.assertEqual(payload['replay']['resolution']['media_url_host'], 'usher.ttvnw.net')
 
+    def replay_through_the_decoder(self, *, frames, length_s, start_s=0.0):
+        """A vod-replay run by the processor exactly as the server builds it (capture_factory None).
+
+        Frames go through the real decoder thread.  Twitch is stubbed at resolve_vod and
+        OpenCV at twitch_vod_source._open, so the capture that opens is the real
+        VodRealtimeCapture; its clock is injected and only advances when the pacer
+        sleeps, so pacing is read off that clock and never off wall time.
+        """
+        from annotator.twitch_vod_source import VodRealtimeCapture
+        from annotator.unified_server import vod_replay_processor_class
+
+        class Clock:
+            def __init__(self):
+                self.now, self.slept = 0.0, []
+
+            def __call__(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.slept.append(seconds)
+                self.now += seconds
+
+        class Decoder:
+            """OpenCV stand-in: `frames` colour frames at 30 fps, then no more data."""
+            def __init__(self):
+                self.index, self.released = 0, False
+
+            def isOpened(self):
+                return not self.released
+
+            def get(self, prop):
+                return 30.0
+
+            def set(self, prop, value):
+                return True
+
+            def read(self):
+                if self.index >= frames:
+                    return False, None
+                self.index += 1
+                return True, np.full((16, 16, 3), self.index, dtype=np.uint8)
+
+            def release(self):
+                self.released = True
+
+        clock, opened = Clock(), []
+
+        class Paced(VodRealtimeCapture):
+            def __init__(self, media, **kwargs):
+                super().__init__(media, clock=clock, sleep=clock.sleep, **kwargs)
+                opened.append(self)
+
+        resolved = {'vod_id': '12345', 'title': 't', 'length_s': length_s, 'channel': 'c', 'master_status': 200,
+                    'media_url': 'https://usher.ttvnw.net/vod/12345.m3u8?nauth=secret',
+                    'variant': {'height': 720, 'bandwidth': 1}, 'variants': [],
+                    'playlist': {'type': 'VOD', 'target_duration_s': 2.0, 'segments_in_head': 3, 'has_endlist': True}}
+        processor = vod_replay_processor_class()(self.root, capture_factory=None,
+                                                 infer=lambda frame, detectors, root: {})
+        self.addCleanup(processor.stop)
+        with patch('annotator.twitch_vod_source.resolve_vod', return_value=resolved), \
+             patch('annotator.twitch_vod_source.VodRealtimeCapture', Paced), \
+             patch('annotator.twitch_vod_source._open', return_value=Decoder()) as vod_open, \
+             patch('annotator.live_processing._capture') as live_open, \
+             patch('annotator.live_processing._fetch_playlist') as playlist:
+            processor.start({'kind': 'vod-replay', 'vod_id': '12345', 'start_s': start_s, 'rate': 1.0})
+            deadline = time.monotonic() + 20
+            while True:
+                status = processor.status()
+                if not status['decoder_alive'] and not status['worker_alive']:
+                    break
+                if time.monotonic() > deadline:
+                    self.fail('replay never finished: %r' % status)
+                time.sleep(0.005)
+        return dict(processor=processor, status=status, clock=clock, opened=opened, resolved=resolved,
+                    vod_open=vod_open, live_open=live_open, playlist=playlist)
+
+    def test_vod_replay_is_paced_through_the_decoder_and_its_end_is_eos(self):
+        """Regression (4a9654b): the server's processor decoded a vod-replay unpaced.
+
+        Built with capture_factory=None, the decoder bypassed the mixin's factory and
+        opened the plain live capture: ~450 fps received, status.replay absent, the
+        20 s live deadline, and a CDN hiccup ended it as a dead live stream.
+        """
+        from annotator.twitch_vod_source import VodRealtimeCapture
+        # The same 3:43:17 VOD as the stall case below; only where the data runs out differs.
+        run = self.replay_through_the_decoder(frames=30, length_s=13397, start_s=13390.0)
+        status = run['status']
+        self.assertEqual(len(run['opened']), 1, 'the decoder opened the 1x pacer, not a plain capture')
+        self.assertIsInstance(run['opened'][0], VodRealtimeCapture)
+        # Every frame waited for its wall-clock slot on the injected clock: one source
+        # frame period per read (29 between the 30 frames, 1 for the read that found none).
+        self.assertEqual(status['frames_received'], 30)
+        self.assertEqual(len(run['clock'].slept), 30)
+        self.assertTrue(all(abs(slept - 1 / 30.0) < 1e-9 for slept in run['clock'].slept))
+        replay = status['replay']
+        self.assertEqual((replay['kind'], replay['live'], replay['pacing']), ('vod-replay', False, 'wall-clock'))
+        self.assertEqual((replay['frames_served'], replay['frames_dropped']), (30, 0))
+        self.assertEqual((replay['resolution']['length_s'], replay['video_s']), (13397, 13391.0))
+        # The replay's own deadlines (open 15 s, read 8 s); the 20 s live capture never opens.
+        self.assertEqual(run['vod_open'].call_args.args, (run['resolved']['media_url'],))
+        self.assertEqual(run['vod_open'].call_args.kwargs, {'open_timeout_ms': 15000, 'read_timeout_ms': 8000})
+        run['live_open'].assert_not_called()
+        # A recording has no live edge: the upstream probe never starts.
+        run['playlist'].assert_not_called()
+        self.assertIsNone(run['processor']._upstream_probe)
+        self.assertIsNone(status['upstream_delay_ms'])
+        # It reached its declared length, so that is the end, not a failure.
+        self.assertEqual(status['state'], 'eos')
+        self.assertIsNone(status['error'])
+        self.assertEqual(status['frames_processed'] + sum(status['drop_reasons'].values()), 30)
+
+    def test_a_vod_replay_that_stalls_mid_vod_is_an_error_saying_where(self):
+        run = self.replay_through_the_decoder(frames=6, length_s=13397, start_s=754.0)
+        status = run['status']
+        self.assertEqual(status['state'], 'error')
+        self.assertRegex(status['error'], r'^Replay stalled: no data from Twitch for [0-9.]+ s at 0:12:34 of 3:43:17; '
+                                          r'restart with start_s=754 to continue$')
+        self.assertEqual((status['replay']['frames_served'], status['replay']['read_failures']), (6, 1))
+        run['live_open'].assert_not_called()
+
     def test_a_refused_vod_is_a_refused_start_with_twitchs_own_sentence(self):
         from annotator.twitch_vod_source import TwitchVodError
         from annotator.unified_server import vod_replay_processor_class

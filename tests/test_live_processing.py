@@ -333,6 +333,26 @@ class LiveProcessingTests(unittest.TestCase):
             self.finished(processor)
         self.assertEqual(opener.call_args.kwargs, {'read_timeout_ms': 2000})
 
+    def test_a_subclass_capture_factory_is_honoured_and_an_unknown_kind_is_not_live(self):
+        """The decoder opens through ``_capture_factory`` even when none was injected.
+
+        4a9654b let a processor built with ``capture_factory=None`` bypass the attribute and
+        call ``_capture`` itself, so a factory installed later (the vod-replay mixin's) was
+        silently skipped.  A kind this file does not know is refused, not treated as live.
+        """
+        processor = self.processor()
+        opened = []
+        processor._capture_factory = lambda media: opened.append(media) or Capture(count=2)
+        with patch('annotator.live_processing._capture') as plain:
+            processor.start(self.source)
+            status = self.finished(processor)
+        plain.assert_not_called()
+        self.assertEqual(len(opened), 1)
+        self.assertEqual((status['state'], status['frames_received']), ('eos', 2))
+        processor._source = dict(kind='future')
+        with self.assertRaises(RuntimeError):
+            processor._live()
+
     def test_live_burst_is_published_without_a_notify_storm(self):
         """The decoder may outrun a live source; the worker must not be woken per frame.
 
