@@ -328,4 +328,95 @@ pinned tests) or by an exact grep. The paths are in the worktree.
   click is silently dropped. The shell's own `Enter a Twitch VOD id or URL` refusal in
   `pickReplay()` is unreachable from the panel.
 
-Counts: **167 numbered features** in 18 surfaces, plus 13 findings (D1–D7, F1–F6).
+Counts: **167 numbered features** in 18 surfaces, plus 13 findings (D1–D7, F1–F6), plus the
+**14 supplements S1–S14** in §20. **181 items in all.**
+
+---
+
+## 20. Supplements S1–S14 (features on `main` that the 167 missed)
+
+`docs/ia-assessment.md` §0 found fourteen user-visible features in `ops.js` with no item above.
+Each was confirmed with a literal grep of `ops.js`; a case-insensitive grep of this file found no
+item for it. They are bound by the same rule as items 1–167: they may move, but the check on the
+line must still pass. The *Today* tab is where each one lives on `main` at `4f289b2`.
+
+- **S1. First-night guide** (`firstRun()`, Floor, before the draw only). Title `First night? Three steps to the first break` / `第一次开场？三步到开球`; three steps, each a button that opens the place that does it: `Add your regulars (optional)` / `添加常客（可选）`, `Sign in at least two players for tonight` / `为今晚登记至少两位球员`, `Rack the night: the draw sends matches to free tables` / `排出赛程：对阵会分到空闲球台`. A done step shows `✓`. Note: `Guests can play without a profile. This guide leaves once the draw exists.` Check: on an empty club click step 2 → the registration desk opens; rack the night → the guide is gone. [test: onboard: an empty club gets three real steps on the Floor, and they leave once the draw exists]
+- **S2. Rename the event after the draw** (`#rename-form`, `tournament_rename`, Set up). Once the night is racked the locked form keeps one editable field, *Event name*, with *Rename event* / *重命名赛事*. The rename is audited (`Event renamed` / `赛事已重命名` in the Night log). Check: rack, rename → `Saved.`, the new name shows, and a new Night log line reads `Event renamed`. [test: after the draw and in the archive only the name can be edited, and it is audited (R2)]
+- **S3. Delete an event that has nothing signed** (`event-delete`, `tournament_delete {confirm:true}`, Set up › End of the night). *Delete event* / *删除赛事* is offered for tonight's event only while it has entrants and no signed result. Confirm: `Delete “<name>”? No result was signed in it. This cannot be undone.` Check: register two entrants, *Delete event*, confirm → the Night log reads `Event deleted (nothing was signed)`. Sign one result → the button is gone. [test: delete only an unsigned event; otherwise hide it from history, which erases nothing (R1)]
+- **S4. Registration-desk search** (`.desk-search`, `deskFilter()`, Set up). One box per seat, placeholder `Type to find a regular` / `输入以查找常客`. It filters the seat's regular select in place with the roster's matcher (every word, NFKC, accent and case folding). A single match is selected; no match shows `No regular matches` / `没有匹配的常客`. Check: type `wan` → only Wanwan is left and selected; type `zzz` → the no-match note shows. [test: R13: the registration desk filters its regulars in place with the same matcher]
+- **S5. Random doubles pairing** (`pairingCard()`, Set up, doubles and before the draw only). *Add solo player* / *添加单人报名* (a regular or a guest name) builds the solo pool, shown as chips with `×` (`pool_remove`), or `No solo sign-ups yet.` *Pair at random* / *随机配对搭档* needs an even pool of 2 or more (otherwise the reason is shown) and draws teams with `seed <n>`. Then *Use these teams* / *采用这些组合* (`pair_accept`), *Re-roll* / *重新抽签* (`pair_draw`) or *Back to the list* / *返回名单* (`pair_clear`). Check: Doubles, add 4 solos, *Pair at random* → 2 teams and a seed; *Use these teams* → 2 entrants. [test: doubles can pair solo sign-ups at random: seed shown, re-roll, accept (R3)]
+- **S6. Results sheet** (`resultsSheet()`, Matches). *Results sheet* / *赛果单* opens a printable sheet of one night (tonight once drawn, or any archived night): the name, a date · format · race line, the champion from the final (or `Not decided yet` / `尚未决出`), every round's result lines and the second-chance line. *Print / save as PDF* / *打印 / 存为 PDF*, *Copy results as text* / *复制赛果文字* (then `Results copied. Paste them into the group chat.`) and a back button. Check: open it, *Copy results as text* → the message appears and the clipboard holds the bracket as text. [test: a results sheet prints the whole bracket and copies as text, champion from the final (R10)]
+- **S7. Second chance (revival)** (`revivalCard()`, Matches). The card appears once every two-sided round-1 match is signed, while a round-1 bye exists and no round-2 result is signed. *Draw a round-1 loser* / *抽取一名首轮负者* asks `Draw one round-1 loser at random to re-enter the bracket in a bye slot? …` and records the draw with its seed. The card names who was drawn, the attempt, the pool, the seed and the time, and says so when it was redrawn. *Undo the draw* / *撤销抽签* (confirm) is offered only while nothing more has been signed. Check: on a 5-entrant night sign round 1, *Draw* → a named loser takes the bye slot; *Undo* → the bye is back. [tests: a second chance is a labelled random draw, confirmed, undoable, never a result (R6); a redrawn second chance says so on the card, the sheet and the copied text (R6 follow-up)]
+- **S8. Bracket density** (`density`, `localStorage cp-ops-density`, Matches). *Compact* / *紧凑* (the default: one line per side with a status dot; the head row and the controls open on hover, focus or selection) or *Full cards* / *完整卡片*, per device. Check: pick *Full cards*, reload → still full cards. [test: R9: the compact bracket is one line per side with a status dot; the full card is still there]
+- **S9. Event table** (`eventTable()`, Matches). *Event table* / *本场战绩表*, tonight only, `Signed results only: a bye is not a match, a forfeit counts.` Rank, name, wins, played, win %, sorted by wins, then win %, then name. Check: sign one match → its winner shows 1 win of 1 played. [test: standings count results, not ratings; the event table sorts wins, win %, name (R4)]
+- **S10. Per-match Away/Here and Forfeit** (`matchControls()`, Matches bracket card). On every scheduled, live or delayed match with two sides: `Not here: <name>` / `Here now: <name>` per side (`match_absence`, confirm `Mark this player as not here? The match is held until they return; the table is released.`) and `Forfeit: <name>` per side (`match_forfeit`, confirm `Record a forfeit for this side and advance the opponent?`). Check: *Forfeit: A*, confirm → the match is complete and B advances. [test: forfeit and in-match absence are reachable from the Matches bracket, each behind a confirm (F1, R7)]
+- **S11. Archived events: rename, hide, show hidden, delete** (Matches › Archived events). Each archived night has *Results sheet*, *Rename event* (prompt `New name for this archived event (the results do not change):`, `tournament_rename`) and either *Hide from history* / *从历史中隐藏* (a night with a signed result; confirm, `tournament_hide`) or *Delete event* (nothing signed; confirm, `tournament_delete`). Hidden nights leave the list; *Show <n> hidden* / *显示 <n> 场已隐藏* and *Hide hidden events* toggle them, and a shown hidden night carries a hidden tag. Check: hide an archived night → it disappears and `Show 1 hidden` appears; click it → the night is back, tagged. [tests: delete only an unsigned event; otherwise hide it from history, which erases nothing (R1); after the draw and in the archive only the name can be edited, and it is audited (R2)]
+- **S12. Player record** (`recordView()`, Regulars profile). *Player record* / *球员战绩* opens an all-time, read-only record: `Signed results in <n> events since <date>. Read-only.`, tiles for played, wins, losses and win %, *By event* / *分场战绩* and *Head-to-head* / *交手记录* from signed matches only, and *Back to profile* / *返回档案*. Check: open a regular with one signed win → By event lists that night with one win. [test: a player record is all-time and read-only, with head-to-head from signed matches only (R15, R8)]
+- **S13. Forget a face** (`face-forget`, `POST /api/identity/forget`, Regulars profile). *Delete face data* / *删除人脸数据*, behind a confirm that says what goes and what stays. The result names the counts: `Face data deleted: <n> stored faces, <n> matched person unbound, <n> face samples`. Cancel sends nothing. Check: *Delete face data*, cancel → no request; confirm → the counts are shown. [test: the regular profile deletes face data only after a confirm that says what goes, and shows the counts]
+- **S14. For maintainers** (Back room). A collapsed `<details>`, *For maintainers* / *维护人员*, `System status and the product roadmap. Not needed to run a night.`, holding the status table (item 59) and the roadmap (item 58). The operator panels (table appearance, notes) come first. Check: open the Back room → the section is closed; expand it → both tables. [test: round 1 · Back room: operator panels first; system status and roadmap under a collapsed, labelled maintainers section]
+
+---
+
+## 21. New homes: the Tonight console (IA option C′, operator half)
+
+The owner chose option C′ of `docs/ia-assessment.md` (§10, §14): the operator console of option A
+plus a separate read-only Display. This section gives **every one of the 181 items its home in the
+console**; it follows the assessment's §11 mapping (column A), and every deviation is named in the
+last column with its reason. The Display (`/display`, built separately) only *copies* some items
+read-only; it is never an item's home, and every write path stays in the console.
+
+Legend: **T›Register**, **T›Rack**, **T›Play**, **T›Close** = Tonight and its phase;
+**R** = Records; **V** = Vision; **Rg** = Regulars; **BR** = Back room; **Sh** = shell (every
+screen); **More** = the ≤750 px bottom bar's *More* sheet. *Reworded* means the item's behaviour is
+kept and only the tab its check line names changes; the stage that moves the item rewords it.
+
+Structure: top-level tabs **Tonight · Records · Vision · Regulars · Back room**. Tonight has a phase
+strip **Register · Rack · Play · Close**; all four are always clickable, and the default is the
+night's phase (no draw → Register; a draw with unsigned matches → Play; everything signed → Close).
+At ≤750 px the nav is a fixed bottom bar: **Tonight · Records · Vision · More** (More: Regulars,
+Back room). Routes are hash routes: `#/tonight` (the night's phase), `#/tonight/register`,
+`#/tonight/rack`, `#/tonight/play`, `#/tonight/close`, `#/records`, `#/vision`, `#/regulars`,
+`#/backroom`. The old tab ids redirect: `floor` → `#/tonight/play`, `setup` →
+`#/tonight/register`, `matches` → `#/tonight/play`, `players` → `#/regulars`, `status` →
+`#/backroom`, `vision` → `#/vision`.
+
+| Items | Today | New home | Check line / deviation |
+|---|---|---|---|
+| 1 brand link | Sh | Sh | Reworded: the reload lands on Tonight at the night's phase, not on Floor. |
+| 2 connection badge, 5 EN/中, 6 theme, 8 message line, 9 conflict, 10 busy lock, 11 navigation veto, 12 leave guard, 14 offline screen, 15 reduced motion | Sh | Sh | Unchanged. 11 also guards a route change (hash, back/forward). |
+| 3 six tabs | Sh | Sh: five tabs, plus the ≤750 px bottom bar and hash routes | Reworded: each tab gets `.active` and `aria-current="page"`, `#main` swaps, and the URL hash follows; back/forward walk the routes. |
+| 4 nav counters | Sh | Sh: Tonight = entrants before the draw, matches not complete after it; Regulars = players | Reworded (Set up and Matches counters merge into Tonight's). |
+| 7 header strip | Sh (tabs 2–6) | Sh: every screen except T›Play; the score button opens T›Play on that match | Reworded. |
+| 13 sticky header | Sh | Sh; at ≤750 px the fixed bottom bar is the always-reachable nav | Reworded: at 390 the bottom bar stays on screen while the page scrolls. |
+| 16–26 shot clock (one state, many views) | Floor, strip, Vision stagebar | T›Play (the existing `clockHTML()`, unchanged), the strip, the Vision stagebar | Reworded: "Floor" → "Tonight › Play". The clock logic is not touched (the shot-clock worker owns it). |
+| 27 scoreboard, 28 focus picker, 29 sides A/B, 30 +/−, 31 Win frame, 33 footer actions | Floor | T›Play › Tables: one scoreboard per table; the table tiles pick the focused table and `#focus-match` stays for the keyboard | Reworded: "on Floor" → "in Tonight › Play". |
+| 32 Waiting on … / Here now | Floor | T›Play (focused table and the Queue's held rows) + T›Register attendance | Reworded. |
+| 34 Floor tiles | Floor | T›Play summary line (*Cards signed*, *Entrants*, *Guests tonight*); *Up next* becomes the Queue, **with Send** | Reworded: "sign one match → Cards signed becomes `1/<n>`" is read on Play. |
+| S1 first-night guide | Floor | T›Register (before the draw) | Steps open Regulars, the registration desk and the Rack card. |
+| 35 the night, 36 locked notice, S2 rename after the draw | Set up | T›Register | Reworded: "Set up" → "Tonight › Register". |
+| 37 registration desk, S4 desk search | Set up | T›Register | Reworded. |
+| S5 random doubles pairing | Set up | T›Register | – |
+| 38 Rack the night | Set up | T›Register (last card) and T›Rack; racking **shows T›Play** (the draw) | Reworded: "matches appear on Matches" → "Tonight › Play opens with the draw". |
+| 39 entrants list | Set up | T›Register (Entrants and attendance) | Reworded. |
+| 56 guests tonight (Add to regulars) | Regulars | T›Register (attendance), with a link to Regulars | Reworded: it moves out of Regulars (per §11). |
+| 40 archive & new event, S3 delete event | Set up | T›Close | Reworded: the old event then appears in Records › Archived events. |
+| 41 Matches tiles | Matches | T›Play summary line (event, format, race, signed, on table, delayed) | Reworded. |
+| 42 scorekeeper's card, 43 score select sync | Matches | T›Play: the number-entry mode of the focused table (`#score-form`, *Save*, *Sign*), kept, not removed | 43 reworded: switching the focused table refills the A and B inputs (one scoring model: the table picker is the match select). |
+| 44 bracket by round (Send, Here now) | Matches | T›Play: the Queue (*Send to table*, *Here now*) + the bracket panel | Reworded: *Send to table* keeps you on T›Play with that table's scoreboard focused (it opened Floor). |
+| S8 bracket density | Matches | T›Play bracket panel | §11 also lists R; R shows no live bracket (archived nights read as round lists), so density has one home. |
+| S10 per-match Away/Here and Forfeit | Matches (card) | T›Play: the focused table's *More*, and each Queue row's *More* | Reworded: "from the Matches bracket" → "from Tonight › Play". |
+| S7 second chance | Matches | T›Close (it opens after round 1) | Per §11. |
+| S6 results sheet | Matches | T›Close (tonight) + R (each archived night) | – |
+| S9 event table | Matches | T›Play (beside the bracket) | Deviation from §11's "+ R": Records holds history and all-time standings; a second copy of tonight's table there would be the duplication §3 of the assessment counts against us. |
+| 45 house standings | Matches | R | Reworded. Each name also opens the player record (S12). |
+| 46 night log | Matches | R | Reworded. |
+| 47 archived events, S11 rename/hide/show/delete | Matches | R | Reworded. |
+| 48 Regulars tiles, 49 roster, 50 add, 51 profile, 52 edit, 53 delete, 54 enrol face, 55 modal close, S12 player record, S13 forget face | Regulars | Rg (≤750 px: under More); S12 is also opened from R's standings | – |
+| 57 table appearance, 58 roadmap, 59 status table, 60 operator notes, S14 maintainers | Back room | BR (≤750 px: under More) | – |
+| 61–160 Vision | Vision | V, unchanged: one surface | At ≤750 px the bottom bar stays visible on Vision, which gives it an exit; the sheet tabs and sheets sit above the bar. 102's check ("open Floor") reads "open any other tab". |
+| 161 中/EN parity, 164 touch targets, 165 read-only API, 166 shell does not intercept the review, 167 no fake data | Cross-cutting | unchanged; they bind the new surfaces too | 164 reworded: "the Floor + button" → "the Play + button". |
+| 162 mobile 390 px, 163 tablet ≤1100 px | Cross-cutting | re-checked on every new screen; Vision's bottom sheets keep their behaviour above the bottom bar | 162 reworded for the bottom bar. |
+
+Count: 1 + 10 + 1 + 1 + 1 + 1 = 15 shell items; 16–26 = 11; 27–34 = 8; 35–39 = 5, 40 = 1; 41–47 =
+7; 48–55 = 8, 56 = 1; 57–60 = 4; 61–160 = 100; 161–167 = 7. **167**, plus S1–S14 = 14, each placed
+once. **181 homes, 0 items removed.**
