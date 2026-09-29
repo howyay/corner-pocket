@@ -5,6 +5,7 @@ temp root, always. `PostgresContract` runs them on a PostgresStore in a fresh
 throwaway schema (migrated, dropped afterwards), only when POOL_DATABASE_URL is
 set - it never touches the tables that production data may be imported into.
 """
+import json
 import os
 import tempfile
 import threading
@@ -256,6 +257,40 @@ class Contract:
         self.assertEqual(self.store.labels_get("unlabeled_crops2"), {})
         with self.assertRaises(ValueError):
             self.store.labels_get("not-a-set")
+
+    # -- imported VODs (src/datasets.py): the same records under out/vods/<id>/ ----
+    IMPORTED = "tw-1000000001-3600-3900"
+
+    def import_vod(self, dataset_id=IMPORTED):
+        """List an imported VOD in out/vods/index.json, as annotator/vod_import.py does."""
+        from src.datasets import parse_imported_id
+        index = self.root / "out" / "vods" / "index.json"
+        index.parent.mkdir(parents=True, exist_ok=True)
+        vods = json.loads(index.read_text())["vods"] if index.is_file() else {}
+        vods[dataset_id] = {"vod_id": parse_imported_id(dataset_id)[0], "channel": "examplechannel"}
+        index.write_text(json.dumps({"vods": vods}))
+
+    def test_an_imported_vod_keeps_its_corrections_and_verdicts(self):
+        self.import_vod()
+        self.assertIsNone(self.store.correction_get(self.IMPORTED, 120))
+        self.store.correction_put(self.IMPORTED, 120, {"boxes": [{"label": "ball"}], "saved_at": "t1"})
+        self.assertEqual(self.store.correction_get(self.IMPORTED, 120), {"boxes": [{"label": "ball"}], "saved_at": "t1"})
+        self.assertIsNone(self.store.correction_get("vod30", 120), "each dataset keeps its own corrections")
+        record = self.store.verdict_put(self.IMPORTED, 7, {"verdict": "wrong", "shooter": "A"})
+        self.assertEqual(self.store.verdicts_get(self.IMPORTED), {"7": record})
+        self.assertEqual(self.store.verdicts_get("vod30"), {})
+
+    def test_a_malformed_or_unlisted_dataset_is_refused_the_same_way_on_both_stores(self):
+        """Existence, like JsonStore: an id is usable only while the registry lists it."""
+        self.import_vod()
+        for bad in ("tw-0123", "tw-1-9-5", "tw-1000000001-3600-3900\n", "../scan30", "vod31",
+                    "tw-1000000001"):                      # well-formed, but not imported
+            with self.assertRaisesRegex(ValueError, "unknown dataset", msg=repr(bad)):
+                self.store.correction_put(bad, 1, {"boxes": []})
+            with self.assertRaisesRegex(ValueError, "unknown dataset", msg=repr(bad)):
+                self.store.verdict_put(bad, 1, {"verdict": "wrong"})
+            with self.assertRaisesRegex(ValueError, "unknown dataset", msg=repr(bad)):
+                self.store.correction_get(bad, 1)
 
     def test_corrections_and_anchors(self):
         self.assertIsNone(self.store.correction_get("vod30", 2100))

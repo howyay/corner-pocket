@@ -30,8 +30,8 @@ from pathlib import Path
 import json
 
 from src import db
-from src.store import BALL_SETS, DATASETS, JsonStore, StoreConstraintError
-from src.store_files import dump, fmt_of, get_document, put_document
+from src.store import BALL_SETS, JsonStore, StoreConstraintError
+from src.store_files import dataset_dir, dump, fmt_of, get_document, put_document
 
 MAX_EVENTS = 500
 STATE = "out/corner-pocket/state.json"
@@ -42,7 +42,7 @@ def _doc_path(kind: str, key: str) -> str:
     if kind == "seeds":
         return "out/pid_seed.json"
     if kind == "verdicts":
-        return f"out/{DATASETS[key]}/annotations.json"
+        return f"{dataset_dir(key)}/annotations.json"
     if kind == "labels":
         return f"out/{key}/labels.json"
     if kind == "anchors":
@@ -288,9 +288,12 @@ class PostgresStore:
         if dataset != "vod30":
             raise ValueError("seeds exist for vod30 only")
 
-    @staticmethod
-    def _dataset(dataset):
-        if dataset not in DATASETS:
+    def _dataset(self, dataset):
+        """The registry's rule, exactly as JsonStore._scan applies it: a dataset is known
+        when src.datasets.lookup resolves it under this root - a built-in recording, or
+        an imported VOD that out/vods/index.json lists (existence, not only format)."""
+        from src.datasets import lookup
+        if lookup(self.root, dataset) is None:
             raise ValueError(f"unknown dataset: {dataset}")
 
     def verdicts_get(self, dataset: str) -> dict:
@@ -366,7 +369,7 @@ class PostgresStore:
 
     @staticmethod
     def _correction_path(dataset, frame_index):
-        return f"out/{DATASETS[dataset]}/frame_results/{int(frame_index)}/correction.json"
+        return f"{dataset_dir(dataset)}/frame_results/{int(frame_index)}/correction.json"
 
     def anchors_get(self, dataset: str) -> dict:
         self._dataset(dataset)

@@ -111,7 +111,8 @@ class RoundTrip(unittest.TestCase):
     def files(self, root):
         return sorted(str(p.relative_to(root)) for p in (root / "out").rglob("*.json"))
 
-    def assert_round_trip(self):
+    def assert_round_trip(self, ignore=()):
+        """`ignore`: files in the source that are not user data (never imported)."""
         from src.store_export import compare, export, row_counts
         before = {rel: (self.source / rel).read_bytes() for rel in self.files(self.source)}
         reports = self.run(self.conn, self.source)
@@ -119,7 +120,7 @@ class RoundTrip(unittest.TestCase):
         again = self.run(self.conn, self.source)
         self.assertEqual({r["status"] for r in again} - {"absent"}, {"unchanged"}, "a second import changes nothing")
         written = export(self.conn, self.target)
-        self.assertEqual(sorted(written), sorted(before), "exactly the source files are exported")
+        self.assertEqual(sorted(written), sorted(set(before) - set(ignore)), "exactly the source files are exported")
         for row in compare(self.target, self.source, written):
             self.assertTrue(row["identical"], f"{row['file']} differs at byte {row.get('offset')}: {row.get('reason')}")
         self.assertEqual({rel: (self.source / rel).read_bytes() for rel in before}, before, "the source is only read")
@@ -170,6 +171,26 @@ class RoundTrip(unittest.TestCase):
             original, exported = (json_root / rel).read_text(), (self.target / rel).read_text()
             self.assertEqual(normal(exported), normal(original), rel)
             self.assertEqual(len(exported.splitlines()), len(original.splitlines()), f"{rel}: same layout")
+
+    def test_an_imported_vods_correction_and_verdict_round_trip_byte_for_byte(self):
+        """out/vods/<id>/frame_results/<n>/correction.json and out/vods/<id>/annotations.json,
+        written by the server's own JSON store, go files -> import -> export unchanged. The
+        index itself (out/vods/index.json) is catalogue data vod_import writes, not user
+        data: it is read, never imported, and stays a file."""
+        from src.store import JsonStore
+        dataset = "tw-1000000001-3600-3900"
+        index = self.source / "out" / "vods" / "index.json"
+        index.parent.mkdir(parents=True, exist_ok=True)
+        index.write_text(json.dumps({"vods": {dataset: {"vod_id": "1000000001", "channel": "examplechannel"}}}))
+        files = JsonStore(self.source)
+        files.correction_put(dataset, 120, {"dataset": dataset, "frame_index": 120, "boxes": [{"label": "ball"}],
+                                            "table_polygon": None, "source": "manual", "saved_at": "t"})
+        files.verdict_put(dataset, 7, {"shooter": "A"})
+        files.verdict_put(dataset, 7, {"verdict": "wrong"})
+        self.assertTrue((self.source / "out/vods" / dataset / "frame_results/120/correction.json").is_file())
+        self.assertTrue((self.source / "out/vods" / dataset / "annotations.json").is_file())
+        rows = self.assert_round_trip(ignore=("out/vods/index.json",))
+        self.assertEqual((rows["frame_corrections"], rows["event_verdicts"]), (1, 1))
 
     def test_a_fresh_copy_of_production_round_trips_byte_for_byte(self):
         copied = 0

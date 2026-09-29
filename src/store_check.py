@@ -20,7 +20,7 @@ import sys
 import uuid
 
 from src import db
-from src.store_files import DATASETS, documents
+from src.store_files import dataset_of_dir, documents
 
 # The rebuild copies each live table's definition (LIKE ... INCLUDING ALL): same
 # columns, defaults, CHECKs and unique indexes; foreign keys are not copied, which
@@ -38,18 +38,22 @@ def projections(docs: dict[str, str]):
     seeds = docs.get("out/pid_seed.json")
     if seeds is not None:
         yield SETS["seeds"], json.loads(seeds)
-    yield SETS["verdicts"], {ds: json.loads(docs[f"out/{scan}/annotations.json"])
-                             for ds, scan in DATASETS.items() if f"out/{scan}/annotations.json" in docs}
+    # verdicts and corrections live in a dataset's folder: out/<scan>/ or out/vods/<id>/
+    verdicts: dict = {}
+    corrections: dict = {}
+    for path, text in docs.items():
+        head, _, name = path.rpartition("/")
+        if name == "annotations.json" and dataset_of_dir(head) is not None:
+            verdicts[dataset_of_dir(head)] = json.loads(text)
+        folder, marker, rest = path.partition("/frame_results/")
+        frame, _, file = rest.partition("/")
+        if marker and file == "correction.json" and dataset_of_dir(folder) is not None:
+            corrections.setdefault(dataset_of_dir(folder), {})[frame] = json.loads(text)
+    yield SETS["verdicts"], verdicts
     yield SETS["labels"], {path.split("/")[1]: json.loads(text) for path, text in docs.items()
                            if path.endswith("/labels.json")}
     yield SETS["anchors"], {path[len("out/pid_anchors_"):-len(".json")]: json.loads(text)
                             for path, text in docs.items() if path.startswith("out/pid_anchors_")}
-    scans = {scan: ds for ds, scan in DATASETS.items()}
-    corrections: dict = {}
-    for path, text in docs.items():
-        parts = path.split("/")
-        if len(parts) == 5 and parts[2] == "frame_results" and parts[4] == "correction.json":
-            corrections.setdefault(scans[parts[1]], {})[parts[3]] = json.loads(text)
     yield SETS["corrections"], corrections
 
 

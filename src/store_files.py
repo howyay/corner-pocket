@@ -20,6 +20,44 @@ from pathlib import Path
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 
+
+def dataset_dir(dataset: str) -> str:
+    """The folder under the workspace root that holds a dataset's operator data:
+    out/scan30, out/scan_highlight, or out/vods/<id> for an imported VOD (the
+    folders src.datasets.lookup resolves; the id's format is checked here, whether
+    it is imported is the caller's check)."""
+    from src.datasets import STATIC_OUT, parse_imported_id
+    if dataset in STATIC_OUT:
+        return f"out/{STATIC_OUT[dataset]}"
+    if parse_imported_id(dataset) is None:
+        raise ValueError(f"unknown dataset: {dataset}")
+    return f"out/vods/{dataset}"
+
+
+def dataset_of_dir(relative_dir: str) -> str | None:
+    """The inverse of dataset_dir: 'out/scan30' -> 'vod30', 'out/vods/<id>' -> '<id>'."""
+    from src.datasets import STATIC_OUT, parse_imported_id
+    for dataset, scan in STATIC_OUT.items():
+        if relative_dir == f"out/{scan}":
+            return dataset
+    parts = relative_dir.split("/")
+    if len(parts) == 3 and parts[:2] == ["out", "vods"] and parse_imported_id(parts[2]) is not None:
+        return parts[2]
+    return None
+
+
+def dataset_dirs(root: Path) -> dict[str, str]:
+    """{dataset: folder} for the built-in datasets and every canonical imported-VOD
+    folder under root/out/vods - listed or not: a deleted VOD's operator data stays
+    on disk (src.datasets.lookup) and is carried like any other record."""
+    dirs = {dataset: dataset_dir(dataset) for dataset in DATASETS}
+    vods = Path(root) / "out" / "vods"
+    if vods.is_dir():
+        for folder in sorted(vods.iterdir()):
+            if folder.is_dir() and dataset_of_dir(f"out/vods/{folder.name}") is not None:
+                dirs[folder.name] = f"out/vods/{folder.name}"
+    return dirs
+
 INDENT2_NL = "indent2+nl"
 INDENT1 = "indent1"
 
@@ -47,7 +85,8 @@ def document_paths(set_name: str, root: Path | None = None) -> list[str]:
     if set_name == "seeds":
         return ["out/pid_seed.json"]
     if set_name == "verdicts":
-        return [f"out/{scan}/annotations.json" for scan in DATASETS.values()]
+        dirs = dataset_dirs(root).values() if root is not None else [dataset_dir(ds) for ds in DATASETS]
+        return [f"{folder}/annotations.json" for folder in dirs]
     if set_name == "labels":
         return [f"out/{crop_set}/labels.json" for crop_set in BALL_SETS]
     if set_name == "anchors":
@@ -55,8 +94,8 @@ def document_paths(set_name: str, root: Path | None = None) -> list[str]:
     if set_name == "corrections":
         if root is None:
             return []
-        return sorted(str(p.relative_to(root)) for scan in DATASETS.values()
-                      for p in (Path(root) / "out" / scan / "frame_results").glob("*/correction.json"))
+        return sorted(str(p.relative_to(root)) for folder in dataset_dirs(root).values()
+                      for p in (Path(root) / folder / "frame_results").glob("*/correction.json"))
     return []
 
 

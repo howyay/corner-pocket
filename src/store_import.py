@@ -37,7 +37,8 @@ import sys
 from pathlib import Path
 
 from annotator.operations import name_key
-from src.store_files import DOCUMENT_SETS, document_paths, get_document, has_documents_table, put_document
+from src.store_files import (DOCUMENT_SETS, dataset_dirs, document_paths, get_document, has_documents_table,
+                             put_document)
 
 REPO = Path(__file__).resolve().parent.parent
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
@@ -467,7 +468,13 @@ class VerdictsSet(DataSet):
     FIELDS = {"verdict", "shooter", "note", "updated_at"}
 
     def load(self, snap):
-        return {ds: snap.json(f"out/{scan}/annotations.json", {}) for ds, scan in DATASETS.items()}, []
+        # the built-in scans (always, {} when absent) and every imported VOD folder that
+        # has verdicts (out/vods/<id>/annotations.json) - render() lists the same keys
+        doc = {}
+        for ds, folder in dataset_dirs(snap.root).items():
+            if ds in DATASETS or (snap.root / folder / "annotations.json").is_file():
+                doc[ds] = snap.json(f"{folder}/annotations.json", {})
+        return doc, []
 
     def write(self, conn, doc):
         for dataset, annotations in doc.items():
@@ -522,14 +529,15 @@ class CorrectionsSet(DataSet):
 
     def load(self, snap):
         doc = {}
-        for dataset, scan in DATASETS.items():
+        for dataset, folder in dataset_dirs(snap.root).items():
             found = {}
-            for path in sorted((snap.root / "out" / scan / "frame_results").glob("*/correction.json")):
+            for path in sorted((snap.root / folder / "frame_results").glob("*/correction.json")):
                 frame = path.parent.name
                 if not frame.isdigit():
                     raise Mismatch(f"{path}: the frame directory is not a frame index")
                 found[frame] = snap.json(str(path.relative_to(snap.root)))
-            doc[dataset] = found
+            if dataset in DATASETS or found:        # render() lists the same keys
+                doc[dataset] = found
         return doc, []
 
     def write(self, conn, doc):
@@ -622,6 +630,9 @@ def import_set(conn, spec: DataSet, root, *, replace=False) -> dict:
                 if spec.name == "corrections":
                     known = [row[0] for row in conn.execute(
                         "SELECT path FROM json_documents WHERE path LIKE %s", ("%/frame_results/%",)).fetchall()]
+                elif spec.name == "verdicts":         # the built-in scans and any imported VOD's
+                    known = [row[0] for row in conn.execute(
+                        "SELECT path FROM json_documents WHERE path LIKE %s", ("%/annotations.json",)).fetchall()]
                 else:
                     known = document_paths(spec.name)
                 for rel in known:
