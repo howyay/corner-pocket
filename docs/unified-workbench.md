@@ -238,12 +238,16 @@ Measured 2026-09-28 on the scratch fixture (`tests/serve_vod_fixture.py`,
 wall, 121.7 MB (estimated 123.3 MB), 12.4 MB/s, 9002 frames. The whole VOD
 would be about 5.5 GB and about 7.4 minutes at that rate.
 
-**Postgres gap:** migration `0002_user_data.sql` constrains `dataset IN
-('vod30','highlight')` on `event_verdicts` and `frame_corrections`, and
-`PostgresStore` accepts those two only, so under `POOL_DATABASE_URL` a
-correction on an imported VOD is refused with the store's honest error.
-The JSON store (the default) saves it under `out/vods/<id>/`. A later migration
-(`0004`) must widen the constraint before the Postgres cutover.
+**Postgres:** migration `0004_imported_datasets.sql` replaced the `dataset IN
+('vod30','highlight')` checks with the registry's id format (`dataset_id_ok`,
+the rule of `src.datasets.parse_imported_id`) on every dataset column, and
+`PostgresStore` validates a dataset with `src.datasets.lookup`, as the JSON
+store does: a correction or verdict on an imported VOD is kept under either
+store, and one on an id the index does not list is refused by both. Its
+records are `json_documents` rows named after the files the JSON store writes
+(`out/vods/<id>/frame_results/<n>/correction.json`,
+`out/vods/<id>/annotations.json`), so the export writes them back byte for
+byte. `out/vods/index.json` itself is catalogue data and stays a file.
 
 ## Verification
 

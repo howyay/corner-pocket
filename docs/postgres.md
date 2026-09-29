@@ -98,7 +98,7 @@ variable is unset, so the default suite needs no database.
 ### Importing the JSON files (not done yet — the files are still the live store)
 
 ```sh
-PYTHONPATH=. .venv/bin/python -m src.db                       # 0001 + 0002
+PYTHONPATH=. .venv/bin/python -m src.db                       # 0001 … 0004
 PYTHONPATH=. .venv/bin/python -m src.store_import --dry-run   # import + verify, roll back
 PYTHONPATH=. .venv/bin/python -m src.store_import             # import for real
 ```
@@ -217,15 +217,22 @@ podman exec -i pool-postgres pg_restore -U pool -d pool_restore_check --no-owner
 podman exec pool-postgres psql -U pool -d pool_restore_check -tAc \
   "SELECT string_agg(name, ',' ORDER BY version) FROM schema_migrations"   # same list as pool
 podman exec pool-postgres dropdb -U pool pool_restore_check
+ls db/migrations/                                   # exactly 0001_ … 0004_imported_datasets.sql
+PYTHONPATH=. .venv/bin/python -c 'from src import db; print([n for _, n, _ in db.migrations()])'
+  # ['0001_schema_migrations', '0002_user_data', '0003_json_documents', '0004_imported_datasets']
 mkdir -p ~/pool-cutover-$ts && cp -a --parents out/corner-pocket out/identity out/pid_seed.json \
   out/pid_anchors_vod30.json out/scan30/annotations.json out/unlabeled_crops/labels.json ~/pool-cutover-$ts/
+[ -d out/vods ] && cp -a --parents out/vods ~/pool-cutover-$ts/   # imported VODs' records, if any
 (cd ~/pool-cutover-$ts && find . -type f -exec md5sum {} + > MD5SUMS)
 ```
 
 (The restore test was exercised on 2026-09-26 against a scratch database: dump, restore,
 the migration list matched, the scratch database dropped; `pool` itself was only read.)
 
-**1. Migrate** — `PYTHONPATH=. .venv/bin/python -m src.db` (applies 0002 and 0003).
+**1. Migrate** — `PYTHONPATH=. .venv/bin/python -m src.db` (applies 0002, 0003 and 0004;
+then `podman exec pool-postgres psql -U pool -d pool -tAc "SELECT string_agg(name, ',' ORDER BY
+version) FROM schema_migrations"` must print
+`0001_schema_migrations,0002_user_data,0003_json_documents,0004_imported_datasets`).
 
 **2. Stop the writer** — `systemctl --user stop pool-workbench`.  Every user-data write
 goes through the service (the legacy writers refuse to run once the variable is set), so
