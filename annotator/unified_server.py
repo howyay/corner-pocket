@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -331,6 +332,8 @@ class Backend:
         self.video_cache = {}
         self._clip_semaphore = threading.Semaphore(2)
         self._operations = None
+        self._board_lock = threading.Lock()
+        self._board_cache = None  # (monotonic time, etag, body) of the last /api/board
         self._store = None
         self._live = None
         self._identity_pipeline = None
@@ -386,6 +389,17 @@ class Backend:
             if self._operations is None:
                 self._operations = _StoreOperations(self.store())
             return self._operations
+
+    def public_board(self):
+        """(etag, body) of GET /api/board (annotator/public_board.py), built at most
+        once a second however many screens poll. It only reads the operations
+        document through the store; one builder at a time, the rest wait for it."""
+        from annotator import public_board
+        with self._board_lock:
+            if self._board_cache is None or time.monotonic() - self._board_cache[0] >= 1.0:
+                etag, body = public_board.encode(public_board.build(self.operations().get()))
+                self._board_cache = (time.monotonic(), etag, body)
+            return self._board_cache[1:]
 
     def store(self):
         """The user-data store for this root, opened once (src.store.open_store)."""
@@ -1819,7 +1833,10 @@ def make_public_handler(backend):
         def do_GET(self):
             if self.request_version == "HTTP/0.9":
                 return  # a 0.9 answer has no headers, so no CSP: send nothing
-            name = BOARD_FILES.get(self.path.partition("?")[0])
+            path = self.path.partition("?")[0]
+            if path == "/api/board":
+                return self.board()
+            name = BOARD_FILES.get(path)
             try:
                 body = (backend.root / "annotator" / name).read_bytes() if name else None
             except OSError:
@@ -1830,6 +1847,21 @@ def make_public_handler(backend):
             self.send(200, body, _BOARD_TYPES[Path(name).suffix], (("Cache-Control", cache),))
 
         do_HEAD = do_GET
+
+        def board(self):
+            try:
+                etag, body = backend.public_board()
+            except Exception as exc:
+                error_reference(exc)  # logged with its traceback; the public sees no internals
+                return self.send(503, b'{"error":"unavailable"}', "application/json",
+                                 (("Cache-Control", "no-store"), ("Retry-After", "3")))
+            if etag.removeprefix("W/") in {tag.strip().removeprefix("W/")
+                                           for tag in self.headers.get("If-None-Match", "").split(",")}:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "no-cache")
+                return self.end_headers()
+            self.send(200, body, "application/json", (("ETag", etag), ("Cache-Control", "no-cache")))
 
         def refuse(self):
             self.send(405, b"method not allowed\n", headers=(("Allow", "GET, HEAD"),))
@@ -1977,6 +2009,8 @@ def make_handler(backend):
                 # The public board, for a TV logged in here (--public-port serves it without login).
                 if path in ("/display", "/board.js", "/board.css"):
                     return self.file(safe_file(backend.root / "annotator", "board.html" if path == "/display" else path[1:]))
+                if path == "/api/board":
+                    return self.send(200, backend.public_board()[1])
                 if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js"): 
                     return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
