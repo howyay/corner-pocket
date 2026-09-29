@@ -56,8 +56,12 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def gb(size):
-    return f"{size / 1e9:.1f} GB"
+def gb(count):
+    return f"{count / 1e9:.1f} GB"
+
+
+def size_text(count):
+    return gb(count) if count >= 1e9 else f"{count / 1e6:.1f} MB"
 
 
 def redact(text):
@@ -90,19 +94,38 @@ def seconds_done(values):
     return int(match[1]) * 3600 + int(match[2]) * 60 + float(match[3]) if match else None
 
 
-def probe_media(path):
-    """fps, frame count and size of the imported file, decoded as the server will."""
+def ffprobe_beside(ffmpeg_command):
+    """The ffprobe of the same build as the ffmpeg in use, else the one on PATH."""
+    sibling = Path(ffmpeg_command[0]).with_name("ffprobe")
+    return str(sibling) if sibling.is_file() else (shutil.which("ffprobe") or "ffprobe")
+
+
+def probe_media(path, ffmpeg_command):
+    """fps, decodable frame count and size of the imported file, as the server decodes it.
+
+    A range is cut by stream copy, which keeps the pre-roll from the keyframe before
+    start_s; the MP4 edit list hides it, so frame 0 is exactly start_s (measured by
+    pixel match against Twitch: mse 0.0 at 3600 s and 3610 s).  The container still
+    counts the hidden samples - 9193 for 9002 decodable frames on a 5-min range - and
+    that is the count OpenCV reports.  The decodable count is the video packets the
+    edit list does not flag discard, and the last one is decoded to prove it.
+    """
     import cv2
+    listed = subprocess.run([ffprobe_beside(ffmpeg_command), "-v", "error", "-select_streams", "v:0",
+                             "-show_entries", "packet=flags", "-of", "csv=p=0", str(path)],
+                            capture_output=True, text=True, timeout=900)
+    if listed.returncode != 0:
+        raise VodImportError("the imported file cannot be read by ffprobe", 502)
+    frames = sum(1 for flags in listed.stdout.split() if "D" not in flags)
     cap = cv2.VideoCapture(str(path))
     try:
         fps = float(cap.get(cv2.CAP_PROP_FPS))
-        frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width, height = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        ok = cap.isOpened() and cap.read()[0]
+        ok = cap.isOpened() and frames > 0 and cap.set(cv2.CAP_PROP_POS_FRAMES, frames - 1) and cap.read()[0]
     finally:
         cap.release()
-    if not ok or not math.isfinite(fps) or fps <= 0 or frames <= 0 or min(width, height) <= 0:
-        raise VodImportError("the imported file cannot be decoded", 502)
+    if not ok or not math.isfinite(fps) or fps <= 0 or min(width, height) <= 0:
+        raise VodImportError("the imported file cannot be decoded to its last frame", 502)
     return {"fps": fps, "frames": frames, "width": width, "height": height}
 
 
@@ -133,13 +156,13 @@ def _index_lock(path):
 class VodImporter:
     """The single-flight import job of one workspace root."""
 
-    def __init__(self, root, ops_get, *, twitch=None, ffmpeg=None, probe=probe_media,
+    def __init__(self, root, ops_get, *, twitch=None, ffmpeg=None, probe=None,
                  disk_usage=shutil.disk_usage, public_error=None, monotonic=time.monotonic):
         self.root = Path(root)
         self._ops_get = ops_get
         self._twitch = twitch
         self._ffmpeg = ffmpeg or (lambda: [shutil.which("ffmpeg") or "ffmpeg"])
-        self._probe = probe
+        self._probe = probe or (lambda path: probe_media(path, self._ffmpeg()))
         self._disk_usage = disk_usage
         self._public_error = public_error or (lambda exc: f"internal error ({type(exc).__name__})")
         self._monotonic = monotonic
@@ -411,7 +434,7 @@ class VodImporter:
                 raise
             self._finish(state="done", done_s=float(self._job["total_s"]), percent=100.0, eta_s=0,
                          bytes=entry["bytes"], media=meta,
-                         message=f"Imported {plan['id']}: {gb(entry['bytes'])}, {meta['frames']} frames.")
+                         message=f"Imported {plan['id']}: {size_text(entry['bytes'])}, {meta['frames']} frames.")
         except Exception as exc:
             part.unlink(missing_ok=True)
             text = str(exc) if isinstance(exc, VodImportError) else self._public_error(exc)

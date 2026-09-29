@@ -43,6 +43,9 @@ class Dataset:
     out_dir: Path      # scan outputs and operator data (corrections)
     media_dir: Path    # the folder the media file must stay inside
     media_name: str    # a bare file name inside media_dir
+    #: Decodable frames recorded at import (an imported VOD's container also counts the
+    #: pre-roll its edit list hides, so the container's count is too high); None = trust it.
+    frames: int | None = None
 
     def media_file(self):
         """The media path when it is a regular file inside ``media_dir``, else None."""
@@ -159,12 +162,14 @@ def lookup(root, dataset_id):
     if dataset_id in STATIC:
         scan, media = STATIC[dataset_id]
         return Dataset(dataset_id, "recording", root / "out" / scan, root / "data", media)
-    if parse_imported_id(dataset_id) is None or dataset_id not in read_index(root)[0]:
+    if parse_imported_id(dataset_id) is None:
         return None
+    entry = read_index(root)[0].get(dataset_id)
     out_dir = _inside(root / "out" / "vods", dataset_id)
-    if out_dir is None:
+    if entry is None or out_dir is None:
         return None
-    return Dataset(dataset_id, "vod", out_dir, root / "data" / "vods", dataset_id + ".mp4")
+    frames = _count(entry.get("frames"))
+    return Dataset(dataset_id, "vod", out_dir, root / "data" / "vods", dataset_id + ".mp4", frames or None)
 
 
 def _text(value):

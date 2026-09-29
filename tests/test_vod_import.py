@@ -279,6 +279,40 @@ class ImporterTests(unittest.TestCase):
                           for p in self.root.rglob("*") if p.is_file()}, stamp)
 
 
+class ProbeTests(unittest.TestCase):
+    """A stream-copied range keeps pre-roll behind an edit list: the probe counts what decodes."""
+
+    def test_a_stream_copied_range_reports_its_decodable_frames(self):
+        import shutil as sh
+        from annotator.unified_server import Backend as ServerBackend
+        from annotator.vod_import import probe_media
+        try:
+            ffmpeg = ServerBackend._ffmpeg()
+        except APIError:
+            self.skipTest("ffmpeg is unavailable on this host")
+        with tempfile.TemporaryDirectory() as temp:
+            source, cut = Path(temp) / "source.mp4", Path(temp) / "cut.mp4"
+            import subprocess
+            subprocess.run([ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc=size=96x64:rate=30:duration=6",
+                            "-c:v", "libx264", "-g", "60", "-bf", "2", "-pix_fmt", "yuv420p", "-y", str(source)],
+                           check=True, timeout=120)
+            subprocess.run([ffmpeg, "-v", "error", "-protocol_whitelist", "file", "-ss", "2.5", "-i", str(source),
+                            "-t", "2", "-c", "copy", "-movflags", "+faststart", "-f", "mp4", "-y", str(cut)],
+                           check=True, timeout=120)
+            import cv2
+            cap = cv2.VideoCapture(str(cut))
+            container = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            decodable = 0
+            while cap.read()[0]:
+                decodable += 1
+            cap.release()
+            meta = probe_media(cut, [ffmpeg])
+            self.assertEqual(meta["frames"], decodable)
+            self.assertGreater(container, decodable)             # the pre-roll the edit list hides
+            self.assertEqual((meta["width"], meta["height"]), (96, 64))
+            self.assertIsNotNone(sh.which(ffmpeg) or ffmpeg)
+
+
 class EndpointTests(unittest.TestCase):
     """The routes, through the real handler: same-origin, size limits and error bodies."""
 

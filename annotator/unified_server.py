@@ -1187,7 +1187,8 @@ class Backend:
         cap = cv2.VideoCapture(str(path))
         try:
             fps = float(cap.get(cv2.CAP_PROP_FPS))
-            count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            # an imported VOD's decodable count, measured at import (src/datasets.py)
+            count = self.registered(dataset).frames or int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             width, height = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             if not cap.isOpened() or not math.isfinite(fps) or fps <= 0 or count <= 0 or min(width, height) <= 0:
                 raise APIError('video metadata unavailable', 422)
