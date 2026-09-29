@@ -1713,6 +1713,8 @@ def make_handler(backend):
         def end_headers(self):
             for key, value in SECURITY_HEADERS:
                 self.send_header(key, value)
+            # From here on the status line is the client's: an error may not send another.
+            self.response_started = True
             super().end_headers()
 
         def send(self, status, body, content_type="application/json", headers=None):
@@ -1774,6 +1776,7 @@ def make_handler(backend):
                     remaining -= len(chunk)
 
         def dispatch(self, post=False):
+            self.response_started = False
             try:
                 parsed = urlsplit(self.path)
                 path = unquote(parsed.path)
@@ -1849,9 +1852,17 @@ def make_handler(backend):
                 # A malformed request that reached code expecting another shape: the
                 # message names internals (types, keys), so it is logged, not returned.
                 self.json(400, {"error": "invalid request", "ref": error_reference(exc)})
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                # The client left, or stopped reading until the socket timeout (a paused
+                # <video> mid-range): the request is over, and nothing more can be sent.
+                self.close_connection = True
             except Exception as exc:
+                if self.response_started:
+                    # Headers (and maybe part of the body) are already out: a second
+                    # status line would corrupt the stream. Log it and drop the connection.
+                    error_reference(exc)
+                    self.close_connection = True
+                    return
                 self.json(500, {"error": "internal error", "ref": error_reference(exc)})
 
         def do_GET(self):

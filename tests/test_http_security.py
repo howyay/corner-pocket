@@ -213,6 +213,110 @@ class ConnectionBoundTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
 
 
+class StartedResponseTests(unittest.TestCase):
+    """B-7 follow-up: once a response has started, an error never sends a second one.
+
+    A media client that stops reading (a paused <video>) makes the chunk loop's
+    write time out after the headers and part of the body went out. That is the
+    client leaving, not a server fault: no 500 status line, no error JSON, no
+    "internal error" in the journal, and the server keeps answering.
+    """
+
+    def setUp(self):
+        import contextlib
+        import io
+        from annotator import unified_server
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = fixture_root(temp.name)
+        self.log = io.StringIO()                         # the service's stderr is the journal
+        quiet = contextlib.redirect_stderr(self.log)
+        quiet.__enter__()
+        self.addCleanup(quiet.__exit__, None, None, None)
+        self.lines = []                                  # the access log: one line per response
+        self.unified_server = unified_server
+
+    def serve(self, **handler_attributes):
+        lines = self.lines
+        handler_attributes.setdefault('log_message', lambda handler, fmt, *args: lines.append(fmt % args))
+        server = LoopbackServer(self.root, server_class=self.unified_server.BoundedHTTPServer, **handler_attributes)
+        self.addCleanup(server.close)
+        return server
+
+    def test_a_client_that_stops_reading_media_gets_no_second_response(self):
+        import socket
+        import time
+        # Far more than the kernel buffers on both ends hold (sparse: nothing is
+        # written to disk), so the server's write blocks until its timeout fires.
+        with open(self.root / 'data' / 'vod_30min_260815.mp4', 'wb') as video:
+            video.truncate(96 * 1024 * 1024)
+        server = self.serve(timeout=1)
+        client = socket.socket()
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        client.settimeout(5)
+        client.connect(('127.0.0.1', server.port))
+        self.addCleanup(client.close)
+        client.sendall(b'GET /media/vod30/video HTTP/1.1\r\nHost: x\r\nRange: bytes=0-\r\n\r\n')
+        head = b''
+        while b'\r\n\r\n' not in head:
+            chunk = client.recv(4096)
+            self.assertTrue(chunk, 'the server closed before the headers were complete')
+            head += chunk
+        self.assertTrue(head.startswith(b'HTTP/1.0 206'), head[:40])
+        time.sleep(3)                                    # stop reading; the server's write times out
+        client.settimeout(10)
+        received = b''
+        while True:                                      # drain what the server wrote before it gave up
+            try:
+                chunk = client.recv(1024 * 1024)
+            except ConnectionResetError:
+                break
+            if not chunk:
+                break
+            received += chunk
+        self.assertLess(len(received), 96 * 1024 * 1024, 'the transfer was cut, not finished')
+        self.assertNotIn(b'HTTP/1.', received, 'no second status line after the body started')
+        self.assertNotIn(b'internal error', received)
+        self.assertNotIn(b'"error"', received)
+        self.assertNotIn('internal error', self.log.getvalue())
+        self.assertNotIn('TimeoutError', self.log.getvalue())
+        self.assertFalse([line for line in self.lines if '" 500 ' in line], self.lines)
+        response, _ = server.request('GET', '/')                     # the server still answers
+        self.assertEqual(response.status, 200)
+
+    def test_an_error_after_the_headers_went_out_sends_nothing_more(self):
+        import socket
+
+        def file(handler, path):
+            # A route that fails mid-body: headers and a partial body are already out
+            # when it raises inside dispatch's try, so the generic handler sees it.
+            handler.send_response(200)
+            handler.send_header('Content-Length', '100')
+            handler.end_headers()
+            handler.wfile.write(b'partial')
+            raise RuntimeError('failed mid-body')
+
+        server = self.serve(file=file)
+        client = socket.create_connection(('127.0.0.1', server.port), timeout=5)
+        self.addCleanup(client.close)
+        client.sendall(b'GET /ops.js HTTP/1.1\r\nHost: x\r\n\r\n')
+        data = b''
+        while True:
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        self.assertEqual(data.count(b'HTTP/1.'), 1, data)
+        self.assertTrue(data.startswith(b'HTTP/1.0 200'), data[:40])
+        self.assertTrue(data.endswith(b'partial'), data[-60:])
+        self.assertNotIn(b'internal error', data)
+        # The failure itself is still logged with a reference, for the maintainer.
+        self.assertRegex(self.log.getvalue(), r'error [0-9a-f]{8}: RuntimeError: failed mid-body')
+        self.assertFalse([line for line in self.lines if '" 500 ' in line], self.lines)
+        response, _ = server.request('GET', '/api/operations')      # a route that does not use file()
+        self.assertEqual(response.status, 200)
+
+
 class ContentLengthTests(unittest.TestCase):
     """B-8: a malformed Content-Length is a plain 400, never Python's exception text."""
 
