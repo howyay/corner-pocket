@@ -176,6 +176,75 @@ out/identity/clusters.json` before and after a read.
   `77777777777777777777777777777777…` / 1,865,607 B / 20:58:05 untouched. `GET /api/vod30/tracks` was
   byte-identical before and after (`77777777777777777777777777777777…`, 205 B).
 
+## Imported broadcasts (VOD selector)
+
+Any past broadcast of a **saved channel** can be imported and browsed like
+`vod30`: scrub, step, freeze, see the per-frame detections, run the frozen-frame
+inference job and save corrections. A VOD of any other channel is refused before
+a playback token is requested: "This VOD belongs to <channel>. Only saved
+channels can be analysed; add the channel under Source first." Imported VODs
+are not scanned for events (`/api/<id>/events` answers `{"events": [],
+"annotations": {}, "analysed": false}`), and the vod30-only features (saved
+anchors, seeds, tracklets) keep answering `404 feature only available for
+vod30`. The table prior has no saved anchors, so the naive `no_seed` fallback
+and its facts-line wording apply.
+
+Where things live (all gitignored; `git check-ignore -v data/vods/x.mp4` →
+`.gitignore:9:data/`):
+
+- `src/datasets.py` is the one registry: `vod30` and `highlight` unchanged, plus
+  the entries of `out/vods/index.json`. Ids are `tw-<vod>` (whole) or
+  `tw-<vod>-<start_s>-<end_s>`, built from numbers only.
+- `data/vods/<id>.mp4` is the media (written as `<id>.mp4.part`, renamed when
+  complete). `out/vods/<id>/` holds operator data, e.g.
+  `frame_results/<n>/correction.json`.
+- `out/vods/index.json` holds channel, title, dates, range, fps, decodable frame
+  count, size and import time. It never holds the playback token, its signature
+  or the media URL.
+
+Endpoints (reads never write; writes go through the same same-origin check,
+64 KB body limit and error bodies as every other POST):
+
+- `GET /api/vods/recent`: up to 10 recent broadcasts per saved channel, cached
+  in memory for 3 minutes; a Twitch failure is that channel's `error` with
+  `vods: null`, never an empty list.
+- `GET /api/vods/estimate?vod=<id|url>&start_s=&duration_s=`: size from the
+  variant's BANDWIDTH × duration, the free-disk check, and an ETA from the last
+  import's measured rate.
+- `GET /api/vods/job`: `state` (`idle|running|done|error|cancelled`), `percent`,
+  `done_s`/`total_s` (from ffmpeg's `out_time`), `mb`, `rate_mb_s`, `eta_s`,
+  and the honest `error` text.
+- `POST /api/vods/import {vod, start_s?, duration_s?}`: one import at a time
+  (a second one is `409`). Refused with the numbers (`507`) unless free space ≥
+  estimate × 1.2 + 2 GB. ffmpeg runs without a shell, with
+  `-protocol_whitelist file,http,https,tcp,tls,crypto` (security audit B-6),
+  `-c copy -bsf:a aac_adtstoasc -movflags +faststart`. A stale `.part` of the
+  same id is removed when the import starts.
+- `POST /api/vods/cancel {confirm: true}`: stops ffmpeg and removes the `.part`;
+  the index is untouched. Stopping the server does the same.
+- `POST /api/vods/delete {id, confirm: true}`: removes the media and the index
+  entry. **Operator corrections under `out/vods/<id>/` are kept**, and the
+  response says how many files were kept. To remove those too, delete the folder
+  by hand.
+
+A range is cut by stream copy, which keeps the pre-roll from the keyframe before
+`start_s`; the MP4 edit list hides it, so frame 0 is exactly `start_s` (pixel
+match against Twitch at 3600 s and 3610 s: mse 0.0). The container still counts
+the hidden samples (9193 listed, 9002 decodable on a 5-minute range), so the
+import records the decodable count and the server uses it for imported VODs.
+
+Measured 2026-09-28 on the scratch fixture (`tests/serve_vod_fixture.py`,
+:8217), VOD 1000000001 (examplechannel, 3.7 h, 720p30), 1:00:00–1:05:00: 9.9 s
+wall, 121.7 MB (estimated 123.3 MB), 12.4 MB/s, 9002 frames. The whole VOD
+would be about 5.5 GB and about 7.4 minutes at that rate.
+
+**Postgres gap:** migration `0002_user_data.sql` constrains `dataset IN
+('vod30','highlight')` on `event_verdicts` and `frame_corrections`, and
+`PostgresStore` accepts those two only, so under `POOL_DATABASE_URL` a
+correction on an imported VOD is refused with the store's honest error.
+The JSON store (the default) saves it under `out/vods/<id>/`. A later migration
+(`0004`) must widen the constraint before the Postgres cutover.
+
 ## Verification
 
 - 14 isolated backend unit tests pass: dataset isolation, legacy label keys,
