@@ -1197,7 +1197,7 @@ function act(action, value, node) {
   const num = Number(value);
   switch (action) {
     case 'pick-dataset': target.setDataset(value); break;
-    case 'bc-refresh': bcLoadRecent(); break;
+    case 'bc-refresh': bcLoadRecent(); bcPollJob(); break;   // an import started elsewhere shows up too
     case 'bc-open': { const vod = (bc.recent?.channels || []).flatMap(c => c.vods || []).find(v => v.id === value); bc.form = {vod: value, title: vod?.title || '', start: '0:00:00', minutes: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
     case 'bc-paste': { const vod = String(bc.paste || '').trim(); if (!vod) { root.querySelector('[data-vs-field="bc-paste"]')?.focus(); break; } bc.form = {vod, title: '', start: '0:00:00', minutes: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
     case 'bc-estimate': bcEstimate(); break;

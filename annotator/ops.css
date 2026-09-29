@@ -430,6 +430,7 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-channel button{min-height:26px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
 /* VOD selector: the import row wraps under its text at phone width; the refusal reads like the other failures */
 :is(#ops-shell) .vs-broadcasts .vs-channel{flex-wrap:wrap}
+:is(#ops-shell) .vs-bc-job .vs-mono{flex:1 1 100%}
 :is(#ops-shell) .vs-bc-job progress{flex:1 1 120px;min-width:0;height:8px;accent-color:var(--brass)}
 :is(#ops-shell) .vs-bc-form{margin:var(--sp-1h) 0;padding:var(--sp-2);border:1px solid var(--line)}
 :is(#ops-shell) .vs-bc-form .vs-row .vs-field{flex:1 1 140px;min-width:0}

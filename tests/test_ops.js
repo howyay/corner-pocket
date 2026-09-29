@@ -1424,3 +1424,10 @@ test('an imported VOD reads as a recorded broadcast in broadcast time, and its e
   assert.equal(VS.recordedLabel(snap), '', 'vod30 keeps its own label');
   assert.equal(VS.serverText('some other sentence'), 'some other sentence');
 });
+test('Refresh list also re-reads the import job, so an import started in another tab shows its progress', async () => {
+  const {VS, calls} = broadcastsHarness();
+  VS.act('bc-refresh', '', {dataset:{}});
+  await settle(); await settle();
+  assert.ok(calls.some(c => c.url === '/api/vods/recent') && calls.some(c => c.url === '/api/vods/job'));
+  assert.equal(VS.bcState().job.state, 'running');
+});
