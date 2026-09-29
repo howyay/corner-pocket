@@ -1,5 +1,10 @@
 # Corner Pocket: daily logical backup of the `pool` database (docs/postgres.md).
-# Installed as ~/.config/systemd/user/pool-postgres-backup.service; started by the timer.
+# A TEMPLATE: the runbook's install step renders it with sed into
+# ~/.config/systemd/user/pool-postgres-backup.service, replacing
+#   @REPO_DIR@    the repository checkout
+#   @BACKUP_DIR@  the backup directory (must exist, mode 700)
+#   @PODMAN@      the podman binary (the user manager's PATH may not have it)
+# Started by pool-postgres-backup.timer.
 [Unit]
 Description=Corner Pocket PostgreSQL daily backup (pg_dump -Fc, 14-day retention)
 Requires=pool-postgres.service
@@ -7,10 +12,9 @@ After=pool-postgres.service
 
 [Service]
 Type=oneshot
-# podman lives in the NixOS system profile; the user manager's PATH may not have it
-Environment=PODMAN=/run/current-system/sw/bin/podman
-Environment=POOL_BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups
+Environment=PODMAN=@PODMAN@
+Environment=POOL_BACKUP_DIR=@BACKUP_DIR@
 Environment=POOL_BACKUP_KEEP_DAYS=14
-ExecStart=/home/operator/projects/pool/scripts/pool-postgres-backup.sh dump
+ExecStart=@REPO_DIR@/scripts/pool-postgres-backup.sh dump
 UMask=0077
 Nice=10

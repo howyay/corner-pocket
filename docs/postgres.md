@@ -183,21 +183,36 @@ no crontab entry).  Two user timers do it, both driven by
 Every failure exits non-zero with a `pool-postgres-backup: FAILED: <reason>` line, so the
 unit turns `failed` and the journal says why (`systemctl --user --failed`,
 `journalctl --user -u pool-postgres-backup -n 20`).  A dump goes to a `.partial` file first
-and replaces nothing until it reads back.  The unit files are in the repository
-(`deploy/systemd/`); install and enable them — at cutover, not before:
+and replaces nothing until it reads back.  The script has no default directory: without
+`POOL_BACKUP_DIR` it fails (`POOL_BACKUP_DIR is not set`).
+
+The two `.service` files in `deploy/systemd/` are **templates** — no host paths in the
+repository; `@REPO_DIR@`, `@BACKUP_DIR@` and `@PODMAN@` are filled in when they are
+installed (the timers need nothing).  Install and enable them — at cutover, not before:
 
 ```sh
-cp deploy/systemd/pool-postgres-backup.{service,timer} deploy/systemd/pool-postgres-verify.{service,timer} \
-   ~/.config/systemd/user/
+# the values for THIS host - set them explicitly, then render
+REPO_DIR=/home/operator/projects/pool
+BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups           # exists, mode 700
+PODMAN=/run/current-system/sw/bin/podman                 # `command -v podman`
+U=~/.config/systemd/user
+for unit in pool-postgres-backup pool-postgres-verify; do
+  sed -e "s#@REPO_DIR@#$REPO_DIR#g" -e "s#@BACKUP_DIR@#$BACKUP_DIR#g" -e "s#@PODMAN@#$PODMAN#g" \
+      deploy/systemd/$unit.service > $U/$unit.service
+  cp deploy/systemd/$unit.timer $U/$unit.timer
+done
+grep -c '@[A-Z_]*@' $U/pool-postgres-backup.service $U/pool-postgres-verify.service   # 0 and 0
 systemctl --user daemon-reload
+systemctl --user cat pool-postgres-backup.service pool-postgres-verify.service    # review the rendered units
 systemctl --user enable --now pool-postgres-backup.timer pool-postgres-verify.timer
 systemctl --user start pool-postgres-backup.service                  # the first backup, now
 systemctl --user is-active pool-postgres-backup.service; journalctl --user -u pool-postgres-backup -n 3 --no-pager
 systemctl --user list-timers pool-postgres-\* --no-pager              # both timers with a NEXT time
 ```
 
-(The script's `dump` and `verify`, their pruning and their failure paths — wrong directory
-mode, database down, no dump — were exercised on 2026-09-28 against a scratch directory.)
+(The script's `dump` and `verify`, their pruning and their failure paths — directory not
+set, wrong directory mode, database down, no dump — were exercised on 2026-09-28 against a
+scratch directory; the templates rendered with sample values pass `systemd-analyze verify`.)
 
 ### Proving a read wrote nothing (after cutover)
 
@@ -342,9 +357,19 @@ After=pool-postgres.service
 [Service]
 EnvironmentFile=%h/.config/pool/postgres.env
 EOF
-cp deploy/systemd/pool-postgres-backup.{service,timer} deploy/systemd/pool-postgres-verify.{service,timer} \
-   ~/.config/systemd/user/
+# the backup units: render the templates with this host's values ("Scheduled backups")
+REPO_DIR=/home/operator/projects/pool
+BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups
+PODMAN=/run/current-system/sw/bin/podman
+U=~/.config/systemd/user
+for unit in pool-postgres-backup pool-postgres-verify; do
+  sed -e "s#@REPO_DIR@#$REPO_DIR#g" -e "s#@BACKUP_DIR@#$BACKUP_DIR#g" -e "s#@PODMAN@#$PODMAN#g" \
+      deploy/systemd/$unit.service > $U/$unit.service
+  cp deploy/systemd/$unit.timer $U/$unit.timer
+done
+grep -c '@[A-Z_]*@' $U/pool-postgres-backup.service $U/pool-postgres-verify.service   # 0 and 0
 systemctl --user daemon-reload && systemctl --user start pool-workbench
+systemctl --user cat pool-workbench.service pool-postgres-backup.service pool-postgres-verify.service   # review
 systemctl --user enable --now pool-postgres-backup.timer pool-postgres-verify.timer
 ```
 

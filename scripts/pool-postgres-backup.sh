@@ -10,13 +10,15 @@
 set -euo pipefail
 umask 077
 
-DIR="${POOL_BACKUP_DIR:-$POOL_PG_ROOT/pool-postgres/backups}"
 KEEP_DAYS="${POOL_BACKUP_KEEP_DAYS:-14}"
 CONTAINER="${POOL_BACKUP_CONTAINER:-pool-postgres}"
 PODMAN="${PODMAN:-podman}"
 
 fail() { echo "pool-postgres-backup: FAILED: $*" >&2; exit 1; }
 
+# no host default: the unit (or the caller) names the backup directory explicitly
+[ -n "${POOL_BACKUP_DIR:-}" ] || fail "POOL_BACKUP_DIR is not set"
+DIR="$POOL_BACKUP_DIR"
 [ -d "$DIR" ] || fail "backup directory $DIR does not exist"
 [ "$(stat -c %a "$DIR")" = 700 ] || fail "backup directory $DIR must be mode 700 (is $(stat -c %a "$DIR"))"
 
