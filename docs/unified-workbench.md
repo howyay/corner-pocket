@@ -151,6 +151,17 @@ out/identity/clusters.json` before and after a read.
   handlers (`annotate`, `seeds`, `anchors`, `frame-correction`,
   `identity/{seed,unbind,enroll,enroll-confirm,forget}`, and the inference job
   the POST starts).
+- Shared shot clock (`annotator/shot_clock.py`, 2026-09-27): `POST /api/clock`
+  `{"action": "start"|"pause"|"reset"|"set", "duration": 5-300 with set only}`
+  is the only write, to `out/corner-pocket/clock.json` (atomic replace), and only
+  on a real change - a Start while running or a Pause while paused returns the
+  state unchanged and writes nothing. It is not part of the revisioned
+  operations state, so it never makes an operator's `/api/operations` write
+  stale. `GET /api/clock` (state + `server_now_ms`) and the Server-Sent Events
+  stream `GET /api/clock/stream` (one `clock` event per change, a heartbeat
+  every 15 s) never write: an expired clock is reported as `running: false,
+  remaining_ms: 0, expired: true` and nothing is persisted. Tested with md5 +
+  size + mtime across 40 expired reads (`tests/test_clock_api.py`).
 - Fixed 2026-09-25: a face match inside `GET /api/unified` /
   `GET /api/identity/frame` called `bind_face()`, which saved the index. The
   pipeline now binds with `persist=False`: the bind is in the payload and in

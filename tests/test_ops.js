@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+const clockSync = require('../annotator/clock-sync.js');
+const clockSyncSource = fs.readFileSync(path.join(__dirname, '../annotator/clock-sync.js'), 'utf8');
 function harness(opts = {}) {
   const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [];
   const document = {addEventListener(event, fn) { handlers[event] = fn; }, querySelector() { return {}; }, querySelectorAll() { return []; }, documentElement: {}};
@@ -13,7 +15,7 @@ function harness(opts = {}) {
   // setting location.hash and calling the captured hashchange listener, as the browser does.
   const location = {hash: opts.hash || ''};
   const history = {pushState(state, title, url) { location.hash = url; visits.push(['push', url]); }, replaceState(state, title, url) { location.hash = url; visits.push(['replace', url]); }};
-  const context = {document, location, history, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener(event, fn) { windowHandlers[event] = fn; }}, setInterval() {}, setTimeout() {}, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
+  const context = {document, location, history, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener(event, fn) { windowHandlers[event] = fn; handlers['window:' + event] = fn; }}, setInterval() {}, setTimeout() {}, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
   vm.createContext(context);
   vm.runInContext(source.replace("(() => {", '').replace('});reload();', '});').replace(/\}\)\(\);\s*$/, ''), context);
   vm.runInContext("data={revision:1,settings:{},tournament:{raceTo:7,entrants:[],matches:[]},players:[],history:[]}; calls=[]; realAction=action; action=async(name,payload)=>{calls.push({name,payload});return true}", context);
@@ -759,6 +761,330 @@ test('the clock paints the true remaining time on the first render, in every vie
   assert.ok(surface.includes('>0:13<'), 'and its first paint is the same instant');
   // A cross-tab tick repaints; only a duration change re-renders the view.
   assert.ok(source.includes('durationChanged?render():tick()'), 'a cross-tab update paints the clock in place');
+  // The clock is the server's now, and ops.js adopts it through that same
+  // storage event: annotator/clock-sync.js dispatches it with a deadline in this
+  // device's clock base, so the one 200 ms interval keeps painting every view
+  // from the shared instant with no second painter.
+  const serverNow = Date.now() - 5000;             // this device is 5 s fast
+  const snapshot = {duration: 60, running: true, deadline_ms: serverNow + 30000, remaining_ms: 30000, seq: 9};
+  h.evaluate("timer={duration:60,remaining:12.4,deadline:null}");
+  // The naive push — the server's raw deadline — is 5 s out on this device.
+  h.handlers['window:storage']({key: 'cp-ops-clock', newValue: JSON.stringify({duration: 60, remaining: 30, deadline: snapshot.deadline_ms})});
+  assert.equal(h.evaluate('clockText(clockLeft())'), '0:25', 'a raw server deadline on a fast device is 5 s out');
+  // What the sync layer actually sends: the same instant in the device's base.
+  const adopted = clockSync.toLocalClock(snapshot, Date.now(), -5000);
+  h.handlers['window:storage']({key: 'cp-ops-clock', newValue: JSON.stringify(adopted)});
+  const shared = h.evaluate('clockText(clockLeft())');
+  assert.ok(shared === '0:30' || shared === '0:29', 'the shared instant survives the skew: ' + shared);
+  assert.equal(h.evaluate('timer.duration'), 60, 'and ops.js kept the server duration');
+  assert.ok(h.evaluate('clockHTML()').includes('>' + shared + '<'), 'the strip paints it');
+  assert.ok(h.evaluate('visionSurface()').includes('>' + shared + '<'), 'and the Vision view paints the same instant');
+  assert.ok(!clockSyncSource.includes('setInterval(tick'), 'the sync layer adds no second painter');
+  assert.equal((source.match(/setInterval\(tick,200\)/g) || []).length, 1, 'ops.js keeps its one 200 ms interval');
+});
+
+// ---- the shared shot clock: annotator/clock-sync.js ------------------------
+// The clock used to be a local timer per device. It is one clock on the server
+// now, and ops.js stays the only painter: the sync layer hands it a deadline in
+// this device's clock base through the storage event ops.js already listens for.
+
+function clockSnapshot(overrides) {
+  return Object.assign({duration: 30, running: false, remaining_ms: 30000, deadline_ms: null, seq: 4, updated_at: '2026-01-01T00:00:00+00:00'}, overrides || {});
+}
+
+function clockEnv(options) {
+  const opts = options || {};
+  const env = {now: 1000, timers: [], nextId: 1, calls: [], errors: [], statuses: [], applied: [], streams: []};
+  env.advance = async function (ms) {
+    const target = env.now + ms;
+    for (;;) {
+      let due = null;
+      for (const timer of env.timers) if (timer.at <= target && (!due || timer.at < due.at)) due = timer;
+      if (!due) break;
+      env.now = due.at;
+      if (due.repeat) due.at = due.at + due.ms;
+      else env.timers.splice(env.timers.indexOf(due), 1);
+      due.fn();
+      await settle();
+    }
+    env.now = target;
+    await settle();
+  };
+  env.answer = function (method) {
+    return opts.responses ? opts.responses(method, env) : null;
+  };
+  env.sync = clockSync.createClockSync({
+    now: () => env.now,
+    timers: {
+      setTimeout: (fn, ms) => { const timer = {id: env.nextId++, fn, at: env.now + ms, ms}; env.timers.push(timer); return timer.id; },
+      setInterval: (fn, ms) => { const timer = {id: env.nextId++, fn, at: env.now + ms, ms, repeat: true}; env.timers.push(timer); return timer.id; },
+      clearTimeout: id => { const i = env.timers.findIndex(timer => timer.id === id); if (i >= 0) env.timers.splice(i, 1); },
+      clearInterval: id => { const i = env.timers.findIndex(timer => timer.id === id); if (i >= 0) env.timers.splice(i, 1); }
+    },
+    fetch: async (url, init) => {
+      const method = (init && init.method) || 'GET';
+      env.calls.push({method, url, body: init && init.body ? JSON.parse(init.body) : null});
+      const answer = env.answer(method);
+      if (answer) return answer;
+      const snapshot = typeof opts.snapshot === 'function' ? opts.snapshot() : opts.snapshot;
+      return {ok: true, status: 200, json: async () => clockSnapshot(Object.assign({server_now_ms: env.now}, snapshot))};
+    },
+    openStream: (url, handlers) => {
+      const stream = {url, closed: false, close() { this.closed = true; }, emit: payload => handlers.event(payload), beat: payload => handlers.heartbeat(payload), fail: () => handlers.error()};
+      env.streams.push(stream);
+      return stream;
+    },
+    apply: (local, state) => env.applied.push({local, state}),
+    onStatus: status => env.statuses.push(status),
+    onError: (text, result) => env.errors.push({text, result}),
+    lang: () => opts.lang || 'en'
+  });
+  return env;
+}
+
+test('the shared clock measures this device offset from one round trip, NTP style', () => {
+  // A device 5 s fast answers a symmetric 40 ms round trip: it sends while its
+  // own clock reads 5 000 000 and the server clock reads 4 995 020.
+  const sent = 5000000, received = 5000040, serverNow = 4995020;
+  const offset = clockSync.offsetEstimate(serverNow, sent, received);
+  assert.equal(offset, -5000, 'offset = server_now − (t_send + rtt/2)');
+  const snapshot = {duration: 30, running: true, deadline_ms: serverNow + 30000, remaining_ms: 30000};
+  const left = clockSync.displayMs(snapshot, received, offset);
+  assert.ok(Math.abs(left - 29960) <= 20, 'the true remaining time is recovered, not the device clock: ' + left);
+  const naive = clockSync.displayMs(snapshot, received, 0);
+  assert.ok(Math.abs(naive - (left - 5000)) < 50, 'without the offset the same device is exactly 5 s out: ' + naive);
+  assert.equal(clockSync.displayMs({running: false, remaining_ms: 12000}, sent, offset), null, 'a paused clock has no deadline to display');
+});
+
+test('the shared clock hands ops.js a deadline in this device base, and never re-arms a past one', () => {
+  assert.deepEqual(clockSync.toLocalClock({duration: 30, running: true, deadline_ms: 20000, remaining_ms: 5000}, 15000, 0),
+    {duration: 30, remaining: 5, deadline: 20000});
+  // 5 s fast: the same instant is 35 000 ms on this device's clock.
+  assert.deepEqual(clockSync.toLocalClock({duration: 30, running: true, deadline_ms: 30000, remaining_ms: 10000}, 25000, -5000),
+    {duration: 30, remaining: 10, deadline: 35000});
+  // Already expired on the server: 0:00 with no deadline, so no device replays
+  // the expiry message (ops.js shows it once, when a deadline it holds reaches 0).
+  assert.deepEqual(clockSync.toLocalClock({duration: 30, running: true, deadline_ms: 14000, remaining_ms: 1000}, 15000, 0),
+    {duration: 30, remaining: 0, deadline: null});
+  assert.deepEqual(clockSync.toLocalClock({duration: 45, running: false, deadline_ms: null, remaining_ms: 12500}, 15000, 0),
+    {duration: 45, remaining: 12.5, deadline: null});
+});
+
+test('a clock press reaches the server only once ops.js accepted it, as an explicit intent', () => {
+  // The watch reads the clock ops.js WROTE: it accepted the press, so a fresh
+  // deadline means this device just started, and a cleared one means it paused.
+  const started = {duration: 30, remaining: 30, deadline: 1700000000000};
+  const paused = {duration: 30, remaining: 12, deadline: null};
+  assert.deepEqual(clockSync.intentFor('clock-toggle', undefined, started), {action: 'start'});
+  assert.deepEqual(clockSync.intentFor('clock-toggle', undefined, paused), {action: 'pause'});
+  assert.deepEqual(clockSync.intentFor('clock-reset', undefined, paused), {action: 'reset'});
+  assert.deepEqual(clockSync.intentFor('clock-set', 45, {duration: 45, remaining: 45, deadline: null}), {action: 'set', duration: 45});
+  // A press ops.js refused (the "delayed" guard while a match is absent) writes
+  // no clock at all, so nothing is sent to the server.
+  assert.equal(clockSync.intentFor('clock-toggle', undefined, null), null);
+  // A duration that never landed (settings_update failed) is not sent either.
+  assert.equal(clockSync.intentFor('clock-set', 45, {duration: 30, remaining: 30, deadline: null}), null);
+});
+
+test('the shared clock sends the intent the server accepts and adopts what comes back', async () => {
+  const env = clockEnv({snapshot: {duration: 30, running: true, deadline_ms: 40000, remaining_ms: 20000}});
+  env.sync.start();
+  await settle();
+  env.streams[0].emit(clockSnapshot({server_now_ms: env.now, duration: 30, running: true, deadline_ms: 40000, remaining_ms: 20000}));
+  await settle();
+  assert.equal(env.sync.status(), 'live');
+  await env.sync.intent('start');
+  assert.deepEqual(env.calls.at(-1).body, {action: 'start'}, 'duration is only legal with set');
+  await env.sync.intent('reset');
+  assert.deepEqual(env.calls.at(-1).body, {action: 'reset'});
+  await env.sync.intent('set', 45);
+  assert.deepEqual(env.calls.at(-1).body, {action: 'set', duration: 45});
+  assert.equal(env.errors.length, 0);
+  assert.equal(env.applied.length, 5, 'every accepted command paints the state the server returned');
+  assert.equal(env.applied.at(-1).state.duration, 30);
+  assert.equal(env.sync.status(), 'live', 'a command does not knock a live device out of live');
+});
+
+test('a failed clock command shows the error and leaves the displayed clock alone', async () => {
+  const failed = clockEnv({responses: method => (method === 'POST' ? {ok: false, status: 500, json: async () => ({error: 'nope'})} : null)});
+  const result = await failed.sync.intent('start');
+  assert.equal(result.ok, false);
+  assert.deepEqual(failed.applied, [], 'a command that did not land never becomes the displayed state');
+  assert.equal(failed.sync.status(), 'connecting', 'and it never claims a sync it does not have');
+  assert.equal(failed.errors[0].text, 'clock command failed — nothing changed');
+  // The display still says what the server last said: the truth is pulled back.
+  await failed.advance(2000);
+  assert.equal(failed.calls.at(-1).method, 'GET');
+  const busy = clockEnv({lang: 'zh', responses: method => (method === 'POST' ? {ok: false, status: 503, headers: {get: () => '5'}, json: async () => ({})} : null)});
+  const busyResult = await busy.sync.intent('pause');
+  assert.equal(busyResult.reason, 'busy');
+  assert.equal(busy.errors[0].text, '服务器繁忙 — 正在重试');
+  assert.deepEqual(busy.applied, []);
+});
+
+test('a 503 is not an exception: Retry-After is honoured and the last known clock stays', async () => {
+  const env = clockEnv({snapshot: {duration: 30, running: false, remaining_ms: 30000}, responses: () => (env.busy ? {ok: false, status: 503, headers: {get: () => '5'}, json: async () => ({})} : null)});
+  env.sync.start();
+  await settle();
+  assert.equal(env.calls.length, 1, 'the first answer arrives');
+  assert.equal(env.applied.length, 1, 'and it is on screen');
+  env.busy = true;
+  env.streams[0].fail();
+  await settle();
+  const afterFail = env.calls.length;
+  assert.equal(env.sync.status(), 'polling');
+  await env.advance(4000);
+  assert.equal(env.calls.length, afterFail, 'Retry-After: 5 holds the polls back');
+  assert.deepEqual(env.errors, [], 'a busy server is not a command error');
+  assert.equal(env.applied.length, 1, 'the last known clock stays on screen, unlabelled as anything better');
+  await env.advance(1200);
+  assert.ok(env.calls.length > afterFail, 'and the poll resumes after it');
+  assert.ok(env.streams.length > 1, 'the reconnect waited for it too');
+  assert.equal(clockSync.retryAfterMsFrom({headers: {get: () => '5'}}), 5000);
+  assert.equal(clockSync.retryAfterMsFrom({headers: {get: () => null}}), clockSync.POLL_MS * 2);
+});
+
+test('the shared clock polls when the stream dies and stops once it is back', async () => {
+  const env = clockEnv({snapshot: {duration: 30, running: false, remaining_ms: 30000}});
+  env.sync.start();
+  await settle();
+  assert.equal(env.calls[0].method, 'GET', 'the first paint is the server clock, not localStorage');
+  assert.equal(env.streams.length, 1, 'and the stream is opened');
+  assert.equal(env.sync.status(), 'connecting', 'nothing is claimed before the server has spoken');
+  env.streams[0].emit(clockSnapshot({server_now_ms: env.now}));
+  await settle();
+  assert.equal(env.sync.status(), 'live');
+  env.streams[0].fail();
+  await settle();
+  assert.ok(env.streams[0].closed, 'a failed stream is closed, not left half-open');
+  assert.equal(env.sync.status(), 'polling', 'a dead stream is not live');
+  const before = env.calls.length;
+  await env.advance(1000);
+  assert.ok(env.calls.length > before, 'it falls back to GET /api/clock every second');
+  await env.advance(1500);
+  assert.equal(env.streams.length, 2, 'and keeps trying to reconnect');
+  const during = env.calls.length;
+  env.streams[1].beat({seq: 4, server_now_ms: env.now});
+  await settle();
+  assert.equal(env.sync.status(), 'live');
+  await env.advance(3000);
+  assert.equal(env.calls.length, during, 'polling stops as soon as the stream is back');
+});
+
+test('the shared clock treats 30 s of silence as a dead stream and says when it is offline', async () => {
+  const env = clockEnv({snapshot: {duration: 30, running: false, remaining_ms: 30000}, responses: () => (env.down ? Promise.reject(new Error('down')) : null)});
+  env.sync.start();
+  await settle();
+  env.streams[0].emit(clockSnapshot({server_now_ms: env.now}));
+  await settle();
+  assert.equal(env.sync.status(), 'live');
+  await env.advance(31000);
+  assert.ok(env.streams[0].closed, 'a stream that sends nothing for two heartbeats is dead');
+  assert.equal(env.sync.status(), 'polling');
+  const applied = env.applied.length;
+  env.down = true;
+  await env.advance(11000);
+  assert.equal(env.sync.status(), 'offline', 'no answer for 10 s is offline, not "synced"');
+  assert.equal(env.applied.length, applied, 'and the last known clock is still the one on screen');
+  assert.ok(env.statuses.includes('offline'));
+  env.down = false;
+  await env.advance(1000);
+  assert.equal(env.sync.status(), 'polling', 'the first answer back ends the offline state');
+  assert.ok(env.applied.length > applied, 'and the truth lands on the clock again');
+});
+
+test('the shared clock re-syncs when the tab is shown again, focused, or back online', async () => {
+  const env = clockEnv({snapshot: {duration: 30, running: false, remaining_ms: 30000}});
+  const before = env.calls.length;
+  await env.sync.resync('visibilitychange');
+  await env.sync.resync('focus');
+  await env.sync.resync('online');
+  assert.equal(env.calls.length, before + 3);
+  // Every resync carries the server's own clock reading, so the offset tracks a
+  // device clock that drifts while the tab sleeps.
+  const first = env.applied.at(-1);
+  assert.ok(first.state.server_now_ms >= 1000);
+});
+
+test('the clock labels and the sync line are honest in English and 中文', () => {
+  assert.equal(clockSync.LABELS.en.kicker, 'Shot clock · shared across devices');
+  assert.equal(clockSync.LABELS.zh.kicker, '击球计时 · 多设备同步');
+  assert.equal(clockSync.statusText('live', 'en', null), 'live · synced');
+  assert.equal(clockSync.statusText('polling', 'en', null), 'reconnecting — showing last known');
+  assert.equal(clockSync.statusText('offline', 'en', null), 'offline — showing last known');
+  assert.equal(clockSync.statusText('live', 'zh', null), '实时 · 已同步');
+  assert.equal(clockSync.statusText('polling', 'zh', null), '重新连接中 — 显示最后已知');
+  assert.equal(clockSync.statusText('offline', 'zh', null), '离线 — 显示最后已知');
+  assert.equal(clockSync.statusText('connecting', 'zh', null), '连接中…');
+  assert.equal(clockSync.statusText('live', 'en', 'clock command failed — nothing changed'),
+    'clock command failed — nothing changed', 'a failed command outranks the status line');
+  for (const words of [clockSync.LABELS.en, clockSync.LABELS.zh]) {
+    assert.ok(!/local timer|本机计时/.test(words.kicker), 'no label claims the clock is local any more');
+  }
+});
+
+// The smallest DOM decorate() needs: one clock mount, optional kicker, optional
+// .vs-clock wrapper. Enough to prove the label swap and the sync line.
+function fakeClockMount(options) {
+  const opts = options || {};
+  const children = [];
+  let holder = null;
+  const kicker = opts.kicker === null ? null : {textContent: opts.kicker || ''};
+  const strong = {closest: selector => (selector === '.vs-clock' && opts.vsClock ? holder : null), parentElement: null, nextSibling: null};
+  holder = {
+    querySelector: selector => {
+      if (selector === '.kicker') return kicker;
+      if (selector === '[data-clock-sync]') return children.find(child => child.attrs && 'data-clock-sync' in child.attrs) || null;
+      return null;
+    },
+    getAttribute: name => (name === 'title' ? (opts.title || null) : null),
+    setAttribute: (name, value) => { if (name === 'title') opts.title = value; },
+    insertBefore: (node, anchor) => { const at = anchor ? children.indexOf(anchor) : -1; children.splice(at < 0 ? children.length : at, 0, node); },
+    appendChild: node => children.push(node)
+  };
+  strong.parentElement = holder;
+  if (kicker) {
+    children.push(kicker);
+    kicker.nextSibling = strong;
+  }
+  children.push(strong);
+  const doc = {
+    documentElement: {getAttribute: name => (name === 'lang' ? (opts.lang || 'en') : null)},
+    createElement: () => {
+      const node = {attrs: {}, textContent: '', classList: {toggle() {}}};
+      node.setAttribute = (name, value) => { node.attrs[name] = value; };
+      node.getAttribute = name => (name in node.attrs ? node.attrs[name] : null);
+      return node;
+    },
+    querySelectorAll: () => [strong]
+  };
+  return {doc, kicker, holder, lines: () => children.filter(child => child.attrs && 'data-clock-sync' in child.attrs)};
+}
+
+test('the shared clock replaces the "local timer" label and says what it knows, in the shell language', () => {
+  assert.equal(clockSync.LOCAL_TIMER_LIE.length, 2);
+  const en = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0]});
+  clockSync.decorate(en.doc, 'live', null);
+  assert.equal(en.kicker.textContent, 'Shot clock · shared across devices', 'the lie ops.js paints is replaced');
+  assert.equal(en.lines().length, 1, 'with exactly one sync line');
+  assert.equal(en.lines()[0].textContent, 'live · synced');
+  assert.equal(en.lines()[0].attrs['data-clock-sync'], '');
+  clockSync.decorate(en.doc, 'polling', null);
+  assert.equal(en.lines().length, 1, 're-applying after an ops.js render adds no second line');
+  assert.equal(en.lines()[0].textContent, 'reconnecting — showing last known', 'and never keeps claiming sync');
+  const zh = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[1]});
+  clockSync.decorate(zh.doc, 'offline', null);
+  assert.equal(zh.kicker.textContent, '击球计时 · 多设备同步');
+  assert.equal(zh.lines()[0].textContent, '离线 — 显示最后已知');
+  // The Vision stage bar has no kicker: its label is the title attribute.
+  const vs = fakeClockMount({kicker: null, vsClock: true, title: clockSync.LOCAL_TIMER_LIE[1], lang: 'en'});
+  clockSync.decorate(vs.doc, 'polling', null);
+  assert.equal(vs.holder.getAttribute('title'), '击球计时 · 多设备同步');
+  assert.equal(vs.lines()[0].textContent, '重新连接中 — 显示最后已知', 'the line follows the language of the label it replaced');
+  // A failed command is shown on the same line.
+  const err = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0]});
+  clockSync.decorate(err.doc, 'live', 'clock command failed — nothing changed');
+  assert.equal(err.lines()[0].textContent, 'clock command failed — nothing changed');
 });
 
 test('a Twitch VOD picker sends the replay source the server accepts, never a live label', () => {

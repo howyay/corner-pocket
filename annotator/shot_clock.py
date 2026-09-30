@@ -32,6 +32,14 @@ ACTIONS = ('start', 'pause', 'reset', 'set')
 MIN_DURATION = 5
 MAX_DURATION = 300
 DEFAULT_DURATION = 30
+# The change stream (GET /api/clock/stream) is never silent for longer than this:
+# Cloudflare drops an idle proxied connection at ~100 s, and a page that hears
+# nothing for 30 s falls back to polling.
+HEARTBEAT_S = 15
+# nosniff and the other policy headers come from the server's end_headers(), once.
+SSE_HEADERS = {'Content-Type': 'text/event-stream',
+               'Cache-Control': 'no-cache, no-transform',
+               'X-Accel-Buffering': 'no'}
 
 
 def epoch_ms():
@@ -190,6 +198,28 @@ class ShotClock:
         with self.condition:
             self._closed = True
             self.condition.notify_all()
+
+    def serve_events(self, state, stream, heartbeat_s=None):
+        """Write Server-Sent Events to `stream` until the clock is closed or the
+        client goes away (the write then raises OSError): one `clock` event with
+        state() now and one after every change, and a heartbeat whenever nothing
+        changed for heartbeat_s. The heartbeat is a comment line for proxies plus
+        a `heartbeat` event, because EventSource hides comments from the page and
+        the page must see that the stream is alive. Waiting is on this clock's
+        own Condition only; no other lock is held while it waits."""
+        heartbeat_s = HEARTBEAT_S if heartbeat_s is None else heartbeat_s
+        stream.write(b'retry: 2000\n\n')
+        seq = None
+        while not self._closed:
+            if self.seq != seq:
+                event = state()
+                seq = event['seq']
+                stream.write(b'event: clock\ndata: ' + json.dumps(event, allow_nan=False).encode() + b'\n\n')
+            else:
+                beat = json.dumps({'seq': seq, 'server_now_ms': epoch_ms()}).encode()
+                stream.write(b': heartbeat\nevent: heartbeat\ndata: ' + beat + b'\n\n')
+            stream.flush()
+            self.wait(seq, heartbeat_s)
 
     def _save(self, state):
         self.path.parent.mkdir(parents=True, exist_ok=True)
