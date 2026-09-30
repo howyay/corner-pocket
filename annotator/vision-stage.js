@@ -16,6 +16,7 @@ const COPY = {
     freshness:'Freshness', saved:'Saved channels', savedVods:'Saved VODs', useInForm:'Use', savedOk:'Saved', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
     select:'Select', remove:'Remove', chat:'Chat', showChat:'Show chat', hideChat:'Hide chat',
     startFailed:'Start attempt', cause:'Cause', remedy:'Remedy', retry:'Retry',
+    lastLiveError:'Last live session ended with an error at {at}',
     remedyText:'Check that the source is a saved canonical Twitch channel, or that the allowlisted dataset media exists.',
     correct:'Correct', wrong:'Wrong', unsure:'Unsure', saveReview:'Save review', nextCue:'Next candidate →',
     notReviewed:'Not reviewed', reviewed:'Reviewed', unlabeled:'Unlabeled',
@@ -132,6 +133,7 @@ const COPY = {
     freshness:'新鲜度', saved:'已保存频道', savedVods:'已保存回放', useInForm:'填入', savedOk:'已保存', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
     select:'选择', remove:'移除', chat:'聊天', showChat:'显示聊天', hideChat:'隐藏聊天',
     startFailed:'启动尝试', cause:'原因', remedy:'处理', retry:'重试',
+    lastLiveError:'上一次直播会话于 {at} 因错误结束',
     remedyText:'请确认来源是已保存的标准 Twitch 频道，或数据集媒体确实存在。',
     correct:'正确', wrong:'错误', unsure:'不确定', saveReview:'保存复核', nextCue:'下一个候选 →',
     notReviewed:'未复核', reviewed:'已复核', unlabeled:'未标注',
@@ -902,7 +904,9 @@ function broadcastsBlock(s) {
     ${imported}</div>`;
 }
 function sourcePanelHTML(s) {
-  const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>` : '';
+  const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>`
+    // A stopped session's failure is history: a muted line saying so, never the red box.
+    : s.live.last_error?.error ? `<p class="vs-note" data-vs-last-live-error>${esc(t('lastLiveError').replace('{at}', s.live.last_error.at ? new Date(s.live.last_error.at * 1000).toTimeString().slice(0, 5) : '—'))}: ${esc(s.live.last_error.error)}</p>` : '';
   const vodRows = (opts.vods?.() || []).map(v => `<div class="vs-channel"><span class="vs-mono">${esc(v.url)}</span><button data-vs-action="use-saved-vod" data-vs-value="${esc(v.video)}">${esc(t('useInForm'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(v.id)}">${esc(t('remove'))}</button></div>`).join('');
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
   const live = s.live;

@@ -1386,7 +1386,11 @@ function applyLiveStatus(status) {
   if (!status || typeof status !== 'object') return;
   const previous = state.live.state;
   state.live.state = status.state || 'idle';
-  state.live.error = status.error || null;
+  // An error describes the current session only while it is in error; any other
+  // state's error field is a previous session's (see last_error below).
+  state.live.error = state.live.state === 'error' ? status.error || null : null;
+  state.live.error_code = state.live.error ? status.error_code || null : null;
+  state.live.error_params = state.live.error ? status.error_params || null : null;
   state.live.skipped = status.frames_skipped ?? 0;
   // Per-stage evidence from the processor: the panel names which detectors ran and
   // at what cadence, instead of implying all of them ran on every frame.
@@ -1402,15 +1406,26 @@ function applyLiveStatus(status) {
   state.live.frame_age_ms = age;
   state.live.stale = age != null && age > 2000;
   // A failed start stays stated until a start succeeds: status polls of an
-  // idle/stopped processor must not erase the attempt that failed.
-  const failure = status.error || (state.live.state === 'error' ? state.live.error : null);
+  // idle/stopped processor must not erase the attempt that failed.  The processor's
+  // error is a failure only while its state is 'error': a fresh page load that polls
+  // a stopped processor reads the previous session's cause as history (last_error),
+  // never as a start this page made.
+  state.live.last_error = status.last_error ? {error: status.last_error, at: status.last_error_at ?? null,
+                                               code: status.last_error_code || null, params: status.last_error_params || null} : null;
+  const failure = state.live.error;
   if (failure) {
-    state.live.attempt = {at: Date.now(), error: failure, source: state.live.attempt?.source || null};
+    // This page's own refused start (the shell sets it just before) stays stated; a
+    // failure only read off a poll is the processor's, and lasts while it is in error.
+    const own = !!state.live.attempt?.error && !state.live.attempt.observed;
+    state.live.attempt = {at: Date.now(), error: failure, source: state.live.attempt?.source || null, observed: !own,
+                          code: state.live.error_code, params: state.live.error_params};
     notice(`Live start failed: ${failure}`, true);
-  } else if (state.live.state === 'running' || state.live.state === 'starting') {
+  } else if (state.live.state === 'running' || state.live.state === 'starting' || state.live.attempt?.observed) {
+    if (state.live.attempt?.observed && state.notice.text.startsWith('Live start failed')) state.notice = {text:'', error:false};
     state.live.attempt = null;
   } else if (state.live.attempt?.error) {
     state.live.error = state.live.attempt.error;
+    state.live.error_code = state.live.attempt.code || null; state.live.error_params = state.live.attempt.params || null;
   }
   // An operator stop hands the stage back to the dataset frame it held, with that
   // frame's own layers; a feed that stalls or ends keeps its last frame (stale).
@@ -1643,7 +1658,7 @@ function snapshot() {
     frame: {index: state.frame, t: state.t, fps: meta?.fps ?? 0, count: meta?.frame_count ?? 0, duration: meta?.duration ?? 0, kind: meta?.timestamp_kind || '', has: !!state.shotUrl, decoding: state.decoding, playing: state.playing, rate: playbackRate(), video: !!state.playback.on},
     playback: {on: !!state.playback.on, playing: videoPlaying(), loops: state.playback.loops || 0, from: state.playback.from || 0, to: state.playback.to || 0, event: state.playback.event ? state.playback.event.id : null, before: CLIP_BEFORE_S, after: CLIP_AFTER_S},
     source: {kind: state.source.kind, label: state.source.kind === 'vod' ? `${state.dataset} · ${meta ? `${Math.round(meta.duration)} s · ${Number(meta.fps).toFixed(3)} fps` : '—'}` : state.source.label, channel: state.source.channel},
-    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null},
+    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, last_error: state.live.last_error || null, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null},
     overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading},
     selection: selected, focus: state.focus, eventFilter: state.eventFilter,
     detectors: {...state.detectors}, eventsAnalysed: state.eventsAnalysed !== false,
@@ -1709,6 +1724,58 @@ function liveStateText(value, lang = root?.lang) {
   const row = stateCopy[String(value ?? '').toLowerCase()];
   if (!row) return String(value ?? '');
   return lang === 'zh' ? row[1] : row[0];
+}
+// Live errors in the operator's language.  A session's failure arrives with a stable
+// code and numeric params (annotator/live_processing.py _ERROR_CODES); a refused start
+// arrives as the server's English sentence only, matched here by anchored patterns.
+// Anything not matched exactly is shown verbatim - never dropped, never guessed.
+const hms = seconds => `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds % 3600 / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const liveErrorCodes = {
+  stream_ended: () => ['Live stream ended or read timed out; restart to reconnect', '直播流已结束或读取超时；请重新开始以重连'],
+  replay_stalled: p => [`Replay stalled: no data from Twitch for ${p.waited_s} s at ${hms(p.at_s)} of ${p.length_s == null ? 'an unknown length' : hms(p.length_s)}; restart with start_s=${p.start_s} to continue`,
+    `回放中断：Twitch 已 ${p.waited_s} 秒无数据，停在 ${hms(p.at_s)}（共 ${p.length_s == null ? '未知时长' : hms(p.length_s)}）；以 start_s=${p.start_s} 重新开始即可继续`],
+  channel_offline: () => [null, 'Twitch 频道未开播，或没有可公开播放的流；播放可能已结束'],
+  twitch_unavailable: () => [null, 'Twitch 播放受限或不可用，可能需要浏览器授权'],
+  twitch_network: () => ['Twitch playback request failed; check network and TLS connectivity', 'Twitch 播放请求失败；请检查网络和 TLS 连接'],
+  twitch_http: p => [`Twitch playback request failed (HTTP ${p.status})`, `Twitch 播放请求失败（HTTP ${p.status}）`],
+  open_failed: () => ['Could not open the selected media source', '无法打开所选媒体源'],
+  decode_failed: () => [null, '媒体解析或解码失败，或解码器未能清理；请检查来源是否可用'],
+  inference_failed: () => ['Frame inference or JPEG encoding failed; check local detector weights and runtime', '帧推理或 JPEG 编码失败；请检查本地检测器权重和运行环境'],
+  frame_invalid: () => ['Decoded frame must be a color image no larger than 3840 × 2160', '解码帧必须是不大于 3840 × 2160 的彩色图像'],
+  unsupported_kind: () => ['Unsupported live source kind', '不支持的直播来源类型']
+};
+const liveRefusals = [
+  [/^Select a saved canonical Twitch channel$/, () => '请选择一个已保存的标准 Twitch 频道'],
+  [/^Saved Twitch channel is unavailable$/, () => '已保存的 Twitch 频道不可用'],
+  [/^Use an allowlisted dataset or saved Twitch source_id, not a URL$/, () => '请使用允许的数据集或已保存的 Twitch source_id，而不是网址'],
+  [/^source must be a dataset or saved Twitch channel object$/, () => '来源必须是数据集或已保存的 Twitch 频道对象'],
+  [/^dataset must be vod30 or highlight$/, () => '数据集必须是 vod30 或 highlight'],
+  [/^Allowlisted dataset media is unavailable$/, () => '允许的数据集媒体不可用'],
+  [/^Live detectors must be table, person and\/or ball; SAM balls are not supported$/, () => '直播检测器只能是 table、person 和/或 ball；不支持 SAM 球检测'],
+  [/^Requested detector '([a-z]+)' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors$/,
+    name => `请求的检测器“${name}”在此流水线中没有对应阶段；请用 stages= 传入 BallStage，或从检测器中移除它`],
+  [/^Requested detector '([a-z]+)' cannot run: ([\s\S]+)$/, (name, cause) => `请求的检测器“${name}”无法运行：${cause}`],
+  [/^Previous live processing threads have not exited; stop and retry$/, () => '上一次直播处理线程尚未退出；请先停止再重试']
+];
+// A notice carries only the sentence: its code is the one the live state holds for it.
+function liveErrorDetail(sentence, lang = root?.lang) {
+  const known = [{error: state.live.error, code: state.live.error_code, params: state.live.error_params}, state.live.attempt, state.live.last_error]
+    .find(entry => entry?.error && entry.error === sentence);
+  return liveErrorText(known?.code, known?.params, sentence, lang);
+}
+function liveErrorText(code, params, sentence, lang = root?.lang) {
+  const format = code && Object.hasOwn(liveErrorCodes, code) ? liveErrorCodes[code] : null;
+  const zh = lang === 'zh';
+  if (format) {
+    try {
+      const [en, cn] = format(params || {});
+      return zh ? cn : (en ?? String(sentence ?? ''));
+    } catch { return String(sentence ?? ''); }
+  }
+  if (zh && typeof sentence === 'string') {
+    for (const [pattern, render] of liveRefusals) { const match = sentence.match(pattern); if (match) return render(...match.slice(1)); }
+  }
+  return String(sentence ?? '');
 }
 const zhCopy = {
   tagline:'复核工作台 · 本地录像', feed:'本地复核',
@@ -1784,7 +1851,7 @@ const editorTemplates = [
   [/^Frame load failed: ([\s\S]*)$/, detail => `帧加载失败：${detail}`],
   [/^Save failed: ([\s\S]*)\. Your changes remain on screen; retry when ready\.$/, detail => `保存失败：${detail}。更改仍保留在屏幕上，可稍后重试。`],
   [/^Save failed: ([\s\S]*)\. Your edits remain on screen; retry when ready\.$/, detail => `保存失败：${detail}。编辑仍保留在屏幕上。`],
-  [/^Live start failed: ([\s\S]*)$/, detail => `直播启动失败：${detail}`],
+  [/^Live start failed: ([\s\S]*)$/, detail => `直播启动失败：${liveErrorDetail(detail, 'zh')}`],
   [/^Status: (.+?)( — [\s\S]*)?$/, (status, detail = '') => `状态：${liveStateText(status, 'zh')}${detail}`],
   [/^Status unavailable: ([\s\S]*)$/, detail => `状态不可用：${detail}`],
   [/^Rebuild failed: ([\s\S]*)$/, detail => `重建失败：${detail}`],

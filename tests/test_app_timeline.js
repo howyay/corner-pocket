@@ -29,7 +29,8 @@ vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
     playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip, paintLiveChip,
     placeTags, tagRow, beginTags: () => { tagQueue = []; }, boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
-    paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S};
+    paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S,
+    liveErrorCodes, liveRefusals, liveErrorText, liveErrorDetail};
 })();`), sandbox, {filename: 'app.js'});
 const T = sandbox.T;
 
@@ -317,7 +318,8 @@ test('engine copy localizes notices, statuses and save receipts', () => {
   for (const [source, chinese] of [
     ['Select a ball or a crop first.', '请先选择球或裁剪图。'],
     ['Select a visible track first.', '请先选择可见的轨迹。'],
-    ['Live start failed: Select a saved canonical Twitch channel', '直播启动失败：Select a saved canonical Twitch channel'],
+    // A refused start's sentence is mapped, not echoed: the console never mixes the server's English into a Chinese notice.
+    ['Live start failed: Select a saved canonical Twitch channel', '直播启动失败：请选择一个已保存的标准 Twitch 频道'],
     ['Save failed: HTTP 409. Your changes remain on screen; retry when ready.', '保存失败：HTTP 409。更改仍保留在屏幕上，可稍后重试。'],
     ['crop t00005_b00.jpg = Cue 0', '裁剪图 t00005_b00.jpg = 母球 0'],
     ['crop t00005_b00.jpg = Ball 7', '裁剪图 t00005_b00.jpg = 球 7'],
@@ -1617,6 +1619,56 @@ test('the live ball detector is selectable and named as the trained net', () => 
   assert.ok(refusalPanel.includes('Start attempt'), 'and is labelled as the attempt that failed');
 });
 
+test('a fresh load of a stopped processor shows no failure box, only its history, muted', () => {
+  // ship14, production: an earlier session died in error and was stopped; every fresh
+  // Vision load then showed "Live start failed" from that session's leftover error.
+  const review = sandbox.window.CornerPocketReview;
+  const snapshotLive = () => visionSnapshot().live;
+  const before = {attempt: T.state.live.attempt, notice: {...T.state.notice}};
+  T.state.live.attempt = null; T.state.notice = {text:'', error:false};
+  // The exact ship14 payload: a stopped processor still carrying the dead session's error.
+  review.applyLiveStatus({state:'stopped', error:'Live stream ended or read timed out; restart to reconnect', frames_skipped:0});
+  assert.strictEqual(T.state.live.attempt, null, 'a stopped processor\'s leftover error is not a start this page made');
+  assert.ok(!/Live start failed/.test(T.state.notice.text), 'no failure notice on a fresh load: ' + T.state.notice.text);
+  const stale = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!stale.includes('vs-error-block') && !stale.includes('restart to reconnect'), 'and the panel claims no failure at all');
+  review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0,
+                          last_error:'Live stream ended or read timed out; restart to reconnect', last_error_at:1790506028.8});
+  assert.strictEqual(T.state.live.attempt, null, 'no start attempt is invented for this page');
+  assert.ok(!/Live start failed/.test(T.state.notice.text), 'and no failure notice: ' + T.state.notice.text);
+  const panel = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!panel.includes('vs-error-block') && !panel.includes('Start attempt'), 'no red failure box on a fresh load');
+  assert.ok(panel.includes('data-vs-last-live-error') && panel.includes('Last live session ended with an error at '),
+    'the previous session\'s cause is a muted line that says it is history');
+  assert.ok(panel.includes('restart to reconnect'), 'with its own sentence');
+  const zh = adapterStage('zh', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(zh.includes('上一次直播会话于'), 'in Chinese too');
+  // The same status while it is still in error is the current failure, stated as such.
+  review.applyLiveStatus({state:'error', error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue',
+                          frames_skipped:0, last_error:null, last_error_at:null});
+  assert.ok(T.state.live.attempt?.error.startsWith('Replay stalled'), 'a session in error is a failure now');
+  assert.ok(/Live start failed/.test(T.state.notice.text));
+  // Another tab (or the operator) stops that session: this page made no start, so the
+  // box it only observed goes with it; the cause stays as the muted history line.
+  review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0,
+                          last_error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue', last_error_at:1790506028.8});
+  assert.strictEqual(T.state.live.attempt, null, 'an observed failure does not outlive its session');
+  assert.ok(!/Live start failed/.test(T.state.notice.text), 'nor does its notice: ' + T.state.notice.text);
+  const after = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!after.includes('vs-error-block') && after.includes('data-vs-last-live-error'), 'history line only');
+  // This page's own refused start is different: it stays stated until a start succeeds.
+  review.setLiveAttempt({source:'twitch:saved', error:'Select a saved canonical Twitch channel', at:1});
+  review.applyLiveStatus({state:'error', error:'Select a saved canonical Twitch channel', frames_skipped:0});
+  review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0});
+  assert.strictEqual(T.state.live.attempt?.error, 'Select a saved canonical Twitch channel', 'a start this page made keeps its box');
+  // A clean idle processor: nothing at all.
+  review.applyLiveStatus({state:'idle', error:null, frames_skipped:0, last_error:null});
+  T.state.live.attempt = null;
+  const idle = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  assert.ok(!idle.includes('vs-error-block') && !idle.includes('data-vs-last-live-error'), 'an idle processor with no history shows neither');
+  T.state.live.attempt = before.attempt; T.state.notice = before.notice; T.state.live.state = 'idle'; T.state.live.error = null; T.state.live.last_error = null;
+});
+
 test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => {
   const base = {state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0,
                 detectors:['table','person'], stale:false, seq:null, stages:[], source:null, replay:null};
@@ -2342,6 +2394,124 @@ test('a machine-produced candidate says so on its card, and an event without pro
   // The engine hands the rail the payload as stored.
   assert.ok(source.includes('provenance: e.provenance && typeof e.provenance === \'object\' ? {...e.provenance} : null'),
     'app.js carries provenance into the event snapshot');
+});
+
+// --- Live failures: one code per sentence, rendered in EN and 中 -------------------
+// The server owns the sentences and the codes (annotator/live_processing.py), so the maps
+// are read back out of that source: a reworded sentence, a new code, or a code the console
+// cannot render fails here instead of quietly showing English on a 中文 console.
+const liveSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'live_processing.py'), 'utf8');
+const SERVER_LIVE_SENTENCES = (() => {
+  const rows = [];
+  for (const line of liveSource.split('_ERROR_CODES = {')[1].split('\n}')[0].split('\n')) {
+    const row = line.match(/^\s*'([^']+)': '([^']+)',?$/);
+    if (row) rows.push({sentence: row[1], code: row[2]});
+  }
+  return rows;
+})();
+const SERVER_LIVE_CODES = new Set([
+  ...SERVER_LIVE_SENTENCES.map(row => row.code),
+  ...[...liveSource.matchAll(/\('([a-z_]+)', re\.compile/g)].map(hit => hit[1]),
+]);
+const HAN = /[\u3400-\u9fff]/;
+
+test('the console renders exactly the live failure codes the server can send', () => {
+  assert.ok(SERVER_LIVE_SENTENCES.length >= 12, 'the server sentence map was read: ' + SERVER_LIVE_SENTENCES.length);
+  assert.ok(SERVER_LIVE_CODES.size >= 11, 'including the parameterised codes: ' + SERVER_LIVE_CODES.size);
+  assert.deepStrictEqual(Object.keys(T.liveErrorCodes).sort(), [...SERVER_LIVE_CODES].sort(),
+    'a server code the console cannot phrase would show English on a 中文 console');
+});
+
+test('every sentence the server can report renders in both languages', () => {
+  for (const {sentence, code} of SERVER_LIVE_SENTENCES) {
+    const en = T.liveErrorText(code, {}, sentence, 'en');
+    const zh = T.liveErrorText(code, {}, sentence, 'zh');
+    assert.strictEqual(en, sentence, `${code} keeps the server's English verbatim: ${en}`);
+    assert.ok(HAN.test(zh) && zh !== sentence, `${code} is phrased in Chinese: ${zh}`);
+  }
+});
+
+test('a parameterised live failure phrases its own numbers in both languages', () => {
+  const stalled = 'Replay stalled: no data from Twitch for 20 s at 0:03:12 of 1:02:03; restart with start_s=192 to continue';
+  const params = {waited_s: 20, at_s: 192, length_s: 3723, start_s: 192};
+  assert.strictEqual(T.liveErrorText('replay_stalled', params, stalled, 'en'), stalled,
+    'the English is the server sentence, unchanged');
+  const zh = T.liveErrorText('replay_stalled', params, stalled, 'zh');
+  for (const value of ['20', '0:03:12', '1:02:03', 'start_s=192']) {
+    assert.ok(zh.includes(value), `the Chinese carries ${value}: ${zh}`);
+  }
+  const unknown = stalled.replace('1:02:03', 'an unknown length');
+  const zhUnknown = T.liveErrorText('replay_stalled', {...params, length_s: null}, unknown, 'zh');
+  assert.ok(zhUnknown.includes('未知时长') && !zhUnknown.includes('null'),
+    'an unknown length is a phrase, never null: ' + zhUnknown);
+  const http = 'Twitch playback request failed (HTTP 403)';
+  assert.strictEqual(T.liveErrorText('twitch_http', {status: 403}, http, 'en'), http);
+  assert.ok(T.liveErrorText('twitch_http', {status: 403}, http, 'zh').includes('403'),
+    'a failed Twitch HTTP request names the status: ' + T.liveErrorText('twitch_http', {status: 403}, http, 'zh'));
+});
+
+test('a refused start is mapped to Chinese, and anything unmapped stays the server\'s English', () => {
+  const refusals = [
+    'Select a saved canonical Twitch channel',
+    'Saved Twitch channel is unavailable',
+    'Use an allowlisted dataset or saved Twitch source_id, not a URL',
+    'source must be a dataset or saved Twitch channel object',
+    'dataset must be vod30 or highlight',
+    'Allowlisted dataset media is unavailable',
+    'Live detectors must be table, person and/or ball; SAM balls are not supported',
+    "Requested detector 'ball' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors",
+    "Requested detector 'ball' cannot run: weights file is missing at /w/ball.pt",
+    'Previous live processing threads have not exited; stop and retry',
+  ];
+  assert.strictEqual(refusals.length, T.liveRefusals.length, 'one anchored pattern per refusal the API can return');
+  for (const sentence of refusals) {
+    assert.strictEqual(T.liveErrorText(null, null, sentence, 'en'), sentence,
+      'the English is exactly what the server sent');
+    const zh = T.liveErrorText(null, null, sentence, 'zh');
+    assert.ok(HAN.test(zh) && zh !== sentence, `the refusal is phrased in Chinese: ${sentence} -> ${zh}`);
+  }
+  assert.ok(T.liveErrorText(null, null, refusals[7], 'zh').includes('ball'), 'a refusal keeps the detector it names');
+  assert.ok(T.liveErrorText(null, null, refusals[8], 'zh').includes('/w/ball.pt'),
+    'and the path the server reported');
+  const unknown = 'a refusal from a newer server';
+  for (const lang of ['en', 'zh']) {
+    assert.strictEqual(T.liveErrorText(null, null, unknown, lang), unknown, 'an unmapped refusal is never blanked');
+  }
+  assert.strictEqual(T.liveErrorText(null, null, 'prefix: ' + refusals[0], 'zh'), 'prefix: ' + refusals[0],
+    'the refusal patterns are anchored, so a wrapped sentence is not claimed');
+});
+
+test('a status payload carries its code into the console, as the cause or as history', () => {
+  const review = sandbox.window.CornerPocketReview;
+  const before = {attempt: T.state.live.attempt, notice: {...T.state.notice}};
+  const stalled = 'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue';
+  const params = {waited_s: 8, at_s: 754, length_s: 13397, start_s: 754};
+  T.state.live.attempt = null; T.state.notice = {text:'', error:false};
+
+  review.applyLiveStatus({state:'error', error:stalled, error_code:'replay_stalled', error_params:params, frames_skipped:0});
+  assert.strictEqual(T.state.live.attempt.code, 'replay_stalled', 'the attempt keeps the code with its sentence');
+  assert.strictEqual(T.state.live.attempt.params.start_s, 754, 'and the numbers the sentence was built from');
+  assert.ok(T.state.notice.text === 'Live start failed: ' + stalled,
+    'the notice still carries the server sentence: ' + T.state.notice.text);
+  assert.strictEqual(T.liveErrorDetail(stalled, 'en'), stalled, 'and can be read back in English');
+  assert.ok(/回放中断/.test(T.liveErrorDetail(stalled, 'zh')), 'or in Chinese');
+
+  review.applyLiveStatus({state:'stopped', error:null, error_code:null, error_params:null, frames_skipped:0,
+                          last_error:stalled, last_error_code:'replay_stalled', last_error_params:params,
+                          last_error_at:1790506028.8});
+  assert.strictEqual(T.state.live.attempt, null, 'an observed failure does not outlive its session');
+  assert.strictEqual(T.state.live.error_code, null, 'and its code is not the current one');
+  assert.strictEqual(T.state.live.last_error.code, 'replay_stalled', 'the code moves to history with the sentence');
+  assert.ok(/回放中断/.test(T.liveErrorDetail(stalled, 'zh')), 'the history line renders in Chinese too');
+
+  review.setLiveAttempt({source:'twitch:saved', error:"a newer server's own sentence", at:1});
+  for (const lang of ['en', 'zh']) {
+    assert.strictEqual(T.liveErrorDetail("a newer server's own sentence", lang), "a newer server's own sentence",
+      'a sentence nobody mapped keeps the server English in either language');
+  }
+  T.state.live.attempt = before.attempt; T.state.notice = before.notice;
+  T.state.live.state = 'idle'; T.state.live.error = null; T.state.live.error_code = null;
+  T.state.live.error_params = null; T.state.live.last_error = null;
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

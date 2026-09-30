@@ -40,6 +40,55 @@ class _SourceError(RuntimeError):
     pass
 
 
+#: Stable codes for the sentences a live session can end with.  The English sentence
+#: stays in ``error`` verbatim (logs, tests); the client renders the code in the
+#: operator's language and falls back to that sentence for a code it does not know.
+_ERROR_CODES = {
+    'Live stream ended or read timed out; restart to reconnect': 'stream_ended',
+    'Twitch channel is offline or has no public playable stream': 'channel_offline',
+    'Twitch channel is offline or has no public video variants': 'channel_offline',
+    'Twitch channel is offline; playback has ended': 'channel_offline',
+    'Twitch playback is unavailable or requires browser authorization': 'twitch_unavailable',
+    'Twitch playback is restricted or requires browser authorization': 'twitch_unavailable',
+    'Twitch playback request failed; check network and TLS connectivity': 'twitch_network',
+    'Could not open the selected media source': 'open_failed',
+    'Media resolution or decoding failed; check source availability': 'decode_failed',
+    'Media decoder cleanup failed': 'decode_failed',
+    'Frame inference or JPEG encoding failed; check local detector weights and runtime': 'inference_failed',
+    'Decoded frame must be a color image no larger than 3840 × 2160': 'frame_invalid',
+    'Unsupported live source kind': 'unsupported_kind',
+}
+
+
+#: Sentences that carry values: anchored, with the values captured as params.
+_ERROR_PATTERNS = (
+    ('twitch_http', re.compile(r'Twitch playback request failed \(HTTP (?P<status>\d+)\)')),
+    ('replay_stalled', re.compile(
+        r'Replay stalled: no data from Twitch for (?P<waited_s>\d+) s at (?P<at>\d+:\d\d:\d\d) '
+        r'of (?P<length>\d+:\d\d:\d\d|an unknown length); restart with start_s=(?P<start_s>\d+) to continue')),
+)
+
+
+def _error_code(message):
+    """``(code, params)`` for a sentence this file knows, else ``(None, {})``.
+
+    Params are numbers, never English: a position is seconds (``at_s``), an unknown
+    VOD length is None, so the client can phrase every one in either language.
+    """
+    for code, pattern in _ERROR_PATTERNS:
+        match = pattern.fullmatch(message or '')
+        if match:
+            params = {}
+            for key, value in match.groupdict().items():
+                if key in ('at', 'length'):
+                    parts = value.split(':') if value[0].isdigit() else None
+                    params[key + '_s'] = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2]) if parts else None
+                else:
+                    params[key] = int(value)
+            return code, params
+    return _ERROR_CODES.get(message), {}
+
+
 def _check_requested_ball(detectors, stages):
     """Refuse a start that asked for the ball detector but cannot run it.
 
@@ -187,8 +236,7 @@ class LiveProcessor:
         # callable returning the operations document (the server sets its store's
         # ops_get); None = read out/corner-pocket/state.json, as before
         self.operations_document = None
-        self._capture_factory = capture_factory or _capture
-        self._default_capture = capture_factory is None
+        self._capture_factory = capture_factory or self._open_capture
         self._live_read_timeout_ms = live_read_timeout_ms
         self._resolver = resolver or _resolve_twitch
         self._infer = infer
@@ -210,6 +258,10 @@ class LiveProcessor:
         self._source = None
         self._detectors = []
         self._error = None
+        # A stopped session's failure, kept as history: ``error`` only ever describes the
+        # session that is current, so a stop moves it here (with when it failed).
+        self._error_at = self._last_error = self._last_error_at = None
+        self._error_code = self._error_params = self._last_error_code = self._last_error_params = None
         self._pending = self._latest = None
         self._received = self._processed = self._skipped = 0
         self._dropped = {reason: 0 for reason in _DROP_REASONS}
@@ -289,6 +341,8 @@ class LiveProcessor:
             generation = self._generation
             self._source = safe_source
             self._state, self._error = 'starting', None
+            self._error_at = self._last_error = self._last_error_at = None
+            self._error_code = self._error_params = self._last_error_code = self._last_error_params = None
             self._pending = self._latest = None
             self._received = self._processed = self._skipped = 0
             self._dropped = {reason: 0 for reason in _DROP_REASONS}
@@ -332,9 +386,12 @@ class LiveProcessor:
                                    budget_ms=None if budget_ms is None else round(budget_ms, 2))
 
     def _fail(self, generation, message):
+        """Enter ``error`` with the operator's English sentence, plus the stable code (and
+        params) the client renders in the operator's language (EN/中)."""
         with self._condition:
             if generation == self._generation and not self._stop.is_set():
-                self._state, self._error = 'error', message
+                self._state, self._error, self._error_at = 'error', message, self._wall_clock()
+                self._error_code, self._error_params = _error_code(message)
                 self._stop.set()
                 if self._pending is not None:
                     dropped, self._pending = self._pending, None
@@ -366,9 +423,11 @@ class LiveProcessor:
         ``#EXT-X-PROGRAM-DATE-TIME`` or an unreachable one leaves the delay None, and only
         a live playlist with timing tags ever produces a number.
         """
-        if self._source.get('kind') != 'twitch' or not isinstance(media, str):
+        if not self._live() or not isinstance(media, str):
             return None
-        probe = _UpstreamDelayProbe(media, refresh_s=self._upstream_refresh_s)
+        # The broadcaster's timestamps are wall-clock instants: the probe reads the same
+        # wall clock the processor was given, so a test can pin the delay exactly.
+        probe = _UpstreamDelayProbe(media, clock=self._wall_clock, refresh_s=self._upstream_refresh_s)
         with self._condition:
             if self._stop.is_set() or generation != self._generation:
                 return None
@@ -378,17 +437,43 @@ class LiveProcessor:
             self._probe_thread.start()
         return probe
 
+    def _live(self):
+        """Whether the running source is a live broadcast: the one place a kind decides it.
+
+        A recording (an allowlisted ``dataset`` file or a ``vod-replay``) is paced at its
+        own frame rate, has no live edge to probe and can end; only a broadcast gets the
+        long read deadline and the probe.  An unknown kind is refused, never guessed live.
+        """
+        kind = self._source['kind']
+        if kind not in ('twitch', 'dataset', 'vod-replay'):
+            raise _SourceError('Unsupported live source kind')
+        return kind == 'twitch'
+
+    def _open_capture(self, media):
+        """The default capture factory: OpenCV with the read deadline the source needs."""
+        return _capture(media, read_timeout_ms=self._live_read_timeout_ms if self._live() else 2000)
+
+    def _replay_stall(self, capture, waited_s):
+        """Why a recording that stopped delivering has not reached its end, or None.
+
+        None means it ended: a local file that runs out is over.  A source that knows its
+        own length (the Twitch VOD replay in ``annotator/unified_server.py``) overrides
+        this with the operator's sentence, and the stop becomes an error, not ``eos``.
+        """
+        return None
+
     def _decode(self, generation, media):
         capture = None
         try:
             import cv2
-            replay = self._source['kind'] == 'dataset'
+            replay = not self._live()
             if not replay:
                 media = self._resolver(media)
             if self._stop.is_set():
                 return
-            capture = self._capture_factory(media) if not self._default_capture else _capture(
-                media, read_timeout_ms=2000 if replay else self._live_read_timeout_ms)
+            # Always through the factory: a subclass or mixin may have installed its own
+            # (the vod-replay pacer does), and the default one picks the read deadline.
+            capture = self._capture_factory(media)
             if not capture.isOpened():
                 raise _SourceError('Could not open the selected media source')
             if not replay:
@@ -411,8 +496,10 @@ class LiveProcessor:
                 decoded = self._clock()
                 self._latency.add('decode', (decoded - read_started) * 1000)
                 if not ok:
-                    if not replay:
-                        self._fail(generation, 'Live stream ended or read timed out; restart to reconnect')
+                    stalled = 'Live stream ended or read timed out; restart to reconnect' if not replay \
+                        else self._replay_stall(capture, decoded - read_started)
+                    if stalled:
+                        self._fail(generation, stalled)
                     break
                 if frame is None or len(frame.shape) != 3 or frame.shape[2] != 3 or not (0 < frame.shape[0] <= 2160 and 0 < frame.shape[1] <= 3840):
                     raise _SourceError('Decoded frame must be a color image no larger than 3840 × 2160')
@@ -562,6 +649,11 @@ class LiveProcessor:
             self._stop.set()
             if self._state != 'idle':
                 self._state = 'stopping'
+            if self._error is not None:
+                # That failure belonged to the session being stopped: history now, not current.
+                self._last_error, self._last_error_at = self._error, self._error_at
+                self._last_error_code, self._last_error_params = self._error_code, self._error_params
+                self._error = self._error_at = self._error_code = self._error_params = None
             if self._pending is not None:
                 dropped, self._pending = self._pending, None
                 self._drop('stale', dropped[0])
@@ -582,6 +674,10 @@ class LiveProcessor:
             latest = copy.deepcopy(self._latest[1]) if self._latest else None
             return dict(state=self._state, generation=self._generation, source=copy.deepcopy(self._source),
                         detectors=list(self._detectors), error=self._error,
+                        error_code=self._error_code, error_params=copy.deepcopy(self._error_params),
+                        last_error=self._last_error, last_error_at=self._last_error_at,
+                        last_error_code=self._last_error_code,
+                        last_error_params=copy.deepcopy(self._last_error_params),
                         decoder_alive=decoder_alive, worker_alive=worker_alive,
                         frames_received=self._received, frames_processed=self._processed,
                         frames_skipped=self._skipped, last_received_at=self._last_received,
