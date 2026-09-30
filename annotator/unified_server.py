@@ -1953,7 +1953,7 @@ def make_handler(backend):
                 # Self-hosted web fonts and their OFL texts: one flat directory, no build script.
                 if len(parts) == 2 and parts[0] == "fonts" and parts[1].endswith((".woff2", ".txt")):
                     return self.file(safe_file(backend.root / "annotator" / "fonts", parts[1]))
-                if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js"): 
+                if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js", "/clock-sync.js"): 
                     return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
                     return self.send(200, backend.event_frame(parts[1], parts[3]), "image/jpeg")
