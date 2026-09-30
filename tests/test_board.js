@@ -126,7 +126,7 @@ test('the stale indicator comes after 15 s without a good answer, on an injected
   const {fetch, calls} = fakeFetch([
     {status: 200, etag: 'W/"40-a"', body: SAMPLE}, {status: 304}, new TypeError('offline'), {status: 503},
     {status: 200, body: undefined}, {status: 200, body: {error: 'x'}}, {status: 200, etag: 'W/"41-b"', body: SAMPLE}]);
-  const poller = board.createPoller({fetch, now: () => now});
+  const poller = board.createPoller({fetch, now: () => now, url: '/api/board'});
   const at = (ms, lang = 'en') => board.freshness(poller.state, ms, lang);
   assert.deepEqual(at(0), {updated: 'Connecting…', stale: false, message: ''});
   assert.equal(await poller.poll(), 'new');
@@ -156,7 +156,8 @@ test('the stale indicator comes after 15 s without a good answer, on an injected
 
 test('never seen a board: connecting, then reconnecting', async () => {
   let now = 1000;
-  const poller = board.createPoller({fetch: fakeFetch([new TypeError('offline')]).fetch, now: () => now});
+  const poller = board.createPoller({fetch: fakeFetch([new TypeError('offline')]).fetch, now: () => now,
+    url: '/api/board'});
   await poller.poll();
   assert.deepEqual(board.freshness(poller.state, 15999, 'en'), {updated: 'Connecting…', stale: false, message: ''});
   assert.deepEqual(board.freshness(poller.state, 16000, 'en'), {updated: 'Connecting…', stale: true, message: 'Reconnecting…'});
@@ -174,23 +175,25 @@ test('the board switched off, and back on', async () => {
   assert.equal(board.say('zh', 'off'), '今晚记分板已关闭');
 });
 
-function fakePage({search = '', languages = ['en-US'], wakeLock, responses}) {
+function fakePage({search = '', languages = ['en-US'], wakeLock, responses, mount = '/', script = './board.js'}) {
   const elements = {}, listeners = {}, timers = [];
   const element = id => elements[id] || (elements[id] = {
     id, innerHTML: '', textContent: '', hidden: false, dataset: {}, attributes: {}, lang: '',
     setAttribute(name, value) { this.attributes[name] = value; },
     addEventListener(type, fn) { listeners[`${id}:${type}`] = fn; }});
+  const location = {search, href: `http://board.test${mount}${search}`};
   const document = {
     getElementById: element, documentElement: {lang: ''}, title: '', visibilityState: 'visible',
+    currentScript: script === null ? null : {src: new URL(script, location.href).href},
     body: {classes: new Set(), classList: {toggle(name, on) { on ? document.body.classes.add(name) : document.body.classes.delete(name); }}},
     addEventListener(type, fn) { listeners[`document:${type}`] = fn; }};
-  const location = {search, href: `http://board.test/${search}`};
+  const net = fakeFetch(responses);
   const win = {
     document, location, navigator: {languages, ...(wakeLock === undefined ? {} : {wakeLock})},
-    fetch: fakeFetch(responses).fetch,
+    fetch: net.fetch,
     setTimeout: (fn, ms) => timers.push({fn, ms}), clearTimeout() {}, setInterval() {},
     history: {replaceState(state, title, url) { location.href = String(url); location.search = new URL(url).search; }}};
-  return {win, elements, listeners, timers, document, location};
+  return {win, elements, listeners, timers, document, location, calls: net.calls};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
@@ -247,9 +250,51 @@ test('start(): board off shows only the notice', async () => {
   assert.equal(page.elements['off-text'].textContent, '今晚记分板已关闭');
 });
 
+test('start(): the poll follows the mount the page was served from', async () => {
+  for (const [mount, api] of [['/', 'http://board.test/api/board'],
+    ['/board/', 'http://board.test/board/api/board'],
+    ['/display', 'http://board.test/api/board']]) {
+    const page = fakePage({mount, responses: [{status: 200, etag: 'W/"1-a"', body: SAMPLE}]});
+    board.start(page.win);
+    await settle();
+    await settle();
+    assert.deepEqual(page.calls.map(call => call.url), [api], mount);
+    assert.equal(page.elements['event-name'].textContent, 'Friday 8-Ball', mount);
+  }
+});
+
+test('one file, both mounts: every reference stays inside the mount', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../annotator/board.html'), 'utf8');
+  const refs = [...html.matchAll(/(?:href|src)="([^"]+)"/g)].map(m => m[1]);
+  assert.ok(refs.length >= 4, `expected the page to reference its assets, got ${refs.length}`);
+  for (const ref of refs) {
+    assert.ok(!ref.startsWith('/') && !/^[a-z]+:/i.test(ref),
+      `${ref} is absolute: it would leave the mount the page was served from`);
+  }
+  const resolve = base => refs.map(ref => new URL(ref, base).pathname);
+  assert.deepEqual(resolve('http://board.test/'),
+    ['/favicon.svg', '/favicon-32.png', '/board.css', '/board.js']);
+  assert.deepEqual(resolve('http://board.test/board/'),
+    ['/board/favicon.svg', '/board/favicon-32.png', '/board/board.css', '/board/board.js']);
+  // The API sits beside the script that loaded the page: "/", "/board/" and the console's
+  // own "/display" mount each resolve to their own API.
+  assert.equal(board.apiUrl('http://board.test/board.js'), 'http://board.test/api/board');
+  assert.equal(board.apiUrl('http://board.test/board/board.js'), 'http://board.test/board/api/board');
+  assert.equal(board.apiUrl('http://board.test/display'), 'http://board.test/api/board');
+  // ...and the fonts inside the stylesheet resolve inside the mount too.
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/board.css'), 'utf8');
+  const urls = [...css.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)].map(m => m[1]);
+  assert.ok(urls.length >= 5, `expected the stylesheet to load its fonts, got ${urls.length}`);
+  for (const url of urls) {
+    assert.ok(!url.startsWith('/') && !/^[a-z]+:/i.test(url), `${url} is absolute: the fonts would leave the mount`);
+  }
+  assert.equal(new URL(urls[0], 'http://board.test/board/board.css').pathname,
+    '/board/fonts/noto-sans-sc-500-common.woff2');
+});
+
 test('the page: no inline script or style, and nothing from the console', () => {
   const html = fs.readFileSync(path.join(__dirname, '../annotator/board.html'), 'utf8');
-  assert.deepEqual([...html.matchAll(/<script\b([^>]*)>/g)].map(m => m[1].trim()), ['src="/board.js" defer']);
+  assert.deepEqual([...html.matchAll(/<script\b([^>]*)>/g)].map(m => m[1].trim()), ['src="./board.js" defer']);
   assert.doesNotMatch(html, /<style|\sstyle=|\son[a-z]+=|javascript:/i);
   for (const name of ['ops.js', 'app.js', 'ops.css', 'app.css']) assert.ok(!html.includes(name), name);
   const js = fs.readFileSync(path.join(__dirname, '../annotator/board.js'), 'utf8');

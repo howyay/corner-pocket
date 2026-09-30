@@ -1,8 +1,10 @@
 'use strict';
 /* Corner Pocket, the public board (docs/public-board.md): tonight's tables, what is
    next, the bracket and tonight's table, for the hall's TV and players' phones.
-   Read-only: the one control is the language toggle. It polls /api/board every
-   3 s with the last ETag and never looks fresher than its last good answer.
+   Read-only: the one control is the language toggle. It polls the API beside the page
+   every 3 s with the last ETag and never looks fresher than its last good answer. Every
+   URL is built from the mount that served the page, so one file works at "/", at
+   "/board/" (--public-prefix) and at the console's own "/display".
    The core is DOM-free, so tests/test_board.js renders and ages it under node
    with an injected clock; start() wires it to the page. */
 (function (factory) {
@@ -146,9 +148,17 @@
     return {updated, stale, message: stale ? say(lang, state.board ? 'reconnecting' : 'reconnectingEmpty') : ''};
   }
 
+  /** The API beside the page, built from the script's own URL rather than the
+      document's: "/board/" keeps it under the mount, while the console's own
+      "/display" mount resolves to /api/board. Only the script's URL tells those
+      two apart, so one file serves every mount (--public-prefix). */
+  function apiUrl(scriptUrl) {
+    return new URL('api/board', scriptUrl).href;
+  }
+
   /** One conditional GET per poll(). The state keeps the last good board, its ETag,
-      and when (by now()) it was received and last confirmed. */
-  function createPoller({fetch, now, url = '/api/board'}) {
+      and when (by now()) it was received and last confirmed. url comes from apiUrl. */
+  function createPoller({fetch, now, url}) {
     const state = {etag: null, board: null, receivedAt: null, lastSuccess: null, startedAt: now()};
     async function poll() {
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
@@ -188,7 +198,9 @@
   function start(win) {
     const doc = win.document, nav = win.navigator || {}, $ = id => doc.getElementById(id);
     const clock = () => Date.now();
-    const poller = createPoller({fetch: (...args) => win.fetch(...args), now: clock});
+    const script = doc.currentScript || (doc.querySelector ? doc.querySelector('script[src]') : null);
+    const poller = createPoller({fetch: (...args) => win.fetch(...args), now: clock,
+      url: apiUrl(script ? script.src : win.location.href)});
     let lang = pickLang(win.location.search, nav.languages && nav.languages.length ? nav.languages : [nav.language]);
     const shown = {};
     const html = (id, value) => { if (shown[id] !== value) $(id).innerHTML = shown[id] = value; };
@@ -285,5 +297,5 @@
     return {poller, paint, lang: () => lang};
   }
 
-  return {WORDS, POLL_MS, STALE_MS, esc, say, pickLang, duration, roundName, render, freshness, createPoller, elapsedOf, start};
+  return {WORDS, POLL_MS, STALE_MS, esc, say, pickLang, duration, roundName, render, freshness, apiUrl, createPoller, elapsedOf, start};
 }));

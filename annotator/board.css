@@ -7,12 +7,14 @@
 /* Faces: only the five files the public port serves (BOARD_FONTS in unified_server.py).
    The -common face is declared before the UI face, as in ops.css: for one family the
    last-declared face is tried first, so the -common file is fetched only for a
-   character the UI subset lacks. One CJK weight serves every weight here. */
-@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 900;font-display:swap;src:url(/fonts/noto-sans-sc-500-common.woff2) format('woff2');unicode-range:U+3000-303F,U+4E00-9FFF,U+FF00-FFEF}
-@font-face{font-family:'Barlow';font-style:normal;font-weight:300 500;font-display:swap;src:url(/fonts/barlow-500.woff2) format('woff2')}
-@font-face{font-family:'Barlow';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/barlow-600.woff2) format('woff2')}
-@font-face{font-family:'Barlow';font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/barlow-700.woff2) format('woff2')}
-@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 900;font-display:swap;src:url(/fonts/noto-sans-sc-500.woff2) format('woff2')}
+   character the UI subset lacks. One CJK weight serves every weight here.
+   The url()s are relative, and so are the page's own references: the same files work
+   at the root mount and under --public-prefix (/board/). */
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 900;font-display:swap;src:url(fonts/noto-sans-sc-500-common.woff2) format('woff2');unicode-range:U+3000-303F,U+4E00-9FFF,U+FF00-FFEF}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:300 500;font-display:swap;src:url(fonts/barlow-500.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/barlow-600.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:700 900;font-display:swap;src:url(fonts/barlow-700.woff2) format('woff2')}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 900;font-display:swap;src:url(fonts/noto-sans-sc-500.woff2) format('woff2')}
 
 :root{color-scheme:dark;--body:'Barlow','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif;--bg:#16120f;--panel:#1c1814;--line:#2f2923;--line2:#29231f;--btn-line:#73665b;--ink-hi:#f6f3ec;--ink:#efe9de;--ink-mid:#bdb0a1;--ink-dim:#a6998a;--ink-faint:#968a7d;--brass:#cca632;--brass-hi:#e3cb7e;--green:#85ca9d;--green-bg:#122219;--green-line:#355643;--amber:#ebae51;--amber-bg:#291e10;--amber-line:#684d21;--live-bg:#251c11;--lamp:rgba(240,214,150,.08)}
 

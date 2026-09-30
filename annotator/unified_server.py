@@ -1786,6 +1786,27 @@ _BOARD_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
                 ".ico": "image/x-icon", ".woff2": "font/woff2"}
 
 
+def board_prefix(value):
+    """--public-prefix, validated at the edge of the process: "" (the root, today's
+    behaviour) or a whole path like "/board" that the public surface is mounted under.
+
+    A prefix is a path of plain segments, matched as a string exactly as sent, so
+    anything that would need decoding or guessing at request time — an encoded,
+    padded, doubled or traversing spelling — is refused here, loudly, instead.
+    """
+    if value is None:
+        return ""
+    if (not isinstance(value, str) or any(char.isspace() for char in value)
+            or any(char in value for char in "?#%\\")):
+        raise ValueError(f"a public prefix cannot be padded, encoded or carry a query: {value!r}")
+    text = value.rstrip("/")
+    if not text:
+        return ""
+    if not text.startswith("/") or "//" in text or any(part in (".", "..") for part in text.split("/")):
+        raise ValueError(f"a public prefix must be a plain absolute path like /board: {value!r}")
+    return text
+
+
 class PublicBoardServer(BoundedHTTPServer):
     """The public listener's own, smaller pool: however many phones poll the
     board, they cannot take the operator console's slots."""
@@ -1793,14 +1814,21 @@ class PublicBoardServer(BoundedHTTPServer):
     request_queue_size = 16
 
 
-def make_public_handler(backend):
+def make_public_handler(backend, prefix=""):
     """The handler behind --public-port: GET/HEAD of BOARD_FILES and /api/board, nothing else.
 
     It shares no code path with make_handler's dispatch. Paths are compared exactly
     as sent, before any decoding or normalisation, so an encoded, doubled or
     traversing spelling of a public path is just another unknown path: 404. The
     query string is never read. Every other method is 405.
+
+    `prefix` (--public-prefix) mounts that same surface under one path, e.g. "/board",
+    so the board can live on the console's own hostname behind a path-scoped Access
+    bypass (docs/public-board.md). The prefix is a plain string prefix with a "/"
+    boundary: "/board" and "/board/..." match, "/boardx" does not; the remainder is
+    handed to BOARD_FILES unchanged, and nothing outside the prefix is served.
     """
+    prefix = board_prefix(prefix)
     class PublicHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"  # one request per connection: nothing pipelined rides along
         timeout = 10  # an idle or trickling client frees its slot within 10 s
@@ -1830,10 +1858,34 @@ def make_public_handler(backend):
             if self.command != "HEAD":
                 self.wfile.write(body)
 
+        def target(self):
+            """The request target exactly as sent.
+
+            The standard library folds a target that begins with "//" into a single "/"
+            before do_GET (http/server.py, against absolute-URI confusion), which would
+            quietly make "//board/board.js" an alias of a public path. Nothing here is an
+            alias: the whitelist sees the spelling the client sent, so the folded spelling
+            is one more unknown path, exactly like any other.
+            """
+            try:
+                return self.requestline.split()[1].partition("?")[0]
+            except IndexError:  # no request line to read: fall back to what was parsed
+                return self.path.partition("?")[0]
+
         def do_GET(self):
             if self.request_version == "HTTP/0.9":
                 return  # a 0.9 answer has no headers, so no CSP: send nothing
-            path = self.path.partition("?")[0]
+            path = self.target()
+            if prefix:
+                # The mount, as a string with a "/" boundary: "/board" and "/board/…"
+                # only. No decoding, no normalisation - a traversing or encoded
+                # spelling is just an unknown path below.
+                if path == prefix:
+                    path = "/"
+                elif path.startswith(prefix + "/"):
+                    path = path[len(prefix):]
+                else:
+                    return self.send(404, b"not found\n")
             if path == "/api/board":
                 return self.board()
             name = BOARD_FILES.get(path)
@@ -2057,16 +2109,19 @@ def main():
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--public-port", type=int, help="also serve the read-only public board on this port, "
                         "on its own listener and pool (docs/public-board.md)")
+    parser.add_argument("--public-prefix", type=board_prefix, default="", metavar="PATH",
+                        help="mount the public board under this path, e.g. /board, so it can share the "
+                             "console's hostname behind a path-scoped Access bypass (default: the root)")
     args = parser.parse_args()
     backend = Backend(args.root)
     server = BoundedHTTPServer((args.host, args.port), make_handler(backend))
     public = None
     if args.public_port:
-        public = PublicBoardServer((args.host, args.public_port), make_public_handler(backend))
+        public = PublicBoardServer((args.host, args.public_port), make_public_handler(backend, args.public_prefix))
         threading.Thread(target=public.serve_forever, name="public-board", daemon=True).start()
     print(f"Unified annotator: http://{args.host}:{args.port}", flush=True)
     if public:
-        print(f"Public board: http://{args.host}:{args.public_port}", flush=True)
+        print(f"Public board: http://{args.host}:{args.public_port}{args.public_prefix}/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

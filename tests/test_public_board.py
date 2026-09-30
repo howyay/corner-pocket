@@ -1,10 +1,14 @@
-"""The read-only public board (docs/public-board.md): its own listener.
+"""The read-only public board (docs/public-board.md): its own listener, at the root or
+under --public-prefix.
 
 The public listener (--public-port) answers GET/HEAD of a fixed set of paths and
-nothing else. Each test runs the real handlers behind loopback sockets over a
-temporary root; no repository data is read or written.
+nothing else; --public-prefix mounts that same surface under one path, e.g. /board, so
+the board can live on the console's own hostname behind a path-scoped Access bypass.
+Each test runs the real handlers behind loopback sockets over a temporary root; no
+repository data is read or written.
 """
 import http.client
+import json
 import os
 from pathlib import Path
 import socket
@@ -16,7 +20,7 @@ import time
 import unittest
 
 from annotator.unified_server import (BOARD_CSP, BOARD_FONTS, Backend, BoundedHTTPServer, PublicBoardServer,
-                                      make_handler, make_public_handler)
+                                      board_prefix, make_handler, make_public_handler)
 
 ROOT = Path(__file__).resolve().parents[1]
 #: Contents of files the public listener must never hand out.
@@ -44,6 +48,24 @@ NOT_PUBLIC = (
     # Query and fragment tricks: the query is never read, so it cannot pick another route.
     "/ops.js?x=1", "/api/operations?/api/board", "/api/operations?path=/api/board", "/api/operations#/api/board",
     "/%3F/api/board", "*", "http://127.0.0.1/api/operations",
+)
+
+
+#: With --public-prefix /board: everything the prefix does not admit, spelled exactly as
+#: a client would send it. The prefix is a mount, not a rewrite: nothing outside it is
+#: served, and the boundary is a real "/", so "/boardx" is not the prefix.
+PREFIXED_NOT_PUBLIC = (
+    # The operator API and media under the prefix: the whitelist is still the whole surface.
+    "/board/api/operations", "/board/api/unified", "/board/api/live/frame", "/board/media/vod30/video",
+    # The same surface without the prefix: the root mount is closed when a prefix is set.
+    "/", "/board.js", "/board.css", "/api/board", "/favicon.svg", "/fonts/barlow-500.woff2", "/display",
+    "//board/board.js", "/boardx/board.js", "/boardx", "/%62oard/board.js", "/BOARD/board.js", "/board.",
+    # Traversal and near-misses inside the prefix, as sent: no decoding, no normalisation.
+    "/board/../api/operations", "/board/api/board/../operations", "/board//api/board", "/board/api//board",
+    "/board/./board.js", "/board/%2e/board.js", "/board/%2e%2e/annotator/ops.js", "/board/api/board/",
+    "/board/ops.js", "/board/board.html", "/board/index.html", "/board/BOARD.js", "/board/board.js/",
+    "/board/fonts/", "/board/fonts", "/board/fonts/OFL-Barlow.txt", "/board/fonts/zilla-slab-400.woff2",
+    "/board/fonts/../board.js", "/board/fonts/..%2fops.js", "/board/api/board%00", "/board/api/board#/api/board",
 )
 
 
@@ -102,7 +124,15 @@ class Loopback:
             return b"".join(chunks)
 
 
-class PublicListenerTest(unittest.TestCase):
+class NoSecrets:
+    """Shared by both listener suites: no answer may carry a file the public must not see."""
+
+    def assertNoSecrets(self, body, path):
+        for secret in SECRETS:
+            self.assertNotIn(secret, body, path)
+
+
+class PublicListenerTest(NoSecrets, unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = fixture_root(self.temp.name)
@@ -110,10 +140,6 @@ class PublicListenerTest(unittest.TestCase):
         self.public = Loopback(PublicBoardServer, make_public_handler(self.backend))
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(self.public.close)
-
-    def assertNoSecrets(self, body, path):
-        for secret in SECRETS:
-            self.assertNotIn(secret, body, path)
 
     def test_the_board_files_are_served_with_their_types(self):
         expected = {"/": ("board.html", "text/html; charset=utf-8"),
@@ -248,6 +274,28 @@ def free_port():
         return sock.getsockname()[1]
 
 
+def get(port, path):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
+
+
+def wait_for_port(port, process):
+    deadline = time.monotonic() + 20
+    while True:
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+            return
+        except OSError:
+            if time.monotonic() > deadline or process.poll() is not None:
+                raise AssertionError("the public listener never came up")
+            time.sleep(0.1)
+
+
 class PublicPortWiringTest(unittest.TestCase):
     """`unified_server.py --public-port` starts the second listener in the same process."""
 
@@ -261,33 +309,165 @@ class PublicPortWiringTest(unittest.TestCase):
                  "--port", str(port), "--public-port", str(public_port)],
                 cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             try:
-                deadline = time.monotonic() + 20
-                while True:
-                    try:
-                        socket.create_connection(("127.0.0.1", public_port), timeout=1).close()
-                        break
-                    except OSError:
-                        if time.monotonic() > deadline or process.poll() is not None:
-                            self.fail("the public listener never came up")
-                        time.sleep(0.1)
-                public = http.client.HTTPConnection("127.0.0.1", public_port, timeout=10)
-                public.request("GET", "/")
-                page = public.getresponse()
-                self.assertEqual((page.status, page.read()), (200, b"<!doctype html><title>board fixture</title>"))
-                public.close()
-                public = http.client.HTTPConnection("127.0.0.1", public_port, timeout=10)
-                public.request("GET", "/api/operations")
-                refused = public.getresponse()
-                self.assertEqual(refused.status, 404)
-                public.close()
-                operator = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-                operator.request("GET", "/display")
-                self.assertEqual(operator.getresponse().status, 200)
-                operator.close()
+                wait_for_port(public_port, process)
+                self.assertEqual(get(public_port, "/"),
+                                 (200, b"<!doctype html><title>board fixture</title>"))
+                self.assertEqual(get(public_port, "/api/operations")[0], 404)
+                self.assertEqual(get(port, "/display")[0], 200)
             finally:
                 process.terminate()
                 output = process.communicate(timeout=10)[0]
             self.assertIn(f"Public board: http://127.0.0.1:{public_port}".encode(), output)
+
+
+class PublicPrefixWiringTest(unittest.TestCase):
+    """`unified_server.py --public-prefix /board` mounts the surface there and closes the
+    root, in the same process as the console."""
+
+    def test_the_prefix_is_mounted_and_the_root_is_not(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = fixture_root(temp)
+            port, public_port = free_port(), free_port()
+            env = {key: value for key, value in os.environ.items() if key != "POOL_DATABASE_URL"}
+            process = subprocess.Popen(
+                [sys.executable, str(ROOT / "annotator" / "unified_server.py"), "--root", str(root),
+                 "--port", str(port), "--public-port", str(public_port), "--public-prefix", "/board"],
+                cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            try:
+                wait_for_port(public_port, process)
+                self.assertEqual(get(public_port, "/board/"),
+                                 (200, b"<!doctype html><title>board fixture</title>"))
+                status, body = get(public_port, "/board/api/board")
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body)["board"], "on")
+                for path in ("/", "/board.js", "/api/board", "/boardx/board.js", "/board/api/operations",
+                             "/board/../api/operations"):
+                    with self.subTest(path=path):
+                        self.assertEqual(get(public_port, path)[0], 404)
+                self.assertEqual(get(port, "/display")[0], 200)
+            finally:
+                process.terminate()
+                output = process.communicate(timeout=10)[0]
+            self.assertIn(f"Public board: http://127.0.0.1:{public_port}/board/".encode(), output)
+
+
+class PublicPrefixTest(NoSecrets, unittest.TestCase):
+    """`--public-prefix /board`: the same surface, mounted under one path."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = fixture_root(self.temp.name)
+        self.backend = Backend(self.root)
+        self.public = Loopback(PublicBoardServer, make_public_handler(self.backend, "/board"))
+        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(self.public.close)
+
+    def test_the_prefix_serves_the_whole_surface(self):
+        expected = {"/board": ("board.html", "text/html; charset=utf-8"),
+                    "/board/": ("board.html", "text/html; charset=utf-8"),
+                    "/board/?lang=zh": ("board.html", "text/html; charset=utf-8"),
+                    "/board/board.js": ("board.js", "text/javascript; charset=utf-8"),
+                    "/board/board.css": ("board.css", "text/css; charset=utf-8"),
+                    "/board/favicon.svg": ("favicon.svg", "image/svg+xml")}
+        expected.update({f"/board/fonts/{name}": (f"fonts/{name}", "font/woff2") for name in BOARD_FONTS})
+        for path, (name, content_type) in expected.items():
+            with self.subTest(path=path):
+                response, body = self.public.request("GET", path)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(body, (self.root / "annotator" / name).read_bytes())
+                self.assertEqual(response.getheader("Content-Type"), content_type)
+                head, head_body = self.public.request("HEAD", path)
+                self.assertEqual((head.status, head_body), (200, b""))
+                self.assertEqual(head.getheader("Content-Length"), str(len(body)))
+
+    def test_the_cache_rule_follows_the_file_not_the_prefix(self):
+        for path, cache in (("/board/fonts/barlow-500.woff2", "public, max-age=86400"),
+                            ("/board/favicon.svg", "public, max-age=86400"),
+                            ("/board/", "no-cache"), ("/board/board.js", "no-cache"),
+                            ("/board/api/board", "no-cache")):
+            with self.subTest(path=path):
+                response, _ = self.public.request("GET", path)
+                self.assertEqual(response.getheader("Cache-Control"), cache)
+
+    def test_the_api_is_mounted_with_its_etag(self):
+        response, body = self.public.request("GET", "/board/api/board")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"), "application/json")
+        self.assertEqual(json.loads(body)["board"], "on")
+        etag = response.getheader("ETag")
+        self.assertTrue(etag.startswith('W/"'), etag)
+        again, nothing = self.public.request("GET", "/board/api/board", {"If-None-Match": etag})
+        self.assertEqual((again.status, nothing), (304, b""))
+        head, head_body = self.public.request("HEAD", "/board/api/board")
+        self.assertEqual((head.status, head_body), (200, b""))
+
+    def test_everything_outside_the_prefix_is_404(self):
+        for path in PREFIXED_NOT_PUBLIC:
+            for method in ("GET", "HEAD"):
+                with self.subTest(path=path, method=method):
+                    response, body = self.public.request(method, path)
+                    self.assertEqual(response.status, 404)
+                    self.assertNoSecrets(body, path)
+
+    def test_raw_targets_under_the_prefix_are_404(self):
+        for target in (b"/board/board.js\x00", b"/board/ops.js\t", b"/board/api/board\x7f",
+                       b"/board/fonts/\xff..\xff/ops.js"):
+            with self.subTest(target=target):
+                answer = self.public.raw(b"GET " + target + b" HTTP/1.1\r\nHost: board\r\n\r\n")
+                self.assertRegex(answer, rb"^HTTP/1\.[01] (400|404) ")
+                self.assertNoSecrets(answer, target)
+
+    def test_any_other_method_is_405_under_the_prefix(self):
+        for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "PROPFIND"):
+            for path in ("/board", "/board/", "/board/api/board", "/board/board.js", "/board/api/operations"):
+                with self.subTest(method=method, path=path):
+                    response, body = self.public.request(method, path, {"Content-Type": "application/json"},
+                                                         b'{"settings":{"public_board":false}}')
+                    self.assertEqual(response.status, 405)
+                    self.assertEqual(response.getheader("Allow"), "GET, HEAD")
+                    self.assertNoSecrets(body, path)
+
+    def test_the_security_headers_are_the_same_under_the_prefix(self):
+        for method, path in (("GET", "/board/"), ("GET", "/board/board.js"), ("HEAD", "/board/api/board"),
+                             ("GET", "/board/api/operations"), ("POST", "/board/")):
+            with self.subTest(method=method, path=path):
+                response, _ = self.public.request(method, path)
+                self.assertEqual(response.getheader("Content-Security-Policy"), BOARD_CSP)
+                self.assertEqual(response.getheader("X-Frame-Options"), "DENY")
+                self.assertEqual(response.getheader("X-Content-Type-Options"), "nosniff")
+                self.assertEqual(response.getheader("Referrer-Policy"), "no-referrer")
+                self.assertEqual(response.getheader("X-Robots-Tag"), "noindex, nofollow")
+                self.assertNotIn("Python", response.getheader("Server") or "")
+
+
+class BoardPrefixTest(unittest.TestCase):
+    """--public-prefix is validated where it enters the process: a typo must not mount the
+    board nowhere, or somewhere wider than it looks."""
+
+    def test_a_plain_path_is_taken_as_written(self):
+        self.assertEqual(board_prefix("/board"), "/board")
+        self.assertEqual(board_prefix("/board/"), "/board")
+        self.assertEqual(board_prefix("/a/b"), "/a/b")
+
+    def test_nothing_and_the_root_mean_the_root_mount(self):
+        for value in ("", "/", "//", None):
+            with self.subTest(value=value):
+                self.assertEqual(board_prefix(value), "")
+
+    def test_a_prefix_that_would_need_guessing_is_refused(self):
+        for value in ("board", " board", "/board ", "/board\t", "/bo ard", "//board", "/board//x",
+                      "/board/../x", "/board/.", "/board%2Fx", "/board?x=1", "/board#x", "/board\\x", 7):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    board_prefix(value)
+
+    def test_the_handler_refuses_a_prefix_it_cannot_match(self):
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(fixture_root(temp))
+            for value in ("board", "/board/../x"):
+                with self.subTest(value=value):
+                    with self.assertRaises(ValueError):
+                        make_public_handler(backend, value)
 
 
 if __name__ == "__main__":
