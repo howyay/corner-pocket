@@ -452,8 +452,40 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(status['state'], 'error')
         self.assertRegex(status['error'], r'^Replay stalled: no data from Twitch for [0-9.]+ s at 0:12:34 of 3:43:17; '
                                           r'restart with start_s=754 to continue$')
+        # The stalled sentence carries its code and its numbers, so the console can
+        # phrase every one of them in EN/中 without parsing the English.
+        self.assertEqual(status['error_code'], 'replay_stalled')
+        self.assertEqual({key: value for key, value in status['error_params'].items() if key != 'waited_s'},
+                         dict(at_s=754, length_s=13397, start_s=754))
+        self.assertEqual(status['error_params']['waited_s'],
+                         int(re.search(r'for (\d+) s', status['error']).group(1)))
         self.assertEqual((status['replay']['frames_served'], status['replay']['read_failures']), (6, 1))
         run['live_open'].assert_not_called()
+
+    def test_every_live_failure_code_reaches_the_status_route(self):
+        """``GET /api/live`` carries ``error_code`` and ``error_params`` beside the sentence.
+
+        One read per code, because each one is a sentence the operator's console renders
+        in their own language (annotator/app.js ``liveErrorCodes``); an unmapped sentence
+        arrives with no code and is shown verbatim.
+        """
+        from annotator.live_processing import _ERROR_CODES, _error_code
+        processor_class = self.backend.live_processor().__class__
+        for sentence, code in _ERROR_CODES.items():
+            with self.subTest(code=code):
+                processor = processor_class(self.root)
+                self.backend._live = processor
+                processor._fail(processor._generation, sentence)
+                handler = self.handler('/api/live')
+                handler.do_GET()
+                body = json.loads(handler.wfile.getvalue())
+                self.assertEqual((handler.status, body['state']), (200, 'error'))
+                self.assertEqual(body['error'], sentence)
+                self.assertEqual(body['error_code'], code)
+                self.assertEqual(body['error_params'], _error_code(sentence)[1])
+                # The failure is the current session's, so nothing has become history.
+                self.assertEqual((body['last_error_code'], body['last_error_params']), (None, None))
+                json.dumps(body)
 
     def test_a_refused_vod_is_a_refused_start_with_twitchs_own_sentence(self):
         from annotator.twitch_vod_source import TwitchVodError

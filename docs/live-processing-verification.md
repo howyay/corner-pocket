@@ -112,6 +112,8 @@ Expected terminal errors:
 
 `error` may appear while an already-running inference is still finishing. The HLS error snapshot had `worker_alive=true`; `stop()` joined it and returned `stopped`. Stop preserves the error for diagnostics. Do not interpret an error snapshot alone as proof that threads have exited. Counts at stop/error can include a discarded in-flight frame, so received need not equal processed plus skipped.
 
+Each failure sentence now travels with a stable `error_code`/`error_params` pair in `status()` (and `last_error_code`/`last_error_params` once the session is stopped), so the console names a cause in the operator's own language instead of printing the module's English. HTTP start refusals (HTTP 400/409 bodies) are mapped client-side for now — anchored patterns in `annotator/app.js`, one per reachable `ValueError`/`RuntimeError` body, with captured values kept in the parameterised sentences — and anything unmatched is shown verbatim in the server's English; server-side codes for every `APIError`/`ValueError` body are a follow-up.
+
 The helper decodes each returned JPEG, verifies dimensions against its paired metadata, checks strictly increasing result sequence numbers, detector labels, and nonnegative timing with total receive-to-result at least inference duration. This tests the atomic result-pair API, not independent semantic proof that every box exactly belongs to those pixels.
 
 ## Limitations

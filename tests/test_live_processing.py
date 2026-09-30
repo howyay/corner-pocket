@@ -344,6 +344,86 @@ class LiveProcessingTests(unittest.TestCase):
         self.assertEqual((status['error'], status['last_error'], status['last_error_at']), (None, None, None))
         self.finished(processor)
 
+    def test_every_live_failure_names_a_code_beside_its_sentence(self):
+        """A failure carries a stable code and numeric params, not just English.
+
+        The sentence in ``error`` stays exactly what the logs have always carried; the
+        code is what the operator's console renders in EN/中 (annotator/app.js
+        ``liveErrorCodes``), and params are numbers, so neither language parses English.
+        A sentence nobody mapped gets no code and the client shows it verbatim.
+        """
+        from annotator.live_processing import _ERROR_CODES, _error_code
+        for sentence, code in _ERROR_CODES.items():
+            with self.subTest(code=code):
+                self.assertEqual(_error_code(sentence), (code, {}))
+        self.assertEqual(_error_code('A sentence nobody mapped'), (None, {}))
+        self.assertEqual(_error_code(None), (None, {}))
+        # The parameterised sentences are anchored and carry numbers only.
+        stalled = 'Replay stalled: no data from Twitch for 20 s at 0:03:12 of 1:02:03; restart with start_s=192 to continue'
+        self.assertEqual(_error_code(stalled),
+                         ('replay_stalled', dict(waited_s=20, at_s=192, length_s=3723, start_s=192)))
+        self.assertEqual(_error_code(stalled.replace('1:02:03', 'an unknown length'))[1],
+                         dict(waited_s=20, at_s=192, length_s=None, start_s=192))
+        self.assertEqual(_error_code('Twitch playback request failed (HTTP 403)'), ('twitch_http', {'status': 403}))
+        # Anchored: a sentence that merely contains one of these is not claimed.
+        self.assertEqual(_error_code('wrapped: ' + stalled), (None, {}))
+        self.assertEqual(_error_code(stalled + ' and then more'), (None, {}))
+
+    def test_a_failed_session_reports_the_code_its_cause_maps_to(self):
+        """Every code the client renders arrives through a real failure path."""
+        import contextlib
+        from annotator.live_processing import _error_code
+        from annotator.twitch_source import TwitchSourceError
+
+        def runtime_failure(*_args):
+            raise RuntimeError('https://secret.example/?token=private')
+
+        class BadFrame(Capture):
+            def read(self):
+                return True, np.zeros((16, 16), dtype=np.uint8)
+
+        # The Twitch sentences reach the session through the real resolver, so they are
+        # raised where the resolver is (annotator.twitch_source.resolve_twitch) rather
+        # than injected above it.
+        twitch = [('channel_offline', 'Twitch channel is offline or has no public playable stream'),
+                  ('channel_offline', 'Twitch channel is offline or has no public video variants'),
+                  ('channel_offline', 'Twitch channel is offline; playback has ended'),
+                  ('twitch_unavailable', 'Twitch playback is unavailable or requires browser authorization'),
+                  ('twitch_unavailable', 'Twitch playback is restricted or requires browser authorization'),
+                  ('twitch_network', 'Twitch playback request failed; check network and TLS connectivity'),
+                  ('twitch_http', 'Twitch playback request failed (HTTP 403)')]
+        saved = dict(kind='twitch', source_id='saved')
+        cases = [('open_failed', self.source, dict(capture_factory=lambda _: Capture(opened=False)), None),
+                 ('frame_invalid', self.source, dict(capture_factory=lambda _: BadFrame()), None),
+                 ('inference_failed', self.source,
+                  dict(capture_factory=lambda _: Capture(), infer=runtime_failure), None),
+                 ('decode_failed', saved, dict(resolver=runtime_failure), None),
+                 ('stream_ended', saved,
+                  dict(resolver=lambda _media: 'https://private.example/?token=secret',
+                       capture_factory=lambda _: Capture(count=0)), None)]
+        cases += [(code, saved, {}, sentence) for code, sentence in twitch]
+        for code, source, kwargs, sentence in cases:
+            with self.subTest(code=code, source=source.get('kind')):
+                refuser = patch('annotator.twitch_source.resolve_twitch',
+                                side_effect=TwitchSourceError(sentence)) if sentence else contextlib.nullcontext()
+                with refuser:
+                    processor = self.processor(**kwargs)
+                    processor.start(source)
+                    status = self.finished(processor)
+                self.assertEqual(status['state'], 'error')
+                self.assertEqual(status['error_code'], code)
+                self.assertEqual(_error_code(status['error'])[0], code, status['error'])
+                json.dumps(status)  # params are JSON-safe, never an exception object
+
+    def test_a_session_that_cannot_name_its_kind_fails_closed(self):
+        """``_live()`` refuses an unknown kind, and that refusal reaches ``status()``."""
+        processor = self.processor()
+        processor._source = dict(kind='future')
+        processor._decode(processor._generation, 'media')
+        status = processor.status()
+        self.assertEqual((status['state'], status['error'], status['error_code']),
+                         ('error', 'Unsupported live source kind', 'unsupported_kind'))
+
     def test_default_capture_configures_ffmpeg_timeouts(self):
         from annotator.live_processing import _capture
         with patch.object(cv2, 'VideoCapture', return_value=Capture()) as constructor:
