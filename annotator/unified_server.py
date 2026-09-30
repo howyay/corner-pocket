@@ -1776,7 +1776,7 @@ BOARD_SECURITY_HEADERS = tuple((key, BOARD_CSP if key == "Content-Security-Polic
                                for key, value in SECURITY_HEADERS) + (("X-Robots-Tag", "noindex, nofollow"),)
 #: The fonts board.css loads. Every other file under fonts/ stays off the public port.
 BOARD_FONTS = ("barlow-500.woff2", "barlow-600.woff2", "barlow-700.woff2",
-               "noto-sans-sc-400-common.woff2", "noto-sans-sc-500-common.woff2")
+               "noto-sans-sc-500.woff2", "noto-sans-sc-500-common.woff2")
 #: Public request path -> file under annotator/. With /api/board, the whole public surface.
 BOARD_FILES = {"/": "board.html", "/board.js": "board.js", "/board.css": "board.css",
                **{f"/{name}": name for name in ("favicon.svg", "favicon-32.png", "favicon-16.png", "favicon.ico")},

@@ -1,0 +1,163 @@
+/* Corner Pocket, the public board (docs/public-board.md). It loads no console file:
+   the tokens, faces and lining figures below are copied from ops.css (dark theme only).
+   Phone first: one column that scrolls, tables first. A landscape screen 1000 px or
+   wider is the TV: one screen that never scrolls, sized from the viewport, so
+   1280x720 is 1920x1080 scaled down. */
+
+/* Faces: only the five files the public port serves (BOARD_FONTS in unified_server.py).
+   The -common face is declared before the UI face, as in ops.css: for one family the
+   last-declared face is tried first, so the -common file is fetched only for a
+   character the UI subset lacks. One CJK weight serves every weight here. */
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 900;font-display:swap;src:url(/fonts/noto-sans-sc-500-common.woff2) format('woff2');unicode-range:U+3000-303F,U+4E00-9FFF,U+FF00-FFEF}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:300 500;font-display:swap;src:url(/fonts/barlow-500.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/barlow-600.woff2) format('woff2')}
+@font-face{font-family:'Barlow';font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/barlow-700.woff2) format('woff2')}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 900;font-display:swap;src:url(/fonts/noto-sans-sc-500.woff2) format('woff2')}
+
+:root{color-scheme:dark;--body:'Barlow','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif;--bg:#16120f;--panel:#1c1814;--line:#2f2923;--line2:#29231f;--btn-line:#73665b;--ink-hi:#f6f3ec;--ink:#efe9de;--ink-mid:#bdb0a1;--ink-dim:#a6998a;--ink-faint:#968a7d;--brass:#cca632;--brass-hi:#e3cb7e;--green:#85ca9d;--green-bg:#122219;--green-line:#355643;--amber:#ebae51;--amber-bg:#291e10;--amber-line:#684d21;--live-bg:#251c11;--lamp:rgba(240,214,150,.08)}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{background:var(--bg);color:var(--ink);font-family:var(--body);font-weight:500;line-height:1.3;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;min-height:100vh;padding:16px;display:flex;flex-direction:column;gap:16px;background:radial-gradient(ellipse 80% 45% at 50% 0,var(--lamp),transparent) no-repeat}
+h1,h2,h3,p,ol{margin:0;padding:0}
+ol{list-style:none}
+.score,table{font-variant-numeric:lining-nums tabular-nums}
+
+/* Masthead: the event, how fresh the board is, the one control. */
+.masthead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.brand{min-width:0}
+.house{font-size:.75rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass)}
+h1{font-size:1.5rem;font-weight:700;line-height:1.1;color:var(--ink-hi);overflow-wrap:anywhere}
+.meta{margin-top:2px;font-size:.95rem;color:var(--ink-mid)}
+.freshness{display:flex;flex-direction:column;align-items:flex-end;gap:8px;text-align:right}
+.updated{font-size:.85rem;color:var(--ink-dim)}
+.lang{min-width:44px;min-height:44px;padding:0 10px;font:inherit;font-weight:600;color:var(--ink);background:var(--panel);border:1px solid var(--btn-line);border-radius:8px;cursor:pointer}
+.lang:hover{border-color:var(--brass)}
+.lang:focus-visible{outline:3px solid var(--brass-hi);outline-offset:2px}
+.stale{padding:10px 14px;font-weight:600;color:var(--amber);background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:8px}
+/* Never pretend the board is fresh: the last known board stays, visibly faded. */
+.is-stale main{opacity:.55;filter:grayscale(.7)}
+
+main{display:flex;flex-direction:column;gap:22px}
+h2{margin-bottom:8px;font-size:.8rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass)}
+.empty{padding:6px 0;color:var(--ink-dim)}
+.placeholder{font-weight:500;color:var(--ink-faint)}
+
+/* On the tables: the felt, big names and bigger scores. */
+.table-cards{display:grid;gap:12px}
+.table-card{display:flex;flex-direction:column;gap:2px;padding:12px 16px;background:var(--green-bg);border:1px solid var(--green-line);border-radius:12px}
+.table-no{font-size:.9rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--brass-hi)}
+.table-no b{font-weight:700}
+.side{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:1.35rem;font-weight:600;color:var(--ink-mid)}
+.side .name{min-width:0;overflow-wrap:anywhere}
+.side .score{font-size:2.6rem;font-weight:700;line-height:1}
+.side.lead{color:var(--ink-hi)}
+.side.lead .score{color:var(--brass-hi)}
+.card-foot{margin-top:auto;display:flex;justify-content:space-between;gap:12px;font-size:.9rem;color:var(--ink-mid)}
+.champion{padding:16px;text-align:center;background:var(--live-bg);border:1px solid var(--brass);border-radius:12px}
+.champion .label{font-size:.9rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass-hi)}
+.champion .name{font-size:2.2rem;font-weight:700;color:var(--ink-hi);overflow-wrap:anywhere}
+
+/* Next up. A match held for a missing player waits in amber, after the ready ones. */
+.queue{display:flex;flex-direction:column;gap:8px}
+.next-item{display:flex;flex-direction:column;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.next-item .names{font-size:1.1rem;font-weight:600;color:var(--ink-hi);overflow-wrap:anywhere}
+.vs{margin:0 .15em;font-size:.8em;font-weight:500;color:var(--ink-faint)}
+.next-item .detail{font-size:.85rem;color:var(--ink-mid)}
+.next-item.held{border-color:var(--amber-line)}
+.next-item.held .detail{color:var(--amber)}
+
+/* Bracket: rounds stacked on a phone, side by side on the TV. */
+.rounds{display:flex;flex-direction:column;gap:16px}
+.round h3{margin-bottom:6px;font-size:.9rem;font-weight:600;color:var(--ink-mid)}
+.round ol{display:flex;flex-direction:column;gap:6px}
+.bm{padding:5px 10px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.bm.live{background:var(--green-bg);border-color:var(--green-line)}
+.bm.delayed{border-color:var(--amber-line)}
+.bm.bye{opacity:.7}
+.bs{display:flex;justify-content:space-between;gap:10px;color:var(--ink-mid)}
+.bs .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bs .score{font-weight:600}
+.bs.won{font-weight:700;color:var(--ink-hi)}
+.bm-note{font-size:.8rem;color:var(--green)}
+.bm.delayed .bm-note{color:var(--amber)}
+
+/* Tonight's table. */
+table{width:100%;border-collapse:collapse}
+th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line2)}
+th:first-child{padding-left:0;text-align:left}
+thead th{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
+tbody th{font-weight:600;color:var(--ink-hi);overflow-wrap:anywhere}
+tbody td{color:var(--ink-mid)}
+tbody tr.empty td{text-align:left;color:var(--ink-dim)}
+
+.off{flex:1;display:grid;place-items:center;padding:48px 16px;text-align:center;font-size:2rem;font-weight:700;color:var(--ink-mid)}
+
+/* The TV. rem follows the viewport's smaller side (24 px at 1080p, 16 px at 720p), so
+   everything above scales with the screen; the rules below only rearrange and enlarge. */
+@media (min-width:1000px) and (orientation:landscape){
+  html{font-size:min(1.25vw,2.2222vh);overflow:hidden}
+  body{height:100vh;overflow:hidden;padding:1.1rem 1.5rem 1.2rem;gap:.8rem}
+  .masthead{align-items:flex-end}
+  .house{font-size:.7rem}
+  h1{font-size:1.9rem}
+  .meta{font-size:.9rem}
+  .freshness{flex-direction:row;align-items:center;gap:.8rem}
+  .updated{font-size:.8rem}
+  .lang{min-width:0;min-height:0;padding:.15rem .6rem;font-size:.75rem}
+  .stale{padding:.4rem .9rem;font-size:1rem}
+  /* The tables in play take the full width; below them, left to right: next, bracket, tonight's table. */
+  main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);grid-template-areas:"tables tables tables" "next bracket standings";gap:1.1rem 1.5rem}
+  main>section{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+  .tables{grid-area:tables}
+  .next{grid-area:next}
+  .bracket{grid-area:bracket}
+  .standings{grid-area:standings}
+  /* Whatever does not fit fades out at the bottom instead of being cut mid-line. */
+  .next,.bracket,.standings{-webkit-mask-image:linear-gradient(#000 calc(100% - 1.5rem),transparent);mask-image:linear-gradient(#000 calc(100% - 1.5rem),transparent)}
+  h2{margin-bottom:.4rem;font-size:.7rem}
+
+  /* Tables in play, read from across the room: sized by how many are live. */
+  .table-cards{--k:1;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));gap:.8rem}
+  .table-cards[data-count="1"]{--k:1.2;grid-template-columns:minmax(0,44rem);justify-content:center}
+  .table-cards[data-count="2"]{--cols:2;--k:1.1}
+  .table-cards[data-count="3"]{--cols:3;--k:.92}
+  .table-cards[data-count="4"]{--cols:4;--k:.8}
+  .table-cards[data-count="5"],.table-cards[data-count="6"]{--cols:3;--k:.6}
+  .table-cards[data-count="8"]{--cols:4;--k:.52}
+  .table-cards[data-count="many"]{--cols:6;--k:.42}
+  .table-card{padding:calc(.6rem*var(--k)) calc(1rem*var(--k));border-radius:calc(.6rem*var(--k))}
+  .table-no{font-size:calc(1.05rem*var(--k))}
+  .side{font-size:calc(2.5rem*var(--k));gap:.6rem}
+  .side .score{font-size:calc(4.8rem*var(--k))}
+  .card-foot{font-size:calc(1rem*var(--k))}
+  .champion{padding:1rem}
+  .champion .label{font-size:1.1rem}
+  .champion .name{font-size:3.6rem}
+
+  .queue{gap:.45rem}
+  .next-item{padding:.4rem .8rem}
+  .next-item .names{font-size:1.3rem}
+  .next-item .detail{font-size:.85rem}
+
+  .rounds{flex:1;min-height:0;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.9rem;font-size:.95rem}
+  .rounds[data-rows="some"]{font-size:.8rem}
+  .rounds[data-rows="many"]{font-size:.62rem}
+  /* A bye says only who went through, which the next round shows. With too many
+     matches for one screen, finished rounds make way for the rest as well. */
+  .bm.bye,.rounds[data-rows="many"] .round.done:not(:last-child){display:none}
+  .round{min-height:0;display:flex;flex-direction:column}
+  .round h3{font-size:.8em}
+  .round ol{flex:1;justify-content:space-around;gap:.3em}
+  .bm{padding:.25em .5em}
+  .bm-note{font-size:.75em}
+
+  table{font-size:1.05rem}
+  th,td{padding:.2rem .4rem}
+  thead th{font-size:.65rem}
+  tbody[data-rows="some"]{font-size:.85rem}
+  tbody[data-rows="many"]{font-size:.72rem}
+
+  .off{font-size:3rem}
+}
