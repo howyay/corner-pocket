@@ -140,7 +140,7 @@ test('live JPEG bytes and their metadata stay atomically paired', () => {
 test('Vision is one stage with two rails and no sub-tab navigation left', () => {
   const h = harness();
   assert.equal(h.evaluate("t('vision')"), 'Vision');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')), ['floor','setup','matches','records','vision','players','status']);
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')), ['tonight','floor','matches','records','vision','players','status']);
   assert.ok(!source.includes('review-frame'));
   assert.ok(!source.includes('src="/app.html"'));
   // The sub-tab machinery is gone: no mode table, no data-vision buttons, no dead host.
@@ -1164,7 +1164,7 @@ test('delete only an unsigned event; otherwise hide it from history, which erase
     h.evaluate('showHidden=true');
     const all = h.evaluate('recordsScreen()');
     assert.ok(all.includes('Hidden night') && all.includes(`>${unhide}<`), `${lang}: hidden events can be shown and restored`);
-    assert.ok(h.evaluate('setupScreen()').includes('data-action="event-delete" data-id="t0"'), `${lang}: tonight, unsigned, can be deleted from Set up`);
+    assert.ok(h.evaluate('closeScreen()').includes('data-action="event-delete" data-id="t0"'), `${lang}: tonight, unsigned, can be deleted from Close`);
   }
   assert.equal(h.evaluate('JSON.stringify(resultStats("pa"))'), '{"wins":2,"losses":0}', 'a hidden event still counts: hiding erases nothing');
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
@@ -1442,9 +1442,9 @@ test('Refresh list also re-reads the import job, so an import started in another
 test('routes: every tab has a hash route, a tab click pushes it, and back/forward walk the screens', async () => {
   const h = harness();
   h.evaluate('render=()=>{}');
-  assert.equal(h.context.location.hash, '#/floor', 'a cold load names its screen without adding a history entry');
-  assert.deepEqual(h.visits, [['replace', '#/floor']]);
-  const expected = {floor: '#/floor', setup: '#/setup', matches: '#/matches', vision: '#/vision', players: '#/regulars', status: '#/backroom'};
+  assert.equal(h.context.location.hash, '#/tonight', 'a cold load names its screen without adding a history entry');
+  assert.deepEqual(h.visits, [['replace', '#/tonight']]);
+  const expected = {floor: '#/floor', matches: '#/matches', vision: '#/vision', players: '#/regulars', status: '#/backroom'};
   for (const [id, hash] of Object.entries(expected)) {
     await tabClick(h, id);
     assert.equal(h.evaluate('tab'), id);
@@ -1456,7 +1456,8 @@ test('routes: every tab has a hash route, a tab click pushes it, and back/forwar
   browserBack(h, '#/regulars');
   assert.equal(h.evaluate('tab'), 'players', 'Back returns to Regulars');
   browserBack(h, '#/setup');
-  assert.equal(h.evaluate('tab'), 'setup');
+  assert.equal(h.evaluate('tab'), 'tonight', 'the old Set up hash opens Tonight');
+  assert.equal(h.context.location.hash, '#/tonight/register', 'and is rewritten to its phase route');
   browserBack(h, '#/backroom');
   assert.equal(h.evaluate('tab'), 'status', 'Forward works the same way');
   // the score button in the strip is a route change like any other
@@ -1465,8 +1466,8 @@ test('routes: every tab has a hash route, a tab click pushes it, and back/forwar
 });
 test('routes: a URL opens its screen; old tab ids and old hashes map onto the routes; unknown ones fall back', () => {
   const cases = [['#/regulars', 'players', '#/regulars'], ['#/backroom', 'status', '#/backroom'], ['#/vision', 'vision', '#/vision'],
-    ['#players', 'players', '#/regulars'], ['#/status', 'status', '#/backroom'], ['#setup', 'setup', '#/setup'], ['#/matches', 'matches', '#/matches'],
-    ['#/nowhere', 'floor', '#/floor'], ['', 'floor', '#/floor'], ['#', 'floor', '#/floor']];
+    ['#players', 'players', '#/regulars'], ['#/status', 'status', '#/backroom'], ['#setup', 'tonight', '#/tonight/register'], ['#/matches', 'matches', '#/matches'],
+    ['#/nowhere', 'tonight', '#/tonight'], ['', 'tonight', '#/tonight'], ['#', 'tonight', '#/tonight']];
   for (const [hash, tab, canonical] of cases) {
     const h = harness({hash});
     assert.equal(h.evaluate('tab'), tab, `${hash || '(none)'} opens ${tab}`);
@@ -1480,7 +1481,7 @@ test('routes: a URL opens its screen; old tab ids and old hashes map onto the ro
   assert.equal(h.evaluate('tab'), 'players');
   assert.equal(h.context.location.hash, '#/regulars');
   // in-app links that still carry an old id (empty states, the first-night guide) resolve the same way
-  assert.equal(h.evaluate("routeOf('setup')"), 'setup');
+  assert.equal(h.evaluate("routeOf('setup')"), 'tonight', 'the retired Set up id is a legacy route, not a screen');
   assert.equal(h.evaluate("routeOf('regulars')"), 'players');
   assert.equal(h.evaluate("routeOf('nope')"), null);
 });
@@ -1515,7 +1516,7 @@ test('Records is a top-level tab with its own route, between the live night and 
   const h = harness({hash: '#/records'});
   assert.equal(h.evaluate('tab'), 'records', 'the URL opens Records');
   assert.equal(h.context.location.hash, '#/records');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')).slice(0, 5), ['floor', 'setup', 'matches', 'records', 'vision'], 'Records sits after the live night, before Vision');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')).slice(0, 5), ['tonight', 'floor', 'matches', 'records', 'vision'], 'Records sits after the live night, before Vision');
   for (const [lang, label] of [['en', 'Records'], ['zh', '战绩档案']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("t('records')"), label); }
   h.evaluate('render=()=>{}');
   await tabClick(h, 'floor');
@@ -1568,5 +1569,117 @@ test('Records empty states say what fills each panel, in EN and 中, with no fak
     for (const key of ['emptyStandings', 'emptyNightLog', 'emptyHistory']) assert.ok(rec.includes(h.evaluate(`esc(t('${key}'))`)), `${lang}: ${key}`);
     assert.ok(!/<tr><td>\d/.test(rec) && !/<li[ >]/.test(rec), `${lang}: no rows on an empty club`);
     assert.ok(rec.includes('data-tab="players"'), `${lang}: the standings empty state opens Regulars`);
+  }
+});
+// ---- IA C′ stage 4: the Tonight tab. A phase strip (Register · Rack · Play · Close), every phase always
+// reachable, the default is the night's own phase, and Register holds everything the night needs before the draw.
+function tonightNight(h, state) {
+  h.evaluate(`data.players=[{id:'pa',name:'Ann',status:'Active',rating:100},{id:'pb',name:'Bea',status:'Active',rating:900}];
+    var E=(id,pid,name,absent=false)=>({id,absent,members:[{pid,name}]}); // var: test 4 applies this fixture twice in one vm context
+    data.tournament={id:'t0',name:'Friday',format:'singles',raceTo:3,tables:2,status:'registration',entrants:[E('a','pa','Ann'),E('b','pb','Bea'),E('g',null,'Walk-in Wu',true)],matches:[]};
+    data.history=[];data.events=[];data.notes=[]`);
+  if (state === 'drawn') h.evaluate(`data.tournament.status='active';data.tournament.entrants[2].absent=false;data.tournament.matches=[
+      {id:'m1',round:1,sides:['a',null],score:[0,0],status:'complete',result:'bye',winnerId:'a',absent:[]},
+      {id:'m2',round:1,sides:['b','g'],score:[0,0],status:'scheduled',table:null,absent:[]},
+      {id:'m3',round:2,sides:['a',null],score:[0,0],status:'pending',table:null,absent:[],sources:['m1','m2']}]`);
+  if (state === 'done') h.evaluate(`data.tournament.status='complete';data.tournament.matches=[
+      {id:'m1',round:1,sides:['a','b'],score:[3,1],status:'complete',result:'played',winnerId:'a',absent:[]}]`);
+}
+test('Tonight is one tab whose phase follows the night: no draw → Register, a draw to play → Play, all signed → Close', () => {
+  for (const [state, phase] of [[null, 'register'], ['drawn', 'play'], ['done', 'close']]) {
+    const h = harness();
+    tonightNight(h, state);
+    assert.equal(h.evaluate('nightPhase()'), phase, `${state || 'registration'} → ${phase}`);
+  }
+  const h = harness({hash: '#/tonight'});
+  assert.equal(h.evaluate('tab'), 'tonight');
+  assert.equal(h.context.location.hash, '#/tonight', 'before the data arrives no phase is guessed');
+  tonightNight(h, 'drawn');
+  h.evaluate('syncRoute(false)');
+  assert.equal(h.context.location.hash, '#/tonight/play', 'once the night is known, a bare #/tonight opens its phase and names it');
+  assert.ok(h.visits.every(v => v[0] === 'replace'), 'naming the phase adds no history entry');
+  assert.equal(JSON.parse(h.evaluate('JSON.stringify(navTabs)'))[0], 'tonight', 'Tonight is the first tab');
+  for (const [lang, label] of [['en', 'Tonight'], ['zh', '今晚']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("navLabel('tonight')"), label); }
+});
+test('the phase strip: four phases, all clickable, one current, each a route that back/forward walk', async () => {
+  const h = harness({hash: '#/tonight/play'});
+  tonightNight(h, 'drawn');
+  h.evaluate('render=()=>{}');
+  assert.equal(h.evaluate('phase'), 'play', 'the URL picks the phase');
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    const strip = h.evaluate('phaseStrip()');
+    const ids = [...strip.matchAll(/data-phase="([a-z]+)"/g)].map(m => m[1]);
+    assert.deepEqual(ids, ['register', 'rack', 'play', 'close'], `${lang}: four phases, in order`);
+    assert.ok(!/data-phase="[a-z]+"[^>]*disabled/.test(strip), `${lang}: no phase is ever disabled (no hidden mode)`);
+    assert.equal((strip.match(/aria-current="step"/g) || []).length, 1, `${lang}: one current phase`);
+    assert.ok(/data-phase="play"[^>]*aria-current="step"/.test(strip), `${lang}: Play is current`);
+    for (const key of ['phaseRegister', 'phaseRack', 'phasePlay', 'phaseClose']) assert.ok(strip.includes(h.evaluate(`esc(t('${key}'))`)), `${lang}: ${key}`);
+    assert.ok(/<nav[^>]*aria-label="[^"]+"/.test(strip), `${lang}: the strip is a labelled navigation landmark`);
+  }
+  const phaseClick = p => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {phase: p}}}});
+  await phaseClick('register');
+  assert.equal(h.context.location.hash, '#/tonight/register');
+  await phaseClick('close');
+  assert.equal(h.context.location.hash, '#/tonight/close');
+  browserBack(h, '#/tonight/register');
+  assert.equal(h.evaluate('phase'), 'register');
+  assert.equal(h.evaluate('tab'), 'tonight');
+  // leaving Tonight and coming back returns to the phase the night is in, not the last one looked at
+  await tabClick(h, 'records');
+  await tabClick(h, 'tonight');
+  assert.equal(h.context.location.hash, '#/tonight/play');
+});
+test('Register holds the night, random pairing, the desk, entrants with attendance, guests tonight and Rack', () => {
+  const h = harness();
+  tonightNight(h, null);
+  h.evaluate("phase='register'");
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('tonightScreen()');
+    assert.ok(html.includes('id="settings-form"') && html.includes('id="entrant-form"') && html.includes('class="desk-search"'), `${lang}: settings, desk and desk search`);
+    assert.ok(html.includes('data-action="entrant-absence"') && html.includes('data-action="entrant-remove"'), `${lang}: attendance and remove per entrant`);
+    assert.ok(html.includes('data-action="tournament-start"'), `${lang}: Rack the night is on Register`);
+    assert.ok(html.includes('data-action="promote" data-name="Walk-in Wu"'), `${lang}: guests tonight moved here, with Add to regulars`);
+    assert.ok(html.includes('data-tab="players"'), `${lang}: guests tonight links to Regulars`);
+    assert.ok(!html.includes('class="end-night"'), `${lang}: archive and delete are not on Register (they are Close)`);
+    assert.ok(html.includes('class="first-run"'), `${lang}: an undrawn night shows the first-night guide`);
+  }
+  h.evaluate("data.tournament.format='doubles'");
+  assert.ok(h.evaluate('tonightScreen()').includes('class="pairing"'), 'doubles adds random pairing');
+  assert.ok(!h.evaluate('playersScreen()').includes('data-action="promote"'), 'Regulars no longer carries guests tonight');
+});
+test('Rack shows who is here and racks; racking shows Play with the draw, not the form', async () => {
+  const h = harness({hash: '#/tonight/rack'});
+  tonightNight(h, null);
+  for (const [lang, notHere] of [['en', 'Not here'], ['zh', '未到场']]) {
+    h.evaluate(`lang='${lang}'`);
+    const html = h.evaluate('tonightScreen()');
+    assert.ok(html.includes('data-action="tournament-start"'), `${lang}: the Rack button`);
+    assert.ok(html.includes(h.evaluate("esc(t('rackHint'))")), `${lang}: how the draw is made`);
+    assert.ok(/Walk-in Wu[^]*?Not here|Walk-in Wu[^]*?未到场/.test(html) && html.includes(notHere), `${lang}: an absent entrant is named before the draw`);
+    assert.ok(html.includes(h.evaluate("esc(t('rackAbsentNote'))")), `${lang}: it says an absent entrant's match is held`);
+  }
+  h.evaluate('render=()=>{}');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'tournament-start'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c=>c.name))')), ['tournament_start']);
+  assert.equal(h.evaluate('phase'), 'play', 'racking shows the draw');
+  assert.equal(h.context.location.hash, '#/tonight/play');
+  // a drawn night: Rack says the draw exists and points at Play; the Register form stays locked with rename
+  tonightNight(h, 'drawn');
+  h.evaluate("phase='rack'");
+  const racked = h.evaluate('tonightScreen()');
+  assert.ok(!racked.includes('data-action="tournament-start"') && racked.includes('data-phase="play"'), 'after the draw, Rack points to Play');
+  h.evaluate("phase='register'");
+  const reg = h.evaluate('tonightScreen()');
+  assert.ok(/<fieldset disabled/.test(reg) && reg.includes('id="rename-form"'), 'after the draw, Register is locked but rename stays');
+});
+test('phase routes: each phase is addressable, and an unknown phase falls back to the night\'s', () => {
+  for (const [hash, tab, phase, canonical] of [['#/tonight/rack', 'tonight', 'rack', '#/tonight/rack'], ['#/tonight/close', 'tonight', 'close', '#/tonight/close'], ['#/tonight/bogus', 'tonight', 'register', '#/tonight/register']]) {
+    const h = harness({hash});
+    h.evaluate('syncRoute(false)');
+    assert.equal(h.evaluate('tab'), tab, hash);
+    assert.equal(h.evaluate('curPhase()'), phase, hash);
+    assert.equal(h.context.location.hash, canonical, `${hash} → ${canonical}`);
   }
 });
