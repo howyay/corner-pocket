@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+import data_guard
+
 from src.eval_faces import (
     DATASETS,
     label_role_probes,
@@ -120,6 +122,7 @@ class GeometryTest(unittest.TestCase):
         self.assertIsNone(end_points([[0, 0], [1, 1]]))
 
     def test_load_corners_returns_the_vod30_quad(self):
+        data_guard.require(data_guard.ROOT / "out/scan30/corners.json")
         corners = load_corners("scan30")
         self.assertEqual(len(corners), 4)
         self.assertAlmostEqual(corners[0][0], 459.25762939453125)

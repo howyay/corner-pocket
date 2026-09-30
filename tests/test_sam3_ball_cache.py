@@ -13,6 +13,8 @@ import unittest
 
 import numpy as np
 
+import data_guard
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.sam3_ball_cache import (cloth_mask, load_cache, load_filters,  # noqa: E402
                                  pending_times, reference_quad, save_cache)
@@ -52,6 +54,10 @@ class ClothMaskTests(unittest.TestCase):
         self.assertEqual(source, "reference_quad")
 
     def test_reference_quad_prefers_the_calibration_segment(self):
+        # Any one of the three sources reference_quad() falls back through will do.
+        data_guard.require_any(data_guard.ROOT / "out" / "calib_vod30_segments.json",
+                               data_guard.ROOT / "out" / "pid_anchors_vod30.json",
+                               data_guard.ROOT / "out" / "scan30" / "corners.json")
         quad = reference_quad()
         self.assertIsNotNone(quad)
         self.assertEqual(np.asarray(quad).shape, (4, 2))

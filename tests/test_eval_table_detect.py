@@ -14,15 +14,23 @@ from unittest.mock import patch
 
 import numpy as np
 
+import data_guard
+
 from src import eval_table_detect as ev
 from src.frame_inference import app_prior_for, app_prior_source
 
 SOURCE = Path(ev.__file__).read_text()
 
 
+def references(dataset='vod30'):
+    """The saved references, or a skip naming the artifacts a fresh clone lacks."""
+    data_guard.require(ev.ANCHORS, ev.CORNERS_V2, ev.FIXED_CORNERS)
+    return ev.load_references()[dataset]
+
+
 class ReferenceTests(unittest.TestCase):
     def test_both_vod30_references_are_reported_with_their_quality(self):
-        refs = ev.load_references()['vod30']
+        refs = references()
         names = [ref['name'] for ref in refs]
         self.assertIn('app-anchors@70.0s', names)
         self.assertIn('corners30-v2', names)
@@ -35,24 +43,23 @@ class ReferenceTests(unittest.TestCase):
         self.assertEqual(ev.authoritative_reference(refs), 'app-anchors@70.0s')
 
     def test_the_highlight_reference_is_authoritative(self):
-        refs = ev.load_references()['highlight']
+        refs = references('highlight')
         self.assertEqual([ref['name'] for ref in refs], ['fixed-corners'])
         self.assertEqual(ev.authoritative_reference(refs), 'fixed-corners')
 
 
 class SeedGuardTests(unittest.TestCase):
-    def setUp(self):
-        self.refs = ev.load_references()['vod30']
-
     def test_a_seed_from_a_scored_reference_fails_loudly(self):
+        refs = references()
         with self.assertRaises(AssertionError) as ctx:
-            ev.assert_seed_is_measurable('vod30', str(ev.CORNERS_V2), self.refs)
+            ev.assert_seed_is_measurable('vod30', str(ev.CORNERS_V2), refs)
         self.assertIn('not an authoritative reference', str(ctx.exception))
         # the authoritative seed and "no seed at all" both stay legal
-        ev.assert_seed_is_measurable('vod30', str(ev.ANCHORS), self.refs)
-        ev.assert_seed_is_measurable('vod30', None, self.refs)
+        ev.assert_seed_is_measurable('vod30', str(ev.ANCHORS), refs)
+        ev.assert_seed_is_measurable('vod30', None, refs)
 
     def test_every_detector_mode_refuses_the_circular_seed(self):
+        refs = references()
         frame = np.zeros((360, 640, 3), np.uint8)
         for name in ('refined', 'app'):
             with self.subTest(detector=name), \
@@ -60,7 +67,7 @@ class SeedGuardTests(unittest.TestCase):
                     patch('src.frame_inference.app_prior_for',
                           return_value=np.asarray(ev.load_references()['vod30'][1]['corners'])):
                 with self.assertRaises(AssertionError):
-                    ev.DETECTORS[name](frame, 'vod30', 0, self.refs)
+                    ev.DETECTORS[name](frame, 'vod30', 0, refs)
 
     def test_no_detector_mode_seeds_from_prior_for(self):
         bare = re.findall(r'(?<!app_)prior_for[(]', SOURCE)
@@ -71,7 +78,7 @@ class SeedGuardTests(unittest.TestCase):
         self.assertEqual(sorted(ev.DETECTORS), ['app', 'naive', 'refined'])
 
     def test_the_naive_mode_has_no_seed_and_the_refined_mode_uses_the_anchors(self):
-        refs = ev.load_references()['vod30']
+        refs = references()
         _, info = ev.DETECTORS['naive'](np.zeros((48, 64, 3), np.uint8), 'vod30', 0, refs)
         self.assertIsNone(info['seed_file'])
         self.assertIsNone(app_prior_for('nope-not-a-dataset'))
@@ -82,7 +89,7 @@ class SeedGuardTests(unittest.TestCase):
 
 class OutputTests(unittest.TestCase):
     def summary(self):
-        refs = ev.load_references()['vod30']
+        refs = references()
         rows = [{'t': 61.0, 'read': True, 'width': 1280, 'height': 720, 'source': 'refined_saved_prior',
                  'ms': 40.0, 'seed_file': str(ev.ANCHORS), 'references': {
                      refs[0]['name']: {'state': 'ok', 'mean': 6.4},
