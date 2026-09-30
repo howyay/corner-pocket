@@ -7,6 +7,8 @@ from unittest import mock
 
 import numpy as np
 
+import data_guard
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.person_identity import IdentityIndex  # noqa: E402
 from src.person_pipeline import PersonPipeline  # noqa: E402
@@ -351,9 +353,10 @@ class DetectorWeightsTest(unittest.TestCase):
         self.assertEqual(loader.call_args.args[0], str(self.root / 'yolov8n.pt'))
 
     def test_repo_weights_are_the_fallback(self):
+        from src.person_pipeline import REPO
+        data_guard.require(REPO / 'yolov8n.pt')
         loader = self._no_network()
         PersonPipeline(self.root)._get_detector()
-        from src.person_pipeline import REPO
         self.assertEqual(loader.call_args.args[0], str(REPO / 'yolov8n.pt'))
         self.assertTrue((REPO / 'yolov8n.pt').is_file(), 'the fallback exists in this repo')
 

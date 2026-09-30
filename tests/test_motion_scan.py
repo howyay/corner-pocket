@@ -17,6 +17,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import data_guard
+
 from src.motion_scan import (BALL_K_NATIVE, FLOOR_MARGIN, SCAN_H, SCAN_W, WORK_H, WORK_W,
                              ClothContext, MotionConfig, OnsetConfig, ScanReport,
                              ball_area, ball_radius, clip_motion, cloth_context,
@@ -563,9 +565,11 @@ class ResolutionTest(unittest.TestCase):
             self.assertIsNone(load_quad("highlight", root=root)["quad_px"])
 
     def test_a_real_dataset_config_comes_from_its_own_frames(self):
-        path = ROOT / "data" / "vod_highlight.mp4"
-        if not path.exists():
-            self.skipTest("highlight recording not present")
+        path = data_guard.require(ROOT / "data" / "vod_highlight.mp4")
+        # highlight has no hand anchors, so its quad comes from the dataset's own
+        # reference file (or a measured segment): without one the quad is None.
+        data_guard.require_any(ROOT / "out" / "fixed_corners.json",
+                               ROOT / "out" / "calib_highlight_segments.json")
         cfg = config_for(path, "highlight")
         self.assertEqual((cfg.scan_w, cfg.scan_h), (1920, 1080))
         self.assertEqual((cfg.width, cfg.height), (1440, 810))

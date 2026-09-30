@@ -8,6 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
+import data_guard
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.enroll_from_tracklet import (  # noqa: E402
     CONSISTENCY_COSINE,
@@ -836,6 +838,7 @@ class ClusterFastPathTest(unittest.TestCase):
         self.assertEqual(selection.frames_scanned, 0, "no frame was inferred")
 
     def test_payload_reports_the_cluster_face_evidence_level(self):
+        data_guard.require(self.VIDEO)
         self._index([self._sample()])
         payload = preview_payload(plan_for_cluster(self.root, 7, dataset="vod30"), root=self.root)
         self.assertEqual(payload["evidence"],
@@ -908,6 +911,7 @@ class ClusterFastPathTest(unittest.TestCase):
         self.assertAlmostEqual(candidate.rank, 11.25, places=4)
 
     def test_the_token_covers_whichever_path_produced_the_crops(self):
+        data_guard.require(self.VIDEO)
         self._index([self._sample()])
         selection = plan_for_cluster(self.root, 7, dataset="vod30")
         payload = preview_payload(selection, root=self.root)
@@ -919,6 +923,11 @@ class ClusterFastPathTest(unittest.TestCase):
 
 class NearestFirstScanTest(unittest.TestCase):
     """The slow path stops as soon as the answer is settled."""
+
+    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
+
+    def setUp(self):
+        data_guard.require(self.VIDEO)
 
     def test_frames_are_sampled_outward_from_the_click_and_stop_early(self):
         seen = []
@@ -1021,6 +1030,7 @@ class WriterReaderIntegrationTest(unittest.TestCase):
             bbox=[150, 150, 190, 200], frame_index=frame_index)
 
     def test_the_writer_and_the_reader_agree(self):
+        data_guard.require(self.VIDEO)
         self._record(1, 12.0, 0.8, 100)
         self.index.explicit_assign(self.cluster, "playerX")       # the durable transition
         selection = plan_for_cluster(self.root, self.cluster, dataset="vod30")
@@ -1033,6 +1043,7 @@ class WriterReaderIntegrationTest(unittest.TestCase):
         self.assertEqual(payload["evidence"]["frames_scanned"], 0)
 
     def test_two_recorded_faces_are_cross_checked(self):
+        data_guard.require(self.VIDEO)
         self._record(1, 12.0, 0.8, 100)
         self._record(2, 12.5, 0.85, 250)
         self.index.explicit_assign(self.cluster, "playerX")

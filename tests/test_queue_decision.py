@@ -11,6 +11,8 @@ import sys
 from tempfile import TemporaryDirectory
 import unittest
 
+import data_guard
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -446,6 +448,9 @@ class DenseQueueHonesty(unittest.TestCase):
 
     def test_a_pot_the_gate_confirmed_is_served_without_a_previous_queue(self):
         from src.dense_queue import build
+        # No ledger path is given, so the tool writes its durable id ledger to the
+        # default out/scan30/ location - a directory a fresh clone does not have.
+        data_guard.require(data_guard.ROOT / "out" / "scan30")
         with TemporaryDirectory() as tmp:
             artifact = json.loads(self._artifact(tmp).read_text())
             artifact["gate"]["pots"][0]["verdict"] = "confirmed"      # t265-blue only
