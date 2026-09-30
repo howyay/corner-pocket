@@ -1236,15 +1236,12 @@ class Backend:
 
     @staticmethod
     def _ffmpeg():
-        import shutil
-        found = shutil.which('ffmpeg')
-        if found:
-            return found
-        from pathlib import Path as _P
-        candidates = [p for p in _P('/nix/store').glob('*-ffmpeg-headless-*-bin/bin/ffmpeg') if p.is_file()]
-        if candidates:
-            return str(max(candidates, key=lambda p: p.stat().st_mtime))
-        raise APIError('ffmpeg is unavailable on this host', 503)
+        """The ffmpeg the clip path runs: POOL_FFMPEG wins, a broken pin is a loud 503."""
+        from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg
+        try:
+            return resolve_ffmpeg()
+        except MediaBinaryMissing as exc:
+            raise APIError(str(exc), 503) from exc
 
     def event_clip(self, dataset, t, before, after):
         """Real short H.264 fragment around the event time, cached and bounded."""
