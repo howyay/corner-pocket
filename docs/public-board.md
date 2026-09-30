@@ -1,0 +1,259 @@
+# The public board — runbook
+
+*The read-only scoreboard for the hall's TV and the players' phones. It is the one part
+of Corner Pocket that is meant to be reachable **without** Cloudflare Access, so this
+document covers two things that must not be confused: what the code already does (shipped
+in `annotator/unified_server.py`, `annotator/board.{html,css,js}`) and the exposure change
+on the Cloudflare side, which is **prepared here and not applied**.*
+
+> **Status.** The listener, the page, `GET /api/board` and the path prefix
+> (`--public-prefix`) are in the repository. The tunnel ingress rule and the Access
+> exemption below are **proposals**: nothing in this file has been installed, and no
+> Cloudflare, DNS, systemd or production state was touched. Applying them is the owner's
+> decision and is a separate, explicit step (§4, §5).
+
+| | |
+|---|---|
+| code | `annotator/unified_server.py` (`PublicBoardServer`, `make_public_handler`, `board_prefix`, `BOARD_FILES`, `BOARD_FONTS`, `BOARD_CSP`), `annotator/public_board.py`, `annotator/board.html`, `annotator/board.css`, `annotator/board.js` |
+| switch | `--public-port <port>` (default: not served at all) and `--public-prefix <path>` (default: empty, the root — the behaviour above) |
+| mount | with `--public-prefix /board` the whole surface moves under it: `GET /board` and `GET /board/`, `/board/board.js`, `/board/board.css`, `/board/favicon.{svg,ico}`, `/board/favicon-32.png`, `/board/favicon-16.png`, `/board/fonts/<the five BOARD_FONTS>`, `GET\|HEAD /board/api/board` |
+| reach | loopback only, same `--host` as the console (default `127.0.0.1`) |
+| refuses | every other path (404) — including, with a prefix set, the whole root mount (`/`, `/board.js`, `/api/board`) — every other method (405), and HTTP/0.9 |
+| auth | **none** — the whitelist is the whole boundary |
+| tests | `tests/test_public_board.py`, `tests/test_board_api.py`, `node --test tests/test_board.js` |
+
+## 1. What the public port is
+
+One extra listener in the same process as the console, started only when `--public-port`
+is given:
+
+```
+.venv/bin/python annotator/unified_server.py --port 8130 --public-port 8132
+```
+
+`--host` applies to both listeners. `PublicBoardServer` reuses `BoundedHTTPServer` with a
+deliberately smaller pool (`max_handlers = 16`, `request_queue_size = 16`): however many
+phones poll the board, they cannot take the operator console's slots. The handler is
+`HTTP/1.0` (one request per connection, nothing pipelined rides along), drops an idle or
+trickling client after 10 s, and logs only refusals — a 3 s poller would otherwise fill the
+journal.
+
+`make_public_handler` shares **no** dispatch code with `make_handler`. Paths are compared
+exactly as sent, before any decoding or normalisation, so an encoded, doubled or traversing
+spelling of a public path is just another unknown path: 404. The query string is never read.
+
+### The prefix
+
+`--public-prefix <path>` mounts that same surface under one path, with a prefix of `""`
+(the default) meaning the root, exactly as before:
+
+```
+.venv/bin/python annotator/unified_server.py --port 8130 --public-port 8132 --public-prefix /board
+```
+
+Then only `GET /board` (which serves `board.html`) and the paths under `/board/` are served;
+the root mount is **closed** — `/`, `/board.js` and `/api/board` on that port are 404 — because
+the prefix is the whole mount rather than an extra one. The prefix is matched as a plain
+string with a `/` boundary, before any decoding or normalisation: `/board` and `/board/...`
+match, `/boardx` does not, and `//board/board.js`, `/%62oard/board.js`,
+`/board/../api/operations` or `/board//api/board` are all just unknown paths (404), exactly
+as they would be without a prefix. `board_prefix()` rejects a bad `--public-prefix` at
+startup (padded, encoded or relative values, `//`, or a `.`/`..` segment) rather than
+trusting a mangled one at request time.
+
+`board.html`, `board.js` and `board.css` reference everything **relatively** (`./board.js`,
+`./api/board`, `url(fonts/...)`), and `board.js` builds its API URL from the URL of its own
+`<script>` tag, not from the document URL: one file therefore works at `/`, at `/board/`
+and at the console's own `/display` mount, with no build step and no per-mount copy. Publish
+the trailing-slash form: `GET /board` alone serves the page, but a document whose URL is
+`/board` resolves `./board.js` to `/board.js`, which the prefixed listener refuses — so
+`https://pool.example.com/board/` (what §5 bypasses) is the URL for the TV, the phones and any
+QR code.
+
+### Why a path on the console's hostname, and not a second hostname
+
+The board is meant to be one URL the hall already knows, on the hostname the console uses:
+`https://pool.example.com/board/`. A second hostname (`board.example.com`) would mean a second DNS
+record, a second ingress rule and a second certificate to keep in step with the first — more
+moving parts, and one more place for the console's own rule to drift. The unauthenticated
+surface stays exactly what it was: a **separate listener** (`PublicBoardServer`, its own
+pool, its own handler, not one line of `make_handler`'s dispatch) that can only read. What
+the console serves on `pool.example.com` is unchanged; only `/board*` is routed elsewhere (§5).
+
+Two hazards are what make that safe, and both are outside the code:
+
+1. **The ingress path rule must sit above the console's rule.** An Access bypass is
+   path-scoped; the bypassed path must therefore be routed *away* from the console. If
+   `/board*` fell through to `127.0.0.1:8130`, the console would answer it — behind the very
+   path-scoped bypass the board needs, i.e. unauthenticated. Ingress rules are matched in
+   order, so a rule below `pool.example.com → 127.0.0.1:8130` is never reached. The order of those
+   two rules is the whole defence.
+2. **The listener's whitelist is what keeps the bypassed prefix read-only.** `/board*` becomes
+   the only unauthenticated surface on the hostname: everything the whitelist does not name —
+   `/board/api/operations` included — is a 404 there, and no method but `GET`/`HEAD` is
+   answered at all. Being inside the bypassed prefix therefore buys a request the board and
+   nothing else, including through a traversing or encoded spelling: the prefix is matched,
+   not normalised, so there is no spelling that lands outside it.
+
+## 2. The API and the page
+
+### `GET /api/board`
+
+Built by `annotator/public_board.py` from `Backend.operations().get()` — the operations
+document **through the store**, whichever store is configured. Nothing here reads
+`out/corner-pocket/state.json` directly, so the board follows the console across the JSON →
+PostgreSQL cutover (`docs/postgres.md`) with no code change. The board never writes.
+
+It carries tonight only: the event name, format, race-to and phase; the matches on a table
+right now (with their table number and how long they have been on it); what is next up; the
+bracket; and tonight's table (W/L/played). It carries **no** internal ids, notes, audit log,
+sources, roster, ratings, faces or biometrics, Vision or identity data, archived history,
+other settings, or error internals.
+
+| | |
+|---|---|
+| shape | `{"board":"on", "revision", "event", "tables", "next", "bracket", "standings", "served_at"}` |
+| caching | built at most once a second, however many screens poll; one builder at a time |
+| ETag | `W/"<revision>-<sha256 of everything but served_at>"`; `If-None-Match` → `304` |
+| `Cache-Control` | `no-cache` (revalidate every time) |
+| failure | `503 {"error":"unavailable"}` + `Retry-After: 3`, internals logged not sent |
+| traces | one entry per match left on a table: `"since"` on a live match, for the "28 min" footer |
+
+### The page
+
+`board.html` is static and loads `./board.css` and `./board.js` — **relatively**, so the same
+page works at the root and under a prefix — and there is no inline script or
+style, because the board's CSP has no `unsafe-inline`. `board.js` polls `api/board` beside the
+page (resolved from its own script URL, §1) every 3 s with the
+last ETag, and keeps its own honest age: `Updated just now` / `Updated N s ago`, and after
+15 s without a good answer it says `Reconnecting — showing the last known board` while the
+last board stays on screen, visibly faded. It never looks fresher than its last answer.
+
+`?lang=en|zh` picks the language, the browser's own language is the fallback, and the single
+control on the page toggles between them. A match's time on its table is computed from the
+server's `served_at` plus the time since that answer, so a device with a wrong clock still
+shows the right duration.
+
+### Board off
+
+`settings.publicBoard` false makes `GET /api/board` return `{"board":"off"}` and nothing
+else; the page then says `The board is off tonight` / `今晚记分板已关闭`. The console switch
+that flips it lives in the operator UI, not here.
+
+### Headers
+
+`BOARD_CSP` is
+`default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`,
+on top of the shared `SECURITY_HEADERS`, plus `X-Robots-Tag: noindex, nofollow` — the board
+shows players' names and has no business in a search index.
+
+## 3. The font subset
+
+Only the five files in `BOARD_FONTS` are reachable, whichever faces `board.css` declares.
+`annotator/fonts/` holds many more (every weight of Barlow, DM Mono, Zilla Slab, Noto Serif
+SC, plus the full CJK subsets); they stay off the public port. Adding a face to the page
+means adding its file to `BOARD_FONTS` in `annotator/unified_server.py` in the same commit.
+Fonts and favicons are served `public, max-age=86400`; the page and the API are `no-cache`.
+
+## 4. Deploy: the systemd drop-in (prepared, not installed)
+
+The unit is not in this repository (it is generated/hand-maintained under
+`~/.config/systemd/user/`). The change is a drop-in, checked in here for review as
+`deploy/systemd/pool-workbench.service.d/40-public-board.conf`, mirroring how
+`20-postgres.conf` is delivered:
+
+```ini
+[Service]
+# An ExecStart override must first clear the inherited list: systemd appends to it.
+ExecStart=
+ExecStart=/home/operator/projects/pool/.venv/bin/python /home/operator/projects/pool/annotator/unified_server.py --port 8130 --public-port 8132 --public-prefix /board
+```
+
+Two things about that file:
+
+- **The empty `ExecStart=` is not optional.** Without it systemd appends the second
+  `ExecStart=` to the unit's own, and the service tries to start twice.
+- **The whole command line must be repeated, and it must match the unit's.** The line above
+  is the unit's own `ExecStart` as it stood when this was written (absolute interpreter and
+  absolute script, `/home/operator/projects/pool`, so it is the deployed tree and not a lane
+  worktree); only `--public-port 8132 --public-prefix /board` is new. `WorkingDirectory`, `UMask=0077`,
+  `EnvironmentFile` (including `POOL_DATABASE_URL`) and the rest still come from the unit
+  and the other drop-ins. Re-read `systemctl --user cat pool-workbench.service` and copy the
+  current line before installing — if the unit moves, this file must move with it.
+
+Install (owner, on the host — **not** done by this repository):
+
+```
+install -Dm644 deploy/systemd/pool-workbench.service.d/40-public-board.conf \
+  ~/.config/systemd/user/pool-workbench.service.d/40-public-board.conf
+systemctl --user daemon-reload
+systemctl --user restart pool-workbench.service      # this is the one disruptive step
+systemctl --user show pool-workbench.service -p ExecStart   # confirm exactly one start command
+```
+
+Pick `<port>` deliberately: it must be free on the host, loopback-bound, and **not** a
+fixture range (`8230-8239` belong to lane fixtures). `8132` was free when this was written.
+
+## 5. Cloudflare: the prepared change (not applied)
+
+Today one tunnel ingress rule reaches the console — `pool.example.com → http://127.0.0.1:8130`
+in tunnel `pool-tunnel` — and the Access application for that hostname covers **every** path and
+method (`docs/private-audit.md`, areas A and A.6). The board needs one path of that same
+hostname to reach the public port instead, with no Access application in front of it. There
+is **no new hostname and no DNS record** in this change: the hostname already resolves and
+already routes to the tunnel.
+
+Prepared, to be applied by the owner only:
+
+1. **Tunnel ingress — a path rule, above the console's rule.** In the `pool-tunnel` tunnel's
+   configuration, add `pool.example.com/board* → http://127.0.0.1:8132` **above** the existing
+   `pool.example.com → http://127.0.0.1:8130` rule. Ingress rules are matched in order: below it,
+   the path rule is never reached and `/board*` goes to the console — which is exactly the
+   failure §1 warns about, because the bypass (§2) is path-scoped and would still be in
+   force. Do not touch any other rule.
+2. **Access — a path-scoped bypass on the existing application.** Add a `Bypass` policy with
+   path `/board` and `/board*` to the Access application for `pool.example.com`; leave the
+   console's own policy as it is. It must be a path rule on that application, not a second
+   application and not a "public hostname" checkbox. Verify by hand from a network that is
+   not the host: `curl -sS -o /dev/null -w '%{http_code}\n' https://pool.example.com/board/api/board`
+   returns `200` — not a `302` to `team.cloudflareaccess.com` — while
+   `curl -sS -o /dev/null -w '%{http_code}\n' https://pool.example.com/api/operations` still
+   returns a `302` to that login.
+3. **The bypassed path is read-only — verify it that way.** Every path the whitelist does not
+   name must 404 through the tunnel, not answer with console data:
+   `https://pool.example.com/board/api/operations` → `404`, and so do the encoded and traversing
+   spellings (`/board/../api/operations`, `/%62oard/board.js`, `//board/board.js`,
+   `/board//api/board`). `POST` to any `/board*` path → `405`.
+4. **Origin reach.** Confirm the public port is loopback-only:
+   `ss -ltn 'sport = :8132'` must show `127.0.0.1:8132` and nothing else. `--host 0.0.0.0`
+   would expose the board to the LAN and is not what this is for.
+
+### Pre-flight, before any of the above
+
+Run these against the fixture first (`tests/serve_workbench_fixture.py`, copied to an
+untracked `tests/_b7_*_fixture.py` on a free port — never `:8130`), with the public listener
+started **as it will be deployed** (`--public-port <p> --public-prefix /board`, and
+`http://127.0.0.1:<p>/board/` opened in a browser: the page, its font and its 3 s poll must
+all work through the prefix):
+
+```
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*board*.py' -q
+node --test tests/test_board.js
+```
+
+Then the load the hall will actually produce: 50 concurrent pollers at 3 s for two minutes,
+recording the public port's CPU, the p95 of `GET /api/board`, and — the number that matters —
+the p95 of `GET /api/operations` on the console port during that window, which must stay
+unaffected. Record the figures in this file before flipping DNS.
+
+## 6. Rollback
+
+| stop | how |
+|---|---|
+| the board page only | console switch `Public board: on/off` → `/api/board` returns `{"board":"off"}` and the page says so; the port and the prefix stay up and serve nothing useful |
+| the public port | remove `40-public-board.conf`, `daemon-reload`, restart the service; the `:8132` listener goes with it (dropping only `--public-prefix /board` puts the surface back at the root of that port instead) |
+| the bypassed path | remove the Access bypass **first**, then the `/board*` ingress rule — in that order. Removing the rule first would send `/board*` to the console while the bypass is still in force: an unauthenticated path on the console's own rule. Removing the bypass first only makes `/board*` ask for a login |
+| the whole exposure | as above, then the console's `pool.example.com → 127.0.0.1:8130` rule and the Access application are exactly as they were — neither was edited by this change |
+
+The console is not affected by any of them: the public listener has its own pool, its own
+handler and no shared dispatch, and the board never writes.

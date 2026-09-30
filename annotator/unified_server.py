@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -331,6 +332,8 @@ class Backend:
         self.video_cache = {}
         self._clip_semaphore = threading.Semaphore(2)
         self._operations = None
+        self._board_lock = threading.Lock()
+        self._board_cache = None  # (monotonic time, etag, body) of the last /api/board
         self._store = None
         self._live = None
         self._identity_pipeline = None
@@ -386,6 +389,17 @@ class Backend:
             if self._operations is None:
                 self._operations = _StoreOperations(self.store())
             return self._operations
+
+    def public_board(self):
+        """(etag, body) of GET /api/board (annotator/public_board.py), built at most
+        once a second however many screens poll. It only reads the operations
+        document through the store; one builder at a time, the rest wait for it."""
+        from annotator import public_board
+        with self._board_lock:
+            if self._board_cache is None or time.monotonic() - self._board_cache[0] >= 1.0:
+                etag, body = public_board.encode(public_board.build(self.operations().get()))
+                self._board_cache = (time.monotonic(), etag, body)
+            return self._board_cache[1:]
 
     def store(self):
         """The user-data store for this root, opened once (src.store.open_store)."""
@@ -1751,6 +1765,168 @@ class BoundedHTTPServer(ThreadingHTTPServer):
             self._slots.release()
 
 
+#: The public board's CSP (docs/public-board.md): no inline script or style, this
+#: origin only, never framed, no forms.
+BOARD_CSP = "; ".join((
+    "default-src 'self'", "connect-src 'self'", "img-src 'self' data:", "style-src 'self'", "font-src 'self'",
+    "frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'", "object-src 'none'"))
+#: SECURITY_HEADERS with the board's CSP. The board shows players' names, so it
+#: also asks search engines to stay away.
+BOARD_SECURITY_HEADERS = tuple((key, BOARD_CSP if key == "Content-Security-Policy" else value)
+                               for key, value in SECURITY_HEADERS) + (("X-Robots-Tag", "noindex, nofollow"),)
+#: The fonts board.css loads. Every other file under fonts/ stays off the public port.
+BOARD_FONTS = ("barlow-500.woff2", "barlow-600.woff2", "barlow-700.woff2",
+               "noto-sans-sc-500.woff2", "noto-sans-sc-500-common.woff2")
+#: Public request path -> file under annotator/. With /api/board, the whole public surface.
+BOARD_FILES = {"/": "board.html", "/board.js": "board.js", "/board.css": "board.css",
+               **{f"/{name}": name for name in ("favicon.svg", "favicon-32.png", "favicon-16.png", "favicon.ico")},
+               **{f"/fonts/{name}": f"fonts/{name}" for name in BOARD_FONTS}}
+_BOARD_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+                ".ico": "image/x-icon", ".woff2": "font/woff2"}
+
+
+def board_prefix(value):
+    """--public-prefix, validated at the edge of the process: "" (the root, today's
+    behaviour) or a whole path like "/board" that the public surface is mounted under.
+
+    A prefix is a path of plain segments, matched as a string exactly as sent, so
+    anything that would need decoding or guessing at request time — an encoded,
+    padded, doubled or traversing spelling — is refused here, loudly, instead.
+    """
+    if value is None:
+        return ""
+    if (not isinstance(value, str) or any(char.isspace() for char in value)
+            or any(char in value for char in "?#%\\")):
+        raise ValueError(f"a public prefix cannot be padded, encoded or carry a query: {value!r}")
+    text = value.rstrip("/")
+    if not text:
+        return ""
+    if not text.startswith("/") or "//" in text or any(part in (".", "..") for part in text.split("/")):
+        raise ValueError(f"a public prefix must be a plain absolute path like /board: {value!r}")
+    return text
+
+
+class PublicBoardServer(BoundedHTTPServer):
+    """The public listener's own, smaller pool: however many phones poll the
+    board, they cannot take the operator console's slots."""
+    max_handlers = 16
+    request_queue_size = 16
+
+
+def make_public_handler(backend, prefix=""):
+    """The handler behind --public-port: GET/HEAD of BOARD_FILES and /api/board, nothing else.
+
+    It shares no code path with make_handler's dispatch. Paths are compared exactly
+    as sent, before any decoding or normalisation, so an encoded, doubled or
+    traversing spelling of a public path is just another unknown path: 404. The
+    query string is never read. Every other method is 405.
+
+    `prefix` (--public-prefix) mounts that same surface under one path, e.g. "/board",
+    so the board can live on the console's own hostname behind a path-scoped Access
+    bypass (docs/public-board.md). The prefix is a plain string prefix with a "/"
+    boundary: "/board" and "/board/..." match, "/boardx" does not; the remainder is
+    handed to BOARD_FILES unchanged, and nothing outside the prefix is served.
+    """
+    prefix = board_prefix(prefix)
+    class PublicHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.0"  # one request per connection: nothing pipelined rides along
+        timeout = 10  # an idle or trickling client frees its slot within 10 s
+        # The standard library's malformed-request answers, as inert text rather than HTML.
+        error_content_type, error_message_format = "text/plain; charset=utf-8", "%(code)d %(message)s\n"
+
+        def version_string(self):
+            return "board"
+
+        def end_headers(self):
+            for key, value in BOARD_SECURITY_HEADERS:
+                self.send_header(key, value)
+            super().end_headers()
+
+        def log_request(self, code="-", size="-"):
+            # Pollers ask every 3 s: log what was refused, not every board served.
+            if not (isinstance(code, int) and code < 400):
+                super().log_request(code, size)
+
+        def send(self, status, body, content_type="text/plain; charset=utf-8", headers=()):
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            for key, value in headers:
+                self.send_header(key, value)
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+
+        def target(self):
+            """The request target exactly as sent.
+
+            The standard library folds a target that begins with "//" into a single "/"
+            before do_GET (http/server.py, against absolute-URI confusion), which would
+            quietly make "//board/board.js" an alias of a public path. Nothing here is an
+            alias: the whitelist sees the spelling the client sent, so the folded spelling
+            is one more unknown path, exactly like any other.
+            """
+            try:
+                return self.requestline.split()[1].partition("?")[0]
+            except IndexError:  # no request line to read: fall back to what was parsed
+                return self.path.partition("?")[0]
+
+        def do_GET(self):
+            if self.request_version == "HTTP/0.9":
+                return  # a 0.9 answer has no headers, so no CSP: send nothing
+            path = self.target()
+            if prefix:
+                # The mount, as a string with a "/" boundary: "/board" and "/board/…"
+                # only. No decoding, no normalisation - a traversing or encoded
+                # spelling is just an unknown path below.
+                if path == prefix:
+                    path = "/"
+                elif path.startswith(prefix + "/"):
+                    path = path[len(prefix):]
+                else:
+                    return self.send(404, b"not found\n")
+            if path == "/api/board":
+                return self.board()
+            name = BOARD_FILES.get(path)
+            try:
+                body = (backend.root / "annotator" / name).read_bytes() if name else None
+            except OSError:
+                body = None
+            if body is None:
+                return self.send(404, b"not found\n")
+            cache = "public, max-age=86400" if name.startswith(("fonts/", "favicon")) else "no-cache"
+            self.send(200, body, _BOARD_TYPES[Path(name).suffix], (("Cache-Control", cache),))
+
+        do_HEAD = do_GET
+
+        def board(self):
+            try:
+                etag, body = backend.public_board()
+            except Exception as exc:
+                error_reference(exc)  # logged with its traceback; the public sees no internals
+                return self.send(503, b'{"error":"unavailable"}', "application/json",
+                                 (("Cache-Control", "no-store"), ("Retry-After", "3")))
+            if etag.removeprefix("W/") in {tag.strip().removeprefix("W/")
+                                           for tag in self.headers.get("If-None-Match", "").split(",")}:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "no-cache")
+                return self.end_headers()
+            self.send(200, body, "application/json", (("ETag", etag), ("Cache-Control", "no-cache")))
+
+        def refuse(self):
+            self.send(405, b"method not allowed\n", headers=(("Allow", "GET, HEAD"),))
+
+        def __getattr__(self, name):
+            # The base class looks up do_<METHOD>: every method but GET and HEAD lands here.
+            if name.startswith("do_"):
+                return self.refuse
+            raise AttributeError(name)
+
+    return PublicHandler
+
+
 def make_handler(backend):
     class Handler(BaseHTTPRequestHandler):
         # Per-socket timeout: a request whose headers or body stall this long is
@@ -1882,6 +2058,11 @@ def make_handler(backend):
                 # Self-hosted web fonts and their OFL texts: one flat directory, no build script.
                 if len(parts) == 2 and parts[0] == "fonts" and parts[1].endswith((".woff2", ".txt")):
                     return self.file(safe_file(backend.root / "annotator" / "fonts", parts[1]))
+                # The public board, for a TV logged in here (--public-port serves it without login).
+                if path in ("/display", "/board.js", "/board.css"):
+                    return self.file(safe_file(backend.root / "annotator", "board.html" if path == "/display" else path[1:]))
+                if path == "/api/board":
+                    return self.send(200, backend.public_board()[1])
                 if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js"): 
                     return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
@@ -1926,15 +2107,29 @@ def main():
     parser.add_argument("--port", type=int, default=8130)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--public-port", type=int, help="also serve the read-only public board on this port, "
+                        "on its own listener and pool (docs/public-board.md)")
+    parser.add_argument("--public-prefix", type=board_prefix, default="", metavar="PATH",
+                        help="mount the public board under this path, e.g. /board, so it can share the "
+                             "console's hostname behind a path-scoped Access bypass (default: the root)")
     args = parser.parse_args()
     backend = Backend(args.root)
     server = BoundedHTTPServer((args.host, args.port), make_handler(backend))
+    public = None
+    if args.public_port:
+        public = PublicBoardServer((args.host, args.public_port), make_public_handler(backend, args.public_prefix))
+        threading.Thread(target=public.serve_forever, name="public-board", daemon=True).start()
     print(f"Unified annotator: http://{args.host}:{args.port}", flush=True)
+    if public:
+        print(f"Public board: http://{args.host}:{args.public_port}{args.public_prefix}/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        if public:
+            public.shutdown()
+            public.server_close()
         backend.close()
         server.server_close()
 

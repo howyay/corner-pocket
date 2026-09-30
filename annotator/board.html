@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Corner Pocket · Tonight</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="icon" href="./favicon-32.png" sizes="32x32" type="image/png">
+<link rel="stylesheet" href="./board.css">
+<script src="./board.js" defer></script>
+</head>
+<body>
+<header class="masthead">
+  <div class="brand">
+    <p class="house">Corner Pocket</p>
+    <h1 id="event-name">Tonight</h1>
+    <p id="event-meta" class="meta"></p>
+  </div>
+  <div class="freshness">
+    <p id="updated" class="updated" role="status" aria-live="polite">Connecting…</p>
+    <button id="lang" class="lang" type="button" lang="zh" aria-label="中文">中</button>
+  </div>
+</header>
+<p id="stale" class="stale" role="alert" hidden></p>
+<main id="board" aria-busy="true">
+  <section class="tables" aria-labelledby="tables-title">
+    <h2 id="tables-title">On the tables</h2>
+    <ol id="tables" class="table-cards"></ol>
+  </section>
+  <section class="next" aria-labelledby="next-title">
+    <h2 id="next-title">Next up</h2>
+    <ol id="next" class="queue"></ol>
+  </section>
+  <section class="bracket" aria-labelledby="bracket-title">
+    <h2 id="bracket-title">Bracket</h2>
+    <div id="bracket" class="rounds"></div>
+  </section>
+  <section class="standings" aria-labelledby="standings-title">
+    <h2 id="standings-title">Tonight's table</h2>
+    <table>
+      <thead><tr><th id="h-player" scope="col">Player</th><th id="h-won" scope="col">W</th><th id="h-lost" scope="col">L</th><th id="h-played" scope="col">Played</th></tr></thead>
+      <tbody id="standings"></tbody>
+    </table>
+  </section>
+</main>
+<section id="off" class="off" hidden><p id="off-text">The board is off tonight</p></section>
+</body>
+</html>
