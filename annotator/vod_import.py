@@ -30,6 +30,7 @@ import tempfile
 import threading
 import time
 
+from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
 from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
 
 RECENT_LIMIT = 10
@@ -96,8 +97,18 @@ def seconds_done(values):
 
 def ffprobe_beside(ffmpeg_command):
     """The ffprobe of the same build as the ffmpeg in use, else the one on PATH."""
-    sibling = Path(ffmpeg_command[0]).with_name("ffprobe")
-    return str(sibling) if sibling.is_file() else (shutil.which("ffprobe") or "ffprobe")
+    try:
+        return resolve_ffprobe(beside=ffmpeg_command[0])
+    except MediaBinaryMissing as exc:
+        raise VodImportError(str(exc), 503) from exc
+
+
+def default_ffmpeg_command():
+    """The ffmpeg command list an import runs (annotator/ffmpeg_bin.py picks the binary)."""
+    try:
+        return [resolve_ffmpeg()]
+    except MediaBinaryMissing as exc:
+        raise VodImportError(str(exc), 503) from exc
 
 
 def probe_media(path, ffmpeg_command):
@@ -161,7 +172,7 @@ class VodImporter:
         self.root = Path(root)
         self._ops_get = ops_get
         self._twitch = twitch
-        self._ffmpeg = ffmpeg or (lambda: [shutil.which("ffmpeg") or "ffmpeg"])
+        self._ffmpeg = ffmpeg or default_ffmpeg_command
         self._probe = probe or (lambda path: probe_media(path, self._ffmpeg()))
         self._disk_usage = disk_usage
         self._public_error = public_error or (lambda exc: f"internal error ({type(exc).__name__})")
