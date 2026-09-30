@@ -4,8 +4,10 @@ under --public-prefix.
 The public listener (--public-port) answers GET/HEAD of a fixed set of paths and
 nothing else; --public-prefix mounts that same surface under one path, e.g. /board, so
 the board can live on the console's own hostname behind a path-scoped Access bypass.
-Each test runs the real handlers behind loopback sockets over a temporary root; no
-repository data is read or written.
+The one spelling that is not the mounted page is the bare prefix itself: /board answers
+308 to /board/, because a document whose URL is /board resolves its relative assets
+outside the mount (/board.js). Each test runs the real handlers behind loopback sockets
+over a temporary root; no repository data is read or written.
 """
 import http.client
 import json
@@ -172,6 +174,16 @@ class PublicListenerTest(NoSecrets, unittest.TestCase):
                     self.assertEqual(response.status, 404)
                     self.assertNoSecrets(body, path)
 
+    def test_a_bare_prefix_is_not_a_redirect_without_a_prefix(self):
+        # Without --public-prefix there is no mount to complete: /board is one more
+        # unknown path, exactly as it was before the prefix existed.
+        for path in ("/board", "/board/", "/board?lang=zh", "/board/api/board"):
+            with self.subTest(path=path):
+                response, body = self.public.request("GET", path)
+                self.assertEqual(response.status, 404)
+                self.assertIsNone(response.getheader("Location"))
+                self.assertNoSecrets(body, path)
+
     def test_raw_request_targets_http_client_would_refuse_are_404(self):
         for target in (b"/board.js\x00", b"/ops.js\t", b"/api/board\x7f", b"/fonts/\xff..\xff/ops.js"):
             with self.subTest(target=target):
@@ -284,6 +296,17 @@ def get(port, path):
         connection.close()
 
 
+def get_headers(port, path):
+    """(status, Location, body), for the one answer that is a 308."""
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        return response.status, response.getheader("Location"), response.read()
+    finally:
+        connection.close()
+
+
 def wait_for_port(port, process):
     deadline = time.monotonic() + 20
     while True:
@@ -335,6 +358,7 @@ class PublicPrefixWiringTest(unittest.TestCase):
                 cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             try:
                 wait_for_port(public_port, process)
+                self.assertEqual(get_headers(public_port, "/board"), (308, "/board/", b""))
                 self.assertEqual(get(public_port, "/board/"),
                                  (200, b"<!doctype html><title>board fixture</title>"))
                 status, body = get(public_port, "/board/api/board")
@@ -363,8 +387,7 @@ class PublicPrefixTest(NoSecrets, unittest.TestCase):
         self.addCleanup(self.public.close)
 
     def test_the_prefix_serves_the_whole_surface(self):
-        expected = {"/board": ("board.html", "text/html; charset=utf-8"),
-                    "/board/": ("board.html", "text/html; charset=utf-8"),
+        expected = {"/board/": ("board.html", "text/html; charset=utf-8"),
                     "/board/?lang=zh": ("board.html", "text/html; charset=utf-8"),
                     "/board/board.js": ("board.js", "text/javascript; charset=utf-8"),
                     "/board/board.css": ("board.css", "text/css; charset=utf-8"),
@@ -379,6 +402,39 @@ class PublicPrefixTest(NoSecrets, unittest.TestCase):
                 head, head_body = self.public.request("HEAD", path)
                 self.assertEqual((head.status, head_body), (200, b""))
                 self.assertEqual(head.getheader("Content-Length"), str(len(body)))
+
+    def test_the_bare_prefix_redirects_to_the_mounted_page(self):
+        # /board is not the page: an asset URL relative to it lands outside the mount.
+        # The one answer that moves a client to the canonical URL is a 308, with no body
+        # a browser would render.
+        for method in ("GET", "HEAD"):
+            with self.subTest(method=method):
+                response, body = self.public.request(method, "/board")
+                self.assertEqual(response.status, 308)
+                self.assertEqual(response.getheader("Location"), "/board/")
+                self.assertEqual((response.getheader("Content-Length"), body), ("0", b""))
+                self.assertNotIn("text/html", response.getheader("Content-Type") or "")
+
+    def test_the_redirect_carries_the_query_through_verbatim(self):
+        # The query is never read, only carried: the bytes that arrived after the "?" are
+        # the bytes in Location, so a shared ?lang=zh link survives the bare form.
+        for path, location in (("/board?lang=zh", "/board/?lang=zh"),
+                               ("/board?x=1&y=%2e%2e", "/board/?x=1&y=%2e%2e"),
+                               ("/board?/../ops.js", "/board/?/../ops.js"),
+                               ("/board?", "/board/?")):
+            with self.subTest(path=path):
+                response, body = self.public.request("GET", path)
+                self.assertEqual((response.status, response.getheader("Location")), (308, location))
+                self.assertEqual(body, b"")
+
+    def test_only_the_exact_bare_prefix_redirects(self):
+        # The mount is still matched as a string, as sent: a near-miss of the bare prefix
+        # is an unknown path, never a redirect to somewhere it did not ask for.
+        for path in ("/boardx", "/board.", "/board/.", "/BOARD", "/%62oard", "//board",
+                     "/board/", "/board/board.js", "/board/../board"):
+            with self.subTest(path=path):
+                status = self.public.request("GET", path)[0]
+                self.assertNotIn(status, (301, 302, 303, 307, 308))
 
     def test_the_cache_rule_follows_the_file_not_the_prefix(self):
         for path, cache in (("/board/fonts/barlow-500.woff2", "public, max-age=86400"),
@@ -428,8 +484,8 @@ class PublicPrefixTest(NoSecrets, unittest.TestCase):
                     self.assertNoSecrets(body, path)
 
     def test_the_security_headers_are_the_same_under_the_prefix(self):
-        for method, path in (("GET", "/board/"), ("GET", "/board/board.js"), ("HEAD", "/board/api/board"),
-                             ("GET", "/board/api/operations"), ("POST", "/board/")):
+        for method, path in (("GET", "/board/"), ("GET", "/board"), ("GET", "/board/board.js"),
+                             ("HEAD", "/board/api/board"), ("GET", "/board/api/operations"), ("POST", "/board/")):
             with self.subTest(method=method, path=path):
                 response, _ = self.public.request(method, path)
                 self.assertEqual(response.getheader("Content-Security-Policy"), BOARD_CSP)

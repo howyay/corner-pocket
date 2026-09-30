@@ -16,7 +16,7 @@ on the Cloudflare side, which is **prepared here and not applied**.*
 |---|---|
 | code | `annotator/unified_server.py` (`PublicBoardServer`, `make_public_handler`, `board_prefix`, `BOARD_FILES`, `BOARD_FONTS`, `BOARD_CSP`), `annotator/public_board.py`, `annotator/board.html`, `annotator/board.css`, `annotator/board.js` |
 | switch | `--public-port <port>` (default: not served at all) and `--public-prefix <path>` (default: empty, the root — the behaviour above) |
-| mount | with `--public-prefix /board` the whole surface moves under it: `GET /board` and `GET /board/`, `/board/board.js`, `/board/board.css`, `/board/favicon.{svg,ico}`, `/board/favicon-32.png`, `/board/favicon-16.png`, `/board/fonts/<the five BOARD_FONTS>`, `GET\|HEAD /board/api/board` |
+| mount | with `--public-prefix /board` the whole surface moves under it: `GET /board/`, `/board/board.js`, `/board/board.css`, `/board/favicon.{svg,ico}`, `/board/favicon-32.png`, `/board/favicon-16.png`, `/board/fonts/<the five BOARD_FONTS>`, `GET\|HEAD /board/api/board` — and the bare `GET\|HEAD /board` answers **308** to `/board/` |
 | reach | loopback only, same `--host` as the console (default `127.0.0.1`) |
 | refuses | every other path (404) — including, with a prefix set, the whole root mount (`/`, `/board.js`, `/api/board`) — every other method (405), and HTTP/0.9 |
 | auth | **none** — the whitelist is the whole boundary |
@@ -40,7 +40,9 @@ journal.
 
 `make_public_handler` shares **no** dispatch code with `make_handler`. Paths are compared
 exactly as sent, before any decoding or normalisation, so an encoded, doubled or traversing
-spelling of a public path is just another unknown path: 404. The query string is never read.
+spelling of a public path is just another unknown path: 404. The query string is never read —
+the one place it appears at all is the bare-prefix redirect below, which carries it into
+`Location` byte for byte without parsing it.
 
 ### The prefix
 
@@ -51,24 +53,28 @@ spelling of a public path is just another unknown path: 404. The query string is
 .venv/bin/python annotator/unified_server.py --port 8130 --public-port 8132 --public-prefix /board
 ```
 
-Then only `GET /board` (which serves `board.html`) and the paths under `/board/` are served;
+Then only `GET /board/` (which serves `board.html`) and the paths under `/board/` are served;
 the root mount is **closed** — `/`, `/board.js` and `/api/board` on that port are 404 — because
-the prefix is the whole mount rather than an extra one. The prefix is matched as a plain
-string with a `/` boundary, before any decoding or normalisation: `/board` and `/board/...`
-match, `/boardx` does not, and `//board/board.js`, `/%62oard/board.js`,
+the prefix is the whole mount rather than an extra one. The bare `GET`/`HEAD /board` is the one
+spelling that is not the page: it answers **308** with `Location: /board/`, because the page's
+asset URLs are relative and a document whose URL is `/board` would ask for `/board.js`, which
+the prefixed listener refuses. A query rides along as the same bytes (`/board?lang=zh` →
+`/board/?lang=zh`) — carried, not parsed, and it still cannot pick a route. The prefix is matched
+as a plain string with a `/` boundary, before any decoding or normalisation: `/board` and
+`/board/...` match, `/boardx` does not, and `//board/board.js`, `/%62oard/board.js`,
 `/board/../api/operations` or `/board//api/board` are all just unknown paths (404), exactly
-as they would be without a prefix. `board_prefix()` rejects a bad `--public-prefix` at
-startup (padded, encoded or relative values, `//`, or a `.`/`..` segment) rather than
-trusting a mangled one at request time.
+as they would be without a prefix — none of those spellings redirects either. `board_prefix()`
+rejects a bad `--public-prefix` at startup (padded, encoded or relative values, `//`, or a
+`.`/`..` segment) rather than trusting a mangled one at request time.
 
 `board.html`, `board.js` and `board.css` reference everything **relatively** (`./board.js`,
 `./api/board`, `url(fonts/...)`), and `board.js` builds its API URL from the URL of its own
 `<script>` tag, not from the document URL: one file therefore works at `/`, at `/board/`
-and at the console's own `/display` mount, with no build step and no per-mount copy. Publish
-the trailing-slash form: `GET /board` alone serves the page, but a document whose URL is
-`/board` resolves `./board.js` to `/board.js`, which the prefixed listener refuses — so
-`https://pool.example.com/board/` (what §5 bypasses) is the URL for the TV, the phones and any
-QR code.
+and at the console's own `/display` mount, with no build step and no per-mount copy. **Publish
+the trailing-slash form**, `https://pool.example.com/board/` (what §5 bypasses): that is the URL for
+the TV, the phones and any QR code. The bare `https://pool.example.com/board` is not a broken page
+for a player who types or shares it — the listener answers 308 to the trailing-slash form, so
+the browser lands on the page that resolves `./board.js` inside the mount.
 
 ### Why a path on the console's hostname, and not a second hostname
 
@@ -218,7 +224,9 @@ Prepared, to be applied by the owner only:
    not the host: `curl -sS -o /dev/null -w '%{http_code}\n' https://pool.example.com/board/api/board`
    returns `200` — not a `302` to `team.cloudflareaccess.com` — while
    `curl -sS -o /dev/null -w '%{http_code}\n' https://pool.example.com/api/operations` still
-   returns a `302` to that login.
+   returns a `302` to that login. The bare form must land on the mount through the tunnel too:
+   `curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://pool.example.com/board` gives
+   `308 https://pool.example.com/board/` — the redirect is the listener's own answer.
 3. **The bypassed path is read-only — verify it that way.** Every path the whitelist does not
    name must 404 through the tunnel, not answer with console data:
    `https://pool.example.com/board/api/operations` → `404`, and so do the encoded and traversing
