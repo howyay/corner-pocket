@@ -1893,6 +1893,12 @@ def make_public_handler(backend, prefix=""):
     bypass (docs/public-board.md). The prefix is a plain string prefix with a "/"
     boundary: "/board" and "/board/..." match, "/boardx" does not; the remainder is
     handed to BOARD_FILES unchanged, and nothing outside the prefix is served.
+
+    The one spelling of the prefix that is not the mounted page is the bare prefix
+    itself: "/board" answers 308 to "/board/", because the page's asset URLs are
+    relative and a document whose URL is "/board" would resolve them outside the
+    mount. The query, if there is one, rides along as the same bytes - carried, not
+    read: it still cannot pick a route, and every other spelling is unchanged.
     """
     prefix = board_prefix(prefix)
     class PublicHandler(BaseHTTPRequestHandler):
@@ -1924,8 +1930,15 @@ def make_public_handler(backend, prefix=""):
             if self.command != "HEAD":
                 self.wfile.write(body)
 
+        def raw_target(self):
+            """The request target exactly as sent, query string and all."""
+            try:
+                return self.requestline.split()[1]
+            except IndexError:  # no request line to read: fall back to what was parsed
+                return self.path
+
         def target(self):
-            """The request target exactly as sent.
+            """The request target's path, exactly as sent.
 
             The standard library folds a target that begins with "//" into a single "/"
             before do_GET (http/server.py, against absolute-URI confusion), which would
@@ -1933,10 +1946,14 @@ def make_public_handler(backend, prefix=""):
             alias: the whitelist sees the spelling the client sent, so the folded spelling
             is one more unknown path, exactly like any other.
             """
-            try:
-                return self.requestline.split()[1].partition("?")[0]
-            except IndexError:  # no request line to read: fall back to what was parsed
-                return self.path.partition("?")[0]
+            return self.raw_target().partition("?")[0]
+
+        def redirect(self, location):
+            """A permanent redirect, and the only answer here that is neither a file nor a
+            refusal: 308 is permanent without dropping the method, and the body is empty, so
+            a client that renders what it is given before following renders nothing.
+            """
+            self.send(308, b"", headers=(("Location", location),))
 
         def do_GET(self):
             if self.request_version == "HTTP/0.9":
@@ -1947,7 +1964,13 @@ def make_public_handler(backend, prefix=""):
                 # only. No decoding, no normalisation - a traversing or encoded
                 # spelling is just an unknown path below.
                 if path == prefix:
-                    path = "/"
+                    # The bare prefix is the one spelling that is not the page: the
+                    # page's assets are relative to the document's directory, so a
+                    # document at "/board" asks for "/board.js", outside the mount.
+                    # The query is sliced off the target and carried, never parsed:
+                    # no separator ("" and "") when the client sent none.
+                    _, separator, query = self.raw_target().partition("?")
+                    return self.redirect(prefix + "/" + separator + query)
                 elif path.startswith(prefix + "/"):
                     path = path[len(prefix):]
                 else:
