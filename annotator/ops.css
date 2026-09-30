@@ -511,6 +511,10 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .pair-teams li{padding:var(--sp-1h) 0;border-bottom:1px solid var(--line)}
 #ops-shell :is(.standings,.event-table) td:nth-child(n+3),#ops-shell :is(.standings,.event-table) th:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
 #ops-shell :is(.standings,.h2h,.per-event) td small{display:block}
+/* Records: a standings name opens the read-only player record. It reads as the name (a link, not a
+   bordered button) and keeps the 40px touch height and the shared focus ring. */
+#ops-shell button.link{min-height:40px;padding:0;border:0;background:none;color:var(--ink-hi);text-align:left;text-decoration:underline;text-decoration-color:var(--btn-line);text-underline-offset:3px}
+#ops-shell button.link:hover{color:var(--brass-hi);text-decoration-color:var(--brass)}
 #ops-shell :is(.standings,.event-table) td:nth-child(n+3),#ops-shell :is(.h2h,.per-event) td:nth-child(n+2){white-space:nowrap}
 #ops-shell :is(.h2h,.per-event) td:nth-child(n+2),#ops-shell :is(.h2h,.per-event) th:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
 .modal .record h3{margin-top:var(--sp-4)}
@@ -617,3 +621,17 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell details.vs-tech{margin-top:var(--sp-2)}
 #ops-shell details.vs-tech>summary{cursor:pointer;font:var(--fs-sm) var(--mono);letter-spacing:.08em;color:var(--ink-dim)}
 #ops-shell details.vs-tech>summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+/* IA C' stage 4: the Tonight console. A phase strip of four phases that stay clickable in every
+   state (mode-slip guard: a phase never hides a control the operator needs now); the current one is
+   marked for the eye and for the screen reader, and reuses the tab rail's 44px target and ring. */
+#ops-shell nav.phases{padding-bottom:var(--sp-4)}
+#ops-shell nav.phases button.phase{min-height:44px;padding:0 var(--sp-4)}
+#ops-shell nav.phases button.phase[aria-current=step]{background:var(--rail);border-color:var(--brass);color:var(--ink-hi)}
+#ops-shell nav.phases button.phase[aria-current=step]::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--brass)}
+/* One rhythm column, so Register's cards (the guide, the night, the desk, the guests) space like the
+   other tabs instead of touching. */
+#ops-shell .phase-body{display:grid;gap:var(--sp-5)}
+@media(max-width:750px){
+#ops-shell nav.phases{gap:var(--sp-1)}
+#ops-shell nav.phases button.phase{flex:1;min-width:0;padding:0 var(--sp-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
