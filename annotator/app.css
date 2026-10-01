@@ -7,6 +7,19 @@
    stage follows the shell's theme and there is nothing to drift. */
 * { box-sizing: border-box; }
 & { background: transparent; color: var(--ink); font-family: var(--body); font-size: var(--fs-body); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+/* The page frame, from the shell's one width system. Embedded in the shell this root is
+   the Vision stage and the frame already belongs to #ops-shell main - a second one here
+   would narrow the video inside the tab - so it applies only when this root is the whole
+   page, which is what `data-embedded` distinguishes (`ops.js` sets it on the imported
+   markup; the standalone page mounts `#review-root` without it). The token has literals
+   behind it because this page links app.css only: there is no ops.css on it, so
+   `--page-max`, `--sp-3` and `--sp-6` would otherwise resolve to nothing. The stage
+   below stays full-bleed inside the frame. */
+&:not([data-embedded]) { box-sizing: border-box; max-width: var(--page-max, 1560px); margin-inline: auto; padding: var(--sp-3, 12px) clamp(var(--sp-3, 12px), 2.4vw, var(--sp-6, 32px)); }
+/* Running text keeps the shell's measure. Anything drawn on the picture (.stage and its
+   plates, the ball popover) is excluded: those are positioned against the frame, not set
+   in a column, and a max-width there would unpin them. */
+&:not([data-embedded]) :is(p, .empty):not(.stage *, .stage-popover *) { max-width: var(--measure, 70ch); }
 button, input, select, textarea { font: inherit; color: inherit; }
 .empty { padding: 40px var(--sp-4); text-align: center; border: 1px dashed var(--line); color: var(--ink-dim); line-height: 1.8; }
 ::selection { background: var(--brass); color: var(--brass-fg); }

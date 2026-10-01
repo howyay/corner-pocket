@@ -37,6 +37,18 @@
    8-12 between siblings, 16-32 between groups. Hairlines (<=2px), computed reserves
    (calc) and structural reserves (>=40px) stay literal. */
 :root{--sp-1:4px;--sp-1h:6px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px}
+/* Width system: one frame, one measure. --page-max is the widest the shell (.bar, nav,
+   main, every Vision surface) and the standalone app page ever get; it is a floor, not a
+   target - 1560px is the value this shell already capped at, so tokenizing it moves no
+   pixel, and the wide surfaces (bracket, standings and event tables, scoreboard, the
+   16:9 video stage inside its frame) keep the whole column. --measure caps running text
+   only, at 70ch of the element's own font: at most 75 characters on every face here
+   (Barlow's "0" is ~5% wider than its average lowercase, so 70ch measures ~73
+   characters; DM Mono is monospaced, so 70ch is exactly 70), the top of the 45-75 a
+   single column of body text wants - this console is read standing up, at arm's length.
+   It is a max-width, so it can only wrap a line that is already too long: no column, no
+   table and no picture is ever narrowed by it. */
+:root{--page-max:1560px;--measure:70ch}
 #ops-shell,#ops-shell *{box-sizing:border-box}
 /* Round-1 finding 1: every number is lining and tabular. Zilla Slab defaults to old-style
    figures ("0" reads as the letter o, "1" as a dotless i); its self-hosted subset keeps lnum/tnum
@@ -57,7 +69,12 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell a{color:var(--brass-hi)}
 #ops-shell :focus-visible{outline:2px solid var(--brass);outline-offset:3px}
 #ops-shell header{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
-#ops-shell .bar,#ops-shell nav,#ops-shell main{max-width:1560px;margin:auto;padding:var(--sp-3) clamp(var(--sp-3),2.4vw,var(--sp-6))}
+#ops-shell .bar,#ops-shell nav,#ops-shell main{max-width:var(--page-max);margin:auto;padding:var(--sp-3) clamp(var(--sp-3),2.4vw,var(--sp-6))}
+/* Running text stops at the measure; structure does not. Everything the review engine
+   draws inside the frame is excluded (the app page's own paragraphs are positioned
+   against the picture and set their own type), and the frame-level plates there are
+   absolutely positioned, so a max-width would unpin them from the video. */
+#ops-shell main p:not(#review-root *){max-width:var(--measure)}
 #ops-shell .bar,#ops-shell .tools,#ops-shell nav,#ops-shell .row,#ops-shell .heading,#ops-shell .actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 #ops-shell .bar,#ops-shell .heading{justify-content:space-between}
 #ops-shell .brand{display:flex;align-items:center;gap:var(--sp-3);color:var(--ink)}
@@ -281,7 +298,7 @@ html,body{-webkit-font-smoothing:antialiased}
 .rounds .empty{background:var(--panel);border:1px dashed var(--line);border-radius:2px;padding:var(--sp-4) var(--sp-4);color:var(--ink-dim)}
 
 /* --- Vision: one stage, two rails, zero subtabs --------------------------- */
-:is(#ops-shell) .vision-surface{display:flex;flex-direction:column;gap:var(--sp-2);max-width:1560px;margin:0 auto}
+:is(#ops-shell) .vision-surface{display:flex;flex-direction:column;gap:var(--sp-2);max-width:var(--page-max);margin:0 auto}
 :is(#ops-shell) .vs-chips{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--sp-2);flex-wrap:wrap;position:relative}
 :is(#ops-shell) .vs-chiprow{display:flex;gap:var(--sp-1h);flex-wrap:wrap;align-items:center}
 :is(#ops-shell) .vs-chip{padding:var(--sp-1) var(--sp-2);min-height:32px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);color:var(--ink-mid);font:var(--fs-xs) var(--mono);letter-spacing:.06em;cursor:pointer}
@@ -582,7 +599,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .bracket-card .pending-note{order:0;font-size:var(--fs-xs)}
 /* Round 1, findings 2-4: an empty state is a short sentence that says what fills the panel and
    what to do next, sometimes with the one button that does it. Never a list item, never a name. */
-#ops-shell .empty-note{margin:0;color:var(--ink-dim);font-size:var(--fs-body);line-height:1.5;max-width:62ch}
+#ops-shell .empty-note{margin:0;color:var(--ink-dim);font-size:var(--fs-body);line-height:1.5;max-width:var(--measure)}
 #ops-shell .empty-note button{margin-left:var(--sp-2);vertical-align:baseline}
 #ops-shell .board-empty{padding:var(--sp-3) clamp(var(--sp-4),2.4vw,var(--sp-5)) 0}
 #ops-shell .rounds article.empty{flex:1;background:var(--panel);border:1px dashed var(--line);border-radius:2px;padding:var(--sp-4)}
