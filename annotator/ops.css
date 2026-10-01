@@ -635,3 +635,35 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell nav.phases{gap:var(--sp-1)}
 #ops-shell nav.phases button.phase{flex:1;min-width:0;padding:0 var(--sp-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
+/* IA C' stage 5: Play is one screen (Queue | Tables | Bracket). Send and Score live on the same
+   screen, so a send never changes the page: the strip only swaps which of the three views is
+   shown, and the hidden ones are `hidden` for the reader as well as for the eye. The strip keeps
+   the tab rail's 44px target and ring, and it holds its place at the top while the view scrolls,
+   so Send is one tap away from the table it was sent to. */
+#ops-shell nav.playtabs{display:flex;flex-wrap:wrap;gap:var(--sp-2);position:sticky;top:0;z-index:20;padding:var(--sp-2) 0;background:var(--bg);border-bottom:1px solid var(--line)}
+#ops-shell nav.playtabs button.playtab{min-height:44px;padding:0 var(--sp-4);display:inline-flex;align-items:center;gap:var(--sp-1h)}
+#ops-shell nav.playtabs button.playtab small{color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
+#ops-shell nav.playtabs button.playtab[aria-current=true]{background:var(--rail);border-color:var(--brass);color:var(--ink-hi)}
+#ops-shell nav.playtabs button.playtab[aria-current=true] small{color:var(--brass-hi)}
+#ops-shell .playview[hidden]{display:none}
+#ops-shell .play .grid{align-items:start}
+/* The queue is the ready line: one card per match that can go to a table, Send first. */
+#ops-shell .queue-list{display:grid;gap:var(--sp-2);margin-top:var(--sp-2)}
+#ops-shell .queue-card{display:grid;gap:var(--sp-2)}
+#ops-shell .queue-card .card-head{color:var(--ink-dim)}
+#ops-shell .queue-card .card-side{gap:var(--sp-3)}
+#ops-shell .queue-card .card-side strong{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#ops-shell .queue-card .card-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+#ops-shell .queue-card .card-actions button[data-action=schedule]{min-height:44px;padding:0 var(--sp-4)}
+#ops-shell .queue-card.pending{opacity:.7}
+/* The event table is a side panel here (item S9) and a full panel in Records. */
+#ops-shell details.side-panel{margin-top:var(--sp-4)}
+#ops-shell details.side-panel>summary{cursor:pointer;font:var(--fs-sm) var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);min-height:40px;display:flex;align-items:center}
+#ops-shell details.side-panel>summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+@media(max-width:750px){
+#ops-shell nav.playtabs{gap:var(--sp-1);padding:var(--sp-1h) 0}
+#ops-shell nav.playtabs button.playtab{flex:1;min-width:0;padding:0 var(--sp-2);justify-content:center}
+#ops-shell nav.playtabs button.playtab small{display:none}
+#ops-shell .queue-card .card-actions button[data-action=schedule]{flex:1}
+}
+

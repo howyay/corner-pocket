@@ -222,7 +222,7 @@ test('table release and registration attendance use existing action API', async 
 test('delayed matches restore attendance rather than offering invalid scheduling', () => {
   const h = harness();
   h.evaluate("data.tournament.matches=[{id:'m1',round:1,status:'delayed',sides:['e1','e2'],absent:['e1'],score:[0,0]}]");
-  const html = h.evaluate('matchesScreen()');
+  const html = h.evaluate('bracketScreen()');
   assert.ok(html.includes('data-action="absence"'));
   assert.ok(!html.includes('data-action="schedule"'));
 });
@@ -301,27 +301,27 @@ test('round 1 · Back room: operator panels first; system status and roadmap und
   }
 });
 test('round 1 · empty states: no fake names, no blank tiles, no list-item empties, every panel headed', () => {
-  for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register entrants and rack the night', 'default name · saved when you rack'],
-                                             ['zh', '暂无比赛上台', '登记参赛者并生成对阵', '默认名称 · 生成对阵时保存']]) {
+  for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register entrants, rack the night, then send a match from the Queue', 'default name · saved when you rack'],
+                                             ['zh', '暂无比赛上台', '请先登记参赛者并生成对阵，再从“队列”安排比赛上台', '默认名称 · 生成对阵时保存']]) {
     const h = harness();
     h.evaluate(`lang='${lang}';data.players=[];data.history=[];data.events=[];data.tournament={id:'t1',name:'',format:'singles',raceTo:1,status:'registration',entrants:[],matches:[]}`);
     const floor = h.evaluate('floorScreen()');
     const names = [...floor.matchAll(/<strong class="name"[^>]*>([^<]*)<\/strong>/g)].map(m => m[1]);
     assert.deepEqual(names, ['—', '—'], `${lang}: an empty board shows no name, not "Tables open"`);
     assert.ok(floor.includes('class="empty-note board-empty"') && floor.includes(noMatch) && floor.includes(wait), `${lang}: it says there is no match and what to do`);
-    assert.ok(floor.includes('data-tab="setup"'), `${lang}: with no draw, the step is Set up`);
+    assert.ok(floor.includes('data-phase="register"'), `${lang}: with no draw, the step is Register`);
     assert.ok(/<h2 class="sr-only">/.test(floor), `${lang}: the scoreboard has a heading`);
     assert.ok(!/Tables open|球台空闲/.test(floor.replace(/<div id="strip"[\s\S]*?<\/div>/, '')), `${lang}: never a placeholder name on the board`);
-    const matches = h.evaluate('matchesScreen()');
+    const matches = h.evaluate('bracketScreen()');
     assert.ok(matches.includes(dflt), `${lang}: an unsaved event name is shown, and said to be the default`);
     assert.ok(!/<li>[^<]*(Nothing|暂无|尚无)[^<]*<\/li>/.test(matches), `${lang}: no empty state inside a list`);
     assert.ok(!/Nothing here yet|暂无记录/.test(matches + floor + h.evaluate('setupScreen()') + h.evaluate('playersScreen()')), `${lang}: the generic empty line is gone`);
     assert.ok(matches.includes('<article class="empty"><h3>'), `${lang}: the empty bracket panel has a heading`);
     // with a racked night and nothing on a table, the step is Matches
     h.evaluate(`data.tournament.name='Friday';data.tournament.entrants=[{id:'e1',members:[{name:'A'}]},{id:'e2',members:[{name:'B'}]}];data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',absent:[]}];data.tournament.status='active'`);
-    const floor2 = h.evaluate('floorScreen()');
-    assert.ok(floor2.includes('data-tab="matches"'), `${lang}: a racked match can be sent from Matches`);
-    assert.ok(!h.evaluate('matchesScreen()').includes(dflt), `${lang}: a saved name is not called a default`);
+    const play2 = h.evaluate('playScreen()');
+    assert.ok(play2.includes('data-action="schedule"'), `${lang}: a racked match can be sent from the Queue`);
+    assert.ok(!h.evaluate('bracketScreen()').includes(dflt), `${lang}: a saved name is not called a default`);
   }
 });
 test('round 1 · numbers: every figure in the shell is lining and tabular, past any font: shorthand', () => {
@@ -419,7 +419,7 @@ test('instant: the pending state is readable by a screen reader, in EN and 中',
     const floor = h.evaluate('floorScreen()');
     assert.ok(floor.includes('class="scoreboard pending" aria-busy="true"'), `${lang}: the scoreboard is busy`);
     assert.ok(floor.includes(`<p class="pending-note" role="status">${saving}</p>`), `${lang}: and says ${saving}`);
-    const bracket = h.evaluate("density='compact';matchesScreen()");
+    const bracket = h.evaluate("density='compact';bracketScreen()");
     assert.ok(bracket.includes('bracket-card pending') && bracket.includes('aria-busy="true"'), `${lang}: the bracket card is busy`);
     assert.ok(bracket.includes(` · ${saving}"`) && bracket.includes(`role="status">${saving}</span>`), `${lang}: its name and live region say ${saving}`);
     assert.ok(!/class="badge complete"/.test(floor), `${lang}: pending never looks signed`);
@@ -483,7 +483,7 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
     matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]},
              {id:'m2',round:1,sides:['e3','e4'],score:[0,0],status:'scheduled',table:null,absent:[]},
              {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[]}]}`);
-  const compact = h.evaluate("density='compact';matchesScreen()");
+  const compact = h.evaluate("density='compact';bracketScreen()");
   assert.ok(compact.includes('<div class="rounds" data-density="compact">'), 'compact is the default density');
   const card = compact.slice(compact.indexOf('data-status="live"'), compact.indexOf('data-status="scheduled"'));
   assert.ok(card.includes('class="row card-side first"') && card.includes('class="status-dot"'), 'a side line carries the status dot');
@@ -495,7 +495,7 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
   assert.ok(compact.includes('tabindex="0"'), 'a keyboard user can open a card');
   // the toggle, and the full density renders the same cards
   assert.ok(compact.includes('data-action="density" data-value="full" aria-pressed="false"'), 'a pressed-state toggle offers full cards');
-  const full = h.evaluate("density='full';matchesScreen()");
+  const full = h.evaluate("density='full';bracketScreen()");
   assert.ok(full.includes('data-density="full"') && full.includes('Table 1 · m1'), 'full cards render as before');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   assert.ok(css.includes('.rounds[data-density=full] .round .entry{min-height:98px}'), 'the 98 px card height applies to full cards only');
@@ -553,12 +553,13 @@ test('R13: the registration desk filters its regulars in place with the same mat
   h.evaluate("deskFilter({value:'',dataset:{desk:'0'}})");
   assert.equal(h.evaluate("opts.every(o=>!o.hidden)"), true, 'clearing the field shows everyone again');
 });
-test('onboard: an empty club gets three real steps on the Floor, and they leave once the draw exists', () => {
+test('onboard: an empty club gets three real steps in Register, and they leave once the draw exists', () => {
   const h = harness();
-  const guide = () => { const html = h.evaluate('floorScreen()'); const m = html.match(/<article class="first-run"[\s\S]*?<\/article>/); return m ? m[0] : ''; };
+  const guide = () => { const html = h.evaluate('registerScreen()'); const m = html.match(/<article class="first-run"[\s\S]*?<\/article>/); return m ? m[0] : ''; };
   const first = guide();
   assert.ok(first, 'an empty club sees the guide');
-  assert.deepEqual([...first.matchAll(/data-tab="([a-z]+)"/g)].map(m => m[1]), ['players', 'setup', 'setup'], 'each step is the tab button that does it');
+  assert.deepEqual([...first.matchAll(/data-tab="([a-z]+)"/g)].map(m => m[1]), ['players'], 'step 1 is the Regulars tab');
+  assert.deepEqual([...first.matchAll(/data-phase="([a-z]+)"/g)].map(m => m[1]), ['register', 'rack'], 'steps 2 and 3 name the phase that does it');
   assert.ok(!first.includes('class="done"'), 'nothing is ticked before anything happened');
   h.evaluate("data.players=[{id:'p1',name:'Ana',rating:50,status:'Active'}]");
   assert.equal((guide().match(/class="done"/g) || []).length, 1, 'a saved regular ticks step 1');
@@ -629,7 +630,10 @@ test('Back room retains nine truthful deferred roadmap areas', () => {
   assert.ok(h.evaluate('roadmapPanel()').includes('尚无自动化'));
 });
 function submission(formId, values, submitter = {}) {
-  return {preventDefault() {}, target: {id: {shadowedByNamedControl: true}, getAttribute: () => formId, classList: {contains: () => false}, querySelectorAll: () => [], values}, submitter};
+  // A real form whose `id` control shadows its own id property: the handler reads the form off the
+  // event target, and a DOM form exposes its controls through .elements, so the fake must too.
+  const form = {preventDefault() {}, id: formId, elements: {id: {value: values.id}}, values, getAttribute: () => formId, classList: {contains: () => false}, querySelectorAll: () => [], querySelector: () => null};
+  return {...form, target: form, submitter};
 }
 test('named id control cannot shadow form identity; sign saves score before completion', async () => {
   const h = harness();
@@ -1187,7 +1191,7 @@ test('a renamed regular reads by their current name on every screen, archive inc
                {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',absent:[]},
                {id:'m3',round:2,sides:['e1','e2'],score:[3,2],status:'complete',result:'played',winnerId:'e1',absent:[]}]});
     data.tournament=night();data.history=[Object.assign(night(),{id:'h1',archivedAt:'2026-09-01T00:00:00Z'})];data.events=[];data.notes=[]`);
-  const views = {floor: h.evaluate('floorScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('matchesScreen()'), records: h.evaluate('recordsScreen()')};
+  const views = {floor: h.evaluate('floorScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('bracketScreen()'), records: h.evaluate('recordsScreen()')};
   for (const [name, html] of Object.entries(views)) assert.ok(!/>Ada</.test(html) && !/\bAda \//.test(html), `${name}: the stale snapshot name never shows`);
   assert.ok(views.matches.includes('Ada Lovelace'), 'bracket shows the current name');
   const archive = views.records.slice(views.records.indexOf('<details'));
@@ -1196,7 +1200,7 @@ test('a renamed regular reads by their current name on every screen, archive inc
   assert.ok(archive.includes('Walk-in Wu'), 'a guest keeps the name typed at the desk');
   // a deleted regular (no roster row) still reads by the snapshot, never "Unknown"
   h.evaluate("data.players=data.players.filter(p=>p.id!=='p2')");
-  assert.ok(h.evaluate('matchesScreen()').includes('>Bo'), 'the snapshot is the fallback when the regular is gone');
+  assert.ok(h.evaluate('bracketScreen()').includes('>Bo'), 'the snapshot is the fallback when the regular is gone');
   assert.ok(/· Bo — Walk-in Wu ·/.test(h.evaluate('recordsScreen()')), 'the archive in Records falls back to the snapshot too');
   assert.equal(h.evaluate('JSON.stringify(resultStats("p1"))'), '{"wins":2,"losses":0}', 'the rename leaves the record whole; the bye is not a win');
   h.evaluate("lang='zh'");
@@ -1219,7 +1223,7 @@ test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', 
     data.tournament=night();data.history=[Object.assign(night(),{id:'h1',status:'complete',archivedAt:'2026-09-01T00:00:00Z'})]`);
   for (const [lang, bye, signed, waiting, cards] of [['en', 'Bye', 'Signed', 'Waiting', 'Cards signed'], ['zh', '轮空', '已签', '待定', '已签赛果']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('matchesScreen()');
+    const html = h.evaluate('bracketScreen()');
     const card = html.slice(html.indexOf('class="rounds"'));
     const first = card.slice(0, card.indexOf('<h3>', card.indexOf('<h3>') + 1));
     assert.ok(first.includes(`>${bye}<`), `${lang}: the bye card is labelled ${bye}`);
@@ -1229,8 +1233,8 @@ test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', 
     assert.equal(tile, '1/2', `${lang}: byes are left out of the signed count and its total`);
     const rec = h.evaluate('recordsScreen()'), archive = rec.slice(rec.indexOf('<details'));
     assert.ok(archive.includes(`>${bye}<`) && !archive.includes(`${esc_(waiting)}`), `${lang}: the archive labels the bye too`);
-    const floor = h.evaluate('floorScreen()');
-    assert.equal(floor.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1], '1/2', `${lang}: the Floor tile agrees`);
+    const play = h.evaluate('playScreen()');
+    assert.equal(play.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1], '1/2', `${lang}: the Play header tile agrees`);
   }
   assert.equal(h.evaluate('JSON.stringify(resultStats("x"))'), '{"wins":0,"losses":0}');
 });
@@ -1297,7 +1301,7 @@ test('forfeit and in-match absence are reachable from the Matches bracket, each 
       matches:[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]},
                {id:'m2',round:1,sides:['e3','e4'],score:[1,0],status:'live',table:1,absent:[]},
                {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[],sources:['m1','m2']}]}`);
-  const html = h.evaluate('matchesScreen()');
+  const html = h.evaluate('bracketScreen()');
   const card = id => html.slice(html.indexOf(`${id.slice(0, 8)}</small>`), html.indexOf('</div></div>', html.indexOf(`${id.slice(0, 8)}</small>`)) + 400);
   for (const id of ['m1', 'm2']) {
     const c = card(id);
@@ -1341,7 +1345,7 @@ test('standings count results, not ratings; the event table sorts wins, win %, n
   assert.equal(h.evaluate('JSON.stringify(record(tournament(),"g"))'), '{"wins":0,"losses":1,"played":1}');
   for (const [lang, rating, table, wins, played, rate] of [['en', 'House rating (manual)', 'Event table', 'Wins', 'Played', 'Win %'], ['zh', '球房评分（手动）', '本场战绩表', '胜场', '场次', '胜率']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('recordsScreen()') + h.evaluate('matchesScreen()');
+    const html = h.evaluate('recordsScreen()') + h.evaluate('playScreen()');
     const standings = html.slice(html.indexOf(`<table class="standings"`), html.indexOf('</table>', html.indexOf(`<table class="standings"`)));
     for (const head of [rating, wins, played, rate]) assert.ok(standings.includes(`>${head}<`), `${lang}: standings column ${head}`);
     // all-time rows: Ann 1-1 (bye excluded), Bea 2-1, Cai 0-1, Dee 1-0 (forfeit win)
@@ -1436,12 +1440,12 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   assert.ok(h.evaluate('recordsScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
   h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['x','y'],score:[0,0],status:'scheduled',absent:[]}]");
-  assert.ok(h.evaluate('matchesScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  assert.ok(h.evaluate('bracketScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
   h.evaluate('data.tournament.matches=[]');
-  assert.ok(!h.evaluate('matchesScreen()').includes('data-id="t0"'), 'no sheet before the draw');
+  assert.ok(!h.evaluate('bracketScreen()').includes('data-id="t0"'), 'no sheet before the draw');
   await click({action: 'results-sheet', id: 'h1'});
   assert.equal(h.evaluate('sheetId'), 'h1', 'the click opens the sheet');
-  const sheet = h.evaluate('matchesScreen()');
+  const sheet = h.evaluate('bracketScreen()');
   assert.ok(sheet.includes('class="stack results-sheet"'), 'the sheet replaces the Matches view');
   assert.ok(/class="champion"[^]*?Ada/.test(sheet), 'the champion is the final winner, by the live roster name');
   assert.equal((sheet.match(/class="sheet-round"/g) || []).length, 2, 'every round is on the sheet');
@@ -1457,7 +1461,7 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   assert.equal(printed, 1);
   assert.equal(h.evaluate('calls.length'), 0, 'a sheet never writes');
   await click({action: 'sheet-back'});
-  assert.ok(!h.evaluate('matchesScreen()').includes('class="stack results-sheet"'), 'back returns to the bracket');
+  assert.ok(!h.evaluate('bracketScreen()').includes('class="stack results-sheet"'), 'back returns to the bracket');
   await click({action: 'results-sheet', id: 'h1'});
   h.evaluate('canNavigate=()=>true');
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {tab: 'floor'}}}});
@@ -1532,12 +1536,12 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
   h.evaluate('render=()=>{}');
   for (const [lang, title, drawBtn, label] of [['en', 'Second chance', 'Draw a round-1 loser', 'Random draw, not a result'], ['zh', '复活赛', '抽取一名首轮负者', '随机抽签，不是赛果']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('matchesScreen()');
+    const html = h.evaluate('closeScreen()');
     assert.ok(html.includes(`>${title}<`) && html.includes(`>${drawBtn}<`), `${lang}: the draw is offered while round 2 is unsigned`);
     assert.ok(html.includes(label), `${lang}: it is labelled as a random draw`);
   }
   h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'scheduled',result:undefined,winnerId:null}");
-  assert.ok(!h.evaluate('matchesScreen()').includes('data-action="revival-draw"'), 'no draw until every round-1 loser is known');
+  assert.ok(!h.evaluate('closeScreen()').includes('data-action="revival-draw"'), 'no draw until every round-1 loser is known');
   h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'complete',result:'played',winnerId:'e'}");
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   const asked = [];
@@ -1553,7 +1557,7 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
     Object.assign(data.tournament.matches[1],{sides:['b','f'],status:'scheduled',winnerId:null});delete data.tournament.matches[1].result;
     Object.assign(data.tournament.matches[4],{sides:['a',null],status:'pending'})`);
   h.evaluate("lang='zh'");
-  const drawn = h.evaluate('matchesScreen()');
+  const drawn = h.evaluate('closeScreen()');
   assert.ok(drawn.includes('抽中：Fay') && drawn.includes('种子 12345') && drawn.includes('候选：Dee、Fay'), '中: who, the seed and the pool are shown');
   assert.ok(drawn.includes('data-action="revival-undo"'), 'undo is offered until the next result');
   assert.ok(!drawn.includes('data-action="revival-draw"'), 'one draw per event');
@@ -1562,7 +1566,7 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'revival_draw', payload: {confirm: true}}, {name: 'revival_undo', payload: {confirm: true}}]);
   // after a newer signed result, undo is gone and the drawn line stays as history
   h.evaluate("data.tournament.matches[5]={...data.tournament.matches[5],status:'complete',result:'played',winnerId:'c',score:[3,2]}");
-  const closed = h.evaluate('matchesScreen()');
+  const closed = h.evaluate('closeScreen()');
   assert.ok(!closed.includes('data-action="revival-undo"') && closed.includes('抽中：Fay'));
   for (const [action, en, zh] of [['revival_draw', 'Second chance drawn (random, audited)', '复活赛抽签（随机，已记录）'], ['revival_undo', 'Second chance undone', '撤销复活赛抽签']]) {
     h.evaluate("lang='en'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}})`).includes(en));
@@ -1663,8 +1667,8 @@ test('every table the operations screens add sits in a .table-wrap, so a wide ta
       matches:[{id:'y1',round:1,sides:['a1','c1'],score:[1,3],status:'complete',result:'played',winnerId:'c1',absent:[]}]}];render=()=>{}`);
   const bare = html => [...html.matchAll(/(.{0,40})<table\b[^>]*>/g)].filter(m => !m[1].endsWith('<div class="table-wrap">')).map(m => m[0].slice(-60));
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'player-record', id: 'pa'}}}});
-  const screens = {matches: h.evaluate('matchesScreen()'), records: h.evaluate('recordsScreen()'), record: h.evaluate('playersScreen()')};
-  assert.ok(/class="event-table"/.test(screens.matches) && /class="standings"/.test(screens.records), 'the Matches and Records tables render');
+  const screens = {play: h.evaluate('playScreen()'), records: h.evaluate('recordsScreen()'), record: h.evaluate('playersScreen()')};
+  assert.ok(/class="event-table"/.test(screens.play) && /class="standings"/.test(screens.records), 'the Play and Records tables render');
   assert.ok(/class="h2h"/.test(screens.record) && /class="per-event"/.test(screens.record), 'the Player record tables render');
   for (const [name, html] of Object.entries(screens)) assert.deepEqual(bare(html), [], `${name}: no table outside a .table-wrap`);
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
@@ -1850,23 +1854,23 @@ test('Records is a top-level tab with its own route, between the live night and 
   assert.equal(h.context.location.hash, '#/records', 'a click pushes the route');
   assert.equal(h.evaluate("routeOf('records')"), 'records');
 });
-test('Records holds house standings, the night log and the archive; Matches keeps tonight only', () => {
+test('Records holds house standings, the night log and the archive; Play keeps tonight only', () => {
   const h = harness();
   recordsNight(h);
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}';showHidden=false`);
-    const rec = h.evaluate('recordsScreen()'), matches = h.evaluate('matchesScreen()');
+    const rec = h.evaluate('recordsScreen()'), play = h.evaluate('playScreen()');
     for (const key of ['standings', 'timeline', 'history']) {
       const heading = h.evaluate(`t('${key}')`);
       assert.ok(rec.includes(`>${heading}</h3>`) || rec.includes(`>${heading}</h2>`), `${lang}: Records has ${heading}`);
-      assert.ok(!matches.includes(`>${heading}</h3>`), `${lang}: Matches no longer carries ${heading}`);
+      assert.ok(!play.includes(`>${heading}</h3>`), `${lang}: Play no longer carries ${heading}`);
     }
     assert.ok(rec.includes('<table class="standings"'), `${lang}: the all-time table`);
     assert.ok(rec.includes('<ol class="timeline"'), `${lang}: the log`);
     assert.ok(rec.includes('data-action="results-sheet" data-id="h1"') && rec.includes('data-action="rename-archived" data-id="h1"') && rec.includes('data-action="event-hide" data-id="h1"'), `${lang}: every archive control stays`);
     assert.ok(!rec.includes('Hidden night') && rec.includes('data-action="toggle-hidden"'), `${lang}: hidden nights stay hidden behind the toggle`);
-    assert.ok(matches.includes('<table class="event-table"'), `${lang}: tonight's event table stays with the bracket`);
-    assert.ok(matches.includes('class="rounds"'), `${lang}: the bracket stays`);
+    assert.ok(play.includes('<table class="event-table"'), `${lang}: tonight's event table stays with the Tables scoreboard`);
+    assert.ok(play.includes('class="rounds"'), `${lang}: the bracket stays`);
   }
   h.evaluate('showHidden=true');
   assert.ok(h.evaluate('recordsScreen()').includes('Hidden night'), 'the toggle shows hidden nights in Records');
