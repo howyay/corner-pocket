@@ -73,11 +73,19 @@ class PaletteContrast(unittest.TestCase):
         self.assertTrue(all(v.strip().startswith('var(--stage-') for _, v in declared), declared)
         self.assertEqual(re.findall(r'#[0-9a-fA-F]{3,8}\b|rgba?\(', app), [], 'app.css has no colour literals')
 
+    #: The 40 hex values that arrived with the third-party redesign zip (security audit P-6).
+    #: They used to be read out of `docs/private-audit.md`; that document is deliberately not
+    #: published (its copy is kept outside the repository at `.pm/pre-rewrite/private-audit.md`)
+    #: and a fresh clone has to stay green, so the list lives here beside the check that needs it.
+    ZIP_VALUES = (
+        '#14110f #1a1613 #100e0c #241e19 #f6f1e6 #f2e9dd #b6a693 #8a7a68 #6d5f51 #c9a227 '
+        '#e3c877 #dcbb46 #17120c #2b241d #7fc39a #16241c #3d5f4c #dfa93a #2a2013 #5c4a1e '
+        '#eee6d8 #faf6ee #fffdf8 #e9e0d0 #171208 #241c12 #5b4f41 #7c6d5b #9b8b77 #8a6a12 '
+        '#6d5210 #a07d18 #fdf8ee #d9cdb8 #256a45 #dfeade #a6c2ac #8a5307 #f6e9cf #d6bd8a'
+    ).split()
+
     def test_no_zip_derived_colour_remains(self):
-        audit = (ROOT / 'docs' / 'private-audit.md').read_text()
-        listed = re.search(r'The 40 hex values.*?\n`(#[^`]+)`', audit, re.S)
-        self.assertTrue(listed, 'docs/private-audit.md lists the P-6 values')
-        values = listed.group(1).split()
+        values = self.ZIP_VALUES
         self.assertEqual(len(values), 40)
         for path in sorted(ANNOTATOR.glob('*.*')):
             if path.suffix not in ('.css', '.js', '.html', '.svg'):
