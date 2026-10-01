@@ -16,6 +16,69 @@ Native integration must preserve unsaved edits, in-flight saves, frame-request g
 
 Actions cover player records, singles/doubles entrants, tournament setup/start/archive, table assignment, scores, signed results, absences, forfeits, settings, source registration, and notes. See `Operations._apply` for authoritative payload validation.
 
+## Shot clock — one clock, every device
+
+The shot clock is **shared across devices on purpose**. The club PC, a phone, a tablet, any browser and any tab show the same clock: whoever presses Start, Pause, Reset or 20/30/45/60 sets the clock everybody sees. This is the product decision, not a limitation — a shot clock only one device can see is not a shot clock. The old per-device behaviour and its label ("Shot clock · local timer, not shared" / "击球计时 · 本机计时，不联动") are gone.
+
+The clock follows the **server's** clock, not each device's own. A device measures its offset from the server on every answer and displays `deadline − (its own Date.now() + offset)`, so a phone whose system time is several seconds out still shows the same remaining time as the PC.
+
+### What the operator sees
+
+- The clock appears in the strip at the top of every tab, on the Floor scoreboard, and on the Vision stage bar. All of them are painted from one value by ops.js's single 200 ms repaint, so two views on one screen cannot disagree.
+- The label reads **"Shot clock · shared across devices"** / **"击球计时 · 多设备同步"**.
+- A sync-state line beside the clock says exactly what this device knows:
+
+| State | English | 中文 |
+|---|---|---|
+| connecting | `connecting…` | `连接中…` |
+| the change stream is live | `live · synced` | `实时 · 已同步` |
+| stream down, polling every 1 s | `reconnecting — showing last known` | `重新连接中 — 显示最后已知` |
+| no answer for 10 s | `offline — showing last known` | `离线 — 显示最后已知` |
+| a command POST failed | `clock command failed — nothing changed` | `计时指令失败 — 未改变` |
+| the server is out of slots (503) | `server busy — retrying` | `服务器繁忙 — 正在重试` |
+
+- Expiry still reads "Shot time expired. No penalty applied." / "击球时间到。未自动判罚。". Each device may show it once; expiry is never a penalty and never a write.
+- A command that did not land never looks like it did: a failed POST shows the error, leaves the displayed time alone, then pulls the truth back from the server.
+- Start keeps its existing guard — it refuses while the live match has absent players — and a refused press sends nothing to the server.
+
+### When the network drops
+
+- While the stream is healthy the page listens to `GET /api/clock/stream` (`EventSource`): changes arrive as they happen, plus a heartbeat every 15 s. "live · synced" means the stream spoke **recently** — an open socket that has gone quiet is not treated as synced.
+- If the stream errors, or 30 s pass with no heartbeat (two missed heartbeats), the page falls back to polling `GET /api/clock` **every 1 s** until the stream reconnects, and the clock is labelled "reconnecting — showing last known". The last known time stays on screen and keeps counting down; it is never blanked or frozen silently.
+- After 10 s with no answer at all the label becomes "offline — showing last known".
+- Coming back is immediate: `visibilitychange` (page becomes visible), `focus` and `online` each trigger a fresh `GET`. Phones throttle background tabs, so returning to the tab never waits for the next poll.
+- A 503 from the bounded server is not an exception: `Retry-After` is honoured (capped at 60 s), the label reads "server busy — retrying", and polling pauses until then.
+- The clock keeps running through all of this. The deadline is absolute on the server, so a dropped connection only changes what a device **knows**, never the time itself.
+
+### The write contract, for operators
+
+- **`GET /api/clock` is side-effect free.** It reads and renders. A clock whose deadline has passed is reported as `running: false, remaining_ms: 0, expired: true` — expiry is an answer, not an event — and nothing is written. This is the same rule as every other read in the app.
+- **`POST /api/clock` is the only writer of `out/corner-pocket/clock.json`**, and only on a real change: a Start while already running, or a Pause while already paused, returns the state unchanged and writes nothing. The file is written atomically (temp file + rename).
+- The intents are explicit — **`start`, `pause`, `reset`, `set`** — never a "toggle", so two people pressing at once cannot cancel each other out:
+  - `start` — runs from what is left; from the full duration once the clock has expired or is at zero. A no-op while already running.
+  - `pause` — keeps what is left. A no-op while already paused or expired.
+  - `reset` — paused at the full duration.
+  - `set` — a new duration, 5–300 s (the same rule as `settings.shotClock`), paused at it.
+- The clock is deliberately **not** part of the revisioned operations state, so pressing Start never makes another operator's `/api/operations` write fail with a stale revision.
+- It survives a service restart: the deadline is absolute, so a restart does not reset or restart a running clock.
+- Until anything has ever been set, the duration comes from `settings.shotClock`. A damaged `clock.json` answers HTTP 500 with a log reference and is **never silently reset**.
+
+The endpoint and its fields are specified once, in `docs/unified-workbench.md` §"API write contract" (the shared-shot-clock bullet). That section is authoritative for the API; this section describes what the operator sees and must not be read as a second contract.
+
+### What was verified, and what was not
+
+Two independent browser sessions against a loopback fixture on this host, at **390 px and 1280 px, in EN and 中**:
+
+- Start on device A reached first paint on device B in **32 ms**; over **20 presses** press-to-update propagation was **p50 282 ms**.
+- With a **+5 s skew injected into one session's `Date.now()`** before the page script ran, both sessions matched on second-transitions at **p50 143 ms / p95 143 ms / max 148 ms**, against a 0.3 s bar.
+- Screenshots are in `out/shot-clock/` (expiry and language/width pairs).
+
+Limits, stated plainly:
+
+- Every number above was measured **on this host, on loopback, through the fixture** — not through Cloudflare, and not on the phones or tablets the club actually uses. **The real Cloudflare path was never exercised**; it needs an authenticated browser session.
+- The evidence covers EN and 中 at two widths. No other device, browser or version was exercised.
+- `tests/test_clock_api.ClockStreamTests` is **load-sensitive on this host** (it asserts 1.0 s wall-clock budgets): it failed twice while the box was at load 26, then passed in isolation. Treat a failure there as load first and a real defect second.
+
 ## Tournament rules
 
 Setup and entrant changes are locked after starting. Draws are single elimination with automatic byes. Ready matches must be assigned to an available table before scoring. Reaching the race target does not silently finalize a result: explicitly complete the match. Completed results are immutable and winners advance to dependent matches. Marking a side absent releases the table. Registration-stage `entrant_absence` records attendance before the draw; absence propagates when matches become ready, including after byes. Match attendance updates keep entrant attendance synchronized for later rounds. `match_unschedule` releases a live table while preserving its score, so the match can be reassigned through normal scheduling. Starting a new tournament requires confirmation and archives the previous tournament instead of destroying history.
