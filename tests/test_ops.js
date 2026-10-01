@@ -142,7 +142,7 @@ test('live JPEG bytes and their metadata stay atomically paired', () => {
 test('Vision is one stage with two rails and no sub-tab navigation left', () => {
   const h = harness();
   assert.equal(h.evaluate("t('vision')"), 'Vision');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')), ['tonight','floor','matches','records','vision','players','status']);
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')), ['tonight','records','vision','players','status']);
   assert.ok(!source.includes('review-frame'));
   assert.ok(!source.includes('src="/app.html"'));
   // The sub-tab machinery is gone: no mode table, no data-vision buttons, no dead host.
@@ -1774,15 +1774,15 @@ test('routes: every tab has a hash route, a tab click pushes it, and back/forwar
   h.evaluate('render=()=>{}');
   assert.equal(h.context.location.hash, '#/tonight', 'a cold load names its screen without adding a history entry');
   assert.deepEqual(h.visits, [['replace', '#/tonight']]);
-  const expected = {floor: '#/floor', matches: '#/matches', vision: '#/vision', players: '#/regulars', status: '#/backroom'};
+  const expected = {records: '#/records', vision: '#/vision', players: '#/regulars', status: '#/backroom'};
   for (const [id, hash] of Object.entries(expected)) {
     await tabClick(h, id);
     assert.equal(h.evaluate('tab'), id);
     assert.equal(h.context.location.hash, hash, `${id} is ${hash}`);
   }
-  assert.equal(h.visits.filter(v => v[0] === 'push').length, 5, 'each tab change is one history entry (floor was already open)');
+  assert.equal(h.visits.filter(v => v[0] === 'push').length, 4, 'each tab change is one history entry');
   await tabClick(h, 'status');
-  assert.equal(h.visits.filter(v => v[0] === 'push').length, 5, 'the same tab again adds no entry');
+  assert.equal(h.visits.filter(v => v[0] === 'push').length, 4, 'the same tab again adds no entry');
   browserBack(h, '#/regulars');
   assert.equal(h.evaluate('tab'), 'players', 'Back returns to Regulars');
   browserBack(h, '#/setup');
@@ -1790,18 +1790,28 @@ test('routes: every tab has a hash route, a tab click pushes it, and back/forwar
   assert.equal(h.context.location.hash, '#/tonight/register', 'and is rewritten to its phase route');
   browserBack(h, '#/backroom');
   assert.equal(h.evaluate('tab'), 'status', 'Forward works the same way');
+  browserBack(h, '#/floor');
+  assert.equal(h.evaluate('tab'), 'tonight', 'the retired Floor hash opens Tonight');
+  assert.equal(h.evaluate('playTab'), 'tables', 'and lands on the table scoreboard');
+  assert.equal(h.context.location.hash, '#/tonight/play', 'rewritten to the phase route');
+  browserBack(h, '#/matches');
+  assert.equal(h.evaluate('playTab'), 'bracket', 'the retired Matches hash opens the bracket');
+  assert.equal(h.context.location.hash, '#/tonight/play');
   // the score button in the strip is a route change like any other
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'floor'}}}});
-  assert.equal(h.context.location.hash, '#/floor');
+  assert.equal(h.evaluate('playTab'), 'tables', 'the score button opens the scoreboard');
+  assert.equal(h.context.location.hash, '#/tonight/play', 'and the URL says Play');
 });
 test('routes: a URL opens its screen; old tab ids and old hashes map onto the routes; unknown ones fall back', () => {
   const cases = [['#/regulars', 'players', '#/regulars'], ['#/backroom', 'status', '#/backroom'], ['#/vision', 'vision', '#/vision'],
-    ['#players', 'players', '#/regulars'], ['#/status', 'status', '#/backroom'], ['#setup', 'tonight', '#/tonight/register'], ['#/matches', 'matches', '#/matches'],
+    ['#players', 'players', '#/regulars'], ['#/status', 'status', '#/backroom'], ['#setup', 'tonight', '#/tonight/register'],
+    ['#/floor', 'tonight', '#/tonight/play', 'tables'], ['#/matches', 'tonight', '#/tonight/play', 'bracket'],
     ['#/nowhere', 'tonight', '#/tonight'], ['', 'tonight', '#/tonight'], ['#', 'tonight', '#/tonight']];
-  for (const [hash, tab, canonical] of cases) {
+  for (const [hash, tab, canonical, view] of cases) {
     const h = harness({hash});
     assert.equal(h.evaluate('tab'), tab, `${hash || '(none)'} opens ${tab}`);
     assert.equal(h.context.location.hash, canonical, `${hash || '(none)'} is rewritten in place to ${canonical}`);
+    if (view) assert.equal(h.evaluate('playTab'), view, `${hash} lands on the ${view} view`);
     assert.ok(h.visits.every(v => v[0] === 'replace'), 'loading never adds a history entry');
   }
   // a typed or old-style hash while running is the same as a click
@@ -1812,6 +1822,8 @@ test('routes: a URL opens its screen; old tab ids and old hashes map onto the ro
   assert.equal(h.context.location.hash, '#/regulars');
   // in-app links that still carry an old id (empty states, the first-night guide) resolve the same way
   assert.equal(h.evaluate("routeOf('setup')"), 'tonight', 'the retired Set up id is a legacy route, not a screen');
+  assert.equal(h.evaluate("routeOf('floor')"), 'tonight', 'so is Floor');
+  assert.equal(h.evaluate("routeOf('matches')"), 'tonight', 'and Matches');
   assert.equal(h.evaluate("routeOf('regulars')"), 'players');
   assert.equal(h.evaluate("routeOf('nope')"), null);
 });
@@ -1819,16 +1831,16 @@ test('routes: a dirty or busy review vetoes back/forward too, and the URL is put
   const h = harness({hash: '#/vision'});
   h.evaluate('render=()=>{}');
   h.context.window.CornerPocketReview = {canLeave: () => false, activate: () => false};
-  browserBack(h, '#/floor');
+  browserBack(h, '#/records');
   assert.equal(h.evaluate('tab'), 'vision', 'the review keeps its screen');
   assert.equal(h.context.location.hash, '#/vision', 'the address bar says so');
   h.context.window.CornerPocketReview = {canLeave: () => true, activate: () => false};
   h.evaluate('busy=true');
-  browserBack(h, '#/floor');
+  browserBack(h, '#/records');
   assert.equal(h.evaluate('tab'), 'vision', 'a write in flight also holds the screen');
   h.evaluate('busy=false');
-  browserBack(h, '#/floor');
-  assert.equal(h.evaluate('tab'), 'floor');
+  browserBack(h, '#/records');
+  assert.equal(h.evaluate('tab'), 'records');
 });
 // ---- IA C′ stage 3: Records holds the history half of Matches (house standings, night log, archived events).
 function recordsNight(h) {
@@ -1846,10 +1858,10 @@ test('Records is a top-level tab with its own route, between the live night and 
   const h = harness({hash: '#/records'});
   assert.equal(h.evaluate('tab'), 'records', 'the URL opens Records');
   assert.equal(h.context.location.hash, '#/records');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')).slice(0, 5), ['tonight', 'floor', 'matches', 'records', 'vision'], 'Records sits after the live night, before Vision');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')).slice(0, 5), ['tonight', 'records', 'vision', 'players', 'status'], 'Records sits after the live night, before Vision');
   for (const [lang, label] of [['en', 'Records'], ['zh', '战绩档案']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("t('records')"), label); }
   h.evaluate('render=()=>{}');
-  await tabClick(h, 'floor');
+  await tabClick(h, 'tonight');
   await tabClick(h, 'records');
   assert.equal(h.context.location.hash, '#/records', 'a click pushes the route');
   assert.equal(h.evaluate("routeOf('records')"), 'records');
@@ -2083,4 +2095,26 @@ test('the bottom bar survives Vision, which is how Vision gets an exit, and ever
     assert.ok(css.includes(sel), `${sel} sits above the bar`);
   }
   assert.ok(css.includes('@media print{#ops-shell #tabbar{display:none!important}}'), 'the bar never prints');
+});
+
+test('stage 8: Floor and Matches are not tabs any more, and every old way in still lands on Play (stage 8)', async () => {
+  const h = harness({hash: '#/floor'});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')), ['tonight', 'records', 'vision', 'players', 'status'], 'the row is Tonight, Records, Vision, Regulars, Back room');
+  assert.equal(h.evaluate('tab'), 'tonight', 'the retired Floor hash opens Tonight');
+  assert.equal(h.evaluate('playTab'), 'tables', 'and lands on the table scoreboard, where the floor work lives now');
+  assert.equal(h.context.location.hash, '#/tonight/play', 'the URL is rewritten to the phase route');
+  for (const id of ['floor', 'matches', 'setup']) {
+    assert.equal(h.evaluate(`routeOf('${id}')`), 'tonight', `the retired ${id} id is a legacy route, not a screen`);
+    assert.ok(['register', 'play'].includes(h.evaluate(`phaseFromHash('#/${id}')`)), `${id} opens a real phase`);
+  }
+  assert.equal(h.evaluate('phaseFromHash("#/floor")'), 'play', 'Floor was scorekeeping: it opens Play');
+  assert.equal(h.evaluate('phaseFromHash("#/setup")'), 'register', 'Set up was registration: it opens Register');
+  assert.equal(h.evaluate('legacyPlay("#/matches")'), 'bracket', 'Matches was the bracket');
+  assert.equal(h.evaluate('legacyPlay("#/records")'), null, 'a live route is not a legacy one');
+  h.evaluate('render=()=>{}');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'floor'}}}});
+  assert.equal(h.evaluate('playTab'), 'tables', 'the strip score button opens the scoreboard instead of a dead screen');
+  for (const screen of ['tonightScreen', 'recordsScreen', 'playersScreen', 'statusScreen']) {
+    assert.ok(!/data-tab="(floor|matches|setup)"/.test(h.evaluate(`${screen}()`)), `${screen} offers no retired tab`);
+  }
 });
