@@ -1440,13 +1440,13 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   assert.ok(h.evaluate('recordsScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
   h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['x','y'],score:[0,0],status:'scheduled',absent:[]}]");
-  assert.ok(h.evaluate('bracketScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  assert.ok(h.evaluate('closeScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
   h.evaluate('data.tournament.matches=[]');
-  assert.ok(!h.evaluate('bracketScreen()').includes('data-id="t0"'), 'no sheet before the draw');
+  assert.ok(!h.evaluate('closeScreen()').includes('data-action="results-sheet"'), 'no sheet before the draw');
   await click({action: 'results-sheet', id: 'h1'});
   assert.equal(h.evaluate('sheetId'), 'h1', 'the click opens the sheet');
-  const sheet = h.evaluate('bracketScreen()');
-  assert.ok(sheet.includes('class="stack results-sheet"'), 'the sheet replaces the Matches view');
+  const sheet = h.evaluate('closeScreen()');
+  assert.ok(sheet.includes('class="stack results-sheet"'), 'the sheet replaces the Close view');
   assert.ok(/class="champion"[^]*?Ada/.test(sheet), 'the champion is the final winner, by the live roster name');
   assert.equal((sheet.match(/class="sheet-round"/g) || []).length, 2, 'every round is on the sheet');
   assert.ok(sheet.includes('data-action="print-sheet"') && sheet.includes('data-action="copy-results"'));
@@ -1461,11 +1461,11 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   assert.equal(printed, 1);
   assert.equal(h.evaluate('calls.length'), 0, 'a sheet never writes');
   await click({action: 'sheet-back'});
-  assert.ok(!h.evaluate('bracketScreen()').includes('class="stack results-sheet"'), 'back returns to the bracket');
+  assert.ok(!h.evaluate('closeScreen()').includes('class="stack results-sheet"'), 'back returns to Close');
   await click({action: 'results-sheet', id: 'h1'});
   h.evaluate('canNavigate=()=>true');
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {tab: 'floor'}}}});
-  assert.equal(h.evaluate('sheetId'), null, 'leaving Matches closes the sheet');
+  assert.equal(h.evaluate('sheetId'), null, 'leaving the screen closes the sheet');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   const print = css.slice(css.indexOf('@media print'));
   assert.ok(print.length > 20 && /header[^{]*\{[^}]*display:none/.test(print) && /\.no-print[^{]*\{[^}]*display:none/.test(print), 'print hides the shell chrome and the sheet buttons');
@@ -2012,4 +2012,35 @@ test('phase routes: each phase is addressable, and an unknown phase falls back t
     assert.equal(h.evaluate('curPhase()'), phase, hash);
     assert.equal(h.context.location.hash, canonical, `${hash} → ${canonical}`);
   }
+});
+
+test('every tab id resolves to a screen, so no tab can blank the console (stage 6)', () => {
+  const h = harness();
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs.filter(id=>typeof screens[id]!=="function"))')), [], 'every tab id has a screen');
+  assert.equal(h.evaluate('screens.matches()'), h.evaluate('bracketScreen()'), 'the Matches tab keeps rendering the bracket until stage 8 retires it');
+  assert.equal(h.evaluate('screens.floor()'), h.evaluate('floorScreen()'), 'the Floor tab keeps rendering Tables until stage 8 retires it');
+});
+test('Close is the night\u2019s end: the results sheet, second chance, archive and delete (stage 6)', async () => {
+  const h = harness();
+  h.evaluate(`data.notes=[];data.players=[{id:'pa',name:'Ada',status:'Active',rating:1},{id:'pb',name:'Bo',status:'Active',rating:2}];
+    const E=(id,pid,name)=>({id,members:[{pid,name}]});
+    data.tournament={id:'t0',name:'Tonight',format:'singles',tables:1,raceTo:3,status:'registration',entrants:[E('a','pa','Ada'),E('b','pb','Bo')],matches:[]};
+    data.history=[];tab='tonight';phase='close';`);
+  h.evaluate('render=()=>{}');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  const close = () => h.evaluate('closeScreen()');
+  assert.ok(!close().includes('data-action="results-sheet"'), 'no sheet before the draw');
+  assert.ok(close().includes('data-phase="register"'), 'the empty sheet points at Register, where the night is racked');
+  h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['a','b'],score:[0,0],status:'scheduled',absent:[]}]");
+  const drawn = close();
+  assert.ok(drawn.includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  assert.ok(drawn.includes('data-action="new-event"') && drawn.includes('data-action="event-delete" data-id="t0"'), 'Archive & new / Delete event stay in Close');
+  assert.ok(drawn.indexOf('data-action="results-sheet"') < drawn.indexOf('data-action="new-event"'), 'the sheet comes first: Results sheet, second chance, archive / delete');
+  h.evaluate("data.tournament.revival=null");
+  await click({action: 'results-sheet', id: 't0'});
+  assert.equal(h.evaluate('sheetId'), 't0', 'the click opens the sheet');
+  assert.ok(close().includes('class="stack results-sheet"'), 'the sheet replaces the Close view');
+  assert.ok(h.evaluate('tonightScreen()').includes('class="stack results-sheet"'), 'the sheet survives the tonight render, not only a direct call');
+  await click({action: 'sheet-back'});
+  assert.ok(!close().includes('class="stack results-sheet"'), 'back returns to Close');
 });
