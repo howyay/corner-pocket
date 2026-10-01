@@ -4,13 +4,15 @@
 of Corner Pocket that is meant to be reachable **without** Cloudflare Access, so this
 document covers two things that must not be confused: what the code already does (shipped
 in `annotator/unified_server.py`, `annotator/board.{html,css,js}`) and the exposure change
-on the Cloudflare side, which is **prepared here and not applied**.*
+on the Cloudflare side, which is **applied** — the board is live at
+`https://pool.example.com/board/`.*
 
-> **Status.** The listener, the page, `GET /api/board` and the path prefix
-> (`--public-prefix`) are in the repository. The tunnel ingress rule and the Access
-> exemption below are **proposals**: nothing in this file has been installed, and no
-> Cloudflare, DNS, systemd or production state was touched. Applying them is the owner's
-> decision and is a separate, explicit step (§4, §5).
+> **Status.** The listener, the page, `GET /api/board`, the path prefix
+> (`--public-prefix`) and the bare-prefix redirect are in the repository **and installed**:
+> the drop-in, the tunnel ingress rule and the Access exemption were applied on 2026-09-30
+> (§4, §5). The board answers on `https://pool.example.com/board/` without a login, the console
+> on the same hostname still asks for one, and `https://pool.example.com/board/api/operations`
+> is a `404`. Still owed: the 50-poller load test in §5's pre-flight.
 
 | | |
 |---|---|
@@ -161,10 +163,10 @@ SC, plus the full CJK subsets); they stay off the public port. Adding a face to 
 means adding its file to `BOARD_FONTS` in `annotator/unified_server.py` in the same commit.
 Fonts and favicons are served `public, max-age=86400`; the page and the API are `no-cache`.
 
-## 4. Deploy: the systemd drop-in (prepared, not installed)
+## 4. Deploy: the systemd drop-in (installed 2026-09-30)
 
 The unit is not in this repository (it is generated/hand-maintained under
-`~/.config/systemd/user/`). The change is a drop-in, checked in here for review as
+`~/.config/systemd/user/`). The change is a drop-in, deployed from
 `deploy/systemd/pool-workbench.service.d/40-public-board.conf`, mirroring how
 `20-postgres.conf` is delivered:
 
@@ -187,7 +189,8 @@ Two things about that file:
   and the other drop-ins. Re-read `systemctl --user cat pool-workbench.service` and copy the
   current line before installing — if the unit moves, this file must move with it.
 
-Install (owner, on the host — **not** done by this repository):
+Installed by the owner on the host on 2026-09-30 (this repository never restarts the
+service itself):
 
 ```
 install -Dm644 deploy/systemd/pool-workbench.service.d/40-public-board.conf \
@@ -197,10 +200,17 @@ systemctl --user restart pool-workbench.service      # this is the one disruptiv
 systemctl --user show pool-workbench.service -p ExecStart   # confirm exactly one start command
 ```
 
+As installed: the drop-in directory holds `10-umask.conf`, `20-postgres.conf`,
+`30-ffmpeg.conf` and `40-public-board.conf`; `ExecStart` is a single start command carrying
+`--port 8130 --public-port 8132 --public-prefix /board`, and the process listens on
+`127.0.0.1:8130` and `127.0.0.1:8132` only. The one restart wrote nothing: `state.json`
+kept its md5 `77777777777777777777777777777777`, `out/identity/clusters.json` kept
+`77777777777777777777777777777777`, and no `out/corner-pocket/clock.json` appeared.
+
 Pick `<port>` deliberately: it must be free on the host, loopback-bound, and **not** a
 fixture range (`8230-8239` belong to lane fixtures). `8132` was free when this was written.
 
-## 5. Cloudflare: the prepared change (not applied)
+## 5. Cloudflare: the applied change (2026-09-30)
 
 Today one tunnel ingress rule reaches the console — `pool.example.com → http://127.0.0.1:8130`
 in tunnel `pool-tunnel` — and the Access application for that hostname covers **every** path and
@@ -209,7 +219,8 @@ hostname to reach the public port instead, with no Access application in front o
 is **no new hostname and no DNS record** in this change: the hostname already resolves and
 already routes to the tunnel.
 
-Prepared, to be applied by the owner only:
+Applied on 2026-09-30 under the owner's standing release authorization. What was done, and
+what it returns now:
 
 1. **Tunnel ingress — a path rule, above the console's rule.** In the `pool-tunnel` tunnel's
    configuration, add `pool.example.com/board* → http://127.0.0.1:8132` **above** the existing
@@ -236,6 +247,47 @@ Prepared, to be applied by the owner only:
    `ss -ltn 'sport = :8132'` must show `127.0.0.1:8132` and nothing else. `--host 0.0.0.0`
    would expose the board to the LAN and is not what this is for.
 
+Three notes against the plan above, recorded because the deployment differs from it:
+
+- **The bypass is a second Access application, not a path policy on the console's.** The new
+  self-hosted application *Corner Pocket board bypass* (`33333333-3333-3333-3333-333333333333`)
+  carries the domain `pool.example.com/board*`, a 24 h session and one policy `bypass-everyone`
+  (decision `bypass`, include `everyone`). The console's application *Corner Pocket*
+  (`22222222-2222-2222-2222-222222222222`, domain `pool.example.com`, 168 h, policy
+  `<owner>_pocket-id`) is untouched. This matches the three bypasses already on this account —
+  `paperless.example.com/api/*` `2702a474-e52c-4739-bbbc-356afdf39020`, `ai.example.com/v1*`
+  `abcea54d-47f4-490c-9f3b-dc00dabb2280`, `sona.example.com/phone/*`
+  `894064ab-ee68-4890-a40c-cc1ad9aadd9d` — which are all separate applications with
+  path-carrying domains.
+- **The ingress rule is in place.** Tunnel `pool-tunnel` (`11111111-1111-1111-1111-111111111111`)
+  now holds 53 rules: `pool.example.com` + `^/board` → `http://127.0.0.1:8132` sits immediately
+  above the hostname-only `pool.example.com` → `http://127.0.0.1:8130` rule, and the
+  `http_status:404` catch-all is still last. No other rule was touched.
+- **The 50-poller load test was not run.** The figures the pre-flight below asks for — the
+  public port's CPU, the p95 of `GET /api/board`, and the p95 of `GET /api/operations` during
+  the load — are still owed. The board went live without them.
+
+Measured from the host through the public internet on 2026-09-30, after the change:
+
+| request | answer |
+|---|---|
+| `https://pool.example.com/board` | `308` → `https://pool.example.com/board/` |
+| `https://pool.example.com/board/` | `200 text/html`, `<title>Corner Pocket · Tonight</title>`, no login |
+| `https://pool.example.com/board/api/board` | `200 application/json` |
+| `https://pool.example.com/board/board.js` | `200` |
+| `https://pool.example.com/board/api/operations` | `404` |
+| `https://pool.example.com/boardx/board.js` | `404` |
+| `https://pool.example.com/` | `302` → `team.cloudflareaccess.com/…/login/pool.example.com` |
+| `https://pool.example.com/api/operations` | `302` → the same login |
+
+`/board/../api/operations` answers `302` as well, because Cloudflare normalises the path to
+`/api/operations` before ingress matching: it lands on the console's rule and its login. That
+is not a leak of console data, and it is not a 404 either.
+
+The page's own headers through the edge keep the board's CSP
+(`default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; …`),
+`x-robots-tag: noindex, nofollow`, `x-content-type-options: nosniff` and `cache-control: no-cache`.
+
 ### Pre-flight, before any of the above
 
 Run these against the fixture first (`tests/serve_workbench_fixture.py`, copied to an
@@ -252,7 +304,8 @@ node --test tests/test_board.js
 Then the load the hall will actually produce: 50 concurrent pollers at 3 s for two minutes,
 recording the public port's CPU, the p95 of `GET /api/board`, and — the number that matters —
 the p95 of `GET /api/operations` on the console port during that window, which must stay
-unaffected. Record the figures in this file before flipping DNS.
+unaffected. Record the figures in this file before flipping DNS — the board is live in
+production now, so run them anyway and record them here.
 
 ## 6. Rollback
 
