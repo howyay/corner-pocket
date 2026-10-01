@@ -46,6 +46,26 @@ Every `GET` reads and renders and never rewrites a persisted file (checked as by
 The single deliberate exception is `GET /api/clip`, which writes a regenerable fragment under
 `out/clip-cache/` on a cache miss only — derived media, not state. Writes live in the POST handlers.
 
+### 1.5 The shared shot clock — one clock, every device
+Source: `docs/corner-pocket-operations.md` §"Shot clock — one clock, every device"; API in
+`docs/unified-workbench.md` §"API write contract".
+
+The shot clock is **shared across devices on purpose** — whoever presses Start, Pause, Reset or
+20/30/45/60 on any device (club PC, phone, tablet, any browser, any tab) sets the clock every other
+device shows. It is not part of the revisioned operations state, so a press never makes another
+operator's `/api/operations` write stale. Each device measures its offset from the server and
+displays `deadline − (its own Date.now() + offset)`, so a device whose clock is seconds out still
+shows the same time.
+
+The operator sees the label "Shot clock · shared across devices" / "击球计时 · 多设备同步" and a
+sync-state line that never claims a sync the device does not have: `live · synced`, `reconnecting —
+showing last known` / `重新连接中 — 显示最后已知` (stream down, polling every 1 s), `offline — showing
+last known` after 10 s with no answer, `clock command failed — nothing changed`, and `server busy —
+retrying` on a 503. Resync is immediate on `visibilitychange`, `focus` and `online`. `GET /api/clock`
+is side-effect free (an expired clock is `running: false, remaining_ms: 0, expired: true`, nothing
+persisted); `POST /api/clock` with an explicit `start`/`pause`/`reset`/`set` is the only writer of
+`out/corner-pocket/clock.json`, and only on a real change.
+
 ---
 
 ## 2. What changed since the last handoff
@@ -63,6 +83,7 @@ One bullet per landed workstream; the doc carries the detail.
 - **Face identification, measured and its bar stated honestly** — `700f506 faces: assess face identification on this footage`, `b90fdf9 faces: make bind_face enforce the same runner-up margin as best_match`, `bc69602 docs: state the effective bind bar (0.47), not the threshold` → `docs/face-identification-assessment.md`.
 - **Rail labelling + source panel** — `d0d238f vision: label a person track as one regular or one guest name`, `dcb0d8e server: a track label may be a guest name, and a binding can be undone` → `docs/identity-labelling-and-source-rail.md`.
 - **A read no longer rewrites the index; the timeline is exact** — `899c997 identity: a read must not rewrite the index file`, `74f7d7f docs: record that the VOD timeline is exact and the motion is not a ball` → `docs/unified-workbench.md`.
+- **The shot clock is shared across devices** — `112203b clock: GET/POST /api/clock and the SSE change stream`, `266f86c clock: the stream under the bounded server and policy headers`, `b9d42b7 clock: the browser follows the shared clock on every device` (merged as `db217c6 merge clock-sync: the shared shot clock`) → `docs/corner-pocket-operations.md` §"Shot clock — one clock, every device", `docs/unified-workbench.md` §"API write contract".
 - **Research: no world model will give us ball positions** — `docs/research-video-world-models.md`.
 
 ---
@@ -132,6 +153,13 @@ Quiet host (`loadavg` 4.0–5.8), 90 frames/case, budget 33.33 ms; `ball` is a 1
 - The bar that binds is **0.47** (0.35 threshold + 0.12 runner-up margin); **0.35 alone never binds**. A candidate 0.65 is measured but **not applied**. In the demo window 2 of 35 impostor faces cleared 0.47 (5.7 %), from a single enrolled photo.
 - **The roster is empty** — `out/corner-pocket/state.json` has `"players": []` and there is no `out/corner-pocket/face_embeddings.json`, so nothing can bind today.
 
+### 3.7 Shared shot clock (`docs/corner-pocket-operations.md` §"Shot clock — one clock, every device")
+
+- Two independent browser sessions against a loopback fixture, at 390 px and 1280 px, EN and 中: Start on device A reached **first paint on device B in 32 ms**; over **20 presses** press-to-update propagation was **p50 282 ms**.
+- With a **+5 s `Date.now()` skew injected** into one session before the page script ran, the two sessions matched on second-transitions at **p50 143 ms / p95 143 ms / max 148 ms**, against a 0.3 s bar.
+- **Not measured through Cloudflare.** Every number above is loopback on this host through the fixture; the real edge path needs an authenticated browser and was never exercised. Both sessions ran on this host at two viewport widths — the club's phones and tablets were not used, and no other browser or version was exercised.
+- `tests/test_clock_api.ClockStreamTests` is **load-sensitive on this host** (1.0 s wall-clock budgets): it failed twice while the box was at load 26, then passed in isolation.
+
 ---
 
 ## 4. Open items / not yet true
@@ -144,6 +172,8 @@ Quiet host (`loadavg` 4.0–5.8), 90 frames/case, budget 33.33 ms; `ball` is a 1
 - **`annotations.json` holds one verdict** — event 16 = `unsure`, which is most likely the operator's own click, not a reviewed candidate (`out/scan30/annotations.json`).
 - **One deliberate write on a read path:** `GET /api/clip` writes a regenerable fragment under `out/clip-cache/` on a cache miss (`docs/unified-workbench.md`).
 - **First-load overlay latency is still slow.** Overlays take **~25 s** to reach `overlays ON` on a fresh load at 1440 px — `overlays LOADING (23.1 s)` observed — and **~40 s** at 390 px (`overlays LOADING (34.1 s)`); the earlier frames of that window are loading, not failures (`docs/vision-verification.md`). The stage keeps the last good frame and prints the counter meanwhile. The cold-process bound was not re-measured in this pass.
+- **The shared shot clock was never exercised on the real Cloudflare path.** It is merged and live, but every propagation and skew number comes from a loopback fixture on this host; the production edge needs an authenticated browser. The evidence covers 390 px and 1280 px in EN and 中 only — no phone or tablet (`docs/corner-pocket-operations.md` §"What was verified, and what was not").
+- **`tests/test_clock_api.ClockStreamTests` is load-sensitive on this host** (1.0 s wall-clock budgets): it failed twice while the box was at load 26, then passed in isolation.
 - **~35 local commits are unpushed** (35 measured by `git log @{u}..HEAD`).
 - **Test counts are not re-run in this pass.** Docs record python 621 passed / 2 skipped (`docs/state.md`) and timeline 50 / ops 21 (`docs/identity-labelling-and-source-rail.md`); the count after the calibration-truth round is **UNVERIFIED — no post-round suite number is recorded in a doc read here** (the suite is not runnable at the moment, being fixed by another worker).
 
