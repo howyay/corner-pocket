@@ -2044,3 +2044,43 @@ test('Close is the night\u2019s end: the results sheet, second chance, archive a
   await click({action: 'sheet-back'});
   assert.ok(!close().includes('class="stack results-sheet"'), 'back returns to Close');
 });
+
+test('\u2264750px: the fixed bottom bar carries Tonight, Records, Vision and More, and More opens Regulars and Back room (stage 7)', () => {
+  const h = harness();
+  const shell = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
+  assert.ok(shell.includes('<nav id="tabbar"'), 'the bottom bar is part of the shell');
+  const bar = () => h.evaluate('tabbarHTML()');
+  for (const id of ['tonight', 'records', 'vision']) assert.ok(bar().includes(`data-tab="${id}"`), `${id} is a bar slot`);
+  assert.ok(bar().includes('data-more="1"'), 'More is a bar slot');
+  assert.equal((bar().match(/aria-current="page"/g) || []).length, 1, 'the bar marks exactly the tab you are on');
+  assert.ok(bar().includes('id="tabbar-more" hidden'), 'More starts closed on a primary tab');
+  h.evaluate('moreOpen=true');
+  const open = bar();
+  for (const id of ['players', 'status']) assert.ok(open.includes(`data-tab="${id}"`), `${id} is behind More`);
+  h.evaluate("moreOpen=false;tab='players'");
+  assert.ok(bar().includes('id="tabbar-more"') && !bar().includes('id="tabbar-more" hidden'), 'being on Regulars opens More so the bar shows where you are');
+  assert.ok(bar().includes('data-tab="players"'), 'the Regulars slot is the current one');
+  h.evaluate("tab='tonight'");
+  assert.ok(!/data-tab="(floor|matches)"/.test(bar()), 'the bar never grows the retired tabs');
+});
+test('More in the bottom bar opens and closes the panel (stage 7)', async () => {
+  const h = harness();
+  h.evaluate('render=()=>{};moreOpen=false');
+  const more = () => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {more: '1'}}}});
+  await more();
+  assert.equal(h.evaluate('moreOpen'), true, 'More opens');
+  await more();
+  assert.equal(h.evaluate('moreOpen'), false, 'More closes again');
+});
+test('the bottom bar survives Vision, which is how Vision gets an exit, and every vision surface clears it (stage 7)', () => {
+  const h = harness();
+  assert.ok(h.evaluate('tabbarHTML()').includes('data-tab="vision"'), 'Vision is a bar slot');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('[data-tab=vision] #tabbar{display:flex}'), 'the vision rule that hides the top nav row does not hide the bar');
+  assert.ok(css.includes('env(safe-area-inset-bottom)'), 'the bar and its padding respect the safe area');
+  assert.ok(css.includes('--tabbar-h'), 'the bar height is one token the vision surfaces are offset by');
+  for (const sel of ['.vs-sheettabs{bottom:var(--tabbar-h)', '.vs-strip{bottom:calc(var(--tabbar-h)']) {
+    assert.ok(css.includes(sel), `${sel} sits above the bar`);
+  }
+  assert.ok(css.includes('@media print{#ops-shell #tabbar{display:none!important}}'), 'the bar never prints');
+});

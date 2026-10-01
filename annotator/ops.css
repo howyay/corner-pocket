@@ -667,3 +667,29 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .queue-card .card-actions button[data-action=schedule]{flex:1}
 }
 
+
+/* --- Stage 7: at ≤750px the fixed bottom bar is the primary navigation. The bar is
+   Tonight · Records · Vision · More(Regulars, Back room); Vision is in it, which is how
+   Vision finally has an exit (its own rule hides the top nav row, not this one). --- */
+#ops-shell #tabbar{display:none}
+@media(max-width:750px){
+  /* One height token for the bar, safe area included, so every fixed vision surface
+     and the toast can sit above it without guessing. */
+  #ops-shell{--tabbar-h:calc(52px + env(safe-area-inset-bottom))}
+  #ops-shell #nav{display:none}
+  #ops-shell #tabbar{display:flex;flex-wrap:wrap;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel2);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  #ops-shell #tabbar .tabbar-slot{flex:1 1 0;min-height:52px;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.12em;text-transform:uppercase}
+  #ops-shell #tabbar .tabbar-slot[aria-current=page]{color:var(--brass-hi);background:var(--rail);box-shadow:inset 0 2px 0 var(--brass)}
+  #ops-shell #tabbar #tabbar-more{flex:1 0 100%;display:flex;gap:var(--sp-1);border-top:1px solid var(--line)}
+  #ops-shell #tabbar #tabbar-more[hidden]{display:none}
+  #ops-shell main{padding-bottom:calc(var(--tabbar-h) + var(--sp-4))}
+  #ops-shell #message{bottom:calc(var(--tabbar-h) + var(--sp-3))}
+  /* Vision: the bar is the exit, and the sheet tabs, the strip and the panels all
+     stack above it instead of on top of it. */
+  :is(#ops-shell)[data-tab=vision] #tabbar{display:flex}
+  :is(#ops-shell) .vs-sheettabs{bottom:var(--tabbar-h)}
+  :is(#ops-shell) .vs-strip{bottom:calc(var(--tabbar-h) + 44px)}
+  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{bottom:calc(var(--tabbar-h) + 44px + var(--vs-strip-h,150px))}
+  :is(#ops-shell)[data-tab=vision] main{padding-bottom:calc(var(--tabbar-h) + 44px + var(--vs-strip-h,150px) + min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))) + 12px)}
+}
+@media print{#ops-shell #tabbar{display:none!important}}
