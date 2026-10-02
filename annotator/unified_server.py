@@ -1804,34 +1804,120 @@ class BoundedHTTPServer(ThreadingHTTPServer):
     answered ``503`` and closed at once instead of spawning another thread.
     Paired with the handler's socket timeout, idle or trickling clients free
     their slot within ``Handler.timeout`` seconds.
+
+    A third kind of client is neither of those (finding B-8): the console's
+    ``GET /api/clock/stream`` is one response held for as long as its tab is
+    open, and its 15 s heartbeat means the socket timeout never fires, so it
+    never frees a slot by itself. Such a connection moves to a second budget of
+    its own before its first event goes out (``begin_stream``, called by the
+    handler on the connection's own thread), so a night of open consoles cannot
+    spend the slots an ordinary ``GET /api/operations`` needs. The move is
+    accounted per connection, never per thread pool: the slot the connection
+    took is the slot it gives back. Each budget still refuses rather than
+    queues - one connection over either ceiling is answered ``503`` at once.
     """
     max_handlers = 64
+    #: Long-lived streams held at the same time, over and above the request
+    #: budget: the console opens one per page (annotator/clock-sync.js), several
+    #: per operator, and one per device left on. A stream costs a thread and a
+    #: socket rather than an API call, so this ceiling is generous; it is still a
+    #: ceiling, because a thread per connection is what B-7 bounds.
+    max_streams = 256
     request_queue_size = 64
 
+    #: The two budgets. A connection is in exactly one of them, or in neither.
+    _REQUEST, _STREAM = "request", "stream"
+
     def __init__(self, *args, **kwargs):
-        self._slots = threading.BoundedSemaphore(self.max_handlers)
+        self._pool_lock = threading.Lock()
+        # The two ceilings are read once, here, exactly as the semaphore they
+        # replace was built once: the capacity of a listener that is already
+        # serving must not move under the connections it has admitted.
+        self._max_handlers = self.max_handlers
+        self._max_streams = self.max_streams
+        self._hands = 0                 # connections in the request budget
+        self._streams = 0               # connections in the stream budget
+        self._held = threading.local()  # this serving thread's budget, for this connection
         super().__init__(*args, **kwargs)
 
+    def pool_state(self):
+        """``{"requests": n, "streams": m}``: who holds connections right now.
+
+        Read-only, and the honest answer to "is the console's own listener the
+        thing that is out of room" - the two ceilings are counted apart.
+        """
+        with self._pool_lock:
+            return {"requests": self._hands, "streams": self._streams}
+
+    def _refuse(self, request):
+        """Answer the connection that is over a ceiling and close it: no queue."""
+        try:
+            request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
+                            b"Content-Length: 5\r\nRetry-After: 5\r\nConnection: close\r\n\r\nbusy\n")
+        except OSError:
+            pass
+        self.shutdown_request(request)
+
+    def _release_slot(self, pool):
+        with self._pool_lock:
+            if pool == self._STREAM:
+                self._streams -= 1
+            else:
+                self._hands -= 1
+
     def process_request(self, request, client_address):
-        if not self._slots.acquire(blocking=False):
-            try:
-                request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
-                                b"Content-Length: 5\r\nRetry-After: 5\r\nConnection: close\r\n\r\nbusy\n")
-            except OSError:
-                pass
-            self.shutdown_request(request)
+        # The accept loop is never held by a refusal: the answer is written after
+        # the lock is back, so one slow reader cannot stall every other accept.
+        with self._pool_lock:
+            over_ceiling = self._hands >= self._max_handlers
+            if not over_ceiling:
+                self._hands += 1
+        if over_ceiling:
+            self._refuse(request)
             return
         try:
             super().process_request(request, client_address)
         except BaseException:
-            self._slots.release()
+            self._release_slot(self._REQUEST)
             raise
 
     def process_request_thread(self, request, client_address):
+        self._held.pool = self._REQUEST   # this thread serves this connection, and only it
         try:
             super().process_request_thread(request, client_address)
         finally:
-            self._slots.release()
+            self._release()
+
+    def _release(self):
+        """Give this connection's slot back, once, whichever budget holds it."""
+        pool = getattr(self._held, "pool", None)
+        if pool is None:                  # never taken, or already given back
+            return
+        self._held.pool = None
+        self._release_slot(pool)
+
+    def begin_stream(self):
+        """Move this connection from the request budget to the stream budget.
+
+        Called by the handler, on the connection's own thread, once, before a
+        long-lived response starts writing. ``True``: it may stream, and its
+        request slot is already back in the pool. ``False``: all ``max_streams``
+        slots are taken - nothing moves, the caller answers ``503`` (no queue),
+        and the connection stays a request until it closes. A handler whose
+        thread this class did not start (a bare ``ThreadingHTTPServer``, the
+        in-memory handler tests) has no budgets to move between, and is left
+        alone.
+        """
+        pool = getattr(self._held, "pool", None)
+        if pool is None or pool == self._STREAM:
+            return True
+        with self._pool_lock:
+            if self._streams >= self._max_streams:
+                return False
+            self._streams += 1
+            self._hands -= 1
+            self._held.pool = self._STREAM
+            return True
 
 
 #: The public board's CSP (docs/public-board.md): no inline script or style, this
@@ -2094,8 +2180,20 @@ def make_handler(backend):
         def clock_stream(self):
             """GET /api/clock/stream: Server-Sent Events. Headers go out now; the
             clock then writes one event per change and a heartbeat every 15 s
-            until the client leaves or the server closes the clock."""
+            until the client leaves or the server closes the clock.
+
+            This is the one response that outlives its request on purpose, so it
+            leaves the request budget before the first event goes out
+            (``BoundedHTTPServer.begin_stream``, finding B-8): a console left open
+            all night must not spend a slot an ordinary API call needs. A full
+            stream budget is refused the way a full request budget is - 503, no
+            queueing - and the console's EventSource falls back to polling
+            (annotator/clock-sync.js)."""
             from annotator.shot_clock import SSE_HEADERS
+            begin = getattr(self.server, "begin_stream", None)  # a bare ThreadingHTTPServer has no budgets
+            if begin is not None and not begin():
+                return self.send(503, b'{"error":"unavailable"}', "application/json",
+                                 {"Retry-After": "5"})
             clock = backend.clock()
             self.send_response(200)
             for key, value in SSE_HEADERS.items():

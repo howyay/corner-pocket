@@ -161,7 +161,9 @@ out/identity/clusters.json` before and after a read.
   stream `GET /api/clock/stream` (one `clock` event per change, a heartbeat
   every 15 s) never write: an expired clock is reported as `running: false,
   remaining_ms: 0, expired: true` and nothing is persisted. Tested with md5 +
-  size + mtime across 40 expired reads (`tests/test_clock_api.py`).
+  size + mtime across 40 expired reads (`tests/test_clock_api.py`). The stream
+  is the one response that outlives its request on purpose, so it is served from
+  its own budget — see **Connection budget** below.
 - Fixed 2026-09-25: a face match inside `GET /api/unified` /
   `GET /api/identity/frame` called `bind_face()`, which saved the index. The
   pipeline now binds with `persist=False`: the bind is in the payload and in
@@ -186,6 +188,47 @@ out/identity/clusters.json` before and after a read.
   (Vision tab, track selection, `GET /api/unified?dataset=vod30&frame=0`) left
   `77777777777777777777777777777777…` / 1,865,607 B / 20:58:05 untouched. `GET /api/vod30/tracks` was
   byte-identical before and after (`77777777777777777777777777777777…`, 205 B).
+
+## Connection budget (2026-10-02)
+
+One listener serves the console, and the console must not be what spends that
+listener's ceiling. `BoundedHTTPServer` (`annotator/unified_server.py`) counts
+two budgets apart, each read once at construction:
+
+- `max_handlers = 64` — connections being served as requests. Over the ceiling,
+  the connection is answered `HTTP/1.0 503` + `Retry-After: 5` and closed
+  immediately: there is no queue, and `request_queue_size` stays 64.
+- `max_streams = 256` — responses that outlive their request on purpose. One
+  path is admitted today, `GET /api/clock/stream`: the handler calls
+  `begin_stream()` before its first event, which gives the request slot back and
+  takes a stream slot instead. A full stream budget is refused the same way —
+  `503 {"error":"unavailable"}` + `Retry-After: 5`, no queueing — and the
+  console's `EventSource` falls back to polling (`annotator/clock-sync.js`).
+  Closing the tab, or any failed heartbeat write, returns the stream slot.
+
+Why split at all: a clock stream is held for as long as its tab is open, and its
+15 s heartbeat is exactly what keeps `Handler.timeout = 60` from ever firing, so
+it never frees a slot by itself. Before the split, a night of open consoles
+spent the slots an ordinary `GET /api/operations` needs and the console answered
+itself with 503. A stream costs a thread and a socket, not an API call, which is
+why its own ceiling is the larger one. `server.pool_state()` reports the two
+counters (`{"requests": n, "streams": m}`) and nothing else.
+
+Measured on an ephemeral loopback port (`tests/test_connection_budget.py`, plus a
+throwaway probe): 80 streams open at once — above the 64-connection ceiling — all
+answered `200`, all carried a `clock` first event, `ss -ltn` reported
+`LISTEN 0 64`, `ss -tn` 160 established sockets (both ends of 80 connections),
+the counters read `{"requests": 0, "streams": 80}`, and `GET /api/operations`
+returned `200` in 0.9 ms / 0.6 ms / 0.6 ms. After every tab closed: counters
+`{"requests": 0, "streams": 0}`, no sockets left. Run against the previous code,
+the same suite reports `[503 × 16] != []` for the 80 streams and `503 != 200` for
+an ordinary call placed behind four streams under a four-slot ceiling.
+
+Not claimed: a long media response (`/media/*`, VOD playback, byte ranges) is
+still served as a request. A client that stops reading it is dropped by the 60 s
+socket timeout, and playback is bounded by whoever is watching, so it was not
+moved into the stream budget. The kernel's accept backlog is untouched: the fix
+is in which budget a connection is counted against, not in how many are queued.
 
 ## Imported broadcasts (VOD selector)
 
