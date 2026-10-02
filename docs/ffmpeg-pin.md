@@ -15,8 +15,12 @@ but broken).
 ## The stable path
 
 ```
-~/.local/state/pool/ffmpeg-bin -> /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin
+~/.local/state/pool/ffmpeg-bin -> /nix/store/<hash>-ffmpeg-headless-9.0-bin
 ```
+
+`<hash>` stands for the store hash of the pinned `ffmpeg-headless-9.0` build; it is specific
+to the machine that built it, so it is not written out here. The proof below is verbatim
+from the host where this was done, with that hash replaced by `<hash>`.
 
 Both binaries are there: `~/.local/state/pool/ffmpeg-bin/bin/ffmpeg` and `.../bin/ffprobe`.
 
@@ -24,9 +28,9 @@ It is a GC root, so the collector keeps the build. Proof (no real GC is run):
 
 ```
 $ nix-store -q --roots ~/.local/state/pool/ffmpeg-bin
-~/.local/state/pool/ffmpeg-bin -> /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin
+~/.local/state/pool/ffmpeg-bin -> /nix/store/<hash>-ffmpeg-headless-9.0-bin
 $ nix-store --gc --print-roots | grep ffmpeg-bin
-"~/.local/state/pool/ffmpeg-bin" -> /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin
+"~/.local/state/pool/ffmpeg-bin" -> /nix/store/<hash>-ffmpeg-headless-9.0-bin
 ```
 
 Method: a user-level GC root (the dotfiles' NixOS config is not touched; if the user

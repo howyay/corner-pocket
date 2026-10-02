@@ -34,7 +34,7 @@ From `<repo>`:
 
 ```sh
 .venv/bin/python -B tests/live_processing_e2e.py \
-  --ffmpeg /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin/bin/ffmpeg
+  --ffmpeg /nix/store/<hash>-ffmpeg-headless-9.0-bin/bin/ffmpeg   # or the GC root: ~/.local/state/pool/ffmpeg-bin/bin/ffmpeg (docs/ffmpeg-pin.md)
 ```
 
 Requires the existing `.venv` OpenCV/Ultralytics/Torch installation, `yolov8n.pt`, and `data/vod_30min_260815.mp4`. Installs/downloads nothing. Emits JSON evidence to stdout; assertions or FFmpeg failures return nonzero. `--outputs` defaults to four. Runtime varies with CPU load; each observation has a 45-second deadline.
