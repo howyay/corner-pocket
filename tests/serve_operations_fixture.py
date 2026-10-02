@@ -17,7 +17,10 @@ from annotator.unified_server import Backend, make_handler
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--port', type=int, default=8132)
+    # Not 8132: that is the public board's port in production
+    # (deploy/systemd/pool-workbench.service.d/40-public-board.conf). A fixture left
+    # running on it would stop the service from restarting (port already in use).
+    parser.add_argument('--port', type=int, default=8150)
     args = parser.parse_args()
     with TemporaryDirectory(prefix='corner-pocket-browser-') as folder:
         root = Path(folder)

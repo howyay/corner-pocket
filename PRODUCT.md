@@ -58,7 +58,7 @@ Corner Pocket is not an auto-referee and must never read as one. The Back room s
 - **Compute.** A ROCm GPU on the club machine runs the tiny ball net. SAM3 is an offline labeller (the detector's teacher) and is not in the runtime path.
 - **The night.** Set up → Registration desk → *Rack the night* (single elimination, automatic byes, the draw seeded in sign-up order, entrants and rules locked) → send to table → score and clock → *Sign scorecard* → winners advance → *Archive & new event*.
 - **Production vs polish.** `~/projects/pool/` is the live checkout. Production serves its `annotator/`, and its `out/` and `data/` hold the real state and footage. Polish work never edits it.
-  - Work happens in the `impeccable-polish` worktree and is checked against two fixture servers: `tests/serve_workbench_fixture.py` (:8131; the real VOD plus copied review data) and `tests/serve_operations_fixture.py` (:8132; an empty club).
+  - Work happens in the `impeccable-polish` worktree and is checked against two fixture servers: `tests/serve_workbench_fixture.py` (:8131; the real VOD plus copied review data) and `tests/serve_operations_fixture.py` (:8150; an empty club, deliberately off the public board's :8132).
   - The test suites are `PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'`, `node --test tests/test_ops.js` and `node tests/test_app_timeline.js`.
 
 ## Capabilities and Constraints
