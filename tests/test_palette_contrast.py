@@ -74,9 +74,9 @@ class PaletteContrast(unittest.TestCase):
         self.assertEqual(re.findall(r'#[0-9a-fA-F]{3,8}\b|rgba?\(', app), [], 'app.css has no colour literals')
 
     #: The 40 hex values that arrived with the third-party redesign zip (security audit P-6).
-    #: They used to be read out of `docs/private-audit.md`; that document is deliberately not
-    #: published (its copy is kept outside the repository at `.pm/pre-rewrite/private-audit.md`)
-    #: and a fresh clone has to stay green, so the list lives here beside the check that needs it.
+    #: They used to be read out of the operator's private audit record, which is deliberately
+    #: not published and is kept outside the repository; a fresh clone has to stay green, so
+    #: the list lives here beside the check that needs it.
     ZIP_VALUES = (
         '#14110f #1a1613 #100e0c #241e19 #f6f1e6 #f2e9dd #b6a693 #8a7a68 #6d5f51 #c9a227 '
         '#e3c877 #dcbb46 #17120c #2b241d #7fc39a #16241c #3d5f4c #dfa93a #2a2013 #5c4a1e '

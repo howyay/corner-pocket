@@ -43,7 +43,8 @@ class APIError(Exception):
 
 def error_reference(exc):
     """Log an unexpected exception with its traceback; return the short id the
-    client is shown instead of the text (docs/private-audit.md B-11)."""
+    client is shown instead of the text (the operator's private audit record,
+    not published; finding B-11)."""
     import traceback
     import uuid
     ref = uuid.uuid4().hex[:8]
@@ -1766,7 +1767,8 @@ class Backend:
         raise APIError("route not found", 404)
 
 
-#: Sent on every response, error paths included (docs/private-audit.md B-4).
+#: Sent on every response, error paths included (the operator's private audit
+#: record, not published; finding B-4).
 #: The page runs only its own scripts, paints frames from blob:/data: URLs,
 #: embeds the Twitch chat iframe and talks to this origin only (fetch and the
 #: clock EventSource). 'unsafe-inline' in style-src covers style attributes, not
@@ -1795,7 +1797,8 @@ SECURITY_HEADERS = (
 
 
 class BoundedHTTPServer(ThreadingHTTPServer):
-    """Thread-per-connection with a ceiling (docs/private-audit.md B-7).
+    """Thread-per-connection with a ceiling (the operator's private audit
+    record, not published; finding B-7).
 
     At most ``max_handlers`` connections are handled at once; one more is
     answered ``503`` and closed at once instead of spawning another thread.
