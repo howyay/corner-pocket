@@ -20,7 +20,7 @@ underlying predictions. Ball-ID certification remains backlog.
 
 ## 2026-09-07 — repo + kaneo wired; calibration cross-segment audit first cut
 
-- Forgejo `operator/pool` (private) ⇄ Kaneo project `pool` (sync via Gitea
+- Forgejo `<owner>/pool` (private) ⇄ Kaneo project `pool` (sync via Gitea
   integration webhook; 11 issues = 11 Kaneo tasks, externalIds matched).
 - Audit tool: `src/audit_calib.py` → `out/audit_homography.json`.
 

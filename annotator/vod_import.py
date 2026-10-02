@@ -38,7 +38,8 @@ RECENT_TTL_S = 180
 #: Free space an import must leave: the estimate x 1.2, plus 2 GB for everything else.
 HEADROOM = 1.2
 RESERVE_BYTES = 2 * 10**9
-#: FFmpeg may open only these protocols (docs/private-audit.md B-6): HLS over HTTPS.
+#: FFmpeg may open only these protocols (the operator's private audit record,
+#: not published; finding B-6): HLS over HTTPS.
 PROTOCOLS = "file,http,https,tcp,tls,crypto"
 REFUSED_CHANNEL = ("This VOD belongs to {channel}. Only saved channels can be analysed; "
                    "add the channel under Source first.")

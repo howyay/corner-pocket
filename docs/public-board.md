@@ -214,10 +214,10 @@ fixture range (`8230-8239` belong to lane fixtures). `8132` was free when this w
 
 Today one tunnel ingress rule reaches the console — `pool.example.com → http://127.0.0.1:8130`
 in tunnel `pool-tunnel` — and the Access application for that hostname covers **every** path and
-method (`docs/private-audit.md`, areas A and A.6). The board needs one path of that same
-hostname to reach the public port instead, with no Access application in front of it. There
-is **no new hostname and no DNS record** in this change: the hostname already resolves and
-already routes to the tunnel.
+method (the operator's private audit record, not published; areas A and A.6). The board
+needs one path of that same hostname to reach the public port instead, with no Access
+application in front of it. There is **no new hostname and no DNS record** in this change:
+the hostname already resolves and already routes to the tunnel.
 
 Applied on 2026-09-30 under the owner's standing release authorization. What was done, and
 what it returns now:

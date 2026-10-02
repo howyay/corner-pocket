@@ -1,7 +1,7 @@
-"""HTTP-level security tests (docs/private-audit.md area B).
+"""HTTP-level security tests (area B of the operator's private audit record).
 
-Each test starts its own loopback server on an ephemeral port over a temporary
-root: no repository data is read or written.
+That record is not published.  Each test starts its own loopback server on an
+ephemeral port over a temporary root: no repository data is read or written.
 """
 import http.client
 from http.server import ThreadingHTTPServer
