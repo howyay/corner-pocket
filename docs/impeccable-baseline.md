@@ -2,7 +2,7 @@
 
 What the app measures as on branch `impeccable-polish` before any Impeccable command
 is applied. Every later round is compared against these numbers and screenshots.
-Worktree: `/home/operator/projects/pool-impeccable`; the app code under test is
+Worktree: `~/projects/pool-impeccable`; the app code under test is
 `annotator/` at worktree base `da6d5ac` (the polish has changed nothing yet).
 
 ## Suites (run from the worktree root, 2026-09-25)
@@ -106,7 +106,7 @@ these steps in order and aborts on any failed check:
    - the scratch tree has no symlinks;
    - the fixture's `events.json` is byte-identical to the snapshot's.
 
-Run it: `bash /home/operator/projects/pool-impeccable/out/impeccable/reset_fixture.sh`.
+Run it: `bash ~/projects/pool-impeccable/out/impeccable/reset_fixture.sh`.
 The last line prints the URL, pid, `app.js` sha256 and the `events.json` md5 prefix,
 and a success line is appended to `out/impeccable/reset.log`.
 
@@ -160,7 +160,7 @@ light theme. A full-page capture is added whenever the page is taller than the v
 - **Inventory**: 0 of 167 items removed or broken (`docs/impeccable-final/inventory-check.txt`).
 - **Suites**: `unittest` 1045 OK (skipped 36: +23 Postgres tests without `POOL_DATABASE_URL`),
   `node --test tests/test_ops.js` 52/52, `node tests/test_app_timeline.js` 71 passed.
-- **Production** untouched: `/home/operator/projects/pool/annotator/` never edited, `pool-workbench.service`
+- **Production** untouched: `~/projects/pool/annotator/` never edited, `pool-workbench.service`
   never restarted; the five production data md5s are identical at the start and the end
   (`77777777777777777777777777777777…` state.json, `77777777777777777777777777777777…` pid_seed.json, `77777777777777777777777777777777…` scan30/annotations.json,
   `77777777777777777777777777777777…` identity/clusters.json, `77777777777777777777777777777777…` scan30/events.json).

@@ -174,7 +174,7 @@ The unit is not in this repository (it is generated/hand-maintained under
 [Service]
 # An ExecStart override must first clear the inherited list: systemd appends to it.
 ExecStart=
-ExecStart=/home/operator/projects/pool/.venv/bin/python /home/operator/projects/pool/annotator/unified_server.py --port 8130 --public-port 8132 --public-prefix /board
+ExecStart=~/projects/pool/.venv/bin/python ~/projects/pool/annotator/unified_server.py --port 8130 --public-port 8132 --public-prefix /board
 ```
 
 Two things about that file:
@@ -183,7 +183,7 @@ Two things about that file:
   `ExecStart=` to the unit's own, and the service tries to start twice.
 - **The whole command line must be repeated, and it must match the unit's.** The line above
   is the unit's own `ExecStart` as it stood when this was written (absolute interpreter and
-  absolute script, `/home/operator/projects/pool`, so it is the deployed tree and not a lane
+  absolute script, `~/projects/pool`, so it is the deployed tree and not a lane
   worktree); only `--public-port 8132 --public-prefix /board` is new. `WorkingDirectory`, `UMask=0077`,
   `EnvironmentFile` (including `POOL_DATABASE_URL`) and the rest still come from the unit
   and the other drop-ins. Re-read `systemctl --user cat pool-workbench.service` and copy the

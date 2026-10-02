@@ -1,7 +1,7 @@
 # Tonight console — stage 9 proof
 
-Owner lane: internal-audience C′ stages 5–9. Branch `tonight`, worktree `/home/operator/projects/pool-tonight`.
-Proof run 2026-10-01 (UTC) against **this worktree only**; the production checkout `/home/operator/projects/pool`
+Owner lane: internal-audience C′ stages 5–9. Branch `tonight`, worktree `~/projects/pool-tonight`.
+Proof run 2026-10-01 (UTC) against **this worktree only**; the production checkout `~/projects/pool`
 was never written to, never restarted and never POSTed to.
 
 Code under proof (all four on branch `tonight`):
@@ -22,7 +22,7 @@ Code under proof (all four on branch `tonight`):
 The criterion is the directive's: T2 zero tab switches and zero jumps at both widths, T1 zero tab switches,
 T3 at 390 px has the Send control within one screen.
 
-BEFORE = `out/ia/measure-results.json` from the live checkout (`/home/operator/projects/pool`), origin
+BEFORE = `out/ia/measure-results.json` from the live checkout (`~/projects/pool`), origin
 `http://127.0.0.1:8210`, started `2026-09-29T01:44:07.175Z`, 10 tasks, 175 checks, 0 errors.
 AFTER = `out/tonight/after/results.json` from this worktree, origin `http://127.0.0.1:8251`, started
 `2026-10-01T05:41:37.727Z`, 10 tasks, 193 checks, 0 errors, 4 dialogs, 17 screenshots.
