@@ -87,12 +87,10 @@ node --test tests/test_ops.js
 node tests/test_app_timeline.js
 ```
 
-Tests that need SAM 3 or a local recording mostly skip themselves when it is
-missing. A few still expect the maintainers' own recordings under `data/` and
-scan output under `out/` (both ignored by git), so on a fresh clone about
-twenty tests in `test_enroll_from_tracklet`, `test_eval_table_detect`,
-`test_eval_faces`, `test_queue_decision` and `test_sam3_ball_cache` fail with a
-missing-file error. Everything else passes.
+Tests that need SAM 3 or a local recording skip themselves when it is missing,
+so a fresh clone runs green: `OK (skipped=147)`, no failures. The skips are the
+tests that expect the maintainers' own recordings under `data/` and scan output
+under `out/` (both ignored by git); put those fixtures in place and they run.
 
 ## Video sources and Twitch
 
