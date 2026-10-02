@@ -716,7 +716,29 @@ test('a full floor is explained in plain words in both languages', () => {
 test('appearance form serializes numbers and unchecked diamonds correctly', async () => {
   const h = harness();
   await h.handlers.submit(submission('appearance-form', {clothColor: '#1f4a70', lampGlow: '0.4'}));
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls[0])')), {name: 'settings_update', payload: {clothColor: '#1f4a70', lampGlow: 0.4, showDiamonds: false}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls[0])')), {name: 'settings_update', payload: {clothColor: '#1f4a70', lampGlow: 0.4, showDiamonds: false, publicBoard: false}});
+});
+test('the appearance panel carries the public board switch, on by default, in EN and 中', () => {
+  const h = harness();
+  const html = h.evaluate('appearancePanel()');
+  // A hidden input posts "off" when the box is not ticked, so an unticked box is a real false,
+  // never an absent key; a missing setting reads as on, exactly as the board page reads it.
+  assert.ok(html.includes('<input type="hidden" name="publicBoard" value="off">'), 'the hidden off input');
+  assert.ok(html.includes('<input type="checkbox" name="publicBoard" value="on" checked>'), 'on by default');
+  assert.ok(html.includes('Public board: on/off'), 'the EN label, as docs/public-board.md 6 spells it');
+  h.evaluate("lang='zh'");
+  assert.ok(h.evaluate('appearancePanel()').includes('公网记分板：开/关'), 'the 中 label');
+});
+test('the public board switch shows a board that is already off and posts a real boolean', async () => {
+  const already = harness();
+  already.evaluate('data.settings={publicBoard:false}');
+  assert.ok(already.evaluate('appearancePanel()').includes('<input type="checkbox" name="publicBoard" value="on" >'),
+    'an off board leaves the box unticked');
+  const h = harness();
+  await h.handlers.submit(submission('appearance-form', {clothColor: '#1d5c44', lampGlow: '0.3', showDiamonds: 'on', publicBoard: 'on'}));
+  await h.handlers.submit(submission('appearance-form', {clothColor: '#1d5c44', lampGlow: '0.3', showDiamonds: 'on', publicBoard: 'off'}));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c => [c.payload.publicBoard, typeof c.payload.publicBoard]))')),
+    [[true, 'boolean'], [false, 'boolean']]);
 });
 test('adding a regular never sends a rating the form did not collect; editing keeps it', async () => {
   const h = harness();

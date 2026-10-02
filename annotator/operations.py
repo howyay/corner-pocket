@@ -85,7 +85,7 @@ class Operations:
             return state
         return dict(revision=0, players=[], tournament=tournament(), history=[],
                     settings=dict(shotClock=30, autoFrame=False, clothColor='#1d5c44', lampGlow=0.22,
-                                  showDiamonds=True), notes=[], sources=[dict(id=uid(), url='https://www.twitch.tv/examplechannel', kind='channel', channel='examplechannel')], events=[])
+                                  showDiamonds=True, publicBoard=True), notes=[], sources=[dict(id=uid(), url='https://www.twitch.tv/examplechannel', kind='channel', channel='examplechannel')], events=[])
 
     def get(self):
         with self.lock:
@@ -561,6 +561,12 @@ class Operations:
                 if type(p['autoFrame']) is not bool:
                     raise ValueError('autoFrame must be boolean')
                 s['settings']['autoFrame'] = p['autoFrame']
+            if 'publicBoard' in p:
+                # The public board's only control (docs/public-board.md, "Board off" and 6): false
+                # makes GET /api/board answer {"board":"off"}. Read side: public_board.build.
+                if type(p['publicBoard']) is not bool:
+                    raise ValueError('publicBoard must be boolean')
+                s['settings']['publicBoard'] = p['publicBoard']
         elif action == 'note_add':
             s['notes'].append(dict(id=uid(), text=text(p.get('text'), 'note', 4000), createdAt=timestamp()))
         elif action == 'note_delete':

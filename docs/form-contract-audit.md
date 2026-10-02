@@ -40,7 +40,7 @@ cannot stop an input the server will reject.
 | Scorecard (`score-form`) → `match_score` (+ `match_complete` on Sign) | `id` select of live matches, `a`,`b` numbers (`min=0 max=raceTo required`) | 2 ints 0..raceTo, not both raceTo; complete needs a live race-winning score | blank / out-of-range / fraction | Browser blocks | none |
 | | | | both = raceTo | Rejected, translated ("双方不能同时达到获胜比分。") | none |
 | | | | Sign with no winner yet | `match_score` saves, `match_complete` rejected, translated | none |
-| Table appearance (`appearance-form`) → `settings_update` | `clothColor` select (4 server colours), `lampGlow` range 0–0.5 step 0.02, `showDiamonds` checkbox | colour in the 4-value set, glow finite 0–0.5, bool | a range input always has a value; unchecked box → `false` (tested) | Always valid | none |
+| Table appearance (`appearance-form`) → `settings_update` | `clothColor` select (4 server colours), `lampGlow` range 0–0.5 step 0.02, `showDiamonds` checkbox, `publicBoard` hidden `off` + checkbox `on` | colour in the 4-value set, glow finite 0–0.5, bool | a range input always has a value; unchecked box → `false` (tested) | Always valid | none |
 | Add stream (`source-form`, rendered by `vision-stage.js`) → `source_add` | `url` (`type=url required`) | https twitch.tv channel or `/videos/<digits>`, no query/fragment, not reserved, not a duplicate | reserved path (e.g. `/wallet`) | Client `parseSource()` accepts it (its reserved list is shorter than the server's), server rejects "Use a Twitch channel or videos/<digits> URL" (untranslated) | **D4b** |
 | | | | the same channel twice | Rejected "Source already added" (untranslated) | **D4b** |
 | House note (`note-form`) → `note_add` | `text` (`required maxlength=4000`) | 1–4000 chars after trim | whitespace-only | Rejected "note must contain 1–4000 characters" (untranslated) | **D4a** |
@@ -61,7 +61,7 @@ cannot stop an input the server will reject.
 
 `guest_promote` with an unknown name, `absent` non-bool, `Invalid member`,
 `JSON object required`, `integer revision required`, `Unknown operations action`,
-`Invalid cloth color`, `showDiamonds/autoFrame must be boolean`: the UI never sends
+`Invalid cloth color`, `showDiamonds/autoFrame/publicBoard must be boolean`: the UI never sends
 these shapes, so they stay technical by design.
 
 ## Vision / identity writes (`app.js` `save()` → `unified_server.py`)

@@ -120,7 +120,7 @@ database stores *paths relative to the repo root* for those (`data/vod_30min_260
 CREATE TABLE ops_meta (                 -- exactly one row: the document header
     id          boolean PRIMARY KEY DEFAULT true CHECK (id),
     revision    integer NOT NULL CHECK (revision >= 0),
-    settings    jsonb   NOT NULL         -- {shotClock, autoFrame, clothColor, lampGlow, showDiamonds}
+    settings    jsonb   NOT NULL         -- {shotClock, autoFrame, clothColor, lampGlow, showDiamonds, publicBoard}
 );                                       -- the current tournament = the one with archived_at IS NULL
 CREATE TABLE players (
     id         text PRIMARY KEY,         -- uuid4().hex today; kept verbatim

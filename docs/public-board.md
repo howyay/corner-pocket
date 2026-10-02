@@ -146,7 +146,10 @@ shows the right duration.
 
 `settings.publicBoard` false makes `GET /api/board` return `{"board":"off"}` and nothing
 else; the page then says `The board is off tonight` / `今晚记分板已关闭`. The console switch
-that flips it lives in the operator UI, not here.
+that flips it is `Public board: on/off`, a checkbox in the operator UI's **Back room → Table
+appearance** form (`settings_update`, non-boolean refused with `publicBoard must be boolean`),
+not here. It defaults to on, and a document written before the switch existed carries no
+`publicBoard` key at all, which the board reads as on.
 
 ### Headers
 

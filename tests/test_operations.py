@@ -69,7 +69,8 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaises(ConflictError):
             self.ops.post({'action': 'note_add', 'revision': 0, 'text': 'Stale'})
         for payload in ([], {'revision': True}, {'revision': 1, 'action': 'wat'},
-                        {'revision': 1, 'action': 'settings_update', 'shotClock': True}):
+                        {'revision': 1, 'action': 'settings_update', 'shotClock': True},
+                        {'revision': 1, 'action': 'settings_update', 'publicBoard': 'off'}):
             with self.assertRaises(ValueError):
                 self.ops.post(payload)
         self.assertEqual(self.ops.path.read_bytes(), before)
@@ -217,9 +218,34 @@ class OperationsTests(unittest.TestCase):
         state = self.call('settings_update', clothColor='#1f4a70', lampGlow=0.5, showDiamonds=False)
         self.assertEqual(state['settings']['lampGlow'], 0.5)
         for settings in ({'lampGlow': float('nan')}, {'lampGlow': True}, {'lampGlow': 1},
-                         {'showDiamonds': 1}, {'clothColor': 'red'}):
+                         {'showDiamonds': 1}, {'publicBoard': 'on'}, {'clothColor': 'red'}):
             with self.assertRaises(ValueError):
                 self.call('settings_update', **settings)
+
+    def test_public_board_switch_defaults_on_rejects_non_booleans_and_round_trips(self):
+        # The public board's only control (docs/public-board.md, "Board off" and 6): a boolean
+        # setting whose false makes GET /api/board answer {"board":"off"}.
+        self.assertIs(self.ops.get()['settings']['publicBoard'], True)
+        state = self.call('settings_update', shotClock=45)  # writes the document for the first time
+        self.assertIs(state['settings']['publicBoard'], True)
+        state = self.call('settings_update', publicBoard=False)
+        self.assertIs(state['settings']['publicBoard'], False)
+        self.assertIs(json.loads(self.ops.path.read_text())['settings']['publicBoard'], False)
+        self.assertIs(Operations(self.root).get()['settings']['publicBoard'], False)
+        before = self.ops.path.read_bytes()
+        for bad in ('off', 'false', 'on', 1, 0, None, [], {}):
+            with self.assertRaisesRegex(ValueError, 'publicBoard must be boolean'):
+                self.call('settings_update', publicBoard=bad)
+        self.assertEqual(self.ops.path.read_bytes(), before)
+        # A document written before the switch existed has no key, and the read side asks
+        # `is False` (annotator/public_board.py), so a missing key is on, not off.
+        old = json.loads(self.ops.path.read_text())
+        del old['settings']['publicBoard']
+        self.ops.path.write_text(json.dumps(old))
+        self.assertNotIn('publicBoard', Operations(self.root).get()['settings'])
+        state = self.call('settings_update', publicBoard=True)
+        self.assertIs(state['settings']['publicBoard'], True)
+        self.assertIs(Operations(self.root).get()['settings']['publicBoard'], True)
 
     def test_guest_promotion_after_start_preserves_history_and_competition(self):
         self.register(2)
