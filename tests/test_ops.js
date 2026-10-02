@@ -499,9 +499,39 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
   assert.ok(full.includes('data-density="full"') && full.includes('Table 1 · m1'), 'full cards render as before');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   assert.ok(css.includes('.rounds[data-density=full] .round .entry{min-height:98px}'), 'the 98 px card height applies to full cards only');
-  assert.ok(css.includes('.entry:is(:hover,:focus-within,.selected) :is(.card-head,.card-actions){display:flex}'), 'hover or focus opens the full card');
+  assert.ok(css.includes('.entry:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}'), 'hover, focus or the card\u2019s own control opens the full card');
   assert.ok(/grid-auto-columns:minmax\(180px,1fr\)/.test(css), 'rounds share the viewport width');
   for (const key of ['density', 'densityCompact', 'densityFull']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
+});
+test('R9 on touch: every compact card carries its own expand control, and pressing it does not re-render', async () => {
+  const h = harness();
+  h.evaluate(`data.players=[];data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+    entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}],
+    matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]}]}`);
+  const compact = h.evaluate("density='compact';bracketScreen()");
+  assert.ok(compact.includes('class="card-toggle" data-action="card-toggle" aria-expanded="false"'), 'the card carries a control of its own, so a thumb has something to press');
+  assert.ok(compact.includes('aria-label="Show the full card"'), 'the control says what it does');
+  // pressing it flips .open in place: no render(), no action(), so focus and scroll stay put
+  let open = false, toggled = null;
+  const attrs = {};
+  const card = {classList: {toggle(cls) { toggled = cls; open = !open; return open; }}};
+  const button = {dataset: {action: 'card-toggle'}, setAttribute(k, v) { attrs[k] = v; }, closest: sel => sel === '.entry' ? card : null};
+  const press = () => h.handlers.click({target: {closest: sel => sel === 'button,.modal-backdrop' ? button : null}});
+  await press();
+  assert.equal(toggled, 'open', 'the class that reveals the card is toggled on the card itself');
+  assert.equal(attrs['aria-expanded'], 'true', 'the control reports the open state');
+  assert.equal(attrs['aria-label'], 'Hide the details', 'and renames itself to the way back');
+  await press();
+  assert.equal(attrs['aria-expanded'], 'false', 'pressing again puts the card back');
+  assert.equal(attrs['aria-label'], 'Show the full card');
+  assert.equal(h.evaluate('calls.length'), 0, 'opening a card is not a server action');
+  // the same rules serve a pointer, a keyboard and a thumb; the control only exists where hover is missing
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('.rounds[data-density=compact] .card-toggle{display:flex'), 'shown on a compact card');
+  assert.ok(/\.card-toggle\{display:none/.test(css), 'never on a full card, which already shows everything');
+  assert.ok(css.includes('.rounds[data-density=compact] .card-side.first{padding-right:var(--sp-5)}'), 'the name never runs under the control');
+  for (const key of ['cardExpand', 'cardCollapse']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
+  assert.equal(h.evaluate("lang='zh';bracketScreen()").includes('aria-label="展开完整卡片"'), true, 'the control is translated');
 });
 test('R13: every query word must match the name, after NFKC, accent and case folding', () => {
   const h = harness();

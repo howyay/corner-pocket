@@ -159,9 +159,18 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .rounds[data-density=compact] .card-side strong{font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #ops-shell .rounds[data-density=compact] .card-side strong.grow{min-width:0}
 #ops-shell .rounds[data-density=compact] .card-head,#ops-shell .rounds[data-density=compact] .card-actions{display:none}
-#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected) :is(.card-head,.card-actions){display:flex}
-#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected) .card-actions{flex-direction:column;align-items:stretch;gap:var(--sp-1);margin-top:var(--sp-1)}
-#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected){z-index:2}
+#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}
+#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected,.open) .card-actions{flex-direction:column;align-items:stretch;gap:var(--sp-1);margin-top:var(--sp-1)}
+#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected,.open){z-index:2}
+/* R9 on a touch screen: there is no hover and no keyboard, so the gesture the desktop
+   reader uses does not exist. Every compact card therefore carries its own expand
+   control. It toggles .open in place — no re-render — so scroll position, focus and the
+   live score the operator was reading all stay exactly where they were. Full cards
+   already show the header and the controls, so there the control is not rendered. */
+#ops-shell .card-toggle{display:none;position:absolute;top:var(--sp-1);right:var(--sp-1);width:var(--sp-5);height:var(--sp-5);min-height:0;padding:0;line-height:1;color:var(--ink-dim);background:var(--panel2);border-color:var(--line)}
+#ops-shell .rounds[data-density=compact] .card-toggle{display:flex;align-items:center;justify-content:center}
+#ops-shell .card-toggle[aria-expanded=true]{color:var(--brass-hi);border-color:var(--brass)}
+#ops-shell .rounds[data-density=compact] .card-side.first{padding-right:var(--sp-5)}
 /* Status is a dot on the first side's line; the colour matches the badge it stands for,
    and the badge word itself is in the card's accessible name and in the opened header. */
 #ops-shell .status-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ink-faint);visibility:hidden}
