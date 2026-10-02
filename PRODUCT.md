@@ -43,7 +43,7 @@ Corner Pocket is not an auto-referee and must never read as one. The Back room s
 ## Operating Context
 
 - **Serving.** The `pool-workbench.service` systemd user unit runs `annotator/unified_server.py` on `http://127.0.0.1:8130/`, bound to loopback only. Remote access goes through `https://pool.example.com` over a Cloudflare Tunnel. The whole hostname, including API and media routes, sits behind Cloudflare Access (Pocket ID SSO, one allowed address, 168 h sessions, no bypass).
-- **Entry points.** `/` is the operations shell (`annotator/ops.html` + `ops.js`, six tabs). `/app.html` is the older review workbench, kept as a compatibility entry while the native Vision tab is being verified.
+- **Entry points.** `/` is the operations shell (`annotator/ops.html` + `ops.js`, six tabs). `/app.html` and `/ops.html` both answer `308` to `/` (`annotator/unified_server.py`), so the review workbench is not a page of its own any more: its markup is the template the Vision tab mounts, fetched by `ops.js` through `GET /api/review-template`.
 - **Offline.** The club machine must run the app with no internet: no CDN fonts, scripts or assets. Two features need the network: Twitch playback and chat (the embed's `parent` must be the real hostname), and the Twitch VOD replay source. When they are unreachable they must say so, and nothing else may break.
 - **State.** `annotator/operations.py` owns `out/corner-pocket/state.json`.
   - Writes are revisioned. A stale revision returns HTTP 409: reload and review, never replay silently.
@@ -128,11 +128,12 @@ The hierarchy is binding (`docs/corner-pocket-operations.md`). Every tab shares 
 
 ### Open
 
-- **OPEN:** shot clock scope. The UI clock is device-local (the Floor says "local timer, not shared"). `main` added a server-authoritative shared clock module (`annotator/shot_clock.py`, tested), but no route or UI uses it yet, so for staff the clock is still per device.
+- **OPEN (TV board only):** the shot clock on the TV board. The clock itself is shipped and
+  no longer per device: `annotator/shot_clock.py` is routed (`GET`/`POST /api/clock`, `GET /api/clock/stream`) and `ops.html` loads `annotator/clock-sync.js`, so every browser shows the same deadline (offset measured against the server; a fallback poll when the stream is down, with the last known value labelled as such). `/api/board` carries no clock, which `annotator/board.js` records as a deliberate seam.
 - **OPEN:** correcting a signed result. Completed results cannot change, and the correction/undo policy (roadmap: *result undo trail*, P1) is not designed.
 - **OPEN:** real time. 28.0 fps end to end has been measured with the trained net, against a 30 fps bar; the re-measurement is not final.
 - **OPEN:** live broadcast. Whether and when a real live path returns is undecided; until then, Twitch VOD replay is the live input.
-- **OPEN:** retiring `/app.html` after native Vision integration is verified.
+- **OPEN:** deleting `annotator/app.html` itself. Its route is already retired (`/app.html` and `/ops.html` answer `308` to `/`); the file is still the template behind `GET /api/review-template` that the embedded Vision workbench mounts.
 
 ## Brand Commitments
 
