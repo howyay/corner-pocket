@@ -285,7 +285,7 @@ pinned tests) or by an exact grep. The paths are in the worktree.
   used.
 - **D3: a VOD replay's live frames are labelled live on the stage.** `pollLive()` sets the
   frame label to `● live · <liveSourceLabel>` for every source, so a replay reads
-  `● live · VOD replay 1000000011 · rate ×2 · from 30s`, and the chip row freshness and
+  `● live · VOD replay 1000000001 · rate ×2 · from 30s`, and the chip row freshness and
   `#stage-live` say `live`. The panel (item 98) is honest, but the stage chrome is not.
 - **D4: `rosterTitle` has no dictionary entry.** The Regulars roster heading renders the raw key
   `rosterTitle` in both languages (the only one of 100 shell keys that is missing).
