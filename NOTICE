@@ -168,10 +168,17 @@ Use:      imported at run time by src/db.py (the optional Postgres store). It
 ------------
 Fonts:    Zilla Slab, Barlow, DM Mono, Noto Sans SC, Noto Serif SC
 Licence:  SIL Open Font License 1.1 (OFL-1.1)
-Use:      annotator/app.html and annotator/ops.html load them from
-          fonts.googleapis.com at run time. No font file is in this
-          repository. Anyone who self-hosts them must ship each font's OFL.txt
-          with it; OFL fonts cannot be relicensed under CC0.
+Files:    annotator/fonts/*.woff2 (18 subsets, committed to this repository and
+          served by the app itself from /fonts/<name>.woff2). No page loads a
+          font from a CDN at run time, and the app works offline.
+          They are subsets, not the upstream binaries: built by
+          annotator/fonts/build_fonts.py from the OFL sources pinned to
+          google/fonts 23e54b5. A subset is a modified version, so it stays
+          under OFL-1.1; OFL fonts cannot be relicensed under CC0.
+Texts:    each font's licence ships beside it: annotator/fonts/OFL-Barlow.txt,
+          OFL-DMMono.txt, OFL-NotoSansSC.txt, OFL-NotoSerifSC.txt and
+          OFL-ZillaSlab.txt. Redistributing the woff2 files means shipping
+          those texts too.
 
 
 9. Other Python packages
