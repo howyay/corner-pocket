@@ -89,11 +89,28 @@ was **shared and busy** (`loadavg` in the table); the last envelope section of
 | `encode` p50 / p95 / max ms | 1.88 / 2.84 / 6.35 | 1.95 / 7.22 / 13.32 |
 | `receive_to_result` p50 / p95 / max ms | 25.71 / 43.89 / 683.97 | 49.56 / 103.55 / 266.57 |
 
+**What the invariant and the pacing rows do not say.** The frames are a recording that was
+already days old when it was played back: the VOD above was created `2026-09-19` and
+replayed on `2026-09-24`. Only the pacing is wall-clock. Nothing in this table is evidence
+that a *live* broadcast can be received - that path still answers `404` (§1) - and every
+surface of the module says so: `state()` returns `kind: 'vod-replay'`, `live: False`, and
+the UI label is `TWITCH VOD · RECORDED VIDEO`. Three conditions bound the result, all
+outside this repository's control: the channel must still list an archived VOD
+(`channel_recent_vods` asks Twitch for `type: ARCHIVE`); Twitch must still issue a playback
+token for that VOD (a deleted, expired or subscriber-only VOD ends here); and the media
+playlist must still be an `EVENT`/`VOD` playlist on the pinned CloudFront host. When any of
+them fails the capture reports the failure and counts `read_failures`; it never invents
+frames. And "1x" is about the source, not the output: both runs are 185 s on one shared,
+busy host (1-min `loadavg` 35.5 and 37.0), where the published rate was 19.95 fps (VOD) and
+3.62 fps (file).
+
 Reading of these numbers, honestly stated:
 
 - **The 1x requirement is met**: 185.3 s of video in 185.4 s of wall clock, drift -0.09 s
   (VOD) and -0.01 s (file), worst excursion 0.24 s / 1.76 s. A consumer cannot tell the
-  difference between this and a live feed at frame rate, and the source says what it is.
+  difference **in pacing** between this and a live feed, and the source says which one it
+  is; in content it can, because the picture is a recording (see the paragraph above the
+  table).
   (The vod run starts at 0 s, so its `video_s` *is* the consumed amount; the file run starts
   at 267 s, and `video_consumed_s = video_s - start_s` is reported separately. The first
   artifact was written before that field existed, hence its `video_per_wall` reads from

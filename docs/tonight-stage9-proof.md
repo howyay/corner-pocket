@@ -128,12 +128,12 @@ Per-shot facts recorded in `out/tonight/shots-results.json` (68 checks):
 .venv/bin/python tests/_b7_tonight_fixture.py            # 127.0.0.1:8251
 
 # measures (browser work serialised host-wide)
-flock /tmp/pool-browser.lock systemd-run --user --collect --wait --pipe --quiet \
+flock "$TMPDIR"/pool-browser.lock systemd-run --user --collect --wait --pipe --quiet \
   --working-directory=$PWD -p MemoryMax=8G -- \
   node /tmp/b9/measure.js http://127.0.0.1:8251 $PWD/out/tonight/after
 
 # screenshots
-flock /tmp/pool-browser.lock systemd-run --user --collect --wait --pipe --quiet \
+flock "$TMPDIR"/pool-browser.lock systemd-run --user --collect --wait --pipe --quiet \
   --working-directory=$PWD -p MemoryMax=8G -- \
   node /tmp/b9/shots.js http://127.0.0.1:8251 $PWD/out/tonight
 
@@ -143,6 +143,6 @@ node /tmp/b9/inventory.js
 # suites
 node --test tests/test_ops.js
 node tests/test_app_timeline.js
-flock /tmp/pool-suite.lock systemd-run --user --collect --wait --pipe --quiet \
+flock "$TMPDIR"/pool-suite.lock systemd-run --user --collect --wait --pipe --quiet \
   --working-directory=$PWD -p MemoryMax=8G -- env PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -q
 ```

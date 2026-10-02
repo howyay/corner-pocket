@@ -73,7 +73,7 @@ changes real state:
 
 ```sh
 # the operations app with an empty club; its state is deleted on exit
-PYTHONPATH=. .venv/bin/python tests/serve_operations_fixture.py   # :8132
+PYTHONPATH=. .venv/bin/python tests/serve_operations_fixture.py   # :8150
 # the review workbench on a copy of your own review data: it needs video in
 # data/ and scan output in out/, which a fresh clone does not have
 PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py    # :8131

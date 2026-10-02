@@ -202,7 +202,7 @@ node --test tests/test_ops.js && node tests/test_app_timeline.js
 
 # browser fixtures (copied data, never production labels)
 PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py     # :8131, real VOD + review data
-PYTHONPATH=. .venv/bin/python tests/serve_operations_fixture.py    # :8132, empty club
+PYTHONPATH=. .venv/bin/python tests/serve_operations_fixture.py    # :8150, empty club
 
 # the detector
 PYTHONPATH=. .venv/bin/python -m src.tiny_ball_net report --size 960x540 --overlay-count 20
