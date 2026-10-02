@@ -6,8 +6,12 @@ not populated here; use serve_workbench_fixture.py for media/review integration.
 --public-port adds the read-only public board on its own listener, in this process,
 exactly as annotator/unified_server.py serves it (docs/public-board.md), so a load
 test drives both surfaces of one fixture without touching the console's routes.
+--state seeds the operations document from a JSON file written in the server's own
+schema (tests/console_fixture_state.json; docs/console-shots.md), so a screenshot or
+a UI check starts from a realistic club instead of an empty one.
 """
 import argparse
+import json
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 import sys
@@ -30,10 +34,23 @@ def main():
                         help='also serve the read-only public board on this loopback port (docs/public-board.md)')
     parser.add_argument('--public-prefix', type=board_prefix, default='', metavar='PATH',
                         help='mount the public board under this path, e.g. /board (default: the root)')
+    parser.add_argument('--state', metavar='FILE',
+                        help='seed the operations document from this JSON file before serving')
     args = parser.parse_args()
     with TemporaryDirectory(prefix='corner-pocket-browser-') as folder:
         root = Path(folder)
         (root / 'annotator').symlink_to(ROOT / 'annotator', target_is_directory=True)
+        if args.state:
+            # The JsonStore reads <root>/out/corner-pocket/state.json (src/store.py, JsonStore ->
+            # annotator/operations.py Operations.path). Written before the store is opened so the
+            # first GET already answers with the seeded club. Not validated here: Operations._load
+            # reads it, and a malformed document fails loudly on the first request.
+            document = json.loads(Path(args.state).read_text())
+            destination = root / 'out' / 'corner-pocket' / 'state.json'
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(json.dumps(document, indent=2, allow_nan=False) + '\n')
+            print(f'Seeded operations state: {Path(args.state).resolve()} ({len(document.get("players", []))} players, '
+                  f'revision {document.get("revision")})', flush=True)
         backend = Backend(root)
         server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(backend))
         public = None
