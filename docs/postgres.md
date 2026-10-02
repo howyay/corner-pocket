@@ -6,7 +6,7 @@ nothing in `annotator/` uses the database yet.  The schema and the cutover are d
 
 | | |
 |---|---|
-| container | `pool-postgres` (rootless podman, user `operator`) |
+| container | `pool-postgres` (rootless podman, user `$USER`) |
 | unit | `pool-postgres.service` (systemd **--user**), generated from the quadlet `~/.config/containers/systemd/pool-postgres.container` |
 | image | `docker.io/library/postgres:17.11-bookworm` pinned by digest `sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652` (manifest list; linux/amd64 manifest `sha256:91eb910c44c7ed13f7f1a4ccadaa9ca72ef14cddc04cacb6e070e48eb44731a3`) — PostgreSQL 17.11 |
 | address | `127.0.0.1:5434` only (5432 is the host's system PostgreSQL 15, 5433 is kaneo's container) |
@@ -32,7 +32,7 @@ Authentication: the image's `initdb` writes `trust` for TCP from `127.0.0.1`/`::
 the container*.  Those `host` lines were changed to `scram-sha-256` after initialisation
 (`pg_hba.conf` lives in the data directory, so the change persists), so every TCP
 connection needs the password; only the container's own Unix socket stays `trust`, and
-that is reachable only through `podman exec` as `operator`.  Check with
+that is reachable only through `podman exec` as that account.  Check with
 `podman exec pool-postgres psql -U pool -d pool -c 'TABLE pg_hba_file_rules'`.  A cluster
 re-initialised on an empty directory needs the same edit:
 `podman exec -u postgres pool-postgres sed -i -E '/^host[[:space:]]/ s/trust$/scram-sha-256/' /var/lib/postgresql/data/pg_hba.conf`
@@ -57,7 +57,7 @@ podman exec -it pool-postgres psql -U pool -d pool     # admin shell (socket, no
 
 A quadlet unit is *generated*: `systemctl --user enable` does not apply.  The
 `[Install] WantedBy=default.target` section makes the generator link it into
-`default.target.wants` on every `daemon-reload`, and lingering is on for `operator`, so it
+`default.target.wants` on every `daemon-reload`, and lingering is on for that account, so it
 starts at boot without a login.  After editing the `.container` file:
 `systemctl --user daemon-reload && systemctl --user restart pool-postgres`.
 
