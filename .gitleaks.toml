@@ -1,0 +1,38 @@
+# The scanner hits this repository produces are false positives, first listed as C-2 in the
+# private pre-publish audit. Every entry says why the value is public and is scoped to the
+# file it lives in, so a real secret in the same path still fails the scan.
+#
+#   gitleaks git --config .gitleaks.toml --redact
+#
+# The same config runs on every push (.github/workflows/secret-scan.yml).
+title = "corner-pocket"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Twitch's public identifiers: the persisted-query SHA-256 for PlaybackAccessToken, and the web-player client id. Both are commented as such where they are defined, and tests/test_twitch_source.py pins their shape."
+paths = ['''annotator/twitch_source\.py$''', '''tests/test_twitch_source\.py$''']
+regexTarget = "match"
+regexes = [
+  '''ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9''',
+  '''kimne78kx3ncx6brgo4mv6wki5h1ko''',
+]
+
+[[allowlists]]
+description = "Dummy credentials inside URL fixtures: the tests assert these URLs are refused before any socket is opened."
+paths = ['''tests/test_twitch_source\.py$''', '''tests/test_twitch_vod_source\.py$''']
+regexTarget = "match"
+regexes = ['''user:(pass|secret)@''']
+
+[[allowlists]]
+description = "The podman secret's name, never its value (docs/postgres.md)."
+paths = ['''docs/postgres\.md$''']
+regexTarget = "match"
+regexes = ['''pool-postgres-password''']
+
+[[allowlists]]
+description = "A ball sequence in a worked example that matches the entropy heuristic."
+paths = ['''docs/state\.md$''']
+regexTarget = "match"
+regexes = ['''BBBB''']

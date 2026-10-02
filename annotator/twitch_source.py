@@ -23,7 +23,7 @@ class TwitchSourceError(RuntimeError):
 _TIMEOUT = 5
 _MAX_BYTES = 1024 * 1024
 _CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'  # Public web player ID, not a credential.
-_TOKEN_HASH = '77777777777777777777777777777777'
+_TOKEN_HASH = 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9'  # Public persisted-query hash, not a credential.
 
 
 class _NoRedirect(HTTPRedirectHandler):

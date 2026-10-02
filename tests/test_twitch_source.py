@@ -156,5 +156,30 @@ class PlaylistLagTests(unittest.TestCase):
             source.playlist_text('https://evil.example/playlist.m3u8')
 
 
+class PublicTwitchIdentifiersTests(unittest.TestCase):
+    """The two constants a secret scanner flags are public Twitch values, not credentials.
+
+    `_TOKEN_HASH` is Twitch's persisted-query SHA-256 for `PlaybackAccessToken` and
+    `_CLIENT_ID` is the public web-player client id; both say so where they are defined and
+    both are allowlisted in `.gitleaks.toml`. They still have to be the *real* values: a hash
+    of the wrong length makes every `PlaybackAccessToken` call fail, so the shape is pinned
+    here (one redaction pass truncated the hash to 32 placeholder characters).
+    """
+
+    def test_the_persisted_query_hash_is_the_real_64_hex_digest(self):
+        self.assertEqual(source._TOKEN_HASH, 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9')
+        self.assertRegex(source._TOKEN_HASH, r'^[0-9a-f]{64}$')
+
+    def test_the_client_id_is_the_public_web_player_id(self):
+        self.assertEqual(source._CLIENT_ID, 'kimne78kx3ncx6brgo4mv6wki5h1ko')
+        self.assertRegex(source._CLIENT_ID, r'^[a-z0-9]{30}$')
+
+    def test_the_gql_request_sends_that_hash(self):
+        with patch.object(source, '_request', side_effect=[TOKEN, MASTER, PLAYLIST]) as request:
+            source.resolve_twitch(CHANNEL)
+        self.assertEqual(request.call_args_list[0].args[1]['extensions']['persistedQuery']['sha256Hash'],
+                         source._TOKEN_HASH)
+
+
 if __name__ == '__main__':
     unittest.main()
