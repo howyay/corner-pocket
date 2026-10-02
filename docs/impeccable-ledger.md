@@ -131,6 +131,25 @@ status word. Full cards render exactly as before. After: at 1280 **15 of 15** on
 Test added (`test_ops.js`: dot, name, header and controls present, toggle, full cards unchanged, CSS
 contract, EN/中 keys). Evidence `out/impeccable/ledger/r9/` (`density.tsv`, full/compact shots).
 
+**R9 correction — "or tap" above was not true on a touch screen** (`3146258`). `:hover` never fires on a
+finger, `.selected` belongs to the queue, and `tabindex=0` needs a hardware keyboard, so on a phone the
+header row, the badge, *Not here / Here now*, *Forfeit* and *Send to table* were unreachable; measured
+with a real `MouseEvent` press on the card body, `.card-head` stayed `display:none`. Every compact card
+now carries its own expand control (`data-action="card-toggle"`, `aria-expanded`, `Show the full card` /
+`展开完整卡片` ↔ `Hide the details` / `收起详情`) that toggles `.open` **in place — no `render()`**, so the
+scroll position, the focus and a half-typed score survive the press; full cards do not render it.
+Re-measured on the real `ops.js` in headless Chromium at the bracket route, 16 entrants / 15 matches,
+bracket scrolled to the top of the screen (`/tmp/b9/cdp_b9.js`, CDP device metrics — `--window-size=390`
+is a lie, Chromium floors the window at 500 px): compact at 1920×1080 **15 of 15** fully visible, card
+**58 px**, bracket **571 px** (0.53 screens); the same night in full cards **9 of 15**, card 98 px,
+bracket 1,567 px (1.45 screens). At 390×844: compact **15 of 15**, bracket 571 px (0.68 screens); full
+**9 of 15**, bracket 2,038 px (2.41 screens) — the pre-R9 `matchesScreen()` fixture reproduces the full
+numbers exactly, so the full density is a faithful copy of the old card. Pressing the control: card
+58 → 89 px and `.card-head` `none → flex` (100 px at 390), `aria-expanded` `true → false` on the second
+press, keyboard focus still opens it. Residual, stated: at 390 the rounds row is still 720 px wide inside
+a 390 px viewport, so rounds 2–4 are reached by scrolling sideways; the request's "fitted to the viewport
+width" is met down to 180 px a round, not at 390.
+
 **Main's new surfaces under the polish (director's step 5, after merges `b761265`, `882ffe1`, `baa7f8a`).**
 Measured on a throwaway `:8142` driven into each state (an archived night with a bye and a signed match,
 a doubles night with a drawn random pairing): standings and event table, results sheet (live and
