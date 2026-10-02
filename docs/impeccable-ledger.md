@@ -147,7 +147,7 @@ an exact-string swap, so audit P2 #1 ("21 inline style=") is closed except the o
 event table only exists while a night has signed results (both checked in their states).
 
 **Clarify: the Night log / 赛事日志 prints names, not hex ids** (found in the ship13 production shot,
-Matches 中 1280: `移除参赛者 · a51461c2c94649988a2995e9b27c69a8 · v5`). `auditLine()` printed
+Matches 中 1280: `移除参赛者 · a1111111c94649988a2995e9b27c69ff · v5`). `auditLine()` printed
 `context.name || context.id`. What the server's audit context records, measured by calling
 `Operations._event_context` for every action on a state that has one of everything
 (`ledger/clarify/audit-context-probe.txt`):

@@ -447,7 +447,7 @@ test('narrow: record totals are 2x2 in a narrow modal, one row when wide; wide t
 });
 test('clarify: the night log names entrants and sources instead of printing hex ids', () => {
   const h = harness();
-  const present = 'a51461c2c94649988a2995e9b27c69a8', removed = 'b0000000c94649988a2995e9b27c69ff', source = '77777777777777777777777777777777';
+  const present = 'a1111111c94649988a2995e9b27c69ff', removed = 'b0000000c94649988a2995e9b27c69ff', source = '77777777777777777777777777777777';
   h.evaluate(`data.players=[{id:'p1',name:'王磊',rating:60,status:'Active'}];
     data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'registration',
       entrants:[{id:'${present}',members:[{pid:'p1',name:'王磊'}]}],matches:[]};
