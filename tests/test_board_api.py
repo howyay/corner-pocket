@@ -298,13 +298,30 @@ class EndpointTest(unittest.TestCase):
             self.assertEqual(reads.call_count, 2)
 
     def test_board_off_is_all_it_says(self):
-        post(self.ops, "settings_update", clothColor="#1d5c44")  # the switch lands in commit 5; set it by hand here
-        state = json.loads(self.ops.path.read_text())
-        state["settings"]["publicBoard"] = False
-        self.ops.path.write_text(json.dumps(state))
+        post(self.ops, "settings_update", publicBoard=False)
         self.fresh()
         response, body = self.public.get("/api/board")
         self.assertEqual((response.status, body), (200, b'{"board":"off"}'))
+
+    def test_only_the_operator_post_turns_the_board_off_and_no_get_writes(self):
+        before = tree(self.root)
+        for _ in range(3):
+            self.fresh()
+            response, body = self.public.get("/api/board")
+            self.assertEqual(response.status, 200)
+            self.assertIn(b'"board":"on"', body)  # the default, and no switch was thrown
+        self.assertEqual(tree(self.root), before)
+        post(self.ops, "settings_update", publicBoard=False)  # the one path that can write it
+        switched = tree(self.root)
+        self.assertNotEqual(switched, before)
+        for port in (self.public, self.operator):
+            self.fresh()
+            self.assertEqual(port.get("/api/board")[1], b'{"board":"off"}')
+            self.assertEqual(port.get("/api/board?publicBoard=on")[1], b'{"board":"off"}')
+        self.assertEqual(tree(self.root), switched)
+        post(self.ops, "settings_update", publicBoard=True)
+        self.fresh()
+        self.assertIn(b'"board":"on"', self.public.get("/api/board")[1])
 
     def test_a_store_failure_says_nothing_about_it(self):
         with unittest.mock.patch.object(self.backend, "operations", side_effect=RuntimeError("/home/secret dsn=x")), \
@@ -327,6 +344,19 @@ class JsonStoreByteIdentityTest(unittest.TestCase):
                 for _ in range(5):
                     backend._board_cache = None
                     backend.public_board()
+            self.assertEqual((ops.path.read_bytes(), ops.path.stat().st_mtime_ns), before)
+
+    def test_state_json_is_byte_identical_after_board_reads_with_the_board_off(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, ops = rich_root(temp)
+            post(ops, "settings_update", publicBoard=False)
+            before = ops.path.read_bytes(), ops.path.stat().st_mtime_ns
+            backend = Backend(root)
+            with unittest.mock.patch.dict(os.environ):
+                os.environ.pop("POOL_DATABASE_URL", None)
+                for _ in range(5):
+                    backend._board_cache = None
+                    self.assertEqual(backend.public_board()[1], b'{"board":"off"}')
             self.assertEqual((ops.path.read_bytes(), ops.path.stat().st_mtime_ns), before)
 
 
@@ -357,6 +387,40 @@ class PostgresBoardTest(unittest.TestCase):
                                               "FROM json_documents t").fetchone()
                     body = json.loads(backend.public_board()[1])
                     self.assertEqual(body["tables"], json.loads(public_board.encode(board_of(ops.get()))[1])["tables"])
+                    with db.connect() as conn:
+                        conn.execute(f"SET search_path TO {schema}")
+                        after = conn.execute("SELECT md5(string_agg(t::text, '' ORDER BY t::text)) "
+                                             "FROM json_documents t").fetchone()
+                    self.assertEqual(before, after)
+                finally:
+                    store.close()
+            finally:
+                with db.connect() as conn:
+                    conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+
+    def test_the_switch_reads_off_through_a_postgres_store_and_writes_nothing(self):
+        from src.store_pg import PostgresStore
+        with tempfile.TemporaryDirectory() as temp:
+            root, ops = rich_root(temp)
+            post(ops, "settings_update", publicBoard=False)
+            schema = f"test_board_{uuid.uuid4().hex[:12]}"
+            with db.connect() as conn:
+                conn.execute(f"CREATE SCHEMA {schema}")
+                conn.execute(f"SET search_path TO {schema}")
+                db.migrate(conn)
+            try:
+                store = PostgresStore(root, search_path=schema)
+                try:
+                    from src.store_files import put_document
+                    with store._write() as conn:
+                        put_document(conn, "out/corner-pocket/state.json", ops.path.read_text())
+                    backend = Backend(root)
+                    backend._store = store
+                    with db.connect() as conn:
+                        conn.execute(f"SET search_path TO {schema}")
+                        before = conn.execute("SELECT md5(string_agg(t::text, '' ORDER BY t::text)) "
+                                              "FROM json_documents t").fetchone()
+                    self.assertEqual(backend.public_board()[1], b'{"board":"off"}')
                     with db.connect() as conn:
                         conn.execute(f"SET search_path TO {schema}")
                         after = conn.execute("SELECT md5(string_agg(t::text, '' ORDER BY t::text)) "

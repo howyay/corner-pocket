@@ -240,14 +240,16 @@ test('start(): the language toggle is the one control, and the address keeps it'
   assert.deepEqual(Object.keys(page.listeners).sort(), ['document:visibilitychange', 'lang:click']);
 });
 
-test('start(): board off shows only the notice', async () => {
-  const page = fakePage({search: '?lang=zh', responses: [{status: 200, body: {board: 'off'}}]});
-  board.start(page.win);
-  await settle();
-  await settle();
-  assert.equal(page.elements.off.hidden, false);
-  assert.equal(page.elements.board.hidden, true);
-  assert.equal(page.elements['off-text'].textContent, '今晚记分板已关闭');
+test('start(): board off shows only the notice, in the language the page is in', async () => {
+  for (const [lang, notice] of [['en', 'The board is off tonight'], ['zh', '今晚记分板已关闭']]) {
+    const page = fakePage({search: `?lang=${lang}`, responses: [{status: 200, body: {board: 'off'}}]});
+    board.start(page.win);
+    await settle();
+    await settle();
+    assert.equal(page.elements.off.hidden, false, lang);
+    assert.equal(page.elements.board.hidden, true, lang);
+    assert.equal(page.elements['off-text'].textContent, notice, lang);
+  }
 });
 
 test('start(): the poll follows the mount the page was served from', async () => {
