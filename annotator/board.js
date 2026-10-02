@@ -28,6 +28,7 @@
       connecting: 'Connecting…', updatedNow: 'Updated just now', updatedS: 'Updated {n} s ago',
       updatedM: 'Updated {n} min ago', reconnecting: 'Reconnecting — showing the last known board',
       reconnectingEmpty: 'Reconnecting…', off: 'The board is off tonight',
+      source: 'Source code · AGPL-3.0',
     },
     zh: {
       tonight: '今晚', tables: '台上比赛', next: '即将上台', bracket: '对阵图', standings: '今晚战绩',
@@ -42,6 +43,7 @@
       connecting: '正在连接…', updatedNow: '刚刚更新', updatedS: '{n} 秒前更新', updatedM: '{n} 分钟前更新',
       reconnecting: '正在重新连接 — 显示的是最后一次收到的记分板', reconnectingEmpty: '正在重新连接…',
       off: '今晚记分板已关闭',
+      source: '源码 · AGPL-3.0',
     },
   };
 
@@ -206,7 +208,8 @@
     const html = (id, value) => { if (shown[id] !== value) $(id).innerHTML = shown[id] = value; };
     const text = (id, value) => { if ($(id).textContent !== value) $(id).textContent = value; };
     const labels = [['tables-title', 'tables'], ['next-title', 'next'], ['bracket-title', 'bracket'],
-      ['standings-title', 'standings'], ['h-won', 'won'], ['h-lost', 'lost'], ['h-played', 'played'], ['off-text', 'off']];
+      ['standings-title', 'standings'], ['h-won', 'won'], ['h-lost', 'lost'], ['h-played', 'played'], ['off-text', 'off'],
+      ['source-link', 'source']];
 
     function paint() {
       const state = poller.state, board = state.board, now = clock(), fresh = freshness(state, now, lang);

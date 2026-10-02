@@ -267,7 +267,12 @@ test('start(): the poll follows the mount the page was served from', async () =>
 
 test('one file, both mounts: every reference stays inside the mount', () => {
   const html = fs.readFileSync(path.join(__dirname, '../annotator/board.html'), 'utf8');
-  const refs = [...html.matchAll(/(?:href|src)="([^"]+)"/g)].map(m => m[1]);
+  // Assets the page loads (script, stylesheet, icons) must resolve inside the mount, so one
+  // file works at "/", "/board/" and "/display". The one href a person can follow is the
+  // AGPL-3.0 section 13 offer, and it must be exactly that one, by name.
+  const links = [...html.matchAll(/<a\b[^>]*href="([^"]+)"/gi)].map(m => m[1]);
+  assert.deepEqual(links, ['https://github.com/howyay/corner-pocket']);
+  const refs = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:href|src)="([^"]+)"/gi)].map(m => m[1]);
   assert.ok(refs.length >= 4, `expected the page to reference its assets, got ${refs.length}`);
   for (const ref of refs) {
     assert.ok(!ref.startsWith('/') && !/^[a-z]+:/i.test(ref),

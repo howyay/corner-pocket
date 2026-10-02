@@ -96,6 +96,11 @@ tbody tr.empty td{text-align:left;color:var(--ink-dim)}
 
 .off{flex:1;display:grid;place-items:center;padding:48px 16px;text-align:center;font-size:2rem;font-weight:700;color:var(--ink-mid)}
 
+/* AGPL-3.0 section 13: whoever uses this page over a network is offered the source of the
+   program that serves it. The label is translated with the rest of the page (board.js). */
+.source{flex:0 0 auto;text-align:center;font-size:.72rem;color:var(--ink-dim)}
+.source a{color:inherit;text-decoration:underline;text-underline-offset:.15em}
+
 /* The TV. rem follows the viewport's smaller side (24 px at 1080p, 16 px at 720p), so
    everything above scales with the screen; the rules below only rearrange and enlarge. */
 @media (min-width:1000px) and (orientation:landscape){

@@ -21,8 +21,8 @@ import threading
 import time
 import unittest
 
-from annotator.unified_server import (BOARD_CSP, BOARD_FONTS, Backend, BoundedHTTPServer, PublicBoardServer,
-                                      board_prefix, make_handler, make_public_handler)
+from annotator.unified_server import (BOARD_CSP, BOARD_FILES, BOARD_FONTS, Backend, BoundedHTTPServer,
+                                      PublicBoardServer, board_prefix, make_handler, make_public_handler)
 
 ROOT = Path(__file__).resolve().parents[1]
 #: Contents of files the public listener must never hand out.
@@ -524,6 +524,28 @@ class BoardPrefixTest(unittest.TestCase):
                 with self.subTest(value=value):
                     with self.assertRaises(ValueError):
                         make_public_handler(backend, value)
+
+
+class TheBoardOffersItsSource(unittest.TestCase):
+    """AGPL-3.0 section 13, for the one listener that has no account in front of it.
+
+    The board is a network service anyone can reach, and the program serving it embeds an
+    AGPL-3.0 component (ultralytics; see NOTICE), so the page it answers with has to offer
+    that program's source. The offer is the footer link; these tests pin it to the file the
+    public listener actually serves (`BOARD_FILES["/"]` -> `annotator/board.html`), in both
+    languages, so a future edit cannot quietly drop it.
+    """
+
+    def test_the_page_the_public_listener_serves_offers_the_source(self):
+        page = (ROOT / "annotator" / BOARD_FILES["/"]).read_text(encoding="utf-8")
+        self.assertIn('id="source-link"', page)
+        self.assertIn('href="https://github.com/howyay/corner-pocket"', page)
+
+    def test_the_offer_is_translated_and_styled(self):
+        script = (ROOT / "annotator" / "board.js").read_text(encoding="utf-8")
+        self.assertIn("['source-link', 'source']", script)
+        self.assertEqual(script.count("source: '"), 2, "English and 中文 both name the source")
+        self.assertIn(".source a", (ROOT / "annotator" / "board.css").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
