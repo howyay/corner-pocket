@@ -24,9 +24,9 @@ It is a GC root, so the collector keeps the build. Proof (no real GC is run):
 
 ```
 $ nix-store -q --roots ~/.local/state/pool/ffmpeg-bin
-/home/operator/.local/state/pool/ffmpeg-bin -> /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin
+~/.local/state/pool/ffmpeg-bin -> /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin
 $ nix-store --gc --print-roots | grep ffmpeg-bin
-"/home/operator/.local/state/pool/ffmpeg-bin" -> /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin
+"~/.local/state/pool/ffmpeg-bin" -> /nix/store/cjsxh3v95ki1mwcccya9zhfdc837703c-ffmpeg-headless-9.0-bin
 ```
 
 Method: a user-level GC root (the dotfiles' NixOS config is not touched; if the user

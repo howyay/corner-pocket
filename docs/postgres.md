@@ -66,7 +66,7 @@ them with `podman unshare ls -ln $POOL_PG_ROOT/pool-postgres/data`.
 ## Using it from Python
 
 ```sh
-cd /home/operator/projects/pool
+cd ~/projects/pool
 set -a; . ~/.config/pool/postgres.env; set +a
 PYTHONPATH=. .venv/bin/python -m src.db       # apply pending migrations, list the ledger
 PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p test_db.py -v
@@ -192,7 +192,7 @@ installed (the timers need nothing).  Install and enable them — at cutover, no
 
 ```sh
 # the values for THIS host - set them explicitly, then render
-REPO_DIR=/home/operator/projects/pool
+REPO_DIR=~/projects/pool
 BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups           # exists, mode 700
 PODMAN=/run/current-system/sw/bin/podman                 # `command -v podman`
 U=~/.config/systemd/user
@@ -273,7 +273,7 @@ are green, the owner has said go, and no operator is mid-night.  All commands ru
 the repository; `$ts` names this cutover's artifacts.
 
 ```sh
-cd /home/operator/projects/pool
+cd ~/projects/pool
 ts=$(date +%Y%m%d-%H%M%S); B=$POOL_PG_ROOT/pool-postgres/backups
 set -a; . ~/.config/pool/postgres.env; set +a
 ```
@@ -358,7 +358,7 @@ After=pool-postgres.service
 EnvironmentFile=%h/.config/pool/postgres.env
 EOF
 # the backup units: render the templates with this host's values ("Scheduled backups")
-REPO_DIR=/home/operator/projects/pool
+REPO_DIR=~/projects/pool
 BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups
 PODMAN=/run/current-system/sw/bin/podman
 U=~/.config/systemd/user
@@ -428,7 +428,7 @@ echoed:
 
 ```sh
 umask 077
-new=$(/home/operator/projects/pool/.venv/bin/python -c 'import secrets; print(secrets.token_hex(24))')
+new=$(~/projects/pool/.venv/bin/python -c 'import secrets; print(secrets.token_hex(24))')
 printf "ALTER ROLE pool PASSWORD '%s';\n" "$new" | podman exec -i pool-postgres psql -q -U pool -d pool
 printf 'POOL_DATABASE_URL=postgresql://pool:%s@127.0.0.1:5434/pool\n' "$new" > ~/.config/pool/postgres.env
 printf '%s' "$new" | podman secret create --replace pool-postgres-password -
@@ -451,7 +451,7 @@ content):
 ```ini
 # Corner Pocket PostgreSQL - rootless podman quadlet.
 # The generator turns this file into the user unit pool-postgres.service.
-# Runbook: /home/operator/projects/pool/docs/postgres.md
+# Runbook: ~/projects/pool/docs/postgres.md
 [Unit]
 Description=Corner Pocket PostgreSQL (podman, loopback 127.0.0.1:5434)
 Wants=network-online.target

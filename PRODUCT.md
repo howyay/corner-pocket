@@ -57,7 +57,7 @@ Corner Pocket is not an auto-referee and must never read as one. The Back room s
   - By owner decision, the live input is a Twitch VOD of `examplechannel` replayed in real time, because the live broadcast path is blocked externally (`docs/twitch-vod-as-live.md`).
 - **Compute.** A ROCm GPU on the club machine runs the tiny ball net. SAM3 is an offline labeller (the detector's teacher) and is not in the runtime path.
 - **The night.** Set up → Registration desk → *Rack the night* (single elimination, automatic byes, the draw seeded in sign-up order, entrants and rules locked) → send to table → score and clock → *Sign scorecard* → winners advance → *Archive & new event*.
-- **Production vs polish.** `/home/operator/projects/pool/` is the live checkout. Production serves its `annotator/`, and its `out/` and `data/` hold the real state and footage. Polish work never edits it.
+- **Production vs polish.** `~/projects/pool/` is the live checkout. Production serves its `annotator/`, and its `out/` and `data/` hold the real state and footage. Polish work never edits it.
   - Work happens in the `impeccable-polish` worktree and is checked against two fixture servers: `tests/serve_workbench_fixture.py` (:8131; the real VOD plus copied review data) and `tests/serve_operations_fixture.py` (:8132; an empty club).
   - The test suites are `PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'`, `node --test tests/test_ops.js` and `node tests/test_app_timeline.js`.
 
@@ -144,7 +144,7 @@ The hierarchy is binding (`docs/corner-pocket-operations.md`). Every tab shares 
   - An empty list says why it is empty.
   - Absent data reads *Not measured* / *尚未采集*.
 - **Bilingual.** Every string ships in English and Simplified Chinese.
-- **Visual reference.** The owner supplied `Corner Pocket redesign (1).zip` (its *Corner Pocket Ops* standalone HTML), kept at `/home/operator/projects/pool/design/corner-pocket/` (gitignored; not in this worktree). DESIGN.md records the incumbent visual system; this file does not.
+- **Visual reference.** The owner supplied `Corner Pocket redesign (1).zip` (its *Corner Pocket Ops* standalone HTML), kept at `~/projects/pool/design/corner-pocket/` (gitignored; not in this worktree). DESIGN.md records the incumbent visual system; this file does not.
 
 ## Evidence on Hand
 

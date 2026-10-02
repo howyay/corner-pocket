@@ -5,7 +5,7 @@ what the command inspected, what it decided, and the commit(s) it produced or wh
 Screenshots for a row live in `out/impeccable/ledger/<cmd>/` (untracked; `out/` is gitignored):
 `before-*` from the baseline or the state before the command, `after-*` from the fixture after it.
 
-Worktree `/home/operator/projects/pool-impeccable`, branch `impeccable-polish`. Fixture
+Worktree `~/projects/pool-impeccable`, branch `impeccable-polish`. Fixture
 `http://127.0.0.1:8137/` (systemd user unit `impeccable-fixture-8137`). Every commit keeps the
 three suites at or above the post-merge floor: unittest 944 OK (skipped=13), `test_ops.js`
 35/35, `test_app_timeline.js` 65/0.
