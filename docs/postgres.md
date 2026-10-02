@@ -18,6 +18,8 @@ nothing in `annotator/` uses the database yet.  The schema and the cutover are d
 | driver | `psycopg[binary]==3.3.6` in `.venv` (installed with `uv pip install --python .venv/bin/python`; the venv is uv-managed and has no pip) |
 | code | `src/db.py` (connection + migration runner), `db/migrations/NNNN_name.sql`, `tests/test_db.py` |
 
+`$POOL_PG_ROOT` is the operator's storage root, set per host.
+
 ## Network exposure
 
 The container publishes **only** `127.0.0.1:5434`; nothing listens on another address
