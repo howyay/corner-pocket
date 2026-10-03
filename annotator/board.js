@@ -13,6 +13,10 @@
   else board.start(window);
 }(function () {
   const POLL_MS = 3000, STALE_MS = 15000, TIMEOUT_MS = 8000;
+  // A card older than this stops presenting its number as the length of a match in
+  // progress: two hours on one table is likelier to be a record nobody closed than a
+  // frame still being played, so the card asks for a look instead of counting on.
+  const ATTENTION_MS = 2 * 60 * 60 * 1000;
   const WORDS = {
     en: {
       tonight: 'Tonight', tables: 'On the tables', next: 'Next up', bracket: 'Bracket', standings: 'Tonight’s table',
@@ -24,6 +28,7 @@
       live: 'On table {n}', champion: 'Champion',
       noTables: 'No match on a table right now', noNext: 'Nothing queued', noBracket: 'The draw has not been made yet',
       noStandings: 'No entrants yet',
+      timeOnTable: 'Time on table', checkTable: 'check the table',
       underMinute: 'Just started', minutes: '{n} min', hours: '{h} h {m} min',
       connecting: 'Connecting…', updatedNow: 'Updated just now', updatedS: 'Updated {n} s ago',
       updatedM: 'Updated {n} min ago', reconnecting: 'Reconnecting — showing the last known board',
@@ -39,6 +44,7 @@
       bye: '轮空', tbd: '待定', vs: '对', forfeit: '弃权', ready: '准备上台', held: '等待球员到场',
       live: '{n} 号台', champion: '冠军',
       noTables: '目前没有台上比赛', noNext: '暂无排队的比赛', noBracket: '尚未抽签', noStandings: '暂无报名',
+      timeOnTable: '台上时长', checkTable: '请核对',
       underMinute: '刚开始', minutes: '{n} 分钟', hours: '{h} 小时 {m} 分',
       connecting: '正在连接…', updatedNow: '刚刚更新', updatedS: '{n} 秒前更新', updatedM: '{n} 分钟前更新',
       reconnecting: '正在重新连接 — 显示的是最后一次收到的记分板', reconnectingEmpty: '正在重新连接…',
@@ -82,12 +88,20 @@
     const lead = m.score[0] === m.score[1] ? -1 : m.score[0] > m.score[1] ? 0 : 1;
     const side = i => `<p class="side${lead === i ? ' lead' : ''}"><span class="name">${sideName(m.sides[i], lang)}</span>` +
       `<span class="score">${esc(m.score[i])}</span></p>`;
-    const time = elapsed == null ? '' : `<span class="on-table">${esc(duration(elapsed, lang))}</span>`;
+    /** The number is the match's time on its table (labelled by #tables-note). Past
+        ATTENTION_MS it says so: the card turns amber and carries the words, so the
+        signal survives a greyscale screenshot and a screen reader. data-elapsed is the
+        same number in milliseconds, for a check that needs a finer reading than the
+        printed minutes: the board's own tests age the DOM-free core with a clock. */
+    const late = elapsed != null && elapsed >= ATTENTION_MS;
+    const time = elapsed == null ? '' : `<span class="on-table${late ? ' late' : ''}">${esc(duration(elapsed, lang))}` +
+      `${late ? `<span class="check">${esc(say(lang, 'checkTable'))}</span>` : ''}</span>`;
     // Shot-clock seam. The board shows no shot clock yet, on purpose: the only clock
     // today is ops.js's per-browser one, which nothing shares, so a clock drawn here
     // would be a guess. When the shared shot clock reaches main, /api/board gains a
     // per-table clock field and its face goes here, between the scores and the foot.
-    return `<li class="table-card"><p class="table-no">${esc(say(lang, 'tableN')).replace('{n}', `<b>${esc(m.table)}</b>`)}</p>` +
+    return `<li class="table-card${late ? ' late' : ''}"${elapsed == null ? '' : ` data-elapsed="${Math.round(elapsed)}"`}>` +
+      `<p class="table-no">${esc(say(lang, 'tableN')).replace('{n}', `<b>${esc(m.table)}</b>`)}</p>` +
       `${side(0)}${side(1)}<p class="card-foot"><span>${esc(round)}</span>${time}</p></li>`;
   }
 
@@ -128,6 +142,9 @@
         say(lang, event.phase)].filter(Boolean).join(' · '),
       player: say(lang, event.format === 'doubles' ? 'team' : 'player'),
       tables, tableCount: winner != null ? 1 : board.tables.length,
+      // What a card's number measures, on screen beside it: the board is read from
+      // across a room, so the label sits once above the cards instead of on each one.
+      tablesNote: winner == null && board.tables.length ? say(lang, 'timeOnTable') : '',
       next: board.next.length ? board.next.map(m => nextItem(m, lang, roundName(rounds, m.round, lang))).join('')
         : `<li class="empty">${esc(say(lang, 'noNext'))}</li>`,
       bracket: rounds.length ? rounds.map(r => `<section class="round${r.matches.every(m => m.status === 'complete') ? ' done' : ''}">` +
@@ -188,12 +205,15 @@
   }
 
   /** A live match's time on its table, by the server's clock: the server said how long
-      at served_at, and this device's clock only adds the time since that answer. */
+      at served_at, and this device's clock only adds the time since that answer. Once
+      the board itself is stale that addition is a guess, so the number stops at the last
+      answer the server confirmed instead of counting on without it. */
   function elapsedOf(state, now) {
     const served = Date.parse(state.board && state.board.served_at);
+    const confirmed = state.lastSuccess != null && now - state.lastSuccess >= STALE_MS ? state.lastSuccess : now;
     return m => {
       const since = Date.parse(m.since);
-      return Number.isFinite(served) && Number.isFinite(since) ? served - since + (now - state.receivedAt) : null;
+      return Number.isFinite(served) && Number.isFinite(since) ? served - since + (confirmed - state.receivedAt) : null;
     };
   }
 
@@ -238,6 +258,8 @@
       text('h-player', view.player);
       doc.title = `Corner Pocket · ${view.title}`;
       html('tables', view.tables);
+      text('tables-note', view.tablesNote);
+      $('tables-note').hidden = !view.tablesNote;
       html('next', view.next);
       html('bracket', view.bracket);
       html('standings', view.standings);
