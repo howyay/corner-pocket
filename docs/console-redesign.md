@@ -1433,10 +1433,16 @@ whose data disk failed this afternoon. Two shapes are worth the owner's decision
 
 The one thing that must not happen is a timeline row for a night whose numbers nobody computed.
 
-**The ship step still owed**: `pool-workbench.service` runs the pre-item-8 python until it is
-restarted, while the static half (`ops.js`, `ops.css`) is live the moment the merge lands. Until that
-restart the picker asks for a picture the running server does not serve — an empty framed box, not an
-error, and not a lie.
+**The ship step, done.** The static half (`ops.js`, `ops.css`) was live the moment the merge landed,
+which is why the restart could not be skipped: until it happened the picker asked for a picture the
+running server did not serve — an empty framed box, not an error, and not a lie. It happened at
+16:48:50 PDT (`systemctl --user restart pool-workbench.service`, `MainPID 396105`, `NRestarts=0`,
+`:8130` and `:8132` listening again) and was verified against the production port, not the private
+one: `/api/vods/recent` 200 with the three local `thumb` paths, `/api/vods/thumb` 200 `image/jpeg`
+`no-store` 19 742 bytes (`ff d8 ff` … `ff d9`), an unsaved channel 403, `/api/board` 200 and the
+public board 200. The production console was then read with a browser
+(`out/r5-picker/prod-pick-1280-en.png`): **3 pictures, 3 loaded, natural 320×180, drawn 160×90, every
+`src` a path on this server, `scrollWidth == innerWidth == 1280`**.
 
 ### 16.8 Rejected, deferred and already true
 

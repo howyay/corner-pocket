@@ -321,6 +321,16 @@ The HTTP layer under the same run, checked directly:
 | `GET /api/vods/thumb?channel=<not saved>&id=2890514774` | 403 `This VOD belongs to <that channel>. Only saved channels can be analysed; add the channel under Source first.` |
 | `GET /api/vods/thumb?channel=ttpoolfriday&id=<unknown>` | 502 `Twitch has no such video` |
 
+**On production, after the restart.** `pool-workbench.service` was restarted at 16:48:50 PDT
+(`systemctl --user restart pool-workbench.service`, `MainPID 396105`, `NRestarts=0`, `:8130` and
+`:8132` listening again) because the static half was already live and the python half was not: the
+same route, checked against the real port rather than the private one, answered `/api/vods/recent` 200
+with the three local `thumb` paths and `/api/vods/thumb` 200 `image/jpeg` `no-store` 19 742 bytes
+`ff d8 ff … ff d9`, an unsaved channel 403, `/api/board` 200 and the public board 200. The production
+console was then read with the same browser tooling (`AGENT_BROWSER_SESSION=prod8`) and reported **3
+pictures, 3 loaded, natural 320×180, drawn 160×90, `scrollWidth == innerWidth == 1280`** —
+`out/r5-picker/prod-pick-1280-en.png`, shot against the real club state, not a fixture.
+
 Limits, stated plainly: this shot needs the network, so it is not part of the offline fixture run and
 its numbers cannot be reproduced on a box with no route to Twitch; the archive here is three
 broadcasts, so the bound a busier channel would need is argued in `docs/console-redesign.md` §16.7
