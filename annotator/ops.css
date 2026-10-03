@@ -863,3 +863,22 @@ html,body{-webkit-font-smoothing:antialiased}
    template, so both had to move together). The name column is minmax(0,1fr) and gave up
    the 104 px without complaint — it measured 858 px at 1280. */
 #ops-shell .standing-head,#ops-shell .standing{grid-template-columns:2rem minmax(0,1fr) 11rem 3.5rem 4rem 3.5rem}
+
+/* === Round 3, §14.7 (F13): an expanded event's matches are columns --------------------
+   Measured before at 1280 EN dark: every row of .tl-matches was one text run, so the
+   BYE/SIGNED badge started wherever the pairing ended — x = 232.4, 206.1, 299.6, 241.4,
+   311.2, 268.2, 325.1 down one night — and no two rows lined up. Lane r3a's markup gives
+   each row .tl-round / .tl-pair / .tl-score plus the badge; here they become the four
+   columns §14.7 asks for, on the baseline so a 11 px round label and a 26 px chip sit on
+   the same line rather than being centred against each other.
+   The rule is gated on .tl-round existing because this stylesheet also ships against the
+   older single-text-run rows (annotator/ops.js:98 at the base): a bare grid there would
+   drop the badge into a column of its own and make the raggedness worse, not better.
+   The badge column is content-sized as §14.7 prescribes, and the chip carries a min-width
+   so that a short "Bye" and a long "Signed" occupy the same column and the scores line up
+   between them. */
+#ops-shell .tl-matches>li:has(>.tl-round){display:grid;grid-template-columns:4.5rem minmax(0,1fr) auto auto;align-items:baseline;gap:var(--sp-1) var(--sp-2)}
+#ops-shell .tl-matches>li>.tl-round{font:var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .tl-matches>li>.tl-pair{min-width:0}
+#ops-shell .tl-matches>li>.tl-score{font:var(--fs-md) var(--mono);font-variant-numeric:tabular-nums}
+#ops-shell .tl-matches>li>.badge{min-width:5.5rem;text-align:center}
