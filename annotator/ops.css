@@ -260,15 +260,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell nav button small{margin-top:0;font-size:var(--fs-xs);letter-spacing:.12em;color:var(--ink-faint)}
 #ops-shell nav button.active small{color:var(--brass-hi)}
 #ops-shell .kicker{letter-spacing:.18em}
-#ops-shell .score-top [data-action=clock-toggle]{margin-left:auto;min-width:92px;min-height:44px;padding:0 var(--sp-4);border:0;background:var(--brass);color:var(--brass-fg);font-size:var(--fs-md);font-weight:500}
-#ops-shell .score-top [data-action=clock-toggle]:hover{background:var(--brass-hover);border-color:var(--brass)}
-#ops-shell .score-top [data-action=clock-reset]{min-height:44px;padding:0 var(--sp-3);font-size:var(--fs-md)}
-#ops-shell .score-top .row .row{gap:1px;padding:1px;background:var(--line);border-radius:2px}
-#ops-shell .score-top .row .row button{min-width:40px;min-height:34px;padding:0 var(--sp-2);border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
-#ops-shell .score-top .row .row button:hover{background:var(--panel2);border:0}
-#ops-shell .score-top .row .row button.active{background:var(--brass);color:var(--brass-fg)}
 #ops-shell .progress{border:1px solid var(--line)}
-#ops-shell .score-top .progress{max-width:560px}
 #ops-shell .score-top.row{background:transparent}
 #ops-shell .badge{padding:var(--sp-1) var(--sp-2);letter-spacing:.16em}
 #ops-shell .side{gap:clamp(var(--sp-3),2vw,var(--sp-5));padding:clamp(var(--sp-3),2.1vw,var(--sp-5)) clamp(var(--sp-4),2.4vw,var(--sp-5))}
