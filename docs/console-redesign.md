@@ -935,3 +935,126 @@ dataset ──开始标记──▶ marking ⇄ match-draft（逐场：边界 / 
 
 7. **Regulars 行的"点名字"进的是管理视图，不是只读战绩**（§6.1 的实现偏差）：standing 行沿用既有的 `data-action="select-player"`（店主平时改资料的那条路），只读的 `recordView` 由行内 `[个人战绩]` 打开。理由：Regulars 本来就是**管理**名单，把主点击改成只读页会让"改名 / 改评分"多一跳，而只读入口仍在（行内一跳）。`test_ops.js` 里"两跳"的断言（`select-player` → `player-record`）就是这条裁决的固化。
 8. **回填入参的 `pid` 是加法，不是替换**（§7.6）：只写 `{name}` 的一律按访客落库（`pid: null`）；这与第 4 条自洽的前提是**控制台先把名字折成 pid**（`bfPlayerFor`，与 R13 搜索同一个 `fold`），服务端只做校验与拒绝，不做猜测。
+
+
+## 13. Owner round 2 — the bar, the timer, the balls (2026-10-03)
+
+Eight items. The owner's words are the intent; the decision under each is frozen and may not be
+reinterpreted by an implementation lane. This section is the contract for the round-2 work.
+
+| # | The owner's words | The frozen decision |
+|---|---|---|
+| 1 | "when i said table i guess i just meant the shot timer, because that needs to be usable without a match going on too" | The always-available element is the **shot timer**, not the Tables page. It renders and works in every venue state (`idle`, `registration`, `active`, `closed`); no part of it may be gated on `comp()`. The round-1 resident Tables body stays as it is. |
+| 2 | "entirely remove the corner pocket and 8 ball branding in the top. only leave the tabs." | `a.hall` — the 8-ball glyph and the `Corner Pocket` wordmark — is deleted from `annotator/ops.html`. Nothing replaces it. |
+| 3 | "make 1 ball yellow, 2 ball blue, 3 ball red, 4 ball pink, 5 ball orange, 6 ball green, and 7 ball brown." | Colours come from a **palette by ball number**, not the per-tab hex map `navColors`. 8 is black; 9–15 are the same seven hues drawn as stripes. §13.4. |
+| 4 | "make the top bar ball icons more realistic and material." | Each ball is a lit sphere: tinted body, specular highlight, rim and contact shadow, and a printed number plate. §13.4. |
+| 5 | "make the first tab the shot timer in large." | The first slot of the bar row **is** the timer, set at clock size with its own controls. §13.2. |
+| 6 | "there still is redundant live · synced text in the shot time bar.plz rm" | The `[data-clock-sync]` status line is deleted. Failures still speak. §13.3. |
+| 7 | "and in the same bar the shot timer text seems to be strangely vertically aligned.. please fix." | The timer slot is one flex row with centre alignment; the stacked `.kicker` that caused the misalignment is gone. §13.2. |
+| 8 | "please use impeccable and improve the UI every where." | The 24-command protocol runs again over the current console and lands a second ledger section. §13.5. |
+
+### 13.1 One bar, one row
+
+`header > .bar` holds three children, in this order:
+
+1. `.timer-slot` — the shot timer (first, large). §13.2.
+2. `nav#nav` — the five destinations. Their ball numbers are now **2–6**, because slot 1 is the
+   timer: Tonight 2, Records 3, Vision 4, Regulars 5, Back room 6. This is exactly the owner's
+   colour list applied to a six-slot row.
+3. `.tools` — `#connection` (hidden unless the console is offline), the EN/中 chip group and the
+   theme chip group. Unchanged.
+
+The old `nav.clockbar` inside `.tools` and the `#strip` row below the bar are both **deleted**.
+`#strip` existed only to hold `clockHTML()` and a second copy of the timer; the timer now has one
+home and the header stops growing a second row. `.bar` stays `flex: 1 1 auto` for `#nav`, and the
+whole bar keeps `max-width: var(--page-max)` and its `clamp()` side padding.
+
+At `max-width: 750px` the header keeps `.timer-slot` (large, always visible) and `.tools`; `#nav`
+is still replaced by the fixed bottom `#tabbar`, whose slots stay text-only and hold destinations
+only — the timer is never moved off screen behind a tab.
+
+### 13.2 The timer slot
+
+One flex row, `align-items: center`, no wrap, holding in order:
+
+- `span.ball` — ball 1 (yellow), the row's icon; it carries the running state as a class.
+- `strong.clock[data-clock]` — the time, `clamp(30px, 3.4vw, 48px)`, `line-height: 1`,
+  `font-variant-numeric: tabular-nums`, in the mono face. This is the "in large".
+- `button[data-action="clock-toggle"]` — Start (`▶`) / Pause (`⏸`), text label kept for the
+  house style.
+- `button[data-action="clock-reset"]` — Reset.
+- `.presets` — the four duration chips `20 / 30 / 45 / 60` (`data-action="clock-set"`,
+  `data-value`), hidden below 750px so the slot stays one row on a phone.
+- `.progress` — the 2px elapsed bar, the full width of the slot, at its bottom edge.
+
+The `.kicker` label is **dropped**: the ball and the digits say what the slot is, and the group's
+`aria-label` ("Shot timer / 击球计时") names it for a reader. `.kicker { margin-bottom }` inside a
+centre-aligned flex row with a 30–48px `line-height: 1` sibling is what produced the odd vertical
+alignment the owner saw; removing the second line removes the cause rather than nudging it.
+
+Behaviour (item 1): the slot renders and its controls work in all four venue states. `clock-toggle`
+flips between start and pause, `clock-set` changes the duration and re-renders, `clock-reset`
+clears the deadline. Nothing in the slot reads `comp()`.
+
+### 13.3 The status line is gone (item 6)
+
+`clock-sync.js` stops painting a status sentence. The element it wrote into — `[data-clock-sync]` —
+is deleted from `clockHTML()`, and `decorate()` writes nothing for the `connecting`, `live`,
+`polling` or `offline` states.
+
+What stays: a **failed command** still says so. The slot keeps one `<span class="sync-error" hidden>`
+element; `decorate()` shows it (and unhides it) only when there is an error text to show — a failed
+`clock-set`/`clock-toggle` is a fact the operator must see, and it is not the redundancy the owner
+removed. The reason: the owner removed a *state readout*, not the console's honesty about commands
+that did not take effect.
+
+The language sniffer in `clock-sync.js` must stop reading the `.kicker`'s text, because the kicker
+no longer exists. `render()` sets `#ops-shell.dataset.lang`; `decorate()` reads that (falling back
+to `document.documentElement.lang`, then to the old text sniff) to pick the label set.
+
+### 13.4 The balls (items 3 and 4)
+
+One palette, keyed by ball number, used **wherever a ball is drawn** — the bar's timer slot, the
+five nav buttons, entrants and any other numbered chip:
+
+| n | colour | n | colour |
+|---|---|---|---|
+| 1 | `#f2c14e` yellow | 9 | yellow stripe |
+| 2 | `#2f6fd0` blue | 10 | blue stripe |
+| 3 | `#c8382f` red | 11 | red stripe |
+| 4 | `#e885ad` pink | 12 | pink stripe |
+| 5 | `#e07a29` orange | 13 | orange stripe |
+| 6 | `#2f8f4e` green | 14 | green stripe |
+| 7 | `#8a5a2b` brown | 15 | brown stripe |
+| 8 | `#1b1b1b` black | — | — |
+
+Above 15 the number is taken modulo 15 (`(n - 1) % 15 + 1`), which is what the entrant chips do
+past a full rack. Numbers are drawn inside a white number plate with dark digits, the way a real
+ball prints them.
+
+Material: a lit sphere, not a flat disc. Solid 1–8 are a radial gradient whose light comes from
+34% / 30% (upper left) with a darker terminator at the lower right, a small specular dot, an inset
+rim line, and a contact shadow under the ball. The 9–15 stripe is the same sphere in white with a
+colour band across its middle; the number plate sits on the band, so the band and the plate read
+apart at 26px. The existing `--ball*` tokens carry the geometry; the per-number colours come from
+the palette above rather than from `navColors`.
+
+### 13.5 Impeccable, round 2 (item 8)
+
+The 24-command protocol from `docs/impeccable-commands.md` runs again over the **current** console,
+because the console was rebuilt in wave 10 after the polish campaign and the new surfaces
+(one-row bar, timer slot, Records timeline, backfill five-step flow, standing columns) have never
+been through it.
+
+- Playbooks: `/tmp/impeccable/.dsh/skills/impeccable/reference/<command>.md` (the clone was emptied
+  by tmp cleanup and is re-cloned; the pinned commit is `9d715cc`, so a lane that reads it records
+  the commit it actually read).
+- The campaign's own instruments are reused instead of new ones: `out/impeccable/{numerals,empties,
+  overlay_sweep,contrast,focus,narrow,overlap}.sh` and `serve_fixture.py` from
+  `~/projects/pool-impeccable` and `~/projects/pool-impeccable-r1`.
+- Deliverable: a second section in `docs/impeccable-ledger.md`, one row per command — what it
+  inspected, what it decided, the commit(s) it produced, or the honest reason it was a no-op on
+  today's code (a command discharged before the redesign is re-checked, not re-run for show).
+- Findings are measured, not vibed: viewport, language, theme, the command that raised it, the
+  evidence path, and `file:line`. Accepted findings land as commits; rejected ones are recorded with
+  the reason.
