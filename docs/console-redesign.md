@@ -1156,3 +1156,113 @@ a before/after pair under `out/console-after/`, a row in `docs/impeccable-ledger
 number decided it — the measured number. Suites stay green: `node --test tests/test_ops.js`,
 `node tests/test_app_timeline.js`, `node tests/test_board.js`, and the python suite. Nothing ships with
 a restart: static assets are `no-store` and read from disk per request (`annotator/unified_server.py:2162`).
+
+## 15 Round 4 — the rater's thirty-nine findings, and what this round takes
+
+Round 3's rater (`out/impeccable/ratings/round-3/verdict.md`) returned **visual 4 / clarity 4, 39
+issues**, over 56 shots: five console tabs at 1280×900 in dark EN / dark 中文 / light EN / light 中文,
+two at 390×844, the public board at both widths, and a real session on the review stage. Coverage
+passed — no horizontal overflow at either width (`scrollWidth` 390/390, 1280/1280) and AA contrast in
+both themes (6.22:1–16.07:1). Finding 1 (a quoted name reaching the bracket as `&quot;`) is **fixed in
+`28fbf96`** with a regression test at the end of `tests/test_ops.js`. This section freezes the decisions
+for the other 38 and names the file each one belongs to. Every finding is answered: taken, or rejected
+with the reason.
+
+### 15.1 One primary action per row (F2, F4, F5, F12, F26)
+- **F2** `Send next →` is one line at the same height as a card whose match is already on a table; the
+  action never stretches to 133 px. Acceptance: the two card heights are equal at 1280.
+- **F4** the entrant's availability is a **control, not a label**: `<button class="attendance"
+  data-action="entrant-presence" aria-pressed>` carrying `t('here')`/`t('away')`, with
+  `rackAbsentNote` as its `aria-describedby`. Acceptance: the row is keyboard-operable and calls the
+  existing `entrant_absence` action.
+- **F5** the Waiting-to-play row keeps **one** action per match (`Send to table`); `Not here` and
+  `Forfeit` move onto the match's own side rows instead of a five-button wall. Acceptance: ≤ 2 visible
+  buttons per match row at 1280.
+- **F12** the same table state appears once: `On a table now` keeps table, sides and `Open its
+  scoreboard`, and drops the score line the Scoreboard card already owns.
+- **F26** the night-ending action is the primary on its own screen: `Archive & new event` is gold on
+  the Back room, while the cosmetic `Save` and the `Backfill` entry are secondary.
+
+### 15.2 One vocabulary (F6, F8, F11, F35, F36, F38)
+- **F6** one word per language for "the draw exists": `Racked` / 「已排定」, in the stage strip, the
+  chips and the queue.
+- **F8** the four stage words are separated and the current one is marked by more than a 6 px dot:
+  `Registered · Racked · Playing · Wrapping up`, current stage in `--brass-hi`, with a `title` on the
+  jargon.
+- **F11** one language per month label.
+- **F35/F36** the review workspace's short vocabulary gets its expansion at first use (`title` or
+  legend), and `BOX LABEL` / `NEW BOX LABEL` become one label that prints the box's current name.
+- **F38** the console and the public board name a round identically — one function decides, so
+  `ROUND 2` and `Quarter-finals` never disagree about the same match.
+
+### 15.3 Numbers that mean what they say (F16, F17, F20, F21, F22, F34, F37)
+- **F21** the average excludes unrated rows and says so: `Average house rating (manual) · 10 rated`
+  = 626, not 447; a 0 rating reads `not rated`.
+- **F22** the rating shows its scale (`0–1000, typed by staff`) and `ACTIVE · 2026-04-01` shows a
+  legend.
+- **F17** a search that filters shows what it left (`2 of 3`) and offers `Clear`.
+- **F37/F20** the board separates `Board updated <t>` from `Time on table <d>`; a table past
+  `ATTENTION_MS` says `check the table` (round 3's rule stands).
+- **F34** the review rail shows where it is (`12 of 54`) or scrolls visibly.
+- **F16** the timer ball keeps a `title` that says what it is.
+
+### 15.4 The audit log is for people (F16/#16)
+`Other saved changes` renders at body size, one row per change: humanised action, local time, the player
+or table it touched, with `v111` behind a `title`; the box has a real `max-height` + visible scrollbar
+and states how many rows it holds.
+
+### 15.5 Forms, labels and dead ends (F10, F18, F23, F24, F25, F27, F39)
+- **F23** every label is bound (`<label for>` or `aria-label`); the icon-only `+` keeps its aria-label
+  and gains a `title`; `Save` is disabled while a required field is empty or blank.
+- **F24** `Player record` is a drill-down, so it is styled as one; `STATUS` shows `Newcomer` when the
+  data says so.
+- **F25** the player modal fits a 900 px viewport (internal scroll), `Enroll face` is reachable at rest,
+  and the photo input is a styled `<label>` over a visually hidden file input that names the file.
+- **F27** `Lamp glow` shows a numeric readout, `Note` has a placeholder, and `Remove` asks once — an
+  in-page confirmation, never `window.confirm`.
+- **F10/F18/F39** a sentence that names a card links to it (the End-of-the-night card sentence opens
+  `#/backroom`); the Backfill takeover marks itself in the header and shows a step overview; "no recent
+  broadcasts for the saved channels" names the channels or moves to the screen that has them.
+
+### 15.6 The review stage is a tool (F28, F29, F30, F31, F32, F33, F34, F36)
+- **F28** at 1280 the stage fills its column (≥ 70 % of the source width) and offers `Fit`, `100 %` and
+  full screen; today a 1280×720 source is shown at 592×333.
+- **F29** label density defaults to `table only`; `all` is a choice and the number drawn is visible.
+  Acceptance: no chip overlap at the default density.
+- **F30** at 390 the stage bar wraps or scrolls with a visible affordance instead of holding 808 px in
+  a 374 px box.
+- **F33** no native dialog for unsaved corrections: an in-page notice with `Discard` / `Keep editing`
+  that names what is unsaved.
+- **F31/F32** the Chinese layer: a cue is 「母球」/「击球」, not 「线索」; model labels are wholly one
+  language; the half-width colon goes.
+- **F34/F36** as §15.2/§15.3.
+
+### 15.7 Availability and the small screen (F14, F20)
+- **F14** the 390 tab bar keeps the counts (`Tonight 11`) that the desktop nav shows.
+- **F20** at 390 the round list does not break `ROUND` from its number.
+
+### 15.8 Rejected this round, with the reason
+- **F6's visible "Backfill" word at 1024**: round 3 measured 9.6 px of slack in the EN nav at 1024, so
+  the word returns at ≥ 1440 only and both icon controls keep `title` + `aria-label`.
+- **F13/F19**: taken, but as one-line CSS in lane B rather than markup.
+- **F18's fixture name** (`Wednesday 8-Ball Open` dated Friday) is fixture data, not product copy: the
+  name is corrected in `tests/console_fixture_state.json` so a reviewer cannot be misled again.
+- **B-14** (the board's light theme) stays the owner's product decision from round 2.
+
+### 15.9 Lanes
+| Lane | Files | Findings |
+| --- | --- | --- |
+| A | `annotator/ops.js`, `annotator/ops.html`, `tests/test_ops.js` | §15.1–15.5, §15.7 (markup, strings, tests) |
+| B | `annotator/ops.css` | the visual half of A's findings: F2 heights, F7 timer gap, F13 underline, F19 caution colour, F20 mobile wrap, F25 modal box |
+| C | `annotator/vision-stage.js`, `annotator/app.css`, `annotator/app.js` | §15.6 — the review stage and its Chinese |
+| D | `annotator/board.js`, `annotator/board.css`, `tests/test_board.js`, `tests/console_fixture_state.json` | F37, F38, §15.2's board vocabulary, the fixture rename |
+
+### 15.10 The evidence rule
+§14.10 stands, with 1280×900 first-class: a before/after pair under `out/console-after/`, a row in
+`docs/impeccable-ledger.md` §"Round 4", the measured number where a number decided it, and green
+suites (`node --test tests/test_ops.js`, `node tests/test_app_timeline.js`, `node tests/test_board.js`,
+the python suite). Nothing ships with a restart — static assets are `no-store` and read from disk per
+request (`annotator/unified_server.py:2162`). The live served-byte check is **blocked** while the console
+cannot start: at 14:12 PDT on 2026-10-03 `pool-workbench.service` stopped and `/mnt/ext4dat` (the
+Postgres volume's disk) was no longer mounted, so `pool-postgres.service` fails with podman exit 125
+(`mkdir /mnt/ext4dat/podman: permission denied`). See `.pm/PROJECT.md`, "Outage".
