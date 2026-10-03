@@ -858,11 +858,13 @@ html,body{-webkit-font-smoothing:antialiased}
    Measured before at 1280 EN dark: the head cell "HOUSE RATING (MANUAL)" was 22 characters
    of --fs-xs mono at .12em inside a 4.5rem (72 px) column, so it took three lines (42 px
    tall against its peers' 14 px) and dragged the head row down with it. The label needs
-   22 × 6.27 + 21 × 1.32 ≈ 166 px, so the column is 11rem: the head is one line and every
-   data cell stays in the same grid (the head and the rows are separate grids sharing this
-   template, so both had to move together). The name column is minmax(0,1fr) and gave up
-   the 104 px without complaint — it measured 858 px at 1280. */
-#ops-shell .standing-head,#ops-shell .standing{grid-template-columns:2rem minmax(0,1fr) 11rem 3.5rem 4rem 3.5rem}
+   ~167 px, so the column is 12rem. 11rem was tried first and measured 2 px short — the head
+   cell came out 165 px wide and the label still broke over two lines — so the column is
+   180 px: the head is one line and every data cell stays in the same grid (the head and the
+   rows are separate grids sharing this template, so both had to move together). The name
+   column is minmax(0,1fr) and gave up the 104 px without complaint — it measured 858 px at
+   1280. */
+#ops-shell .standing-head,#ops-shell .standing{grid-template-columns:2rem minmax(0,1fr) 12rem 3.5rem 4rem 3.5rem}
 
 /* === Round 3, §14.7 (F13): an expanded event's matches are columns --------------------
    Measured before at 1280 EN dark: every row of .tl-matches was one text run, so the
@@ -882,6 +884,16 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .tl-matches>li>.tl-pair{min-width:0}
 #ops-shell .tl-matches>li>.tl-score{font:var(--fs-md) var(--mono);font-variant-numeric:tabular-nums}
 #ops-shell .tl-matches>li>.badge{min-width:5.5rem;text-align:center}
+/* A phone is not a 1184 px table: the 4.5rem round column and the 5.5rem chip column are
+   two thirds of a 318 px row once the pairing and the score have taken theirs. Below 750
+   both shrink — the round label is four characters ("Round 1"), the chip's widest word is
+   "Signed" — and the pairing gets 142 px instead of 121 to wrap in. Measured at 390 EN
+   dark with lane r3a's markup: score at x 247.1…270.5 and chip at 278.5…361 in all seven
+   rows, the same columns as at 1280. */
+@media(max-width:750px){
+  #ops-shell .tl-matches>li:has(>.tl-round){grid-template-columns:3.5rem minmax(0,1fr) auto auto}
+  #ops-shell .tl-matches>li>.badge{min-width:4.5rem}
+}
 
 /* === Round 3, §14.7 (F19): the Backfill wizard spans the page it is on ---------------
    Measured before at 1280: .backfill was 593.3 px wide inside a 1218.6 px main, so the
