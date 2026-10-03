@@ -69,7 +69,9 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell a{color:var(--brass-hi)}
 #ops-shell :focus-visible{outline:2px solid var(--brass);outline-offset:3px}
 #ops-shell header{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
-#ops-shell .bar,#ops-shell nav,#ops-shell main{max-width:var(--page-max);margin:auto;padding:var(--sp-3) clamp(var(--sp-3),2.4vw,var(--sp-6))}
+#ops-shell .bar,#ops-shell main{max-width:var(--page-max);margin:auto;padding:var(--sp-3) clamp(var(--sp-3),2.4vw,var(--sp-6))}
+/* One bar: the tab row is a child of it, so it takes the room the brand block left. */
+#ops-shell .bar > nav{flex:1 1 auto;min-width:0;padding:0}
 /* Running text stops at the measure; structure does not. Everything the review engine
    draws inside the frame is excluded (the app page's own paragraphs are positioned
    against the picture and set their own type), and the frame-level plates there are
@@ -77,8 +79,8 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell main p:not(#review-root *){max-width:var(--measure)}
 #ops-shell .bar,#ops-shell .tools,#ops-shell nav,#ops-shell .row,#ops-shell .heading,#ops-shell .actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 #ops-shell .bar,#ops-shell .heading{justify-content:space-between}
-#ops-shell .brand{display:flex;align-items:center;gap:var(--sp-3);color:var(--ink)}
-#ops-shell .brand strong{display:block;font:500 var(--fs-xl)/1.1 var(--display)}
+#ops-shell .hall{display:flex;align-items:center;gap:var(--sp-3);color:var(--ink);text-decoration:none;border-bottom:0}
+#ops-shell .hallname{display:block;font:500 var(--fs-xl)/1.1 var(--display);color:var(--ink-hi)}
 #ops-shell small,#ops-shell .kicker,#ops-shell .badge,#ops-shell label>span,#ops-shell th{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 #ops-shell small{display:block;margin-top:var(--sp-1)}
 #ops-shell .ball{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 34% 30%,var(--ball-hi),var(--ball) 74%);box-shadow:inset 0 0 0 1px var(--ball-edge);flex:none}
@@ -225,10 +227,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell p{text-wrap:pretty}
 #ops-shell a{text-decoration:none;border-bottom:1px solid var(--btn-line)}
 #ops-shell a:hover{color:var(--brass);border-bottom-color:var(--brass)}
-#ops-shell .brand{text-decoration:none;border-bottom:0}
 #ops-shell .bar{padding-top:var(--sp-3);padding-bottom:var(--sp-3)}
-#ops-shell .brand strong{color:var(--ink-hi)}
-#ops-shell .brand small{margin-top:0;font-size:var(--fs-xs)}
 #ops-shell .black{box-shadow:inset 0 0 0 1px var(--btn-line),0 2px 6px var(--ball-edge)}
 #ops-shell .black i{width:20px;height:20px;font-size:var(--fs-sm)}
 #ops-shell .ball{position:relative}
@@ -253,7 +252,6 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell #strip .kicker{font-size:var(--fs-xs);letter-spacing:.16em}
 #ops-shell #strip button{min-height:32px;padding:0 var(--sp-3);font-size:var(--fs-sm)}
 #ops-shell #strip button[data-action=clock-reset]{color:var(--ink-dim)}
-#ops-shell #strip button[data-action=floor]{flex:1;min-width:200px;min-height:36px;border-color:var(--line);background:var(--panel);font-family:var(--display);font-weight:500;font-size:var(--fs-body);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ops-shell .kicker{letter-spacing:.18em}
 #ops-shell .clock{font-size:clamp(36px,4.4vw,60px)}
 #ops-shell .score-top [data-action=clock-toggle]{margin-left:auto;min-width:92px;min-height:44px;padding:0 var(--sp-4);border:0;background:var(--brass);color:var(--brass-fg);font-size:var(--fs-md);font-weight:500}
@@ -292,7 +290,6 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell #strip .row .row button{min-width:40px;min-height:30px;padding:0 var(--sp-2);border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
 #ops-shell #strip .row .row button.active{background:var(--brass);color:var(--brass-fg)}
 #ops-shell .score-top.row .grow{font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.14em;text-transform:uppercase}
-#ops-shell .brand small{line-height:1.5}
 
 /* Regulars modal (plus-icon entry) */
 .modal-backdrop{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:60;padding:var(--sp-4)}
@@ -484,8 +481,6 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell) .vision-surface{gap:var(--sp-1h)}
   :is(#ops-shell) .vs-chip{min-height:28px;padding:var(--sp-1) var(--sp-2)}
   :is(#ops-shell) .vs-layer{min-height:26px;padding:var(--sp-1) var(--sp-2)}
-  :is(#ops-shell)[data-tab=vision] .bar{padding:var(--sp-1h) var(--sp-2);gap:var(--sp-2)}
-  :is(#ops-shell)[data-tab=vision] .brand small{display:none}
   :is(#ops-shell) .vs-grid{display:block}
   :is(#ops-shell) .vs-stage{margin-bottom:var(--sp-2)}
   /* The sheet stacks above the strip, which stacks above the 44px sheet tabs: the
@@ -647,32 +642,27 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell details.vs-tech{margin-top:var(--sp-2)}
 #ops-shell details.vs-tech>summary{cursor:pointer;font:var(--fs-sm) var(--mono);letter-spacing:.08em;color:var(--ink-dim)}
 #ops-shell details.vs-tech>summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
-/* IA C' stage 4: the Tonight console. A phase strip of four phases that stay clickable in every
-   state (mode-slip guard: a phase never hides a control the operator needs now); the current one is
-   marked for the eye and for the screen reader, and reuses the tab rail's 44px target and ring. */
-#ops-shell nav.phases{padding-bottom:var(--sp-4)}
-#ops-shell nav.phases button.phase{min-height:44px;padding:0 var(--sp-4)}
-#ops-shell nav.phases button.phase[aria-current=step]{background:var(--rail);border-color:var(--brass);color:var(--ink-hi)}
-#ops-shell nav.phases button.phase[aria-current=step]::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--brass)}
-/* One rhythm column, so Register's cards (the guide, the night, the desk, the guests) space like the
-   other tabs instead of touching. */
-#ops-shell .phase-body{display:grid;gap:var(--sp-5)}
-@media(max-width:750px){
-#ops-shell nav.phases{gap:var(--sp-1)}
-#ops-shell nav.phases button.phase{flex:1;min-width:0;padding:0 var(--sp-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-}
-/* IA C' stage 5: Play is one screen (Queue | Tables | Bracket). Send and Score live on the same
-   screen, so a send never changes the page: the strip only swaps which of the three views is
-   shown, and the hidden ones are `hidden` for the reader as well as for the eye. The strip keeps
-   the tab rail's 44px target and ring, and it holds its place at the top while the view scrolls,
-   so Send is one tap away from the table it was sent to. */
-#ops-shell nav.playtabs{display:flex;flex-wrap:wrap;gap:var(--sp-2);position:sticky;top:0;z-index:20;padding:var(--sp-2) 0;background:var(--bg);border-bottom:1px solid var(--line)}
-#ops-shell nav.playtabs button.playtab{min-height:44px;padding:0 var(--sp-4);display:inline-flex;align-items:center;gap:var(--sp-1h)}
-#ops-shell nav.playtabs button.playtab small{color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
-#ops-shell nav.playtabs button.playtab[aria-current=true]{background:var(--rail);border-color:var(--brass);color:var(--ink-hi)}
-#ops-shell nav.playtabs button.playtab[aria-current=true] small{color:var(--brass-hi)}
-#ops-shell .playview[hidden]{display:none}
-#ops-shell .play .grid{align-items:start}
+/* IA C' stage 9: the phase strip is gone. What is left is the read-only scene: one line reporting
+   the night's own step, not four buttons that hide the work. It never grows a control. */
+#ops-shell .scene{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) 0 var(--sp-3);border-bottom:1px solid var(--line)}
+#ops-shell .scene-who{font-family:var(--display);font-weight:500;color:var(--ink-hi)}
+#ops-shell .scene-track{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2)}
+#ops-shell .scene-node{font:var(--fs-sm) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+#ops-shell .scene-node.on{color:var(--brass-hi)}
+#ops-shell .scene-node.on::before{content:"● ";color:var(--brass)}
+/* The Tonight column: one rhythm, cards in the order the night needs them. */
+#ops-shell .tonight{display:grid;gap:var(--sp-5)}
+#ops-shell .card--start{border-top:3px solid var(--brass)}
+/* The tables are the resident body: one card per table, always on screen. */
+#ops-shell .table-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+#ops-shell .table-card{display:grid;gap:var(--sp-2);border:1px solid var(--line);background:var(--panel);padding:var(--sp-3)}
+#ops-shell .table-card.live{border-color:var(--brass);background:radial-gradient(120% 150% at 50% -30%,var(--lamp),transparent 62%),var(--panel)}
+#ops-shell .table-card.current{box-shadow:inset 0 0 0 1px var(--brass)}
+#ops-shell .attendance{color:var(--ink-dim)}
+/* Queue and bracket are panels under the tables: open on demand, never a second level of tabs. */
+#ops-shell details.panel>summary{cursor:pointer;display:flex;align-items:center;gap:var(--sp-2);min-height:40px}
+#ops-shell details.panel>summary>h3{display:inline;margin:0}
+#ops-shell details.panel>summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 /* The queue is the ready line: one card per match that can go to a table, Send first. */
 #ops-shell .queue-list{display:grid;gap:var(--sp-2);margin-top:var(--sp-2)}
 #ops-shell .queue-card{display:grid;gap:var(--sp-2)}
@@ -687,10 +677,9 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell details.side-panel>summary{cursor:pointer;font:var(--fs-sm) var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);min-height:40px;display:flex;align-items:center}
 #ops-shell details.side-panel>summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 @media(max-width:750px){
-#ops-shell nav.playtabs{gap:var(--sp-1);padding:var(--sp-1h) 0}
-#ops-shell nav.playtabs button.playtab{flex:1;min-width:0;padding:0 var(--sp-2);justify-content:center}
-#ops-shell nav.playtabs button.playtab small{display:none}
 #ops-shell .queue-card .card-actions button[data-action=schedule]{flex:1}
+#ops-shell .scene{gap:var(--sp-1) var(--sp-2)}
+#ops-shell .table-grid{grid-template-columns:1fr}
 }
 
 
@@ -706,8 +695,6 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell #tabbar{display:flex;flex-wrap:wrap;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel2);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
   #ops-shell #tabbar .tabbar-slot{flex:1 1 0;min-height:52px;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.12em;text-transform:uppercase}
   #ops-shell #tabbar .tabbar-slot[aria-current=page]{color:var(--brass-hi);background:var(--rail);box-shadow:inset 0 2px 0 var(--brass)}
-  #ops-shell #tabbar #tabbar-more{flex:1 0 100%;display:flex;gap:var(--sp-1);border-top:1px solid var(--line)}
-  #ops-shell #tabbar #tabbar-more[hidden]{display:none}
   #ops-shell main{padding-bottom:calc(var(--tabbar-h) + var(--sp-4))}
   #ops-shell #message{bottom:calc(var(--tabbar-h) + var(--sp-3))}
   /* Vision: the bar is the exit, and the sheet tabs, the strip and the panels all
@@ -719,3 +706,7 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell)[data-tab=vision] main{padding-bottom:calc(var(--tabbar-h) + 44px + var(--vs-strip-h,150px) + min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))) + 12px)}
 }
 @media print{#ops-shell #tabbar{display:none!important}}
+/* §1.5 The revision moved off the top bar: the Back room says what was last written, in mono. */
+#ops-shell .last-write{font-family:var(--mono);font-size:.85rem;letter-spacing:.01em}
+/* The step is a read-only scene: it never looks or behaves like the old phase strip. */
+#ops-shell .scene .scene-node.on{font-weight:600}

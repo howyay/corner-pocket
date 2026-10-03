@@ -49,7 +49,7 @@ const ERROR_MS = 6000;               /* how long a failed command stays on scree
 
 const LABELS = Object.freeze({
   en: Object.freeze({
-    kicker: 'Shot clock · shared across devices',
+    kicker: 'Shot timer',
     connecting: 'connecting…',
     live: 'live · synced',
     polling: 'reconnecting — showing last known',
@@ -58,7 +58,7 @@ const LABELS = Object.freeze({
     busy: 'server busy — retrying'
   }),
   zh: Object.freeze({
-    kicker: '击球计时 · 多设备同步',
+    kicker: '击球计时',
     connecting: '连接中…',
     live: '实时 · 已同步',
     polling: '重新连接中 — 显示最后已知',
@@ -71,10 +71,12 @@ const LABELS = Object.freeze({
 /* The two strings ops.js still paints on every render. They are replaced at the
  * DOM level (see decorate) because `words` is closure-private and ops.js is not
  * ours to edit; matching the exact text is also how decorate knows which
- * language the surrounding chrome is in. */
+ * language the surrounding chrome is in. §12.1: the shot timer has one name in
+ * both clocks, so the "lie" and the honest label are the same two words — the
+ * machine/local difference is carried by the sync-state line, never by a label. */
 const LOCAL_TIMER_LIE = Object.freeze([
-  'Shot clock · local timer, not shared',
-  '击球计时 · 本机计时，不联动'
+  'Shot timer',
+  '击球计时'
 ]);
 
 function labels(lang) {
@@ -395,7 +397,7 @@ function nodeLang(doc, holder) {
 }
 
 /* One idempotent pass over the clock mounts ops.js renders (the strip, the floor
- * scoreboard, the vision stage bar): replace the "local timer, not shared" label
+ * scoreboard, the vision stage bar): adopt the shell's one shot-timer name, and
  * with the honest one, and keep one sync-state line beside the clock saying
  * exactly what this device knows. Re-running it after any render is safe. */
 function decorate(doc, status, errorText) {
