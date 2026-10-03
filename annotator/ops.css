@@ -882,3 +882,12 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .tl-matches>li>.tl-pair{min-width:0}
 #ops-shell .tl-matches>li>.tl-score{font:var(--fs-md) var(--mono);font-variant-numeric:tabular-nums}
 #ops-shell .tl-matches>li>.badge{min-width:5.5rem;text-align:center}
+
+/* === Round 3, §14.7 (F19): the Backfill wizard spans the page it is on ---------------
+   Measured before at 1280: .backfill was 593.3 px wide inside a 1218.6 px main, so the
+   wizard used the left half of the page and left 625 px of it empty — its own "Step 1 of 5"
+   sat at x = 524…624, in the middle of nothing. The 70ch cap is a *reading* measure and
+   this screen is not prose: .bf-review is a seven-column grid and .bf-stage is a video.
+   From 1000 px the wizard takes the page; `main p{max-width:var(--measure)}` still caps
+   every sentence inside it at 70ch, so nothing runs the width of a 1920 screen. */
+@media(min-width:1000px){#ops-shell .backfill{max-width:none}}
