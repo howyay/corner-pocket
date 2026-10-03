@@ -821,7 +821,7 @@ html,body{-webkit-font-smoothing:antialiased}
    the stylesheet only. */
 @media(max-width:1440px){
   #ops-shell #backfill-open{display:grid;place-items:center;width:40px;min-height:40px;padding:0;font-size:0}
-  #ops-shell #backfill-open::before{content:"\21BA";font:var(--fs-body)/1 var(--mono)}
+  #ops-shell #backfill-open::before{content:"\21BA" / "";font:var(--fs-body)/1 var(--mono)}
 }
 @media(max-width:1439px){
   #ops-shell .timer-slot .presets{display:none}
