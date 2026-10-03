@@ -28,13 +28,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* One frame surface: the video and the still share one coordinate system with
    the overlay SVG, because all three are the full width of the figure and keep
    the frame's aspect ratio. Exactly one of video/still is visible at a time. */
-.stage { position: relative; margin: 0; background: var(--stage-bg); line-height: 0; }
+.stage { position: relative; margin: 0; background: var(--stage-bg); line-height: 0; min-height: var(--sp-6); }
 .stage > img { display: block; width: 100%; height: auto; }
 .stage > img[hidden] { display: none; }
 .stage > video { display: block; width: 100%; height: auto; background: var(--stage-bg); }
 .stage > video[hidden] { display: none; }
 .stage > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--sp-5); margin: 0; line-height: 1.6; text-align: center; color: var(--ink-dim); background: var(--panel2); }
+/* With no frame decoded the empty state IS the surface: it sits in flow and grows
+   with its own sentence, so every glyph is painted on the box's own --panel2 and
+   never on --stage-bg. Absolutely positioned inside a 0 px figure, its background
+   was only its padding (48 px) while the sentence wrapped to two lines at 390 px,
+   and "then freeze it here." landed on the black stage at 2.97:1 (round-2 F2). */
+.stage-empty { position: relative; display: grid; place-items: center; padding: var(--sp-5); margin: 0; line-height: 1.6; text-align: center; color: var(--ink-dim); background: var(--panel2); }
 .stage-empty[hidden] { display: none; }
 .stage-live { position: absolute; left: 10px; top: 10px; padding: var(--sp-1) var(--sp-2); border-radius: 2px; font-family: var(--mono); font-size: var(--fs-sm); letter-spacing: .14em; text-transform: uppercase; background: var(--panel2); color: var(--green); border: 1px solid var(--green-line); }
 .stage-live.stale { color: var(--amber); border-color: var(--amber-line); background: var(--amber-bg); }
