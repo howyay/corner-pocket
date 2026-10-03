@@ -719,17 +719,21 @@ html,body{-webkit-font-smoothing:antialiased}
    full-screen step page with five steps. */
 #ops-shell .records h2{margin:0}
 #ops-shell .records .heading{margin-bottom:var(--sp-3)}
-#ops-shell .events,#ops-shell .tl-nights,#ops-shell .tl-matches,#ops-shell .bf-marks,#ops-shell .audit{list-style:none;margin:0;padding:0}
+#ops-shell .events,#ops-shell .tl-nights,#ops-shell .tl-matches,#ops-shell .bf-marks,#ops-shell .audit,#ops-shell .tl-audit{list-style:none;margin:0;padding:0}
 #ops-shell .events{display:grid;gap:var(--sp-1)}
-#ops-shell .tl-year{font:600 var(--fs-xl) var(--display);color:var(--ink-hi);margin-top:var(--sp-3)}
-#ops-shell .tl-month{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--brass-hi);margin:var(--sp-2) 0 var(--sp-1)}
+/* Round 2, B-13: the year and the month are the timeline's own heading levels, so the
+   screen can be navigated by heading, not only by scrolling. */
+#ops-shell .tl-year{font:600 var(--fs-xl) var(--display);color:var(--ink-hi);margin:var(--sp-3) 0 0}
+#ops-shell .tl-month-head{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--brass-hi);margin:var(--sp-2) 0 var(--sp-1)}
 #ops-shell .tl-item{border-left:2px solid var(--line);padding-left:var(--sp-3);position:relative}
 #ops-shell .tl-item::before{content:'';position:absolute;left:-5px;top:calc(var(--sp-2) + 8px);width:8px;height:8px;border-radius:50%;background:var(--brass)}
 #ops-shell .tl-item.is-hidden::before{background:var(--ink-dim)}
 #ops-shell .tl-row{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;padding:var(--sp-2) 0}
 #ops-shell .tl-date{font:var(--fs-sm) var(--mono);color:var(--ink-dim);min-width:7.5rem}
-#ops-shell .tl-title{display:flex;flex-direction:column;min-width:0}
-#ops-shell .tl-title small{color:var(--ink-dim)}
+/* Round 2, B-15: the night's name is the thing an operator scans for, so it carries the
+   display face and a real step; its metadata keeps the mono uppercase treatment. */
+#ops-shell .tl-title{display:flex;flex-direction:column;min-width:0;font:600 var(--fs-lg)/1.25 var(--display);text-transform:none;letter-spacing:0}
+#ops-shell .tl-title small{font:var(--fs-xs) var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim)}
 #ops-shell .tl-body{display:grid;gap:var(--sp-2);padding-bottom:var(--sp-3)}
 #ops-shell .tl-sheet,#ops-shell .tl-source{margin:0}
 #ops-shell .tl-source{font-size:var(--fs-sm);color:var(--ink-dim)}
