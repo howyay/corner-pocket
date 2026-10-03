@@ -149,21 +149,21 @@ tbody tr.empty td{text-align:left;color:var(--ink-dim)}
   .next-item .detail{font-size:.85rem}
 
   .rounds{flex:1;min-height:0;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.9rem;font-size:.95rem}
-  /* Impeccable round 2, B-06: this bracket is read across a room, so the density steps stop
-     at the console's own 11 px floor. The floor is expressed in em (86% of the parent, i.e.
-     below both steps' own ratio), so it is 11 px at the root sizes these rules run at and
-     gets out of the way again on a 1080p+ screen (24 px root), where nothing is tiny. */
-  .rounds{--tv-min:max(var(--tv-xs),.86em)}
-  .rounds[data-rows="some"]{font-size:max(.8rem,var(--tv-min))}
-  .rounds[data-rows="many"]{font-size:max(.62rem,var(--tv-min))}
+  /* Impeccable round 2, B-06: this bracket is read across a room and its density steps are em
+     based, so they fell through the console's own 11 px floor (measured at 1280x900: round
+     headings 10.24 px, match notes 9.6 px). Each step that can go small clamps to the absolute
+     --tv-xs. An earlier attempt expressed the floor as a share of the parent's size, which
+     measured 13.76 px steps and 11.83 px headings at 1280 — above the design at every root. */
+  .rounds[data-rows="some"]{font-size:max(.8rem,var(--tv-xs))}
+  .rounds[data-rows="many"]{font-size:max(.62rem,var(--tv-xs))}
   /* A bye says only who went through, which the next round shows. With too many
      matches for one screen, finished rounds make way for the rest as well. */
   .bm.bye,.rounds[data-rows="many"] .round.done:not(:last-child){display:none}
   .round{min-height:0;display:flex;flex-direction:column}
-  .round h3{font-size:max(.8em,var(--tv-min))}
+  .round h3{font-size:max(.8em,var(--tv-xs))}
   .round ol{flex:1;justify-content:space-around;gap:.3em}
   .bm{padding:.25em .5em}
-  .bm-note{font-size:max(.75em,var(--tv-min))}
+  .bm-note{font-size:max(.75em,var(--tv-xs))}
 
   table{font-size:1.05rem}
   th,td{padding:.2rem .4rem}

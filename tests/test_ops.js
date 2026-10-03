@@ -2803,11 +2803,11 @@ test('round 2: the small toggles are still tappable at phone width (B-08)', () =
 
 test('round 2: the board’s bracket text keeps the console’s 11 px floor (B-06)', () => {
   assert.ok(/--tv-xs:11px/.test(boardCss), 'the floor is one token');
-  assert.ok(/\.rounds\{--tv-min:max\(var\(--tv-xs\),\.86em\)\}/.test(boardCss), 'declared where the em steps resolve from, so .bm-note inherits it too');
-  assert.ok(/\.rounds\[data-rows="some"\]\{font-size:max\(\.8rem,var\(--tv-min\)\)\}/.test(boardCss), 'the some-rows step is clamped');
-  assert.ok(/\.rounds\[data-rows="many"\]\{font-size:max\(\.62rem,var\(--tv-min\)\)\}/.test(boardCss), 'and so is the many-rows step');
-  assert.ok(/\.round h3\{font-size:max\(\.8em,var\(--tv-min\)\)\}/.test(boardCss), 'the round headings no longer resolve to 10.2 px');
-  assert.ok(/\.bm-note\{font-size:max\(\.75em,var\(--tv-min\)\)\}/.test(boardCss), 'nor the match notes to 9.6 px');
+  assert.ok(/\.rounds\[data-rows="some"\]\{font-size:max\(\.8rem,var\(--tv-xs\)\)\}/.test(boardCss), 'the some-rows step clamps to the absolute floor');
+  assert.ok(/\.rounds\[data-rows="many"\]\{font-size:max\(\.62rem,var\(--tv-xs\)\)\}/.test(boardCss), 'and so does the many-rows step');
+  assert.ok(/\.round h3\{font-size:max\(\.8em,var\(--tv-xs\)\)\}/.test(boardCss), 'the round headings no longer resolve to 10.24 px');
+  assert.ok(/\.bm-note\{font-size:max\(\.75em,var\(--tv-xs\)\)\}/.test(boardCss), 'nor the match notes to 9.6 px');
+  assert.ok(!/--tv-min/.test(boardCss), 'and the floor stays absolute: a share of the parent size measured above the design at a 24 px root');
 });
 
 test('round 2: the shot timer has exactly one home, in the bar (B-§13.1)', () => {
