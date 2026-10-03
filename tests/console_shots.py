@@ -102,7 +102,9 @@ AFTER_STATES = [
 PUBLIC_STATES = [    dict(name='public-board', url='http://127.0.0.1:{port}/', langs=['en'],
          title='Public board（8151，只读对外看板）'),
 ]
-SIZES = {'desktop': (1440, 900), 'phone': (390, 844)}
+SIZES = {'laptop': (1280, 900), 'desktop': (1440, 900), 'phone': (390, 844)}
+# laptop came first in the round-3 set on purpose: 1280x900 is the viewport a blind
+# reviewer actually sat at, and it is where the bar was measured to wrap (SS14.1).
 
 
 def free_port():
@@ -848,7 +850,10 @@ def main():
     parser.add_argument('--out', help='screenshot directory (default: out/console-<build>/)')
     parser.add_argument('--states', help='comma-separated name fragments to keep, e.g. records,backroom')
     parser.add_argument('--langs', default='en,zh', help='comma-separated languages (default: %(default)s)')
-    parser.add_argument('--sizes', default='desktop,phone', help='comma-separated viewport names (default: %(default)s)')
+    parser.add_argument('--sizes', default='desktop,phone',
+                        help='comma-separated viewport names: '
+                             + ', '.join('%s=%dx%d' % (k, w, h) for k, (w, h) in SIZES.items())
+                             + ' (default: %(default)s)')
     parser.add_argument('--theme', default='dark', choices=('dark', 'light'))
     parser.add_argument('--measure-only', action='store_true', help='measure the header and exit')
     parser.add_argument('--no-public', action='store_true', help='skip the 8151 public board states')
