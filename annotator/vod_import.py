@@ -29,6 +29,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from urllib.parse import urlencode
 
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
 from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
@@ -44,6 +45,21 @@ PROTOCOLS = "file,http,https,tcp,tls,crypto"
 REFUSED_CHANNEL = ("This VOD belongs to {channel}. Only saved channels can be analysed; "
                    "add the channel under Source first.")
 _URL = re.compile(r"(?:https?|file|tcp|tls|crypto)://\S+|/\S*\.m3u8\S*")
+
+
+def thumb_path(channel, vod):
+    """This server's own path to one broadcast's preview picture.
+
+    Never Twitch's URL: the console asks this server, which validates the picture's host
+    against its allowlist and fetches it, so a browser rendering the console never talks
+    to the image CDN.  A broadcast whose picture Twitch did not send gets ``""``.
+    """
+    vod_id = vod.get("id") if isinstance(vod, dict) else None
+    if not (isinstance(channel, str) and re.fullmatch(r"[a-z0-9_]{1,25}", channel or "")):
+        return ""
+    if not (isinstance(vod_id, str) and vod_id.isdigit()) or not (vod or {}).get("thumbnail"):
+        return ""
+    return "/api/vods/thumb?" + urlencode({"channel": channel, "id": vod_id})
 
 
 class VodImportError(Exception):
@@ -226,7 +242,13 @@ class VodImporter:
 
     # -- reads -------------------------------------------------------------
     def recent(self):
-        """Each saved channel's recent broadcasts (<= 10), or Twitch's error for it."""
+        """Each saved channel's recent broadcasts (<= 10), or Twitch's error for it.
+
+        Each row's ``thumb`` is a path on **this** server, not Twitch's URL: the console
+        draws pictures through the allowlisted proxy (``/api/vods/thumb``) so a browser
+        never talks to the image CDN itself, and a row whose picture Twitch did not send
+        carries an empty string rather than a broken link.
+        """
         listed = read_index(self.root)[0]
         rows = []
         for channel in self.saved_channels():
@@ -243,10 +265,23 @@ class VodImporter:
                     self._recent[channel] = cached
             rows.append({"channel": channel, "error": None, "fetched_at": cached[2], "vods": [
                 {"id": vod.get("id"), "title": vod.get("title"), "created_at": vod.get("created_at"),
-                 "length_s": vod.get("length_s"),
+                 "length_s": vod.get("length_s"), "thumb": thumb_path(channel, vod),
                  "imported": sorted(key for key in listed if parse_imported_id(key)[0] == vod.get("id"))}
                 for vod in cached[1]]})
         return {"channels": rows, "saved_channels": self.saved_channels(), "cache_s": RECENT_TTL_S}
+
+    def thumbnail(self, channel, vod_id):
+        """One saved channel's broadcast preview picture, as a JPEG, or a safe error.
+
+        The channel is checked against the saved sources before Twitch is asked anything:
+        an id alone must not turn this server into a picture proxy for the whole platform.
+        """
+        name = str(channel or "").lower()
+        if name not in self.saved_channels():
+            raise VodImportError(REFUSED_CHANNEL.format(channel=name or "a channel Twitch did not name"),
+                                 403)
+        content_type, body = self._twitch_call(self.tw.vod_thumbnail, vod_id)
+        return content_type, body
 
     def _plan(self, vod, start_s, duration_s):
         try:

@@ -18,10 +18,12 @@ from types import SimpleNamespace
 import unittest
 
 from annotator.unified_server import APIError, Backend, BoundedHTTPServer, make_handler
-from annotator.vod_import import PROTOCOLS, REFUSED_CHANNEL, VodImporter, VodImportError, redact, seconds_done
+from annotator.vod_import import (PROTOCOLS, REFUSED_CHANNEL, VodImporter, VodImportError,
+                                   redact, seconds_done, thumb_path)
 
 OWN, OTHER = "1000000001", "1111111111"
 SIGNED = "https://d2nvs31859zcd8.cloudfront.net/abc/720p30/index-dvr.m3u8?sig=SECRET&token=TOKEN"
+THUMB_CDN = ("https://static-cdn.jtvnw.net/cf_vods/d2nvs31859zcd8/abc_examplechannel/thumb/thumb0-320x180.jpg")
 
 
 class TwitchError(RuntimeError):
@@ -51,10 +53,17 @@ def twitch_stub(calls):
         if channel == "brokenchannel":
             raise TwitchError("Twitch API request failed (HTTP 500)")
         return [{"id": OWN, "title": "260918", "length_s": 13397, "created_at": "2026-09-26T06:46:33Z",
-                 "channel": channel}]
+                 "channel": channel, "thumbnail": THUMB_CDN}]
+
+    def vod_thumbnail(vod_id):
+        calls.append(("thumb", vod_id))
+        if vod_id != OWN:
+            raise TwitchError("Twitch has no such video")
+        return "image/jpeg", b"\xff\xd8\xff\xe0" + b"0" * 256
 
     return SimpleNamespace(TwitchVodError=TwitchError, vod_id_of=vod_id_of, vod_info=vod_info,
-                           resolve_vod=resolve_vod, channel_recent_vods=channel_recent_vods)
+                           resolve_vod=resolve_vod, channel_recent_vods=channel_recent_vods,
+                           vod_thumbnail=vod_thumbnail)
 
 
 FAKE_FFMPEG = textwrap.dedent('''
@@ -250,12 +259,37 @@ class ImporterTests(unittest.TestCase):
         self.assertEqual(list(rows), ["examplechannel", "brokenchannel"])
         self.assertEqual(rows["examplechannel"]["vods"][0]["id"], OWN)
         self.assertEqual(rows["examplechannel"]["vods"][0]["imported"], [])
+        # The console is handed a path on this server, never the image CDN's URL.
+        self.assertEqual(rows["examplechannel"]["vods"][0]["thumb"],
+                         "/api/vods/thumb?channel=examplechannel&id=" + OWN)
         self.assertIsNone(rows["brokenchannel"]["vods"])           # an error, never a pretend-empty list
         self.assertEqual(rows["brokenchannel"]["error"], "Twitch API request failed (HTTP 500)")
         self.assertIn(("recent", "examplechannel", 10), self.calls)
         self.importer.recent()
         self.assertEqual(self.calls.count(("recent", "examplechannel", 10)), 1)   # served from memory
         self.assertEqual(self.calls.count(("recent", "brokenchannel", 10)), 2)  # errors are not cached
+
+    def test_a_picture_is_served_for_a_saved_channel_only(self):
+        content_type, body = self.importer.thumbnail("examplechannel", OWN)
+        self.assertEqual(content_type, "image/jpeg")
+        self.assertTrue(body.startswith(b"\xff\xd8\xff"))
+        self.assertIn(("thumb", OWN), self.calls)
+        before = list(self.calls)
+        with self.assertRaises(VodImportError) as refused:
+            self.importer.thumbnail("someoneelse", OWN)
+        self.assertEqual(refused.exception.status, 403)
+        self.assertEqual(self.calls, before)                 # refused before Twitch was asked
+        with self.assertRaises(VodImportError) as unknown:
+            self.importer.thumbnail("examplechannel", OTHER)
+        self.assertEqual(unknown.exception.status, 502)      # Twitch's own safe sentence
+
+    def test_the_picture_path_is_empty_when_twitch_sent_nothing(self):
+        self.assertEqual(thumb_path("examplechannel", {"id": OWN, "thumbnail": ""}), "")
+        self.assertEqual(thumb_path("examplechannel", {"id": OWN}), "")
+        self.assertEqual(thumb_path("not a channel", {"id": OWN, "thumbnail": THUMB_CDN}), "")
+        self.assertEqual(thumb_path("examplechannel", {"id": "abc", "thumbnail": THUMB_CDN}), "")
+        self.assertEqual(thumb_path("examplechannel", {"id": OWN, "thumbnail": THUMB_CDN}),
+                         "/api/vods/thumb?channel=examplechannel&id=" + OWN)
 
     def test_parsing_and_redaction(self):
         self.assertEqual(seconds_done({"out_time_us": "1500000"}), 1.5)
@@ -369,6 +403,26 @@ class EndpointTests(unittest.TestCase):
         status, result = self.request("POST", "/api/vods/delete", {"id": key, "confirm": True})
         self.assertEqual((status, result["media_removed"]), (200, True))
         self.assertEqual(self.request("GET", f"/api/{key}/events")[0], 404)
+
+    def test_the_picture_route_is_binary_and_refuses_other_channels(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=20)
+        try:
+            connection.request("GET", "/api/vods/thumb?channel=examplechannel&id=" + OWN)
+            response = connection.getresponse()
+            body = response.read()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Type"), "image/jpeg")
+            self.assertEqual(response.getheader("Cache-Control"), "no-store")
+            self.assertTrue(body.startswith(b"\xff\xd8\xff"))
+        finally:
+            connection.close()
+        status, error = self.request("GET", "/api/vods/thumb?channel=someoneelse&id=" + OWN)
+        self.assertEqual(status, 403)
+        self.assertIn("Only saved channels", error["error"])
+        status, error = self.request("GET", "/api/vods/thumb?channel=examplechannel&id=" + OTHER)
+        self.assertEqual(status, 502)
+        self.assertIn("no such video", error["error"])
+        self.assertEqual(self.request("GET", "/api/vods/thumb")[0], 403)
 
     def test_refusals_are_plain_json_errors(self):
         status, body = self.request("POST", "/api/vods/import", {"vod": OTHER})

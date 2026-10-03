@@ -1380,23 +1380,63 @@ change. Round 5 adds the regression test that makes it stay true: four states as
 map is asserted to hold exactly `kicker`, `failed` and `busy`, and the deleted copy is asserted absent
 from the client half.
 
-### 16.7 Item 8 — every Twitch VOD (open, scoped)
+### 16.7 Item 8 — every Twitch VOD (the pictures shipped; the timeline measured, still open)
 
-The backfill picker lists **one** GraphQL page of the channel's archive:
-`annotator/twitch_vod_source.py:64` queries `videos(first: %d, type: ARCHIVE)`, and
-`:171 edges = ((user.get('videos') or {}).get('edges')) or []`. "Backfill the timeline and thumbnail
-based on all Twitch VODs" therefore means:
+**What the live API actually answers** (2026-10-03, `gql.twitch.tv/gql`, two probe queries).
 
-1. paginate the archive (`after: cursor`) until the channel's history is exhausted, with a bound and a
-   visible progress state, because a busy channel has thousands of VODs;
-2. carry each VOD's thumbnail and title into the picker (the Twitch API returns `thumbnailURL` /
-   `title` / `duration` on the edge already);
-3. make the Records timeline show **every** archived night it can build from them, not only the ones
-   someone backfilled by hand — the timeline already renders a `tl-source-badge` per backfilled night,
-   so the vocabulary exists.
+- `videos(first: 20, type: ARCHIVE) { edges { cursor node { … previewThumbnailURL(width: 320,
+  height: 180) } } pageInfo { hasNextPage endCursor } }` answers `pageInfo {hasNextPage: false,
+  endCursor: null}`, and passing `after: <the edge's own cursor>` — with and without `sort: TIME` —
+  returns **the same page**. There is no second page to walk.
+- `ttpoolfriday` exposes **three** archived broadcasts: `2890514774` (2026-10-03, 4.57 h),
+  `2890340436` (2026-10-03, 4.53 h), `2884327358` (2026-09-26, 3.72 h). `cornerpocket` exposes none.
+  So "all Twitch VODs" is three nights — ≈12.8 h of video — and the picker was already listing all
+  three, without a single picture.
+- A bound still belongs in the code before a busier channel arrives: the day an archive has hundreds
+  of nights, the listing needs a page count and a visible progress state rather than a silent
+  truncation. That change travels with the timeline half below, where walking further has a purpose.
 
-This is a feature with a network dependency and a rate limit, so it gets its own round: a plan, an
-acceptance rule (the count of timeline nights the archive can produce), and its own evidence.
+**What shipped (the pictures)**.
+
+| where | what |
+| --- | --- |
+| `annotator/twitch_vod_source.py:63` | `_CHANNEL_QUERY` asks for `previewThumbnailURL(width: 320, height: 180)` on every edge |
+| `:70` `:180` `:211` | `_THUMB_QUERY`, `_raw_bytes()` (the binary twin of `_raw`: the same no-redirect TLS discipline, capped at 400 kB) and the 64-entry, one-hour `_THUMB_CACHE` |
+| `:113` `:116` | `_VOD_THUMB_HOSTS = frozenset({'static-cdn.jtvnw.net'})` and `_validate_thumb()` — https, exact host, no credentials, no port, no fragment, no whitespace |
+| `:214` | `vod_thumbnail(id)` → `('image/jpeg', bytes)`, or a sentence a person can read (`Twitch has no such video`) |
+| `:253` | the listing validates each node's picture and returns `thumbnail`, or `None` when Twitch sent nothing usable |
+| `annotator/vod_import.py:50` `:268` `:273` | `thumb_path()` → `/api/vods/thumb?channel=…&id=…`; `recent()` rows carry `thumb`; `thumbnail()` checks the channel against `saved_channels()` **first** and refuses with 403 otherwise |
+| `annotator/unified_server.py:1214` `:2277` | `Backend.vod_thumb()` and the `GET /api/vods/thumb` route, ahead of the generic API fallback |
+| `annotator/ops.js` `annotator/ops.css` | the picker's row begins with `img.bf-thumb` (160×90, `object-fit: cover`, the asset's own 16:9; 112×63 under 750 px) |
+
+The proxy is the point rather than a detour: the browser fetches the picture from **this** server, so
+Twitch learns nothing about who is looking, and the one pinned host is the only address the fetch may
+reach. An id alone is not a licence either — the channel has to be one this club saved.
+
+**Evidence**: `out/r5/shot_picker.py` drives the real console (a private server on `:8170`) from
+Records into the Backfill picker and reads each row's `<img>` — its `src`, its `naturalWidth` and its
+box. The shot and its numbers are in `docs/console-shots.md` §10. The suites are
+`tests/test_twitch_vod_source.py` (31 tests: the pinned host, bytes rather than text, the cache
+answering the second call, the refusal that never reaches a fetch) and `tests/test_vod_import.py`
+(19 tests: the path shape, the saved-channel check, and the binary route over real HTTP).
+
+**Still open — the timeline half.** "Backfill the **timeline** … based on all Twitch VODs" means a
+night per broadcast, and a night is not free: each VOD needs its media fetched and a CV pass over it.
+The three broadcasts above are ≈12.8 h of video; a hundred nights is a hundred times that, on a box
+whose data disk failed this afternoon. Two shapes are worth the owner's decision, and neither is built:
+
+1. **a night per broadcast, on demand** — the picker's existing per-VOD flow, run once per archive row
+   (three nights today, minutes each, bounded, reversible);
+2. **the archive as the timeline's backbone** — every broadcast becomes a night automatically, with a
+   job queue, a progress state and a stop rule. Its cost is unbounded by construction, so it needs a
+   budget before it needs an acceptance rule.
+
+The one thing that must not happen is a timeline row for a night whose numbers nobody computed.
+
+**The ship step still owed**: `pool-workbench.service` runs the pre-item-8 python until it is
+restarted, while the static half (`ops.js`, `ops.css`) is live the moment the merge lands. Until that
+restart the picker asks for a picture the running server does not serve — an empty framed box, not an
+error, and not a lie.
 
 ### 16.8 Rejected, deferred and already true
 

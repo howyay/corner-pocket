@@ -31,9 +31,11 @@ MEDIA_HEAD = '\n'.join([
 GQL_VOD = {'data': {'video': {'id': '1000000001', 'title': '260918', 'lengthSeconds': 31137,
                               'createdAt': '2026-09-19T01:29:07Z', 'owner': {'login': 'examplechannel'},
                               'playbackAccessToken': {'signature': 'S' * 40, 'value': 'V' * 444}}}}
+THUMB_URL = ('https://static-cdn.jtvnw.net/cf_vods/d2nvs31859zcd8/abc_examplechannel/'
+             'thumb/thumb0-320x180.jpg')
 GQL_CHANNEL = {'data': {'user': {'login': 'examplechannel', 'videos': {'edges': [
     {'node': {'id': '1000000001', 'title': '260918', 'lengthSeconds': 31137,
-              'createdAt': '2026-09-19T01:29:07Z'}}]}}}}
+              'createdAt': '2026-09-19T01:29:07Z', 'previewThumbnailURL': THUMB_URL}}]}}}}
 
 
 def reply(status, body):
@@ -189,8 +191,11 @@ class ChannelTests(unittest.TestCase):
         with patch('annotator.twitch_vod_source._raw', network):
             vods = vod.channel_recent_vods('examplechannel', 1)
         self.assertEqual(vods, [{'id': '1000000001', 'title': '260918', 'length_s': 31137,
-                                 'created_at': '2026-09-19T01:29:07Z', 'channel': 'examplechannel'}])
-        self.assertIn('videos(first: 1, type: ARCHIVE)', network.calls[0][1]['query'])
+                                 'created_at': '2026-09-19T01:29:07Z', 'channel': 'examplechannel',
+                                 'thumbnail': THUMB_URL}])
+        query = network.calls[0][1]['query']
+        self.assertIn('videos(first: 1, type: ARCHIVE)', query)
+        self.assertIn('previewThumbnailURL(width: 320, height: 180)', query)
 
     def test_unknown_channel_and_bad_login(self):
         with patch('annotator.twitch_vod_source._raw', Network(gql_body={'data': {'user': None}})):
@@ -385,6 +390,81 @@ class PacingTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 with self.assertRaises(TwitchVodError):
                     vod.VodRealtimeCapture('file.mp4', capture=FakeCapture(), **kwargs)
+
+
+class ThumbnailTests(unittest.TestCase):
+    """The preview picture: a pinned host, bytes rather than text, and one fetch per VOD."""
+
+    def setUp(self):
+        vod._THUMB_CACHE.clear()
+        self.addCleanup(vod._THUMB_CACHE.clear)
+
+    def gql_reply(self, url):
+        return {'data': {'video': {'id': '1000000001', 'previewThumbnailURL': url}}}
+
+    def test_the_listing_validates_each_picture_without_failing_the_row(self):
+        body = {'data': {'user': {'login': 'examplechannel', 'videos': {'edges': [
+            {'node': {'id': '1000000001', 'title': '260918', 'lengthSeconds': 31137,
+                      'createdAt': '2026-09-19T01:29:07Z',
+                      'previewThumbnailURL': 'https://evil.example/x.jpg'}}]}}}}
+        with patch('annotator.twitch_vod_source._raw', Network(gql_body=body)):
+            rows = vod.channel_recent_vods('examplechannel', 1)
+        self.assertIsNone(rows[0]['thumbnail'])      # offered, refused, listed without it
+        self.assertEqual(rows[0]['id'], '1000000001')
+
+    def test_only_the_pinned_image_cdn_is_accepted(self):
+        for url in ('https://evil.example/x.jpg', 'http://static-cdn.jtvnw.net/x.jpg',
+                    'https://static-cdn.jtvnw.net.evil.example/x.jpg',
+                    'https://user:pw@static-cdn.jtvnw.net/x.jpg', '', None):
+            with self.assertRaises(TwitchVodError):
+                vod._validate_thumb(url)
+        self.assertEqual(vod._validate_thumb(THUMB_URL), THUMB_URL)
+
+    def test_a_picture_is_bytes_and_twice_is_cached(self):
+        picture = b'\xff\xd8\xff\xe0' + b'0' * 400
+        fetched = []
+
+        def raw_bytes(url, **kwargs):
+            fetched.append(url)
+            return {'status': 200, 'body': picture, 'transport': None}
+
+        network = Network(gql_body=self.gql_reply(THUMB_URL))
+        with patch('annotator.twitch_vod_source._raw', network), \
+                patch('annotator.twitch_vod_source._raw_bytes', raw_bytes):
+            first = vod.vod_thumbnail('1000000001')
+            second = vod.vod_thumbnail('v1000000001')          # the same broadcast, another spelling
+        self.assertEqual(first, ('image/jpeg', picture))
+        self.assertEqual(second, first)
+        self.assertEqual(fetched, [THUMB_URL])                 # one fetch
+        self.assertEqual(len(network.calls), 1)                # one API call
+        self.assertIn('previewThumbnailURL(width: 320, height: 180)',
+                      network.calls[0][1]['query'])
+
+    def test_a_refused_picture_never_reaches_the_fetch(self):
+        fetched = []
+        with patch('annotator.twitch_vod_source._raw',
+                   Network(gql_body=self.gql_reply('https://evil.example/x.jpg'))), \
+                patch('annotator.twitch_vod_source._raw_bytes',
+                      lambda url, **kw: fetched.append(url)):
+            with self.assertRaises(TwitchVodError):
+                vod.vod_thumbnail('1000000001')
+        self.assertEqual(fetched, [])
+
+    def test_a_missing_or_broken_picture_is_a_safe_error(self):
+        for body in ({'data': {'video': None}}, {'data': {}}, {}):
+            with patch('annotator.twitch_vod_source._raw', Network(gql_body=body)):
+                with self.assertRaises(TwitchVodError):
+                    vod.vod_thumbnail('999')
+        cases = ({'status': None, 'body': b'', 'transport': 'URLError'},
+                 {'status': 404, 'body': b'', 'transport': None},
+                 {'status': 200, 'body': b'\xff\xd8', 'transport': None})
+        for case in cases:
+            vod._THUMB_CACHE.clear()
+            with patch('annotator.twitch_vod_source._raw',
+                       Network(gql_body=self.gql_reply(THUMB_URL))), \
+                    patch('annotator.twitch_vod_source._raw_bytes', lambda url, **kw: case):
+                with self.assertRaises(TwitchVodError):
+                    vod.vod_thumbnail('1000000001')
 
 
 if __name__ == '__main__':

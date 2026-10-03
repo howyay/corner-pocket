@@ -261,7 +261,7 @@ function bfClockLine(){return `<div class="row bf-clockline">${field(t('bfStartA
 function bfDatalist(){return `<datalist id="bf-people">${bfPeople().map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist>`}
 function bfPickStep(){
   const channels=(bf.recent||[]).map(channel=>{
-    const rows=(channel.vods||[]).map(v=>`<div class="row bf-vod"><span class="grow">${esc(v.title||v.id)}<small>${esc(fmtDate(v.created_at))} · ${esc(hms(v.length_s))}${(v.imported||[]).length?` · ${esc(t('bfReuse'))}`:''}</small></span>${btn(t('bfPick'),'bf-pick',`data-id="${esc(v.id)}" data-length="${Number(v.length_s)||0}" data-title="${esc(v.title||'')}"`)}</div>`).join('');
+    const rows=(channel.vods||[]).map(v=>`<div class="row bf-vod">${v.thumb?`<img class="bf-thumb" src="${esc(v.thumb)}" alt="" width="160" height="90" loading="lazy" decoding="async">`:''}<span class="grow">${esc(v.title||v.id)}<small>${esc(fmtDate(v.created_at))} · ${esc(hms(v.length_s))}${(v.imported||[]).length?` · ${esc(t('bfReuse'))}`:''}</small></span>${btn(t('bfPick'),'bf-pick',`data-id="${esc(v.id)}" data-length="${Number(v.length_s)||0}" data-title="${esc(v.title||'')}"`)}</div>`).join('');
     const body=channel.error?`<p class="note err">${esc(channel.error)}</p>`:(rows?`<div class="stack">${rows}</div>`:`<p class="muted">${esc(t('bfNoVods'))}</p>`);
     return `<article class="bf-channel"><h3>${esc(channel.channel)}</h3>${body}</article>`}).join('');
   return `<h2>${esc(t('bfPickTitle'))}</h2><p class="muted">${esc(t('bfPickNote'))}</p>${channels}

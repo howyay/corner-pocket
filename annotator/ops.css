@@ -998,3 +998,14 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell #tabbar .tabbar-ball .ball{width:20px;height:20px}
   #ops-shell #tabbar .tabbar-ball .ball i{width:13px;height:13px;font-size:8px}
 }
+
+/* Round 5, owner item 8 (docs/console-redesign.md SS16.7): a broadcast row shows its own
+   picture. The console draws it from /api/vods/thumb - this server validates the image
+   CDN's host and fetches the bytes - so a browser rendering the console never talks to
+   Twitch. 160x90 is the picture Twitch serves (320x180) at half size; the <img> carries
+   width/height and loading="lazy", so a row cannot reflow when a picture arrives. */
+#ops-shell .bf-thumb{flex:none;display:block;width:160px;height:90px;object-fit:cover;
+  border:1px solid var(--line);border-radius:2px;background:var(--rail)}
+@media (max-width:750px){
+  #ops-shell .bf-thumb{width:112px;height:63px}
+}

@@ -278,3 +278,50 @@ photographed like any other, and `tests/test_ops.js` asserts both fixes.
   the console's other screens. The board is unchanged and still dark-only. The 1152 px breakpoint is
   a measurement of 1024's overflow, not a designed boundary: between 1024 and 1152 the slot shows no
   word and no Reset on any width.
+
+## 10. Item 8: the picker's own pictures, from a live server
+
+The Backfill picker used to name three broadcasts and show nothing beside them. It now shows each
+broadcast's own preview picture — fetched by **this** server, not by the browser from an image CDN.
+
+This shot cannot live in the fixture run above: its rows come from Twitch, so it needs the network and
+a live server. The whole reproduction is four commands and one page.
+
+```sh
+.venv/bin/python annotator/unified_server.py --port 8170 --root ~/projects/pool &
+B=/home/haoye/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64
+AGENT_BROWSER_SESSION=picker $B open 'http://127.0.0.1:8170/#/records'
+AGENT_BROWSER_SESSION=picker $B set viewport 1280 900
+AGENT_BROWSER_SESSION=picker $B click '[data-action="backfill-open"]'
+AGENT_BROWSER_SESSION=picker $B screenshot out/r5-picker/backfill-pick-1280-en.png
+```
+
+What the page itself reported (read back with `$B eval`, so these are the browser's numbers, not the
+stylesheet's intent) — at 1280×900 and again at 390×844:
+
+| what | 1280×900 | 390×844 |
+| --- | --- | --- |
+| rows carrying a picture (`img.bf-thumb`) | 3 | 3 |
+| loaded (`complete` and `naturalWidth > 0`) | 3 of 3 | 3 of 3 |
+| the decoded asset | 320×180 each | 320×180 each |
+| the box it is drawn into | 160×90 | **112×63** |
+| document `scrollWidth` vs `innerWidth` | 1280 vs 1280 | 390 vs 390 |
+
+The `src` every row asked for is a path on this server —
+`/api/vods/thumb?channel=ttpoolfriday&id=2890514774`, and `…436`, `…358` for the others — never
+`static-cdn.jtvnw.net`. The three broadcasts are `261001` (2026-10-02, 4:34:15), `261001`
+(2026-10-02, 4:31:33) and `260918` (2026-09-25, 3:43:17): the saved channel's whole archive. On the
+phone the row's title moves above its date, and the pictures stay 16:9.
+
+The HTTP layer under the same run, checked directly:
+
+| request | answer |
+| --- | --- |
+| `GET /api/vods/thumb?channel=ttpoolfriday&id=2890514774` | 200 `image/jpeg`, `Cache-Control: no-store`, 19 742 bytes, `ff d8 ff … ff d9` |
+| `GET /api/vods/thumb?channel=<not saved>&id=2890514774` | 403 `This VOD belongs to <that channel>. Only saved channels can be analysed; add the channel under Source first.` |
+| `GET /api/vods/thumb?channel=ttpoolfriday&id=<unknown>` | 502 `Twitch has no such video` |
+
+Limits, stated plainly: this shot needs the network, so it is not part of the offline fixture run and
+its numbers cannot be reproduced on a box with no route to Twitch; the archive here is three
+broadcasts, so the bound a busier channel would need is argued in `docs/console-redesign.md` §16.7
+rather than measured; and a **night** per broadcast — the timeline half of item 8 — is still not built.

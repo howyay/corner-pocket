@@ -62,7 +62,16 @@ _VOD_TOKEN_QUERY = (
 _VIDEO_QUERY = ('{ video(id: "%s") { id title lengthSeconds createdAt owner { login } } }')
 _CHANNEL_QUERY = (
     '{ user(login: "%s") { login videos(first: %d, type: ARCHIVE) '
-    '{ edges { node { id title lengthSeconds createdAt } } } } }')
+    '{ edges { node { id title lengthSeconds createdAt '
+    'previewThumbnailURL(width: %d, height: %d) } } } } }')
+#: One VOD's preview picture. The listing carries the same field, but a thumbnail request
+#: arrives as (channel, id) and must be resolved again; the host is validated before the
+#: bytes are fetched, so a tampered index can never point this server at another host.
+_THUMB_QUERY = '{ video(id: "%s") { id previewThumbnailURL(width: %d, height: %d) } }'
+#: 320x180 previews are ~10-25 kB; the limit is a ceiling, not an expectation.
+_THUMB_BYTES = 400000
+_THUMB_WIDTH = 320
+_THUMB_HEIGHT = 180
 
 #: Media-playlist fetch limits: a long VOD playlist is large, and only its head is needed.
 _PLAYLIST_BYTES = 200000
@@ -95,6 +104,27 @@ def _validate_media(url):
         valid = False
     if not valid:
         raise TwitchVodError('Twitch returned an unsafe VOD playback URL')
+    return url
+
+
+#: Preview pictures are served from Twitch's static image CDN, not from the media hosts.
+#: Pinned exactly, for the same reason the media distribution is: `*.jtvnw.net` would let
+#: any host under that domain become an image this server fetches and hands to a browser.
+_VOD_THUMB_HOSTS = frozenset({'static-cdn.jtvnw.net'})
+
+
+def _validate_thumb(url):
+    """HTTPS preview picture on Twitch's own static image CDN only."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ''
+        valid = (host in _VOD_THUMB_HOSTS and parts.scheme == 'https' and not parts.username
+                 and not parts.password and parts.port in (None, 443)
+                 and not parts.fragment and not re.search(r'[\s\\]', url))
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        raise TwitchVodError('Twitch returned an unsafe thumbnail URL')
     return url
 
 
@@ -147,6 +177,66 @@ def _raw(url, payload=None, *, timeout=12, limit=_PLAYLIST_BYTES):
         return {'status': None, 'body': '', 'transport': type(exc).__name__}
 
 
+def _raw_bytes(url, *, timeout=10, limit=_THUMB_BYTES):
+    """One **binary** request, for pictures rather than documents.
+
+    The same discipline as :func:`_raw` - redirects refused, the host validated against an
+    allowlist before anything is fetched, a transport failure reported as its exception
+    type only - except that the body is returned as bytes: ``_raw`` decodes to text, which
+    a JPEG cannot survive.
+    """
+    _validate_thumb(url)
+    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'image/*'}
+    context = ssl.create_default_context()
+    if Path('/etc/ssl/certs/ca-certificates.crt').is_file():
+        context.load_verify_locations('/etc/ssl/certs/ca-certificates.crt')
+    opener = build_opener(live._NoRedirect(), HTTPSHandler(context=context))
+    try:
+        with opener.open(Request(url, headers=headers), timeout=timeout) as response:
+            body = response.read(limit + 1)
+            if len(body) > limit:
+                return {'status': None, 'body': b'', 'transport': 'TooLarge'}
+            return {'status': response.status, 'body': body, 'transport': None}
+    except HTTPError as exc:
+        return {'status': exc.code, 'body': b'', 'transport': None}
+    except (URLError, OSError) as exc:
+        return {'status': None, 'body': b'', 'transport': type(exc).__name__}
+
+
+#: Resolved preview pictures, so a screen of rows costs one API call per broadcast and a
+#: reloaded page costs none.  Bounded and cleared wholesale: a preview is a small image and
+#: a stale entry is worth less than the bookkeeping of evicting one precisely.
+_THUMB_CACHE = {}
+_THUMB_CACHE_TTL_S = 3600
+_THUMB_CACHE_MAX = 64
+
+
+def vod_thumbnail(vod_id, *, timeout=10):
+    """One broadcast's preview picture as ``(content_type, bytes)``, or a safe error."""
+    vod = vod_id_of(vod_id)
+    now = time.monotonic()
+    cached = _THUMB_CACHE.get(vod)
+    if cached is not None and now - cached[0] < _THUMB_CACHE_TTL_S:
+        return cached[1], cached[2]
+    document = gql(_THUMB_QUERY % (vod, _THUMB_WIDTH, _THUMB_HEIGHT), timeout=timeout)
+    video = (document.get('data') or {}).get('video')
+    if not isinstance(video, dict):
+        raise TwitchVodError('Twitch has no such video')
+    url = _validate_thumb(video.get('previewThumbnailURL') or '')
+    result = _raw_bytes(url, timeout=timeout)
+    if result['transport'] is not None:
+        raise TwitchVodError('Twitch thumbnail request failed; check network and TLS connectivity')
+    if result['status'] != 200:
+        raise TwitchVodError('Twitch thumbnail request failed (HTTP %s)' % result['status'])
+    body = result['body']
+    if not isinstance(body, (bytes, bytearray)) or len(body) < 128:
+        raise TwitchVodError('Twitch returned an empty preview picture')
+    if len(_THUMB_CACHE) >= _THUMB_CACHE_MAX:
+        _THUMB_CACHE.clear()
+    _THUMB_CACHE[vod] = (now, 'image/jpeg', bytes(body))
+    return 'image/jpeg', bytes(body)
+
+
 def gql(query, *, timeout=12):
     """POST one GraphQL query and return the parsed document, or a safe error."""
     result = _raw('https://gql.twitch.tv/gql', {'query': query}, timeout=timeout)
@@ -161,17 +251,31 @@ def gql(query, *, timeout=12):
 
 
 def channel_recent_vods(channel, limit=3):
-    """The most recent archived broadcasts of ``channel``, newest first."""
+    """The most recent archived broadcasts of ``channel``, newest first.
+
+    Each row carries ``thumbnail``: the preview URL *validated* against the static image
+    CDN's allowlist, or ``None`` when Twitch sent nothing usable. Twitch serves this
+    channel's archive as a single window - ``pageInfo.hasNextPage`` is false and an
+    ``after:`` cursor returns the same page - so there is nothing to paginate.
+    """
     if not isinstance(channel, str) or not re.fullmatch(r'[a-z0-9_]{1,25}', channel):
         raise TwitchVodError('Expected a canonical Twitch channel login')
-    document = gql(_CHANNEL_QUERY % (channel, max(1, min(int(limit), 10))))
+    document = gql(_CHANNEL_QUERY % (channel, max(1, min(int(limit), 10)), _THUMB_WIDTH, _THUMB_HEIGHT))
     user = (document.get('data') or {}).get('user')
     if user is None:
         raise TwitchVodError('Twitch has no such channel')
     edges = ((user.get('videos') or {}).get('edges')) or []
-    return [dict(id=node.get('id'), title=node.get('title'), length_s=node.get('lengthSeconds'),
-                 created_at=node.get('createdAt'), channel=user.get('login'))
-            for node in (edge.get('node') or {} for edge in edges) if node.get('id')]
+    rows = []
+    for node in (edge.get('node') or {} for edge in edges):
+        if not node.get('id'):
+            continue
+        try:
+            thumbnail = _validate_thumb(node.get('previewThumbnailURL'))
+        except TwitchVodError:
+            thumbnail = None
+        rows.append(dict(id=node.get('id'), title=node.get('title'), length_s=node.get('lengthSeconds'),
+                         created_at=node.get('createdAt'), channel=user.get('login'), thumbnail=thumbnail))
+    return rows
 
 
 def vod_info(vod_id, *, strict=True):

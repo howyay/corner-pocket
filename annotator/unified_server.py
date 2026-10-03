@@ -1211,6 +1211,19 @@ class Backend:
         except VodImportError as exc:
             raise APIError(str(exc), exc.status) from exc
 
+    def vod_thumb(self, query):
+        """A saved channel's broadcast preview picture, as ``(content_type, bytes)``.
+
+        Binary, so it is served by the GET chain rather than through ``vod_request``: the
+        console draws it in an ``<img>`` and never learns the image CDN's URL.
+        """
+        from annotator.vod_import import VodImportError
+        importer = self.vod_importer()
+        try:
+            return importer.thumbnail(query.get("channel", [None])[0], query.get("id", [None])[0])
+        except VodImportError as exc:
+            raise APIError(str(exc), exc.status) from exc
+
     def registered(self, dataset):
         """The registry entry of ``dataset`` (src/datasets.py), or a 404."""
         found = dataset_lookup(self.root, dataset)
@@ -2261,6 +2274,9 @@ def make_handler(backend):
                         'X-Timestamp-Seconds': str(meta['timestamp_seconds']),
                         'X-Timestamp-Kind': meta['timestamp_kind'],
                         'X-Frame-Width': str(meta['width']), 'X-Frame-Height': str(meta['height'])})
+                if path == '/api/vods/thumb':
+                    content_type, raw = backend.vod_thumb(query)
+                    return self.send(200, raw, content_type)
                 if path in ("/favicon.svg", "/favicon-32.png", "/favicon-16.png", "/favicon.ico"):
                     return self.file(safe_file(backend.root / "annotator", path[1:]))
                 # Self-hosted web fonts and their OFL texts: one flat directory, no build script.
