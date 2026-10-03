@@ -3007,3 +3007,23 @@ test('round 3 / F19: the wizard is its own place in the nav, and its subtitle is
   const fresh = harness();
   assert.equal((fresh.evaluate('tabbarHTML()').match(/aria-current="page"/g) || []).length, 1, 'with no wizard open exactly one destination stays current');
 });
+
+test('round 4 / rater 1: a name with a quote reaches every surface escaped exactly once', () => {
+  const h = harness();
+  h.evaluate(`data.players=[{id:'p1',name:'Wei "Stone" Zhang',rating:500}];
+    data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
+    entrants:[{id:'e1',members:[{pid:'p1',name:null}]},{id:'e2',members:[{pid:null,name:'Jordan Pike'}]}],
+    matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]}]}`);
+  const bracket = h.evaluate('bracketScreen()');
+  assert.ok(bracket.includes('Wei &quot;Stone&quot; Zhang'), 'the bracket shows the name as text, not as an entity');
+  assert.ok(!bracket.includes('&amp;quot;'), 'the bracket never escapes a name twice');
+  assert.ok(bracket.includes('aria-label="Wei &quot;Stone&quot; Zhang – Jordan Pike · On table"'), 'nor does the card\u2019s accessible name');
+  const table = h.evaluate('tableCard(1)');
+  assert.ok(table.includes('Wei &quot;Stone&quot; Zhang') && !table.includes('&amp;quot;'), 'a table card is escaped exactly once');
+  const tonight = h.evaluate('tonightPanel()');
+  assert.ok(tonight.includes('Wei &quot;Stone&quot; Zhang') && !tonight.includes('&amp;quot;'), 'so is the scorecard line');
+  const records = h.evaluate('floorScreen() + recordsScreen()');
+  assert.ok(!records.includes('&amp;quot;'), 'and no other screen doubles an entity');
+  assert.ok(!/esc\(sideName\(/.test(source.replace(/esc\(sideName\(m,m\.sides\[0\]\)\)/g, '').replace(/esc\(sideName\(m,m\.sides\[1\]\)\)/g, '').replace(/esc\(sideName\(m,m\.winnerId\|\|m\.sides\[0\]\)\)/g, '').replace(/esc\(sideName\(m,id\)\)/g, '')),
+    'sideName returns text: every remaining insertion point escapes it itself');
+});
