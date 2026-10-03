@@ -4,7 +4,10 @@
 The state is never hand-written. This script starts a throwaway
 tests/serve_operations_fixture.py, drives the console's own actions over POST /api/operations
 (player_save, entrant_add, tournament_start, match_schedule, match_score, match_complete,
-match_absence, source_add, note_add, tournament_new) and dumps the resulting document. Every
+match_absence, source_add, note_add, tournament_new, event_backfill) and dumps the resulting
+document -- including one night that was typed by hand from a saved Twitch VOD, so the
+timeline's backfill badge, its source line and a standing that counts a backfilled night are
+all real data rather than a mocked row. Every
 field is therefore exactly what annotator/operations.py writes: match shape, entrant members,
 bye propagation, audit events, revision.
 
@@ -21,6 +24,7 @@ import random
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -84,14 +88,18 @@ def port_is_free(port):
 class Api:
     """A revision-tracking client for the fixture's /api/operations."""
 
+    # Generous: this box is shared and a loaded machine can stall a single write for tens of
+    # seconds (observed 23 s for the first POST at load average 22, and a 120 s stall while
+    # another project was rendering on the same 12 cores). A short timeout here looks exactly
+    # like a fixture bug and is not one. A stall that outlasts even this names its action and
+    # points at the fixture's own log instead of printing a bare urllib traceback.
+    TIMEOUT = 300
+    VERBOSE = False
+    LOG = None
+
     def __init__(self, base):
         self.base = base.rstrip('/')
         self.state = self.get()
-
-    # Generous: this box is shared and a loaded machine can stall a single write for tens of
-    # seconds (observed 23 s for the first POST at load average 22). A short timeout here
-    # looks exactly like a fixture bug and is not one.
-    TIMEOUT = 120
 
     def _request(self, request):
         with urllib.request.urlopen(request, timeout=self.TIMEOUT) as response:
@@ -105,10 +113,14 @@ class Api:
         body = json.dumps(dict(revision=self.state['revision'], action=action, **payload)).encode('utf-8')
         request = urllib.request.Request(f'{self.base}/api/operations', data=body,
                                          headers={'Content-Type': 'application/json'}, method='POST')
+        if self.VERBOSE:
+            print(f'  -> {action} (revision {self.state["revision"]})', flush=True)
         try:
             self.state = self._request(request)
         except urllib.error.HTTPError as error:
             raise SystemExit(f'{action} {payload} -> HTTP {error.code}: {error.read().decode("utf-8", "replace")}')
+        except TimeoutError:
+            raise SystemExit(f'{action} did not answer within {self.TIMEOUT}s; the fixture log is {self.LOG}')
         return self.state
 
     def player(self, name):
@@ -142,6 +154,34 @@ def enter(api, names, guests):
         api.post('entrant_add', members=[{'name': name}])
 
 
+def backfill_night(api):
+    """One past night typed from the saved VOD, through the same action the console posts.
+
+    The club's channel is deleted above and only 'https://www.twitch.tv/videos/2274501933'
+    stays, so this range is a saved source the server accepts (annotator/operations.py,
+    _backfill_source). Two regulars carry their pid, so the night counts towards their house
+    standing (owner item 4); the third name is a guest and counts towards nobody. Nobody in
+    NO_RECORD appears here: their "—" standing has to stay empty.
+    """
+    vod, start, end = 2274501933, 3600, 11400
+    priya, kenji, lin = (api.player(name)['id'] for name in ('Priya Nair', 'Kenji Watanabe', '林小满'))
+    return api.post('event_backfill',
+                    event=dict(name='Wednesday 8-Ball Open', format='singles', raceTo=5, tables=3,
+                               entrants=[dict(pid=priya), dict(name='Danny Lau'),
+                                         dict(pid=kenji), dict(pid=lin)],
+                               matches=[dict(round=1, sides=['Priya Nair', 'Danny Lau'],
+                                             score=[5, 2], winner='Priya Nair', result='played',
+                                             clip=[3600, 4500]),
+                                        dict(round=1, sides=['Kenji Watanabe', '林小满'],
+                                             score=[5, 4], winner='Kenji Watanabe', result='played',
+                                             clip=[4700, 5600]),
+                                        dict(round=2, sides=['Priya Nair', 'Kenji Watanabe'],
+                                             score=[5, 3], winner='Priya Nair', result='played',
+                                             clip=[5800, 6900])]),
+                    source=dict(kind='vod-backfill', vodId=str(vod), startS=start, endS=end,
+                                datasetId=f'tw-{vod}-{start}-{end}', humanReviewed=True))
+
+
 def build(api):
     for name, rating, status in REGULARS:
         api.post('player_save', **dict(name=name, status=status, **({'rating': rating} if rating else {})))
@@ -165,6 +205,10 @@ def build(api):
                 '赵启明'], ['Danny Lau'])
     api.post('tournament_start')
     play_out(api, 3, iter([1, 2, 0, 2, 1]))
+
+    # One archived night that came from a VOD: typed, confirmed, and linked to the two
+    # regulars who played it (see backfill_night).
+    backfill_night(api)
 
     # The event running now: 16 entrants, no byes, four first-round matches already signed,
     # three on tables (one with a live score), one held because a player is not here.
@@ -211,7 +255,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--out', default=str(DEFAULT_OUT), help='where to write the state (default: %(default)s)')
     parser.add_argument('--port', type=int, help='fixture port (default: a free one)')
+    parser.add_argument('--verbose', action='store_true', help='name every action as it is posted')
     args = parser.parse_args()
+    Api.VERBOSE = args.verbose
 
     port = args.port or free_port()
     if not port_is_free(port):
@@ -219,13 +265,19 @@ def main():
     environment = dict(os.environ, PYTHONPATH='.')
     environment.pop('POOL_DATABASE_URL', None)
     interpreter = str(ROOT / '.venv' / 'bin' / 'python') if (ROOT / '.venv' / 'bin' / 'python').exists() else sys.executable
+    # The fixture's output goes to a file, never a pipe this process does not read: the fixture
+    # answers one request per handler thread, and a full pipe would block whichever thread is
+    # writing while the build waits on that same request.
+    fixture_log = Path(tempfile.mkstemp(prefix='console-fixture-', suffix='.log')[1])
+    Api.LOG = fixture_log
+    log_handle = fixture_log.open('w')
     server = subprocess.Popen([interpreter, str(FIXTURE), '--port', str(port)], cwd=ROOT, env=environment,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                              stdout=log_handle, stderr=subprocess.STDOUT, text=True)
     try:
         deadline = time.time() + 120
         while True:
             if server.poll() is not None:
-                raise SystemExit('fixture exited early:\n' + server.stdout.read())
+                raise SystemExit('fixture exited early:\n' + fixture_log.read_text())
             try:
                 api = Api(f'http://127.0.0.1:{port}')
                 break
@@ -258,6 +310,11 @@ def main():
         except subprocess.TimeoutExpired:
             server.kill()
             server.wait(timeout=10)
+        log_handle.close()
+        if fixture_log.stat().st_size < 4000:
+            fixture_log.unlink()
+        else:
+            print(f'fixture log kept: {fixture_log} ({fixture_log.stat().st_size} B)')
     if not port_is_free(port):
         raise SystemExit(f'port {port} was not released')
     print(f'fixture stopped; 127.0.0.1:{port} is free again')
