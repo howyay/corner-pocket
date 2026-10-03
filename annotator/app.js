@@ -715,13 +715,17 @@ function playEvent(index) {
 // The facts line is derived from what the painter actually drew, so
 // "overlays: none" while nodes are drawn is structurally impossible.
 // ---- stage rendering -----------------------------------------------------
+// What the frame-less stage says. Kept in one place because it is written twice:
+// baked into the markup when the stage is built, and re-read on every paint so a
+// language switch reaches a stage that was built in the other language (F3).
+const STAGE_EMPTY_COPY = 'Pick a moment on the scrub strip, or select a cue, then freeze it here.';
 function stageHTML() {
   const w = state.frameWidth || 1280, h = state.frameHeight || 720;
   return `<figure class="stage" id="stage">
     <video id="t-video" playsinline muted preload="metadata" hidden></video>
     <img id="t-img" alt="${esc(text('Raw decoded frame'))}" ${liveStill() ? `src="${esc(liveStill())}"` : state.shotUrl ? `src="${esc(state.shotUrl)}"` : ''}>
     <svg id="t-overlay" role="group" aria-label="${esc(text('Frame overlays'))}" viewBox="0 0 ${w} ${h}"></svg>
-    <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text('Pick a moment on the scrub strip, or select a cue, then freeze it here.'))}</div>
+    <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text(STAGE_EMPTY_COPY))}</div>
     <div class="stage-live" id="stage-live" ${state.source.kind === 'live' ? '' : 'hidden'}></div>
     <div class="stage-play" id="stage-play" role="status" hidden></div>
     <div class="stage-note" id="stage-note" role="status" hidden></div>
@@ -747,7 +751,15 @@ function renderStage() {
   if (img && picture && img.getAttribute('src') !== picture) img.src = picture;
   const showStill = !!state.shotUrl && !videoShown;
   if (img) img.hidden = !showStill && !liveStill();
-  const empty = $('#stage-empty'); if (empty) empty.hidden = !!state.shotUrl || !!liveStill() || videoShown;
+  const empty = $('#stage-empty');
+  if (empty) {
+    empty.hidden = !!state.shotUrl || !!liveStill() || videoShown;
+    // The sentence is generated copy, so it is re-read in the current language on
+    // every paint; the copy baked in when the stage was built kept that language
+    // next to a banner that had been translated (round-2 F3).
+    const sentence = text(STAGE_EMPTY_COPY);
+    if (empty.textContent !== sentence) empty.textContent = sentence;
+  }
   const svg = $('#t-overlay'); if (svg) { svg.setAttribute('viewBox', `0 0 ${state.frameWidth || 1280} ${state.frameHeight || 720}`); if (!svg.dataset.bound) { svg.dataset.bound = '1'; svg.onpointerdown = overlayPointerDown; svg.onpointermove = overlayPointerMove; svg.onpointerup = svg.onpointercancel = overlayPointerUp; } }
   paintOverlay(); paintLiveChip(); paintPlayChip(); paintPopover(); notify();
 }
@@ -1935,7 +1947,9 @@ function setAppearance(lang, theme) {
     el[property] = lang === 'zh' ? zhCopy[key] || englishCopy.get(el) : englishCopy.get(el);
   });
   // Re-paint engine-rendered stage strings through text() in the new language.
-  if (changed && state.vmeta) { renderStage(); }
+  // A built stage has to be re-painted even before the first decoded frame: with
+  // no vmeta yet it still carries the empty-state sentence (round-2 F3).
+  if (changed && (state.vmeta || $('#t-overlay'))) { renderStage(); }
   notify();
 }
 window.CornerPocketReview = {
