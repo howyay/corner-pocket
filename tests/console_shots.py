@@ -38,6 +38,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -494,11 +495,31 @@ def fixture(extra=()):
                '--public-port', str(PUBLIC_PORT), '--state', str(STATE), *extra]
     process = subprocess.Popen(command, cwd=ROOT, env=environment,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # Nobody reads this pipe while the run is going, and the fixture logs every request. Once the
+    # 64 KiB pipe buffer fills, the fixture blocks inside its own logging and every request hangs:
+    # measured twice as a process that is alive, LISTENing, at 0 % CPU, with every path timing out
+    # (the shot phase then stalls three times and the run dies with `0 shot(s)`). Drain the pipe,
+    # keep the tail for the failure message, and mirror it to out/console-*/fixture.log.
+    fixture_lines = []
+    try:
+        fixture_log = (SHOOT_DIR / 'fixture.log').open('w', encoding='utf-8')
+    except OSError:
+        fixture_log = None
+
+    def drain():
+        for line in process.stdout:
+            fixture_lines.append(line.rstrip('\n'))
+            del fixture_lines[:-400]
+            if fixture_log is not None:
+                fixture_log.write(line)
+                fixture_log.flush()
+
+    threading.Thread(target=drain, daemon=True).start()
     try:
         deadline = time.time() + 180
         while time.time() < deadline:
             if process.poll() is not None:
-                raise SystemExit('fixture exited early:\n' + process.stdout.read())
+                raise SystemExit('fixture exited early:\n' + '\n'.join(fixture_lines))
             try:
                 state = http_json(f'http://127.0.0.1:{CONSOLE_PORT}/api/operations', timeout=60)
                 http_json(f'http://127.0.0.1:{PUBLIC_PORT}/', timeout=60)
@@ -521,6 +542,8 @@ def fixture(extra=()):
                 process.wait(timeout=45)
             except subprocess.TimeoutExpired:
                 print('warning: fixture did not reap after SIGKILL (loaded machine)', flush=True)
+        if fixture_log is not None:
+            fixture_log.close()  # the drain thread owns the pipe; this is just the mirror
     for port in (CONSOLE_PORT, PUBLIC_PORT):
         if not port_is_free(port):
             raise SystemExit(f'port {port} was not released by the fixture')
@@ -747,7 +770,10 @@ def shoot(page, name, url, width, height, mobile, lang, theme, play_view=None, s
         problems.append('page never finished loading')
     elif probe.get('loading'):
         problems.append('the console was still on its loading placeholder')
-    if play_view and facts.get('playView') != play_view:
+    # `play` names the before build's play tabs. The redesign replaced them with panels, so on the
+    # after build there is no `button.playtab` to press and the expectation cannot be met — it used
+    # to fire on every after-build run and make the warning column unreadable.
+    if play_view and BUILD == 'before' and facts.get('playView') != play_view:
         problems.append(f'visible play view {facts.get("playView")!r} != {play_view!r}')
     if not facts:
         problems.append('render facts unavailable (busy renderer)')
@@ -847,10 +873,11 @@ def main():
                         help='log every DevTools call slower than 5s (a loaded box makes these visible)')
     args = parser.parse_args()
 
-    global SHOOT_DIR, VERBOSE, PROBE_TIMEOUT
+    global SHOOT_DIR, VERBOSE, PROBE_TIMEOUT, BUILD
     VERBOSE = args.verbose
     PROBE_TIMEOUT = args.probe_timeout
     SHOOT_DIR = Path(args.out) if args.out else ROOT / 'out' / f'console-{args.build}'
+    BUILD = args.build
     wanted = [part.strip() for part in (args.states or '').split(',') if part.strip()]
     langs = [lang.strip() for lang in args.langs.split(',') if lang.strip()]
     sizes = [sizes.strip() for sizes in args.sizes.split(',') if sizes.strip()]
@@ -1008,6 +1035,7 @@ CHROMIUM_VERSION = ''
 DEBUG_PORTS = set()
 PROBE_TIMEOUT = 150  # seconds one page gets to render; --probe-timeout overrides it
 SHOOT_DIR = ROOT / 'out' / 'console-before'
+BUILD = 'after'  # --build; the play-view expectation below only applies to the before build
 VERBOSE = False
 
 if __name__ == '__main__':
