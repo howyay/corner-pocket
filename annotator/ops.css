@@ -826,6 +826,15 @@ html,body{-webkit-font-smoothing:antialiased}
 @media(max-width:1439px){
   #ops-shell .timer-slot .presets{display:none}
 }
+/* Where the group is visible, every chip meets SS14.1's 32 px target. Measured on the merged
+   tree at 1440 and 1920, all four style combinations (out/r3m/measure.json, F17_header_matrix):
+   the four buttons were 26x36 — the width annotator/ops.css:85 has always given them — and
+   SS14.1's floor is written for every control in the header at the five measured widths, not
+   only for the ones the finding named. 4 x 6 px is 24 px more in a bar that has room above
+   1440; measured after (out/r3m/measure8.json): 32x36, header still 59 px, still one row. */
+@media(min-width:1440px){
+  #ops-shell .timer-slot .presets button{min-width:32px}
+}
 /* Below 1152 the bar's three zones no longer fit at the full type size: measured, the
    timer without presets is 228 px, the five tabs 658.6 px, the tools 216.9 px and the
    bar's gaps 16 px — 1119.5 px against 974.8 px of content box at 1024. The tabs step
