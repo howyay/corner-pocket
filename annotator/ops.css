@@ -693,8 +693,16 @@ html,body{-webkit-font-smoothing:antialiased}
      and the toast can sit above it without guessing. */
   #ops-shell{--tabbar-h:calc(52px + env(safe-area-inset-bottom))}
   #ops-shell #nav{display:none}
-  #ops-shell #tabbar{display:flex;flex-wrap:wrap;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel2);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-  #ops-shell #tabbar .tabbar-slot{flex:1 1 0;min-height:52px;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.12em;text-transform:uppercase}
+  #ops-shell #tabbar{display:flex;flex-wrap:wrap;gap:var(--sp-1);position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel2);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  /* Round 3 §14.7 (F7): the five labels are one line each. Measured before (390 EN, dark):
+     the slots came out unequal — Tonight 76.5 · Records 76.5 · Vision 67.8 · Regulars 85.1 ·
+     Back room 52.1 — because `min-width:auto` let the longer words set the shares, and
+     "Back room" needed ~78 px for one line inside its 52.1 px, so it wrapped to two while its
+     four peers did not. Now every slot is an equal 1fr with `min-width:0`, the label is
+     --fs-xs with lighter tracking, and the gutter/padding give back 8+16 px: "Back room"
+     measures 61 px inside 67 px at 390. `nowrap` + ellipsis is the guard for a narrower
+     phone, not for the width this was measured at. */
+  #ops-shell #tabbar .tabbar-slot{flex:1 1 0;min-width:0;min-height:52px;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-xs) var(--mono);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 var(--sp-1)}
   #ops-shell #tabbar .tabbar-slot[aria-current=page]{color:var(--brass-hi);background:var(--rail);box-shadow:inset 0 2px 0 var(--brass)}
   #ops-shell main{padding-bottom:calc(var(--tabbar-h) + var(--sp-4))}
   #ops-shell #message{bottom:calc(var(--tabbar-h) + var(--sp-3))}
