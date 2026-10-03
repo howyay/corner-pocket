@@ -16,7 +16,7 @@
 @font-face{font-family:'Barlow';font-style:normal;font-weight:700 900;font-display:swap;src:url(fonts/barlow-700.woff2) format('woff2')}
 @font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300 900;font-display:swap;src:url(fonts/noto-sans-sc-500.woff2) format('woff2')}
 
-:root{color-scheme:dark;--body:'Barlow','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif;--bg:#16120f;--panel:#1c1814;--line:#2f2923;--line2:#29231f;--btn-line:#73665b;--ink-hi:#f6f3ec;--ink:#efe9de;--ink-mid:#bdb0a1;--ink-dim:#a6998a;--ink-faint:#968a7d;--brass:#cca632;--brass-hi:#e3cb7e;--green:#85ca9d;--green-bg:#122219;--green-line:#355643;--amber:#ebae51;--amber-bg:#291e10;--amber-line:#684d21;--live-bg:#251c11;--lamp:rgba(240,214,150,.08)}
+:root{color-scheme:dark;--tv-xs:11px;--body:'Barlow','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif;--bg:#16120f;--panel:#1c1814;--line:#2f2923;--line2:#29231f;--btn-line:#73665b;--ink-hi:#f6f3ec;--ink:#efe9de;--ink-mid:#bdb0a1;--ink-dim:#a6998a;--ink-faint:#968a7d;--brass:#cca632;--brass-hi:#e3cb7e;--green:#85ca9d;--green-bg:#122219;--green-line:#355643;--amber:#ebae51;--amber-bg:#291e10;--amber-line:#684d21;--live-bg:#251c11;--lamp:rgba(240,214,150,.08)}
 
 *,*::before,*::after{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -149,16 +149,21 @@ tbody tr.empty td{text-align:left;color:var(--ink-dim)}
   .next-item .detail{font-size:.85rem}
 
   .rounds{flex:1;min-height:0;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.9rem;font-size:.95rem}
-  .rounds[data-rows="some"]{font-size:.8rem}
-  .rounds[data-rows="many"]{font-size:.62rem}
+  /* Impeccable round 2, B-06: this bracket is read across a room, so the density steps stop
+     at the console's own 11 px floor. The floor is expressed in em (86% of the parent, i.e.
+     below both steps' own ratio), so it is 11 px at the root sizes these rules run at and
+     gets out of the way again on a 1080p+ screen (24 px root), where nothing is tiny. */
+  .rounds{--tv-min:max(var(--tv-xs),.86em)}
+  .rounds[data-rows="some"]{font-size:max(.8rem,var(--tv-min))}
+  .rounds[data-rows="many"]{font-size:max(.62rem,var(--tv-min))}
   /* A bye says only who went through, which the next round shows. With too many
      matches for one screen, finished rounds make way for the rest as well. */
   .bm.bye,.rounds[data-rows="many"] .round.done:not(:last-child){display:none}
   .round{min-height:0;display:flex;flex-direction:column}
-  .round h3{font-size:.8em}
+  .round h3{font-size:max(.8em,var(--tv-min))}
   .round ol{flex:1;justify-content:space-around;gap:.3em}
   .bm{padding:.25em .5em}
-  .bm-note{font-size:.75em}
+  .bm-note{font-size:max(.75em,var(--tv-min))}
 
   table{font-size:1.05rem}
   th,td{padding:.2rem .4rem}
