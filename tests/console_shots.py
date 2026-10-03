@@ -98,6 +98,10 @@ AFTER_STATES = [
          setup="const b = document.querySelector('[data-action=\"backfill-open\"]');"
                " if (!b) return false; b.click(); return true;",
          title='补录 · 第一步（选一场 Twitch 直播，视频从不被读取）'),
+    # Round 5: the shot timer became a destination of its own, so it has to be photographed
+    # like one. `before` is where the timer used to live (the top bar of Tonight).
+    dict(name='clock', before='#/tonight', after='#/clock', builds=('after',),
+         title='Shot timer（独立分页：大计时器 / 开始暂停 / 重设 / 四个时长）'),
 ]
 PUBLIC_STATES = [    dict(name='public-board', url='http://127.0.0.1:{port}/', langs=['en'],
          title='Public board（8151，只读对外看板）'),

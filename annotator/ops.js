@@ -383,8 +383,13 @@ function tablesArea(){return `${tablesGrid()}${tonightPanel()}`}
 function tonightScreen(){const state=tonightState();if(sheetId){const night=[tournament(),...(data.history||[])].find(n=>n.id===sheetId);if(night)return `${scene()}${resultsSheet(night)}`;sheetId=null}const grid=tablesArea(),board=scoreboardScreen(),dash=liveComp(),body=state==='active'?(dash?`${dirtyComp()?board:''}${grid}${dirtyComp()?'':board}${playScreen()}${renameCard()}`:`${grid}${renameCard()}`):state==='complete'?`${wrapScreen()}${grid}${bracketScreen()}${renameCard()}`:state==='registration'?`${registerScreen()}${grid}`:`${firstRun()}${setupScreen('night')}${grid}${deskOpen?setupScreen('desk'):''}`;return `${scene()}<section class="stack tonight">${body}</section>`}
 function guestsTonight(){return `<article><div class="heading"><h3>${esc(t('guests'))}</h3><button type="button" data-tab="players">${esc(t('manageRegulars'))}</button></div><p>${esc(t('guestNote'))}</p>${guestPeople().map(name=>`<div class="entry row"><span class="grow">${esc(name)}</span>${btn(t('promote'),'promote','data-name="'+esc(name)+'"')}</div>`).join('')||emptyNote('emptyGuests')}</article>`}
 function registerScreen(){return `${firstRun()}${setupScreen()}${guestsTonight()}`}
-function tabbarSlot(id){return '<button type="button" class="tabbar-slot" data-tab="'+id+'"'+(!bf&&tab===id?' aria-current="page"':'')+'>'+esc(navLabel(id))+'</button>'}
-function tabbarHTML(){return tabbarSlot('clock')+primaryNav().map(id=>tabbarSlot(id)).join('')}
+// Round 5: six slots in a 390 px phone bar is 62 px each, and the mono uppercase label the bar
+// used before needed 80 px for "Tournament" (measured: four of six labels truncated). The phone
+// bar is the one place the words may not be dropped, so each slot now stacks the destination's
+// own ball over its label, and the stylesheet sets that label in the body face at 11 px, where
+// "Tournament" measures 57. The ball is decorative - the button is named by the word.
+function tabbarSlot(id,n){return '<button type="button" class="tabbar-slot" data-tab="'+id+'"'+(!bf&&tab===id?' aria-current="page"':'')+'><span class="tabbar-ball" aria-hidden="true">'+ballHTML(n)+'</span>'+esc(navLabel(id))+'</button>'}
+function tabbarHTML(){return tabbarSlot('clock',1)+primaryNav().map((id,i)=>tabbarSlot(id,i+2)).join('')}
 function playScreen(){return `${queuePanel()}${bracketPanel()}${entrantsCard()}`}
 function queueRank(m){return (m.absent||[]).length?2:m.sides.every(Boolean)?0:1}
 function matchId(form){const named=form?.elements?.id?.value||form?.querySelector?.('[name=id]')?.value;const id=(typeof named==='string'?named:'')||(typeof form?.id==='string'?form.id:'')||$('#score-form [name=id]')?.value;if(!id)return null;return matches().find(m=>m.id===id)||{id}}

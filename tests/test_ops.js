@@ -3165,3 +3165,32 @@ test('round 5 / owner item 6: the timer bar never narrates its own sync state', 
     'a failure has its own element, hidden while it is empty');
   assert.ok(/ERROR_MS = \d+/.test(clockSyncSource), 'and it clears itself on a timer');
 });
+
+test('round 5 / owner item 4 on the phone: the bar carries the ball map, and the header keeps the clock', () => {
+  const h = harness();
+  // Two defects the width matrix cannot see, because it reads the bar's height and not what is
+  // inside it (measured with out/r5/probe_tabbar.py at 390x844 — see docs/console-shots.md SS9):
+  // the slot moved inside #nav, which the phone query hides, and six mono-uppercase labels
+  // needed 80 px in 62 px cells. Both are pinned here.
+  const bar = h.evaluate('tabbarHTML()');
+  assert.equal((bar.match(/class="tabbar-ball" aria-hidden="true"/g) || []).length, 6,
+    'every slot stacks its destination\'s ball, and it is decorative - the word names the tab');
+  // The balls are the map owner item 3 fixes: 1 yellow for the timer, then 2 blue ... 6 green.
+  const map = [[1, '#f2c14e'], [2, '#2f6fd0'], [3, '#c8382f'], [4, '#e885ad'], [5, '#e07a29'], [6, '#2f8f4e']];
+  for (const [n, hex] of map) {
+    assert.ok(bar.includes(`--ball-c:${hex}`), `ball ${n} draws ${hex} on the phone bar too`);
+  }
+  assert.ok(bar.indexOf('--ball-c:#f2c14e') < bar.indexOf('--ball-c:#2f6fd0'),
+    'and the timer is the first slot, so the bar reads left to right as 1..6');
+  // The phone header keeps the timer: the nav stays and only its destinations go.
+  const phone = opsCss.slice(opsCss.indexOf('@media (max-width:750px){'));
+  assert.ok(phone.includes('#ops-shell #nav{display:flex'),
+    'the phone header still shows the shot timer (SS13.1: it is the one always-available element)');
+  assert.ok(phone.includes('#nav>button:not(.timer-tab){display:none}'),
+    'while the destinations live in the fixed bottom bar');
+  // Six cells of 390/6 px: the bar's gap and the slot's padding were what pushed "Tournament"
+  // (64 px at 11 px in the body face) out of its box.
+  assert.ok(phone.includes('#ops-shell #tabbar{gap:0}'), 'the phone cells get the whole width');
+  assert.ok(phone.includes('font:11px/1.1 var(--body)') && phone.includes('text-transform:none'),
+    'and the label is the body face at 11 px, sentence case - mono uppercase needed 80 px');
+});

@@ -246,8 +246,35 @@ command (the fixture and the browser are the harness's own, 8150/8151):
 languages × two routes) with the fixture at revision 111 and `chromium restarts: 0`; `out/r5/` keeps
 `probe_bar.py` and the raw geometry it printed. Both are gitignored evidence, not commits.
 
-- **Limits.** The harness still has no Vision state, and the round-5 change touched only the shell, the
-  clock screen and the icon, so no product surface was re-photographed: the round-3 shot set in
-  `out/console-after/` remains the last picture of the console's screens. The board is unchanged and
-  still dark-only. The 1152 px breakpoint is a measurement of 1024's overflow, not a designed
-  boundary: between 1024 and 1152 the slot shows no word and no Reset on any width.
+**The phone found two more, and the matrix could not see either** — because it reads the bar's
+height and not what is inside it. `out/r5/probe_tabbar.py` (kept with the round-5 evidence) measures
+the header's timer and each bottom-bar slot's own text width:
+
+1. **the clock left the phone header.** The slot now lives inside `#nav`, which the phone query hides
+   to make room for the fixed bottom bar: measured `nav=none` and a 0×0 slot at 390 in both
+   languages. The nav stays on the phone now and only its destinations go — the slot measures 176 px
+   (ball, `0:30`, Start; the word and Reset are already gone below 1152), the chips 110, the bar's
+   padding and gap 36, so 311 of 390 px.
+2. **four of six labels were truncated.** Six slots divide 390 px into 62 px cells and the mono
+   uppercase label needed 80 px for `Tournament` ("SHOT TIM", "TOURNAME", "BACK ROO"). Each slot now
+   stacks its destination's ball over its label, the label is the body face at 11 px sentence case
+   (`Tournament` 57.8 px), and the bar's 4 px gap plus the slot's 4 px padding — which were what
+   pushed it out of its box — are gone on the phone, giving 65 px cells.
+
+| 390×844 | Before | After |
+| --- | --- | --- |
+| the header's clock | hidden (`#nav` none, slot 0×0) | ball 1 + `0:30` + Start, slot 176 px |
+| the bar's slots | 62 px cells, 4 of 6 labels cut | 65 px cells, 6 of 6 fit |
+| the bar's content | the word alone | the destination's ball + the word |
+
+The ball is the map of `docs/console-redesign.md` §16.3 (1 yellow for the timer, then 2 blue, 3 red,
+4 pink, 5 orange, 6 green), so the phone bar now reads as the same colour law the rest of the
+product uses. The pictures are `out/r5-shots2/390x844/` against the first pass in
+`out/r5-shots/390x844/`; the harness gained a `clock` state (`AFTER_STATES`) so the new screen is
+photographed like any other, and `tests/test_ops.js` asserts both fixes.
+
+- **Limits.** The harness still has no Vision state, and the round-5 shots cover the shell, the new
+  clock screen and the phone bar; the round-3 set in `out/console-after/` remains the last picture of
+  the console's other screens. The board is unchanged and still dark-only. The 1152 px breakpoint is
+  a measurement of 1024's overflow, not a designed boundary: between 1024 and 1152 the slot shows no
+  word and no Reset on any width.

@@ -969,3 +969,32 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell #nav>.timer-slot .timer-tab-label{display:none}
   #ops-shell #nav>.timer-slot [data-action="clock-reset"]{display:none}
 }
+
+/* === Round 5, the phone: the clock stays in the header, and six labels fit the bar ----------
+   Two defects the width matrix cannot see (it reads the bar's height, not what is inside it),
+   both measured with out/r5/probe_tabbar.py at 390x844, revision 111:
+
+   1. the timer slot moved inside #nav, and the phone query hides #nav to make room for the
+      fixed bottom bar - so the clock §13.1 promises as "the one always-available element"
+      silently left the phone header (nav=none, slotShown=false in both languages). The nav
+      stays now and only its destinations go: measured 390 EN, the slot is ~165 px (ball, 0:30,
+      start - the word and reset are already gone below 1152), the chips ~110, the bar's own
+      padding and gap ~36, so 311 of 390.
+   2. six slots divide 390 px into 62 px cells, and the mono uppercase label needed 80 px for
+      "Tournament": four of six labels came back truncated ("SHOT TIM", "TOURNAME", "BACK ROO").
+      The words may not be dropped on the phone, so each slot stacks its ball over its label and
+      the label is set in the body face at 11 px, where "Tournament" measures 57. */
+@media (max-width:750px){
+  #ops-shell #nav{display:flex;flex:0 1 auto;min-width:0;padding:0}
+  #ops-shell #nav>button:not(.timer-tab){display:none}
+  /* the same specificity as the rules above (id + #tabbar + class), later in the sheet */
+  /* the cells are 390/6 = 65 px wide: the bar's 4 px gap and the slot's 4 px padding were what
+     pushed "Tournament" (64 px at 11 px) out of its box, so the phone bar drops both and the
+     active slot's own rail is what separates the tabs. */
+  #ops-shell #tabbar{gap:0}
+  #ops-shell #tabbar .tabbar-slot{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;padding:0;font:11px/1.1 var(--body);letter-spacing:0;text-transform:none}
+  #ops-shell #tabbar .tabbar-ball{display:block;line-height:0}
+  #ops-shell #tabbar .tabbar-ball .ball{width:20px;height:20px}
+  #ops-shell #tabbar .tabbar-ball .ball i{width:13px;height:13px;font-size:8px}
+}

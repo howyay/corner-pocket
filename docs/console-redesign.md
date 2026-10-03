@@ -1438,3 +1438,32 @@ clock's own screen still offers — and the destinations tighten their gaps and 
 its name through `aria-label`, asserted in the test, so hiding the word cannot leave it unnamed. The
 numbers above are from `out/r5-measure/manifest.json`; the instrument is kept in `out/r5/`.
 
+
+### 16.10 What the phone found that the width matrix could not
+
+The matrix reads the bar's height, not what is inside it. Two defects survived it and only the
+390×844 screenshot plus `out/r5/probe_tabbar.py` exposed them:
+
+1. **the clock left the phone header.** The slot moved inside `#nav`, and the phone query hides
+   `#nav` to make room for the fixed bottom bar — measured `nav=none` and a 0×0 slot at 390 in both
+   languages. §13.1 calls the clock "the one always-available element", so on the phone the nav now
+   stays and only its destinations go: the slot measures 176 px (ball, `0:30`, Start — the word and
+   Reset are already gone below 1152), the chips 110, the bar's own padding and gap 36, so 311 px of
+   390.
+2. **four of six labels were truncated.** Six slots divide 390 px into 62 px cells, and the mono
+   uppercase label the bar used needed 80 px for `Tournament` — the shots read "SHOT TIM",
+   "TOURNAME", "BACK ROO". The phone bar is the one place the words may not be dropped, so each slot
+   now stacks its destination's own ball over its label and the label is set in the body face at
+   11 px sentence case, where `Tournament` measures 57.8 px. The bar's 4 px gap and the slot's 4 px
+   padding were what pushed it out of its box, so the phone cells take the whole width: 65 px each.
+
+| 390×844 | Before | After |
+| --- | --- | --- |
+| the header's clock | hidden (`#nav` display none, slot 0×0) | **ball 1 + `0:30` + Start**, slot 176 px |
+| the bar's slots | 62 px cells, 4 of 6 labels cut | 65 px cells, **6 of 6 fit** (`Tournament` 57.8 px) |
+| the bar's content | the word alone | **the destination's ball + the word**, ball decorative |
+
+The ball on the bar is the same map as §16.3 — 1 yellow for the timer, then 2 blue, 3 red, 4 pink, 5
+orange, 6 green — which is what makes the phone bar readable at a glance. Both facts are asserted in
+`tests/test_ops.js` ("round 5 / owner item 4 on the phone"), and the pictures are
+`out/r5-shots2/390x844/` against the earlier `out/r5-shots/390x844/`.
