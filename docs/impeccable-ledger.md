@@ -235,3 +235,224 @@ passes); weights reflinked (sha256 = main); `data/` videos reflinked, SAM3 symli
 | R1-7 | *minor · Back room: an internal product roadmap (P1/P2) and a heading-less system-status table ("State revision", "/api/operations") on an operator screen* | Nothing removed (items 57–60). Order now: **Table appearance**, **Operator notes** (operator content), then one `<details class="maintainers">` that **starts collapsed**, labelled **For maintainers / 维护人员** with a one-line explanation (*not needed to run a night*). Inside: the status table now has a heading **System status / 系统状态**, a sentence saying what it is, and a `<caption>`; its facts are unchanged (`/api/operations`, revision, manual scoring, *not connected*, *Vision · VOD*, the shot-clock notice), and **Refresh** moves with it (item 2's UNAVAILABLE check still works). The roadmap keeps its heading and nine rows with P1/P2. The summary is a real `h2` in a keyboard control (Enter opens it; focus ring). | Browser, `:8144`, EN/中 × 1280/390: visible headings *Table appearance, Operator notes, For maintainers, System status, Roadmap*; starts closed; Enter opens; 9 roadmap rows; Refresh present; overflow 0. Test (EN/中): order, collapsed, label, heading, `/api/operations`, Refresh, 9 rows, every table has headers. **Correction:** the Back room tab id is `status`, not `settings`; `numerals.sh` and `empties.sh` had skipped it. Re-run with it: numerals 3,032 nodes, old-style 0, proportional 0; empty states 40 views, 0 failures. |
 | R1-5 | *minor · Vision: the first render is a broken-looking skeleton (blank panels, unlabeled square buttons) with "Loading review workspace…" for about 3 s* | **Cause, measured** (`out/impeccable/vision_cold.sh`, fresh fixture): the adapter that fills and labels the surface attaches only after the review engine mounts, and on a cold server the first `/api/vod30/events` takes **≈1.0 s** (2.6–5.8 s under this machine's load), all of it in `_fit_event_projection` → `from src.pipeline import homography_to_canonical`, which imports **torch + SAM3** (≈29 s of a 32 s profiled request under load; `homography_to_canonical` itself needs only `cv2`/`numpy`). Warm: 5 ms. **Fix (shell only)**: the skeleton renders **labelled from the first paint** — sheet tabs, *Freeze*, *▶ Play*, the frame field, region names, EN/中 and identical to the adapter's words so nothing swaps; both rails show one deliberate line **"Loading the review workspace…" / "正在加载复核工作区…"** (`role=status`), the surface is `aria-busy` until the adapter attaches; the engine's own stage placeholder (was English in 中) is localised the same way; the rails, chip row, stagebar and facts line **reserve their loaded size** while loading, so filling them does not move the page. **Not changed (server, reported to the director)**: the cold torch import — importing `homography_to_canonical` from a light module (or a pure-numpy DLT, as `src/shot_pot_gate.py` already has) would remove ≈1 s from every cold Vision open; it touches `src/pipeline.py`/`unified_server.py`, which `main` owns. | Before → after (`vision_first_render.sh`, `vision_cold.sh`, 1280/390 × EN/中): **unlabelled controls 2–4 → 0**, **blank panels 2 → 0**, **labels painted at 1,130 ms → 44–67 ms** (cold 1280), **layout shift on cold open 0.193 → 0.009** (1280) and 0.006 → 0 (390); warm 0.009 / 0.007 (the rest is the inspector footer's 17-px settle). 中 stage placeholder: *Loading review workspace…* → *正在加载复核工作区…*. Test (EN/中: busy flag, loading line in both rails, every button named, Play/Freeze/Cues words, no loading after attach, CSS reservations) fails on the pre-fix code, passes now. |
 | R1-6 | **MAJOR** · *Vision: developer jargon ("dense-track · trained 960×540 net @ ball@2", "quad drift vs saved corners 5.7 px (tol 40 px)"); the overlay labels are tiny and overlap until unreadable* | **Words — operators first, provenance one step away, nothing removed.** Cue card: the provenance line now reads **"suggested by the computer · not yet confirmed by a person"** / **"电脑识别的候选 · 尚未经人工确认"** (a confirmed card still reads *confirmed by a person*); the detector string moves to the line's `title` (hover) and a visually hidden span (screen readers, search), and the stored statement stays in the title; old stored statements still render in the current language. Facts line: *quad drift vs saved corners 5.7 px (tol 40 px)* → **"table outline matches the saved corners (5.7 px · tol 40 px)"** / **"球台轮廓与已保存角点一致 (… · 容差 …)"** — the number and tolerance still printed, the words first. Inspector *Detected geometry*: plain rows on top (colour, pocket, scan window, detection gate, vanished ball); pixel positions, projection source, the gate's raw notes/codes and numbers under a **"Technical details" / "技术细节"** disclosure (collapsed, keyboard-operable). **Overlay — legible at the displayed scale, less dense, never overprinted.** Tags were 14 frame-px → **8 px on screen at 1280, 5 px at 390**. Now every tag metric (font, height, padding, placement steps) scales by `max(1, 11 / (14 × displayScale))`, measured every paint, so a tag is **≥ 11 px on screen** (measured 14). A model box's tag says what it is (*person*, *ball*); its **confidence moves to the box's `<title>`** with who drew it (*person · confidence 0.89 · MODEL* / *置信度 … · 模型*); person groups get a `<title>` with their identity chip. `placeTags` keeps its guarantee in the scaled units; a row with no free spot first tries its bare source chip (label into the chip's title), and a MODEL row with no room at all is left out of that paint — its dashed geometry and `<title>` stay; YOURS, CALIB and the selected cue's EVENT rows always keep a spot. Items 71–73, 79, 81, 105–107, 119 hold (tags `MODEL/YOURS/CALIB/EVENT`, dashed vs solid, faint pairs, cue geometry, `tol 40 px`, card badges, provenance line, every geometry row). | `out/impeccable/overlay_sweep.sh`, 1280/390 × EN/中 × dark/light × (resting frame, selected cue frozen) = 16 states, before → after: **min on-screen tag 5 px → 14 px** (1280: 8 → 14), **overlapping tag pairs 0 → 0**, **scores printed on the frame 112 → 0** (now in titles), **box/person groups without a title 112 → 0**, **cue cards printing detector jargon 64 → 0**. Inspector: raw reason codes visible 1 → 0 (in the disclosure). **Test pins changed deliberately (meaning kept)** — `tests/test_app_timeline.js`: L439 and L995 `quad drift vs saved corners 6.4/5.7 px (tol 40 px)` → `table outline matches the saved corners (6.4/5.7 px · tol 40 px)` (the measured drift and tolerance are still asserted); L2169 `machine-produced candidate; no human has confirmed it` now asserted as the kept stored statement (title), plus new assertions for the plain statement and `title="detected by: dense-track · trained 960×540 net @ ball@2`; L2174 中 `机器产出，未经人工确认` → `电脑识别的候选 · 尚未经人工确认` (the *not confirmed* meaning kept). New test: tag scale (11 px on screen at 372/1280, 1 at full size), no overprint in a 14-row pile-up, YOURS/CALIB always placed, chip titles keep labels, score only in titles (EN/中) — fails on the pre-change `app.js`, passes now. |
+
+## Round 2 — after the console redesign (2026-10-03)
+
+The redesign in `docs/console-redesign.md` §12–§13 replaced the header's brand row, its `nav.clockbar`
+landmark and the `#strip` row below the bar with **one bar whose first slot is the shot timer**, and the
+owner's eight round-2 items landed in worktree `~/projects/pool-w-bar`, branch `b11-bar`, on top of
+`ce7b5f1` (the docs commit that froze §13): lane A's `d1def4f` and `e579745`, then lane C's seven
+finding commits, two corrections to them (`817d19d`, `ad87278`) and two harness fixes (`55fb73c`,
+`1625e4e`) — all named below. Nothing in this round was pushed.
+
+Two lanes fed this section, and every number in it is theirs, measured:
+
+- **Lane A** (same worktree) implemented the owner's items 1–7: one row at 1440 (measured 78 px, was 126),
+  the timer as the bar's first slot, the numbered ball palette, the status line removed.
+- **Lane B** audited the console **read-only at `ce7b5f1`** — that is, *before* lane A's work — from
+  worktree `~/projects/pool-w-audit` (branch `b11-audit`) with its own fixture on `:8162`/`:8163` and the
+  private browser copy `~/projects/pool-w-shots/out/browser/cp-shots`. Coverage: 40 console states
+  (2 themes × 2 langs × 2 viewports 1280×800/390×844 × 5 tabs) + 4 public-board states + the board-off
+  state; raw evidence in `out/impeccable-r2/raw/` (`probes-c1.json` 336,950 B, `deep.json` 123,918 B,
+  `focus-keyboard.json`, `inventory-1280-dark.json`, `flow-backfill.json`, `pub-board.json`,
+  `board-offstate.json`), 92 PNGs in `out/impeccable-r2/shots/`, 24 instruments in
+  `out/impeccable-r2/instruments/`. It returned **0 P0, 7 P1, 8 P2**. Its limits are honest and specific:
+  Backfill reached STEP 1 only (steps 2–5 audited from source, not pixels), Vision never loads its
+  workspace under the fixture (layout and labelling only), the empty/first-run states were not exercised,
+  Core Web Vitals were not measured, `prefers-reduced-motion` was not emulated, no touch/pointer testing,
+  and every `bf-dark-*` screenshot is actually light theme (a persistent-profile leak; `campaign.js` is
+  unaffected). Lane B's `FOCUS` probe is **not** quoted anywhere in this section — programmatic
+  `el.focus()` does not set `:focus-visible`, so only `focus_kb.js`'s real key events count.
+- **Lane C** (same worktree as lane A) verified lane A's claims by re-running every suite, applied every
+  P0 and P1 plus the P2s that fit, wrote this section, and re-shot the console. Its verdicts, one line per
+  finding, are in `/tmp/impeccable-r2/applied.md`.
+
+Skill read this round: `/tmp/impeccable/.dsh/skills/impeccable/SKILL.md` **version 4.5.0**, engine
+`scripts/VERSION` **0.1.11** — *not* the v4.4.0 @ `9d715cc` pinned in `docs/impeccable-commands.md`. The
+`## Commands` table there still lists the same 24 command names, so the protocol is unchanged; the clone
+itself has moved to `e103efe7`. That difference is recorded here because §13.5 asks a lane to name the
+commit it actually read.
+
+Lane B was a read-only audit, so **no row below carries a commit of its own**: the fourth column carries
+the finding ids the command produced instead, and the commits appear in *Findings applied*.
+
+### The 24 commands — round 2
+
+| # | command | inspected | decided | commit(s) / no-op reason | shots |
+|---|---|---|---|---|---|
+| 1 | `craft` | `reference/craft.md` (6 L) in the 4.5.0 clone; `annotator/ops.html`, `ops.js`, `ops.css` | Deprecated alias for an ordinary new-work request. Lane B adds no surface, so there is nothing for it to build. Re-verified deprecated in 4.5.0, unchanged from round 1. | **no-op (deprecated).** `craft` points at `reference/new-work.md`; an audit lane has no new work. | — |
+| 2 | `shape` | `docs/console-redesign.md` §12 and §13, read in full (1060 L); the six live surfaces | `shape` owns task discovery and stops before code. The shape output for round 2 already exists as §12 (the six decisions) and §13 (bar, timer, balls). Nothing to add. | **no-op.** Discovery is already written down and pinned to `ce7b5f1`; re-shaping would be out of lane. | — |
+| 3 | `init` | `PRODUCT.md` (21 KB), `DESIGN.md` (47 KB), `README.md`, `annotator/` tree | Product truth is already captured and current; nothing in this audit contradicts it. | **no-op, re-checked.** `PRODUCT.md` present and non-trivial (21,140 B); `DESIGN.md` 47 KB. Round 1 discharged this; re-verified present, not re-written. | — |
+| 4 | `document` | `DESIGN.md` vs the shipped `annotator/ops.css` custom-property block | The token layer described in `DESIGN.md` matches what the stylesheet actually declares. | **no-op, re-checked.** No drift found in the token names consumed by `ops.css`. | — |
+| 5 | `extract` | every custom property in `annotator/ops.css` (`--fs-*`, `--sp-*`, `--ink-*`, `--brass*`, `--ball-*`, `--live-bg`, `--lamp`) and `annotator/app.css`; the browser-default surface rules | The token layer is already extracted and is used, not decorative. **But the extraction has a hole**: the product themes `::-webkit-scrollbar`, `::selection`, `::placeholder`, `accent-color` and `:focus-visible` from the palette and has **0** `::marker` rules — which is what produces B-07. The icon vocabulary is also un-extracted: 2 authored SVGs against 25 Unicode glyph literals → B-09. | **B-07, B-09.** No extraction performed (out of lane); both recorded as findings. | `tall-tonight-dark.png`, `tall-players-dark.png`, `c1-dark-en-1280x800-records.png` |
+| 6 | `critique` | all six surfaces at 1280×800 and 390×844, EN and 中, dark and light — the 40-state campaign plus a tall-viewport pass | Design review over the whole path. Found: the timeline's title/metadata collapse (B-15), the affordance-less panels (B-04), the duplicated `Queue` heading (B-12), the heading-structure holes (B-13), the callout idiom (B-11), the mixed icon vocabulary (B-09). Judged sound: the scoreboard's hierarchy (`ON TABLE` → select → side A/B → scoring row → table grid), the empty-state honesty on Vision, and the Regulars stat band. | **B-04, B-09, B-11, B-12, B-13, B-15.** | 53 console PNGs incl. `c1-{dark,light}-{en,zh}-{1280x800,390x844}-{tonight,records,vision,players,status}[-full].png`, `tall-tonight-dark.png`, `tall-players-dark.png` |
+| 7 | `audit` | Accessibility, performance, theming, responsive, implementation integrity — 40 states: contrast (`#ops-shell *`, ancestor opacity multiplied), overflow, tiny text, landmarks, headings, names, `alt`, live regions, `html[lang]`, JS errors | Health: **contrast 0 fails / min 4.91:1 in 40/40**; **overflow 0 in 40/40**; **`imgsNoAlt` 0**; **0 uncaught exceptions and 0 `console.error` in 40/40**; `numsNoTabular = []` in all 32 deep states. Defects: `#focus-match` unlabelled (B-05), the disclosure markers (B-04/B-07), Regulars with no `h2` (B-13). Implementation integrity: §13 is **not implemented** in this tree — every §13 subject is the pre-§13 state (see `findings.md`). | **B-04, B-05, B-07, B-13.** Verify commands run: `node probes.js` via `campaign.js`; `node focus_kb.js`; `node deep.js`; `node pub.js`. | `probes-c1.json`, `deep.json`, `focus-keyboard.json`, `pub-board.json`; `tall-players-dark.png` |
+| 8 | `polish` | The whole path, in `polish`'s own order: flow/hierarchy → layout/type → colour/imagery/icons → interaction/state → content/code | The pre-ship pass. Owned B-04 (interaction/state: 12 panels with no affordance), B-07 (browser surface), B-15 (type hierarchy), B-11 (colour/carrier). | **B-04, B-07, B-11, B-15.** | `tall-tonight-dark.png`, `tall-players-dark.png`, `c1-dark-en-1280x800-records.png` |
+| 9 | `bolder` | Tonight's scoreboard, the table grid, the nav balls, the Regulars stat band; §13's stated direction | The console is not bland: radial lamp gradient, 92.16 px display names, brass `+`/`−` at 54×46, per-table status cards, a scene-step rail. Nothing needed amplifying, and §13 already enlarges the ball/number treatment. Amplifying further would collide with §13. | **no-op.** Round 1 discharged this; re-verified the amplified elements are still present and unchanged in `ce7b5f1`. | `tall-tonight-dark.png` |
+| 10 | `quieter` | The bar, `#strip`, `.score-top`, the Status tab's `◆ ◆ ◆ ◆ ◆ ◆` pair | Two real quieting candidates, both already decided: **the timer appears twice in full** (`clockCount = 2`, one in `#strip`, one in `.scoreboard .score-top`, identical Start/Reset/20/30/45/60) and `nav.clockbar` is a live empty landmark at 0×8. | **no-op — covered by §13.** §13.1 removes `#strip` and `nav.clockbar`. Recorded, not raised as a finding. | `tall-tonight-dark.png` |
+| 11 | `distill` | `#strip` (1280×49 desktop, 390×115 mobile, present on every tab), `nav.clockbar`, the `#strip .progress` bar, the `2026` / `十月 October` month pair | The largest removable complexity is `#strip` — a second timer bar consuming 49 px of every desktop screen and 115 px of every mobile screen. §13.1 already removes it. `#strip .progress` measures **2×6 px** (`ops.css:119` has no width; `ops.css:250` makes it a content-sized flex item) — it is drawing a control that cannot be read. | **no-op — covered by §13.** Both recorded with measurements in `findings.md` under the §13 table; the 2 px progress bar is a §13.1 side effect. | `tall-tonight-dark.png` |
+| 12 | `harden` | i18n, error handling, edge cases, input validation — all 32 deep states, both languages | Produced the lane's only copy/honesty defects: B-01 (raw `event_backfill` enum in the audit log), B-02 (raw ISO-8601 instant in the night sign-off), B-03 (`十月 October` in every language including EN). Also checked and found sound: every form field on Records/Regulars/Back room is labelled (`lab:"aria"` or `lab:"wrap"`), the empty states are honest and specific, `html[lang]` tracks the language chip. | **B-01, B-02, B-03.** | `c1-dark-en-1280x800-records.png`, `c1-dark-zh-1280x800-records.png`, `deep.json` |
+| 13 | `onboard` | Every empty and first-run state reachable from the fixture: Vision's three empty panels, the public board's board-off state, the public board's loading state, the backfill step-1 channel card | Vision's empty state is a model of the genre — it names the measurement that produced the emptiness (`No shot candidate survived measurement: every served event is explained by occlusion … 0 of 55 ball-scale onsets could be a single ball`), then says where the data went instead (`The events stay in the report artifacts, not in the queue.`). The **board-off state** was reached by toggling Back room → `PUBLIC BOARD` → off: `#off` renders `The board is off tonight`, `#board` goes `display:none`, contrast min 7.54:1. The board's **loading state** keeps its section headings and shows `Connecting…` with empty bodies. Backfill step 1 shows `No recent broadcasts for the saved channels` inside the channel card. | **no-op — nothing to fix.** All four states say what is happening and what to do. The fixture cannot produce an empty Records/Regulars/Tonight, so those were not exercised (see `limits.md`). | `c1-dark-en-1280x800-vision.png`, `pub-1280-boardoff.png`, `pub-1280-loading.png`, `bf-dark-en-1280x800-step1-open.png` |
+| 14 | `animate` | Motion budget and the reduced-motion contract across all tabs | The budget is deliberately small and is the right size for an operations console: elements with a live `transition` = **2 on Tonight, 1 on Records/Regulars/Back room**; running `animation`s = **2 Tonight, 2 Back room, 0 Records/Regulars**. `prefers-reduced-motion` is implemented properly at `annotator/ops.css:218-221` — transitions and scroll-behaviour to `0s`, animations to `0s`/1 iteration, with a documented exception for `.vs-stagebar`/`.table-wrap` (scroll-linked, user-caused, kept). | **no-op — sound.** Round 1 discharged motion; re-verified the rules and re-measured the live transition/animation counts. `prefers-reduced-motion` was **not emulated** — see `limits.md`. | `c1-*-tonight.png`, `deep.json` |
+| 15 | `colorize` | Contrast on every surface: 40 console states, 4 public-board states, the board-off state, the print stylesheet | Colour is already load-bearing, not decorative (brass = the action colour, `--live-bg` = the leading side, `--red` = the low clock). Contrast: **0 failures in 40/40 console states, global min 4.91:1**; public board **min 5.23:1** (n=163); board-off **min 7.54:1**. The product's own `ops.css:123 .score-top:has(.clock.low) .progress span{background:var(--red)}` is exactly the kind of state-carrying colour `colorize` asks for. | **no-op — sound.** One colour/carrier note raised separately as B-11 (the 3–4 px coloured `border-left` callout idiom), which is a carrier question, not a contrast one. | `probes-c1.json`, `pub-board.json`, `board-offstate.json` |
+| 16 | `typeset` | Families, sizes, hierarchy across all five tabs (leaf-text-node census) and the public board | Three families only, used consistently: **Zilla Slab** (display), **Barlow** (body), **DM Mono** (data/labels). Largest display size 92.16 px, under craft-floor's 96 px ceiling. `ops.css` caps `.clock` at `clamp(36px,4.4vw,60px)`. Defects: **B-15** (the Records event title gets no step over its own metadata — both DM Mono 12 px uppercase), **B-03** (the month label), **B-13** (heading holes), plus **B-06** on the public board (bracket text at 9.6–10.2 px) and the 9 px nav ball digits, which are §13.5's subject and not raised. | **B-03, B-06, B-13, B-15.** | `c1-dark-en-1280x800-records.png`, `pub-1280-dark.png`, `deep.json` |
+| 17 | `layout` | Spacing, rhythm, flex/grid composition; the `#strip` flex row; the mobile breakpoints | Rhythm is sound: more space above each `h3` than below it, tight groups inside cards, generous separation between sections. **0 horizontal overflow in 40/40 states** and **0 clipped text elements** anywhere. The one layout defect is inside `#strip`: `.progress` renders **2×6 px** because `ops.css:119` gives it no width and `ops.css:250 #strip{display:flex}` makes it a content-sized flex item — the scoreboard copy is correct (`.score-top .progress{max-width:560px}`, `ops.css:265`). | **no-op — covered by §13.** §13.1 deletes `#strip` and everything in it, including the collapsed progress bar. Recorded with measurements in `findings.md`. | `tall-tonight-dark.png`, `probes-c1.json` |
+| 18 | `delight` | The scoreboard, the table-ball nav marks, the scene-step rail, the `.pips` race dots | The console already has its authored moments: the 92.16 px names over five `.pips` dots with 3 lit, the radial lamp glow (`ops.css:104`), the per-table status cards, and the 8-ball mark in the bar. No additional delight was proposed — an operations console at a tournament desk is the wrong place to add personality, and §13 is already re-authoring the ball treatment. | **no-op.** Round 1 discharged this; re-verified the elements are still present and unchanged. | `tall-tonight-dark.png` |
+| 19 | `overdrive` | Nothing — the command's own "Propose before building" gate | `overdrive` requires a proposal and a build loop. Lane B is a read-only audit with no brief requirement to push past conventional limits, and it cannot write to `annotator/`. | **no-op — not applicable to an audit lane.** Round 1 recorded the same. | — |
+| 20 | `clarify` | Every operator-facing string on Records, Tonight, Back room and the backfill flow: audit labels, timestamps, headings, button names, empty states, both languages | This is where the lane's copy defects live. **B-01**: the audit log falls back to the raw enum `event_backfill` because `annotator/ops.js:440` has no key for it, while `ops.js:228` posts it — the only non-sentence label in a list of 13, and the only untranslated one in 中. **B-02**: `night.signOff.at` is interpolated raw, printing `2026-10-03T05:23:40.400503+00:00` one line under the same instant rendered as `10/2/2026, 10:23:40 PM`. **B-03**: `十月 October`. **B-12**: two panels both named `Queue`. Controls otherwise name their actions (`Release table`, `Sign scorecard`, `Send next → T4`, `Leave the backfill`). | **B-01, B-02, B-03, B-12.** | `c1-dark-en-1280x800-records.png`, `c1-dark-zh-1280x800-records.png`, `tall-tonight-dark.png` |
+| 21 | `adapt` | 1280×800 and 390×844 on all five tabs, both themes and both languages; the public board at both widths; `ops.css` breakpoints at 1100 px and 750 px | Adaptation is real, not cosmetic: at 390 the `#nav` measures **0×0 on every tab** and `#tabbar` takes over at 390×53, so mobile is a different control rather than a hidden one; at ≤750 px `ops.css:759-762` turns the Regulars standing grid into labelled stacked cells with `content:attr(data-col)`, so the data survives the breakpoint; `ops.css:479` hides `#nav` and `#strip` on mobile Vision but `#tabbar` remains, so navigation is never lost. **0 horizontal overflow at either width, in any tab, language or theme.** Defects: **B-08** (eight 24×24 `card-toggle` buttons at 390; 61 targets under 44 px on Tonight) and **B-06** (the public board's 9.6–10.2 px bracket text between 1000 and 1400 px wide). | **B-06, B-08.** | `c1-*-390x844-*.png`, `pub-390-dark.png`, `deep.json` |
+| 22 | `optimize` | Page weight and runtime health: JS errors, network failures, DOM node counts, payload sizes | Partial pass. **0 uncaught exceptions and 0 `console.error` across 40/40 states**, and the `Network` domain was enabled for every run. Payloads observed: `/api/operations` 40,503 B at revision 113, public board `/api/board` returns the full board document in one response. Core Web Vitals were **not** measured — see `limits.md`. | **no-op — nothing measurable was wrong.** Round 1 recorded the same; the error-free result is re-measured, the vitals gap is carried as a limit. | — |
+| 23 | `live` | `docs/impeccable-commands.md:65` ("run against the loopback fixture if their scripts work here"); the clone's `scripts/live-browser.js`, `live-browser-session.js`, `live-browser-dom.js`, `live-browser-ignores.js` | **Not run.** `live` opens a variant picker in a live browser session for a human to choose from (`SKILL.md`, `reference/live.md`: pick elements in the browser, iterate on alternatives). It produces a design decision, not a measurement, and this lane's contract is measurement with no writes to `annotator/`. The worktree's `.impeccable/` contains only `design.json` (43,881 B) and `critique/` — no live session state. | **no-op — no session to attach to, and no variant decision in scope.** Round 1 recorded the same; the reason is re-verified against the current `.impeccable/` and the 4.5.0 scripts. | — |
+| 24 | `generate` | Same as row 23; `reference/generate.md` | **Not run.** Same reason as `live` — it presents element variants for a human to accept in a live browser, and lane B was asked for findings with evidence, not for new variants to be generated. | **no-op — same reason as row 23.** | — |
+
+### Cross-reference: round-1 rows re-checked rather than re-run
+
+Round 1 (`~/projects/pool-impeccable/out/impeccable/`, `~/projects/pool-impeccable-r1/out/impeccable/`) discharged `init`, `document`, `bolder`, `delight`, `animate` and `optimize`. Those rows above are **re-checked rows**, not fabricated re-runs: each names the specific artifact that was re-verified against `ce7b5f1` (`PRODUCT.md` presence and size, the `ops.css` token block, the scoreboard/ball/pips elements, the `ops.css:218-221` reduced-motion block, the error-free runtime), and each carries the measurement that makes the re-check falsifiable rather than a claim.
+
+Round 1's instruments were reused where their markup assumptions still held. Three did not and were replaced with direct headless-Chromium measurement (the scripts are kept under `out/impeccable-r2/instruments/`):
+
+- `out/impeccable-r2/instruments/shoot_baseline.sh` — **stale.** Its tab loop is `floor setup matches players status`; the nav is now `tonight records vision players status` (`annotator/ops.js:353`), and it hard-codes `/run/current-system/sw/bin/chromium`, which must not be used here. Replaced by `campaign.js` + `cdp.js` (private browser copy, hash routes).
+- `out/impeccable-r2/instruments/measure_contrast.sh` — **stale tab list** (`floor setup matches players status vision`), same chromium hard-coding. Its `MEASURE` JS core was **kept verbatim** and lifted into `instruments/probes.js` as `MEASURE_CONTRAST`, re-pointed at the private browser. The `'stage'` sentinel for `.vs-frame,.stage,#t-overlay` was retained.
+- `out/impeccable-r2/instruments/overlay_sweep.sh` and `empties.sh` — written against the round-1 **floor/setup/matches** screens, which no longer exist as tabs. The overlap and empty-state checks were re-done directly (`OVERFLOW`/`GEOM` in `probes.js`; `off2.js` for the board-off state).
+- `numerals.sh`, `focus`/`narrow` instruments — superseded by `deep.js` (`numsNoTabular`) and `focus_kb.js` (real Tab events), both of which measure more than the round-1 scripts did.
+
+### What the re-shoot measured
+
+These numbers come from the repository's own harness, run at the round's final tip
+(`817d19d`, `ad87278`): `.venv/bin/python tests/console_shots.py --build after --chromium
+/home/haoye/projects/pool-w-shots/out/browser/cp-shots --states
+tonight-play,records,regulars,backfill --sizes desktop,phone --langs en,zh` →
+`22 screenshots · 1.56 MiB`, `chromium restarts: 0`, `all shots matched their requested pixel
+size, rendered, and loaded their stylesheets` (no warnings), against its own fixture at
+revision 111 (14 players, 3 archived events). PNGs and `manifest.json` live in
+`out/console-after/` (untracked).
+
+**The header.** `header_metrics`, all 8 rows:
+
+| viewport | state | before (as the brief recorded it) | after | what the row measures |
+|---|---|---|---|---|
+| 1440x900 | tonight-play en/zh | 117 px | **79 px** | `bar=78 nav=44 navItems=5 strip=- tabbar=0 contentTop=79` |
+| 1440x900 | records en/zh | 170 px | **79 px** | same bar, still one row |
+| 390x844 | tonight-play / records, en/zh | 113 / 280 px | **117 px** | `bar=116 nav=0 strip=- tabbar=53 contentTop=117`; the brief’s phone pair is quoted as written — only the after column was measured by this lane, and lane A independently measured the redesigned phone header at 116 px |
+
+`strip=-` is the harness reporting that the `#strip` element it used to measure is gone; `nav=0`
+on the phone is §13.1's rule that the destinations move to the fixed bottom bar (`tabbar=53`),
+never the timer. The phone header is **not** in the 60–90 px band — that band was the desktop
+one-row target, and the phone keeps its two-row stack (timer row + tools row) above the tabbar by
+design.
+
+**The public board's bracket type** (B-06), read with `getComputedStyle` through the private
+browser for the four viewports the finding named; evidence `out/console-after/board-metrics.json`:
+
+| viewport | root | `.rounds` | `.round h3` | `.bm-note` |
+|---|---|---|---|---|
+| 1000x800 | 12.5 px | 11 px | 11 px | 11 px |
+| 1280x900 | 16 px | 12.8 px | **11 px** (was 10.24) | **11 px** (was 9.6) |
+| 1400x900 | 17.5 px | 14 px | 11.2 px | 11 px |
+| 1920x1080 | 24 px | 19.2 px | 15.36 px | 14.4 px |
+
+The two right-hand columns are the design's own values at and above 1400 px: the floor bites only
+where the density steps would have taken the text below the console's 11 px token, and never
+inflates a size that was already large enough.
+
+**What the shots show** (the pixel half of the findings that the unit tests can also assert):
+
+| finding | what is visible in `out/console-after/` |
+|---|---|
+| B-03 | `1440x900/records-en.png`: `2026`, then `OCTOBER` alone — no `十月` in the English build; the Chinese shot keeps `十月 OCTOBER` |
+| B-15 | the three event titles are set in the display face at a real step above their metadata; the metadata row keeps the mono, uppercase, letterspaced treatment |
+| B-01 | `records-night-open-en.png`: the audit log names the action instead of printing `event_backfill` |
+| B-02 | the night's sign-off prints `10/2/2026, 10:23:40 PM`-shaped text, not an ISO instant with microseconds |
+| B-04 | `tonight-play-*.png`: every collapsible panel header carries the brass `▸`, and `▾` when open |
+| B-07 | `records-night-open-en.png`: `▸ This night's log (24)` and `▸ Other saved changes (not archived yet) (54)` in brass — Chrome's grey triangle is gone from both folds; this is the shot that proved the first attempt was a no-op |
+| B-12 | Tonight's two formerly identical `Queue` headings now read `Waiting to play` and `On a table now` |
+| §13.1 | one timer with controls: the header slot renders one `[data-clock]`, and `scoreboardScreen()`/`floorScreen()` render none (asserted in `tests/test_ops.js`); the only other `[data-clock]` in the product is the Vision stage bar's read-only readout, which has no controls |
+
+**Limits of this evidence.** The shots are dark theme, EN + 中, at 1440x900 and 390x844 — the
+brief's two sizes; the light theme and the remaining fixture states were audited by round 2's
+campaign, and `records-light` is re-shot as part of the 22. The public board's own numbers are
+dark-only (it has no light theme — B-14, carried open) and were taken in EN at 1280x900, plus the
+three other widths above. `label`-level type was read from computed styles, not from a
+rendered-glyph measurement: sub-pixel differences below `0.1 px` are not visible in the JSON.
+
+### Two harness defects this round had to fix first
+
+The re-shoot above is the second attempt. The first two runs died with `Page.navigate did not answer
+within 600s` and wrote **0 PNGs**, and the harness's own spawned fixture was the reason: it was started
+with `subprocess.PIPE, stderr=subprocess.STDOUT` and nothing drained that pipe, so a fixture that logs
+every request *before* answering blocked itself inside `log_request` once the 64 KiB buffer filled — the
+process still LISTENing, at 0 % CPU, answering nothing (measured: `/`, `/api/operations` and even
+`/annotator/ops.js` all timed out while the socket stayed open). Two rounds of hypothesis were disproven
+before the pipe was found: six simultaneous long-lived `/api/clock/stream` connections do **not** hold the
+store lock (`/api/operations` answered in 2 ms while all six were open, matching `annotator/unified_server.py`'s
+own claim that a stream never waits on `self.lock`), and twenty cold navigations left the fixture at one
+thread. Committed as `1625e4e`: the pipe is drained on a thread, mirrored to `out/console-*/fixture.log`,
+and the failure message prints the tail instead of nothing. The same commit stops the after build from
+reporting four stale play-view mismatches (`play='queue'` describes the **before** build's play tabs).
+`55fb73c` is the smaller one: `--skip-metrics` was declared and never read, so the four-row header
+measurement ran even when it was not asked for.
+
+### Findings applied
+
+Every P0 (there was none) and every P1 landed, plus the P2s that fit the round. Each row is one commit in
+`~/projects/pool-w-bar`; the commit body carries the reasoning where the fix was not mechanical. The house
+rule held throughout: **a state that can be asserted got an assertion** — `tests/test_ops.js` grew from
+116 to 125 tests, and the round-2 block pins every fix below that is reachable from the module's own API
+or from the stylesheets.
+
+| id | sev | commit | what changed |
+|---|---|---|---|
+| §13.1 gap | critical (a hole in the contract, found by lane B) | `d3f4ffe` | The timer has **one** home: the header `.timer-slot`. `scoreboardScreen()`'s second complete copy — its own Start/Reset and its own 20/30/45/60 — is deleted, together with the six CSS rules (`annotator/ops.css`) that existed only to style it. §13.1 deletes `#strip` but never says which of the two timers survives; this decides it for the reasons in the commit body: §13 row 5 puts the timer in the bar's first slot, §13 row 1 requires it in **every** venue state while a scoreboard exists only in `active`, and §13.2 specifies exactly one slot's contents. The Vision stagebar's single read-only `<strong data-clock>` (`annotator/ops.js`, mobile-only per `annotator/ops.css`) is **not** a second timer — no controls, one readout — and stays. |
+| B-01 | P1 | `1485281` | `event_backfill` was missing from `auditActions`, so the Records audit log printed the raw backend enum as its only non-sentence row. The label is now `Backfilled from a VOD` / `VOD 补录`. |
+| B-02 | P1 | `b2d9566` | A night's sign-off printed the raw ISO-8601 instant with microseconds one line under the same instant rendered properly. One `dateLine()` helper now formats both the audit line and the sign-off, so the two can never drift apart again. |
+| B-03 | P1 | `b2d9566` | `monthLabel` always printed the Chinese month first — `十月 October` in **every** language, on every Records render — while `dayLabel` on the next line was already gated. EN now prints `October`; 中 keeps `十月 October`. |
+| B-04 | P1 | `55a3303` | Twelve `<details>` on Tonight had no disclosure affordance: `display:flex` on the summary suppresses `::marker` and nothing replaced it, so `Queue 2` and `Bracket` read as static bordered bands (the only cue was `cursor:pointer`, which touch does not have). The panel summary now authors the `▸`/`▾` chevron the maintainers fold already used, and suppresses the marker it replaced. |
+| B-05 | P1 | `d3f4ffe` | The match picker — the control that decides which table is being scored — had no accessible name while the other three fields on the screen are label-wrapped. It carries `aria-label` from the new `focusMatch` word key. The same commit prints an unassigned table as `—` instead of the reachable literal `Table null`. |
+| B-06 | P1 | `2df7d67`, corrected in `817d19d` | Between 1000 and 1400 px wide the public board's bracket text fell to 10.2 px (round headings) and 9.6 px (match notes) — below the console's own 11 px `--fs-xs` floor, on the surface meant to be read across a room. Every em step now clamps to that floor as an **absolute** token: `max(.8rem,var(--tv-xs))`, `max(.8em,var(--tv-xs))`, `max(.75em,var(--tv-xs))`. `2df7d67` wrote the floor in em instead (`--tv-min: max(11px,.86em)` on `.rounds`) and measurement showed it **above** the design at every root — 1280×900 gave `h3` 11.83 px and `.bm-note` 11.83 px, 1920×1080 gave `h3` 17.75 px — because `em` inside a `font-size` resolves against the parent's size. The finding's literal absolute value was right; the correction is `817d19d`, and the four viewports were re-measured (11 / 11 px at 1280×900, design values at 1920×1080). |
+| B-12 | P2 | `45eb703` | Two panels on Tonight were both headed `Queue`. The waiting list is now `Waiting to play` / `等待上场`; the board keeps the word. |
+| B-13 | P2 | `b2d9566` | Records had exactly one heading for the whole page and Regulars had no `h2` at all. The timeline's year and month are now real `h3`s (the wrapper moved from `<ol class="events">` to a `<div>`, because an `ol` may not contain the `<section>` the months need), and Regulars gained an `sr-only` `h2` carrying the nav's own label. |
+| B-15 | P1 | `b2d9566` | Records event titles had no typographic step over their own metadata — `.tl-title` was the same 12 px uppercase mono as its `small`, its date and the audit lines (93 % of the screen's type). The title now carries the display face at `--fs-lg`; the metadata keeps the mono uppercase. |
+| B-07 | P2 | `55a3303` was a no-op; corrected in `ad87278` | Four folds on Records kept the unstyled browser disclosure triangle. `55a3303` added `.tl-audit` to the `list-style:none` reset and **changed nothing**: `::marker` is drawn on the `summary`, and that selector names the details element. The 1440×900 shot taken after it still showed Chrome's grey triangle on `This night's log (24)` — the shot is what proved the no-op. The summary now suppresses `::marker` (and `::-webkit-details-marker`) and carries the same authored `▸`/`▾` chevron in brass that the panel folds use. |
+| B-08 | P2 | `55a3303` | Eight collapse toggles measured 24×24 px at 390 wide. `#ops-shell .card-toggle` gets a 44 px target in the ≤750 px block; the glyph stays small. |
+
+### Rejected, with the reason
+
+| id | verdict | reason |
+|---|---|---|
+| B-09 | carried open | Replacing 25 bare Unicode glyphs plus 4 CSS-content glyphs with one authored inline-SVG set is a new icon system threaded through string templates in `annotator/ops.js` and `annotator/vision-stage.js` — past the round's bound, and a design decision (which glyphs survive, at what stroke weight) as much as a mechanical one. The measured inventory is the starting point: exactly 2 authored SVGs (the theme chips), 25 Unicode glyphs doing icon duty, 0 `<svg>` in `ops.js`. |
+| B-10 | needs the owner | The venue kicker above the public board's `h1` may be the intended venue mark. §13.2 deleted the console's `a.hall` (the Corner Pocket wordmark), so deleting this one too would remove the venue from the product. Naming and identity, not a defect this round can settle. |
+| B-11 | needs the owner | The 3–4 px coloured `border-left` callout appears on eleven rules. The audit itself records that it is applied consistently as a house decision, so the finding is "this carrier, twelve times" — and the replacement (rule, tint, inset bar, no carrier) is the owner's call before eleven call sites move. |
+| B-14 | needs the owner | Whether the public board is deliberately dark-only is a product statement: the console it mirrors has both themes and the PUBLIC BOARD toggle lives in the console's light-themeable Back room. The cheap half — saying "dark-only" in `docs/console-redesign.md` — is carried open rather than decided unilaterally, because adding `prefers-color-scheme:light` to a surface read in a lit pool hall is a real design question. |
+
+### What stayed open
+
+Beyond the four rejections above, this round leaves work that the next lane should not have to rediscover:
+
+- **The audit's own blind spots are still blind.** Vision's media stage, crops, tool chips and 0-9/U/C/A/B/V
+  key flows have **no** functional coverage under the fixture (it serves no review API); Backfill's steps
+  2–5 were read in source, never driven, and need a real Twitch VOD id; Tonight/Records/Regulars in their
+  empty and first-run states were not exercised; Core Web Vitals, print, and `prefers-reduced-motion` as
+  rendered behaviour (the CSS block exists at `annotator/ops.css`) are unmeasured; tap targets are
+  geometric boxes, not touch-tested.
+- **The public board's light theme** (B-14) and the venue mark (B-10) wait on the owner.
+- **The phone header is 116 px**, above the 60–90 px band the brief states for the desktop row; the phone
+  intentionally keeps a two-row stack and the presets hidden below 750 px, but nobody has decided that
+  116 is the right number for it.
+- **Ball legibility at 16 px / 34 px** is judged from CSS and the PNGs, not pixel-measured.
+- **Two changes to the harness itself** are in `tests/console_shots.py` (lane A: `--probe-timeout`, and
+  measuring the bar without waiting for `#main`) — a measurement tool carrying product fixes is a smell
+  worth revisiting when the box is less loaded.
+- **Stale round-1 instruments** in `out/impeccable/instruments/` (`shoot_baseline.sh`,
+  `measure_contrast.sh`, `overlay_sweep.sh`, `empties.sh`) still name screens and tab names that no longer
+  exist; lane B lifted the contrast measurement into `probes.js` rather than repairing them.
+
+### The hole in §13.1 that this round had to close by decision
+
+Lane B found the one thing no lane could fix by reading §13: `render()` injected `clockHTML()` into
+`#strip` **and** `scoreboardScreen()` injected a second complete copy with its own controls — measured
+`clockCount = 2`, both reading `SHOT TIMER live · synced 0:30`. §13.1 deletes `#strip` but never says which
+copy survives, so any lane that only followed the letter of §13 would have deleted one timer and kept the
+other by accident. Lane C decided (**the header slot survives**) and recorded the decision in `d3f4ffe`'s
+body, in this ledger, and as an assertion: the round-2 test block fails if a `[data-clock]` readout with
+controls ever reappears in the scoreboard or the floor. §13 itself is the owner's frozen text and was
+**not** edited; the next revision of it should name the surviving home explicitly.
