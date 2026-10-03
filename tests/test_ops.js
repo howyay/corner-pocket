@@ -1320,7 +1320,7 @@ test('a renamed regular reads by their current name on every screen, archive inc
   // a deleted regular (no roster row) still reads by the snapshot, never "Unknown"
   h.evaluate("data.players=data.players.filter(p=>p.id!=='p2')");
   assert.ok(h.evaluate('bracketScreen()').includes('>Bo'), 'the snapshot is the fallback when the regular is gone');
-  assert.ok(/· Bo — Walk-in Wu ·/.test(h.evaluate('recordsScreen()')), 'the archive in Records falls back to the snapshot too');
+  assert.ok(/class="tl-pair">Bo — Walk-in Wu</.test(h.evaluate('recordsScreen()')), 'the archive in Records falls back to the snapshot too');
   assert.equal(h.evaluate('JSON.stringify(resultStats("p1"))'), '{"wins":2,"losses":0}', 'the rename leaves the record whole; the bye is not a win');
   h.evaluate("lang='zh'");
   assert.equal(h.evaluate("validationMessage('Name held by a guest in this event; add the guest to the regulars instead')"), '这个名字属于本场赛事的一位访客；请把该访客加入常客，而不是给常客改成同名。');
@@ -2105,7 +2105,8 @@ test('the timeline groups nights by month, newest first, and a night opens in pl
   assert.ok(/<h3 class="tl-year">2026<\/h3>/.test(html) && /<h3 class="tl-month-head">September<\/h3>/.test(html),
     'the year and the month are heading levels, so Records can be navigated by heading (round 2, B-13)');
   const zhMonth = h.evaluate("lang='zh';monthLabel(new Date('2026-09-20T12:00:00Z'))");
-  assert.equal(zhMonth, '九月 September', 'in 中 the head still names the month in both scripts');
+  assert.equal(zhMonth, '九月', 'in 中 the month head is 中文 alone, never 中文 plus English (round 3, F11)');
+  assert.ok(!/[A-Za-z]/.test(zhMonth), 'round 3 / F11: one language per label, so no Latin month rides along');
   h.evaluate("lang='en'");
   assert.ok(html.includes('id="tl-body-n1" hidden') && !html.includes('aria-expanded="true"'), 'a night starts folded');
   assert.ok(html.includes(h.evaluate("esc(t('signedLine').replace('{n}',1))")), 'the row counts signed results');
@@ -2117,7 +2118,9 @@ test('the timeline groups nights by month, newest first, and a night opens in pl
   const body = open.slice(open.indexOf('id="tl-body-n1"'), open.indexOf('data-event="n2"'));
   assert.ok(body.includes(h.evaluate("esc(t('resultsSheet'))")) && body.includes(h.evaluate("esc(t('renameEvent'))")) && body.includes(h.evaluate("esc(t('hideEvent'))")), 'the sheet, the rename and the hide are in the body');
   assert.ok(!body.includes(h.evaluate("esc(t('deleteEvent'))")), 'a night with a signed result is never deletable');
-  assert.ok(body.includes(`Round 1 \u00b7 Ann \u2014 Guest \u00b7 3\u20131`), 'the body lists the results as a person would read them');
+  assert.ok(body.includes('<span class="tl-round">Round 1</span><span class="tl-pair">Ann — Guest</span><span class="tl-score">3–1</span>'),
+    'round 3 / F13: a match row is a round column, a pair column and a score column, in that order');
+  assert.ok(/<span class="tl-score">3–1<\/span><span class="badge /.test(body), 'round 3 / F13: the status badge is the row\'s last cell, so the columns can line up');
   assert.ok(body.includes('href="https://www.twitch.tv/videos/1234567890"'), 'the source row links to the broadcast the night was typed from');
   assert.ok(body.includes(`<summary>${h.evaluate("esc(t('auditTrail'))")} (1)</summary>`), 'and the night carries its own audit fold');
   h.evaluate('showHidden=true');
@@ -2831,4 +2834,158 @@ test('round 2: the night’s name carries a step over its own metadata (B-15)', 
   assert.ok(/#ops-shell \.tl-title\{[^}]*text-transform:none/.test(opsCss), 'and stops shouting in uppercase, which is what left it identical to its metadata');
   assert.ok(/#ops-shell \.tl-title small\{[^}]*font:var\(--fs-xs\) var\(--mono\)/.test(opsCss), 'while the metadata keeps the mono face');
   assert.ok(/#ops-shell \.tl-title small\{[^}]*text-transform:uppercase/.test(opsCss), 'and the uppercase treatment that marks it as meta');
+});
+
+// ---- Round 3, lane r3a: the blind rater's F4, F5, F6, F9, F12, F14–F19 (docs/console-redesign.md §14).
+test('round 3 / F4 + F6: the race reads the same everywhere, and one 中文 word means Racked', () => {
+  const h = harness();
+  tonightNight(h, 'drawn');
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("t('scheduled')"), '已排定', 'F6: a match waiting for a table says 已排定');
+  assert.equal(h.evaluate("t('sceneRack')"), '已排定', 'F6: and the stage stepper says the same word');
+  assert.equal(h.evaluate("t('send')"), '安排上台', 'F6: 安排上台 stays the only word for putting a match on a table');
+  const tonight = h.evaluate('tonightScreen()');
+  assert.ok(tonight.includes('已排定'), 'F6: the waiting match and the stepper render it');
+  assert.ok(!/已排台|开台/.test(tonight), 'F6: no second word for the same stage survives anywhere on the page');
+  assert.equal(h.evaluate("t('race')"), '抢几', 'F4: 抢几 survives as the field label');
+  h.evaluate('data.tournament.raceTo=5');
+  const board = h.evaluate('scoreboardScreen()');
+  assert.ok(board.includes('<span class="badge race">抢5</span>'), 'F4: the chip renders 抢{n}, exactly as the header strip does');
+  assert.ok(!/抢几/.test(board), 'F4: the field label never leaks into the chip');
+  h.evaluate("lang='en'");
+  assert.equal(h.evaluate("t('scheduled') + t('sceneRack')"), 'RackedRacked', 'F6: English stays Racked for both');
+  assert.ok(h.evaluate('scoreboardScreen()').includes('<span class="badge race">Race to 5</span>'), 'F4: and English reads Race to 5');
+});
+
+test('round 3 / F5: the backfilled-night marker is a control, not text dressed as one', () => {
+  const h = harness();
+  h.evaluate(`lang='en';openEvents.clear();
+    data.history=[{id:'n1',name:'Wednesday 8-Ball Open',archivedAt:'2026-09-17T00:00:00Z',entrants:[{id:'a',members:[{pid:'pa',name:'Ann'}]}],matches:[],source:{kind:'vod-backfill',vodId:'1',startS:0,endS:60}}];
+    data.events=[]`);
+  const rec = h.evaluate('recordsScreen()');
+  assert.ok(rec.includes('<button type="button" class="badge tl-source-badge" data-action="backfill-open">Backfill from a VOD</button>'),
+    'F5: it is a real button wearing the same badge class, so it can carry the row style without reading as a primary button');
+  assert.ok(rec.includes('data-action="tl-toggle"'), 'F5: and the row still has its own Expand control beside it');
+  assert.ok(source.includes("if(a==='backfill-open'){bfOpen();return}"), 'F5: the one click handler already routes that action');
+});
+
+test('round 3 / F9: both search boxes carry a real accessible name that states its scope', () => {
+  const h = harness();
+  h.evaluate(`lang='en';data.history=[{id:'n1',name:'Wednesday 8-Ball Open',archivedAt:'2026-09-17T00:00:00Z',entrants:[],matches:[]}];data.events=[];
+    data.players=[{id:'pa',name:'Ann',status:'Active',rating:700}];render=()=>{}`);
+  assert.ok(h.evaluate('recordsScreen()').includes('id="events-search" placeholder="Search names" aria-label="Search the records"'),
+    'F9: the records box names the archive it searches');
+  assert.ok(h.evaluate('playersScreen()').includes('id="roster-search" placeholder="Search names" aria-label="Search the regulars roster"'),
+    'F9: the roster box names the roster');
+  h.evaluate("lang='zh'");
+  assert.ok(h.evaluate('recordsScreen()').includes('aria-label="搜索赛事记录"'), 'F9: 中文 names the scope too');
+  assert.ok(h.evaluate('playersScreen()').includes('aria-label="搜索常客名单"'), 'F9: both boxes, both languages');
+  assert.equal(h.evaluate("t('search')"), '搜索姓名', 'F9: the placeholder stays a hint; the aria-label is the name');
+});
+
+test('round 3 / F12: the honesty note leaves the individual panels and stays where the system is described', () => {
+  const h = harness();
+  h.evaluate(`lang='en';data.history=[];data.players=[{id:'pa',name:'Ann',status:'Active',rating:700,played:1,wins:1,losses:0}]`);
+  const note = h.evaluate("esc(t('noSimulation'))");
+  assert.equal((source.match(/noSimulation/g) || []).length, 2, 'F12: the sentence survives once, in the words and in one screen');
+  assert.ok(!h.evaluate('recordView(data.players[0])').includes(note), 'F12: an individual record no longer carries a system-wide claim');
+  assert.ok(!h.evaluate('playersScreen()').includes(note), 'F12: nor the Regulars panel behind it');
+  assert.ok(h.evaluate('statusScreen()').includes(note), 'F12: the Back room still says it, where the whole system is described');
+});
+
+test('round 3 / F14: End of the night is on the Back room in every state, with the forbidden button disabled and explained', () => {
+  const h = harness();
+  h.evaluate("lang='en';render=()=>{}");
+  const states = [
+    ['no event at all', `data.tournament={raceTo:7,entrants:[],matches:[]};data.history=[]`, "t('closeNoEvent')", false],
+    ['an empty registration', `data.tournament={id:'t0',status:'registration',raceTo:7,entrants:[],matches:[]};data.history=[]`, "t('closeNoEntrants')", false],
+    ['a registration with entrants', `data.tournament={id:'t0',status:'registration',raceTo:7,entrants:[{id:'a',members:[{pid:'pa',name:'Ann'}]}],matches:[]};data.history=[]`, null, true],
+    ['a night with a signed result', `data.tournament={id:'t0',status:'active',raceTo:7,entrants:[{id:'a',members:[{pid:'pa',name:'Ann'}]}],matches:[{id:'m1',round:1,sides:['a',null],score:[3,0],status:'complete',result:'played',winnerId:'a',absent:[]}]};data.history=[]`, "t('closeSigned')", false],
+  ];
+  for (const [name, setup, why, deletable] of states) {
+    h.evaluate(setup);
+    const html = h.evaluate('statusScreen()');
+    const end = html.slice(html.indexOf('class="end-night"'));
+    assert.ok(html.includes('class="end-night"') && end.includes('data-action="new-event"'), `F14: the card is on the Back room with ${name}`);
+    assert.ok(end.includes('data-action="event-delete"'), `F14: and it always carries the delete control (${name})`);
+    assert.equal(!/data-action="event-delete"[^>]*disabled/.test(end), deletable, `F14: delete is ${deletable ? 'live' : 'off'} with ${name}`);
+    if (why) assert.ok(end.includes(h.evaluate(`esc(${why})`)), `F14: the disabled button says why (${name})`);
+    else assert.ok(!/class="note close-why"/.test(end), `F14: nothing is explained away when the state allows it (${name})`);
+  }
+  h.evaluate(`data.tournament={id:'t0',status:'active',raceTo:7,entrants:[],matches:[]}`);
+  const rename = h.evaluate('renameCard()');
+  assert.ok(!/archive this event to start/.test(rename), 'F14: the locked note no longer tells the operator to archive something they cannot find');
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    assert.ok(h.evaluate("t('locked')").includes(h.evaluate("t('endNightTitle')")), `F14: the ${lang} note names the card that can be found`);
+  }
+});
+
+test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names itself', async () => {
+  const h = harness();
+  tonightNight(h, 'drawn');
+  h.evaluate('render=()=>{}');
+  assert.equal(h.evaluate('navKey(1)'), 'clock', 'F15: ball 1 is the shot timer');
+  assert.equal(h.evaluate('primaryNav().map((k,i)=>navKey(i+2)).join()'), 'tonight,records,vision,players,status', 'F15: balls 2–6 are the five destinations, in order');
+  assert.equal(h.evaluate('navKey(7)'), null, 'F15: and there is no seventh ball');
+  const key = (k, extra = {}) => ({key: k, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, preventDefault() {}, ...extra});
+  await h.handlers.keydown(key('Digit3'));
+  assert.equal(h.evaluate('tab'), 'records', 'F15: Digit3 switches to Records');
+  assert.equal(h.context.location.hash, '#/records', 'F15: and the URL follows');
+  await h.handlers.keydown(key('Digit4', {ctrlKey: true}));
+  assert.equal(h.evaluate('tab'), 'records', 'F15: a modifier makes it a browser shortcut, not ours');
+  h.context.document.activeElement = {tagName: 'TEXTAREA'};
+  await h.handlers.keydown(key('Digit5'));
+  assert.equal(h.evaluate('tab'), 'records', 'F15: typing in a field is never a shortcut');
+  h.context.document.activeElement = {tagName: 'DIV'};
+  await h.handlers.keydown(key('Digit5'));
+  assert.equal(h.evaluate('tab'), 'players', 'F15: outside a field the same key works');
+  delete h.context.document.activeElement;
+  h.evaluate('timer.duration=30;timer.remaining=30;timer.deadline=null');
+  await h.handlers.keydown(key('Digit1'));
+  assert.ok(h.evaluate('!!timer.deadline'), 'F15: Digit1 starts the shot timer, which is not a tab at all');
+  await h.handlers.keydown(key('Digit1'));
+  assert.ok(!h.evaluate('timer.deadline'), 'F15: pressing it again pauses');
+  assert.ok(source.includes('aria-keyshortcuts="Digit${key}"') && source.includes("t('keyHint')"), 'F15: every ball names its key in the markup');
+  assert.ok(/aria-keyshortcuts="Digit1"[^>]*title=/.test(h.evaluate('timerHTML()')), 'F15: and the timer names its own key');
+  const slot = h.evaluate('timerHTML()');
+  assert.ok(slot.includes('<i>1</i>') && slot.includes('role="img"') && slot.includes('aria-label="Ball 1 · shot timer"') && slot.includes('title="Ball 1 · shot timer"'),
+    'F16: the circled 1 is the ball, and it says so by name — never as a count of shots');
+});
+
+test('round 3 / F17: the header backfill control keeps a name when its word goes', () => {
+  assert.ok(opsHtml.includes('id="backfill-open" data-action="backfill-open"'), 'F17: the control is still the header entry point');
+  assert.ok(opsHtml.includes('aria-label="Backfill a past event from a Twitch VOD / 用 Twitch VOD 补录一场历史赛事"'), 'F17: it is named even with no visible word');
+  assert.ok(opsHtml.includes('title="Backfill a past event from a Twitch VOD / 用 Twitch VOD 补录一场历史赛事"'), 'F17: and carries the same phrase as a tooltip');
+  assert.ok(opsHtml.includes('<span class="bf-icon" aria-hidden="true">') && opsHtml.includes('<span class="bf-label">Backfill</span>'),
+    'F17: the word lives in .bf-label, so the layout can hide it below 1440 and keep the icon');
+  assert.ok(source.includes('backfillButton.innerHTML=`<span class="bf-icon"'), 'F17: render() paints that same shape in either language');
+  assert.ok(source.includes("t('backfillShort')"), 'F17: with a label short enough to hold one row');
+  assert.ok(!/backfillButton\.textContent/.test(source), 'F17: the bare textContent that made the label six words long is gone');
+});
+
+test('round 3 / F18: the “paste a VOD link first” note sits with the field it is about', () => {
+  const h = harness();
+  h.evaluate(`lang='en';bf={step:'pick',paste:'',recent:[],notice:t('bfNeedVod'),error:'',detail:''}`);
+  const screen = h.evaluate('bfScreen()');
+  const head = screen.indexOf('bf-head'), field = screen.indexOf('id="bf-vod"'), note = screen.indexOf('id="bf-vod-note"');
+  assert.ok(head > 0 && field > head && note > field, 'F18: the note comes after the field it is about, not above the wizard heading');
+  assert.ok(!screen.slice(0, field).includes('bf-notice'), 'F18: nothing warns before the field is even on screen');
+  assert.ok(screen.includes('aria-describedby="bf-vod-note"'), 'F18: the field points at its own note');
+  assert.equal((screen.match(/bf-notice/g) || []).length, 1, 'F18: the note is printed once, beside the field');
+  assert.equal(h.evaluate('bfNoticeHtml(true)'), '', 'F18: the copy above the steps is suppressed while the field carries it');
+  assert.ok(h.evaluate('bfNoticeHtml(false)').includes('bf-notice'), 'F18: while a later step still announces it at the top');
+});
+
+test('round 3 / F19: the wizard is its own place in the nav, and its subtitle is not the entry label again', () => {
+  const h = harness();
+  h.evaluate(`lang='en';bf={step:'pick',paste:'',recent:[],notice:''};tab='records'`);
+  const screen = h.evaluate('bfScreen()');
+  assert.ok(!screen.includes(h.evaluate("esc(t('backfillOpen'))")), 'F19: the step subtitle never repeats the entry button label, ellipsis and all');
+  assert.ok(screen.includes(h.evaluate("esc(t('bfPickNote'))")), 'F19: it says what the step does instead');
+  assert.ok(source.includes('const cur=!bf&&tab===k'), 'F19: while the wizard is open no destination is marked current in the bar');
+  assert.ok(/\(!bf&&tab===id\?' aria-current="page"':''\)/.test(source), 'F19: nor in the 390 tab bar');
+  assert.ok(/dataset\.tab=bf\?'backfill':tab;/.test(source), 'F19: and the shell publishes the wizard as its own state, so the layout can drop the tab bar');
+  const fresh = harness();
+  assert.equal((fresh.evaluate('tabbarHTML()').match(/aria-current="page"/g) || []).length, 1, 'with no wizard open exactly one destination stays current');
 });
