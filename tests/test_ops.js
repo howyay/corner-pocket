@@ -2465,7 +2465,10 @@ test('the bar is one row: the shot timer first, the five destinations, the tools
   assert.equal((bar.match(/<div class="tools">/g) || []).length, 1, 'and one tools row, unchanged');
   assert.ok(bar.includes('<span id="connection" class="badge" hidden>'), 'the connection badge still starts hidden and empty');
   assert.ok(bar.includes('data-lang="en"') && bar.includes('data-lang="zh"') && bar.includes('data-theme-group'), 'the language and theme chips are untouched');
-  assert.ok(css.includes('#ops-shell .bar > nav{flex:1 1 auto;min-width:0;padding:0}'), 'the bar lays out its own nav');
+  assert.ok(css.includes('#ops-shell .bar > nav{flex:0 1 auto;min-width:0;padding:0}'),
+    'the nav keeps its own size: a bar that shrinks it wraps the destinations onto a second row (measured 96 px against 44)');
+  assert.ok(css.includes('#ops-shell .bar{flex-wrap:nowrap}'), 'the bar itself is one row');
+  assert.ok(/#ops-shell \.bar > \.tools\{flex:0 1 auto;min-width:0;flex-wrap:wrap\}/.test(css), 'the tools are the part that folds');
   assert.ok(!/\.brand/.test(css), 'the brand styles went with the brand block');
   const h = harness();
   assert.equal(h.evaluate('primaryNav()').length, 5, 'the one bar renders five destinations');

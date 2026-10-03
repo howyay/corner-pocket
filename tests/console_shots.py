@@ -686,7 +686,7 @@ def shoot(page, name, url, width, height, mobile, lang, theme, play_view=None, s
     page.call('Page.navigate', {'url': url})
     readiness = 'rendered'
     try:
-        probe = wait_for_render(page, deadline=150, requires_main=requires_main,
+        probe = wait_for_render(page, deadline=PROBE_TIMEOUT, requires_main=requires_main,
                                 requires_nav=requires_main, what=f'{name}/{lang} {url}')
     except CdpTimeout as error:
         # The Tables view on a phone viewport keeps the software renderer busy enough that a
@@ -796,8 +796,18 @@ def measure(page, url, width, height, mobile, lang='en', theme='dark'):
         'screenWidth': width, 'screenHeight': height,
     })
     set_preferences(page, lang, theme)
+    # A reloaded landing page can keep showing the loading line (measured on a loaded box: the
+    # header is present and styled while #main still reads Loading operations). The bar is what
+    # this function measures, so wait for it and let the main content keep loading; the whole
+    # page still gets the full PROBE_TIMEOUT before the measurement is called a stall.
     page.call('Page.navigate', {'url': url})
-    wait_for_render(page, what=f'measurement page {url}')
+    try:
+        wait_for_render(page, deadline=PROBE_TIMEOUT, requires_main=False,
+                        what=f'measurement page {url}')
+    except CdpTimeout:
+        if not page.evaluate("!!document.querySelector('header .bar')"):
+            raise
+        print(f'      ! {url} kept its loading line; measuring the bar anyway', flush=True)
     time.sleep(0.3)
     before = page.evaluate(MEASURE_SCRIPT)
     simulated = page.evaluate(SIMULATE_SCRIPT)
@@ -829,12 +839,17 @@ def main():
                              'Bracket view 4 times out of 4 on this machine)')
     parser.add_argument('--shot-retries', type=int, default=1,
                         help='fresh-URL retries for a shot whose page did not render (default: %(default)s)')
+    parser.add_argument('--probe-timeout', type=float, default=150,
+                        help='seconds to wait for one page to render (default: %(default)s)')
+    parser.add_argument('--skip-metrics', action='store_true',
+                        help='skip the header measurement rows (the measurement waits 600 s for a render)')
     parser.add_argument('--verbose', action='store_true',
                         help='log every DevTools call slower than 5s (a loaded box makes these visible)')
     args = parser.parse_args()
 
-    global SHOOT_DIR, VERBOSE
+    global SHOOT_DIR, VERBOSE, PROBE_TIMEOUT
     VERBOSE = args.verbose
+    PROBE_TIMEOUT = args.probe_timeout
     SHOOT_DIR = Path(args.out) if args.out else ROOT / 'out' / f'console-{args.build}'
     wanted = [part.strip() for part in (args.states or '').split(',') if part.strip()]
     langs = [lang.strip() for lang in args.langs.split(',') if lang.strip()]
@@ -987,6 +1002,7 @@ def main():
 
 CHROMIUM_VERSION = ''
 DEBUG_PORTS = set()
+PROBE_TIMEOUT = 150  # seconds one page gets to render; --probe-timeout overrides it
 SHOOT_DIR = ROOT / 'out' / 'console-before'
 VERBOSE = False
 

@@ -72,17 +72,17 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .bar,#ops-shell main{max-width:var(--page-max);margin:auto;padding:var(--sp-3) clamp(var(--sp-3),2.4vw,var(--sp-6))}
 /* One bar: the timer slot is its first child and the tab row takes the room the brand
    block left. */
-#ops-shell .bar > nav{flex:1 1 auto;min-width:0;padding:0}
+#ops-shell .bar > nav{flex:0 1 auto;min-width:0;padding:0}
 /* The always-available element (owner §13.1): one flex row, never wrapping, the clock
    large. The group's aria-label names it, so the old .kicker second line is not here to
    push the digits off the row's centre line. The elapsed bar rides the slot's bottom edge. */
-#ops-shell .timer-slot{position:relative;display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);flex:none;padding-bottom:var(--sp-1h)}
+#ops-shell .timer-slot{position:relative;display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-1h);flex:none;padding-bottom:var(--sp-1h)}
 #ops-shell .timer-slot .clock{font-size:clamp(30px,3.4vw,48px);line-height:1}
 #ops-shell .timer-slot .ball{width:34px;height:34px;font-size:11px}
-#ops-shell .timer-slot button{min-height:36px;padding:0 var(--sp-3);font-size:var(--fs-sm);white-space:nowrap}
+#ops-shell .timer-slot button{min-height:36px;padding:0 var(--sp-2);font-size:var(--fs-sm);white-space:nowrap}
 #ops-shell .timer-slot button[data-action=clock-reset]{color:var(--ink-dim)}
 #ops-shell .timer-slot .presets{display:flex;gap:1px;padding:1px;background:var(--line);border-radius:2px}
-#ops-shell .timer-slot .presets button{min-width:38px;padding:0 var(--sp-2);border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font-family:var(--mono)}
+#ops-shell .timer-slot .presets button{min-width:26px;padding:0 2px;border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font-family:var(--mono)}
 #ops-shell .timer-slot .presets button.active{background:var(--brass);color:var(--brass-fg)}
 /* A command that failed is a fact; connecting, live, polling and offline are not copy. */
 #ops-shell .sync-error{color:var(--red);font:var(--fs-sm) var(--mono);letter-spacing:.06em}
@@ -94,6 +94,8 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell main p:not(#review-root *){max-width:var(--measure)}
 #ops-shell .bar,#ops-shell .tools,#ops-shell nav,#ops-shell .row,#ops-shell .heading,#ops-shell .actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 #ops-shell .bar,#ops-shell .heading{justify-content:space-between}
+#ops-shell .bar{flex-wrap:nowrap}
+#ops-shell .bar > .tools{flex:0 1 auto;min-width:0;flex-wrap:wrap}
 #ops-shell small,#ops-shell .kicker,#ops-shell .badge,#ops-shell label>span,#ops-shell th{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 #ops-shell small{display:block;margin-top:var(--sp-1)}
 /* A lit sphere, not a disc: the hue arrives as --ball-c (from the number palette in
@@ -769,6 +771,7 @@ html,body{-webkit-font-smoothing:antialiased}
    duration chips are the one part that folds away: the clock, its two controls and the
    elapsed bar stay on screen, so the timer is never hidden behind a tab (owner §13.1). */
 @media(max-width:750px){
+  #ops-shell .bar{flex-wrap:wrap}
   #ops-shell .timer-slot .presets{display:none}
   #ops-shell .timer-slot{gap:var(--sp-1h)}
   #ops-shell .timer-slot .ball{width:30px;height:30px;font-size:11px}
