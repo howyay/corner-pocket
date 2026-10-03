@@ -43,6 +43,24 @@ def text(value, name, maximum=200):
     return value.strip()
 
 
+def seconds(value, name):
+    """A position in a broadcast: whole seconds, 0 or more (the rule src/datasets.py uses)."""
+    if isinstance(value, bool) or type(value) is not int or value < 0:
+        raise ValueError(f'{name} must be a whole number of seconds, 0 or more')
+    return value
+
+
+def vod_id(value):
+    """The numeric id of a Twitch VOD argument, parsed by the source module's own rule
+    (annotator/twitch_vod_source.py): the action layer keeps no second spelling of it and
+    never touches the network."""
+    from annotator.twitch_vod_source import TwitchVodError, vod_id_of
+    try:
+        return vod_id_of(value)
+    except TwitchVodError as error:
+        raise ValueError(str(error)) from error
+
+
 def name_key(name):
     """The key under which two player names are the same name: the rule every name
     check here applies (casefold of the trimmed name). The database stores it in
@@ -74,7 +92,8 @@ class Operations:
     _locks_guard = threading.Lock()
 
     def __init__(self, root):
-        self.path = Path(root).resolve() / 'out' / 'corner-pocket' / 'state.json'
+        self.root = Path(root).resolve()
+        self.path = self.root / 'out' / 'corner-pocket' / 'state.json'
         with self._locks_guard:
             self.lock = self._locks.setdefault(self.path, threading.RLock())
 
@@ -174,6 +193,16 @@ class Operations:
             if night and action == 'tournament_hide' and 'hidden' in night:
                 return dict(id=night['id'], name=night['name'], hidden=night['hidden'])
             return dict(id=night['id'], name=night['name']) if night else context
+        if action == 'event_backfill':
+            # 7.6: the audit line of a backfill names the night it wrote and the broadcast it
+            # came from, read back from the store rather than copied from the request.
+            source = payload.get('source') if isinstance(payload.get('source'), dict) else {}
+            night = next((n for n in reversed(state['history'])
+                          if (n.get('source') or {}).get('datasetId') == source.get('datasetId')), None)
+            if night is None:
+                return dict(vodId=source['vodId']) if isinstance(source.get('vodId'), str) else context
+            return dict(id=night['id'], name=night['name'], vodId=night['source'].get('vodId'),
+                        datasetId=night['source'].get('datasetId'))
         if action.startswith('tournament_'):
             return dict(id=t['id'], name=t['name'])
         if action == 'guest_promote':
@@ -246,6 +275,181 @@ class Operations:
                     match['status'] = 'delayed'
         if t['matches'] and t['matches'][-1]['status'] == 'complete':
             t['status'] = 'complete'
+
+    def _backfill_source(self, s, source, vod, start, end):
+        """The source line of a backfilled night, or the refusal that stops it.
+
+        A broadcast may be written about only when this console already knows it: either the
+        range is an imported dataset of this root (out/vods/index.json, which the
+        single-flight import job writes for saved channels only) or the broadcast is a saved
+        source. Nothing here reads the video or asks Twitch anything — the id is parsed by
+        annotator/twitch_vod_source.py and the rest is read from disk (7.0).
+        """
+        from src.datasets import imported_id, parse_imported_id, read_index
+        claimed = source.get('datasetId')
+        if not isinstance(claimed, str) or parse_imported_id(claimed) is None:
+            raise ValueError('datasetId must be an imported dataset id such as tw-1234567890-452-1690')
+        ranged = imported_id(vod, start, end)
+        if claimed not in (ranged, imported_id(vod)):
+            raise ValueError(f'datasetId must be {ranged} for this broadcast and range')
+        for night in s['history']:
+            line = night.get('source') or {}
+            # 7.4: the same range, backfilled twice, must not become two nights — matched on
+            # the id the operator sends and on the range itself, so the whole-broadcast
+            # spelling of the same segment cannot slip past the ranged one.
+            if line.get('datasetId') == claimed or (line.get('vodId'), line.get('startS'), line.get('endS')) == (vod, start, end):
+                raise ConflictError(f'{line.get("datasetId") or claimed} is already in the timeline as '
+                                    f'"{night.get("name") or "an unnamed event"}" ({night["id"]}); open it instead')
+        channel = source.get('channel')
+        channel = channel.strip() if isinstance(channel, str) else ''
+        title = source.get('title')
+        title = title.strip() if isinstance(title, str) else ''
+        entry = read_index(self.root)[0].get(claimed)
+        if entry is not None:
+            # the import job recorded the channel and title it resolved; a claim that
+            # contradicts them is refused instead of stored beside them
+            listed = entry.get('channel')
+            if channel and isinstance(listed, str) and listed and listed.casefold() != channel.casefold():
+                raise ValueError('channel does not match the channel this range was imported from')
+            channel = channel or (listed if isinstance(listed, str) else '')
+            title = title or (entry.get('title') if isinstance(entry.get('title'), str) else '')
+        else:
+            saved = s.get('sources') or []
+            videos = {item.get('video') for item in saved if item.get('kind') == 'video'}
+            channels = {str(item.get('channel') or '').casefold() for item in saved if item.get('kind') == 'channel'}
+            if vod not in videos and channel.casefold() not in channels:
+                raise ValueError('This broadcast is not a saved source and was not imported; '
+                                 'add its channel or the VOD under Source first')
+        return dict(kind='vod-backfill', vodId=vod, datasetId=claimed, startS=start, endS=end,
+                    channel=channel or None, title=title or None, humanReviewed=True)
+
+    @staticmethod
+    def _backfill_entrants(s, entrants):
+        """The entrants of a backfilled night in the shape this store already uses, plus the
+        resolver from a written side to the entrant it names.
+
+        A side is written as the entrant's id when the payload carries one and as their name
+        when it does not; names are unique inside the night, so a reference is never ambiguous.
+        A named regular is written as their roster row (`pid`), so a past night counts towards
+        that regular's house standing (6.1); a name nobody on the roster holds stays a guest.
+        """
+        if not isinstance(entrants, list) or not entrants:
+            raise ValueError('entrants must be a non-empty list')
+        rows, by_id, by_name, by_pid = [], {}, {}, {}
+        for row in entrants:
+            if not isinstance(row, dict):
+                raise ValueError('Invalid entrant')
+            pid = row.get('pid')
+            if pid is None:
+                name, guest = text(row.get('name'), 'entrant name', 120), None
+                if any(item['name'].casefold() == name.casefold() for item in s['players']):
+                    raise ValueError('Player name already exists; send the regular as their player id')
+            else:
+                player = next((item for item in s['players'] if item['id'] == pid), None)
+                if player is None:
+                    raise ValueError('Unknown id')
+                if player['status'] == 'Inactive':
+                    raise ValueError('Inactive player')
+                if player['id'] in by_pid:
+                    raise ValueError('Two entrants name the same regular')
+                name, guest = player['name'], player['id']
+            if name_key(name) in PLACEHOLDER_NAMES:
+                raise ValueError("A bye is added by the draw; type the guest's real name")
+            ident = row.get('id')
+            ident = uid() if ident is None else text(ident, 'entrant id', 64)
+            if ident in by_id:
+                raise ValueError('Two entrants share an id')
+            if name_key(name) in by_name:
+                raise ValueError('Two entrants share a name')
+            by_id[ident] = ident
+            by_name[name_key(name)] = ident
+            if guest:
+                by_pid[guest] = ident
+            rows.append(dict(id=ident, members=[dict(pid=guest, name=name)]))
+
+        def side(value):
+            key = value.strip() if isinstance(value, str) else ''
+            if key in by_id:
+                return by_id[key]
+            if key and name_key(key) in by_name:
+                return by_name[name_key(key)]
+            raise ValueError('Every side and winner must name one of the entrants')
+
+        return rows, side
+
+    @staticmethod
+    def _backfill_matches(matches, side):
+        """One archived match per hand-typed result: complete, each holding the boundary the
+        operator marked (clip) and nothing this server computed."""
+        if not isinstance(matches, list) or not matches:
+            raise ValueError('matches must be a non-empty list')
+        rows = []
+        for match in matches:
+            if not isinstance(match, dict):
+                raise ValueError('Invalid match')
+            sides = match.get('sides')
+            if not isinstance(sides, list) or len(sides) != 2:
+                raise ValueError('Two sides required')
+            sides = [side(value) for value in sides]
+            if sides[0] == sides[1]:
+                raise ValueError('A match needs two different entrants')
+            score = match.get('score')
+            if not isinstance(score, list) or len(score) != 2:
+                raise ValueError('Two scores required')
+            winner = side(match.get('winner'))
+            if winner not in sides:
+                raise ValueError('winner must be one of the two sides')
+            result = match.get('result', 'played')
+            if result not in ('played', 'forfeit'):
+                raise ValueError("result must be 'played' or 'forfeit'")
+            clip = match.get('clip')
+            if not isinstance(clip, list) or len(clip) != 2:
+                raise ValueError('clip must be [start, end] in whole seconds')
+            clip = [seconds(clip[0], 'clip start'), seconds(clip[1], 'clip end')]
+            if clip[1] <= clip[0]:
+                raise ValueError('clip end must be after clip start')
+            rows.append(dict(id=uid(), round=integer(match.get('round', 1), 1, 99, 'round'),
+                             sides=sides, score=[integer(value, 0, 99, 'score') for value in score],
+                             table=None, status='complete', winnerId=winner, absent=[], sources=[],
+                             result=result, clip=clip))
+        return rows
+
+    def _backfill(self, s, p):
+        """7.4: write one past night, typed and confirmed by a person, onto the timeline.
+
+        The video is never read and no boundary is computed: `source.humanReviewed` is the
+        confirmation the server enforces, and every refused request leaves the store exactly
+        as it was (7.5). The night is APPENDED to `history`; the event being played tonight is
+        not touched (7.4 step 2).
+        """
+        event, source = p.get('event'), p.get('source')
+        if not isinstance(event, dict):
+            raise ValueError('event object required')
+        if not isinstance(source, dict):
+            raise ValueError('source object required')
+        if source.get('humanReviewed') is not True:
+            raise ValueError('Every result must be confirmed by a person: source.humanReviewed must be true')
+        if source.get('kind') != 'vod-backfill':
+            raise ValueError("source.kind must be 'vod-backfill'")
+        vod = vod_id(source.get('vodId'))
+        start = seconds(source.get('startS'), 'startS')
+        end = seconds(source.get('endS'), 'endS')
+        if end <= start:
+            raise ValueError('endS must be after startS')
+        name = text(event.get('name'), 'name', 120)
+        fmt = event.get('format', 'singles')
+        if fmt not in ('singles', 'doubles'):
+            raise ValueError('Invalid format')
+        tables = integer(event.get('tables', 1), 1, 32, 'tables')
+        race_to = integer(event.get('raceTo', 1), 1, 99, 'raceTo')
+        # Nothing below writes to the store before every field has been accepted.
+        line = self._backfill_source(s, source, vod, start, end)
+        entrants, side = self._backfill_entrants(s, event.get('entrants'))
+        matches = self._backfill_matches(event.get('matches'), side)
+        signed = timestamp()
+        s['history'].append(dict(id=uid(), name=name, format=fmt, tables=tables, raceTo=race_to,
+                                 entrants=entrants, matches=matches, status='complete',
+                                 archivedAt=signed, source=line, signOff=dict(at=signed)))
 
     def _apply(self, s, p):
         action = p.get('action')
@@ -521,6 +725,8 @@ class Operations:
                 archived['archivedAt'] = timestamp()
                 s['history'].append(archived)
             s['tournament'] = tournament()
+        elif action == 'event_backfill':
+            self._backfill(s, p)
         elif action == 'source_add':
             url = text(p.get('url'), 'Twitch URL', 500)
             parsed = urlsplit(url)

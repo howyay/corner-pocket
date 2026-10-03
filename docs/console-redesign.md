@@ -577,7 +577,7 @@ const dirtyComp = () => matches().some(m => m.status === 'live'); // 台上有�
 
 | 列 | 数据 | 来源（已存在） | 备注 |
 |---|---|---|---|
-| 名字 | `p.name` | `roster()` | 点名字打开个人战绩（`recordView(p)`，`ops.js:145`），只读 |
+| 名字 | `p.name` | `roster()` | 点名字打开这名常客自己的档案（管理视图），其中的 `[个人战绩]`（`recordView(p)`，`ops.js:145`）是只读页 —— **实现偏差，见 §12.7** |
 | 状态 | `p.status` | `badge(p.status)` | Active / Visitor / Prospect / Inactive |
 | 入会 | `p.joinedAt` | `fmtDate()` | |
 | 球房战绩 | `p.rating` | 员工手填（`allTime` 文案已声明"并非计算得出"） | **保留"手填"的语义**，不能让它看起来像算出来的 |
@@ -728,11 +728,29 @@ dataset ──开始标记──▶ marking ⇄ match-draft（逐场：边界 / 
 | 字段 | 复用还是新增 | 出处 |
 |---|---|---|
 | `history[i].archivedAt` `entrants` `matches` `hidden` | 复用 | 现有 `tournament_new` / `tournament_hide` |
+| `history[i].entrants[j].members[0].pid` | **新增（加法）** | `event_backfill`：入参 `entrants[]` 写 `{pid}` 的行按**名册**落库（`pid` + 名册当前名字），只写 `{name}` 的行仍是访客（`pid: null`）。这是第 4 条（house standing）与第 6 条（回填）唯一的连接点：`resultStats(pid)` / `record` / `headToHead` 全按 pid 计数 |
 | `history[i].source.{kind,vodId,datasetId,startS,endS,channel,title}` | **新增** | `event_backfill` |
 | `history[i].source.humanReviewed` | **新增** | 同上（恒为 `true`，服务端强制校验） |
 | `history[i].signOff.at` | **新增** | 同上 |
 | `events[].action='event_backfill'` + `vodId` | **新增**（沿用现有审计结构） | 同上 |
 | 客户端 `cp-ops-backfill`（草稿） | 新增（本机） | 第 7.1 节 |
+
+入参的两种写法与拒绝规则（服务端强制，拒绝即不落盘、不涨 revision、文件一个字节都不动）：
+
+| 写法 | 结果 |
+|---|---|
+| `entrants: [{pid: '<player id>'}]` | 落库为该常客；名字取**名册当前值**（请求里另拼的名字不生效）；回合/对手/胜者照常按 entrant id 解析 |
+| `entrants: [{name: '<新建的访客名>'}]` | 落库为访客（`pid: null`），不计入任何人的 standing |
+| `entrants: [{id, name}]` | 仍是自定义 entrant id（第 7.6 节原有行为，不变） |
+
+| 拒绝 | 何时 |
+|---|---|
+| `Unknown id` | pid 不在名册里（拼错、已删） |
+| `Inactive player` | pid 指向停用的常客：停用的人不能挂到历史夜上（要补录先把状态改回 Active，补完再改回去） |
+| `Two entrants name the same regular` | 同一常客被写了两遍（两个 pid 行） |
+| `Player name already exists; send the regular as their player id` | 只写名字、而名册里已有同名的人 —— **必须改指 pid**。若放行，这一晚会悄悄变成访客、对谁都不计数，正是第 4 条要防的"账对不上" |
+
+**为什么不自动按名字猜 pid**：猜错会把一晚的成绩记到**别人**头上，比不计数更糟。名字命中名册时服务端拒绝并告诉操作员用 pid；控制台侧（`bfPlayerFor` / `bfEntrants`，用与 R13 搜索同一个 `searchFold`）会先把名字折成 pid 再发出，并在每一行显示 `常客 / 访客` 徽标，让人在**发出之前**就看到这一场算谁的。
 
 ---
 
@@ -865,6 +883,22 @@ dataset ──开始标记──▶ marking ⇄ match-draft（逐场：边界 / 
 | 改名按当前名读，处处一致（R12） | `test_ops.js:1236` |
 | R13 逐词 AND 搜索 | `test_ops.js:536`、`562` |
 
+### 10.4 实现后实际落下来的（2026-10-02，wave B，替代第 11 节那条"估算"）
+
+预算 vs 实际：预计"改写 14–18、删 2、加 9–12"；**实际**改写 8、删 0、加 5（`tests/test_ops.js` 109 → **114 条全绿**），外加 `tests/test_operations.py` 45 → **47 条**（新增两条 pid 链路测试）。10.1 的表里其余行由 console lane 自己的提交改完（路由/阶段/面板那批），本节只记 wave B 的部分：
+
+| 10.2 的条目 | 落在哪里 |
+|---|---|
+| 1、2、3、9、10、11、12 | console lane 的 `d9e82cc`（stage 8/9 那批测试：顶栏一行、`#connection` 离线双语、`shot timer` 一个名字、无第二层菜单、`comp()` 四态、Tables 常驻 + dashboard 跟随、底栏 5 槽） |
+| 4 | 新增「没打过的人读 `0` / `—` / `—`，绝不 `0%`」（`6.2`） |
+| 5 | 新增「时间线按月分组、最新在前、展开在原地」（`5.3/5.4`） |
+| 6 | 新增「补录是五个由人走的步骤，页面从不假装识别」（`7.1`） |
+| 7 | 新增「未逐场确认就写不进去，payload 自己声明 `humanReviewed`」（`7.0/7.5`）+ 409 那条尾巴 |
+| 8 | 新增「已下载的区间走复用；写下的常客计入 standing」（`7.3/6.1`） |
+| 4+6 的连接点 | `tests/test_operations.py`：`test_backfill_links_a_written_name_to_the_regular_it_names`、`test_backfill_refuses_a_regular_pointer_it_cannot_honour` |
+
+改写的 8 条（都是锚点问题，不是行为回归）：R12 改名、R5 轮空标注、R4 表头 `House rating (manual)`、R1 未签字可删、`.table-wrap` 宽表、Records 面板清单、standing 行跳转、空态文案 —— 全部改成按 `data-event` / `playersScreen()` / `standing-cell` 取锚点。
+
 ---
 
 ## 11. 没覆盖 / 存疑 / 需要店主拍板（权重最高，按重要度排）
@@ -896,3 +930,8 @@ dataset ──开始标记──▶ marking ⇄ match-draft（逐场：边界 / 
 4. **回填的比赛边界靠人手标**（问题 4）：仓库里没有边界检测器，按 7.0 实现"人看回放、逐场标起止与赛果"；界面文案必须诚实（`bfManual`），最终报告里也要写明。**不新建 CV 项目。**
 5. **单作业、409 不排队**（问题 5）：`VodImporter` 的单飞语义保留，第二个补录请求 409 + 诚实文案；**不加队列**。
 6. **Vision 保持一级项**（问题 6）：不挪进 Back room。
+
+### 12.1 实现期追加的两条裁决（2026-10-02，wave B）
+
+7. **Regulars 行的"点名字"进的是管理视图，不是只读战绩**（§6.1 的实现偏差）：standing 行沿用既有的 `data-action="select-player"`（店主平时改资料的那条路），只读的 `recordView` 由行内 `[个人战绩]` 打开。理由：Regulars 本来就是**管理**名单，把主点击改成只读页会让"改名 / 改评分"多一跳，而只读入口仍在（行内一跳）。`test_ops.js` 里"两跳"的断言（`select-player` → `player-record`）就是这条裁决的固化。
+8. **回填入参的 `pid` 是加法，不是替换**（§7.6）：只写 `{name}` 的一律按访客落库（`pid: null`）；这与第 4 条自洽的前提是**控制台先把名字折成 pid**（`bfPlayerFor`，与 R13 搜索同一个 `fold`），服务端只做校验与拒绝，不做猜测。
