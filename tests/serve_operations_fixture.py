@@ -9,6 +9,10 @@ test drives both surfaces of one fixture without touching the console's routes.
 --state seeds the operations document from a JSON file written in the server's own
 schema (tests/console_fixture_state.json; docs/console-shots.md), so a screenshot or
 a UI check starts from a realistic club instead of an empty one.
+
+seed_state, FixtureServer and attach_public_board are the parts the review fixture
+(tests/serve_workbench_fixture.py) shares: one process, one root, both surfaces, and
+one place that knows where the store reads its document from.
 """
 import argparse
 import faulthandler
@@ -40,6 +44,30 @@ class FixtureServer(ThreadingHTTPServer):
     request_queue_size = 64
 
 
+def seed_state(root, source):
+    """Write a console fixture document where the store reads it, and say what was seeded.
+
+    The JsonStore reads <root>/out/corner-pocket/state.json (src/store.py, JsonStore ->
+    annotator/operations.py Operations.path). Written before the store is opened so the
+    first GET already answers with the seeded club. Not validated here: Operations._load
+    reads it, and a malformed document fails loudly on the first request.
+    """
+    document = json.loads(Path(source).read_text())
+    destination = root / 'out' / 'corner-pocket' / 'state.json'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(document, indent=2, allow_nan=False) + '\n')
+    print(f'Seeded operations state: {Path(source).resolve()} ({len(document.get("players", []))} players, '
+          f'revision {document.get("revision")})', flush=True)
+    return document
+
+
+def attach_public_board(backend, port, prefix=''):
+    """The read-only public board on its own listener, in this process (docs/public-board.md)."""
+    server = PublicBoardServer(('127.0.0.1', port), make_public_handler(backend, prefix))
+    threading.Thread(target=server.serve_forever, name='public-board', daemon=True).start()
+    return server
+
+
 def main():
     # kill -USR1 <pid> dumps every thread's stack: a fixture that stops answering under a burst
     # of long-lived /api/clock/stream connections is otherwise a black box.
@@ -60,23 +88,10 @@ def main():
         root = Path(folder)
         (root / 'annotator').symlink_to(ROOT / 'annotator', target_is_directory=True)
         if args.state:
-            # The JsonStore reads <root>/out/corner-pocket/state.json (src/store.py, JsonStore ->
-            # annotator/operations.py Operations.path). Written before the store is opened so the
-            # first GET already answers with the seeded club. Not validated here: Operations._load
-            # reads it, and a malformed document fails loudly on the first request.
-            document = json.loads(Path(args.state).read_text())
-            destination = root / 'out' / 'corner-pocket' / 'state.json'
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(json.dumps(document, indent=2, allow_nan=False) + '\n')
-            print(f'Seeded operations state: {Path(args.state).resolve()} ({len(document.get("players", []))} players, '
-                  f'revision {document.get("revision")})', flush=True)
+            seed_state(root, args.state)
         backend = Backend(root)
         server = FixtureServer(('127.0.0.1', args.port), make_handler(backend))
-        public = None
-        if args.public_port:
-            public = PublicBoardServer(('127.0.0.1', args.public_port),
-                                       make_public_handler(backend, args.public_prefix))
-            threading.Thread(target=public.serve_forever, name='public-board', daemon=True).start()
+        public = attach_public_board(backend, args.public_port, args.public_prefix) if args.public_port else None
         print(f'Isolated operations fixture: http://127.0.0.1:{args.port}/ops.html', flush=True)
         if public:
             print(f'Public board: http://127.0.0.1:{args.public_port}{args.public_prefix}/', flush=True)
