@@ -1058,3 +1058,101 @@ been through it.
 - Findings are measured, not vibed: viewport, language, theme, the command that raised it, the
   evidence path, and `file:line`. Accepted findings land as commits; rejected ones are recorded with
   the reason.
+
+## §14 — Round 3: what a blind operator measured (visual 4/5, clarity 3/5, 20 findings)
+
+An independent reviewer ran the shipped round-2 console (`f5c680c`) on a seeded club (live event, 16
+entrants, 3 tables in play, 14 regulars, revision 111) across five tabs × 1280×900 and 390×844 ×
+EN/中文 × dark/light, plus the public board, with no access to source, docs or git. Verdict:
+`visual 4, clarity 3, pass false, issues 20` (`out/impeccable/ratings/round-2/verdict.md`). The
+acceptance is 5/5 on both, so round 3 fixes the findings below. **Finding ids are the rater's (F1–F20).**
+
+### 14.1 The header at 1280 (F17, major) — one row, 1024 up
+Round 2 fixed the 1440 wrap and never measured 1280, which is where the reviewer sat: at 1280 the
+persistent header breaks into **two ragged rows** (121 px tall) — "Back room" wraps inside `#nav`, and
+EN/中, the theme chips and the `#backfill-open` word wrap inside `.tools`, while ~500 px of the first
+row sits empty. Acceptance, measured at 1024/1152/1280/1440/1920 in EN and 中文, dark and light:
+- the header is **one row**, height ≤ 64 px, no element inside it wraps to a second line;
+- `#nav button { white-space: nowrap }`; `.tools { flex-wrap: nowrap }`;
+- the `20/30/45/60` preset group stays hidden below 1440; `#backfill-open` loses its word below 1440
+  (icon + `title` + `aria-label` keep it reachable) or moves into the Back room tab — pick one and
+  say which in the ledger;
+- nothing is clipped: every control keeps a ≥32 px target and stays keyboard-reachable.
+
+### 14.2 The stage box (F2, major)
+At 390 in light theme the Vision stage's empty-state sentence wraps to two lines while the box behind
+it is one line tall, so "then freeze it here." lands on the black stage: measured `rgb(102,90,77)` on
+`rgb(11,9,7)` = **2.97:1**, with `figure.stage` bounding height 0 px against `.stage-empty` 48 px (a
+`<figure>` with no decoded frame has no intrinsic height, and `.stage-empty` is `position:absolute;
+inset:0` of that 0-height box). Acceptance at 390 and 1280, EN and 中文, light and dark: the sentence
+is entirely inside its own background, **no glyph is drawn on `--stage-bg`**, measured contrast ≥ 4.5:1,
+and a stage that holds no frame still has a real height.
+
+### 14.3 The operator's words (F1, blocker as measured)
+The Vision workspace never loaded footage on the rating fixture, and the product answered an operator
+with a developer instruction: `media not found. The review API is unavailable. Use the project review
+server, not a file:// URL.` (and its 中文 twin). Two separate repairs:
+- the copy is operator-facing: it says what is true and what to do next, and never names `file://`,
+  a "review API" or another machine (`annotator/app.js` notice + the 中文 map + the message regex);
+- the **rating fixture serves the review workspace** (§14.9), so the next review judges Vision with
+  footage instead of a dead stage.
+
+### 14.4 One concept, one 中文 word (F6 major, F4, F11)
+- **F6**: a waiting match shows the chip 「已排台」 ("already placed on a table") beside an enabled
+  「安排上台」 ("send to table"), and the same English source "RACKED" is rendered 「开台」 by the stage
+  stepper on the same screen. One concept, one word: `scheduled`/`sceneRack`/board text all read
+  **「已排定」**; the send button stays 「安排上台」.
+- **F4**: the race chip reads 「抢几 5」 while the strip says 「抢5」 — `race` renders 「抢{n}」 everywhere;
+  「抢几」 survives only where it is a field label.
+- **F11**: a 中文 month heading prints 「十月 OCTOBER」 (both languages at once) — one language per label.
+
+### 14.5 Dead promises (F14 major, F15, F16, F5)
+- **F14**: the Rename-event card says "archive this event to start a new one" while "archive" appears
+  nowhere else in the DOM. The control exists (`closeCard()`, `annotator/ops.js:404`, reached only via
+  the close scene) but an operator standing mid-night cannot find it. The **Back room carries the "End
+  of the night" card in every state** — its two buttons disabled with the reason shown when the state
+  forbids them (`hasSigned`/entrants rules stay exactly as they are) — and the locked note points there.
+  Never name a control the operator cannot reach.
+- **F15**: the nav balls 2–6 are unexplained and are not shortcuts (`location.hash` never changes,
+  `ops.js` has no key handler). They become real: **`Digit1`–`Digit6`** switch to the six destinations
+  (ball 1 = the shot timer's slot 1: start/pause it) **unless focus is in a text field or a modifier is
+  held**, with `aria-keyshortcuts` and a `title` naming the key. The counts beside the labels stay.
+- **F16**: the timer's leading circled "1" is an unlabelled shot counter — it carries the ball's number
+  and a `title`, and never reads as a count.
+- **F5**: "BACKFILL FROM A VOD" on the Records row is styled exactly like the neighbouring Expand button
+  but is plain text. It is either a real button or it stops looking like one.
+
+### 14.6 Labels with scope, and errors next to their field (F9, F12, F18)
+- **F9**: the two "Search names" boxes get a real accessible name stating their scope (roster vs
+  records), not just a placeholder.
+- **F12**: the system disclaimer ("No simulated observations or fabricated statistics are shown.") leaves
+  a single player's panel; it belongs where the system as a whole is described.
+- **F18**: "Paste a VOD link or id first" appears above the wizard's own heading, ~300 px from the field
+  it is about — the message sits with the field.
+
+### 14.7 Density (F7, F8, F10, F13, F19)
+- **F7**: at 390 the bottom bar's five labels get ~44 px each and "Back room" wraps — one line each.
+- **F8**: "Manual, validated scoring" is squeezed into ~60 px and wraps mid-word (`Man / al, /
+  validated / scoring`) — wrap at word boundaries, or drop the phrase below 480 and keep it in `title`.
+- **F10**: "HOUSE RATING (MANUAL)" wraps over three lines while every peer header is one.
+- **F13**: an expanded Records event is a ragged left-aligned chip cloud — round, pairing and score
+  become columns that line up.
+- **F19**: the Backfill wizard uses only the left ~600 px of 1280, keeps "Records" marked current, and
+  repeats the entry button's label verbatim as its subtitle.
+
+### 14.8 The board's clock (F20)
+Table cards show an unbounded elapsed duration ("11 h 08 min") with no stale signal and no statement of
+what it measures: the number is labelled and tells the truth about its age.
+
+### 14.9 The rating fixture (F1's environment half)
+One command serves the console, the public board **and the review workspace** against a seeded club, so
+the next review can judge Vision with footage. `tests/serve_operations_fixture.py` deliberately
+populates no review tools; the workbench fixture is the one that does. Deliver: the exact command, a
+seeded club, and a check that proves the workspace loaded (no "unavailable" callout, a real stage).
+
+### 14.10 The evidence rule for this round
+Every finding gets, at the viewport where it was measured (1280×900 is now a first-class size):
+a before/after pair under `out/console-after/`, a row in `docs/impeccable-ledger.md`, and — where a
+number decided it — the measured number. Suites stay green: `node --test tests/test_ops.js`,
+`node tests/test_app_timeline.js`, `node tests/test_board.js`, and the python suite. Nothing ships with
+a restart: static assets are `no-store` and read from disk per request (`annotator/unified_server.py:2162`).
