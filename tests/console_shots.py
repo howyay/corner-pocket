@@ -933,7 +933,11 @@ def main():
                 # Chinese is measured too: it swaps in the Noto faces, and a taller line box there
                 # would change the one-row claim.
                 measure_langs = list(dict.fromkeys(['en', 'zh'] if 'zh' in langs else langs))
-                for name, route in zip(('tonight-play', 'records'), routes):
+                # `--skip-metrics` goes straight to the shots. Measured on a loaded box: one
+                # measurement waits up to 600 s for a render, so a four-row metric block can cost
+                # most of the run's wall clock before the first screenshot is attempted.
+                for name, route in (zip(('tonight-play', 'records'), routes)
+                                    if not args.skip_metrics else ()):
                     for lang in measure_langs:
                         url = (f'http://127.0.0.1:{CONSOLE_PORT}/'
                                f'?measure={name}-{lang}#{route.lstrip("#")}')
