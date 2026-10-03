@@ -456,3 +456,154 @@ other by accident. Lane C decided (**the header slot survives**) and recorded th
 body, in this ledger, and as an assertion: the round-2 test block fails if a `[data-clock]` readout with
 controls ever reappears in the scoreboard or the floor. §13 itself is the owner's frozen text and was
 **not** edited; the next revision of it should name the surviving home explicitly.
+
+## Round 3 — the blind rater's twenty findings (2026-10-03)
+
+The round-2 verdict (`out/impeccable/ratings/round-2/verdict.md`, in the trunk worktree; `out/` is
+gitignored) scored **visual 4, clarity 3, pass false, issues 20** on the shipped `f5c680c` console. The
+owner's answer is `docs/console-redesign.md` **§14**, which freezes one acceptance line per finding and
+names 1280×900 a first-class size. Round 3 is four parallel lanes on disjoint files plus this one:
+
+| lane | worktree / branch | files it owned |
+|---|---|---|
+| r3a | `~/projects/pool-w-r3a` / `r3a` | `annotator/ops.js`, `annotator/ops.html`, `tests/test_ops.js` |
+| r3b | `~/projects/pool-w-r3b` / `r3b` | `annotator/ops.css` |
+| r3c | `~/projects/pool-w-r3c` / `r3c` | `annotator/app.js`, `annotator/app.css` |
+| r3d | `~/projects/pool-w-r3d` / `r3d` | `annotator/board.js`, `annotator/board.css`, `annotator/board.html`, `tests/serve_workbench_fixture.py`, `tests/serve_operations_fixture.py`, new `tests/smoke_rating_fixture.py` |
+| **r3m** (this section) | `~/projects/pool-w-r3m` / `r3m` | merge, re-measure, and the three leftovers no lane owned |
+
+**The merge.** `git merge --no-edit r3a r3b r3c r3d` from `main` at `4ee4114`: r3a fast-forwarded,
+r3b/r3c/r3d merged by the `ort` strategy. **Zero conflicts** — the file sets are disjoint, so a conflict
+would have meant something was wrong. Merged HEAD `327c87e`; the round-3 section's own commits take it to
+`0cac68e`. `git diff --name-only 4ee4114..HEAD` lists exactly 12 files, 1052 insertions, 123 deletions.
+Nothing was pushed; the trunk was never written to; no worktree was deleted.
+
+**The evidence rule (§14.10) and what this lane did about it.** §14.10 asks for a before/after pair, a row
+here, and — where a number decided it — the number. Every "after" figure below is **this lane's own
+measurement on the merged tree**, not a lane's claim: `out/r3m/r3m_measure.py` … `r3m_measure10.py` drive
+the harness's own fixture/Chromium/CDP client (`tests/console_shots.py` imported as a library) and write
+`out/r3m/measure*.json`. The lanes' own numbers are quoted only in the *fix* column, where they are the
+author's statement of what they changed.
+
+Two lessons this lane paid for and records so the next round does not: (1) **a route is not landed when
+the page is loaded.** `console_shots.wait_for_render` plus a search-string/`readyState` poll returns while
+the shell is still on Tonight, and part 1's first Records/Regulars/Back-room probes measured the Tonight
+screen as a result. The reliable signal is `#ops-shell.dataset.tab`, polled until it reads the route you
+asked for (`out/r3m/r3m_lib.py`); the first pass's bogus rows are visible in `out/r3m/measure.json` and
+are superseded. (2) **a CDP key press needs `keyDown` only.** Dispatching `rawKeyDown` *and* `keyDown`
+fires the page's `keydown` listener twice, which turned a working toggle into a no-op in part 1 and read
+as an r3a regression for an hour.
+
+### The twenty findings, one row each
+
+| id | before (the rater's own measurement) | the fix | commit | after (my measurement on the merged tree, `0cac68e`) | shot |
+|---|---|---|---|---|---|
+| **F1** blocker | Vision never loads footage; the operator is told `media not found. The review API is unavailable. Use the project review server, not a file:// URL.` (中文 twin too); stage stuck on "Loading the review workspace…"; 0 reviewed, 0 crops, no tracks. `shots/03-vision-1280-dark-en-full.png` | Copy rewritten in `annotator/app.js` (one operator sentence, error detail kept as its leading clause, `editorCopy`/`editorTemplates` in step); the rating fixture made to serve the review workspace | `48da231`, `4ca4269` | EN `.vs-notice.error` (role=status, 294×70): `media not found. The workspace could not load its data. Nothing was changed; reload the page to try again.`; 中文 (294×52): `media not found。工作区无法加载数据。未做任何更改，请重新载入页面再试。` The live DOM contains **0** `file://`, **0** "review API" (either language) and **0** `127.0.0.1`/`localhost`. Environment half: one command serves console + board + workspace — `GET /` 200 (2720 B), `/api/review-template` 200 (1123 B), `/api/frame?dataset=vod30&frame=0` 200 (267 282 B `image/jpeg`), `/board/` 200 (2184 B), `/board/api/board` 200 (4079 B, revision 111) | `vision-1280x900-dark-en.png`, `vision-1280x900-light-zh.png` (notice visible in both) |
+| **F2** major | sentence wraps to two lines while the box behind it is one line tall; `rgb(102,90,77)` on `rgb(11,9,7)` = **2.97:1**; `figure.stage` **0 px** against `.stage-empty` 48 px | `.stage-empty` put in flow (it is the surface), `.stage` given `min-height: var(--sp-6)` | `8d4c82e` | 390: two glyph lines, `#stage-empty` = `#content figure.stage` = **372×96**, overflow 0; **contrast 6.54:1** (light) / **6.91:1** (dark), and the element painting behind the first glyph line is `stage-empty` itself — **no glyph on `--stage-bg`**. 1280: one line, **6.54/6.91**. Floor with the box hidden (the DOM `renderStage()` produces when a frame URL exists but no picture arrives): **32 px**, was 0 | `vision-390x844-light-en.png`, `vision-390x844-light-zh.png`, `vision-1280x900-dark-en.png` |
+| **F3** minor | the stage sentence is English inside 中文 mode while the banner beside it is translated | `STAGE_EMPTY_COPY` read through `text()` on every paint; a language change re-paints a stage that exists even before the first decoded frame | `822a6b7` | 中文 `#stage-empty` = `在拖动条上选择时刻，或选择一条线索，然后在此冻结。` with `documentElement.lang` `zh-CN`; switching back restores the English sentence, without rebuilding the markup (a playing video is not torn down) | `vision-1280x900-light-zh.png` |
+| **F4** minor | race chip 「抢几 5」 beside the strip's 「抢5」 | `raceN` word = `抢{n}`, chip built from it; 「抢几」 survives only as the field's label | `a329db1` | 中文 chip text `抢5` (EN `Race to 5`), class `badge race`; a DOM-wide scan for 「抢几」 in the scoreboard returned nothing | `tonight-play-zh.png` |
+| **F5** minor | "BACKFILL FROM A VOD" on the Records row is StaticText styled exactly like the neighbouring button | it becomes a real `<button class="badge tl-source-badge" data-action="backfill-open">`; the CSS stops styling it as a 40 px button box | `a329db1`, `69ad468` | real `BUTTON`, 191.3×**26** px at 1280 (x 958.6, y 341) and 191.3×26 at 390; night row 1184.6×56 at 1280, 332×117.3 at 390 (was 318×243.8, 8 lines); clicking it opens the wizard | `records-zh.png`, `records-night-open-en.png` |
+| **F6** major | a waiting match shows 「已排台」 beside an enabled 「安排上台」; the stepper renders RACKED as 「开台」 | one concept, one word: `scheduled`/`sceneRack` = 「已排定」, send stays 「安排上台」 | `a329db1` | 中文 stepper `报名 · 已排定 · 比赛中 · 收尾`; every send button 「安排上台」; `已排台` and `开台` occur nowhere under `annotator/` | `tonight-rack-zh.png` |
+| **F7** minor | five 390 labels at ~44 px, "Back room" wraps to two lines | tab-bar slots given one line each | `7157a53` | five slots, each **74.8×52 px, `lines: 1`** | `tonight-play-zh.png` (390) |
+| **F8** minor | "Manual, validated scoring" in ~60 px, wrapping mid-word | the note gets its own line on a phone | `983bbbc` | 390: `.score-foot` 364×95.5; the note is a `SPAN.grow.muted` **332×22.5, `lines: 1`**, 15 px; the three buttons sit at one `y` (649.3) → `buttonRows: 1` | `tonight-play-en.png` (390) |
+| **F9** minor | both boxes named only by the placeholder "Search names" | a scope-naming accessible name on each | `a329db1` | `#events-search` `aria-label="Search the records"`; `#roster-search` `aria-label="Search the regulars roster"`; 中文 搜索赛事记录 / 搜索常客名单; placeholders unchanged | `records-en.png`, `regulars-en.png` |
+| **F10** minor | "HOUSE RATING (MANUAL)" wraps over three lines while its peers are one | the column fits its own header | `e1600d6`, `7ebbb41` | `.standing-head` **1184.6×18** px; the cell "House rating (manual)" **180×14, `lines: 1`**; Name column 745.6 px | `regulars-en.png` |
+| **F11** minor | 中文 month heading prints 「十月 OCTOBER」 | one language per label | `a329db1` | 中文 month labels `["2026","十月"]`, `hasLatin` **empty** | `records-zh.png` |
+| **F12** minor | the system disclaimer is reproduced inside one player's panel | it lives where the system as a whole is described | `a329db1` | the sentence occurs **once** in the whole Back-room DOM (a `<p class="note">` inside *For maintainers*), **0** times on Tonight, **0** times in the Regulars player panel | `backroom-en.png`, `regulars-en.png` |
+| **F13** minor | an expanded event is a ragged left-aligned chip cloud | round, pairing and score become columns | `8c594ed`, `7ebbb41` | 7 rows, each `tl-round` → `tl-pair` → `tl-score` → badge; **score right edge 1141.8 px and badge right edge 1232.3 px in all 7 rows**, round left 61.7; **0** inline styles. 390: score 280.3–285.5, badge 361 in all 7, no horizontal overflow | `records-night-open-en.png` |
+| **F14** major | the Rename card points at an archive control a full-text DOM search cannot find | the Back room carries the End-of-the-night card in every state; the locked note points at it | `a329db1` | `article.end-night` present on Back room: 1218.6×231.5, `h3` "End of the night", `Archive & new event` enabled (156.8×40) beside `Delete event` disabled (107×40) with a `role=status` reason. 中文 「结束今晚」 1218.6×236.5, 「归档并新建赛事」. Tonight does **not** carry the card (back room only, as §14.5 asks) | `backroom-en.png`, `backroom-zh.png` |
+| **F15** minor | the nav balls 2–6 are unexplained and `Digit3` reaches the page while `location.hash` stays | real Digit1–Digit6 shortcuts with `aria-keyshortcuts` + a `title`, ignored in a text field or with a modifier | `3705d9a`, `a329db1` | real CDP presses: `Digit3`→`#/records`, `Digit4`→`#/vision`, `Digit5`→`#/regulars`, `Digit6`→`#/backroom`; with focus in `#events-search`, or with Ctrl held, the hash does not move and focus is unchanged; every nav button carries `aria-keyshortcuts="Digit2..Digit6"` and a `title` naming the key | `tonight-play-en.png` (header) |
+| **F15b** | — (found by this lane's own probe, not by the rater) | a real key press started the clock **visibly** but stopped nothing: the handler called the function behind the control instead of the control | **`0468808`** (this lane) | `Digit1` from idle → label `Pause`, `.ball.running`, stored `{"duration":30,"remaining":30,"deadline":…}`; `Digit1` again → label `Start`, `{"duration":30,"remaining":26.0035,"deadline":null}`; `Digit1` from a fresh load → `Pause` | `tonight-play-en.png` (header) |
+| **F16** minor | the timer's leading circled "1" is an unlabelled shot counter | it carries the ball's number and a `title`, never reading as a count | `a329db1` | `.timer-slot .ball`: text `1`, `role="img"`, `title` = `aria-label` = **`Ball 1 · shot timer`** / 中文 **`1 号球 · 击球计时`** | `tonight-play-zh.png` |
+| **F17** major | two ragged rows at 1280, header **121 px**, ~500 px of row 1 empty | one row from 1024 up: nav `nowrap`, tools `nowrap`, presets hidden below 1440, `#backfill-open` collapses to its icon (the variant chosen, and said so in the CSS) | `c95562c`, `4d2bc2d` | see the matrix below: header **57 / 58.2 / 59 / 59 / 59 px**, nav 44 px **1 row**, tools 40 px **1 row**, content starts exactly under the header, no horizontal overflow, **0 controls under 32×32**; presets `display:none` at 1024/1152/1280 and `flex` at 1440/1920; `#backfill-open` 40×40 font 0 at ≤1280 (accessible name = its bilingual `aria-label`), 89.4×40 font 15 at 1920 | `tonight-play-en.png`, `records-en.png` |
+| **F17b** | — (this lane's instrument contradicted a lane's audit field) | r3b's audit reported `controls <32 px: 0` at 1440/1920; the four preset chips were **26×36** | **`0cac68e`** (this lane) | at 1440/1920 all four chips are **≥32 px wide** with the header unchanged at 59 px and still one row; `small = 0` in all 20 matrix rows | `tonight-play-en.png` |
+| **F18** minor | "Paste a VOD link or id first" sits above the wizard's own heading, ~300 px from the field | the message sits with the field it is about | `a329db1` | `#bf-vod-note` (role=status) is **12 px** below the `#bf-vod` field's bottom edge, and the field carries `aria-describedby="bf-vod-note"`; text `Paste a VOD link or id first` / 中文 | `backfill-pick-en.png` |
+| **F19** minor | the wizard uses the left ~600 px of 1280, Records stays marked current, the subtitle repeats the entry label | width, nav state and subtitle | `9dfeefd`, `a329db1` | `.backfill` **1218.6 px wide** (x 30.7 → right edge 1249.3) inside a 1280 viewport; `#ops-shell data-tab="backfill"` with **0** `aria-current="page"` elements and no nav tab marked; subtitle **`Step 1 of 5`** / 「步骤 1/5」, never the entry button's label; 390: 366 px wide, tab bar visible | `backfill-pick-en.png` |
+| **F20** minor | an unlabelled duration growing without bound — "11 h 08 min" for a match still on the table | the number is named once above the grid, turns amber past `ATTENTION_MS` (2 h) with the words "check the table", and freezes at the last confirmed answer when the board knows it is stale | `0e94c9b` | `#tables-note` **`Time on table`** visible, 1232×17.7 at 1280 and 358×17.7 at 390; each card's `<span class="on-table late">` reads `12 h 51 min check the table` and carries a frozen `data-elapsed` (e.g. 46 301 675 ms). 中文: note **「台上时长」**, cards **「13 小时 14 分请核对」**, `late` true. With `match_schedule` re-anchored to 8/12/20 minutes ago the same board reads `8 min` / `12 min` / `20 min`, note still visible, **0** late cards | `public-board-en.png`, `public-board-zh.png` |
+
+### The header matrix (§14.1's own acceptance, measured by this lane)
+
+`.venv/bin/python out/r3m/r3m_measure8.py`, `out/r3m/measure8.json`, 900 px tall, **all 20 rows**
+(1024/1152/1280/1440/1920 × EN/中文 × dark/light). Language and theme make no difference to any cell:
+
+| viewport | header | `header .bar` | `#nav` | `header .tools` | presets | controls <32×32 | overflow |
+|---|---|---|---|---|---|---|---|
+| 1024 | **57** px | 56 | 44 px, 1 row | 40 px, 1 row | `none` | 0 | none |
+| 1152 | **58.2** px | 57.2 | 44 px, 1 row | 40 px, 1 row | `none` | 0 | none |
+| 1280 | **59** px | 58 | 44 px, 1 row | 40 px, 1 row | `none` | 0 | none |
+| 1440 | **59** px | 58 | 44 px, 1 row | 40 px, 1 row | `flex` | 0 | none |
+| 1920 | **59** px | 58 | 44 px, 1 row | 40 px, 1 row | `flex` | 0 | none |
+
+`contentTop` equals the header's bottom edge (asserted < 1.5 px) in every row. The harness's own run at
+its two sizes agrees: **59 px** at 1280×900 (bar 58 + nav 44) and **105 px** at 390×844 (bar 104 + tab bar
+53), `contentTop` 59 and 105.
+
+### Rejected, with the reason
+
+- **r3b's audit field `controls <32 px: 0 → 0` at 1440 and 1920.** Rejected as a measurement, not as a
+  change: the four `.preset` chips (`data-action="clock-set"`, 20/30/45/60) measured **26×36** in my probe.
+  §14.1's floor is written for every control in the header at the five measured widths, so the row was
+  fixed (`0cac68e`) rather than the number explained away.
+- **r3b's `wrapped=['tools:3rows']` flag.** Rejected as a probe artifact: the hidden 0×0 `#connection`
+  badge sits at top 0 and lands in a distinct-centre count. Counting only visible children gives **1 row**,
+  which is also what my own probe reads at all five widths.
+- **Enlarging the Records timeline badge (F5) to §14.1's 32 px.** Rejected: that clause is scoped to the
+  header. The badge is a `BUTTON` at 191.3×**26** px — over WCAG 2.5.8's 24×24, under the header's floor —
+  and enlarging it is exactly what made it read as a primary button in round 2.
+- **Re-shooting the five-width header matrix through `tests/console_shots.py`.** Rejected because it
+  cannot: the harness has no 1024/1152/1920 size (`SIZES` is laptop 1280×900, desktop 1440×900, phone
+  390×844) and pins its fixture to 8150/8151. The matrix is therefore my instrument's, and this row says so.
+- **`--states <fragment>` matching `public-board` in the main run.** Rejected as a harness fact: my first
+  `--states tonight-rack,tonight-play,records,regulars,backroom,backfill-pick` pass matched no public state,
+  so the board was shot in a second, board-only pass (`--states public-board`). `PUBLIC_STATES` pins
+  `langs=['en']`, so the 中文 board shot is mine (`out/r3m/r3m_board_shots.py`).
+
+### What stayed open
+
+- **F1's environment half is not photographed with footage in it.** The harness fixture
+  (`tests/serve_operations_fixture.py`) still serves no review tools, so my Vision shots show the empty
+  stage and the notice — i.e. F1's *copy* half, verified. To judge Vision *with* footage the next reviewer
+  must run r3d's one command against `tests/serve_workbench_fixture.py`; its HTTP proof is recorded in the
+  F1 row, but no `out/console-after/` PNG shows a populated workspace.
+- **`media not found.` still leads the operator sentence**, in both languages, as the raw error detail.
+  It is not one of the three things §14.3 forbids (`file://`, a "review API", another machine) and the
+  sentence does say what happened and what to do — but it is machine phrasing in front of an operator
+  sentence. Flagged, not changed: it is the deliberate design of `48da231`.
+- **The public board is dark-only and has no theme control** (round 2's B-14). Still needs an owner.
+- **`out/console-after/` has no light-theme pairs.** The per-finding pairs are dark where the rater sat in
+  dark and light where they sat in light; §14.10 says "at the viewport where it was measured", which is
+  what the shot column names.
+- **`tests/console_fixture_state.json` is nobody's file this round**, and its three live matches are
+  anchored at `2026-10-03T05:23Z`, so any later-day seeded club shows 12-hour-old records and all three
+  board cards legitimately alarm. r3d's `out/console-<label>/state-fresh.json` is the workaround.
+- **r3c's observation, still true and not this round's finding:** `div#vs-frame` paints `--stage-bg` from
+  y 201 to y 411 at 390 px while the frame-less stage is now 190–286, so a ~113 px black plate sits below
+  the empty-state panel. No glyph of the sentence enters it, in any of the eight states r3c measured.
+- **No pixel sampling.** Contrast is computed from resolved computed styles plus `elementsFromPoint`
+  hit-testing on the glyph line that is actually painted — there is no ImageMagick and no `python3` on this
+  box's PATH. The 2.97:1 the rater sampled out of a PNG and the 6.54:1 computed here are therefore two
+  different instruments measuring the same surface; the rater's number is the one that opened the finding.
+
+### Suites, and the one run of the python suite
+
+- `node --test tests/test_ops.js` → **134 pass, 0 fail** (528 ms).
+- `node tests/test_app_timeline.js` → **80 passed, 0 failed**.
+- `node tests/test_board.js` → **16 pass, 0 fail**.
+- `PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'` → **`Ran 1228 tests in 126.651s` / `OK (skipped=91)`**, run once on the merged tree `327c87e`, before this lane's three commits. Those three touch `ops.html` (a cache-buster string `vision-stage-21`→`-22`), `ops.js` (`clockBtn()` in the Digit1 branch) and `ops.css` (`min-width` inside a `@media(min-width:1440px)` block); none is exercised by the python suite, and the three node suites were re-run after them.
+- `git push` was never run and the trunk `/home/haoye/projects/pool` was never written to.
+
+### Where the round-3 evidence is
+
+`out/console-after/1280x900/` and `out/console-after/390x844/` — 18 harness PNGs per size (`tonight-rack`,
+`tonight-play`, `tonight-close`, `records`, `records-light`, `records-night-open`, `regulars`, `backroom`,
+`backfill-pick`, `public-board` in EN and 中文) plus `manifest.json` (every shot's pixel size, sha256, hash,
+`mainChars` and the `ops.css?v=vision-stage-22` sheet with its 547 rules) and `fixture.log`. This lane adds
+six Vision PNGs — `vision-390x844-{light-en,light-zh,dark-en}.png`,
+`vision-1280x900-{dark-en,light-en,light-zh}.png` — plus `vision-manifest.json`, which records for each one the
+shot's pixel size, byte count and the geometry at capture time (`figure.stage` == `#stage-empty` == 372×96 at
+390, 593×72 at 1280). The harness has no Vision state, so nothing else could produce them. Two more are this
+lane's because the harness pins the board to EN (`tests/console_shots.py:102 PUBLIC_STATES ... langs=['en']`):
+`public-board-zh.png` at each size, plus `board-zh-manifest.json` and `vision-manifest.json`.
+The instruments and every raw number live in `out/r3m/` (`measure.json`, `measure2.json` … `measure10.json`,
+`r3m_measure*.py`, `r3m_lib.py`, `r3m_vision_shots.py`, `r3m_board_shots.py`); `out/` is gitignored, so all
+of it is untracked evidence rather than commits.
