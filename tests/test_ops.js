@@ -230,7 +230,10 @@ test('Floor focus picker includes live and delayed tables', () => {
   const h = harness();
   h.evaluate("data.tournament.matches=['live','delayed'].map((status,i)=>({id:'m'+i,table:i+1,round:1,status,sides:['e1','e2'],absent:status==='delayed'?['e1']:[],score:[0,0]}));data.notes=[]");
   const html = h.evaluate('floorScreen()');
-  const picker = html.match(/<select id="focus-match">(.*?)<\/select>/)[1];
+  const match = html.match(/<select id="focus-match" aria-label="([^"]+)">(.*?)<\/select>/);
+  assert.ok(match, 'the picker that switches tables carries an accessible name (round 2, B-05)');
+  assert.ok(match[1].length > 0, 'and the name is not empty');
+  const picker = match[2];
   assert.ok(picker.includes('value="m0"'));
   assert.ok(picker.includes('value="m1"'));
 });
@@ -2007,7 +2010,7 @@ test('Records is the event timeline; the house standing lives on every Regulars 
       assert.ok(!rec.includes(`>${gone}</h2>`) && !rec.includes(`>${gone}</h3>`), `${lang}: Records no longer carries ${gone}`);
     }
     assert.ok(!play.includes(`>${heading}</h2>`), `${lang}: Play keeps tonight only`);
-    assert.ok(rec.includes('<ol class="events"') && rec.includes('class="tl-item"'), `${lang}: the timeline is a list of nights`);
+    assert.ok(rec.includes('<div class="events"') && rec.includes('class="tl-item"'), `${lang}: the timeline is a list of nights`);
     assert.ok(rec.includes('data-action="results-sheet" data-id="h1"') && rec.includes('data-action="rename-archived" data-id="h1"') && rec.includes('data-action="event-hide" data-id="h1"'), `${lang}: every archive control stays`);
     assert.ok(!rec.includes('Hidden night') && rec.includes('data-action="toggle-hidden"'), `${lang}: hidden nights stay hidden behind the toggle`);
     assert.ok(regs.includes('class="standing-head"') && regs.includes('class="standing-cell"'), `${lang}: the house standing is on Regulars`);
@@ -2095,9 +2098,15 @@ test('the timeline groups nights by month, newest first, and a night opens in pl
   const html = h.evaluate('recordsScreen()');
   assert.deepEqual([...html.matchAll(/data-event="([^"]+)"/g)].map(m => m[1]), ['n1', 'n2', 'n3', 'n4'], 'newest first, and a hidden night stays out until asked for');
   assert.deepEqual([...html.matchAll(/class="tl-year">([^<]*)</g)].map(m => m[1]), ['2026', '2025'], 'one year head per year, not per night');
-  const months = [...html.matchAll(/class="tl-month">([^<]*)</g)].map(m => m[1]);
+  const months = [...html.matchAll(/class="tl-month-head">([^<]*)</g)].map(m => m[1]);
   assert.equal(months.length, 4, 'one month head per month');
   assert.deepEqual(months, ['2026-09-20', '2026-08-20', '2026-07-20', '2025-12-30'].map(day => h.evaluate(`monthLabel(new Date('${day}T12:00:00Z'))`)), 'and the months read in order');
+  assert.deepEqual(months, ['September', 'August', 'July', 'December'], 'in EN the month head is the English month alone (round 2, B-03)');
+  assert.ok(/<h3 class="tl-year">2026<\/h3>/.test(html) && /<h3 class="tl-month-head">September<\/h3>/.test(html),
+    'the year and the month are heading levels, so Records can be navigated by heading (round 2, B-13)');
+  const zhMonth = h.evaluate("lang='zh';monthLabel(new Date('2026-09-20T12:00:00Z'))");
+  assert.equal(zhMonth, '九月 September', 'in 中 the head still names the month in both scripts');
+  h.evaluate("lang='en'");
   assert.ok(html.includes('id="tl-body-n1" hidden') && !html.includes('aria-expanded="true"'), 'a night starts folded');
   assert.ok(html.includes(h.evaluate("esc(t('signedLine').replace('{n}',1))")), 'the row counts signed results');
   assert.ok(html.includes(h.evaluate("esc(t('backfill'))")), 'and it is marked as a backfilled night');
@@ -2721,4 +2730,94 @@ test('a table card says what is on that table: a signed result, a live score, or
   // Absent players are named, not silently sent: an absent side holds the match.
   h.evaluate("data.tournament.matches[2].absent=['a']");
   assert.ok(!/data-action="schedule"/.test(h.evaluate('tablesGrid()')), 'a held match is offered to no table');
+});
+
+// --- Round 2 (impeccable audit, 2026-10-03) ---------------------------------
+// Every defect the audit measured and this round fixed gets an assertion here, so the
+// state that was wrong cannot come back silently.
+const opsCss = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+const opsHtml = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
+const boardCss = fs.readFileSync(path.join(__dirname, '../annotator/board.css'), 'utf8');
+
+test('round 2: the audit log says what happened in words, in both languages (B-01)', () => {
+  const h = harness();
+  const actions = ['event_backfill', 'match_complete', 'match_unschedule', 'note_delete'];
+  for (const action of actions) {
+    for (const lang of ['en', 'zh']) {
+      const label = h.evaluate(`lang='${lang}';auditActions[${JSON.stringify(action)}]?.[lang==='zh'?1:0]`);
+      assert.ok(label && label !== action, `${action} is a sentence in ${lang}, not the backend enum`);
+    }
+  }
+  const line = h.evaluate(`lang='en';auditLine({action:'event_backfill',createdAt:'2026-10-03T05:23:40.400503+00:00',revision:75})`);
+  assert.ok(line.includes('Backfilled from a VOD'), 'a backfilled night reads as that, not as event_backfill');
+  assert.ok(!/event_backfill/.test(line), 'and the raw enum never reaches the operator');
+  assert.ok(line.includes('v75'), 'the revision still rides along');
+});
+
+test('round 2: every instant on Records is formatted the one way (B-02)', () => {
+  const h = harness();
+  recordsNight(h);
+  h.evaluate(`data.history[0].signOff={at:'2026-09-21T03:15:00Z'};data.events.push({id:'e2',action:'event_backfill',createdAt:'2026-10-03T05:23:40.400503+00:00',revision:75,context:{id:'h1'}})`);
+  const rec = h.evaluate("lang='en';recordsScreen()");
+  const said = h.evaluate("dateLine('2026-09-21T03:15:00Z')");
+  assert.ok(rec.includes(said), `the sign-off instant is printed the way the audit log prints it (${said})`);
+  assert.ok(!rec.includes('2026-09-21T03:15:00Z'), 'and never as a raw ISO stamp');
+  assert.ok(!rec.includes('.400503'), 'no microseconds anywhere on the screen');
+});
+
+test('round 2: Records is navigable by heading (B-03, B-13)', () => {
+  const h = harness();
+  recordsNight(h);
+  const rec = h.evaluate("lang='en';recordsScreen()");
+  assert.ok(/<h2[^>]*>/.test(rec) && /<h3 class="tl-year">/.test(rec) && /<h3 class="tl-month-head">/.test(rec),
+    'the page, the year and the month are all heading levels (h2, h3, h3)');
+  assert.ok(!/十月/.test(rec) && !/九月/.test(rec), 'in EN no Chinese month rides along');
+  const monthHead = h.evaluate("monthLabel(eventDate(data.history[0]))");
+  assert.ok(rec.includes(`class="tl-month-head">${monthHead}<`), `the month heads as ${monthHead} alone, with no second script`);
+  assert.ok(/<h3 class="tl-year">2026<\/h3>/.test(rec), 'and the year is a heading, not a styled list item');
+  assert.ok(opsCss.includes('.tl-month-head{') && !/[^-]\btl-month\{/.test(opsCss), 'the old non-heading month class is gone from the stylesheet');
+});
+
+test('round 2: Regulars has a heading, and both Queue panels are named for their content (B-13, B-12)', () => {
+  const h = harness();
+  recordsNight(h);
+  const players = h.evaluate("lang='en';playersScreen()");
+  assert.ok(/<h2[^>]*>\s*/.test(players) && players.includes(h.evaluate("esc(t('players'))")), 'Regulars has an h2 of its own');
+  h.evaluate("lang='zh'");
+  assert.ok(h.evaluate("esc(t('queueTitle'))") === '等待上场', 'the waiting list is no longer headed with the board’s word for Queue');
+});
+
+test('round 2: the disclosure marker is authored, and the list reset covers every fold (B-04, B-07)', () => {
+  assert.ok(/#ops-shell details\.panel>summary\{[^}]*list-style:none/.test(opsCss), 'a flex summary suppresses ::marker, so it is switched off on purpose');
+  assert.ok(/#ops-shell details\.panel>summary::before\{content:'▸'/.test(opsCss), 'and an authored marker replaces it');
+  assert.ok(/#ops-shell details\.panel\[open\]>summary::before\{content:'▾'/.test(opsCss), 'which turns over when the panel opens');
+  assert.ok(/#ops-shell \.audit,#ops-shell \.tl-audit\{list-style:none/.test(opsCss), 'the audit folds are inside the list reset, so no bare browser triangle');
+  assert.ok(/#ops-shell details\.panel>summary::-webkit-details-marker\{display:none\}/.test(opsCss), 'and the browser’s own triangle is switched off for that summary');
+});
+
+test('round 2: the small toggles are still tappable at phone width (B-08)', () => {
+  const phone = opsCss.slice(opsCss.indexOf('@media(max-width:750px)'));
+  assert.ok(/#ops-shell \.card-toggle\{[^}]*width:44px;height:44px/.test(phone), 'a 24 px glyph gets a 44 px target on a phone');
+  assert.ok(/#ops-shell \.card-toggle\{[^}]*min-height:44px/.test(phone), 'and outranks the base min-height:0');
+});
+
+test('round 2: the board’s bracket text keeps the console’s 11 px floor (B-06)', () => {
+  assert.ok(/--tv-xs:11px/.test(boardCss), 'the floor is one token');
+  assert.ok(/\.rounds\{--tv-min:max\(var\(--tv-xs\),\.86em\)\}/.test(boardCss), 'declared where the em steps resolve from, so .bm-note inherits it too');
+  assert.ok(/\.rounds\[data-rows="some"\]\{font-size:max\(\.8rem,var\(--tv-min\)\)\}/.test(boardCss), 'the some-rows step is clamped');
+  assert.ok(/\.rounds\[data-rows="many"\]\{font-size:max\(\.62rem,var\(--tv-min\)\)\}/.test(boardCss), 'and so is the many-rows step');
+  assert.ok(/\.round h3\{font-size:max\(\.8em,var\(--tv-min\)\)\}/.test(boardCss), 'the round headings no longer resolve to 10.2 px');
+  assert.ok(/\.bm-note\{font-size:max\(\.75em,var\(--tv-min\)\)\}/.test(boardCss), 'nor the match notes to 9.6 px');
+});
+
+test('round 2: the shot timer has exactly one home, in the bar (B-§13.1)', () => {
+  const h = harness();
+  h.evaluate(`data.tournament={id:'t0',name:'Tonight',format:'singles',raceTo:3,tables:2,status:'active',entrants:[{id:'a',members:[{pid:'pa',name:'Ann'}]},{id:'b',members:[{pid:'pb',name:'Bea'}]}],matches:[{id:'m1',round:1,sides:['a','b'],score:[0,0],status:'live',table:1,absent:[]}]};data.players=[];render=()=>{}`);
+  const board = h.evaluate('floorScreen() + scoreboardScreen()');
+  assert.ok(!/data-clock/.test(board), 'neither the floor nor the scoreboard draws a clock of its own — the bar’s slot is the one home');
+  assert.equal((h.evaluate('timerHTML()').match(/data-clock/g) || []).length, 1, 'the bar’s slot renders exactly one clock, with its own controls');
+  assert.ok(/data-action="clock-toggle"/.test(h.evaluate('timerHTML()')) && /data-action="clock-reset"/.test(h.evaluate('timerHTML()')), 'and the controls live in the slot, not on the scoreboard');
+  assert.equal((opsHtml.match(/data-clock-host/g) || []).length, 1, 'ops.html declares one timer host');
+  assert.ok(!/#strip/.test(opsHtml) && !/#strip/.test(opsCss), 'and the row that held the second copy is gone from the markup and the stylesheet');
+  assert.ok(!/score-top \[data-action=clock/.test(opsCss) && !/clock-toggle\]\{margin-left:auto/.test(opsCss), 'the scoreboard clock controls that only the second copy used are gone too');
 });
