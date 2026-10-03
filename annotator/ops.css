@@ -891,3 +891,26 @@ html,body{-webkit-font-smoothing:antialiased}
    From 1000 px the wizard takes the page; `main p{max-width:var(--measure)}` still caps
    every sentence inside it at 70ch, so nothing runs the width of a 1920 screen. */
 @media(min-width:1000px){#ops-shell .backfill{max-width:none}}
+
+/* === Round 3, §14.5 (F5): the backfill marker is a control that still reads as a badge -
+   The rater's F5: the "BACKFILL FROM A VOD" marker wears the border and the uppercase
+   tracking of the buttons beside it ("Expand") but is StaticText — clicking it does
+   nothing — and at 390 it "pushes the date onto its own line and leaves the row ragged".
+   Lane r3a makes it a <button> (annotator/ops.js:88); this is the stylesheet half.
+   A button in this console is `#ops-shell button` — a 40 px target, --btn-line, and the
+   padding of a primary action — which is exactly what it must NOT look like here. It
+   keeps the badge's own box (26 px tall, --line, --panel2, --fs-sm mono at .16em) and
+   only gains a pointer, because it is a real control now.
+   The row: measured before at 390 EN dark, .tl-row (flex, wrapping) was 243.8 px tall and
+   its summary wrapped one word per line — "8 / PLAYERS / · / CHAMPION / PRIYA / NAIR" —
+   because the date, the 191.3 px marker and the Expand button all competed for the same
+   318 px line and the title kept only its min-content width. Below 750 the row is a
+   two-column grid instead: the date and the title share the first line, and the marker and
+   the action each take their own line under the title, so the summary wraps at word
+   boundaries over the full remaining width. Nothing changes at 1280, where the row is one
+   line and the marker sits beside the title. */
+#ops-shell .badge.tl-source-badge{min-height:0;padding:var(--sp-1) var(--sp-2);border:1px solid var(--line);background:var(--panel2);color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;cursor:pointer}
+@media(max-width:750px){
+  #ops-shell .tl-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-2);align-items:baseline}
+  #ops-shell .tl-row>.tl-title,#ops-shell .tl-row>.tl-source-badge,#ops-shell .tl-row>.badge,#ops-shell .tl-row>.tl-toggle{grid-column:2;justify-self:start}
+}
