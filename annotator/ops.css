@@ -789,3 +789,44 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .timer-slot .ball{width:30px;height:30px;font-size:11px}
   #ops-shell .timer-slot button{padding:0 var(--sp-2);min-height:34px}
 }
+
+/* === Round 3, §14.1 (F17): the header is one row, ≤64 px, from 1024 up ================
+   Measured before this block (out/r3/r3b/bar-audit-before.json: five widths × EN/中 ×
+   dark/light, the same fixture tests/console_shots.py drives): header 121.0 px at 1024,
+   1152 and 1280 EN, 74.5 px at 1280 中, 79.0 px at 1440 and 1920. At 1280 "Back room"
+   wrapped inside #nav and the language chips, the theme chips and #backfill-open wrapped
+   inside .tools, while the rest of row 1 sat empty.
+   The bar's two tallest residents are the shot clock (48 px + the 6 px the elapsed bar
+   reserves) and the 44 px tabs, so the bar's own vertical padding is what has to come
+   down first — 6 px keeps every control's target and still leaves the row air. Then the
+   nav and the tools are held to one line (SS14.1 names the two declarations), and the
+   two optional groups leave below 1440 to buy the room the five tabs need at 1024. */
+#ops-shell .bar{padding-top:var(--sp-1h);padding-bottom:var(--sp-1h)}
+#ops-shell .timer-slot .clock{font-size:clamp(30px,3.4vw,40px)}
+#ops-shell #nav button{white-space:nowrap}
+#ops-shell .bar>.tools{flex-wrap:nowrap}
+/* The preset group and the #backfill-open word are the two optional things in the bar:
+   above 1440 there is room for both, below it each costs ~110 px. This takes SS14.1's
+   first option — the button loses its word and shows an icon, with the 40 px target,
+   the `title` (and r3a's `aria-label`) still naming it. The second option, moving it
+   into the Back room tab, is markup (annotator/ops.html, lane r3a) and this lane owns
+   the stylesheet only. */
+@media(max-width:1440px){
+  #ops-shell #backfill-open{display:grid;place-items:center;width:40px;min-height:40px;padding:0;font-size:0}
+  #ops-shell #backfill-open::before{content:"\21BA";font:var(--fs-body)/1 var(--mono)}
+}
+@media(max-width:1439px){
+  #ops-shell .timer-slot .presets{display:none}
+}
+/* Below 1152 the bar's three zones no longer fit at the full type size: measured, the
+   timer without presets is 228 px, the five tabs 658.6 px, the tools 216.9 px and the
+   bar's gaps 16 px — 1119.5 px against 974.8 px of content box at 1024. The tabs step
+   down one type step (--fs-md) with tighter padding and a 22 px ball, which measures
+   ~517 px, and the bar gives back its side padding. Every label, every count beside it
+   (SS14.5 F15 keeps them) and every ball number stays. */
+@media(max-width:1152px){
+  #ops-shell .bar{padding-left:var(--sp-3);padding-right:var(--sp-3)}
+  #ops-shell #nav{gap:var(--sp-1)}
+  #ops-shell #nav button{gap:var(--sp-1h);padding-left:var(--sp-1h);padding-right:var(--sp-2);font-size:var(--fs-md)}
+  #ops-shell #nav .ball{width:22px;height:22px;font-size:9px}
+}
