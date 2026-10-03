@@ -1,0 +1,2030 @@
+{
+  "revision": 110,
+  "players": [
+    {
+      "id": "c621ed5313ef4343ad9827d4d0ba5ddb",
+      "joinedAt": "2026-04-01T17:55:22+00:00",
+      "rating": 812,
+      "status": "Active",
+      "name": "Wei \"Stone\" Zhang"
+    },
+    {
+      "id": "f5306fa6751c49f89d55550e579be1a9",
+      "joinedAt": "2025-03-07T09:35:14+00:00",
+      "rating": 764,
+      "status": "Active",
+      "name": "Marcus Reed"
+    },
+    {
+      "id": "878e7dc156fb4f38a80c7089c4fd2128",
+      "joinedAt": "2025-07-24T10:12:47+00:00",
+      "rating": 731,
+      "status": "Active",
+      "name": "陈嘉豪"
+    },
+    {
+      "id": "d00b6389406648c399cb98294cb4d339",
+      "joinedAt": "2026-06-08T23:22:57+00:00",
+      "rating": 688,
+      "status": "Active",
+      "name": "Priya Nair"
+    },
+    {
+      "id": "5f579d72ecec455a805d24f0283e49ae",
+      "joinedAt": "2025-04-20T11:33:16+00:00",
+      "rating": 640,
+      "status": "Active",
+      "name": "林小满"
+    },
+    {
+      "id": "1e41571041404d22831ae81ae361dbea",
+      "joinedAt": "2025-12-08T05:42:29+00:00",
+      "rating": 597,
+      "status": "Active",
+      "name": "Devin Okoro"
+    },
+    {
+      "id": "2f64c240341b4435910650df326c8bbd",
+      "joinedAt": "2024-12-28T00:48:51+00:00",
+      "rating": 553,
+      "status": "Active",
+      "name": "赵启明"
+    },
+    {
+      "id": "8c58ac2c080544d3933f2ac0adeac9f3",
+      "joinedAt": "2024-05-25T13:21:43+00:00",
+      "rating": 512,
+      "status": "Active",
+      "name": "Hannah Brooks"
+    },
+    {
+      "id": "3534af5d7ab849299f18cbe07adc6864",
+      "joinedAt": "2026-08-30T06:41:40+00:00",
+      "rating": 489,
+      "status": "Active",
+      "name": "Kenji Watanabe"
+    },
+    {
+      "id": "d4eca6c8cddc4c1dbd38aa9231f6e8bb",
+      "joinedAt": "2024-09-05T15:29:56+00:00",
+      "rating": 470,
+      "status": "Active",
+      "name": "Tomás Ibarra"
+    },
+    {
+      "id": "4c1bbc38cc3c4c05a03ed0afba698f54",
+      "joinedAt": "2025-11-24T09:17:45+00:00",
+      "rating": 0,
+      "status": "Active",
+      "name": "吴天成"
+    },
+    {
+      "id": "c78876666600492ab752d97cf17bcf1f",
+      "joinedAt": "2025-04-01T20:02:31+00:00",
+      "rating": 0,
+      "status": "Prospect",
+      "name": "周雨桐"
+    },
+    {
+      "id": "adffd72447f64e2f9e8f0a3c61064a2e",
+      "joinedAt": "2025-04-05T23:59:01+00:00",
+      "rating": 0,
+      "status": "Visitor",
+      "name": "Sam Whitlock"
+    },
+    {
+      "id": "b26f6413b54d4778b2fbba488bf6c886",
+      "joinedAt": "2026-05-18T22:29:28+00:00",
+      "rating": 0,
+      "status": "Inactive",
+      "name": "何俊杰"
+    }
+  ],
+  "tournament": {
+    "id": "32454dc06ee2433483bd2c0eb8757b49",
+    "name": "8-Ball Open · Fri 10/2",
+    "format": "singles",
+    "tables": 6,
+    "raceTo": 5,
+    "entrants": [
+      {
+        "id": "37d96a8d6c284a7e994990bc30d73d34",
+        "members": [
+          {
+            "pid": "c621ed5313ef4343ad9827d4d0ba5ddb",
+            "name": "Wei \"Stone\" Zhang"
+          }
+        ]
+      },
+      {
+        "id": "8ce52750235c415dbb07167b2679608e",
+        "members": [
+          {
+            "pid": "f5306fa6751c49f89d55550e579be1a9",
+            "name": "Marcus Reed"
+          }
+        ]
+      },
+      {
+        "id": "967543e60dc9485184476bd6bd11637f",
+        "members": [
+          {
+            "pid": "878e7dc156fb4f38a80c7089c4fd2128",
+            "name": "陈嘉豪"
+          }
+        ]
+      },
+      {
+        "id": "2f4035828d53499da928964f289806c2",
+        "members": [
+          {
+            "pid": "d00b6389406648c399cb98294cb4d339",
+            "name": "Priya Nair"
+          }
+        ]
+      },
+      {
+        "id": "4044e486263840d4b54e94dbba4e7302",
+        "members": [
+          {
+            "pid": "5f579d72ecec455a805d24f0283e49ae",
+            "name": "林小满"
+          }
+        ]
+      },
+      {
+        "id": "1a93f187af194a669123da66a2d061f1",
+        "members": [
+          {
+            "pid": "1e41571041404d22831ae81ae361dbea",
+            "name": "Devin Okoro"
+          }
+        ]
+      },
+      {
+        "id": "d5453f102e234834b4ffb4e32d84d287",
+        "members": [
+          {
+            "pid": "2f64c240341b4435910650df326c8bbd",
+            "name": "赵启明"
+          }
+        ]
+      },
+      {
+        "id": "9eb64627e124494896f61bfb2695da31",
+        "members": [
+          {
+            "pid": "8c58ac2c080544d3933f2ac0adeac9f3",
+            "name": "Hannah Brooks"
+          }
+        ]
+      },
+      {
+        "id": "c8844bccfef1475dbd89cf9b971703e5",
+        "members": [
+          {
+            "pid": "3534af5d7ab849299f18cbe07adc6864",
+            "name": "Kenji Watanabe"
+          }
+        ]
+      },
+      {
+        "id": "1d73f48e8fcf41d2bab7aa0a6219676a",
+        "members": [
+          {
+            "pid": "d4eca6c8cddc4c1dbd38aa9231f6e8bb",
+            "name": "Tomás Ibarra"
+          }
+        ]
+      },
+      {
+        "id": "e7d96a99ddbd4e2d833045bf9ab19f5a",
+        "members": [
+          {
+            "pid": "4c1bbc38cc3c4c05a03ed0afba698f54",
+            "name": "吴天成"
+          }
+        ]
+      },
+      {
+        "id": "cbed0ebb06f94d81869b81a4b55ad8bb",
+        "members": [
+          {
+            "pid": null,
+            "name": "Danny Lau"
+          }
+        ]
+      },
+      {
+        "id": "bf08957cf73a416fa0f70f7b60002709",
+        "members": [
+          {
+            "pid": null,
+            "name": "小杨"
+          }
+        ]
+      },
+      {
+        "id": "92400e0fde23445abeed7df161307237",
+        "members": [
+          {
+            "pid": null,
+            "name": "Ravi Menon"
+          }
+        ]
+      },
+      {
+        "id": "1f798639c0414b2ab3dbdd999e49251b",
+        "members": [
+          {
+            "pid": null,
+            "name": "老唐"
+          }
+        ],
+        "absent": true
+      },
+      {
+        "id": "c38bafa53fb14da5b89b9b8f0961bc69",
+        "members": [
+          {
+            "pid": null,
+            "name": "Jordan Pike"
+          }
+        ]
+      }
+    ],
+    "matches": [
+      {
+        "id": "3bd49209962249ad988d141e86a3fa1a",
+        "round": 1,
+        "sides": [
+          "37d96a8d6c284a7e994990bc30d73d34",
+          "8ce52750235c415dbb07167b2679608e"
+        ],
+        "score": [
+          5,
+          3
+        ],
+        "table": null,
+        "status": "complete",
+        "winnerId": "37d96a8d6c284a7e994990bc30d73d34",
+        "absent": [],
+        "sources": [],
+        "result": "played",
+        "completedAt": "2026-10-02T23:04:31.669714+00:00"
+      },
+      {
+        "id": "8342560455c54b39829a62de6bc55c0c",
+        "round": 1,
+        "sides": [
+          "967543e60dc9485184476bd6bd11637f",
+          "2f4035828d53499da928964f289806c2"
+        ],
+        "score": [
+          5,
+          2
+        ],
+        "table": null,
+        "status": "complete",
+        "winnerId": "967543e60dc9485184476bd6bd11637f",
+        "absent": [],
+        "sources": [],
+        "result": "played",
+        "completedAt": "2026-10-02T23:04:31.712008+00:00"
+      },
+      {
+        "id": "d79ae8d4e94e4758a827c252d49efe00",
+        "round": 1,
+        "sides": [
+          "4044e486263840d4b54e94dbba4e7302",
+          "1a93f187af194a669123da66a2d061f1"
+        ],
+        "score": [
+          5,
+          4
+        ],
+        "table": null,
+        "status": "complete",
+        "winnerId": "4044e486263840d4b54e94dbba4e7302",
+        "absent": [],
+        "sources": [],
+        "result": "played",
+        "completedAt": "2026-10-02T23:04:31.752646+00:00"
+      },
+      {
+        "id": "b970d81750db4b1f934479211c25a746",
+        "round": 1,
+        "sides": [
+          "d5453f102e234834b4ffb4e32d84d287",
+          "9eb64627e124494896f61bfb2695da31"
+        ],
+        "score": [
+          5,
+          1
+        ],
+        "table": null,
+        "status": "complete",
+        "winnerId": "d5453f102e234834b4ffb4e32d84d287",
+        "absent": [],
+        "sources": [],
+        "result": "played",
+        "completedAt": "2026-10-02T23:04:31.790124+00:00"
+      },
+      {
+        "id": "342b90ddcb9d4441ae69c63ea477af36",
+        "round": 1,
+        "sides": [
+          "c8844bccfef1475dbd89cf9b971703e5",
+          "1d73f48e8fcf41d2bab7aa0a6219676a"
+        ],
+        "score": [
+          3,
+          1
+        ],
+        "table": 1,
+        "status": "live",
+        "winnerId": null,
+        "absent": [],
+        "sources": []
+      },
+      {
+        "id": "4574edfb66c54cc69b77943bce7c5795",
+        "round": 1,
+        "sides": [
+          "e7d96a99ddbd4e2d833045bf9ab19f5a",
+          "cbed0ebb06f94d81869b81a4b55ad8bb"
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": 2,
+        "status": "live",
+        "winnerId": null,
+        "absent": [],
+        "sources": []
+      },
+      {
+        "id": "57107cbf56ba40ff8e056b759c4cfa33",
+        "round": 1,
+        "sides": [
+          "bf08957cf73a416fa0f70f7b60002709",
+          "92400e0fde23445abeed7df161307237"
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": 3,
+        "status": "live",
+        "winnerId": null,
+        "absent": [],
+        "sources": []
+      },
+      {
+        "id": "a827102e0bae4fe59d42eb4cad26581c",
+        "round": 1,
+        "sides": [
+          "1f798639c0414b2ab3dbdd999e49251b",
+          "c38bafa53fb14da5b89b9b8f0961bc69"
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "delayed",
+        "winnerId": null,
+        "absent": [
+          "1f798639c0414b2ab3dbdd999e49251b"
+        ],
+        "sources": []
+      },
+      {
+        "id": "e61f9298cd8d49c9a087c809d4d36cbf",
+        "round": 2,
+        "sides": [
+          "37d96a8d6c284a7e994990bc30d73d34",
+          "967543e60dc9485184476bd6bd11637f"
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "scheduled",
+        "winnerId": null,
+        "absent": [],
+        "sources": [
+          "3bd49209962249ad988d141e86a3fa1a",
+          "8342560455c54b39829a62de6bc55c0c"
+        ]
+      },
+      {
+        "id": "9b1fc5fe93404d8f833280ec82a5fbf6",
+        "round": 2,
+        "sides": [
+          "4044e486263840d4b54e94dbba4e7302",
+          "d5453f102e234834b4ffb4e32d84d287"
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "scheduled",
+        "winnerId": null,
+        "absent": [],
+        "sources": [
+          "d79ae8d4e94e4758a827c252d49efe00",
+          "b970d81750db4b1f934479211c25a746"
+        ]
+      },
+      {
+        "id": "8dc41629dce04fc18fc5b317e40bbe4e",
+        "round": 2,
+        "sides": [
+          null,
+          null
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "pending",
+        "winnerId": null,
+        "absent": [],
+        "sources": [
+          "342b90ddcb9d4441ae69c63ea477af36",
+          "4574edfb66c54cc69b77943bce7c5795"
+        ]
+      },
+      {
+        "id": "d06b51a928da4852ab21762d1886f6fb",
+        "round": 2,
+        "sides": [
+          null,
+          null
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "pending",
+        "winnerId": null,
+        "absent": [],
+        "sources": [
+          "57107cbf56ba40ff8e056b759c4cfa33",
+          "a827102e0bae4fe59d42eb4cad26581c"
+        ]
+      },
+      {
+        "id": "b57bd343fe6c4f42a7cca3635fa2ead6",
+        "round": 3,
+        "sides": [
+          null,
+          null
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "pending",
+        "winnerId": null,
+        "absent": [],
+        "sources": [
+          "e61f9298cd8d49c9a087c809d4d36cbf",
+          "9b1fc5fe93404d8f833280ec82a5fbf6"
+        ]
+      },
+      {
+        "id": "ba680cf032194cf4a682be12f059178b",
+        "round": 3,
+        "sides": [
+          null,
+          null
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "pending",
+        "winnerId": null,
+        "absent": [],
+        "sources": [
+          "8dc41629dce04fc18fc5b317e40bbe4e",
+          "d06b51a928da4852ab21762d1886f6fb"
+        ]
+      },
+      {
+        "id": "d915f3b5133f4e848ef909154ed4a9f7",
+        "round": 4,
+        "sides": [
+          null,
+          null
+        ],
+        "score": [
+          0,
+          0
+        ],
+        "table": null,
+        "status": "pending",
+        "winnerId": null,
+        "absent": [],
+        "sources": [
+          "b57bd343fe6c4f42a7cca3635fa2ead6",
+          "ba680cf032194cf4a682be12f059178b"
+        ]
+      }
+    ],
+    "status": "active"
+  },
+  "history": [
+    {
+      "id": "bd78bfe5bc79431080366f0d9bbd41c1",
+      "name": "Warm-up 8-Ball",
+      "format": "singles",
+      "tables": 4,
+      "raceTo": 5,
+      "entrants": [
+        {
+          "id": "f14b306ee36e44bbbdc270165b2c1c46",
+          "members": [
+            {
+              "pid": "c621ed5313ef4343ad9827d4d0ba5ddb",
+              "name": "Wei \"Stone\" Zhang"
+            }
+          ]
+        },
+        {
+          "id": "0b5103c435844dd191a65aac9a1ee4f1",
+          "members": [
+            {
+              "pid": "f5306fa6751c49f89d55550e579be1a9",
+              "name": "Marcus Reed"
+            }
+          ]
+        },
+        {
+          "id": "aa24c834b58147bb897876c36a881f65",
+          "members": [
+            {
+              "pid": "878e7dc156fb4f38a80c7089c4fd2128",
+              "name": "陈嘉豪"
+            }
+          ]
+        },
+        {
+          "id": "719448e626064fa18c8289a991bc345e",
+          "members": [
+            {
+              "pid": "d00b6389406648c399cb98294cb4d339",
+              "name": "Priya Nair"
+            }
+          ]
+        },
+        {
+          "id": "f71fe6f7021d497996c08ea7655bdfef",
+          "members": [
+            {
+              "pid": "5f579d72ecec455a805d24f0283e49ae",
+              "name": "林小满"
+            }
+          ]
+        },
+        {
+          "id": "0a83a545cf3a410291f3e67a6ae43fa2",
+          "members": [
+            {
+              "pid": "1e41571041404d22831ae81ae361dbea",
+              "name": "Devin Okoro"
+            }
+          ]
+        },
+        {
+          "id": "ef403df82feb411fa83efd78e1d216d9",
+          "members": [
+            {
+              "pid": "2f64c240341b4435910650df326c8bbd",
+              "name": "赵启明"
+            }
+          ]
+        },
+        {
+          "id": "0c2a7f0bfb6541c9a4efbb5234ae2dcc",
+          "members": [
+            {
+              "pid": "8c58ac2c080544d3933f2ac0adeac9f3",
+              "name": "Hannah Brooks"
+            }
+          ]
+        }
+      ],
+      "matches": [
+        {
+          "id": "4b0def83ec114c8aa40a90da75c5e1ad",
+          "round": 1,
+          "sides": [
+            "f14b306ee36e44bbbdc270165b2c1c46",
+            "0b5103c435844dd191a65aac9a1ee4f1"
+          ],
+          "score": [
+            5,
+            3
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "f14b306ee36e44bbbdc270165b2c1c46",
+          "absent": [],
+          "sources": [],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:29.913076+00:00"
+        },
+        {
+          "id": "d616057d2ecb4fa0874daea350b5cf25",
+          "round": 1,
+          "sides": [
+            "aa24c834b58147bb897876c36a881f65",
+            "719448e626064fa18c8289a991bc345e"
+          ],
+          "score": [
+            5,
+            2
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "aa24c834b58147bb897876c36a881f65",
+          "absent": [],
+          "sources": [],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:29.965617+00:00"
+        },
+        {
+          "id": "7502d0843e984cdf940371e44507155b",
+          "round": 1,
+          "sides": [
+            "f71fe6f7021d497996c08ea7655bdfef",
+            "0a83a545cf3a410291f3e67a6ae43fa2"
+          ],
+          "score": [
+            5,
+            4
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "f71fe6f7021d497996c08ea7655bdfef",
+          "absent": [],
+          "sources": [],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:30.009907+00:00"
+        },
+        {
+          "id": "0dd61c0704fe4a2aac933be3bf771bcd",
+          "round": 1,
+          "sides": [
+            "ef403df82feb411fa83efd78e1d216d9",
+            "0c2a7f0bfb6541c9a4efbb5234ae2dcc"
+          ],
+          "score": [
+            5,
+            1
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "ef403df82feb411fa83efd78e1d216d9",
+          "absent": [],
+          "sources": [],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:30.062512+00:00"
+        },
+        {
+          "id": "ab3eaa4e51d74acbabee2c632993a95d",
+          "round": 2,
+          "sides": [
+            "f14b306ee36e44bbbdc270165b2c1c46",
+            "aa24c834b58147bb897876c36a881f65"
+          ],
+          "score": [
+            5,
+            3
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "f14b306ee36e44bbbdc270165b2c1c46",
+          "absent": [],
+          "sources": [
+            "4b0def83ec114c8aa40a90da75c5e1ad",
+            "d616057d2ecb4fa0874daea350b5cf25"
+          ],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:30.334420+00:00"
+        },
+        {
+          "id": "8a21cd1f380b49cb8f50c6c3a228e9e1",
+          "round": 2,
+          "sides": [
+            "f71fe6f7021d497996c08ea7655bdfef",
+            "ef403df82feb411fa83efd78e1d216d9"
+          ],
+          "score": [
+            5,
+            4
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "f71fe6f7021d497996c08ea7655bdfef",
+          "absent": [],
+          "sources": [
+            "7502d0843e984cdf940371e44507155b",
+            "0dd61c0704fe4a2aac933be3bf771bcd"
+          ],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:30.557355+00:00"
+        },
+        {
+          "id": "e00d5129c4c9460d99e6c9ba78013e77",
+          "round": 3,
+          "sides": [
+            "f14b306ee36e44bbbdc270165b2c1c46",
+            "f71fe6f7021d497996c08ea7655bdfef"
+          ],
+          "score": [
+            5,
+            2
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "f14b306ee36e44bbbdc270165b2c1c46",
+          "absent": [],
+          "sources": [
+            "ab3eaa4e51d74acbabee2c632993a95d",
+            "8a21cd1f380b49cb8f50c6c3a228e9e1"
+          ],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:30.649143+00:00"
+        }
+      ],
+      "status": "complete",
+      "archivedAt": "2026-10-02T23:04:30.675443+00:00"
+    },
+    {
+      "id": "8d70e110c31a4cbfb3753e3af91c8442",
+      "name": "Speed Pool side event",
+      "format": "singles",
+      "tables": 3,
+      "raceTo": 3,
+      "entrants": [
+        {
+          "id": "5b5f3368f4d146d58490ecc0d89af8d6",
+          "members": [
+            {
+              "pid": "c621ed5313ef4343ad9827d4d0ba5ddb",
+              "name": "Wei \"Stone\" Zhang"
+            }
+          ]
+        },
+        {
+          "id": "e5f3ef9897b945b085920b02ea1e16c4",
+          "members": [
+            {
+              "pid": "f5306fa6751c49f89d55550e579be1a9",
+              "name": "Marcus Reed"
+            }
+          ]
+        },
+        {
+          "id": "081a8200f5f54474a933769a412c39e3",
+          "members": [
+            {
+              "pid": "3534af5d7ab849299f18cbe07adc6864",
+              "name": "Kenji Watanabe"
+            }
+          ]
+        },
+        {
+          "id": "8cd7d8fd2a0b49c4902a63964642f0ff",
+          "members": [
+            {
+              "pid": "d4eca6c8cddc4c1dbd38aa9231f6e8bb",
+              "name": "Tomás Ibarra"
+            }
+          ]
+        },
+        {
+          "id": "012d11c803984f089d9f6a40a887ece2",
+          "members": [
+            {
+              "pid": "2f64c240341b4435910650df326c8bbd",
+              "name": "赵启明"
+            }
+          ]
+        },
+        {
+          "id": "1f332524b55247b6a42633d4ba1a0372",
+          "members": [
+            {
+              "pid": null,
+              "name": "Danny Lau"
+            }
+          ]
+        }
+      ],
+      "matches": [
+        {
+          "id": "48385c8eb3f74bc7b09ac5fd908b97c0",
+          "round": 1,
+          "sides": [
+            "5b5f3368f4d146d58490ecc0d89af8d6",
+            null
+          ],
+          "score": [
+            0,
+            0
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "5b5f3368f4d146d58490ecc0d89af8d6",
+          "absent": [],
+          "sources": [],
+          "result": "bye"
+        },
+        {
+          "id": "2fc25297c3504e4a808e5901f9a391c6",
+          "round": 1,
+          "sides": [
+            "e5f3ef9897b945b085920b02ea1e16c4",
+            null
+          ],
+          "score": [
+            0,
+            0
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "e5f3ef9897b945b085920b02ea1e16c4",
+          "absent": [],
+          "sources": [],
+          "result": "bye"
+        },
+        {
+          "id": "f1d95ee7d0944ad79f9979e4c185874c",
+          "round": 1,
+          "sides": [
+            "081a8200f5f54474a933769a412c39e3",
+            "8cd7d8fd2a0b49c4902a63964642f0ff"
+          ],
+          "score": [
+            3,
+            1
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "081a8200f5f54474a933769a412c39e3",
+          "absent": [],
+          "sources": [],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:31.092139+00:00"
+        },
+        {
+          "id": "10cdefebd7fa4fc5a0e3b51111cc6db2",
+          "round": 1,
+          "sides": [
+            "012d11c803984f089d9f6a40a887ece2",
+            "1f332524b55247b6a42633d4ba1a0372"
+          ],
+          "score": [
+            3,
+            2
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "012d11c803984f089d9f6a40a887ece2",
+          "absent": [],
+          "sources": [],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:31.176797+00:00"
+        },
+        {
+          "id": "07173e578a4b4ac2a20f33587b282ada",
+          "round": 2,
+          "sides": [
+            "5b5f3368f4d146d58490ecc0d89af8d6",
+            "e5f3ef9897b945b085920b02ea1e16c4"
+          ],
+          "score": [
+            3,
+            0
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "5b5f3368f4d146d58490ecc0d89af8d6",
+          "absent": [],
+          "sources": [
+            "48385c8eb3f74bc7b09ac5fd908b97c0",
+            "2fc25297c3504e4a808e5901f9a391c6"
+          ],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:31.241072+00:00"
+        },
+        {
+          "id": "16dc98ec7ca7412a86cdedd907b96af0",
+          "round": 2,
+          "sides": [
+            "081a8200f5f54474a933769a412c39e3",
+            "012d11c803984f089d9f6a40a887ece2"
+          ],
+          "score": [
+            3,
+            2
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "081a8200f5f54474a933769a412c39e3",
+          "absent": [],
+          "sources": [
+            "f1d95ee7d0944ad79f9979e4c185874c",
+            "10cdefebd7fa4fc5a0e3b51111cc6db2"
+          ],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:31.277066+00:00"
+        },
+        {
+          "id": "b8cb7bd1cd004d8091ec329c3bd63f36",
+          "round": 3,
+          "sides": [
+            "5b5f3368f4d146d58490ecc0d89af8d6",
+            "081a8200f5f54474a933769a412c39e3"
+          ],
+          "score": [
+            3,
+            1
+          ],
+          "table": null,
+          "status": "complete",
+          "winnerId": "5b5f3368f4d146d58490ecc0d89af8d6",
+          "absent": [],
+          "sources": [
+            "07173e578a4b4ac2a20f33587b282ada",
+            "16dc98ec7ca7412a86cdedd907b96af0"
+          ],
+          "result": "played",
+          "completedAt": "2026-10-02T23:04:31.323188+00:00"
+        }
+      ],
+      "status": "complete",
+      "archivedAt": "2026-10-02T23:04:31.335418+00:00"
+    }
+  ],
+  "settings": {
+    "shotClock": 30,
+    "autoFrame": false,
+    "clothColor": "#1d5c44",
+    "lampGlow": 0.22,
+    "showDiamonds": true,
+    "publicBoard": true
+  },
+  "notes": [
+    {
+      "id": "7055cb61594e432791812ce75c5d2424",
+      "text": "Table 3 cushion is due for replacement — the corner pocket plays short on long rail shots.",
+      "createdAt": "2026-10-02T23:04:29.535769+00:00"
+    },
+    {
+      "id": "d5b0c5513285415581d35fc984bece5c",
+      "text": "Thursday league starts 19:30. Keep tables 1-4 free from 19:00; the 9-foot table stays open play.",
+      "createdAt": "2026-10-02T23:04:29.550115+00:00"
+    }
+  ],
+  "sources": [
+    {
+      "id": "931ff9099bc54181b40610684d8d5366",
+      "url": "https://www.twitch.tv/cornerpocket",
+      "kind": "channel",
+      "channel": "cornerpocket"
+    },
+    {
+      "id": "188005073192437a8852f723f7b59beb",
+      "url": "https://www.twitch.tv/videos/2274501933",
+      "kind": "video",
+      "video": "2274501933"
+    }
+  ],
+  "events": [
+    {
+      "id": "8ddce0c8b6fd4805b4ab0b757ef60d57",
+      "createdAt": "2026-10-02T23:04:29.288136+00:00",
+      "revision": 1,
+      "action": "player_save",
+      "context": {
+        "id": "c621ed5313ef4343ad9827d4d0ba5ddb",
+        "name": "Wei \"Stone\" Zhang"
+      }
+    },
+    {
+      "id": "e9ce26e6b701410b96cf99da55a62c98",
+      "createdAt": "2026-10-02T23:04:29.302809+00:00",
+      "revision": 2,
+      "action": "player_save",
+      "context": {
+        "id": "f5306fa6751c49f89d55550e579be1a9",
+        "name": "Marcus Reed"
+      }
+    },
+    {
+      "id": "4c70a20647da41ddaa3af2dd1830c959",
+      "createdAt": "2026-10-02T23:04:29.315404+00:00",
+      "revision": 3,
+      "action": "player_save",
+      "context": {
+        "id": "878e7dc156fb4f38a80c7089c4fd2128",
+        "name": "陈嘉豪"
+      }
+    },
+    {
+      "id": "27527ee31b6c4b499773868b5f693442",
+      "createdAt": "2026-10-02T23:04:29.331065+00:00",
+      "revision": 4,
+      "action": "player_save",
+      "context": {
+        "id": "d00b6389406648c399cb98294cb4d339",
+        "name": "Priya Nair"
+      }
+    },
+    {
+      "id": "f12154f0c8c04d108892c54f3a3d5645",
+      "createdAt": "2026-10-02T23:04:29.342831+00:00",
+      "revision": 5,
+      "action": "player_save",
+      "context": {
+        "id": "5f579d72ecec455a805d24f0283e49ae",
+        "name": "林小满"
+      }
+    },
+    {
+      "id": "6dcba230bc5a43bfa902584f17527bb4",
+      "createdAt": "2026-10-02T23:04:29.356816+00:00",
+      "revision": 6,
+      "action": "player_save",
+      "context": {
+        "id": "1e41571041404d22831ae81ae361dbea",
+        "name": "Devin Okoro"
+      }
+    },
+    {
+      "id": "29570e33b9634a6e8a003fe13bd21fbb",
+      "createdAt": "2026-10-02T23:04:29.369552+00:00",
+      "revision": 7,
+      "action": "player_save",
+      "context": {
+        "id": "2f64c240341b4435910650df326c8bbd",
+        "name": "赵启明"
+      }
+    },
+    {
+      "id": "0ef345a9ee1f451bab04add00aa61b71",
+      "createdAt": "2026-10-02T23:04:29.390674+00:00",
+      "revision": 8,
+      "action": "player_save",
+      "context": {
+        "id": "8c58ac2c080544d3933f2ac0adeac9f3",
+        "name": "Hannah Brooks"
+      }
+    },
+    {
+      "id": "354b79b55d6642d7b9c0c254365339b6",
+      "createdAt": "2026-10-02T23:04:29.404653+00:00",
+      "revision": 9,
+      "action": "player_save",
+      "context": {
+        "id": "3534af5d7ab849299f18cbe07adc6864",
+        "name": "Kenji Watanabe"
+      }
+    },
+    {
+      "id": "22831b6802304b70b1e4b0825991df99",
+      "createdAt": "2026-10-02T23:04:29.419454+00:00",
+      "revision": 10,
+      "action": "player_save",
+      "context": {
+        "id": "d4eca6c8cddc4c1dbd38aa9231f6e8bb",
+        "name": "Tomás Ibarra"
+      }
+    },
+    {
+      "id": "8759c61f04374771b1f94d68ab435056",
+      "createdAt": "2026-10-02T23:04:29.431053+00:00",
+      "revision": 11,
+      "action": "player_save",
+      "context": {
+        "id": "4c1bbc38cc3c4c05a03ed0afba698f54",
+        "name": "吴天成"
+      }
+    },
+    {
+      "id": "8eb1b2d4d1e1495dabd211001868d40c",
+      "createdAt": "2026-10-02T23:04:29.450627+00:00",
+      "revision": 12,
+      "action": "player_save",
+      "context": {
+        "id": "c78876666600492ab752d97cf17bcf1f",
+        "name": "周雨桐"
+      }
+    },
+    {
+      "id": "7011c65d6898481bbd04f7653bef1a85",
+      "createdAt": "2026-10-02T23:04:29.465710+00:00",
+      "revision": 13,
+      "action": "player_save",
+      "context": {
+        "id": "adffd72447f64e2f9e8f0a3c61064a2e",
+        "name": "Sam Whitlock"
+      }
+    },
+    {
+      "id": "a9ae6e6ace424bccb927db324cbd01ea",
+      "createdAt": "2026-10-02T23:04:29.478889+00:00",
+      "revision": 14,
+      "action": "player_save",
+      "context": {
+        "id": "b26f6413b54d4778b2fbba488bf6c886",
+        "name": "何俊杰"
+      }
+    },
+    {
+      "id": "46a8338a1fd9426b802f857073d34a11",
+      "createdAt": "2026-10-02T23:04:29.494078+00:00",
+      "revision": 15,
+      "action": "source_add",
+      "context": {
+        "id": "931ff9099bc54181b40610684d8d5366"
+      }
+    },
+    {
+      "id": "7b38070847b94eee9bac4825c6821fbf",
+      "createdAt": "2026-10-02T23:04:29.509504+00:00",
+      "revision": 16,
+      "action": "source_add",
+      "context": {
+        "id": "188005073192437a8852f723f7b59beb"
+      }
+    },
+    {
+      "id": "d21b61d3354f4ddda86ceeb230f13e69",
+      "createdAt": "2026-10-02T23:04:29.522977+00:00",
+      "revision": 17,
+      "action": "source_delete",
+      "context": {
+        "id": "dd94b3b2856f401e854fa0cb49ac6399"
+      }
+    },
+    {
+      "id": "4edbb511dfb842a98695e2a824e9d4cc",
+      "createdAt": "2026-10-02T23:04:29.535794+00:00",
+      "revision": 18,
+      "action": "note_add",
+      "context": {
+        "id": "7055cb61594e432791812ce75c5d2424"
+      }
+    },
+    {
+      "id": "cef185cff0c64db582dfa95b577678d2",
+      "createdAt": "2026-10-02T23:04:29.550135+00:00",
+      "revision": 19,
+      "action": "note_add",
+      "context": {
+        "id": "d5b0c5513285415581d35fc984bece5c"
+      }
+    },
+    {
+      "id": "f98e8ce8e8dc48e499c94f084fa65a8d",
+      "createdAt": "2026-10-02T23:04:29.568255+00:00",
+      "revision": 20,
+      "action": "tournament_setup",
+      "context": {
+        "id": "bd78bfe5bc79431080366f0d9bbd41c1",
+        "name": "Warm-up 8-Ball"
+      }
+    },
+    {
+      "id": "e4303bd04cf34c9a8a6b547eca9f0b4d",
+      "createdAt": "2026-10-02T23:04:29.582193+00:00",
+      "revision": 21,
+      "action": "entrant_add",
+      "context": {
+        "id": "f14b306ee36e44bbbdc270165b2c1c46"
+      }
+    },
+    {
+      "id": "0e5cef491b3641c0b8f6244443ed1558",
+      "createdAt": "2026-10-02T23:04:29.596910+00:00",
+      "revision": 22,
+      "action": "entrant_add",
+      "context": {
+        "id": "0b5103c435844dd191a65aac9a1ee4f1"
+      }
+    },
+    {
+      "id": "4b7afc37aa894f61aa56aeec0d9f6c58",
+      "createdAt": "2026-10-02T23:04:29.610548+00:00",
+      "revision": 23,
+      "action": "entrant_add",
+      "context": {
+        "id": "aa24c834b58147bb897876c36a881f65"
+      }
+    },
+    {
+      "id": "67e493b4f88a47739b4d7e338349458e",
+      "createdAt": "2026-10-02T23:04:29.626532+00:00",
+      "revision": 24,
+      "action": "entrant_add",
+      "context": {
+        "id": "719448e626064fa18c8289a991bc345e"
+      }
+    },
+    {
+      "id": "8385b15d5ef141eba639ad87bfc14321",
+      "createdAt": "2026-10-02T23:04:29.640119+00:00",
+      "revision": 25,
+      "action": "entrant_add",
+      "context": {
+        "id": "f71fe6f7021d497996c08ea7655bdfef"
+      }
+    },
+    {
+      "id": "beef37227acb44299fb4262149e79221",
+      "createdAt": "2026-10-02T23:04:29.653002+00:00",
+      "revision": 26,
+      "action": "entrant_add",
+      "context": {
+        "id": "0a83a545cf3a410291f3e67a6ae43fa2"
+      }
+    },
+    {
+      "id": "40333b344ec44cd085ba4f4d7c7e85d2",
+      "createdAt": "2026-10-02T23:04:29.663777+00:00",
+      "revision": 27,
+      "action": "entrant_add",
+      "context": {
+        "id": "ef403df82feb411fa83efd78e1d216d9"
+      }
+    },
+    {
+      "id": "39c18407b5bc4f19bb7857b434451ce8",
+      "createdAt": "2026-10-02T23:04:29.740194+00:00",
+      "revision": 28,
+      "action": "entrant_add",
+      "context": {
+        "id": "0c2a7f0bfb6541c9a4efbb5234ae2dcc"
+      }
+    },
+    {
+      "id": "4a8d3c73113a44b780a6bddec468fd38",
+      "createdAt": "2026-10-02T23:04:29.765413+00:00",
+      "revision": 29,
+      "action": "tournament_start",
+      "context": {
+        "id": "bd78bfe5bc79431080366f0d9bbd41c1",
+        "name": "Warm-up 8-Ball"
+      }
+    },
+    {
+      "id": "6a555655ae1b409e82f085b14d4ea802",
+      "createdAt": "2026-10-02T23:04:29.798344+00:00",
+      "revision": 30,
+      "action": "match_schedule",
+      "context": {
+        "id": "4b0def83ec114c8aa40a90da75c5e1ad"
+      }
+    },
+    {
+      "id": "805c4974fc1743979d4a01795194b6b6",
+      "createdAt": "2026-10-02T23:04:29.884565+00:00",
+      "revision": 31,
+      "action": "match_score",
+      "context": {
+        "id": "4b0def83ec114c8aa40a90da75c5e1ad"
+      }
+    },
+    {
+      "id": "8332581c960a4627823077b65c7b6dee",
+      "createdAt": "2026-10-02T23:04:29.913122+00:00",
+      "revision": 32,
+      "action": "match_complete",
+      "context": {
+        "id": "4b0def83ec114c8aa40a90da75c5e1ad"
+      }
+    },
+    {
+      "id": "13ad5fea85504b7393d3ba14d63f20c7",
+      "createdAt": "2026-10-02T23:04:29.933869+00:00",
+      "revision": 33,
+      "action": "match_schedule",
+      "context": {
+        "id": "d616057d2ecb4fa0874daea350b5cf25"
+      }
+    },
+    {
+      "id": "8fe75421c94f42e996566a78c7a0ee50",
+      "createdAt": "2026-10-02T23:04:29.950091+00:00",
+      "revision": 34,
+      "action": "match_score",
+      "context": {
+        "id": "d616057d2ecb4fa0874daea350b5cf25"
+      }
+    },
+    {
+      "id": "13d422abe1684278bbf782ee19da161a",
+      "createdAt": "2026-10-02T23:04:29.965663+00:00",
+      "revision": 35,
+      "action": "match_complete",
+      "context": {
+        "id": "d616057d2ecb4fa0874daea350b5cf25"
+      }
+    },
+    {
+      "id": "cd1a7804e3d941e5a3402d4d28eef649",
+      "createdAt": "2026-10-02T23:04:29.980816+00:00",
+      "revision": 36,
+      "action": "match_schedule",
+      "context": {
+        "id": "7502d0843e984cdf940371e44507155b"
+      }
+    },
+    {
+      "id": "ce8c07732c90453a9353057d8444a27f",
+      "createdAt": "2026-10-02T23:04:29.995790+00:00",
+      "revision": 37,
+      "action": "match_score",
+      "context": {
+        "id": "7502d0843e984cdf940371e44507155b"
+      }
+    },
+    {
+      "id": "88fac660d6d641cf95bd6a414c8c2644",
+      "createdAt": "2026-10-02T23:04:30.009955+00:00",
+      "revision": 38,
+      "action": "match_complete",
+      "context": {
+        "id": "7502d0843e984cdf940371e44507155b"
+      }
+    },
+    {
+      "id": "3171cfd7c8ea45e68563a328a0fea932",
+      "createdAt": "2026-10-02T23:04:30.025078+00:00",
+      "revision": 39,
+      "action": "match_schedule",
+      "context": {
+        "id": "0dd61c0704fe4a2aac933be3bf771bcd"
+      }
+    },
+    {
+      "id": "4323ecf837b143509509cff52bc2aa5c",
+      "createdAt": "2026-10-02T23:04:30.037454+00:00",
+      "revision": 40,
+      "action": "match_score",
+      "context": {
+        "id": "0dd61c0704fe4a2aac933be3bf771bcd"
+      }
+    },
+    {
+      "id": "c01a7fb96bb3466bb1cc75c72e8d9637",
+      "createdAt": "2026-10-02T23:04:30.062546+00:00",
+      "revision": 41,
+      "action": "match_complete",
+      "context": {
+        "id": "0dd61c0704fe4a2aac933be3bf771bcd"
+      }
+    },
+    {
+      "id": "d804a18138994396913c7f1ce9e2de4b",
+      "createdAt": "2026-10-02T23:04:30.086893+00:00",
+      "revision": 42,
+      "action": "match_schedule",
+      "context": {
+        "id": "ab3eaa4e51d74acbabee2c632993a95d"
+      }
+    },
+    {
+      "id": "760f7256883d4237bd7beaaff2c6d172",
+      "createdAt": "2026-10-02T23:04:30.187859+00:00",
+      "revision": 43,
+      "action": "match_score",
+      "context": {
+        "id": "ab3eaa4e51d74acbabee2c632993a95d"
+      }
+    },
+    {
+      "id": "14ea7b27a849444a8fb18930b1968b96",
+      "createdAt": "2026-10-02T23:04:30.334476+00:00",
+      "revision": 44,
+      "action": "match_complete",
+      "context": {
+        "id": "ab3eaa4e51d74acbabee2c632993a95d"
+      }
+    },
+    {
+      "id": "d16c20348fbd490e9c89e506e69cd15b",
+      "createdAt": "2026-10-02T23:04:30.410546+00:00",
+      "revision": 45,
+      "action": "match_schedule",
+      "context": {
+        "id": "8a21cd1f380b49cb8f50c6c3a228e9e1"
+      }
+    },
+    {
+      "id": "21e36ede31484d199d83d95fa869ad54",
+      "createdAt": "2026-10-02T23:04:30.486834+00:00",
+      "revision": 46,
+      "action": "match_score",
+      "context": {
+        "id": "8a21cd1f380b49cb8f50c6c3a228e9e1"
+      }
+    },
+    {
+      "id": "5c0d29bd009846b4bdf1eb2aadbbfd6a",
+      "createdAt": "2026-10-02T23:04:30.557429+00:00",
+      "revision": 47,
+      "action": "match_complete",
+      "context": {
+        "id": "8a21cd1f380b49cb8f50c6c3a228e9e1"
+      }
+    },
+    {
+      "id": "b2321228b07b4a3a99499aafaafa1547",
+      "createdAt": "2026-10-02T23:04:30.604921+00:00",
+      "revision": 48,
+      "action": "match_schedule",
+      "context": {
+        "id": "e00d5129c4c9460d99e6c9ba78013e77"
+      }
+    },
+    {
+      "id": "08ab1567ba894500ab813cfdb7344b2e",
+      "createdAt": "2026-10-02T23:04:30.621463+00:00",
+      "revision": 49,
+      "action": "match_score",
+      "context": {
+        "id": "e00d5129c4c9460d99e6c9ba78013e77"
+      }
+    },
+    {
+      "id": "13d5d2a1f72644319afba6517a92b395",
+      "createdAt": "2026-10-02T23:04:30.649197+00:00",
+      "revision": 50,
+      "action": "match_complete",
+      "context": {
+        "id": "e00d5129c4c9460d99e6c9ba78013e77"
+      }
+    },
+    {
+      "id": "655343a0a36544c18cbe622aa834288f",
+      "createdAt": "2026-10-02T23:04:30.675472+00:00",
+      "revision": 51,
+      "action": "tournament_new",
+      "context": {
+        "id": "bd78bfe5bc79431080366f0d9bbd41c1",
+        "name": "Warm-up 8-Ball"
+      }
+    },
+    {
+      "id": "fb993993924b46dcbd04a68e829a7af9",
+      "createdAt": "2026-10-02T23:04:30.706055+00:00",
+      "revision": 52,
+      "action": "tournament_setup",
+      "context": {
+        "id": "8d70e110c31a4cbfb3753e3af91c8442",
+        "name": "Speed Pool side event"
+      }
+    },
+    {
+      "id": "e957692387a84b318230521b7b627477",
+      "createdAt": "2026-10-02T23:04:30.734076+00:00",
+      "revision": 53,
+      "action": "entrant_add",
+      "context": {
+        "id": "5b5f3368f4d146d58490ecc0d89af8d6"
+      }
+    },
+    {
+      "id": "634e20677f224d558500c98d2182989e",
+      "createdAt": "2026-10-02T23:04:30.758545+00:00",
+      "revision": 54,
+      "action": "entrant_add",
+      "context": {
+        "id": "e5f3ef9897b945b085920b02ea1e16c4"
+      }
+    },
+    {
+      "id": "0fdd06a7ef5f4c399ccea87f7b37ac3a",
+      "createdAt": "2026-10-02T23:04:30.776108+00:00",
+      "revision": 55,
+      "action": "entrant_add",
+      "context": {
+        "id": "081a8200f5f54474a933769a412c39e3"
+      }
+    },
+    {
+      "id": "dbbca4713dda4bef91c364efb55a918a",
+      "createdAt": "2026-10-02T23:04:30.807296+00:00",
+      "revision": 56,
+      "action": "entrant_add",
+      "context": {
+        "id": "8cd7d8fd2a0b49c4902a63964642f0ff"
+      }
+    },
+    {
+      "id": "3a7a5227fca84d3c84603c956b0c2eb2",
+      "createdAt": "2026-10-02T23:04:30.842185+00:00",
+      "revision": 57,
+      "action": "entrant_add",
+      "context": {
+        "id": "012d11c803984f089d9f6a40a887ece2"
+      }
+    },
+    {
+      "id": "40a484ee93784e28b5439f9590df4a11",
+      "createdAt": "2026-10-02T23:04:30.867208+00:00",
+      "revision": 58,
+      "action": "entrant_add",
+      "context": {
+        "id": "1f332524b55247b6a42633d4ba1a0372"
+      }
+    },
+    {
+      "id": "1eee11e2750246c8b6ddf4970363ade7",
+      "createdAt": "2026-10-02T23:04:30.932087+00:00",
+      "revision": 59,
+      "action": "tournament_start",
+      "context": {
+        "id": "8d70e110c31a4cbfb3753e3af91c8442",
+        "name": "Speed Pool side event"
+      }
+    },
+    {
+      "id": "77f62383fa3a47f59e879696fed8e04b",
+      "createdAt": "2026-10-02T23:04:30.990925+00:00",
+      "revision": 60,
+      "action": "match_schedule",
+      "context": {
+        "id": "f1d95ee7d0944ad79f9979e4c185874c"
+      }
+    },
+    {
+      "id": "726b24c842a14684900d128be97960b9",
+      "createdAt": "2026-10-02T23:04:31.043418+00:00",
+      "revision": 61,
+      "action": "match_score",
+      "context": {
+        "id": "f1d95ee7d0944ad79f9979e4c185874c"
+      }
+    },
+    {
+      "id": "07cf9f12010549af8568d2785e12b786",
+      "createdAt": "2026-10-02T23:04:31.092183+00:00",
+      "revision": 62,
+      "action": "match_complete",
+      "context": {
+        "id": "f1d95ee7d0944ad79f9979e4c185874c"
+      }
+    },
+    {
+      "id": "ec5aa400fcc74a91a7065eb3d0526e48",
+      "createdAt": "2026-10-02T23:04:31.107753+00:00",
+      "revision": 63,
+      "action": "match_schedule",
+      "context": {
+        "id": "10cdefebd7fa4fc5a0e3b51111cc6db2"
+      }
+    },
+    {
+      "id": "370faa09f6664528a29a178d1dbadbe7",
+      "createdAt": "2026-10-02T23:04:31.155465+00:00",
+      "revision": 64,
+      "action": "match_score",
+      "context": {
+        "id": "10cdefebd7fa4fc5a0e3b51111cc6db2"
+      }
+    },
+    {
+      "id": "93a60257702149a791ac7cb684bed8eb",
+      "createdAt": "2026-10-02T23:04:31.176832+00:00",
+      "revision": 65,
+      "action": "match_complete",
+      "context": {
+        "id": "10cdefebd7fa4fc5a0e3b51111cc6db2"
+      }
+    },
+    {
+      "id": "5c7ff1e72228401e82fb2441b58735f7",
+      "createdAt": "2026-10-02T23:04:31.217019+00:00",
+      "revision": 66,
+      "action": "match_schedule",
+      "context": {
+        "id": "07173e578a4b4ac2a20f33587b282ada"
+      }
+    },
+    {
+      "id": "2c2feabd25e0451d985c140352fb88eb",
+      "createdAt": "2026-10-02T23:04:31.228591+00:00",
+      "revision": 67,
+      "action": "match_score",
+      "context": {
+        "id": "07173e578a4b4ac2a20f33587b282ada"
+      }
+    },
+    {
+      "id": "f26066af5cc04b21b56814b03dab90af",
+      "createdAt": "2026-10-02T23:04:31.241106+00:00",
+      "revision": 68,
+      "action": "match_complete",
+      "context": {
+        "id": "07173e578a4b4ac2a20f33587b282ada"
+      }
+    },
+    {
+      "id": "0d1dd4e123e540b4acba619161beff3d",
+      "createdAt": "2026-10-02T23:04:31.252206+00:00",
+      "revision": 69,
+      "action": "match_schedule",
+      "context": {
+        "id": "16dc98ec7ca7412a86cdedd907b96af0"
+      }
+    },
+    {
+      "id": "864101656ef44ba7a178a60e97400ddf",
+      "createdAt": "2026-10-02T23:04:31.263782+00:00",
+      "revision": 70,
+      "action": "match_score",
+      "context": {
+        "id": "16dc98ec7ca7412a86cdedd907b96af0"
+      }
+    },
+    {
+      "id": "fe5241b77edc43729247a9a9684e27b8",
+      "createdAt": "2026-10-02T23:04:31.277105+00:00",
+      "revision": 71,
+      "action": "match_complete",
+      "context": {
+        "id": "16dc98ec7ca7412a86cdedd907b96af0"
+      }
+    },
+    {
+      "id": "1aa0433abdc840b68002381ff4524799",
+      "createdAt": "2026-10-02T23:04:31.294723+00:00",
+      "revision": 72,
+      "action": "match_schedule",
+      "context": {
+        "id": "b8cb7bd1cd004d8091ec329c3bd63f36"
+      }
+    },
+    {
+      "id": "ae81fd3806c24daea28fab8853b490f5",
+      "createdAt": "2026-10-02T23:04:31.308501+00:00",
+      "revision": 73,
+      "action": "match_score",
+      "context": {
+        "id": "b8cb7bd1cd004d8091ec329c3bd63f36"
+      }
+    },
+    {
+      "id": "5966c9f60e984d33bf74b4a47a5b87e7",
+      "createdAt": "2026-10-02T23:04:31.323227+00:00",
+      "revision": 74,
+      "action": "match_complete",
+      "context": {
+        "id": "b8cb7bd1cd004d8091ec329c3bd63f36"
+      }
+    },
+    {
+      "id": "862275779e7f4efeb305c03bf4e9c88f",
+      "createdAt": "2026-10-02T23:04:31.335478+00:00",
+      "revision": 75,
+      "action": "tournament_new",
+      "context": {
+        "id": "8d70e110c31a4cbfb3753e3af91c8442",
+        "name": "Speed Pool side event"
+      }
+    },
+    {
+      "id": "ea4a11a7877d4596825ed655b47d8c8a",
+      "createdAt": "2026-10-02T23:04:31.348208+00:00",
+      "revision": 76,
+      "action": "tournament_setup",
+      "context": {
+        "id": "32454dc06ee2433483bd2c0eb8757b49",
+        "name": ""
+      }
+    },
+    {
+      "id": "adcc185c35484dc9b9aca81e8f5ee89c",
+      "createdAt": "2026-10-02T23:04:31.360580+00:00",
+      "revision": 77,
+      "action": "entrant_add",
+      "context": {
+        "id": "37d96a8d6c284a7e994990bc30d73d34"
+      }
+    },
+    {
+      "id": "d9bca2e4c6aa437b9e5c82717474d450",
+      "createdAt": "2026-10-02T23:04:31.377256+00:00",
+      "revision": 78,
+      "action": "entrant_add",
+      "context": {
+        "id": "8ce52750235c415dbb07167b2679608e"
+      }
+    },
+    {
+      "id": "ece44c4a881b4920b97dcb1d5096af14",
+      "createdAt": "2026-10-02T23:04:31.390548+00:00",
+      "revision": 79,
+      "action": "entrant_add",
+      "context": {
+        "id": "967543e60dc9485184476bd6bd11637f"
+      }
+    },
+    {
+      "id": "daaeb0d1bdd3416796cb0cd4a33a03ce",
+      "createdAt": "2026-10-02T23:04:31.407644+00:00",
+      "revision": 80,
+      "action": "entrant_add",
+      "context": {
+        "id": "2f4035828d53499da928964f289806c2"
+      }
+    },
+    {
+      "id": "2793660782284a34a8a02a920a166164",
+      "createdAt": "2026-10-02T23:04:31.423459+00:00",
+      "revision": 81,
+      "action": "entrant_add",
+      "context": {
+        "id": "4044e486263840d4b54e94dbba4e7302"
+      }
+    },
+    {
+      "id": "d20f991f0c4049af8922154a5bf70c87",
+      "createdAt": "2026-10-02T23:04:31.439936+00:00",
+      "revision": 82,
+      "action": "entrant_add",
+      "context": {
+        "id": "1a93f187af194a669123da66a2d061f1"
+      }
+    },
+    {
+      "id": "b2308f2d421b43678c41a6ba7510fa04",
+      "createdAt": "2026-10-02T23:04:31.456143+00:00",
+      "revision": 83,
+      "action": "entrant_add",
+      "context": {
+        "id": "d5453f102e234834b4ffb4e32d84d287"
+      }
+    },
+    {
+      "id": "74e6f932055d4980bd7638d2119d035a",
+      "createdAt": "2026-10-02T23:04:31.477914+00:00",
+      "revision": 84,
+      "action": "entrant_add",
+      "context": {
+        "id": "9eb64627e124494896f61bfb2695da31"
+      }
+    },
+    {
+      "id": "a6103ba1c4384d29b0945e4f97ecce0c",
+      "createdAt": "2026-10-02T23:04:31.490608+00:00",
+      "revision": 85,
+      "action": "entrant_add",
+      "context": {
+        "id": "c8844bccfef1475dbd89cf9b971703e5"
+      }
+    },
+    {
+      "id": "9bc9ea11b1904d779cdef1d284693eae",
+      "createdAt": "2026-10-02T23:04:31.504804+00:00",
+      "revision": 86,
+      "action": "entrant_add",
+      "context": {
+        "id": "1d73f48e8fcf41d2bab7aa0a6219676a"
+      }
+    },
+    {
+      "id": "af443de277984e329c58cd3320df3b26",
+      "createdAt": "2026-10-02T23:04:31.519747+00:00",
+      "revision": 87,
+      "action": "entrant_add",
+      "context": {
+        "id": "e7d96a99ddbd4e2d833045bf9ab19f5a"
+      }
+    },
+    {
+      "id": "599e933149da4a31932a98a72435c53a",
+      "createdAt": "2026-10-02T23:04:31.533958+00:00",
+      "revision": 88,
+      "action": "entrant_add",
+      "context": {
+        "id": "cbed0ebb06f94d81869b81a4b55ad8bb"
+      }
+    },
+    {
+      "id": "fef2c6329dbc410a851b8ce2be2d81c5",
+      "createdAt": "2026-10-02T23:04:31.562229+00:00",
+      "revision": 89,
+      "action": "entrant_add",
+      "context": {
+        "id": "bf08957cf73a416fa0f70f7b60002709"
+      }
+    },
+    {
+      "id": "b0e1aa9e405242c7b7de020ac9d494db",
+      "createdAt": "2026-10-02T23:04:31.576228+00:00",
+      "revision": 90,
+      "action": "entrant_add",
+      "context": {
+        "id": "92400e0fde23445abeed7df161307237"
+      }
+    },
+    {
+      "id": "19fc1ae1c85f41a4820477cabc265747",
+      "createdAt": "2026-10-02T23:04:31.593023+00:00",
+      "revision": 91,
+      "action": "entrant_add",
+      "context": {
+        "id": "1f798639c0414b2ab3dbdd999e49251b"
+      }
+    },
+    {
+      "id": "d3255fd823d946f79bced7180afc5290",
+      "createdAt": "2026-10-02T23:04:31.612887+00:00",
+      "revision": 92,
+      "action": "entrant_add",
+      "context": {
+        "id": "c38bafa53fb14da5b89b9b8f0961bc69"
+      }
+    },
+    {
+      "id": "76752cf5bcd248cfb05b14f9ed75a729",
+      "createdAt": "2026-10-02T23:04:31.626265+00:00",
+      "revision": 93,
+      "action": "tournament_start",
+      "context": {
+        "id": "32454dc06ee2433483bd2c0eb8757b49",
+        "name": "8-Ball Open · Fri 10/2"
+      }
+    },
+    {
+      "id": "d6a8464138b14c508377acd92112a621",
+      "createdAt": "2026-10-02T23:04:31.640673+00:00",
+      "revision": 94,
+      "action": "match_schedule",
+      "context": {
+        "id": "3bd49209962249ad988d141e86a3fa1a"
+      }
+    },
+    {
+      "id": "9d56b095211a4edab7b1898ffa4b48a8",
+      "createdAt": "2026-10-02T23:04:31.656836+00:00",
+      "revision": 95,
+      "action": "match_score",
+      "context": {
+        "id": "3bd49209962249ad988d141e86a3fa1a"
+      }
+    },
+    {
+      "id": "e006d211c5d14ee0a32a37d52e67d129",
+      "createdAt": "2026-10-02T23:04:31.669752+00:00",
+      "revision": 96,
+      "action": "match_complete",
+      "context": {
+        "id": "3bd49209962249ad988d141e86a3fa1a"
+      }
+    },
+    {
+      "id": "8c0cd3c3b20f4df5a0de5c7cae340ae2",
+      "createdAt": "2026-10-02T23:04:31.684652+00:00",
+      "revision": 97,
+      "action": "match_schedule",
+      "context": {
+        "id": "8342560455c54b39829a62de6bc55c0c"
+      }
+    },
+    {
+      "id": "00fb1bf92eb34aaf8035904f50922deb",
+      "createdAt": "2026-10-02T23:04:31.698182+00:00",
+      "revision": 98,
+      "action": "match_score",
+      "context": {
+        "id": "8342560455c54b39829a62de6bc55c0c"
+      }
+    },
+    {
+      "id": "042d22ad60804147b029ca906a639e3a",
+      "createdAt": "2026-10-02T23:04:31.712051+00:00",
+      "revision": 99,
+      "action": "match_complete",
+      "context": {
+        "id": "8342560455c54b39829a62de6bc55c0c"
+      }
+    },
+    {
+      "id": "0f9ea26899fd48f2b03beea24ba4da01",
+      "createdAt": "2026-10-02T23:04:31.725490+00:00",
+      "revision": 100,
+      "action": "match_schedule",
+      "context": {
+        "id": "d79ae8d4e94e4758a827c252d49efe00"
+      }
+    },
+    {
+      "id": "8858833806c048d59b4b5a746e0f9dea",
+      "createdAt": "2026-10-02T23:04:31.739681+00:00",
+      "revision": 101,
+      "action": "match_score",
+      "context": {
+        "id": "d79ae8d4e94e4758a827c252d49efe00"
+      }
+    },
+    {
+      "id": "8e69d634408a4f59afb9ea2449a68300",
+      "createdAt": "2026-10-02T23:04:31.752695+00:00",
+      "revision": 102,
+      "action": "match_complete",
+      "context": {
+        "id": "d79ae8d4e94e4758a827c252d49efe00"
+      }
+    },
+    {
+      "id": "2cb7981a35d2493da3fd02f425674f4f",
+      "createdAt": "2026-10-02T23:04:31.765840+00:00",
+      "revision": 103,
+      "action": "match_schedule",
+      "context": {
+        "id": "b970d81750db4b1f934479211c25a746"
+      }
+    },
+    {
+      "id": "0625a01e9e044d28a22aa3fd5cbf5308",
+      "createdAt": "2026-10-02T23:04:31.778980+00:00",
+      "revision": 104,
+      "action": "match_score",
+      "context": {
+        "id": "b970d81750db4b1f934479211c25a746"
+      }
+    },
+    {
+      "id": "7e37c93dad8e45e486d33e9da0aa1745",
+      "createdAt": "2026-10-02T23:04:31.790165+00:00",
+      "revision": 105,
+      "action": "match_complete",
+      "context": {
+        "id": "b970d81750db4b1f934479211c25a746"
+      }
+    },
+    {
+      "id": "081485241cbd40849ea23ec73bdf0be9",
+      "createdAt": "2026-10-02T23:04:31.801934+00:00",
+      "revision": 106,
+      "action": "match_schedule",
+      "context": {
+        "id": "342b90ddcb9d4441ae69c63ea477af36"
+      }
+    },
+    {
+      "id": "943c07622f2c4dbf8ec1a6d9985ff1e4",
+      "createdAt": "2026-10-02T23:04:31.817678+00:00",
+      "revision": 107,
+      "action": "match_score",
+      "context": {
+        "id": "342b90ddcb9d4441ae69c63ea477af36"
+      }
+    },
+    {
+      "id": "512be03d758a4b848f9836d376e093f5",
+      "createdAt": "2026-10-02T23:04:31.832529+00:00",
+      "revision": 108,
+      "action": "match_schedule",
+      "context": {
+        "id": "4574edfb66c54cc69b77943bce7c5795"
+      }
+    },
+    {
+      "id": "4a81217b749e4475996799ca2c12f618",
+      "createdAt": "2026-10-02T23:04:31.847733+00:00",
+      "revision": 109,
+      "action": "match_schedule",
+      "context": {
+        "id": "57107cbf56ba40ff8e056b759c4cfa33"
+      }
+    },
+    {
+      "id": "423c335ff944482380b3296fe7b617ec",
+      "createdAt": "2026-10-02T23:04:31.860533+00:00",
+      "revision": 110,
+      "action": "match_absence",
+      "context": {
+        "id": "a827102e0bae4fe59d42eb4cad26581c"
+      }
+    }
+  ]
+}
