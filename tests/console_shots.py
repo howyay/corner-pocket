@@ -534,10 +534,12 @@ class Browser:
     fresh browser, so the run restarts instead of dying (and records that it did).
     """
 
-    def __init__(self):
-        self.binary = next((path for path in CHROMIUM_CANDIDATES if Path(path).exists()), None)
+    def __init__(self, binary=None):
+        self.binary = binary or next((path for path in CHROMIUM_CANDIDATES if Path(path).exists()), None)
         if not self.binary:
             raise SystemExit('no chromium found in ' + ', '.join(CHROMIUM_CANDIDATES))
+        if not Path(self.binary).exists():
+            raise SystemExit('--chromium %s does not exist' % self.binary)
         self.version = subprocess.run([self.binary, '--version'], capture_output=True, text=True,
                                       timeout=120).stdout.strip()
         self.process = self.page = self.profile = self.port = None
@@ -817,6 +819,10 @@ def main():
     parser.add_argument('--loose', action='store_true', help='do not fail on a wrong pixel size or render')
     parser.add_argument('--restarts', type=int, default=2,
                         help='headless chromium restarts allowed per stalled step (default: %(default)s)')
+    parser.add_argument('--chromium', help='browser binary (default: the first of %s that exists); a '
+                                           'private copy under a different process name survives a '
+                                           'shared box where another job runs pkill -x chromium'
+                                           % ', '.join(CHROMIUM_CANDIDATES))
     parser.add_argument('--phone-mobile', action='store_true',
                         help='emulate a mobile device at 390x844 (default: plain 390x844 viewport, '
                              'because the mobile compositing path crashed the renderer on the '
@@ -896,7 +902,7 @@ def main():
         manifest['fixture_state'] = dict(revision=state.get('revision'),
                                          players=len(state.get('players', [])),
                                          archived_events=len(state.get('history', [])))
-        browser = Browser()
+        browser = Browser(args.chromium)
         browser.start()
         try:
             for size_name in sizes:
