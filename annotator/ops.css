@@ -853,3 +853,13 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .score-foot .grow{flex:1 1 100%}
   #ops-shell .score-foot button{flex:1 1 auto;padding:0 var(--sp-2);font-size:var(--fs-md)}
 }
+
+/* === Round 3, §14.7 (F10): the roster's rating column fits its own header ------------
+   Measured before at 1280 EN dark: the head cell "HOUSE RATING (MANUAL)" was 22 characters
+   of --fs-xs mono at .12em inside a 4.5rem (72 px) column, so it took three lines (42 px
+   tall against its peers' 14 px) and dragged the head row down with it. The label needs
+   22 × 6.27 + 21 × 1.32 ≈ 166 px, so the column is 11rem: the head is one line and every
+   data cell stays in the same grid (the head and the rows are separate grids sharing this
+   template, so both had to move together). The name column is minmax(0,1fr) and gave up
+   the 104 px without complaint — it measured 858 px at 1280. */
+#ops-shell .standing-head,#ops-shell .standing{grid-template-columns:2rem minmax(0,1fr) 11rem 3.5rem 4rem 3.5rem}
