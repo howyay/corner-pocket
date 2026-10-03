@@ -820,5 +820,252 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(self.ops.path.read_bytes(), saved)
 
 
+class EventBackfillTests(unittest.TestCase):
+    """docs/console-redesign.md 7.4: one past night, typed and confirmed by a person.
+
+    The server reads no video and computes no result: it refuses anything a person did not
+    confirm, refuses a broadcast this console does not know, and writes nothing at all on
+    every refusal (7.0/7.5).
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ops = Operations(self.root)
+
+    def call(self, action, **fields):
+        return self.ops.post(dict(action=action, revision=self.ops.get()['revision'], **fields))
+
+    def payload(self, event=None, source=None):
+        body = dict(
+            event=dict(name='8-Ball Open · 周一 9/1', format='singles', raceTo=7, tables=4,
+                       entrants=[dict(name='Wanwan'), dict(name='Su')],
+                       matches=[dict(round=1, sides=['Wanwan', 'Su'], score=[3, 1],
+                                     winner='Wanwan', result='played', clip=[452, 1690])]),
+            source=dict(kind='vod-backfill', vodId='1234567890', datasetId='tw-1234567890-452-1690',
+                        startS=452, endS=1690, channel='examplechannel', title='Monday night',
+                        humanReviewed=True))
+        body['event'].update(event or {})
+        body['source'].update(source or {})
+        return body
+
+    def backfill(self, **changes):
+        return self.call('event_backfill', **self.payload(**changes))
+
+    def saved(self):
+        return self.ops.path.read_bytes() if self.ops.path.exists() else None
+
+    def refuse(self, message, **changes):
+        """A refused backfill leaves the store byte-for-byte as it was (and no file at all)."""
+        before = self.saved()
+        with self.assertRaisesRegex(ValueError, message):
+            self.backfill(**changes)
+        self.assertEqual(self.saved(), before)
+
+    def refuse_payload(self, message, **fields):
+        """The same, for a request whose event/source is not even an object."""
+        before = self.saved()
+        with self.assertRaisesRegex(ValueError, message):
+            self.call('event_backfill', **fields)
+        self.assertEqual(self.saved(), before)
+
+    def imported(self, entries):
+        """The registry the single-flight import job writes under out/vods/index.json."""
+        path = self.root / 'out' / 'vods' / 'index.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dict(vods=entries)))
+
+    def test_backfill_writes_one_signed_night_and_leaves_tonight_alone(self):
+        # an event is being played right now: the backfilled night must not disturb it
+        self.call('tournament_setup', raceTo=5)
+        self.call('entrant_add', members=[{'name': 'Ada'}])
+        self.call('entrant_add', members=[{'name': 'Bo'}])
+        tonight = json.loads(json.dumps(self.call('tournament_start')['tournament']))
+        before = self.ops.get()
+
+        state = self.backfill()
+        self.assertEqual(state['revision'], before['revision'] + 1)
+        self.assertEqual(state['tournament'], tonight)
+        self.assertEqual(len(state['history']), 1)
+        night = state['history'][0]
+        self.assertEqual(night['name'], '8-Ball Open · 周一 9/1')
+        self.assertEqual((night['format'], night['tables'], night['raceTo'], night['status']),
+                         ('singles', 4, 7, 'complete'))
+        # the shape the console already renders a night with
+        self.assertEqual(night['entrants'],
+                         [dict(id=night['entrants'][0]['id'], members=[dict(pid=None, name='Wanwan')]),
+                          dict(id=night['entrants'][1]['id'], members=[dict(pid=None, name='Su')])])
+        match = night['matches'][0]
+        self.assertEqual(match['sides'], [night['entrants'][0]['id'], night['entrants'][1]['id']])
+        self.assertEqual((match['round'], match['score'], match['result'], match['clip']),
+                         (1, [3, 1], 'played', [452, 1690]))
+        self.assertEqual((match['status'], match['winnerId']), ('complete', night['entrants'][0]['id']))
+        # nobody knows when a past match ended: no timestamp is invented for it
+        self.assertNotIn('completedAt', match)
+        self.assertEqual(night['source'], dict(kind='vod-backfill', vodId='1234567890',
+                                               datasetId='tw-1234567890-452-1690', startS=452, endS=1690,
+                                               channel='examplechannel', title='Monday night',
+                                               humanReviewed=True))
+        self.assertEqual(night['signOff']['at'], night['archivedAt'])
+        # the audit line is the only record that a person wrote these results
+        self.assertEqual(state['events'][-1]['action'], 'event_backfill')
+        self.assertEqual(state['events'][-1]['context'],
+                         dict(id=night['id'], name=night['name'], vodId='1234567890',
+                              datasetId='tw-1234567890-452-1690'))
+        self.assertNotIn('Wanwan', json.dumps(state['events']))
+        self.assertEqual(Operations(self.root).get(), state)
+        self.assertEqual(json.loads(self.ops.path.read_text()), state)
+        # the night is a first-class timeline entry: hideable, but never deletable
+        with self.assertRaisesRegex(ValueError, 'cannot be deleted'):
+            self.call('tournament_delete', id=night['id'], confirm=True)
+        hidden = self.call('tournament_hide', id=night['id'], confirm=True, hidden=True)
+        self.assertEqual((hidden['history'][0]['hidden'], hidden['tournament']), (True, tonight))
+        self.assertEqual(hidden['events'][-1]['context'], dict(id=night['id'], name=night['name'], hidden=True))
+
+    def test_backfill_accepts_an_imported_range_and_keeps_its_channel_honest(self):
+        self.imported({'tw-1234567890-452-1690': dict(vod_id='1234567890', channel='examplechannel',
+                                                      title='Resolved title'),
+                       'tw-1234567890': dict(vod_id='1234567890', channel='examplechannel',
+                                             title='Full broadcast'),
+                       'tw-1234567890-2501-3000': dict(vod_id='1234567890', channel='otherchannel',
+                                                       title='Third night'),
+                       'tw-1234567890-4000-5000': dict(vod_id='1234567890', channel='otherchannel',
+                                                       title='Fourth night')})
+        state = self.backfill()
+        self.assertEqual(state['history'][0]['source']['channel'], 'examplechannel')
+        # with the channel source gone, an imported range is proof enough on its own
+        self.call('source_delete', id=self.ops.get()['sources'][0]['id'])
+        self.assertEqual(self.ops.get()['sources'], [])
+        state = self.backfill(source=dict(datasetId='tw-1234567890-2501-3000', startS=2501, endS=3000,
+                                          channel='otherchannel', title=''))
+        # a title the operator did not type is filled in from the broadcast's own metadata
+        self.assertEqual(state['history'][1]['source']['title'], 'Third night')
+        # the whole-broadcast spelling of a range inside that broadcast is accepted too
+        state = self.backfill(source=dict(datasetId='tw-1234567890', startS=1691, endS=2000,
+                                          channel='examplechannel', title=''))
+        self.assertEqual(state['history'][2]['source']['title'], 'Full broadcast')
+        # a claim that contradicts what the import resolved is refused, not stored beside it
+        self.refuse('channel does not match the channel this range was imported from',
+                    source=dict(datasetId='tw-1234567890-4000-5000', startS=4000, endS=5000,
+                                channel='examplechannel'))
+        self.refuse('for this broadcast and range', source=dict(datasetId='tw-1234567890-1-2'))
+        self.refuse('datasetId must be an imported dataset id', source=dict(datasetId='vod30'))
+        self.refuse('datasetId must be an imported dataset id', source=dict(datasetId=None))
+        self.assertEqual(len(self.ops.get()['history']), 3)
+
+    def test_backfill_accepts_a_saved_video_source_without_a_channel_claim(self):
+        self.call('source_add', url='https://www.twitch.tv/videos/1234567890')
+        state = self.backfill(source=dict(channel=''))
+        self.assertEqual(state['history'][0]['source']['channel'], None)
+
+    def test_backfill_needs_a_person_and_a_known_broadcast(self):
+        # 7.4/7.6: the confirmation mark is enforced by the server, the disabled button is not enough
+        self.refuse('humanReviewed must be true', source=dict(humanReviewed=False))
+        self.refuse('humanReviewed must be true', source=dict(humanReviewed='true'))
+        self.refuse('humanReviewed must be true', source=dict(humanReviewed=None))
+        self.refuse_payload('source object required', event=self.payload()['event'], source=None)
+        self.refuse_payload('event object required', event=None, source=self.payload()['source'])
+        self.refuse("source.kind must be 'vod-backfill'", source=dict(kind='clip'))
+        # a broadcast this console does not know: no saved source, no imported range
+        self.refuse('is not a saved source and was not imported', source=dict(channel='someoneelse'))
+        self.refuse('is not a saved source and was not imported',
+                    source=dict(channel='', vodId='7654321', datasetId='tw-7654321-452-1690'))
+        # the id is parsed by annotator/twitch_vod_source.py, and it is the only spelling allowed
+        for bad in ('not-a-vod', '', None, -1, 'https://www.twitch.tv/examplechannel'):
+            self.refuse('Twitch VOD id', source=dict(vodId=bad))
+        self.refuse('startS must be a whole number of seconds, 0 or more', source=dict(startS=-1))
+        self.refuse('startS must be a whole number of seconds, 0 or more', source=dict(startS=True))
+        self.refuse('endS must be after startS', source=dict(startS=1690, endS=452))
+        self.refuse('endS must be after startS', source=dict(startS=1690, endS=1690))
+        self.assertEqual(self.ops.get()['history'], [])
+        self.assertEqual(self.ops.get()['revision'], 0)
+        self.assertFalse(self.ops.path.exists())
+
+    def test_backfill_refuses_every_unconfirmed_result_without_writing(self):
+        def one(score, sides=('Wanwan', 'Su'), winner='Wanwan', clip=(452, 1690), **extra):
+            return dict(sides=list(sides), score=score, winner=winner, clip=list(clip), **extra)
+        self.refuse('matches must be a non-empty list', event=dict(matches=[]))
+        self.refuse('matches must be a non-empty list', event=dict(matches=None))
+        self.refuse('Two sides required', event=dict(matches=[one([3, 1], sides=['Wanwan'])]))
+        self.refuse('A match needs two different entrants',
+                    event=dict(matches=[one([3, 1], sides=['Wanwan', 'Wanwan'])]))
+        self.refuse('Every side and winner must name one of the entrants',
+                    event=dict(matches=[one([3, 1], sides=['Wanwan', 'Nobody'])]))
+        self.refuse('winner must be one of the two sides',
+                    event=dict(entrants=[dict(name='Wanwan'), dict(name='Su'), dict(name='Kai')],
+                               matches=[one([3, 1], winner='Kai')]))
+        self.refuse('score must be an integer from 0 to 99', event=dict(matches=[one([-1, 1])]))
+        self.refuse('score must be an integer from 0 to 99', event=dict(matches=[one([3, 1.5])]))
+        self.refuse('Two scores required', event=dict(matches=[one([3])]))
+        self.refuse('Two scores required', event=dict(matches=[one('3-1')]))
+        self.refuse('clip must be \\[start, end\\] in whole seconds',
+                    event=dict(matches=[one([3, 1], clip=[452])]))
+        self.refuse('clip start must be a whole number of seconds, 0 or more',
+                    event=dict(matches=[one([3, 1], clip=[-452, 1690])]))
+        self.refuse('clip end must be after clip start',
+                    event=dict(matches=[one([3, 1], clip=[1690, 1690])]))
+        self.refuse('round must be an integer from 1 to 99', event=dict(matches=[one([3, 1], round=0)]))
+        self.refuse("result must be 'played' or 'forfeit'", event=dict(matches=[one([3, 1], result='bye')]))
+        self.refuse('entrants must be a non-empty list', event=dict(entrants=[]))
+        self.refuse('Two entrants share a name', event=dict(entrants=[dict(name='Su'), dict(name='su')]))
+        self.refuse('Two entrants share an id',
+                    event=dict(entrants=[dict(id='e1', name='Su'), dict(id='e1', name='Kai')]))
+        self.refuse("type the guest's real name", event=dict(entrants=[dict(name='Su'), dict(name='bye')]))
+        self.refuse('name must contain', event=dict(name='   '))
+        self.refuse('Invalid format', event=dict(format='triples'))
+        self.refuse('tables must be an integer from 1 to 32', event=dict(tables=0))
+        self.refuse('raceTo must be an integer from 1 to 99', event=dict(raceTo='7'))
+        self.assertEqual(self.ops.get()['history'], [])
+        self.assertEqual(self.ops.get()['revision'], 0)
+        self.assertFalse(self.ops.path.exists())
+
+    def test_backfill_of_one_range_twice_is_a_conflict_that_names_the_night(self):
+        first = self.backfill()
+        night = first['history'][0]
+        saved = self.saved()
+        with self.assertRaises(ConflictError) as caught:
+            self.backfill()
+        self.assertIn(night['id'], str(caught.exception))
+        self.assertIn(night['name'], str(caught.exception))
+        self.assertIn('tw-1234567890-452-1690', str(caught.exception))
+        # a conflict is not a write: no second night, no revision, not a byte
+        self.assertEqual(self.saved(), saved)
+        self.assertEqual(self.ops.get()['history'], [night])
+        self.assertEqual(self.ops.get()['revision'], first['revision'])
+        # the whole-broadcast spelling of the very same range is the same night, too
+        with self.assertRaises(ConflictError) as caught:
+            self.backfill(source=dict(datasetId='tw-1234567890'))
+        self.assertIn(night['id'], str(caught.exception))
+        # a different range of the same broadcast is a different night
+        state = self.backfill(event=dict(name='8-Ball Open · 周二 9/2'),
+                              source=dict(vodId=1234567890, datasetId='tw-1234567890-1691-2000',
+                                          startS=1691, endS=2000))
+        self.assertEqual([item['name'] for item in state['history']],
+                         ['8-Ball Open · 周一 9/1', '8-Ball Open · 周二 9/2'])
+
+    def test_two_consoles_backfilling_at_once_write_one_night(self):
+        """One job at a time, no queue (12.5): the loser is refused, it does not wait."""
+        written, refused = [], []
+
+        def run():
+            try:
+                written.append(self.backfill())
+            except ConflictError as error:
+                refused.append(error)
+
+        threads = [threading.Thread(target=run) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(written), 1)
+        self.assertEqual(len(refused), 1)
+        state = self.ops.get()
+        self.assertEqual((state['revision'], len(state['history'])), (1, 1))
+        self.assertEqual(state['events'][-1]['action'], 'event_backfill')
+        self.assertEqual(Operations(self.root).get(), state)
+
+
 if __name__ == '__main__':
     unittest.main()
