@@ -715,13 +715,17 @@ function playEvent(index) {
 // The facts line is derived from what the painter actually drew, so
 // "overlays: none" while nodes are drawn is structurally impossible.
 // ---- stage rendering -----------------------------------------------------
+// What the frame-less stage says. Kept in one place because it is written twice:
+// baked into the markup when the stage is built, and re-read on every paint so a
+// language switch reaches a stage that was built in the other language (F3).
+const STAGE_EMPTY_COPY = 'Pick a moment on the scrub strip, or select a cue, then freeze it here.';
 function stageHTML() {
   const w = state.frameWidth || 1280, h = state.frameHeight || 720;
   return `<figure class="stage" id="stage">
     <video id="t-video" playsinline muted preload="metadata" hidden></video>
     <img id="t-img" alt="${esc(text('Raw decoded frame'))}" ${liveStill() ? `src="${esc(liveStill())}"` : state.shotUrl ? `src="${esc(state.shotUrl)}"` : ''}>
     <svg id="t-overlay" role="group" aria-label="${esc(text('Frame overlays'))}" viewBox="0 0 ${w} ${h}"></svg>
-    <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text('Pick a moment on the scrub strip, or select a cue, then freeze it here.'))}</div>
+    <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text(STAGE_EMPTY_COPY))}</div>
     <div class="stage-live" id="stage-live" ${state.source.kind === 'live' ? '' : 'hidden'}></div>
     <div class="stage-play" id="stage-play" role="status" hidden></div>
     <div class="stage-note" id="stage-note" role="status" hidden></div>
@@ -747,7 +751,15 @@ function renderStage() {
   if (img && picture && img.getAttribute('src') !== picture) img.src = picture;
   const showStill = !!state.shotUrl && !videoShown;
   if (img) img.hidden = !showStill && !liveStill();
-  const empty = $('#stage-empty'); if (empty) empty.hidden = !!state.shotUrl || !!liveStill() || videoShown;
+  const empty = $('#stage-empty');
+  if (empty) {
+    empty.hidden = !!state.shotUrl || !!liveStill() || videoShown;
+    // The sentence is generated copy, so it is re-read in the current language on
+    // every paint; the copy baked in when the stage was built kept that language
+    // next to a banner that had been translated (round-2 F3).
+    const sentence = text(STAGE_EMPTY_COPY);
+    if (empty.textContent !== sentence) empty.textContent = sentence;
+  }
   const svg = $('#t-overlay'); if (svg) { svg.setAttribute('viewBox', `0 0 ${state.frameWidth || 1280} ${state.frameHeight || 720}`); if (!svg.dataset.bound) { svg.dataset.bound = '1'; svg.onpointerdown = overlayPointerDown; svg.onpointermove = overlayPointerMove; svg.onpointerup = svg.onpointercancel = overlayPointerUp; } }
   paintOverlay(); paintLiveChip(); paintPlayChip(); paintPopover(); notify();
 }
@@ -1484,7 +1496,7 @@ async function setDataset(dataset) {
   try {
     await loadVideo();
     await loadEvents();
-  } catch (error) { notice(`${error.message}. The review API is unavailable. Use the project review server, not a file:// URL.`, true); return false; }
+  } catch (error) { notice(`${error.message}. The workspace could not load its data. Nothing was changed; reload the page to try again.`, true); return false; }
   loadClothReference().catch(() => {});
   if (state.busy) state.pendingSeek = 0;      // a decode owns the stage: it reloads frame 0 next
   else { state.pendingSeek = null; loadFrame(0); }
@@ -1604,7 +1616,7 @@ async function init() {
     loadClothReference().catch(() => {});
     loadFrame(0);
   } catch (error) {
-    notice(`${error.message}. The review API is unavailable. Use the project review server, not a file:// URL.`, true);
+    notice(`${error.message}. The workspace could not load its data. Nothing was changed; reload the page to try again.`, true);
   }
 }
 function switchMode(mode) {
@@ -1813,7 +1825,7 @@ const editorCopy = {
   'No saved corner set exists for this dataset: the model quad is drawn unverified and pocket markers stay hidden.':'此数据集没有已保存的角点集：模型四边形按未校验绘制，袋口标记不显示。',
   'Rebuild failed':'重建失败', 'Status unavailable':'状态不可用', 'A box has invalid coordinates; fix or delete it before saving.':'有标注框坐标无效；请修复或删除后再保存。',
   'Frame load failed':'帧加载失败', 'Tracks unavailable.':'轨迹不可用。', 'No VOD datasets are configured.':'尚未配置录像数据集。',
-  'The review API is unavailable. Use the project review server, not a file:// URL.':'复核 API 不可用。请通过项目复核服务器打开，而非 file:// 地址。',
+  'The workspace could not load its data. Nothing was changed; reload the page to try again.':'工作区无法加载数据。未做任何更改，请重新载入页面再试。',
   'Highlight candidates were generated with the wrong-resolution calibration. They are not valid accuracy evidence; inspect the source before judging.':'集锦候选由分辨率不匹配的标定生成，不能作为有效准确率证据；请先检查原始资料再判定。'
 };
 Object.assign(editorCopy, {
@@ -1863,7 +1875,7 @@ const editorTemplates = [
   [/^frame (\d+) · (\d+) boxes( \+ polygon)?$/, (frame, boxes, polygon) => `帧 ${frame} · ${boxes} 个标注框${polygon ? ' + 多边形' : ''}`],
   [/^(shot|cue) #(.+?) (shot|pot) @ frame (\d+) · (.+)$/, (kind, id, type, frame, verdict) => `${text(type === 'pot' ? 'pot' : 'shot')} #${id} @ 帧 ${frame} · ${text(verdict)}`],
   [/^(\d+) anchors @ t ([\d.]+)$/, (count, at) => `${count} 个锚点 @ t ${at}`],
-  [/^([\s\S]*?)\. The review API is unavailable\. Use the project review server, not a file:\/\/ URL\.$/, detail => `${detail}。复核 API 不可用。请通过项目复核服务器打开，而非 file:// 地址。`],
+  [/^([\s\S]*?)\. The workspace could not load its data\. Nothing was changed; reload the page to try again\.$/, detail => `${detail}。工作区无法加载数据。未做任何更改，请重新载入页面再试。`],
   [/^Inference completed for frame (\d+)\.$/, frame => `帧 ${frame} 推理已完成。`],
   [/^Inference completed for frame (\d+) \(not stored\)\.$/, frame => `帧 ${frame} 推理已完成（未存储）。`],
   [/^Inference running for frame (\d+): (.*)…$/, (frame, stage) => `正在对帧 ${frame} 运行推理：${stage}…`],
@@ -1935,7 +1947,9 @@ function setAppearance(lang, theme) {
     el[property] = lang === 'zh' ? zhCopy[key] || englishCopy.get(el) : englishCopy.get(el);
   });
   // Re-paint engine-rendered stage strings through text() in the new language.
-  if (changed && state.vmeta) { renderStage(); }
+  // A built stage has to be re-painted even before the first decoded frame: with
+  // no vmeta yet it still carries the empty-state sentence (round-2 F3).
+  if (changed && (state.vmeta || $('#t-overlay'))) { renderStage(); }
   notify();
 }
 window.CornerPocketReview = {
