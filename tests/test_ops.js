@@ -2791,7 +2791,11 @@ test('round 2: the disclosure marker is authored, and the list reset covers ever
   assert.ok(/#ops-shell details\.panel>summary\{[^}]*list-style:none/.test(opsCss), 'a flex summary suppresses ::marker, so it is switched off on purpose');
   assert.ok(/#ops-shell details\.panel>summary::before\{content:'▸'/.test(opsCss), 'and an authored marker replaces it');
   assert.ok(/#ops-shell details\.panel\[open\]>summary::before\{content:'▾'/.test(opsCss), 'which turns over when the panel opens');
-  assert.ok(/#ops-shell \.audit,#ops-shell \.tl-audit\{list-style:none/.test(opsCss), 'the audit folds are inside the list reset, so no bare browser triangle');
+  assert.ok(/#ops-shell \.tl-audit>summary\{[^}]*list-style:none/.test(opsCss), 'the night’s log switches ::marker off on the summary, which is where the marker lives');
+  assert.ok(/#ops-shell \.tl-audit>summary::-webkit-details-marker\{display:none\}/.test(opsCss), 'and Chrome’s own triangle goes with it');
+  assert.ok(/#ops-shell \.tl-audit>summary::before\{content:'▸'/.test(opsCss), 'so the log folds carry the same authored chevron as the panels');
+  assert.ok(/#ops-shell \.tl-audit\[open\]>summary::before\{content:'▾'\}/.test(opsCss), 'which turns over when a night opens');
+  assert.ok(!/\.audit,#ops-shell \.tl-audit\{list-style:none/.test(opsCss), 'and the details is out of the list reset: naming it there never touched a summary');
   assert.ok(/#ops-shell details\.panel>summary::-webkit-details-marker\{display:none\}/.test(opsCss), 'and the browser’s own triangle is switched off for that summary');
 });
 

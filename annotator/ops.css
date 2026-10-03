@@ -717,7 +717,7 @@ html,body{-webkit-font-smoothing:antialiased}
    full-screen step page with five steps. */
 #ops-shell .records h2{margin:0}
 #ops-shell .records .heading{margin-bottom:var(--sp-3)}
-#ops-shell .events,#ops-shell .tl-nights,#ops-shell .tl-matches,#ops-shell .bf-marks,#ops-shell .audit,#ops-shell .tl-audit{list-style:none;margin:0;padding:0}
+#ops-shell .events,#ops-shell .tl-nights,#ops-shell .tl-matches,#ops-shell .bf-marks,#ops-shell .audit{list-style:none;margin:0;padding:0}
 #ops-shell .events{display:grid;gap:var(--sp-1)}
 /* Round 2, B-13: the year and the month are the timeline's own heading levels, so the
    screen can be navigated by heading, not only by scrolling. */
@@ -736,7 +736,14 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .tl-sheet,#ops-shell .tl-source{margin:0}
 #ops-shell .tl-source{font-size:var(--fs-sm);color:var(--ink-dim)}
 #ops-shell .tl-matches{display:grid;gap:var(--sp-1);font-size:var(--fs-sm)}
-#ops-shell .tl-audit summary{cursor:pointer;font:var(--fs-sm) var(--mono);letter-spacing:.08em;color:var(--ink-dim)}
+/* Round 2, B-07: the night's log and "other saved changes" folds kept Chrome's own grey
+   disclosure triangle — the marker belongs to the summary, so the list reset above (whose
+   `.tl-audit` entry was a category error: that selector names the details, not a list) never
+   touched it. The chevron is authored here, at the panel folds' weight. */
+#ops-shell .tl-audit>summary{cursor:pointer;list-style:none;font:var(--fs-sm) var(--mono);letter-spacing:.08em;color:var(--ink-dim)}
+#ops-shell .tl-audit>summary::-webkit-details-marker{display:none}
+#ops-shell .tl-audit>summary::before{content:'▸';color:var(--brass);margin-right:var(--sp-1)}
+#ops-shell .tl-audit[open]>summary::before{content:'▾'}
 #ops-shell .audit{display:grid;gap:var(--sp-1);margin-top:var(--sp-1);font:var(--fs-xs) var(--mono);color:var(--ink-dim);max-height:16rem;overflow:auto}
 #ops-shell .standing-head,#ops-shell .standing{display:grid;grid-template-columns:2rem minmax(0,1fr) 4.5rem 3.5rem 4rem 3.5rem;gap:var(--sp-2);align-items:center}
 #ops-shell .standing-head{padding:0 var(--sp-3) var(--sp-1);font:var(--fs-xs) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
