@@ -2286,7 +2286,8 @@ test('Tonight is one tab whose state follows the night: an empty venue, entrants
   assert.equal(h.context.location.hash, '#/tonight', 'a night in progress never rewrites the URL');
   assert.ok(h.visits.every(v => v[0] === 'replace'), 'a data-driven change never pushes history');
   assert.equal(JSON.parse(h.evaluate('JSON.stringify(navTabs)'))[0], 'tonight', 'Tonight is the first tab');
-  for (const [lang, label] of [['en', 'Tonight'], ['zh', '今晚']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("navLabel('tonight')"), label); }
+  // Owner item 7 (round 5): the destination keeps its route key and is called Tournament.
+  for (const [lang, label] of [['en', 'Tournament'], ['zh', '赛事']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("navLabel('tonight')"), label, 'one destination, named once per language'); }
 });
 test('the step is a read-only scene, and no second-level menu exists anywhere in the shell', async () => {
   const h = harness({hash: '#/tonight/play'});
@@ -2374,7 +2375,11 @@ test('old phase routes fold into the one Tonight route, in place', () => {
 test('every tab id resolves to a screen, so no tab can blank the console (stage 6)', () => {
   const h = harness();
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs.filter(id=>typeof screens[id]!=="function"))')), [], 'every tab id has a screen');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(Object.keys(screens))')), ['tonight', 'records', 'vision', 'players', 'status'], 'and nothing else is a screen: the retired ones are gone, not hidden');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(Object.keys(screens))')), ['clock', 'tonight', 'records', 'vision', 'players', 'status'], 'the five destinations and the shot timer, and nothing else: the retired ones are gone, not hidden');
+  // Owner item 4 (round 5): the shot timer is a destination like any other - a route, a
+  // screen and a name - so no tab can blank it and a deep link reaches it.
+  assert.equal(h.evaluate("routeOf('#/clock')"), 'clock', 'the clock has its own route');
+  assert.equal(h.evaluate('typeof screens.clock'), 'function', 'and a screen behind it');
   assert.equal(h.evaluate('typeof screens.floor'), 'undefined', 'the Floor screen is retired');
   assert.equal(h.evaluate('typeof screens.matches'), 'undefined', 'and so is Matches');
 });
@@ -2409,8 +2414,9 @@ test('\u2264750px: the fixed bottom bar is the same five destinations, with no M
   const shell = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   assert.ok(shell.includes('<nav id="tabbar"'), 'the bottom bar is part of the shell');
   const bar = () => h.evaluate('tabbarHTML()');
-  for (const id of ['tonight', 'records', 'vision', 'players', 'status']) assert.ok(bar().includes(`data-tab="${id}"`), `${id} is a bar slot`);
-  assert.equal((bar().match(/class="tabbar-slot"/g) || []).length, 5, 'all five destinations are slots — four equal widths, none behind More');
+  for (const id of ['clock', 'tonight', 'records', 'vision', 'players', 'status']) assert.ok(bar().includes(`data-tab="${id}"`), `${id} is a bar slot`);
+  assert.equal((bar().match(/class="tabbar-slot"/g) || []).length, 6, 'the five destinations and the shot timer are slots, none behind More');
+  assert.ok(bar().indexOf('data-tab="clock"') < bar().indexOf('data-tab="tonight"'), 'and the shot timer is the first slot on the phone too (owner item 4)');
   assert.equal((bar().match(/aria-current="page"/g) || []).length, 1, 'the bar marks exactly the tab you are on');
   assert.ok(!/data-more|tabbar-more/.test(bar()), 'no More button and no panel behind it');
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(primaryNav())')), JSON.parse(h.evaluate('JSON.stringify(navTabs)')), 'the bar and the top nav render the same list');
@@ -2469,11 +2475,15 @@ test('the bar is one row: the shot timer first, the five destinations, the tools
   assert.equal(html.indexOf('class="clockbar"'), -1, 'the second timer in .tools is deleted too');
   assert.equal((html.match(/data-clock-host/g) || []).length, 1, 'one timer slot in the whole shell');
   assert.equal((html.match(/<header>/g) || []).length, 1, 'one header');
-  // The slot is the bar's first child, so the large timer is the first thing in the top bar.
-  assert.ok(bar.includes('<div class="timer-slot" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div>'),
-    'the slot is a named group with one host, empty until ops.js paints it');
-  assert.ok(bar.indexOf('class="timer-slot"') < bar.indexOf('<nav id="nav"'), 'the timer comes first');
-  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('<div class="tools"'), 'then the destinations');
+  // Owner item 4 (round 5): the slot is the nav's first child, so the large timer is the first
+  // tab of the bar and stays on screen on every destination; the destinations follow as balls 2-6.
+  assert.ok(bar.includes('<nav id="nav" aria-label="Primary / 主导航"><div class="timer-slot" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div></nav>'),
+    'the timer slot is the nav\'s first child - a named group with one host, empty until ops.js paints it');
+  assert.ok(bar.indexOf('class="timer-slot"') < bar.indexOf('</nav>'), 'the timer comes first');
+  assert.ok(bar.indexOf('</nav>') < bar.indexOf('<div class="tools"'), 'then the tools');
+  assert.ok(source.includes("$('#nav').innerHTML=timerSlotHost()+primaryNav()"), 'render() paints that same host as the nav\'s first child');
+  assert.ok(source.includes('const timerSlotHost=()=>`<div class="timer-slot" role="group" aria-label="${esc(t(\'shotTimer\'))}" data-clock-host></div>`;'),
+    'from one definition, so the shell, the pre-fetch paint and every re-render agree');
   assert.equal((bar.match(/<div class="tools">/g) || []).length, 1, 'and one tools row, unchanged');
   assert.ok(bar.includes('<span id="connection" class="badge" hidden>'), 'the connection badge still starts hidden and empty');
   assert.ok(bar.includes('data-lang="en"') && bar.includes('data-lang="zh"') && bar.includes('data-theme-group'), 'the language and theme chips are untouched');
@@ -2967,19 +2977,26 @@ test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names its
   assert.ok(source.includes('aria-keyshortcuts="Digit${key}"') && source.includes("t('keyHint')"), 'F15: every ball names its key in the markup');
   assert.ok(/aria-keyshortcuts="Digit1"[^>]*title=/.test(h.evaluate('timerHTML()')), 'F15: and the timer names its own key');
   const slot = h.evaluate('timerHTML()');
-  assert.ok(slot.includes('<i>1</i>') && slot.includes('role="img"') && slot.includes('aria-label="Ball 1 · shot timer"') && slot.includes('title="Ball 1 · shot timer"'),
-    'F16: the circled 1 is the ball, and it says so by name — never as a count of shots');
+  assert.ok(slot.includes('data-tab="clock"') && slot.includes('class="timer-tab"'),
+    'round 5 / owner item 4: the timer is the nav\'s first destination, a button like every other tab');
+  assert.ok(slot.includes('<i>1</i>') && slot.includes('aria-hidden="true" class="ball') && slot.includes('<span class="timer-tab-label">'),
+    'F16 + owner item 4: inside the tab the ball is decorative and the label names the tab - the number is never read as a count of shots');
+  h.evaluate("tab='clock'");
+  assert.ok(h.evaluate('timerHTML()').includes('class="timer-tab active"') && h.evaluate('timerHTML()').includes('aria-current="page"'),
+    'and it marks itself as the current tab when you are on it');
+  h.evaluate("tab='tonight'");
 });
 
-test('round 3 / F17: the header backfill control keeps a name when its word goes', () => {
-  assert.ok(opsHtml.includes('id="backfill-open" data-action="backfill-open"'), 'F17: the control is still the header entry point');
-  assert.ok(opsHtml.includes('aria-label="Backfill a past event from a Twitch VOD / 用 Twitch VOD 补录一场历史赛事"'), 'F17: it is named even with no visible word');
-  assert.ok(opsHtml.includes('title="Backfill a past event from a Twitch VOD / 用 Twitch VOD 补录一场历史赛事"'), 'F17: and carries the same phrase as a tooltip');
-  assert.ok(opsHtml.includes('<span class="bf-icon" aria-hidden="true">') && opsHtml.includes('<span class="bf-label">Backfill</span>'),
-    'F17: the word lives in .bf-label, so the layout can hide it below 1440 and keep the icon');
-  assert.ok(source.includes('backfillButton.innerHTML=`<span class="bf-icon"'), 'F17: render() paints that same shape in either language');
-  assert.ok(source.includes("t('backfillShort')"), 'F17: with a label short enough to hold one row');
-  assert.ok(!/backfillButton\.textContent/.test(source), 'F17: the bare textContent that made the label six words long is gone');
+test('round 3 / F17 + round 5 owner item 1: backfill is an entry point where the archive is, not in every page\'s header', () => {
+  assert.ok(!opsHtml.includes('id="backfill-open"'), 'owner item 1: no backfill control in the shared header - it was on every tab');
+  assert.ok(!source.includes('backfillButton'), 'and render() no longer paints one');
+  assert.ok(!source.includes("$('#backfill-open')"), 'nothing looks for one either');
+  // The three Records-scoped entries stay: the button on the archive list, the empty-history
+  // invitation, and the per-night badge a backfilled night carries.
+  assert.ok(source.includes("btn(t('backfillOpen'),'backfill-open','','primary')"), 'the archive list keeps its own backfill button');
+  assert.ok(source.includes("emptyNote('emptyHistory','backfill-open','backfillOpen')"), 'the empty archive still invites one');
+  assert.ok(source.includes("data-action=\"backfill-open\">${esc(t('backfill'))}"), 'and a backfilled night still links back to its VOD');
+  assert.ok(source.includes("if(a==='backfill-open'){bfOpen();return}"), 'all three still open the wizard');
 });
 
 test('round 3 / F18: the “paste a VOD link first” note sits with the field it is about', () => {
@@ -3026,4 +3043,125 @@ test('round 4 / rater 1: a name with a quote reaches every surface escaped exact
   assert.ok(!records.includes('&amp;quot;'), 'and no other screen doubles an entity');
   assert.ok(!/esc\(sideName\(/.test(source.replace(/esc\(sideName\(m,m\.sides\[0\]\)\)/g, '').replace(/esc\(sideName\(m,m\.sides\[1\]\)\)/g, '').replace(/esc\(sideName\(m,m\.winnerId\|\|m\.sides\[0\]\)\)/g, '').replace(/esc\(sideName\(m,id\)\)/g, '')),
     'sideName returns text: every remaining insertion point escapes it itself');
+});
+
+// ---- Owner round 5 (2026-10-03): the eight items sent after round 3 shipped. The assertions are
+// written in the terms the shipped file is written in - the nav's first child, the palette by ball
+// number, the one action a card keeps - so a later refactor cannot quietly put the brand, the extra
+// Save, the header Backfill button or the sync sentence back.
+
+test('round 5 / owner item 2: the browser chrome carries the work, not the brand', () => {
+  const svg = fs.readFileSync(path.join(__dirname, '../annotator/favicon.svg'), 'utf8');
+  assert.ok(!/>8</.test(svg) && !/<text/.test(svg), 'the 8-ball mark is gone from the icon, not recoloured');
+  assert.ok(svg.includes('stroke="#c8a04a"') && svg.includes('<path d="M32 11 53 32 32 53 11 32Z"'), 'the rail diamond replaces it');
+  assert.equal((svg.match(/<circle/g) || []).length, 1, "the only circle left is the diamond's centre dot");
+  for (const [file, title] of [['ops.html', 'Operations'], ['app.html', 'Review workbench'], ['board.html', 'Tonight']]) {
+    const page = fs.readFileSync(path.join(__dirname, '../annotator/' + file), 'utf8');
+    assert.ok(page.includes(`<title>${title}</title>`), `${file}: the tab is named for the work`);
+    assert.ok(!/<title>[^<]*Corner Pocket/.test(page), `${file}: no wordmark in the browser chrome`);
+  }
+  // The rasters were regenerated from the same geometry, so their sizes still match every icon link.
+  for (const [file, w, h] of [['favicon-32.png', 32, 32], ['favicon-16.png', 16, 16]]) {
+    const png = fs.readFileSync(path.join(__dirname, '../annotator/' + file));
+    assert.equal(png.readUInt32BE(16), w, `${file} is ${w}px wide`);
+    assert.equal(png.readUInt32BE(20), h, `${file} is ${h}px tall`);
+  }
+  const ico = fs.readFileSync(path.join(__dirname, '../annotator/favicon.ico'));
+  assert.equal(ico.readUInt16LE(0), 0, 'the .ico is a real icon file');
+  assert.equal(ico.readUInt16LE(2), 1, 'of the icon type');
+  assert.equal(ico.readUInt16LE(4), 3, 'with the three sizes a browser picks from');
+  const board = fs.readFileSync(path.join(__dirname, '../annotator/board.html'), 'utf8');
+  assert.equal((board.match(/Corner Pocket/g) || []).length, 1,
+    "the public board keeps the club's name once, in its masthead - the owner has not ruled on that line");
+});
+
+test('round 5 / owner item 3: the ball map is recorded, and every ball the nav draws follows it', () => {
+  const h = harness();
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(primaryNav().map((k,i)=>[ballNumber(i+2),ballColor(i+2),ballStripe(i+2)]))')),
+    [[2, '#2f6fd0', 0], [3, '#c8382f', 0], [4, '#e885ad', 0], [5, '#e07a29', 0], [6, '#2f8f4e', 0]],
+    'the five destinations are balls 2-6, solids: the timer is ball 1');
+  assert.equal(h.evaluate('ballColor(1)'), '#f2c14e', 'owner item 3: ball 1 is yellow');
+  assert.equal(h.evaluate('ballColor(7)'), '#8a5a2b', 'ball 7 is brown');
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/console-redesign.md'), 'utf8');
+  for (const [n, word, hex] of [[1, 'yellow', '#f2c14e'], [2, 'blue', '#2f6fd0'], [3, 'red', '#c8382f'], [4, 'pink', '#e885ad'],
+    [5, 'orange', '#e07a29'], [6, 'green', '#2f8f4e'], [7, 'brown', '#8a5a2b'], [8, 'black', '#1b1b1b']]) {
+    assert.ok(new RegExp(`\\|\\s*${n}\\s*\\|[^|]*${word}[^|]*\\|[^|]*${hex}`, 'i').test(doc),
+      `the contract records ball ${n} as ${word} (${hex}), so the code is not the only record`);
+  }
+  assert.ok(/9[^|]*15[^|]*stripe/i.test(doc), 'and says what 9-15 are: the same hues, striped');
+});
+
+test('round 5 / owner item 4: the shot timer is a destination of its own, first in the nav, needing no match', () => {
+  const h = harness();   // an idle venue: no tournament, no draw, nothing running
+  const tab = h.evaluate('timerHTML()');
+  assert.ok(tab.includes('data-tab="clock"') && tab.includes('class="timer-tab"'),
+    "the timer is the nav's first item and a button like every other tab");
+  assert.ok(tab.includes('data-clock') && tab.includes('data-action="clock-toggle"') && tab.includes('data-action="clock-reset"'),
+    'holding the live clock and its controls, so it keeps working on every other tab');
+  assert.ok(tab.includes('aria-label="Shot timer"'), 'the tab is named by an attribute, not only by the word inside it');
+  // The sixth item costs width: measured at 1024 EN the bar wrapped to two rows (104/92) until the
+  // slot gave back the visible word and Reset, which the clock's own screen still offers. The
+  // attribute above is what keeps the tab named once the word is hidden.
+  const narrow = opsCss.slice(opsCss.indexOf('@media (max-width:1151.98px)'));
+  assert.ok(narrow.includes('#nav>.timer-slot .timer-tab-label{display:none}'),
+    'below 1152 the visible word goes, because the sixth item does not fit in 962 px');
+  assert.ok(narrow.includes('#nav>.timer-slot [data-action="clock-reset"]{display:none}'),
+    'and so does Reset, which the clock screen behind the tab still offers');
+  const clockCode = source.slice(source.indexOf('const timerSlotHost='), source.indexOf('function render()'));
+  assert.ok(source.includes('because nothing here reads comp()'),
+    'the code says why the clock is always available: it reads no match state');
+  assert.ok(!/comp\(\)|liveComp\(\)|tournament\(\)/.test(clockCode.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')),
+    'and that holds after the comments are stripped: the clock is usable with no competition running');
+  const screen = h.evaluate('clockScreen()');
+  assert.ok(screen.includes('data-clock') && screen.includes('data-action="clock-toggle"') && screen.includes('data-action="clock-reset"'),
+    'its own screen starts, pauses and resets');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify([...clockScreen().matchAll(/data-value="(\\d+)"/g)].map(m=>m[1]))')),
+    ['20', '30', '45', '60'], 'with the same four durations as the bar');
+  assert.ok(screen.includes('class="timer-face"') && screen.includes('class="timer-progress"') && screen.includes('data-progress'),
+    'a large face and a progress rail, and nothing else competing with the time');
+  assert.ok(screen.includes(h.evaluate("esc(t('clockNotice'))")), 'and the honest note about what the clock cannot do');
+  assert.equal(h.evaluate("routeOf('#/clock')"), 'clock', 'a deep link reaches it');
+  assert.equal(h.evaluate("navLabel('clock')"), 'Shot timer', 'and it is named in the nav');
+  h.evaluate("lang='zh'");
+  assert.equal(h.evaluate("navLabel('clock')"), '击球计时', 'in either language');
+  h.evaluate("lang='en'");
+  assert.ok(h.evaluate('timerSlotHost()').includes('data-clock-host') && h.evaluate('timerSlotHost()').includes('role="group"'),
+    'the shell and every re-render paint one host from one definition');
+});
+
+test("round 5 / owner item 5: the Scorekeeper's card has one action, and it is Sign", () => {
+  const h = harness();
+  tonightNight(h, 'drawn');
+  // The card shows the match that is on a table; 'drawn' has none live yet.
+  assert.ok(!h.evaluate('tonightPanel()').includes('id="score-form"'), 'no live match, no scorecard - the table card says so instead');
+  h.evaluate("data.tournament.matches[1].status='live';data.tournament.matches[1].table=2");
+  const panel = h.evaluate('tonightPanel()');
+  const start = panel.indexOf('id="score-form"');
+  assert.ok(start > 0, 'a live match gets the scorecard on the Tonight tab');
+  const card = panel.slice(start, panel.indexOf('</form>', start));
+  assert.ok(!/<button[^>]*>\s*Save\s*<\/button>/.test(card), 'owner item 5: no plain Save beside Sign');
+  assert.ok(card.includes('name="sign" value="yes"') && card.includes('class="primary"'), 'Sign stays, and stays the one primary');
+  assert.equal((card.match(/<button/g) || []).length, 1, 'the card offers exactly one button, so there is nothing to guess between');
+  assert.ok(card.includes('required'), 'and the fields keep the browser check that replaced Save');
+  const settings = h.evaluate("setupScreen('night')");
+  assert.ok(settings.includes(`<button class="primary">${h.evaluate("esc(t('save'))")}</button>`),
+    "the night settings keep their Save: that form belongs to the Back room, not to the scorecard");
+});
+
+test('round 5 / owner item 6: the timer bar never narrates its own sync state', () => {
+  const {statusText, LABELS} = clockSync;
+  assert.equal(statusText('live', 'en', ''), '', 'live says nothing');
+  assert.equal(statusText('connecting', 'en', ''), '', 'and neither does connecting');
+  assert.equal(statusText('offline', 'zh', ''), '', 'nor offline: the time on screen is the message');
+  assert.equal(statusText('polling', 'en', ''), '', 'and nor a reconnect');
+  assert.equal(statusText('live', 'en', 'clock command failed — nothing changed'), 'clock command failed — nothing changed',
+    'only a failure speaks, and it is the sentence ops.js handed in');
+  assert.deepEqual(Object.keys(LABELS.en).sort(), ['busy', 'failed', 'kicker'],
+    'the label map holds a name and two failures, nothing else');
+  for (const dead of ['showing last known', 'live · synced', '实时 · 已同步', 'connecting…', 'connecting...', 'reconnecting —']) {
+    assert.ok(!clockSyncSource.includes(dead), `no "${dead}" copy is left in the clock's client half`);
+  }
+  assert.ok(clockSyncSource.includes("line.className = 'sync-error'"),
+    'a failure has its own element, hidden while it is empty');
+  assert.ok(/ERROR_MS = \d+/.test(clockSyncSource), 'and it clears itself on a timer');
 });

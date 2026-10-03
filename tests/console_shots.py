@@ -102,7 +102,10 @@ AFTER_STATES = [
 PUBLIC_STATES = [    dict(name='public-board', url='http://127.0.0.1:{port}/', langs=['en'],
          title='Public board（8151，只读对外看板）'),
 ]
-SIZES = {'laptop': (1280, 900), 'desktop': (1440, 900), 'phone': (390, 844)}
+SIZES = {'small': (1024, 900), 'mid': (1152, 900), 'laptop': (1280, 900),
+         'desktop': (1440, 900), 'wide': (1920, 1080), 'phone': (390, 844)}
+# Round 5 added small/mid/wide: the bar holds six items now, and the bar's claim is a
+# five-width claim, so the harness has to be able to sit at all five.
 # laptop came first in the round-3 set on purpose: 1280x900 is the viewport a blind
 # reviewer actually sat at, and it is where the bar was measured to wrap (SS14.1).
 

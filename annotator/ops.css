@@ -935,3 +935,37 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .tl-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-2);align-items:baseline}
   #ops-shell .tl-row>.tl-title,#ops-shell .tl-row>.tl-source-badge,#ops-shell .tl-row>.badge,#ops-shell .tl-row>.tl-toggle{grid-column:2;justify-self:start}
 }
+
+/* ---------------------------------------------------------------------------
+   Round 5, owner items 4 and 7 (docs/console-redesign.md SS16): the shot timer
+   is the nav's first destination, always on screen, and it has a screen of its
+   own for the whole room. The slot keeps the class and the data-clock-host the
+   clock painter and clock-sync.js already look for.
+   --------------------------------------------------------------------------- */
+#ops-shell #nav>.timer-slot{flex:none;border-right:1px solid var(--line);padding-right:var(--sp-2)}
+#ops-shell #nav>.timer-slot .timer-tab{gap:var(--sp-1h);padding-left:var(--sp-2)}
+#ops-shell #nav>.timer-slot .timer-tab-label{white-space:nowrap}
+#ops-shell .timer-card{justify-items:start}
+#ops-shell .timer-face{margin:0}
+#ops-shell .timer-face .clock{font-size:clamp(64px,13vw,176px);line-height:.92}
+#ops-shell .timer-progress{display:block;width:100%;height:6px;border:1px solid var(--line);border-radius:2px;background:var(--rail)}
+#ops-shell .timer-progress span{display:block;height:100%;background:var(--brass);transform-origin:left;transition:transform .2s linear,background-color .3s ease-out}
+#ops-shell .timer-card .presets{display:flex;gap:1px;padding:1px;border-radius:2px;background:var(--line)}
+#ops-shell .timer-card .presets button{min-width:44px;padding:0 var(--sp-2);border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font-family:var(--mono)}
+#ops-shell .timer-card .presets button.active{background:var(--brass);color:var(--brass-fg)}
+
+/* === Round 5, the owner's items 4 and 7: the sixth item's width ----------------------------
+   Measured at 1024 EN dark (out/r5/probe_bar.py, after §16.4 landed): the timer slot is 311.5 px
+   of a 962.8 px content box - word 60.5, clock 83.5, start, reset - and the six items plus the
+   tools need ~1103 px, so "Back room" (111.4 px) dropped to a second row: bar=104, nav=92, while
+   中文 still fitted at 56/44 because its labels are shorter. §14.1's contract is one row at 1024,
+   so the slot gives back what the clock tab already offers: the visible word (the button keeps
+   its aria-label, so the tab is still named "Shot timer"), Reset, and the destinations' looser
+   gaps and padding. Measured after: one row at 1024 and 1152, contentTop == header height. */
+@media (max-width:1151.98px){
+  #ops-shell #nav{gap:var(--sp-1h)}
+  #ops-shell #nav button{gap:var(--sp-1h);padding-left:var(--sp-1h);padding-right:var(--sp-2)}
+  #ops-shell #nav>.timer-slot{padding-right:var(--sp-1h)}
+  #ops-shell #nav>.timer-slot .timer-tab-label{display:none}
+  #ops-shell #nav>.timer-slot [data-action="clock-reset"]{display:none}
+}

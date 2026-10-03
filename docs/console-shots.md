@@ -197,3 +197,57 @@ commit.
   the stage's *populated* layout is still unphotographed; the rating fixture above is what a
   reviewer should use. The public board remains dark-only (round 2's B-14, the owner's call), and
   `ATTENTION_MS = 2 h` is a product judgement rather than a measurement.
+
+## 9. Round 5: the nav's sixth item, and the width it cost
+
+The owner's round-5 items made the shot timer a destination of its own, first in the nav, with ball 1
+(`docs/console-redesign.md` §16.4). That is a sixth item in a row that had ~9.6 px of slack at 1024 px,
+so the claim in §14.1 — one row, 1024 up — had to be re-measured rather than argued.
+
+**The measurement found a real regression.** At 1024 px in English the bar wrapped to two rows
+(`bar 104 · nav 92`); Chinese still fitted (56 / 44) because its labels are shorter:
+
+```
+  header 1024x900  tonight-play en bar=104 nav=92 strip=- tabbar=0 contentTop=105
+  header 1024x900  tonight-play zh bar=56  nav=44 strip=- tabbar=0 contentTop=57
+```
+
+`out/r5/probe_bar.py` (kept with the round-5 evidence) measured why: the timer slot is **311.5 px** of a
+**962.8 px** content box — the word "Shot timer" 60.5, the clock 83.5, Start, Reset — and the five
+destinations need another 546 px plus gaps, so the tools row pushed `Back room` (111.4 px) onto a
+second row. The fix trades the slot's two redundant controls for the row: below 1152 px the visible
+word and Reset go (`annotator/ops.css`), and the destinations tighten their gap and padding. The tab
+keeps its name through `aria-label`, so hiding the word cannot leave it unnamed.
+
+| Width · language | Before | After |
+| --- | --- | --- |
+| 1024 EN | bar 104 · nav 92 (two rows) | **bar 56 · nav 44** |
+| 1024 中 | 56 · 44 | 56 · 44 |
+| 1152 EN / 中 | 57.2 · 45.2 | 57.2 · 45.2 |
+| 1280 EN / 中 | 58 · 46 | 58 · 46 |
+| 1440 EN / 中 | 58 · 46 | 58 · 46 |
+| 1920 EN / 中 | 58 · 46 | 58 · 46 |
+| 390 EN / 中 | 48 · nav hidden · tabbar 53 | 48 · nav hidden · tabbar 53 |
+
+`contentTop == header height` at every one of those sizes (57 / 58.2 / 59 / 59 / 59 / 49), which is what
+"sits in one row" means in this document: nothing below the header overlaps the content.
+
+**How to reproduce.** The harness now knows the three widths §14.1 names, so the whole matrix is one
+command (the fixture and the browser are the harness's own, 8150/8151):
+
+```bash
+.venv/bin/python tests/console_shots.py --build after --measure-only \
+  --sizes small,mid,laptop,desktop,wide,phone --langs en,zh --out out/r5-measure
+# and, for the per-item geometry behind the fix:
+.venv/bin/python out/r5/probe_bar.py 1024,1152
+```
+
+**What is where.** `out/r5-measure/manifest.json` carries all 24 measurements (six widths × two
+languages × two routes) with the fixture at revision 111 and `chromium restarts: 0`; `out/r5/` keeps
+`probe_bar.py` and the raw geometry it printed. Both are gitignored evidence, not commits.
+
+- **Limits.** The harness still has no Vision state, and the round-5 change touched only the shell, the
+  clock screen and the icon, so no product surface was re-photographed: the round-3 shot set in
+  `out/console-after/` remains the last picture of the console's screens. The board is unchanged and
+  still dark-only. The 1152 px breakpoint is a measurement of 1024's overflow, not a designed
+  boundary: between 1024 and 1152 the slot shows no word and no Reset on any width.

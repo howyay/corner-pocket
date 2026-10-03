@@ -1266,3 +1266,175 @@ request (`annotator/unified_server.py:2162`). The live served-byte check is **bl
 cannot start: at 14:12 PDT on 2026-10-03 `pool-workbench.service` stopped and `/mnt/ext4dat` (the
 Postgres volume's disk) was no longer mounted, so `pool-postgres.service` fails with podman exit 125
 (`mkdir /mnt/ext4dat/podman: permission denied`). See `.pm/PROJECT.md`, "Outage".
+
+## §16 — Round 5: the owner's eight items (2026-10-03, after round 3 shipped)
+
+The owner sent eight items (m03423) while round 4 was still in flight. Six were UI changes, one was
+already satisfied in the code, and one is a feature that needs its own pass. This section is the
+record — including the two items where the honest answer was "already true, and here is the proof".
+
+### 16.1 Item 1 — the Backfill control leaves the shared header
+
+`#backfill-open` lived in `.tools`, which is shared by every tab, so a per-archive action appeared on
+the Tonight, Vision, Regulars and Back room screens. It is deleted from `annotator/ops.html`, its
+painter is deleted from `render()`, and the three entries that live where the work is stay:
+
+| Entry | Where | Markup |
+| --- | --- | --- |
+| the button on the archive list | Records, above the list | `btn(t('backfillOpen'),'backfill-open','','primary')` |
+| the empty-archive invitation | Records, empty history | `emptyNote('emptyHistory','backfill-open','backfillOpen')` |
+| the per-night source badge | Records, on a backfilled night | `data-action="backfill-open"` linking to its VOD |
+
+All three still open the wizard through the one route in the click handler
+(`if(a==='backfill-open'){bfOpen();return}`). Round 3's F17 test asserted the *header* control had a
+name when its word was hidden below 1440 px; that test is now inverted so it asserts the opposite —
+what it protected no longer exists, and the thing that does is asserted in its place.
+
+### 16.2 Item 2 — the browser chrome, which is where the brand actually was
+
+The console's top bar lost its wordmark and 8-ball in round 2 (§13.1), so the branding the owner
+still saw was the **tab**: the icon and the page title. Both are fixed.
+
+| Page | Title before | Title after |
+| --- | --- | --- |
+| `annotator/ops.html` | `Corner Pocket · Operations` | `Operations` |
+| `annotator/app.html` | `Corner Pocket · Review workbench` | `Review workbench` |
+| `annotator/board.html` | `Corner Pocket · Tonight` | `Tonight` |
+
+`annotator/favicon.svg` was an 8-ball (a black sphere with a white plate and a `8`). It is now the
+rail diamond — the same dark rounded square, `#c8a04a` diamond outline and centre dot, no digit. The
+three rasters (`favicon-32.png`, `favicon-16.png`, `favicon.ico`) were regenerated from the same
+geometry with the repo's PIL, so their sizes and every `<link rel="icon">` reference are unchanged.
+The console's own favicon was the only 8-ball left in the product: the board and the workbench link
+the same files, and the ball badges in the UI are pool balls, which is the domain, not the brand.
+
+**Open, and asked of the owner:** `annotator/board.html`'s masthead still prints
+`<p class="house">Corner Pocket</p>` above the event name. That is the last visible instance of the
+club's name — on the public display. It stays until the owner rules, because deleting it removes the
+venue's name from the scoreboard it puts on the wall.
+
+### 16.3 Item 3 — the ball map, written down
+
+The mapping the owner asked for was already implemented (`annotator/ops.js`, `ballPalette`) and
+already tested; what was missing was the record. It is now a law of the product, and the test asserts
+both the palette and this table.
+
+| # | Colour | Hex | Used by |
+| --- | --- | --- | --- |
+| 1 | yellow | `#f2c14e` | the shot timer tab (and the timer ball on the bar) |
+| 2 | blue | `#2f6fd0` | Tournament |
+| 3 | red | `#c8382f` | Records |
+| 4 | pink | `#e885ad` | Vision |
+| 5 | orange | `#e07a29` | Regulars |
+| 6 | green | `#2f8f4e` | Back room |
+| 7 | brown | `#8a5a2b` | the seventh ball, when a surface needs one |
+| 8 | black | `#1b1b1b` | the eighth |
+| 9–15 | the same seven hues, striped | — | a second rack |
+| 16+ | wraps: `(n-1) mod 15 + 1` | — | a third rack and beyond |
+
+`ballNumber()`, `ballColor()`, `ballStripe()` and `ballHTML()` are the only way any surface draws a
+ball, so the map is consistent by construction: the entrant badges in `entrantsCard()` use
+`ballHTML(i+1)`, the nav destinations use `ballHTML(i+2)` (the timer took ball 1), and nothing else in
+the product draws one (`annotator/board.js` has no ball markup).
+
+### 16.4 Items 4 and 7 — the shot timer is the first tab, and Tonight is Tournament
+
+The timer was always available but it was a *strip* inside the nav's row, and it was not a
+destination. Both are now true of it:
+
+- **The host moved inside `<nav id="nav">`** as its first child:
+  `<div class="timer-slot" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div>`. The
+  class and the `data-clock-host` attribute are unchanged, so the pre-fetch paint, `paintClockSlot()`
+  and every existing selector keep working. One definition (`timerSlotHost()`) is used by the shell,
+  by `render()` and by the tests.
+- **`timerHTML()` now renders a destination button first** — `class="timer-tab"`, `data-tab="clock"`,
+  `aria-current` when current — holding ball 1 (decorative, `aria-hidden`) and
+  `<span class="timer-tab-label">Shot timer</span>`. The tab's accessible name is therefore "Shot
+  timer" / "击球计时", **never a shot count** (round 3's F16, kept and improved).
+- **It has a screen of its own** (`clockScreen()`, route `#/clock`): the clock at
+  `clamp(64px, 13vw, 176px)`, Start/Pause, Reset, the same four durations, a progress rail, and the
+  honest note that the clock runs on this browser only. It reads no match state at all — the comment
+  in the code says so, and the test strips the comments and proves it.
+- **Shortcut keys keep their meaning**: the timer's toggle is still `Digit1`; the five destinations
+  are `Digit2`–`Digit6`, and they are balls **2–6** for exactly that reason.
+- **The phone bar** puts the timer slot first as well (six slots, same order).
+- **Tonight is now "Tournament"** / 「赛事」. Only the word changed: the route key stays `tonight`, so
+  every deep link, the scene strings and the state machine are untouched. One key (`tonightTab`) is
+  the single source of the name.
+
+### 16.5 Item 5 — the scorecard's Save
+
+The Scorekeeper's card carried a plain `Save` beside `Sign scorecard`. Save recorded the typed score
+without signing; the live +/− scoreboard already records in-play scores, so the pair was two weights
+for one job and the wrong one looked primary. Save is deleted; **Sign is the card's only button** (it
+keeps its confirm), and the fields keep `required` so the browser still refuses an empty score. The
+night-settings Save in the Back room is a different form with a different job and stays.
+
+### 16.6 Item 6 — the redundant sentence was already gone
+
+`live · synced`, `connecting…`, `reconnecting — showing last known` and `offline — showing last known`
+were removed in round 2 (§13.3): `statusText()` returns the error text or the empty string, and the
+only sentence the clock can still say is a *failure*, in a `span.sync-error` that is hidden when
+empty and clears itself after `ERROR_MS = 6000`. The owner was looking at a tab loaded before that
+change. Round 5 adds the regression test that makes it stay true: four states assert `''`, the label
+map is asserted to hold exactly `kicker`, `failed` and `busy`, and the deleted copy is asserted absent
+from the client half.
+
+### 16.7 Item 8 — every Twitch VOD (open, scoped)
+
+The backfill picker lists **one** GraphQL page of the channel's archive:
+`annotator/twitch_vod_source.py:64` queries `videos(first: %d, type: ARCHIVE)`, and
+`:171 edges = ((user.get('videos') or {}).get('edges')) or []`. "Backfill the timeline and thumbnail
+based on all Twitch VODs" therefore means:
+
+1. paginate the archive (`after: cursor`) until the channel's history is exhausted, with a bound and a
+   visible progress state, because a busy channel has thousands of VODs;
+2. carry each VOD's thumbnail and title into the picker (the Twitch API returns `thumbnailURL` /
+   `title` / `duration` on the edge already);
+3. make the Records timeline show **every** archived night it can build from them, not only the ones
+   someone backfilled by hand — the timeline already renders a `tl-source-badge` per backfilled night,
+   so the vocabulary exists.
+
+This is a feature with a network dependency and a rate limit, so it gets its own round: a plan, an
+acceptance rule (the count of timeline nights the archive can produce), and its own evidence.
+
+### 16.8 Rejected, deferred and already true
+
+| Item | Decision |
+| --- | --- |
+| a visible "Backfill" word under 1440 px | rejected: at 1024 px the English nav has ~9.6 px of slack (§15.8), and the button it belonged to is gone |
+| the board's masthead `Corner Pocket` | deferred to the owner: it is the venue's name on its public display, not chrome |
+| the ball map itself | already implemented and tested; round 5 adds the record above and the per-tab assertion |
+| the clock's status sentence | already removed in §13.3; round 5 adds the regression test |
+
+### 16.9 Evidence
+
+`tests/test_ops.js` gained one test per item (items 1, 2, 3, 4, 5, 6) and six existing assertions were
+rewritten to the new contract without weakening any of them — the bar test now asserts the timer is
+inside the nav rather than beside it, the screens map asserts six screens instead of five, the phone
+bar asserts six slots, and the F17 test asserts the header control is gone. Scores on the `r5` tree:
+`node --test tests/test_ops.js` 140 pass / 0 fail (was 134), `node tests/test_app_timeline.js` 80 / 0,
+`node tests/test_board.js` 16 / 0, `python -m unittest discover -s tests` green.
+
+**The sixth item cost width, and the measurement found it.** `tests/console_shots.py --measure-only`
+gained the three widths §14.1's claim needs (`small` 1024×900, `mid` 1152×900, `wide` 1920×1080) and
+was run over all six:
+
+| Width | Before (six items) | After the trade | nav | contentTop == header |
+| --- | --- | --- | --- | --- |
+| 1024 EN | **bar 104 · nav 92 — two rows** | 56 | 44 | 57 ✓ |
+| 1024 中 | 56 | 56 | 44 | 57 ✓ |
+| 1152 both | 57.2 | 57.2 | 45.2 | 58.2 ✓ |
+| 1280 both | 58 | 58 | 46 | 59 ✓ |
+| 1440 both | 58 | 58 | 46 | 59 ✓ |
+| 1920 both | 58 | 58 | 46 | 59 ✓ |
+| 390 both | 48 (+ tabbar 53) | 48 (+ tabbar 53) | 0 (hidden) | 49 ✓ |
+
+The wrap was English-only: `out/r5/probe_bar.py` measured the slot at 311.5 px of a 962.8 px content
+box (word 60.5, clock 83.5, start, reset) against a nav needing ~1103 px, so `Back room` (111.4 px)
+fell to a second row, while 中文 fitted at 780.9 px of nav. The fix is the media query in
+`annotator/ops.css`: below 1152 px the slot gives back the visible word and Reset — both of which the
+clock's own screen still offers — and the destinations tighten their gaps and padding. The tab keeps
+its name through `aria-label`, asserted in the test, so hiding the word cannot leave it unnamed. The
+numbers above are from `out/r5-measure/manifest.json`; the instrument is kept in `out/r5/`.
+
