@@ -838,3 +838,18 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell #nav button{gap:var(--sp-1h);padding-left:var(--sp-1h);padding-right:var(--sp-2);font-size:var(--fs-md)}
   #ops-shell #nav .ball{width:22px;height:22px;font-size:9px}
 }
+
+/* === Round 3, §14.7 (F8): "Manual, validated scoring" is not a column ----------------
+   Measured before at 390 EN dark: the phrase sat in a 50 px column of a 332 px row and
+   broke mid-word over three lines ("Manual," / "validated" / "scoring"), with 53.8 px of
+   that row left empty beside it, because .grow is `flex:1` of a flex-basis of 0% on a
+   wrapping row whose four items cannot fit together. Below 480 the row is not a row: the
+   phrase takes its own line and keeps its words whole, and the three actions share the
+   next one at --fs-md, which is what makes them fit (measured: 89 + 101 + 107 + two 8 px
+   gutters = 313 px inside 332 px). The threshold is §14.7's own ("drop the phrase below
+   480"); above it the four items fit and nothing wraps mid-word. */
+@media(max-width:480px){
+  #ops-shell .score-foot{flex-wrap:wrap}
+  #ops-shell .score-foot .grow{flex:1 1 100%}
+  #ops-shell .score-foot button{flex:1 1 auto;padding:0 var(--sp-2);font-size:var(--fs-md)}
+}
