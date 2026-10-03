@@ -2948,6 +2948,18 @@ test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names its
   assert.ok(h.evaluate('!!timer.deadline'), 'F15: Digit1 starts the shot timer, which is not a tab at all');
   await h.handlers.keydown(key(1));
   assert.ok(!h.evaluate('timer.deadline'), 'F15: pressing it again pauses');
+  // The shot clock is shared: clock-sync.js turns a click on that button into POST /api/clock, so the key has
+  // to reach the control. Calling clockToggle() behind its back started the clock on this screen only and the
+  // next server push silently undid it — measured in the browser, the deadline was rewritten 0.72 s later.
+  const wasQuery = h.context.document.querySelector, clicks = [];
+  h.context.document.querySelector = selector => selector === '#ops-shell [data-action="clock-toggle"]'
+    ? {click() { clicks.push(selector); }} : wasQuery(selector);
+  h.evaluate('timer.remaining=30;timer.deadline=null');
+  await h.handlers.keydown(key(1));
+  assert.deepEqual(clicks, ['#ops-shell [data-action="clock-toggle"]'],
+    'F15: the timer key presses the control, so every listener a mouse reaches runs too');
+  assert.ok(!h.evaluate('timer.deadline'), 'F15: and the clock is not toggled a second time behind it');
+  h.context.document.querySelector = wasQuery;
   await h.handlers.keydown({key: '2', altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, preventDefault() {}});
   assert.equal(h.evaluate('tab'), 'tonight', 'F15: a bare digit with no code still works, as plenty of tooling sends it');
   await h.handlers.keydown({code: 'Digit3', preventDefault() {}});
