@@ -42,6 +42,12 @@ independently and got the same 116 px.
 | 390x844 | tonight-play en / zh | 113 px | 117 px | `bar=116 nav=0 tabbar=53 contentTop=117` |
 | 390x844 | records en / zh | 280 px | **117 px** | the `.strip` row that had grown to 167 px on this screen is gone |
 
+**Round 3 took this bar further, and the table above is round 2's record.** The blind rater sat at
+**1280×900** — a width this pass never measured — where the same bar was still two ragged rows,
+121 px tall, and its twenty findings took the header to **57–59 px in one row from 1024 to 1920**
+(§8). The round-2 shots described here now live in `out/console-after-r2/`; `out/console-after/`
+holds round 3's.
+
 `strip=-` is the harness saying the `#strip` element it used to measure no longer exists; `nav=0`
 on the phone is the design's own rule — the five destinations move to the fixed bottom bar
 (`tabbar=53`), and the timer never leaves the top. The English desktop bar was the only one that
@@ -127,3 +133,67 @@ was not asked for.
 - **The box was loaded throughout** (load 20–33). One earlier measurement pass stalled on
   `records-zh` and one full screenshot pass wrote 0 PNGs in 23 minutes; the evidence above comes
   from the passes that completed (22 PNGs, 8 metrics, 0 problems).
+
+## 8. Round 3: the laptop width, and the twenty findings a blind rater found there
+
+The independent rater's round-2 pass sat at **1280×900** — the width round 2 never measured — and
+returned `visual 4 / clarity 3 / pass false / 20 issues`. Round 3 fixed all twenty; the ledger has
+one row each (`docs/impeccable-ledger.md`, section "Round 3 — the blind rater's twenty findings"),
+including the three this round's own probes found and no lane had claimed. This is the pictorial
+half.
+
+| viewport, 900 tall | EN dark | 中 dark | what changed |
+|---|---|---|---|
+| 1024 | 121 → **57 px** | 121 → **57 px** | `nav` holds one row (96 → 44), `.tools` one row (84 → 40), the preset chips leave the bar |
+| 1152 | 121 → **58.2 px** | 121 → **58.2 px** | as 1024 |
+| 1280 | 121 → **59 px** | 74.5 → **59 px** | the rater's own width: two ragged rows became one, with `#nav` at 44 px and `contentTop == headerHeight` |
+| 1440 | 79 → **59 px** | 79 → **59 px** | the presets come back, every chip ≥ 32 px |
+| 1920 | 79 → **59 px** | 79 → **59 px** | `#backfill-open` gets its word back (icon + word below 1440) |
+
+All 20 rows (five widths × EN/中 × dark/light) measured identical in both themes, with
+`scrollWidth == viewport`, no clipped control and no header control under 32 px. The rest of the
+twenty, from the harness's own instruments:
+
+| finding | before | after |
+|---|---|---|
+| F2, the Vision stage's empty state | 390: `figure.stage` 0 px tall, the box 48 px, the sentence's 2nd line painted on `--stage-bg` at **2.97:1** | `#stage-empty` == `figure.stage` == **372×96**, both lines on the box's own background, **6.54:1** light / **6.91:1** dark, floor 32 px with the box hidden |
+| F19, the Backfill wizard | 593.3 px in a 1218.6 px main | **1218.6 px**, prose still capped at `--measure` |
+| F13, an expanded night's matches | badges at x 222.7 / 196.4 / 282.6 / 224.4 / 294.2 / 251.2 / 308.1 | score column and badge column line up in all 7 rows at 1280 (badge right edge 1232.3) and at 390 (361) |
+| F7 / F8 / F10 | the phone tab bar's "Back room" on 2 lines; the scoring note over 3 lines; "House rating (manual)" over 3 lines | five slots 74.8×52 one line each; note 332×22.5 with the three buttons on one row; head cell 180×14, row 18 px |
+| F14 / F15 | "archive" existed only inside a sentence, and the numbered keys did nothing | the End-of-the-night card on every Back room state (1218.6×231.5, `Archive & new event` enabled, `Delete event` disabled with a `role=status` reason); real CDP presses move Digit3→`#/records`, Digit4→`#/vision`, Digit5→`#/regulars`, Digit6→`#/backroom`, Digit1 flips the timer |
+| F20, the board's clock | an unbounded "12 h 25 min" with nothing saying what it measured | labelled `Time on table` / 「台上时长」, amber + "check the table" past `ATTENTION_MS = 2 h`, and the number **freezes** at the last server-confirmed answer while the board is stale |
+
+**How to reproduce it.** The console pass is unchanged apart from the new `laptop` size:
+
+```
+.venv/bin/python tests/console_shots.py --build after \
+  --chromium /home/haoye/projects/pool-w-shots/out/browser/cp-shots \
+  --states tonight-play,records --sizes laptop,desktop,phone --langs en,zh
+```
+
+The Vision shots need a fixture that serves the review workspace, which the harness's own fixture
+does not. One command serves the seeded club, the console, the review workspace and the public
+board:
+
+```
+PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py \
+  --port 8167 --public-port 8168 --public-prefix /board --state tests/console_fixture_state.json
+```
+
+`tests/smoke_rating_fixture.py --label after` is the measuring tool for that fixture (it starts its
+own headless Chromium, because the shot harness pins its fixture to 8150/8151).
+
+**Where the round-3 pictures are.** `out/console-after/1280x900/` and `out/console-after/390x844/` —
+22 PNGs each (18 harness shots in EN and 中文, three Vision shots the harness has no state for, and
+one 中文 public board shot, since the harness pins the board to EN), plus `manifest.json` (every
+shot's pixel size, sha256, `mainChars`, and the `ops.css?v=vision-stage-22` sheet with its 547
+rules), `vision-manifest.json`, `board-zh-manifest.json` and `fixture.log`. The instruments and
+every raw number are in `out/r3m/`. All of `out/` is gitignored: this is untracked evidence, not a
+commit.
+
+- **Limits.** The harness has no Vision state and no 1024/1152/1920 sizes — the five-width header
+  matrix and the Vision geometry are `out/r3m/`'s instruments. The three Vision shots show the
+  empty stage (the shape a fixture without review tools produces), not a populated workspace, so
+  the stage's *populated* layout is still unphotographed; the rating fixture above is what a
+  reviewer should use. The public board remains dark-only (round 2's B-14, the owner's call), and
+  `ATTENTION_MS = 2 h` is a product judgement rather than a measurement.
