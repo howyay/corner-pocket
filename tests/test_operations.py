@@ -1020,6 +1020,68 @@ class EventBackfillTests(unittest.TestCase):
         self.assertEqual(self.ops.get()['revision'], 0)
         self.assertFalse(self.ops.path.exists())
 
+    def test_backfill_links_a_written_name_to_the_regular_it_names(self):
+        """6.1 / the additive `pid` row of 7.6: a night typed from a VOD counts towards a house standing."""
+        for name, rating, status in (('Wanwan', 900, 'Active'), ('Su', 900, 'Active'), ('Retired', 800, 'Inactive')):
+            self.call('player_save', name=name, rating=rating, status=status)
+        roster = {item['name']: item['id'] for item in self.ops.get()['players']}
+        state = self.backfill(event=dict(entrants=[dict(pid=roster['Wanwan']), dict(pid=roster['Su'])],
+                                         matches=[dict(round=1, sides=['Wanwan', 'Su'], score=[3, 1],
+                                                       winner='Wanwan', result='played', clip=[452, 1690])]))
+        night = state['history'][0]
+        # the entrant carries the regular it was typed from: this is what makes the standing count
+        self.assertEqual([entrant['members'] for entrant in night['entrants']],
+                         [[dict(pid=roster['Wanwan'], name='Wanwan')], [dict(pid=roster['Su'], name='Su')]])
+        self.assertEqual([match['sides'] for match in night['matches']],
+                         [[night['entrants'][0]['id'], night['entrants'][1]['id']]])
+        self.assertEqual(night['matches'][0]['winnerId'], night['entrants'][0]['id'])
+        # the name is the roster's, never the one the request spelled: a night and a standing cannot disagree
+        state = self.backfill(event=dict(name='8-Ball Open · 周二 9/2',
+                                         entrants=[dict(pid=roster['Wanwan']), dict(pid=roster['Su'])],
+                                         matches=[dict(round=1, sides=['Wanwan', 'Su'], score=[1, 3],
+                                                       winner='Su', result='played', clip=[1691, 2000])]),
+                              source=dict(datasetId='tw-1234567890-1691-2000', startS=1691, endS=2000))
+        self.assertEqual([entrant['members'][0]['pid'] for entrant in state['history'][1]['entrants']],
+                         [roster['Wanwan'], roster['Su']])
+        # a rename does not rewrite the night: the id link stays, and the screens read the live name (R12)
+        self.call('player_save', id=roster['Wanwan'], name='Wan Wan')
+        self.assertEqual(self.ops.get()['history'][0]['entrants'][0]['members'],
+                         [dict(pid=roster['Wanwan'], name='Wanwan')])
+        self.assertEqual(next(item['name'] for item in self.ops.get()['players']
+                              if item['id'] == roster['Wanwan']), 'Wan Wan')
+        # a name the roster does not hold is still a guest, and counts towards nobody
+        state = self.backfill(event=dict(name='8-Ball Open · 周三 9/3',
+                                         entrants=[dict(pid=roster['Su']), dict(name='Rico')],
+                                         matches=[dict(round=1, sides=['Su', 'Rico'], score=[3, 2],
+                                                       winner='Su', result='played', clip=[2001, 2400])]),
+                              source=dict(datasetId='tw-1234567890-2001-2400', startS=2001, endS=2400))
+        self.assertEqual([entrant['members'] for entrant in state['history'][2]['entrants']],
+                         [[dict(pid=roster['Su'], name='Su')], [dict(pid=None, name='Rico')]])
+
+    def test_backfill_refuses_a_regular_pointer_it_cannot_honour(self):
+        """An unlinked night would silently count towards nobody, so every bad pointer is refused."""
+        self.call('player_save', name='Wanwan', rating=900, status='Active')
+        self.call('player_save', name='Retired', rating=800, status='Inactive')
+        roster = {item['name']: item['id'] for item in self.ops.get()['players']}
+        self.refuse('Unknown id', event=dict(entrants=[dict(pid='nope'), dict(name='Kai')]))
+        self.refuse('Inactive player', event=dict(entrants=[dict(pid=roster['Retired']), dict(name='Kai')]))
+        self.refuse('Two entrants name the same regular',
+                    event=dict(entrants=[dict(pid=roster['Wanwan']), dict(pid=roster['Wanwan'])]))
+        # a name the roster holds is refused as a name (the fix is to send the pid), on either side
+        self.refuse('Player name already exists; send the regular as their player id',
+                    event=dict(entrants=[dict(name='Wanwan'), dict(pid=roster['Wanwan'])]))
+        self.refuse('Player name already exists; send the regular as their player id',
+                    event=dict(entrants=[dict(pid=roster['Wanwan']), dict(name='Wanwan')]))
+        self.refuse('Player name already exists; send the regular as their player id',
+                    event=dict(entrants=[dict(name='wanwan'), dict(name='Kai')]))
+        # the entrants that were never written: the night still holds exactly what a person confirmed
+        before = self.ops.get()['revision']
+        state = self.backfill(event=dict(entrants=[dict(pid=roster['Wanwan']), dict(name='Kai')],
+                                         matches=[dict(round=1, sides=['Wanwan', 'Kai'], score=[3, 0],
+                                                       winner='Wanwan', result='played', clip=[452, 1690])]))
+        self.assertEqual(state['history'][0]['entrants'][1]['members'], [dict(pid=None, name='Kai')])
+        self.assertEqual(state['revision'], before + 1)
+
     def test_backfill_of_one_range_twice_is_a_conflict_that_names_the_night(self):
         first = self.backfill()
         night = first['history'][0]

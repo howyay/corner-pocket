@@ -1268,7 +1268,8 @@ test('a renamed regular reads by their current name on every screen, archive inc
   const views = {floor: h.evaluate('floorScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('bracketScreen()'), records: h.evaluate('recordsScreen()')};
   for (const [name, html] of Object.entries(views)) assert.ok(!/>Ada</.test(html) && !/\bAda \//.test(html), `${name}: the stale snapshot name never shows`);
   assert.ok(views.matches.includes('Ada Lovelace'), 'bracket shows the current name');
-  const archive = views.records.slice(views.records.indexOf('<details'));
+  // The night's own log lives inside its timeline body (5.4), so the night is the anchor, not <details>.
+  const archive = views.records.slice(views.records.indexOf('data-event="h1"'));
   assert.ok(archive.includes('Ada Lovelace'), 'the archived event reads the live roster name for a regular');
   assert.ok(!/Ada —|— Ada\b|>Ada</.test(archive), 'the archive never falls back to the draw-time copy while the regular exists');
   assert.ok(archive.includes('Walk-in Wu'), 'a guest keeps the name typed at the desk');
@@ -1305,7 +1306,7 @@ test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', 
     assert.ok(!first.includes(`>${waiting}<`), `${lang}: the empty side of a bye never reads ${waiting}`);
     const tile = html.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1];
     assert.equal(tile, '1/2', `${lang}: byes are left out of the signed count and its total`);
-    const rec = h.evaluate('recordsScreen()'), archive = rec.slice(rec.indexOf('<details'));
+    const rec = h.evaluate('recordsScreen()'), archive = rec.slice(rec.indexOf('data-event="h1"'));
     assert.ok(archive.includes(`>${bye}<`) && !archive.includes(`${esc_(waiting)}`), `${lang}: the archive labels the bye too`);
     const play = h.evaluate('playScreen()');
     assert.equal(play.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1], '1/2', `${lang}: the Play header tile agrees`);
@@ -1417,16 +1418,28 @@ test('standings count results, not ratings; the event table sorts wins, win %, n
   assert.equal(h.evaluate('JSON.stringify(record(tournament(),"a"))'), '{"wins":1,"losses":0,"played":1}', 'a bye is neither a win nor a played match');
   assert.equal(h.evaluate('JSON.stringify(record(tournament(),"d"))'), '{"wins":1,"losses":0,"played":1}', 'a forfeit win counts as a signed result');
   assert.equal(h.evaluate('JSON.stringify(record(tournament(),"g"))'), '{"wins":0,"losses":1,"played":1}');
-  for (const [lang, rating, table, wins, played, rate] of [['en', 'House rating (manual)', 'Event table', 'Wins', 'Played', 'Win %'], ['zh', '球房评分（手动）', '本场战绩表', '胜场', '场次', '胜率']]) {
+  const cell = (standing, name, col) => {
+    const at = standing.indexOf(`>${name}<`);
+    assert.ok(at > 0, `the standing lists ${name}`);
+    const m = standing.slice(at).match(new RegExp(`data-col="${col.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>([^<]*)<`));
+    assert.ok(m, `${name}: a ${col} cell`);
+    return m[1];
+  };
+  for (const [lang, rating, table, played, wl, rate] of [['en', 'House rating (manual)', 'Event table', 'Played', 'W\u2013L', 'Win %'], ['zh', '球房评分（手动）', '本场战绩表', '场次', '胜\u2013负', '胜率']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('recordsScreen()') + h.evaluate('playScreen()');
-    const standings = html.slice(html.indexOf(`<table class="standings"`), html.indexOf('</table>', html.indexOf(`<table class="standings"`)));
-    for (const head of [rating, wins, played, rate]) assert.ok(standings.includes(`>${head}<`), `${lang}: standings column ${head}`);
-    // all-time rows: Ann 1-1 (bye excluded), Bea 2-1, Cai 0-1, Dee 1-0 (forfeit win)
-    const row = name => standings.match(new RegExp(`>${name}<[^]*?</tr>`))[0].replace(/<[^>]+>/g, '|').split('|').filter(Boolean);
-    assert.deepEqual(row('Bea').slice(-4), ['900', '2', '3', '67%']);
-    assert.deepEqual(row('Ann').slice(-4), ['100', '1', '2', '50%']);
-    assert.deepEqual(row('Dee').slice(-4), ['400', '1', '1', '100%']);
+    const html = h.evaluate('playScreen()'), standing = h.evaluate('playersScreen()');
+    for (const label of [rating, played, wl, rate]) assert.ok(standing.includes(`>${label}<`), `${lang}: standing column ${label}`);
+    // All-time, signed results only: Ann 1-1 (bye excluded), Bea 2-1 (3 played), Dee 1-0 (forfeit win).
+    assert.equal(cell(standing, 'Bea', rating), '900');
+    assert.equal(cell(standing, 'Bea', played), '3');
+    assert.equal(cell(standing, 'Bea', wl), '2\u20131');
+    assert.equal(cell(standing, 'Bea', rate), '67%');
+    assert.equal(cell(standing, 'Ann', played), '2');
+    assert.equal(cell(standing, 'Ann', wl), '1\u20131');
+    assert.equal(cell(standing, 'Ann', rate), '50%');
+    assert.equal(cell(standing, 'Dee', wl), '1\u20130');
+    assert.equal(cell(standing, 'Dee', rate), '100%');
+    assert.ok(!standing.includes('>Gus<'), `${lang}: a guest holds no house standing (6.1)`);
     const ev = html.slice(html.indexOf(`<table class="event-table"`), html.indexOf('</table>', html.indexOf(`<table class="event-table"`)));
     assert.ok(html.includes(`>${table}<`), `${lang}: event table heading`);
     const order = [...ev.matchAll(/<tr><td>\d+<\/td><td>([^<]+)</g)].map(m => m[1]);
@@ -1560,7 +1573,9 @@ test('delete only an unsigned event; otherwise hide it from history, which erase
   for (const [lang, del, hide, unhide, showHidden] of [['en', 'Delete event', 'Hide from history', 'Show in history', 'Show 1 hidden'], ['zh', '删除赛事', '从历史中隐藏', '恢复显示', '显示 1 场已隐藏']]) {
     h.evaluate(`lang='${lang}';showHidden=false`);
     const html = h.evaluate('recordsScreen()');
-    const block = id => { const i = html.indexOf(`data-id="${id}"`); return i < 0 ? '' : html.slice(html.lastIndexOf('<details', i), html.indexOf('</details>', i)); };
+    // One night is one timeline item: from its own data-event to the next night's.
+    const block = id => { const i = html.indexOf(`data-event="${id}"`); if (i < 0) return '';
+      const next = html.indexOf('data-event="', i + 12); return html.slice(i, next < 0 ? html.length : next); };
     assert.ok(block('h1').includes(`>${hide}<`) && !block('h1').includes(`>${del}<`), `${lang}: a signed event can only be hidden`);
     assert.ok(block('h2').includes(`>${del}<`), `${lang}: an unsigned event can be deleted`);
     assert.ok(!html.includes('Hidden night'), `${lang}: a hidden event is out of the list`);
@@ -1742,7 +1757,8 @@ test('every table the operations screens add sits in a .table-wrap, so a wide ta
   const bare = html => [...html.matchAll(/(.{0,40})<table\b[^>]*>/g)].filter(m => !m[1].endsWith('<div class="table-wrap">')).map(m => m[0].slice(-60));
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'player-record', id: 'pa'}}}});
   const screens = {play: h.evaluate('playScreen()'), records: h.evaluate('recordsScreen()'), record: h.evaluate('playersScreen()')};
-  assert.ok(/class="event-table"/.test(screens.play) && /class="standings"/.test(screens.records), 'the Play and Records tables render');
+  assert.ok(/class="event-table"/.test(screens.play), 'the Play event table renders');
+  assert.ok(/class="standing-head"/.test(screens.record) && /class="standing-cell"/.test(screens.record), 'the Regulars standing renders');
   assert.ok(/class="h2h"/.test(screens.record) && /class="per-event"/.test(screens.record), 'the Player record tables render');
   for (const [name, html] of Object.entries(screens)) assert.deepEqual(bare(html), [], `${name}: no table outside a .table-wrap`);
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
@@ -1937,52 +1953,250 @@ test('Records is a top-level tab with its own route, between the live night and 
   assert.equal(h.context.location.hash, '#/records', 'a click pushes the route');
   assert.equal(h.evaluate("routeOf('records')"), 'records');
 });
-test('Records holds house standings, the night log and the archive; Play keeps tonight only', () => {
+test('Records is the event timeline; the house standing lives on every Regulars row', () => {
   const h = harness();
   recordsNight(h);
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}';showHidden=false`);
-    const rec = h.evaluate('recordsScreen()'), play = h.evaluate('playScreen()');
+    const rec = h.evaluate('recordsScreen()'), play = h.evaluate('playScreen()'), regs = h.evaluate('playersScreen()');
+    const heading = h.evaluate(`t('events')`);
+    assert.ok(rec.includes(`>${heading}</h2>`), `${lang}: Records is the events timeline`);
     for (const key of ['standings', 'timeline', 'history']) {
-      const heading = h.evaluate(`t('${key}')`);
-      assert.ok(rec.includes(`>${heading}</h3>`) || rec.includes(`>${heading}</h2>`), `${lang}: Records has ${heading}`);
-      assert.ok(!play.includes(`>${heading}</h3>`), `${lang}: Play no longer carries ${heading}`);
+      const gone = h.evaluate(`t('${key}')`);
+      assert.ok(!rec.includes(`>${gone}</h2>`) && !rec.includes(`>${gone}</h3>`), `${lang}: Records no longer carries ${gone}`);
     }
-    assert.ok(rec.includes('<table class="standings"'), `${lang}: the all-time table`);
-    assert.ok(rec.includes('<ol class="timeline"'), `${lang}: the log`);
+    assert.ok(!play.includes(`>${heading}</h2>`), `${lang}: Play keeps tonight only`);
+    assert.ok(rec.includes('<ol class="events"') && rec.includes('class="tl-item"'), `${lang}: the timeline is a list of nights`);
     assert.ok(rec.includes('data-action="results-sheet" data-id="h1"') && rec.includes('data-action="rename-archived" data-id="h1"') && rec.includes('data-action="event-hide" data-id="h1"'), `${lang}: every archive control stays`);
     assert.ok(!rec.includes('Hidden night') && rec.includes('data-action="toggle-hidden"'), `${lang}: hidden nights stay hidden behind the toggle`);
+    assert.ok(regs.includes('class="standing-head"') && regs.includes('class="standing-cell"'), `${lang}: the house standing is on Regulars`);
     assert.ok(play.includes('<table class="event-table"'), `${lang}: tonight's event table stays with the Tables scoreboard`);
     assert.ok(play.includes('class="rounds"'), `${lang}: the bracket stays`);
   }
   h.evaluate('showHidden=true');
   assert.ok(h.evaluate('recordsScreen()').includes('Hidden night'), 'the toggle shows hidden nights in Records');
 });
-test('a Records standings name opens that regular\'s player record, read-only', async () => {
+test('a Regulars standing row opens that regular, and the record behind it is read-only', async () => {
   const h = harness();
   recordsNight(h);
   h.evaluate('render=()=>{}');
-  const rec = h.evaluate('recordsScreen()');
-  assert.ok(rec.includes('data-action="player-record" data-id="pb"'), 'each standings row links to the record');
+  const regs = h.evaluate('playersScreen()');
+  assert.ok(regs.includes('data-action="select-player" data-id="pb"'), 'each standing row lists that regular');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'select-player', id: 'pb'}}}});
+  const own = h.evaluate('playersScreen()');
+  assert.ok(own.includes('data-action="player-record" data-id="pb"'), 'that regular\'s own view offers the read-only record');
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'player-record', id: 'pb'}}}});
-  const open = h.evaluate('recordsScreen()');
-  assert.ok(/class="modal"[^]*Player record · Bea/.test(open), 'the record opens over Records');
+  const open = h.evaluate('playersScreen()');
+  assert.ok(/class="modal"[^]*Player record · Bea/.test(open), 'the record opens over Regulars');
   assert.ok(!open.includes('data-action="player-delete"') && !open.includes('player-form'), 'read-only: no edit or delete controls');
   assert.ok(open.includes('data-action="close-modal"'), 'it closes');
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'close-modal'}}}});
-  assert.ok(!h.evaluate('recordsScreen()').includes('class="modal"'), 'closed');
+  assert.ok(!h.evaluate('playersScreen()').includes('class="modal"'), 'closed');
   assert.equal(h.evaluate('calls.length'), 0, 'reading a record never writes');
 });
-test('Records empty states say what fills each panel, in EN and 中, with no fake rows', () => {
+test('Records empty states say what fills the timeline, in EN and 中, with no fake rows', () => {
   const h = harness();
   h.evaluate("data.players=[];data.history=[];data.events=[];data.tournament={id:'t1',name:'',format:'singles',raceTo:1,status:'registration',entrants:[],matches:[]}");
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
     const rec = h.evaluate('recordsScreen()');
-    for (const key of ['emptyStandings', 'emptyNightLog', 'emptyHistory']) assert.ok(rec.includes(h.evaluate(`esc(t('${key}'))`)), `${lang}: ${key}`);
+    assert.ok(rec.includes(h.evaluate(`esc(t('emptyHistory'))`)), `${lang}: emptyHistory`);
     assert.ok(!/<tr><td>\d/.test(rec) && !/<li[ >]/.test(rec), `${lang}: no rows on an empty club`);
-    assert.ok(rec.includes('data-tab="players"'), `${lang}: the standings empty state opens Regulars`);
+    assert.ok(rec.includes('data-action="backfill-open"'), `${lang}: the empty timeline offers the backfill`);
+    const regs = h.evaluate('playersScreen()');
+    assert.ok(regs.includes(h.evaluate(`esc(t('emptyRoster'))`)), `${lang}: the standing says what fills it`);
+    assert.ok(regs.includes('data-action="open-add-player"'), `${lang}: and it opens the new-regular form`);
+    assert.ok(!regs.includes('standing-cell'), `${lang}: no fake standing rows`);
   }
+  h.evaluate("lang='en';data.history=[{id:'h1',name:'Night',hidden:true,status:'complete',archivedAt:'2026-09-01T00:00:00Z',entrants:[],matches:[]}]");
+  const hidden = h.evaluate('recordsScreen()');
+  assert.ok(hidden.includes(h.evaluate(`esc(t('allHidden')).replace('{n}', 1)`)), 'an all-hidden club says so instead of "nothing here yet"');
+  assert.ok(hidden.includes('data-action="toggle-hidden"'), 'and offers the toggle');
+  assert.ok(!hidden.includes(h.evaluate(`esc(t('emptyHistory'))`)), 'the empty note is gone once a night exists');
+});
+const standingCell = (h, standing, name, col) => {
+  const at = standing.indexOf(`>${name}<`);
+  assert.ok(at > 0, `the standing lists ${name}`);
+  const m = standing.slice(at).match(new RegExp(`data-col="${col.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>([^<]*)<`));
+  assert.ok(m, `${name}: a ${col} cell`);
+  return m[1];
+};
+const commitDisabled = html => {
+  const at = html.indexOf('data-action="bf-commit"');
+  assert.ok(at > 0, 'the commit control is on the page');
+  const tag = html.slice(html.lastIndexOf('<button', at), html.indexOf('>', at));
+  return /\bdisabled\b/.test(tag);
+};
+test('a regular who has never played reads 0 played and —, never 0%, and the row says so (6.2)', () => {
+  const h = harness();
+  recordsNight(h);
+  h.evaluate("data.players.push({id:'pz',name:'Zed',status:'Active',rating:300,joinedAt:'2026-01-05T00:00:00Z'})");
+  const standing = h.evaluate('playersScreen()');
+  assert.ok(standing.includes('class="entry row w-full text-left standing no-record"'), 'the row admits it holds no record');
+  assert.equal(standingCell(h, standing, 'Zed', h.evaluate("t('played')")), '0');
+  assert.equal(standingCell(h, standing, 'Zed', h.evaluate("t('wl')")), '\u2014');
+  assert.equal(standingCell(h, standing, 'Zed', h.evaluate("t('winPct')")), '\u2014');
+  assert.ok(!standing.includes('>0%<'), 'nobody reads 0% for a match they never played');
+  assert.ok(standing.includes(h.evaluate("esc(t('noRecord'))")), 'and the empty cell is the — the words file holds');
+  assert.ok(standing.includes(`<p class="note">${h.evaluate("esc(t('signedOnly'))")}</p>`), 'the standing says what it counts');
+});
+test('the timeline groups nights by month, newest first, and a night opens in place (5.3/5.4)', () => {
+  const h = harness();
+  h.evaluate(`render=()=>{};lang='en';showHidden=false;openEvents.clear();
+    data.players=[{id:'pa',name:'Ann',status:'Active',rating:900,joinedAt:'2026-01-01T00:00:00Z'},{id:'pb',name:'Bea',status:'Active',rating:800,joinedAt:'2026-01-01T00:00:00Z'}];
+    const mk=(id,name,archivedAt,hidden)=>({id,name,format:'singles',raceTo:7,tables:4,status:'complete',archivedAt,hidden:!!hidden,
+      source:{kind:'vod-backfill',vodId:'1234567890',datasetId:'tw-1234567890-452-1690',startS:452,endS:1690,channel:'examplechannel',title:'Monday night',humanReviewed:true},
+      signOff:{at:'2026-09-21T03:15:00Z'},
+      entrants:[{id:id+'a',members:[{pid:'pa',name:'Ann'}]},{id:id+'b',members:[{pid:null,name:'Guest'}]}],
+      matches:[{id:id+'m',round:1,sides:[id+'a',id+'b'],score:[3,1],status:'complete',result:'played',winnerId:id+'a',absent:[]}]});
+    data.history=[mk('n1','September night','2026-09-20T12:00:00Z'),mk('n2','August night','2026-08-20T12:00:00Z'),mk('n3','July night','2026-07-20T12:00:00Z'),mk('n4','Last year','2025-12-30T12:00:00Z'),mk('h9','Hidden night','2026-06-20T12:00:00Z',true)];
+    data.events=[{action:'event_backfill',createdAt:'2026-09-21T00:00:00Z',revision:9,context:{id:'n1',name:'September night',vodId:'1234567890',datasetId:'tw-1234567890-452-1690'}}]`);
+  const html = h.evaluate('recordsScreen()');
+  assert.deepEqual([...html.matchAll(/data-event="([^"]+)"/g)].map(m => m[1]), ['n1', 'n2', 'n3', 'n4'], 'newest first, and a hidden night stays out until asked for');
+  assert.deepEqual([...html.matchAll(/class="tl-year">([^<]*)</g)].map(m => m[1]), ['2026', '2025'], 'one year head per year, not per night');
+  const months = [...html.matchAll(/class="tl-month">([^<]*)</g)].map(m => m[1]);
+  assert.equal(months.length, 4, 'one month head per month');
+  assert.deepEqual(months, ['2026-09-20', '2026-08-20', '2026-07-20', '2025-12-30'].map(day => h.evaluate(`monthLabel(new Date('${day}T12:00:00Z'))`)), 'and the months read in order');
+  assert.ok(html.includes('id="tl-body-n1" hidden') && !html.includes('aria-expanded="true"'), 'a night starts folded');
+  assert.ok(html.includes(h.evaluate("esc(t('signedLine').replace('{n}',1))")), 'the row counts signed results');
+  assert.ok(html.includes(h.evaluate("esc(t('backfill'))")), 'and it is marked as a backfilled night');
+  h.evaluate("openEvents.add('n1')");
+  const open = h.evaluate('recordsScreen()');
+  assert.ok(open.includes('id="tl-body-n1">') && !open.includes('id="tl-body-n1" hidden'), 'opening one night does not leave it');
+  assert.ok(open.includes('aria-expanded="true"') && open.includes(h.evaluate("esc(t('tlCollapse'))")), 'the toggle flips');
+  const body = open.slice(open.indexOf('id="tl-body-n1"'), open.indexOf('data-event="n2"'));
+  assert.ok(body.includes(h.evaluate("esc(t('resultsSheet'))")) && body.includes(h.evaluate("esc(t('renameEvent'))")) && body.includes(h.evaluate("esc(t('hideEvent'))")), 'the sheet, the rename and the hide are in the body');
+  assert.ok(!body.includes(h.evaluate("esc(t('deleteEvent'))")), 'a night with a signed result is never deletable');
+  assert.ok(body.includes(`Round 1 \u00b7 Ann \u2014 Guest \u00b7 3\u20131`), 'the body lists the results as a person would read them');
+  assert.ok(body.includes('href="https://www.twitch.tv/videos/1234567890"'), 'the source row links to the broadcast the night was typed from');
+  assert.ok(body.includes(`<summary>${h.evaluate("esc(t('auditTrail'))")} (1)</summary>`), 'and the night carries its own audit fold');
+  h.evaluate('showHidden=true');
+  const all = h.evaluate('recordsScreen()');
+  assert.ok(all.includes('data-event="h9"') && all.includes('tl-item is-hidden'), 'the hidden night shows up as hidden, and is still there');
+});
+test('the backfill is five human steps, and the page never pretends to detect anything (7.1)', () => {
+  const h = harness();
+  h.evaluate(`render=()=>{};lang='en';bf=bfFresh();
+    bf.recent=[{channel:'examplechannel',error:null,vods:[{id:'1234567890',title:'Monday night',created_at:'2026-09-02T04:00:00Z',length_s:7200}]}]`);
+  const step = n => h.evaluate(`t('bfStep').replace('{n}',${n})`);
+  const pick = h.evaluate('bfScreen()');
+  assert.ok(pick.includes('data-step="pick"') && pick.includes(step(1)), 'step 1: pick a broadcast');
+  assert.ok(pick.includes('data-length="7200"') && pick.includes('data-title="Monday night"') && pick.includes(h.evaluate("esc(t('bfPick'))")), 'the picker carries the length, so the estimate is about this broadcast');
+  assert.ok(pick.includes('data-action="bf-exit"'), 'leaving is always one click');
+  h.evaluate("bfPickVod('1234567890',7200,'Monday night')");
+  const verify = h.evaluate('bfScreen()');
+  assert.ok(verify.includes('data-step="verify"') && verify.includes(step(2)), 'step 2: choose the range');
+  assert.ok(verify.includes('id="bf-start"') && verify.includes('id="bf-length"'), 'by typing where it starts, not by trusting a machine');
+  h.evaluate(`bf.startS=452;bf.endS=1690;bf.datasetId='tw-1234567890-452-1690';
+    bf.estimate={estimate_bytes:1200000000,disk:{free_bytes:84000000000,needed_bytes:1500000000,ok:true},already_imported:false}`);
+  const estimate = h.evaluate('bfScreen()');
+  assert.ok(/<p class="bf-estimate" role="status">/.test(estimate), 'the estimate is a stated fact');
+  assert.ok(estimate.includes('1.2 GB') && estimate.includes('84.0 GB'), 'the size and the free space, in real units');
+  assert.ok(estimate.includes('data-action="bf-start-import"') && estimate.includes('data-action="bf-choose-other"'), 'the import is one explicit click, never automatic');
+  h.evaluate("bf.step='importing';bf.job={percent:42,eta_s:300,rate_mb_s:12}");
+  const importing = h.evaluate('bfScreen()');
+  assert.ok(importing.includes('data-step="importing"') && importing.includes(step(3)), 'step 3: the download is visible');
+  assert.ok(importing.includes('role="progressbar"') && importing.includes('aria-valuenow="42"'), 'with a real percentage rather than a spinner');
+  assert.ok(importing.includes('data-action="bf-poll"'), 'and it can be left and come back to');
+  h.evaluate("bf.step='dataset';bf.datasetTitle='Monday night'");
+  const dataset = h.evaluate('bfScreen()');
+  assert.ok(dataset.includes('data-step="dataset"') && dataset.includes(step(4)), 'step 4: which night was this?');
+  assert.ok(dataset.includes(h.evaluate("esc(t('bfWhichNight'))")), 'the page asks the operator');
+  assert.ok(dataset.includes('id="bf-night-name"') && dataset.includes('id="bf-night-format"') && dataset.includes('id="bf-night-race"'), 'the name, the format and the race are typed by a person');
+  h.evaluate('bfStartMarking()');
+  const marking = h.evaluate('bfScreen()');
+  assert.ok(marking.includes('data-step="marking"'), 'step 4 continues: marking');
+  assert.ok(marking.includes('id="bf-media"') && marking.includes('/media/tw-1234567890-452-1690/video'), 'the video on the page is the range that was imported');
+  assert.ok(marking.includes(h.evaluate("esc(t('bfManual'))")), 'and the page says every boundary is marked by hand');
+  h.evaluate('bf.clock=452;bfMarkStart();bf.clock=780;bfMarkEnd();bf.clock=1690;bfMarkStart();bf.clock=2000;bfMarkEnd()');
+  const marked = h.evaluate('bfScreen()');
+  assert.ok(marked.includes(h.evaluate("esc(t('bfMarked').replace('{n}',2))")), 'two matches marked');
+  assert.equal([...marked.matchAll(/<li[ >]/g)].length, 2, 'one row per mark');
+  assert.ok(marked.includes('data-action="bf-unmark" data-id="0"'), 'a wrong mark can be dropped');
+  assert.ok(marked.includes('data-action="bf-to-review"'), 'and the next step is explicit');
+  h.evaluate('bfToReview()');
+  const review = h.evaluate('bfScreen()');
+  assert.ok(review.includes('data-step="review"') && review.includes(step(5)), 'step 5: confirm every result');
+  assert.ok(review.includes(h.evaluate("esc(t('bfHonest'))")), 'the page says nothing here was detected automatically');
+  assert.ok(review.includes('id="bf-review-form"') && review.includes('data-action="bf-confirm" data-id="0"'), 'one row per marked match, each waiting for a person');
+  assert.ok(review.includes(h.evaluate("esc(t('bfUnconfirmed').replace('{n}',2))")), 'and it says how many are still unconfirmed');
+  assert.ok(review.includes('data-action="bf-to-marking"'), 'going back to the marks is one click');
+});
+test('a backfilled night cannot be committed without a person confirming every row, and the payload says so (7.0/7.5)', async () => {
+  const h = harness();
+  h.evaluate(`render=()=>{};lang='en';data.players=[{id:'pa',name:'Ann',status:'Active',rating:900,joinedAt:'2026-01-01T00:00:00Z'}];
+    bf=bfFresh();bf.vod={id:'1234567890',channel:'examplechannel',title:'Monday night',length_s:7200};bf.datasetId='tw-1234567890-452-1690';bf.datasetTitle='Monday night';bf.startS=452;bf.endS=1690;
+    bfStartMarking();bf.clock=452;bfMarkStart();bf.clock=780;bfMarkEnd();bf.clock=1690;bfMarkStart();bf.clock=2000;bfMarkEnd();bfToReview();
+    bf.draft[0].sides=['Ann','Guest'];bf.draft[0].winner='Ann';bf.draft[0].score=[3,1];
+    bf.draft[1].sides=['Ann','Guest'];bf.draft[1].winner='Guest';bf.draft[1].score=[2,3]`);
+  h.context.sent = [];
+  h.context.fetch = async (url, options) => { h.context.sent.push({url, payload: JSON.parse(options.body)}); return {status: 200, ok: true, json: async () => h.evaluate("Object.assign({},data,{revision:data.revision+1,history:[{id:'h9',name:'Monday night',source:{datasetId:'tw-1234567890-452-1690'}}]})")}; };
+  await h.evaluate('bfCommit()');
+  assert.equal(h.context.sent.length, 0, 'nothing is written while a row is unconfirmed');
+  assert.equal(h.evaluate('bf.notice'), h.evaluate("t('bfUnconfirmed').replace('{n}',2)"));
+  assert.ok(commitDisabled(h.evaluate('bfScreen()')), 'and the commit control is disabled, not just discouraged');
+  h.evaluate('bfConfirm(0);bfConfirm(1)');
+  assert.equal(h.evaluate('bf.draft.filter(m=>!m.confirmed).length'), 0);
+  assert.ok(!commitDisabled(h.evaluate('bfScreen()')), 'confirmed rows enable the commit');
+  const revision = h.evaluate('data.revision');
+  await h.evaluate('bfCommit()');
+  assert.equal(h.context.sent.length, 1, 'one confirmed night, one write');
+  const sent = h.context.sent[0];
+  assert.equal(sent.url, '/api/operations');
+  assert.equal(sent.payload.action, 'event_backfill');
+  assert.equal(sent.payload.revision, revision, 'the write carries the revision it was read at');
+  assert.equal(h.evaluate('data.revision'), revision + 1, 'and the console adopts the state the server answered with');
+  assert.equal(sent.payload.source.kind, 'vod-backfill');
+  assert.equal(sent.payload.source.humanReviewed, true, 'the server enforces this mark; the disabled button is not enough');
+  assert.equal(sent.payload.source.datasetId, 'tw-1234567890-452-1690');
+  assert.deepEqual(sent.payload.event.entrants, [{pid: 'pa', name: 'Ann'}, {name: 'Guest'}], 'a typed regular is written as their roster row, a guest as a name');
+  assert.deepEqual(sent.payload.event.matches, [
+    {round: 1, sides: ['Ann', 'Guest'], score: [3, 1], winner: 'Ann', result: 'played', clip: [452, 780]},
+    {round: 1, sides: ['Ann', 'Guest'], score: [2, 3], winner: 'Guest', result: 'played', clip: [1690, 2000]}
+  ], 'the clip boundaries the operator marked, and no invented result');
+  assert.equal(h.evaluate('bf.step'), 'done', 'the night is written and the flow ends');
+  assert.ok(h.evaluate('bfScreen()').includes('data-action="bf-open-timeline"'));
+  // the same range cannot be written twice: the server refuses and the console offers the night instead
+  h.evaluate(`bf=bfFresh();bf.vod={id:'1234567890',channel:'examplechannel',title:'Monday night',length_s:7200};bf.datasetId='tw-1234567890-452-1690';bf.datasetTitle='Monday night';bf.startS=452;bf.endS=1690;
+    bfStartMarking();bf.clock=452;bfMarkStart();bf.clock=780;bfMarkEnd();bfToReview();bf.draft[0].sides=['Ann','Guest'];bf.draft[0].winner='Ann';bf.draft[0].score=[3,1];bfConfirm(0)`);
+  h.context.fetch = async () => ({status: 409, ok: false, json: async () => ({error: 'A night already covers this broadcast and range (tw-1234567890-452-1690)'})});
+  await h.evaluate('bfCommit()');
+  assert.equal(h.evaluate('bf.notice'), h.evaluate("t('bfSameVod')"));
+  assert.ok(h.evaluate('bfScreen()').includes('data-action="bf-open-night"'), 'a 409 offers the night that already exists instead of overwriting it');
+  assert.equal(h.evaluate('bf.draft.length'), 1, 'and it keeps the marks');
+});
+test('a range that is already downloaded is reused, and a typed regular counts towards their standing (7.3/6.1)', async () => {
+  const h = harness();
+  h.evaluate(`render=()=>{};lang='en';
+    data.players=[{id:'pa',name:'Ann',status:'Active',rating:900,joinedAt:'2026-01-01T00:00:00Z'},{id:'pb',name:'Bea',status:'Active',rating:800,joinedAt:'2026-01-01T00:00:00Z'}];
+    data.history=[{id:'h1',name:'Monday night',format:'singles',raceTo:7,tables:4,status:'complete',archivedAt:'2026-09-01T12:00:00Z',
+      source:{kind:'vod-backfill',vodId:'1234567890',datasetId:'tw-1234567890-452-1690',startS:452,endS:1690,channel:'examplechannel',title:'Monday night',humanReviewed:true},
+      signOff:{at:'2026-09-02T03:15:00Z'},
+      entrants:[{id:'e1',members:[{pid:'pa',name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Rico'}]}],
+      matches:[{id:'m1',round:1,sides:['e1','e2'],score:[3,1],status:'complete',result:'played',winnerId:'e1',absent:[]}]}];
+    bf=bfFresh();bf.recent=[{channel:'examplechannel',error:null,vods:[{id:'1234567890',title:'Monday night',created_at:'2026-09-02T04:00:00Z',length_s:7200,imported:['tw-1234567890-452-1690']}]}]`);
+  const pick = h.evaluate('bfScreen()');
+  assert.ok(pick.includes(h.evaluate("esc(t('bfReuse'))")), 'the picker says this range is already downloaded');
+  h.evaluate("bfPickVod('1234567890',7200,'Monday night');bf.estimate={estimate_bytes:1200000000,disk:{free_bytes:84000000000,needed_bytes:1500000000,ok:true},already_imported:true}");
+  const verify = h.evaluate('bfScreen()');
+  assert.ok(verify.includes('data-action="bf-use-imported"') && verify.includes(h.evaluate("esc(t('bfReuse'))")), 'and offers the range it holds instead of downloading it again');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'bf-use-imported'}}}});
+  assert.equal(h.evaluate('bf.step'), 'dataset', 'reusing it goes straight to naming the night');
+  assert.equal(h.evaluate('bfUseImported() || bf.notice'), h.evaluate("t('bfReuse')"), 'and the reuse is said out loud, in the operator’s words');
+  assert.equal(h.evaluate(`JSON.stringify(bfEntrants(['Ann','Bea','Rico']))`),
+    JSON.stringify([{pid: 'pa', name: 'Ann'}, {pid: 'pb', name: 'Bea'}, {name: 'Rico'}]), 'a name the roster holds is sent as that regular');
+  assert.ok(h.evaluate("bfPersonBadge('Ann')").includes(h.evaluate("esc(t('member'))")), 'a regular is marked as one at the point of typing');
+  assert.ok(h.evaluate("bfPersonBadge('Rico')").includes(h.evaluate("esc(t('guest'))")), 'a guest is marked as counting towards nobody');
+  assert.equal(h.evaluate("bfPlayerFor('\uff21\uff4e\uff4e')?.id"), 'pa', 'the name is folded the way the search folds it, so full-width typing still finds the regular');
+  h.evaluate("bf.step='review';bf.draft=[{start:452,end:780,sides:['Ann','Rico'],winner:'Ann',score:[3,1],confirmed:true}]");
+  const review = h.evaluate('bfScreen()');
+  assert.ok(review.includes(h.evaluate("esc(t('bfLinkedCount').replace('{n}',1).replace('{m}',2))")), 'the review says exactly how many of the names are regulars');
+  assert.ok(review.includes('badge bf-linked'), 'and every name carries its badge');
+  const standing = h.evaluate('playersScreen()');
+  assert.equal(standingCell(h, standing, 'Ann', h.evaluate("t('played')")), '1', 'the backfilled night counts towards the regular it names');
+  assert.equal(standingCell(h, standing, 'Ann', h.evaluate("t('wl')")), `1\u20130`);
+  assert.equal(standingCell(h, standing, 'Ann', h.evaluate("t('winPct')")), '100%');
+  assert.ok(!/>Rico</.test(standing), 'and the guest counts towards nobody');
 });
 // ---- IA C′ stage 4: the Tonight tab. A phase strip (Register · Rack · Play · Close), every phase always
 // reachable, the default is the night's own phase, and Register holds everything the night needs before the draw.

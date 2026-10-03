@@ -324,20 +324,35 @@ class Operations:
                     channel=channel or None, title=title or None, humanReviewed=True)
 
     @staticmethod
-    def _backfill_entrants(entrants):
+    def _backfill_entrants(s, entrants):
         """The entrants of a backfilled night in the shape this store already uses, plus the
         resolver from a written side to the entrant it names.
 
         A side is written as the entrant's id when the payload carries one and as their name
         when it does not; names are unique inside the night, so a reference is never ambiguous.
+        A named regular is written as their roster row (`pid`), so a past night counts towards
+        that regular's house standing (6.1); a name nobody on the roster holds stays a guest.
         """
         if not isinstance(entrants, list) or not entrants:
             raise ValueError('entrants must be a non-empty list')
-        rows, by_id, by_name = [], {}, {}
+        rows, by_id, by_name, by_pid = [], {}, {}, {}
         for row in entrants:
             if not isinstance(row, dict):
                 raise ValueError('Invalid entrant')
-            name = text(row.get('name'), 'entrant name', 120)
+            pid = row.get('pid')
+            if pid is None:
+                name, guest = text(row.get('name'), 'entrant name', 120), None
+                if any(item['name'].casefold() == name.casefold() for item in s['players']):
+                    raise ValueError('Player name already exists; send the regular as their player id')
+            else:
+                player = next((item for item in s['players'] if item['id'] == pid), None)
+                if player is None:
+                    raise ValueError('Unknown id')
+                if player['status'] == 'Inactive':
+                    raise ValueError('Inactive player')
+                if player['id'] in by_pid:
+                    raise ValueError('Two entrants name the same regular')
+                name, guest = player['name'], player['id']
             if name_key(name) in PLACEHOLDER_NAMES:
                 raise ValueError("A bye is added by the draw; type the guest's real name")
             ident = row.get('id')
@@ -348,7 +363,9 @@ class Operations:
                 raise ValueError('Two entrants share a name')
             by_id[ident] = ident
             by_name[name_key(name)] = ident
-            rows.append(dict(id=ident, members=[dict(pid=None, name=name)]))
+            if guest:
+                by_pid[guest] = ident
+            rows.append(dict(id=ident, members=[dict(pid=guest, name=name)]))
 
         def side(value):
             key = value.strip() if isinstance(value, str) else ''
@@ -427,7 +444,7 @@ class Operations:
         race_to = integer(event.get('raceTo', 1), 1, 99, 'raceTo')
         # Nothing below writes to the store before every field has been accepted.
         line = self._backfill_source(s, source, vod, start, end)
-        entrants, side = self._backfill_entrants(event.get('entrants'))
+        entrants, side = self._backfill_entrants(s, event.get('entrants'))
         matches = self._backfill_matches(event.get('matches'), side)
         signed = timestamp()
         s['history'].append(dict(id=uid(), name=name, format=fmt, tables=tables, raceTo=race_to,
