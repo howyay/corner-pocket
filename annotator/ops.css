@@ -693,8 +693,16 @@ html,body{-webkit-font-smoothing:antialiased}
      and the toast can sit above it without guessing. */
   #ops-shell{--tabbar-h:calc(52px + env(safe-area-inset-bottom))}
   #ops-shell #nav{display:none}
-  #ops-shell #tabbar{display:flex;flex-wrap:wrap;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel2);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-  #ops-shell #tabbar .tabbar-slot{flex:1 1 0;min-height:52px;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.12em;text-transform:uppercase}
+  #ops-shell #tabbar{display:flex;flex-wrap:wrap;gap:var(--sp-1);position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel2);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  /* Round 3 §14.7 (F7): the five labels are one line each. Measured before (390 EN, dark):
+     the slots came out unequal — Tonight 76.5 · Records 76.5 · Vision 67.8 · Regulars 85.1 ·
+     Back room 52.1 — because `min-width:auto` let the longer words set the shares, and
+     "Back room" needed ~78 px for one line inside its 52.1 px, so it wrapped to two while its
+     four peers did not. Now every slot is an equal 1fr with `min-width:0`, the label is
+     --fs-xs with lighter tracking, and the gutter/padding give back 8+16 px: "Back room"
+     measures 61 px inside 67 px at 390. `nowrap` + ellipsis is the guard for a narrower
+     phone, not for the width this was measured at. */
+  #ops-shell #tabbar .tabbar-slot{flex:1 1 0;min-width:0;min-height:52px;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-xs) var(--mono);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 var(--sp-1)}
   #ops-shell #tabbar .tabbar-slot[aria-current=page]{color:var(--brass-hi);background:var(--rail);box-shadow:inset 0 2px 0 var(--brass)}
   #ops-shell main{padding-bottom:calc(var(--tabbar-h) + var(--sp-4))}
   #ops-shell #message{bottom:calc(var(--tabbar-h) + var(--sp-3))}
@@ -788,4 +796,133 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .timer-slot{gap:var(--sp-1h)}
   #ops-shell .timer-slot .ball{width:30px;height:30px;font-size:11px}
   #ops-shell .timer-slot button{padding:0 var(--sp-2);min-height:34px}
+}
+
+/* === Round 3, §14.1 (F17): the header is one row, ≤64 px, from 1024 up ================
+   Measured before this block (out/r3/r3b/bar-audit-before.json: five widths × EN/中 ×
+   dark/light, the same fixture tests/console_shots.py drives): header 121.0 px at 1024,
+   1152 and 1280 EN, 74.5 px at 1280 中, 79.0 px at 1440 and 1920. At 1280 "Back room"
+   wrapped inside #nav and the language chips, the theme chips and #backfill-open wrapped
+   inside .tools, while the rest of row 1 sat empty.
+   The bar's two tallest residents are the shot clock (48 px + the 6 px the elapsed bar
+   reserves) and the 44 px tabs, so the bar's own vertical padding is what has to come
+   down first — 6 px keeps every control's target and still leaves the row air. Then the
+   nav and the tools are held to one line (SS14.1 names the two declarations), and the
+   two optional groups leave below 1440 to buy the room the five tabs need at 1024. */
+#ops-shell .bar{padding-top:var(--sp-1h);padding-bottom:var(--sp-1h)}
+#ops-shell .timer-slot .clock{font-size:clamp(30px,3.4vw,40px)}
+#ops-shell #nav button{white-space:nowrap}
+#ops-shell .bar>.tools{flex-wrap:nowrap}
+/* The preset group and the #backfill-open word are the two optional things in the bar:
+   above 1440 there is room for both, below it each costs ~110 px. This takes SS14.1's
+   first option — the button loses its word and shows an icon, with the 40 px target,
+   the `title` (and r3a's `aria-label`) still naming it. The second option, moving it
+   into the Back room tab, is markup (annotator/ops.html, lane r3a) and this lane owns
+   the stylesheet only. */
+@media(max-width:1440px){
+  #ops-shell #backfill-open{display:grid;place-items:center;width:40px;min-height:40px;padding:0;font-size:0}
+  #ops-shell #backfill-open::before{content:"\21BA" / "";font:var(--fs-body)/1 var(--mono)}
+}
+@media(max-width:1439px){
+  #ops-shell .timer-slot .presets{display:none}
+}
+/* Below 1152 the bar's three zones no longer fit at the full type size: measured, the
+   timer without presets is 228 px, the five tabs 658.6 px, the tools 216.9 px and the
+   bar's gaps 16 px — 1119.5 px against 974.8 px of content box at 1024. The tabs step
+   down one type step (--fs-md) with tighter padding and a 22 px ball, which measures
+   ~517 px, and the bar gives back its side padding. Every label, every count beside it
+   (SS14.5 F15 keeps them) and every ball number stays. */
+@media(max-width:1152px){
+  #ops-shell .bar{padding-left:var(--sp-3);padding-right:var(--sp-3)}
+  #ops-shell #nav{gap:var(--sp-1)}
+  #ops-shell #nav button{gap:var(--sp-1h);padding-left:var(--sp-1h);padding-right:var(--sp-2);font-size:var(--fs-md)}
+  #ops-shell #nav .ball{width:22px;height:22px;font-size:9px}
+}
+
+/* === Round 3, §14.7 (F8): "Manual, validated scoring" is not a column ----------------
+   Measured before at 390 EN dark: the phrase sat in a 50 px column of a 332 px row and
+   broke mid-word over three lines ("Manual," / "validated" / "scoring"), with 53.8 px of
+   that row left empty beside it, because .grow is `flex:1` of a flex-basis of 0% on a
+   wrapping row whose four items cannot fit together. Below 480 the row is not a row: the
+   phrase takes its own line and keeps its words whole, and the three actions share the
+   next one at --fs-md, which is what makes them fit (measured: 89 + 101 + 107 + two 8 px
+   gutters = 313 px inside 332 px). The threshold is §14.7's own ("drop the phrase below
+   480"); above it the four items fit and nothing wraps mid-word. */
+@media(max-width:480px){
+  #ops-shell .score-foot{flex-wrap:wrap}
+  #ops-shell .score-foot .grow{flex:1 1 100%}
+  #ops-shell .score-foot button{flex:1 1 auto;padding:0 var(--sp-2);font-size:var(--fs-md)}
+}
+
+/* === Round 3, §14.7 (F10): the roster's rating column fits its own header ------------
+   Measured before at 1280 EN dark: the head cell "HOUSE RATING (MANUAL)" was 22 characters
+   of --fs-xs mono at .12em inside a 4.5rem (72 px) column, so it took three lines (42 px
+   tall against its peers' 14 px) and dragged the head row down with it. The label needs
+   ~167 px, so the column is 12rem. 11rem was tried first and measured 2 px short — the head
+   cell came out 165 px wide and the label still broke over two lines — so the column is
+   180 px: the head is one line and every data cell stays in the same grid (the head and the
+   rows are separate grids sharing this template, so both had to move together). The name
+   column is minmax(0,1fr) and gave up the 104 px without complaint — it measured 858 px at
+   1280. */
+#ops-shell .standing-head,#ops-shell .standing{grid-template-columns:2rem minmax(0,1fr) 12rem 3.5rem 4rem 3.5rem}
+
+/* === Round 3, §14.7 (F13): an expanded event's matches are columns --------------------
+   Measured before at 1280 EN dark: every row of .tl-matches was one text run, so the
+   BYE/SIGNED badge started wherever the pairing ended — x = 232.4, 206.1, 299.6, 241.4,
+   311.2, 268.2, 325.1 down one night — and no two rows lined up. Lane r3a's markup gives
+   each row .tl-round / .tl-pair / .tl-score plus the badge; here they become the four
+   columns §14.7 asks for, on the baseline so a 11 px round label and a 26 px chip sit on
+   the same line rather than being centred against each other.
+   The rule is gated on .tl-round existing because this stylesheet also ships against the
+   older single-text-run rows (annotator/ops.js:98 at the base): a bare grid there would
+   drop the badge into a column of its own and make the raggedness worse, not better.
+   The badge column is content-sized as §14.7 prescribes, and the chip carries a min-width
+   so that a short "Bye" and a long "Signed" occupy the same column and the scores line up
+   between them. */
+#ops-shell .tl-matches>li:has(>.tl-round){display:grid;grid-template-columns:4.5rem minmax(0,1fr) auto auto;align-items:baseline;gap:var(--sp-1) var(--sp-2)}
+#ops-shell .tl-matches>li>.tl-round{font:var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .tl-matches>li>.tl-pair{min-width:0}
+#ops-shell .tl-matches>li>.tl-score{font:var(--fs-md) var(--mono);font-variant-numeric:tabular-nums}
+#ops-shell .tl-matches>li>.badge{min-width:5.5rem;text-align:center}
+/* A phone is not a 1184 px table: the 4.5rem round column and the 5.5rem chip column are
+   two thirds of a 318 px row once the pairing and the score have taken theirs. Below 750
+   both shrink — the round label is four characters ("Round 1"), the chip's widest word is
+   "Signed" — and the pairing gets 142 px instead of 121 to wrap in. Measured at 390 EN
+   dark with lane r3a's markup: score at x 247.1…270.5 and chip at 278.5…361 in all seven
+   rows, the same columns as at 1280. */
+@media(max-width:750px){
+  #ops-shell .tl-matches>li:has(>.tl-round){grid-template-columns:3.5rem minmax(0,1fr) auto auto}
+  #ops-shell .tl-matches>li>.badge{min-width:4.5rem}
+}
+
+/* === Round 3, §14.7 (F19): the Backfill wizard spans the page it is on ---------------
+   Measured before at 1280: .backfill was 593.3 px wide inside a 1218.6 px main, so the
+   wizard used the left half of the page and left 625 px of it empty — its own "Step 1 of 5"
+   sat at x = 524…624, in the middle of nothing. The 70ch cap is a *reading* measure and
+   this screen is not prose: .bf-review is a seven-column grid and .bf-stage is a video.
+   From 1000 px the wizard takes the page; `main p{max-width:var(--measure)}` still caps
+   every sentence inside it at 70ch, so nothing runs the width of a 1920 screen. */
+@media(min-width:1000px){#ops-shell .backfill{max-width:none}}
+
+/* === Round 3, §14.5 (F5): the backfill marker is a control that still reads as a badge -
+   The rater's F5: the "BACKFILL FROM A VOD" marker wears the border and the uppercase
+   tracking of the buttons beside it ("Expand") but is StaticText — clicking it does
+   nothing — and at 390 it "pushes the date onto its own line and leaves the row ragged".
+   Lane r3a makes it a <button> (annotator/ops.js:88); this is the stylesheet half.
+   A button in this console is `#ops-shell button` — a 40 px target, --btn-line, and the
+   padding of a primary action — which is exactly what it must NOT look like here. It
+   keeps the badge's own box (26 px tall, --line, --panel2, --fs-sm mono at .16em) and
+   only gains a pointer, because it is a real control now.
+   The row: measured before at 390 EN dark, .tl-row (flex, wrapping) was 243.8 px tall and
+   its summary wrapped one word per line — "8 / PLAYERS / · / CHAMPION / PRIYA / NAIR" —
+   because the date, the 191.3 px marker and the Expand button all competed for the same
+   318 px line and the title kept only its min-content width. Below 750 the row is a
+   two-column grid instead: the date and the title share the first line, and the marker and
+   the action each take their own line under the title, so the summary wraps at word
+   boundaries over the full remaining width. Nothing changes at 1280, where the row is one
+   line and the marker sits beside the title. */
+#ops-shell .badge.tl-source-badge{min-height:0;padding:var(--sp-1) var(--sp-2);border:1px solid var(--line);background:var(--panel2);color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;cursor:pointer}
+@media(max-width:750px){
+  #ops-shell .tl-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-2);align-items:baseline}
+  #ops-shell .tl-row>.tl-title,#ops-shell .tl-row>.tl-source-badge,#ops-shell .tl-row>.badge,#ops-shell .tl-row>.tl-toggle{grid-column:2;justify-self:start}
 }
