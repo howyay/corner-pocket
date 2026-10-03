@@ -2928,24 +2928,30 @@ test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names its
   assert.equal(h.evaluate('navKey(1)'), 'clock', 'F15: ball 1 is the shot timer');
   assert.equal(h.evaluate('primaryNav().map((k,i)=>navKey(i+2)).join()'), 'tonight,records,vision,players,status', 'F15: balls 2–6 are the five destinations, in order');
   assert.equal(h.evaluate('navKey(7)'), null, 'F15: and there is no seventh ball');
-  const key = (k, extra = {}) => ({key: k, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, preventDefault() {}, ...extra});
-  await h.handlers.keydown(key('Digit3'));
+  // A real keyboard sends key:'3' with code:'Digit3' — the rater's own probe printed exactly that — so the
+  // handler reads the code first and falls back to the bare digit.
+  const key = (n, extra = {}) => ({key: String(n), code: `Digit${n}`, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, preventDefault() {}, ...extra});
+  await h.handlers.keydown(key(3));
   assert.equal(h.evaluate('tab'), 'records', 'F15: Digit3 switches to Records');
   assert.equal(h.context.location.hash, '#/records', 'F15: and the URL follows');
-  await h.handlers.keydown(key('Digit4', {ctrlKey: true}));
+  await h.handlers.keydown(key(4, {ctrlKey: true}));
   assert.equal(h.evaluate('tab'), 'records', 'F15: a modifier makes it a browser shortcut, not ours');
   h.context.document.activeElement = {tagName: 'TEXTAREA'};
-  await h.handlers.keydown(key('Digit5'));
+  await h.handlers.keydown(key(5));
   assert.equal(h.evaluate('tab'), 'records', 'F15: typing in a field is never a shortcut');
   h.context.document.activeElement = {tagName: 'DIV'};
-  await h.handlers.keydown(key('Digit5'));
+  await h.handlers.keydown(key(5));
   assert.equal(h.evaluate('tab'), 'players', 'F15: outside a field the same key works');
   delete h.context.document.activeElement;
   h.evaluate('timer.duration=30;timer.remaining=30;timer.deadline=null');
-  await h.handlers.keydown(key('Digit1'));
+  await h.handlers.keydown(key(1));
   assert.ok(h.evaluate('!!timer.deadline'), 'F15: Digit1 starts the shot timer, which is not a tab at all');
-  await h.handlers.keydown(key('Digit1'));
+  await h.handlers.keydown(key(1));
   assert.ok(!h.evaluate('timer.deadline'), 'F15: pressing it again pauses');
+  await h.handlers.keydown({key: '2', altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, preventDefault() {}});
+  assert.equal(h.evaluate('tab'), 'tonight', 'F15: a bare digit with no code still works, as plenty of tooling sends it');
+  await h.handlers.keydown({code: 'Digit3', preventDefault() {}});
+  assert.equal(h.evaluate('tab'), 'records', 'F15: and so does a code with no key');
   assert.ok(source.includes('aria-keyshortcuts="Digit${key}"') && source.includes("t('keyHint')"), 'F15: every ball names its key in the markup');
   assert.ok(/aria-keyshortcuts="Digit1"[^>]*title=/.test(h.evaluate('timerHTML()')), 'F15: and the timer names its own key');
   const slot = h.evaluate('timerHTML()');
