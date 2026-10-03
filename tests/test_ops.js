@@ -2825,3 +2825,10 @@ test('round 2: the shot timer has exactly one home, in the bar (B-§13.1)', () =
   assert.ok(!/#strip/.test(opsHtml) && !/#strip/.test(opsCss), 'and the row that held the second copy is gone from the markup and the stylesheet');
   assert.ok(!/score-top \[data-action=clock/.test(opsCss) && !/clock-toggle\]\{margin-left:auto/.test(opsCss), 'the scoreboard clock controls that only the second copy used are gone too');
 });
+
+test('round 2: the night’s name carries a step over its own metadata (B-15)', () => {
+  assert.ok(/#ops-shell \.tl-title\{[^}]*font:600 var\(--fs-lg\)\/1\.25 var\(--display\)/.test(opsCss), 'the title takes the display face at a real step up');
+  assert.ok(/#ops-shell \.tl-title\{[^}]*text-transform:none/.test(opsCss), 'and stops shouting in uppercase, which is what left it identical to its metadata');
+  assert.ok(/#ops-shell \.tl-title small\{[^}]*font:var\(--fs-xs\) var\(--mono\)/.test(opsCss), 'while the metadata keeps the mono face');
+  assert.ok(/#ops-shell \.tl-title small\{[^}]*text-transform:uppercase/.test(opsCss), 'and the uppercase treatment that marks it as meta');
+});
