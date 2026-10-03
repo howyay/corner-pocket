@@ -70,8 +70,23 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell :focus-visible{outline:2px solid var(--brass);outline-offset:3px}
 #ops-shell header{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
 #ops-shell .bar,#ops-shell main{max-width:var(--page-max);margin:auto;padding:var(--sp-3) clamp(var(--sp-3),2.4vw,var(--sp-6))}
-/* One bar: the tab row is a child of it, so it takes the room the brand block left. */
+/* One bar: the timer slot is its first child and the tab row takes the room the brand
+   block left. */
 #ops-shell .bar > nav{flex:1 1 auto;min-width:0;padding:0}
+/* The always-available element (owner §13.1): one flex row, never wrapping, the clock
+   large. The group's aria-label names it, so the old .kicker second line is not here to
+   push the digits off the row's centre line. The elapsed bar rides the slot's bottom edge. */
+#ops-shell .timer-slot{position:relative;display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);flex:none;padding-bottom:var(--sp-1h)}
+#ops-shell .timer-slot .clock{font-size:clamp(30px,3.4vw,48px);line-height:1}
+#ops-shell .timer-slot .ball{width:34px;height:34px;font-size:11px}
+#ops-shell .timer-slot button{min-height:36px;padding:0 var(--sp-3);font-size:var(--fs-sm);white-space:nowrap}
+#ops-shell .timer-slot button[data-action=clock-reset]{color:var(--ink-dim)}
+#ops-shell .timer-slot .presets{display:flex;gap:1px;padding:1px;background:var(--line);border-radius:2px}
+#ops-shell .timer-slot .presets button{min-width:38px;padding:0 var(--sp-2);border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font-family:var(--mono)}
+#ops-shell .timer-slot .presets button.active{background:var(--brass);color:var(--brass-fg)}
+/* A command that failed is a fact; connecting, live, polling and offline are not copy. */
+#ops-shell .sync-error{color:var(--red);font:var(--fs-sm) var(--mono);letter-spacing:.06em}
+#ops-shell .timer-slot .progress{position:absolute;left:0;right:0;bottom:0;height:2px;margin:0;border:0}
 /* Running text stops at the measure; structure does not. Everything the review engine
    draws inside the frame is excluded (the app page's own paragraphs are positioned
    against the picture and set their own type), and the frame-level plates there are
@@ -79,18 +94,19 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell main p:not(#review-root *){max-width:var(--measure)}
 #ops-shell .bar,#ops-shell .tools,#ops-shell nav,#ops-shell .row,#ops-shell .heading,#ops-shell .actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 #ops-shell .bar,#ops-shell .heading{justify-content:space-between}
-#ops-shell .hall{display:flex;align-items:center;gap:var(--sp-3);color:var(--ink);text-decoration:none;border-bottom:0}
-#ops-shell .hallname{display:block;font:500 var(--fs-xl)/1.1 var(--display);color:var(--ink-hi)}
 #ops-shell small,#ops-shell .kicker,#ops-shell .badge,#ops-shell label>span,#ops-shell th{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 #ops-shell small{display:block;margin-top:var(--sp-1)}
-#ops-shell .ball{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 34% 30%,var(--ball-hi),var(--ball) 74%);box-shadow:inset 0 0 0 1px var(--ball-edge);flex:none}
-#ops-shell .ball i{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--ball-face);color:var(--ball-num);font:10px var(--mono)}
-#ops-shell .black{width:40px;height:40px;background:radial-gradient(circle at 34% 30%,var(--ball-black-hi),var(--ball-black) 72%)}
+/* A lit sphere, not a disc: the hue arrives as --ball-c (from the number palette in
+   ops.js), the light comes from 34%/30%, the terminator falls to the lower right, the
+   rim is inset and the ball sits on a small contact shadow. 9-15 are the same sphere in
+   white with the hue as a band across the middle, the number plate riding on the band. */
+#ops-shell .ball{position:relative;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;flex:none;background-color:var(--ball-c,var(--ball));background-image:radial-gradient(circle at 34% 30%,rgba(255,255,255,.52),rgba(255,255,255,.08) 42%,rgba(255,255,255,0) 58%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 42%,var(--ball-edge));box-shadow:inset 0 0 0 1px var(--ball-edge),inset 1px 2px 6px rgba(255,255,255,.16),0 2px 4px rgba(0,0,0,.36);font:10px var(--mono);color:var(--ball-num)}
+#ops-shell .ball::before{content:"";position:absolute;left:20%;top:13%;width:26%;height:24%;border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95),rgba(255,255,255,0) 72%);pointer-events:none}
+#ops-shell .ball[data-stripe="1"]{background-color:var(--ball-face);background-image:linear-gradient(180deg,rgba(0,0,0,0) 25%,var(--ball-c) 25%,var(--ball-c) 75%,rgba(0,0,0,0) 75%),radial-gradient(circle at 34% 30%,rgba(255,255,255,.85),rgba(255,255,255,.06) 48%,rgba(0,0,0,0) 62%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 46%,var(--ball-edge))}
+#ops-shell .ball i{position:relative;z-index:1;display:grid;place-items:center;width:60%;height:60%;border-radius:50%;background:var(--ball-face);color:var(--ball-num);font:1em var(--mono);line-height:1}
 #ops-shell nav{padding-top:0;padding-bottom:var(--sp-2)}
 #ops-shell nav button{display:flex;align-items:center;gap:var(--sp-2);min-height:44px;padding-left:var(--sp-2)}
 #ops-shell nav button.active{background:var(--rail);color:var(--ink-hi)}
-#ops-shell #strip{border-top:1px solid var(--line);background:var(--panel2)}
-#ops-shell #strip:empty{display:none}
 #ops-shell main{padding-top:var(--sp-5);padding-bottom:var(--sp-6);min-height:65vh}
 #ops-shell main.short{min-height:0;padding-bottom:var(--sp-3)}
 #ops-shell h1,#ops-shell h2,#ops-shell h3,#ops-shell p{margin-top:0}
@@ -228,13 +244,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell a{text-decoration:none;border-bottom:1px solid var(--btn-line)}
 #ops-shell a:hover{color:var(--brass);border-bottom-color:var(--brass)}
 #ops-shell .bar{padding-top:var(--sp-3);padding-bottom:var(--sp-3)}
-#ops-shell .black{box-shadow:inset 0 0 0 1px var(--btn-line),0 2px 6px var(--ball-edge)}
-#ops-shell .black i{width:20px;height:20px;font-size:var(--fs-sm)}
-#ops-shell .ball{position:relative}
-#ops-shell .ball i{position:relative}
-#ops-shell #nav .ball{width:26px;height:26px;box-shadow:inset 0 0 0 1px var(--ball-edge)}
-#ops-shell #nav .ball i{width:15px;height:15px;font-size:9px}
-#ops-shell #nav .ball::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.5),transparent 74%);pointer-events:none}
+#ops-shell #nav .ball{width:26px;height:26px;font-size:9px}
 #ops-shell .chip-group{display:flex;gap:1px;padding:1px;background:var(--line);border-radius:2px}
 #ops-shell .tools{gap:var(--sp-2)}
 #ops-shell .tools .badge{padding:var(--sp-1) var(--sp-2);letter-spacing:.14em}
@@ -247,13 +257,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell nav button.active{border-color:var(--brass)}
 #ops-shell nav button small{margin-top:0;font-size:var(--fs-xs);letter-spacing:.12em;color:var(--ink-faint)}
 #ops-shell nav button.active small{color:var(--brass-hi)}
-#ops-shell #strip{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3) var(--sp-4);padding:var(--sp-2) clamp(var(--sp-3),2.4vw,var(--sp-6))}
-#ops-shell #strip .clock{font-size:var(--fs-xl)}
-#ops-shell #strip .kicker{font-size:var(--fs-xs);letter-spacing:.16em}
-#ops-shell #strip button{min-height:32px;padding:0 var(--sp-3);font-size:var(--fs-sm)}
-#ops-shell #strip button[data-action=clock-reset]{color:var(--ink-dim)}
 #ops-shell .kicker{letter-spacing:.18em}
-#ops-shell .clock{font-size:clamp(36px,4.4vw,60px)}
 #ops-shell .score-top [data-action=clock-toggle]{margin-left:auto;min-width:92px;min-height:44px;padding:0 var(--sp-4);border:0;background:var(--brass);color:var(--brass-fg);font-size:var(--fs-md);font-weight:500}
 #ops-shell .score-top [data-action=clock-toggle]:hover{background:var(--brass-hover);border-color:var(--brass)}
 #ops-shell .score-top [data-action=clock-reset]{min-height:44px;padding:0 var(--sp-3);font-size:var(--fs-md)}
@@ -286,9 +290,6 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-dim) 50%),linear-gradient(135deg,var(--ink-dim) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 #ops-shell #message{background:var(--rail);border:1px solid var(--line);border-left:3px solid var(--brass);padding:var(--sp-3) var(--sp-4);max-width:min(400px,calc(100vw - 40px));font-size:var(--fs-md)}
 #ops-shell #message.error{border-color:var(--line);border-left-color:var(--red)}
-#ops-shell #strip .row .row{gap:1px;padding:1px;background:var(--line);border-radius:2px}
-#ops-shell #strip .row .row button{min-width:40px;min-height:30px;padding:0 var(--sp-2);border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
-#ops-shell #strip .row .row button.active{background:var(--brass);color:var(--brass-fg)}
 #ops-shell .score-top.row .grow{font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.14em;text-transform:uppercase}
 
 /* Regulars modal (plus-icon entry) */
@@ -476,7 +477,7 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{max-height:none}
 }
 @media(max-width:750px){
-  :is(#ops-shell)[data-tab=vision] nav,:is(#ops-shell)[data-tab=vision] #strip{display:none}
+  :is(#ops-shell)[data-tab=vision] nav{display:none}
   :is(#ops-shell)[data-tab=vision] main{padding:var(--sp-1) var(--sp-2) calc(44px + var(--vs-strip-h,150px) + min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))) + 12px)}
   :is(#ops-shell) .vision-surface{gap:var(--sp-1h)}
   :is(#ops-shell) .vs-chip{min-height:28px;padding:var(--sp-1) var(--sp-2)}
@@ -547,7 +548,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .sheet-match{margin:var(--sp-1h) 0;font-variant-numeric:tabular-nums}
 #ops-shell .sheet-match.bye{color:var(--ink-dim)}
 @media print{
-  #ops-shell header,#ops-shell #strip,#ops-shell #message,#vision-host,#ops-shell .no-print{display:none!important}
+  #ops-shell header,#ops-shell #message,#vision-host,#ops-shell .no-print{display:none!important}
   html,body,#ops-shell,#ops-shell main{background:#fff!important;color:#000!important}
   #ops-shell main{padding:0}
   #ops-shell .results-sheet article{border:1px solid #999;background:#fff;color:#000;break-inside:avoid}
@@ -763,4 +764,13 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .tl-date{min-width:0}
   #ops-shell .bf-review{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
   #ops-shell .bf-stage video{max-height:32vh}
+}
+/* ≤750px the bar keeps the timer and the tools; #nav goes behind the bottom bar. The
+   duration chips are the one part that folds away: the clock, its two controls and the
+   elapsed bar stay on screen, so the timer is never hidden behind a tab (owner §13.1). */
+@media(max-width:750px){
+  #ops-shell .timer-slot .presets{display:none}
+  #ops-shell .timer-slot{gap:var(--sp-1h)}
+  #ops-shell .timer-slot .ball{width:30px;height:30px;font-size:11px}
+  #ops-shell .timer-slot button{padding:0 var(--sp-2);min-height:34px}
 }

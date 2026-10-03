@@ -10,7 +10,7 @@ const clockSync = require('../annotator/clock-sync.js');
 const clockSyncSource = fs.readFileSync(path.join(__dirname, '../annotator/clock-sync.js'), 'utf8');
 function harness(opts = {}) {
   const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [];
-  const document = {addEventListener(event, fn) { handlers[event] = fn; }, querySelector() { return {}; }, querySelectorAll() { return []; }, documentElement: {}};
+  const document = {addEventListener(event, fn) { handlers[event] = fn; }, querySelector() { return {}; }, querySelectorAll() { return []; }, documentElement: {dataset: {}, lang: ''}};
   // The URL is a hash route: pushState/replaceState update location.hash, and a test drives back/forward by
   // setting location.hash and calling the captured hashchange listener, as the browser does.
   const location = {hash: opts.hash || ''};
@@ -313,7 +313,7 @@ test('round 1 · empty states: no fake names, no blank tiles, no list-item empti
     assert.ok(!/data-phase=/.test(h.evaluate('tonightScreen()')), `${lang}: no phase button survives anywhere in Tonight`);
     assert.ok(!/<button/.test(scene) && scene.includes(h.evaluate("esc(t('sceneIdle'))")), `${lang}: the step is read-only, and an empty venue says so`);
     assert.ok(/<h2 class="sr-only">/.test(floor), `${lang}: the scoreboard has a heading`);
-    assert.ok(!/Tables open|球台空闲/.test(floor.replace(/<div id="strip"[\s\S]*?<\/div>/, '')), `${lang}: never a placeholder name on the board`);
+    assert.ok(!/Tables open|球台空闲/.test(floor), `${lang}: never a placeholder name on the board`);
     const matches = h.evaluate('bracketScreen()');
     assert.ok(matches.includes(dflt), `${lang}: an unsaved event name is shown, and said to be the default`);
     assert.ok(!/<li>[^<]*(Nothing|暂无|尚无)[^<]*<\/li>/.test(matches), `${lang}: no empty state inside a list`);
@@ -1064,64 +1064,90 @@ test('the shared clock re-syncs when the tab is shown again, focused, or back on
   assert.ok(first.state.server_now_ms >= 1000);
 });
 
-test('the clock labels and the sync line are honest in English and 中文', () => {
+test('the clock labels stay honest in English and 中文, and only a failure is printed', () => {
   assert.equal(clockSync.LABELS.en.kicker, 'Shot timer');
   assert.equal(clockSync.LABELS.zh.kicker, '击球计时');
-  assert.equal(clockSync.statusText('live', 'en', null), 'live · synced');
-  assert.equal(clockSync.statusText('polling', 'en', null), 'reconnecting — showing last known');
-  assert.equal(clockSync.statusText('offline', 'en', null), 'offline — showing last known');
-  assert.equal(clockSync.statusText('live', 'zh', null), '实时 · 已同步');
-  assert.equal(clockSync.statusText('polling', 'zh', null), '重新连接中 — 显示最后已知');
-  assert.equal(clockSync.statusText('offline', 'zh', null), '离线 — 显示最后已知');
-  assert.equal(clockSync.statusText('connecting', 'zh', null), '连接中…');
+  // §13.3: the bar stopped narrating sync state. statusText() is now the failure path
+  // only, in the language the shell publishes.
+  assert.equal(clockSync.statusText('live', 'en', null), '', 'a synced clock says nothing at all');
+  assert.equal(clockSync.statusText('polling', 'en', null), '', 'and reconnecting is not a sentence in the bar');
+  assert.equal(clockSync.statusText('offline', 'en', null), '', 'nor is offline');
+  assert.equal(clockSync.statusText('connecting', 'zh', null), '', 'nor is connecting');
   assert.equal(clockSync.statusText('live', 'en', 'clock command failed — nothing changed'),
-    'clock command failed — nothing changed', 'a failed command outranks the status line');
+    'clock command failed — nothing changed', 'a failed command still speaks');
+  assert.equal(clockSync.statusText('busy', 'zh', '服务器繁忙 — 正在重试'), '服务器繁忙 — 正在重试', 'and so does a busy server');
   for (const words of [clockSync.LABELS.en, clockSync.LABELS.zh]) {
     assert.ok(!/local timer|本机计时/.test(words.kicker), 'no label claims the clock is local any more');
-    assert.ok(!/Shot clock|shared across devices|多设备同步/.test(words.kicker), 'and no label invents a second name for it: the sync line says machine or shared');
+    assert.ok(!/Shot clock|shared across devices|多设备同步/.test(words.kicker), 'and no label invents a second name for it');
   }
+  // The retired sentences are gone from the copy table itself, both languages, so a state
+  // cannot leak back into the bar through the dictionary.
+  for (const gone of ['live', 'polling', 'offline', 'connecting']) {
+    assert.equal(clockSync.LABELS.en[gone], undefined, `en.${gone} is retired with the status line`);
+    assert.equal(clockSync.LABELS.zh[gone], undefined, `zh.${gone} is retired with the status line`);
+  }
+  // What the clock still has to say is a fact about a command, and it says it in both languages.
+  assert.equal(clockSync.LABELS.en.failed, 'clock command failed — nothing changed');
+  assert.equal(clockSync.LABELS.zh.failed, '计时指令失败 — 未改变');
+  assert.equal(clockSync.LABELS.en.busy, 'server busy — retrying');
+  assert.equal(clockSync.LABELS.zh.busy, '服务器繁忙 — 正在重试');
   assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '击球计时'], 'the two words the shell paints are exactly what the shared clock adopts');
 });
 
-// The smallest DOM decorate() needs: one clock mount, optional kicker, optional
-// .vs-clock wrapper. Enough to prove the label swap and the sync line.
+// The smallest DOM decorate() needs: one clock mount, an optional .kicker (the Vision stage
+// bar's label and any page whose shell does not publish a language), an optional shell that
+// publishes one, and the slot's own .sync-error span.
+function fakeClockNode(attrs) {
+  const node = {attrs: {...attrs}, textContent: '', className: '', hidden: false,
+    classList: {toggle() {}, add() {}, remove() {}},
+    setAttribute(name, value) { node.attrs[name] = value; },
+    getAttribute(name) { return name in node.attrs ? node.attrs[name] : null; },
+    removeAttribute(name) { delete node.attrs[name]; }};
+  return node;
+}
 function fakeClockMount(options) {
   const opts = options || {};
   const children = [];
   let holder = null;
-  const kicker = opts.kicker === null ? null : {textContent: opts.kicker || ''};
+  const kicker = opts.kicker === null ? null : fakeClockNode({});
+  if (kicker) kicker.textContent = opts.kicker || '';
+  const error = opts.error === null ? null : fakeClockNode({});
+  if (error && opts.error) error.textContent = opts.error;
   const strong = {closest: selector => (selector === '.vs-clock' && opts.vsClock ? holder : null), parentElement: null, nextSibling: null};
   holder = {
     querySelector: selector => {
       if (selector === '.kicker') return kicker;
+      if (selector === '.sync-error') return error;
       if (selector === '[data-clock-sync]') return children.find(child => child.attrs && 'data-clock-sync' in child.attrs) || null;
       return null;
     },
     getAttribute: name => (name === 'title' ? (opts.title || null) : null),
     setAttribute: (name, value) => { if (name === 'title') opts.title = value; },
     insertBefore: (node, anchor) => { const at = anchor ? children.indexOf(anchor) : -1; children.splice(at < 0 ? children.length : at, 0, node); },
-    appendChild: node => children.push(node)
+    appendChild: node => { children.push(node); node.parentNode = holder; },
+    removeChild: node => { const at = children.indexOf(node); if (at >= 0) children.splice(at, 1); }
   };
   strong.parentElement = holder;
   if (kicker) {
     children.push(kicker);
     kicker.nextSibling = strong;
+  } else {
+    children.push(strong);
   }
-  children.push(strong);
+  if (error) children.push(error);
+  const shell = fakeClockNode({});
+  if (opts.lang) shell.attrs['data-lang'] = opts.lang;
   const doc = {
-    documentElement: {getAttribute: name => (name === 'lang' ? (opts.lang || 'en') : null)},
-    createElement: () => {
-      const node = {attrs: {}, textContent: '', classList: {toggle() {}}};
-      node.setAttribute = (name, value) => { node.attrs[name] = value; };
-      node.getAttribute = name => (name in node.attrs ? node.attrs[name] : null);
-      return node;
-    },
-    querySelectorAll: () => [strong]
+    querySelector: selector => (selector === '#ops-shell' ? shell : null),
+    createElement: () => fakeClockNode({}),
+    querySelectorAll: () => [strong],
+    documentElement: {getAttribute: name => (name === 'lang' ? (opts.rootLang || 'en') : null)}
   };
-  return {doc, kicker, holder, lines: () => children.filter(child => child.attrs && 'data-clock-sync' in child.attrs)};
+  return {doc, shell, kicker, error, holder, children,
+    lines: () => children.filter(child => child.attrs && 'data-clock-sync' in child.attrs)};
 }
 
-test('one shot-timer name in both clocks, one sync line, and only the label the shell paints is swapped', () => {
+test('one shot-timer name in both clocks, no sync line, and the slot speaks only when a command failed', () => {
   assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '击球计时']);
   // One name, checked across all three places that can paint it: the shell dictionary,
   // the shared clock's own labels, and the mount point in the top bar.
@@ -1132,37 +1158,52 @@ test('one shot-timer name in both clocks, one sync line, and only the label the 
   assert.equal(clockSync.LABELS.zh.kicker, dictionary[1]);
   const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   assert.ok(html.includes('aria-label="Shot timer / 击球计时"'), 'the top-bar mount point is named the same');
-  const en = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0], lang: 'en'});
+  const shell = {attrs: {}};
+  const en = fakeClockMount({lang: 'en'});
   clockSync.decorate(en.doc, 'live', null);
-  assert.equal(en.kicker.textContent, 'Shot timer', 'the label ops.js paints stays the one name');
-  assert.equal(en.lines().length, 1, 'with exactly one sync line');
-  assert.equal(en.lines()[0].textContent, 'live · synced', 'the line, not the label, says machine or shared');
-  assert.equal(en.lines()[0].attrs['data-clock-sync'], '');
+  assert.equal(en.lines().length, 0, 'nothing is written beside a healthy clock');
+  assert.equal(en.error.hidden, false, 'the stub starts visible, so hiding it is something decorate() does');
+  assert.equal(en.error.attrs.hidden, '', 'a healthy clock leaves the error span hidden and empty');
   clockSync.decorate(en.doc, 'polling', null);
-  assert.equal(en.lines().length, 1, 're-applying after an ops.js render adds no second line');
-  assert.equal(en.lines()[0].textContent, 'reconnecting — showing last known', 'and never keeps claiming sync');
-  const zh = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[1], lang: 'zh'});
-  clockSync.decorate(zh.doc, 'offline', null);
-  assert.equal(zh.kicker.textContent, '击球计时');
-  assert.equal(zh.lines()[0].textContent, '离线 — 显示最后已知');
-  // The Vision stage bar has no kicker: its label is the title attribute.
+  assert.equal(en.lines().length, 0, 'reconnecting is not a line either');
+  assert.equal(en.error.attrs.hidden, '', 'and it is still hidden');
+  // The Vision stage bar's only label is the title attribute: it still adopts the one name.
   const vs = fakeClockMount({kicker: null, vsClock: true, title: clockSync.LOCAL_TIMER_LIE[1], lang: 'en'});
   clockSync.decorate(vs.doc, 'polling', null);
-  assert.equal(vs.holder.getAttribute('title'), '击球计时');
-  assert.equal(vs.lines()[0].textContent, '重新连接中 — 显示最后已知', 'the line follows the language of the label it replaced');
+  assert.equal(vs.error.attrs.hidden, '', 'the stage bar is quiet too');
+  assert.equal(vs.lines().length, 0, 'and carries no sync line');
   // The swap is still whitelist-gated: nothing else in the chrome is rewritten behind ops.js's back.
   const other = fakeClockMount({kicker: 'Tables open', lang: 'en'});
   clockSync.decorate(other.doc, 'live', null);
   assert.equal(other.kicker.textContent, 'Tables open', 'a label that is not the shot timer is left alone');
-  // A failed command is shown on the same line.
-  const err = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0], lang: 'en'});
+  // A failed command is the one thing that shows, in the language the shell published.
+  const err = fakeClockMount({lang: 'en'});
   clockSync.decorate(err.doc, 'live', 'clock command failed — nothing changed');
-  assert.equal(err.lines()[0].textContent, 'clock command failed — nothing changed');
+  assert.equal(err.error.textContent, 'clock command failed — nothing changed');
+  assert.equal(err.error.attrs.hidden, undefined, 'an error is not hidden');
+  assert.equal(err.lines().length, 0, 'and it comes as itself, not as a sync line');
+  const errZh = fakeClockMount({lang: 'zh'});
+  clockSync.decorate(errZh.doc, 'busy', '服务器繁忙 — 正在重试');
+  assert.equal(errZh.error.textContent, '服务器繁忙 — 正在重试', 'the error follows the published language');
+  // The language is published by render() on the shell, with documentElement.lang as the
+  // fallback before the old label sniff is ever needed (owner §13.2).
+  const published = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0], lang: 'zh'});
+  clockSync.decorate(published.doc, 'live', '计时指令失败 — 未改变');
+  assert.equal(published.error.textContent, '计时指令失败 — 未改变', 'the shell dataset outranks the label it paints');
+  const byRoot = fakeClockMount({kicker: null, vsClock: true, title: clockSync.LOCAL_TIMER_LIE[1], rootLang: 'zh-CN'});
+  clockSync.decorate(byRoot.doc, 'live', '计时指令失败 — 未改变');
+  assert.equal(byRoot.error.textContent, '计时指令失败 — 未改变', 'documentElement.lang is the second source');
+  const sniffed = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0], rootLang: ''});
+  clockSync.decorate(sniffed.doc, 'live', 'clock command failed — nothing changed');
+  assert.equal(sniffed.error.textContent, 'clock command failed — nothing changed', 'the old sniff still answers when nothing is published');
   // Nowhere in the three shipped files does a label claim a local timer, or name it twice.
   for (const [name, text] of [['clock-sync.js', clockSyncSource], ['ops.js', source], ['ops.html', html]]) {
     assert.ok(!/local timer|本机计时/.test(text), `${name}: no label claims the timer is local`);
     assert.ok(!/Shot clock · local|多设备同步|shared across devices/.test(text), `${name}: no second name for the shot timer survives`);
+    assert.ok(!/\.muted\[data-clock-sync\]/.test(text.split('querySelector')[0]), `${name}: nothing paints a sync line any more`);
+    assert.ok(!/live · synced|实时 · 已同步/.test(text), `${name}: the redundant sync text is gone, both languages`);
   }
+  assert.ok(!shell.attrs['data-lang'], 'and the fixture shell starts without a language, so publishing one is something render() does');
 });
 
 test('a Twitch VOD picker sends the replay source the server accepts, never a live label', () => {
@@ -2399,31 +2440,139 @@ test('stage 8: Floor and Matches are not screens any more, and every old way in 
 });
 
 // ---- IA C′ stage 9: one bar, five destinations, a data-driven Tonight, and the shot timer's one name.
-test('the top bar is one row: the hall, the five destinations and the tools, with the clock strip below (stage 9)', () => {
+test('the bar is one row: the shot timer first, the five destinations, the tools; no hall and no strip (stage 9 / owner §13.1)', () => {
   const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
-  const start = html.indexOf('<div class="bar">'), end = html.indexOf('<div id="strip">');
-  assert.ok(start > 0 && end > start, 'the bar and the strip are siblings inside one header');
+  const start = html.indexOf('<div class="bar">'), end = html.indexOf('</header>');
+  assert.ok(start > 0 && end > start, 'one bar inside one header');
   const bar = html.slice(start, end);
-  assert.ok(bar.includes('class="hall"') && bar.includes('class="hallname"'), 'the brand box is a plain hall label now');
-  assert.ok(!html.includes('id="tagline"') && !html.includes('class="brand"'), 'the brand block and its tagline are gone, not hidden');
-  assert.ok(bar.includes('<nav id="nav"'), 'the destinations moved into the bar');
-  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('<div class="tools"'), 'and sit before the global tools');
-  assert.equal((bar.match(/<div class="tools">/g) || []).length, 1, 'one tools row');
-  assert.ok(html.indexOf('</div></div>') < end, 'the bar closes before the strip: the clock is not in the bar');
-  assert.equal((html.match(/<header>/g) || []).length, 1, 'one header, so the shell has one row of chrome plus the clock');
-  assert.ok(html.includes('<span id="connection" class="badge" hidden>'), 'the connection badge starts hidden and empty');
+  // Owner item 1: the Corner Pocket box and its 8 ball are gone, and nothing replaces them.
+  assert.ok(!/class="hall"|class="hallname"/.test(html), 'the hall block is deleted, not hidden');
+  assert.ok(!html.includes('Corner Pocket') || !bar.includes('Corner Pocket'), 'no wordmark is left in the bar');
+  assert.ok(!/class="hall"|hallname/.test(css), 'and its styles went with it');
+  // Owner items 2 and 5: the strip is gone, so the timer has exactly one home in the bar.
+  assert.equal(html.indexOf('id="strip"'), -1, 'the strip row is deleted');
+  assert.equal(css.indexOf('#strip'), -1, 'and so are its rules');
+  assert.ok(!/navColors/.test(source) && !/navColors/.test(css), 'the old per-destination colour map is gone with the balls it painted');
+  assert.equal(html.indexOf('class="clockbar"'), -1, 'the second timer in .tools is deleted too');
+  assert.equal((html.match(/data-clock-host/g) || []).length, 1, 'one timer slot in the whole shell');
+  assert.equal((html.match(/<header>/g) || []).length, 1, 'one header');
+  // The slot is the bar's first child, so the large timer is the first thing in the top bar.
+  assert.ok(bar.includes('<div class="timer-slot" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div>'),
+    'the slot is a named group with one host, empty until ops.js paints it');
+  assert.ok(bar.indexOf('class="timer-slot"') < bar.indexOf('<nav id="nav"'), 'the timer comes first');
+  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('<div class="tools"'), 'then the destinations');
+  assert.equal((bar.match(/<div class="tools">/g) || []).length, 1, 'and one tools row, unchanged');
+  assert.ok(bar.includes('<span id="connection" class="badge" hidden>'), 'the connection badge still starts hidden and empty');
+  assert.ok(bar.includes('data-lang="en"') && bar.includes('data-lang="zh"') && bar.includes('data-theme-group'), 'the language and theme chips are untouched');
   assert.ok(css.includes('#ops-shell .bar > nav{flex:1 1 auto;min-width:0;padding:0}'), 'the bar lays out its own nav');
   assert.ok(!/\.brand/.test(css), 'the brand styles went with the brand block');
   const h = harness();
   assert.equal(h.evaluate('primaryNav()').length, 5, 'the one bar renders five destinations');
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(primaryNav())')), JSON.parse(h.evaluate('JSON.stringify(navTabs)')), 'and Back room is one of them (always, not conditionally)');
+  const destinations = JSON.parse(h.evaluate('JSON.stringify(primaryNav().map((k,i)=>ballColor(i+2)))'));
+  assert.deepEqual(destinations, ['#2f6fd0', '#c8382f', '#e885ad', '#e07a29', '#2f8f4e'],
+    'the five destinations draw balls 2 (blue) through 6 (green): the timer is ball 1');
+  assert.equal(h.evaluate('ballHTML(1)').includes('data-stripe'), false, 'ball 1 is a solid');
   for (const [lang, back] of [['en', 'Back room'], ['zh', '后台']]) {
     h.evaluate(`lang='${lang}'`);
     assert.ok(h.evaluate('render').toString().includes('primaryNav()'), `${lang}: render paints the bar from the one list`);
+    assert.ok(h.evaluate('render').toString().includes("dataset.lang"), `${lang}: render publishes the language it painted in`);
     assert.equal(h.evaluate("navLabel('status')"), back, `${lang}: the fifth destination keeps its name`);
   }
 });
+// ---- owner round 2, items 3-7: the palette, the material balls and the always-on timer slot.
+test('one palette keyed by ball number colours every ball: 1-8 the owner list, 9-15 the same hues striped, 16+ wrapping', () => {
+  const h = harness();
+  const palette = h.evaluate('JSON.stringify(ballPalette)');
+  assert.equal(palette, JSON.stringify(['#f2c14e','#2f6fd0','#c8382f','#e885ad','#e07a29','#2f8f4e','#8a5a2b','#1b1b1b',
+    '#f2c14e','#2f6fd0','#c8382f','#e885ad','#e07a29','#2f8f4e','#8a5a2b']),
+    '1 yellow, 2 blue, 3 red, 4 pink, 5 orange, 6 green, 7 brown, 8 black; 9-15 the same seven hues');
+  for (let n = 1; n <= 8; n++) {
+    assert.equal(h.evaluate('ballNumber(' + n + ')'), n, `ball ${n} keeps its number`);
+    assert.equal(h.evaluate('ballStripe(' + n + ')'), 0, `ball ${n} is a solid`);
+    assert.ok(h.evaluate('ballHTML(' + n + ')').includes('--ball-c:' + h.evaluate('ballColor(' + n + ')')), `ball ${n} carries its own hue`);
+  }
+  for (let n = 9; n <= 15; n++) {
+    assert.equal(h.evaluate('ballStripe(' + n + ')'), 1, `ball ${n} is a stripe`);
+    assert.equal(h.evaluate('ballColor(' + n + ')'), h.evaluate('ballColor(' + (n - 8) + ')'), `ball ${n} is the same hue as ball ${n - 8}`);
+    assert.ok(h.evaluate('ballHTML(' + n + ')').includes('data-stripe="1"'), `ball ${n} is drawn as a stripe`);
+  }
+  // Past a full rack the number wraps, the way entrant chips keep counting.
+  assert.equal(h.evaluate('ballNumber(16)'), 1, '16 wraps to 1');
+  assert.equal(h.evaluate('ballNumber(23)'), 8, '23 wraps to 8');
+  assert.equal(h.evaluate('ballNumber(30)'), 15, '30 wraps to 15');
+  assert.equal(h.evaluate('ballColor(16)'), '#f2c14e', 'and 16 is yellow again');
+  assert.ok(h.evaluate('ballHTML(16)').includes('>1<'), 'the plate shows the wrapped number, not 16');
+  // The plate is the number, inside the sphere; the hue is the only inline style.
+  assert.equal(h.evaluate('ballHTML(3)'), '<span class="ball" style="--ball-c:#c8382f"><i>3</i></span>', 'one helper, one shape');
+  // Every place a ball is drawn uses that helper.
+  const entrants = h.evaluate("data.tournament={id:'t',name:'',format:'singles',raceTo:7,tables:1,status:'registration',entrants:[{id:'e1',members:[{name:'A'}]},{id:'e2',members:[{name:'B'}]}],matches:[]};data.players=[];entrantsCard()");
+  assert.ok(entrants.includes('--ball-c:#f2c14e') && entrants.includes('--ball-c:#2f6fd0'), 'entrant chips draw balls 1 and 2 from the palette');
+  assert.ok(!entrants.includes('<span class="ball"><i>'), 'and no longer a flat uncoloured disc');
+  assert.ok(h.evaluate('ballHTML(6)').includes('--ball-c:#2f8f4e'), 'ball 6 is the green one the owner asked for');
+});
+test('the timer slot renders and works in all four venue states, and nothing in it reads comp() (owner items 1 and 5)', async () => {
+  // comp() is the tournament status; the live vocabulary is idle through complete. The
+  // brief and §13.1 name the last one "closed" — the same state, the repo's spelling.
+  const states = [['registration', 'idle'], ['registration', 'registration'], ['active', 'active'], ['complete', 'closed']];
+  for (const [status, label] of states) {
+    const h = harness();
+    h.evaluate(`data.tournament={id:'t',name:'',format:'singles',raceTo:7,tables:4,status:'${status}',entrants:[{id:'e1',members:[{name:'A'}]}],matches:[]};data.players=[]`);
+    assert.equal(h.evaluate('comp()'), status, `${label}: the venue is in that state`);
+    assert.equal(h.evaluate('tonightState() !== undefined'), true, `${label}: and Tonight has a state of its own`);
+    const markup = h.evaluate('timerHTML()');
+    assert.ok(h.evaluate('clockHTML()').includes('data-clock'), `${label}: the clock is in the slot`);
+    assert.ok(h.evaluate('clockHTML()').includes('data-action="clock-toggle"'), `${label}: the start/pause control is there`);
+    assert.ok(h.evaluate('clockHTML()').includes('data-action="clock-reset"'), `${label}: so is reset`);
+    assert.ok(h.evaluate('clockHTML()').includes('data-action="clock-set" data-value="20"'), `${label}: and the four presets`);
+    assert.ok(markup.includes('data-progress'), `${label}: with the elapsed bar`);
+    assert.ok(!/kicker/.test(markup), `${label}: no .kicker second line in the slot`);
+    assert.equal((markup.match(/class="ball[^"]*"/g) || []).length, 1, `${label}: one ball, the 1`);
+    assert.ok(markup.includes('--ball-c:#f2c14e'), `${label}: and it is the yellow 1`);
+    // The controls work: toggle starts and pauses, reset clears the deadline, a preset
+    // changes the duration through the server before the shell adopts it.
+    // A DOM just real enough to render: the shell the language is published on, the
+    // elements render paints, and the timer slot, which is the mount this work is about.
+    const slot = {innerHTML: ''};
+    const node = () => ({innerHTML: '', className: '', textContent: '', dataset: {}, style: {}, hidden: false,
+      classList: {toggle() {}, add() {}, remove() {}}, setAttribute() {}, getAttribute: () => null,
+      querySelector: () => null, querySelectorAll: () => [], appendChild() {}, addEventListener() {}});
+    const shell = node(), nav = node(), tabbar = node(), main = node();
+    shell.querySelector = selector => (selector === '.timer-slot' ? slot : null);
+    h.context.document.querySelector = selector => ({'#ops-shell': shell, '#ops-shell .timer-slot': slot, '#nav': nav, '#tabbar': tabbar, '#main': main}[selector] || null);
+    h.context.document.body = node();
+    h.evaluate('render=()=>{}');
+    // The shell's click listener finds its button with closest('button,.modal-backdrop').
+    const act = action => h.handlers.click({target: {closest: selector => (selector === 'button,.modal-backdrop' ? {dataset: {action}, classList: {contains: () => false}} : null)}});
+    h.evaluate('timer={duration:30,remaining:30,deadline:null}');
+    act('clock-toggle');
+    assert.ok(h.evaluate('timer.deadline') > 0, `${label}: Start sets a deadline`);
+    const running = h.evaluate('timerHTML()');
+    assert.ok(/class="ball running"/.test(running), `${label}: the ball says the clock is running`);
+    assert.ok(running.includes('Pause') || running.includes('暂停'), `${label}: and the control offers Pause`);
+    act('clock-toggle');
+    assert.equal(h.evaluate('timer.deadline'), null, `${label}: Pause clears it`);
+    h.evaluate('timer={duration:30,remaining:4,deadline:null}');
+    act('clock-reset');
+    assert.equal(h.evaluate('timer.remaining'), 30, `${label}: Reset goes back to the duration`);
+    await act('clock-set');
+    assert.ok(h.evaluate('timer.duration') === 30, `${label}: a preset with no data-value keeps the duration it had`);
+  }
+  const h = harness();
+  h.context.document.querySelector = () => ({innerHTML: '', classList: {toggle() {}}, dataset: {}, style: {}, setAttribute() {}, textContent: ''});
+  h.evaluate('render=()=>{}');
+  await h.handlers.click({target: {closest: selector => (selector === 'button,.modal-backdrop' ? {dataset: {action: 'clock-set', value: '45'}, classList: {contains: () => false}} : null)}});
+  assert.equal(h.evaluate('timer.duration'), 45, 'a preset sets the duration the server accepted');
+  assert.equal(h.evaluate('timer.remaining'), 45, 'and the clock starts the new duration');
+  // Nothing in the slot can be gated on the venue state, and the slot is painted from the
+  // one helper: once at boot and once on every render.
+  assert.ok(!/function clockHTML\([^)]*comp/.test(source), 'clockHTML() reads no venue state');
+  assert.ok(!/function timerHTML\([^)]*comp/.test(source), 'and neither does timerHTML()');
+  assert.ok(!/function timerHTML\(\)\{[^}]*comp\(/.test(source), 'nothing inside timerHTML() asks the venue state either');
+  assert.equal((source.match(/paintClockSlot\(\)/g) || []).length, 3, 'one definition, one boot paint and one render paint, from one helper');
+});
+
 test('#connection is not a revision slogan: silent while the API answers, one bilingual line when it does not (stage 9)', async () => {
   const h = harness();
   const nodes = new Map();

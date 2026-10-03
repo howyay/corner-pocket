@@ -50,19 +50,11 @@ const ERROR_MS = 6000;               /* how long a failed command stays on scree
 const LABELS = Object.freeze({
   en: Object.freeze({
     kicker: 'Shot timer',
-    connecting: 'connecting…',
-    live: 'live · synced',
-    polling: 'reconnecting — showing last known',
-    offline: 'offline — showing last known',
     failed: 'clock command failed — nothing changed',
     busy: 'server busy — retrying'
   }),
   zh: Object.freeze({
     kicker: '击球计时',
-    connecting: '连接中…',
-    live: '实时 · 已同步',
-    polling: '重新连接中 — 显示最后已知',
-    offline: '离线 — 显示最后已知',
     failed: '计时指令失败 — 未改变',
     busy: '服务器繁忙 — 正在重试'
   })
@@ -84,12 +76,10 @@ function labels(lang) {
 }
 
 function statusText(status, lang, errorText) {
-  const words = labels(lang);
-  if (errorText) return errorText;
-  if (status === 'live') return words.live;
-  if (status === 'polling') return words.polling;
-  if (status === 'offline') return words.offline;
-  return words.connecting;
+  // The only sentence the bar still says about the clock is a failure (owner §13.3):
+  // connecting, live, polling and offline are states, and the bar shows the time instead.
+  // The status still matters to the sync layer; it just has no copy of its own any more.
+  return errorText || '';
 }
 
 /* NTP-style estimate: the server's clock reading minus the midpoint of the
@@ -387,19 +377,27 @@ function createClockSync(deps) {
 /* -- DOM half ------------------------------------------------------------- */
 
 function nodeLang(doc, holder) {
+  // ops.js publishes the language it paints in on the shell (owner §13.2), which is
+  // the shell element or its dataset, depending on which DOM is asking.
+  const shell = (doc.querySelector && doc.querySelector('#ops-shell')) || (doc.getElementById && doc.getElementById('ops-shell')) || null;
+  const published = (shell && ((shell.dataset && shell.dataset.lang) || (shell.getAttribute && shell.getAttribute('lang')))) || '';
+  if (published === 'zh' || published === 'en') return published;
+  const root = doc.documentElement;
+  const attr = ((root && root.getAttribute && root.getAttribute('lang')) || '').toLowerCase();
+  if (attr) return attr.indexOf('zh') === 0 ? 'zh' : 'en';
+  // Last resort for a page that publishes neither: the one label the shell paints.
   const kicker = holder.querySelector ? holder.querySelector('.kicker') : null;
   const sample = ((kicker && kicker.textContent) || (holder.getAttribute && holder.getAttribute('title')) || '').trim();
   if (sample === LOCAL_TIMER_LIE[1]) return 'zh';
   if (sample === LOCAL_TIMER_LIE[0]) return 'en';
-  const root = doc.documentElement;
-  const attr = ((root && root.getAttribute && root.getAttribute('lang')) || '').toLowerCase();
-  return attr.indexOf('zh') === 0 ? 'zh' : 'en';
+  return 'en';
 }
 
-/* One idempotent pass over the clock mounts ops.js renders (the strip, the floor
- * scoreboard, the vision stage bar): adopt the shell's one shot-timer name, and
- * with the honest one, and keep one sync-state line beside the clock saying
- * exactly what this device knows. Re-running it after any render is safe. */
+/* One idempotent pass over the clock mounts ops.js renders (the bar's timer slot, the
+ * floor scoreboard, the vision stage bar): adopt the shell's one shot-timer name in the
+ * whitelisted label, and speak only when something is wrong — a failed or busy command
+ * is a fact the operator has to see, while connecting/live/polling/offline are states the
+ * bar no longer narrates (owner §13.3). Re-running it after any render is safe. */
 function decorate(doc, status, errorText) {
   const nodes = doc.querySelectorAll('[data-clock]');
   for (let i = 0; i < nodes.length; i++) {
@@ -413,18 +411,29 @@ function decorate(doc, status, errorText) {
     if (holder.getAttribute && LOCAL_TIMER_LIE.indexOf((holder.getAttribute('title') || '').trim()) >= 0) {
       holder.setAttribute('title', words.kicker);
     }
-    let line = holder.querySelector ? holder.querySelector('[data-clock-sync]') : null;
-    if (!line) {
-      line = doc.createElement('span');
-      line.setAttribute('data-clock-sync', '');
-      line.className = 'muted';
-      const anchor = kicker || clockNode;
-      if (anchor.nextSibling) holder.insertBefore(line, anchor.nextSibling);
-      else holder.appendChild(line);
-    }
     const text = statusText(status, lang, errorText);
-    if (line.textContent !== text) line.textContent = text;
-    if (line.classList && line.classList.toggle) line.classList.toggle('low', !!errorText);
+    let line = holder.querySelector ? holder.querySelector('.sync-error') : null;
+    if (!line && text) {
+      line = doc.createElement('span');
+      line.className = 'sync-error';
+      line.setAttribute('hidden', '');
+      if (holder.appendChild) holder.appendChild(line);
+    }
+    if (line) {
+      if (line.textContent !== text) line.textContent = text;
+      if (text) {
+        if (line.removeAttribute) line.removeAttribute('hidden');
+        else line.hidden = false;
+        if (line.classList && line.classList.add) line.classList.add('low');
+      } else {
+        if (line.setAttribute) line.setAttribute('hidden', '');
+        else line.hidden = true;
+        if (line.classList && line.classList.remove) line.classList.remove('low');
+      }
+    }
+    // The retired sync line is not left behind on a page that still carries one.
+    const stale = holder.querySelector ? holder.querySelector('.muted[data-clock-sync]') : null;
+    if (stale && stale.parentNode && stale.parentNode.removeChild) stale.parentNode.removeChild(stale);
   }
 }
 
