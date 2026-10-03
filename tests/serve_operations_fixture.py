@@ -11,8 +11,10 @@ schema (tests/console_fixture_state.json; docs/console-shots.md), so a screensho
 a UI check starts from a realistic club instead of an empty one.
 """
 import argparse
+import faulthandler
 import json
 from http.server import ThreadingHTTPServer
+import signal
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -24,7 +26,24 @@ from annotator.unified_server import (Backend, PublicBoardServer, board_prefix, 
                                       make_public_handler)
 
 
+class FixtureServer(ThreadingHTTPServer):
+    """The console listener with production's accept backlog (BoundedHTTPServer: no ceiling here).
+
+    A bare ThreadingHTTPServer keeps the stdlib's listen(5). A browser opens six connections per
+    host, so a page with ten webfonts overflows that queue: measured against this fixture, the
+    slowest request of a 24-way burst took 2.06 s while every smaller burst stayed at 0.01 s, and
+    in a screenshot run the stalled request is the one holding up the render. Production serves
+    console traffic through BoundedHTTPServer, whose request_queue_size is 64; the fixture matches
+    it so a browser sees the same listener it would see in the hall.
+    """
+    daemon_threads = True
+    request_queue_size = 64
+
+
 def main():
+    # kill -USR1 <pid> dumps every thread's stack: a fixture that stops answering under a burst
+    # of long-lived /api/clock/stream connections is otherwise a black box.
+    faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
     parser = argparse.ArgumentParser(description=__doc__)
     # Not 8132: that is the public board's port in production
     # (deploy/systemd/pool-workbench.service.d/40-public-board.conf). A fixture left
@@ -52,7 +71,7 @@ def main():
             print(f'Seeded operations state: {Path(args.state).resolve()} ({len(document.get("players", []))} players, '
                   f'revision {document.get("revision")})', flush=True)
         backend = Backend(root)
-        server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(backend))
+        server = FixtureServer(('127.0.0.1', args.port), make_handler(backend))
         public = None
         if args.public_port:
             public = PublicBoardServer(('127.0.0.1', args.public_port),
