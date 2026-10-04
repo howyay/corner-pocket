@@ -607,3 +607,58 @@ lane's because the harness pins the board to EN (`tests/console_shots.py:102 PUB
 The instruments and every raw number live in `out/r3m/` (`measure.json`, `measure2.json` … `measure10.json`,
 `r3m_measure*.py`, `r3m_lib.py`, `r3m_vision_shots.py`, `r3m_board_shots.py`); `out/` is gitignored, so all
 of it is untracked evidence rather than commits.
+
+## Round 9 — the owner's ten items, and the detector run that closes them (2026-10-04)
+
+`docs/console-redesign.md` **§21** is this round. Item 10 of the owner's list — *"use impeccable skills all
+throughout"* — is the process, and this is its record: `impeccable context` at SetUp, the refine passes while
+the work happened, and one `impeccable detect --json annotator/ops.js annotator/ops.css` at the end.
+
+**25 findings: 17 advisory, 8 warning.** By rule — `design-system-color` 9,
+`design-system-font-size` 8, `side-tab` 7, `border-accent-on-rounded` 1. By file — `annotator/ops.css` 24,
+`annotator/ops.js` 1.
+
+| location | rule | severity | the snippet the detector quoted | on a round-9 line? |
+| --- | --- | --- | --- | --- |
+| `annotator/ops.css:92` | `design-system-font-size` | advisory | `font-size: clamp(30px,3.4vw,48px) has fluid endpoints 30px` | — |
+| `annotator/ops.css:116` | `design-system-color` | advisory | `Undocumented color rgba(255,255,255,.52) is outside DESIGN` | — |
+| `annotator/ops.css:116` | `design-system-color` | advisory | `Undocumented color rgba(255,255,255,.08) is outside DESIGN` | — |
+| `annotator/ops.css:116` | `design-system-color` | advisory | `Undocumented color rgba(255,255,255,.16) is outside DESIGN` | — |
+| `annotator/ops.css:117` | `design-system-color` | advisory | `Undocumented color rgba(255,255,255,.95) is outside DESIGN` | — |
+| `annotator/ops.css:127` | `design-system-color` | advisory | `Undocumented color rgba(255,255,255,.85) is outside DESIGN` | **yes** |
+| `annotator/ops.css:127` | `design-system-color` | advisory | `Undocumented color rgba(255,255,255,.06) is outside DESIGN` | **yes** |
+| `annotator/ops.css:144` | `side-tab` | warning | `border-left:4px solid var(--line)}` | — |
+| `annotator/ops.css:235` | `side-tab` | warning | `border-left:3px solid var(--brass)` | — |
+| `annotator/ops.css:269` | `design-system-font-size` | advisory | `font-size: 9px is off the DESIGN.md type ramp` | — |
+| `annotator/ops.css:305` | `side-tab` | warning | `border-left:3px solid var(--brass)` | — |
+| `annotator/ops.css:311` | `border-accent-on-rounded` | warning | `border-top:3px solid` | — |
+| `annotator/ops.css:414` | `side-tab` | warning | `border-left:3px solid var(--green)}` | — |
+| `annotator/ops.css:454` | `side-tab` | warning | `border-left:3px solid var(--green)` | — |
+| `annotator/ops.css:457` | `side-tab` | warning | `border-left:3px solid var(--green)` | — |
+| `annotator/ops.css:566` | `design-system-color` | advisory | `Undocumented color #fff is outside DESIGN.md colors` | — |
+| `annotator/ops.css:570` | `design-system-color` | advisory | `Undocumented color #fff is outside DESIGN.md colors` | — |
+| `annotator/ops.css:587` | `design-system-font-size` | advisory | `font-size: clamp(28px,3.2vw,44px) has fluid endpoint 44px ` | — |
+| `annotator/ops.css:756` | `side-tab` | warning | `border-left:2px solid var(--line)` | — |
+| `annotator/ops.css:848` | `design-system-font-size` | advisory | `font-size: clamp(30px,3.4vw,40px) has fluid endpoints 30px` | — |
+| `annotator/ops.css:884` | `design-system-font-size` | advisory | `font-size: 9px is off the DESIGN.md type ramp` | — |
+| `annotator/ops.css:988` | `design-system-font-size` | advisory | `font-size: clamp(64px,13vw,176px) has fluid endpoints 64px` | — |
+| `annotator/ops.css:1000` | `design-system-font-size` | advisory | `font-size: clamp(56px,22vw,120px) has fluid endpoints 56px` | **yes** |
+| `annotator/ops.css:1047` | `design-system-font-size` | advisory | `font-size: 8px is off the DESIGN.md type ramp` | — |
+| `annotator/ops.js:807` | `design-system-color` | advisory | `Undocumented color #1d5c44 is outside DESIGN.md colors` | — |
+
+### Disposition
+
+- **Three findings sit on lines this round touched, all advisory, all accepted.**
+  - `annotator/ops.css:127` (two of them) is the body of `#ops-shell .ball[data-stripe="1"]`, unchanged this
+    round — round 9 *narrowed* that selector by deleting the two destination selectors from it, which is the
+    opposite of drift. The literal colours in it are the pre-existing 9–15 band.
+  - `annotator/ops.css:1000` is `font-size: clamp(56px,22vw,120px)`, the phone timer face. DESIGN.md:71-72
+    already documents the system as "the UI type ramp … `--fs-xl` 20px; display sizes are `clamp()`s below"
+    (echoed at DESIGN.md:471), so this is the documented display step, not a new ramp. The detector cannot see
+    that sentence; the acceptance is deliberate.
+- **The other 22 are on lines this round did not touch.** They are tabled above rather than argued here, so a
+  later round can decide them on purpose instead of rediscovering them. Round 9 changed no palette, no type
+  ramp and no `side-tab` behaviour; it added no colour and no size of its own.
+- **The run produced no code change**, and it is not why anything in §21 shipped: the two live defects of this
+  round (the `1 videos` plural, the 670 px Records column at 390) were caught by the browser pass, which is the
+  honest division of labour between a static detector and a measurement.

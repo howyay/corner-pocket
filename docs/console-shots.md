@@ -573,3 +573,54 @@ not persisted, the fixture's download was started and cancelled twice to measure
 `state:"cancelled"` and the queue `current:null`, `skipped:2` — and production still runs the previous python,
 so its line is the degrade sentence until `pool-workbench.service` restarts (§20.3 says what that restart
 costs).
+
+## 15. Round 9: the owner's ten items
+
+Reproduce: the ten items are read-only changes to the console, so the whole pass runs against the production
+console on `127.0.0.1:8130` — except item 4's picker round trip, which writes, and therefore runs against an
+isolated root so no real entrant is recorded.
+
+```
+# the read-only pass (nothing written)
+B=/home/haoye/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64
+export AGENT_BROWSER_SESSION=r9a
+$B open 'http://127.0.0.1:8130/?r9=1#/clock'   # ?r9=N defeats the asset cache; #/<tab> picks the tab
+$B set viewport 1280 900                        # `set` is the subcommand — a bare `viewport` is ignored
+$B eval '<one expression, returning JSON.stringify(...)>'
+$B screenshot out/r9/after-r9-clock-1280.png
+
+# the write path, isolated (item 4): the repo's own state file is copied, never touched
+mkdir -p /tmp/r9-root/out
+cp -a out/corner-pocket /tmp/r9-root/out/
+ln -s /home/haoye/projects/pool/annotator /tmp/r9-root/annotator
+.venv/bin/python annotator/unified_server.py --port 8142 --root /tmp/r9-root
+```
+
+| what | measured |
+| --- | --- |
+| item 1, the timer at 1280 | face 399×153, rail 332×6 with `role="progressbar"` and `aria-valuenow="45"`, Start 132×44, Reset 72×44, four presets 44×44, `.timer-card` computed `display:grid; gap:12px` |
+| item 1 at 390 | face 206×79, rail 332×6; `#nav` `display:none`, `#tabbar` 390×61 |
+| item 2 | the bar's whole text is `0:45StartReset20304560`, with **0** balls in it |
+| item 3 | `.scene-track` 0, `.scene-node` 0, `#tables` 0, `.table-card` 0, `.tables-grid` 0, `.tile` 0 |
+| item 4, shut | one `.pick-btn` with `aria-expanded="false"`, no panel in the DOM |
+| item 4, open | `.pick-panel` 1185×320, `position:static`, inside `#entrant-form` (48,397,1185,530); `.pick-count` `7 of 7`; 8 rows — Guest first, then 7 free regulars; `elementFromPoint` at a row's centre hits that row |
+| item 4, the write | the button reads `Wanwan · 0 ▾`, `input[name=pid0]` is `a3c749f3e6b744cbab1a6010bf8cc1c1`, the guest field is gone; after submit the nav reads `Regulars 7` + `Tournament 1`. `/tmp/r9-root/out/corner-pocket/state.json` `d68b65095cb4e5deb90f260c04d8ba83` → `c5a3a6484474d09bd7a1c7fd087b1c7f`, revision 12 → 13; production's file still `d68b6509…` |
+| item 5 | six nav balls and `data-stripe` **0** anywhere in the document; only `annotator/ops.css:127` (9–15) bands; `.ball i` keeps the ivory plate |
+| items 6-8 at 1280 | 26 `.tl-day` sections, 31 `.tl-vod` cards, each `data-action="tl-review"` with a `data-id`; meta `23:07 · 4:34:15 · Broadcast`; the title clamped to 2 lines; one 16:9 thumb; `.tl-vods` `overflow-x:auto` |
+| items 6-8, the click | the card routes to `#/records/review/2890514774` → `261001`, `Friday, 2 October 2026 · 23:07 · 4:34:15`, an `Import this broadcast` button with `data-length="16455"`, and no workbench |
+| item 9 | `.roster-stat` ×4 — `Regulars 8` · `Active members 8` · `Average house rating (manual) —` · `Recorded results 0`; filters `Everyone 8` / `Active 8` / `Visitor 0` / `Inactive 0`; 8 two-line rows; `.standing-head` 0, `.standing-cell` 0, `.tile` 0 |
+| the phone, 390 | every tab `documentElement.scrollWidth` 390 — Records measured **670** before §21.4's one line; `.tl-vods` 332 wide with `scrollWidth` 412, `.tl-vod-item` 200 |
+| 中文 | 击球计时 / 报名台 / 访客▾ / 录制场次 with `2 个视频` · `1 个视频` / 常客名册; the 390 tabbar reads `1 击球计时 2 赛事 3 战绩档案 4 视觉 5 常客 6 后台` |
+
+Shots: `out/r9/after-r9-clock-1280.png`, `after-r9-clock-390.png`, `after-r9-clock-1280-zh.png`,
+`after-r9-records-1280.png`, `after-r9-records-390.png`, `after-r9-regulars-390.png`,
+`after-r9-regulars-1280-zh.png`, `after-r9-tonight-390-zh.png`, `desk-open-8142.png`.
+
+Limits, stated rather than hidden: the isolated root is a byte-identical copy of production's state, so its
+screen shows the same club and its writes land nowhere else; `agent-browser click` answers
+`✗ Element not found: <selector>` when the target is not there, and the first `.pick-row[data-id]` attempt hit
+the **Guest** row — an empty `data-id` still matches `[data-id]` — which is why the row hit was established
+with `elementFromPoint`; the day strip needs no internal scroll at 1280 (a day holds at most three cards), so
+390 is where `.tl-vods` earns its `overflow-x:auto`; and one measurement in this round is a judgement rather
+than a defect — `ops.css`'s phone timer face is `clamp(56px,22vw,120px)`, which the detector flags as an
+off-ramp font size while DESIGN.md:71-72 already calls display sizes the documented step below `--fs-xl`.

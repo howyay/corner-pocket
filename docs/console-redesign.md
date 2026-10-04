@@ -1993,3 +1993,96 @@ this is the one item of the four that changes what the machine does on its own.
 - **Audit of the delegate's diff** (I re-checked, not took on report): `+324/-13`, `+22/-3`, `+223/-0`; the 13
   removals are exactly the `recent()` extraction and three route-tuple/docstring lines; no new imports; 0
   destructive calls; the guards above present.
+
+## §21 — Round 9: the owner's ten items (2026-10-04)
+
+The owner's words (m05946) are the work order, and §21.1 answers each one. Nine of the ten are changes to
+`annotator/ops.js` and `annotator/ops.css`; the tenth — *"use impeccable skills all throughout"* — is the
+process, whose record is `docs/impeccable-ledger.md`. **No python changed in this round.**
+
+### 21.1 The ten items
+
+| # | the owner's words | what shipped |
+|---|---|---|
+| 1 | "rearrange and set the spacing for shot timer tab." | `clockScreen()` now renders heading → `.timer-face` → `.timer-progress` (directly under the face, `role="progressbar"` with `aria-valuenow`) → `.timer-controls` last; `.timer-card` is an explicit grid (`display:grid; gap:var(--sp-3); padding:var(--sp-5)`), Start is a fixed 132 px and every control a 44 px target, with a 750 px variant. |
+| 2 | "rm the text 'RegisteredRackedPlayingWrapping up' from tournament page." | The `.scene-track` is gone from `scene()`, and with it `sceneStep()`, `SCENE_STEPS`, `SCENE_KEYS`, the four roots (`sceneRegister/sceneRack/scenePlay/sceneClose`) and the five `.scene-track`/`.scene-node` CSS rules. |
+| 3 | "rm Guests tonight, Tables, Event table, Scorekeeper from the tournament page." | `guestsTonight`, `tablesGrid`, `tablesArea` (the "Event table" and "Scorekeeper" cards), `tableCard`, `nextReady`, `registerScreen` and the tile-based `floorScreen`/`tonightPanel` are deleted. `tonightScreen()` is the scoreboard + `playScreen()` + `nightCard()` (+ `wrapScreen()`/`bracketScreen()` when the night is complete), and the idle path uses `setupScreen()`. |
+| 4 | "combine the dropdown for selecting regular. only show name box when selecting guest. use custom dropdown." | §21.2. |
+| 5 | "please make the tab bar icons not striped balls. 1-7 are not striped." | The destination balls are solid: `ballStripe = n => ballNumber(n) > 8 ? 1 : 0`, so only 9–15 band, and the ivory `#ops-shell .ball i` number plate is theme-independent — which DESIGN.md's token table already fixes (`ball-face: "#f7f3eb"` in both schemes). The round-8 rule `#ops-shell .ball[data-stripe="1"],#ops-shell #nav .ball,#ops-shell #tabbar .ball{…}` painted a band over every destination; the selector is now `#ops-shell .ball[data-stripe="1"]` alone. |
+| 6 | "rm Not built yet and 'Build this night' from the records page. each VOD should be its own card and each day needs to be horizontally stacked." | §21.3. Reading of "horizontally stacked": one day = one section whose VOD cards run horizontally inside it (`.tl-vods{overflow-x:auto}`), the days themselves stacking down the page. The other reading — day *columns* side by side — is one CSS change away; it is written here so the choice is visible rather than implied. |
+| 7 | "make the date more visible in the timeline." | The day head is `h3.tl-date` in the display face at `--fs-xl` with `.tl-day-count` beside it (`1 video` / `2 videos`, 中文 `1 个视频` / `2 个视频`); the old 11 px muted head and the "unbuilt" section above it are gone. |
+| 8 | "make every VOD card clickable by default. it shouldnt require 'building' it outside the unified scrubber." | §21.3: the card *is* the button, and the review screen for a bare VOD carries the import action itself. |
+| 9 | "improve the design of the regulars tab." | `rosterSummary()` (four `.roster-stat` cells: regulars, active, average **over rated regulars only** with `rosterRatingBase`'s note, recorded results) replaces the tile hero; the `+` is `btn(t('newPlayer'),'open-add-player')`; the filters are Everyone/Active/Visitor/Inactive with counts; each row is a two-line card (`.badge` rank, `.standing-name` + `.standing-record`, `.standing-rating` with the value — a dash when nothing is rated — and its own label), and `.standing-head`/`.standing-cell` are deleted from both files. |
+| 10 | "use impeccable skills all throughout." | `impeccable context` at SetUp, the refine passes during the work, `impeccable detect --json annotator/ops.js annotator/ops.css` at the end, and the findings row in `docs/impeccable-ledger.md`. |
+
+### 21.2 Item 4: one custom picker per desk slot
+
+`setupScreen()` renders one `deskSlot(i)` per slot — `i` is 0 for singles, 0 and 1 for doubles. The picker
+replaces the old `<select>` + always-visible name field: a `.pick-btn` reporting the choice, a `.pick-panel`
+holding `.pick-search`, a `.pick-count` and one `.pick-row[data-id][data-name]` per **free** regular, with the
+Guest row always first and never hidden.
+
+- `deskFree()` drops regulars already seated or already picked in the other slot (doubles); `deskFilter(field)`
+  filters the rows in the DOM by `nameMatches` and updates the count from the panel's `data-total`.
+- The `guestName` field is rendered **only** when nothing is picked — the box exists for a guest and for nobody
+  else, which is the owner's second sentence.
+- Clicks: a row writes `deskPick[slot] = id || ''`, clears the guest draft when a regular was picked, and
+  closes the panel; a click anywhere outside `#entrant-form` closes it, and so does `Escape`. The three state
+  objects (`deskPick`, `deskOpen`, `deskDraft`) are reset after `entrant_add` succeeds. The chosen pid travels
+  in a hidden `input[name=pid{i}]`.
+
+**The round trip, on an isolated root** (`/tmp/r9-root`: `<root>/annotator` symlinked to the repo's, its own
+byte-identical copy of the production state; `annotator/unified_server.py --port 8142 --root /tmp/r9-root`):
+clicking Wanwan's row makes the button read `Wanwan · 0 ▾`, puts
+`a3c749f3e6b744cbab1a6010bf8cc1c1` in `input[name=pid0]`, removes the guest field and closes the panel;
+submitting then makes the nav read `Regulars 7` (Wanwan left the free pool) and `Tournament 1` with the toast
+`Saved.`. `/tmp/r9-root/out/corner-pocket/state.json` moved md5 `d68b65095cb4e5deb90f260c04d8ba83` →
+`c5a3a6484474d09bd7a1c7fd087b1c7f`, revision 12 → 13, and the new entrant `88fa0762d0544de987318aae2f8b38a6`
+names that member. Production's own `out/corner-pocket/state.json` is still `d68b65095cb4e5deb90f260c04d8ba83`.
+
+### 21.3 Items 6, 7 and 8: Records is a timeline of days, and the card is the button
+
+`archiveTimeline()` sorts the VODs and emits one `.tl-day` section per local calendar day — the sort makes
+equal days neighbours, so a single pass groups them. A section is `.tl-day-head` (`h3.tl-date` in the display
+face at `--fs-xl`, the full date via `dayFull()`, `.tl-day-count` beside it) followed by `.tl-vods` and its
+cards. The page's old "unbuilt" section and its **Build this night** button are deleted, along with the words
+`archiveUnbuilt`, `archiveBuild`, `archiveVision` and `archiveOpen`.
+
+`archiveRow(vod, night)` renders the whole card as one
+`<button class="tl-vod" data-action="tl-review" data-id="<vod id>">`: a 16:9 thumb, a two-line clamped title,
+`clockLabel · hms · archiveKind` in the meta line (`23:07 · 4:34:15 · Broadcast`), and the small
+`archiveBuilt` mark on a card whose night already exists. Clicking routes to `reviewScreen()` with a bare VOD
+and no night: that screen prints `dayFull · clockLabel · hms`, one `reviewVodNote` sentence and a primary
+**Import this broadcast** button carrying `bf-pick` plus `data-id`/`data-length`/`data-title`, and draws no
+workbench. Nothing has to be built first — that is item 8.
+`recordsScreen()` resolves `#/records/review/<id>` against `data.history` first and the archive second, so a
+night and a bare VOD share one route.
+
+### 21.4 The phone at 390: a regression the measurement caught
+
+At 390 the Records screen measured `documentElement.scrollWidth` **670** while every other tab measured 390.
+Cause, measured rather than guessed: `article.archive-card` is a grid item of the screen's `.stack` and had no
+rule of its own, so `min-width:auto` let the 658 px min-content of the day scroller freeze the column. One
+line at the end of the Records block in `annotator/ops.css`, with the measurement in the comment above it:
+`#ops-shell .stack.records>*{min-width:0}`. After it: `docSW` 390, the card 366 wide, `.tl-vods` 332 wide with
+`scrollWidth` 412 — the scroller finally doing the work it was built for — and at 1280 `.tl-vods` is 1185,
+equal to its own `scrollWidth`, since a day holds at most three cards.
+
+### 21.5 Evidence
+
+- **Suites**: `node --test tests/test_ops.js` → **152 pass / 0 fail**; `node tests/test_app_timeline.js` →
+  **81 passed, 0 failed**; `node --test tests/test_board.js` → **16 pass / 0 fail**;
+  `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'` → OK (skipped=48). The 25 stale assertions in
+  `tests/test_ops.js` were moved to the new contracts (the deleted words, the picker's markup, the archive
+  card, the two-line standing row); none was deleted without a replacement.
+- **The console, in a browser**, at 1280×900 and 390×844, in English and 中文: the timer screen of item 1
+  (face 399×153, rail 332×6 at 1280; 206×79 at 390), six solid destination balls and **no** `data-stripe`
+  anywhere, Regulars (4 stat cells, 4 counted filters, 8 two-line rows and no `.tile`), Records (26 day
+  sections, 31 cards, each a button carrying a `data-id`), and the card → `#/records/review/2890514774`
+  round trip.
+- **The picker's write path** on the isolated root, with the state file's md5 and revision as the proof
+  (§21.2) — production untouched.
+- **The detector** (`impeccable detect --json annotator/ops.js annotator/ops.css`): 25 findings, 17 advisory
+  and 8 warning, 24 of them in `annotator/ops.css`. Three sit on lines this round touched; all three are
+  advisory and accepted with their reason in `docs/impeccable-ledger.md`.
+- Shots for every screen above are in `out/r9/` (`docs/console-shots.md` §15).

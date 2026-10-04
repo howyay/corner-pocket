@@ -115,15 +115,16 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
    white with the hue as a band across the middle, the number plate riding on the band. */
 #ops-shell .ball{position:relative;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;flex:none;background-color:var(--ball-c,var(--ball));background-image:radial-gradient(circle at 34% 30%,rgba(255,255,255,.52),rgba(255,255,255,.08) 42%,rgba(255,255,255,0) 58%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 42%,var(--ball-edge));box-shadow:inset 0 0 0 1px var(--ball-edge),inset 1px 2px 6px rgba(255,255,255,.16),0 2px 4px rgba(0,0,0,.36);font:10px var(--mono);color:var(--ball-num)}
 #ops-shell .ball::before{content:"";position:absolute;left:20%;top:13%;width:26%;height:24%;border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95),rgba(255,255,255,0) 72%);pointer-events:none}
-/* Round 8, owner item 4: in the destinations' bar the ball is an identifier, not a ball on a
-   table, so its base is the ivory face in both colour schemes. Measured before the change
-   (390, dark and light, computed): every one of the six came back with the same hue-filled
-   disc - rgb(242,193,78) for ball 1, rgb(47,111,208) for 2 - and the same ivory plate, so the
-   scheme never touched them and the ruling is the base itself. Here the hue rides the band,
-   the treatment the 9-15 sphere has always used, and the number keeps its plate. Everywhere
-   else the ball keeps its solid face: on a table card or an entrant row the hue is the fact
-   being read, and the tab bar's job is to be found, not to report. */
-#ops-shell .ball[data-stripe="1"],#ops-shell #nav .ball,#ops-shell #tabbar .ball{background-color:var(--ball-face);background-image:linear-gradient(180deg,rgba(0,0,0,0) 25%,var(--ball-c) 25%,var(--ball-c) 75%,rgba(0,0,0,0) 75%),radial-gradient(circle at 34% 30%,rgba(255,255,255,.85),rgba(255,255,255,.06) 48%,rgba(0,0,0,0) 62%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 46%,var(--ball-edge))}
+/* Round 8 made the destinations' ball ivory-based with the hue on a band. Round 9, owner item 5
+   reversed the band and kept the point: "make the tab bar icons not striped balls. 1-7 are not
+   striped." On a rack 1-7 (and the 8) are the solids and 9-15 carry the stripe, so the band
+   belongs to [data-stripe="1"] alone - the old selector list painted it over every nav and
+   tab-bar ball, which is exactly what read as a stripe. The ivory the round-8 ruling was after
+   is still there and always was: it is the number's own plate (.ball i) plus the lit rim, and
+   no theme redefines --ball-face or any other --ball* token, so both schemes show the same
+   white in the same place. Measured before the round-8 change at 390, all six destination balls
+   already carried the ivory plate; the base is what changed, and it changes back here. */
+#ops-shell .ball[data-stripe="1"]{background-color:var(--ball-face);background-image:linear-gradient(180deg,rgba(0,0,0,0) 25%,var(--ball-c) 25%,var(--ball-c) 75%,rgba(0,0,0,0) 75%),radial-gradient(circle at 34% 30%,rgba(255,255,255,.85),rgba(255,255,255,.06) 48%,rgba(0,0,0,0) 62%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 46%,var(--ball-edge))}
 #ops-shell .ball i{position:relative;z-index:1;display:grid;place-items:center;width:60%;height:60%;border-radius:50%;background:var(--ball-face);color:var(--ball-num);font:1em var(--mono);line-height:1}
 #ops-shell nav{padding-top:0;padding-bottom:var(--sp-2)}
 #ops-shell nav button{display:flex;align-items:center;gap:var(--sp-2);min-height:44px;padding-left:var(--sp-2)}
@@ -660,10 +661,6 @@ html,body{-webkit-font-smoothing:antialiased}
    the night's own step, not four buttons that hide the work. It never grows a control. */
 #ops-shell .scene{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) 0 var(--sp-3);border-bottom:1px solid var(--line)}
 #ops-shell .scene-who{font-family:var(--display);font-weight:500;color:var(--ink-hi)}
-#ops-shell .scene-track{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2)}
-#ops-shell .scene-node{font:var(--fs-sm) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
-#ops-shell .scene-node.on{color:var(--brass-hi)}
-#ops-shell .scene-node.on::before{content:"● ";color:var(--brass)}
 /* The Tonight column: one rhythm, cards in the order the night needs them. */
 #ops-shell .tonight{display:grid;gap:var(--sp-5)}
 #ops-shell .card--start{border-top:3px solid var(--brass)}
@@ -744,7 +741,6 @@ html,body{-webkit-font-smoothing:antialiased}
 /* §1.5 The revision moved off the top bar: the Back room says what was last written, in mono. */
 #ops-shell .last-write{font-family:var(--mono);font-size:.85rem;letter-spacing:.01em}
 /* The step is a read-only scene: it never looks or behaves like the old phase strip. */
-#ops-shell .scene .scene-node.on{font-weight:600}
 /* §5 Records is one Windows timeline: a year and a month header, one row per past night,
    and the night's own log folded into the row it belongs to. §6 puts the house standing
    on each Regulars row, so the same table is never rendered twice. §7 the backfill is one
@@ -779,11 +775,28 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .tl-audit>summary::before{content:'▸';color:var(--brass);margin-right:var(--sp-1)}
 #ops-shell .tl-audit[open]>summary::before{content:'▾'}
 #ops-shell .audit{display:grid;gap:var(--sp-1);margin-top:var(--sp-1);font:var(--fs-xs) var(--mono);color:var(--ink-dim);max-height:16rem;overflow:auto}
-#ops-shell .standing-head,#ops-shell .standing{display:grid;grid-template-columns:2rem minmax(0,1fr) 4.5rem 3.5rem 4rem 3.5rem;gap:var(--sp-2);align-items:center}
-#ops-shell .standing-head{padding:0 var(--sp-3) var(--sp-1);font:var(--fs-xs) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
-#ops-shell .standing .standing-cell{font:var(--fs-sm) var(--mono);text-align:right;color:var(--ink)}
-#ops-shell .standing.no-record .standing-cell{color:var(--ink-dim)}
-#ops-shell .standing .standing-name{display:flex;flex-direction:column;min-width:0}
+/* Round 9, owner item 9: one regular, one row, two lines. The six-column grid this replaces
+   repeated five header words over every row and turned a regular's record into a scan line of
+   small mono numbers; here the name keeps the row, the record rides under it, and the rating -
+   the number the room argues about - is the only thing aligned to a column, in the display face
+   with its own label under it for anyone who has not learnt the layout yet. A rating of 0 means
+   nobody has rated this regular, so it prints as a dash, not as a zero. */
+#ops-shell .standing-list{display:grid;gap:var(--sp-2)}
+#ops-shell .standing{display:grid;grid-template-columns:2.25rem minmax(0,1fr) 5.5rem;gap:var(--sp-3);align-items:center;width:100%;padding:var(--sp-3);background:var(--panel);border:1px solid var(--line);border-radius:2px;color:inherit;font:inherit;text-align:left;cursor:pointer}
+#ops-shell .standing:hover{border-color:var(--brass-hover)}
+#ops-shell .standing:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+#ops-shell .standing .standing-name{display:flex;flex-direction:column;gap:2px;min-width:0}
+#ops-shell .standing-name>small{font:var(--fs-xs) var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .standing-record{color:var(--ink-mid)}
+#ops-shell .standing.no-record .standing-record{color:var(--ink-faint)}
+#ops-shell .standing-rating{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+#ops-shell .standing-rating strong{font:600 var(--fs-lg)/1.1 var(--display);font-variant-numeric:tabular-nums;color:var(--ink-hi)}
+#ops-shell .standing-rating small{font:var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .roster-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+#ops-shell .roster-stat{display:flex;flex-direction:column;gap:var(--sp-1);padding:var(--sp-3) var(--sp-4);background:var(--panel)}
+#ops-shell .roster-stat small{font:var(--fs-xs) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .roster-stat strong{font:600 var(--fs-xl)/1.1 var(--display);font-variant-numeric:tabular-nums;color:var(--ink-hi)}
+#ops-shell .roster-stat-note{font:var(--fs-xs) var(--body);letter-spacing:0;text-transform:none}
 #ops-shell .backfill{gap:var(--sp-3);max-width:var(--measure)}
 #ops-shell .backfill h2{font:600 var(--fs-xl) var(--display);margin-bottom:var(--sp-1)}
 #ops-shell .bf-head{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2)}
@@ -802,10 +815,8 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .bf-score input{width:3.5rem}
 #ops-shell .bf-unconfirmed{min-height:1.2em;color:var(--brass-hi)}
 @media(max-width:750px){
-  #ops-shell .standing-head{display:none}
-  #ops-shell .standing{display:block}
-  #ops-shell .standing .standing-cell{display:inline-block;margin:var(--sp-1) var(--sp-3) 0 0;text-align:left}
-  #ops-shell .standing .standing-cell::before{content:attr(data-col) ' ';color:var(--ink-dim)}
+  #ops-shell .standing{grid-template-columns:2rem minmax(0,1fr) 4.75rem;gap:var(--sp-2);padding:var(--sp-2)}
+  #ops-shell .roster-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
   #ops-shell .tl-date{min-width:0}
   /* Round 2, B-08: the collapse toggle measured 24x24 px on a phone — under the 44 px tap
      target the rest of the console keeps. The glyph stays small; the target grows. */
@@ -888,17 +899,12 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .score-foot button{flex:1 1 auto;padding:0 var(--sp-2);font-size:var(--fs-md)}
 }
 
-/* === Round 3, §14.7 (F10): the roster's rating column fits its own header ------------
-   Measured before at 1280 EN dark: the head cell "HOUSE RATING (MANUAL)" was 22 characters
-   of --fs-xs mono at .12em inside a 4.5rem (72 px) column, so it took three lines (42 px
-   tall against its peers' 14 px) and dragged the head row down with it. The label needs
-   ~167 px, so the column is 12rem. 11rem was tried first and measured 2 px short — the head
-   cell came out 165 px wide and the label still broke over two lines — so the column is
-   180 px: the head is one line and every data cell stays in the same grid (the head and the
-   rows are separate grids sharing this template, so both had to move together). The name
-   column is minmax(0,1fr) and gave up the 104 px without complaint — it measured 858 px at
-   1280. */
-#ops-shell .standing-head,#ops-shell .standing{grid-template-columns:2rem minmax(0,1fr) 12rem 3.5rem 4rem 3.5rem}
+/* === Round 3, section 14.7 (F10), retired in Round 9 =========================================
+   That fix widened the rating column to 12rem (180 px) so its head cell, "HOUSE RATING
+   (MANUAL)" - 22 characters of --fs-xs mono at .12em, needing about 167 px - could sit on one
+   line, and the rows shared that template with the head so both had to move together. Round 9
+   deleted the head row (one regular, one row, labels in the row), so the template it overrode
+   no longer exists; the measurement survives in docs/impeccable-ledger.md. */
 
 /* === Round 3, §14.7 (F13): an expanded event's matches are columns --------------------
    Measured before at 1280 EN dark: every row of .tl-matches was one text run, so the
@@ -971,14 +977,29 @@ html,body{-webkit-font-smoothing:antialiased}
    door. The clockbar carries no ball and no word of its own - ball 1 names the timer where the
    destinations are, in the nav and in the phone's bottom bar - so the two faces the nav used to
    give the timer (its flex row and its hairline separator) are gone with the tab. */
-#ops-shell .timer-card{justify-items:start}
+/* Round 9, owner item 1: the timer screen's arrangement and its rhythm. The rail now sits under
+   the face it measures - it used to come after the buttons, so the eye crossed the controls to
+   find the progress of the number above them - and the controls are one row on the same 12px
+   beat the rest of the console uses, with Start given a fixed width so the row does not shift
+   sideways when the word under it becomes Pause. */
+#ops-shell .timer-card{display:grid;justify-items:start;gap:var(--sp-3);padding:var(--sp-5)}
+#ops-shell .timer-card h2{margin:0}
 #ops-shell .timer-face{margin:0}
 #ops-shell .timer-face .clock{font-size:clamp(64px,13vw,176px);line-height:.92}
-#ops-shell .timer-progress{display:block;width:100%;height:6px;border:1px solid var(--line);border-radius:2px;background:var(--rail)}
+#ops-shell .timer-progress{display:block;width:100%;height:6px;margin:0;border:1px solid var(--line);border-radius:2px;background:var(--rail)}
 #ops-shell .timer-progress span{display:block;height:100%;background:var(--brass);transform-origin:left;transition:transform .2s linear,background-color .3s ease-out}
+#ops-shell .timer-controls{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;margin-top:var(--sp-1)}
+#ops-shell .timer-controls button{min-height:44px;padding:0 var(--sp-4)}
+#ops-shell .timer-controls button[data-action=clock-toggle]{min-width:132px}
+#ops-shell .timer-controls button[data-action=clock-reset]{color:var(--ink-dim)}
 #ops-shell .timer-card .presets{display:flex;gap:1px;padding:1px;border-radius:2px;background:var(--line)}
 #ops-shell .timer-card .presets button{min-width:44px;padding:0 var(--sp-2);border:0;border-radius:2px;background:var(--panel2);color:var(--ink-dim);font-family:var(--mono)}
 #ops-shell .timer-card .presets button.active{background:var(--brass);color:var(--brass-fg)}
+@media (max-width:750px){
+  #ops-shell .timer-card{padding:var(--sp-4)}
+  #ops-shell .timer-face .clock{font-size:clamp(56px,22vw,120px)}
+  #ops-shell .timer-controls{gap:var(--sp-2)}
+}
 
 /* === Round 5's width trade, retired by round 7 (owner item 2) -------------------------------
    Measured at 1024 EN dark (out/r5/probe_bar.py, after §16.4 landed): the timer slot was 311.5 px
@@ -1037,21 +1058,37 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .bf-thumb{width:112px;height:63px}
 }
 
-/* Round 6, the owner's "make the records the timeline view of all twitch vods": Records opens
-   with the broadcast archive, so its rows are the timeline's own rows (SS5: rail, dot, date,
-   display-face name) carrying the same 160x90 picture the picker uses (SS16.7) and one of two
-   states - a night already built, or a button that hands the broadcast to the backfill flow.
-   Pinning .tl-vods here keeps it list-style-free like .tl-nights, whose rule it cannot join
-   without editing a Round 2 line. */
+/* Round 9, owner items 6-8: the archive is broadcast cards, one row per day.
+   The day head is the loudest thing in each group (item 7): a full weekday and date in the
+   display face at --fs-xl, with the count beside it. The cards stack sideways inside their day
+   (item 6, "each day needs to be horizontally stacked") and every card is one button, so the
+   whole surface is the door into the review (item 8) - no state badge and no build button; the
+   mark for a broadcast that already has a night is a single brass word under its meta line. */
 #ops-shell .archive-note{margin:0 0 var(--sp-2)}
-#ops-shell .tl-vod .badge.is-built{color:var(--brass);border-color:var(--brass)}
 #ops-shell .archive-count{margin-right:var(--sp-2)}
-#ops-shell .tl-vods{list-style:none;margin:0;padding:0;display:grid;gap:var(--sp-1)}
-#ops-shell .tl-vod .tl-row{align-items:flex-start}
-#ops-shell .tl-vod-thumb{flex:none;display:block;width:160px;height:90px;object-fit:cover;
-  border:1px solid var(--line);border-radius:2px;background:var(--rail)}
+/* The Records screen at 390 px (docs/console-shots.md 15). A grid item refuses to shrink
+   below its min-content, and this card's own rows give it a 658 px min-content, so the whole
+   page was 280 px wider than the phone. The card is unstyled elsewhere, so the fix is the
+   grid's own shrink permission on this screen only. */
+#ops-shell .stack.records>*{min-width:0}
+#ops-shell .tl-day{margin-top:var(--sp-4)}
+#ops-shell .tl-day-head{display:flex;align-items:baseline;gap:var(--sp-3);flex-wrap:wrap;padding-bottom:var(--sp-1);border-bottom:1px solid var(--line)}
+#ops-shell .tl-date{margin:0;font:600 var(--fs-xl)/1.2 var(--display);letter-spacing:.01em;color:var(--ink-hi)}
+#ops-shell .tl-day-count{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase}
+#ops-shell .tl-vods{list-style:none;margin:0;padding:var(--sp-2) 0 var(--sp-1);display:flex;gap:var(--sp-3);overflow-x:auto;scrollbar-width:thin}
+#ops-shell .tl-vod-item{flex:none;width:236px}
+#ops-shell .tl-vod{display:flex;flex-direction:column;gap:var(--sp-2);width:100%;height:100%;padding:var(--sp-2);background:var(--panel);border:1px solid var(--line);border-radius:2px;color:inherit;font:inherit;text-align:left;cursor:pointer}
+#ops-shell .tl-vod:hover{border-color:var(--brass-hover)}
+#ops-shell .tl-vod:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+#ops-shell .tl-vod-thumb{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid var(--line);border-radius:2px;background:var(--rail)}
+#ops-shell .tl-vod-thumb.is-blank{background-image:repeating-linear-gradient(45deg,var(--rail),var(--rail) 6px,var(--panel2) 6px,var(--panel2) 12px)}
+#ops-shell .tl-vod-body{display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
+#ops-shell .tl-vod-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:600 var(--fs-md)/1.3 var(--body);color:var(--ink)}
+#ops-shell .tl-vod-meta{font:var(--fs-xs) var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .tl-vod-made{font:var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass)}
 @media (max-width:750px){
-  #ops-shell .tl-vod-thumb{width:112px;height:63px}
+  #ops-shell .tl-vod-item{width:200px}
+  #ops-shell .tl-date{font-size:var(--fs-lg)}
 }
 
 /* Round 7, owner items 2 and 4. The timer left the nav for its own row (the .clockbar block above),
@@ -1094,3 +1131,29 @@ html,body{-webkit-font-smoothing:antialiased}
    inside it so the switch is where the state is. */
 #ops-shell .auto-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1h);margin:var(--sp-1) 0 0}
 #ops-shell .auto-line p{margin:0}
+
+/* ---------------------------------------------------------------------------
+   Round 9, owner item 4: the registration desk's picker.
+   A custom listbox, because the native <select> could not show a rating beside a name, could not
+   be searched in place, and forced a guest-name field on every entrant. The panel sits in the
+   flow (not absolutely positioned) so a long roster scrolls with the page instead of escaping
+   its card, and every row keeps the 44px target the rest of the console uses.
+   --------------------------------------------------------------------------- */
+#ops-shell .desk{position:relative}
+#ops-shell .desk-label{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .pick{position:relative}
+#ops-shell .pick-btn{display:flex;align-items:center;gap:var(--sp-2);width:100%;min-height:44px;padding:var(--sp-2) var(--sp-3);background:var(--panel2);border:1px solid var(--btn-line);border-radius:2px;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+#ops-shell .pick-btn:hover{border-color:var(--brass-hover)}
+#ops-shell .pick-btn.open{border-color:var(--brass)}
+#ops-shell .pick-caret{color:var(--ink-dim);font-size:12px;line-height:1}
+#ops-shell .pick-btn.open .pick-caret{transform:rotate(180deg)}
+#ops-shell .pick-panel{margin-top:var(--sp-1);padding:var(--sp-2);background:var(--panel2);border:1px solid var(--brass);border-radius:2px;max-height:320px;overflow:auto}
+#ops-shell .pick-search{width:100%;padding:var(--sp-2);background:var(--rail);border:1px solid var(--line);border-radius:2px;color:var(--ink);font:inherit}
+#ops-shell .pick-count{margin:var(--sp-1) 0 0;font:var(--fs-sm) var(--mono);color:var(--ink-dim)}
+#ops-shell .pick-rows{display:flex;flex-direction:column;margin-top:var(--sp-1)}
+#ops-shell .pick-row{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2);width:100%;min-height:44px;padding:var(--sp-2);background:none;border:0;border-top:1px solid var(--line);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+#ops-shell .pick-row:first-child{border-top:0}
+#ops-shell .pick-row:hover{background:var(--panel)}
+#ops-shell .pick-row.on{color:var(--brass-hi)}
+#ops-shell .pick-row small{color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
+#ops-shell .pick-row[hidden]{display:none}
