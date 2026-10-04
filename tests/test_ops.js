@@ -590,21 +590,29 @@ test('R13: the registration desk filters its regulars in place with the same mat
 });
 test('onboard: an empty club gets three real steps in Register, and they leave once the draw exists', () => {
   const h = harness();
-  const guide = () => { const html = h.evaluate('registerScreen()'); const m = html.match(/<article class="first-run"[\s\S]*?<\/article>/); return m ? m[0] : ''; };
-  const first = guide();
-  assert.ok(first, 'an empty club sees the guide');
-  assert.deepEqual([...first.matchAll(/data-tab="([a-z]+)"/g)].map(m => m[1]), ['players'], 'step 1 is the Regulars tab');
-  assert.deepEqual([...first.matchAll(/data-action="([a-z-]+)"/g)].map(m => m[1]), ['open-desk', 'tournament-start'], 'steps 2 and 3 do the work in place: open the desk, then start the event');
-  assert.ok(!first.includes('class="done"'), 'nothing is ticked before anything happened');
-  h.evaluate("data.players=[{id:'p1',name:'Ana',rating:50,status:'Active'}]");
-  assert.equal((guide().match(/class="done"/g) || []).length, 1, 'a saved regular ticks step 1');
-  h.evaluate("data.tournament.entrants=[{id:'e1',members:[{pid:'p1',name:'Ana'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}]");
-  assert.equal((guide().match(/class="done"/g) || []).length, 2, 'two entrants tick step 2');
-  h.evaluate("data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]}]");
-  assert.equal(guide(), '', 'the guide leaves once the draw exists');
+  // Round 7, owner item 4: the three-step guide and its page are gone. An empty club gets the
+  // registration page with the one dialog that starts the night floating over it.
+  h.evaluate("data.players=[];data.tournament={id:'',name:'',format:'singles',raceTo:7,tables:4,status:'registration',entrants:[],matches:[]}");
+  const idle = () => h.evaluate('tonightScreen()');
+  const first = idle();
+  assert.equal(h.evaluate('tonightState()'), 'idle', 'an empty club is the idle venue');
+  assert.ok(first.includes('class="modal modal--start"'), 'and it sees one dialog: name the night and start it');
+  assert.ok(first.includes('id="start-title"') && first.includes('aria-modal="true"'), 'announced as a dialog, under one heading');
+  assert.ok(first.includes('id="settings-form"'), 'the four fields live in the dialog, not on the page');
+  assert.ok(first.includes('class="idle-registration"') && first.includes('aria-hidden="true" inert'), 'the registration page behind it is inert');
+  assert.ok(first.includes('data-action="tournament-start"'), 'and the desk behind it is one write from the draw');
   for (const key of ['firstRunTitle', 'firstRunRegulars', 'firstRunEntrants', 'firstRunRack', 'firstRunNote']) {
-    assert.match(source, new RegExp(`${key}:\\['[^']+','[^']+'\\]`), `${key} has an EN and a 中 string`);
+    assert.equal(h.evaluate(`t('${key}')`), key, `${key} is retired from the words file, not just unrendered`);
   }
+  // A named night is not asked to name itself again: the page is the registration page and the
+  // dialog is behind one door, which closes.
+  h.evaluate("data.tournament.id='t1'");
+  const registering = idle();
+  assert.ok(!registering.includes('modal--start'), 'a named night is not asked again');
+  assert.ok(registering.includes('id="entrant-form"') && registering.includes('class="card card--night"'), 'the desk and the night card are the page');
+  assert.ok(registering.includes('data-action="open-setup"'), 'and the settings have one door');
+  h.evaluate('setupOpen=true');
+  assert.ok(idle().includes('modal--start') && idle().includes('data-action="dismiss-setup"'), 'the door opens the same dialog, and this one closes');
 });
 test('harden: fields show focus that a border shorthand cannot erase; names and states are announced', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
@@ -1392,19 +1400,21 @@ test('after the draw and in the archive only the name can be edited, and it is a
     data.history=[{id:'h1',name:'',format:'singles',raceTo:1,status:'complete',archivedAt:'2026-09-01T00:00:00Z',entrants:[],matches:[]}]`);
   for (const [lang, rename, label] of [['en', 'Rename event', 'Event renamed'], ['zh', '重命名赛事', '赛事已重命名']]) {
     h.evaluate(`lang='${lang}'`);
-    const setup = h.evaluate('setupScreen()');
-    const form = setup.match(/<form id="rename-form"[^]*?<\/form>/);
-    assert.ok(form, `${lang}: a rename form is offered after the draw`);
-    assert.ok(/name="name"/.test(form[0]) && !/name="(format|raceTo|tables)"/.test(form[0]), `${lang}: the rename form carries the name only`);
-    assert.ok(form[0].includes(`>${rename}<`), `${lang}: the button says ${rename}`);
-    assert.ok(/<fieldset disabled/.test(setup), `${lang}: the rules stay locked`);
-    assert.equal((setup.match(/name="name"/g) || []).length, 1, `${lang}: the name is edited in one place only`);
+    const dialog = h.evaluate('setupForm(false)');
+    assert.ok(dialog.includes('id="settings-form"'), `${lang}: the settings dialog is where a drawn night is edited`);
+    assert.ok(/name="name"/.test(dialog) && !/name="(format|raceTo|tables)"/.test(dialog), `${lang}: once the rules are locked it carries the name only`);
+    assert.ok(dialog.includes(`>${h.evaluate("esc(t('save'))")}<`), `${lang}: and its one primary is Save`);
+    assert.ok(h.evaluate('startModal(true)').includes(h.evaluate("esc(t('locked'))")),
+      `${lang}: the rules stay locked, and the dialog that offers to edit the name says why`);
+    assert.equal((dialog.match(/name="name"/g) || []).length, 1, `${lang}: the name is edited in one place only`);
+    assert.ok(h.evaluate('setupScreen()').includes(`>${rename}<`) || h.evaluate('recordsScreen()').includes(`>${rename}<`),
+      `${lang}: ${rename} is the archived row's control now, not a form on Tonight`);
     const matches = h.evaluate('recordsScreen()');
     assert.ok(matches.includes('data-action="rename-archived"') && matches.includes('data-id="h1"'), `${lang}: an archived event can be renamed`);
     assert.ok(!/<summary>h1 /.test(matches), `${lang}: an unnamed archive never shows its raw id`);
     assert.ok(h.evaluate('auditLine(data.events[0])').includes(label), `${lang}: the audit line reads ${label}`);
   }
-  const submit = values => h.handlers.submit({preventDefault() {}, target: {getAttribute: () => 'rename-form', classList: {contains: () => false}, querySelector: () => null, querySelectorAll: () => [], values}});
+  const submit = values => h.handlers.submit({preventDefault() {}, target: {getAttribute: () => 'settings-form', classList: {contains: () => false}, querySelector: () => null, querySelectorAll: () => [], values}});
   await submit({id: 't1', name: '  Friday Final '});
   h.context.prompt = () => ' July night ';
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'rename-archived', id: 'h1'}}}});
@@ -2082,7 +2092,8 @@ test('a regular who has never played reads 0 played and —, never 0%, and the r
   assert.equal(standingCell(h, standing, 'Zed', h.evaluate("t('winPct')")), '\u2014');
   assert.ok(!standing.includes('>0%<'), 'nobody reads 0% for a match they never played');
   assert.ok(standing.includes(h.evaluate("esc(t('noRecord'))")), 'and the empty cell is the — the words file holds');
-  assert.ok(standing.includes(`<p class="note">${h.evaluate("esc(t('signedOnly'))")}</p>`), 'the standing says what it counts');
+  assert.ok(!standing.includes('signedOnly') && h.evaluate("t('signedOnly')") === 'signedOnly',
+    'owner item 5: the standing no longer explains a rule nobody asked about, and the key is retired');
 });
 test('the timeline groups nights by month, newest first, and a night opens in place (5.3/5.4)', () => {
   const h = harness();
@@ -2321,13 +2332,15 @@ test('Register holds the night, random pairing, the desk, entrants with attendan
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
     const html = h.evaluate('tonightScreen()');
-    assert.ok(html.includes('id="settings-form"') && html.includes('id="entrant-form"') && html.includes('class="desk-search"'), `${lang}: settings, desk and desk search`);
+    assert.ok(html.includes('id="entrant-form"') && html.includes('class="desk-search"'), `${lang}: desk and desk search`);
+    assert.ok(html.includes('data-action="open-setup"') && html.includes('class="card card--night"'), `${lang}: the settings are a door, not a form on the page`);
+    assert.ok(!html.includes('id="settings-form"'), `${lang}: the four fields exist once, in the dialog`);
     assert.ok(html.includes('data-action="entrant-absence"') && html.includes('data-action="entrant-remove"'), `${lang}: attendance and remove per entrant`);
     assert.ok(html.includes('data-action="tournament-start"'), `${lang}: Rack the night is on Register`);
     assert.ok(html.includes('data-action="promote" data-name="Walk-in Wu"'), `${lang}: guests tonight moved here, with Add to regulars`);
     assert.ok(html.includes('data-tab="players"'), `${lang}: guests tonight links to Regulars`);
     assert.ok(!html.includes('class="end-night"'), `${lang}: archive and delete are not on Register (they are Close)`);
-    assert.ok(html.includes('class="first-run"'), `${lang}: an undrawn night shows the first-night guide`);
+    assert.ok(!html.includes('class="first-run"'), `${lang}: the three-step guide is retired, not unrendered`);
   }
   h.evaluate("data.tournament.format='doubles'");
   assert.ok(h.evaluate('tonightScreen()').includes('class="pairing"'), 'doubles adds random pairing');
@@ -2359,7 +2372,9 @@ test('who is here is a fact on the desk, and the night is drawn and started from
   const drawn = h.evaluate('tonightScreen()');
   assert.ok(!drawn.includes('data-action="tournament-start"'), 'a drawn night cannot be drawn twice');
   assert.ok(!drawn.includes('id="settings-form"'), 'the start-the-night form retires once the event is live');
-  assert.ok(drawn.includes('id="rename-form"'), 'but the night can still be renamed');
+  assert.ok(!drawn.includes('id="rename-form"'), 'the rename form folded into the settings dialog');
+  assert.ok(drawn.includes('data-action="open-setup"') && drawn.includes(h.evaluate("esc(t('eventSettings'))")),
+    'which the night card opens, so the night can still be renamed');
   assert.ok(drawn.includes('data-table="'), 'the tables are the screen, live or not');
 });
 test('old phase routes fold into the one Tonight route, in place', () => {
@@ -2414,9 +2429,9 @@ test('\u2264750px: the fixed bottom bar is the same five destinations, with no M
   const shell = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   assert.ok(shell.includes('<nav id="tabbar"'), 'the bottom bar is part of the shell');
   const bar = () => h.evaluate('tabbarHTML()');
-  for (const id of ['clock', 'tonight', 'records', 'vision', 'players', 'status']) assert.ok(bar().includes(`data-tab="${id}"`), `${id} is a bar slot`);
-  assert.equal((bar().match(/class="tabbar-slot"/g) || []).length, 6, 'the five destinations and the shot timer are slots, none behind More');
-  assert.ok(bar().indexOf('data-tab="clock"') < bar().indexOf('data-tab="tonight"'), 'and the shot timer is the first slot on the phone too (owner item 4)');
+  for (const id of ['tonight', 'records', 'vision', 'players', 'status']) assert.ok(bar().includes(`data-tab="${id}"`), `${id} is a bar slot`);
+  assert.equal((bar().match(/class="tabbar-slot"/g) || []).length, 5, 'the five destinations are slots, none behind More');
+  assert.ok(!bar().includes('data-tab="clock"'), 'the shot timer left the bar for the header bar (round 7 / owner item 2)');
   assert.equal((bar().match(/aria-current="page"/g) || []).length, 1, 'the bar marks exactly the tab you are on');
   assert.ok(!/data-more|tabbar-more/.test(bar()), 'no More button and no panel behind it');
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(primaryNav())')), JSON.parse(h.evaluate('JSON.stringify(navTabs)')), 'the bar and the top nav render the same list');
@@ -2458,7 +2473,7 @@ test('stage 8: Floor and Matches are not screens any more, and every old way in 
 });
 
 // ---- IA C′ stage 9: one bar, five destinations, a data-driven Tonight, and the shot timer's one name.
-test('the bar is one row: the shot timer first, the five destinations, the tools; no hall and no strip (stage 9 / owner §13.1)', () => {
+test('the bar is two rows: the shot timer, then the five destinations and the tools; no hall and no strip (stage 9 / owner §13.1 + round 7 item 2)', () => {
   const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   const start = html.indexOf('<div class="bar">'), end = html.indexOf('</header>');
@@ -2472,25 +2487,25 @@ test('the bar is one row: the shot timer first, the five destinations, the tools
   assert.equal(html.indexOf('id="strip"'), -1, 'the strip row is deleted');
   assert.equal(css.indexOf('#strip'), -1, 'and so are its rules');
   assert.ok(!/navColors/.test(source) && !/navColors/.test(css), 'the old per-destination colour map is gone with the balls it painted');
-  assert.equal(html.indexOf('class="clockbar"'), -1, 'the second timer in .tools is deleted too');
-  assert.equal((html.match(/data-clock-host/g) || []).length, 1, 'one timer slot in the whole shell');
+  assert.equal((html.match(/data-clock-host/g) || []).length, 1, 'one timer host in the whole shell, in its own row');
   assert.equal((html.match(/<header>/g) || []).length, 1, 'one header');
-  // Owner item 4 (round 5): the slot is the nav's first child, so the large timer is the first
-  // tab of the bar and stays on screen on every destination; the destinations follow as balls 2-6.
-  assert.ok(bar.includes('<nav id="nav" aria-label="Primary / 主导航"><div class="timer-slot" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div></nav>'),
-    'the timer slot is the nav\'s first child - a named group with one host, empty until ops.js paints it');
-  assert.ok(bar.indexOf('class="timer-slot"') < bar.indexOf('</nav>'), 'the timer comes first');
-  assert.ok(bar.indexOf('</nav>') < bar.indexOf('<div class="tools"'), 'then the tools');
-  assert.ok(source.includes("$('#nav').innerHTML=timerSlotHost()+primaryNav()"), 'render() paints that same host as the nav\'s first child');
-  assert.ok(source.includes('const timerSlotHost=()=>`<div class="timer-slot" role="group" aria-label="${esc(t(\'shotTimer\'))}" data-clock-host></div>`;'),
-    'from one definition, so the shell, the pre-fetch paint and every re-render agree');
+  // Owner item 2 (round 7): the timer left the nav for a row of its own, so the bar is two rows -
+  // the clock first, the five destinations and the tools beneath it - and nothing in .tools holds
+  // a second timer.
+  assert.ok(bar.includes('<div class="clockbar" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div>'),
+    'the clock row is a named group with one host, empty until ops.js paints it');
+  assert.ok(bar.indexOf('class="clockbar"') < bar.indexOf('<nav id="nav"'), 'the clock comes first');
+  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="tools"'), 'then the destinations, then the tools');
+  assert.ok(bar.indexOf('class="barrow"') < bar.indexOf('class="tools"'), 'the tools share the second row, not the clock\'s');
+  assert.ok(source.includes("$('#nav').innerHTML=primaryNav()"), 'render() paints the destinations into the nav and nothing else');
+  assert.ok(!source.includes('timerSlotHost'), 'the second definition of the host is gone, not just unused');
   assert.equal((bar.match(/<div class="tools">/g) || []).length, 1, 'and one tools row, unchanged');
   assert.ok(bar.includes('<span id="connection" class="badge" hidden>'), 'the connection badge still starts hidden and empty');
   assert.ok(bar.includes('data-lang="en"') && bar.includes('data-lang="zh"') && bar.includes('data-theme-group'), 'the language and theme chips are untouched');
-  assert.ok(css.includes('#ops-shell .bar > nav{flex:0 1 auto;min-width:0;padding:0}'),
-    'the nav keeps its own size: a bar that shrinks it wraps the destinations onto a second row (measured 96 px against 44)');
-  assert.ok(css.includes('#ops-shell .bar{flex-wrap:nowrap}'), 'the bar itself is one row');
-  assert.ok(/#ops-shell \.bar > \.tools\{flex:0 1 auto;min-width:0;flex-wrap:wrap\}/.test(css), 'the tools are the part that folds');
+  assert.ok(css.includes('#ops-shell .barrow > nav{flex:0 1 auto;min-width:0;padding:0}'),
+    'the nav keeps its own size inside its row: a row that shrinks it wraps the destinations (measured 96 px against 44)');
+  assert.ok(/#ops-shell \.bar\{flex-wrap:nowrap;flex-direction:column/.test(css), 'the bar itself is a column of two rows');
+  assert.ok(/#ops-shell \.barrow > \.tools\{flex:0 1 auto;min-width:0;flex-wrap:wrap\}/.test(css), 'the tools are the part that folds');
   assert.ok(!/\.brand/.test(css), 'the brand styles went with the brand block');
   const h = harness();
   assert.equal(h.evaluate('primaryNav()').length, 5, 'the one bar renders five destinations');
@@ -2637,17 +2652,25 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   idle.evaluate("data.players=[];data.tournament={id:'t0',name:'',format:'singles',raceTo:7,tables:4,status:'registration',entrants:[],matches:[]}");
   assert.equal(idle.evaluate('tonightState()'), 'idle');
   const idleHtml = idle.evaluate('tonightScreen()');
-  assert.ok(idleHtml.includes('class="card card--start"'), 'idle: the start-tonight card');
-  assert.ok(idleHtml.includes('class="first-run"'), 'idle: the three-step guide');
+  assert.ok(idleHtml.includes('id="entrant-form"') && idleHtml.includes('class="card card--night"'),
+    'idle: the registration page is the screen, with the desk on it');
+  assert.ok(!idleHtml.includes('modal--start'), 'idle: a named event has nothing to ask for');
+  idle.evaluate("data.tournament.id=''");
+  const fresh = idle.evaluate('tonightScreen()');
+  assert.ok(fresh.includes('class="modal modal--start"') && fresh.includes('id="settings-form"'),
+    'idle and unnamed: one dialog, holding the fields that name the night');
+  assert.ok(fresh.includes('class="idle-registration"') && /aria-hidden="true" inert/.test(fresh),
+    'over the registration page, dimmed and inert');
+  idle.evaluate("data.tournament.id='t0'");
   assert.ok(idleHtml.includes('table-grid'), 'idle: the tables, resident from the first minute');
-  for (const gone of ['id="entrant-form"', 'class="scoreboard"', 'class="rounds"', 'card--wrap', 'details class="panel"']) {
+  for (const gone of ['class="scoreboard"', 'class="rounds"', 'card--wrap', 'details class="panel"']) {
     assert.ok(!idleHtml.includes(gone), `idle: no ${gone}`);
   }
   const reg = harness();
   tonightNight(reg, null);
   assert.equal(reg.evaluate('tonightState()'), 'registration');
   const regHtml = reg.evaluate('tonightScreen()');
-  for (const there of ['id="entrant-form"', 'class="desk-search"', 'data-action="tournament-start"', 'class="first-run"', 'table-grid']) {
+  for (const there of ['id="entrant-form"', 'class="desk-search"', 'data-action="tournament-start"', 'class="card card--night"', 'table-grid']) {
     assert.ok(regHtml.includes(there), `registration: ${there}`);
   }
   for (const gone of ['class="scoreboard"', 'class="rounds"', 'card--wrap']) {
@@ -2658,7 +2681,7 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   assert.equal(active.evaluate('tonightState()'), 'active');
   assert.equal(active.evaluate('comp()'), 'active');
   const activeHtml = active.evaluate('tonightScreen()');
-  for (const there of ['class="scoreboard"', 'table-grid', 'class="rounds"', 'details class="panel"', 'class="attendance"', 'id="rename-form"']) {
+  for (const there of ['class="scoreboard"', 'table-grid', 'class="rounds"', 'details class="panel"', 'class="attendance"', 'data-action="open-setup"']) {
     assert.ok(activeHtml.includes(there), `active: ${there}`);
   }
   for (const gone of ['id="settings-form"', 'id="entrant-form"', 'card--wrap']) {
@@ -2695,13 +2718,24 @@ test('the tables are resident, the dashboard follows the live event, and the nig
   assert.ok(startView.includes('table-grid'), 'the tables are the resident body');
   assert.equal((startView.match(/data-table="/g) || []).length, 3, 'one card per table the event declares');
   assert.ok(!startView.includes('class="scoreboard"') && !startView.includes('details class="panel"'), 'no dashboard while the event is not live');
-  assert.ok(startView.includes('data-action="start-night"'), '[Start tonight] is the way in');
+  assert.ok(startView.includes('id="entrant-form"') && startView.includes('table-grid'), 'the registration page is the screen, desk and tables');
+  h.evaluate("data.tournament.id=''");
+  assert.ok(h.evaluate('tonightScreen()').includes('id="settings-form"') && h.evaluate('tonightScreen()').includes('class="modal modal--start"'),
+    'and an unnamed night opens the dialog as the way in');
+  h.evaluate("data.tournament.id='t0'");
   h.evaluate('render=()=>{}');
-  h.evaluate("FormData=function(f){return f.values};__form={reportValidity:()=>true,values:[['name','Friday'],['format','singles'],['tables','3'],['raceTo','7']]};document.querySelector=sel=>sel==='#settings-form'?__form:null");
-  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'start-night'}}}});
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_setup', payload: {name: 'Friday', format: 'singles', tables: 3, raceTo: 7}}], 'the start card reads its own form and sets the event up');
-  assert.equal(h.evaluate('deskOpen'), true, 'and opens the registration desk, in place');
-  assert.ok(h.evaluate('tonightScreen()').includes('id="entrant-form"'), 'so the first entrant can be signed in without leaving Tonight');
+  const dialog = {getAttribute: () => 'settings-form', classList: {contains: () => false}, querySelectorAll: () => [],
+    values: {name: 'Friday', format: 'singles', tables: '3', raceTo: '7'}};
+  await h.handlers.submit({preventDefault() {}, target: dialog});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'tournament_setup', payload: {name: 'Friday', format: 'singles', tables: 3, raceTo: 7}}], 'the dialog reads its own form and sets the event up');
+  assert.equal(h.evaluate('setupOpen'), false, 'and closes itself, so what it leaves is the page');
+  assert.ok(!h.evaluate('tonightScreen()').includes('modal--start'),
+    'naming the night is enough to get past the dialog, even though the draw is what mints the event id');
+  assert.ok(h.evaluate('tonightScreen()').includes('id="entrant-form"'), 'where the first entrant can be signed in without leaving Tonight');
+  assert.ok(h.evaluate('tonightScreen()').includes('data-action="tournament-start"'), 'and the draw is on that page, one click away');
+  const door = h.evaluate('startModal(true)');
+  assert.ok(door.includes(h.evaluate("esc(t('save'))")) && !door.includes(h.evaluate("esc(t('startNightGo'))")),
+    'and that dialog saves, it does not promise to start anything');
   // The server gate, not the data alone, decides whether the scoring dashboard exists.
   h.evaluate("data.tournament.entrants=[{id:'a',members:[{pid:'p1',name:'Ana'}]},{id:'b',members:[{name:'Bo'}]}];data.tournament.matches=[{id:'m1',round:1,sides:['a','b'],score:[0,0],status:'scheduled',table:null,absent:[]}]");
   assert.equal(h.evaluate('liveComp()'), false, 'the event is still only registered');
@@ -2923,12 +2957,17 @@ test('round 3 / F14: End of the night is on the Back room in every state, with t
     else assert.ok(!/class="note close-why"/.test(end), `F14: nothing is explained away when the state allows it (${name})`);
   }
   h.evaluate(`data.tournament={id:'t0',status:'active',raceTo:7,entrants:[],matches:[]}`);
-  const rename = h.evaluate('renameCard()');
-  assert.ok(!/archive this event to start/.test(rename), 'F14: the locked note no longer tells the operator to archive something they cannot find');
+  const card = h.evaluate('nightCard()');
+  assert.ok(!/archive this event to start/.test(card), 'F14: the night card is a summary and a door, with no stale instruction');
+  assert.ok(h.evaluate('startModal(true)').includes(h.evaluate("esc(t('locked'))")),
+    'F14: and the locked note travels with the settings dialog, where the name is edited');
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
     assert.ok(h.evaluate("t('locked')").includes(h.evaluate("t('endNightTitle')")), `F14: the ${lang} note names the card that can be found`);
   }
+  h.evaluate(`lang='en';data.tournament={id:'',name:'Friday 8-ball',format:'singles',raceTo:5,tables:2,status:'registration',entrants:[],matches:[]}`);
+  assert.ok(h.evaluate('nightCard()').includes('Friday 8-ball'),
+    "F14: and the card carries the night's own name once the operator has given it one");
 });
 
 test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names itself', async () => {
@@ -3091,23 +3130,28 @@ test('round 5 / owner item 3: the ball map is recorded, and every ball the nav d
   assert.ok(/9[^|]*15[^|]*stripe/i.test(doc), 'and says what 9-15 are: the same hues, striped');
 });
 
-test('round 5 / owner item 4: the shot timer is a destination of its own, first in the nav, needing no match', () => {
+test('round 7 / owner item 2: the shot timer is its own bar above the destinations, still needing no match', () => {
   const h = harness();   // an idle venue: no tournament, no draw, nothing running
   const tab = h.evaluate('timerHTML()');
   assert.ok(tab.includes('data-tab="clock"') && tab.includes('class="timer-tab"'),
     "the timer is the nav's first item and a button like every other tab");
   assert.ok(tab.includes('data-clock') && tab.includes('data-action="clock-toggle"') && tab.includes('data-action="clock-reset"'),
     'holding the live clock and its controls, so it keeps working on every other tab');
-  assert.ok(tab.includes('aria-label="Shot timer"'), 'the tab is named by an attribute, not only by the word inside it');
-  // The sixth item costs width: measured at 1024 EN the bar wrapped to two rows (104/92) until the
-  // slot gave back the visible word and Reset, which the clock's own screen still offers. The
-  // attribute above is what keeps the tab named once the word is hidden.
-  const narrow = opsCss.slice(opsCss.indexOf('@media (max-width:1151.98px)'));
-  assert.ok(narrow.includes('#nav>.timer-slot .timer-tab-label{display:none}'),
-    'below 1152 the visible word goes, because the sixth item does not fit in 962 px');
-  assert.ok(narrow.includes('#nav>.timer-slot [data-action="clock-reset"]{display:none}'),
-    'and so does Reset, which the clock screen behind the tab still offers');
-  const clockCode = source.slice(source.indexOf('const timerSlotHost='), source.indexOf('function render()'));
+  assert.ok(tab.includes('aria-label="Shot timer"') && tab.includes('<span class="timer-tab-label">'),
+    'the tab is named by an attribute and by the visible word, which no longer has to be hidden for width');
+  // Round 5 hid the word and Reset below 1152 px so six items would fit one row at 1024 (measured:
+  // 104 px in two rows). Round 7 ends that trade by giving the timer a row of its own, so the block
+  // may not hide either any more, and the phone is the only place the word and presets go.
+  const narrow = opsCss.slice(opsCss.indexOf('@media (max-width:1151.98px)'), opsCss.indexOf('@media(max-width:750px)'));
+  assert.ok(!narrow.includes('timer-tab-label{display:none}') && !narrow.includes('clock-reset"]{display:none}'),
+    'below 1152 the word and Reset stay: the timer has its own row now');
+  const phoneBlock = opsCss.slice(opsCss.indexOf('@media (max-width:750px)'));
+  assert.ok(phoneBlock.includes('#ops-shell .clockbar .timer-tab-label{display:none}') && phoneBlock.includes('#ops-shell .clockbar .presets{display:none}'),
+    'and on the phone the word and the presets go, where 390 px is all there is');
+  assert.ok(opsHtml.indexOf('class="clockbar"') < opsHtml.indexOf('class="barrow"') && opsHtml.indexOf('</nav>') < opsHtml.indexOf('class="tools"'),
+    'the shell is two rows: the clock, then the destinations and the tools');
+  assert.ok(source.includes("$('#ops-shell .clockbar')"), 'and render() paints that one host');
+  const clockCode = source.slice(source.indexOf('function clockHTML()'), source.indexOf('function render()'));
   assert.ok(source.includes('because nothing here reads comp()'),
     'the code says why the clock is always available: it reads no match state');
   assert.ok(!/comp\(\)|liveComp\(\)|tournament\(\)/.test(clockCode.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')),
@@ -3119,14 +3163,16 @@ test('round 5 / owner item 4: the shot timer is a destination of its own, first 
     ['20', '30', '45', '60'], 'with the same four durations as the bar');
   assert.ok(screen.includes('class="timer-face"') && screen.includes('class="timer-progress"') && screen.includes('data-progress'),
     'a large face and a progress rail, and nothing else competing with the time');
-  assert.ok(screen.includes(h.evaluate("esc(t('clockNotice'))")), 'and the honest note about what the clock cannot do');
+  assert.ok(!screen.includes('clockNotice') && h.evaluate("t('clockNotice')") === 'clockNotice',
+    'owner item 3: the note is gone from the screen and from the words file');
+  assert.equal((source.match(/clockNotice/g) || []).length, 0, 'and nothing else prints it either');
   assert.equal(h.evaluate("routeOf('#/clock')"), 'clock', 'a deep link reaches it');
   assert.equal(h.evaluate("navLabel('clock')"), 'Shot timer', 'and it is named in the nav');
   h.evaluate("lang='zh'");
   assert.equal(h.evaluate("navLabel('clock')"), '击球计时', 'in either language');
   h.evaluate("lang='en'");
-  assert.ok(h.evaluate('timerSlotHost()').includes('data-clock-host') && h.evaluate('timerSlotHost()').includes('role="group"'),
-    'the shell and every re-render paint one host from one definition');
+  assert.ok(opsHtml.includes('class="clockbar" role="group" aria-label="Shot timer / 击球计时" data-clock-host'),
+    'the shell ships one host, named, empty until ops.js paints it');
 });
 
 test("round 5 / owner item 5: the Scorekeeper's card has one action, and it is Sign", () => {
@@ -3143,9 +3189,12 @@ test("round 5 / owner item 5: the Scorekeeper's card has one action, and it is S
   assert.ok(card.includes('name="sign" value="yes"') && card.includes('class="primary"'), 'Sign stays, and stays the one primary');
   assert.equal((card.match(/<button/g) || []).length, 1, 'the card offers exactly one button, so there is nothing to guess between');
   assert.ok(card.includes('required'), 'and the fields keep the browser check that replaced Save');
-  const settings = h.evaluate("setupScreen('night')");
+  const settings = h.evaluate('setupForm(false)');
   assert.ok(settings.includes(`<button class="primary">${h.evaluate("esc(t('save'))")}</button>`),
-    "the night settings keep their Save: that form belongs to the Back room, not to the scorecard");
+    "the settings dialog keeps its Save: that form belongs to the night, not to the scorecard");
+  const firstNight = h.evaluate('setupForm(true)');
+  assert.ok(firstNight.includes(h.evaluate("esc(t('startNightGo'))")) && !firstNight.includes(h.evaluate("esc(t('save'))")),
+    'while a night that does not exist yet is asked to start, not to save');
 });
 
 test('round 5 / owner item 6: the timer bar never narrates its own sync state', () => {
@@ -3166,28 +3215,27 @@ test('round 5 / owner item 6: the timer bar never narrates its own sync state', 
   assert.ok(/ERROR_MS = \d+/.test(clockSyncSource), 'and it clears itself on a timer');
 });
 
-test('round 5 / owner item 4 on the phone: the bar carries the ball map, and the header keeps the clock', () => {
+test('round 7 / owner item 2 on the phone: the bottom bar carries the five destinations, the header the clock', () => {
   const h = harness();
-  // Two defects the width matrix cannot see, because it reads the bar's height and not what is
-  // inside it (measured with out/r5/probe_tabbar.py at 390x844 — see docs/console-shots.md SS9):
-  // the slot moved inside #nav, which the phone query hides, and six mono-uppercase labels
-  // needed 80 px in 62 px cells. Both are pinned here.
+  // Round 5 measured six labelled cells in 390 px (out/r5/probe_tabbar.py: mono uppercase needed
+  // 80 px in 62 px cells). The timer left the bar for the header, so five cells of 78 px carry the
+  // destinations and the ball map stays true: 1 is the timer, 2..6 are the destinations.
   const bar = h.evaluate('tabbarHTML()');
-  assert.equal((bar.match(/class="tabbar-ball" aria-hidden="true"/g) || []).length, 6,
+  assert.equal((bar.match(/class="tabbar-ball" aria-hidden="true"/g) || []).length, 5,
     'every slot stacks its destination\'s ball, and it is decorative - the word names the tab');
-  // The balls are the map owner item 3 fixes: 1 yellow for the timer, then 2 blue ... 6 green.
-  const map = [[1, '#f2c14e'], [2, '#2f6fd0'], [3, '#c8382f'], [4, '#e885ad'], [5, '#e07a29'], [6, '#2f8f4e']];
+  const map = [[2, '#2f6fd0'], [3, '#c8382f'], [4, '#e885ad'], [5, '#e07a29'], [6, '#2f8f4e']];
   for (const [n, hex] of map) {
     assert.ok(bar.includes(`--ball-c:${hex}`), `ball ${n} draws ${hex} on the phone bar too`);
   }
-  assert.ok(bar.indexOf('--ball-c:#f2c14e') < bar.indexOf('--ball-c:#2f6fd0'),
-    'and the timer is the first slot, so the bar reads left to right as 1..6');
-  // The phone header keeps the timer: the nav stays and only its destinations go.
+  assert.ok(!bar.includes('--ball-c:#f2c14e'), 'the timer is ball 1 and lives in the header now, not in the bar');
+  assert.ok(bar.indexOf('--ball-c:#2f6fd0') < bar.indexOf('--ball-c:#2f8f4e'), 'so the bar reads left to right as 2..6');
+  // The phone header keeps the clock whole - ball, time, Start and Reset - and drops only what a
+  // 390 px row cannot hold.
   const phone = opsCss.slice(opsCss.indexOf('@media (max-width:750px){'));
-  assert.ok(phone.includes('#ops-shell #nav{display:flex'),
-    'the phone header still shows the shot timer (SS13.1: it is the one always-available element)');
-  assert.ok(phone.includes('#nav>button:not(.timer-tab){display:none}'),
-    'while the destinations live in the fixed bottom bar');
+  assert.ok(phone.includes('#ops-shell #nav{display:none}'),
+    'the phone header drops the destinations to the bar');
+  assert.ok(phone.includes('#ops-shell .clockbar .timer-tab-label{display:none}') && phone.includes('#ops-shell .clockbar .presets{display:none}'),
+    'and the clock keeps everything but its word and the presets');
   // Six cells of 390/6 px: the bar's gap and the slot's padding were what pushed "Tournament"
   // (64 px at 11 px in the body face) out of its box.
   assert.ok(phone.includes('#ops-shell #tabbar{gap:0}'), 'the phone cells get the whole width');

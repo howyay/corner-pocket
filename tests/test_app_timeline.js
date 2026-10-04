@@ -1920,6 +1920,67 @@ test('two layers on one frame: model dashed, yours solid, and only yours are sav
   T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
 });
 
+// Round 7, owner item 1: "for every human i still see two tracking boxes why?" --
+// because the tracked-person layer and the frame inference's own person boxes are
+// two independent layers, and both drew. Reproduced on production before the fix:
+// four people, four green tracked rects, four model person boxes, every pair at
+// IoU 0.98-0.99. One human is one rectangle; a disagreement still shows.
+test('round 7 / owner item 1: one human on the stage carries one rectangle, not two', () => {
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
+  const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
+  T.setRoot(host);
+  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
+  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.state.overlay = {cloth:false, balls:false, persons:true, pockets:false, anchors:false, events:false};
+  T.state.cloth.reference = null; T.state.polygon = null; T.state.unified = null; T.state.dirty = false;
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  // The frame the pipeline answered: the track layer's own person, and the frame
+  // inference's box for that very same human a pixel away, plus one ball.
+  T.state.unified = {persons:[{bbox:[500,200,600,500], track_id:4}], balls:[], events:[]};
+  T.state.fresult = {correction:null, inference:{table_polygon:null,
+    boxes:[{label:'person', bbox:[502,201,601,501]}, {label:'ball', bbox:[100,100,120,120]}]}};
+  T.applyFrameResult();
+  assert.strictEqual(T.state.boxes.length, 2, 'both layers are still in state.boxes');
+  T.paintOverlay();
+  const html = svg.innerHTML;
+  assert.strictEqual((html.match(/class="u-person/g) || []).length, 1, 'the tracked person is framed once');
+  assert.strictEqual((html.match(/class="t-box/g) || []).length, 1, 'the model person box over the same human is not drawn again: ' + html.slice(0, 200));
+  const boxTitles = [...html.matchAll(/class="t-box[^"]*"[^>]*><title>([^<]*)<\/title>/g)].map(m => m[1]);
+  assert.deepStrictEqual(boxTitles.length, 1, 'one editable rectangle for the frame: ' + JSON.stringify(boxTitles));
+  assert.ok(/^ball/.test(boxTitles[0]), 'and it names the ball, never the person the track layer already framed: ' + JSON.stringify(boxTitles));
+  assert.strictEqual(T.state.drawn.persons, 1, 'and the facts line counts one person, not two');
+  assert.ok(/data-origin="auto"[^>]*class="t-box auto/.test(html) && html.includes('x="100"'), 'the ball is what is left of the editable layer');
+  // The index survives the skip: selection, handles and delete address the ball at 1.
+  assert.ok(html.includes('data-box="1"') && !html.includes('data-box="0"'), 'the skipped box leaves no hole in the indices');
+  T.state.sel = {kind:'box', box:1, crop:null, ball:null, person:null, track:null, anchor:0, event:null};
+  T.paintOverlay();
+  assert.ok(/data-box="1"[^>]*class="t-box auto selected"/.test(svg.innerHTML) || /class="t-box auto selected"/.test(svg.innerHTML),
+    'and index 1 really is the ball the operator can still select: ' + svg.innerHTML.slice(0, 200));
+  // A model person the track layer did not see is a disagreement: it still draws.
+  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.state.unified = {persons:[{bbox:[500,200,600,500], track_id:4}], balls:[], events:[]};
+  T.state.fresult = {correction:null, inference:{table_polygon:null,
+    boxes:[{label:'person', bbox:[502,201,601,501]}, {label:'person', bbox:[900,210,1000,520]}]}};
+  T.state.dirty = false;
+  T.applyFrameResult();
+  T.paintOverlay();
+  const two = svg.innerHTML;
+  assert.strictEqual((two.match(/class="u-person/g) || []).length, 1, 'still one tracked person');
+  assert.strictEqual((two.match(/class="t-box/g) || []).length, 1, 'and the unmatched model person still draws');
+  assert.ok(two.includes('x="900"') && /class="t-box auto/.test(two), 'at its own coordinates, so a disagreement shows as a gap');
+  // Two rectangles are on the stage -- the tracked person and the model's unmatched
+  // box -- and the facts line says so. Before the fix this frame reported three:
+  // the matched model box was counted although it drew nothing.
+  assert.strictEqual(T.state.drawn.persons, 2, 'the matched pair counts once, the unmatched box counts as itself');
+  // The switch the operator has: persons off, and the model boxes are all they get.
+  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
+  T.paintOverlay();
+  assert.strictEqual((svg.innerHTML.match(/class="u-person/g) || []).length, 0, 'persons off draws no tracked rect');
+  assert.strictEqual((svg.innerHTML.match(/class="t-box/g) || []).length, 2, 'and every model box draws then');
+  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.unified = null; T.state.dirty = false;
+});
+
 // The painter and app.css must speak one vocabulary. The test above checks the
 // class names only, and model boxes shipped solid because app.css styled `.model`
 // while the painter emits `auto`. So resolve the emitted classes against app.css

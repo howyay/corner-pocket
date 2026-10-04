@@ -1627,3 +1627,166 @@ picker's rows read `date · 0:01:06 · Highlight` too: the same list is offered 
   `set viewport 1280 900`, `eval`, `screenshot`.
 - Reproduce the data: `PYTHONPATH=. .venv/bin/python -c "from annotator import twitch_vod_source as t;
   print(len(t.channel_recent_vods('ttpoolfriday', 60)))"` → 31 (needs the network).
+
+## §18 — Round 7: the five things the owner asked for after living with round 5
+
+His message, 2026-10-03 23:29 PDT, in his words: *"1. right now for every human i still see two
+tracking boxes why?  2. please keep the shot timer as a separate top bar. dont combine it with shot
+timer tab.  3. please remove the text 'The shot timer runs only on this browser and survives refresh.
+It does not impose a penalty or update other devices.'  4. please greatly simplify the tournament.
+when there is no on going tournament, it should be the darkened registration page with the floating
+model for starting a tournament.  5. rm 'Signed results only: a bye is not a match, a forfeit
+counts.' from regulars"*
+
+Each item below: what he saw, what the code was doing, what changed, and what the evidence is.
+
+### 18.1 "for every human i still see two tracking boxes why?"
+
+Because the stage painted **two independent layers that both cover people**, and only manual boxes
+had ever been deduped against them:
+
+- the tracking layer's rectangles — `annotator/app.js:859`:
+  `ov.persons && !playing ? (u?.persons || liveBoxes.filter(b => b.label === 'person'))`, drawn as
+  `<g class="u-person">` with a green `stroke="#8fd6a8"`;
+- the frame's editable boxes — `annotator/app.js:929`, `const editable = playing || liveFrame ? [] :
+  state.boxes`, where `state.boxes` is `displayBoxes()`'s `[...manual, ...model]` and `model` is
+  `result.inference.boxes` — i.e. the PersonStage's own `person` boxes.
+
+`isPairedModel()` (`annotator/app.js:135`) only fades a **model** box that matches a **manual** box;
+nothing compared the model to the tracking layer, so every tracked person also carried its model
+rectangle. The counting had the same split: `auto.persons = persons.length` in the persons layer
+(`annotator/app.js:868`) and `auto.persons++` again per model person box (`annotator/app.js:918`), so
+the facts line under the stage reported roughly two humans per human.
+
+Measured, production `:8130`, one frozen frame with four people in it:
+
+| | persons | rectangles | model person boxes | pairing |
+|---|---|---|---|---|
+| before | 4 | 14 | 4 | every tracked rect paired with a model rect at IoU 0.98–0.99 |
+| after | 4 | 10 | 0 | the ten left are the balls (`ball · confidence 0.86 · MODEL` ×10) |
+
+The fix is three lines and their comments: `personRects` is computed once and the persons layer uses
+it; `coveredByPerson(box)` is `boxTagKind(box) === 'auto' && box.label === 'person' &&
+personRects.some(per => boxesMatch({bbox: box.bbox}, {bbox: per.bbox}))`; a covered box is skipped in
+the drawing map (`return ''`, so `data-box` — the index the handles, the selection and delete all
+address — keeps its meaning) and in the counting loop (`continue`). A model person the tracking layer
+**missed** still draws, which is the file's existing rule for disagreements: *"agreement reads as one
+clean box, a disagreement as a visible gap"*.
+
+Test: `tests/test_app_timeline.js`, `round 7 / owner item 1: one human on the stage carries one
+rectangle, not two` — one `u-person` and one `t-box` (the ball), `drawn.persons === 1`, `data-box="1"`
+present and `data-box="0"` gone, index 1 still selectable; a model person the track layer missed still
+draws; `overlay.persons = false` returns the two plain boxes. Suite: 81 passed, 0 failed.
+
+### 18.2 The shot timer is its own bar
+
+The bar held the timer inside the same `<nav>` as the five destinations, which is what round 5 had
+built (ball 1 + the word + the clock + Start/Reset + the presets, then balls 2–6). The owner wants the
+timer *above* the destinations, as its own bar. The shell is now two rows:
+
+```html
+<div class="bar">
+  <div class="clockbar" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div>
+  <div class="barrow"><nav id="nav" aria-label="Primary / 主导航"></nav><div class="tools">…</div></div>
+</div>
+```
+
+`annotator/ops.js` paints it: `render()` no longer prepends `timerSlotHost()` to `#nav` (the host is
+markup now), `paintClockSlot()` paints `#ops-shell .clockbar`, and the bottom bar is five slots —
+`primaryNav().map((id, i) => tabbarSlot(id, i + 2))`, so **the owner's ball map survives untouched:
+Tournament 2, Records 3, Vision 4, Regulars 5, Back room 6, and `Digit1` is still the timer.**
+
+Measured, production `:8130` at 1280×900, read out of the live page:
+
+| element | top | height | width | left |
+|---|---|---|---|---|
+| `.bar` | 0 | 110 | 1280 | 0 |
+| `.clockbar` | 6 | 46 | 1219 | 31 |
+| `.barrow` | 60 | 44 | 1219 | 31 |
+| `#nav` | 60 | 44 | 673 | 31 |
+| `.tools` | 64 | 36 | 169 | 1080 |
+
+`document.scrollWidth` 1280 = the viewport, the five labels unchanged, and the four presets are back
+at every width from 751 up — round 5 had hidden them below 1440 as the price of one row, and that
+trade is now retired (it is still recorded in §16.9 as the measurement that produced it). At 390×844
+the header keeps ball 1, the clock, Start, Reset and the rail; the word and the presets are hidden
+(`.timer-tab-label` / `.presets` computed `none`), `#nav` is `display: none` and the bottom bar carries
+the five destinations in 78 px cells, `scrollWidth` 390 = the viewport.
+
+The separator between the timer and the first destination is a `::after` pseudo-element
+(`.timer-tab::after`), not a border, so hovering the tab cannot turn a rule brass.
+
+### 18.3 The sentence is gone
+
+*"The shot timer runs only on this browser and survives refresh. It does not impose a penalty or
+update other devices."* lived in two places: the clock screen's `<p class="muted">` and the Back
+room's maintainers table row `[t('shotTimer'), t('clockNotice')]`. Both are removed and the key
+`clockNotice` is deleted from `words` — the test asserts `t('clockNotice') === 'clockNotice'` and 0
+occurrences in the source, so the sentence cannot creep back in.
+
+### 18.4 The tournament's first run is a dialog over the registration page
+
+Before, a club with no event saw a dashed "First night? Three steps to the first break" tutorial, a
+four-field "Start tonight" form, a `Save` button and a second "Start tonight →" button — and the
+registration desk was hidden until that button was pressed.
+
+Now `tonightState()`'s `idle` venue renders `idleStart()`:
+
+- **no event and no name** → the registration page (`setupScreen('desk')`, which keeps the tables
+  resident) inside `<div class="idle-registration" aria-hidden="true" inert>` — `opacity: .3`,
+  `filter: saturate(.45)`, `pointer-events: none` — with `startModal(false)` floating over it: a
+  `role="dialog" aria-modal="true"` card titled "Start tonight", the honest note *"Name the night and
+  start. The draw sends matches to free tables; nothing is inferred."*, the four fields and **one**
+  brass primary. There is no Close button on the first run: the honest choice is to name it.
+- **named, or drawn** → the registration page itself, with a quiet "Event settings" door
+  (`data-action="open-setup"`) that opens the same dialog closeable; its primary says `Save` because
+  that is what it does.
+- The four-field block left the page; the "The night" card is now a summary — the night's own name
+  once it has one, then `Singles · Race to 1 · 2 Tables` — and the draw (`Start the event →`,
+  `data-action="tournament-start"`) is the page's only primary.
+
+Deleted with it: `firstRun()` (five `words` keys retired), `renameCard()` (the rename lives in the
+dialog, still audited as `tournament_rename`), the `start-night` and `open-desk` routes and the
+`deskOpen` flag (replaced by `setupOpen`, which only records "the operator opened the editor"), the
+dead `rename-form` submit branch, and the three buttons that had pointed at `open-desk` (they now go
+to the tab itself).
+
+The dialog's predicate is deliberately *not* `!T.id`: **the server mints no id on `tournament_setup`
+— only the draw (`tournament_start`) does.** Keying the dialog on the id alone put it back over an
+inert page the moment the operator named the night, which locked them out of the desk; the browser
+pass caught it, and `idleStart()` now asks `!T.id && !String(T.name || '').trim()`, with the test
+*"naming the night is enough to get past the dialog, even though the draw is what mints the event
+id"* pinning it.
+
+### 18.5 The "Signed results only" sentence is gone
+
+It appeared three times — the event table's panel (`tonightPanel()`), the top of the standing
+(`playersScreen()`) and the queue's side panel (`queueScreen()`) — and now appears none: the three
+renderings and the `words` key are removed, and the standing test asserts the key is retired
+(`t('signedOnly') === 'signedOnly'`).
+
+### 18.6 What the verification found that the suites could not
+
+- The dead end above (the dialog returning after a successful save) — found by driving the real flow
+  in a browser.
+- The door-opened editor promised "Start tonight →" although its submit only saves; the label now
+  follows the same predicate as the dialog itself.
+- **The review fixture does not persist writes.** `tests/serve_workbench_fixture.py` accepted
+  `POST /api/operations` with 200 and advanced its in-memory revision, while its `--state` file stayed
+  at the old revision — so a write path can only be proven against the real server
+  (`annotator/unified_server.py`), which needs the console HTML reachable, i.e. `<root>/annotator/`
+  (a bare `--root /tmp/…` answers `GET /` with 404 `media not found`).
+
+### 18.7 Evidence
+
+- Pictures: `out/r7/after-vision-one-box-1280.png` (item 1), `out/r7/after-tonight-idle-dialog-1280.png`
+  (item 4, the first run), `out/r7/after-tonight-registration-1280.png` (after naming: the page, the
+  desk, the draw), `out/r7/after-tonight-settings-dialog-1280.png` (the door: `Save` + `Close`),
+  `out/r7/after-phone-bar-390.png`, `out/r7/after-phone-tonight-390.png`,
+  `out/r7/after-phone-start-dialog-390.png`, and the "before" frame
+  `out/r7/before-tonight-idle-1280.png`.
+- Suites: `node --test tests/test_ops.js` 147 / 0, `node tests/test_app_timeline.js` 81 / 0,
+  `node tests/test_board.js` 16 / 0.
+- Reproduce: `AGENT_BROWSER_SESSION=r7 <agent-browser> open
+  'http://127.0.0.1:8130/?r7=2#/tonight'`, `set viewport 1280 900`, `eval`, `screenshot` — the
+  console is served from disk, so round 7 needed no service restart.

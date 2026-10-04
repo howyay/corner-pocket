@@ -856,8 +856,15 @@ function paintOverlay() {
     }).join(''));
     auto.pockets = pockets.length;
   }
-  if (ov.persons && !playing) {
-    const persons = u?.persons || (isLive ? liveBoxes.filter(b => b.label === 'person') : []);
+  // The tracked persons and the frame inference's own person boxes describe the
+  // same people, and both layers used to draw them: every human carried a green
+  // tracked rectangle and a model rectangle on top of it (round 7, item 1). One
+  // measurement, on production: four people, four tracked rects, four model
+  // person boxes, each pair overlapping at IoU 0.98-0.99. This list is hoisted
+  // out of the layer so the boxes loop below can see what is already framed.
+  const personRects = ov.persons && !playing ? (u?.persons || (isLive ? liveBoxes.filter(b => b.label === 'person') : [])) : [];
+  if (personRects.length) {
+    const persons = personRects;
     layers.push(persons.map(per => {
       const [x1, y1, x2, y2] = per.bbox;
       const track = per.track_id ?? per.track;
@@ -913,7 +920,14 @@ function paintOverlay() {
   const editable = playing || liveFrame ? [] : state.boxes;
   const boxKinds = editable.map(boxTagKind);
   const boxSource = boxKinds.length && boxKinds.every(kind => kind === boxKinds[0]) ? boxKinds[0] : boxKinds.length ? 'mixed' : 'auto';
+  // A model person box that already sits on a tracked person is the same human,
+  // framed by the persons layer above: it is skipped here so the facts line stops
+  // reporting twice the people who are standing there. A model person the track
+  // layer missed is a disagreement and still draws -- that is the point of having
+  // both -- so only a match is dropped, never an unmatched box.
+  const coveredByPerson = box => boxTagKind(box) === 'auto' && box.label === 'person' && personRects.some(per => boxesMatch({ bbox: box.bbox }, { bbox: per.bbox }));
   for (const box of editable) {
+    if (coveredByPerson(box)) continue;
     const manual = boxTagKind(box) === 'manual';
     if (box.label === 'person') { manual ? drawn.persons++ : auto.persons++; }
     else if (ballLabel(box.label)) { manual ? drawn.balls++ : auto.balls++; }
@@ -927,6 +941,9 @@ function paintOverlay() {
   if (editPolygon) polySource === 'manual' ? drawn.cloth++ : auto.cloth++;
   svg.dataset.boxes = boxSource;
   const boxes = editable.map((box, i) => {
+    // The index survives the skip: data-box, the handles and delete all address
+    // state.boxes by position.
+    if (coveredByPerson(box)) return '';
     const [x1, y1, x2, y2] = box.bbox, center = boxCenter(box);
     const kind = boxTagKind(box);
     const selected = state.sel.kind === 'box' && state.sel.box === i && !box.frozen;

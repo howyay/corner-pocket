@@ -385,3 +385,55 @@ publishes a new VOD changes them; the three long-lived `HIGHLIGHT` recordings ar
 night from a title or a picture, so a row only becomes a night in the log when an operator builds it,
 and today **0 of 31** are built; and the lazy images mean "shown" is smaller than "present" by design
 (18 of 31 at rest), which is why both numbers are printed rather than one.
+
+## 12. Round 7: one rectangle per human, a timer with its own bar, and a first run that is a dialog
+
+Round 7 answered five things the owner asked for on 2026-10-03 23:29 PDT; the reasoning and the code
+are in `docs/console-redesign.md` §18. The pictures are `out/r7/`.
+
+Reproduce (the console is served from disk, so nothing needs restarting):
+
+```
+B=/home/haoye/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64
+AGENT_BROWSER_SESSION=r7 $B open 'http://127.0.0.1:8130/?r7=2#/tonight'
+AGENT_BROWSER_SESSION=r7 $B set viewport 1280 900
+AGENT_BROWSER_SESSION=r7 $B eval "<the reads below>"
+AGENT_BROWSER_SESSION=r7 $B screenshot out/r7/after-tonight-registration-1280.png
+```
+
+The bar, measured in the live page at 1280×900 (production):
+
+| element | top | height | width | left |
+|---|---|---|---|---|
+| `.bar` | 0 | 110 | 1280 | 0 |
+| `.clockbar` (the timer's own row) | 6 | 46 | 1219 | 31 |
+| `.barrow` (destinations + tools) | 60 | 44 | 1219 | 31 |
+| `#nav` | 60 | 44 | 673 | 31 |
+| `.tools` | 64 | 36 | 169 | 1080 |
+
+`document.scrollWidth` 1280 = `window.innerWidth`; the five labels are unchanged as balls 2–6; the
+presets are visible again from 751 up. At 390×844: `.bar` 100 px tall, `#nav` computed
+`display: none`, `#tabbar` `top 791 h 53` with `["2Tournament","3Records","4Vision","5Regulars","6Back
+room"]`, `.timer-tab-label` and `.presets` computed `none`, ball + clock + Start + Reset + rail still
+drawn, `scrollWidth` 390 = the viewport.
+
+The first run, measured on an unnamed-night fixture and on an isolated real server:
+
+| read | value |
+|---|---|
+| the page behind | `.idle-registration` present, `inert`, `aria-hidden="true"`, `opacity 0.3`, `pointer-events: none` |
+| the dialog | `.modal--start`, `role="dialog"`, `aria-modal="true"`, title `Start tonight`, fields `name/format/raceTo/tables`, primary `Start tonight →`, no Close on the first run; 358×492 at 390×844, no overflow |
+| after submitting | `{modal: false, dim: false, desk: true, draw: "Start the event →", door: true, message: "Saved."}` and the state file revision 111 → 112 with `tournament_setup` in `events` |
+| the door for a named night | the same dialog with `["Save","Close"]` |
+
+The one-rectangle change is photographed on the live stage: `out/r7/before-tonight-idle-1280.png` is
+the old Tonight (tutorial + form + two buttons) and `out/r7/after-vision-one-box-1280.png` is the
+Vision stage with one green rectangle per human (`persons 4` in the facts line, ten ball boxes, no
+model person boxes) where the same frame used to show fourteen rectangles and `personBoxes: 4`.
+
+Limits, stated plainly: the fixture (`tests/serve_workbench_fixture.py`) answers writes with 200 but
+**does not persist them** to its `--state` file, so every write-path claim above was taken against
+`annotator/unified_server.py` on an isolated root (`/tmp/r7-root`, with `<root>/annotator` symlinked,
+because the console HTML is served from there); the Vision frame is a stored inference from
+2026-09-16, so "one rectangle per human" is one frame at one moment, judged by eye and by IoU; and the
+phone bar's numbers are computed styles plus a screenshot, not a device.
