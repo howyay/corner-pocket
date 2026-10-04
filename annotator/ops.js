@@ -776,7 +776,7 @@ function paintClockSlot(){const slot=$('#ops-shell .clockbar');if(slot)slot.inne
 function clockScreen(){const left=clockLeft(),running=!!timer.deadline;return `<section class="stack"><article class="timer-card"><h2>${esc(t('shotTimer'))}</h2><p class="timer-face"><strong class="clock${clockLow(left)?' low':''}" data-clock>${esc(clockText(left))}</strong></p><span class="timer-progress" role="progressbar" aria-label="${esc(t('shotTimer'))}" aria-valuemin="0" aria-valuemax="${timer.duration}" aria-valuenow="${Math.round(left)}"><span data-progress style="transform:scaleX(${clockScale(left)})"></span></span><div class="timer-controls"><button type="button" class="primary" data-action="clock-toggle" aria-keyshortcuts="Digit1">${esc(t(running?'pause':'start'))}</button><button type="button" data-action="clock-reset">${esc(t('reset'))}</button><span class="presets" role="group" aria-label="${esc(t('shotTimer'))}">${[20,30,45,60].map(n=>btn(n,'clock-set',`data-value="${n}"`,timer.duration===n?'preset active':'preset')).join('')}</span></div></article>${liveComp()?scoreboardScreen():''}</section>`}
 // The clock is the one always-available element (owner §13.1): it paints before the first
 // fetch answers and in every venue state, because nothing here reads comp().
-paintClockSlot();function tick(){const left=clockLeft();document.querySelectorAll('[data-clock]').forEach(e=>{const text=clockText(left);if(e.textContent!==text)e.textContent=text;e.classList.toggle('low',clockLow(left))});document.querySelectorAll('[data-progress]').forEach(e=>e.style.transform=`scaleX(${clockScale(left)})`);if(timer.deadline&&left===0){timer.remaining=0;timer.deadline=null;persistClock();render();message(lang==='zh'?'击球时间到。未自动判罚。':'Shot time expired. No penalty applied.')}}
+paintClockSlot();function tick(){const left=clockLeft();if(reviewId&&!document.hidden)syncReviewDataset();document.querySelectorAll('[data-clock]').forEach(e=>{const text=clockText(left);if(e.textContent!==text)e.textContent=text;e.classList.toggle('low',clockLow(left))});document.querySelectorAll('[data-progress]').forEach(e=>e.style.transform=`scaleX(${clockScale(left)})`);if(timer.deadline&&left===0){timer.remaining=0;timer.deadline=null;persistClock();render();message(lang==='zh'?'击球时间到。未自动判罚。':'Shot time expired. No penalty applied.')}}
 const screens={clock:clockScreen,tonight:tonightScreen,records:recordsScreen,vision:liveVisionScreen,players:playersScreen,status:statusScreen};
 function render(){stopLivePolling();stopOpsPolling();if(!data)return;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.documentElement.dataset.theme=theme;$('#nav').innerHTML=clockNavButton()+primaryNav().map((k,i)=>{const cur=!bf&&tab===k,key=String(i+2);return `<button data-tab="${k}" class="${cur?'active':''}" aria-current="${cur?'page':'false'}" aria-keyshortcuts="Digit${key}" title="${esc(t('keyHint').replace('{key}',t('digitKey').replace('{n}',key)))}">${ballHTML(i+2)}${esc(navLabel(k))}<small>${k==='tonight'?(matches().length?matches().filter(m=>m.status!=='complete').length:entrants().length):k==='players'?data.players.length:''}</small></button>`}).join('');const tb=$('#tabbar');if(tb)tb.innerHTML=tabbarHTML();const m=live();$('#ops-shell').dataset.tab=bf?'backfill':tab;$('#ops-shell').dataset.lang=lang==='zh'?'zh':'en';$('#ops-shell').dataset.vision=reviewId?'recorded':(tab==='vision'?'live':'');paintClockSlot();const host=$('#vision-host');if(host&&host.parentElement!==document.body)document.body.appendChild(host);visionAdapter?.detach();visionAdapter=null;$('#main').innerHTML=(bf?bfScreen():screens[tab]())+(sourceOpen?sourceModal():'');liveWasRunning=liveRunning();$('#main').classList.toggle('short',reviewHosted());showReview();syncLivePolling();syncOpsPolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}document.querySelectorAll('[data-lang]').forEach(b=>{b.classList.toggle('active',b.dataset.lang===lang);b.setAttribute('aria-pressed',String(b.dataset.lang===lang))});document.querySelectorAll('#ops-shell button[data-theme]').forEach(b=>{b.classList.toggle('active',b.dataset.theme===theme);b.setAttribute('aria-pressed',String(b.dataset.theme===theme))});document.querySelector('[data-theme-group]')?.setAttribute('aria-label',lang==='zh'?'配色 / Color theme':'Color theme / 配色');document.querySelector('#vision-host')?.setAttribute('aria-label',lang==='zh'?'视觉复核':'Vision review');tick()}
 // Round 12, owner item 2: the match follows the night onto the timer's own page. The desk sends a
@@ -1009,6 +1009,25 @@ setInterval(tick,200);window.addEventListener('storage',e=>{if(e.key==='cp-ops-c
 // The review engine (app.js) owns the single frame surface; this shell owns the
 // live source lifecycle and hands the vision-stage adapter its callbacks.
 function reviewState(){try{return review()?.snapshot?.()||{}}catch(_){return {}}}
+// Round 15, owner item 1: opening a historical broadcast must show *that* broadcast on the scrubber.
+// The workbench lists its datasets only after the engine mounts, so this waits for the id to appear,
+// hands it to the engine once, and never fights an operator who changes it afterwards. The engine's own
+// default (vod30, else the first dataset) stays for the live tab, where no broadcast was opened.
+let reviewDatasetSynced=null,reviewDatasetAt=0,reviewDatasetTries=0;
+function syncReviewDataset(){
+  if(!reviewId){reviewDatasetSynced=null;reviewDatasetAt=0;reviewDatasetTries=0;return}
+  const now=Date.now();if(now-reviewDatasetAt<1000)return;reviewDatasetAt=now;
+  const vod=broadcastVodId();if(!vod){reviewDatasetSynced=reviewId;return}
+  const ids=(reviewState().datasets||[]).map(d=>String(d.id||''));
+  // A blank strip and a stage asking for "a moment on it" is a dead end. Once the workbench has had
+  // three passes to list its datasets, say what is missing and what makes it appear.
+  const blanks=()=>liveText('No frames for this broadcast yet — import it from Broadcasts, then its scrubber appears here.','这个直播还没有帧——请先在“直播”区块导入，导入后这里会出现它的拖动条。');
+  if(!ids.length){reviewDatasetTries++;if(reviewDatasetTries>=3&&reviewDatasetSynced!==reviewId){reviewDatasetSynced=reviewId;message(blanks(),true)}return}
+  const id=datasetForVod(vod);
+  if(!id||!ids.includes(id)){if(reviewDatasetSynced!==reviewId){reviewDatasetSynced=reviewId;message(blanks(),true)}return}
+  reviewDatasetSynced=reviewId;
+  const asked=review()?.setDataset?.(id);
+  if(asked&&asked.catch)asked.catch(()=>{reviewDatasetSynced=null})}
 // Round 13, owner item 8: one simple configurator, on History and on Vision. It reads the same
 // `data.sources` the console has always kept and writes the two actions it has always posted; the
 // only thing that is new is that it is one place, reachable from both tabs, instead of a form that

@@ -3961,3 +3961,32 @@ test('round 14 / owner item 4: the Vision page is the stream, not a stream toggl
     'and the source door and the History door share the action row');
   assert.ok(html.includes(h.evaluate("esc(t('reviewFromRecords'))")), 'the sentence about recorded nights stays, as one line');
 });
+
+// ---------------------------------------------------------------- round 15 (owner, m08064)
+test('round 15 / owner item 1: opening a historical broadcast puts that broadcast on the scrubber', () => {
+  const h = harness();
+  const seen = [];
+  h.evaluate(`set=[];window.CornerPocketReview=Object.assign(window.CornerPocketReview||{},{snapshot:()=>({datasets:[{id:'vod30'},{id:'tw-2890514774'}]}),setDataset:id=>{set.push(id);return Promise.resolve(true)}});
+    reviewDatasetAt=0;reviewDatasetSynced=null;
+    data.history=[{id:'n1',name:'Friday',source:{vodId:'2890514774'},matches:[]}];reviewId='n1';syncReviewDataset()`);
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(set)')), ['tw-2890514774'],
+    'the engine is handed the opened broadcast\u2019s own dataset, not the engine\u2019s default');
+  assert.equal(h.evaluate('reviewDatasetSynced'), 'n1', 'and the sync remembers which review it served');
+  h.evaluate('syncReviewDataset()');
+  assert.equal(h.evaluate('set.length'), 1, 'it asks once: an operator who switches later is not fought');
+  h.evaluate("reviewId=null;reviewDatasetAt=0;syncReviewDataset();reviewId='n2';data.history=[{id:'n2',name:'Other',source:{vodId:'424242'},matches:[]}];reviewDatasetAt=0;syncReviewDataset()");
+  assert.equal(h.evaluate('set.length'), 1, 'a broadcast this workbench has no dataset for changes nothing');
+  assert.ok(source.includes('if(reviewId&&!document.hidden)syncReviewDataset();'), 'the 200 ms tick is what waits for the datasets to load');
+});
+test('round 15 / owner item 1: a broadcast with no frames says so, once', () => {
+  const h = harness();
+  h.evaluate(`messages=[];message=(text,error)=>messages.push([text,!!error]);
+    window.CornerPocketReview=Object.assign(window.CornerPocketReview||{},{snapshot:()=>({datasets:[]}),setDataset:()=>Promise.resolve(true)});
+    reviewDatasetAt=0;reviewDatasetTries=0;data.history=[{id:'n1',name:'Friday',source:{vodId:'2890514774'},matches:[]}];
+    reviewId='n1';for(let i=0;i<3;i++){reviewDatasetAt=0;syncReviewDataset()}`);
+  assert.equal(JSON.parse(h.evaluate('JSON.stringify(messages)')).length, 1,
+    'a blank scrubber is explained: no frames for this broadcast yet, import it from Broadcasts');
+  assert.ok(JSON.parse(h.evaluate('JSON.stringify(messages)'))[0][0].includes('import it from Broadcasts'), 'in the operator\u2019s words');
+  h.evaluate('reviewDatasetAt=0;syncReviewDataset()');
+  assert.equal(JSON.parse(h.evaluate('JSON.stringify(messages)')).length, 1, 'once per review, not on every tick');
+});

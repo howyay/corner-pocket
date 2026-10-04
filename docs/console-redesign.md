@@ -2831,3 +2831,43 @@ live Vision stage is a runtime surface, so its frame is the skeleton the adapter
 (offline, 409, 503) are behaviour and are not captured; the stylesheet's fonts are not inlined, so the board
 falls back to the declared system faces; and the mirror is read-only for me until the owner annotates, while
 `odsync push` replaces OpenDesign files, so the habit is to pull first and report before pushing.
+
+## §30 — Round 15, item ①: the opened broadcast drives the workbench (2026-10-04)
+
+**What was wrong.** The review engine (`annotator/app.js`) picks its dataset on load: `vod30` if the workbench
+has one, else the first dataset (line 396). Nothing told it which broadcast the operator had just opened, and
+round 14 had removed the clip chips from a recorded review, so a historical broadcast opened on whatever
+dataset happened to be first.
+
+**What now happens.** `syncReviewDataset()` (in `annotator/ops.js`, called from the 200 ms tick while a review
+is open) waits for the workbench to list its datasets, maps the opened broadcast through the existing
+`broadcastVodId()` → `datasetForVod()`, and hands that id to `window.CornerPocketReview.setDataset()` **once**
+per review. An operator who switches afterwards is not fought, and the engine's own default still governs the
+live tab, where no broadcast was opened.
+
+**When no frames exist, the console says so.** After three passes without a dataset for the broadcast — or with
+none listed at all — it prints one line: *No frames for this broadcast yet — import it from Broadcasts, then
+its scrubber appears here.* A blank strip and a stage asking for "a moment on it" was a dead end.
+
+**Verified.** `node --test tests/test_ops.js` **169/169** (two new instruments: the happy path hands over
+`tw-2890514774` exactly once, and the no-frames path explains itself exactly once, not on every tick),
+`node tests/test_app_timeline.js` **81/0**, `node --test tests/test_board.js` **16/16**. Measured live on both
+servers: production's workbench lists **no** datasets and the isolated root's lists `['vod30','highlight']`, so
+neither has an imported broadcast and the notice is what an operator sees there. The switch itself needs a
+broadcast whose frames were imported (the Broadcasts block), which is why the acceptance for this item is the
+synthetic `tw-` dataset in the test rather than a live screenshot — stated here rather than dressed up.
+
+**Items ②③④ of the same order are not in this commit.** The recon is done and the seams are known, so the
+next round starts from facts rather than from reading:
+② auto-inference on pause: the engine already exports `freeze` and `runInference`, and carries
+`inferRunning` / `inferStatus` / `inferTimer` in its state, so the work is a pause hook plus a progress read in
+the stage chrome (`vision-stage.js`), not new machinery.
+③ a label box on every track: the engine exports `selectTrack`, `setSeed`, `seedIdentity`, `clearIdentity` and
+the enrollment pair, and `vision-stage.js` already renders each track as a `.vs-item` button (line 616), so
+this is a control per row wired to callbacks that exist.
+④ the playfield constraint: detection runs through `annotator/pipeline_stages.py`'s `TableStage`, which prefers
+the saved `src/calib_segments.py` artifact and otherwise measures (the quad search lives in
+`src/candidate_scan.py`, with an occlusion gate via a person-box share), and `src/eval_table_detect.py` is the
+eval to score against. The 9 ft dimensions (100″ × 50″ playfield, 4.5″ corner and 5″ side pockets) and the
+parallel-pair invariant belong in that candidate ranking as a physical score term — a detector change measured
+by its own eval, not a front-end edit.
