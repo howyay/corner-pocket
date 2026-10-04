@@ -2424,14 +2424,14 @@ test('Close is the night\u2019s end: the results sheet, second chance, archive a
   assert.ok(!close().includes('class="stack results-sheet"'), 'back returns to Close');
 });
 
-test('\u2264750px: the fixed bottom bar is the same five destinations, with no More behind it (stage 7)', () => {
+test('\u2264750px: the fixed bottom bar carries all six destinations, with no More behind it (stage 7)', () => {
   const h = harness();
   const shell = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   assert.ok(shell.includes('<nav id="tabbar"'), 'the bottom bar is part of the shell');
   const bar = () => h.evaluate('tabbarHTML()');
-  for (const id of ['tonight', 'records', 'vision', 'players', 'status']) assert.ok(bar().includes(`data-tab="${id}"`), `${id} is a bar slot`);
-  assert.equal((bar().match(/class="tabbar-slot"/g) || []).length, 5, 'the five destinations are slots, none behind More');
-  assert.ok(!bar().includes('data-tab="clock"'), 'the shot timer left the bar for the header bar (round 7 / owner item 2)');
+  for (const id of ['clock', 'tonight', 'records', 'vision', 'players', 'status']) assert.ok(bar().includes(`data-tab="${id}"`), `${id} is a bar slot`);
+  assert.equal((bar().match(/class="tabbar-slot"/g) || []).length, 6, 'the ball map is whole on the phone: 1 is the timer, 2-6 the destinations');
+  assert.ok(bar().indexOf('data-tab="clock"') < bar().indexOf('data-tab="tonight"'), 'and ball 1 leads it (round 7 / owner item 2, his ruling)');
   assert.equal((bar().match(/aria-current="page"/g) || []).length, 1, 'the bar marks exactly the tab you are on');
   assert.ok(!/data-more|tabbar-more/.test(bar()), 'no More button and no panel behind it');
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(primaryNav())')), JSON.parse(h.evaluate('JSON.stringify(navTabs)')), 'the bar and the top nav render the same list');
@@ -2497,7 +2497,7 @@ test('the bar is two rows: the shot timer, then the five destinations and the to
   assert.ok(bar.indexOf('class="clockbar"') < bar.indexOf('<nav id="nav"'), 'the clock comes first');
   assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="tools"'), 'then the destinations, then the tools');
   assert.ok(bar.indexOf('class="barrow"') < bar.indexOf('class="tools"'), 'the tools share the second row, not the clock\'s');
-  assert.ok(source.includes("$('#nav').innerHTML=primaryNav()"), 'render() paints the destinations into the nav and nothing else');
+  assert.ok(source.includes("$('#nav').innerHTML=clockNavButton()+primaryNav()"), 'render() paints six items into the nav: the timer, then the destinations');
   assert.ok(!source.includes('timerSlotHost'), 'the second definition of the host is gone, not just unused');
   assert.equal((bar.match(/<div class="tools">/g) || []).length, 1, 'and one tools row, unchanged');
   assert.ok(bar.includes('<span id="connection" class="badge" hidden>'), 'the connection badge still starts hidden and empty');
@@ -2561,15 +2561,15 @@ test('the timer slot renders and works in all four venue states, and nothing in 
     h.evaluate(`data.tournament={id:'t',name:'',format:'singles',raceTo:7,tables:4,status:'${status}',entrants:[{id:'e1',members:[{name:'A'}]}],matches:[]};data.players=[]`);
     assert.equal(h.evaluate('comp()'), status, `${label}: the venue is in that state`);
     assert.equal(h.evaluate('tonightState() !== undefined'), true, `${label}: and Tonight has a state of its own`);
-    const markup = h.evaluate('timerHTML()');
+    const markup = h.evaluate('clockHTML()');
     assert.ok(h.evaluate('clockHTML()').includes('data-clock'), `${label}: the clock is in the slot`);
     assert.ok(h.evaluate('clockHTML()').includes('data-action="clock-toggle"'), `${label}: the start/pause control is there`);
     assert.ok(h.evaluate('clockHTML()').includes('data-action="clock-reset"'), `${label}: so is reset`);
     assert.ok(h.evaluate('clockHTML()').includes('data-action="clock-set" data-value="20"'), `${label}: and the four presets`);
     assert.ok(markup.includes('data-progress'), `${label}: with the elapsed bar`);
     assert.ok(!/kicker/.test(markup), `${label}: no .kicker second line in the slot`);
-    assert.equal((markup.match(/class="ball[^"]*"/g) || []).length, 1, `${label}: one ball, the 1`);
-    assert.ok(markup.includes('--ball-c:#f2c14e'), `${label}: and it is the yellow 1`);
+    assert.ok(!/class="ball/.test(markup) && !/data-tab=/.test(markup),
+      `${label}: and no ball and no tab: the bar is the instrument, ball 1 is the timer's door`);
     // The controls work: toggle starts and pauses, reset clears the deadline, a preset
     // changes the duration through the server before the shell adopts it.
     // A DOM just real enough to render: the shell the language is published on, the
@@ -2579,8 +2579,8 @@ test('the timer slot renders and works in all four venue states, and nothing in 
       classList: {toggle() {}, add() {}, remove() {}}, setAttribute() {}, getAttribute: () => null,
       querySelector: () => null, querySelectorAll: () => [], appendChild() {}, addEventListener() {}});
     const shell = node(), nav = node(), tabbar = node(), main = node();
-    shell.querySelector = selector => (selector === '.timer-slot' ? slot : null);
-    h.context.document.querySelector = selector => ({'#ops-shell': shell, '#ops-shell .timer-slot': slot, '#nav': nav, '#tabbar': tabbar, '#main': main}[selector] || null);
+    shell.querySelector = selector => (selector === '.clockbar' ? slot : null);
+    h.context.document.querySelector = selector => ({'#ops-shell': shell, '#ops-shell .clockbar': slot, '#nav': nav, '#tabbar': tabbar, '#main': main}[selector] || null);
     h.context.document.body = node();
     h.evaluate('render=()=>{}');
     // The shell's click listener finds its button with closest('button,.modal-backdrop').
@@ -2588,9 +2588,9 @@ test('the timer slot renders and works in all four venue states, and nothing in 
     h.evaluate('timer={duration:30,remaining:30,deadline:null}');
     act('clock-toggle');
     assert.ok(h.evaluate('timer.deadline') > 0, `${label}: Start sets a deadline`);
-    const running = h.evaluate('timerHTML()');
-    assert.ok(/class="ball running"/.test(running), `${label}: the ball says the clock is running`);
-    assert.ok(running.includes('Pause') || running.includes('暂停'), `${label}: and the control offers Pause`);
+    const running = h.evaluate('clockHTML()');
+    assert.ok(running.includes('Pause') || running.includes('暂停'),
+      `${label}: the control says Pause while the clock runs - the bar has no ball to light up`);
     act('clock-toggle');
     assert.equal(h.evaluate('timer.deadline'), null, `${label}: Pause clears it`);
     h.evaluate('timer={duration:30,remaining:4,deadline:null}');
@@ -2608,8 +2608,7 @@ test('the timer slot renders and works in all four venue states, and nothing in 
   // Nothing in the slot can be gated on the venue state, and the slot is painted from the
   // one helper: once at boot and once on every render.
   assert.ok(!/function clockHTML\([^)]*comp/.test(source), 'clockHTML() reads no venue state');
-  assert.ok(!/function timerHTML\([^)]*comp/.test(source), 'and neither does timerHTML()');
-  assert.ok(!/function timerHTML\(\)\{[^}]*comp\(/.test(source), 'nothing inside timerHTML() asks the venue state either');
+  assert.ok(!/function clockHTML\(\)\{[^}]*comp\(/.test(source), 'nothing inside clockHTML() asks the venue state either');
   assert.equal((source.match(/paintClockSlot\(\)/g) || []).length, 3, 'one definition, one boot paint and one render paint, from one helper');
 });
 
@@ -2866,8 +2865,8 @@ test('round 2: the shot timer has exactly one home, in the bar (B-§13.1)', () =
   h.evaluate(`data.tournament={id:'t0',name:'Tonight',format:'singles',raceTo:3,tables:2,status:'active',entrants:[{id:'a',members:[{pid:'pa',name:'Ann'}]},{id:'b',members:[{pid:'pb',name:'Bea'}]}],matches:[{id:'m1',round:1,sides:['a','b'],score:[0,0],status:'live',table:1,absent:[]}]};data.players=[];render=()=>{}`);
   const board = h.evaluate('floorScreen() + scoreboardScreen()');
   assert.ok(!/data-clock/.test(board), 'neither the floor nor the scoreboard draws a clock of its own — the bar’s slot is the one home');
-  assert.equal((h.evaluate('timerHTML()').match(/data-clock/g) || []).length, 1, 'the bar’s slot renders exactly one clock, with its own controls');
-  assert.ok(/data-action="clock-toggle"/.test(h.evaluate('timerHTML()')) && /data-action="clock-reset"/.test(h.evaluate('timerHTML()')), 'and the controls live in the slot, not on the scoreboard');
+  assert.equal((h.evaluate('clockHTML()').match(/data-clock/g) || []).length, 1, 'the bar’s slot renders exactly one clock, with its own controls');
+  assert.ok(/data-action="clock-toggle"/.test(h.evaluate('clockHTML()')) && /data-action="clock-reset"/.test(h.evaluate('clockHTML()')), 'and the controls live in the slot, not on the scoreboard');
   assert.equal((opsHtml.match(/data-clock-host/g) || []).length, 1, 'ops.html declares one timer host');
   assert.ok(!/#strip/.test(opsHtml) && !/#strip/.test(opsCss), 'and the row that held the second copy is gone from the markup and the stylesheet');
   assert.ok(!/score-top \[data-action=clock/.test(opsCss) && !/clock-toggle\]\{margin-left:auto/.test(opsCss), 'the scoreboard clock controls that only the second copy used are gone too');
@@ -3014,14 +3013,14 @@ test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names its
   await h.handlers.keydown({code: 'Digit3', preventDefault() {}});
   assert.equal(h.evaluate('tab'), 'records', 'F15: and so does a code with no key');
   assert.ok(source.includes('aria-keyshortcuts="Digit${key}"') && source.includes("t('keyHint')"), 'F15: every ball names its key in the markup');
-  assert.ok(/aria-keyshortcuts="Digit1"[^>]*title=/.test(h.evaluate('timerHTML()')), 'F15: and the timer names its own key');
-  const slot = h.evaluate('timerHTML()');
-  assert.ok(slot.includes('data-tab="clock"') && slot.includes('class="timer-tab"'),
-    'round 5 / owner item 4: the timer is the nav\'s first destination, a button like every other tab');
-  assert.ok(slot.includes('<i>1</i>') && slot.includes('aria-hidden="true" class="ball') && slot.includes('<span class="timer-tab-label">'),
-    'F16 + owner item 4: inside the tab the ball is decorative and the label names the tab - the number is never read as a count of shots');
+  assert.ok(/aria-keyshortcuts="Digit1"[^>]*title=/.test(h.evaluate('clockNavButton()')), 'F15: and the timer names its own key');
+  const slot = h.evaluate('clockNavButton()');
+  assert.ok(slot.includes('data-tab="clock"') && slot.includes('aria-keyshortcuts="Digit1"'),
+    'round 7 / owner item 2 (his ruling): ball 1 is the timer own destination, in the nav like every other');
+  assert.ok(slot.includes('<i>1</i>') && slot.includes('aria-hidden="true" class="ball') && slot.includes('Shot timer'),
+    'F16 + owner item 4: inside the item the ball is decorative and the word names it - the number is never read as a count of shots');
   h.evaluate("tab='clock'");
-  assert.ok(h.evaluate('timerHTML()').includes('class="timer-tab active"') && h.evaluate('timerHTML()').includes('aria-current="page"'),
+  assert.ok(h.evaluate('clockNavButton()').includes('class="active"') && h.evaluate('clockNavButton()').includes('aria-current="page"'),
     'and it marks itself as the current tab when you are on it');
   h.evaluate("tab='tonight'");
 });
@@ -3130,24 +3129,26 @@ test('round 5 / owner item 3: the ball map is recorded, and every ball the nav d
   assert.ok(/9[^|]*15[^|]*stripe/i.test(doc), 'and says what 9-15 are: the same hues, striped');
 });
 
-test('round 7 / owner item 2: the shot timer is its own bar above the destinations, still needing no match', () => {
+test('round 7 / owner item 2: the timer is a bar of its own and ball 1 is its own door', () => {
   const h = harness();   // an idle venue: no tournament, no draw, nothing running
-  const tab = h.evaluate('timerHTML()');
-  assert.ok(tab.includes('data-tab="clock"') && tab.includes('class="timer-tab"'),
-    "the timer is the nav's first item and a button like every other tab");
-  assert.ok(tab.includes('data-clock') && tab.includes('data-action="clock-toggle"') && tab.includes('data-action="clock-reset"'),
-    'holding the live clock and its controls, so it keeps working on every other tab');
-  assert.ok(tab.includes('aria-label="Shot timer"') && tab.includes('<span class="timer-tab-label">'),
-    'the tab is named by an attribute and by the visible word, which no longer has to be hidden for width');
+  const bar = h.evaluate('clockHTML()');
+  assert.ok(bar.includes('data-clock') && bar.includes('data-action="clock-toggle"') && bar.includes('data-action="clock-reset"'),
+    'the bar holds the live clock and its controls, so it keeps working on every other tab');
+  assert.ok(!bar.includes('data-tab=') && !bar.includes('timer-tab') && !/class="ball/.test(bar),
+    'and it is not a tab: no ball, no word, no data-tab - the owner ruled the bar and the tab apart');
+  const door = h.evaluate('clockNavButton()');
+  assert.ok(door.includes('data-tab="clock"') && door.includes('--ball-c:#f2c14e') && door.includes('Shot timer'),
+    "ball 1 in the nav opens the timer's own screen, and the word names it");
+  assert.equal((h.evaluate('tabbarHTML()').match(/class="tabbar-ball"/g) || []).length, 6,
+    "and the phone's bottom bar carries all six, ball 1 included");
   // Round 5 hid the word and Reset below 1152 px so six items would fit one row at 1024 (measured:
-  // 104 px in two rows). Round 7 ends that trade by giving the timer a row of its own, so the block
-  // may not hide either any more, and the phone is the only place the word and presets go.
+  // 104 px in two rows). Round 7 gives the timer a row of its own, so that trade is over for good.
   const narrow = opsCss.slice(opsCss.indexOf('@media (max-width:1151.98px)'), opsCss.indexOf('@media(max-width:750px)'));
   assert.ok(!narrow.includes('timer-tab-label{display:none}') && !narrow.includes('clock-reset"]{display:none}'),
     'below 1152 the word and Reset stay: the timer has its own row now');
   const phoneBlock = opsCss.slice(opsCss.indexOf('@media (max-width:750px)'));
-  assert.ok(phoneBlock.includes('#ops-shell .clockbar .timer-tab-label{display:none}') && phoneBlock.includes('#ops-shell .clockbar .presets{display:none}'),
-    'and on the phone the word and the presets go, where 390 px is all there is');
+  assert.ok(phoneBlock.includes('#ops-shell .clockbar .presets{display:none}') && !phoneBlock.includes('timer-tab-label'),
+    'and on the phone the bar drops the presets, keeping the clock, Start and Reset');
   assert.ok(opsHtml.indexOf('class="clockbar"') < opsHtml.indexOf('class="barrow"') && opsHtml.indexOf('</nav>') < opsHtml.indexOf('class="tools"'),
     'the shell is two rows: the clock, then the destinations and the tools');
   assert.ok(source.includes("$('#ops-shell .clockbar')"), 'and render() paints that one host');
@@ -3215,27 +3216,25 @@ test('round 5 / owner item 6: the timer bar never narrates its own sync state', 
   assert.ok(/ERROR_MS = \d+/.test(clockSyncSource), 'and it clears itself on a timer');
 });
 
-test('round 7 / owner item 2 on the phone: the bottom bar carries the five destinations, the header the clock', () => {
+test('round 7 / owner item 2 on the phone: the header keeps the clock, the bottom bar all six', () => {
   const h = harness();
   // Round 5 measured six labelled cells in 390 px (out/r5/probe_tabbar.py: mono uppercase needed
-  // 80 px in 62 px cells). The timer left the bar for the header, so five cells of 78 px carry the
-  // destinations and the ball map stays true: 1 is the timer, 2..6 are the destinations.
+  // 80 px in 62 px cells). Round 7 re-measured with the body face at 11 px, and ball 1 came back:
+  // 390/6 = 65 px cells hold labels of 50.1 / 57.8 / 39.5 / 29.3 / 41.8 / 50.9 px.
   const bar = h.evaluate('tabbarHTML()');
-  assert.equal((bar.match(/class="tabbar-ball" aria-hidden="true"/g) || []).length, 5,
+  assert.equal((bar.match(/class="tabbar-ball" aria-hidden="true"/g) || []).length, 6,
     'every slot stacks its destination\'s ball, and it is decorative - the word names the tab');
-  const map = [[2, '#2f6fd0'], [3, '#c8382f'], [4, '#e885ad'], [5, '#e07a29'], [6, '#2f8f4e']];
+  const map = [[1, '#f2c14e'], [2, '#2f6fd0'], [3, '#c8382f'], [4, '#e885ad'], [5, '#e07a29'], [6, '#2f8f4e']];
   for (const [n, hex] of map) {
     assert.ok(bar.includes(`--ball-c:${hex}`), `ball ${n} draws ${hex} on the phone bar too`);
   }
-  assert.ok(!bar.includes('--ball-c:#f2c14e'), 'the timer is ball 1 and lives in the header now, not in the bar');
-  assert.ok(bar.indexOf('--ball-c:#2f6fd0') < bar.indexOf('--ball-c:#2f8f4e'), 'so the bar reads left to right as 2..6');
-  // The phone header keeps the clock whole - ball, time, Start and Reset - and drops only what a
-  // 390 px row cannot hold.
+  assert.ok(bar.indexOf('--ball-c:#f2c14e') < bar.indexOf('--ball-c:#2f8f4e'), 'so the bar reads left to right as 1..6');
+  // The phone header keeps the clock whole - time, Start and Reset - and drops only the presets.
   const phone = opsCss.slice(opsCss.indexOf('@media (max-width:750px){'));
   assert.ok(phone.includes('#ops-shell #nav{display:none}'),
-    'the phone header drops the destinations to the bar');
-  assert.ok(phone.includes('#ops-shell .clockbar .timer-tab-label{display:none}') && phone.includes('#ops-shell .clockbar .presets{display:none}'),
-    'and the clock keeps everything but its word and the presets');
+    'the phone header drops the destinations to the bar, which already lists all six');
+  assert.ok(phone.includes('#ops-shell .clockbar .presets{display:none}'),
+    'and the clock keeps everything but the four presets');
   // Six cells of 390/6 px: the bar's gap and the slot's padding were what pushed "Tournament"
   // (64 px at 11 px in the body face) out of its box.
   assert.ok(phone.includes('#ops-shell #tabbar{gap:0}'), 'the phone cells get the whole width');

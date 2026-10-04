@@ -947,13 +947,10 @@ html,body{-webkit-font-smoothing:antialiased}
    own for the whole room. The slot keeps the class and the data-clock-host the
    clock painter and clock-sync.js already look for.
    --------------------------------------------------------------------------- */
-/* Round 7, owner item 2: the timer left the nav for .clockbar. These are the three faces the
-   nav used to give it - the ball and word as one flex row, a hairline after them, and the word
-   on one line - in their new home. The hairline is a pseudo-element, not a border, so hovering
-   the button does not turn a separator brass. */
-#ops-shell .clockbar .timer-tab{display:flex;align-items:center;gap:var(--sp-2);padding-left:0}
-#ops-shell .clockbar .timer-tab::after{content:"";width:1px;height:28px;margin-left:var(--sp-2);background:var(--line)}
-#ops-shell .clockbar .timer-tab-label{white-space:nowrap}
+/* Round 7, owner item 2, and his ruling of 2026-10-04: the bar is the instrument, the tab is the
+   door. The clockbar carries no ball and no word of its own - ball 1 names the timer where the
+   destinations are, in the nav and in the phone's bottom bar - so the two faces the nav used to
+   give the timer (its flex row and its hairline separator) are gone with the tab. */
 #ops-shell .timer-card{justify-items:start}
 #ops-shell .timer-face{margin:0}
 #ops-shell .timer-face .clock{font-size:clamp(64px,13vw,176px);line-height:.92}
@@ -992,11 +989,10 @@ html,body{-webkit-font-smoothing:antialiased}
       the label is set in the body face at 11 px, where "Tournament" measures 57. Five
       destinations divide the same 390 px now, so a slot is 78 px, not 62. */
 @media (max-width:750px){
-  /* the header's nav would be the bottom bar's twin: the same five labels twice. */
+  /* the header's nav would be the bottom bar's twin: the same six labels twice. */
   #ops-shell #nav{display:none}
-  /* the ball and the digits name the timer on a phone; the word and the four chips are what
-     does not fit, and both are on the clock's own screen one tap away. */
-  #ops-shell .clockbar .timer-tab-label{display:none}
+  /* the clock and Start name the timer; its own screen is ball 1 in the bottom bar, one tap
+     away, and the four chips live there. Reset stays: the bar has room for it. */
   #ops-shell .clockbar .presets{display:none}
   /* the same specificity as the rules above (id + #tabbar + class), later in the sheet */
   /* the cells are 390/6 = 65 px wide: the bar's 4 px gap and the slot's 4 px padding were what

@@ -408,14 +408,17 @@ The bar, measured in the live page at 1280×900 (production):
 | `.bar` | 0 | 110 | 1280 | 0 |
 | `.clockbar` (the timer's own row) | 6 | 46 | 1219 | 31 |
 | `.barrow` (destinations + tools) | 60 | 44 | 1219 | 31 |
-| `#nav` | 60 | 44 | 673 | 31 |
+| `#nav` (six items) | 60 | 44 | 807 | 31 |
 | `.tools` | 64 | 36 | 169 | 1080 |
 
-`document.scrollWidth` 1280 = `window.innerWidth`; the five labels are unchanged as balls 2–6; the
-presets are visible again from 751 up. At 390×844: `.bar` 100 px tall, `#nav` computed
-`display: none`, `#tabbar` `top 791 h 53` with `["2Tournament","3Records","4Vision","5Regulars","6Back
-room"]`, `.timer-tab-label` and `.presets` computed `none`, ball + clock + Start + Reset + rail still
-drawn, `scrollWidth` 390 = the viewport.
+`document.scrollWidth` 1280 = `window.innerWidth`; the bar reads `0:30 Start Reset 20 30 45 60` with no
+ball and no `data-tab` in it, and the nav carries all six balls with `Digit1`–`Digit6`; the presets are
+visible again from 751 up. At 1024×900 the nav is also one row (665 px inside a 1000 px row). At
+390×844: `.bar` 100 px tall, `.clockbar` `top 6 h 40` reading `0:30 Start Reset`, `#nav` computed
+`display: none`, `#tabbar` `top 847 h 53` with `["1Shot timer","2Tournament","3Records","4Vision",
+"5Regulars","6Back room"]`, `.presets` computed `none`, and the six cells are 65 px each with labels
+measuring 50.1 / 57.8 / 39.5 / 29.3 / 41.8 / 50.9 px, so none is clipped; `scrollWidth` 390 = the
+viewport.
 
 The first run, measured on an unnamed-night fixture and on an isolated real server:
 
@@ -437,3 +440,9 @@ Limits, stated plainly: the fixture (`tests/serve_workbench_fixture.py`) answers
 because the console HTML is served from there); the Vision frame is a stored inference from
 2026-09-16, so "one rectangle per human" is one frame at one moment, judged by eye and by IoU; and the
 phone bar's numbers are computed styles plus a screenshot, not a device.
+
+The owner ruled on 2026-10-04 that the bar and the timer's tab must be separate things, so §12's first
+cut (the bar holding ball 1 and the word as one clickable tab, five slots in the bottom bar) was
+replaced the same day. Shots of the ruling: `out/r7/after-bar-b-six-balls-1280.png` (EN) and
+`after-bar-b-six-balls-1280-zh.png` (中), plus `after-phone-bar-390-b.png` for the six-cell bottom bar.
+The measurement commands are the ones above with `?r7b=1` as the cache-buster.

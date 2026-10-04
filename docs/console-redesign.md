@@ -1678,11 +1678,21 @@ rectangle, not two` — one `u-person` and one `t-box` (the ball), `drawn.person
 present and `data-box="0"` gone, index 1 still selectable; a model person the track layer missed still
 draws; `overlay.persons = false` returns the two plain boxes. Suite: 81 passed, 0 failed.
 
-### 18.2 The shot timer is its own bar
+### 18.2 The shot timer is its own bar, and ball 1 is its own door
 
 The bar held the timer inside the same `<nav>` as the five destinations, which is what round 5 had
-built (ball 1 + the word + the clock + Start/Reset + the presets, then balls 2–6). The owner wants the
-timer *above* the destinations, as its own bar. The shell is now two rows:
+built (ball 1 + the word + the clock + Start/Reset + the presets, then balls 2–6). The owner asked for
+the timer *above* the destinations as its own bar, and — his ruling of 2026-10-04, after living with
+the first cut — for that bar **not** to double as the timer's tab: *"keep the shot timer as a separate
+top bar. dont combine it with shot timer tab."* The two are separate things now:
+
+- **the bar is the instrument**: the clock, Start/Pause, Reset, the four presets and the progress
+  rail. It carries no ball, no word and no `data-tab` at all.
+- **ball 1 is the door**: `clockNavButton()` renders it as the nav's first item (and the phone bottom
+  bar's first slot), named by the word, with `aria-keyshortcuts="Digit1"`, exactly like the five
+  destinations beside it.
+
+The shell is two rows:
 
 ```html
 <div class="bar">
@@ -1692,9 +1702,10 @@ timer *above* the destinations, as its own bar. The shell is now two rows:
 ```
 
 `annotator/ops.js` paints it: `render()` no longer prepends `timerSlotHost()` to `#nav` (the host is
-markup now), `paintClockSlot()` paints `#ops-shell .clockbar`, and the bottom bar is five slots —
-`primaryNav().map((id, i) => tabbarSlot(id, i + 2))`, so **the owner's ball map survives untouched:
-Tournament 2, Records 3, Vision 4, Regulars 5, Back room 6, and `Digit1` is still the timer.**
+markup now), `paintClockSlot()` paints `#ops-shell .clockbar` with `clockHTML()`, and the bottom bar is
+six slots again — `tabbarSlot('clock', 1) + primaryNav().map((id, i) => tabbarSlot(id, i + 2))`, so
+**the owner's ball map survives whole: 1 is the timer, Tournament 2, Records 3, Vision 4, Regulars 5,
+Back room 6, and `Digit1` still reaches the timer.**
 
 Measured, production `:8130` at 1280×900, read out of the live page:
 
@@ -1703,18 +1714,18 @@ Measured, production `:8130` at 1280×900, read out of the live page:
 | `.bar` | 0 | 110 | 1280 | 0 |
 | `.clockbar` | 6 | 46 | 1219 | 31 |
 | `.barrow` | 60 | 44 | 1219 | 31 |
-| `#nav` | 60 | 44 | 673 | 31 |
+| `#nav` (six items) | 60 | 44 | 807 | 31 |
 | `.tools` | 64 | 36 | 169 | 1080 |
 
-`document.scrollWidth` 1280 = the viewport, the five labels unchanged, and the four presets are back
-at every width from 751 up — round 5 had hidden them below 1440 as the price of one row, and that
-trade is now retired (it is still recorded in §16.9 as the measurement that produced it). At 390×844
-the header keeps ball 1, the clock, Start, Reset and the rail; the word and the presets are hidden
-(`.timer-tab-label` / `.presets` computed `none`), `#nav` is `display: none` and the bottom bar carries
-the five destinations in 78 px cells, `scrollWidth` 390 = the viewport.
+`document.scrollWidth` 1280 = the viewport, and the four presets are back at every width from 751 up —
+round 5 had hidden them below 1440 as the price of one row, and that trade is now retired (it is still
+recorded in §16.9 as the measurement that produced it). The nav is also one row at 1024 (measured 665
+px inside a 1000 px row), which round 5 could not do while the clock sat inside it.
 
-The separator between the timer and the first destination is a `::after` pseudo-element
-(`.timer-tab::after`), not a border, so hovering the tab cannot turn a rule brass.
+At 390×844 the header keeps the clock, Start and Reset and drops only the presets; `#nav` is
+`display: none` and the bottom bar carries all six, ball 1 included. Cells are 390/6 = 65 px, and the
+labels measure 50.1 px ("Shot timer") / 57.8 / 39.5 / 29.3 / 41.8 / 50.9, so nothing is clipped and the
+bar's own `scrollWidth` equals its 390 px box.
 
 ### 18.3 The sentence is gone
 
