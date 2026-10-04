@@ -232,6 +232,16 @@ class PersonPipeline:
                       'cluster_id': cluster, 'player_id': state['player_id'],
                       'face_sim': None, 'bound_evidence': state['bound_evidence']}
             face = item['face']
+            # The face this frame already matched to this person, so a surface can draw where the
+            # identity came from. It is evidence, not a second subject: the overlay ties it to the
+            # person's one box (owner, round 17: "draw the box for the face id if it is a separate box").
+            if face and face.get('bbox'):
+                try:
+                    person['face_bbox'] = [int(v) for v in face['bbox']]
+                except (TypeError, ValueError):
+                    pass
+                if face.get('quality') is not None:
+                    person['face_quality'] = face.get('quality')
             # Enrolment evidence, never a decision: keep the quality face this
             # frame already produced for this person, in memory only (the 512-d
             # face never meets the 128-d body bank, and nothing is written here).

@@ -613,7 +613,16 @@ function railHTML(s) {
     : `<p class="vs-empty" data-vs-empty="${esc(emptyMarker(s.eventFilter))}">${esc(t(emptyReasonKey(s.eventFilter)))}</p>`;
   const crops = s.balls.items;
   const cropRows = crops.length ? crops.map(c => `<button class="vs-item${s.selection.crop && c.file === s.selection.crop.file ? ' selected' : ''}" data-vs-action="select-crop" data-vs-value="${esc(c.file)}"><span class="vs-mono">${esc(c.file)}</span><span class="vs-mono vs-dim">${esc(timecode(c.t))}</span><span class="vs-tag${c.label == null ? '' : ' done'}">${esc(c.label == null ? t('unlabeled') : labelText(c.label))}</span></button>`).join('') : `<p class="vs-empty">${esc(t('noCrops'))}</p>`;
-  const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => { const label = x.seed || x.label; return `<button class="vs-item${String(s.persons.track) === String(x.id) ? ' selected' : ''}" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span><span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>`; }).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
+  // Round 17, owner item 2: every human track carries the same labelling controls, in the list,
+  // where the operator is looking - the same roster select and guest field the inspector shows for
+  // the selected track, so one track type has one control set wherever it appears. A form control
+  // cannot live inside a <button>, so the row is a div with the select action on its own button.
+  const labelControls = (id, seed) => `<div class="vs-track-labels" data-vs-role="track-labels">
+    <select data-vs-action="regular" data-vs-track="${esc(id)}" aria-label="${esc(t('whichRegular'))}">${['<option value="">' + esc(t('guestOption')) + '</option>'].concat((opts.regulars() || []).map(r => `<option value="${esc(r.id)}"${String(seed) === String(r.id) ? ' selected' : ''}>${esc(r.name)}${r.rating != null ? ` · ${esc(r.rating)}` : ''}</option>`)).join('')}</select>
+    <input type="text" data-vs-action="guest-name" data-vs-track="${esc(id)}" maxlength="60" placeholder="${esc(t('guestName'))}" aria-label="${esc(t('guestName'))}" value="${esc(seed && !isSeedRole(seed) ? seed : '')}">
+    <button data-vs-action="seed" data-vs-value="clear" data-vs-track="${esc(id)}">${esc(t('clear'))}</button>
+  </div>`;
+  const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => { const label = x.seed || x.label; const selected = String(s.persons.track) === String(x.id); return `<div class="vs-item vs-track${selected ? ' selected' : ''}"><button class="vs-track-main" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span><span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>${labelControls(x.id, label && isSeedRole(label) ? label : '')}</div>`; }).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
   return `<section class="vs-group${s.focus === 'events' ? ' focused' : ''}"><header><h3>${esc(t('events'))}</h3><span class="vs-mono">${esc(s.events.reviewed)} ${esc(t('reviewedWord'))}</span></header>
     <div class="vs-filters">${filters.map(([v, l]) => `<button class="vs-filter${s.eventFilter === v ? ' active' : ''}" data-vs-action="event-filter" data-vs-value="${v}">${esc(t(l))}</button>`).join('')}</div>${cards}</section>
   <section class="vs-group${s.focus === 'balls' ? ' focused' : ''}"><header><h3>${esc(t('queue'))}</h3><span class="vs-mono">${crops.length} ${esc(t('crops'))}</span></header>${cropRows}</section>
@@ -1202,6 +1211,15 @@ function act(action, value, node) {
   const target = engine();
   const s = snap();
   const num = Number(value);
+  // A control inside a track row belongs to that row's track, not to whichever track happened to
+  // be selected, so the row selects its own track before the action is interpreted.
+  const rowTrack = node.dataset?.vsTrack;
+  if (rowTrack && ['regular','guest-name','seed'].includes(action) && String(snapshot().persons?.track ?? '') !== String(rowTrack)) {
+    // selectTrack() inside this call sets the selection synchronously; the loads it starts are
+    // awaited by the engine, and the action below reads the selection, so nothing needs to wait here.
+    const switching = target.selectTrackAndSeek(rowTrack);
+    if (switching && switching.catch) switching.catch(() => {});
+  }
   switch (action) {
     case 'pick-dataset': target.setDataset(value); break;
     case 'bc-refresh': bcLoadRecent(); bcPollJob(); break;   // an import started elsewhere shows up too

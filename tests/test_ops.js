@@ -4015,3 +4015,17 @@ test('round 16 / owner item 1: a listed broadcast with no decoded frames says so
     reviewFramesTold=null;reviewFramesAt=0;syncReviewFrames()`);
   assert.equal(JSON.parse(h.evaluate('JSON.stringify(messages)')).length, 1, 'and nothing at all once frames are decoded');
 });
+test('round 17 / owner item 1: the face a person was identified by is drawn, and never as a second human', () => {
+  const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  const pipeline = fs.readFileSync(path.join(__dirname, '../src/person_pipeline.py'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, '../annotator/unified_server.py'), 'utf8');
+  assert.ok(server.includes('"face_bbox", "face_quality"'), 'the API carries the face box it already measures');
+  assert.ok(pipeline.includes("person['face_bbox'] = [int(v) for v in face['bbox']]"),
+    'and the pipeline fills it from the face it matched to that person');
+  assert.ok(engine.includes('class="u-face" data-face-for='), 'the overlay draws that box');
+  assert.ok(engine.includes('data-face-quality='), 'with the evidence that put it there');
+  assert.ok(/class="u-face"[^>]*pointer-events="none"/.test(engine),
+    'it takes no pointer events, so it can never be selected or edited as a subject');
+  assert.ok(!/class="u-face"[^>]*data-person=/.test(engine),
+    'and it is not a person box: one human keeps one box (the face rides inside it)');
+});

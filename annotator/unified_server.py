@@ -477,7 +477,7 @@ class Backend:
 
     # -- identity pipeline (constructed lazily on first identity API use) ----
 
-    _PERSON_FIELDS = ("track_id", "bbox", "cluster_id", "player_id", "face_sim", "bound_evidence")
+    _PERSON_FIELDS = ("track_id", "bbox", "cluster_id", "player_id", "face_sim", "bound_evidence", "face_bbox", "face_quality")
 
     def identity_pipeline(self):
         """Construct the PersonPipeline once. Defaults load real YOLO/OSNet/

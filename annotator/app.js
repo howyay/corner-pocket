@@ -870,7 +870,14 @@ function paintOverlay() {
       const track = per.track_id ?? per.track;
       const selected = state.sel.kind === 'person' && track !== undefined && String(state.sel.person?.track_id ?? state.sel.person?.track) === String(track);
       const chip = ov ? tagRow(x1 + 2, Math.max(2, y1 - 26), 'model', personChip(per, track), `u-chip${per.player_id ? ' bound' : ''}`) : sourceTag(x1 + 2, Math.max(2, y1 - 26), 'model');
-      return `${chip}<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><title>${esc(`${personChip(per, track)} · ${sourceTagLabel('model')}`)}</title><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect></g>`;
+      // The face this person was identified by, drawn as one dashed box tied to the person's own
+      // track (round 17, owner: "draw the box for the face id if it is a separate box"). It is
+      // pointer-events:none and carries no data-person, so it can never be selected, edited or
+      // counted as a second human: one human, one box, with the face shown inside it.
+      const face = per.face_bbox && per.face_bbox.length === 4
+        ? `<g class="u-face" data-face-for="${esc(track)}" data-face-quality="${esc(per.face_quality ?? '')}" pointer-events="none"><rect x="${per.face_bbox[0]}" y="${per.face_bbox[1]}" width="${per.face_bbox[2] - per.face_bbox[0]}" height="${per.face_bbox[3] - per.face_bbox[1]}" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 3"></rect>${ov ? tagRow(per.face_bbox[0] + 2, Math.max(2, per.face_bbox[1] - 22), 'model', text('face'), 'u-chip face') : ''}</g>`
+        : '';
+      return `${face}${chip}<g class="u-person${selected ? ' selected' : ''}" data-person="${esc(track)}" data-bbox="${esc((per.bbox || []).join(','))}" data-cluster="${esc(per.cluster_id ?? '')}" data-player="${esc(per.player_id ?? '')}"><title>${esc(`${personChip(per, track)} · ${sourceTagLabel('model')}`)}</title><rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="#8fd6a8" stroke-width="2"></rect></g>`;
     }).join(''));
     auto.persons = persons.length;
   }
