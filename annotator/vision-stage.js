@@ -1213,7 +1213,7 @@ function act(action, value, node) {
   const num = Number(value);
   // A control inside a track row belongs to that row's track, not to whichever track happened to
   // be selected, so the row selects its own track before the action is interpreted.
-  const rowTrack = node.dataset?.vsTrack;
+  const rowTrack = node?.dataset?.vsTrack;
   if (rowTrack && ['regular','guest-name','seed'].includes(action) && String(snapshot().persons?.track ?? '') !== String(rowTrack)) {
     // selectTrack() inside this call sets the selection synchronously; the loads it starts are
     // awaited by the engine, and the action below reads the selection, so nothing needs to wait here.
