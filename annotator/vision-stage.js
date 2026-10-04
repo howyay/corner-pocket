@@ -57,7 +57,7 @@ const COPY = {
     // Imported broadcasts: a past VOD of a saved channel, downloaded once and browsed frame by frame.
     bcTitle:'Broadcasts', bcNote:'Recent broadcasts of your saved channels. Import one (or a range of it) to browse it frame by frame and run inference on any frozen frame.',
     bcNone:'No recent broadcasts listed.', bcError:'Twitch did not answer for this channel', bcRefresh:'Refresh list', bcLoading:'Asking Twitch…',
-    bcImported:'imported', bcImport:'Import…', bcPaste:'VOD link or id', bcPasteGo:'Check', bcStart:'Start at (h:mm:ss)', bcDuration:'Length (min, empty = to the end)',
+    bcImported:'imported', bcImport:'Import…', bcPaste:'VOD link or id', bcPasteGo:'Check',
     bcEstimate:'Estimate', bcConfirm:'Import', bcCancelForm:'Close', bcWhole:'whole broadcast', bcSize:'about', bcTime:'about', bcTimeUnknown:'time unknown until one import has run',
     bcFree:'free', bcAlready:'already imported', bcJob:'Import', bcCancel:'Cancel import', bcCancelAsk:'Cancel this import? The partial file is deleted and nothing is listed.',
     bcMb:'MB', bcEta:'left', bcDelete:'Delete…', bcDeleteAsk:'Delete this imported broadcast? Its video file and its list entry are removed. Your saved corrections are kept.',
@@ -167,7 +167,7 @@ const COPY = {
     vodUse:'使用该回放', vodChosen:'已选择', vodNotLive:'回放，绝不是直播',
     bcTitle:'回放', bcNote:'已保存频道的近期直播回放。导入整场（或其中一段）后，可逐帧浏览，并对任意冻结帧运行推理。',
     bcNone:'没有列出近期回放。', bcError:'Twitch 未回应此频道', bcRefresh:'刷新列表', bcLoading:'正在询问 Twitch…',
-    bcImported:'已导入', bcImport:'导入…', bcPaste:'回放链接或 id', bcPasteGo:'检查', bcStart:'起点（时:分:秒）', bcDuration:'时长（分钟，留空＝到结尾）',
+    bcImported:'已导入', bcImport:'导入…', bcPaste:'回放链接或 id', bcPasteGo:'检查',
     bcEstimate:'估算', bcConfirm:'导入', bcCancelForm:'关闭', bcWhole:'整场回放', bcSize:'约', bcTime:'约', bcTimeUnknown:'完成一次导入前无法估计用时',
     bcFree:'可用', bcAlready:'已导入', bcJob:'导入', bcCancel:'取消导入', bcCancelAsk:'取消此次导入？未完成的文件会被删除，不会列出。',
     bcMb:'MB', bcEta:'剩余', bcDelete:'删除…', bcDeleteAsk:'删除这场已导入的回放？视频文件和列表条目会被移除，已保存的修正会保留。',
@@ -805,7 +805,6 @@ function liveDetectorList(s) { return opts?.liveDetectors ? opts.liveDetectors()
 // The panel owns this small state; every number shown is the server's.
 let bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false};
 const hms = s => { const v = Math.max(0, Math.round(Number(s) || 0)); return `${Math.floor(v / 3600)}:${String(Math.floor(v % 3600 / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
-const parseHms = text => { const parts = String(text || '').trim().split(':').map(Number); if (!parts.length || parts.some(n => !Number.isFinite(n) || n < 0)) return null; return parts.reduce((a, n) => a * 60 + n, 0); };
 const sizeText = bytes => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
 const minutesText = s => { const v = Math.max(0, Math.round(Number(s) || 0)); return v >= 600 ? `${Math.round(v / 60)} min` : v >= 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v} s`; };
 // The one refusal the owner asked to have in both languages; any other server sentence is shown as sent.
@@ -836,22 +835,20 @@ async function bcPollJob() {
   bcRender();
 }
 function bcWatch() { bcPollJob(); }
+// Round 10, owner item 3: importing a broadcast imports all of it. The estimate asks the same
+// question the download will, so the size on this screen is the size of the file that arrives;
+// the start and the length that used to sit between those two facts are gone.
 async function bcEstimate() {
   const form = bc.form || {};
-  const start = parseHms(form.start || '0');
-  const minutes = String(form.minutes ?? '').trim();
-  if (start == null || (minutes && !(Number(minutes) > 0))) { bc.error = t('bcStart'); bcRender(); return; }
-  const query = new URLSearchParams({vod: form.vod, start_s: String(Math.floor(start))});
-  if (minutes) query.set('duration_s', String(Math.round(Number(minutes) * 60)));
   bc.busy = true; bc.error = ''; bc.estimate = null; bcRender();
-  try { bc.estimate = await bcApi(`/api/vods/estimate?${query}`); } catch (error) { bc.error = error.message; }
+  try { bc.estimate = await bcApi(`/api/vods/estimate?vod=${encodeURIComponent(form.vod)}`); } catch (error) { bc.error = error.message; }
   bc.busy = false; bcRender();
 }
 async function bcImport() {
-  const e = bc.estimate; if (!e) return bcEstimate();   // the range changed: show the new estimate first
+  const e = bc.estimate; if (!e) return bcEstimate();   // nothing estimated yet: show the size first
   bc.busy = true; bc.error = ''; bcRender();
   try {
-    bc.job = await bcApi('/api/vods/import', {vod: e.vod_id, start_s: e.range.start_s, duration_s: e.range.end_s - e.range.start_s});
+    bc.job = await bcApi('/api/vods/import', {vod: e.vod_id});
     bc.form = null; bc.estimate = null; bcWatch();
   } catch (error) { bc.error = error.message; }
   bc.busy = false; bcRender();
@@ -884,8 +881,6 @@ function bcFormHTML() {
   const summary = e ? `<p class="vs-mono" data-vs-bc-estimate="${esc(e.id)}">${esc(e.channel)} · ${esc(span)} · ${esc(t('bcSize'))} ${esc(sizeText(e.estimate_bytes))}, ${esc(eta)} · ${esc(sizeText(e.disk.free_bytes))} ${esc(t('bcFree'))}${e.already_imported ? ` · ${esc(t('bcAlready'))}` : ''}</p>${e.disk.ok ? '' : `<p class="vs-mono vs-bc-refusal">${esc(e.disk.refusal)}</p>`}` : '';
   return `<div class="vs-bc-form" data-vs-bc-form="${esc(form.vod)}">
     <p class="vs-mono">vod ${esc(form.vod)}${form.title ? ` · ${esc(form.title)}` : ''}</p>
-    <div class="vs-row"><label class="vs-field">${esc(t('bcStart'))}<input type="text" inputmode="numeric" data-vs-field="bc-start" value="${esc(form.start ?? '0:00:00')}"></label>
-    <label class="vs-field">${esc(t('bcDuration'))}<input type="number" min="1" step="1" data-vs-field="bc-minutes" value="${esc(form.minutes ?? '')}"></label></div>
     ${summary}
     <div class="vs-row"><button data-vs-action="bc-estimate"${bc.busy ? ' disabled' : ''}>${esc(t('bcEstimate'))}</button>${e && e.disk.ok && !e.already_imported ? `<button class="primary" data-vs-action="bc-import"${bc.busy ? ' disabled' : ''}>${esc(t('bcConfirm'))} · ${esc(sizeText(e.estimate_bytes))}</button>` : ''}<button data-vs-action="bc-close">${esc(t('bcCancelForm'))}</button></div></div>`;
 }
@@ -1210,8 +1205,8 @@ function act(action, value, node) {
   switch (action) {
     case 'pick-dataset': target.setDataset(value); break;
     case 'bc-refresh': bcLoadRecent(); bcPollJob(); break;   // an import started elsewhere shows up too
-    case 'bc-open': { const vod = (bc.recent?.channels || []).flatMap(c => c.vods || []).find(v => v.id === value); bc.form = {vod: value, title: vod?.title || '', start: '0:00:00', minutes: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
-    case 'bc-paste': { const vod = String(bc.paste || '').trim(); if (!vod) { root.querySelector('[data-vs-field="bc-paste"]')?.focus(); break; } bc.form = {vod, title: '', start: '0:00:00', minutes: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
+    case 'bc-open': { const vod = (bc.recent?.channels || []).flatMap(c => c.vods || []).find(v => v.id === value); bc.form = {vod: value, title: vod?.title || ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
+    case 'bc-paste': { const vod = String(bc.paste || '').trim(); if (!vod) { root.querySelector('[data-vs-field="bc-paste"]')?.focus(); break; } bc.form = {vod, title: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
     case 'bc-estimate': bcEstimate(); break;
     case 'bc-import': bcImport(); break;
     case 'bc-close': bc.form = null; bc.estimate = null; bc.error = ''; bcRender(); break;
@@ -1325,7 +1320,6 @@ function onInput(event) {
   if (guest) { guestDraft = {track: String(snap()?.persons?.track ?? ''), value: guest.value}; return; }
   const field = target.dataset?.vsField;
   if (field === 'bc-paste') { bc.paste = target.value; return; }
-  if (field === 'bc-start' || field === 'bc-minutes') { if (bc.form) bc.form[field === 'bc-start' ? 'start' : 'minutes'] = target.value; bc.estimate = null; return; }
   if (field) { replayDraft = {...(replayDraft || {}), [field === 'vod' ? 'vod' : field === 'vod-start' ? 'start' : 'rate']: target.value}; }
 }
 function onClick(event) {

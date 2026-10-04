@@ -214,10 +214,13 @@ test('appearance changes retain review DOM without asking to discard', async () 
   assert.equal(h.evaluate('theme'), 'light');
   assert.equal(h.evaluate('lang'), 'zh');
 });
-test('table release and registration attendance use existing action API', async () => {
+test('table release and the entry list use existing action API', async () => {
   const h = harness();
-  for (const dataset of [{action:'unschedule',id:'m1'}, {action:'entrant-absence',id:'e1',absent:'true'}]) await h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset}}});
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name:'match_unschedule',payload:{id:'m1'}},{name:'entrant_absence',payload:{id:'e1',absent:true}}]);
+  for (const dataset of [{action:'unschedule',id:'m1'}, {action:'entrant-remove',id:'e1'}]) await h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name:'match_unschedule',payload:{id:'m1'}},{name:'entrant_remove',payload:{id:'e1'}}]);
+  h.evaluate('calls.length=0');
+  await h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset:{action:'entrant-absence',id:'e1',absent:'true'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [], 'round 10, item 2: the desk has no not-here action left to write');
 });
 test('delayed matches restore attendance rather than offering invalid scheduling', () => {
   const h = harness();
@@ -1887,22 +1890,22 @@ test('Broadcasts lists each saved channel\'s recent VODs, the job progress and e
     assert.ok(html.includes(kept), `kept: ${kept}`);
   assert.ok(html.includes('data-vs-action="pick-dataset" data-vs-value="tw-1000000001-3600-3900"'), 'the imported VOD is a dataset chip');
 });
-test('Import asks for a range, shows the estimated size before confirming, and maps the other-channel refusal to 中文', async () => {
+test('Import takes the whole broadcast, shows the estimated size before confirming, and maps the other-channel refusal to 中文', async () => {
   const {h, VS, snap, calls, replies} = broadcastsHarness('zh');
   replies['/api/vods/estimate'] = {id:'tw-1000000001', vod_id:'1000000001', channel:'examplechannel', range:{start_s:0, end_s:13397, whole:true},
     estimate_bytes:5505302893, disk:{ok:true, free_bytes:52196323328, needed_bytes:8606363471, refusal:null}, already_imported:false, eta_s:442};
   VS.bcState().recent = replies['/api/vods/recent'];
   VS.act('bc-open', '1000000001', {dataset:{}});
   await settle(); await settle();
-  assert.ok(calls.some(c => c.url === '/api/vods/estimate?vod=1000000001&start_s=0'), 'the default is the whole VOD');
+  assert.ok(calls.some(c => c.url === '/api/vods/estimate?vod=1000000001'), 'round 10, item 3: the estimate is for the whole broadcast, with no bounds to send');
   const html = VS.sourcePanelHTML(snap);
   assert.match(html, /examplechannel · 整场回放 · 约 5\.5 GB, 约 7 min 22 s · 52\.2 GB 可用/, 'size and time before committing');
   assert.match(html, /data-vs-action="bc-import"[^>]*>导入 · 5\.5 GB</);
-  assert.match(html, /data-vs-field="bc-start"/);
-  assert.match(html, /data-vs-field="bc-minutes"/);
+  assert.ok(!/data-vs-field="bc-start"|data-vs-field="bc-minutes"/.test(html), 'round 10, item 3: no start and no length to type');
   VS.bcState().estimate = {...replies['/api/vods/estimate'], vod_id:'1111111111'};
   VS.act('bc-import', '', {dataset:{}});
   await settle(); await settle();
+  assert.deepEqual(calls.filter(c => c.url === '/api/vods/import').map(c => c.body), [{vod:'1111111111'}], 'the whole broadcast, and nothing that bounds it');
   assert.equal(VS.bcState().error, '此回放属于 someoneelse。只能分析已保存的频道；请先在“来源”中添加该频道。');
   assert.match(VS.sourcePanelHTML(snap), /role="alert">此回放属于 someoneelse/);
   h.context.window.VisionStage.bcReset();
@@ -2170,6 +2173,12 @@ test('the timeline groups nights by month, newest first, and a night opens in pl
   const all = h.evaluate('recordsScreen()');
   assert.ok(all.includes('data-event="h9"') && all.includes('tl-item is-hidden'), 'the hidden night shows up as hidden, and is still there');
 });
+test('round 10 / owner item 3: the backfill import posts the broadcast, never a range', () => {
+  assert.ok(/fetch\('\/api\/vods\/import'[^;]*body:JSON\.stringify\(\{vod:bf\.vod\.id\}\)/.test(source), 'the download request carries the broadcast id alone');
+  assert.ok(!/import'[^;]*start_s/.test(source), 'with no start and no duration left in it');
+  assert.ok(/fetch\(`\/api\/vods\/estimate\?vod=\$\{encodeURIComponent\(id\)\}`/.test(source), 'and the estimate asks the same question the download will');
+  assert.ok(!/bf\.startText|bf\.lengthText|id="bf-start"|id="bf-length"/.test(source), 'the fields that asked for the bounds are gone, not hidden');
+});
 test('the backfill is five human steps, and the page never pretends to detect anything (7.1)', () => {
   const h = harness();
   h.evaluate(`render=()=>{};lang='en';bf=bfFresh();
@@ -2181,8 +2190,8 @@ test('the backfill is five human steps, and the page never pretends to detect an
   assert.ok(pick.includes('data-action="bf-exit"'), 'leaving is always one click');
   h.evaluate("bfPickVod('1234567890',7200,'Monday night')");
   const verify = h.evaluate('bfScreen()');
-  assert.ok(verify.includes('data-step="verify"') && verify.includes(step(2)), 'step 2: choose the range');
-  assert.ok(verify.includes('id="bf-start"') && verify.includes('id="bf-length"'), 'by typing where it starts, not by trusting a machine');
+  assert.ok(verify.includes('data-step="verify"') && verify.includes(step(2)), 'step 2: estimate the download');
+  assert.ok(!verify.includes('id="bf-start"') && !verify.includes('id="bf-length"'), 'round 10, item 3: no time bounds to type - the download is the whole broadcast');
   h.evaluate(`bf.startS=452;bf.endS=1690;bf.datasetId='tw-1234567890-452-1690';
     bf.estimate={estimate_bytes:1200000000,disk:{free_bytes:84000000000,needed_bytes:1500000000,ok:true},already_imported:false}`);
   const estimate = h.evaluate('bfScreen()');
@@ -2357,7 +2366,7 @@ test('the step is a read-only scene, and no second-level menu exists anywhere in
   }
   assert.ok(!fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8').includes('tabbar-more'), 'and its stylesheet rule went with it');
 });
-test('Register holds the night, random pairing, the desk, entrants with attendance, guests tonight and Rack', () => {
+test('Register holds the night, random pairing, the desk, the entry list and Rack', () => {
   const h = harness();
   tonightNight(h, null);
   assert.equal(h.evaluate('tonightState()'), 'registration', 'three entrants and no draw is the registration venue');
@@ -2367,10 +2376,11 @@ test('Register holds the night, random pairing, the desk, entrants with attendan
     assert.ok(html.includes('id="entrant-form"') && html.includes('class="pick-btn'), `${lang}: desk and its combobox`);
     assert.ok(html.includes('data-action="open-setup"') && html.includes('class="card card--night"'), `${lang}: the settings are a door, not a form on the page`);
     assert.ok(!html.includes('id="settings-form"'), `${lang}: the four fields exist once, in the dialog`);
-    assert.ok(html.includes('data-action="entrant-absence"') && html.includes('data-action="entrant-remove"'), `${lang}: attendance and remove per entrant`);
+    assert.ok(html.includes('data-action="entrant-remove"') && !html.includes('data-action="entrant-absence"'), `${lang}: Remove per entrant, and no not-here button (round 10, item 2)`);
+    assert.ok(!html.includes('class="attendance"') && !/Here now|\u5df2\u5230\u573a/.test(html), `${lang}: the entry list does not label who is here (round 10, item 2)`);
+    assert.ok(!html.includes('data-tab="players"') && !/Manage regulars|\u7ba1\u7406\u5e38\u5ba2/.test(html), `${lang}: no Manage regulars button - the nav already gives Regulars a ball (round 10, item 1)`);
     assert.ok(html.includes('data-action="tournament-start"'), `${lang}: Rack the night is on Register`);
     assert.ok(html.includes('data-action="promote" data-name="Walk-in Wu"'), `${lang}: every guest entrant carries Add to regulars, the one action the word bank and the handler already had`);
-    assert.ok(html.includes('data-tab="players"'), `${lang}: guests tonight links to Regulars`);
     assert.ok(!html.includes('class="end-night"'), `${lang}: archive and delete are not on Register (they are Close)`);
     assert.ok(!html.includes('class="first-run"'), `${lang}: the three-step guide is retired, not unrendered`);
   }
@@ -2378,7 +2388,7 @@ test('Register holds the night, random pairing, the desk, entrants with attendan
   assert.ok(h.evaluate('tonightScreen()').includes('class="pairing"'), 'doubles adds random pairing');
   assert.ok(!h.evaluate('playersScreen()').includes('data-action="promote"'), 'Regulars no longer carries guests tonight');
 });
-test('who is here is a fact on the desk, and the night is drawn and started from the same place', async () => {
+test('the night is drawn and started from the same place, and being away is a matchup fact', async () => {
   const h = harness();
   tonightNight(h, null);
   for (const [lang, notHere] of [['en', 'Not here'], ['zh', '未到场']]) {
@@ -2386,14 +2396,12 @@ test('who is here is a fact on the desk, and the night is drawn and started from
     const html = h.evaluate('tonightScreen()');
     assert.ok(html.includes('data-action="tournament-start"'), `${lang}: the start-the-event button`);
     assert.ok(html.includes(h.evaluate("esc(t('rackHint'))")), `${lang}: how the draw is made`);
-    assert.ok(/Walk-in Wu[^]*?Not here|Walk-in Wu[^]*?未到场/.test(html) && html.includes(notHere), `${lang}: an absent entrant is named before the draw`);
-    assert.ok(html.includes(h.evaluate("esc(t('rackAbsentNote'))")), `${lang}: it says an absent entrant's match is held`);
-    assert.ok(/data-action="entrant-absence" data-id="g" data-absent="false"/.test(html), `${lang}: attendance is a button on the entrant, not a screen of its own`);
+    assert.ok(!/data-action="entrant-absence"/.test(html) && !html.includes(notHere), `${lang}: being away is not a fact this page records (round 10, item 2)`);
   }
   h.evaluate('render=()=>{}');
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   await click({action: 'entrant-absence', id: 'g', absent: 'false'});
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c=>c.name))')), ['entrant_absence'], 'marking someone present writes that one fact');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c=>c.name))')), [], 'a not-here click on the desk writes nothing any more (round 10, item 2)');
   h.evaluate('calls.length=0');
   await click({action: 'tournament-start'});
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c=>c.name))')), ['tournament_start'], 'starting the event is one write');
@@ -2712,7 +2720,7 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   assert.equal(active.evaluate('tonightState()'), 'active');
   assert.equal(active.evaluate('comp()'), 'active');
   const activeHtml = active.evaluate('tonightScreen()');
-  for (const there of ['class="scoreboard"', 'class="rounds"', 'side-panel', 'class="attendance"', 'data-action="open-setup"', 'queue-card']) {
+  for (const there of ['class="scoreboard"', 'class="rounds"', 'side-panel', 'class="entry row"', 'data-action="open-setup"', 'queue-card']) {
     assert.ok(activeHtml.includes(there), `active: ${there}`);
   }
   for (const gone of ['id="settings-form"', 'id="entrant-form"', 'card--wrap']) {
@@ -3504,6 +3512,25 @@ test('round 8 / owner item 3: the Vision tab is the live stream, the recorded re
     assert.ok(css.includes(`#ops-shell[data-vision=live] .vs-strip ${gone}`), `the live tab has no recorded ${gone}`);
   }
   assert.ok(!/\[data-vision=live\] \.vs-strip\{display:none\}/.test(css), 'Freeze, Play and the facts line stay: they act on the live frame');
+});
+test('round 10 / owner item 3: a broadcast with no night yet still gets the scrubber and the sidebars', () => {
+  const h = harness();
+  h.evaluate("lang='en';data.history=[]");
+  const html = h.evaluate("reviewScreen(null,{id:'2890514774',title:'261001',length_s:16455,created_at:'2026-10-02T23:07:00Z'})");
+  assert.ok(html.includes('class="vision-surface"'), 'the recorded page carries the workbench, not only an import button');
+  for (const part of ['id="vs-grid"', 'class="vs-rail"', 'class="vs-inspector"', 'id="vs-scrub"', 'class="vs-track"', 'id="vs-frame-index"'])
+    assert.ok(html.includes(part), `and the ${part} the owner was missing`);
+  assert.ok(html.includes('data-action="bf-pick"') && html.includes('data-id="2890514774"'), 'the import is still offered for this broadcast');
+  assert.ok(html.includes('data-length="16455"'), 'with the length it will download');
+  assert.ok(!html.includes('TBD'), 'and no invented night name');
+  // the shell opens the broadcast's own dataset when the machine has one (src/datasets.py builds the id)
+  h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'vod30'},{id:'highlight'}]})}");
+  assert.equal(h.evaluate("datasetForVod('2890514774')"), '', 'with no dataset for this broadcast the engine keeps the configured one');
+  h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'vod30'},{id:'vod2890514774'}]})}");
+  assert.equal(h.evaluate("datasetForVod('2890514774')"), 'vod2890514774', 'and opens it as soon as the import has made it');
+  h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'tw-2890514774-452-1690'}]})}");
+  assert.equal(h.evaluate("datasetForVod('2890514774')"), 'tw-2890514774-452-1690', 'a ranged import is recognised by the number it carries');
+  assert.ok(/if\(want&&reviewState\(\)\.dataset!==want&&want!==vodDatasetAsked\)/.test(source), 'and the shell asks for it once the surface is mounted');
 });
 test('round 8 · the console words dictionary defines every key exactly once', () => {
   const from = source.indexOf('const words={');

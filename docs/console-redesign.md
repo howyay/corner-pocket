@@ -2053,8 +2053,9 @@ cards. The page's old "unbuilt" section and its **Build this night** button are 
 `clockLabel · hms · archiveKind` in the meta line (`23:07 · 4:34:15 · Broadcast`), and the small
 `archiveBuilt` mark on a card whose night already exists. Clicking routes to `reviewScreen()` with a bare VOD
 and no night: that screen prints `dayFull · clockLabel · hms`, one `reviewVodNote` sentence and a primary
-**Import this broadcast** button carrying `bf-pick` plus `data-id`/`data-length`/`data-title`, and draws no
-workbench. Nothing has to be built first — that is item 8.
+**Import this broadcast** button carrying `bf-pick` plus `data-id`/`data-length`/`data-title`. Round 9 drew no
+workbench on that page; **round 10 put it back** (§22.3) — the scrubber and the sidebars belong there whether or
+not a night exists yet. Nothing has to be built first — that is item 8.
 `recordsScreen()` resolves `#/records/review/<id>` against `data.history` first and the archive second, so a
 night and a bare VOD share one route.
 
@@ -2086,3 +2087,99 @@ equal to its own `scrollWidth`, since a day holds at most three cards.
   and 8 warning, 24 of them in `annotator/ops.css`. Three sit on lines this round touched; all three are
   advisory and accepted with their reason in `docs/impeccable-ledger.md`.
 - Shots for every screen above are in `out/r9/` (`docs/console-shots.md` §15).
+
+## §22 — Round 10: Manage regulars off the desk, not-here back at the match, and an import that takes the broadcast (2026-10-04)
+
+The work order (m06741) is three sentences, and the second one is also a ruling:
+
+> 1. rm the 'manage regulars' button  2. rm the 'not here' button and 'here now' label from the registration
+> page. not here is a feature for when its a particular matchup's turn and one of them is not present.  3. import
+> broadcast should import the whole thing without time bounds. the recorded scrubber seems to be missing the
+> scrubber and the sidebar elements. please fix.
+
+**No python changed in this round.** Items 1–3 are `annotator/ops.js`, `annotator/ops.css` and
+`annotator/vision-stage.js`.
+
+### 22.1 Items 1 and 2: the registration page stops carrying club-wide opinions
+
+| # | the owner's words | what shipped |
+|---|---|---|
+| 1 | "rm the 'manage regulars' button" | `entrantsCard()`'s heading loses the `data-tab="players"` button. Regulars is nav ball 5; a roster is managed there, not from a desk that is holding a tournament. The word `manageRegulars` is deleted in both languages. |
+| 2 | "rm the 'not here' button and 'here now' label from the registration page" | The same card loses its `<small class="attendance">` label (`Here now` / `Not here`), its `data-action="entrant-absence"` button and the `rackAbsentNote` paragraph under the heading; the delegated click handler loses the `entrant-absence` branch. The words `attendance` and `rackAbsentNote` and the rule `#ops-shell .attendance{color:var(--ink-dim)}` are deleted. |
+
+What stays, and why it is not a leftover:
+
+- **The feature itself.** `matchControls(m)` draws the per-side `Not here` / `Here now` button on a match — the
+  owner's own reading of it, "when its a particular matchup's turn and one of them is not present" — and
+  `scoreboardScreen()` keeps the row that says a match is waiting on someone. Neither was touched.
+- **The server action** `entrant_absence`, which those controls call (`tests/test_operations.py` and
+  `tests/test_board_api.py` call it directly, so it is not dead server-side either).
+- **The audit label** `entrant_absence` (`Registration attendance changed`), so a row written by an earlier
+  console still renders.
+
+### 22.2 Item 3a: the import is the broadcast, nothing narrower
+
+The backfill's import posted `{vod, start_s, duration_s}` from the two fields of its verify step, so the download
+was whatever the operator typed. It now posts `{vod: bf.vod.id}`, and the fields that could bound it are gone:
+`bfEstimate()` asks `/api/vods/estimate?vod=<id>`, `bfPickStep()`/`bfVerifyStep()` no longer render `#bf-start` or
+`#bf-length`, `bfInput`'s `start`/`length` branches and `bfLength()` are deleted, and the disk-refusal branch
+offers **Pick another broadcast** (`bfOther`) instead of "shorten the range" (`bfShorten`), because there is no
+range left to shorten.
+
+**The server needed no change, which is the point**: `annotator/vod_import.py`'s
+`_plan(vod, start_s, duration_s)` already defaults to the whole broadcast — `start = _whole(start_s,"start_s",0)`,
+`duration = _whole(duration_s,"duration_s",length-start)` — and `src/datasets.py`'s `imported_id(vod_id)` names the
+dataset from the VOD id alone when the range is the whole thing, so an import with both bounds absent lands on
+exactly the dataset the whole-range import would have produced. Two bound fields were the only thing between the
+console and that default.
+
+The same treatment went into `annotator/vision-stage.js`'s Source panel (`bcEstimate()`, `bcImport()`, the
+`bc-start`/`bc-minutes` fields and the `bcStart`/`bcDuration` words), because after item 3b that panel is one
+click from the recorded page — a second ranged import there would recreate this complaint in a new place.
+
+### 22.3 Item 3b: the recorded page keeps its workbench
+
+`reviewScreen()` ended `${isVod?'':visionSurface()}`, so a broadcast with no night yet — the page every card on
+Records leads to — drew the note and the import button and nothing else: no scrubber, no cues rail, no inspector.
+It now always renders the surface (`</article>${visionSurface()}`).
+
+Two things make that honest rather than decorative:
+
+- **The right video.** `broadcastVodId()` (the night's `source.vodId`, or the bare VOD's id) and
+  `datasetForVod(vodId)` (the dataset `vod<id>`, else any dataset id containing those digits) let `showReview()`
+  select this broadcast's own dataset after it mounts, once per id (`vodDatasetAsked`). Before this, the engine's
+  `loadDatasets()` in `annotator/app.js` picks `vod30` whenever that dataset exists — so even a night whose
+  broadcast *had* been imported would have opened `vod30`'s frames, which is the second half of the same bug.
+- **The right words.** `reviewVodNote`/`reviewNote` now say that the chips name the datasets this console is
+  configured with when this broadcast has none of its own; nothing on the page claims frames that are not there.
+
+### 22.4 Evidence
+
+- **Suites**: `node --test tests/test_ops.js` → **154 pass / 0 fail**; `node tests/test_app_timeline.js` →
+  **81 passed, 0 failed**; `node --test tests/test_board.js` → **16 pass / 0 fail**. Two tests are new: one reads
+  the source for the import body and the estimate URL, one asserts the broadcast page carries `#vs-grid`,
+  `.vs-rail`, `.vs-inspector`, `#vs-scrub`, `.vs-track` and the import button, and that `datasetForVod` answers
+  for three different dataset lists.
+- **The console, live on `127.0.0.1:8130`** (serving the edited files without a restart), 1280×900: the desk shows
+  1 entry, **0** `.attendance`, **0** `entrant-absence`, the picker and the remove button intact, and no `Manage
+  regulars` / `Here now` / `Not here` text; the first Records card leads to `#/records/review/2890514774` with
+  `#vision-surface` 1, `#vs-grid` 1, `.vs-rail` 1, `.vs-inspector` 1, `#vs-scrub` 1, `.vs-track` 1
+  (`display:block`), `.vs-frame-input` 1 (`display:flex`), two step buttons and the play button;
+  `Import this broadcast` opens `[data-step=verify]` with **0** `#bf-start`/`#bf-length`, and Estimate issues
+  exactly one request — `/api/vods/estimate?vod=2890514774`, no `start_s`, no `duration_s` — while the line reads
+  `About 6.8 GB · 173.1 GB free on disk · ` for the whole 4:34:15 broadcast.
+- **390×844 and 中文**: `documentElement.scrollWidth` 390 in both languages; the surface is still there
+  (`#vs-grid` 1, `#vs-scrub` 366×22, `.vs-track` `display:block`), the grid collapses to one column, and the
+  inspector becomes the sheet tab the stylesheet has always made it below 1100 px.
+- **The live tab is untouched**: `#/vision` reads `data-vision="live"`, `#vision-surface` 0, `#vision-host` hidden,
+  and the panel still reads `Live stream idle · Frame age: — ms · Dropped: 0 · twitch ttpoolfriday` with Start/Stop
+  and the three detectors — round 8's "only the stream" ruling holds.
+- **The detector** (`impeccable detect --json annotator/ops.js annotator/ops.css annotator/vision-stage.js`):
+  25 findings, 17 advisory and 8 warning, 24 of them in `annotator/ops.css` — the same set round 9 tabled, every
+  entry shifted to its new line by this round's own edits. **None sits on a line this round touched**; the
+  comparison and the disposition are in `docs/impeccable-ledger.md`.
+- Shots are in `out/r10/` (`docs/console-shots.md` §16).
+- Limits: a **cold deep link** to `#/records/review/<id>` still lands on the Records list, because the route is
+  resolved at boot before `/api/vods/recent` answers — the operator's path (open Records, click the card) is what
+  this round measured and what works. And `About 6.8 GB` is an estimate of the whole broadcast, not a promise:
+  whole-broadcast imports are multi-hour files by definition, which is what was asked for.

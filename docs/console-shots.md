@@ -607,7 +607,7 @@ ln -s /home/haoye/projects/pool/annotator /tmp/r9-root/annotator
 | item 4, the write | the button reads `Wanwan · 0 ▾`, `input[name=pid0]` is `a3c749f3e6b744cbab1a6010bf8cc1c1`, the guest field is gone; after submit the nav reads `Regulars 7` + `Tournament 1`. `/tmp/r9-root/out/corner-pocket/state.json` `d68b65095cb4e5deb90f260c04d8ba83` → `c5a3a6484474d09bd7a1c7fd087b1c7f`, revision 12 → 13; production's file still `d68b6509…` |
 | item 5 | six nav balls and `data-stripe` **0** anywhere in the document; only `annotator/ops.css:127` (9–15) bands; `.ball i` keeps the ivory plate |
 | items 6-8 at 1280 | 26 `.tl-day` sections, 31 `.tl-vod` cards, each `data-action="tl-review"` with a `data-id`; meta `23:07 · 4:34:15 · Broadcast`; the title clamped to 2 lines; one 16:9 thumb; `.tl-vods` `overflow-x:auto` |
-| items 6-8, the click | the card routes to `#/records/review/2890514774` → `261001`, `Friday, 2 October 2026 · 23:07 · 4:34:15`, an `Import this broadcast` button with `data-length="16455"`, and no workbench |
+| items 6-8, the click | the card routes to `#/records/review/2890514774` → `261001`, `Friday, 2 October 2026 · 23:07 · 4:34:15`, an `Import this broadcast` button with `data-length="16455"`, and no workbench — **round 10 gave that page its workbench back** on the owner's word (§16 below; `docs/console-redesign.md` §22.3) |
 | item 9 | `.roster-stat` ×4 — `Regulars 8` · `Active members 8` · `Average house rating (manual) —` · `Recorded results 0`; filters `Everyone 8` / `Active 8` / `Visitor 0` / `Inactive 0`; 8 two-line rows; `.standing-head` 0, `.standing-cell` 0, `.tile` 0 |
 | the phone, 390 | every tab `documentElement.scrollWidth` 390 — Records measured **670** before §21.4's one line; `.tl-vods` 332 wide with `scrollWidth` 412, `.tl-vod-item` 200 |
 | 中文 | 击球计时 / 报名台 / 访客▾ / 录制场次 with `2 个视频` · `1 个视频` / 常客名册; the 390 tabbar reads `1 击球计时 2 赛事 3 战绩档案 4 视觉 5 常客 6 后台` |
@@ -624,3 +624,38 @@ with `elementFromPoint`; the day strip needs no internal scroll at 1280 (a day h
 390 is where `.tl-vods` earns its `overflow-x:auto`; and one measurement in this round is a judgement rather
 than a defect — `ops.css`'s phone timer face is `clamp(56px,22vw,120px)`, which the detector flags as an
 off-ramp font size while DESIGN.md:71-72 already calls display sizes the documented step below `--fs-xl`.
+
+## 16. Round 10: Manage regulars, not-here, and an import that takes the whole broadcast
+
+Reproduce: read-only against the production console on `127.0.0.1:8130`. This round changes no state; the 中文
+pass switches `localStorage` (`cp-ops-lang`), not the club's state file.
+
+```
+B=/home/haoye/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64
+export AGENT_BROWSER_SESSION=r10a
+$B open 'http://127.0.0.1:8130/?r10=1#/records'      # ?r10=N defeats the asset cache
+$B set viewport 1280 900                              # `set` is the subcommand
+$B eval '(()=>{const c=document.querySelectorAll("[data-action=tl-review]")[0];c.click();return c.dataset.id})()'
+$B screenshot out/r10/after-r10-recorded-1280.png
+$B eval 'localStorage.setItem("cp-ops-lang","zh")'     # the 中文 pass, still no club state touched
+```
+
+| what | measured |
+| --- | --- |
+| the desk, 1280 | 1 `.entry`, `.attendance` **0**, `[data-action=entrant-absence]` **0**, `[data-action=entrant-remove]` 1, `[data-action=promote]` 0 (this night is past registration), `.pick-btn` 1, `#entrant-form` 1; the page text contains none of `Manage regulars` / `Here now` / `Not here`. `[data-tab=players]` counts **2** — `#nav [data-tab=players]` 1 (its text is `5Regulars8`) and `#tabbar [data-tab=players]` 1, i.e. the two destinations, not a leftover button |
+| item 3a, 1280 | `Import this broadcast` → `[data-step=verify]` with `#bf-start`/`#bf-length` **0** and the Estimate button present; Estimate → `.bf-estimate` reads `About 6.8 GB · 173.1 GB free on disk · `, and the browser's own resource timing lists exactly one request: `http://127.0.0.1:8130/api/vods/estimate?vod=2890514774` — no `start_s`, no `duration_s`, i.e. the whole 4:34:15 broadcast |
+| item 3b, 1280 | after the card click: hash `#/records/review/2890514774`, `data-vision="recorded"`, `#review-card` 1, `#vision-surface` 1, `#vs-grid` 1, `.vs-rail` 1, `.vs-inspector` 1, `#vs-scrub` 1, `.vs-track` 1 with computed `display:block`, `.vs-frame-input` 1 with `display:flex`, `[data-vs-action=step]` 2, `#vs-play` 1, `#vision-host` not hidden; the chips read `vod30 · 1807 s · 30.000 fps` (this machine has no dataset of that broadcast's own, so the engine keeps its default and the note says exactly that) |
+| the phone, 390 | `documentElement.scrollWidth` 390 in English and 中文; `#vs-grid` collapses to one column (`minmax(0px, 1fr)`), `.vs-rail` `display:block`, `.vs-inspector` `display:none` with one `.vs-sheettabs` (中文 `线索检查器`), `#vs-scrub` 366×22, `.vs-track` `display:block`, `.vs-frame-input` `display:flex`; `#nav` `display:none` and `#tabbar` reads `1击球计时2赛事3战绩档案4视觉5常客6后台` |
+| 中文, 1280 | surface 1, rail 1, inspector 1, scrub 1; `导入这段直播`, `返回战绩档案`, the note in 中文, chips `视频源` / `直播` |
+| the live tab | unchanged, i.e. still only the stream: `data-vision="live"`, `#vision-surface` 0, `#vision-host` hidden, `#main` reads `Live stream idle · Frame age: — ms · Dropped: 0 · twitch ttpoolfriday` with Start/Stop and the `Table` / `Person` / `Ball` detectors |
+
+Shots: `out/r10/after-r10-recorded-1280.png`, `after-r10-backfill-verify-1280.png`,
+`after-r10-desk-1280.png`, `after-r10-live-1280.png`, `after-r10-recorded-1280-zh.png`,
+`after-r10-recorded-390.png`, `after-r10-recorded-390-zh.png`.
+
+Limits, stated rather than hidden: a **cold deep link** to `#/records/review/<id>` renders the Records list (31
+`.tl-vod`, 26 `.tl-day`) even after `/api/vods/recent` answers, because the route is resolved at boot before the
+archive arrives; every measurement above took the operator's path — `#/records`, then the card — which works. The
+`.vs-inspector` measured `display:none` at 390 is not a loss: below 1100 px the stylesheet has always folded the
+rail and the inspector into `.vs-sheettabs`, and that switcher is present. And `About 6.8 GB` is the size of the
+whole broadcast, which is now what an import is.

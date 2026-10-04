@@ -662,3 +662,33 @@ the work happened, and one `impeccable detect --json annotator/ops.js annotator/
 - **The run produced no code change**, and it is not why anything in §21 shipped: the two live defects of this
   round (the `1 videos` plural, the 670 px Records column at 390) were caught by the browser pass, which is the
   honest division of labour between a static detector and a measurement.
+
+## Round 10 — the owner's three items, and the detector run that closes them (2026-10-04)
+
+`impeccable detect --json annotator/ops.js annotator/ops.css annotator/vision-stage.js` (the three files this
+round touched) → **25 findings: 17 advisory, 8 warning**.
+
+| by rule | n | by file | n | by severity | n |
+|---|---|---|---|---|---|
+| `design-system-color` | 9 | `annotator/ops.css` | 24 | advisory | 17 |
+| `design-system-font-size` | 8 | `annotator/ops.js` | 1 | warning | 8 |
+| `side-tab` | 7 | `annotator/vision-stage.js` | 0 | | |
+| `border-accent-on-rounded` | 1 | | | | |
+
+**These are round 9's findings, not new ones.** Comparing the two JSON runs by `(file, line, rule)`: same size
+(25), same composition, and every entry moved by exactly the line delta this round's edits created — six
+`annotator/ops.css` findings from `756/848/884/988/1000/1047` to `755/847/883/987/999/1046` (the one deleted
+`#ops-shell .attendance` rule above them) and `annotator/ops.js` `807` → `834` (the 27 lines this round added
+above it). Nothing was added, nothing was resolved, and the disposition of all 25 is the round-9 table above —
+this section does not re-argue them.
+
+| on a round-10 line? | findings |
+|---|---|
+| yes | **0** |
+
+The run changed no code, and none of the round's three defects was of the kind the detector catches: the missing
+scrubber was a conditional render (`${isVod?'':visionSurface()}` in `reviewScreen()`), the bounded import was a
+request body (`{vod, start_s, duration_s}`), and the Manage-regulars button was a button. The owner found all
+three by using the console; the browser measurements in `docs/console-shots.md` §16 are what pinned each one to
+its line. The honest summary of running the detector twice is that it agreed with itself and added nothing —
+recorded here rather than dressed up as diligence.

@@ -669,7 +669,6 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .table-card{display:grid;gap:var(--sp-2);border:1px solid var(--line);background:var(--panel);padding:var(--sp-3)}
 #ops-shell .table-card.live{border-color:var(--brass);background:radial-gradient(120% 150% at 50% -30%,var(--lamp),transparent 62%),var(--panel)}
 #ops-shell .table-card.current{box-shadow:inset 0 0 0 1px var(--brass)}
-#ops-shell .attendance{color:var(--ink-dim)}
 /* Queue and bracket are panels under the tables: open on demand, never a second level of tabs.
    Round 2, B-04: a collapsed panel with no marker reads as a static heading, and display:flex
    suppresses the browser's ::marker. The chevron is authored here, at the weight the
