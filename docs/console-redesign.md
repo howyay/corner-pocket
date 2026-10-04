@@ -2785,21 +2785,33 @@ OpenDesign runs on this host as a user service (`open-design-daemon` + `open-des
 | | |
 |---|---|
 | OpenDesign project | `corner-pocket-ops-console` — named `Sync Current Design Opendesign Workspace`, `linkedDirs: ["/home/haoye/projects/pool"]`, the same shape the owner's projects for `mergecrew` and `yaydesk` have |
-| the artifact | `corner-pocket-ops-console.html` (23.5 kB, version 1, digest `3f2ba384…`), created with `od artifacts create --name … --input docs/opendesign/corner-pocket-ops-console.html --project corner-pocket-ops-console --daemon-url http://127.0.0.1:7457` |
+| the artifact | `corner-pocket-ops-console.html` — **the whole UI**: **26 states over 7 screens**, EN + 中文, 190 kB (110 kB of the shipped stylesheet inlined + 76 kB of captured markup), digest `b8573950…`. Created with `od artifacts create --name … --input … --project corner-pocket-ops-console --daemon-url http://127.0.0.1:7457`, then kept current with `node docs/opendesign/capture.mjs --push` (the daemon updates the same file in place through `POST /api/projects/<id>/files`) |
 | the repo side | `docs/opendesign/make_board.py` generates `docs/opendesign/corner-pocket-ops-console.html` (the repo's `.gitignore` reserves any `design/` directory for third-party references, so the board lives beside the docs); the tokens are **read from `annotator/ops.css`**, so the board shows the shipped values rather than a copy |
 | the link | `odsync link corner-pocket-ops-console --repo /home/haoye/projects/pool --name corner-pocket` → `odsync doctor` all green after the first pull; `odsync status` reports `od=3f2ba384 mirror=3f2ba384` |
 | the mirror | `.od-sync/design/` (`corner-pocket-ops-console.html`, `DESIGN-HANDOFF.md`, `DESIGN-MANIFEST.json`) and `.od-sync/implemented/` for write-back; `.od-sync/` is gitignored, as it is in the owner's `sona` repo |
 
-### 29.2 What the board contains
+### 29.2 What the board contains: the entire UI, captured
 
-The design board is live HTML, not a screenshot sheet, so it can be restyled in place: the tokens (dark and
-light, read from the stylesheet), the ball palette, the component inventory (buttons, badges and the table
-chip, the panel fold with the event table, the bracket card in its idle/live/held states, the shot timer, the
-settings dialog), then **the four screens** — Tournament in its three elements, History with its toolbar,
-Vision with the one action and a recorded review without choosers, and the Back room — each with numbered
-callouts for the decisions that rounds 13 and 14 made. It closes with the rules a redesign has to keep: one
-page and four screens, two languages, no sideways scroll at 390, words before icons, one primary per surface,
-and read-only evidence.
+The board is not a redrawing and not a screenshot sheet: **every frame is the markup the shipped console
+renders**, captured by booting the app inside the test suite's own sandbox (`tests/test_ops.js`'s `harness()`)
+and calling the same functions the browser calls. `docs/opendesign/capture.mjs` writes one frame per state:
+
+| screen | states captured |
+|---|---|
+| Tournament | idle (no night), registration, active with a match on table 2, complete, the results sheet, event settings (locked dialog), the first-run dialog, the second chance, the pending score, active in 中文 |
+| History | the list (nights and broadcasts under one head), the empty state, a night's review, the list in 中文 |
+| Regulars | the roster with each row's standing, one player's record modal |
+| Back room | notes, appearance and the maintainers fold; in 中文 |
+| Shot timer | the timer page with the match it follows |
+| Shell | the destinations + phone bar + clock (`tabbarHTML()` + `clockHTML()`), and the printed header of `ops.html` |
+| Vision | the live panel (EN + 中文), the live workbench, the recorded review workbench, the Twitch sources dialog |
+
+The stylesheet is inlined byte-for-byte from `annotator/ops.css` with **one mechanical rename**,
+`#ops-shell` → `.od-shell` (**772** occurrences), so each frame is scoped and no id repeats; because the
+phone media queries come along, a frame shows its 390 px layout when the board is narrowed. Regenerate and
+push with `node docs/opendesign/capture.mjs --push`, then `odsync pull corner-pocket`. Verified in a browser:
+26 `.od-state` frames, the real tokens applied (`--line` `rgb(41,35,31)`, `--panel2` `rgb(17,14,11)`, the
+brass `rgb(204,166,50)`), no horizontal overflow at 1440.
 
 ### 29.3 The loop
 
@@ -2814,8 +2826,8 @@ annotate / redesign in OpenDesign (https://design.yay.how · project "Sync Curre
         ▼   odsync push corner-pocket        (files staged in .od-sync/implemented/)
 ```
 
-Limits: the board is a **rebuild** of the shipped console, faithful in tokens, components and screen
-structure, and deliberately not the running app (it carries no data and no server calls), so a pixel diff
-against `out/r14/*.png` will show the difference between a static board and the live page; the mirror is
-read-only for me until the owner annotates, and a `push` replaces OpenDesign files, so the round's habit is to
-pull first and report before pushing.
+Limits: the frames carry the **test fixtures**, not the club's data (a frame is a state, not a night); the
+live Vision stage is a runtime surface, so its frame is the skeleton the adapter fills; the server-side states
+(offline, 409, 503) are behaviour and are not captured; the stylesheet's fonts are not inlined, so the board
+falls back to the declared system faces; and the mirror is read-only for me until the owner annotates, while
+`odsync push` replaces OpenDesign files, so the habit is to pull first and report before pushing.
