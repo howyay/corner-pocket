@@ -724,7 +724,7 @@ function clockNavButton(){const cur=!bf&&tab==='clock',face=ballHTML(1).replace(
 // matches, the live tables and the signed results each sat in both cards, in two scroll boxes,
 // and the drawer around them closed itself again after every write. One list, always open: a
 // scheduled match is sent from its own card in the draw, where its table and its two names are.
-function playScreen(){return `${eventCard()}${bracketScreen()}${revivalCard()}${entrantsCard()}${eventFold()}`}
+function playScreen(){return `${eventCard()}${bracketScreen()}${revivalCard()}${entrantsCard()}`}
 function eventFold(){const T=tournament();if(!entrants().length)return '';return '<details class="side-panel"><summary>'+esc(t('eventTable'))+'</summary><div class="table-wrap"><table class="event-table"><thead><tr><th>#</th><th>'+esc(t('name'))+'</th><th>'+esc(t('wins'))+'</th><th>'+esc(t('played'))+'</th><th>'+esc(t('winPct'))+'</th></tr></thead><tbody>'+eventTable(T).map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.name)+'</td><td>'+r.wins+'</td><td>'+r.played+'</td><td>'+pct(r.wins,r.played)+'</td></tr>').join('')+'</tbody></table></div></details>'}
 function matchId(form){const named=form?.elements?.id?.value||form?.querySelector?.('[name=id]')?.value;const id=(typeof named==='string'?named:'')||(typeof form?.id==='string'?form.id:'');if(!id)return null;return matches().find(m=>m.id===id)||{id}}
 
@@ -813,7 +813,7 @@ function matchControls(m){if(m.status==='complete'||m.status==='pending'||!m.sid
 // name, Guest or member, Promote and Remove, and nothing else.
 // Round 13, owner item 9: the desk moved in here, because it is about entrants, and the start
 // button sits with the list it starts from. The pairing card for doubles sits above the form.
-function entrantsCard(){const T=tournament(),locked=comp()!=='registration',desk=locked?'':(T.format==='doubles'?pairingCard(T):'')+(T.pairing?'':`<form id="entrant-form"><div class="fields">${Array.from({length:T.format==='doubles'?2:1},(_,i)=>deskSlot(i)).join('')}</div><div class="row"><button>${esc(t('add'))}</button>${T.format!=='doubles'?`<button type="button" class="primary" data-action="tournament-start">${esc(t('startEvent'))}</button>`:''}</div><p class="grow muted">${esc(t('rackHint'))}</p></form>`)+(T.pairing?`<div class="row"><button type="button" class="primary" data-action="tournament-start">${esc(t('startEvent'))}</button></div>`:'');return `<article class="card card--entrants"><div class="heading"><h3>${esc(t('entrants'))}</h3><span class="muted">${entrants().length} · ${guestPeople().length} ${esc(t('guests'))}</span></div>${desk}<div class="grid">${entrants().map((e,i)=>`<div class="entry row">${ballHTML(i+1)}<span class="grow">${esc(ename(e.id))}<small>${esc(e.members.some(m=>!m.pid)?t('guest'):t('member'))}</small></span>${e.members.some(m=>!m.pid)?btn(t('promote'),'promote',`data-name="${esc(ename(e.id))}"`):''}${locked?'':btn(t('remove'),'entrant-remove',`data-id="${e.id}"`)}</div>`).join('')||emptyNote('emptyEntrants')}</div></article>`}
+function entrantsCard(){const T=tournament(),locked=comp()!=='registration',desk=locked?'':(T.format==='doubles'?pairingCard(T):'')+(T.pairing?'':`<form id="entrant-form"><div class="fields">${Array.from({length:T.format==='doubles'?2:1},(_,i)=>deskSlot(i)).join('')}</div><div class="row"><button>${esc(t('add'))}</button>${T.format!=='doubles'?`<button type="button" class="primary" data-action="tournament-start">${esc(t('startEvent'))}</button>`:''}</div><p class="grow muted">${esc(t('rackHint'))}</p></form>`)+(T.pairing?`<div class="row"><button type="button" class="primary" data-action="tournament-start">${esc(t('startEvent'))}</button></div>`:'');return `<article class="card card--entrants"><div class="heading"><h3>${esc(t('entrants'))}</h3><span class="muted">${entrants().length} · ${guestPeople().length} ${esc(t('guests'))}</span></div>${desk}<div class="grid">${entrants().map((e,i)=>`<div class="entry row">${ballHTML(i+1)}<span class="grow">${esc(ename(e.id))}<small>${esc(e.members.some(m=>!m.pid)?t('guest'):t('member'))}</small></span>${e.members.some(m=>!m.pid)?btn(t('promote'),'promote',`data-name="${esc(ename(e.id))}"`):''}${locked?'':btn(t('remove'),'entrant-remove',`data-id="${e.id}"`)}</div>`).join('')||emptyNote('emptyEntrants')}</div>${eventFold()}</article>`}
 /* Round 9, owner item 4: "combine the dropdown for selecting regular. only show name box when
    selecting guest. use custom dropdown." The old desk put a search box, a native <select> of the
    whole roster and a guest-name field in front of the operator for every entrant, and the search
@@ -904,20 +904,14 @@ function livePanelScreen(){
     <div class="heading"><h2>${esc(t('liveStream'))}</h2></div>
     <p class="vs-mono live-status" id="live-panel-status" role="status">${esc(livePanelStatus())}</p>
     ${list.length?`<div class="vs-chiprow" role="group" aria-label="${esc(t('sources'))}">${chips}</div>`:''}
-    <div class="vs-row live-actions"><button class="primary" data-action="live-start">${esc(t('start'))}</button><button data-action="live-stop">${esc(t('stop'))}</button></div>
+    <div class="vs-row live-actions"><button class="primary" data-action="live-start">${esc(t('start'))}</button>${btn(t('sources'),'sources-open')}<button data-tab="records">${esc(t('records'))} →</button></div>
     <div class="vs-row live-detectors" role="group" aria-label="${esc(t('detectors'))}">${boxes}</div>
-    <p class="muted live-note">${esc(note)}</p>
-    <div class="row live-sources">${btn(t('sources'),'sources-open')}</div>
-  </article>
-  <article class="live-card">
-    <div class="heading"><h2>${esc(t('reviewTitle'))}</h2></div>
-    <p class="muted live-note">${esc(t('reviewFromRecords'))}</p>
-    <button data-tab="records">${esc(t('records'))} →</button>
+    <p class="muted live-note">${esc(note)} ${esc(t('reviewFromRecords'))}</p>
   </article>
 </section>`}
 function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading" role="status">${L('visionLoading')}</p>`;return `<section class="vision-surface" id="vision-surface"${visionAdapter?'':' aria-busy="true" data-loading="true"'}>
 <h2 class="sr-only">${L('reviewTitle')}</h2>
-<div class="vs-head"><div class="vs-chips" id="vs-chips"></div><div class="row vs-sources">${btn(t('sources'),'sources-open')}</div></div>
+<div class="vs-head"><div class="vs-chips" id="vs-chips"></div><div class="row vs-sources">${reviewId?'':`${btn(t('sources'),'sources-open')}${btn(t('stop'),'live-stop')}`}</div></div>
 <div class="vs-grid" id="vs-grid" data-sheet="cues">
 <aside class="vs-rail" id="vs-cues" aria-label="${L('visionCues')}" data-vs-aria="cuesRegion">${loadingLine}</aside>
 <section class="vs-stage" id="vs-stage" aria-label="${L('visionStage')}" data-vs-aria="stageRegion">
@@ -1039,7 +1033,7 @@ function startLive(){visionAttempt=null;review()?.setLiveAttempt(null);liveActio
 function stopLive(){liveAction('stop')}
 function setLiveDetectors(list){liveDetectors=list.length?list:['table'];renderSurface()}
 async function forgetChannel(id){await action('source_delete',{id});renderSurface()}
-function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;mount.removeAttribute?.('aria-busy');mount.removeAttribute?.('data-loading');mount.querySelectorAll?.('.vs-loading').forEach(n=>n.remove());visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,openSources:()=>{sourceOpen=true;render()},pickReplay,replayChoice,notice:text=>message(text,true),
+function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;mount.removeAttribute?.('aria-busy');mount.removeAttribute?.('data-loading');mount.querySelectorAll?.('.vs-loading').forEach(n=>n.remove());visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,fixedClip:()=>!!reviewId,openSources:()=>{sourceOpen=true;render()},pickReplay,replayChoice,notice:text=>message(text,true),
 // Owner item 3: on the Vision tab the workbench is the live stream - no dataset chip, no replay
 // form, no frame transport. Those belong to a night's recorded review, which is opened from
 // Records and is the only place `liveOnly` answers false while the console is not on Vision.

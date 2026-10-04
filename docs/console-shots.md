@@ -785,3 +785,13 @@ Suites: `tests/test_ops.js` **164/164**, `test_app_timeline.js` **81/0**, `test_
 | the same page, 390 (`vision-review-after-390.png`) | `scrollWidth` **390** == `innerWidth`; stage 366×240; `#main` 693 |
 
 Suites: `tests/test_ops.js` **164/164**, `test_app_timeline.js` **81/0**, `test_board.js` **16/16**.
+
+## 22. Round 14: the table in the entrants, a review without choosers, one Vision action (2026-10-04)
+
+| shot | measurement |
+|---|---|
+| production `#/tonight`, 1280 (`competition-three-1280.png`) | `article.card` **2** + `.bracket-view` **1**; the entrants card's children `heading / grid / side-panel`; the fold holds the event table; 390 == 390 at 390 |
+| the isolated root's review (`review-no-chooser-1280.png`) | `.vs-chip` **0** (was: the source chip, `vod30`, `highlight`, four broadcast chips, a live-channel chip); `pick-dataset` 0, `source-panel` 0, `sources-open` 0 |
+| the isolated root's Vision tab, nothing running (`vision-one-action-1280.png`) | `.live-card` **1**, `.primary` **1**, `live-start` 1, `live-stop` **0**, `sources-open` 1 |
+
+Suites: `tests/test_ops.js` **167/167**, `test_app_timeline.js` **81/0**, `test_board.js` **16/16**.

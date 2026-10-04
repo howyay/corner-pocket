@@ -2714,3 +2714,61 @@ sheet, the frame tools — is not redesigned in this round; it is the part the d
 the frame is where the operator loses the fold. The review page's own numbers are the isolated root's
 un-imported broadcast, so the workspace shows its "media not found" state in the shots; that state is data,
 not layout.
+
+## §28 — Round 14: the table moves in, a review loses its choosers, and the Vision page stops toggling (2026-10-04)
+
+### 28.1 Item ①: 本场战绩表 joins 参赛名单
+
+`eventFold()` was a fourth element on the competition tab. It is now the last child of the entrants card
+(`${eventFold()}` before that card's `</article>`), so the tab is exactly the three elements round 13 asked
+for. Measured on production at 1280: `article.card` **2** (the event card and the entrants card) plus the one
+draw; the entrants card's children are `heading`, `grid`, `side-panel`, and the fold holds the event table;
+`scrollWidth` 1280, and 390 == 390 at 390.
+
+### 28.2 Item ③: a recorded review has no clip and no source chooser
+
+The clip is chosen in the timeline view, so on a review of one broadcast the workbench must not offer another
+choice. `attachSurface()` passes `fixedClip:()=>!!reviewId`, and the chips row of `vision-stage.js` reads it:
+no source chip, no clip chips, no live-channel chip, and `visionSurface()` draws neither the source door nor
+the stop control on a recorded review. Measured on the isolated root's review: `.vs-chip` **0** remaining
+(it carried the source chip, `vod30`, `highlight`, the broadcast chips and a live-channel chip),
+`[data-vs-action="pick-dataset"]` **0**, `[data-vs-action="source-panel"]` **0**,
+`[data-action="sources-open"]` **0**.
+
+### 28.3 Item ④: the Vision page is the stream
+
+The live panel offered a Start/Stop pair. It is now one card with one primary action: the status line, the
+saved-channel chips, the detectors, then `Start` with the source door and the History door on the same row,
+and one line about where recorded nights live (the second card is folded into it). `Stop` moved to the running
+surface, where the stream is: `visionSurface()` carries it, and that surface only renders while the processor
+runs. Measured on the isolated root's Vision tab with nothing running: `.live-card` **1**, `.primary` **1**,
+`[data-action="live-start"]` **1**, `[data-action="live-stop"]` **0**, the source door **1**.
+
+The honest note, since the question was "why is it a toggle": the console cannot see Twitch liveness. The
+server reports the processor's state and the archive, and the shell's own label says the live status is
+unverified (`liveLabel`), so an auto-start would start a processor on a channel that may be off the air. What
+the page can do without guessing is what it does now: one action, one state.
+
+### 28.4 Item ② answered: what the tracking is
+
+The question was whether the pipeline tracks faces to people, what overlap does, and what happens when a
+player is not facing the camera. From the code, not from the marketing:
+
+| stage | implementation | what it means |
+|---|---|---|
+| detection | `annotator/pipeline_stages.py` `PersonStage`: "GPU YOLOv8n person boxes on the scaled frame" | a *body* detector: it does not need a face, so a player facing away is still detected |
+| per-frame tracking | `src/person_pipeline.py`: greedy IoU assignment, `_IOU_MATCH = 0.3`, `_MAX_AGE = 30` | a track survives up to 30 frames without a matching box, then a new id starts |
+| identity | `src/person_pipeline.py`'s docstring: "detector → OSNet re-ID → cross-exit identity → face binding"; **body (OSNet) cross-exit clustering is disabled by default** because "measured same/cross-person OSNet cosine distributions overlap on this footage" | identity comes from a **face** (`buffalo_l`), bound at ≥ 0.47 with the runner-up trailing by 0.12 |
+| the field the UI shows | `annotator/unified_server.py`: `_PERSON_FIELDS = ("track_id", "bbox", "cluster_id", "player_id", "face_sim", "bound_evidence")` | a track can be a track without a name: `player_id` empty, `face_sim` low, and `bound_evidence` says why |
+
+So: **not face-to-human tracking** — bodies are tracked and faces are what name them. Overlap: IoU matching
+at 0.3 with a 30-frame grace; two players who cross can swap ids when their boxes overlap heavily, and there is
+no body-appearance gate to repair it (that gate is measured off, not missing). Not facing the camera: detected
+and tracked, but unnamed until a quality face appears; the docs record the reason the faces are small —
+`det_size` stays 640 and "median eye ~10 px would not survive a smaller detector input".
+
+### 28.5 Verification
+
+`node --test tests/test_ops.js` **167/167** (three new instruments), `node tests/test_app_timeline.js` **81/0**,
+`node --test tests/test_board.js` **16/16**. Shots: `out/r14/competition-three-1280.png`,
+`review-no-chooser-1280.png`, `vision-one-action-1280.png`.

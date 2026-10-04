@@ -3501,7 +3501,10 @@ test('round 8 / owner item 3: the Vision tab is the live stream, the recorded re
     const html = h.evaluate('livePanelScreen()');
     assert.ok(html.includes('id="live-screen"') && html.includes('id="live-panel-status"'), `${lang}: the panel has its own root and status line`);
     assert.ok(html.includes(`<h2>${live}</h2>`), `${lang}: it is headed ${live}`);
-    assert.ok(html.includes(`>${start}</button>`) && html.includes(`>${stop}</button>`), `${lang}: the stream can be started and stopped`);
+    assert.ok(html.includes(`>${start}</button>`) && !html.includes('data-action="live-stop"'),
+      `${lang}: with nothing running the page offers one action - start - and no stop toggle (round 14, owner item 4)`);
+    assert.ok(h.evaluate('visionSurface()').includes(`>${stop}</button>`),
+      `${lang}: the stop control is on the running surface, where the stream is`);
     assert.equal((html.match(/data-action="live-detector"/g) || []).length, 3, `${lang}: three detectors are offered`);
     for (const word of dets) assert.ok(html.includes(word), `${lang}: the detector ${word} is named`);
     assert.ok(html.includes('data-action="live-pick"') && html.includes('ttpoolfriday'), `${lang}: the saved channel is one click away`);
@@ -3913,4 +3916,48 @@ test('round 13 / owner item 8: one Twitch source configurator, on History and on
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'sources-open'}}}});
   assert.equal(h.evaluate('sourceOpen'), true, 'and the button opens it again');
   h.evaluate('sourceOpen=false');
+});
+
+// ---------------------------------------------------------------- round 14 (owner, m08064)
+test('round 14 / owner item 1: the event table lives in the entrants card, so the tab is three elements', () => {
+  const h = harness();
+  tonightNight(h, 'drawn');
+  h.evaluate('render=()=>{}');
+  const html = h.evaluate('playScreen()');
+  assert.equal((html.match(/class="card card--/g) || []).length, 2, 'the event card and the entrants card');
+  assert.equal((html.match(/class="bracket-view"/g) || []).length, 1, 'and the draw between them');
+  assert.ok(html.indexOf('class="card card--event"') < html.indexOf('class="bracket-view"') && html.indexOf('class="bracket-view"') < html.indexOf('class="card card--entrants"'),
+    'in the owner\u2019s order: the event, the draw, the entrants');
+  const card = html.slice(html.indexOf('class="card card--entrants"'));
+  assert.ok(card.includes('class="side-panel"') && card.includes('class="event-table"'),
+    'round 14, owner item 1: the event table is a fold at the bottom of the entrants card');
+  assert.ok(!html.slice(html.indexOf('</article>'), html.indexOf('class="card card--entrants"')).includes('event-table'),
+    'and it is nowhere else on the tab');
+});
+test('round 14 / owner item 3: a recorded review offers no clip and no source chooser', () => {
+  const h = harness();
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  assert.ok(source.includes('fixedClip:()=>!!reviewId'), 'the shell tells the workbench the clip is already decided');
+  assert.ok(adapter.includes("const datasets = (liveOnly || fixed) ? '' :"), 'so the clip chips are not drawn');
+  assert.ok(adapter.includes("const chip = fixed ? '' : `<button"), 'nor the source chip');
+  assert.ok(adapter.includes('const channels = (fixed ? [] : (opts.channels() || []))'),
+    'and no live-channel chip: a recorded broadcast is not a live source');
+  assert.ok(source.includes("${reviewId?'':`${btn(t('sources'),'sources-open')}${btn(t('stop'),'live-stop')}`}"),
+    'and the review surface carries neither the source door nor the stop control');
+  h.evaluate('render=()=>{}');
+  assert.ok(h.evaluate('livePanelScreen()').includes('data-action="sources-open"'),
+    'while the live Vision page keeps the source door, where the stream comes from');
+});
+test('round 14 / owner item 4: the Vision page is the stream, not a stream toggle', () => {
+  const h = harness();
+  h.evaluate("lang='en';data.sources=[{id:'s1',url:'https://www.twitch.tv/ttpoolfriday'}]");
+  const html = h.evaluate('livePanelScreen()');
+  assert.equal((html.match(/<article class="live-card"/g) || []).length, 1, 'one card, not a control panel beside a second door');
+  assert.equal((html.match(/class="primary"/g) || []).length, 1, 'one primary action');
+  assert.ok(html.includes('data-action="live-start"') && !html.includes('data-action="live-stop"'),
+    'start, with no stop toggle beside it');
+  assert.ok(html.includes('data-action="live-detector"'), 'the detectors are the options that go with the start');
+  assert.ok(html.includes('data-action="sources-open"') && /data-tab="records"/.test(html),
+    'and the source door and the History door share the action row');
+  assert.ok(html.includes(h.evaluate("esc(t('reviewFromRecords'))")), 'the sentence about recorded nights stays, as one line');
 });

@@ -534,16 +534,16 @@ function chipsHTML(s) {
   // Owner item 3: the Vision tab is the live stream. When the console says so, the chip row
   // offers live sources and nothing recorded - the datasets and the replay form belong to a
   // night's recorded review, whose only entrance is that night's row on Records.
-  const liveOnly = !!opts.liveOnly?.();
-  const channels = (opts.channels() || []).map(c => `<button class="vs-chip${s.source.kind === 'live' && s.source.channel === c.channel ? ' active' : ''}" data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${s.source.kind === 'live' && s.source.channel === c.channel ? '● ' : ''}${esc(t('live'))} · twitch ${esc(c.channel || '')}</button>`).join('');
-  const datasets = liveOnly ? '' : (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
+  const liveOnly = !!opts.liveOnly?.(), fixed = !!opts.fixedClip?.();
+  const channels = (fixed ? [] : (opts.channels() || [])).map(c => `<button class="vs-chip${s.source.kind === 'live' && s.source.channel === c.channel ? ' active' : ''}" data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${s.source.kind === 'live' && s.source.channel === c.channel ? '● ' : ''}${esc(t('live'))} · twitch ${esc(c.channel || '')}</button>`).join('');
+  const datasets = (liveOnly || fixed) ? '' : (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
   const freshness = s.source.kind === 'live'
     ? `<span class="vs-fresh${s.live.stale ? ' stale' : ''}">${s.live.stale ? esc(t('stale')) : esc(t(liveWordKey(s)))} · ${esc(t('age'))} ${fmtAge(s.live.frame_age_ms)}</span>`
     : liveOnly ? `<span class="vs-fresh">${esc(t('live'))}</span>` : `<span class="vs-fresh">${esc(recordedLabel(s) || s.source.label)}</span>`;
   // The source settings hang off the chip row itself: one chip opens the panel
   // that used to be the rail's nothing-selected state, so the rail stays about
   // the selection and the settings are still one click away at any width.
-  const chip = `<button class="vs-chip vs-source-chip${sourceOpen ? ' active' : ''}" data-vs-action="source-panel" aria-expanded="${sourceOpen ? 'true' : 'false'}" aria-controls="vs-source-panel" aria-label="${esc(t('sources'))}">${esc(t('sources'))}</button>`;
+  const chip = fixed ? '' : `<button class="vs-chip vs-source-chip${sourceOpen ? ' active' : ''}" data-vs-action="source-panel" aria-expanded="${sourceOpen ? 'true' : 'false'}" aria-controls="vs-source-panel" aria-label="${esc(t('sources'))}">${esc(t('sources'))}</button>`;
   const panel = sourceOpen ? `<div class="vs-source-panel" id="vs-source-panel" role="group" aria-label="${esc(t('sources'))}">
     <div class="vs-source-head"><strong>${esc(t('sources'))}</strong><button class="vs-source-close" data-vs-action="source-panel" aria-label="${esc(t('closePanel'))}">×</button></div>
     ${sourcePanelHTML(s)}</div>` : '';

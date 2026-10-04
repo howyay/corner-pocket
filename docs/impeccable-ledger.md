@@ -800,3 +800,17 @@ configurator. `ops.js` and `ops.css` still carry the same twenty-five findings a
 a round-13 line. Four rounds of running this detector have now produced one honest conclusion: it finds
 declaration drift, and every defect that mattered in these rounds was a layout or state defect that only a
 measurement or a test could see.
+
+## Round 14 — no detector run, and the reason not to claim one (2026-10-04)
+
+The round's four items were two markup moves, one gate, and one question about the tracking pipeline. Three of
+them are in the two files the detector reads, so it was run again for the record:
+`impeccable detect --json annotator/ops.js annotator/ops.css annotator/vision-stage.js` → **25** (the same
+twenty-five as rounds 9–13 in the first two files, and **0** in `vision-stage.js`). Nothing new, nothing
+resolved, no finding on a round-14 line.
+
+The item about tracking is answered from the source in `docs/console-redesign.md` §28.4, with the four files
+named. Recording that here because it is the same lesson as the last three rounds: the detector reads
+declarations, and every question that mattered this round was about *behaviour* — what a tracker does when two
+players cross, what a page does when its stream is off. Those are answered by reading the pipeline and by
+measuring the page.
