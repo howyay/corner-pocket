@@ -2668,3 +2668,49 @@ writes), `node tests/test_app_timeline.js` **81/0**, `node --test tests/test_boa
 
 Limits: the vision rail's own form is still there in this commit — round 13c's Vision redesign replaces it with
 the shared dialog; the club has exactly one saved source, so the dialog's two-row case is the isolated root's.
+
+## §27 — Round 13c: the Vision frame (2026-10-04, owner item ⑦, and ⑧ finished)
+
+### 27.1 What the detector said, and what the page measured
+
+`impeccable detect --json annotator/vision-stage.js` → **0 findings**. The workbench inside passes the rules
+the detector knows; the owner's "redesign it" is not a rule violation, so the redesign here is measured
+instead. The recorded review at 1280, before: `.vs-stage` 595×392, `.vs-rail` 280×429, `.vs-inspector`
+320×446, `.vs-chips` 1219×92, `.vs-strip` 1219×130, 26 buttons, headings **h3 ×4 and h4 ×1 with no h2**, and
+`#main` **1038** px tall. The review header alone was a card of four stacked blocks.
+
+### 27.2 The frame, redesigned
+
+- **The header is one line of work, not four blocks.** The title and its date stay in the heading; the one
+  action (`Import this broadcast`), the one link control (which event this broadcast belongs to) and `Back to
+  Records` stand beside them; the sentence that explains the chips became `<details class="review-why">`
+  (`About this broadcast`), because it is read once and the workbench is read every time.
+- **One chrome row.** The chips and the Sources door are one row (`.vs-head`), instead of the chips with the
+  door under them.
+- **The surface has a heading.** `<h2 class="sr-only">Review a recorded night…</h2>` opens the region: it
+  started at h3, so a screen reader met the workbench as a set of subsections with no parent.
+
+Measured after, same page, 1280: `#review-card` **252** px, `.vs-stage` 595×392 at y **501**, `#main`
+**986** (was 1038), `h2` **2**, `forms` on the page **0**, `scrollWidth` 1280. At 390: `scrollWidth` **390**
+== `innerWidth`, stage 366×240, `#main` 693.
+
+### 27.3 Item ⑧ finished: one source form
+
+The vision rail's own `#source-form` — the second place a Twitch source could be added, the one whose copy
+said "Add the club channel under Source on Tonight" — is replaced by a button that opens the shared
+configurator (`data-vs-action="open-sources"` → `opts.openSources()` → `sourceOpen=true; render()`). Measured
+from the review surface: the dialog opens with the isolated root's **2** rows and its one form; the page itself
+now holds **0** forms.
+
+### 27.4 Verification
+
+`node --test tests/test_ops.js` **164/164**, `node tests/test_app_timeline.js` **81/0** (two cases there
+followed the removed rail form to the shared dialog), `node --test tests/test_board.js` **16/16**. Shots:
+`out/r13/vision-review-before-1280.png`, `vision-review-after-1280.png`, `vision-review-after-390.png`,
+`vision-sources-from-review-1280.png`.
+
+Limits: the workbench *inside* the frame — the event cards, the ball queue, the person tracks, the layer
+sheet, the frame tools — is not redesigned in this round; it is the part the detector found nothing in, and
+the frame is where the operator loses the fold. The review page's own numbers are the isolated root's
+un-imported broadcast, so the workspace shows its "media not found" state in the shots; that state is data,
+not layout.

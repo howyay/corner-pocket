@@ -932,7 +932,7 @@ function sourcePanelHTML(s) {
     <p class="vs-note">${esc(t('latency'))}</p></div>
   <div class="vs-block"><h4>${esc(t('detectors'))}</h4><div class="vs-row">${[['table','table'],['person','person'],['balls','ball']].map(([k, l]) => `<label class="vs-check"><input type="checkbox" data-vs-action="detector" data-vs-value="${k}" ${s.detectors[k] ? 'checked' : ''}> ${esc(t(l))}</label>`).join('')}</div><p class="vs-note">${esc(t('detectorReason'))}</p></div>
   <div class="vs-block"><h4>${esc(t('saved'))}</h4>${channels || `<p class="vs-empty">—</p>`}${vodRows ? `<h4>${esc(t('savedVods'))}</h4>${vodRows}` : ''}
-    <form id="source-form"><label class="vs-field">${esc(t('channelUrl'))}<input name="url" type="url" placeholder="https://www.twitch.tv/channel" required></label><button class="primary">${esc(t('addChannel'))}</button></form></div>`;
+    <div class="row vs-source-actions"><button data-vs-action="open-sources">${esc(t('sourcesTitle'))}</button></div></div>`;
 }
 function eventBlock(s) {
   const item = s.selection.event || s.events.items[s.events.index];
@@ -1216,6 +1216,7 @@ function act(action, value, node) {
     case 'live-start': opts.startLive(); break;
     case 'live-stop': opts.stopLive(); break;
     case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
+    case 'open-sources': opts.openSources?.(); break;
     case 'use-saved-vod': { replayDraft = {...(replayDraft || {}), vod: `https://www.twitch.tv/videos/${value}`}; render(); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
     case 'live-detector': { const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
     case 'pick-replay': {

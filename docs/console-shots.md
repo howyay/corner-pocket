@@ -774,3 +774,14 @@ Suites, on the shipped tree: `node --test tests/test_ops.js` **162/162**, `node 
 | production `#/records`, 390 (`history-390.png`) | `scrollWidth` **390** == `innerWidth`; the search takes the row, the actions wrap under it |
 
 Suites: `tests/test_ops.js` **164/164**, `test_app_timeline.js` **81/0**, `test_board.js` **16/16**.
+
+## 21. Round 13c: the Vision frame (2026-10-04)
+
+| shot | measurement |
+|---|---|
+| the recorded review, 1280, **before** (`vision-review-before-1280.png`) | `.vs-stage` 595×392, `.vs-rail` 280×429, `.vs-inspector` 320×446, `.vs-chips` 1219×92, 26 buttons, h3 ×4 + h4 ×1, **no h2**; `#main` 1038 |
+| the same page, 1280, after (`vision-review-after-1280.png`) | `#review-card` **252**, `.vs-stage` 595×392 at y **501**, `.vs-head` 1219×106 (chips + the Sources door in one row), `h2` **2**, `forms` **0**; `#main` **986** |
+| the configurator from the review (`vision-sources-from-review-1280.png`) | `.modal--sources` open, **2** rows, one form — the rail's own form is gone |
+| the same page, 390 (`vision-review-after-390.png`) | `scrollWidth` **390** == `innerWidth`; stage 366×240; `#main` 693 |
+
+Suites: `tests/test_ops.js` **164/164**, `test_app_timeline.js` **81/0**, `test_board.js` **16/16**.

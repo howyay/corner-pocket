@@ -235,6 +235,20 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .toolbar-gap{display:none}
 #ops-shell .toolbar>button{flex:1 1 auto}
 }
+/* Round 13, owner item 7: the review's frame is smaller than its work. The header keeps the title,
+   the one action and the one link control on one line, and the sentence about the chips is a fold;
+   the workbench's own chrome is one row - the chips and the Sources door side by side. */
+#ops-shell .review-card{padding:var(--sp-3) var(--sp-4)}
+#ops-shell .review-card .heading{align-items:flex-start;gap:var(--sp-4)}
+#ops-shell .review-act{flex-wrap:wrap;justify-content:flex-end}
+#ops-shell .review-act>#event-links,.review-act .vod-event-links{min-width:0}
+#ops-shell .review-why{margin-top:var(--sp-2)}
+#ops-shell .review-why>summary{cursor:pointer;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.08em;text-transform:uppercase;min-height:32px;display:flex;align-items:center}
+#ops-shell .review-why[open]>summary{color:var(--ink)}
+#ops-shell .review-why>p{margin:0 0 var(--sp-1)}
+#ops-shell .vs-head{display:flex;align-items:flex-start;gap:var(--sp-2)}
+#ops-shell .vs-head .vs-chips{flex:1 1 auto;min-width:0}
+#ops-shell .vs-head .vs-sources{flex:0 0 auto;margin:0}
 #ops-shell .timeline{max-height:340px;overflow:auto;padding-left:var(--sp-5);color:var(--ink-mid)}
 #ops-shell .timeline li{padding:var(--sp-1h)}
 #ops-shell table{width:100%;border-collapse:collapse;text-align:left}

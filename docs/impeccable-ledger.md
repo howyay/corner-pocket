@@ -782,3 +782,21 @@ edits. Nothing new, nothing resolved.
 The round's real defects were again not of the kind a declaration reader catches: the `open-setup` door briefly
 stopped opening its dialog (the new `tonightScreen()` ignored `setupOpen`, which one test caught and the fix
 restored), and the two density views had to become one grid whose wrap behaviour only a browser can measure.
+
+## Round 13c — the Vision frame, and the detector's silence (2026-10-04)
+
+`impeccable detect --json annotator/vision-stage.js` → **0 findings**. That is a real result and it is
+recorded as one: the workbench inside the Vision page passes every rule the detector knows, so item ⑦ could
+not be answered by its findings. It was answered by measuring the page instead (`docs/console-redesign.md`
+§27.1) — 1038 px of `#main` before the work, a header of four stacked blocks, and a region that began at h3.
+
+| on a round-13c line? | findings |
+|---|---|
+| yes | **0** (the file has none at all) |
+
+The frame changes were: the header compressed to one line with its explanation folded, the chips and the
+Sources door in one row, an `sr-only` h2 for the region, and the rail's second source form replaced by the one
+configurator. `ops.js` and `ops.css` still carry the same twenty-five findings as rounds 9–12, none of them on
+a round-13 line. Four rounds of running this detector have now produced one honest conclusion: it finds
+declaration drift, and every defect that mattered in these rounds was a layout or state defect that only a
+measurement or a test could see.

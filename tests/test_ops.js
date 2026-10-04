@@ -769,7 +769,7 @@ test('a stream link the server refuses is explained before or after the request,
     assert.equal(h.evaluate(`parseSource('https://www.twitch.tv/${path}')`), null, `${path} is a Twitch page, not a channel`);
   }
   assert.equal(h.evaluate("parseSource('https://www.twitch.tv/examplechannel').channel"), 'examplechannel');
-  await h.handlers.submit(submission('source-form', {url: 'https://www.twitch.tv/wallet'}));
+  await h.handlers.submit(submission('sources-form', {url: 'https://www.twitch.tv/wallet'}));
   assert.equal(h.evaluate('calls.length'), 0, 'a reserved Twitch page never reaches the server');
   assert.equal(h.evaluate("validationMessage('Source already added')"), 'Source already added');
   h.evaluate("lang='zh'");
@@ -1892,7 +1892,7 @@ test('Broadcasts lists each saved channel\'s recent VODs, the job progress and e
   assert.match(html, /data-vs-action="bc-cancel"/);
   assert.match(html, /data-vs-bc-dataset="tw-1000000001-3600-3900"[\s\S]*data-vs-action="bc-delete"/, 'an imported VOD can be deleted');
   // nothing that was there before is gone
-  for (const kept of ['data-vs-action="pick-replay"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-dataset" data-vs-value="vod30"', 'data-vs-action="pick-dataset" data-vs-value="highlight"', 'id="source-form"'])
+  for (const kept of ['data-vs-action="pick-replay"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="open-sources"', 'data-vs-action="pick-dataset" data-vs-value="vod30"', 'data-vs-action="pick-dataset" data-vs-value="highlight"'])
     assert.ok(html.includes(kept), `kept: ${kept}`);
   assert.ok(html.includes('data-vs-action="pick-dataset" data-vs-value="tw-1000000001-3600-3900"'), 'the imported VOD is a dataset chip');
 });

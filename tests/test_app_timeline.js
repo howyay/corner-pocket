@@ -1501,7 +1501,7 @@ test('the source settings open from the Source chip and are no longer the rail e
   assert.ok(none.includes('This frame') && none.includes('data-vs-action="add-polygon"') && none.includes('data-vs-action="run-inference"'), 'the frame tools stay, under their own heading');
   assert.ok(none.indexOf('This frame') > none.indexOf('data-vs-empty="no-selection"'), 'and are separated from the empty-state copy');
   for (const gone of ['data-vs-action="pick-dataset"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-live"',
-                      'data-vs-action="detector"', 'id="vs-live-status"', 'id="source-form"', 'Twitch upstream delay']) {
+                      'data-vs-action="detector"', 'id="vs-live-status"', 'data-vs-action="open-sources"', 'Twitch upstream delay']) {
     assert.ok(!none.includes(gone), `the rail's nothing-selected state no longer carries ${gone}`);
   }
   assert.ok(!VS.actionsHTML(base), 'and its footer carries no source action either');
@@ -1512,7 +1512,7 @@ test('the source settings open from the Source chip and are no longer the rail e
   const open = VS.chipsHTML(base);
   assert.ok(open.includes('id="vs-source-panel"') && open.includes('aria-expanded="true"'), 'one click opens the settings panel');
   for (const kept of ['data-vs-action="pick-dataset"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-live"',
-                      'data-vs-action="live-detector"', 'data-vs-action="detector"', 'id="vs-live-status"', 'id="source-form"',
+                      'data-vs-action="live-detector"', 'data-vs-action="detector"', 'id="vs-live-status"', 'data-vs-action="open-sources"',
                       'Twitch upstream delay', 'not glass-to-glass']) {
     assert.ok(open.includes(kept), `the panel keeps ${kept}`);
   }
@@ -2318,8 +2318,8 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
   assert.ok(panel.indexOf('data-vs-replay=') > 0 || panel.indexOf('data-vs-field="vod"') > 0, 'the replay block is in the panel');
   assert.ok(panel.indexOf('data-vs-field="vod"') < panel.indexOf('data-vs-action="pick-dataset"'),
     'and it comes before the dataset block, so its controls are inside the panel\u2019s visible box');
-  assert.ok(panel.indexOf('data-vs-action="pick-replay"') < panel.indexOf('id="source-form"'),
-    'above the saved-channels form too');
+  assert.ok(panel.indexOf('data-vs-action="pick-replay"') < panel.indexOf('data-vs-action="open-sources"'),
+    'above the door to the one source configurator too (round 13, owner item 8)');
   // (2) The value lives in adapter state, not only in the DOM: the panel is rebuilt
   // on every live-status poll, and a half-typed id used to vanish with it.
   const VS = adapterStage('en', ROSTER);
