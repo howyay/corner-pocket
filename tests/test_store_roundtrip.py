@@ -55,6 +55,13 @@ def operations_state(root: Path) -> Path:
         post("solo_add", member={"name": name})
     post("pair_draw")                                      # a pairing shown, not accepted
     post("note_add", text="cloth replaced")
+    # Round 11 (owner, m07044): the broadcast-to-night relation. Two rows for the archived night -
+    # the same night covered by two broadcasts - so the import proves the join table survives
+    # Postgres in ops_meta.extra and comes back with its numbers, not just its keys.
+    post("vod_link", vodId="2274501933", eventId=archived["id"], startS=3600, endS=11400,
+         title="Wednesday 8-Ball Open", channel="cornerpocket", length_s=13800,
+         created_at="2026-09-30T05:50:00+00:00")
+    post("vod_link", vodId="2884327358", eventId=archived["id"], title="260918")
     return ops.path
 
 

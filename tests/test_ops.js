@@ -1102,7 +1102,7 @@ test('the shared clock re-syncs when the tab is shown again, focused, or back on
 
 test('the clock labels stay honest in English and 中文, and only a failure is printed', () => {
   assert.equal(clockSync.LABELS.en.kicker, 'Shot timer');
-  assert.equal(clockSync.LABELS.zh.kicker, '击球计时');
+  assert.equal(clockSync.LABELS.zh.kicker, '出杆计时');
   // §13.3: the bar stopped narrating sync state. statusText() is now the failure path
   // only, in the language the shell publishes.
   assert.equal(clockSync.statusText('live', 'en', null), '', 'a synced clock says nothing at all');
@@ -1127,7 +1127,7 @@ test('the clock labels stay honest in English and 中文, and only a failure is 
   assert.equal(clockSync.LABELS.zh.failed, '计时指令失败 — 未改变');
   assert.equal(clockSync.LABELS.en.busy, 'server busy — retrying');
   assert.equal(clockSync.LABELS.zh.busy, '服务器繁忙 — 正在重试');
-  assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '击球计时'], 'the two words the shell paints are exactly what the shared clock adopts');
+  assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '出杆计时'], 'the two words the shell paints are exactly what the shared clock adopts');
 });
 
 // The smallest DOM decorate() needs: one clock mount, an optional .kicker (the Vision stage
@@ -1184,16 +1184,16 @@ function fakeClockMount(options) {
 }
 
 test('one shot-timer name in both clocks, no sync line, and the slot speaks only when a command failed', () => {
-  assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '击球计时']);
+  assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '出杆计时']);
   // One name, checked across all three places that can paint it: the shell dictionary,
   // the shared clock's own labels, and the mount point in the top bar.
   const dictionary = JSON.parse(`[${/shotTimer:\[([^\]]*)\]/.exec(source)[1]}]`.replace(/'/g, '"'));
-  assert.deepEqual(dictionary, ['Shot timer', '击球计时'], 'the shell paints one name');
+  assert.deepEqual(dictionary, ['Shot timer', '出杆计时'], 'the shell paints one name');
   assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], dictionary, 'the shared clock adopts exactly the label ops.js paints');
   assert.equal(clockSync.LABELS.en.kicker, dictionary[0]);
   assert.equal(clockSync.LABELS.zh.kicker, dictionary[1]);
   const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
-  assert.ok(html.includes('aria-label="Shot timer / 击球计时"'), 'the top-bar mount point is named the same');
+  assert.ok(html.includes('aria-label="Shot timer / 出杆计时"'), 'the top-bar mount point is named the same');
   const shell = {attrs: {}};
   const en = fakeClockMount({lang: 'en'});
   clockSync.decorate(en.doc, 'live', null);
@@ -2532,7 +2532,7 @@ test('the bar is two rows: the shot timer, then the five destinations and the to
   // Owner item 2 (round 7) gave the timer a row of its own; owner item 1 (round 8) put that row
   // under the destinations, so the bar is two rows - the five destinations and the tools, then the
   // clock - and nothing in .tools holds a second timer.
-  assert.ok(bar.includes('<div class="clockbar" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div>'),
+  assert.ok(bar.includes('<div class="clockbar" role="group" aria-label="Shot timer / 出杆计时" data-clock-host></div>'),
     'the clock row is a named group with one host, empty until ops.js paints it');
   assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="clockbar"'), 'the destinations come first, the clock row under them');
   assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="tools"'), 'the destinations, then the tools');
@@ -3210,9 +3210,9 @@ test('round 7 / owner item 2: the timer is a bar of its own and ball 1 is its ow
   assert.equal(h.evaluate("routeOf('#/clock')"), 'clock', 'a deep link reaches it');
   assert.equal(h.evaluate("navLabel('clock')"), 'Shot timer', 'and it is named in the nav');
   h.evaluate("lang='zh'");
-  assert.equal(h.evaluate("navLabel('clock')"), '击球计时', 'in either language');
+  assert.equal(h.evaluate("navLabel('clock')"), '出杆计时', 'in either language');
   h.evaluate("lang='en'");
-  assert.ok(opsHtml.includes('class="clockbar" role="group" aria-label="Shot timer / 击球计时" data-clock-host'),
+  assert.ok(opsHtml.includes('class="clockbar" role="group" aria-label="Shot timer / 出杆计时" data-clock-host'),
     'the shell ships one host, named, empty until ops.js paints it');
 });
 
@@ -3289,7 +3289,9 @@ const archiveHistory = `data.players=[{id:'pa',name:'Ann',status:'Active',rating
   data.history=[{id:'h9',name:'Friday 8-Ball',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-10-03T05:00:00Z',
     source:{kind:'twitch',vodId:'2890514774',startS:0,endS:3600},
     entrants:[{id:'a9',members:[{pid:'pa',name:'Ann'}]}],matches:[]}];
-  data.events=[];data.notes=[]`;
+  data.events=[];data.notes=[];
+  data.vods=[{id:'2890514774',title:'261001',channel:'ttpoolfriday',length_s:16455,created_at:'2026-10-03T01:30:00Z'}];
+  data.links=[{vodId:'2890514774',eventId:'h9',startS:0,endS:3600,at:'2026-10-03T05:00:00Z'}]`;
 test('round 6: Records opens with the Twitch archive, and every row is a built night or a night to build', async () => {
   const h = harness({hash: '#/records'});
   const asked = [], answer = {channels: [{channel: 'ttpoolfriday', error: null, saved_channels: ['ttpoolfriday'], vods: archiveVods}]};
@@ -3301,10 +3303,10 @@ test('round 6: Records opens with the Twitch archive, and every row is a built n
   assert.ok(screen.includes(`>${h.evaluate("t('events')")}</h2>`), 'and the event log it feeds is still below it');
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
-    const card = h.evaluate('archiveTimeline()'), label = key => h.evaluate(`esc(t('${key}'))`);
-    assert.ok(card.includes(`>${h.evaluate("t('archive')")}</h2>`), `${lang}: the archive is named`);
+    const card = h.evaluate('mergedTimeline()'), label = key => h.evaluate(`esc(t('${key}'))`);
+    assert.ok(h.evaluate('recordsScreen()').includes(h.evaluate("esc(t('archiveNote'))")), `${lang}: the one list says where a night comes from`);
     assert.ok(card.includes('data-action="tl-review" data-id="2890514774"'), `${lang}: a broadcast with a night is the card that opens it`);
-    assert.ok(card.includes(label('archiveBuilt')), `${lang}: and says the night exists`);
+    assert.ok(card.includes(label('vodMark')), `${lang}: and names the night that covers it`);
     assert.ok(card.includes('data-action="tl-review" data-id="2884327358"'), `${lang}: a broadcast without a night is the same card - nothing to build first (owner item 8)`);
     assert.ok(!/archiveBuild|archiveUnbuilt|bf-pick/.test(card), `${lang}: no card asks to be built outside the scrubber`);
     // The club's older nights are typed HIGHLIGHT by Twitch, their newest are ARCHIVE: the row
@@ -3319,7 +3321,7 @@ test('round 6: Records opens with the Twitch archive, and every row is a built n
   }
   h.evaluate("lang='en'");
   assert.deepEqual(asked, ['/api/vods/recent'], 'one read, from this box, which holds the credentials');
-  assert.ok(h.evaluate('archiveTimeline()').includes(h.evaluate("t('archiveCount').replace('{n}',2).replace('{built}',1)")), 'the count names the window and how much of it is built');
+  assert.ok(h.evaluate('recordsScreen()').includes(h.evaluate("t('archiveCount').replace('{n}',2).replace('{built}',1)")), 'the count names the window and how much of it is linked');
   await h.evaluate('loadArchiveList()');
   assert.equal(asked.length, 1, 'a cached list is not read twice');
   await h.evaluate('loadArchiveList(true)');
@@ -3332,12 +3334,12 @@ test('round 6: a full window says there may be older ones -- the archive never c
   const answer = more => ({channels: [{channel: 'ttpoolfriday', error: null, more, vods: archiveVods}]});
   h.context.fetch = async () => ({ok: true, json: async () => answer(true)});
   await h.evaluate('loadArchiveList(true)');
-  const card = h.evaluate('archiveTimeline()');
+  const card = h.evaluate('recordsScreen()');
   assert.ok(card.includes(h.evaluate("esc(t('archiveMore').replace('{n}',2))")), 'a window that filled says so, in the count of what is shown');
   assert.ok(card.includes(h.evaluate("esc(t('archiveNote'))")), 'and the note still says where a night comes from');
   h.context.fetch = async () => ({ok: true, json: async () => answer(false)});
   await h.evaluate('loadArchiveList(true)');
-  assert.ok(!h.evaluate('archiveTimeline()').includes(h.evaluate("esc(t('archiveMore').replace('{n}',2))")), 'a list Twitch finished sending makes no such claim');
+  assert.ok(!h.evaluate('recordsScreen()').includes(h.evaluate("esc(t('archiveMore').replace('{n}',2))")), 'a list Twitch finished sending makes no such claim');
 });
 
 test('round 6: a refused, empty or unsaved archive is a state on the page -- never a silent gap', async () => {
@@ -3345,24 +3347,30 @@ test('round 6: a refused, empty or unsaved archive is a state on the page -- nev
   h.evaluate("data.players=[];data.history=[];data.events=[];data.notes=[]");
   h.context.fetch = async () => ({ok: false, status: 502, json: async () => ({error: 'Twitch is unreachable'})});
   await h.evaluate('loadArchiveList(true)');
-  const broken = h.evaluate('archiveTimeline()');
+  const broken = h.evaluate('mergedTimeline()');
   assert.ok(broken.includes(h.evaluate("esc(t('archiveFailed'))")) && broken.includes('Twitch is unreachable'), 'the reason is on the page');
   assert.ok(broken.includes('data-action="archive-reload"'), 'with a way to try again');
   assert.ok(!broken.includes('<li'), 'and no invented row');
   h.context.fetch = async () => ({ok: true, json: async () => ({channels: [{channel: 'ttpoolfriday', error: null, vods: []}]})});
   await h.evaluate('loadArchiveList(true)');
-  assert.ok(h.evaluate('archiveTimeline()').includes(h.evaluate("esc(t('archiveNone'))")), 'a saved channel with no broadcasts says exactly that');
-  assert.ok(!h.evaluate('archiveTimeline()').includes('<li'), 'still no rows');
+  assert.ok(h.evaluate('mergedTimeline()').includes(h.evaluate("esc(t('archiveNone'))")), 'a saved channel with no broadcasts says exactly that');
+  assert.ok(!h.evaluate('mergedTimeline()').includes('<li'), 'still no rows');
   h.context.fetch = async () => ({ok: true, json: async () => ({channels: []})});
   await h.evaluate('loadArchiveList(true)');
-  assert.ok(h.evaluate('archiveTimeline()').includes(h.evaluate("esc(t('archiveNoSource'))")), 'no saved channel points at the Back room');
-  assert.ok(!h.evaluate('archiveTimeline()').includes(h.evaluate("t('archiveNone')")), 'and does not borrow the other sentence');
+  assert.ok(h.evaluate('mergedTimeline()').includes(h.evaluate("esc(t('archiveNoSource'))")), 'no saved channel points at the Back room');
+  assert.ok(!h.evaluate('mergedTimeline()').includes(h.evaluate("t('archiveNone')")), 'and does not borrow the other sentence');
   h.evaluate("lang='zh'");
-  assert.ok(h.evaluate('archiveTimeline()').includes('还没有保存 Twitch 频道'), 'the states are written in the console language, not translated on the way out');
+  assert.ok(h.evaluate('mergedTimeline()').includes('还没有保存 Twitch 频道'), 'the states are written in the console language, not translated on the way out');
 });
 test('round 6: the archive paints its own card, so a late answer never rebuilds the page under an operator', () => {
-  assert.ok(source.includes("function paintArchive(){const host=$('#archive-card');if(host&&'innerHTML' in host)host.innerHTML=archiveTimeline()}"),
-    'the loader paints its own card and returns');
+  const painter = source.slice(source.indexOf('function paintArchive(){'), source.indexOf('function loadArchiveList('));
+  assert.ok(painter.includes("const list=$('#records-list')") && painter.includes('list.innerHTML=mergedTimeline()'),
+    'the loader paints the one list and returns');
+  assert.ok(painter.includes("const count=$('#archive-card .archive-count')") && painter.includes('count.textContent=archiveCountText()'),
+    'and the count line is written in place, so it is current after the late answer (round 11: a number that lives only in the first paint never appears)');
+  assert.ok(painter.includes("const note=$('#archive-card .archive-note')") && painter.includes('note.textContent=archiveNoteText()'),
+    'the sentence about what the window holds is written in place too');
+  assert.ok(!painter.includes('render()'), 'still nothing rebuilds the screen under an operator');
   assert.ok(!/loadArchiveList[\s\S]{0,400}?archiveList\.loading=false;render\(\)/.test(source),
     'and never re-renders the whole screen after the network answers (the search box and the scroll survive)');
   assert.ok(source.includes("showReview();syncLivePolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}"),
@@ -3450,8 +3458,8 @@ test('round 9 / owner items 4 + 5: the destination balls are solid, on the ivory
 test('round 8 / owner item 3: the Vision tab is the live stream, the recorded review is opened from a Records row', () => {
   // 1. the live panel, in both languages, with nothing running
   for (const [lang, live, start, stop, note, archive, dets] of [
-    ['en', 'Live stream', 'Start', 'Stop', 'Recorded nights are reviewed from their row on Records', 'Recorded nights', ['Table', 'Person', 'Ball']],
-    ['zh', '直播', '开始', '停止', '已结束的夜晚请从战绩档案里对应那一行进入审看', '录制场次', ['球台', '人物', '球']],
+    ['en', 'Live stream', 'Start', 'Stop', 'Recorded nights are reviewed from their row on Records', 'Events', ['Table', 'Person', 'Ball']],
+    ['zh', '直播', '开始', '停止', '已结束的夜晚请从战绩档案里对应那一行进入审看', '历史赛事', ['球台', '人物', '球']],
   ]) {
     const h = harness();
     h.evaluate(`lang='${lang}';data.sources=[{id:'s1',url:'https://twitch.tv/ttpoolfriday'}]`);
@@ -3485,9 +3493,10 @@ test('round 8 / owner item 3: the Vision tab is the live stream, the recorded re
   assert.equal(h.evaluate('reviewRoute()'), 'abc123', 'a review deep link parses');
   h.evaluate("location.hash='#/records'");
   assert.ok(!h.evaluate('reviewRoute()'), 'a plain records link parses to no review');
-  const row = h.evaluate(`archiveRow({id:'2890514774',title:'Wednesday 8-Ball Open',created_at:'2026-10-02T05:00:00Z',length:15600,broadcast_type:'ARCHIVE'},{id:'abc123',name:'Wednesday 8-Ball Open',source:{vodId:'2890514774'}})`);
+  const row = h.evaluate(`archiveRow({id:'2890514774',title:'Wednesday 8-Ball Open',created_at:'2026-10-02T05:00:00Z',length:15600,broadcast_type:'ARCHIVE'},[{link:{vodId:'2890514774',eventId:'abc123'},night:{id:'abc123',name:'Wednesday 8-Ball Open',source:{vodId:'2890514774'}},locked:true}])`);
   assert.ok(row.includes('data-action="tl-review" data-id="2890514774"'), 'the card is the broadcast, and clicking it opens it (owner items 6-8)');
-  assert.ok(row.includes('is-made') && row.includes(h.evaluate("esc(t('archiveBuilt'))")), 'and it says the night it already holds');
+  assert.ok(row.includes('is-made') && row.includes(h.evaluate("esc(t('vodMark'))")) && row.includes('Wednesday 8-Ball Open'),
+    'and it names the night that already holds it');
   assert.ok(!row.includes('tl-open-night') && !/bf-pick/.test(row), 'with nothing left to build first');
   assert.ok(/dataset\.vision=reviewId\?'recorded'/.test(source), 'the shell says which vision screen it is showing');
   // 4. the review screen itself
@@ -3535,6 +3544,30 @@ test('round 10 / owner item 3: a broadcast with no night yet still gets the scru
   assert.equal(h.evaluate("datasetForVod('2890514774')"), 'tw-2890514774', 'the whole-broadcast dataset is preferred to a range of it');
   assert.ok(/if\(want&&reviewState\(\)\.dataset!==want&&want!==vodDatasetAsked\)/.test(source), 'and the shell asks for it once the surface is mounted');
 });
+test('round 11: the count line is painted with the card and stays current when the late answer lands', async () => {
+  const h = harness({hash: '#/records'});
+  h.evaluate(linkHistory);
+  const first = h.evaluate('recordsScreen()');
+  assert.ok(first.includes('class="muted archive-count"'),
+    'the head carries the count from the first paint, before /api/vods/recent answers');
+  assert.equal(h.evaluate('esc(archiveCountText())'),
+    h.evaluate("esc(t('archiveCount').replace('{n}','1').replace('{built}','1'))"),
+    'and it counts what the console already knows: the record\u2019s one broadcast, already linked');
+  // The live page's bug (found in the browser pass): the head was painted once, so the numbers
+  // it could not know yet never arrived - the list repainted and the head stayed as it was.
+  h.evaluate(`window.__paint={list:{innerHTML:''},count:{textContent:''},note:{textContent:''}};
+    document.querySelector=s=>s==='#records-list'?window.__paint.list:s==='#archive-card .archive-count'?window.__paint.count:s==='#archive-card .archive-note'?window.__paint.note:null;`);
+  h.context.fetch = async () => ({ok: true, json: async () => ({channels: [...linkAnswer.channels, {channel: 'other', more: true, vods: []}]})});
+  await h.evaluate('loadArchiveList(true)');
+  assert.equal(h.evaluate('window.__paint.count.textContent'), h.evaluate('archiveCountText()'),
+    'the late answer writes the count in place');
+  assert.ok(h.evaluate('window.__paint.count.textContent').includes('2'), 'two broadcasts are known now');
+  assert.ok(h.evaluate('window.__paint.note.textContent').includes(h.evaluate("t('archiveMore').replace('{n}','2')")),
+    'and the sentence gains the clause it could not know before');
+  assert.ok(h.evaluate('window.__paint.list.innerHTML').includes('tl-vod-item'), 'the list is repainted beside it');
+  assert.ok(!source.includes('loading=false;render()'), 'and the screen is never rebuilt under an operator');
+});
+
 test('round 8 · the console words dictionary defines every key exactly once', () => {
   const from = source.indexOf('const words={');
   const body = source.slice(from, source.indexOf('\n', from));
@@ -3546,9 +3579,123 @@ test('round 8 · the console words dictionary defines every key exactly once', (
   for (const [lang, miss] of [['en', 'en'], ['zh', 'zh']]) {
     const h = harness();
     h.evaluate(`lang='${lang}'`);
-    const missing = h.evaluate(`['liveStream','liveNow','livePanelNote','liveNoChannel','reviewTitle','reviewFromRecords','reviewBack','reviewFootage','reviewBroadcast','reviewNote','person','ball','detectors','sources','stop','autoDownload','autoOn','autoPaused','autoPause','autoResume','autoQueued','autoDone','autoNow','autoSkipped','autoFailed','autoReading','searchCount','archiveDayCount','reviewImport','reviewVodNote','rosterRatingBase'].filter(k=>t(k)===k)`);
+    const missing = h.evaluate(`['liveStream','liveNow','livePanelNote','liveNoChannel','reviewTitle','reviewFromRecords','reviewBack','reviewFootage','reviewBroadcast','reviewNote','person','ball','detectors','sources','stop','autoDownload','autoOn','autoPaused','autoPause','autoResume','autoQueued','autoDone','autoNow','autoSkipped','autoFailed','autoReading','searchCount','dayEvents','dayEventsOne','dayVods','dayVodsOne','reviewImport','reviewVodNote','rosterRatingBase','vodMark','vodLinks','vodLinkOpen','vodEventOpen','vodLinkSearch','vodEventSearch','vodLinkNone','vodEventNone','vodLinkEmpty','vodEventEmpty','vodUnlink','vodLinkedBadge','vodTonight','vodWord'].filter(k=>t(k)===k)`);
     assert.equal(JSON.stringify(missing), '[]', `${miss}: every round 8 word key has a translation`);
   }
+});
+
+// ---- Round 11 (owner, m07044): "every vod should be able to be associated to one or more
+// competition. and every competition can be associated to one or more vod." One history list, and
+// a link an operator can make from either end. The relation lives in the store (annotator/
+// operations.py `vod_link`/`vod_unlink`); the console renders it and never derives it itself.
+const linkAnswer = {channels: [{channel: 'ttpoolfriday', error: null, vods: [
+  {id: '2890514774', title: '261001', created_at: '2026-10-03T01:30:00Z', length_s: 16455, broadcast_type: 'ARCHIVE', thumb: '/api/vods/thumb?channel=ttpoolfriday&id=2890514774'},
+  {id: '2884327358', title: '260918', created_at: '2026-10-03T02:00:00Z', length_s: 13397, broadcast_type: 'HIGHLIGHT', thumb: ''}]}]};
+const linkHistory = `data.players=[{id:'pa',name:'Ann',status:'Active',rating:100}];
+  data.tournament={id:'t1',name:'',format:'singles',raceTo:7,status:'registration',entrants:[],matches:[]};
+  data.history=[
+    {id:'n1',name:'Friday 8-Ball',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-10-03T05:00:00Z',
+     source:{kind:'twitch',vodId:'2890514774',startS:0,endS:3600,title:'261001'},
+     entrants:[{id:'a1',members:[{pid:'pa',name:'Ann'}]}],matches:[]},
+    {id:'n2',name:'Wednesday 9-Ball',format:'singles',raceTo:5,status:'complete',archivedAt:'2026-10-03T06:30:00Z',
+     entrants:[{id:'a2',members:[{pid:'pa',name:'Ann'}]}],matches:[]}];
+  data.events=[];data.notes=[];
+  data.vods=[{id:'2884327358',title:'260918',channel:'ttpoolfriday',length_s:13397,created_at:'2026-10-03T02:00:00Z'}];
+  data.links=[{vodId:'2890514774',eventId:'n1',startS:0,endS:3600,at:'2026-10-03T05:00:00Z'},
+              {vodId:'2890514774',eventId:'n2',at:'2026-10-03T10:00:00Z'},
+              {vodId:'2884327358',eventId:'n2',at:'2026-10-03T10:00:00Z'}];`;
+async function linkedScreen(h) {
+  h.context.fetch = async () => ({ok: true, json: async () => linkAnswer});
+  h.evaluate(linkHistory);
+  await h.evaluate('loadArchiveList(true)');
+  h.evaluate("lang='en'");
+  return h.evaluate('recordsScreen()');
+}
+test('round 11: one list - a day carries its nights and its broadcasts, and the links are many-to-many', async () => {
+  const h = harness({hash: '#/records'});
+  const screen = await linkedScreen(h);
+  assert.ok(!screen.includes(`>${h.evaluate("esc(t('archive'))")}</h2>`), 'the archive is no longer a screen of its own (owner item 2)');
+  assert.ok(!source.includes('archiveTimeline') && !source.includes('timelineHtml') && source.includes('function mergedTimeline(){'),
+    'one renderer paints the history, and the two old ones are gone');
+  const days = [...screen.matchAll(/class="tl-day" data-day="([^"]+)"/g)].map(m => m[1]);
+  assert.equal(new Set(days).size, 1, 'the two nights and the two broadcasts share one day head');
+  assert.equal((screen.match(/class="tl-day-head"/g) || []).length, 1, 'one day head, not one per kind');
+  assert.ok(screen.includes(h.evaluate("esc(t('dayEvents').replace('{n}','2'))")) &&
+    screen.includes(h.evaluate("esc(t('dayVods').replace('{n}','2'))")), 'the head counts both kinds');
+  const day = screen.slice(screen.indexOf('class="tl-day"'));
+  assert.ok(day.indexOf('data-event="n1"') > 0 && day.indexOf('data-event="n2"') > 0, 'both nights are rows in that day');
+  assert.ok(day.indexOf('data-id="2890514774"') > 0 && day.indexOf('data-id="2884327358"') > 0, 'and both broadcasts are cards in it');
+  const cards = [...screen.matchAll(/<li class="tl-vod-item">[^]*?<\/li>/g)].map(m => m[0]);
+  const firstCard = cards.find(c => c.includes('data-id="2890514774"'));
+  assert.ok(firstCard, 'the broadcast has a card of its own in the merged list');
+  assert.ok(firstCard.includes('is-made') && firstCard.includes(h.evaluate("esc(t('vodMark'))")) &&
+    firstCard.includes('Friday 8-Ball') && firstCard.includes('Wednesday 9-Ball'),
+    'a broadcast two nights claim names both of them');
+  assert.ok(h.evaluate('recordsScreen()').includes(h.evaluate("t('archiveCount').replace('{n}','2').replace('{built}','2')")),
+    'and the count says how many of the window are linked');
+  assert.equal(h.evaluate('calls.length'), 0, 'reading the merged list never writes');
+});
+test('round 11: the link is made from either end, and both directions post the pair', async () => {
+  const h = harness({hash: '#/records'});
+  await linkedScreen(h);
+  h.evaluate('render=()=>{}');
+  const row = h.evaluate('eventItem(data.history[1])');
+  assert.ok(row.includes('data-action="tl-review" data-id="2890514774"') && row.includes('261001'),
+    'the night names its broadcasts, each one a way into the footage');
+  assert.ok(row.includes(`data-action="vod-unlink" data-vod="2890514774" data-id="n2"`),
+    'a link an operator made can be dropped from the row');
+  const imported = h.evaluate('eventItem(data.history[0])');
+  assert.ok(imported.includes(h.evaluate("esc(t('vodLinkedBadge'))")) && !imported.includes('data-action="vod-unlink" data-vod="2890514774"'),
+    "the night's own import record is marked and cannot be unlinked from here");
+  assert.ok(row.includes(`data-action="vod-open" data-kind="event" data-id="n2"`), 'and the row carries the one control that adds a link');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'vod-open', kind: 'event', id: 'n2'}}}});
+  const panel = h.evaluate("vodPicker('event','n2',t('vodLinkOpen'))");
+  assert.ok(panel.includes(`aria-expanded="true"`) && panel.includes('class="pick-panel"') && panel.includes('data-vod-search="1"'),
+    'the panel opens in place, with one search box');
+  assert.ok(!/data-action="vod-link" data-vod="2890514774"/.test(panel) && !/data-action="vod-link" data-vod="2884327358"/.test(panel),
+    'the two broadcasts this night already claims are not offered again');
+  h.evaluate("vodPick={kind:'event',id:'n2',q:''}");
+  assert.equal(h.evaluate("vodPickRows('event','n2').length"), 0, 'both known broadcasts are already linked to it');
+  h.evaluate("vodPick={kind:'event',id:'n1',q:''}");
+  assert.equal(h.evaluate("JSON.stringify(vodPickRows('event','n1').map(r=>r.vodId))"), '["2884327358"]',
+    'the night with one link is offered the other broadcast');
+  assert.equal(h.evaluate("JSON.stringify(vodPickRows('event','n1')[0].attrs)"),
+    '{"title":"260918","channel":"ttpoolfriday","length":"13397","created":"2026-10-03T02:00:00Z"}',
+    'every field the store keeps rides the row, so the server never has to ask Twitch');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'vod-link', vod: '2884327358', id: 'n1',
+    title: '260918', channel: 'ttpoolfriday', length: '13397', created: '2026-10-03T02:00:00Z'}}}});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.at(-1))')), {name: 'vod_link', payload: {
+    vodId: '2884327358', eventId: 'n1', title: '260918', channel: 'ttpoolfriday', length_s: 13397, created_at: '2026-10-03T02:00:00Z'}},
+    'the write carries the pair and the broadcast metadata the store keeps');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'vod-unlink', vod: '2884327358', id: 'n1'}}}});
+  assert.equal(h.evaluate('JSON.stringify(calls.at(-1))'),
+    '{"name":"vod_unlink","payload":{"vodId":"2884327358","eventId":"n1"}}', 'and dropping it is the pair alone');
+  const page = h.evaluate("reviewScreen(null,vodById('2884327358'))");
+  assert.ok(page.includes('Wednesday 9-Ball'), 'the broadcast page lists the night that covers it');
+  assert.ok(page.includes(`data-action="vod-open" data-kind="vod" data-id="2884327358"`), 'and carries the control that links another');
+  h.evaluate("vodPick={kind:'vod',id:'2884327358',q:''}");
+  assert.deepEqual(JSON.parse(h.evaluate("JSON.stringify(vodPickRows('vod','2884327358').map(r=>[r.eventId,r.linked,r.locked]))")),
+    [['t1', false, false], ['n1', false, false], ['n2', true, false]], 'every night is offered, the linked one as its unlink');
+  assert.ok(h.evaluate("vodPicker('vod','2884327358',t('vodEventOpen'))").includes('data-action="vod-unlink" data-vod="2884327358" data-id="n2"'),
+    'and the row for a linked night is the way to drop it');
+  h.evaluate("vodPick={kind:'vod',id:'2890514774',q:''}");
+  assert.equal(h.evaluate("JSON.stringify(vodPickRows('vod','2890514774').map(r=>[r.eventId,r.locked]))"),
+    '[["t1",false],["n1",true],["n2",false]]', "the night whose own import is this broadcast is locked, the other is not");
+});
+test('round 11: the day head is not the row date, and every search still reaches both kinds', async () => {
+  const h = harness({hash: '#/records'});
+  await linkedScreen(h);
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('#ops-shell .tl-day-date{'), 'the day head has its own class');
+  assert.ok(!/#ops-shell \.tl-date\{[^}]*--fs-xl/.test(css), 'and no longer restyles the row date it collided with (round 9)');
+  assert.ok(source.includes('<span class="tl-date">') && source.includes('<h3 class="tl-day-date">'), 'the row keeps the small date, the head keeps the loud one');
+  h.evaluate("vodPick=null;eventsQuery='261001'");
+  const narrowed = h.evaluate('mergedTimeline()');
+  assert.ok(narrowed.includes('data-id="2890514774"') && !narrowed.includes('data-id="2884327358"'), 'the box filters broadcasts by their own title');
+  h.evaluate("eventsQuery='Wednesday'");
+  const night = h.evaluate('mergedTimeline()');
+  assert.ok(night.includes('data-event="n2"') && !night.includes('data-event="n1"'), 'and still filters nights by name');
+  h.evaluate("eventsQuery=''");
 });
 
 test('round 8 / owner item 2: Records says what the automatic download is doing, and carries its one switch', () => {
@@ -3573,4 +3720,26 @@ test('round 8 / owner item 2: Records says what the automatic download is doing,
   assert.ok(/next=autoList\.rows\?\.enabled\?'off':'on'/.test(source), 'and posts the opposite of the current state');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   assert.ok(css.includes('#ops-shell .auto-line{'), 'the line has its own layout');
+});
+
+test('round 11: a broadcast the channel has forgotten is still listed, from the console\'s own record', async () => {
+  const h = harness({hash: '#/records'});
+  const screen = await linkedScreen(h);
+  assert.equal((screen.match(/class="tl-vod-note"/g) || []).length, 0,
+    'a broadcast the archive lists is not marked as coming from the record');
+  // Twitch exposes a window, not a history: the store keeps the broadcasts a link points at, and
+  // the list must show them even after the channel stops exposing them - otherwise the row the
+  // relation was made with disappears from under the night that names it.
+  h.evaluate("data.vods.push({id:'2274501933',title:'260828',channel:'ttpoolfriday',length_s:13800,created_at:'2026-10-03T03:00:00Z'})");
+  const after = h.evaluate('recordsScreen()');
+  const cards = [...after.matchAll(/<li class="tl-vod-item">[^]*?<\/li>/g)].map(m => m[0]);
+  const own = cards.find(c => c.includes('data-id="2274501933"'));
+  assert.ok(own, 'a broadcast only the record knows is still a card in the merged list');
+  assert.ok(own.includes(h.evaluate("esc(t('vodOwn'))")), 'and the card says where it came from');
+  assert.ok(own.includes('260828'), 'with the title the store kept');
+  assert.equal(cards.length, 3, 'no duplicate for the broadcast the archive already listed');
+  assert.equal(cards.filter(c => c.includes('class="tl-vod-note"')).length, 1, 'only the unlisted one is marked');
+  assert.ok(after.includes(h.evaluate("t('archiveCount').replace('{n}','3').replace('{built}','2')")),
+    'the count is the union, not just the window');
+  assert.ok(h.evaluate('calls.length') === 0, 'and still no write: the list only reads');
 });

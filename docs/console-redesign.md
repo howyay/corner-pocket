@@ -2185,3 +2185,233 @@ Two things make that honest rather than decorative:
   resolved at boot before `/api/vods/recent` answers — the operator's path (open Records, click the card) is what
   this round measured and what works. And `About 6.8 GB` is an estimate of the whole broadcast, not a promise:
   whole-broadcast imports are multi-hour files by definition, which is what was asked for.
+
+## §23 — Round 11: one history (the nights and the broadcasts), a link an operator makes from either end, and the club's own database (2026-10-04)
+
+The round's work order is m07044. One sentence of it is quoted verbatim here because the console's own
+comment carries it, and it is the whole of item 2:
+
+> every vod should be able to be associated to one or more competition. and every competition can be
+> associated to one or more vod.
+
+The rest of the same message, in short (paraphrased; the message itself is m07044): the shot timer is one
+thing and its name is **出杆计时**, not 击球计时, in both clocks; 录制场次 and 历史赛事 are **one list**, not
+two screens; and the association has to be makeable from either end.
+
+**What the round is, in one line**: the relation is a store fact — the join table `links`, keyed by the
+pair `(vodId, eventId)` — and the console renders it and never derives or invents it.
+
+### 23.1 The model: `vods` and `links` (`annotator/operations.py`)
+
+- `state['vods']` is the broadcasts this console has seen — `{id, title, channel, length_s, created_at}`.
+  It exists because the workbench must render a broadcast it can no longer ask Twitch about, and because
+  the archive window (`/api/vods/recent`, `RECENT_TTL_S`) is a window, not a record.
+- `state['links']` is the relation: one row per pair — `{vodId, eventId, startS, endS, at}`. `_link_vod`
+  (`annotator/operations.py:174-196`, reached from the `vod_link` action at `:880`) is idempotent for the
+  pair and refreshes the *range* only when the caller knows one ("a link's range belongs to whoever knows it:
+  an import writes it, the picker leaves it alone, and a wrong one is cleared by unlink then link again").
+  `_unlink_vod` (`:205-217`, reached at `:882`) refuses the
+  night's own import — `"This broadcast is this event's own import record; delete or hide the event
+  instead"` — because that line is still in the event and the next read would materialise the row again.
+  `_drop_links` (`:219-222`) drops a night's rows when the night stops existing, so the table never has a
+  dangling end.
+- **The import already wrote the relation, in the same write as the night.** Every write ends in `_commit`
+  (`annotator/operations.py:290-293`), whose first act is `self._adopt_sources(state)` — "a write persists
+  the relation it can derive, so the next reader does not have to" — so the row an import creates is in the
+  document before the revision advances. Round 11 is where that relation became visible in the console and
+  where an operator can add more to it.
+- The two actions are `vod_link` / `vod_unlink` on the existing endpoint: `POST /api/operations` with
+  `{revision, action:'vod_link', vodId, eventId, title?, channel?, length_s?, created_at?}` — the metadata
+  the picker is holding, so the server never has to ask Twitch — and `{revision, action:'vod_unlink',
+  vodId, eventId}` for dropping a pair. The usual revision fence applies (`ConflictError("State changed;
+  reload before retrying")`).
+- `annotator/operations.py` is **51872 bytes** after the round (161 added lines); `tests/test_operations.py`
+  **79905 bytes**, +146 lines in a new `class VodLinkTests` (1132): a backfilled night *is* a link;
+  one broadcast covers many events and one event many broadcasts; metadata is refreshed field by field; a
+  refused link writes nothing; unlinking leaves the broadcast known; an event that stops existing takes its
+  links away; an archived event keeps its links.
+
+### 23.2 The document that predates the table: `normalise()`
+
+A stored document is not a schema. The club's own `out/corner-pocket/state.json` — and its Postgres copy —
+was written by builds that had no `vods` and no `links`, so a read that assumed both keys would raise on
+exactly the file the club depends on. The fix is a module-level `normalise(state)` (`annotator/operations.py:103`)
+that does three `setdefault`s and then materialises the imports' own rows once
+(`Operations._adopt_sources`, `:225-243`): for every `source` an import wrote, one `vods` row (the line's
+title) and one `links` row (the line's range, or `None` for "the whole broadcast"). It is read-time,
+idempotent, clock-free and writes nothing back — a read never rewrites the file — and `Operations._load`
+now returns `normalise(json.loads(...))`, so a JSON document, a Postgres document and a fresh one all reach
+the rules in the same shape.
+
+The Postgres half needed the same call for the same reason: `PostgresStore._document`
+(`src/store_pg.py:106`) reads one raw text document out of `json_documents` and is *not* `Operations._load`,
+so it now calls the same `normalise`. Eight added lines in `src/store_pg.py` (20205 bytes) and the two
+stores agree again. `docs/postgres.md` records it.
+
+Two tests hold this down, one per store, both built by `tests/test_store_contract.py`'s `before_round_11()`
+— a revision-7 document with one archived night that has a `source` line and neither new key
+(`tests/test_store_contract.py`, +49 lines): the JSON test writes that file and reads it back through
+`Operations`, the Postgres test puts that text into `json_documents` and reads it back through
+`PostgresStore`; both require the two keys, the exact link row
+(`{"vodId":"2274501933","eventId":"night1","startS":3600,"endS":11400,"at":""}`), the broadcast it names,
+the document byte-identical after the read, and a second read equal to the first. `tests/test_store_roundtrip.py`
+(+7 lines) adds two links over the archived night, so the relation is proven to survive a real Postgres
+round-trip with its numbers, not just its keys.
+
+### 23.3 One list
+
+`recordsScreen()` renders **one card** (`#archive-card`) headed `历史赛事` / `Events`: the search input, the
+hidden-nights toggle, the count, Refresh, Backfill a past event, the archive note, the automatic-download
+line, `<div id="records-list">`, and the rest-audit fold. The archive's own card, its own heading and
+`archiveTimeline()` are gone; `timelineHtml()` is gone with it, and `mergedTimeline()` is the one renderer.
+It walks the nights and the broadcasts once, groups them by the day they share (`dayKeyOf`), sorts the days
+newest first, then emits year → month → day: `<h3 class="tl-year">`, `<section class="tl-month">` with
+`<h3 class="tl-month-head">`, and `<section class="tl-day" data-day="YYYY-M-D">` whose head is
+`<h3 class="tl-day-date">` plus a `.tl-day-count` that counts **both** kinds (`2 events · 1 broadcast` /
+`2 场赛事 · 1 段直播`). A day carries `ol.tl-nights` and/or `ol.tl-vods` — the same day head for both, which
+is what "what happened on the 2nd" should answer.
+
+- **The list is a union, and the union was a browser find.** `/api/vods/recent` is a window with a TTL and
+  it is the *server's* view of the channel; the store's own `vods` rows are what a link points at. The first
+  browser pass on an isolated root showed **0 broadcasts** with three links on screen, because the list read
+  only the archive. `knownVods()` (the record's rows, `fromRecord:true`) is appended to `archiveVods()` by
+  id — the archive wins when it has the row, because it carries the thumbnail and the fresh metadata — and a
+  card that came from the record alone says so (`Known to this console` / `本机记录的直播`). The node test
+  that pins it lists 3 cards for 2 archive rows + 1 record row, with exactly one `.tl-vod-note` and no
+  duplicate.
+- **A card's mark is the nights that claim it**: `archiveRow(vod, links)` renders `已关联赛事 · <names>`
+  when any link row names a night, and `is-made` follows the same rule. The round-6 word `archiveBuilt`
+  ("Night built") is gone — with many-to-many, "built" is not one thing.
+- **The count line is the head's number, always**: `{n} broadcasts · {built} linked to an event`
+  (`31 broadcasts · 0 linked to an event` on the club's page). See 23.5 for why this needed a second pass.
+- **One class collision from round 9 is gone**: the day head used `.tl-date`, the same class as a night
+  row's date, and a later rule restyled the rows' dates too. The head is `.tl-day-date` now (CSS 1075/1090
+  renamed), and the test asserts both that the class exists and that no `.tl-date` rule carries the head's
+  `var(--fs-xl)` again.
+
+### 23.4 The link, from either end
+
+- **On a night, inside its drawer** (`eventLinks(night)`, rendered by `eventItem()` after the source line):
+  `Broadcasts` / `直播回放`, one chip per link — the broadcast's title, its own import marked
+  `本晚自己的导入` / `This night's own import` and unlinkable, the others carrying a `×` — plus the picker
+  `Link a broadcast` / `关联直播`.
+- **On a broadcast's own page** (`vodEventSection(vodId)`, rendered by `reviewScreen()` when the screen is a
+  VOD): the same row labelled `历史赛事` / `Events`, the nights that cover it as chips, and the picker
+  `Link an event` / `关联赛事`.
+- **The picker is the desk's own listbox**, reused rather than reinvented: `.pick-btn` + `.pick-panel` in
+  flow, `data-total`, one `.pick-search` (`data-vod-search`), a `.pick-count` that reads `{n} of {m}` and is
+  filtered *in place* by `vodFilter()` (no re-render, so the caret keeps its place), and rows that are
+  `data-action="vod-link"` — or `vod-unlink` when the pair already exists, or `disabled` with the badge when
+  the pair is the night's own import (`is-locked`). It offers **only what is free**: a broadcast the night
+  already claims is not offered again, and the night's own import is not offered at all. Opened from the desk
+  side it lists the live tournament first, marked `今晚` / `Tonight`.
+- **The writes carry the metadata the console already holds** — `{vodId, eventId, title, channel, length_s,
+  created_at}` — so making a link costs one POST and no Twitch call. The console never derives the relation:
+  it posts the pair, re-reads, and renders what came back (`.pm/PROJECT.md`'s standing rule about the store
+  being the only writer).
+
+### 23.5 Two live defects the shots caught
+
+Both were found by measuring the real page, not by a test, and both are recorded because the tests were
+green while they were live.
+
+1. **The count line never appeared.** `paintArchive()` repainted only `#records-list`, while the count span
+   and the archive note were rendered inside the *first* paint's conditional — and `archiveList.rows` is
+   `null` at the first paint and filled when `/api/vods/recent` answers. So the number the round exists to
+   show (`{n} broadcasts · {built} linked to an event`) and the `archiveMore` sentence were **absent from a
+   live page**; the node tests passed because they pre-populate `archiveList`. Round 9/10 had the head inside
+   the repainted region; round 11 introduced this by narrowing the repaint target. The fix keeps round 6's
+   rule that a late answer must not rebuild the screen under an operator: `archiveCountText()` and
+   `archiveNoteText()` are now the single source of both sentences, `recordsScreen()` always renders them,
+   and `paintArchive()` writes them **in place** (`count.textContent=…`, `note.textContent=…`) next to the
+   list it repaints. Measured on production afterwards: `31 broadcasts · 0 linked to an event` in English,
+   `31 段直播 · 0 段已关联赛事` in 中文.
+2. **The phone scrolled sideways again: 653 px inside a 390 px window.** Every element from `h3.tl-year`
+   down to `ol.tl-vods` measured **624** wide in a 332-wide list, in both languages. The mechanism: round 11
+   moved the day rows into the `.events` grid (`#ops-shell .events{display:grid;gap:var(--sp-1)}`,
+   `annotator/ops.css:750`), so `.tl-month` became a grid item whose computed `min-width:auto` let the
+   grid's `auto` track take its min-content — the `.tl-vods` scroller's contents, exactly
+   `3×200 + 2×12 = 624`. Round 10 had fixed the same class of bug one level up
+   (`#ops-shell .stack.records>*{min-width:0}`, §21.4 "The phone at 390: a regression the measurement
+   caught", 670 → 390 then); round 11 re-broke it by changing the chain. The fix is one declaration, with the
+   measurement in the comment above it: `#ops-shell .events{display:grid;gap:var(--sp-1);
+   grid-template-columns:minmax(0,1fr)}`. Re-measured: 390 → `documentElement.scrollWidth` **390**, card 366,
+   `.tl-vods` 332 with `scrollWidth` 412, `.tl-vod-item` 200 — the same numbers §21.4 recorded; 1280 →
+   **1280**, `.tl-vods` 1185 == its own `scrollWidth` 1185.
+
+### 23.6 The incident: a suite that wrote into the club, and the guard
+
+The full python suite was launched **with `POOL_DATABASE_URL` exported** (the variable production needs).
+It ended `Ran 1265 tests in 224.015s · FAILED (failures=13, errors=11, skipped=4)` — and the failures were
+the smaller half of the problem. `open_store()` (`src/store.py:100`) is "Postgres when `POOL_DATABASE_URL`
+is set, else the JSON files", so **every in-process `Backend(root)` in the fixture tests was reading and
+writing the live club's document** (the database keys it by path, not by root: `out/corner-pocket/state.json`).
+`tests/test_unified_server.py:565` failing with `AssertionError: 11 != 1` for `len(state['players'])` was how
+it surfaced.
+
+The damage, from the event log that is never truncated (`ops_events`): revisions 22–32
+(`player_enroll_from_tracklet` for `Ana` ×5 and `Bo` ×5, `player_save` `Club Regular`) and revisions 33–40
+(seven `entrant_add` and a `tournament_start`, which is what created 7 matches and made the tournament
+`active` with `raceTo=1`). The club's own last real write was revision 21. It was repaired through the
+store's own writer in one transaction (`_locked` → `_document` → drop the three test players, keep the one
+real entrant, `matches: []`, `status: 'registration'`, delete the 15 faces those players had, delete
+`ops_events` rows above 21 → `_save(…,'repair_test_leak')`), leaving **revision 41 with the eight real
+regulars, one entrant and no matches**; the backup of everything touched is `/tmp/r11-repair-backup.json`.
+
+**The prevention is a refusal, not a warning.** `open_store()` now checks `scratch_root(root)` — a root
+under the system temp directory — and raises before it can hand a temporary fixture root the club database:
+
+```
+open_store: POOL_DATABASE_URL is set, so the club's data lives in Postgres and the root does not isolate
+anything: every rooted store with this database reads the same document (out/corner-pocket/state.json).
+/tmp/tmpXXXX is a scratch directory, so it would be handed the live club. Refusing. Run without
+POOL_DATABASE_URL, or open a throwaway schema on purpose: PostgresStore(root, search_path='...')
+(docs/postgres.md).
+```
+
+`src/store.py` (15299 bytes, +27 lines) carries `scratch_root` and the refusal; `tests/test_store.py`
+(13607 bytes) replaces the selection test's dangerous shape (it used to assert that a *temp* root became a
+`PostgresStore`) with one that uses the repository root for that branch, and adds
+`test_a_scratch_root_is_never_handed_the_club_database`, which asserts the message names the root, the
+variable, `scratch`, the document path, `search_path` and `docs/postgres.md`, and that without the variable
+the same fixture root is a `JsonStore`. `docs/postgres.md` (+23 lines) gains the two-pass rule — the fixture
+pass runs without the variable, the database passes run per file against their own migrated-and-dropped
+schema, and a caller that wants a database from a temporary root constructs `PostgresStore(root,
+search_path=…)` on purpose, never `open_store`. Deliberate env-var tests (`tests/test_store.py`,
+`tests/test_db.py`, the contract/import/roundtrip classes with their own schemas) are untouched, and
+`Backend.store` is lazy (`annotator/unified_server.py:425-431`) so `tests/test_board_api.py`'s
+fixture-then-assign pattern still works.
+
+**Proof the guard bites**: `POOL_DATABASE_URL='postgresql://u@127.0.0.1:1/x' … -m unittest test_unified_server`
+now stops in the first second with the refusal above, per fixture root, instead of writing to the club.
+
+### 23.7 Verification
+
+| what | result |
+|---|---|
+| `node --test tests/test_ops.js` (311506 B, +3 tests) | **159 tests · 159 pass · 0 fail** |
+| `node tests/test_app_timeline.js` | **81 passed, 0 failed** |
+| `node --test tests/test_board.js` | **16 tests · 16 pass · 0 fail** |
+| `env -u POOL_DATABASE_URL .venv/bin/python -m unittest discover -s tests -p 'test_*.py'` | **`Ran 1266 tests in 245.968s` / `OK (skipped=49)`** |
+| `… -m unittest test_store_contract` (with the database) | **`Ran 50 tests in 19.149s` / `OK`** |
+| `env -u POOL_DATABASE_URL … -m unittest test_store` | **`Ran 15 tests in 10.705s` / `OK`** |
+| detector (`impeccable detect --json annotator/ops.js annotator/ops.css`) | **25 findings — the same 25 as round 9, 0 on a round-11 line** (`docs/impeccable-ledger.md`) |
+
+Production (`127.0.0.1:8130`, served off disk, one restart for the python half): Records reads one card,
+26 days, 31 broadcast cards, 0 nights, 0 chips, the count line present, `#auto-line` live; 中文 reads
+`31 段直播 · 0 段已关联赛事` under `历史赛事`, the day heads are 中文 dates and `#tabbar` is
+`1出杆计时2赛事3战绩档案4视觉5常客6后台` — **the rename is live in the nav** — and `#/clock` reads
+`h2 出杆计时`. The isolated root (`--root /tmp/r11-root`, the shipped code) is where the relation is proven
+in a browser: one day holding 3 nights and 3 broadcasts (all three cards `Known to this console`, because
+that root has no archive window at all), the count `3 broadcasts · 2 linked to an event`, the night's chips
+at 482×42 for its own import (badge, no `×`) and 119×42 for the two links an operator made, and both
+pickers offering exactly what is free (night side `1 of 1`, broadcast side `4 of 4` with one `is-locked`).
+Shots are in `out/r11/` (`docs/console-shots.md` §17).
+
+Limits, stated rather than hidden: the chips and the picker live **inside the night's drawer** (`.tl-body`)
+— the list stays one line per night and the operator expands to link, which is the console's existing shape,
+but it means a collapsed list shows no chips at all; a **cold deep link** to `#/records/review/<id>` still
+lands on the Records list (pre-existing, §22); the day head is the **broadcast's** date (its `created_at`
+in this machine's zone) and a night's date is its archived date, so a night played after midnight and its
+broadcast can fall on different days — the operator's list shows both, and the join is the link, not the
+date; and `{built}` counts links, so a broadcast covering two nights counts once.

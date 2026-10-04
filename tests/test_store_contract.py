@@ -32,6 +32,19 @@ def face(seed, **extra):
     return dict({"embedding": unit(seed), "eye_px": 12.0, "det_score": 0.9}, **extra)
 
 
+def before_round_11():
+    """A document exactly as a build before round 11 wrote it: one archived night whose
+    import line names a broadcast, and neither `vods` nor `links`.  Production found this
+    gap on 2026-10-04 - the Postgres store read the raw stored text, so a club there never
+    adopted the links its own imports imply (owner, m07044)."""
+    return {"revision": 7, "players": [], "notes": [], "sources": [], "settings": {},
+            "tournament": {"id": "live", "name": "Live", "entrants": [], "matches": []},
+            "history": [{"id": "night1", "name": "Night", "hidden": False,
+                         "source": {"vodId": "2274501933", "startS": 3600, "endS": 11400,
+                                    "title": "Wednesday 8-Ball Open",
+                                    "datasetId": "tw-2274501933-3600-11400"}}]}
+
+
 class Contract:
     """Mixed into a TestCase that provides self.store (and self.root)."""
 
@@ -339,6 +352,22 @@ class JsonContract(Contract, unittest.TestCase):
         return {str(p): (hashlib.md5(p.read_bytes()).hexdigest(), p.stat().st_size, p.stat().st_mtime_ns)
                 for p in sorted(self.root.rglob("*")) if p.is_file()}
 
+    def test_a_document_file_written_before_round_11_reads_with_its_links(self):
+        """The file store's half of the production gap: two keys it never had, and the
+        link the night's own import line implies - derived on read, not written to disk."""
+        path = self.root / "out" / "corner-pocket" / "state.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(before_round_11()))
+        before = self.snapshot()
+        doc = self.store.ops_get()
+        self.assertEqual([k for k in ("vods", "links") if k in doc], ["vods", "links"])
+        self.assertEqual(doc["links"], [{"vodId": "2274501933", "eventId": "night1",
+                                         "startS": 3600, "endS": 11400, "at": ""}])
+        self.assertEqual([v["id"] for v in doc["vods"]], ["2274501933"])
+        self.assertEqual(doc["vods"][0]["title"], "Wednesday 8-Ball Open")
+        self.assertEqual(self.snapshot(), before, "reading adopted the link; it did not write it")
+        self.assertEqual(self.store.ops_get(), doc, "adoption is idempotent")
+
 
 @unittest.skipUnless(HAVE_DB, f"{db.ENV} is not set (docs/postgres.md)")
 class PostgresContract(Contract, unittest.TestCase):
@@ -380,6 +409,26 @@ class PostgresContract(Contract, unittest.TestCase):
                 self._checked_writes += 1
 
         self.store._write = checked_write
+
+    def test_a_stored_document_written_before_round_11_reads_with_its_links(self):
+        """The Postgres half: `_document` reads the stored text through `normalise`, the
+        same way `Operations._load` reads the file, so the two stores answer alike."""
+        from src.store_pg import STATE
+        from src.store_files import get_document, put_document
+        text = json.dumps(before_round_11())
+        with db.connect() as conn:
+            conn.execute(f"SET search_path TO {self.schema}")
+            put_document(conn, STATE, text)
+        doc = self.store.ops_get()
+        self.assertEqual([k for k in ("vods", "links") if k in doc], ["vods", "links"])
+        self.assertEqual(doc["links"], [{"vodId": "2274501933", "eventId": "night1",
+                                         "startS": 3600, "endS": 11400, "at": ""}])
+        self.assertEqual([v["id"] for v in doc["vods"]], ["2274501933"])
+        with db.connect() as conn:
+            conn.execute(f"SET search_path TO {self.schema}")
+            stored = get_document(conn, STATE)
+        self.assertEqual(stored, text, "reading adopted the link; the stored text is untouched")
+        self.assertEqual(self.store.ops_get(), doc, "adoption is idempotent")
 
     def test_the_projection_check_runs_after_every_write_and_catches_drift(self):
         from src.store_check import check

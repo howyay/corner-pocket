@@ -659,3 +659,64 @@ archive arrives; every measurement above took the operator's path — `#/records
 `.vs-inspector` measured `display:none` at 390 is not a loss: below 1100 px the stylesheet has always folded the
 rail and the inspector into `.vs-sheettabs`, and that switcher is present. And `About 6.8 GB` is the size of the
 whole broadcast, which is now what an import is.
+
+## 17. Round 11: one history, a link from either end, and the drawer
+
+Reproduce: the Records and clock passes are read-only against the production console on `127.0.0.1:8130`
+(the 中文 pass switches `localStorage('cp-ops-lang')`, not the club's state file). The **link** shots need
+nights and an archive window that agree, so they are taken against the isolated root on
+`127.0.0.1:8144` (`--root /tmp/r11-root`, the shipped code, no club data): that root's
+`/api/vods/recent` is empty, which is exactly what makes the union visible.
+
+```
+B=/home/haoye/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64
+export AGENT_BROWSER_SESSION=r11b
+$B set viewport 1280 900                              # `set` is the subcommand
+$B open 'http://127.0.0.1:8130/?r11=1#/records'       # ?r11=N defeats the asset cache
+$B screenshot out/r11/after-r11-records-1280.png
+$B eval 'localStorage.setItem("cp-ops-lang","zh")'    # the 中文 pass, no club state touched
+$B open 'http://127.0.0.1:8130/?r11=2#/records' ; $B screenshot out/r11/after-r11-records-1280-zh.png
+# the phone, both languages, after the grid fix:
+$B set viewport 390 844 ; $B open 'http://127.0.0.1:8130/?r11=3#/records'
+$B eval '(()=>({sw:document.documentElement.scrollWidth,iw:innerWidth}))()'
+# the links, on the isolated root:
+$B open 'http://127.0.0.1:8144/?r11=4#/records'
+$B eval '(()=>{const ids=[...document.querySelectorAll("li.tl-item")].map(li=>li.dataset.event);
+  for(const id of ids){document.querySelector(`li.tl-item[data-event="${id}"] .tl-toggle`).click()}return ids.length})()'
+$B screenshot out/r11/after-r11-links-1280.png
+```
+
+**The drawer rule this round had to learn.** The chips and the picker live inside `.tl-body`, the night's
+collapsible drawer, so a chip in a collapsed night measures 0×0 and a screenshot of a collapsed list shows
+no chips at all — the first `.pick-panel` shot came out **byte-identical** to the unopened one
+(md5 `61f0bcd8abba1126617fef733d370714`, twice) for exactly that reason. Every link shot below was taken
+after expanding each night **by id, one click at a time** (each click re-renders, so a stale NodeList is
+useless) and after checking `getBoundingClientRect()` **and** `offsetParent !== null` on the element the
+shot is supposed to show.
+
+| surface | measured |
+|---|---|
+| production Records, 1280, EN | one card `#archive-card`; count line **`31 broadcasts · 0 linked to an event`**; 26 `section.tl-day`, 31 `li.tl-vod-item`, **0** `li.tl-item`, 0 `.vod-chip`, 0 `.vod-pick-btn`, 0 `.tl-vod-note`; years `['2026','2025','2024']`; day heads `Friday, 2 October 2026` / `Sunday, 27 September 2026` / … with `.tl-day-count` `2 broadcasts`, `1 broadcast`, …; first card `261001` / `23:07 · 4:34:15 · BROADCAST`; `#auto-line` = `Automatic download · running · 28 queued · 2 done · now 2871819680 · 1 skipped Pause`; head = `Events` + count + `Refresh` + `Backfill a past event from a Twitch VOD…` + the `#events-search` box |
+| production Records, 1280, 中文 | count `31 段直播 · 0 段已关联赛事`; heading `历史赛事`; day counts `2 段直播`; day heads `2026年10月2日星期五`; the note in 中文; `#tabbar` = `1出杆计时2赛事3战绩档案4视觉5常客6后台` — **the rename is live in the nav** |
+| production clock, 390, 中文 | `h2` = `出杆计时`; `#main` = `出杆计时0:45开始重置20304560`; `#tabbar` present |
+| production Records, 390, EN and 中文 (after the fix) | `documentElement.scrollWidth` **390** == `innerWidth` (it was **653** before the grid fix, with every element from `h3.tl-year` down to `ol.tl-vods` at 624 inside a 332-wide list); card 366; `.tl-vods` 332 with `scrollWidth` 412; `.tl-vod-item` 200 — the numbers §21.4 recorded |
+| production Records, 1280 (after the fix) | `documentElement.scrollWidth` **1280**; `.tl-vods` 1185 == its own `scrollWidth` 1185 |
+| the isolated root, EN, nights expanded | 1 `section.tl-day`, 3 `li.tl-item`, 3 `li.tl-vod-item`, **3 `.tl-vod-note`** (`Known to this console` on every card: this root has no archive window, so the union is what fills the list), count `3 broadcasts · 2 linked to an event`, 2 `.vod-unlink`; the chips measure **482×42** (the night's own import, with the `This night's own import` badge and no `×`) and **119×42** (the two links an operator made, each with its `×`); `.vod-links` 1171×41 |
+| the night's picker, isolated root | `.pick-panel` **223×108**, `.pick-row` **1**, `.pick-count` **`1 of 1`**, the row `261001 18:30 · 4:34:15` — i.e. only the broadcasts this night does **not** already claim are offered (the locked own import and the two linked ones are absent) |
+| the broadcast's own page, isolated root | `#/records/review/2274501933`, `#review-card` 1, a `.vod-links` labelled `Events` with the picker `Link an event▾`; opened: **4 rows** (`8-Ball Open · Fri 10/2 Tonight`, `Warm-up 8-Ball`, `Wednesday 8-Ball Open` + `This night's own im…`, `Speed Pool side event`), `.pick-count` **`4 of 4`**, **1 `.pick-row.is-locked`** (the night whose own import this broadcast is) |
+| the rename, from three sides | `#tabbar` and the clock page read 出杆计时 (above); `annotator/ops.html`'s clockbar `aria-label` is `Shot timer / 出杆计时`; `annotator/clock-sync.js` carries `kicker: '出杆计时'` and the local-timer line; no file under `annotator/` still contains 击球计时 |
+
+Suites, on the shipped tree: `node --test tests/test_ops.js` **159/159**, `node tests/test_app_timeline.js`
+**81/0**, `node --test tests/test_board.js` **16/16**, and the fixture python pass
+`Ran 1266 tests in 245.968s / OK (skipped=49)` (run **without** `POOL_DATABASE_URL`, which is now enforced —
+`docs/console-redesign.md` §23.6).
+
+Shots: `out/r11/after-r11-records-1280.png`, `after-r11-records-1280-zh.png`, `after-r11-records-390.png`,
+`after-r11-records-390-zh.png`, `after-r11-clock-390-zh.png`, `after-r11-links-1280.png`,
+`after-r11-picker-1280.png`, `after-r11-review-link-1280.png`, `after-r11-review-picker-1280.png`.
+
+Limits: the link shots are the **isolated root** rather than the club's own page, because the club has no
+archived nights (0 `li.tl-item`) and therefore nothing to link from — the production pass is what proves the
+list, the count and the phone, and the isolated root is what proves the relation; a collapsed night shows no
+chips until it is expanded (the drawer rule above); and the two picker counts (`1 of 1`, `4 of 4`) are the
+console's own arithmetic over the rows it holds, not a claim about Twitch.

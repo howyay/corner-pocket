@@ -1129,5 +1129,151 @@ class EventBackfillTests(unittest.TestCase):
         self.assertEqual(Operations(self.root).get(), state)
 
 
+class VodLinkTests(unittest.TestCase):
+    """docs/console-redesign.md 23: a broadcast covers events, an event is covered by
+    broadcasts.
+
+    The relation is one row per pair - never a list on either side - because it is
+    many-to-many in both directions; a link outlives the broadcast's own metadata
+    because Twitch forgets broadcasts; and the import's audit line stays exactly what
+    the import wrote, because that line is the record of a write.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ops = Operations(self.root)
+
+    def call(self, action, **fields):
+        return self.ops.post(dict(action=action, revision=self.ops.get()['revision'], **fields))
+
+    def imported(self, entries):
+        """The registry the single-flight import job writes under out/vods/index.json."""
+        path = self.root / 'out' / 'vods' / 'index.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dict(vods=entries)))
+
+    def backfill(self, name='8-Ball Open · 周一 9/1'):
+        """One signed night in the timeline, through 7.4's own path."""
+        self.imported(['tw-1234567890-452-1690'])
+        return self.call('event_backfill',
+                         event=dict(name=name, format='singles', raceTo=7, tables=4,
+                                    entrants=[dict(name='Wanwan'), dict(name='Su')],
+                                    matches=[dict(round=1, sides=['Wanwan', 'Su'], score=[3, 1],
+                                                  winner='Wanwan', result='played', clip=[452, 1690])]),
+                         source=dict(kind='vod-backfill', vodId='1234567890',
+                                     datasetId='tw-1234567890-452-1690', startS=452, endS=1690,
+                                     channel='examplechannel', title='Monday night', humanReviewed=True))
+
+    def link(self, vod, event, **fields):
+        return self.call('vod_link', vodId=vod, eventId=event, **fields)
+
+    def test_a_backfilled_night_is_a_link_to_its_broadcast(self):
+        state = self.backfill()
+        night = state['history'][0]
+        self.assertEqual(state['links'], [dict(vodId='1234567890', eventId=night['id'],
+                                               startS=452, endS=1690, at=night['signOff']['at'])])
+        self.assertEqual(state['vods'], [dict(id='1234567890', title='Monday night', channel='',
+                                              length_s=0, created_at='')])
+        # the import's line is the audit of a write, and a read never rewrites it
+        self.assertEqual(night['source']['datasetId'], 'tw-1234567890-452-1690')
+        self.assertEqual(night['source']['humanReviewed'], True)
+        # read it again: adopting a line is idempotent and needs no clock
+        self.assertEqual(Operations(self.root).get(), state)
+
+    def test_a_broadcast_covers_many_events_and_an_event_many_broadcasts(self):
+        state = self.backfill()
+        night, tonight = state['history'][0]['id'], state['tournament']['id']
+        state = self.link('1234567890', tonight, title='Monday night', channel='ExampleChannel',
+                          length_s=16455, created_at='2026-10-02T23:07:00Z')
+        state = self.link('9999999999', tonight, title='Camera B')
+        state = self.link('9999999999', night)
+        self.assertEqual({(row['vodId'], row['eventId']) for row in state['links']},
+                         {('1234567890', night), ('1234567890', tonight),
+                          ('9999999999', night), ('9999999999', tonight)})
+        self.assertEqual([row['id'] for row in state['vods']], ['1234567890', '9999999999'])
+        # a channel is stored the way a source is stored, and the import's range is kept
+        self.assertEqual(next(v for v in state['vods'] if v['id'] == '1234567890')['channel'], 'examplechannel')
+        self.assertEqual(next(l for l in state['links']
+                              if l['vodId'] == '1234567890' and l['eventId'] == tonight)['startS'], None)
+        # the same pair twice is one row, and a range may be filled in later
+        state = self.link('9999999999', night, startS=10, endS=20)
+        self.assertEqual(len(state['links']), 4)
+        self.assertEqual(next(l for l in state['links']
+                              if l['vodId'] == '9999999999' and l['eventId'] == night)['endS'], 20)
+        # the audit names the pair a person made
+        self.assertEqual(state['events'][-1]['context'], dict(vodId='9999999999', id=night,
+                                                             name='8-Ball Open · 周一 9/1'))
+        self.assertEqual(Operations(self.root).get(), state)
+
+    def test_metadata_is_refreshed_field_by_field(self):
+        state = self.call('tournament_setup', raceTo=7)
+        tonight = state['tournament']['id']
+        state = self.link('1234567890', tonight, title='Monday night', channel='ttpoolfriday',
+                          length_s=16455, created_at='2026-10-02T23:07:00Z')
+        self.assertEqual(state['vods'][0], dict(id='1234567890', title='Monday night',
+                                                channel='ttpoolfriday', length_s=16455,
+                                                created_at='2026-10-02T23:07:00Z'))
+        state = self.link('1234567890', tonight, length_s=16000)
+        self.assertEqual(state['vods'][0]['title'], 'Monday night')
+        self.assertEqual((state['vods'][0]['length_s'], state['vods'][0]['created_at']),
+                         (16000, '2026-10-02T23:07:00Z'))
+
+    def test_a_refused_link_writes_nothing(self):
+        state = self.backfill()
+        night = state['history'][0]['id']
+        saved = self.ops.path.read_bytes()
+        for fields, message in (
+                (dict(vodId='1234567890', eventId='nope'), 'Unknown event'),
+                (dict(vodId='1234567890', eventId=night, startS=10), 'A range needs both'),
+                (dict(vodId='1234567890', eventId=night, startS=20, endS=20), 'endS must be after startS'),
+                (dict(vodId='not-a-vod', eventId=night), 'Expected a Twitch VOD id'),
+                (dict(vodId='1234567890', eventId=night, created_at='yesterday'), 'ISO-8601'),
+                (dict(vodId='1234567890', eventId=night, channel='Not A Channel'), 'Twitch channel login')):
+            with self.assertRaisesRegex(ValueError, message):
+                self.call('vod_link', **fields)
+            self.assertEqual(self.ops.path.read_bytes(), saved)
+        with self.assertRaisesRegex(ValueError, 'Unknown link'):
+            self.call('vod_unlink', vodId='9999999999', eventId=night)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+        # the import's own line is evidence, not a choice: it would come straight back
+        with self.assertRaisesRegex(ValueError, 'own import record'):
+            self.call('vod_unlink', vodId='1234567890', eventId=night)
+        self.assertEqual(self.ops.path.read_bytes(), saved)
+
+    def test_unlinking_leaves_the_broadcast_known(self):
+        """A link a person made is theirs to drop; the broadcast stays known (23.2)."""
+        state = self.backfill()
+        night = state['history'][0]['id']
+        state = self.link('9999999999', night, title='Camera B')
+        self.assertEqual(len(state['links']), 2)
+        state = self.call('vod_unlink', vodId='9999999999', eventId=night)
+        self.assertEqual([row['vodId'] for row in state['links']], ['1234567890'])
+        self.assertEqual([row['id'] for row in state['vods']], ['1234567890', '9999999999'])
+        self.assertEqual(Operations(self.root).get(), state)
+
+    def test_an_event_that_stops_existing_takes_its_links_away(self):
+        """The relation has no dangling end: a replaced live event leaves no link behind."""
+        state = self.call('tournament_setup', raceTo=7)
+        tonight = state['tournament']['id']
+        state = self.link('1234567890', tonight, title='Monday night')
+        self.assertEqual(len(state['links']), 1)
+        state = self.call('tournament_delete', id=tonight, confirm=True)
+        self.assertNotEqual(state['tournament']['id'], tonight)
+        self.assertEqual(state['links'], [])
+        self.assertEqual([row['id'] for row in state['vods']], ['1234567890'])
+
+    def test_an_archived_event_keeps_its_links(self):
+        """An event that is archived keeps its id, so tonight's links become its history."""
+        state = self.call('tournament_setup', raceTo=7)
+        tonight = state['tournament']['id']
+        state = self.call('entrant_add', members=[dict(name='Wanwan')])   # singles: one member each
+        state = self.link('1234567890', tonight, title='Monday night')
+        state = self.call('tournament_new', confirm=True)
+        self.assertEqual(state['history'][0]['id'], tonight)
+        self.assertEqual([row['eventId'] for row in state['links']], [tonight])
+
+
 if __name__ == '__main__':
     unittest.main()

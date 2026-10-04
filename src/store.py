@@ -96,9 +96,34 @@ class Store(Protocol):
     def frame_detections(self, dataset: str, frame_index: int) -> dict | None: ...
 
 
+def scratch_root(root) -> bool:
+    """True when `root` is a throwaway directory: a fixture test's temporary root.
+
+    The database does not key its document by root (src/store_pg.py `STATE` is one
+    path), so every rooted store with POOL_DATABASE_URL set is the same club.  A
+    temporary root is therefore never the isolation it looks like."""
+    temp = Path(tempfile.gettempdir()).resolve()
+    try:
+        resolved = Path(root).resolve()
+    except OSError:                   # a root that cannot be resolved is not proven scratch
+        return False
+    return resolved == temp or temp in resolved.parents
+
+
 def open_store(root) -> Store:
-    """The store for `root`: Postgres when POOL_DATABASE_URL is set, else the JSON files."""
+    """The store for `root`: Postgres when POOL_DATABASE_URL is set, else the JSON files.
+
+    A scratch `root` is refused while the variable is set: the database holds one copy
+    of the club whatever root is asked for, so a temporary root would be reading and
+    writing the live club while believing it was isolated (docs/postgres.md)."""
     if os.environ.get(ENV):
+        if scratch_root(root):
+            raise SystemExit(
+                f"open_store: POOL_DATABASE_URL is set, so the club's data lives in Postgres and the root "
+                f"does not isolate anything: every rooted store with this database reads the same document "
+                f"(out/corner-pocket/state.json). {root} is a scratch directory, so it would be handed the "
+                f"live club. Refusing. Run without POOL_DATABASE_URL, or open a throwaway schema on purpose: "
+                f"PostgresStore(root, search_path='...') (docs/postgres.md).")
         from src.store_pg import PostgresStore
         return PostgresStore(root)
     return JsonStore(root)

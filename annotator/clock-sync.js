@@ -54,7 +54,7 @@ const LABELS = Object.freeze({
     busy: 'server busy — retrying'
   }),
   zh: Object.freeze({
-    kicker: '击球计时',
+    kicker: '出杆计时',
     failed: '计时指令失败 — 未改变',
     busy: '服务器繁忙 — 正在重试'
   })
@@ -68,7 +68,7 @@ const LABELS = Object.freeze({
  * machine/local difference is carried by the sync-state line, never by a label. */
 const LOCAL_TIMER_LIE = Object.freeze([
   'Shot timer',
-  '击球计时'
+  '出杆计时'
 ]);
 
 function labels(lang) {

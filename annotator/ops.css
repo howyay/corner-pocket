@@ -747,7 +747,10 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .records h2{margin:0}
 #ops-shell .records .heading{margin-bottom:var(--sp-3)}
 #ops-shell .events,#ops-shell .tl-nights,#ops-shell .tl-matches,#ops-shell .bf-marks,#ops-shell .audit{list-style:none;margin:0;padding:0}
-#ops-shell .events{display:grid;gap:var(--sp-1)}
+/* minmax(0,1fr): round 11 merged the lists, so the day rows - horizontal scrollers -
+   are grid items here now, and an auto track takes their min-content (624 px at 390:
+   docs/console-shots.md §17). The track must never be wider than the card. */
+#ops-shell .events{display:grid;gap:var(--sp-1);grid-template-columns:minmax(0,1fr)}
 /* Round 2, B-13: the year and the month are the timeline's own heading levels, so the
    screen can be navigated by heading, not only by scrolling. */
 #ops-shell .tl-year{font:600 var(--fs-xl) var(--display);color:var(--ink-hi);margin:var(--sp-3) 0 0}
@@ -1072,7 +1075,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .stack.records>*{min-width:0}
 #ops-shell .tl-day{margin-top:var(--sp-4)}
 #ops-shell .tl-day-head{display:flex;align-items:baseline;gap:var(--sp-3);flex-wrap:wrap;padding-bottom:var(--sp-1);border-bottom:1px solid var(--line)}
-#ops-shell .tl-date{margin:0;font:600 var(--fs-xl)/1.2 var(--display);letter-spacing:.01em;color:var(--ink-hi)}
+#ops-shell .tl-day-date{margin:0;font:600 var(--fs-xl)/1.2 var(--display);letter-spacing:.01em;color:var(--ink-hi)}
 #ops-shell .tl-day-count{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase}
 #ops-shell .tl-vods{list-style:none;margin:0;padding:var(--sp-2) 0 var(--sp-1);display:flex;gap:var(--sp-3);overflow-x:auto;scrollbar-width:thin}
 #ops-shell .tl-vod-item{flex:none;width:236px}
@@ -1087,7 +1090,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .tl-vod-made{font:var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass)}
 @media (max-width:750px){
   #ops-shell .tl-vod-item{width:200px}
-  #ops-shell .tl-date{font-size:var(--fs-lg)}
+  #ops-shell .tl-day-date{font-size:var(--fs-lg)}
 }
 
 /* Round 7, owner items 2 and 4. The timer left the nav for its own row (the .clockbar block above),
@@ -1156,3 +1159,22 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .pick-row.on{color:var(--brass-hi)}
 #ops-shell .pick-row small{color:var(--ink-dim);font:var(--fs-sm) var(--mono)}
 #ops-shell .pick-row[hidden]{display:none}
+
+/* Round 11 (23): the link between a night and the broadcasts that cover it, and the one merged
+   list that shows both. The picker is the desk's own block (round 9, item 4) reused unchanged:
+   static, in flow, so it works inside a night's expanded body as well as inside a card. */
+#ops-shell .vod-links{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin:0}
+#ops-shell .vod-links-label{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--brass-hi)}
+#ops-shell .vod-chip{display:inline-flex;align-items:center;gap:var(--sp-1);max-width:100%;padding:0 var(--sp-1) 0 var(--sp-2);background:var(--panel2);border:1px solid var(--line);border-radius:2px}
+#ops-shell .vod-chip .badge{margin-right:var(--sp-1)}
+#ops-shell .vod-chip-name{color:var(--ink-hi)}
+#ops-shell .vod-unlink{min-width:28px;min-height:28px;padding:0;font-size:var(--fs-lg);line-height:1;color:var(--ink-dim);background:none;border:0;cursor:pointer}
+#ops-shell .vod-unlink:hover{color:var(--brass-hi)}
+#ops-shell .vod-pick-host{display:inline-block;min-width:11rem;max-width:100%}
+#ops-shell .vod-pick-btn{min-height:32px}
+#ops-shell .pick-row.is-locked{opacity:.6;cursor:default}
+#ops-shell .tl-vod-made{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ops-shell .tl-vod-note{display:block;font:var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
+#ops-shell .tl-day .tl-nights{margin:0}
+#ops-shell .tl-day .tl-vods{margin:var(--sp-2) 0 0}
+@media (max-width:750px){#ops-shell .vod-pick-host{min-width:9rem}}

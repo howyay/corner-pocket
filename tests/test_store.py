@@ -43,16 +43,37 @@ class StoreTestCase(unittest.TestCase):
 
 class Selection(StoreTestCase):
     def test_json_is_the_default_and_postgres_is_chosen_only_by_the_variable(self):
+        repo = Path(__file__).resolve().parents[1]
         with mock.patch.dict(os.environ):
             os.environ.pop("POOL_DATABASE_URL", None)
             chosen = open_store(self.root)
         self.assertIsInstance(chosen, JsonStore)
         self.assertIsInstance(chosen, Store)
         with mock.patch.dict(os.environ, {"POOL_DATABASE_URL": "postgresql://u@127.0.0.1:1/x"}):
-            chosen = open_store(self.root)     # constructing it connects to nothing
+            chosen = open_store(repo)          # constructing it connects to nothing
         from src.store_pg import PostgresStore
         self.assertIsInstance(chosen, PostgresStore)
         self.assertIsInstance(chosen, Store)
+
+    def test_a_scratch_root_is_never_handed_the_club_database(self):
+        """A fixture root is temporary; with POOL_DATABASE_URL set the same open_store
+        call would return a store over the live club (the round-11 leak: a full-suite run
+        with the variable exported enrolled three test players into the real club), so it
+        refuses and says how to reach a database on purpose."""
+        with mock.patch.dict(os.environ, {"POOL_DATABASE_URL": "postgresql://u@127.0.0.1:1/x"}):
+            with self.assertRaises(SystemExit) as caught:
+                open_store(self.root)
+        message = str(caught.exception)
+        self.assertIn(str(self.root), message, "the message names the root it refused")
+        self.assertIn("POOL_DATABASE_URL is set", message)
+        self.assertIn("scratch", message)
+        self.assertIn("out/corner-pocket/state.json", message, "it says what the root would have reached")
+        self.assertIn("search_path", message, "the way to use a database on purpose")
+        self.assertIn("docs/postgres.md", message)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("POOL_DATABASE_URL", None)
+            self.assertIsInstance(open_store(self.root), JsonStore,
+                                  "without the variable the fixture root is its own files")
 
     def test_constructing_a_store_writes_nothing(self):
         self.assertFalse(self.out.exists())

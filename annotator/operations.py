@@ -61,6 +61,20 @@ def vod_id(value):
         raise ValueError(str(error)) from error
 
 
+def instant(value, name):
+    """An ISO-8601 instant, spelled the way the Twitch API spells it
+    (`2026-10-02T23:07:00Z`).  The console passes the field through untouched, so what is
+    enforced here is the format, not the value."""
+    stamp = value.strip() if isinstance(value, str) else ''
+    if not stamp or len(stamp) > 40:
+        raise ValueError(f'{name} must be an ISO-8601 instant')
+    try:
+        datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+    except ValueError as error:
+        raise ValueError(f'{name} must be an ISO-8601 instant') from error
+    return stamp
+
+
 def name_key(name):
     """The key under which two player names are the same name: the rule every name
     check here applies (casefold of the trimmed name). The database stores it in
@@ -86,6 +100,20 @@ def default_name(now=None):
     return f'8-Ball Open · {day} {now.month}/{now.day}'
 
 
+def normalise(state):
+    """Every document enters through here, whichever store hands it over: the three keys a
+    build before round 11 does not have, and the links the import lines already in the
+    document imply.  Read-time, idempotent and clock-free - a read writes nothing, and the
+    next write persists what the read derived (Operations._commit).  The JSON store calls it
+    from Operations._load, the Postgres store from PostgresStore._document, so one club
+    answers the same question the same way on either store."""
+    state.setdefault('events', [])
+    state.setdefault('vods', [])
+    state.setdefault('links', [])
+    Operations._adopt_sources(state)
+    return state
+
+
 class Operations:
     # Share a lock across backend instances for the same store in this process.
     _locks = {}
@@ -99,12 +127,120 @@ class Operations:
 
     def _load(self):
         if self.path.exists():
-            state = json.loads(self.path.read_text())
-            state.setdefault('events', [])
-            return state
-        return dict(revision=0, players=[], tournament=tournament(), history=[],
+            return normalise(json.loads(self.path.read_text()))
+        return dict(revision=0, players=[], tournament=tournament(), history=[], vods=[], links=[],
                     settings=dict(shotClock=30, autoFrame=False, clothColor='#1d5c44', lampGlow=0.22,
                                   showDiamonds=True, publicBoard=True), notes=[], sources=[dict(id=uid(), url='https://www.twitch.tv/examplechannel', kind='channel', channel='examplechannel')], events=[])
+
+    # -- Broadcasts and the events they cover (round 11) ----------------------------------
+    # The relation is many-to-many, so it is one link row per pair and never a list on
+    # either side: one broadcast can cover several events (a night that ran past a restart,
+    # two events in one stream) and one event can be covered by several broadcasts (two
+    # cameras, a stream and a phone).  `vods` keeps each broadcast's own metadata, because
+    # Twitch forgets broadcasts and this club must not: a link outlives the VOD it names.
+    # `history[i].source` stays exactly what event_backfill wrote - the audit line of an
+    # import - and _adopt_sources materialises a link for it, so both directions of the
+    # relation are read from `links` alone.
+    def _vod_of(self, s, vod):
+        """The `vods` row for this broadcast, created empty when it is new."""
+        row = next((v for v in s['vods'] if v['id'] == vod), None)
+        if row is None:
+            row = dict(id=vod, title='', channel='', length_s=0, created_at='')
+            s['vods'].append(row)
+        return row
+
+    def _vod_metadata(self, row, p):
+        """Refresh only the fields the caller actually sent: the picker knows a
+        broadcast's title and length, an import knows its range, and neither may blank
+        what the other learned."""
+        if 'title' in p:
+            row['title'] = text(p.get('title'), 'title', 200) if str(p.get('title') or '').strip() else ''
+        if 'channel' in p:
+            channel = str(p.get('channel') or '').strip().lower()
+            if channel and not re.fullmatch(r'[a-z0-9_]{1,25}', channel):
+                raise ValueError('channel must be a Twitch channel login')
+            row['channel'] = channel
+        if 'length_s' in p:
+            row['length_s'] = integer(p.get('length_s'), 0, 604800, 'length_s')
+        if 'created_at' in p:
+            row['created_at'] = instant(p.get('created_at'), 'created_at')
+
+    def _event_of(self, s, event):
+        night = next((n for n in [s['tournament'], *s['history']] if n['id'] == event), None)
+        if night is None:
+            raise ValueError('Unknown event')
+        return night
+
+    def _link_vod(self, s, p):
+        """Attach one broadcast to one event.  Idempotent: the pair is the key, so a
+        second link of the same pair refreshes the metadata instead of making a row."""
+        vod = vod_id(p.get('vodId'))
+        event = text(p.get('eventId'), 'eventId', 120)
+        self._event_of(s, event)
+        start, end = p.get('startS'), p.get('endS')
+        if (start is None) != (end is None):
+            raise ValueError('A range needs both startS and endS')
+        if start is not None:
+            start = seconds(start, 'startS')
+            end = seconds(end, 'endS')
+            if end <= start:
+                raise ValueError('endS must be after startS')
+        self._vod_metadata(self._vod_of(s, vod), p)
+        link = next((l for l in s['links'] if l['vodId'] == vod and l['eventId'] == event), None)
+        if link is None:
+            s['links'].append(dict(vodId=vod, eventId=event, startS=start, endS=end, at=timestamp()))
+        elif start is not None:
+            # a link's range belongs to whoever knows it: an import writes it, the picker
+            # leaves it alone, and a wrong one is cleared by unlink then link again.
+            link.update(startS=start, endS=end)
+
+    @staticmethod
+    def _source_vod(night):
+        """The broadcast an import's own line names, parsed the way that line is parsed."""
+        try:
+            return vod_id((night.get('source') or {}).get('vodId'))
+        except ValueError:
+            return ''
+
+    def _unlink_vod(self, s, p):
+        vod = vod_id(p.get('vodId'))
+        event = text(p.get('eventId'), 'eventId', 120)
+        night = self._event_of(s, event)
+        link = next((l for l in s['links'] if l['vodId'] == vod and l['eventId'] == event), None)
+        if link is None:
+            raise ValueError('Unknown link')
+        if self._source_vod(night) == vod:
+            # the import's own record of the night is evidence, not a choice: the line is
+            # still in the event, so the next read would materialise the link again. The
+            # way to drop it is to change the event (delete the mistake, or hide it).
+            raise ValueError("This broadcast is this event's own import record; delete or hide the event instead")
+        s['links'].remove(link)
+
+    def _drop_links(self, s, event):
+        """An event that stops existing takes no links with it: the relation never has a
+        dangling end (a deleted event, or a live event replaced before it had a draw)."""
+        s['links'] = [l for l in s['links'] if l['eventId'] != event]
+
+    @staticmethod
+    def _adopt_sources(state):
+        """Read-time, idempotent, clock-free: every `source` an import wrote becomes one
+        link row, so a night's broadcasts and a broadcast's nights come from one table.
+        Nothing here writes to `source` and nothing here reads the network."""
+        for night in [state['tournament'], *state['history']]:
+            source = night.get('source') or {}
+            vod = Operations._source_vod(night)
+            if not vod:
+                continue                  # no line, or one an older build wrote in its own spelling
+            if not any(v['id'] == vod for v in state['vods']):
+                state['vods'].append(dict(id=vod, title=str(source.get('title') or '')[:200],
+                                          channel='', length_s=0, created_at=''))
+            if any(l['vodId'] == vod and l['eventId'] == night['id'] for l in state['links']):
+                continue
+            start, end = source.get('startS'), source.get('endS')
+            if type(start) is not int or type(end) is not int or start < 0 or end <= start:
+                start = end = None
+            at = str((night.get('signOff') or {}).get('at') or night.get('archivedAt') or '')
+            state['links'].append(dict(vodId=vod, eventId=night['id'], startS=start, endS=end, at=at))
 
     def get(self):
         with self.lock:
@@ -153,6 +289,8 @@ class Operations:
 
     def _commit(self, state, action, context):
         """Advance the revision, log the event, write the file atomically."""
+        # a write persists the relation it can derive, so the next reader does not have to
+        self._adopt_sources(state)
         state['revision'] += 1
         state['events'] = (state['events'] + [dict(id=uid(), createdAt=timestamp(),
             revision=state['revision'], action=action, context=context)])[-500:]
@@ -193,6 +331,14 @@ class Operations:
             if night and action == 'tournament_hide' and 'hidden' in night:
                 return dict(id=night['id'], name=night['name'], hidden=night['hidden'])
             return dict(id=night['id'], name=night['name']) if night else context
+        if action in ('vod_link', 'vod_unlink'):
+            # the audit line names the pair a person made: the event, and the broadcast
+            vod, event = payload.get('vodId'), payload.get('eventId')
+            night = next((n for n in [t] + state['history'] if n['id'] == event), None)
+            context = dict(vodId=str(vod)) if isinstance(vod, str) else {}
+            if night is not None:
+                context.update(id=night['id'], name=night['name'])
+            return context
         if action == 'event_backfill':
             # 7.6: the audit line of a backfill names the night it wrote and the broadcast it
             # came from, read back from the store rather than copied from the request.
@@ -707,6 +853,7 @@ class Operations:
                 s['tournament'] = tournament()
             else:
                 s['history'].remove(night)
+            self._drop_links(s, night['id'])
         elif action == 'tournament_hide':
             # R1: a flag on an archived event; every match and stat stays.
             night = self._find(s['history'] + [t], p.get('id'))
@@ -724,9 +871,15 @@ class Operations:
                 archived = copy.deepcopy(t)
                 archived['archivedAt'] = timestamp()
                 s['history'].append(archived)
+            else:
+                self._drop_links(s, t['id'])
             s['tournament'] = tournament()
         elif action == 'event_backfill':
             self._backfill(s, p)
+        elif action == 'vod_link':
+            self._link_vod(s, p)
+        elif action == 'vod_unlink':
+            self._unlink_vod(s, p)
         elif action == 'source_add':
             url = text(p.get('url'), 'Twitch URL', 500)
             parsed = urlsplit(url)

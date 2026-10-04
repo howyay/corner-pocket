@@ -106,10 +106,14 @@ class PostgresStore:
     def _document(self, conn):
         """The operations document: the stored state.json text (key order as written,
         0003); before anything was imported, the default document Operations creates
-        for a missing state.json (it is written by the first post)."""
+        for a missing state.json (it is written by the first post).  The stored text goes
+        through `normalise`, exactly as Operations._load reads the file, so a document
+        written before round 11 gains `vods`/`links` and the links its own import lines
+        imply - in memory; the next write persists what the read derived."""
         text = get_document(conn, STATE)
         if text is not None:
-            return json.loads(text)
+            from annotator.operations import normalise
+            return normalise(json.loads(text))
         if conn.execute("SELECT 1 FROM ops_meta").fetchone() is not None:
             raise RuntimeError("operations rows exist without their document (imported before migration 0003?); "
                                "re-run `python -m src.store_import --only operations --replace`")

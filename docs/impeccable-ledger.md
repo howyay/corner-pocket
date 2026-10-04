@@ -692,3 +692,40 @@ request body (`{vod, start_s, duration_s}`), and the Manage-regulars button was 
 three by using the console; the browser measurements in `docs/console-shots.md` §16 are what pinned each one to
 its line. The honest summary of running the detector twice is that it agreed with itself and added nothing —
 recorded here rather than dressed up as diligence.
+
+
+## Round 11 — the owner's three items, and the detector run that closes them (2026-10-04)
+
+`impeccable detect --json annotator/ops.js annotator/ops.css` (the two files this round's console work
+touches) → **25 findings: 17 advisory, 8 warning**.
+
+| by rule | n | by file | n | by severity | n |
+|---|---|---|---|---|---|
+| `design-system-color` | 9 | `annotator/ops.css` | 24 | advisory | 17 |
+| `design-system-font-size` | 8 | `annotator/ops.js` | 1 | warning | 8 |
+| `side-tab` | 7 | | | | |
+| `border-accent-on-rounded` | 1 | | | | |
+
+**These are round 9's findings again, not new ones.** Comparing the three JSON runs by `(file, line, rule)`:
+same size (25), same composition, and every entry sits where this round's edits left it — the `ops.js` entry
+round 9 measured at `807` and round 10 at `834` is at **`952`** now (`Undocumented color #1d5c44`, the green
+cloth in `appearancePanel()`'s colour picker — a round-6 control, three line-shifts old, not a round-11
+addition), and the `ops.css` findings shift by the block appended at the end of the sheet (1166+, the
+`.vod-links`/`.vod-chip`/picker rules and the `.events` grid fix). Nothing was added, nothing
+was resolved, and the disposition of all 25 is the round-9 table above — this section does not re-argue
+them.
+
+| on a round-11 line? | findings |
+|---|---|
+| yes | **0** |
+
+The run changed no code. And the honest note, again: **none of this round's three real defects was of the
+kind the detector catches.** The count line that never appeared was a repaint target
+(`paintArchive()` → `#records-list` only, while the span was rendered conditionally on `archiveList.rows`);
+the sideways phone was a grid track (`#ops-shell .events{display:grid;…}` without
+`grid-template-columns:minmax(0,1fr)`, so `.tl-month`'s `min-width:auto` handed the `auto` track its
+min-content — 624 px of `.tl-vods` scroller); and the club's own database was written by a test suite
+launched with `POOL_DATABASE_URL` set, which is a store seam, not a stylesheet. Each was found by using the
+console or by running its suites, and each is now held by a test or a refusal — `docs/console-redesign.md`
+§23.5 and §23.6. Running the detector three rounds in a row has produced 25 findings, three times, none of
+them the bug that mattered; recorded here rather than dressed up as diligence.

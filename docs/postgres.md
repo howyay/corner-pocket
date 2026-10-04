@@ -84,6 +84,29 @@ with db.transaction() as conn:            # commits at the end, rolls back on an
 formats the URL into a message, and `tests/test_db.py` skips its database tests when the
 variable is unset, so the default suite needs no database.
 
+A fixture test never reaches this database.  `open_store` refuses a **scratch root** while
+`POOL_DATABASE_URL` is set: the database keys the club document by path, not by root
+(`src/store_pg.py` `STATE`), so a temporary root that expects isolation would read and write
+the live club.  Round 11 proved it the expensive way - a full-suite run with the variable
+exported enrolled three test players, added seven entrants and started the live tournament,
+and the club had to be restored from its own event log (`docs/console-redesign.md` §23).
+So the suite runs in two passes:
+
+```sh
+# every fixture test: no database, temporary roots, the JSON files
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+
+# the database tests only, each in a schema it migrates and drops
+set -a; . ~/.config/pool/postgres.env; set +a
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_db.py'
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_store_contract.py'
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_store_import.py'
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_store_roundtrip.py'
+```
+
+A caller that wants the database from a temporary root says so out loud:
+`PostgresStore(root, search_path="test_...")`, never `open_store`.
+
 ### Migrations
 
 * Files are `db/migrations/NNNN_name.sql` (four digits, lower-case name), applied in
