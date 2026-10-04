@@ -2552,3 +2552,76 @@ is one night, not a survey. The merged list and the timer page are the isolated 
 mid-competition data on this host. The 4 s poll is asserted at the level of its guard and its fetch, not on a
 wall clock; nobody has yet watched a tablet follow a send. And the exported `resultsSheet()` is unchanged —
 the owner asked for the finish *screen* to be quiet, and the sheet is still the sheet.
+
+## §25 — Round 13a: the competition tab is three elements, one tree view, and no attendance (2026-10-04)
+
+The owner sent nine items. This section covers the six that share one page: ① the settings dialog's buttons,
+③ 收尾 on the Back room, ④ the two bracket densities, ⑤ 未到场, ⑥ the board on the competition tab, ⑨ the tab's
+three elements. Items ②, ⑦ and ⑧ are the Records tab, the Vision page and the Twitch source configurator.
+
+### 25.1 Item ⑨ + ③: three elements, one of which carries the night's end
+
+`tonightScreen()` had four bodies (`idleStart()`, `setupScreen()`, the active branch with the board, and
+`wrapScreen()` for the finish) and the tab rearranged itself as the night moved. It now returns one body for
+every state:
+
+```
+scene()
+section.stack.tonight
+  article.card.card--event    赛事设置   the door + Results sheet / Archive & new event / Delete event
+  section.stack               bracketScreen()
+  article.card.card--entrants 参赛名单   the desk (add entrant, pairing) + the rows
+  (revivalCard(), eventFold())
+```
+
+`nightCard()`, `setupScreen()`, `wrapScreen()`, `playScreen()`'s old shape and `closeCard()`'s own heading are
+gone; `closeCard()` is the row and the one reason line, inside the event card. `statusScreen()` (the Back room)
+lost `${closeCard()}` — item ③ is answered by deletion, not by a second copy. The desk moved into the entrants
+card because it is about entrants, and the pairing card sits above the form.
+
+The first-run dialog is only for a night with no name at all: `state==='idle' && !id && !name`. A named night
+sees its three cards, and the `open-setup` door renders `startModal(true)` over them.
+
+Measured, production 8130, `#/tonight`, 1280: `article.card` **2**, `.card--event` **1**, `.bracket-view`
+**1**, `.card--entrants` **1**, headings `Event settings / Bracket / Round 1 / Entrants`, `.scoreboard` **0**,
+`[data-action="absence"]` **0**, `[data-action="density"]` **0**, text 255 characters. Isolated root, active
+night: the same three cards, 4 rounds, 15 cards, **3** `.table-chip`.
+
+### 25.2 Item ①: Save and Close on one row
+
+`setupForm(first, closeable)` renders both buttons in the `.actions` row, and `startModal()` no longer appends
+its own `.row`. Measured in the dialog: buttons `["Save","Close"]`, one distinct `top`, trailing `.row`
+count **0**. A first-run dialog (no name yet) has no Close at all, because the fields are the way in.
+
+### 25.3 Item ④: one view
+
+`let density`, the `density` click branch, the `.bracket-density` row, `data-density`, the three words and every
+`[data-density=…]` selector are deleted. The tree is a grid that fills the width it has and wraps when it does
+not: `grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))`. The card is the compact one line per
+side, and the header row and the controls open on hover, on keyboard focus, on selection, or from the card's own
+expand control. Measured at 1280: 4 round columns side by side, 15 cards, `scrollWidth` 1280. At 390: 4 rounds
+stacked, `scrollWidth` 390 == `innerWidth`, no overflow in either language.
+
+### 25.4 Items ⑤ and ⑥: no attendance, and the board is the timer page's
+
+Removed: the Here / Not here buttons (`matchControls()`), the board's waiting row, `clockToggle()`'s held-match
+guard, the `absence` click branch, `action()`'s `match_absence` clock reset, the five words (`away`, `here`,
+`waiting`, `confirmAway`, `confirmHere`), and the `absent` gate on Send and on the ready count. The field stays
+in old documents and the console ignores it — a match with `absent:['a']` is now sent like any other.
+
+`tonightScreen()` no longer renders `scoreboardScreen()`: the tree answers "which group is on which table" with
+a `.table-chip` on the first line of every card that has a table, the live card gets a brass left edge, and
+`card-open` hands the match to the timer page (`focusId`, `tab='clock'`, `syncRoute`, render). The board itself
+is `clockScreen()`'s, where round 12 put it.
+
+### 25.5 Verification
+
+`node --test tests/test_ops.js` **162/162**, `node tests/test_app_timeline.js` **81/0**,
+`node --test tests/test_board.js` **16/16**. No Python file changed. Shots in `out/r13/`:
+`prod-finish-1280.png`, `iso-active-1280.png`, `iso-active-390-zh.png`, `iso-clock-1280.png`,
+`settings-dialog-1280.png`.
+
+Limits: the event card's door still carries the word 赛事设置, so the heading and the button read the same
+two-word label (no shorter word exists in the shell's dictionary, and inventing one for a button is not a
+trade this round needed); the 15-card draw is the isolated root, which is the only mid-competition data on this
+host; and `entrant_absence` / `match_absence` stay in the audit labels, because old entries are still labelled.

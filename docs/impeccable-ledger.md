@@ -765,3 +765,20 @@ content (756 px) and the board's `select#focus-match` was `width:100%` with an a
 option (756 px, the board then 790 px). A detector that reads declarations cannot see a min-content
 interaction between a flex item, a scroller and a form control; `documentElement.scrollWidth` at 390 can, and
 did. The two clamps and their re-measure are in `docs/console-redesign.md` §24.4.
+
+## Round 13a — the competition tab, and the detector run that closes it (2026-10-04)
+
+`impeccable detect --json annotator/ops.js annotator/ops.css` → **25 findings: 17 advisory, 8 warning** — the
+same twenty-five as rounds 9–12, checked against the round-12 tree with the same tool. Composition unchanged
+(9 `design-system-color`, 8 `design-system-font-size`, 7 `side-tab`, 1 `border-accent-on-rounded`); the
+`annotator/ops.css` entries moved with the one-view block (the density selectors left, the grid arrived), and
+the `annotator/ops.js` entry (`Undocumented color #1d5c44`, the cloth colour picker) moved with this round's
+edits. Nothing new, nothing resolved.
+
+| on a round-13a line? | findings |
+|---|---|
+| yes | **0** |
+
+The round's real defects were again not of the kind a declaration reader catches: the `open-setup` door briefly
+stopped opening its dialog (the new `tonightScreen()` ignored `setupOpen`, which one test caught and the fix
+restored), and the two density views had to become one grid whose wrap behaviour only a browser can measure.

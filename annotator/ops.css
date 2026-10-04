@@ -180,48 +180,43 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell label{display:grid;gap:var(--sp-1h)}
 #ops-shell input,#ops-shell select,#ops-shell textarea{width:100%;min-height:42px;padding:var(--sp-2) var(--sp-3);background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:2px}
 #ops-shell input[type=checkbox]{width:20px;min-height:20px}
-#ops-shell .rounds{display:flex;gap:var(--sp-3);overflow:auto;padding-bottom:var(--sp-3)}
-#ops-shell .round{min-width:260px;flex:1}
-#ops-shell .rounds[data-density=full] .round .entry{min-height:98px}
-/* R9 compact bracket: the rounds share the viewport width (no sideways scroll until a
-   round would be narrower than 180 px), and each card is one line per side: a status dot,
-   the name, the score. The header row (table · id · status word) and the controls stay in
-   the card and open on hover, keyboard focus or selection, so nothing is removed. */
-#ops-shell .rounds[data-density=compact]{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(180px,1fr)}
-#ops-shell .rounds[data-density=compact] .round{min-width:0}
-#ops-shell .rounds[data-density=compact] .round h3{font-size:var(--fs-lg);margin:0 0 var(--sp-2)}
-#ops-shell .rounds[data-density=compact] .entry{padding:var(--sp-1) var(--sp-2);position:relative;display:flex;flex-direction:column}
+/* Round 13, owner item 4: one view. The draw is a grid of rounds that fills the width it has and
+   wraps when it does not, so a five-round draw reads without a sideways scroll and a phone stacks
+   the rounds one column at a time. Each card is one line per side - the table it is on, a status
+   dot, the name, the score. The header row (id, status word) and the controls stay in the card and
+   open on hover, on keyboard focus, on selection, or from the card's own expand control; that
+   control is the touch screen's only gesture and it toggles .open in place, so the scroll position
+   and the score the operator was reading never move. */
+#ops-shell .rounds{display:grid;gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));overflow:visible;padding-bottom:0}
+#ops-shell .round{min-width:0}
+#ops-shell .round h3{font-size:var(--fs-lg);margin:0 0 var(--sp-2)}
+#ops-shell .round .entry{padding:var(--sp-1) var(--sp-2);position:relative;display:flex;flex-direction:column}
+#ops-shell .round .entry+.entry{margin-top:var(--sp-1)}
 /* Details open below the side lines, so the line under the pointer never moves. */
-#ops-shell .rounds[data-density=compact] .card-head{order:3}
-#ops-shell .rounds[data-density=compact] .card-actions{order:4}
-#ops-shell .rounds[data-density=compact] .entry+.entry{margin-top:var(--sp-1)}
-#ops-shell .rounds[data-density=compact] .card-side{gap:var(--sp-1h);min-height:24px;flex-wrap:nowrap}
-#ops-shell .rounds[data-density=compact] .card-side strong{font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#ops-shell .rounds[data-density=compact] .card-side strong.grow{min-width:0}
-#ops-shell .rounds[data-density=compact] .card-head,#ops-shell .rounds[data-density=compact] .card-actions{display:none}
-#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}
-#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected,.open) .card-actions{flex-direction:column;align-items:stretch;gap:var(--sp-1);margin-top:var(--sp-1)}
-#ops-shell .rounds[data-density=compact] .entry:is(:hover,:focus-within,.selected,.open){z-index:2}
-/* R9 on a touch screen: there is no hover and no keyboard, so the gesture the desktop
-   reader uses does not exist. Every compact card therefore carries its own expand
-   control. It toggles .open in place — no re-render — so scroll position, focus and the
-   live score the operator was reading all stay exactly where they were. Full cards
-   already show the header and the controls, so there the control is not rendered. */
-#ops-shell .card-toggle{display:none;position:absolute;top:var(--sp-1);right:var(--sp-1);width:var(--sp-5);height:var(--sp-5);min-height:0;padding:0;line-height:1;color:var(--ink-dim);background:var(--panel2);border-color:var(--line)}
-#ops-shell .rounds[data-density=compact] .card-toggle{display:flex;align-items:center;justify-content:center}
+#ops-shell .bracket-card .card-head{order:3;color:var(--ink-dim)}
+#ops-shell .bracket-card .card-actions{order:4}
+#ops-shell .bracket-card .card-side{gap:var(--sp-1h);min-height:24px;flex-wrap:nowrap}
+#ops-shell .bracket-card .card-side strong{font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ops-shell .bracket-card .card-side strong.grow{min-width:0}
+#ops-shell .bracket-card .card-head,#ops-shell .bracket-card .card-actions{display:none}
+#ops-shell .bracket-card:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}
+#ops-shell .bracket-card:is(:hover,:focus-within,.selected,.open) .card-actions{flex-direction:column;align-items:stretch;gap:var(--sp-1);margin-top:var(--sp-1)}
+#ops-shell .bracket-card:is(:hover,:focus-within,.selected,.open){z-index:2}
+#ops-shell .card-toggle{position:absolute;top:var(--sp-1);right:var(--sp-1);width:var(--sp-5);height:var(--sp-5);min-height:0;padding:0;line-height:1;color:var(--ink-dim);background:var(--panel2);border-color:var(--line);display:flex;align-items:center;justify-content:center}
 #ops-shell .card-toggle[aria-expanded=true]{color:var(--brass-hi);border-color:var(--brass)}
-#ops-shell .rounds[data-density=compact] .card-side.first{padding-right:var(--sp-5)}
-/* Status is a dot on the first side's line; the colour matches the badge it stands for,
-   and the badge word itself is in the card's accessible name and in the opened header. */
-#ops-shell .status-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ink-faint);visibility:hidden}
-#ops-shell .rounds[data-density=compact] .card-side.first .status-dot{visibility:visible}
+#ops-shell .bracket-card .card-side.first{padding-right:var(--sp-5)}
+/* The table a group is on is the one fact this tab owes the room (owner item 6), so it is a chip on
+   the first line, not a detail behind a hover. */
+#ops-shell .table-chip{flex:none;font:var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass-hi);border:1px solid var(--line);border-radius:2px;padding:0 var(--sp-1h)}
+#ops-shell .bracket-card[data-status=live]{border-left:3px solid var(--brass);background:var(--live-bg)}
+#ops-shell .bracket-card[data-status=delayed]{border-left:3px solid var(--amber)}
+/* Status is a dot on the first side's line; the colour matches the badge it stands for, and the
+   badge word itself is in the card's accessible name and in the opened header. */
+#ops-shell .status-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ink-faint)}
 #ops-shell .bracket-card[data-status=live] .status-dot,#ops-shell .bracket-card[data-status=delayed] .status-dot{background:var(--amber)}
 #ops-shell .bracket-card[data-status=complete] .status-dot{background:var(--green)}
 #ops-shell .bracket-card[data-status=scheduled] .status-dot{background:var(--blue)}
 #ops-shell .bracket-card[data-status=bye] .status-dot{background:transparent;border:1px dashed var(--ink-dim)}
-#ops-shell .rounds[data-density=full] .status-dot{display:none}
-#ops-shell .bracket-density{gap:0}
-#ops-shell .bracket-density button{min-height:32px;font-size:var(--fs-sm)}
 #ops-shell .timeline{max-height:340px;overflow:auto;padding-left:var(--sp-5);color:var(--ink-mid)}
 #ops-shell .timeline li{padding:var(--sp-1h)}
 #ops-shell table{width:100%;border-collapse:collapse;text-align:left}

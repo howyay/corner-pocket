@@ -750,3 +750,16 @@ Limits: the before/after numbers are one club night, not a survey. The live list
 isolated root. The 4 s poll was measured through its guard and its fetch, not on a wall clock. The
 `before-finish-1280.png` shot was taken by serving the round-11 `annotator/ops.js` from the same server for
 one load, then restoring the file (md5 verified); `annotator/ops.html` and the club data were not touched.
+
+## 19. Round 13a: the competition tab, one view, no attendance (2026-10-04)
+
+| shot | measurement |
+|---|---|
+| production `#/tonight`, 1280 (`prod-finish-1280.png`) | `article.card` **2**, `.card--event` 1, `.bracket-view` 1, `.card--entrants` 1; headings `Event settings / Bracket / Round 1 / Entrants`; `.scoreboard` **0**, `[data-action="absence"]` **0**, `[data-action="density"]` **0**; 255 chars |
+| isolated root `#/tonight`, 1280 (`iso-active-1280.png`) | the same three cards + `revivalCard()`; `.round` **4**, `.bracket-card` **15**, `.table-chip` **3**; the four round columns side by side; `scrollWidth` 1280 |
+| isolated root `#/tonight`, 390, 中文 (`iso-active-390-zh.png`) | `scrollWidth` **390** == `innerWidth`; 4 rounds stacked, 3 table chips, 0 absence controls |
+| isolated root `#/clock`, 1280 (`iso-clock-1280.png`) | `.timer-card` 1 + `.scoreboard` 1, 321 chars — the board lives here, and only here |
+| the settings dialog, isolated root, 1280 (`settings-dialog-1280.png`) | buttons `["Save","Close"]`, one distinct `top` (one row), trailing `.row` count **0** |
+
+Suites, on the shipped tree: `node --test tests/test_ops.js` **162/162**, `node tests/test_app_timeline.js`
+**81/0`, `node --test tests/test_board.js` **16/16**. No Python file changed.

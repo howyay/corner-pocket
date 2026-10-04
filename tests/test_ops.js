@@ -222,12 +222,13 @@ test('table release and the entry list use existing action API', async () => {
   await h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset:{action:'entrant-absence',id:'e1',absent:'true'}}}});
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [], 'round 10, item 2: the desk has no not-here action left to write');
 });
-test('delayed matches restore attendance rather than offering invalid scheduling', () => {
+test('round 13, owner item 5: a delayed match is not offered a table, and nothing marks a side absent', () => {
   const h = harness();
   h.evaluate("data.tournament.matches=[{id:'m1',round:1,status:'delayed',sides:['e1','e2'],absent:['e1'],score:[0,0]}]");
   const html = h.evaluate('bracketScreen()');
-  assert.ok(html.includes('data-action="absence"'));
-  assert.ok(!html.includes('data-action="schedule"'));
+  assert.ok(!html.includes('data-action="absence"') && !/未到场|Not here/.test(html), 'nothing on any card marks a side absent');
+  assert.ok(html.includes('data-action="card-open"'), 'a held match still opens its own board');
+  assert.ok(!html.includes('data-action="schedule"'), 'and it is not offered a table while it is held');
 });
 test('the scoreboard focus picker includes live and delayed tables', () => {
   const h = harness();
@@ -322,7 +323,7 @@ test('round 1 · empty states: no fake names, no blank tiles, no list-item empti
     assert.ok(!/Tables open|球台空闲/.test(floor), `${lang}: never a placeholder name on the board`);
     const matches = h.evaluate('bracketScreen()');
     assert.ok(!/<li>[^<]*(Nothing|暂无|尚无)[^<]*<\/li>/.test(matches), `${lang}: no empty state inside a list`);
-    assert.ok(!/Nothing here yet|暂无记录/.test(matches + floor + h.evaluate('setupScreen()') + h.evaluate('playersScreen()')), `${lang}: the generic empty line is gone`);
+    assert.ok(!/Nothing here yet|暂无记录/.test(matches + floor + h.evaluate('entrantsCard()') + h.evaluate('playersScreen()')), `${lang}: the generic empty line is gone`);
     assert.ok(/<h3>[^<]+<\/h3>[\s\S]*?<article class="empty">/.test(matches), `${lang}: the empty draw sits under its own heading`);
     // with a racked night and nothing on a table, the step is Matches
     h.evaluate(`data.tournament.name='Friday';data.tournament.entrants=[{id:'e1',members:[{name:'A'}]},{id:'e2',members:[{name:'B'}]}];data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',absent:[]}];data.tournament.status='active'`);
@@ -431,7 +432,7 @@ test('instant: the pending state is readable by a screen reader, in EN and 中',
     const floor = h.evaluate('scoreboardScreen()');
     assert.ok(floor.includes('class="scoreboard pending" aria-busy="true"'), `${lang}: the scoreboard is busy`);
     assert.ok(floor.includes(`<p class="pending-note" role="status">${saving}</p>`), `${lang}: and says ${saving}`);
-    const bracket = h.evaluate("density='compact';bracketScreen()");
+    const bracket = h.evaluate('bracketScreen()');
     assert.ok(bracket.includes('bracket-card pending') && bracket.includes('aria-busy="true"'), `${lang}: the bracket card is busy`);
     assert.ok(bracket.includes(` · ${saving}"`) && bracket.includes(`role="status">${saving}</span>`), `${lang}: its name and live region say ${saving}`);
     assert.ok(!/class="badge complete"/.test(floor), `${lang}: pending never looks signed`);
@@ -495,32 +496,30 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
     matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]},
              {id:'m2',round:1,sides:['e3','e4'],score:[0,0],status:'scheduled',table:null,absent:[]},
              {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[]}]}`);
-  const compact = h.evaluate("density='compact';bracketScreen()");
-  assert.ok(compact.includes('<div class="rounds" data-density="compact">'), 'compact is the default density');
-  const card = compact.slice(compact.indexOf('data-status="live"'), compact.indexOf('data-status="scheduled"'));
+  const view = h.evaluate('bracketScreen()');
+  assert.ok(!view.includes('data-density') && !view.includes('data-action="density"'), 'one view: no second density and no switch');
+  assert.ok(view.includes('<div class="rounds">'), 'one rounds container, with no density attribute');
+  const card = view.slice(view.indexOf('data-status="live"'), view.indexOf('data-status="scheduled"'));
   assert.ok(card.includes('class="row card-side first"') && card.includes('class="status-dot"'), 'a side line carries the status dot');
   assert.ok(card.includes('aria-label="Ann – Bo · On table"'), 'the whole match, with its status word, is the card\u2019s name');
-  // nothing is removed: the header, the badge and every control are in the card, shown on hover/focus
-  assert.ok(card.includes('class="row card-head"') && card.includes('Table 1 · m1') && card.includes('>On table<'), 'header row and badge stay');
-  for (const action of ['absence', 'forfeit']) assert.ok(card.includes(`data-action="${action}"`), `${action} stays reachable`);
-  assert.ok(compact.includes('data-action="schedule" data-id="m2"'), 'Send to table stays reachable');
-  assert.ok(compact.includes('tabindex="0"'), 'a keyboard user can open a card');
-  // the toggle, and the full density renders the same cards
-  assert.ok(compact.includes('data-action="density" data-value="full" aria-pressed="false"'), 'a pressed-state toggle offers full cards');
-  const full = h.evaluate("density='full';bracketScreen()");
-  assert.ok(full.includes('data-density="full"') && full.includes('Table 1 · m1'), 'full cards render as before');
+  assert.ok(card.includes('class="row card-head"') && card.includes('Table 1 · m1'), 'the header row stays, with the match id');
+  assert.ok(/class="table-chip">Table 1</.test(card), 'and the table is a chip on the first line, not a detail behind a hover (owner item 6)');
+  assert.ok(/data-action="forfeit"/.test(card) && !/data-action="absence"/.test(card), 'forfeit stays reachable, attendance does not');
+  assert.ok(/data-action="card-open" data-id="m1"/.test(card), 'a live match hands itself to the timer page');
+  assert.ok(view.includes('data-action="schedule" data-id="m2"'), 'Send to table stays reachable');
+  assert.ok(view.includes('tabindex="0"'), 'a keyboard user can open a card');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
-  assert.ok(css.includes('.rounds[data-density=full] .round .entry{min-height:98px}'), 'the 98 px card height applies to full cards only');
-  assert.ok(css.includes('.entry:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}'), 'hover, focus or the card\u2019s own control opens the full card');
-  assert.ok(/grid-auto-columns:minmax\(180px,1fr\)/.test(css), 'rounds share the viewport width');
-  for (const key of ['density', 'densityCompact', 'densityFull']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
+  assert.ok(/\.rounds\{display:grid[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,230px\),1fr\)\)/.test(css), 'the rounds fill the width they have and wrap when they do not');
+  assert.ok(!/data-density/.test(css), 'the stylesheet carries no second view either');
+  assert.ok(css.includes('.bracket-card:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}'), 'hover, focus or the card\u2019s own control opens the details');
+  for (const key of ['density', 'densityCompact', 'densityFull']) assert.equal(h.evaluate(`t('${key}')`), key, `${key} is retired from the words file, not just unrendered`);
 });
 test('R9 on touch: every compact card carries its own expand control, and pressing it does not re-render', async () => {
   const h = harness();
   h.evaluate(`data.players=[];data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
     entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}],
     matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]}]}`);
-  const compact = h.evaluate("density='compact';bracketScreen()");
+  const compact = h.evaluate('bracketScreen()');
   assert.ok(compact.includes('class="card-toggle" data-action="card-toggle" aria-expanded="false"'), 'the card carries a control of its own, so a thumb has something to press');
   assert.ok(compact.includes('aria-label="Show the full card"'), 'the control says what it does');
   // pressing it flips .open in place: no render(), no action(), so focus and scroll stay put
@@ -539,9 +538,9 @@ test('R9 on touch: every compact card carries its own expand control, and pressi
   assert.equal(h.evaluate('calls.length'), 0, 'opening a card is not a server action');
   // the same rules serve a pointer, a keyboard and a thumb; the control only exists where hover is missing
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
-  assert.ok(css.includes('.rounds[data-density=compact] .card-toggle{display:flex'), 'shown on a compact card');
-  assert.ok(/\.card-toggle\{display:none/.test(css), 'never on a full card, which already shows everything');
-  assert.ok(css.includes('.rounds[data-density=compact] .card-side.first{padding-right:var(--sp-5)}'), 'the name never runs under the control');
+  assert.ok(/\.card-toggle\{[^}]*display:flex/.test(css), 'shown on every card: there is no other view to hide it in');
+  assert.equal((h.evaluate('bracketScreen()').match(/data-action="card-toggle"/g) || []).length, 1, 'one card that can open carries one control');
+  assert.ok(css.includes('.bracket-card .card-side.first{padding-right:var(--sp-5)}'), 'the name never runs under the control');
   for (const key of ['cardExpand', 'cardCollapse']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
   assert.equal(h.evaluate("lang='zh';bracketScreen()").includes('aria-label="展开完整卡片"'), true, 'the control is translated');
 });
@@ -574,11 +573,11 @@ test('R13: every query word must match the name, after NFKC, accent and case fol
 test('R13: the registration desk filters its regulars in place with the same matcher', () => {
   const h = harness();
   h.evaluate("data.players=[{id:'p1',name:'Ann-Marie (Annie) Lee',rating:70,status:'Active'},{id:'p2',name:'王磊',rating:60,status:'Active'},{id:'p3',name:'Bo',rating:50,status:'Active'}];data.tournament={id:'t1',status:'registration',format:'singles',raceTo:3,entrants:[],matches:[]}");
-  const shut = h.evaluate('setupScreen()');
+  const shut = h.evaluate('entrantsCard()');
   assert.ok(shut.includes('class="pick-btn') && shut.includes('aria-controls="desk-list0"'), 'the desk is a combobox, tied to its listbox');
   assert.ok(!shut.includes('class="pick-search"'), 'and shut, it holds no list at all: the panel is what opens (owner item 4)');
   h.evaluate('deskOpen=0');
-  const html = h.evaluate('setupScreen()');
+  const html = h.evaluate('entrantsCard()');
   assert.ok(html.includes('class="pick-search" data-desk="0"'), 'opened, it has a type-to-filter field');
   assert.ok(html.includes('aria-controls="desk-list0"') && html.includes('id="desk-list0"'), 'the field is tied to its listbox');
   assert.ok(html.includes('type="hidden" name="pid0"'), 'and the pick travels to the server in a hidden input');
@@ -612,8 +611,13 @@ test('onboard: an empty club gets three real steps in Register, and they leave o
   assert.ok(first.includes('class="modal modal--start"'), 'and it sees one dialog: name the night and start it');
   assert.ok(first.includes('id="start-title"') && first.includes('aria-modal="true"'), 'announced as a dialog, under one heading');
   assert.ok(first.includes('id="settings-form"'), 'the four fields live in the dialog, not on the page');
-  assert.ok(first.includes('class="idle-registration"') && first.includes('aria-hidden="true" inert'), 'the registration page behind it is inert');
-  assert.ok(first.includes('data-action="tournament-start"'), 'and the desk behind it is one write from the draw');
+  assert.ok(!first.includes('id="entrant-form"'), 'and nothing behind it asks for anything yet: the dialog is the screen');
+  assert.ok(first.includes('name="name"') && first.includes('name="format"') && first.includes('name="tables"'),
+    'the four fields are in the dialog, where the night is named');
+  assert.ok(!first.includes('data-action="dismiss-setup"'),
+    'round 13, owner item 1: a night with no name has no Close - Save is the way in');
+  assert.ok(/data-action="dismiss-setup"/.test(h.evaluate('startModal(true)')),
+    'and a named night\u2019s dialog carries it, on the same row as Save');
   for (const key of ['firstRunTitle', 'firstRunRegulars', 'firstRunEntrants', 'firstRunRack', 'firstRunNote']) {
     assert.equal(h.evaluate(`t('${key}')`), key, `${key} is retired from the words file, not just unrendered`);
   }
@@ -622,7 +626,7 @@ test('onboard: an empty club gets three real steps in Register, and they leave o
   h.evaluate("data.tournament.id='t1'");
   const registering = idle();
   assert.ok(!registering.includes('modal--start'), 'a named night is not asked again');
-  assert.ok(registering.includes('id="entrant-form"') && registering.includes('class="card card--night"'), 'the desk and the night card are the page');
+  assert.ok(registering.includes('id="entrant-form"') && registering.includes('class="card card--event"'), 'the desk and the night card are the page');
   assert.ok(registering.includes('data-action="open-setup"'), 'and the settings have one door');
   h.evaluate('setupOpen=true');
   assert.ok(idle().includes('modal--start') && idle().includes('data-action="dismiss-setup"'), 'the door opens the same dialog, and this one closes');
@@ -1346,7 +1350,7 @@ test('a renamed regular reads by their current name on every screen, archive inc
                {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',absent:[]},
                {id:'m3',round:2,sides:['e1','e2'],score:[3,2],status:'complete',result:'played',winnerId:'e1',absent:[]}]});
     data.tournament=night();data.history=[Object.assign(night(),{id:'h1',archivedAt:'2026-09-01T00:00:00Z'})];data.events=[];data.notes=[]`);
-  const views = {tonight: h.evaluate('tonightScreen()'), setup: h.evaluate('setupScreen()'), matches: h.evaluate('bracketScreen()'), records: h.evaluate('recordsScreen()')};
+  const views = {tonight: h.evaluate('tonightScreen()'), setup: h.evaluate('entrantsCard()'), matches: h.evaluate('bracketScreen()'), records: h.evaluate('recordsScreen()')};
   for (const [name, html] of Object.entries(views)) assert.ok(!/>Ada</.test(html) && !/\bAda \//.test(html), `${name}: the stale snapshot name never shows`);
   assert.ok(views.matches.includes('Ada Lovelace'), 'bracket shows the current name');
   // The night's own log lives inside its timeline body (5.4), so the night is the anchor, not <details>.
@@ -1390,7 +1394,8 @@ test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', 
     const rec = h.evaluate('recordsScreen()'), archive = rec.slice(rec.indexOf('data-event="h1"'));
     assert.ok(archive.includes(`>${bye}<`) && !archive.includes(`${esc_(waiting)}`), `${lang}: the archive labels the bye too`);
     const play = h.evaluate('playScreen()');
-    assert.ok(play.match(/<span class="muted">([^<]*)<\/span>/)[1].includes(cards), `${lang}: the Play heading line agrees`);
+    const draw = play.slice(play.indexOf('class="bracket-view"'));
+    assert.ok(draw.match(/<span class="muted">([^<]*)<\/span>/)[1].includes(cards), `${lang}: the draw\u2019s heading line agrees`);
   }
   assert.equal(h.evaluate('JSON.stringify(resultStats("x"))'), '{"wins":0,"losses":0}');
 });
@@ -1436,7 +1441,7 @@ test('after the draw and in the archive only the name can be edited, and it is a
     assert.ok(h.evaluate('startModal(true)').includes(h.evaluate("esc(t('locked'))")),
       `${lang}: the rules stay locked, and the dialog that offers to edit the name says why`);
     assert.equal((dialog.match(/name="name"/g) || []).length, 1, `${lang}: the name is edited in one place only`);
-    assert.ok(h.evaluate('setupScreen()').includes(`>${rename}<`) || h.evaluate('recordsScreen()').includes(`>${rename}<`),
+    assert.ok(h.evaluate('entrantsCard()').includes(`>${rename}<`) || h.evaluate('recordsScreen()').includes(`>${rename}<`),
       `${lang}: ${rename} is the archived row's control now, not a form on Tonight`);
     const matches = h.evaluate('recordsScreen()');
     assert.ok(matches.includes('data-action="rename-archived"') && matches.includes('data-id="h1"'), `${lang}: an archived event can be renamed`);
@@ -1464,23 +1469,20 @@ test('forfeit and in-match absence are reachable from the Matches bracket, each 
   for (const id of ['m1', 'm2']) {
     const c = card(id);
     assert.ok(/data-action="forfeit"[^>]*data-side="0"/.test(c) && /data-action="forfeit"[^>]*data-side="1"/.test(c), `${id}: forfeit for either side`);
-    assert.ok(/data-action="absence"[^>]*data-absent="true"/.test(c), `${id}: a side can be marked not here`);
+    assert.ok(!/data-action="absence"/.test(c), `${id}: nothing on the card marks a side absent (round 13, owner item 5)`);
   }
   assert.ok(!/m3[^]*data-action="forfeit"/.test(html.slice(html.indexOf('m3'.slice(0, 8)))), 'a pending match (no sides yet) offers no forfeit');
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   const asked = [];
   h.context.confirm = msg => { asked.push(msg); return false; };
   await click({action: 'forfeit', id: 'm1', side: '0'});
-  await click({action: 'absence', id: 'm1', side: '1', absent: 'true'});
-  await click({action: 'absence', id: 'm1', side: '1', absent: 'false'});
   assert.equal(h.evaluate('calls.length'), 0, 'a cancelled confirm sends nothing');
-  assert.deepEqual(asked, ['Record a forfeit for this side and advance the opponent?', 'Mark this player as not here? The match is held until they return; the table is released.', 'Mark this player as here again? The match can then go to a table.']);
+  assert.deepEqual(asked, ['Record a forfeit for this side and advance the opponent?'], 'one confirm, for the forfeit');
   h.context.confirm = msg => { asked.push(msg); return true; };
   h.evaluate("lang='zh'");
-  await click({action: 'absence', id: 'm2', side: '0', absent: 'true'});
   await click({action: 'forfeit', id: 'm2', side: '1'});
-  assert.equal(asked[3], '将此球员标记为未到场？比赛将暂缓直到其返回，球台会被释放。');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'match_absence', payload: {id: 'm2', side: 0, absent: true}}, {name: 'match_forfeit', payload: {id: 'm2', side: 1}}]);
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'match_forfeit', payload: {id: 'm2', side: 1}}],
+    'the write is the forfeit contract, and attendance is not part of it (round 13, owner item 5)');
 });
 test('standings count results, not ratings; the event table sorts wins, win %, name (R4)', () => {
   const h = harness();
@@ -1603,12 +1605,12 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   assert.ok(h.evaluate('recordsScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
   h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['x','y'],score:[0,0],status:'scheduled',absent:[]}]");
-  assert.ok(h.evaluate('wrapScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  assert.ok(h.evaluate('playScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
   h.evaluate('data.tournament.matches=[]');
-  assert.ok(!h.evaluate('wrapScreen()').includes('data-action="results-sheet"'), 'no sheet before the draw');
+  assert.ok(!h.evaluate('playScreen()').includes('data-action="results-sheet"'), 'no sheet before the draw');
   await click({action: 'results-sheet', id: 'h1'});
   assert.equal(h.evaluate('sheetId'), 'h1', 'the click opens the sheet');
-  const sheet = h.evaluate('wrapScreen()');
+  const sheet = h.evaluate('tonightScreen()');
   assert.ok(sheet.includes('class="stack results-sheet"'), 'the sheet replaces the Close view');
   assert.ok(/class="champion"[^]*?Ada/.test(sheet), 'the champion is the final winner, by the live roster name');
   assert.equal((sheet.match(/class="sheet-round"/g) || []).length, 2, 'every round is on the sheet');
@@ -1624,7 +1626,7 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   assert.equal(printed, 1);
   assert.equal(h.evaluate('calls.length'), 0, 'a sheet never writes');
   await click({action: 'sheet-back'});
-  assert.ok(!h.evaluate('wrapScreen()').includes('class="stack results-sheet"'), 'back returns to Close');
+  assert.ok(!h.evaluate('playScreen()').includes('class="stack results-sheet"'), 'back returns to Close');
   await click({action: 'results-sheet', id: 'h1'});
   h.evaluate('canNavigate=()=>true');
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {tab: 'floor'}}}});
@@ -1659,7 +1661,7 @@ test('delete only an unsigned event; otherwise hide it from history, which erase
     h.evaluate('showHidden=true');
     const all = h.evaluate('recordsScreen()');
     assert.ok(all.includes('Hidden night') && all.includes(`>${unhide}<`), `${lang}: hidden events can be shown and restored`);
-    assert.ok(h.evaluate('wrapScreen()').includes('data-action="event-delete" data-id="t0"'), `${lang}: tonight, unsigned, can be deleted from Close`);
+    assert.ok(h.evaluate('playScreen()').includes('data-action="event-delete" data-id="t0"'), `${lang}: tonight, unsigned, can be deleted from Close`);
   }
   assert.equal(h.evaluate('JSON.stringify(resultStats("pa"))'), '{"wins":2,"losses":0}', 'a hidden event still counts: hiding erases nothing');
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
@@ -1701,12 +1703,12 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
   h.evaluate('render=()=>{}');
   for (const [lang, title, drawBtn, label] of [['en', 'Second chance', 'Draw a round-1 loser', 'Random draw, not a result'], ['zh', '复活赛', '抽取一名首轮负者', '随机抽签，不是赛果']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('wrapScreen()');
+    const html = h.evaluate('playScreen()');
     assert.ok(html.includes(`>${title}<`) && html.includes(`>${drawBtn}<`), `${lang}: the draw is offered while round 2 is unsigned`);
     assert.ok(html.includes(label), `${lang}: it is labelled as a random draw`);
   }
   h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'scheduled',result:undefined,winnerId:null}");
-  assert.ok(!h.evaluate('wrapScreen()').includes('data-action="revival-draw"'), 'no draw until every round-1 loser is known');
+  assert.ok(!h.evaluate('playScreen()').includes('data-action="revival-draw"'), 'no draw until every round-1 loser is known');
   h.evaluate("data.tournament.matches[3]={...data.tournament.matches[3],status:'complete',result:'played',winnerId:'e'}");
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   const asked = [];
@@ -1722,7 +1724,7 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
     Object.assign(data.tournament.matches[1],{sides:['b','f'],status:'scheduled',winnerId:null});delete data.tournament.matches[1].result;
     Object.assign(data.tournament.matches[4],{sides:['a',null],status:'pending'})`);
   h.evaluate("lang='zh'");
-  const drawn = h.evaluate('wrapScreen()');
+  const drawn = h.evaluate('playScreen()');
   assert.ok(drawn.includes('抽中：Fay') && drawn.includes('种子 12345') && drawn.includes('候选：Dee、Fay'), '中: who, the seed and the pool are shown');
   assert.ok(drawn.includes('data-action="revival-undo"'), 'undo is offered until the next result');
   assert.ok(!drawn.includes('data-action="revival-draw"'), 'one draw per event');
@@ -1731,7 +1733,7 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'revival_draw', payload: {confirm: true}}, {name: 'revival_undo', payload: {confirm: true}}]);
   // after a newer signed result, undo is gone and the drawn line stays as history
   h.evaluate("data.tournament.matches[5]={...data.tournament.matches[5],status:'complete',result:'played',winnerId:'c',score:[3,2]}");
-  const closed = h.evaluate('wrapScreen()');
+  const closed = h.evaluate('playScreen()');
   assert.ok(!closed.includes('data-action="revival-undo"') && closed.includes('抽中：Fay'));
   for (const [action, en, zh] of [['revival_draw', 'Second chance drawn (random, audited)', '复活赛抽签（随机，已记录）'], ['revival_undo', 'Second chance undone', '撤销复活赛抽签']]) {
     h.evaluate("lang='en'"); assert.ok(h.evaluate(`auditLine({action:'${action}',createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}})`).includes(en));
@@ -1746,18 +1748,18 @@ test('doubles can pair solo sign-ups at random: seed shown, re-roll, accept (R3)
       pool:[{pid:'pa',name:'Ada'},{pid:null,name:'Bo'},{pid:null,name:'Cy'}],pairing:null}`);
   for (const [lang, title, add, draw, odd] of [['en', 'Random pairing', 'Add solo player', 'Pair at random', 'An even number of solo players is needed'], ['zh', '随机配对', '添加单人报名', '随机配对搭档', '需要偶数名单人报名者']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('setupScreen()');
+    const html = h.evaluate('entrantsCard()');
     assert.ok(html.includes(`>${title}<`) && html.includes(`>${add}<`), `${lang}: a doubles event offers a solo pool`);
     assert.ok(/<button[^>]*data-action="pair-draw"[^>]*disabled/.test(html) && html.includes(odd), `${lang}: an odd pool cannot be paired, and says why`);
     assert.ok(html.includes('Ada') && html.includes('Bo') && html.includes('Cy'));
     assert.ok(html.includes(`>${draw}<`));
   }
   h.evaluate("data.tournament.format='singles'");
-  assert.ok(!h.evaluate('setupScreen()').includes('id="solo-form"'), 'singles has no pairing step');
+  assert.ok(!h.evaluate('entrantsCard()').includes('id="solo-form"'), 'singles has no pairing step');
   h.evaluate("data.tournament.format='doubles';data.tournament.pool.push({pid:null,name:'Di'});data.tournament.pairing={seed:424242,teams:[[{pid:null,name:'Cy'},{pid:'pa',name:'Ada'}],[{pid:null,name:'Di'},{pid:null,name:'Bo'}]]}");
   for (const [lang, seed, accept, reroll, label] of [['en', 'seed 424242', 'Use these teams', 'Re-roll', 'Random draw of partners only; results are never drawn.'], ['zh', '种子 424242', '采用这些组合', '重新抽签', '只随机决定搭档，比赛结果从不抽签。']]) {
     h.evaluate(`lang='${lang}'`);
-    const html = h.evaluate('setupScreen()');
+    const html = h.evaluate('entrantsCard()');
     assert.ok(html.includes(seed) && html.includes(`>${accept}<`) && html.includes(`>${reroll}<`) && html.includes(label), `${lang}: the preview shows the seed, accept and re-roll`);
     assert.ok(html.includes('Cy / Ada') && html.includes('Di / Bo'), `${lang}: the teams are shown before they count`);
     assert.ok(!html.includes('id="entrant-form"'), `${lang}: registration is locked while a pairing is shown`);
@@ -2378,14 +2380,17 @@ test('Register holds the night, random pairing, the desk, the entry list and Rac
     h.evaluate(`lang='${lang}'`);
     const html = h.evaluate('tonightScreen()');
     assert.ok(html.includes('id="entrant-form"') && html.includes('class="pick-btn'), `${lang}: desk and its combobox`);
-    assert.ok(html.includes('data-action="open-setup"') && html.includes('class="card card--night"'), `${lang}: the settings are a door, not a form on the page`);
+    assert.ok(html.includes('data-action="open-setup"') && html.includes('class="card card--event"'), `${lang}: the settings are a door, not a form on the page`);
     assert.ok(!html.includes('id="settings-form"'), `${lang}: the four fields exist once, in the dialog`);
     assert.ok(html.includes('data-action="entrant-remove"') && !html.includes('data-action="entrant-absence"'), `${lang}: Remove per entrant, and no not-here button (round 10, item 2)`);
     assert.ok(!html.includes('class="attendance"') && !/Here now|\u5df2\u5230\u573a/.test(html), `${lang}: the entry list does not label who is here (round 10, item 2)`);
     assert.ok(!html.includes('data-tab="players"') && !/Manage regulars|\u7ba1\u7406\u5e38\u5ba2/.test(html), `${lang}: no Manage regulars button - the nav already gives Regulars a ball (round 10, item 1)`);
     assert.ok(html.includes('data-action="tournament-start"'), `${lang}: Rack the night is on Register`);
     assert.ok(html.includes('data-action="promote" data-name="Walk-in Wu"'), `${lang}: every guest entrant carries Add to regulars, the one action the word bank and the handler already had`);
-    assert.ok(!html.includes('class="end-night"'), `${lang}: archive and delete are not on Register (they are Close)`);
+    assert.ok(html.includes('class="end-night"') && html.includes('data-action="event-delete"'),
+      `${lang}: the event card carries the night\u2019s end (round 13, owner item 3)`);
+    assert.ok(!h.evaluate('statusScreen()').includes('class="end-night"'),
+      `${lang}: and the Back room does not carry it twice`);
     assert.ok(!html.includes('class="first-run"'), `${lang}: the three-step guide is retired, not unrendered`);
   }
   h.evaluate("data.tournament.format='doubles'");
@@ -2450,9 +2455,9 @@ test('Close is the night\u2019s end: the results sheet, second chance, archive a
     data.history=[];tab='tonight';`);
   h.evaluate('render=()=>{}');
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
-  const close = () => h.evaluate('wrapScreen()');
+  const close = () => h.evaluate('tonightScreen()');
   assert.ok(!close().includes('data-action="results-sheet"'), 'no sheet before the draw');
-  assert.ok(close().includes(h.evaluate("esc(t('closeTitle'))")), 'the wrap-up card is there from the start');
+  assert.ok(close().includes(h.evaluate("esc(t('eventSettings'))")), 'the event card is there from the start');
   assert.ok(!/data-phase=/.test(close()), 'and it has no phase button left to point anywhere');
   h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['a','b'],score:[0,0],status:'scheduled',absent:[]}]");
   const drawn = close();
@@ -2695,56 +2700,64 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   idle.evaluate("data.players=[];data.tournament={id:'t0',name:'',format:'singles',raceTo:7,tables:4,status:'registration',entrants:[],matches:[]}");
   assert.equal(idle.evaluate('tonightState()'), 'idle');
   const idleHtml = idle.evaluate('tonightScreen()');
-  assert.ok(idleHtml.includes('id="entrant-form"') && idleHtml.includes('class="card card--night"'),
-    'idle: the registration page is the screen, with the desk on it');
+  assert.ok(idleHtml.includes('id="entrant-form"') && idleHtml.includes('class="card card--event"'),
+    'idle: a named night sees its three cards, with the desk in the entrants card');
   assert.ok(!idleHtml.includes('modal--start'), 'idle: a named event has nothing to ask for');
   idle.evaluate("data.tournament.id=''");
   const fresh = idle.evaluate('tonightScreen()');
   assert.ok(fresh.includes('class="modal modal--start"') && fresh.includes('id="settings-form"'),
     'idle and unnamed: one dialog, holding the fields that name the night');
-  assert.ok(fresh.includes('class="idle-registration"') && /aria-hidden="true" inert/.test(fresh),
-    'over the registration page, dimmed and inert');
+  assert.ok(!fresh.includes('class="idle-registration"') && !fresh.includes('id="entrant-form"'),
+    'and nothing else is on the screen: the dialog is the way in');
   idle.evaluate("data.tournament.id='t0'");
   assert.ok(!idleHtml.includes('table-grid'), 'idle: no card grid of tables (owner item 3)');
-  for (const gone of ['class="scoreboard"', 'class="rounds"', 'card--wrap', 'side-panel', 'table-grid']) {
+  for (const gone of ['class="scoreboard"', 'card--wrap', 'side-panel', 'table-grid']) {
     assert.ok(!idleHtml.includes(gone), `idle: no ${gone}`);
   }
+  assert.ok(idleHtml.includes('class="rounds"') && idleHtml.includes('<article class="empty">'),
+    'idle: round 13, owner item 9: the draw is the tab\u2019s second element, empty, under its heading');
   const reg = harness();
   tonightNight(reg, null);
   assert.equal(reg.evaluate('tonightState()'), 'registration');
   const regHtml = reg.evaluate('tonightScreen()');
-  for (const there of ['id="entrant-form"', 'class="pick-btn', 'data-action="tournament-start"', 'class="card card--night"']) {
+  for (const there of ['id="entrant-form"', 'class="pick-btn', 'data-action="tournament-start"', 'class="card card--event"']) {
     assert.ok(regHtml.includes(there), `registration: ${there}`);
   }
-  for (const gone of ['class="scoreboard"', 'class="rounds"', 'card--wrap']) {
+  for (const gone of ['class="scoreboard"', 'card--wrap']) {
     assert.ok(!regHtml.includes(gone), `registration: no ${gone}`);
   }
+  assert.ok(regHtml.includes('class="rounds"') && regHtml.includes('<article class="empty">'),
+    'registration: the draw is on the tab, empty, under its own heading');
   const active = harness();
   tonightNight(active, 'drawn');
   assert.equal(active.evaluate('tonightState()'), 'active');
   assert.equal(active.evaluate('comp()'), 'active');
   const activeHtml = active.evaluate('tonightScreen()');
-  for (const there of ['class="scoreboard"', 'class="rounds"', 'side-panel', 'class="entry row"', 'data-action="open-setup"', 'class="bracket-view"']) {
+  for (const there of ['class="rounds"', 'side-panel', 'class="entry row"', 'data-action="open-setup"', 'class="bracket-view"']) {
     assert.ok(activeHtml.includes(there), `active: ${there}`);
   }
-  for (const gone of ['id="settings-form"', 'id="entrant-form"', 'card--wrap']) {
+  for (const gone of ['id="settings-form"', 'class="scoreboard"', 'card--wrap']) {
     assert.ok(!activeHtml.includes(gone), `active: no ${gone}`);
   }
-  assert.ok(activeHtml.indexOf('class="scoreboard"') > activeHtml.indexOf('class="bracket-view"'), 'nothing is live, so the board sits under the draw');
+  assert.ok(active.evaluate('clockScreen()').includes('class="scoreboard"'),
+    'round 13, owner item 6: the board is on the timer page, and this tab shows the draw');
   active.evaluate("data.tournament.matches[1].status='live';data.tournament.matches[1].table=1");
   assert.equal(active.evaluate('dirtyComp()'), true, 'a ball on a table is what dirty means');
-  assert.ok(active.evaluate('tonightScreen()').indexOf('class="scoreboard"') < active.evaluate('tonightScreen()').indexOf('class="bracket-view"'), 'and a live table pins the board above the draw');
+  assert.ok(/class="table-chip">Table 1</.test(active.evaluate('tonightScreen()')),
+    'and the draw says which table that group is on');
   const done = harness();
   tonightNight(done, 'done');
   assert.equal(done.evaluate('tonightState()'), 'complete');
   assert.equal(done.evaluate('comp()'), 'complete');
   const doneHtml = done.evaluate('tonightScreen()');
-  for (const there of ['card--wrap', 'data-action="results-sheet"', 'data-action="new-event"', 'class="rounds"']) {
+  for (const there of ['class="card card--event"', 'data-action="results-sheet"', 'data-action="new-event"', 'class="rounds"']) {
     assert.ok(doneHtml.includes(there), `complete: ${there}`);
   }
-  for (const gone of ['class="scoreboard"', 'side-panel', 'id="entrant-form"', 'id="settings-form"']) {
+  for (const gone of ['class="scoreboard"', 'id="settings-form"']) {
     assert.ok(!doneHtml.includes(gone), `complete: no ${gone}`);
   }
+  assert.ok(doneHtml.includes('side-panel'), 'complete: the event table stays, where the night can be read back');
+  assert.ok(doneHtml.includes('class="entry row"'), 'complete: the entrants stay, so the night can be read back');
   // The state machine is data, not history: a night that moves on repaints the same URL.
   const h = harness();
   tonightNight(h, null);
@@ -2758,7 +2771,7 @@ test('the tables are resident, the dashboard follows the live event, and the nig
   const h = harness();
   h.evaluate("data.players=[{id:'p1',name:'Ana',status:'Active',rating:50}];data.tournament={id:'t0',name:'',format:'singles',raceTo:7,tables:3,status:'registration',entrants:[],matches:[]}");
   const startView = h.evaluate('tonightScreen()');
-  assert.ok(startView.includes('id="entrant-form"') && startView.includes('card card--night'), 'the desk is the resident body (owner item 3: no table grid)');
+  assert.ok(startView.includes('id="entrant-form"') && startView.includes('card card--event'), 'the desk is the resident body (owner item 3: no table grid)');
   assert.equal((startView.match(/data-table="/g) || []).length, 0, 'and no table card is drawn anywhere');
   assert.ok(!startView.includes('class="scoreboard"') && !startView.includes('side-panel'), 'no dashboard while the event is not live');
   h.evaluate("data.tournament.id=''");
@@ -2786,11 +2799,13 @@ test('the tables are resident, the dashboard follows the live event, and the nig
   h.evaluate("data.tournament.status='active'");
   assert.equal(h.evaluate('liveComp()'), true, 'starting the event opens the gate');
   const live = h.evaluate('tonightScreen()');
-  assert.ok(live.includes('class="scoreboard"') && live.includes('class="bracket-view"'), 'and the dashboard arrives with the night\u2019s one list');
+  assert.ok(!live.includes('class="scoreboard"') && live.includes('class="bracket-view"'),
+    'round 13, owner item 6: the tab arrives with the draw, and the board stays on the timer page');
+  assert.ok(h.evaluate('clockScreen()').includes('class="scoreboard"'), 'where the match is scored, in its own tab');
   // A free table offers the next match by number, and the send carries that number.
   h.evaluate('calls.length=0');
-  assert.ok(/data-action="schedule" data-id="m1"/.test(live), 'the queue offers the waiting match to a free table');
-  assert.ok(live.includes(h.evaluate("esc(t('send'))")), 'and the button is the queue\u2019s own Send');
+  assert.ok(/data-action="schedule" data-id="m1"/.test(live), 'the draw offers the waiting match to a free table');
+  assert.ok(live.includes(h.evaluate("esc(t('send'))")), 'and the button is the card\u2019s own Send');
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'schedule', id: 'm1'}}}});
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'match_schedule', payload: {id: 'm1'}}], 'sending names the match - the box places it on a free table');
 });
@@ -2815,9 +2830,10 @@ test('the draw is where a match is put on a table, and the board carries the liv
   assert.ok(/<strong class="digits">2<\/strong>/.test(grid) && grid.includes(h.evaluate("esc(t('live'))")), 'the board is the live table: its score and its word');
   assert.ok(grid.includes('Di') && grid.includes('data-action="score"') && grid.includes('data-action="sign"'), 'and it is scored and signed there');
   assert.ok(!/class="table-card/.test(grid), 'and no card anywhere is a card of a table (owner item 3)');
-  // Absent players are named, not silently sent: an absent side holds the match.
+  // Round 13, owner item 5: the field is still in old documents, and the console ignores it.
   h.evaluate("data.tournament.matches[2].absent=['a']");
-  assert.ok(!/data-action="schedule"/.test(h.evaluate('playScreen()')), 'a held match is offered to no table');
+  assert.ok(/data-action="schedule" data-id="m3"/.test(h.evaluate('playScreen()')),
+    'attendance no longer holds a match back: anyone can be sent to a table');
 });
 
 // --- Round 2 (impeccable audit, 2026-10-03) ---------------------------------
@@ -2982,34 +2998,38 @@ test('round 3 / F12: the honesty note leaves the individual panels and stays whe
 test('round 3 / F14: End of the night is on the Back room in every state, with the forbidden button disabled and explained', () => {
   const h = harness();
   h.evaluate("lang='en';render=()=>{}");
+  h.evaluate(`data.tournament={raceTo:7,entrants:[],matches:[]};data.history=[]`);
+  assert.ok(!h.evaluate('tonightScreen()').includes('data-action="event-delete"'),
+    'F14: with no event at all the screen is the dialog, and nothing offers to delete what does not exist');
   const states = [
-    ['no event at all', `data.tournament={raceTo:7,entrants:[],matches:[]};data.history=[]`, "t('closeNoEvent')", false],
     ['an empty registration', `data.tournament={id:'t0',status:'registration',raceTo:7,entrants:[],matches:[]};data.history=[]`, "t('closeNoEntrants')", false],
     ['a registration with entrants', `data.tournament={id:'t0',status:'registration',raceTo:7,entrants:[{id:'a',members:[{pid:'pa',name:'Ann'}]}],matches:[]};data.history=[]`, null, true],
     ['a night with a signed result', `data.tournament={id:'t0',status:'active',raceTo:7,entrants:[{id:'a',members:[{pid:'pa',name:'Ann'}]}],matches:[{id:'m1',round:1,sides:['a',null],score:[3,0],status:'complete',result:'played',winnerId:'a',absent:[]}]};data.history=[]`, "t('closeSigned')", false],
   ];
   for (const [name, setup, why, deletable] of states) {
     h.evaluate(setup);
-    const html = h.evaluate('statusScreen()');
+    const html = h.evaluate('tonightScreen()');
     const end = html.slice(html.indexOf('class="end-night"'));
-    assert.ok(html.includes('class="end-night"') && end.includes('data-action="new-event"'), `F14: the card is on the Back room with ${name}`);
+    assert.ok(html.includes('class="end-night"') && end.includes('data-action="new-event"'),
+      `F14: the event card carries the night\u2019s end with ${name} (round 13, owner item 3: the Back room no longer does)`);
     assert.ok(end.includes('data-action="event-delete"'), `F14: and it always carries the delete control (${name})`);
     assert.equal(!/data-action="event-delete"[^>]*disabled/.test(end), deletable, `F14: delete is ${deletable ? 'live' : 'off'} with ${name}`);
     if (why) assert.ok(end.includes(h.evaluate(`esc(${why})`)), `F14: the disabled button says why (${name})`);
     else assert.ok(!/class="note close-why"/.test(end), `F14: nothing is explained away when the state allows it (${name})`);
   }
   h.evaluate(`data.tournament={id:'t0',status:'active',raceTo:7,entrants:[],matches:[]}`);
-  const card = h.evaluate('nightCard()');
+  const card = h.evaluate('eventCard()');
   assert.ok(!/archive this event to start/.test(card), 'F14: the night card is a summary and a door, with no stale instruction');
   assert.ok(h.evaluate('startModal(true)').includes(h.evaluate("esc(t('locked'))")),
     'F14: and the locked note travels with the settings dialog, where the name is edited');
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
-    assert.ok(h.evaluate("t('locked')").includes(h.evaluate("t('closeTitle')")), `F14: the ${lang} note names the card that can be found`);
+    assert.ok(h.evaluate("t('locked')").includes(h.evaluate("t('eventSettings')")), `F14: the ${lang} note names the card that can be found`);
   }
   h.evaluate(`lang='en';data.tournament={id:'',name:'Friday 8-ball',format:'singles',raceTo:5,tables:2,status:'registration',entrants:[],matches:[]}`);
-  assert.ok(h.evaluate('nightCard()').includes('Friday 8-ball'),
-    "F14: and the card carries the night's own name once the operator has given it one");
+  h.evaluate("data.tournament.entrants=[{id:'x',members:[{name:'A'}]}]");
+  assert.ok(h.evaluate('scene()').includes('Friday 8-ball') && !h.evaluate('eventCard()').includes('Friday 8-ball'),
+    "F14: and the name reads once, on the scene line - the card is a door and the night's end, not a second summary (round 13, owner item 9)");
 });
 
 test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names itself', async () => {
@@ -3772,7 +3792,8 @@ test('round 12 / owner item 1: the queue and the draw are one list, and the read
     assert.equal((view.match(/class="bracket-view"/g) || []).length, 1, `${lang}: one list, not a queue beside a draw`);
     assert.ok(!view.includes('queue-card') && !/Waiting to play|等待上场/.test(view), `${lang}: the queue card is gone, word and all`);
     assert.ok(view.includes(`<h3>${h.evaluate("esc(t('bracketTitle'))")}</h3>`), `${lang}: the list is headed by the draw's own word`);
-    const line = view.match(/<span class="muted">([^<]*)<\/span>/)[1];
+    const draw = view.slice(view.indexOf('class="bracket-view"'));
+    const line = draw.match(/<span class="muted">([^<]*)<\/span>/)[1];
     assert.ok(line.includes(h.evaluate("esc(t('bracketSend')).replace('{n}','1')")), `${lang}: the heading counts the match that waits for a table`);
     assert.ok(/data-action="schedule" data-id="m2"/.test(view), `${lang}: and that match sends itself from its own card`);
     assert.ok(!/<details class="panel"/.test(view), `${lang}: the list is not a drawer that closes itself after every write`);
@@ -3824,12 +3845,12 @@ test('round 12 / owner item 3: the end of the night is one card, one row, one re
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
     const view = h.evaluate('tonightScreen()');
-    assert.equal((view.match(/class="end-night"/g) || []).length, 1, `${lang}: the finish is one card`);
-    assert.ok(!view.includes('close-sheet') && !view.includes('card--night'), `${lang}: with no second card for the sheet and no summary under it`);
+    assert.equal((view.match(/class="end-night"/g) || []).length, 1, `${lang}: the night\u2019s end is one row`);
+    assert.ok(!view.includes('close-sheet') && !view.includes('card--night'), `${lang}: with no second card for the sheet and no summary card of its own`);
+    assert.ok(view.includes(`<h3>${h.evaluate("esc(t('eventSettings'))")}</h3>`), `${lang}: it lives in the event card, under that heading`);
     const start = view.indexOf('class="end-night"');
-    const end = view.slice(start, view.indexOf('</article>', start));
-    assert.ok(end.includes(h.evaluate("esc(t('closeTitle'))")), `${lang}: it is headed 收尾`);
-    assert.equal((end.match(/<h3>/g) || []).length, 1, `${lang}: the close card has one heading, not three`);
+    const end = view.slice(start, view.indexOf('</div>', view.indexOf('</div>', start) + 1));
+    assert.equal((end.match(/<h3>/g) || []).length, 0, `${lang}: and the row carries no heading of its own`);
     assert.equal((view.match(/class="tiles"/g) || []).length, 0, `${lang}: the six tiles are gone`);
     for (const gone of ['closeNote', 'closeSheetNote', 'endNightNote']) {
       assert.ok(!view.includes(h.evaluate(`esc(t('${gone}'))`)), `${lang}: and the prose of ${gone} is gone with them`);
