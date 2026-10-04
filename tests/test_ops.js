@@ -2448,8 +2448,8 @@ test('the bottom bar survives Vision, which is how Vision gets an exit, and ever
   assert.ok(css.includes('[data-tab=vision] #tabbar{display:flex}'), 'the vision rule that hides the top nav row does not hide the bar');
   assert.ok(css.includes('env(safe-area-inset-bottom)'), 'the bar and its padding respect the safe area');
   assert.ok(css.includes('--tabbar-h'), 'the bar height is one token the vision surfaces are offset by');
-  for (const sel of ['.vs-sheettabs{bottom:var(--tabbar-h)', '.vs-strip{bottom:calc(var(--tabbar-h)']) {
-    assert.ok(css.includes(sel), `${sel} sits above the bar`);
+  for (const sel of ['.vs-sheettabs{bottom:calc(var(--tabbar-h) + var(--clockbar-h))', '.vs-strip{bottom:calc(var(--tabbar-h) + var(--clockbar-h) + 44px)']) {
+    assert.ok(css.includes(sel), `${sel} sits above both fixed rows`);
   }
   assert.ok(css.includes('@media print{#ops-shell #tabbar{display:none!important}}'), 'the bar never prints');
 });
@@ -2489,14 +2489,14 @@ test('the bar is two rows: the shot timer, then the five destinations and the to
   assert.ok(!/navColors/.test(source) && !/navColors/.test(css), 'the old per-destination colour map is gone with the balls it painted');
   assert.equal((html.match(/data-clock-host/g) || []).length, 1, 'one timer host in the whole shell, in its own row');
   assert.equal((html.match(/<header>/g) || []).length, 1, 'one header');
-  // Owner item 2 (round 7): the timer left the nav for a row of its own, so the bar is two rows -
-  // the clock first, the five destinations and the tools beneath it - and nothing in .tools holds
-  // a second timer.
+  // Owner item 2 (round 7) gave the timer a row of its own; owner item 1 (round 8) put that row
+  // under the destinations, so the bar is two rows - the five destinations and the tools, then the
+  // clock - and nothing in .tools holds a second timer.
   assert.ok(bar.includes('<div class="clockbar" role="group" aria-label="Shot timer / 击球计时" data-clock-host></div>'),
     'the clock row is a named group with one host, empty until ops.js paints it');
-  assert.ok(bar.indexOf('class="clockbar"') < bar.indexOf('<nav id="nav"'), 'the clock comes first');
-  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="tools"'), 'then the destinations, then the tools');
-  assert.ok(bar.indexOf('class="barrow"') < bar.indexOf('class="tools"'), 'the tools share the second row, not the clock\'s');
+  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="clockbar"'), 'the destinations come first, the clock row under them');
+  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="tools"'), 'the destinations, then the tools');
+  assert.ok(bar.indexOf('class="barrow"') < bar.indexOf('class="tools"'), 'the tools share the destinations\' row, not the clock\'s');
   assert.ok(source.includes("$('#nav').innerHTML=clockNavButton()+primaryNav()"), 'render() paints six items into the nav: the timer, then the destinations');
   assert.ok(!source.includes('timerSlotHost'), 'the second definition of the host is gone, not just unused');
   assert.equal((bar.match(/<div class="tools">/g) || []).length, 1, 'and one tools row, unchanged');
@@ -3017,8 +3017,11 @@ test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names its
   const slot = h.evaluate('clockNavButton()');
   assert.ok(slot.includes('data-tab="clock"') && slot.includes('aria-keyshortcuts="Digit1"'),
     'round 7 / owner item 2 (his ruling): ball 1 is the timer own destination, in the nav like every other');
-  assert.ok(slot.includes('<i>1</i>') && slot.includes('aria-hidden="true" class="ball') && slot.includes('Shot timer'),
+  assert.ok(slot.includes('<i>1</i>') && slot.includes('aria-hidden="true" class="ball"') && slot.includes('Shot timer'),
     'F16 + owner item 4: inside the item the ball is decorative and the word names it - the number is never read as a count of shots');
+  assert.ok(slot.includes('class="ball" style="--ball-c:#f2c14e"'),
+    'round 8: the face keeps ballHTML\'s sphere intact - a rewrite that drops the class attribute\'s closing quote '
+    + 'swallows the style attribute, --ball-c goes undefined and an unfallback var() paints the base with no band');
   h.evaluate("tab='clock'");
   assert.ok(h.evaluate('clockNavButton()').includes('class="active"') && h.evaluate('clockNavButton()').includes('aria-current="page"'),
     'and it marks itself as the current tab when you are on it');
@@ -3149,8 +3152,8 @@ test('round 7 / owner item 2: the timer is a bar of its own and ball 1 is its ow
   const phoneBlock = opsCss.slice(opsCss.indexOf('@media (max-width:750px)'));
   assert.ok(phoneBlock.includes('#ops-shell .clockbar .presets{display:none}') && !phoneBlock.includes('timer-tab-label'),
     'and on the phone the bar drops the presets, keeping the clock, Start and Reset');
-  assert.ok(opsHtml.indexOf('class="clockbar"') < opsHtml.indexOf('class="barrow"') && opsHtml.indexOf('</nav>') < opsHtml.indexOf('class="tools"'),
-    'the shell is two rows: the clock, then the destinations and the tools');
+  assert.ok(opsHtml.indexOf('class="barrow"') < opsHtml.indexOf('class="clockbar"') && opsHtml.indexOf('</nav>') < opsHtml.indexOf('class="tools"'),
+    'the shell is two rows: the destinations and the tools, then the clock - round 8 (owner item 1) turned round 7\'s order around');
   assert.ok(source.includes("$('#ops-shell .clockbar')"), 'and render() paints that one host');
   const clockCode = source.slice(source.indexOf('function clockHTML()'), source.indexOf('function render()'));
   assert.ok(source.includes('because nothing here reads comp()'),
@@ -3328,10 +3331,10 @@ test('round 6: the archive paints its own card, so a late answer never rebuilds 
     'the loader paints its own card and returns');
   assert.ok(!/loadArchiveList[\s\S]{0,400}?archiveList\.loading=false;render\(\)/.test(source),
     'and never re-renders the whole screen after the network answers (the search box and the scroll survive)');
-  assert.ok(source.includes("showReview();syncLivePolling();if(tab==='records'&&!bf)loadArchiveList();"),
-    'Records asks for the archive when it becomes the screen, and only then');
-  assert.ok(source.includes("if(a==='archive-reload'){loadArchiveList(true);return}"),
-    'Refresh is the one deliberate re-read');
+  assert.ok(source.includes("showReview();syncLivePolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}"),
+    'Records asks for the archive - and the download queue beside it - when it becomes the screen, and only then');
+  assert.ok(source.includes("if(a==='archive-reload'){loadArchiveList(true);loadAuto(true);return}"),
+    'Refresh is the one deliberate re-read, for both');
 });
 test('round 6: Build this night opens the backfill at the broadcast the operator chose', async () => {
   const h = harness({hash: '#/records'});
@@ -3342,7 +3345,8 @@ test('round 6: Build this night opens the backfill at the broadcast the operator
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   assert.equal(h.evaluate('bf'), null, 'Records is not the backfill: nothing is open yet');
   await click({action: 'archive-reload'});
-  assert.equal(asked.length, 2, 'Refresh reads the archive again');
+  assert.equal(asked.filter(u => String(u).includes('/api/vods/recent')).length, 2, 'Refresh reads the archive again');
+  assert.equal(asked.filter(u => String(u).includes('/api/vods/queue')).length, 1, 'and reads the download queue once, beside it');
   await click({action: 'bf-pick', id: '2884327358', length: '13397', title: '260918'});
   assert.equal(h.evaluate('bf.vod.id'), '2884327358', 'the broadcast reaches the backfill state');
   assert.equal(h.evaluate('bf.step'), 'verify', 'at the step the picker itself sets, so both entrances meet');
@@ -3365,4 +3369,142 @@ test('round 6: the picker lists the same archive, with the same picture, duratio
   assert.ok(screen.includes(h.evaluate("esc(t('kindArchive'))")) && screen.includes(h.evaluate("esc(t('kindHighlight'))")), "and Twitch's own word for what each one is");
   assert.ok(/data-action="bf-pick" data-id="2884327358" data-length="13397"/.test(screen), 'Use this one carries the broadcast it will build');
   assert.equal((screen.match(/class="bf-thumb"/g) || []).length, 1, 'and only the row that has a picture draws one');
+});
+
+test('round 8 / owner item 1: the timer bar sits under the tab bar and leaves the timer its own screen', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const bar = html.slice(html.indexOf('<div class="bar">'), html.indexOf('</header>'));
+  assert.ok(bar.indexOf('class="barrow"') < bar.indexOf('class="clockbar"'),
+    'the destinations come first and the clock row sits under them: a row of doors, then the instrument');
+  assert.ok(bar.indexOf('id="nav"') < bar.indexOf('class="clockbar"'), 'with the tab bar itself above it rather than beside it');
+  assert.ok(html.includes('data-clock-host'), 'the host stays in the document - the bar is hidden, never removed, so clock-sync.js keeps its handle');
+  assert.ok(/\[data-tab=clock\] \.clockbar\{display:none\}/.test(css),
+    'on the timer own tab the bar leaves the screen: the big face is the instrument there and the strip must not repeat it');
+  const phone = css;
+  assert.ok(/#ops-shell\{--tabbar-h:52px;--clockbar-h:calc\(48px \+ env\(safe-area-inset-bottom\)\)\}/.test(phone)
+    && /#ops-shell #tabbar\{[^}]*bottom:var\(--clockbar-h\)/.test(phone)
+    && /#ops-shell \.clockbar\{[^}]*position:fixed[^}]*bottom:0/.test(phone),
+    'on a phone the destinations are the bottom bar, so the strip at the screen edge is the timer and the safe-area inset moves with it');
+  assert.ok(/#ops-shell\[data-tab=clock\]\{--clockbar-h:0px\}/.test(phone),
+    'and with the timer open the token collapses, so the tab bar returns to the edge instead of leaving a strip of nothing');
+  assert.ok(phone.includes('padding-bottom:calc(var(--tabbar-h) + var(--clockbar-h) + var(--sp-4))')
+    && phone.includes('bottom:calc(var(--tabbar-h) + var(--clockbar-h) + var(--sp-3))'),
+    'the page and the toast clear both fixed rows');
+});
+
+test('round 8 / owner item 4: the destination balls keep the ivory base in both schemes', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  const rule = css.match(/#ops-shell \.ball\[data-stripe="1"\],#ops-shell #nav \.ball,#ops-shell #tabbar \.ball\{([^}]*)\}/);
+  assert.ok(rule, 'the destinations ride the striped sphere\u2019s rule');
+  assert.ok(/background-color:var\(--ball-face\)/.test(rule[1]), 'their base is the ivory face, whatever the site scheme is');
+  assert.ok(/var\(--ball-c\)/.test(rule[1]), 'and the hue still paints the band, so ball 1 is still ball 1');
+  const light = css.match(/:root\[data-theme=light\]\{([^}]*)\}/);
+  assert.ok(light && !/--ball/.test(light[1]),
+    'the light scheme redefines no ball token at all, so the base cannot follow the theme by accident');
+});
+
+test('round 8 / owner item 3: the Vision tab is the live stream, the recorded review is opened from a Records row', () => {
+  // 1. the live panel, in both languages, with nothing running
+  for (const [lang, live, start, stop, note, archive, dets] of [
+    ['en', 'Live stream', 'Start', 'Stop', 'Recorded nights are reviewed from their row on Records', 'Recorded nights', ['Table', 'Person', 'Ball']],
+    ['zh', '直播', '开始', '停止', '已结束的夜晚请从战绩档案里对应那一行进入审看', '录制场次', ['球台', '人物', '球']],
+  ]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';data.sources=[{id:'s1',url:'https://twitch.tv/ttpoolfriday'}]`);
+    const html = h.evaluate('livePanelScreen()');
+    assert.ok(html.includes('id="live-screen"') && html.includes('id="live-panel-status"'), `${lang}: the panel has its own root and status line`);
+    assert.ok(html.includes(`<h2>${live}</h2>`), `${lang}: it is headed ${live}`);
+    assert.ok(html.includes(`>${start}</button>`) && html.includes(`>${stop}</button>`), `${lang}: the stream can be started and stopped`);
+    assert.equal((html.match(/data-action="live-detector"/g) || []).length, 3, `${lang}: three detectors are offered`);
+    for (const word of dets) assert.ok(html.includes(word), `${lang}: the detector ${word} is named`);
+    assert.ok(html.includes('data-action="live-pick"') && html.includes('ttpoolfriday'), `${lang}: the saved channel is one click away`);
+    assert.ok(html.includes(note), `${lang}: the panel says where recorded nights live`);
+    assert.ok(/<button[^>]*data-tab="records"/.test(html) && html.includes(archive), `${lang}: it links to Records`);
+    assert.ok(!html.includes('vision-surface'), `${lang}: the live tab renders no workbench markup`);
+    // and with frames arriving, the same tab is the workbench
+    h.evaluate("liveSnapshot={state:'running'};sortLive=liveVisionScreen()");
+    assert.ok(h.evaluate('sortLive').includes('class="vision-surface"'), `${lang}: once running, the live tab hosts the workbench`);
+    h.evaluate("liveSnapshot={state:'stopped'}");
+    assert.ok(h.evaluate('liveVisionScreen()').includes('id="live-screen"'), `${lang}: when it stops, the panel comes back`);
+  }
+  // 2. the workbench is hosted by exactly two screens (the leak the browser pass caught)
+  const h = harness();
+  h.evaluate("reviewId='n1';tab='records';hostedOnRecords=reviewHosted();tab='vision';reviewId=null;liveSnapshot={state:'stopped'};hostedIdle=reviewHosted();liveSnapshot={state:'running'};hostedLive=reviewHosted();liveSnapshot=null;reviewId=null;hostedNothing=reviewHosted()");
+  assert.equal(h.evaluate('hostedOnRecords'), true, "a night's review hosts the workbench");
+  assert.equal(h.evaluate('hostedIdle'), false, 'the idle live tab does not, so no recorded picture leaks under the panel');
+  assert.equal(h.evaluate('hostedLive'), true, 'the running live tab does');
+  assert.equal(h.evaluate('hostedNothing'), false, 'nowhere else does');
+  assert.ok(/const isActive=reviewHosted\(\)/.test(source), 'showReview mounts on that predicate');
+  assert.ok(/\$\('#main'\)\.classList\.toggle\('short',reviewHosted\(\)\)/.test(source), 'and the short main follows it');
+  // 3. the deep link, and the row that hands it out
+  h.evaluate("location.hash='#/records/review/abc123'");
+  assert.equal(h.evaluate('reviewRoute()'), 'abc123', 'a review deep link parses');
+  h.evaluate("location.hash='#/records'");
+  assert.ok(!h.evaluate('reviewRoute()'), 'a plain records link parses to no review');
+  const row = h.evaluate(`archiveRow({id:'2890514774',title:'Wednesday 8-Ball Open',created_at:'2026-10-02T05:00:00Z',length:15600,broadcast_type:'ARCHIVE'},{id:'abc123',name:'Wednesday 8-Ball Open',source:{vodId:'2890514774'}})`);
+  assert.ok(row.includes('tl-review') && row.includes('data-id="abc123"'), 'the built row carries the entry');
+  assert.ok(row.includes('tl-open-night'), 'beside the night it already opened');
+  assert.ok(/dataset\.vision=reviewId\?'recorded'/.test(source), 'the shell says which vision screen it is showing');
+  // 4. the review screen itself
+  for (const [lang, back, footage, broadcast] of [['en', 'Back to Records', 'footage', 'broadcast'], ['zh', '返回战绩档案', '素材', '直播']]) {
+    const r = harness();
+    r.evaluate(`lang='${lang}';data.history=[{id:'abc123',name:'Wednesday 8-Ball Open',source:{vodId:'2890514774'}}]`);
+    const html = r.evaluate('reviewScreen(data.history[0])');
+    assert.ok(html.includes('<h2>Wednesday 8-Ball Open</h2>'), `${lang}: the head names the night - not an entrant, not TBD`);
+    assert.ok(!html.includes('TBD'), `${lang}: the entrant-name helper never reaches this head`);
+    assert.ok(html.includes(footage) && html.includes(broadcast) && html.includes('2890514774'), `${lang}: the meta says what footage, and which broadcast`);
+    assert.ok(html.includes(`>${back}</button>`), `${lang}: there is a way back to the list`);
+    assert.ok(html.includes('class="vision-surface"'), `${lang}: the recorded workbench is the body`);
+  }
+  // 5. the adapter drops every recorded affordance on the live tab
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  assert.ok(/liveOnly:\(\)=>!reviewId&&tab==='vision'/.test(source), 'the console tells the adapter which tab it is on');
+  assert.equal((adapter.match(/const liveOnly\s*=\s*!!opts\.liveOnly\?\.\(\)/g) || []).length, 2, 'both the chip row and the source panel read that flag');
+  assert.ok(/data-vs-action="pick-dataset"/.test(adapter) && /liveOnly \? '' :/.test(adapter), 'and withholds the dataset rows when live-only');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('#ops-shell .vs-live-hidden{display:none}'), 'hidden dataset blocks collapse');
+  for (const gone of ['.vs-frame-input', '[data-vs-action=step]', '.vs-track']) {
+    assert.ok(css.includes(`#ops-shell[data-vision=live] .vs-strip ${gone}`), `the live tab has no recorded ${gone}`);
+  }
+  assert.ok(!/\[data-vision=live\] \.vs-strip\{display:none\}/.test(css), 'Freeze, Play and the facts line stay: they act on the live frame');
+});
+test('round 8 · the console words dictionary defines every key exactly once', () => {
+  const from = source.indexOf('const words={');
+  const body = source.slice(from, source.indexOf('\n', from));
+  const keys = [...body.matchAll(/(?:^|,)([A-Za-z_][A-Za-z0-9_]*):\[/g)].map(m => m[1]);
+  const seen = new Set(), dups = [];
+  for (const key of keys) { if (seen.has(key)) dups.push(key); else seen.add(key); }
+  assert.deepEqual(dups, [], `a duplicate key silently overrides its first definition: ${dups.join(', ')}`);
+  assert.ok(keys.length > 240, `the dictionary still holds every key (${keys.length})`);
+  for (const [lang, miss] of [['en', 'en'], ['zh', 'zh']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}'`);
+    const missing = h.evaluate(`['archiveVision','liveStream','liveNow','livePanelNote','liveNoChannel','reviewTitle','reviewFromRecords','reviewBack','reviewFootage','reviewBroadcast','reviewNote','person','ball','detectors','sources','stop','autoDownload','autoOn','autoPaused','autoPause','autoResume','autoQueued','autoDone','autoNow','autoSkipped','autoFailed','autoReading'].filter(k=>t(k)===k)`);
+    assert.equal(JSON.stringify(missing), '[]', `${miss}: every round 8 word key has a translation`);
+  }
+});
+
+test('round 8 / owner item 2: Records says what the automatic download is doing, and carries its one switch', () => {
+  for (const [lang, title, on, off, queued, done, now, pause, failed] of [
+    ['en', 'Automatic download', 'running', 'paused', '3 queued', '12 done', 'now 2890514774', 'Pause', 'The download queue could not be read'],
+    ['zh', '自动下载', '运行中', '已暂停', '队列 3', '已完成 12', '正在 2890514774', '暂停', '无法读取下载队列']]) {
+    const h = harness();
+    h.evaluate(`lang='${lang}';autoList.rows={enabled:true,queued:[1,2,3],done:Array.from({length:12}),current:{vod_id:'2890514774'},skipped:[],error:null};autoList.error=''`);
+    const html = h.evaluate('autoInner()');
+    assert.ok(html.includes(title) && html.includes(on) && html.includes(queued) && html.includes(done) && html.includes(now), `${lang}: the line states the queue`);
+    assert.ok(/data-action="auto-toggle"/.test(html) && html.includes(`>${pause}</button>`), `${lang}: the switch rides on the line`);
+    h.evaluate("autoList.rows={enabled:false,queued:[],done:[],current:null,skipped:['1'],error:'ttpoolfriday: Twitch API request failed (HTTP 500)'};paused=autoInner()");
+    const paused = h.evaluate('paused');
+    assert.ok(paused.includes(off) && paused.includes('Twitch API request failed'), `${lang}: a paused queue still says why`);
+    assert.ok(/data-action="auto-toggle"/.test(paused), `${lang}: and can be resumed from the same place`);
+    h.evaluate("autoList.rows=null;autoList.error='HTTP 500';unread=autoInner()");
+    const unread = h.evaluate('unread');
+    assert.ok(unread.includes(failed) && unread.includes('data-action="auto-reload"'), `${lang}: an unread queue degrades to one sentence and a retry`);
+  }
+  assert.ok(/if\(a==='auto-toggle'\)\{autoToggle\(\)/.test(source), 'the switch is wired to the click handler');
+  assert.ok(/loadArchiveList\(\);loadAuto\(\)/.test(source), 'Records reads the queue with the archive list');
+  assert.ok(/next=autoList\.rows\?\.enabled\?'off':'on'/.test(source), 'and posts the opposite of the current state');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(css.includes('#ops-shell .auto-line{'), 'the line has its own layout');
 });

@@ -1193,7 +1193,7 @@ class Backend:
             return self._vod_importer
 
     def vod_request(self, action, payload):
-        """/api/vods/{recent,estimate,job} (reads) and {import,cancel,delete} (writes)."""
+        """/api/vods/{recent,estimate,job,queue} (reads) and {import,cancel,delete,auto} (writes)."""
         from annotator.vod_import import VodImportError
         importer = self.vod_importer()
         try:
@@ -1203,8 +1203,15 @@ class Backend:
                 return importer.job()
             if action == "estimate":
                 return importer.estimate(payload)
+            if action == "queue":
+                # The console asks for the queue: the answer also arms the worker and rescans
+                # when the last scan is older than the interval. A read route that starts work
+                # is unusual, but the box must download by itself, with no operator click.
+                return importer.auto_queue()
             if action == "import":
                 return importer.start(payload)
+            if action == "auto":
+                return importer.auto(payload)
             if action == "cancel":
                 return importer.cancel(payload)
             return importer.delete(payload)
@@ -1569,7 +1576,7 @@ class Backend:
             if index_error:
                 listed["datasets_error"] = index_error
             return listed
-        if len(parts) == 3 and parts[:2] == ["api", "vods"] and parts[2] in ("recent", "job", "estimate"):
+        if len(parts) == 3 and parts[:2] == ["api", "vods"] and parts[2] in ("recent", "job", "estimate", "queue"):
             return self.vod_request(parts[2], {key: values[0] for key, values in query.items()})
         if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "meta":
             base = self.crops(parts[2])
@@ -1659,7 +1666,7 @@ class Backend:
             return self.enroll_preview(payload)
         if parts == ['api', 'identity', 'enroll-confirm']:
             return self.enroll_confirm(payload)
-        if len(parts) == 3 and parts[:2] == ['api', 'vods'] and parts[2] in ('import', 'cancel', 'delete'):
+        if len(parts) == 3 and parts[:2] == ['api', 'vods'] and parts[2] in ('import', 'cancel', 'delete', 'auto'):
             return self.vod_request(parts[2], payload)
         with self.lock:
             return self._post(parts, payload)
@@ -2338,6 +2345,18 @@ def main():
                              "console's hostname behind a path-scoped Access bypass (default: the root)")
     args = parser.parse_args()
     backend = Backend(args.root)
+
+    def arm_auto():
+        # The owner asked for no clicks: the server arms the automatic download as it starts.
+        # The arming runs on its own thread, because the first scan talks to Twitch and the
+        # listener must open now. Twitch being down or unauthorised only fills the queue's
+        # error field (vod_import.scan records the sentence and returns).
+        try:
+            backend.vod_importer().auto({"action": "on"})
+        except Exception as exc:                   # the queue must never stop the server
+            print(f"VOD auto download not armed: {exc}", flush=True)
+
+    threading.Thread(target=arm_auto, name="vod-auto-arm", daemon=True).start()
     server = BoundedHTTPServer((args.host, args.port), make_handler(backend))
     public = None
     if args.public_port:

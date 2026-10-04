@@ -446,3 +446,130 @@ cut (the bar holding ball 1 and the word as one clickable tab, five slots in the
 replaced the same day. Shots of the ruling: `out/r7/after-bar-b-six-balls-1280.png` (EN) and
 `after-bar-b-six-balls-1280-zh.png` (中), plus `after-phone-bar-390-b.png` for the six-cell bottom bar.
 The measurement commands are the ones above with `?r7b=1` as the cache-buster.
+
+## 13. Round 8: the bar under the destinations, ivory balls, and a live-only Vision tab
+
+### Reproduce
+
+The console is served from disk, so every static change here is live after a reload; the python
+half (nothing in this round) would need the service. The browser pass ran against an isolated
+fixture, because production has no history rows to open a review from:
+
+```bash
+# one fixture, isolated state, its own ports
+cp /tmp/r7-idle2.json /tmp/r8-item3.json     # then add a saved channel source and give one night a source.vodId
+nohup env PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py \
+  --port 8180 --public-port 8181 --state /tmp/r8-item3.json > /tmp/r8-item3-fixture.log 2>&1 &
+sleep 20                                      # it needs ~20 s before it binds
+# the fixtures are launched from the review-capable state, and the console reads /api/vods/recent from it
+
+# drive it
+B=/home/haoye/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64
+$B open http://127.0.0.1:8180/ ; $B set viewport 1280 900 ; $B wait 3500
+$B eval "...assertions..." ; $B screenshot out/r8/name.png
+# and the live half, which needs the pipeline running:
+curl -s -XPOST 127.0.0.1:8180/api/live -H 'content-type: application/json' \
+  -d '{"action":"start","source":{"kind":"dataset","dataset":"vod30"},"detectors":["table"]}'
+```
+
+Two harness facts cost time and are worth writing down: `agent-browser eval "…"` runs through a
+shell, so inner double quotes are eaten — use single quotes, unquoted attribute selectors
+(`[data-action=clock-toggle]`) and filter in JS (`b.dataset.vsValue.startsWith('dataset:')`). And
+the console's script URL carries a version query (`/ops.js?v=vision-stage-22`), so a plain `open`
+serves a **cached** file: `agent-browser reload` after every edit.
+
+### The header's two rows, in the order the owner asked for
+
+| probe | round 7 | round 8 | at 390×844 |
+| --- | --- | --- | --- |
+| `#nav` (the five destinations + tools) | top 60, h 44 | **top 6, bottom 50, h 44** | `display:none`; the tab bar is the bottom bar |
+| `.clockbar` (ball, clock, Start/Reset, presets) | top 6, h 46 | **top 58, bottom 104, h 46** | top 796, h 48 — bottom edge at 844 |
+| header block | 0–111 | 0–111 | `.bar` 0–48, `#tabbar` 735–796, `.clockbar` 796–844 |
+| `[data-tab=clock]` | bar still painted | **`.clockbar{display:none}`**, `--clockbar-h:0px` on the phone | same |
+| bar contents | `0:45 Start Reset 20 30 45 60` | unchanged | `0:45 Start Reset` |
+| `scrollWidth` | 1280 of 1280 | 1280 of 1280 | 390 of 390 |
+
+The host element is never removed: `clock-sync.js` keeps its handle and every other tab repaints
+it. The phone's safe-area inset moved to the bottom-most row (the bar), and the tab bar sits on top
+of it.
+
+### The balls, before and after
+
+| probe | dark before | light before | after (both schemes) |
+| --- | --- | --- | --- |
+| ball 1 face | `rgb(242,193,78)` | `rgb(242,193,78)` | **`rgb(247,243,235)`** + hue band |
+| ball 2 face | `rgb(47,111,208)` | `rgb(47,111,208)` | **`rgb(247,243,235)`** + hue band |
+| gradients on the face | 0 | 0 | **3** (balls 2–6), 2 for the striped ball 1 |
+| light scheme redefines `--ball*` | — | none | none (the base is set, not themed) |
+
+Ball 1's missing band was the swallowed `style` attribute (see §19.2): a dropped quote in a
+`replace()` turned `class="ball" style="--ball-c:…"` into a class token.
+
+### The Vision tab and the recorded review, by state
+
+| state | head | dataset chips | broadcast / replay rows | `.vs-strip` | `#vision-host` |
+| --- | --- | --- | --- | --- | --- |
+| `#/vision`, nothing running | `Live stream` panel, `idle · Frame age: — ms · Dropped: 0` | 0 | none | absent (no workbench) | hidden, `display:none` |
+| `#/vision`, stream running | the live workbench, `LIVE · FRAME AGE 25 MS` | **0** | none | Freeze, Play, facts only | inside `#vs-frame`, visible |
+| `#/records/review/<id>` | the night's own name + `footage · the configured datasets · broadcast 2890514774` | 2 (`vod30`, `highlight`) | the configured datasets | the whole strip | inside `#vs-frame`, visible |
+| `#/records` | the archive list | — | — | — | hidden |
+
+Measured inside the running fixture: the live panel at 1280 and at 390 (`scrollWidth` 390/390,
+`.clockbar` 796–844 flush against the tab bar), 中文 `直播` / `空闲 · 帧龄: — ms · 丢帧: 0` /
+`直播中 · twitch ttpoolfriday` / `球台 人物 球` / `开始 停止` / `录制场次 →`; the `Vision` row on
+Records; the deep link after a reload; and `#vs-live-status` reading `running · frame age 28 ms ·
+receive-to-result 6 ms`.
+
+### The pictures
+
+| file | what it shows |
+| --- | --- |
+| `out/r8/item3-live-panel-1280-en.png`, `out/r8/item3-live-panel-1280-zh.png`, `out/r8/item3-live-panel-390-en.png` | the live-only Vision tab, both languages, desktop and phone |
+| `out/r8/item3-live-workbench-1280.png` | the same tab once the stream runs: live picture, Freeze/Play, no dataset chip |
+| `out/r8/item3-live-source-panel-1280.png` | the source panel with the dataset block collapsed |
+| `out/r8/item3-review-recorded-1280.png` | a night's recorded review, opened from its Records row |
+| `out/r8/tabbar-dark-390.png`, `out/r8/tabbar-light-390.png` | item 4's ivory bases on the phone, dark and light |
+
+### Limits
+
+- The fixture is not production: it carries saved sources and one built night on purpose, and its
+  `/api/vods/recent` answers with 31 rows because it runs the current python. Production still runs
+  the pre-round-8 process, which serves no thumbnails — the picker then renders no picture and no
+  broken image (the `<img>` is only emitted when the row has a `thumb`).
+- Frames extracted per broadcast do not exist yet: the recorded review steps through `vod30` and
+  `highlight`, and the screen says so in words.
+- The live numbers above come from a dataset source replayed into the live pipeline (`vod30`), not
+  from a real Twitch stream. The panel's channel chip is drawn from saved sources; a real stream was
+  not started in this pass.
+- `#vision-host` visibility is one predicate (`reviewHosted()`), so a browser pass that changes tab
+  order or adds a third vision surface must re-check it.
+
+## 14. Round 8, owner item 2: the download queue's one line
+
+Reproduce: a fixture with this code and a state file that names one saved channel —
+
+```
+nohup env PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py \
+  --port 8180 --public-port 8181 --state /tmp/r8-item3.json
+# 20 s to bind. Then: GET /api/vods/queue, POST /api/vods/auto {"action":"off"}
+# and the two guarded ones: POST /api/vods/cancel {"confirm":true},
+# POST /api/vods/delete {"id":"<id>","confirm":true}   (exactly those keys; any extra key is refused)
+```
+
+| what | value |
+| --- | --- |
+| the line, queue paused | `Automatic download · paused · 29 queued · 0 done · now 2890340436 · 1 skipped` + `Resume` |
+| the line, queue on | `Automatic download · running · 29 queued · 0 done · now 2890340436 · 1 skipped` + `Pause` |
+| 中文 | `自动下载 · 已暂停 · 队列 29 · 已完成 0 · 正在 2890340436 · 跳过 1` + `继续` |
+| the switch | one `data-action="auto-toggle"` button; the click POSTs the opposite state and repaints |
+| width | `scrollWidth` 1280 = the viewport, the line wraps inside the archive card |
+| a queue that cannot be read | one sentence + `Try again` — on production today: `The download queue could not be read: unknown dataset` |
+| a restart with this code | `enabled:true`, `queued:30`, `current:{id:"2890514774",state:"importing"}` within seconds |
+
+Shots: `out/r8/item2-auto-line-running-1280.png`, `out/r8/item2-auto-line-paused-1280.png`.
+
+Limits, stated rather than hidden: the queue is in-memory (the next scan rebuilds it), `seconds` and `off` are
+not persisted, the fixture's download was started and cancelled twice to measure the states — the job then read
+`state:"cancelled"` and the queue `current:null`, `skipped:2` — and production still runs the previous python,
+so its line is the degrade sentence until `pool-workbench.service` restarts (§20.3 says what that restart
+costs).

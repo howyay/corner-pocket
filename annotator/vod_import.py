@@ -14,6 +14,11 @@ the job never hold the playback token, its signature, or the media URL.
 Reads (``recent``, ``estimate``, ``job``) never write: the recent-broadcast cache
 lives in memory only.  ``delete`` removes the media and the list entry and keeps
 the operator's corrections under ``out/vods/<id>/``.
+
+The automatic download (``scan``, ``auto``, ``auto_queue``) sits on top of that
+job and changes nothing below it: a FIFO of waiting broadcasts, one drain thread
+that calls ``start`` one item at a time, and a periodic rescan.  Every item that
+does not import lands in ``skipped`` with its reason, and the queue moves on.
 """
 from __future__ import annotations
 
@@ -42,6 +47,13 @@ from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_inde
 # same list, and neither claims to be complete beyond it.
 RECENT_LIMIT = 60
 RECENT_TTL_S = 180
+# The automatic download's beat: one rescan this often, this many finished and refused rows
+# kept for the console, and the longest rehearsal range an operator may ask for. 900 s is long
+# next to one import, so the rescan's Twitch traffic is invisible, and short enough that a
+# broadcast ending while nobody watches is queued the same morning.
+AUTO_INTERVAL_S = 900
+AUTO_KEEP = 10
+AUTO_MAX_SECONDS = 3600
 #: Free space an import must leave: the estimate x 1.2, plus 2 GB for everything else.
 HEADROOM = 1.2
 RESERVE_BYTES = 2 * 10**9
@@ -191,7 +203,8 @@ class VodImporter:
     """The single-flight import job of one workspace root."""
 
     def __init__(self, root, ops_get, *, twitch=None, ffmpeg=None, probe=None,
-                 disk_usage=shutil.disk_usage, public_error=None, monotonic=time.monotonic):
+                 disk_usage=shutil.disk_usage, public_error=None, monotonic=time.monotonic,
+                 auto_interval_s=AUTO_INTERVAL_S):
         self.root = Path(root)
         self._ops_get = ops_get
         self._twitch = twitch
@@ -205,6 +218,17 @@ class VodImporter:
         self._recent = {}
         self._job = {"state": "idle", "error": None}
         self._proc = self._thread = None
+        # The automatic download. ``enabled`` is on from the start: the owner asked the box to
+        # download by itself, so nothing has to be switched on after a restart. The queue and
+        # its history live in memory only - losing them on restart costs one rescan, and the
+        # index, not this, stays the record of what was imported.
+        self._auto_interval_s = auto_interval_s
+        self._auto = {"enabled": True, "scanning": False, "seconds": None, "queue": [],
+                      "current": None, "done": [], "skipped": [], "last_scan": None,
+                      "_scan_at": None, "error": None}
+        self._auto_stop = threading.Event()          # the server is closing; never an ``off``
+        self._worker_guard = threading.Lock()
+        self._worker = self._rescan = None
 
     # -- facts -------------------------------------------------------------
     @property
@@ -247,6 +271,27 @@ class VodImporter:
             _atomic_json(self.root / INDEX, document)
 
     # -- reads -------------------------------------------------------------
+    def _channel_vods(self, channel, force=False):
+        """(``(fetched_at_monotonic, vods, clock, more)``, error) for one saved channel.
+
+        The memory cache is what keeps two console reads a few seconds apart from costing two
+        Twitch calls (``RECENT_TTL_S``). The queue asks with ``force=True``: it runs on a 900 s
+        beat, and a broadcast that ended since the cached list was fetched must not stay
+        invisible for the rest of the cache's life. A Twitch error is never cached, so the next
+        read tries again (an error row in ``recent`` proves the retry).
+        """
+        with self._lock:
+            cached = self._recent.get(channel)
+        if force or cached is None or self._monotonic() - cached[0] > RECENT_TTL_S:
+            try:
+                vods = self.tw.channel_recent_vods(channel, RECENT_LIMIT)
+            except self.tw.TwitchVodError as exc:
+                return None, str(exc)
+            cached = (self._monotonic(), vods, now_iso(), len(vods) >= RECENT_LIMIT)
+            with self._lock:
+                self._recent[channel] = cached
+        return cached, None
+
     def recent(self):
         """Each saved channel's videos, newest first (<= ``RECENT_LIMIT``), or Twitch's error.
 
@@ -260,18 +305,11 @@ class VodImporter:
         listed = read_index(self.root)[0]
         rows = []
         for channel in self.saved_channels():
-            with self._lock:
-                cached = self._recent.get(channel)
-            if cached is None or self._monotonic() - cached[0] > RECENT_TTL_S:
-                try:
-                    vods = self.tw.channel_recent_vods(channel, RECENT_LIMIT)
-                except self.tw.TwitchVodError as exc:
-                    rows.append({"channel": channel, "vods": None, "more": False,
-                                 "error": str(exc), "fetched_at": None})
-                    continue
-                cached = (self._monotonic(), vods, now_iso(), len(vods) >= RECENT_LIMIT)
-                with self._lock:
-                    self._recent[channel] = cached
+            cached, error = self._channel_vods(channel)
+            if error is not None:
+                rows.append({"channel": channel, "vods": None, "more": False,
+                             "error": error, "fetched_at": None})
+                continue
             rows.append({"channel": channel, "error": None, "fetched_at": cached[2], "more": cached[3], "vods": [
                 {"id": vod.get("id"), "title": vod.get("title"), "created_at": vod.get("created_at"),
                  "length_s": vod.get("length_s"), "thumb": thumb_path(channel, vod),
@@ -522,6 +560,9 @@ class VodImporter:
 
     def close(self):
         """Server shutdown: stop a running import and remove its partial file."""
+        with self._lock:
+            self._auto["enabled"] = False
+        self._auto_stop.set()          # first, so the drain thread requeues instead of starting
         self._stop("Stopped because the server stopped")
 
     def delete(self, payload):
@@ -552,3 +593,273 @@ class VodImporter:
                 "kept": {"folder": f"out/vods/{dataset_id}/", "files": kept},
                 "message": f"Deleted {dataset_id}: its media and its list entry. Operator corrections "
                            f"under out/vods/{dataset_id}/ are kept ({kept} file{'' if kept == 1 else 's'})."}
+
+    # -- the automatic download ---------------------------------------------
+    def _auto_view(self):
+        """The queue as the console reads it: the switch, the FIFO, and the last few endings."""
+        with self._lock:
+            auto = self._auto
+            return {"enabled": auto["enabled"], "scanning": auto["scanning"],
+                    "interval_s": self._auto_interval_s, "seconds": auto["seconds"],
+                    "queued": [dict(row) for row in auto["queue"]],
+                    "current": dict(auto["current"]) if auto["current"] else None,
+                    "done": [dict(row) for row in auto["done"]],
+                    "skipped": [dict(row) for row in auto["skipped"]],
+                    "last_scan": auto["last_scan"], "error": auto["error"]}
+
+    def _scan_due(self):
+        """One scan per interval: a console polling the route must not become Twitch traffic."""
+        with self._lock:
+            at = self._auto["_scan_at"]
+        return at is None or self._monotonic() - at >= self._auto_interval_s
+
+    def _auto_enqueue(self, channel, vod, archived):
+        """Add one broadcast to the FIFO, unless the index or the queue already has it."""
+        vod_id = vod.get("id")
+        if not (isinstance(vod_id, str) and vod_id.isdigit()):
+            return                              # without a usable id there is nothing to fetch
+        with self._lock:
+            if vod_id in archived:
+                return
+            pending = [row["id"] for row in self._auto["queue"]]
+            if self._auto["current"] is not None:
+                pending.append(self._auto["current"]["id"])
+            if vod_id in pending:
+                return
+            self._auto["queue"].append({"id": vod_id, "channel": channel, "title": vod.get("title"),
+                                        "length_s": vod.get("length_s"), "state": "queued",
+                                        "error": None})
+
+    def _auto_take(self):
+        """The head of the FIFO, marked current, or None: the order is the order it arrived."""
+        with self._lock:
+            if not self._auto["enabled"]:       # "off" leaves the FIFO alone and stops the drain
+                return None
+            if self._auto["current"] is not None or not self._auto["queue"]:
+                return None
+            row = self._auto["queue"].pop(0)
+            row["state"] = "importing"
+            self._auto["current"] = row
+            return row
+
+    def _auto_finish(self, row, state, error=None):
+        """Move the current item to ``done`` or ``skipped``, and keep only the last few."""
+        row["state"] = state
+        row["error"] = error
+        with self._lock:
+            self._auto["current"] = None
+            bucket = self._auto["done" if state == "done" else "skipped"]
+            bucket.append(row)
+            del bucket[:-AUTO_KEEP]
+
+    def _auto_requeue(self, row):
+        """Put an item back at the head of the FIFO: a shutdown interrupted its wait."""
+        row["state"] = "queued"
+        row["error"] = None
+        with self._lock:
+            self._auto["current"] = None
+            self._auto["queue"].insert(0, row)
+
+    def _auto_run(self, row):
+        """Import one queued broadcast through the ordinary ``start``, and record how it ended.
+
+        One item never unwinds the queue: a refused disk, a Twitch refusal, an ffmpeg failure
+        and a missing file all end as that item's sentence in ``skipped``, and the drain thread
+        takes the next one. Nothing here deletes anything.
+        """
+        if self._auto_stop.is_set():
+            return self._auto_requeue(row)
+        disk = self._disk(0)                    # the 2 GB reserve alone: is even that too much?
+        if not disk["ok"]:
+            return self._auto_finish(row, "skipped", disk["refusal"])
+        # An operator's own import holds the single-flight slot. Waiting for it is honest;
+        # spending the item on a 409 would drop a broadcast that is already in the queue.
+        while not self._auto_stop.is_set():
+            with self._lock:
+                running, thread = self._job["state"] == "running", self._thread
+            if not running:
+                break
+            if thread is None:
+                time.sleep(0.1)
+            else:
+                thread.join(timeout=0.5)
+        if self._auto_stop.is_set():
+            return self._auto_requeue(row)
+        with self._lock:
+            seconds = self._auto["seconds"]
+        payload = {"vod": row["id"]}
+        if seconds:
+            payload.update(start_s=0, duration_s=seconds)    # the rehearsal range, 1..3600 s
+        try:
+            started = self.start(payload)
+        except VodImportError as exc:
+            return self._auto_finish(row, "skipped", str(exc))
+        except Exception as exc:                # one item must never kill the drain thread
+            return self._auto_finish(row, "skipped", self._public_error(exc))
+        with self._lock:
+            thread, job_id = self._thread, self._job.get("id")
+        if thread is not None:
+            thread.join()
+        final = self.job()
+        if final.get("id") == job_id:
+            done = final.get("state") == "done"
+            error = final.get("error") or final.get("message")
+        else:
+            # Another import replaced the status in the instant between ours ending and this
+            # read; the index is then the only honest record of how ours ended.
+            done = started["id"] in read_index(self.root)[0]
+            error = None if done else "the import ended as another one started; it is not in the index"
+        self._auto_finish(row, "done" if done else "skipped", None if done else error)
+
+    def _auto_wake(self):
+        """Make sure one drain thread runs, unless auto is off or the server is closing."""
+        with self._lock:
+            enabled = self._auto["enabled"]
+        if not enabled or self._auto_stop.is_set():
+            return                              # "off" means the queue waits, it does not download
+        with self._worker_guard:
+            if self._worker is not None and self._worker.is_alive():
+                return                          # a drain thread is already on its way
+            thread = threading.Thread(target=self._auto_drain, daemon=True, name="vod-auto")
+            self._worker = thread
+        thread.start()
+
+    def _auto_drain(self):
+        """The one drain thread: import the head of the FIFO, then the next, until it is empty.
+
+        It holds no timer and polls nothing: an empty queue costs nothing, and a broadcast
+        arrives by being enqueued, which starts this thread again.
+        """
+        while not self._auto_stop.is_set():
+            row = self._auto_take()
+            if row is None:
+                break
+            self._auto_run(row)
+        with self._worker_guard:
+            self._worker = None
+        with self._lock:
+            waiting = bool(self._auto["queue"])
+        if waiting and not self._auto_stop.is_set():
+            self._auto_wake()                   # something arrived while this thread was leaving
+
+    def _auto_arm(self, enable=True):
+        """Start the periodic beat, once, and turn the switch on unless asked not to.
+
+        The beat is one thread for the life of the importer: it sleeps through an interval even
+        while auto is off, so an off/on pair cannot leave the box without a rescan thread. Only
+        ``close`` stops it. The startup path and the switch pass ``enable=True``; the queue route
+        passes ``False``, so reading the queue never overrides an operator's ``off``.
+        """
+        if self._auto_stop.is_set():
+            return                              # the server is closing: no new work
+        with self._lock:
+            if enable:
+                self._auto["enabled"] = True
+            enabled = self._auto["enabled"]
+        if not enabled:
+            return                              # "off": nothing beats until an operator says on
+        with self._worker_guard:
+            if self._rescan is not None and self._rescan.is_alive():
+                return
+            thread = threading.Thread(target=self._auto_rescan, daemon=True, name="vod-auto-scan")
+            self._rescan = thread
+        thread.start()
+
+    def _auto_disarm(self):
+        """Stop the automatic downloads. An import already running is left for ``cancel``."""
+        with self._lock:
+            self._auto["enabled"] = False
+
+    def _auto_rescan(self):
+        """Scan every interval while auto is on. The floor stops a bad knob spinning."""
+        while not self._auto_stop.wait(timeout=max(float(self._auto_interval_s), 0.05)):
+            with self._lock:
+                enabled = self._auto["enabled"]
+            if enabled:                         # off only sleeps the beat, it does not kill it
+                self.scan()
+
+    def scan(self):
+        """Queue every recent broadcast of every saved channel that the archive does not have.
+
+        The list comes from the same Twitch path the picker uses. An id is skipped when the
+        index already lists it, or when it is already waiting or running. A channel Twitch
+        refuses contributes its sentence to ``error`` and the other channels are still scanned:
+        a request and the rescan thread both call this, so it never raises.
+        """
+        with self._lock:
+            self._auto["scanning"] = True
+        errors = []
+        try:
+            listed, damage = read_index(self.root)
+            if damage:
+                # An index that cannot be read makes every broadcast look missing. One honest
+                # sentence is better than re-downloading the archive or churning the whole queue.
+                raise VodImportError(damage)
+            archived = {parsed[0] for key in listed
+                        if (parsed := parse_imported_id(key)) is not None}
+            for channel in self.saved_channels():
+                cached, error = self._channel_vods(channel, force=True)
+                if error is not None:
+                    errors.append(f"{channel}: {error}")
+                    continue
+                for vod in cached[1]:
+                    self._auto_enqueue(channel, vod, archived)
+        except VodImportError as exc:
+            errors.append(str(exc))
+        except Exception as exc:                # anything else must not stop the scan either
+            errors.append(self._public_error(exc))
+        with self._lock:
+            self._auto["last_scan"] = now_iso()
+            self._auto["_scan_at"] = self._monotonic()
+            self._auto["error"] = "; ".join(errors) or None
+            self._auto["scanning"] = False
+        self._auto_wake()
+        return self._auto_view()
+
+    def auto_queue(self):
+        """The queue, and the lazy trigger: this read starts the beat and scans when one is due.
+
+        The console shows the queue without a click, so the first read after a restart has to
+        do the work; the interval keeps a polling console from becoming Twitch traffic. The read
+        never turns auto back on: an operator's ``off`` stands. Twitch being down or unauthorised
+        only fills ``error`` - nothing here raises.
+        """
+        self._auto_arm(enable=False)
+        if self._scan_due():
+            return self.scan()
+        self._auto_wake()
+        return self._auto_view()
+
+    def auto(self, payload):
+        """The automatic download's switch and its one knob.
+
+        ``{"action": "on"}`` arms the periodic rescan and scans at once when nothing has been
+        scanned yet; ``"off"`` stops the downloads and leaves the queue where it is; ``"scan"``
+        scans now and leaves the switch alone. ``seconds`` (1..``AUTO_MAX_SECONDS``) bounds every
+        queued import to a rehearsal range: 1 h at 3 Mb/s is 1.35 GB, small enough to watch end
+        to end.
+        """
+        if not isinstance(payload, dict):
+            raise VodImportError("JSON object required")
+        extra = sorted(set(payload) - {"action", "seconds"})
+        if extra:
+            raise VodImportError("unsupported auto option: " + ", ".join(extra))
+        action = payload.get("action", "scan")
+        if action not in ("on", "off", "scan"):
+            raise VodImportError('action must be "on", "off" or "scan"')
+        if "seconds" in payload:
+            seconds = payload["seconds"]
+            if isinstance(seconds, bool) or not isinstance(seconds, int) \
+                    or not 1 <= seconds <= AUTO_MAX_SECONDS:
+                raise VodImportError("seconds must be a whole number of seconds from 1 to "
+                                     f"{AUTO_MAX_SECONDS}")
+            with self._lock:
+                self._auto["seconds"] = seconds
+        if action == "off":
+            self._auto_disarm()
+            return self._auto_view()
+        self._auto_arm(enable=action == "on")
+        if action == "scan" or self._auto["last_scan"] is None:
+            return self.scan()
+        self._auto_wake()
+        return self._auto_view()

@@ -70,20 +70,26 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell :focus-visible{outline:2px solid var(--brass);outline-offset:3px}
 #ops-shell header{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line)}
 #ops-shell .bar,#ops-shell main{max-width:var(--page-max);margin:auto;padding:var(--sp-3) clamp(var(--sp-3),2.4vw,var(--sp-6))}
-/* Round 7, owner item 2: the shot timer is its own bar. The header is two rows - the clock's
-   row first, then the destinations with the tools - because the timer is not a destination
-   and must not read as one. This replaces the one-bar rule that made the slot the nav's
-   first child ("the tab row takes the room the brand block left"). */
+/* Round 7, owner item 2: the shot timer is its own bar. Round 8, owner item 1 turns the two
+   rows around - the destinations with the tools come first, the clock's own row sits under
+   them - because the bar is the instrument and reads under the doors it belongs to, not over
+   them. This replaces the one-bar rule that made the slot the nav's first child ("the tab row
+   takes the room the brand block left"). */
 #ops-shell .barrow{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);min-width:0}
+/* On the timer's own tab the big face does the work, so the strip leaves the screen instead
+   of sitting under the doors repeating the same digits. The host stays in the document (the
+   element, not the painting is hidden): clock-sync.js keeps its handle and every other tab
+   paints the bar again on the way back. */
+#ops-shell[data-tab=clock] .clockbar{display:none}
 #ops-shell .barrow > nav{flex:0 1 auto;min-width:0;padding:0}
-/* The always-available element (owner §13.1) owns the header's first row since round 7
-   (owner item 2): one flex row, never wrapping, the clock large, the elapsed bar riding the
-   bar's bottom edge - which is the header's own width now, so the room can read the clock
-   from across it. The group's aria-label names it, so the old .kicker second line is not
-   here to push the digits off the row's centre line. */
+/* The always-available element (owner §13.1) has owned a row of the header since round 7
+   (owner item 2) and has sat under the destinations since round 8 (owner item 1): one flex
+   row, never wrapping, the clock large, the elapsed bar riding the header's bottom edge -
+   which is the header's own width, so the room can read the clock from across it. The group's
+   aria-label names it, so the old .kicker second line is not here to push the digits off the
+   row's centre line. */
 #ops-shell .clockbar{position:relative;display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);flex:none;padding-bottom:var(--sp-1h)}
 #ops-shell .clockbar .clock{font-size:clamp(30px,3.4vw,48px);line-height:1}
-#ops-shell .clockbar .ball{width:34px;height:34px;font-size:11px}
 #ops-shell .clockbar button{min-height:36px;padding:0 var(--sp-2);font-size:var(--fs-sm);white-space:nowrap}
 #ops-shell .clockbar button[data-action=clock-reset]{color:var(--ink-dim)}
 #ops-shell .clockbar .presets{display:flex;gap:1px;padding:1px;background:var(--line);border-radius:2px}
@@ -109,7 +115,15 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
    white with the hue as a band across the middle, the number plate riding on the band. */
 #ops-shell .ball{position:relative;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;flex:none;background-color:var(--ball-c,var(--ball));background-image:radial-gradient(circle at 34% 30%,rgba(255,255,255,.52),rgba(255,255,255,.08) 42%,rgba(255,255,255,0) 58%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 42%,var(--ball-edge));box-shadow:inset 0 0 0 1px var(--ball-edge),inset 1px 2px 6px rgba(255,255,255,.16),0 2px 4px rgba(0,0,0,.36);font:10px var(--mono);color:var(--ball-num)}
 #ops-shell .ball::before{content:"";position:absolute;left:20%;top:13%;width:26%;height:24%;border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95),rgba(255,255,255,0) 72%);pointer-events:none}
-#ops-shell .ball[data-stripe="1"]{background-color:var(--ball-face);background-image:linear-gradient(180deg,rgba(0,0,0,0) 25%,var(--ball-c) 25%,var(--ball-c) 75%,rgba(0,0,0,0) 75%),radial-gradient(circle at 34% 30%,rgba(255,255,255,.85),rgba(255,255,255,.06) 48%,rgba(0,0,0,0) 62%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 46%,var(--ball-edge))}
+/* Round 8, owner item 4: in the destinations' bar the ball is an identifier, not a ball on a
+   table, so its base is the ivory face in both colour schemes. Measured before the change
+   (390, dark and light, computed): every one of the six came back with the same hue-filled
+   disc - rgb(242,193,78) for ball 1, rgb(47,111,208) for 2 - and the same ivory plate, so the
+   scheme never touched them and the ruling is the base itself. Here the hue rides the band,
+   the treatment the 9-15 sphere has always used, and the number keeps its plate. Everywhere
+   else the ball keeps its solid face: on a table card or an entrant row the hue is the fact
+   being read, and the tab bar's job is to be found, not to report. */
+#ops-shell .ball[data-stripe="1"],#ops-shell #nav .ball,#ops-shell #tabbar .ball{background-color:var(--ball-face);background-image:linear-gradient(180deg,rgba(0,0,0,0) 25%,var(--ball-c) 25%,var(--ball-c) 75%,rgba(0,0,0,0) 75%),radial-gradient(circle at 34% 30%,rgba(255,255,255,.85),rgba(255,255,255,.06) 48%,rgba(0,0,0,0) 62%),radial-gradient(circle at 66% 72%,rgba(0,0,0,0) 46%,var(--ball-edge))}
 #ops-shell .ball i{position:relative;z-index:1;display:grid;place-items:center;width:60%;height:60%;border-radius:50%;background:var(--ball-face);color:var(--ball-num);font:1em var(--mono);line-height:1}
 #ops-shell nav{padding-top:0;padding-bottom:var(--sp-2)}
 #ops-shell nav button{display:flex;align-items:center;gap:var(--sp-2);min-height:44px;padding-left:var(--sp-2)}
@@ -694,11 +708,18 @@ html,body{-webkit-font-smoothing:antialiased}
    Vision finally has an exit (its own rule hides the top nav row, not this one). --- */
 #ops-shell #tabbar{display:none}
 @media(max-width:750px){
-  /* One height token for the bar, safe area included, so every fixed vision surface
-     and the toast can sit above it without guessing. */
-  #ops-shell{--tabbar-h:calc(52px + env(safe-area-inset-bottom))}
+  /* One height token per fixed row, safe area included, so every fixed vision surface and
+     the toast can sit above both without guessing. Round 8 (owner item 1) stacks the shot
+     timer's bar under the destinations' bar; on a phone the destinations are the fixed bottom
+     bar, so the strip at the screen's edge is the timer's and the safe-area inset moves with
+     it - the tab bar no longer owns the bottom of the screen. On the timer's own tab the
+     clock token collapses to 0 and the bar is not painted, so the tab bar returns to the edge
+     instead of leaving a strip of nothing under it. */
+  #ops-shell{--tabbar-h:52px;--clockbar-h:calc(48px + env(safe-area-inset-bottom))}
+  #ops-shell[data-tab=clock]{--clockbar-h:0px}
   #ops-shell #nav{display:none}
-  #ops-shell #tabbar{display:flex;flex-wrap:wrap;gap:var(--sp-1);position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel2);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  #ops-shell .clockbar{position:fixed;left:0;right:0;bottom:0;z-index:41;height:var(--clockbar-h);background:var(--panel2);border-top:1px solid var(--line);padding:0 var(--sp-2) env(safe-area-inset-bottom)}
+  #ops-shell #tabbar{display:flex;flex-wrap:wrap;gap:var(--sp-1);position:fixed;left:0;right:0;bottom:var(--clockbar-h);z-index:40;background:var(--panel2);border-top:1px solid var(--line)}
   /* Round 3 §14.7 (F7): the five labels are one line each. Measured before (390 EN, dark):
      the slots came out unequal — Tonight 76.5 · Records 76.5 · Vision 67.8 · Regulars 85.1 ·
      Back room 52.1 — because `min-width:auto` let the longer words set the shares, and
@@ -709,15 +730,15 @@ html,body{-webkit-font-smoothing:antialiased}
      phone, not for the width this was measured at. */
   #ops-shell #tabbar .tabbar-slot{flex:1 1 0;min-width:0;min-height:52px;border:0;border-radius:0;background:transparent;color:var(--ink-dim);font:var(--fs-xs) var(--mono);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 var(--sp-1)}
   #ops-shell #tabbar .tabbar-slot[aria-current=page]{color:var(--brass-hi);background:var(--rail);box-shadow:inset 0 2px 0 var(--brass)}
-  #ops-shell main{padding-bottom:calc(var(--tabbar-h) + var(--sp-4))}
-  #ops-shell #message{bottom:calc(var(--tabbar-h) + var(--sp-3))}
+  #ops-shell main{padding-bottom:calc(var(--tabbar-h) + var(--clockbar-h) + var(--sp-4))}
+  #ops-shell #message{bottom:calc(var(--tabbar-h) + var(--clockbar-h) + var(--sp-3))}
   /* Vision: the bar is the exit, and the sheet tabs, the strip and the panels all
      stack above it instead of on top of it. */
   :is(#ops-shell)[data-tab=vision] #tabbar{display:flex}
-  :is(#ops-shell) .vs-sheettabs{bottom:var(--tabbar-h)}
-  :is(#ops-shell) .vs-strip{bottom:calc(var(--tabbar-h) + 44px)}
-  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{bottom:calc(var(--tabbar-h) + 44px + var(--vs-strip-h,150px))}
-  :is(#ops-shell)[data-tab=vision] main{padding-bottom:calc(var(--tabbar-h) + 44px + var(--vs-strip-h,150px) + min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))) + 12px)}
+  :is(#ops-shell) .vs-sheettabs{bottom:calc(var(--tabbar-h) + var(--clockbar-h))}
+  :is(#ops-shell) .vs-strip{bottom:calc(var(--tabbar-h) + var(--clockbar-h) + 44px)}
+  :is(#ops-shell) .vs-rail,:is(#ops-shell) .vs-inspector{bottom:calc(var(--tabbar-h) + var(--clockbar-h) + 44px + var(--vs-strip-h,150px))}
+  :is(#ops-shell)[data-tab=vision] main{padding-bottom:calc(var(--tabbar-h) + var(--clockbar-h) + 44px + var(--vs-strip-h,150px) + min(44vh,calc(100vh - 44px - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))) + 12px)}
 }
 @media print{#ops-shell #tabbar{display:none!important}}
 /* §1.5 The revision moved off the top bar: the Back room says what was last written, in mono. */
@@ -798,7 +819,6 @@ html,body{-webkit-font-smoothing:antialiased}
 @media(max-width:750px){
   #ops-shell .bar{flex-wrap:wrap}
   #ops-shell .clockbar{gap:var(--sp-1h)}
-  #ops-shell .clockbar .ball{width:30px;height:30px;font-size:11px}
   #ops-shell .clockbar button{padding:0 var(--sp-2);min-height:34px}
 }
 
@@ -1043,3 +1063,34 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .card--night .heading{margin-bottom:var(--sp-1h)}
 #ops-shell .card--night .muted{margin:0}
 @media(max-width:750px){#ops-shell .modal--start{padding:var(--sp-4);max-height:calc(100vh - 32px)}}
+
+/* Round 8, owner item 3: the Vision tab is the live stream. Until the server carries one it shows
+   the live controls alone - the status line, the club channel, Start/Stop and the detectors - and
+   the recorded transport is not on that tab at all: .vs-strip (frame stepping, the scrubber, the
+   loop band) is hidden whenever the console sits on the live tab, and the workbench only exists
+   there once frames are arriving (ops.js's liveVisionScreen). The dataset block inside the source
+   panel carries .vs-live-hidden for the same reason: a night's recorded review is opened from its
+   row on Records (SS19), never from here. */
+/* On the live tab the frame index, the two step buttons and the scrubber are gone: there is no
+   recorded timeline on that tab to step through or scrub. Freeze, Play and the facts line stay,
+   because they act on the live frame the workbench is showing (the inspector's "run inference on
+   this frozen frame" is a live action). A night's recorded review keeps the whole strip. */
+#ops-shell[data-vision=live] .vs-strip .vs-frame-input,
+#ops-shell[data-vision=live] .vs-strip [data-vs-action=step],
+#ops-shell[data-vision=live] .vs-strip .vs-track{display:none}
+#ops-shell .vs-live-hidden{display:none}
+#ops-shell .live-screen{display:grid;gap:var(--sp-2);align-content:start}
+#ops-shell .live-status{margin:0 0 var(--sp-2);color:var(--ink-dim)}
+#ops-shell .live-actions,#ops-shell .live-detectors{margin-top:var(--sp-2);flex-wrap:wrap}
+#ops-shell .live-note{margin:var(--sp-1h) 0 0;font-size:var(--fs-sm)}
+#ops-shell .review-meta{margin:0}
+#ops-shell .review-note{font-size:var(--fs-sm)}
+@media (max-width:750px){
+  #ops-shell .live-screen{gap:var(--sp-1h)}
+  #ops-shell .live-status{overflow-wrap:anywhere}
+}
+
+/* Round 8, owner item 2: the automatic download's one line in the archive card. The button rides
+   inside it so the switch is where the state is. */
+#ops-shell .auto-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1h);margin:var(--sp-1) 0 0}
+#ops-shell .auto-line p{margin:0}

@@ -531,11 +531,15 @@ function windowBandHTML(s) {
 // live: the server's own status (kind 'vod-replay') decides the word.
 function liveWordKey(s) { return s.live?.source?.kind === 'vod-replay' || s.live?.replay?.kind === 'vod-replay' ? 'replayNow' : 'live'; }
 function chipsHTML(s) {
+  // Owner item 3: the Vision tab is the live stream. When the console says so, the chip row
+  // offers live sources and nothing recorded - the datasets and the replay form belong to a
+  // night's recorded review, whose only entrance is that night's row on Records.
+  const liveOnly = !!opts.liveOnly?.();
   const channels = (opts.channels() || []).map(c => `<button class="vs-chip${s.source.kind === 'live' && s.source.channel === c.channel ? ' active' : ''}" data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${s.source.kind === 'live' && s.source.channel === c.channel ? '● ' : ''}${esc(t('live'))} · twitch ${esc(c.channel || '')}</button>`).join('');
-  const datasets = (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
+  const datasets = liveOnly ? '' : (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
   const freshness = s.source.kind === 'live'
     ? `<span class="vs-fresh${s.live.stale ? ' stale' : ''}">${s.live.stale ? esc(t('stale')) : esc(t(liveWordKey(s)))} · ${esc(t('age'))} ${fmtAge(s.live.frame_age_ms)}</span>`
-    : `<span class="vs-fresh">${esc(recordedLabel(s) || s.source.label)}</span>`;
+    : liveOnly ? `<span class="vs-fresh">${esc(t('live'))}</span>` : `<span class="vs-fresh">${esc(recordedLabel(s) || s.source.label)}</span>`;
   // The source settings hang off the chip row itself: one chip opens the panel
   // that used to be the rail's nothing-selected state, so the rail stays about
   // the selection and the settings are still one click away at any width.
@@ -904,10 +908,14 @@ function broadcastsBlock(s) {
     ${imported}</div>`;
 }
 function sourcePanelHTML(s) {
+  // Owner item 3 again, this time inside the panel: on the live tab there is no broadcast list,
+  // no replay form and no dataset block - a recorded surface here would be the thing the owner
+  // asked to remove. The live state block, the channels and the detectors stay.
+  const liveOnly = !!opts.liveOnly?.();
   const attempt = s.live.attempt && s.live.attempt.error ? `<div class="vs-error-block"><h4>${esc(t('startFailed'))}</h4><p class="vs-mono">${esc(t('attemptSource'))}: ${esc(s.live.attempt.source || '—')}</p><p class="vs-mono">${esc(s.live.attempt.error)}</p><p>${esc(t('remedy'))}: ${esc(t('remedyText'))}</p><button data-vs-action="live-start">${esc(t('retry'))}</button></div>`
     // A stopped session's failure is history: a muted line saying so, never the red box.
     : s.live.last_error?.error ? `<p class="vs-note" data-vs-last-live-error>${esc(t('lastLiveError').replace('{at}', s.live.last_error.at ? new Date(s.live.last_error.at * 1000).toTimeString().slice(0, 5) : '—'))}: ${esc(s.live.last_error.error)}</p>` : '';
-  const vodRows = (opts.vods?.() || []).map(v => `<div class="vs-channel"><span class="vs-mono">${esc(v.url)}</span><button data-vs-action="use-saved-vod" data-vs-value="${esc(v.video)}">${esc(t('useInForm'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(v.id)}">${esc(t('remove'))}</button></div>`).join('');
+  const vodRows = liveOnly ? '' : (opts.vods?.() || []).map(v => `<div class="vs-channel"><span class="vs-mono">${esc(v.url)}</span><button data-vs-action="use-saved-vod" data-vs-value="${esc(v.video)}">${esc(t('useInForm'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(v.id)}">${esc(t('remove'))}</button></div>`).join('');
   const channels = (opts.channels() || []).map(c => `<div class="vs-channel"><span class="vs-mono">${esc(c.url)}</span><button data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${esc(t('select'))}</button><button data-vs-action="forget-channel" data-vs-id="${esc(c.id)}">${esc(t('remove'))}</button></div>`).join('');
   const live = s.live;
   // A start that failed must not leave the row reading "idle": the row states
@@ -915,14 +923,14 @@ function sourcePanelHTML(s) {
   const liveFailed = !!(live.error || live.attempt?.error);
   const liveRowState = liveFailed && live.state !== 'running' && live.state !== 'starting' ? 'error' : live.state;
   return `${attempt}
-  ${broadcastsBlock(s)}
-  ${replayBlock(s)}
-  <div class="vs-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
+  ${liveOnly ? '' : broadcastsBlock(s)}
+  ${liveOnly ? '' : replayBlock(s)}
+  <div class="vs-block${liveOnly ? ' vs-live-hidden' : ''} vs-dataset-block"><h4>${esc(t('dataset'))}</h4><div class="vs-chiprow">${(s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <p class="vs-mono">${esc(s.source.kind === 'vod' ? s.source.label : '—')} · ${esc(t('frameCount'))} ${esc(s.frame.count)}</p></div>
   <div class="vs-block"><h4>${esc(t('liveState'))}</h4>
     <p class="vs-mono" id="vs-live-status">${esc(stateText(liveRowState))}${(live.error || live.attempt?.error) ? ` · ${esc(live.error || live.attempt.error)}` : ''} · ${esc(t('age'))} ${fmtAge(live.frame_age_ms)} · ${esc(t('receive'))} ${fmtAge(live.receive_to_result_ms)} · ${esc(t('dropped'))} ${esc(live.skipped ?? 0)}</p>
     <div class="vs-row"><button class="primary" data-vs-action="live-start">${esc(t('start'))}</button><button data-vs-action="live-stop">${esc(t('stop'))}</button></div>
-    <div class="vs-chiprow">${channels}${(s.datasets || []).map(d => `<button class="vs-chip" data-vs-action="pick-live" data-vs-value="dataset:${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
+    <div class="vs-chiprow">${channels}${liveOnly ? '' : (s.datasets || []).map(d => `<button class="vs-chip" data-vs-action="pick-live" data-vs-value="dataset:${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('')}</div>
     <div class="vs-row">${['table','person','ball'].map(d => `<label class="vs-check" title="${d === 'ball' ? esc(t('liveBallNote')) : esc(t(d))}"><input type="checkbox" data-vs-action="live-detector" data-vs-value="${d}" ${liveDetectorList(s).includes(d) ? 'checked' : ''}> ${esc(d === 'ball' ? t('liveBall') : t(d))}</label>`).join('')}</div>
     <p class="vs-note" data-vs-live-ball="note">${esc(t('liveBallNote'))}</p>
     ${liveStageLine(s)}

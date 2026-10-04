@@ -86,6 +86,45 @@ FAKE_FFMPEG = textwrap.dedent('''
 ''')
 
 
+def archive_row(vod_id, title="260918", length_s=13397, channel="examplechannel"):
+    return {"id": vod_id, "title": title, "length_s": length_s, "created_at": "2026-09-26T06:46:33Z",
+            "channel": channel, "broadcast_type": "ARCHIVE", "thumbnail": THUMB_CDN}
+
+
+def archive_stub(calls, vods, broken=()):
+    """``twitch_stub`` for a channel with several archives: the queue's order needs a list.
+
+    ``vods`` is read at every call, so a test can append a broadcast and watch the rescan find
+    it. An id in ``broken`` fails at playback resolution, like a broadcast Twitch has dropped.
+    """
+    stub = twitch_stub(calls)
+    base_info, base_resolve = stub.vod_info, stub.resolve_vod
+    rows = {str(vod["id"]): vod for vod in vods}
+
+    def vod_info(vod_id):
+        if str(vod_id) not in rows:
+            return base_info(vod_id)
+        calls.append(("info", str(vod_id)))
+        row = rows[str(vod_id)]
+        return {"id": vod_id, "channel": row.get("channel", "examplechannel"), "title": row["title"],
+                "length_s": row["length_s"], "created_at": "2026-09-26T06:46:33Z"}
+
+    def resolve_vod(vod_id):
+        if str(vod_id) in broken:
+            calls.append(("resolve", str(vod_id)))
+            raise TwitchError("Twitch has no such video")
+        return base_resolve(vod_id)
+
+    def channel_recent_vods(channel, limit):
+        calls.append(("recent", channel, limit))
+        if channel == "brokenchannel":
+            raise TwitchError("Twitch API request failed (HTTP 500)")
+        return list(vods)
+
+    stub.vod_info, stub.resolve_vod, stub.channel_recent_vods = vod_info, resolve_vod, channel_recent_vods
+    return stub
+
+
 class ImporterTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -120,6 +159,17 @@ class ImporterTests(unittest.TestCase):
 
     def index(self):
         return json.loads((self.root / "out" / "vods" / "index.json").read_text())["vods"]
+
+    def wait_until(self, check, importer=None):
+        """Poll the queue view until ``check(view)`` holds. Reads the same route the console does."""
+        importer = importer or self.importer
+        deadline = time.monotonic() + 30
+        while True:
+            view = importer.auto_queue()
+            if check(view):
+                return view
+            self.assertLess(time.monotonic(), deadline, view)
+            time.sleep(0.02)
 
     def test_a_range_imports_with_real_progress_and_a_clean_entry(self):
         job = self.importer.start({"vod": f"https://www.twitch.tv/videos/{OWN}", "start_s": 3600, "duration_s": 300})
@@ -334,6 +384,148 @@ class ImporterTests(unittest.TestCase):
         self.assertEqual({str(p): (hashlib.md5(p.read_bytes()).hexdigest(), p.stat().st_mtime_ns)
                           for p in self.root.rglob("*") if p.is_file()}, stamp)
 
+    # -- the automatic download: scan, queue, drain -------------------------------------------
+    def test_the_scan_queues_every_broadcast_the_archive_does_not_have(self):
+        second = "1000000002"
+        self.importer._twitch = archive_stub(self.calls, [archive_row(OWN, title="261001"),
+                                                          archive_row(second, title="260924")])
+        self.importer.auto({"action": "off"})                 # fill the queue, do not download it
+        view = self.importer.scan()
+        self.assertEqual(view["queued"], [{"id": OWN, "channel": "examplechannel", "title": "261001",
+                                           "length_s": 13397, "state": "queued", "error": None},
+                                          {"id": second, "channel": "examplechannel", "title": "260924",
+                                           "length_s": 13397, "state": "queued", "error": None}])
+        self.assertIsNone(view["current"])
+        self.assertEqual((view["done"], view["skipped"], view["error"]), ([], [], None))
+        self.assertIsNotNone(view["last_scan"])
+        self.assertEqual(self.calls, [("recent", "examplechannel", RECENT_LIMIT)])
+        self.assertEqual(self.importer.scan()["queued"], view["queued"])   # no duplicate on a rescan
+
+    def test_a_broadcast_the_archive_already_has_is_never_queued_again(self):
+        second = "1000000002"
+        self.importer.start({"vod": OWN, "start_s": 0, "duration_s": 60})   # a real entry first
+        self.assertEqual(self.wait()["id"], f"tw-{OWN}-0-60")
+        self.importer._twitch = archive_stub(self.calls, [archive_row(OWN), archive_row(second)])
+        self.importer.auto({"action": "off"})
+        self.assertEqual([row["id"] for row in self.importer.scan()["queued"]], [second])
+
+    def test_the_queue_drains_in_order_through_the_ordinary_job_route(self):
+        ids = [OWN, "1000000002", "1000000003"]
+        self.importer._twitch = archive_stub(self.calls, [archive_row(vod_id) for vod_id in ids])
+        view = self.importer.auto({"action": "on", "seconds": 60})     # the whole pipeline, 60 s each
+        self.assertTrue(view["enabled"])
+        view = self.wait_until(lambda seen: not seen["queued"] and seen["current"] is None)
+        self.assertEqual([row["id"] for row in view["done"]], ids)     # FIFO: the arrival order
+        self.assertEqual(view["skipped"], [])
+        self.assertEqual(sorted(self.index()), [f"tw-{vod_id}-0-60" for vod_id in ids])
+        self.assertEqual(self.importer.job()["state"], "done")
+        for vod_id in ids:                                            # each one went through start()
+            self.assertIn(("info", vod_id), self.calls)
+            self.assertEqual((self.root / "data" / "vods" / f"tw-{vod_id}-0-60.mp4").read_bytes(),
+                             b"partial")
+        self.assertFalse(list((self.root / "data" / "vods").glob("*.part")))
+
+    def test_a_refused_disk_skips_the_item_with_the_sentence_and_the_queue_moves_on(self):
+        ids = [OWN, "1000000002"]
+        self.importer._twitch = archive_stub(self.calls, [archive_row(vod_id) for vod_id in ids])
+        self.free = 10**9                                     # under the 2 GB reserve alone
+        view = self.importer.auto({"action": "scan"})
+        view = self.wait_until(lambda seen: not seen["queued"] and seen["current"] is None)
+        self.assertEqual([row["id"] for row in view["skipped"]], ids)
+        self.assertEqual(view["done"], [])
+        for row in view["skipped"]:
+            self.assertEqual(row["state"], "skipped")
+            self.assertIn("Not enough free disk space", row["error"])
+            self.assertIn("needs 2.0 GB", row["error"])       # _disk(0): the reserve is the gate
+            self.assertIn("1.0 GB is free", row["error"])
+        self.assertNotIn(("info", OWN), self.calls)           # refused before any plan or token
+        self.assertFalse((self.root / "data" / "vods").exists())
+        self.assertFalse((self.root / "out" / "vods" / "index.json").exists())
+
+    def test_one_broken_broadcast_is_skipped_and_the_next_one_still_imports(self):
+        good = "1000000002"
+        self.importer._twitch = archive_stub(self.calls, [archive_row(OWN), archive_row(good)],
+                                            broken=(OWN,))
+        view = self.importer.auto({"action": "on", "seconds": 60})
+        view = self.wait_until(lambda seen: not seen["queued"] and seen["current"] is None)
+        self.assertEqual([row["id"] for row in view["done"]], [good])
+        self.assertEqual([row["id"] for row in view["skipped"]], [OWN])
+        self.assertEqual(view["skipped"][0]["error"], "Twitch has no such video")
+        self.assertEqual(list(self.index()), [f"tw-{good}-0-60"])
+        self.assertFalse((self.root / "data" / "vods" / f"tw-{OWN}-0-60.mp4").exists())
+
+    def test_the_seconds_knob_is_the_only_bounded_range_and_it_is_capped(self):
+        self.importer._twitch = archive_stub(self.calls, [archive_row(OWN)])
+        self.assertEqual(self.importer.auto({"seconds": 3600})["seconds"], 3600)
+        for bad in (0, 3601, True, "60", 1.5, None):
+            with self.assertRaises(VodImportError) as caught:
+                self.importer.auto({"seconds": bad})
+            self.assertEqual(str(caught.exception),
+                             "seconds must be a whole number of seconds from 1 to 3600")
+        with self.assertRaises(VodImportError) as caught:
+            self.importer.auto({"seconds": 60, "turbo": True})
+        self.assertEqual(str(caught.exception), "unsupported auto option: turbo")
+        with self.assertRaises(VodImportError) as caught:
+            self.importer.auto({"action": "later"})
+        self.assertEqual(str(caught.exception), 'action must be "on", "off" or "scan"')
+        with self.assertRaises(VodImportError):
+            self.importer.auto(["scan"])
+        self.assertEqual(self.importer.auto({})["seconds"], 3600)   # "scan" keeps the operator's knob
+        self.importer.close()                     # the first scan already started an import
+        self.wait(states=("done", "error", "cancelled", "idle"))
+
+    def test_twitch_being_down_is_a_sentence_and_an_idle_worker(self):
+        self.sources = [{"id": "s1", "kind": "channel", "channel": "brokenchannel"}]
+        view = self.importer.auto({"action": "on"})
+        self.assertEqual(view["queued"], [])
+        self.assertIsNone(view["current"])
+        self.assertIsNotNone(view["last_scan"])
+        self.assertEqual(view["error"], "brokenchannel: Twitch API request failed (HTTP 500)")
+        self.assertEqual(self.importer.job()["state"], "idle")
+        self.assertTrue(self.importer.auto_queue()["enabled"])          # a read is not a crash
+        self.assertGreaterEqual(self.calls.count(("recent", "brokenchannel", RECENT_LIMIT)), 1)
+
+    def test_off_stops_the_downloads_and_on_starts_them_again(self):
+        self.importer._twitch = archive_stub(self.calls, [archive_row(OWN)])
+        off = self.importer.auto({"action": "off"})
+        self.assertEqual((off["enabled"], off["queued"]), (False, []))
+        self.assertEqual([row["id"] for row in self.importer.scan()["queued"]], [OWN])
+        time.sleep(0.15)
+        waiting = self.importer.auto_queue()                            # a read does not override off
+        self.assertEqual((waiting["enabled"], [row["id"] for row in waiting["queued"]]), (False, [OWN]))
+        self.assertIsNone(waiting["current"])
+        self.assertFalse((self.root / "data").exists())
+        on = self.importer.auto({"action": "on"})
+        self.assertTrue(on["enabled"])
+        view = self.wait_until(lambda seen: not seen["queued"] and seen["current"] is None)
+        self.assertEqual([row["id"] for row in view["done"]], [OWN])     # the FIFO survived the off
+
+    def test_the_periodic_rescan_finds_a_broadcast_that_appeared_later(self):
+        vods = []
+        self.importer = self.make(twitch=archive_stub(self.calls, vods), auto_interval_s=0.05)
+        self.importer.auto({"action": "on"})
+        self.assertEqual(self.importer.auto_queue()["queued"], [])
+        vods.append(archive_row(OWN))                          # the broadcast ends 20 s later
+        view = self.wait_until(lambda seen: len(seen["done"]) == 1)
+        self.assertEqual([row["id"] for row in view["done"]], [OWN])
+        self.assertGreaterEqual(self.calls.count(("recent", "examplechannel", RECENT_LIMIT)), 2)
+        self.assertEqual(view["interval_s"], 0.05)
+        self.assertEqual(list(self.index()), [f"tw-{OWN}"])            # no knob: the whole broadcast
+        self.importer.close()
+        self.assertFalse(self.importer.auto_queue()["enabled"])         # close stops the beat
+
+    def test_the_disk_gate_reads_the_live_free_space_before_every_item(self):
+        ids = [OWN, "1000000002"]
+        self.importer._twitch = archive_stub(self.calls, [archive_row(vod_id) for vod_id in ids])
+        self.free = 10**9
+        self.importer.auto({"action": "scan"})
+        self.wait_until(lambda seen: not seen["queued"] and seen["current"] is None)
+        self.free = 10**12                                     # space appears: a scan retries them
+        view = self.importer.auto({"action": "scan"})
+        view = self.wait_until(lambda seen: not seen["queued"] and seen["current"] is None)
+        self.assertEqual([row["id"] for row in view["done"]], ids)
+        self.assertEqual(len(self.index()), 2)
+
 
 class ProbeTests(unittest.TestCase):
     """A stream-copied range keeps pre-roll behind an edit list: the probe counts what decodes."""
@@ -458,6 +650,37 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertEqual(self.request("GET", "/api/vods/nope")[0], 404)
         self.assertNotIn(("resolve", OTHER), self.calls)
+
+    def test_the_queue_route_downloads_by_itself_and_auto_refuses_a_typo(self):
+        status, queue = self.request("GET", "/api/vods/queue")
+        self.assertEqual(status, 200)
+        self.assertEqual(set(queue), {"enabled", "scanning", "interval_s", "seconds", "queued",
+                                      "current", "done", "skipped", "last_scan", "error"})
+        self.assertEqual((queue["enabled"], [row["id"] for row in queue["queued"] or [queue["current"]]
+                                             if row]), (True, [OWN]))
+        self.assertIsNotNone(queue["last_scan"])
+        self.assertIsNone(queue["seconds"])
+        deadline = time.monotonic() + 30                              # one read, no click, downloads
+        while not self.request("GET", "/api/vods/queue")[1]["done"]:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.05)
+        queue = self.request("GET", "/api/vods/queue")[1]
+        self.assertEqual([row["id"] for row in queue["done"]], [OWN])
+        self.assertEqual((queue["queued"], queue["current"], queue["skipped"]), ([], None, []))
+        self.assertEqual(self.request("GET", "/api/vods/job")[1]["id"], f"tw-{OWN}")
+        status, listed = self.request("GET", "/api/datasets")
+        self.assertIn(f"tw-{OWN}", [row["id"] for row in listed["datasets"]])
+        status, body = self.request("POST", "/api/vods/auto", {"action": "off", "seconds": 60})
+        self.assertEqual((status, body["enabled"], body["seconds"]), (200, False, 60))
+        self.assertEqual(self.request("GET", "/api/vods/queue")[1]["enabled"], False)
+        status, body = self.request("POST", "/api/vods/auto", {"seconds": 5000})
+        self.assertEqual((status, body["error"]),
+                         (400, "seconds must be a whole number of seconds from 1 to 3600"))
+        status, body = self.request("POST", "/api/vods/auto", {"aciton": "on"})
+        self.assertEqual((status, body["error"]), (400, "unsupported auto option: aciton"))
+        status, body = self.request("POST", "/api/vods/auto", {"action": "on"})
+        self.assertEqual((status, body["enabled"]), (200, True))
+        self.assertEqual(self.request("GET", "/api/vods/queue")[1]["enabled"], True)
 
 
 if __name__ == "__main__":

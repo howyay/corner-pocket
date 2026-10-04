@@ -1801,3 +1801,195 @@ renderings and the `words` key are removed, and the standing test asserts the ke
 - Reproduce: `AGENT_BROWSER_SESSION=r7 <agent-browser> open
   'http://127.0.0.1:8130/?r7=2#/tonight'`, `set viewport 1280 900`, `eval`, `screenshot` — the
   console is served from disk, so round 7 needed no service restart.
+
+## §19 — Round 8: the bar under the destinations, ivory balls in both schemes, and a Vision tab that is only the stream (2026-10-04)
+
+The owner worked a night on the round-7 build and sent four items. Three are here; the second
+(automatic VOD download) is engine work and lands separately.
+
+### 19.1 Item 1 — the shot timer bar sits under the tab bar, and hides itself on the timer's own tab
+
+Round 7 gave the timer its own row and left it as the header's **first** row, above the
+destinations. The owner asked for the other order, and for the bar to disappear while the big
+timer screen is open — it would otherwise be a second, smaller copy of the screen underneath it.
+
+- `annotator/ops.html`: the two rows of the header swap. `.barrow` (the five destinations plus the
+  language and scheme chips) comes first, `<div class="clockbar" role="group" aria-label="Shot
+  timer / 击球计时" data-clock-host>` second. The host element stays in the document on every tab.
+- `annotator/ops.css`: `#ops-shell[data-tab=clock] .clockbar{display:none}`. Hiding is CSS, not a
+  DOM removal, for one reason: `annotator/clock-sync.js` holds a handle on that host and every
+  other tab has to keep repainting it. The shell sets `data-tab` in `render()` already.
+- The phone stack follows the same order from the bottom: `--tabbar-h:52px` and
+  `--clockbar-h:calc(48px + env(safe-area-inset-bottom))` sit on `#ops-shell`, the tab bar is
+  `position:fixed; bottom:var(--clockbar-h)`, the bar is `bottom:0`, and every offset that used to
+  add `--tabbar-h` alone now adds both (`main`, `#message`, `.vs-sheettabs`, `.vs-strip`,
+  `.vs-rail`, `.vs-inspector`). `[data-tab=clock]` sets `--clockbar-h:0px`, so the stack closes up
+  on the timer's own tab instead of leaving a hole where the bar was.
+
+Measured on `127.0.0.1:8130` after a hard load (1280×900, dark): `#nav` top 6, bottom 50, height
+44; `.clockbar` top 58, bottom 104, height 46; the header row 0–111. Bar contents
+`0:45 Start Reset 20 30 45 60`; destinations `1 Shot timer · 2 Tournament 0 · 3 Records · 4 Vision
+· 5 Regulars 8 · 6 Back room`. At 390×844: `.bar` top 0 height 48, `#tabbar` top 735 height 61,
+`.clockbar` top 796 height 48 — the bar's bottom edge is the viewport's, and `scrollWidth` is 390
+of 390 in both schemes.
+
+### 19.2 Item 4 — the ball faces keep an ivory base in both colour schemes
+
+The console's light scheme redefines no `--ball*` token at all, so before this round the six
+destination balls were literally the same pixels in dark and light: ball 1 `rgb(242,193,78)`, ball
+2 `rgb(47,111,208)`, sitting on a plate of `rgb(247,243,235)`. The striped sphere
+(`.ball[data-stripe="1"]`) already painted an ivory base with the hue riding the band; the
+selector list now includes the tab-bar balls:
+
+```css
+#ops-shell .ball[data-stripe="1"],#ops-shell #nav .ball,#ops-shell #tabbar .ball{background-color:var(--ball-face);…}
+```
+
+Everywhere else in the console a ball keeps its solid face. Verified live: all six `#nav .ball`
+bases read `rgb(247,243,235)`, with the 3-stop gradient present on balls 2–6.
+
+**The bug this exposed.** Ball 1 in the destination row rendered with **no band**. `clockNavButton()`
+composed its face with `ballHTML(1).replace('<span class="ball"','<span aria-hidden="true"
+class="ball')` — the replacement dropped the class attribute's closing quote, so the browser parsed
+`<span aria-hidden="true" class="ball style="--ball-c:#f2c14e"="">`: the `style` attribute was
+swallowed into the class list, `--ball-c` never landed, and `var(--ball-c)` with no fallback
+invalidated the whole `background-image`. The old gold default (`--ball` `#cfa72b`) had been hiding
+it since round 7b — the base only became visible when it turned white. The replacement now ends
+with the quote, the function carries a comment naming the trap, and `tests/test_ops.js` asserts the
+exact composed attribute pair (`aria-hidden="true" class="ball"` **and**
+`class="ball" style="--ball-c:#f2c14e"`).
+
+### 19.3 Item 3 — the Vision tab is the live stream; a recorded night is opened from its Records row
+
+Two surfaces used to share one tab: the live panel and the recorded workbench, with the source
+chips choosing between them. They are now separated by intent.
+
+- **The Vision tab** (`#/vision`) is the live stream. With nothing running it paints a panel
+  (`livePanelScreen()`): `Live stream`, the status line (`idle · Frame age: — ms · Dropped: 0`),
+  one chip per saved channel, Start/Stop, the table/person/ball detectors, and the sentence that
+  says where recorded nights live. The moment frames arrive it becomes the live workbench.
+- **A recorded night** is opened from its row on Records: `Vision` beside `Open the night` on a
+  built night's row, `openReview(id)`, and the deep link `#/records/review/<night id>`. That screen
+  heads itself with the night's own name, says `footage · the configured datasets · broadcast
+  <vod id>`, offers the way back, and hosts the workbench inside `#vs-frame`.
+- **The adapter obeys the tab.** `attachSurface()` passes `liveOnly:()=>!reviewId&&tab==='vision'`.
+  With that flag `chipsHTML()` withholds the dataset chips, and `sourcePanelHTML()` drops the
+  broadcast list, the VOD-replay block and the saved-VOD rows (their block carries
+  `vs-live-hidden`). On the live tab the strip keeps Freeze, Play and the facts line — they act on
+  the live frame, and the inspector's "run inference on this frozen frame" is a live action — and
+  loses the frame index, the two step buttons and the scrubber, which have nothing to step through.
+  The recorded review keeps the whole strip.
+- **Who hosts the workbench** is one predicate: `reviewHosted()` = a night is open, or the live tab
+  is running. Both `showReview()`'s mount/activate decision and `#main`'s `short` class read it, so
+  an idle live tab can never show a leftover recorded picture underneath the panel.
+
+**The honest limit.** The recorded review steps through the datasets the server is configured with
+(`vod30`, `highlight`); frames extracted per broadcast are not built yet. The screen says so, and
+names the broadcast id so the operator knows which night they came from. A dataset per broadcast is
+the still-open "a night per broadcast" work.
+
+### 19.4 What the browser pass caught that no suite would have
+
+Two defects, both found by driving the fixture and fixed before the round closed:
+
+1. The review head printed **TBD**. `nightName(night,eid)` names an *entrant* — called with only a
+   night it returns `t('tbd')`. The head now uses the app's convention for a night's own name,
+   `night.name||t('unnamed')`.
+2. The live panel leaked the previously mounted recorded workbench below it: the host's visibility
+   was `tab==='vision'||!!reviewId`, which is true on an idle live tab. Fixed by `reviewHosted()`.
+
+A third, quieter one came out of a dictionary check: the console's `words` literal had **two**
+`reviewNote` entries, so the earlier definition was silently overridden (the key had no consumer —
+that was the only reason nobody saw it). The stale entry is gone, and a test now parses the literal
+and fails on any duplicate key.
+
+### 19.5 Evidence
+
+- Suites: `tests/test_ops.js` **151 pass / 0 fail** (four new blocks: the live panel in EN and 中,
+  the route and the review screen, the adapter's live-only flag, and the dictionary guard),
+  `tests/test_app_timeline.js` 81 / 0, `tests/test_board.js` 16 / 0.
+- End to end on `tests/serve_workbench_fixture.py` (`:8180`, state built from the round-7 fixture
+  with a saved channel and one built night linked to vod `2890514774`): 31 VOD rows with 1 built,
+  `Vision` opens `#/records/review/ea2d2b2abf5446db96dbdade32783adf`, the review mounts inside
+  `#vs-frame`, the deep link survives a reload, the live tab shows the panel with zero dataset
+  chips and a hidden host, `POST /api/live {action:'start',source:{kind:'dataset',dataset:'vod30'}}`
+  turns the same tab into the live workbench (0 dataset chips, the dataset block `display:none`,
+  `#vs-live-status` `running · frame age 28 ms · receive-to-result 6 ms`), and stopping the stream
+  brings the panel back.
+- Screenshots and the reproduce recipe: `docs/console-shots.md` §13.
+
+## §20 — Round 8, owner item 2: the console fetches the broadcasts it is missing (2026-10-04)
+
+The owner's words (m05209): *"please make it automatically download all vods."* Round 8 ships the engine
+(§20.1), the one line on Records that reports it (§20.2), and one decision that is still the owner's
+(§20.3). Items 1, 3 and 4 of the same work order are §19.
+
+### 20.1 The engine: a beat, a queue, and the same import path
+
+`annotator/vod_import.py` (+324/-13) and `annotator/unified_server.py` (+22/-3) gain no new dependency and
+no new download code: the worker calls the existing `start()`, so range, provenance and the library entry
+are the ones the manual Import button already produced.
+
+- `AUTO_INTERVAL_S = 900`, `AUTO_KEEP = 10`, `AUTO_MAX_SECONDS = 3600` (`annotator/vod_import.py:54-56`).
+- `_channel_vods(self, channel, force=False)` (`annotator/vod_import.py:274`) is the listing extracted out of
+  `recent()`, whose 180 s TTL is untouched. `scan()` (`annotator/vod_import.py:781`) forces a fresh listing and
+  diffs it against the library: every missing broadcast is queued, newest first, at most `RECENT_LIMIT = 60`
+  per channel.
+- One drain thread (`_auto_run` `annotator/vod_import.py:663`, `_auto_drain` `:727`) takes one item at a time and
+  checks `_disk(0)` — the 2 GB reserve — before each; a refusal is written into that item's `skipped` and the
+  queue continues. The sentence is the existing one:
+  `Not enough free disk space: this import needs 2.0 GB (about 0.0 GB estimated x 1.2 + 2 GB reserve) and 1.0 GB is free. Import a shorter range or free some space first.`
+- **Nothing in the new code deletes anything.** `unlink|rmtree|os.remove|delete(` occurs 0 times in the added
+  lines; `close()` (`annotator/vod_import.py:561`) only pushes waiting items back to the queue head.
+- Triggers: `main()` spawns `threading.Thread(target=arm_auto, name="vod-auto-arm", daemon=True)`
+  (`annotator/unified_server.py`), which calls `auto({"action": "on"})` inside a try/except that only prints
+  `VOD auto download not armed: {exc}` — the queue can never stop the server. A 900 s rescan thread keeps the
+  beat, and `GET /api/vods/queue` arms it too — but **never turns auto back on**: an operator's `off` stands.
+- One switch: `POST /api/vods/auto {"action": "on"|"off"|"scan", "seconds": 1..3600}`. `auto()` rejects
+  anything else (`unsupported auto option: …`, `action must be "on", "off" or "scan"`, a bool is not a
+  `seconds`). While a drain runs, a manual Import answers 409, so the two paths cannot race for ffmpeg.
+- Nothing durable: `seconds`, `off` and the queue itself live in memory; the next scan rebuilds the queue
+  from the library.
+
+### 20.2 The one line on Records
+
+The archive card's head carries `#auto-line` under its note (`annotator/ops.js`, `annotator/ops.css`):
+
+```
+Automatic download · running · 29 queued · 0 done · now 2890340436 · 1 skipped   [Pause]
+Automatic download · paused  · 29 queued · 0 done · now 2890340436 · 1 skipped   [Resume]
+自动下载 · 运行中 · 队列 29 · 已完成 0 · 正在 2890340436 · 跳过 1                     [暂停]
+```
+
+One button (`data-action="auto-toggle"`) POSTs the opposite of the state it was drawn from. The line reads
+`/api/vods/queue` when Records becomes the screen and when Refresh is pressed — never on a timer: polling the
+console must not become Twitch traffic. An unreadable queue degrades to one sentence with `Try again`
+(`The download queue could not be read: …`); the key shape of the answer is
+`{enabled, seconds, last_scan, queued[], current{id,channel,title,length_s,state,error}|null, done[], skipped[], error}`.
+
+### 20.3 What a restart does — the owner's decision
+
+This is the honest catch. Arming happens at startup, so **restarting the service starts backfilling every
+missing broadcast by itself** — up to 60 per channel, stopped only by the 2 GB disk reserve. Measured on the
+rating fixture seconds after a restart with this code: `enabled: true`, `queued: 30`,
+`current: {id: "2890514774", channel: "ttpoolfriday", state: "importing"}`. On a 4.5 h broadcast that is
+gigabytes before anybody looks. `pool-workbench.service` has **not** been restarted: production still runs the
+previous python, and the line there reads `The download queue could not be read: unknown dataset` with its
+`Try again` (measured) until the restart. Turning it `off` first, or lowering `seconds`, is the owner's call —
+this is the one item of the four that changes what the machine does on its own.
+
+### 20.4 Evidence
+
+- **Suites**: `discover -p 'test_vod_import.py'` → Ran 32 / OK; `-p 'test_twitch_vod_source.py'` → Ran 32 / OK;
+  the full `discover -s tests -p 'test_*.py'` → OK (skipped=48); `node --test tests/test_ops.js` → 152 pass /
+  0 fail; `node tests/test_app_timeline.js` → 81 passed; `node --test tests/test_board.js` → 16 pass.
+- **The engine, offline** (`/tmp/auto_queue_harness.py`, re-run by me): three ids enqueued and drained in
+  order, index and media agreeing, one Twitch call; the disk-refused case lands both items in `skipped` with
+  the sentence above and creates no index or media directory; a Twitch 500 fills the item's `error` and leaves
+  the job `idle`.
+- **The console, in a browser** on the fixture: the line and the button above, the round trip
+  `Resume → running · 29 queued · now 2890340436 → Pause → paused`, no horizontal overflow at 1280
+  (`out/r8/item2-auto-line-running-1280.png`, `out/r8/item2-auto-line-paused-1280.png`).
+- **Audit of the delegate's diff** (I re-checked, not took on report): `+324/-13`, `+22/-3`, `+223/-0`; the 13
+  removals are exactly the `recent()` extraction and three route-tuple/docstring lines; no new imports; 0
+  destructive calls; the guards above present.
