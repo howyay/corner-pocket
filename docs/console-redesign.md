@@ -2146,7 +2146,9 @@ It now always renders the surface (`</article>${visionSurface()}`).
 Two things make that honest rather than decorative:
 
 - **The right video.** `broadcastVodId()` (the night's `source.vodId`, or the bare VOD's id) and
-  `datasetForVod(vodId)` (the dataset `vod<id>`, else any dataset id containing those digits) let `showReview()`
+  `datasetForVod(vodId)` (the dataset `tw-<vod id>` — the name `src/datasets.py`'s `imported_id()` gives a
+  whole-broadcast import — else any dataset id carrying those digits, i.e. a ranged import of the same
+  broadcast) let `showReview()`
   select this broadcast's own dataset after it mounts, once per id (`vodDatasetAsked`). Before this, the engine's
   `loadDatasets()` in `annotator/app.js` picks `vod30` whenever that dataset exists — so even a night whose
   broadcast *had* been imported would have opened `vod30`'s frames, which is the second half of the same bug.

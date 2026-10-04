@@ -3523,13 +3523,16 @@ test('round 10 / owner item 3: a broadcast with no night yet still gets the scru
   assert.ok(html.includes('data-action="bf-pick"') && html.includes('data-id="2890514774"'), 'the import is still offered for this broadcast');
   assert.ok(html.includes('data-length="16455"'), 'with the length it will download');
   assert.ok(!html.includes('TBD'), 'and no invented night name');
-  // the shell opens the broadcast's own dataset when the machine has one (src/datasets.py builds the id)
+  // the shell opens the broadcast's own dataset when the machine has one. src/datasets.py's
+  // imported_id() is what names it: 'tw-<vod>' for the whole broadcast, 'tw-<vod>-<start>-<end>' for a range.
   h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'vod30'},{id:'highlight'}]})}");
   assert.equal(h.evaluate("datasetForVod('2890514774')"), '', 'with no dataset for this broadcast the engine keeps the configured one');
-  h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'vod30'},{id:'vod2890514774'}]})}");
-  assert.equal(h.evaluate("datasetForVod('2890514774')"), 'vod2890514774', 'and opens it as soon as the import has made it');
+  h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'vod30'},{id:'tw-2890514774'}]})}");
+  assert.equal(h.evaluate("datasetForVod('2890514774')"), 'tw-2890514774', 'and opens it as soon as the import has made it');
   h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'tw-2890514774-452-1690'}]})}");
   assert.equal(h.evaluate("datasetForVod('2890514774')"), 'tw-2890514774-452-1690', 'a ranged import is recognised by the number it carries');
+  h.evaluate("window.CornerPocketReview={canLeave:()=>true,snapshot:()=>({dataset:'vod30',datasets:[{id:'tw-2890514774-452-1690'},{id:'tw-2890514774'}]})}");
+  assert.equal(h.evaluate("datasetForVod('2890514774')"), 'tw-2890514774', 'the whole-broadcast dataset is preferred to a range of it');
   assert.ok(/if\(want&&reviewState\(\)\.dataset!==want&&want!==vodDatasetAsked\)/.test(source), 'and the shell asks for it once the surface is mounted');
 });
 test('round 8 · the console words dictionary defines every key exactly once', () => {

@@ -237,11 +237,11 @@ function archiveTimeline(){
 // (datasetForVod below builds the id the way src/datasets.py does), and the note says plainly
 // when what is on screen is somebody else's footage instead of hiding the transport.
 // Round 10, owner item 3: which broadcast a recorded page is about, and the dataset it lives
-// in. src/datasets.py `imported_id(vod_id)` builds that id from the VOD's own number when the
-// whole broadcast was imported; a ranged import carries its range as well, so the shorter id is
-// tried first and a dataset that merely contains the number is the fallback. The engine's own
-// pick (app.js `loadDatasets`) prefers vod30 whenever it exists, which is why this cannot be
-// left to it.
+// in. src/datasets.py `imported_id(vod_id)` names a whole-broadcast import `tw-<vod>`, and a
+// ranged one `tw-<vod>-<start>-<end>` in absolute seconds, so the exact whole-broadcast id is
+// tried first and an id that merely carries the number — a ranged import of the same broadcast —
+// is the fallback. The engine's own pick (app.js `loadDatasets`) prefers vod30 whenever it
+// exists, which is why this cannot be left to it.
 let vodDatasetAsked='';
 function broadcastVodId(){
   if(!reviewId)return '';
@@ -252,7 +252,7 @@ function broadcastVodId(){
 function datasetForVod(vodId){
   const digits=(String(vodId||'').match(/\d{4,12}/)||[''])[0];if(!digits)return '';
   const ids=(reviewState().datasets||[]).map(d=>String(d.id||''));
-  return ids.find(id=>id==='vod'+digits)||ids.find(id=>id.includes(digits))||''}
+  return ids.find(id=>id==='tw-'+digits)||ids.find(id=>id.includes(digits))||''}
 function reviewScreen(night,vod){
   const isVod=!night,vodId=String(isVod?vod?.id:night?.source?.vodId||''),when=isVod?vodWhen(vod):null;
   const title=isVod?(String(vod?.title||'')||t('unnamed')):(night.name||t('unnamed'));
