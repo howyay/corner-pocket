@@ -3976,7 +3976,7 @@ test('round 15 / owner item 1: opening a historical broadcast puts that broadcas
   assert.equal(h.evaluate('set.length'), 1, 'it asks once: an operator who switches later is not fought');
   h.evaluate("reviewId=null;reviewDatasetAt=0;syncReviewDataset();reviewId='n2';data.history=[{id:'n2',name:'Other',source:{vodId:'424242'},matches:[]}];reviewDatasetAt=0;syncReviewDataset()");
   assert.equal(h.evaluate('set.length'), 1, 'a broadcast this workbench has no dataset for changes nothing');
-  assert.ok(source.includes('if(reviewId&&!document.hidden)syncReviewDataset();'), 'the 200 ms tick is what waits for the datasets to load');
+  assert.ok(source.includes('if(reviewId&&!document.hidden){syncReviewDataset();syncReviewFrames()}'), 'the 200 ms tick is what waits for the datasets and their frames');
 });
 test('round 15 / owner item 1: a broadcast with no frames says so, once', () => {
   const h = harness();
@@ -3989,4 +3989,29 @@ test('round 15 / owner item 1: a broadcast with no frames says so, once', () => 
   assert.ok(JSON.parse(h.evaluate('JSON.stringify(messages)'))[0][0].includes('import it from Broadcasts'), 'in the operator\u2019s words');
   h.evaluate('reviewDatasetAt=0;syncReviewDataset()');
   assert.equal(JSON.parse(h.evaluate('JSON.stringify(messages)')).length, 1, 'once per review, not on every tick');
+});
+
+test('round 16 / owner item 1: a dataset switch blanks the stage before the new frame paints', () => {
+  const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  assert.ok(engine.includes('function clearStageSurfaces() {'), 'the stage has one place that blanks both surfaces');
+  assert.ok(engine.includes('state.frame = 0;\n  clearStageSurfaces();'),
+    'setDataset calls it before loadVideo, so no other stream\u2019s pixels survive the switch');
+  assert.ok(engine.includes("img.removeAttribute('src'); img.hidden = true;"), 'the still image loses its src');
+  assert.ok(engine.includes("video.removeAttribute('src'); video.hidden = true;"), 'and so does the video element');
+  assert.ok(engine.includes('loadFrame(0)'), 'frame 0 of the chosen dataset is what loads');
+});
+test('round 16 / owner item 1: a listed broadcast with no decoded frames says so', () => {
+  const h = harness();
+  h.evaluate(`messages=[];message=(text,error)=>messages.push(text);
+    window.CornerPocketReview=Object.assign(window.CornerPocketReview||{},{snapshot:()=>({dataset:'tw-2890514774',datasets:[{id:'tw-2890514774'}],frame:{has:false}}),setDataset:()=>Promise.resolve(true)});
+    data.history=[{id:'n1',name:'Friday',source:{vodId:'2890514774'},matches:[]}];
+    reviewId='n1';reviewDatasetSynced='n1';reviewFramesAt=0;reviewFramesTold=null;syncReviewFrames()`);
+  const said = JSON.parse(h.evaluate('JSON.stringify(messages)'));
+  assert.equal(said.length, 1, 'the console explains the blank stage instead of leaving it blank');
+  assert.ok(said[0].includes('import it from Broadcasts'), 'and names the import that fills it');
+  h.evaluate('reviewFramesAt=0;syncReviewFrames()');
+  assert.equal(JSON.parse(h.evaluate('JSON.stringify(messages)')).length, 1, 'once per broadcast');
+  h.evaluate(`window.CornerPocketReview.snapshot=()=>({dataset:'tw-2890514774',datasets:[{id:'tw-2890514774'}],frame:{has:true}});
+    reviewFramesTold=null;reviewFramesAt=0;syncReviewFrames()`);
+  assert.equal(JSON.parse(h.evaluate('JSON.stringify(messages)')).length, 1, 'and nothing at all once frames are decoded');
 });

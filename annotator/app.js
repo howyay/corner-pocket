@@ -1498,9 +1498,20 @@ function clearLiveError() {
   notify();
 }
 // ---- dataset / source switching -----------------------------------------
+// Round 16, owner item 1: a dataset switch must never leave the previous source's pixels on the stage.
+// The still <img> and the video element keep their own src until something replaces it, and while a new
+// dataset loads that is another stream's frame - the live edge's, or the last broadcast opened. Both
+// surfaces are blanked here, then frame 0 of the chosen dataset is what paints.
+function clearStageSurfaces() {
+  const img = $('#t-img'), video = $('#t-video');
+  if (img) { img.removeAttribute('src'); img.hidden = true; }
+  if (video) { try { video.pause(); } catch (_) {} video.removeAttribute('src'); video.hidden = true; try { video.load(); } catch (_) {} }
+  renderStage();
+}
 async function setDataset(dataset) {
   if (!canLeave()) return false;
   state.dataset = dataset; state.unified = null; state.fresult = null; state.shotUrl = null; state.frame = 0;
+  clearStageSurfaces();
   state.source = {kind:'vod', label: dataset, channel:null};
   state.cloth.refusal = null; state.cloth.reference = null;
   // The live edge's last frame and its detections belong to the live source.
