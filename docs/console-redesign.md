@@ -2772,3 +2772,50 @@ and tracked, but unnamed until a quality face appears; the docs record the reaso
 `node --test tests/test_ops.js` **167/167** (three new instruments), `node tests/test_app_timeline.js` **81/0**,
 `node --test tests/test_board.js` **16/16**. Shots: `out/r14/competition-three-1280.png`,
 `review-no-chooser-1280.png`, `vision-one-action-1280.png`.
+
+## §29 — The OpenDesign loop: the design board, and how a redesign comes back (2026-10-04)
+
+The owner asked to sync the design into OpenDesign so the console can be annotated and redesigned there.
+OpenDesign runs on this host as a user service (`open-design-daemon` + `open-design-web`, daemon
+`http://127.0.0.1:7457`, UI on port 5174 and at `https://design.yay.how`), and the sync bridge is
+`~/projects/opendesign-sync` (`odsync`).
+
+### 29.1 What was created
+
+| | |
+|---|---|
+| OpenDesign project | `corner-pocket-ops-console` — named `Sync Current Design Opendesign Workspace`, `linkedDirs: ["/home/haoye/projects/pool"]`, the same shape the owner's projects for `mergecrew` and `yaydesk` have |
+| the artifact | `corner-pocket-ops-console.html` (23.5 kB, version 1, digest `3f2ba384…`), created with `od artifacts create --name … --input docs/opendesign/corner-pocket-ops-console.html --project corner-pocket-ops-console --daemon-url http://127.0.0.1:7457` |
+| the repo side | `docs/opendesign/make_board.py` generates `docs/opendesign/corner-pocket-ops-console.html` (the repo's `.gitignore` reserves any `design/` directory for third-party references, so the board lives beside the docs); the tokens are **read from `annotator/ops.css`**, so the board shows the shipped values rather than a copy |
+| the link | `odsync link corner-pocket-ops-console --repo /home/haoye/projects/pool --name corner-pocket` → `odsync doctor` all green after the first pull; `odsync status` reports `od=3f2ba384 mirror=3f2ba384` |
+| the mirror | `.od-sync/design/` (`corner-pocket-ops-console.html`, `DESIGN-HANDOFF.md`, `DESIGN-MANIFEST.json`) and `.od-sync/implemented/` for write-back; `.od-sync/` is gitignored, as it is in the owner's `sona` repo |
+
+### 29.2 What the board contains
+
+The design board is live HTML, not a screenshot sheet, so it can be restyled in place: the tokens (dark and
+light, read from the stylesheet), the ball palette, the component inventory (buttons, badges and the table
+chip, the panel fold with the event table, the bracket card in its idle/live/held states, the shot timer, the
+settings dialog), then **the four screens** — Tournament in its three elements, History with its toolbar,
+Vision with the one action and a recorded review without choosers, and the Back room — each with numbered
+callouts for the decisions that rounds 13 and 14 made. It closes with the rules a redesign has to keep: one
+page and four screens, two languages, no sideways scroll at 390, words before icons, one primary per surface,
+and read-only evidence.
+
+### 29.3 The loop
+
+```
+annotate / redesign in OpenDesign (https://design.yay.how · project "Sync Current Design …")
+        │
+        ▼   ~/projects/opendesign-sync/bin/odsync pull corner-pocket
+.od-sync/design/…            (read-only mirror + DESIGN-HANDOFF.md, the visual contract)
+        │
+        ▼   implement in annotator/ops.{js,css} · annotator/vision-stage.js · tests
+        │
+        ▼   odsync push corner-pocket        (files staged in .od-sync/implemented/)
+```
+
+Limits: the board is a **rebuild** of the shipped console, faithful in tokens, components and screen
+structure, and deliberately not the running app (it carries no data and no server calls), so a pixel diff
+against `out/r14/*.png` will show the difference between a static board and the live page; the mirror is
+read-only for me until the owner annotates, and a `push` replaces OpenDesign files, so the round's habit is to
+pull first and report before pushing.
