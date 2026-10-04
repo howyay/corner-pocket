@@ -720,3 +720,33 @@ archived nights (0 `li.tl-item`) and therefore nothing to link from — the prod
 list, the count and the phone, and the isolated root is what proves the relation; a collapsed night shows no
 chips until it is expanded (the drawer rule above); and the two picker counts (`1 of 1`, `4 of 4`) are the
 console's own arithmetic over the rows it holds, not a claim about Twitch.
+
+## 18. Round 12: one list, the match on the timer page, and a quiet finish (2026-10-04)
+
+The owner sent three items with a screenshot of a night in play. Production (8130) carried the club's own
+finished night (revision 46, one signed match); the isolated root (8144, revision 115, 16 entrants, 15
+matches: 4 complete / 3 live / 1 delayed / 2 scheduled / 4 pending) carried the night in play.
+
+| shot | measurement |
+|---|---|
+| production `#/tonight`, 1280, **before** (`before-finish-1280.png`) | `#main` text **697** chars; `<h3>` **5** (`Close the night`, `Results sheet`, `End of the night`, `Round 1`, the event name); paragraphs 5; `.tile` **6**; `scrollWidth` 1280 |
+| production `#/tonight`, 1280, EN (`after-finish-1280-en.png`) | **275** chars; `<h3>` **3** (`Close the night`, `Bracket`, `Round 1`); paragraph **1** (the disabled-delete reason); `.tile` **0**; `.end-night` **1**; the row = `Results sheet · Archive & new event · Delete event (disabled) · Event settings` |
+| production `#/tonight`, 1280, 中文 (`after-finish-1280-zh.png`) | **121** chars; `收尾 · 赛果单 · 归档并新建赛事 · 删除赛事 · 赛事设置`; `已有赛果签署，删除已关闭；归档会把赛果保留在历史中。`; `对阵表 已签 1/1` |
+| isolated root `#/tonight`, 1280, EN (`after-active-1280-en.png`) | `details.panel` **0** (was 2), `.queue-card` **0** (was 2), `.bracket-view` **1**, `.round` **4**, `.bracket-card` **15**, `details.side-panel` **1**, `.scoreboard` **1**; the heading line `4/15 signed · 3 on table · 1 delayed · 2 to send` |
+| isolated root `#/tonight`, 1280, 中文 (`after-active-1280-zh.png`) | 935 chars; `对阵表 已签 4/15 · 进行中 3 · 延迟 1 · 待上台 2`; the same 15 cards |
+| isolated root `#/clock`, 1280, EN (`after-clock-1280-en.png`) | `.timer-card` **1** + `.scoreboard` **1** (321 chars): `ON TABLE · TABLE 1 · EAC2765C · RACE TO 5`, the table select, `Kenji Watanabe 3` / `Tomás Ibarra 1`, `Clear score · Release table · Sign scorecard` |
+| production `#/clock`, 1280 | `.scoreboard` **0**, 27 chars — a finished night leaves the timer page to the timer |
+| isolated root `#/tonight`, 390, EN + 中文 (`after-tonight-390-en.png`, `-zh.png`) | `documentElement.scrollWidth` **390** == `innerWidth` **390** (it was **802** before the min-content clamps: `.rounds` 756, the board's `select#focus-match` 756 → the board 790) |
+| isolated root `#/clock`, 390, EN + 中文 (`after-clock-390-en.png`, `-zh.png`) | `scrollWidth` **390** == `innerWidth`; `.timer-card` 1 + `.scoreboard` 1 |
+
+Suites, on the shipped tree: `node --test tests/test_ops.js` **162/162**, `node tests/test_app_timeline.js`
+**81/0**, `node --test tests/test_board.js` **16/16**. No Python file changed.
+
+Shots: `out/r12/before-finish-1280.png`, `after-finish-1280-en.png`, `after-finish-1280-zh.png`,
+`after-active-1280-en.png`, `after-active-1280-zh.png`, `after-clock-1280-en.png`, `after-clock-1280-zh.png`,
+`after-tonight-390-en.png`, `after-tonight-390-zh.png`, `after-clock-390-en.png`, `after-clock-390-zh.png`.
+
+Limits: the before/after numbers are one club night, not a survey. The live list and the timer page are the
+isolated root. The 4 s poll was measured through its guard and its fetch, not on a wall clock. The
+`before-finish-1280.png` shot was taken by serving the round-11 `annotator/ops.js` from the same server for
+one load, then restoring the file (md5 verified); `annotator/ops.html` and the club data were not touched.

@@ -729,3 +729,39 @@ launched with `POOL_DATABASE_URL` set, which is a store seam, not a stylesheet. 
 console or by running its suites, and each is now held by a test or a refusal — `docs/console-redesign.md`
 §23.5 and §23.6. Running the detector three rounds in a row has produced 25 findings, three times, none of
 them the bug that mattered; recorded here rather than dressed up as diligence.
+
+## Round 12 — the three items with a screenshot, and the detector run that closes them (2026-10-04)
+
+`impeccable detect --json annotator/ops.js annotator/ops.css` → **25 findings: 17 advisory, 8 warning**.
+
+| by rule | n | by file | n | by severity | n |
+|---|---|---|---|---|---|
+| `design-system-color` | 9 | `annotator/ops.css` | 24 | advisory | 17 |
+| `design-system-font-size` | 8 | `annotator/ops.js` | 1 | warning | 8 |
+| `side-tab` | 7 | | | | |
+| `border-accent-on-rounded` | 1 | | | | |
+
+**These are round 9's findings again, not new ones.** The comparison is against the round-11 tree itself
+(`git show f66bddb:annotator/ops.js` and `:annotator/ops.css`, run through the same detector): same size
+(25), same composition, and the line numbers moved exactly as this round's edits moved them —
+`annotator/ops.css` `758/850/886/990/1002/1049` → `760/852/888/992/1004/1051` (the round appended 2 lines
+above them: −9 queue rules, +11 clamp and heading rules), and `annotator/ops.js`'s one entry stays at `959`
+(`Undocumented color #1d5c44`, the green cloth in `appearancePanel()`'s colour picker — a round-6 control)
+because this round's additions and deletions above it net to zero lines: both trees are 1031 lines of
+`ops.js`. Nothing was added, nothing was resolved, and the disposition of all 25 is the round-9 table above —
+this section does not re-argue them.
+
+| on a round-12 line? | findings |
+|---|---|
+| yes | **0** |
+
+The round-12 lines are `annotator/ops.js` 8, 712–720, 766–782, 862–864 and `annotator/ops.css` 684, 688,
+691, 692, 698.
+
+The run changed no code. And the honest note, for the fourth round: **the defect that mattered this round was
+found by a measurement, not by the detector.** The merged card overflowed a 390 px phone by 412 px
+(`scrollWidth` 802), because `article.bracket-view`'s automatic minimum size was the `.rounds` scroller's
+content (756 px) and the board's `select#focus-match` was `width:100%` with an automatic minimum of its widest
+option (756 px, the board then 790 px). A detector that reads declarations cannot see a min-content
+interaction between a flex item, a scroller and a form control; `documentElement.scrollWidth` at 390 can, and
+did. The two clamps and their re-measure are in `docs/console-redesign.md` §24.4.

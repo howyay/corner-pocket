@@ -307,8 +307,8 @@ test('round 1 · Back room: operator panels first; system status and roadmap und
   }
 });
 test('round 1 · empty states: no fake names, no blank tiles, no list-item empties, every panel headed', () => {
-  for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register entrants, rack the night, then send a match from the Queue', 'default name · saved when you rack'],
-                                             ['zh', '暂无比赛上台', '请先登记参赛者并生成对阵，再从“队列”安排比赛上台', '默认名称 · 生成对阵时保存']]) {
+  for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register the entrants and rack the night first', 'default name · saved when you rack'],
+                                             ['zh', '暂无比赛上台', '请先登记参赛者并生成对阵', '默认名称 · 生成对阵时保存']]) {
     const h = harness();
     h.evaluate(`lang='${lang}';data.players=[];data.history=[];data.events=[];data.tournament={id:'t1',name:'',format:'singles',raceTo:1,status:'registration',entrants:[],matches:[]}`);
     const floor = h.evaluate('scoreboardScreen()');
@@ -321,15 +321,19 @@ test('round 1 · empty states: no fake names, no blank tiles, no list-item empti
     assert.ok(/<h2 class="sr-only">/.test(floor), `${lang}: the scoreboard has a heading`);
     assert.ok(!/Tables open|球台空闲/.test(floor), `${lang}: never a placeholder name on the board`);
     const matches = h.evaluate('bracketScreen()');
-    assert.ok(matches.includes(dflt), `${lang}: an unsaved event name is shown, and said to be the default`);
     assert.ok(!/<li>[^<]*(Nothing|暂无|尚无)[^<]*<\/li>/.test(matches), `${lang}: no empty state inside a list`);
     assert.ok(!/Nothing here yet|暂无记录/.test(matches + floor + h.evaluate('setupScreen()') + h.evaluate('playersScreen()')), `${lang}: the generic empty line is gone`);
-    assert.ok(matches.includes('<article class="empty"><h3>'), `${lang}: the empty bracket panel has a heading`);
+    assert.ok(/<h3>[^<]+<\/h3>[\s\S]*?<article class="empty">/.test(matches), `${lang}: the empty draw sits under its own heading`);
     // with a racked night and nothing on a table, the step is Matches
     h.evaluate(`data.tournament.name='Friday';data.tournament.entrants=[{id:'e1',members:[{name:'A'}]},{id:'e2',members:[{name:'B'}]}];data.tournament.matches=[{id:'m1',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',absent:[]}];data.tournament.status='active'`);
     const play2 = h.evaluate('playScreen()');
-    assert.ok(play2.includes('data-action="schedule"'), `${lang}: a racked match can be sent from the Queue`);
-    assert.ok(!h.evaluate('bracketScreen()').includes(dflt), `${lang}: a saved name is not called a default`);
+    assert.ok(play2.includes('data-action="schedule"'), `${lang}: a racked match can be sent from its own card in the draw`);
+    const named = h.evaluate('scene()');
+    assert.ok(named.includes('Friday') && !named.includes(dflt), `${lang}: a saved name is not called a default`);
+    h.evaluate("data.tournament.name=''");
+    const unnamed = h.evaluate('scene()');
+    assert.ok(unnamed.includes(h.evaluate('autoEventName()')) && unnamed.includes(dflt),
+      `${lang}: an unsaved event name is shown, and said to be the default`);
   }
 });
 test('round 1 · numbers: every figure in the shell is lining and tabular, past any font: shorthand', () => {
@@ -1373,7 +1377,7 @@ test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', 
                {id:'m2',round:1,sides:['e2','e3'],score:[3,1],status:'complete',result:'played',winnerId:'e2',table:null,absent:[]},
                {id:'m3',round:2,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[],sources:['m1','m2']}]});
     data.tournament=night();data.history=[Object.assign(night(),{id:'h1',status:'complete',archivedAt:'2026-09-01T00:00:00Z'})]`);
-  for (const [lang, bye, signed, waiting, cards] of [['en', 'Bye', 'Signed', 'Waiting', 'Cards signed'], ['zh', '轮空', '已签', '待定', '已签赛果']]) {
+  for (const [lang, bye, signed, waiting, cards] of [['en', 'Bye', 'Signed', 'Waiting', '1/2 signed'], ['zh', '轮空', '已签', '待定', '已签 1/2']]) {
     h.evaluate(`lang='${lang}'`);
     const html = h.evaluate('bracketScreen()');
     const card = html.slice(html.indexOf('class="rounds"'));
@@ -1381,12 +1385,12 @@ test('a bye reads Bye, never Signed or Waiting, and is not a signed card (R5)', 
     assert.ok(first.includes(`>${bye}<`), `${lang}: the bye card is labelled ${bye}`);
     assert.equal((first.match(new RegExp(`>${signed}<`, 'g')) || []).length, 1, `${lang}: only the played card says ${signed}`);
     assert.ok(!first.includes(`>${waiting}<`), `${lang}: the empty side of a bye never reads ${waiting}`);
-    const tile = html.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1];
-    assert.equal(tile, '1/2', `${lang}: byes are left out of the signed count and its total`);
+    const line = html.match(/<span class="muted">([^<]*)<\/span>/)[1];
+    assert.ok(line.includes(cards), `${lang}: the heading carries ${cards} - byes are left out of the count and its total`);
     const rec = h.evaluate('recordsScreen()'), archive = rec.slice(rec.indexOf('data-event="h1"'));
     assert.ok(archive.includes(`>${bye}<`) && !archive.includes(`${esc_(waiting)}`), `${lang}: the archive labels the bye too`);
     const play = h.evaluate('playScreen()');
-    assert.equal(play.match(new RegExp(`<small>${cards}</small><strong>([^<]*)</strong>`))[1], '1/2', `${lang}: the Play header tile agrees`);
+    assert.ok(play.match(/<span class="muted">([^<]*)<\/span>/)[1].includes(cards), `${lang}: the Play heading line agrees`);
   }
   assert.equal(h.evaluate('JSON.stringify(resultStats("x"))'), '{"wins":0,"losses":0}');
 });
@@ -2415,7 +2419,7 @@ test('the night is drawn and started from the same place, and being away is a ma
   assert.ok(!drawn.includes('id="rename-form"'), 'the rename form folded into the settings dialog');
   assert.ok(drawn.includes('data-action="open-setup"') && drawn.includes(h.evaluate("esc(t('eventSettings'))")),
     'which the night card opens, so the night can still be renamed');
-  assert.ok(!drawn.includes('table-grid') && drawn.includes('queue-card'), 'no table cards: the queue is where a match is put on a table (owner item 3)');
+  assert.ok(!drawn.includes('table-grid') && drawn.includes('class="bracket-view"'), 'no table cards: the draw is where a match is put on a table (round 12, owner item 1)');
 });
 test('old phase routes fold into the one Tonight route, in place', () => {
   for (const hash of ['#/tonight/rack', '#/tonight/close', '#/tonight/bogus', '#/tonight/register', '#/tonight/play']) {
@@ -2720,16 +2724,16 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   assert.equal(active.evaluate('tonightState()'), 'active');
   assert.equal(active.evaluate('comp()'), 'active');
   const activeHtml = active.evaluate('tonightScreen()');
-  for (const there of ['class="scoreboard"', 'class="rounds"', 'side-panel', 'class="entry row"', 'data-action="open-setup"', 'queue-card']) {
+  for (const there of ['class="scoreboard"', 'class="rounds"', 'side-panel', 'class="entry row"', 'data-action="open-setup"', 'class="bracket-view"']) {
     assert.ok(activeHtml.includes(there), `active: ${there}`);
   }
   for (const gone of ['id="settings-form"', 'id="entrant-form"', 'card--wrap']) {
     assert.ok(!activeHtml.includes(gone), `active: no ${gone}`);
   }
-  assert.ok(activeHtml.indexOf('class="scoreboard"') > activeHtml.indexOf('queue-card'), 'nothing is live, so the board sits under the queue');
+  assert.ok(activeHtml.indexOf('class="scoreboard"') > activeHtml.indexOf('class="bracket-view"'), 'nothing is live, so the board sits under the draw');
   active.evaluate("data.tournament.matches[1].status='live';data.tournament.matches[1].table=1");
   assert.equal(active.evaluate('dirtyComp()'), true, 'a ball on a table is what dirty means');
-  assert.ok(active.evaluate('tonightScreen()').indexOf('class="scoreboard"') < active.evaluate('tonightScreen()').indexOf('queue-card'), 'and a live table pins the board above the queue');
+  assert.ok(active.evaluate('tonightScreen()').indexOf('class="scoreboard"') < active.evaluate('tonightScreen()').indexOf('class="bracket-view"'), 'and a live table pins the board above the draw');
   const done = harness();
   tonightNight(done, 'done');
   assert.equal(done.evaluate('tonightState()'), 'complete');
@@ -2782,7 +2786,7 @@ test('the tables are resident, the dashboard follows the live event, and the nig
   h.evaluate("data.tournament.status='active'");
   assert.equal(h.evaluate('liveComp()'), true, 'starting the event opens the gate');
   const live = h.evaluate('tonightScreen()');
-  assert.ok(live.includes('class="scoreboard"') && live.includes('details class="panel"'), 'and the dashboard arrives');
+  assert.ok(live.includes('class="scoreboard"') && live.includes('class="bracket-view"'), 'and the dashboard arrives with the night\u2019s one list');
   // A free table offers the next match by number, and the send carries that number.
   h.evaluate('calls.length=0');
   assert.ok(/data-action="schedule" data-id="m1"/.test(live), 'the queue offers the waiting match to a free table');
@@ -2790,7 +2794,7 @@ test('the tables are resident, the dashboard follows the live event, and the nig
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'schedule', id: 'm1'}}}});
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'match_schedule', payload: {id: 'm1'}}], 'sending names the match - the box places it on a free table');
 });
-test('the queue is where a match is put on a table, and the board carries the live score (owner item 3)', () => {
+test('the draw is where a match is put on a table, and the board carries the live score (owner item 3, round 12 item 1)', () => {
   const h = harness();
   h.evaluate(`data.players=[{id:'pa',name:'Ann',status:'Active',rating:1},{id:'pb',name:'Bea',status:'Active',rating:2}];
     const E=(id,pid,name)=>({id,members:[{pid,name}]});
@@ -2800,11 +2804,12 @@ test('the queue is where a match is put on a table, and the board carries the li
                {id:'m2',round:1,sides:['c','d'],score:[2,0],status:'live',table:2,absent:[]},
                {id:'m3',round:2,sides:['a','c'],score:[0,0],status:'scheduled',table:null,absent:[]}]}`);
   const grid = h.evaluate('playScreen() + scoreboardScreen()');
-  assert.ok(grid.includes('class="rounds"') && grid.includes('queue-card'), 'the queue and the bracket are the night\u2019s bodies');
-  const rows = grid.split('<div class="entry queue-card').slice(1);
-  assert.equal(rows.length, 1, 'the queue holds exactly the one match waiting for a table (m1 is signed, m2 is on one)');
-  assert.ok(rows[0].includes('Ann') && rows[0].includes('Cy'), 'and it names both sides');
-  assert.ok(/data-action="schedule" data-id="m3"/.test(rows[0]), 'Send is offered by the queue, not by a card of a table');
+  assert.ok(grid.includes('class="rounds"') && grid.includes('class="bracket-view"'), 'the draw is the night\u2019s one body (round 12, owner item 1)');
+  const cards = grid.split('<div class="entry bracket-card').slice(1);
+  assert.equal(cards.length, 3, 'and it holds every match of the night (m1 signed, m2 on a table, m3 waiting)');
+  const readyCard = cards.find(c => /data-action="schedule" data-id="m3"/.test(c));
+  assert.ok(readyCard && readyCard.includes('Ann') && readyCard.includes('Cy'), 'the one match waiting for a table is sent from its own card, naming both sides');
+  assert.equal(cards.filter(c => /data-action="schedule"/.test(c)).length, 1, 'one Send, on the one card that can use it');
   assert.ok(!/data-action="schedule" data-id="m1"/.test(grid) && !/data-action="schedule" data-id="m2"/.test(grid),
     'a signed or a live match is never offered a table again');
   assert.ok(/<strong class="digits">2<\/strong>/.test(grid) && grid.includes(h.evaluate("esc(t('live'))")), 'the board is the live table: its score and its word');
@@ -2861,13 +2866,14 @@ test('round 2: Records is navigable by heading (B-03, B-13)', () => {
   assert.ok(opsCss.includes('.tl-month-head{') && !/[^-]\btl-month\{/.test(opsCss), 'the old non-heading month class is gone from the stylesheet');
 });
 
-test('round 2: Regulars has a heading, and both Queue panels are named for their content (B-13, B-12)', () => {
+test('round 2: Regulars has a heading, and the night\u2019s one list is named for its content (B-13, B-12)', () => {
   const h = harness();
   recordsNight(h);
   const players = h.evaluate("lang='en';playersScreen()");
   assert.ok(/<h2[^>]*>\s*/.test(players) && players.includes(h.evaluate("esc(t('players'))")), 'Regulars has an h2 of its own');
   h.evaluate("lang='zh'");
-  assert.ok(h.evaluate("esc(t('queueTitle'))") === '等待上场', 'the waiting list is no longer headed with the board’s word for Queue');
+  assert.ok(h.evaluate("esc(t('bracketTitle'))") === '对阵表', 'round 12: the queue panel is gone, and the night\u2019s one list is headed by the draw\u2019s own word');
+  assert.ok(!source.includes("t('queueTitle')"), 'and the word the old panel used went with it');
 });
 
 test('round 2: the disclosure marker is authored, and the list reset covers every fold (B-04, B-07)', () => {
@@ -2999,7 +3005,7 @@ test('round 3 / F14: End of the night is on the Back room in every state, with t
     'F14: and the locked note travels with the settings dialog, where the name is edited');
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
-    assert.ok(h.evaluate("t('locked')").includes(h.evaluate("t('endNightTitle')")), `F14: the ${lang} note names the card that can be found`);
+    assert.ok(h.evaluate("t('locked')").includes(h.evaluate("t('closeTitle')")), `F14: the ${lang} note names the card that can be found`);
   }
   h.evaluate(`lang='en';data.tournament={id:'',name:'Friday 8-ball',format:'singles',raceTo:5,tables:2,status:'registration',entrants:[],matches:[]}`);
   assert.ok(h.evaluate('nightCard()').includes('Friday 8-ball'),
@@ -3192,11 +3198,20 @@ test('round 7 / owner item 2: the timer is a bar of its own and ball 1 is its ow
   assert.ok(opsHtml.indexOf('class="barrow"') < opsHtml.indexOf('class="clockbar"') && opsHtml.indexOf('</nav>') < opsHtml.indexOf('class="tools"'),
     'the shell is two rows: the destinations and the tools, then the clock - round 8 (owner item 1) turned round 7\'s order around');
   assert.ok(source.includes("$('#ops-shell .clockbar')"), 'and render() paints that one host');
-  const clockCode = source.slice(source.indexOf('function clockHTML()'), source.indexOf('function render()'));
-  assert.ok(source.includes('because nothing here reads comp()'),
-    'the code says why the clock is always available: it reads no match state');
-  assert.ok(!/comp\(\)|liveComp\(\)|tournament\(\)/.test(clockCode.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')),
-    'and that holds after the comments are stripped: the clock is usable with no competition running');
+  // Round 12 (owner item 2) put the match on the timer's own page. The bar and the repaint loop
+  // keep round 7's rule - they read no match state, so they paint in every venue state and before
+  // the first fetch answers - and the page's one match read is asserted to be exactly one block.
+  const noState = (region, name) => {
+    const stripped = region.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/comp\(\)|liveComp\(\)|tournament\(\)/.test(stripped),
+      `${name} reads no match state, so the clock is usable with no competition running`);
+  };
+  noState(source.slice(source.indexOf('function clockHTML()'), source.indexOf('function clockScreen()')), 'the clock bar and its host');
+  noState(source.slice(source.indexOf('function tick()'), source.indexOf('const screens=')), 'the repaint loop');
+  const page = source.slice(source.indexOf('function clockScreen()'), source.indexOf('function tick()'));
+  assert.ok(page.includes("${liveComp()?scoreboardScreen():''}"), 'the timer page carries the match block (round 12, owner item 2)');
+  assert.equal((page.match(/liveComp\(\)/g) || []).length, 1, 'and reads match state exactly once, for that block');
+  noState(page.slice(0, page.indexOf('${liveComp()?')), 'the timer card');
   const screen = h.evaluate('clockScreen()');
   assert.ok(screen.includes('data-clock') && screen.includes('data-action="clock-toggle"') && screen.includes('data-action="clock-reset"'),
     'its own screen starts, pauses and resets');
@@ -3373,7 +3388,7 @@ test('round 6: the archive paints its own card, so a late answer never rebuilds 
   assert.ok(!painter.includes('render()'), 'still nothing rebuilds the screen under an operator');
   assert.ok(!/loadArchiveList[\s\S]{0,400}?archiveList\.loading=false;render\(\)/.test(source),
     'and never re-renders the whole screen after the network answers (the search box and the scroll survive)');
-  assert.ok(source.includes("showReview();syncLivePolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}"),
+  assert.ok(source.includes("showReview();syncLivePolling();syncOpsPolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}"),
     'Records asks for the archive - and the download queue beside it - when it becomes the screen, and only then');
   assert.ok(source.includes("if(a==='archive-reload'){loadArchiveList(true);loadAuto(true);return}"),
     'Refresh is the one deliberate re-read, for both');
@@ -3742,4 +3757,89 @@ test('round 11: a broadcast the channel has forgotten is still listed, from the 
   assert.ok(after.includes(h.evaluate("t('archiveCount').replace('{n}','3').replace('{built}','2')")),
     'the count is the union, not just the window');
   assert.ok(h.evaluate('calls.length') === 0, 'and still no write: the list only reads');
+});
+
+// ---------------------------------------------------------------- round 12 (owner, m08064)
+// The owner sent three items with a screenshot of a night in play: one list, the match on the
+// timer's own page, and a finish card that stops talking. Each item gets its own instrument.
+test('round 12 / owner item 1: the queue and the draw are one list, and the ready match sends itself', () => {
+  const h = harness();
+  tonightNight(h, 'drawn');
+  h.evaluate('render=()=>{}');
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    const view = h.evaluate('tonightScreen()');
+    assert.equal((view.match(/class="bracket-view"/g) || []).length, 1, `${lang}: one list, not a queue beside a draw`);
+    assert.ok(!view.includes('queue-card') && !/Waiting to play|等待上场/.test(view), `${lang}: the queue card is gone, word and all`);
+    assert.ok(view.includes(`<h3>${h.evaluate("esc(t('bracketTitle'))")}</h3>`), `${lang}: the list is headed by the draw's own word`);
+    const line = view.match(/<span class="muted">([^<]*)<\/span>/)[1];
+    assert.ok(line.includes(h.evaluate("esc(t('bracketSend')).replace('{n}','1')")), `${lang}: the heading counts the match that waits for a table`);
+    assert.ok(/data-action="schedule" data-id="m2"/.test(view), `${lang}: and that match sends itself from its own card`);
+    assert.ok(!/<details class="panel"/.test(view), `${lang}: the list is not a drawer that closes itself after every write`);
+    assert.ok(/#ops-shell \.bracket-view\{min-width:0\}/.test(opsCss) && /#ops-shell \.score-top select\{min-width:0[^}]*\}/.test(opsCss),
+      `${lang}: the list and the board can shrink into a phone (measured: 802 px of scroll width at 390 before the clamp)`);
+  }
+  const before = h.evaluate("lang='en';tonightScreen()");
+  h.evaluate("data.tournament.matches[1].status='live';data.tournament.matches[1].table=1");
+  const after = h.evaluate('tonightScreen()');
+  assert.ok(before.includes('data-action="schedule" data-id="m2"') && !after.includes('data-action="schedule" data-id="m2"'),
+    'the match that went to a table is no longer offered one');
+  assert.ok(!after.match(/<span class="muted">([^<]*)<\/span>/)[1].includes(h.evaluate("esc(t('bracketSend')).replace('{n}','1')")),
+    'and the count drops with it, with nothing to reopen');
+});
+test('round 12 / owner item 2: the match follows the night onto the timer page, and only while a night is played', async () => {
+  const h = harness();
+  tonightNight(h, null);                        // the desk, before the draw
+  const timer = () => h.evaluate('clockScreen()');
+  assert.ok(!timer().includes('class="scoreboard"'), 'a desk before the draw leaves the timer page to the timer');
+  tonightNight(h, 'drawn');                     // the night is being played
+  h.evaluate("data.tournament.matches.push({id:'m4',round:2,sides:['b','g'],score:[2,1],status:'live',table:1,absent:[]})");
+  const live = timer();
+  assert.ok(live.includes('class="timer-card"') && live.includes('class="scoreboard"'), 'a night in play puts the match under the timer');
+  assert.ok(live.includes(h.evaluate("esc(ename('b'))")) && live.includes(h.evaluate("esc(ename('g'))")), 'with both names on it');
+  assert.ok(/data-action="(score|frame)"/.test(live) && live.includes(h.evaluate("esc(t('sign'))")), 'and the controls that decide the frame');
+  tonightNight(h, 'done');
+  assert.ok(!timer().includes('class="scoreboard"'), 'a finished night takes it away again');
+  // The read that keeps a tablet at the table in step: this page, a night in play, never hidden.
+  h.evaluate("reads=0;fetch=async()=>{reads++;return {ok:true,json:async()=>({revision:data.revision})}}");
+  h.evaluate("tab='tonight';data.tournament.status='active';data.tournament.matches=[{id:'m5',round:1,sides:['a','b'],score:[0,0],status:'live',table:1,absent:[]}]");
+  await h.evaluate('pollOps()');
+  assert.equal(h.evaluate('reads'), 0, 'the read does not run on any other page');
+  h.evaluate("tab='clock';stopOpsPolling()");
+  await h.evaluate('pollOps()');
+  assert.equal(h.evaluate('reads'), 1, 'a tap on the timer page reads the desk once');
+  h.evaluate('document.hidden=true;stopOpsPolling()');
+  await h.evaluate('pollOps()');
+  assert.equal(h.evaluate('reads'), 1, 'a hidden tab reads nothing');
+  h.evaluate('document.hidden=false;busy=true;stopOpsPolling()');
+  await h.evaluate('pollOps()');
+  assert.equal(h.evaluate('reads'), 1, 'and a page that is mid-write leaves the state alone');
+  h.evaluate('busy=false;stopOpsPolling()');
+  assert.equal(h.evaluate('opsTimer'), null, 'with the timer stopped, so no read outlives the test');
+});
+test('round 12 / owner item 3: the end of the night is one card, one row, one reason', () => {
+  const h = harness();
+  tonightNight(h, 'done');
+  h.evaluate('render=()=>{}');
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    const view = h.evaluate('tonightScreen()');
+    assert.equal((view.match(/class="end-night"/g) || []).length, 1, `${lang}: the finish is one card`);
+    assert.ok(!view.includes('close-sheet') && !view.includes('card--night'), `${lang}: with no second card for the sheet and no summary under it`);
+    const start = view.indexOf('class="end-night"');
+    const end = view.slice(start, view.indexOf('</article>', start));
+    assert.ok(end.includes(h.evaluate("esc(t('closeTitle'))")), `${lang}: it is headed 收尾`);
+    assert.equal((end.match(/<h3>/g) || []).length, 1, `${lang}: the close card has one heading, not three`);
+    assert.equal((view.match(/class="tiles"/g) || []).length, 0, `${lang}: the six tiles are gone`);
+    for (const gone of ['closeNote', 'closeSheetNote', 'endNightNote']) {
+      assert.ok(!view.includes(h.evaluate(`esc(t('${gone}'))`)), `${lang}: and the prose of ${gone} is gone with them`);
+    }
+    for (const action of ['results-sheet', 'new-event', 'event-delete', 'open-setup']) {
+      assert.ok(end.includes(`data-action="${action}"`), `${lang}: the one row carries ${action}`);
+    }
+    const name = h.evaluate('esc(tournament().name)');
+    assert.equal((view.match(new RegExp(name, 'g')) || []).length, 1, `${lang}: the event name appears once - in the scene line`);
+    assert.ok(/data-action="event-delete"[^>]*disabled/.test(end) && end.includes(h.evaluate("esc(t('closeSigned'))")),
+      `${lang}: the signed result turns the delete off and says so in one line`);
+  }
 });

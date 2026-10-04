@@ -2415,3 +2415,140 @@ lands on the Records list (pre-existing, §22); the day head is the **broadcast'
 in this machine's zone) and a night's date is its archived date, so a night played after midnight and its
 broadcast can fall on different days — the operator's list shows both, and the join is the link, not the
 date; and `{built}` counts links, so a broadcast covering two nights counts once.
+
+## §24 — Round 12: one list, the match on the timer page, and a finish card that stops talking (2026-10-04)
+
+The owner sent three items with a screenshot of a night in play. The screenshot showed the Tonight screen
+during a competition, and the quoted page text was the whole of item 3.
+
+### 24.1 Item 1: `等待上场` and `对阵表` are one list
+
+The two cards were the same list read twice. The queue held the ready matches, the live tables and the
+signed results. The bracket held the draw, and it repeated the live tables and the signed results inside
+its rounds. Measured on the isolated root at 1280: `details.panel` **2**, `.queue-card` **2**, and the same
+ring of live matches in three places (the board, `On a table now`, Round 1).
+
+`queuePanel()`, `queueScreen()`, `queueRank()`, `sendCard()`, `queueCard()` and the dead `roundsPanel()` are
+deleted. `bracketScreen()` returns **one** `article.bracket-view`:
+
+- `<div class="heading"><h3>对阵表</h3><span class="muted">{facts}</span></div>`, where the facts are
+  `bracketLine()` — `{n}/{m} signed` always, and `{n} on table` / `{n} delayed` only when they are not zero —
+  plus `{n} to send` when a match is ready;
+- the density row (unchanged), then `.rounds` with every match of the night;
+- the event table fold moved to `playScreen()` as `eventFold()`.
+
+The list is **not** a `<details>`: `render()` rebuilds `#main.innerHTML`, so a drawer closes itself after
+every write, and the operator had to reopen it to send the next match. Send now sits on the match's own card,
+where its table and its two names already are.
+
+Measured after, isolated root at 1280: `details.panel` **0**, `.queue-card` **0**, `.bracket-view` **1**,
+`.round` **4**, `.bracket-card` **15** (every match of the night once), `details.side-panel` **1**,
+`documentElement.scrollWidth` **1280** == `innerWidth`.
+
+Fourteen word keys that only the deleted cards rendered went with them: `queueTitle`, `queueNote`,
+`emptyQueueReady`, `emptyQueueDraw`, `onTable`, `signedTitle`, `openTable`, `goQueue`, `sheetTitle`,
+`closeSheetNote`, `closeSheetEmpty`, `closeNote`, `endNightTitle`, `endNightNote`. The shell still holds 37
+keys no screen renders; those are older, and they are not this round's business.
+
+### 24.2 Item 2: the match follows the night onto the timer's own page
+
+`clockScreen()` now ends with `${liveComp()?scoreboardScreen():''}`. The block is the element from the
+screenshot: the badge, the table and the match id, the race badge, the table select, both names, both
+scores with `+`/`−`, `Clear score`, `Release table` and `Sign scorecard`.
+
+It is guarded by `liveComp()` — a night is being played — not by a live match, because the empty board
+(`No match is on a table. The next match is ready…`) is what a tablet at the table needs between frames.
+Measured: isolated root, clock page, 1280 → `.timer-card` **1**, `.scoreboard` **1**, 321 characters;
+production (a finished night) → `.scoreboard` **0**, 27 characters, the timer alone.
+
+A tablet at the table must also follow the desk's sends without a reload, so the page re-reads
+`/api/operations` every **4 s**:
+
+```
+let opsTimer=null;
+function stopOpsPolling(){clearTimeout(opsTimer);opsTimer=null}
+function syncOpsPolling(){stopOpsPolling();if(tab==='clock'&&liveComp()&&!document.hidden)opsTimer=setTimeout(pollOps,4000)}
+async function pollOps(){…}
+```
+
+`pollOps()` writes nothing. It stands down on every other tab, on a hidden page, while `busy`, while a match
+write is in flight (`pendingMatches.size`), and while a form, dialog or picker is open (`deskOpen`, `selected`,
+`setupOpen`, `bf`). It re-renders only when the revision changed. `render()` calls `stopOpsPolling()` and
+`syncOpsPolling()` beside the live polling, and `pageshow` + `visibilitychange` do the same.
+
+The block lives **below** `function render()`, not with the clock, and the round-7 rule is why: the clock bar
+paints before the first fetch answers and in every venue state, so it reads no match state. That rule now has
+three named windows in `tests/test_ops.js` — the bar and its host (`clockHTML()` → `clockScreen()`), the
+repaint loop (`tick()` → `const screens=`), and the timer card (the part of `clockScreen()` before the match
+block). The old instrument sliced `clockHTML()` → `render()`, which swallowed both the timer page and the poll.
+
+### 24.3 Item 3: the finish is one card, one row, one reason
+
+The owner's screenshot listed four headings for one thing (`收尾`, `结果单`, `结束今晚`, and the night card),
+five prose sentences, six tiles, the event name three times and `单打 · 抢1` three times.
+
+`closeSheetCard()` is gone. `wrapScreen()` is now `${closeCard()}${revivalCard()}` and `closeCard()` is one
+`article.end-night`:
+
+- `<h3>收尾</h3>`;
+- one row: **结果单** (primary, and only once the night is drawn) · **归档并新建赛事** · **删除赛事** (disabled
+  per the existing reason) · **赛事设置**;
+- one line, only when the delete is off: the same `closeNoEvent` / `closeNoEntrants` / `closeSigned` sentence.
+
+The six tiles became the `bracketLine()` sentence in the draw's heading. The night card is **dropped from the
+finish branch** (`tonightScreen()`'s complete branch is `${wrapScreen()}${bracketScreen()}`), so the name,
+the format and the race appear once, in the scene line. The default-name note moved into `scene()` with them,
+where the name is shown.
+
+Measured on production, the owner's own night, 1280:
+
+| | before | after (EN) | after (中文) |
+|---|---|---|---|
+| `#main` text | **697** chars | **275** chars | **121** chars |
+| `<h3>` on the screen | **5** | **3** | **3** |
+| paragraphs | 5 (four prose + one meta) | **1** (the one reason) | 1 |
+| `.tile` | **6** | **0** | **0** |
+| the event name | 3× | **1×** | 1× |
+
+The three headings left are `Close the night`, `Bracket` and `Round 1` — one card, one list, the draw.
+
+### 24.4 The defect the phone shot caught
+
+The merged card was measured at 390 px on the way out, and the Tonight page had **412 px of horizontal
+overflow** (`scrollWidth` **802** on a 390 px phone). Two causes, both min-content:
+
+- `article.bracket-view` is a flex item of the night's stack. Its automatic minimum size was the `.rounds`
+  scroller's content (**756 px**), because a block-level `overflow:auto` child still hands its min-content to
+  its parent.
+- the board's `select#focus-match` is `width:100%` with an automatic minimum of its widest option
+  (`球台 1 · Kenji Watanabe / Tomás Ibarra`, **756 px**), which pushed the board to **790 px**.
+
+The old page did not show it: the same board sat in a stack whose width the closed bracket panel did not
+inflate. The fix is three declarations — `#ops-shell .bracket-view{min-width:0}`,
+`#ops-shell .scoreboard{min-width:0}`, `#ops-shell .score-top select{min-width:0;max-width:100%}` — and the
+re-measure is `scrollWidth` **390** == `innerWidth` at 390 in both languages, and **1280** at 1280. The clock
+page measured **390** == 390 before and after.
+
+### 24.5 Verification
+
+Suites, on the shipped tree: `node --test tests/test_ops.js` **162/162** (159 + the three round-12
+instruments), `node tests/test_app_timeline.js` **81/0**, `node --test tests/test_board.js` **16/16**. No
+Python file changed, so no Python suite was run.
+
+| what | where | measured |
+|---|---|---|
+| the finish, before and after | production 8130, 1280 | 697 → 275 chars; 5 → 3 headings; 6 → 0 tiles (§24.3) |
+| one list | isolated root 8144, `#/tonight`, 1280 | `details.panel` 2 → **0**; `.bracket-card` **15**; `scrollWidth` 1280 |
+| the match on the timer | isolated root, `#/clock`, 1280 | `.timer-card` **1** + `.scoreboard` **1**; production finish → `.scoreboard` **0** |
+| the phone | isolated root, 390, EN + 中文 | `scrollWidth` 802 → **390** == `innerWidth` |
+| the languages | both pages, EN + 中文 | the words that name the draw read `Bracket` / `对阵表` |
+
+Shots: `out/r12/before-finish-1280.png`, `after-finish-1280-en.png`, `after-finish-1280-zh.png`,
+`after-active-1280-en.png`, `after-active-1280-zh.png`, `after-clock-1280-en.png`, `after-clock-1280-zh.png`,
+`after-tonight-390-en.png`, `after-tonight-390-zh.png`, `after-clock-390-en.png`, `after-clock-390-zh.png`.
+
+Limits: the finish screen is the club's own night (revision 46, one signed match), so the before/after table
+is one night, not a survey. The merged list and the timer page are the isolated root, which is the only
+mid-competition data on this host. The 4 s poll is asserted at the level of its guard and its fetch, not on a
+wall clock; nobody has yet watched a tablet follow a send. And the exported `resultsSheet()` is unchanged —
+the owner asked for the finish *screen* to be quiet, and the sheet is still the sheet.
