@@ -1226,7 +1226,10 @@ html,body{-webkit-font-smoothing:antialiased}
 .od-state>header{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--panel2);border-bottom:1px solid var(--line);flex-wrap:wrap}
 .od-state>header h4{margin:0;font:600 var(--fs-lg)/1.2 var(--display)}
 .od-state>header span{font:var(--fs-xs) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
-.od-canvas{overflow:auto;background:var(--bg);padding:var(--sp-3);min-width:0}
+.od-canvas{overflow:auto;background:var(--bg);padding:var(--sp-3);min-width:0;position:relative}
+/* the app's dialog backdrops are position:fixed and would cover the whole board; inside a frame they
+   cover the frame, which is what a frame of a dialog should show */
+.od-canvas .modal-backdrop{position:absolute;inset:0}
 .od-device{max-width:1100px;margin:0 auto}
 .od-note-inline{margin:0;padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line);font:var(--fs-sm) var(--mono);color:var(--ink-dim)}
 .od-swatches{display:grid;gap:var(--sp-2);grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))}
