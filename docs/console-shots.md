@@ -763,3 +763,14 @@ one load, then restoring the file (md5 verified); `annotator/ops.html` and the c
 
 Suites, on the shipped tree: `node --test tests/test_ops.js` **162/162**, `node tests/test_app_timeline.js`
 **81/0`, `node --test tests/test_board.js` **16/16**. No Python file changed.
+
+## 20. Round 13b: History's toolbar and the shared source dialog (2026-10-04)
+
+| shot | measurement |
+|---|---|
+| production `#/records`, 1280 (`history-1280.png`) | tab 3 = `3History`; heading `History`; the count `31 broadcasts · 0 linked to an event` in the heading; one `.toolbar` = `[search, toolbar-gap, sources-open, archive-reload, backfill-open]`; `.primary` **1**; `scrollWidth` 1280 |
+| the configurator, production (`sources-dialog-1280.png`) | `.modal--sources` with `#sources-form`, one row: `Live channel` + the club's URL + Remove |
+| isolated root `#/vision`, 1280 (`vision-sources-1280.png`) | `Live stream` panel with `data-action="sources-open"`; `scrollWidth` 1280 |
+| production `#/records`, 390 (`history-390.png`) | `scrollWidth` **390** == `innerWidth`; the search takes the row, the actions wrap under it |
+
+Suites: `tests/test_ops.js` **164/164**, `test_app_timeline.js` **81/0**, `test_board.js` **16/16**.

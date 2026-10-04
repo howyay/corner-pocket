@@ -2625,3 +2625,46 @@ Limits: the event card's door still carries the word 赛事设置, so the headin
 two-word label (no shorter word exists in the shell's dictionary, and inventing one for a button is not a
 trade this round needed); the 15-card draw is the isolated root, which is the only mid-competition data on this
 host; and `entrant_absence` / `match_absence` stay in the audit labels, because old entries are still labelled.
+
+## §26 — Round 13b: 历史赛事, one toolbar, and one Twitch source configurator (2026-10-04)
+
+### 26.1 Item ②: the tab's name, and its controls rearranged
+
+`records:['Records','战绩档案']` became `records:['History','历史赛事']`, and the page heading now uses the same
+word (`t('events')` survives only in the audit labels and the notes). Measured on production: the third tab
+reads `3History`, the heading `History`, and the zh tab reads `历史赛事`.
+
+The top of the archive was a `.heading` whose right-hand row held the search box, the hidden toggle, the count,
+Refresh and the primary Backfill between them, with the note under it. It is now a heading that carries the
+name **and** the count (information, not a control) over one `.toolbar`:
+
+```
+[ search … ] [ show N hidden ]      (gap)      [ Sources ] [ Refresh ] [ Backfill ]
+```
+
+The search leads and grows (`flex:1 1 240px`); the actions sit at the end, behind `.toolbar-gap{flex:1 1 auto}`,
+with the one primary action last; on a phone the search takes the row (`flex:1 1 100%`) and the buttons wrap
+under it. Measured at 1280: children in that order, `.primary` count **1**, `scrollWidth` 1280. At 390:
+`scrollWidth` **390** == `innerWidth`.
+
+### 26.2 Item ⑧: one configurator, on both tabs
+
+The only place a Twitch source could be added was the form inside the vision rail
+(`vision-stage.js`'s `#source-form`), and its own copy said "Add the club channel under Source on Tonight".
+`sourceModal()` is one dialog: the saved sources with their kind (live channel or recorded video) and a Remove
+per row, one URL field with the existing hint, Save and Close on one row. `render()` mounts it over whichever
+tab is open (`(bf?bfScreen():screens[tab]())+(sourceOpen?sourceModal():'')`), so the button works from History,
+the Vision live panel and the review surface; it posts the same `source_add` / `source_delete` the console
+always posted, and a link Twitch cannot be is stopped at the field.
+
+Measured: on production's History the dialog lists the club's one saved channel as `Live channel` with its row
+Remove; the isolated root's Vision panel and review surface each carry the button.
+
+### 26.3 Verification
+
+`node --test tests/test_ops.js` **164/164** (two new instruments: the toolbar's order and the configurator's two
+writes), `node tests/test_app_timeline.js` **81/0**, `node --test tests/test_board.js` **16/16**. Shots:
+`out/r13/history-1280.png`, `history-390.png`, `sources-dialog-1280.png`, `vision-sources-1280.png`.
+
+Limits: the vision rail's own form is still there in this commit — round 13c's Vision redesign replaces it with
+the shared dialog; the club has exactly one saved source, so the dialog's two-row case is the isolated root's.

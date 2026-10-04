@@ -217,6 +217,24 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .bracket-card[data-status=complete] .status-dot{background:var(--green)}
 #ops-shell .bracket-card[data-status=scheduled] .status-dot{background:var(--blue)}
 #ops-shell .bracket-card[data-status=bye] .status-dot{background:transparent;border:1px dashed var(--ink-dim)}
+/* Round 13, owner item 2: the archive's controls are one toolbar. The search is the operator's
+   main act, so it leads and it grows; the actions sit at the end of the row, behind a flexible
+   gap, with the one primary action last; and the count is information, so it lives in the heading
+   rather than in the middle of the buttons. On a phone the search takes the row it needs and the
+   actions wrap under it. */
+#ops-shell .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-top:var(--sp-3)}
+#ops-shell .toolbar-search{flex:1 1 240px;min-width:0}
+#ops-shell .toolbar-search input{width:100%}
+#ops-shell .toolbar-gap{flex:1 1 auto}
+#ops-shell .modal--sources{width:min(560px,calc(100vw - 32px))}
+#ops-shell .source-list{margin-top:var(--sp-4)}
+#ops-shell .source-url{overflow-wrap:anywhere}
+#ops-shell .vs-sources{margin:0 0 var(--sp-2)}
+@media(max-width:750px){
+#ops-shell .toolbar-search{flex:1 1 100%}
+#ops-shell .toolbar-gap{display:none}
+#ops-shell .toolbar>button{flex:1 1 auto}
+}
 #ops-shell .timeline{max-height:340px;overflow:auto;padding-left:var(--sp-5);color:var(--ink-mid)}
 #ops-shell .timeline li{padding:var(--sp-1h)}
 #ops-shell table{width:100%;border-collapse:collapse;text-align:left}

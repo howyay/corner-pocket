@@ -2024,7 +2024,7 @@ test('Records is a top-level tab with its own route, between the live night and 
   assert.equal(h.evaluate('tab'), 'records', 'the URL opens Records');
   assert.equal(h.context.location.hash, '#/records');
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')).slice(0, 5), ['tonight', 'records', 'vision', 'players', 'status'], 'Records sits after the live night, before Vision');
-  for (const [lang, label] of [['en', 'Records'], ['zh', '战绩档案']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("t('records')"), label); }
+  for (const [lang, label] of [['en', 'History'], ['zh', '历史赛事']]) { h.evaluate(`lang='${lang}'`); assert.equal(h.evaluate("t('records')"), label); }
   h.evaluate('render=()=>{}');
   await tabClick(h, 'tonight');
   await tabClick(h, 'records');
@@ -2037,8 +2037,8 @@ test('Records is the event timeline; the house standing lives on every Regulars 
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}';showHidden=false`);
     const rec = h.evaluate('recordsScreen()'), play = h.evaluate('playScreen()'), regs = h.evaluate('playersScreen()');
-    const heading = h.evaluate(`t('events')`);
-    assert.ok(rec.includes(`>${heading}</h2>`), `${lang}: Records is the events timeline`);
+    const heading = h.evaluate(`t('records')`);
+    assert.ok(rec.includes(`>${heading}</h2>`), `${lang}: History is the events timeline (round 13, owner item 2)`);
     for (const key of ['standings', 'timeline', 'history']) {
       const gone = h.evaluate(`t('${key}')`);
       assert.ok(!rec.includes(`>${gone}</h2>`) && !rec.includes(`>${gone}</h3>`), `${lang}: Records no longer carries ${gone}`);
@@ -3335,7 +3335,7 @@ test('round 6: Records opens with the Twitch archive, and every row is a built n
   await h.evaluate('loadArchiveList(true)');
   const screen = h.evaluate('recordsScreen()');
   assert.ok(screen.includes('id="archive-card"') && screen.includes('data-id="2890514774"'), 'the archive is on the Records screen itself, not a state it might reach');
-  assert.ok(screen.includes(`>${h.evaluate("t('events')")}</h2>`), 'and the event log it feeds is still below it');
+  assert.ok(screen.includes(`>${h.evaluate("t('records')")}</h2>`), 'and the event log it feeds is still below it');
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
     const card = h.evaluate('mergedTimeline()'), label = key => h.evaluate(`esc(t('${key}'))`);
@@ -3493,7 +3493,7 @@ test('round 9 / owner items 4 + 5: the destination balls are solid, on the ivory
 test('round 8 / owner item 3: the Vision tab is the live stream, the recorded review is opened from a Records row', () => {
   // 1. the live panel, in both languages, with nothing running
   for (const [lang, live, start, stop, note, archive, dets] of [
-    ['en', 'Live stream', 'Start', 'Stop', 'Recorded nights are reviewed from their row on Records', 'Events', ['Table', 'Person', 'Ball']],
+    ['en', 'Live stream', 'Start', 'Stop', 'Recorded nights are reviewed from their row on Records', 'History', ['Table', 'Person', 'Ball']],
     ['zh', '直播', '开始', '停止', '已结束的夜晚请从战绩档案里对应那一行进入审看', '历史赛事', ['球台', '人物', '球']],
   ]) {
     const h = harness();
@@ -3863,4 +3863,54 @@ test('round 12 / owner item 3: the end of the night is one card, one row, one re
     assert.ok(/data-action="event-delete"[^>]*disabled/.test(end) && end.includes(h.evaluate("esc(t('closeSigned'))")),
       `${lang}: the signed result turns the delete off and says so in one line`);
   }
+});
+
+// ---------------------------------------------------------------- round 13 (owner, m08064)
+test('round 13 / owner item 2: the archive is a heading, then one toolbar', () => {
+  const h = harness();
+  recordsNight(h);
+  h.evaluate('render=()=>{}');
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    const rec = h.evaluate('recordsScreen()');
+    const heading = rec.slice(rec.indexOf('<div class="heading">'), rec.indexOf('class="toolbar"'));
+    assert.ok(heading.includes(`>${h.evaluate("esc(t('records'))")}</h2>`) && heading.includes('archive-count'),
+      `${lang}: the heading carries the name and the count - information belongs in the heading, not among the buttons`);
+    const bar = rec.slice(rec.indexOf('class="toolbar"'), rec.indexOf('archive-note'));
+    assert.ok(bar.indexOf('events-search') < bar.indexOf('sources-open'), `${lang}: the search leads the row`);
+    assert.ok(bar.indexOf('sources-open') < bar.indexOf('archive-reload') && bar.indexOf('archive-reload') < bar.indexOf('backfill-open'),
+      `${lang}: then Sources, Refresh, and the backfill as the one primary action`);
+    assert.equal((bar.match(/class="primary"/g) || []).length, 1, `${lang}: exactly one primary action`);
+    assert.ok(bar.includes('toolbar-gap'), `${lang}: the actions sit at the end of the row, behind a flexible gap`);
+  }
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(/#ops-shell \.toolbar-search\{flex:1 1 240px/.test(css), 'the search grows');
+  assert.ok(/@media\(max-width:750px\)\{[\s\S]*?\.toolbar-search\{flex:1 1 100%\}/.test(css), 'and on a phone it takes the row it needs');
+  assert.ok(/#ops-shell \.toolbar\{display:flex;flex-wrap:wrap/.test(css), 'the toolbar wraps instead of overflowing');
+});
+test('round 13 / owner item 8: one Twitch source configurator, on History and on Vision', async () => {
+  const h = harness();
+  h.evaluate(`lang='en';render=()=>{};data.sources=[{id:'s1',url:'https://www.twitch.tv/ttpoolfriday'},{id:'s2',url:'https://www.twitch.tv/videos/2890514774'}]`);
+  assert.ok(h.evaluate('recordsScreen()').includes('data-action="sources-open"'), 'History carries the one button');
+  assert.ok(h.evaluate('livePanelScreen()').includes('data-action="sources-open"'), 'so does the Vision panel');
+  assert.ok(h.evaluate('visionSurface()').includes('data-action="sources-open"'), 'and the review surface');
+  assert.ok(source.includes("(bf?bfScreen():screens[tab]())+(sourceOpen?sourceModal():'')"),
+    'and render() mounts it over whichever tab the operator is on');
+  const dialog = h.evaluate('sourceModal()');
+  assert.ok(dialog.includes('id="sources-form"') && dialog.includes('name="url"') && dialog.includes('type="url"'),
+    'the dialog is one field and two buttons');
+  assert.ok(dialog.includes('Live channel') && dialog.includes('https://www.twitch.tv/ttpoolfriday'), 'it lists the saved channel with its kind');
+  assert.ok(dialog.includes('Recorded video') && dialog.includes('https://www.twitch.tv/videos/2890514774'), 'and the saved VOD');
+  assert.equal((dialog.match(/data-action="source-remove"/g) || []).length, 2, 'every row can be removed from here');
+  await h.handlers.submit(submission('sources-form', {url: 'https://www.twitch.tv/wallet'}));
+  assert.equal(h.evaluate('calls.length'), 0, 'a link Twitch cannot be is stopped at the field, before any request');
+  await h.handlers.submit(submission('sources-form', {url: 'https://www.twitch.tv/newchannel'}));
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls)')), [{name: 'source_add', payload: {url: 'https://www.twitch.tv/newchannel'}}],
+    'a channel posts the one action the console always posted');
+  assert.equal(h.evaluate('sourceOpen'), false, 'and the dialog closes on the answer');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'source-remove', id: 's2'}}}});
+  assert.equal(JSON.parse(h.evaluate('JSON.stringify(calls)'))[1].name, 'source_delete', 'a row removes its own source');
+  await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'sources-open'}}}});
+  assert.equal(h.evaluate('sourceOpen'), true, 'and the button opens it again');
+  h.evaluate('sourceOpen=false');
 });
