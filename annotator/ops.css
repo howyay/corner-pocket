@@ -1009,3 +1009,20 @@ html,body{-webkit-font-smoothing:antialiased}
 @media (max-width:750px){
   #ops-shell .bf-thumb{width:112px;height:63px}
 }
+
+/* Round 6, the owner's "make the records the timeline view of all twitch vods": Records opens
+   with the broadcast archive, so its rows are the timeline's own rows (SS5: rail, dot, date,
+   display-face name) carrying the same 160x90 picture the picker uses (SS16.7) and one of two
+   states - a night already built, or a button that hands the broadcast to the backfill flow.
+   Pinning .tl-vods here keeps it list-style-free like .tl-nights, whose rule it cannot join
+   without editing a Round 2 line. */
+#ops-shell .archive-note{margin:0 0 var(--sp-2)}
+#ops-shell .tl-vod .badge.is-built{color:var(--brass);border-color:var(--brass)}
+#ops-shell .archive-count{margin-right:var(--sp-2)}
+#ops-shell .tl-vods{list-style:none;margin:0;padding:0;display:grid;gap:var(--sp-1)}
+#ops-shell .tl-vod .tl-row{align-items:flex-start}
+#ops-shell .tl-vod-thumb{flex:none;display:block;width:160px;height:90px;object-fit:cover;
+  border:1px solid var(--line);border-radius:2px;background:var(--rail)}
+@media (max-width:750px){
+  #ops-shell .tl-vod-thumb{width:112px;height:63px}
+}

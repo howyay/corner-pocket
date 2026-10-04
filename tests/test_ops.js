@@ -3194,3 +3194,128 @@ test('round 5 / owner item 4 on the phone: the bar carries the ball map, and the
   assert.ok(phone.includes('font:11px/1.1 var(--body)') && phone.includes('text-transform:none'),
     'and the label is the body face at 11 px, sentence case - mono uppercase needed 80 px');
 });
+
+// ---- Round 6 (owner, m04262): "make the records the timeline view of all twitch vods."
+// The archive is the timeline's backbone: Records opens with every broadcast the box can see,
+// each row is either a night already built (which links into the log below) or one to build
+// (which opens the same backfill flow the picker uses), and nothing is inferred.
+const archiveVods = [
+  {id: '2890514774', title: '261001', created_at: '2026-10-03T01:30:00Z', length_s: 16455, imported: true, broadcast_type: 'ARCHIVE', thumb: '/api/vods/thumb?channel=ttpoolfriday&id=2890514774'},
+  {id: '2884327358', title: '260918', created_at: '2026-09-26T01:00:00Z', length_s: 13397, imported: false, broadcast_type: 'HIGHLIGHT', thumb: ''}];
+const archiveHistory = `data.players=[{id:'pa',name:'Ann',status:'Active',rating:100}];
+  data.history=[{id:'h9',name:'Friday 8-Ball',format:'singles',raceTo:3,status:'complete',archivedAt:'2026-10-03T05:00:00Z',
+    source:{kind:'twitch',vodId:'2890514774',startS:0,endS:3600},
+    entrants:[{id:'a9',members:[{pid:'pa',name:'Ann'}]}],matches:[]}];
+  data.events=[];data.notes=[]`;
+test('round 6: Records opens with the Twitch archive, and every row is a built night or a night to build', async () => {
+  const h = harness({hash: '#/records'});
+  const asked = [], answer = {channels: [{channel: 'ttpoolfriday', error: null, saved_channels: ['ttpoolfriday'], vods: archiveVods}]};
+  h.context.fetch = async url => { asked.push(url); return {ok: true, json: async () => answer}; };
+  h.evaluate(archiveHistory);
+  await h.evaluate('loadArchiveList(true)');
+  const screen = h.evaluate('recordsScreen()');
+  assert.ok(screen.includes('id="archive-card"') && screen.includes('data-vod="2890514774"'), 'the archive is on the Records screen itself, not a state it might reach');
+  assert.ok(screen.includes(`>${h.evaluate("t('events')")}</h2>`), 'and the event log it feeds is still below it');
+  for (const lang of ['en', 'zh']) {
+    h.evaluate(`lang='${lang}'`);
+    const card = h.evaluate('archiveTimeline()'), label = key => h.evaluate(`esc(t('${key}'))`);
+    assert.ok(card.includes(`>${h.evaluate("t('archive')")}</h2>`), `${lang}: the archive is named`);
+    assert.ok(card.includes('data-vod="2890514774"') && card.includes('data-action="tl-open-night" data-id="h9"'), `${lang}: a broadcast with a night offers that night`);
+    assert.ok(card.includes(label('archiveBuilt')), `${lang}: and says the night exists`);
+    assert.ok(card.includes('data-vod="2884327358"') && /data-action="bf-pick" data-id="2884327358"/.test(card), `${lang}: a broadcast without a night offers to build one`);
+    assert.ok(card.includes(label('archiveUnbuilt')), `${lang}: and says it does not exist yet`);
+    // The club's older nights are typed HIGHLIGHT by Twitch, their newest are ARCHIVE: the row
+    // says which, in Twitch's own word for it, so a four-hour record and a one-minute clip are
+    // told apart by more than the duration.
+    assert.ok(card.includes(label('kindArchive')) && card.includes(label('kindHighlight')), `${lang}: each row says what Twitch calls it`);
+    assert.equal((card.match(/class="tl-vod-thumb"/g) || []).length, 1, `${lang}: one picture, and only on the row that has one`);
+    assert.ok(card.includes('src="/api/vods/thumb?channel=ttpoolfriday&amp;id=2890514774"'), `${lang}: the picture is this box's route, never Twitch's`);
+    assert.ok(card.indexOf('2890514774') < card.indexOf('2884327358'), `${lang}: newest first`);
+    assert.ok(card.includes(`class="tl-item tl-vod"`) && card.includes('class="tl-row"'), `${lang}: the rows are the timeline's own rows`);
+  }
+  h.evaluate("lang='en'");
+  assert.deepEqual(asked, ['/api/vods/recent'], 'one read, from this box, which holds the credentials');
+  assert.ok(h.evaluate('archiveTimeline()').includes(h.evaluate("t('archiveCount').replace('{n}',2).replace('{built}',1)")), 'the count names the window and how much of it is built');
+  await h.evaluate('loadArchiveList()');
+  assert.equal(asked.length, 1, 'a cached list is not read twice');
+  await h.evaluate('loadArchiveList(true)');
+  assert.equal(asked.length, 2, 'Refresh reads it again on purpose');
+  assert.equal(h.evaluate('calls.length'), 0, 'reading the archive never writes');
+});
+test('round 6: a full window says there may be older ones -- the archive never claims to be complete', async () => {
+  const h = harness({hash: '#/records'});
+  h.evaluate(archiveHistory);
+  const answer = more => ({channels: [{channel: 'ttpoolfriday', error: null, more, vods: archiveVods}]});
+  h.context.fetch = async () => ({ok: true, json: async () => answer(true)});
+  await h.evaluate('loadArchiveList(true)');
+  const card = h.evaluate('archiveTimeline()');
+  assert.ok(card.includes(h.evaluate("esc(t('archiveMore').replace('{n}',2))")), 'a window that filled says so, in the count of what is shown');
+  assert.ok(card.includes(h.evaluate("esc(t('archiveNote'))")), 'and the note still says where a night comes from');
+  h.context.fetch = async () => ({ok: true, json: async () => answer(false)});
+  await h.evaluate('loadArchiveList(true)');
+  assert.ok(!h.evaluate('archiveTimeline()').includes(h.evaluate("esc(t('archiveMore').replace('{n}',2))")), 'a list Twitch finished sending makes no such claim');
+});
+
+test('round 6: a refused, empty or unsaved archive is a state on the page -- never a silent gap', async () => {
+  const h = harness({hash: '#/records'});
+  h.evaluate("data.players=[];data.history=[];data.events=[];data.notes=[]");
+  h.context.fetch = async () => ({ok: false, status: 502, json: async () => ({error: 'Twitch is unreachable'})});
+  await h.evaluate('loadArchiveList(true)');
+  const broken = h.evaluate('archiveTimeline()');
+  assert.ok(broken.includes(h.evaluate("esc(t('archiveFailed'))")) && broken.includes('Twitch is unreachable'), 'the reason is on the page');
+  assert.ok(broken.includes('data-action="archive-reload"'), 'with a way to try again');
+  assert.ok(!broken.includes('<li'), 'and no invented row');
+  h.context.fetch = async () => ({ok: true, json: async () => ({channels: [{channel: 'ttpoolfriday', error: null, vods: []}]})});
+  await h.evaluate('loadArchiveList(true)');
+  assert.ok(h.evaluate('archiveTimeline()').includes(h.evaluate("esc(t('archiveNone'))")), 'a saved channel with no broadcasts says exactly that');
+  assert.ok(!h.evaluate('archiveTimeline()').includes('<li'), 'still no rows');
+  h.context.fetch = async () => ({ok: true, json: async () => ({channels: []})});
+  await h.evaluate('loadArchiveList(true)');
+  assert.ok(h.evaluate('archiveTimeline()').includes(h.evaluate("esc(t('archiveNoSource'))")), 'no saved channel points at the Back room');
+  assert.ok(!h.evaluate('archiveTimeline()').includes(h.evaluate("t('archiveNone')")), 'and does not borrow the other sentence');
+  h.evaluate("lang='zh'");
+  assert.ok(h.evaluate('archiveTimeline()').includes('还没有保存 Twitch 频道'), 'the states are written in the console language, not translated on the way out');
+});
+test('round 6: the archive paints its own card, so a late answer never rebuilds the page under an operator', () => {
+  assert.ok(source.includes("function paintArchive(){const host=$('#archive-card');if(host&&'innerHTML' in host)host.innerHTML=archiveTimeline()}"),
+    'the loader paints its own card and returns');
+  assert.ok(!/loadArchiveList[\s\S]{0,400}?archiveList\.loading=false;render\(\)/.test(source),
+    'and never re-renders the whole screen after the network answers (the search box and the scroll survive)');
+  assert.ok(source.includes("showReview();syncLivePolling();if(tab==='records'&&!bf)loadArchiveList();"),
+    'Records asks for the archive when it becomes the screen, and only then');
+  assert.ok(source.includes("if(a==='archive-reload'){loadArchiveList(true);return}"),
+    'Refresh is the one deliberate re-read');
+});
+test('round 6: Build this night opens the backfill at the broadcast the operator chose', async () => {
+  const h = harness({hash: '#/records'});
+  const asked = [];
+  h.context.fetch = async url => { asked.push(url); return {ok: true, json: async () => ({channels: [{channel: 'ttpoolfriday', error: null, vods: archiveVods}]})}; };
+  h.evaluate(archiveHistory + ";render=()=>{}");
+  await h.evaluate('loadArchiveList(true)');
+  const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
+  assert.equal(h.evaluate('bf'), null, 'Records is not the backfill: nothing is open yet');
+  await click({action: 'archive-reload'});
+  assert.equal(asked.length, 2, 'Refresh reads the archive again');
+  await click({action: 'bf-pick', id: '2884327358', length: '13397', title: '260918'});
+  assert.equal(h.evaluate('bf.vod.id'), '2884327358', 'the broadcast reaches the backfill state');
+  assert.equal(h.evaluate('bf.step'), 'verify', 'at the step the picker itself sets, so both entrances meet');
+  assert.equal(h.evaluate("bf.vod.length_s"), 13397, 'with the length the row carried');
+  assert.equal(h.evaluate('calls.length'), 0, 'opening the flow writes nothing');
+  await click({action: 'tl-open-night', id: 'h9'});
+  assert.ok(h.evaluate("openEvents.has('h9')"), 'and the other control opens the built night, rather than a copy of it');
+});
+
+test('round 6: the picker lists the same archive, with the same picture, duration and kind', () => {
+  // One source of truth: the archive card on Records and the backfill picker read the same
+  // /api/vods/recent answer, so the operator meets the same rows in both places -- the picture
+  // proxied by this box, the duration that tells a night from a clip, and Twitch's own word for
+  // what the video is.
+  const h = harness();
+  h.evaluate(`lang='en';bf={step:'pick',paste:'',recent:[{channel:'ttpoolfriday',error:null,more:false,vods:${JSON.stringify(archiveVods)}}],notice:'',error:'',detail:''}`);
+  const screen = h.evaluate('bfScreen()');
+  assert.ok(screen.includes('class="bf-thumb"') && screen.includes('src="/api/vods/thumb?channel=ttpoolfriday&amp;id=2890514774"'), 'the picker draws the same proxy picture the archive does');
+  assert.ok(screen.includes('261001') && screen.includes('4:34:15') && screen.includes('3:43:17'), 'with the title and the duration the operator needs to tell a night from a clip');
+  assert.ok(screen.includes(h.evaluate("esc(t('kindArchive'))")) && screen.includes(h.evaluate("esc(t('kindHighlight'))")), "and Twitch's own word for what each one is");
+  assert.ok(/data-action="bf-pick" data-id="2884327358" data-length="13397"/.test(screen), 'Use this one carries the broadcast it will build');
+  assert.equal((screen.match(/class="bf-thumb"/g) || []).length, 1, 'and only the row that has a picture draws one');
+});

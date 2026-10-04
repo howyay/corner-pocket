@@ -35,7 +35,8 @@ THUMB_URL = ('https://static-cdn.jtvnw.net/cf_vods/d2nvs31859zcd8/abc_examplecha
              'thumb/thumb0-320x180.jpg')
 GQL_CHANNEL = {'data': {'user': {'login': 'examplechannel', 'videos': {'edges': [
     {'node': {'id': '1000000001', 'title': '260918', 'lengthSeconds': 31137,
-              'createdAt': '2026-09-19T01:29:07Z', 'previewThumbnailURL': THUMB_URL}}]}}}}
+              'createdAt': '2026-09-19T01:29:07Z', 'broadcastType': 'HIGHLIGHT',
+              'previewThumbnailURL': THUMB_URL}}]}}}}
 
 
 def reply(status, body):
@@ -192,10 +193,30 @@ class ChannelTests(unittest.TestCase):
             vods = vod.channel_recent_vods('examplechannel', 1)
         self.assertEqual(vods, [{'id': '1000000001', 'title': '260918', 'length_s': 31137,
                                  'created_at': '2026-09-19T01:29:07Z', 'channel': 'examplechannel',
-                                 'thumbnail': THUMB_URL}])
+                                 'broadcast_type': 'HIGHLIGHT', 'thumbnail': THUMB_URL}])
         query = network.calls[0][1]['query']
-        self.assertIn('videos(first: 1, type: ARCHIVE)', query)
+        self.assertIn('videos(first: 1)', query)
+        # Measured 2026-10-03 on the club's own channel: `type: ARCHIVE` answered with 2 videos
+        # while the channel exposes 31 -- the older nights are typed HIGHLIGHT, which is where
+        # the club's own "(Record) YYYYMMDD" archive lives. The listing must not filter them out.
+        self.assertNotIn('type: ARCHIVE', query)
+        self.assertIn('broadcastType', query)
         self.assertIn('previewThumbnailURL(width: 320, height: 180)', query)
+
+    def test_the_window_is_one_page_and_clamped_to_twitchs_own_ceiling(self):
+        """Measured 2026-10-03: `videos` exposes no working cursor (pageInfo.endCursor is null on
+        every page and an edge cursor passed as `after:` returns nothing), so `first:` IS the
+        window. Twitch's ceiling for one page is 100; ask for more and 100 is what happens. The
+        same measurement found the other half of the window: one page of 60 held the channel's
+        whole history (31 videos, newest first, `hasNextPage: False`)."""
+        big = Network(gql_body=GQL_CHANNEL)
+        with patch('annotator.twitch_vod_source._raw', big):
+            vod.channel_recent_vods('examplechannel', 999)
+        self.assertIn('videos(first: 100)', big.calls[0][1]['query'])
+        small = Network(gql_body=GQL_CHANNEL)
+        with patch('annotator.twitch_vod_source._raw', small):
+            vod.channel_recent_vods('examplechannel', 0)
+        self.assertIn('videos(first: 1)', small.calls[0][1]['query'])
 
     def test_unknown_channel_and_bad_login(self):
         with patch('annotator.twitch_vod_source._raw', Network(gql_body={'data': {'user': None}})):

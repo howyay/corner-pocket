@@ -60,10 +60,16 @@ _VOD_TOKEN_QUERY = (
     'playbackAccessToken(params: {platform: "web", playerBackend: "mediaplayer", '
     'playerType: "site"}) { signature value } } }')
 _VIDEO_QUERY = ('{ video(id: "%s") { id title lengthSeconds createdAt owner { login } } }')
+# Every kind of video the channel publishes, not just the two-week broadcast archive. Measured
+# 2026-10-03 on the club's own channel: `type: ARCHIVE` returns 2 VODs, while the channel holds 31
+# - the seven multi-hour "(Record) YYYYMMDD" files it keeps each night are HIGHLIGHTs, and the
+# 43-second to 6-minute clips are HIGHLIGHTs too. `broadcastType` carries that distinction,
+# `pageInfo.hasNextPage` says whether the window cut the list short, and one page of 60 held the
+# whole history (hasNextPage: false), so nothing is paginated.
 _CHANNEL_QUERY = (
-    '{ user(login: "%s") { login videos(first: %d, type: ARCHIVE) '
-    '{ edges { node { id title lengthSeconds createdAt '
-    'previewThumbnailURL(width: %d, height: %d) } } } } }')
+    '{ user(login: "%s") { login videos(first: %d) '
+    '{ edges { node { id title lengthSeconds createdAt broadcastType '
+    'previewThumbnailURL(width: %d, height: %d) } } pageInfo { hasNextPage } } } }')
 #: One VOD's preview picture. The listing carries the same field, but a thumbnail request
 #: arrives as (channel, id) and must be resolved again; the host is validated before the
 #: bytes are fetched, so a tampered index can never point this server at another host.
@@ -254,13 +260,16 @@ def channel_recent_vods(channel, limit=3):
     """The most recent archived broadcasts of ``channel``, newest first.
 
     Each row carries ``thumbnail``: the preview URL *validated* against the static image
-    CDN's allowlist, or ``None`` when Twitch sent nothing usable. Twitch serves this
-    channel's archive as a single window - ``pageInfo.hasNextPage`` is false and an
-    ``after:`` cursor returns the same page - so there is nothing to paginate.
+    CDN's allowlist, or ``None`` when Twitch sent nothing usable, plus ``broadcast_type``
+    (Twitch's own ARCHIVE / HIGHLIGHT / UPLOAD) so the console can name what it lists. Twitch
+    serves this channel as a single window - an ``after:`` cursor returns the same page - so
+    the window is ``first:`` alone and nothing here paginates.
     """
     if not isinstance(channel, str) or not re.fullmatch(r'[a-z0-9_]{1,25}', channel):
         raise TwitchVodError('Expected a canonical Twitch channel login')
-    document = gql(_CHANNEL_QUERY % (channel, max(1, min(int(limit), 10)), _THUMB_WIDTH, _THUMB_HEIGHT))
+    # 100 is Twitch's own ceiling for one videos page; vod_import.RECENT_LIMIT is the window
+    # this box asks for. There is no second page to walk (see that constant's note).
+    document = gql(_CHANNEL_QUERY % (channel, max(1, min(int(limit), 100)), _THUMB_WIDTH, _THUMB_HEIGHT))
     user = (document.get('data') or {}).get('user')
     if user is None:
         raise TwitchVodError('Twitch has no such channel')
@@ -274,7 +283,8 @@ def channel_recent_vods(channel, limit=3):
         except TwitchVodError:
             thumbnail = None
         rows.append(dict(id=node.get('id'), title=node.get('title'), length_s=node.get('lengthSeconds'),
-                         created_at=node.get('createdAt'), channel=user.get('login'), thumbnail=thumbnail))
+                         created_at=node.get('createdAt'), channel=user.get('login'), thumbnail=thumbnail,
+                         broadcast_type=node.get('broadcastType')))
     return rows
 
 

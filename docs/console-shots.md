@@ -335,3 +335,53 @@ Limits, stated plainly: this shot needs the network, so it is not part of the of
 its numbers cannot be reproduced on a box with no route to Twitch; the archive here is three
 broadcasts, so the bound a busier channel would need is argued in `docs/console-redesign.md` §16.7
 rather than measured; and a **night** per broadcast — the timeline half of item 8 — is still not built.
+
+## 11. Round 6: Records as the archive's timeline, on the real channel
+
+The owner's next order — "make the records the timeline view of all twitch vods. make sure its
+showing" — is the first screen in this document whose evidence is entirely live data from the club's
+own channel. There is no fixture for it and there cannot be one: the rows are Twitch's answer.
+
+Reproduce (the private server, so production is untouched while measuring):
+
+```
+cd /home/haoye/projects/pool
+nohup .venv/bin/python annotator/unified_server.py --port 8171 --root /home/haoye/projects/pool > /tmp/priv8171.log 2>&1 &
+ss -ltnp | grep ':8171'                      # ~20 s after launch it is listening
+AGENT_BROWSER_SESSION=r6b /home/haoye/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64 \
+  open 'http://127.0.0.1:8171/#/records'
+# then: set viewport 1280 900 ; eval "<the measurement below>" ; screenshot out/r6-archive/…
+```
+
+| measured in the live page | 1280×900 | 390×844 |
+| --- | --- | --- |
+| the card's heading | `Recorded nights` | same |
+| the count | `31 videos · 0 built` | same |
+| rows | **31** (`.tl-item.tl-vod`) | 31 |
+| each row's meta | `10/2 Fri · 4:34:15 · Broadcast · ttpoolfriday`, `9/27 Sun · 3:43:17 · Highlight · …` | same, wrapped |
+| pictures | 31 `<img class="tl-vod-thumb">`, natural `320×180`, drawn `160×90` | drawn **`112×63`** |
+| decoded at rest | **18 of 31** — the rest are below the fold and `loading="lazy"` | the visible ones |
+| horizontal overflow | `scrollWidth 1280 == innerWidth 1280` | `390 == 390` |
+| the two actions a row can offer | `Build this night` (nothing built yet) / `Open the night` | same |
+
+On production, after `systemctl --user restart pool-workbench.service` (22:43:35 PDT, `MainPID 724298`):
+
+| check | answer |
+| --- | --- |
+| `GET :8130/api/vods/recent` | 200 · `ttpoolfriday` · `more false` · **31 vods** · kinds `ARCHIVE`+`HIGHLIGHT` · 31 with `thumb` |
+| `GET :8130/api/vods/thumb?channel=ttpoolfriday&id=2890514774` | 200 · `image/jpeg` · 19 742 B · SOI `255 216 255` |
+| served `/ops.js` | 150 389 B, carrying `kindHighlight` and `archiveMore` |
+| the live `#/records` page on `:8130` | `31 videos · 0 built`, 31 rows, `Broadcast`/`Highlight`, 31 pictures, no overflow |
+
+The pictures this section leans on are `out/r6-archive/records-archive-1280-en.png` (the top of the
+list), `records-archive-1280-mid-en.png` (scrolled: the older full-night records and then the clips —
+`(runout) 260612 · 0:03:00`, `260529 run out · 0:01:06`), `records-archive-390-en.png` (the phone) and
+`prod-records-archive-1280-en.png` (production, real club state).
+
+Limits, stated plainly: this is the one screen whose content cannot be pinned by a fixture — the
+archive is whatever Twitch answers, so the numbers above are dated 2026-10-03 and a channel that
+publishes a new VOD changes them; the three long-lived `HIGHLIGHT` recordings are the club's own
+`(Record) YYYYMMDD` files, and Twitch's word for them is the one the row prints; nothing here infers a
+night from a title or a picture, so a row only becomes a night in the log when an operator builds it,
+and today **0 of 31** are built; and the lazy images mean "shown" is smaller than "present" by design
+(18 of 31 at rest), which is why both numbers are printed rather than one.

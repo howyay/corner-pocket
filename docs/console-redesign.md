@@ -1513,3 +1513,117 @@ The ball on the bar is the same map as §16.3 — 1 yellow for the timer, then 2
 orange, 6 green — which is what makes the phone bar readable at a glance. Both facts are asserted in
 `tests/test_ops.js` ("round 5 / owner item 4 on the phone"), and the pictures are
 `out/r5-shots2/390x844/` against the earlier `out/r5-shots/390x844/`.
+
+## §17 — Round 6: Records is the timeline of the archive (2026-10-03 evening)
+
+The order, verbatim: **"make the records the timeline view of all twitch vods. make sure its showing."**
+§16.7 had measured the timeline half and left it unbuilt because a night per broadcast costs a media
+download and a CV pass. The order settles that: Records itself becomes the archive's timeline. What
+followed was not a drawing exercise — the first two measurements changed what "all" means, and the
+second one changed the server.
+
+### 17.1 `first:` is the window; there is nothing to paginate
+
+Probed live against `gql.twitch.tv/gql` on 2026-10-03:
+
+| probe | answer |
+| --- | --- |
+| `videos(first: 5, type: ARCHIVE)` on `eslcs` | 5 edges, `pageInfo {hasNextPage: true, endCursor: null}` |
+| the same with `after: "<edge cursor>"` | **0 edges** — the cursor Twitch hands out does not move the page |
+| `videos(first: 60)` | 60 edges, same `hasNextPage: true, endCursor: null` |
+| `videos(first: 60)` on `ttpoolfriday` | 31 edges, `totalCount 31`, `hasNextPage: false` |
+
+So there is no usable cursor and no page to walk. The only lever is `first:`, whose ceiling Twitch
+enforces at 100 (ask for 999 and the query goes out as `first: 100`). `RECENT_LIMIT` therefore went
+10 → 60 — a club that streams weekly gets about a year in one read — and the clamp went 10 → 100. When
+a window *does* fill, the console says so instead of implying completeness: `recent()` reports
+`more: len(vods) >= RECENT_LIMIT`, and the card's note adds "There are more than {n}; this box lists
+the newest {n}." Today `more` is `false` for this channel, so the sentence is absent.
+
+### 17.2 The finding that made "all" true: `type: ARCHIVE` was 2 of 31
+
+The first live look at the new card showed **two** rows, not the three §16.7 had listed. The cause was
+in the query: it filtered `videos(..., type: ARCHIVE)`, and this channel does not keep its history
+there.
+
+| query for `ttpoolfriday` | rows |
+| --- | --- |
+| `videos(first: 60, type: ARCHIVE)` | **2** — the two most recent broadcasts |
+| `videos(first: 60)` (every type) | **31** — the whole published history, newest first |
+| `videos(first: 60, type: HIGHLIGHT)` | 29 — including "(Record) 260925" (3 h 43 m), "(Record) 260904" (8 h 33 m), "(Record) 260828", "(Record) 260821", "(record) 260815" and the older full-night records |
+| `videos(first: 60, type: UPLOAD)` | 0 |
+
+The club's own night archive — the files literally named `(Record) YYYYMMDD` — is typed **HIGHLIGHT**
+by Twitch, and `type: ARCHIVE` hides all of it. The filter is gone; the listing is every video the
+channel exposes. `broadcastType` is the field that names a video's kind (`type`, `videoType` and
+`isHighlight` all answer `null`), so it travels with every row as `broadcast_type` and the console
+prints Twitch's own word for it — `Broadcast` / `Highlight` / `Upload`, `直播回放` / `精选` / `上传` —
+falling back to `Recording` / `录像` when the field is absent. That is what makes a 4 h 34 m broadcast
+and a 0:00:43 clip distinguishable at a glance beyond their duration, in both languages, without the
+console inventing a taxonomy.
+
+### 17.3 What Records is now
+
+`recordsScreen()` opens with one card — `<article class="archive-card" id="archive-card">` — above the
+event log it has always shown: **Recorded nights**, the count (`31 videos · 0 built`), a Refresh
+button, the note ("Every video this channel exposes, newest first. One becomes a night in the log
+below only when you build it. Nothing is inferred from the picture or the title."), and then one
+timeline row per video.
+
+A row (`annotator/ops.js` `archiveRow`) is the timeline's own shape — the rail and dot of `§14.2`'s
+`.tl-item` — carrying:
+
+- its own picture, `160×90` on a laptop and `112×63` on a phone, fetched from **this server** at
+  `/api/vods/thumb?channel=…&id=…` and never from the image CDN (the allowlist is
+  `static-cdn.jtvnw.net`, and the channel must be saved before a picture is served at all);
+- the title, and under it `dayLabel · duration · kind · channel`;
+- exactly one of two actions, and no third state: a night already built links into the log below
+  (`Open the night`), anything else hands the row to the same backfill flow the picker uses
+  (`Build this night`). The link is the recorded `source.vodId`, never a name or date match.
+
+The five states are written out rather than left blank: reading (`Reading the video list…`), nothing
+saved (`No Twitch channel is saved yet…add one on the Back room tab`), a channel with no videos, a
+refusal (`The archive could not be read` + the reason + `Try again`), and the list itself.
+
+Two implementation rules came out of the tests:
+
+1. **The card paints itself.** `loadArchiveList()` calls `paintArchive()` — `#archive-card`'s
+   `innerHTML` — and never `render()`. The first shape called `render()` and broke ten tests with
+   `generated asynchronous activity after the test ended … TypeError: Cannot set properties of
+   undefined (setting 'tab')`. It was the right failure: a promise that settles late must not rebuild
+   Records under an operator who is reading it (the search box, an open sheet, the scroll).
+   `showReview()` is the same shape for the same reason. The trigger lives in `render()`'s tail
+   (`if(tab==='records'&&!bf)loadArchiveList();`), so a screen function stays pure.
+2. **`bf-pick` had to grow an entrance.** `bfPickVod()` writes through `bf`, and on Records `bf` is
+   `null` — a row's "Build this night" would have thrown `TypeError: Cannot set properties of null`.
+   The route now seeds the flow from the trunk's own draft (`if(!bf)bf=Object.assign(bfFresh(),
+   {saved:readBfDraft()})`) before handing over the broadcast, and `bfPrompt()` cannot misfire from
+   there because it requires `saved.datasetId===bf.datasetId`.
+
+Both the archive and the picker now name the kind (`annotator/ops.js` `archiveKind(vod)`), so the
+picker's rows read `date · 0:01:06 · Highlight` too: the same list is offered in both places.
+
+### 17.4 Verified
+
+| check | result |
+| --- | --- |
+| `node --test tests/test_ops.js` | **146 / 0** (five new tests: the archive on Records, the kind word per row, a full window's caveat, the five states, the paint rule, and the build hand-off) |
+| `tests/test_twitch_vod_source.py` | 32 / OK (the query no longer filters by type; the window is clamped at 100) |
+| `tests/test_vod_import.py` | 21 / OK (`broadcast_type` reaches the row, `more` is true exactly when the window filled) |
+| live, private `:8171`, `#/records` at 1280×900 | `31 videos · 0 built`, **31 rows**, 31 pictures (18 decoded at rest; the rest are `loading="lazy"`), natural `320×180`, drawn `160×90`, `scrollWidth 1280 == innerWidth 1280` |
+| the same at 390×844 | 31 rows, pictures `112×63`, `scrollWidth 390 == innerWidth 390` |
+| **production `:8130`** after `systemctl --user restart pool-workbench.service` (22:43:35 PDT, `MainPID 724298`) | `/api/vods/recent` 200 · `ttpoolfriday` · `more false` · **31 videos** · 31 with pictures · kinds `ARCHIVE`+`HIGHLIGHT`; `/api/vods/thumb` 200 `image/jpeg` 19 742 B (SOI `255 216 255`); served `/ops.js` 150 389 B carrying `kindHighlight` and `archiveMore` |
+| the production screen, read out of the live page | `31 videos · 0 built`, 31 rows, `Broadcast`/`Highlight` present, 31 pictures, first three `10/2 Fri · 4:34:15 · Broadcast`, `10/2 Fri · 4:31:33 · Broadcast`, `9/27 Sun · 3:43:17 · Highlight`, no overflow |
+
+### 17.5 Evidence
+
+- Pictures: `out/r6-archive/records-archive-1280-en.png`, `records-archive-1280-mid-en.png` (the
+  older nights and the clips, after scrolling), `records-archive-390-en.png`, and the production
+  frame `out/r6-archive/prod-records-archive-1280-en.png`.
+- The listing itself, with the kinds and the proxy paths, was read twice: in process
+  (`channel_recent_vods('ttpoolfriday', 60)` → 31 rows) and over HTTP on both ports.
+- Reproduce the screen:
+  `AGENT_BROWSER_SESSION=r6b <agent-browser> open 'http://127.0.0.1:8171/#/records'` then
+  `set viewport 1280 900`, `eval`, `screenshot`.
+- Reproduce the data: `PYTHONPATH=. .venv/bin/python -c "from annotator import twitch_vod_source as t;
+  print(len(t.channel_recent_vods('ttpoolfriday', 60)))"` → 31 (needs the network).

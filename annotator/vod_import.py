@@ -34,7 +34,13 @@ from urllib.parse import urlencode
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
 from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
 
-RECENT_LIMIT = 10
+# How many broadcasts one channel contributes to the archive. The Twitch GraphQL `videos`
+# connection exposes no working cursor - measured 2026-10-03 on a channel with hundreds of
+# archives: pageInfo.endCursor is null on every page, and passing an edge's own cursor as
+# `after:` returns an empty page, `sort: TIME` or not - so the only lever is `first:`, and this
+# is the window. 60 covers a weekly club's year; the picker and the Records archive read the
+# same list, and neither claims to be complete beyond it.
+RECENT_LIMIT = 60
 RECENT_TTL_S = 180
 #: Free space an import must leave: the estimate x 1.2, plus 2 GB for everything else.
 HEADROOM = 1.2
@@ -242,12 +248,14 @@ class VodImporter:
 
     # -- reads -------------------------------------------------------------
     def recent(self):
-        """Each saved channel's recent broadcasts (<= 10), or Twitch's error for it.
+        """Each saved channel's videos, newest first (<= ``RECENT_LIMIT``), or Twitch's error.
 
         Each row's ``thumb`` is a path on **this** server, not Twitch's URL: the console
         draws pictures through the allowlisted proxy (``/api/vods/thumb``) so a browser
         never talks to the image CDN itself, and a row whose picture Twitch did not send
-        carries an empty string rather than a broken link.
+        carries an empty string rather than a broken link. Each channel also carries
+        ``more``: true when the answer filled the window, which is the only honest way to
+        say "there may be older VODs than these" (nothing here paginates).
         """
         listed = read_index(self.root)[0]
         rows = []
@@ -258,14 +266,16 @@ class VodImporter:
                 try:
                     vods = self.tw.channel_recent_vods(channel, RECENT_LIMIT)
                 except self.tw.TwitchVodError as exc:
-                    rows.append({"channel": channel, "vods": None, "error": str(exc), "fetched_at": None})
+                    rows.append({"channel": channel, "vods": None, "more": False,
+                                 "error": str(exc), "fetched_at": None})
                     continue
-                cached = (self._monotonic(), vods, now_iso())
+                cached = (self._monotonic(), vods, now_iso(), len(vods) >= RECENT_LIMIT)
                 with self._lock:
                     self._recent[channel] = cached
-            rows.append({"channel": channel, "error": None, "fetched_at": cached[2], "vods": [
+            rows.append({"channel": channel, "error": None, "fetched_at": cached[2], "more": cached[3], "vods": [
                 {"id": vod.get("id"), "title": vod.get("title"), "created_at": vod.get("created_at"),
                  "length_s": vod.get("length_s"), "thumb": thumb_path(channel, vod),
+                 "broadcast_type": vod.get("broadcast_type"),
                  "imported": sorted(key for key in listed if parse_imported_id(key)[0] == vod.get("id"))}
                 for vod in cached[1]]})
         return {"channels": rows, "saved_channels": self.saved_channels(), "cache_s": RECENT_TTL_S}

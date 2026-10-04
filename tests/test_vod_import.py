@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import unittest
 
 from annotator.unified_server import APIError, Backend, BoundedHTTPServer, make_handler
-from annotator.vod_import import (PROTOCOLS, REFUSED_CHANNEL, VodImporter, VodImportError,
+from annotator.vod_import import (PROTOCOLS, RECENT_LIMIT, REFUSED_CHANNEL, VodImporter, VodImportError,
                                    redact, seconds_done, thumb_path)
 
 OWN, OTHER = "1000000001", "1111111111"
@@ -53,7 +53,7 @@ def twitch_stub(calls):
         if channel == "brokenchannel":
             raise TwitchError("Twitch API request failed (HTTP 500)")
         return [{"id": OWN, "title": "260918", "length_s": 13397, "created_at": "2026-09-26T06:46:33Z",
-                 "channel": channel, "thumbnail": THUMB_CDN}]
+                 "channel": channel, "broadcast_type": "ARCHIVE", "thumbnail": THUMB_CDN}]
 
     def vod_thumbnail(vod_id):
         calls.append(("thumb", vod_id))
@@ -251,6 +251,22 @@ class ImporterTests(unittest.TestCase):
             with self.assertRaises(VodImportError):
                 self.importer.delete(bad)
 
+    def test_the_archive_window_is_the_very_number_the_console_lists(self):
+        """One window, in one place: what Records shows is what this asks Twitch for."""
+        self.importer.recent()
+        self.assertEqual([call for call in self.calls if call[0] == "recent"],
+                         [("recent", "examplechannel", RECENT_LIMIT)])
+        self.assertGreaterEqual(RECENT_LIMIT, 50)      # a weekly club's year, not a fortnight
+
+    def test_a_full_window_is_reported_as_such_because_nothing_paginates(self):
+        self.importer.tw.channel_recent_vods = lambda channel, limit: [
+            {"id": str(2000000000 + n), "title": "night %d" % n, "length_s": 3600,
+             "created_at": "2026-09-26T06:46:33Z", "broadcast_type": "HIGHLIGHT",
+             "thumbnail": THUMB_CDN} for n in range(limit)]
+        rows = {row["channel"]: row for row in self.importer.recent()["channels"]}
+        self.assertEqual(len(rows["examplechannel"]["vods"]), RECENT_LIMIT)
+        self.assertIs(rows["examplechannel"]["more"], True)     # the window filled: there may be older
+
     def test_recent_lists_each_saved_channel_caches_in_memory_and_reports_errors(self):
         self.sources.append({"id": "s2", "kind": "channel", "channel": "brokenchannel"})
         self.sources.append({"id": "s3", "kind": "video", "video": "5"})
@@ -262,12 +278,18 @@ class ImporterTests(unittest.TestCase):
         # The console is handed a path on this server, never the image CDN's URL.
         self.assertEqual(rows["examplechannel"]["vods"][0]["thumb"],
                          "/api/vods/thumb?channel=examplechannel&id=" + OWN)
+        # What Twitch calls it travels with the row, so the console can name it without a rule.
+        self.assertEqual(rows["examplechannel"]["vods"][0]["broadcast_type"], "ARCHIVE")
+        # One row is not a full window, so this list is not claiming to be a window at all.
+        self.assertIs(rows["examplechannel"]["more"], False)
         self.assertIsNone(rows["brokenchannel"]["vods"])           # an error, never a pretend-empty list
         self.assertEqual(rows["brokenchannel"]["error"], "Twitch API request failed (HTTP 500)")
-        self.assertIn(("recent", "examplechannel", 10), self.calls)
+        # The window is the importer's own constant (see the test above); this test is about
+        # which channel is asked and what is cached, not about how wide the window is.
+        self.assertIn(("recent", "examplechannel", RECENT_LIMIT), self.calls)
         self.importer.recent()
-        self.assertEqual(self.calls.count(("recent", "examplechannel", 10)), 1)   # served from memory
-        self.assertEqual(self.calls.count(("recent", "brokenchannel", 10)), 2)  # errors are not cached
+        self.assertEqual(self.calls.count(("recent", "examplechannel", RECENT_LIMIT)), 1)   # served from memory
+        self.assertEqual(self.calls.count(("recent", "brokenchannel", RECENT_LIMIT)), 2)  # errors are not cached
 
     def test_a_picture_is_served_for_a_saved_channel_only(self):
         content_type, body = self.importer.thumbnail("examplechannel", OWN)
