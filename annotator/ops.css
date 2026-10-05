@@ -1296,7 +1296,12 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .card--entrants .entry.row{height:56px;min-height:56px;max-height:56px;overflow:hidden;align-items:center;flex-wrap:nowrap;gap:var(--sp-2)}
 #ops-shell .card--entrants .entry.row .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ops-shell .card--entrants .entry.row .grow small{display:block}
+/* Round 21, owner item 4, measured: within a card the columns line up (ball/name/record at the same
+   offsets), but a row with an extra action button pushed the record chip to a different x. The chip
+   has a fixed slot on the row's right edge now, and the row's own parts have fixed widths. */
 #ops-shell .card--entrants .entry.row > button{flex:none}
+#ops-shell .card--entrants .entry.row > .ball{flex:none;width:26px}
+#ops-shell .card--entrants .entry.row > .entrant-record{flex:none;width:56px;margin-left:auto;text-align:center}
 #ops-shell .record-legend{font:var(--fs-sm) var(--mono);letter-spacing:.04em}
 
 /* Round 21, owner items 2 and 7: the per-matchup score sits on the card's right edge, so the numbers
