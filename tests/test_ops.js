@@ -4243,3 +4243,14 @@ test('round 22 / owner item 3: play resumes from the point the operator chose', 
     'and re-applied once playback starts');
   assert.ok(vs.includes("target.setPlaying(on);"), 'the play toggle still goes through the engine');
 });
+test('round 23 / owner item 1: the layer chips and the source line live with the scrubber', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  const bar = src.indexOf('<div class="vs-stagebar">');
+  const strip = src.indexOf('<div class="vs-strip" id="vs-strip">');
+  const grid = src.indexOf('<div class="vs-grid"');
+  assert.ok(bar > 0 && strip > 0 && grid > 0, 'the three blocks are in the console markup');
+  // Measured on production: the bar's top is below the picture grid and above the scrubber input.
+  assert.ok(bar > grid, 'the stage bar is written after the picture grid, so it renders under it');
+  assert.ok(bar < strip, 'and right before the transport strip that holds the scrubber');
+  assert.ok(src.slice(bar, strip).includes('id="vs-layers"'), 'the bar carries the layer chips');
+});
