@@ -491,7 +491,10 @@ async function bfPoll(){try{const r=await fetch('/api/vods/job',{cache:'no-store
 async function bfCancel(){try{const r=await fetch('/api/vods/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})}),job=await r.json().catch(()=>({}));if(!r.ok)throw Error(job.error||`HTTP ${r.status}`);bfAdoptJob(job)}catch(error){bf.detail=String(error?.message||error);bf.error=bfError(error);render()}}
 function bfAdoptJob(job){
   if(!bf)return;bf.job=job;const state=String(job.state||'');
-  if(state==='done'){bf.step='dataset';bf.datasetId=String(job.id||bf.datasetId);bf.datasetTitle=job.title||'';bf.vod=Object.assign({},bf.vod,{title:job.title||bf.vod.title,channel:job.channel||bf.vod.channel||''});bf.notice='';saveBfDraft()}
+  if(state==='done'){bf.step='dataset';bf.datasetId=String(job.id||bf.datasetId);bf.datasetTitle=job.title||'';bf.vod=Object.assign({},bf.vod,{title:job.title||bf.vod.title,channel:job.channel||bf.vod.channel||''});bf.notice='';saveBfDraft();
+    // Round 20, owner item 10: the import finishes into the marking canvas by itself. The night's name
+    // and rules stay on the same screen, so the operator can still change them before marking.
+    try{const started=bfStartMarking();if(started&&started.catch)started.catch(()=>{})}catch(_){}}
   else if(state==='error'||state==='failed'){bf.step='failed';bf.detail=String(job.error||'');bf.error=bfError(job.error||'')}
   else if(state==='cancelled'){bf.step='verify';bf.notice=String(job.message||'');bf.job=null}
   render();if(bf?.step==='importing')bfSchedule()}
