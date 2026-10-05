@@ -236,6 +236,9 @@ const COPY = {
 let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerObserver = null;
 // The source panel's open state and the half-typed guest name are adapter state,
 // not engine state: the engine owns no frame or source selection ambiguity.
+// R23 item 2: the point the operator chose, held until the engine can honour it.
+let pendingScrub = null;
+
 let sourceOpen = false, guestDraft = null;
 // The VOD fields keep what the operator typed: the panel is rebuilt whenever the
 // live status changes (every poll), so an input whose value only lives in the DOM
@@ -1241,7 +1244,8 @@ function render() {
     const max = String(Math.max(0, s.frame.count - 1));
     if (scrub.getAttribute('max') !== max) scrub.setAttribute('max', max);
     if (scrub.getAttribute('step') !== '1') scrub.setAttribute('step', '1');
-    if (document.activeElement !== scrub) scrub.value = s.frame.index;
+    if (pendingScrub !== null) scrub.value = String(pendingScrub);
+    else if (document.activeElement !== scrub) scrub.value = s.frame.index;
   }
   const marksSig = `${s.dataset}|${s.frame.duration}|${s.events.items.map(e => `${e.id}:${e.t}:${e.type}`).join(',')}|${s.playback.on ? 1 : 0}|${s.playback.event || ''}|${s.playback.from}|${s.playback.to}|${s.playback.loops}|${s.playback.playing ? 1 : 0}`;
   const marks = $('#vs-marks');
@@ -1430,7 +1434,16 @@ function onChange(event) {
     // input from the console's markup - measured: the thumb snapped back to 0, so a chosen point could
     // not be kept. The chosen value is put back after the repaint.
     const want = Number(event.target.value);
-    if (!engine().seek(want)) { render(); const scrub = $('#vs-scrub'); if (scrub) scrub.value = String(want); }
+    // R23 item 2, measured: the engine refuses a seek while a mark is open or a frame is still decoding
+    // (canLeave), the render then writes the engine's unchanged frame back, and the thumb jumps to the
+    // start - 'I drag it to a random point, click play, and I get reset'. The chosen point is held, and
+    // The chosen point is held until the engine can honour it.
+    if (!engine().seek(want)) {
+      pendingScrub = want;
+      render();
+    } else {
+      pendingScrub = null;
+    }
     return;
   }
 }
