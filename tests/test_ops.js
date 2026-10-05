@@ -4169,17 +4169,22 @@ test('round 19 / owner item 6: the Tonight screen reads like a person wrote it',
                  'persist', 'forMaintainersNote', 'systemStatusNote', 'noSimulation', 'observation',
                  'review', 'notConnected',
                  // batch 3: History, where the long sentences live.
-                 'reviewNote', 'autoQueued', 'autoSkipped', 'autoDone'];
+                 'reviewNote', 'autoQueued', 'autoSkipped', 'autoDone',
+                 // batch 4: the backfill wizard, which is where the longest notes live.
+                 'bfHonest', 'bfManual', 'bfPickNote', 'bfLeft', 'bfLinkedCount', 'bfChannel'];
   const allow = ['T{table}', 'VOD', 'Twitch', 'MB/s', '{n}', '{name}', '{score}', '{table}', '{id}', '{at}'];
   for (const key of batch) {
     const [en, zh] = words[key];
     assert.ok(en && zh, `${key} has both languages`);
     assert.notEqual(en, zh, `${key} is translated, not copied`);
-    const stripped = allow.reduce((text, token) => text.split(token).join(''), zh);
+    // Every placeholder is allowed, whatever it is called: the rule is about words a reader would
+    // see, and a token like {m} is a number at render time.
+    const stripped = allow.reduce((text, token) => text.split(token).join(''), zh).replace(/\{[a-zA-Z]+\}/g, '');
     assert.ok(!/[A-Za-z]/.test(stripped), `${key} leaves no English word in the Chinese: ${zh}`);
     assert.ok(/[\u3400-\u9fff]/.test(zh), `${key} is Chinese: ${zh}`);
   }
   assert.ok(!words.locked[1].includes('赛事设置'), 'the locked note no longer names a heading that is gone');
+  assert.equal(h.evaluate("t('bfStep')"), 'bfStep', 'the retired step counter is out of the table');
   assert.ok(words.locked[1].includes('卡片'), 'it names the card the operator can see');
   assert.ok(words.noMatch[1].includes('球台'), 'and the empty board names the table, not an abstraction');
 });
