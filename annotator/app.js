@@ -1374,21 +1374,26 @@ let autoInferTimer = null;             // module scope: a Timeout handle is not 
 function scheduleAutoInference() {
   clearTimeout(autoInferTimer); autoInferTimer = null;
   if (state.autoInferOff || state.inferRunning) return;
-  autoInferTimer = setTimeout(async () => {
-    autoInferTimer = null;
-    if (state.playing || state.inferRunning || state.autoInferOff) return;
-    if (!state.fresult) return;                       // nothing frozen to run on
-    if (state.lastInferredFrame === state.frame) return;
-    const detectors = Object.keys(state.detectors).filter(k => state.detectors[k]);
-    if (!detectors.length) return;
-    // The frame is only remembered once a run actually starts. A pause that lands while the stage
-    // is still decoding must not consume the frame: the operator would get no inference at all
-    // (measured on production: the first pause after a dataset load started nothing and the frame
-    // was marked as done).
-    const frame = state.frame;
-    if (await runInference(null) === false) return;
-    state.lastInferredFrame = frame;
-  }, 500);
+  const attempt = (tries) => {
+    autoInferTimer = setTimeout(async () => {
+      autoInferTimer = null;
+      if (state.playing || state.inferRunning || state.autoInferOff) return;
+      if (state.lastInferredFrame === state.frame) return;
+      const detectors = Object.keys(state.detectors).filter(k => state.detectors[k]);
+      if (!detectors.length) { state.inferStatus = 'No detector is on.'; return; }
+      const frame = state.frame;
+      const started = await runInference(null);
+      if (started === false) {
+        // The stage is decoding, or the frame result is not in yet. A pause is a request, so keep
+        // asking for a bounded time instead of dropping it (measured on production: the first pause
+        // after a dataset load ran nothing and the frame was already marked as done).
+        if (tries > 0) { attempt(tries - 1); return; }
+        state.inferStatus = 'Inference is waiting for this frame to decode.'; notify(); return;
+      }
+      state.lastInferredFrame = frame;
+    }, 500);
+  };
+  attempt(4);
 }
 function setAutoInference(on) {
   state.autoInferOff = !on;
