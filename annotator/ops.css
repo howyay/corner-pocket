@@ -1236,3 +1236,12 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell[data-review="1"] .vs-stage img,#ops-shell[data-review="1"] .vs-stage video{max-height:100%;max-width:100%}
   #ops-shell[data-review="1"] .vs-strip{flex:0 0 auto;max-height:40dvh;overflow:auto}
 }
+
+/* Round 19, owner item 1: the competition's name is the card's own heading, large, with the
+   parameters under it and a pencil beside it - the only field that can still change. */
+#ops-shell .card--event .event-head{display:grid;gap:var(--sp-1);grid-template-columns:1fr auto;align-items:center}
+#ops-shell .event-title{margin:0;font:600 clamp(22px,2.4vw,34px)/1.15 var(--display);letter-spacing:-.01em}
+#ops-shell .event-rename{align-self:center;min-height:32px;padding:0 var(--sp-2);font-size:var(--fs-lg)}
+#ops-shell .event-params{margin:0;grid-column:1/-1;font:var(--fs-sm) var(--mono);letter-spacing:.06em}
+#ops-shell .event-rename-form{grid-column:1/-1;gap:var(--sp-2)}
+#ops-shell .event-rename-form input{flex:1 1 auto;min-width:0}

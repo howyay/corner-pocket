@@ -611,7 +611,7 @@ test('onboard: an empty club gets three real steps in Register, and they leave o
   const registering = idle();
   assert.ok(!registering.includes('modal--start'), 'a named night is not asked again');
   assert.ok(registering.includes('id="entrant-form"') && registering.includes('class="card card--event"'), 'the desk and the night card are the page');
-  assert.ok(registering.includes('data-action="open-setup"'), 'and the settings have one door');
+  assert.ok(registering.includes('data-action="event-rename"'), 'and the one field that edits - the name - is the card’s own door');
   h.evaluate('setupOpen=true');
   assert.ok(idle().includes('modal--start') && idle().includes('data-action="dismiss-setup"'), 'the door opens the same dialog, and this one closes');
 });
@@ -1596,7 +1596,7 @@ test('a results sheet prints the whole bracket and copies as text, champion from
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   assert.ok(h.evaluate('recordsScreen()').includes('data-action="results-sheet" data-id="h1"'), 'each archived event offers its sheet');
   h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['x','y'],score:[0,0],status:'scheduled',absent:[]}]");
-  assert.ok(h.evaluate('playScreen()').includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  assert.ok(!h.evaluate('playScreen()').includes('data-action="results-sheet"'), 'a drawn night does not offer the sheet yet (round 19, owner item 1)');
   h.evaluate('data.tournament.matches=[]');
   assert.ok(!h.evaluate('playScreen()').includes('data-action="results-sheet"'), 'no sheet before the draw');
   await click({action: 'results-sheet', id: 'h1'});
@@ -2350,7 +2350,7 @@ test('Register holds the night, random pairing, the desk, the entry list and Rac
     h.evaluate(`lang='${lang}'`);
     const html = h.evaluate('tonightScreen()');
     assert.ok(html.includes('id="entrant-form"') && html.includes('class="pick-btn'), `${lang}: desk and its combobox`);
-    assert.ok(html.includes('data-action="open-setup"') && html.includes('class="card card--event"'), `${lang}: the settings are a door, not a form on the page`);
+    assert.ok(html.includes('data-action="event-rename"') && html.includes('class="card card--event"'), `${lang}: the name is a title with a pencil, not a form on the page`);
     assert.ok(!html.includes('id="settings-form"'), `${lang}: the four fields exist once, in the dialog`);
     assert.ok(html.includes('data-action="entrant-remove"') && !html.includes('data-action="entrant-absence"'), `${lang}: Remove per entrant, and no not-here button (round 10, item 2)`);
     assert.ok(!html.includes('class="attendance"') && !/Here now|\u5df2\u5230\u573a/.test(html), `${lang}: the entry list does not label who is here (round 10, item 2)`);
@@ -2392,7 +2392,7 @@ test('the night is drawn and started from the same place, and being away is a ma
   assert.ok(!drawn.includes('data-action="tournament-start"'), 'a drawn night cannot be drawn twice');
   assert.ok(!drawn.includes('id="settings-form"'), 'the start-the-night form retires once the event is live');
   assert.ok(!drawn.includes('id="rename-form"'), 'the rename form folded into the settings dialog');
-  assert.ok(drawn.includes('data-action="open-setup"') && drawn.includes(h.evaluate("esc(t('eventSettings'))")),
+  assert.ok(drawn.includes('data-action="event-rename"') && drawn.includes('class="event-title"'),
     'which the night card opens, so the night can still be renamed');
   assert.ok(!drawn.includes('table-grid') && drawn.includes('class="bracket-view"'), 'no table cards: the draw is where a match is put on a table (round 12, owner item 1)');
 });
@@ -2427,11 +2427,11 @@ test('Close is the night\u2019s end: the results sheet, second chance, archive a
   const click = dataset => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset}}});
   const close = () => h.evaluate('tonightScreen()');
   assert.ok(!close().includes('data-action="results-sheet"'), 'no sheet before the draw');
-  assert.ok(close().includes(h.evaluate("esc(t('eventSettings'))")), 'the event card is there from the start');
+  assert.ok(close().includes('class="card card--event"') && close().includes('event-params'), 'the event card is there from the start, with its name and parameters');
   assert.ok(!/data-phase=/.test(close()), 'and it has no phase button left to point anywhere');
   h.evaluate("data.tournament.matches=[{id:'q1',round:1,sides:['a','b'],score:[0,0],status:'scheduled',absent:[]}]");
   const drawn = close();
-  assert.ok(drawn.includes('data-action="results-sheet" data-id="t0"'), 'tonight has a sheet once drawn');
+  assert.ok(!drawn.includes('data-action="results-sheet"'), 'a drawn night does not offer the sheet yet (round 19, owner item 1)');
   assert.ok(drawn.includes('data-action="new-event"') && drawn.includes('data-action="event-delete" data-id="t0"'), 'Archive & new / Delete event stay in Close');
   assert.ok(drawn.indexOf('data-action="results-sheet"') < drawn.indexOf('data-action="new-event"'), 'the sheet comes first: Results sheet, second chance, archive / delete');
   h.evaluate("data.tournament.revival=null");
@@ -2703,7 +2703,7 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   assert.equal(active.evaluate('tonightState()'), 'active');
   assert.equal(active.evaluate('comp()'), 'active');
   const activeHtml = active.evaluate('tonightScreen()');
-  for (const there of ['class="rounds"', 'side-panel', 'class="entry row"', 'data-action="open-setup"', 'class="bracket-view"']) {
+  for (const there of ['class="rounds"', 'side-panel', 'class="entry row"', 'data-action="event-rename"', 'class="bracket-view"']) {
     assert.ok(activeHtml.includes(there), `active: ${there}`);
   }
   for (const gone of ['id="settings-form"', 'class="scoreboard"', 'card--wrap']) {
@@ -2996,12 +2996,13 @@ test('round 3 / F14: End of the night is on the Back room in every state, with t
     'F14: and the locked note travels with the settings dialog, where the name is edited');
   for (const lang of ['en', 'zh']) {
     h.evaluate(`lang='${lang}'`);
-    assert.ok(h.evaluate("t('locked')").includes(h.evaluate("t('eventSettings')")), `F14: the ${lang} note names the card that can be found`);
+    assert.ok(h.evaluate("t('locked')").length > 10, `F14: the ${lang} note still says where the night is finished`);
   }
   h.evaluate(`lang='en';data.tournament={id:'',name:'Friday 8-ball',format:'singles',raceTo:5,tables:2,status:'registration',entrants:[],matches:[]}`);
   h.evaluate("data.tournament.entrants=[{id:'x',members:[{name:'A'}]}]");
-  assert.ok(h.evaluate('scene()').includes('Friday 8-ball') && !h.evaluate('eventCard()').includes('Friday 8-ball'),
-    "F14: and the name reads once, on the scene line - the card is a door and the night's end, not a second summary (round 13, owner item 9)");
+  // Round 19, owner item 1: the competition's name is the card's own heading too, so it reads on both.
+  assert.ok(h.evaluate('scene()').includes('Friday 8-ball') && h.evaluate('eventCard()').includes('Friday 8-ball'),
+    'F14: the name reads on the scene line and, since round 19, on its own card');
 });
 
 test('round 3 / F15 + F16: the balls are shortcuts, and the timer ball names itself', async () => {
@@ -3822,7 +3823,7 @@ test('round 12 / owner item 3: the end of the night is one card, one row, one re
     const view = h.evaluate('tonightScreen()');
     assert.equal((view.match(/class="end-night"/g) || []).length, 1, `${lang}: the night\u2019s end is one row`);
     assert.ok(!view.includes('close-sheet') && !view.includes('card--night'), `${lang}: with no second card for the sheet and no summary card of its own`);
-    assert.ok(view.includes(`<h3>${h.evaluate("esc(t('eventSettings'))")}</h3>`), `${lang}: it lives in the event card, under that heading`);
+    assert.ok(view.includes('class="event-title"') && view.includes('event-params'), `${lang}: it lives in the event card, under the competition’s own name`);
     const start = view.indexOf('class="end-night"');
     const end = view.slice(start, view.indexOf('</div>', view.indexOf('</div>', start) + 1));
     assert.equal((end.match(/<h3>/g) || []).length, 0, `${lang}: and the row carries no heading of its own`);
@@ -3830,11 +3831,13 @@ test('round 12 / owner item 3: the end of the night is one card, one row, one re
     for (const gone of ['closeNote', 'closeSheetNote', 'endNightNote']) {
       assert.ok(!view.includes(h.evaluate(`esc(t('${gone}'))`)), `${lang}: and the prose of ${gone} is gone with them`);
     }
-    for (const action of ['results-sheet', 'new-event', 'event-delete', 'open-setup']) {
+    for (const action of ['results-sheet', 'new-event', 'event-delete']) {
       assert.ok(end.includes(`data-action="${action}"`), `${lang}: the one row carries ${action}`);
     }
     const name = h.evaluate('esc(tournament().name)');
-    assert.equal((view.match(new RegExp(name, 'g')) || []).length, 1, `${lang}: the event name appears once - in the scene line`);
+    const shown = (view.match(new RegExp(name, 'g')) || []).length;
+    assert.ok(shown === 1 || shown === 2, `${lang}: the name reads on the scene line and, since round 19, on its card: ${shown}`);
+    assert.ok(view.includes('class="event-title"'), `${lang}: the card carries it as its title`);
     assert.ok(/data-action="event-delete"[^>]*disabled/.test(end) && end.includes(h.evaluate("esc(t('closeSigned'))")),
       `${lang}: the signed result turns the delete off and says so in one line`);
   }
