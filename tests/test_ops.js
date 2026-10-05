@@ -1509,10 +1509,17 @@ test('standings count results, not ratings; the event table sorts wins, win %, n
     assert.ok(cell(standing, 'Ann').includes('1\u20131 \u00b7 50%'), `${lang}: Ann reads 1\u20131 of 2, 50%`);
     assert.ok(cell(standing, 'Dee').includes('1\u20130 \u00b7 100%'), `${lang}: Dee reads 1\u20130, 100%`);
     assert.ok(!standing.includes('>Gus<'), `${lang}: a guest holds no house standing (6.1)`);
-    const ev = html.slice(html.indexOf(`<table class="event-table"`), html.indexOf('</table>', html.indexOf(`<table class="event-table"`)));
-    assert.ok(html.includes(`>${table}<`), `${lang}: event table heading`);
-    const order = [...ev.matchAll(/<tr><td>\d+<\/td><td>([^<]+)</g)].map(m => m[1]);
-    assert.deepEqual(order, ['Ann', 'Dee', 'Bea', 'Cai', 'Gus'], `${lang}: wins, then win %, then name`);
+    const cardHtml = html.slice(html.indexOf('class="card card--entrants"'));
+    // Round 19, owner item 3: the record lives on each entrant's row, so the wording is a chip's
+    // title rather than a fold's heading.
+    assert.ok(html.includes(`title="${table}"`), `${lang}: the record carries the wording`);
+    const order = [...cardHtml.matchAll(/<span class="grow">([^<]+)<small>/g)].map(m => m[1]);
+    // Round 19, owner item 3: the entrants list is the entry order. The standings a table used to sort
+    // into live in the draw, where the winner of each match is already visible.
+    const entryOrder = JSON.parse(h.evaluate('JSON.stringify(entrants().map(e => ename(e.id)))'));
+    assert.deepEqual(order, entryOrder, `${lang}: the list keeps the order the entrants signed up in`);
+    assert.equal((cardHtml.match(/data-vs-role="entrant-record"/g) || []).length, entryOrder.length,
+      `${lang}: every entrant carries their own record, and no table sorts them a second time`);
   }
 });
 test('a player record is all-time and read-only, with head-to-head from signed matches only (R15, R8)', async () => {
@@ -1826,7 +1833,7 @@ test('every table the operations screens add sits in a .table-wrap, so a wide ta
   const bare = html => [...html.matchAll(/(.{0,40})<table\b[^>]*>/g)].filter(m => !m[1].endsWith('<div class="table-wrap">')).map(m => m[0].slice(-60));
   await h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action: 'player-record', id: 'pa'}}}});
   const screens = {play: h.evaluate('playScreen()'), records: h.evaluate('recordsScreen()'), record: h.evaluate('playersScreen()')};
-  assert.ok(/class="event-table"/.test(screens.play), 'the Play event table renders');
+  assert.ok(/data-vs-role="entrant-record"/.test(screens.play), 'the Play list carries each entrant\u2019s record on its row');
   assert.ok(/class="roster-summary"/.test(screens.record) && /class="standing-rating"/.test(screens.record), 'the Regulars standing renders');
   assert.ok(/class="h2h"/.test(screens.record) && /class="per-event"/.test(screens.record), 'the Player record tables render');
   for (const [name, html] of Object.entries(screens)) assert.deepEqual(bare(html), [], `${name}: no table outside a .table-wrap`);
@@ -2039,7 +2046,7 @@ test('Records is the event timeline; the house standing lives on every Regulars 
     assert.ok(rec.includes('data-action="results-sheet" data-id="h1"') && rec.includes('data-action="rename-archived" data-id="h1"') && rec.includes('data-action="event-hide" data-id="h1"'), `${lang}: every archive control stays`);
     assert.ok(!rec.includes('Hidden night') && rec.includes('data-action="toggle-hidden"'), `${lang}: hidden nights stay hidden behind the toggle`);
     assert.ok(regs.includes('class="roster-summary"') && regs.includes('class="standing-rating"'), `${lang}: the house standing is on Regulars`);
-    assert.ok(play.includes('<table class="event-table"'), `${lang}: tonight's event table stays with the Tables scoreboard`);
+    assert.ok(play.includes('data-vs-role="entrant-record"'), `${lang}: tonight's record stays with the entrant it belongs to`);
     assert.ok(play.includes('class="rounds"'), `${lang}: the bracket stays`);
   }
   h.evaluate('showHidden=true');
@@ -2703,7 +2710,7 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   assert.equal(active.evaluate('tonightState()'), 'active');
   assert.equal(active.evaluate('comp()'), 'active');
   const activeHtml = active.evaluate('tonightScreen()');
-  for (const there of ['class="rounds"', 'side-panel', 'class="entry row"', 'data-action="event-rename"', 'class="bracket-view"']) {
+  for (const there of ['class="rounds"', 'class="entry row"', 'data-action="event-rename"', 'class="bracket-view"']) {
     assert.ok(activeHtml.includes(there), `active: ${there}`);
   }
   for (const gone of ['id="settings-form"', 'class="scoreboard"', 'card--wrap']) {
@@ -2726,7 +2733,8 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
   for (const gone of ['class="scoreboard"', 'id="settings-form"']) {
     assert.ok(!doneHtml.includes(gone), `complete: no ${gone}`);
   }
-  assert.ok(doneHtml.includes('side-panel'), 'complete: the event table stays, where the night can be read back');
+  assert.ok(doneHtml.includes('data-vs-role="entrant-record"') && !doneHtml.includes('side-panel'),
+    'complete: every entrant row carries the night\u2019s record, and there is no second table (round 19, owner item 3)');
   assert.ok(doneHtml.includes('class="entry row"'), 'complete: the entrants stay, so the night can be read back');
   // The state machine is data, not history: a night that moves on repaints the same URL.
   const h = harness();
@@ -3904,10 +3912,9 @@ test('round 14 / owner item 1: the event table lives in the entrants card, so th
   assert.ok(html.indexOf('class="card card--event"') < html.indexOf('class="bracket-view"') && html.indexOf('class="bracket-view"') < html.indexOf('class="card card--entrants"'),
     'in the owner\u2019s order: the event, the draw, the entrants');
   const card = html.slice(html.indexOf('class="card card--entrants"'));
-  assert.ok(card.includes('class="side-panel"') && card.includes('class="event-table"'),
-    'round 14, owner item 1: the event table is a fold at the bottom of the entrants card');
-  assert.ok(!html.slice(html.indexOf('</article>'), html.indexOf('class="card card--entrants"')).includes('event-table'),
-    'and it is nowhere else on the tab');
+  assert.ok(card.includes('data-vs-role="entrant-record"') && !card.includes('event-table'),
+    'round 19, owner item 3: the record is on the entrant rows, and there is no second table anywhere');
+  assert.ok(!html.includes('event-table'), 'and no table is on the tab at all');
 });
 test('round 14 / owner item 3: a recorded review offers no clip and no source chooser', () => {
   const h = harness();

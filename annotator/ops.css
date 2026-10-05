@@ -1245,3 +1245,8 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .event-params{margin:0;grid-column:1/-1;font:var(--fs-sm) var(--mono);letter-spacing:.06em}
 #ops-shell .event-rename-form{grid-column:1/-1;gap:var(--sp-2)}
 #ops-shell .event-rename-form input{flex:1 1 auto;min-width:0}
+
+/* Round 19, owner item 3: the night's record sits on the entrant's own row, so 本场战绩表 has no
+   second home and the list reads as one thing. */
+#ops-shell .entrant-record{flex:none;font:var(--fs-sm) var(--mono);letter-spacing:.04em;color:var(--ink-mid);border:1px solid var(--line);border-radius:2px;padding:0 var(--sp-1);min-width:44px;text-align:center}
+#ops-shell .entry.row .entrant-record{margin-left:auto}
