@@ -1250,3 +1250,26 @@ html,body{-webkit-font-smoothing:antialiased}
    second home and the list reads as one thing. */
 #ops-shell .entrant-record{flex:none;font:var(--fs-sm) var(--mono);letter-spacing:.04em;color:var(--ink-mid);border:1px solid var(--line);border-radius:2px;padding:0 var(--sp-1);min-width:44px;text-align:center}
 #ops-shell .entry.row .entrant-record{margin-left:auto}
+
+/* Round 19, owner item 9: the bar is one row and the review's own header is one compact block, so the
+   video starts much higher. Measured before: the bar 110px and the review card 146px put the stage at
+   y=317 in a 1045px viewport - 30% of the screen spent above the picture. */
+@media(min-width:1200px){
+  /* The clock is pinned to the bar's own right edge, so the bar is one row whatever the nav does. */
+  #ops-shell .bar{position:relative;padding-top:var(--sp-1);padding-bottom:var(--sp-1)}
+  #ops-shell .bar .barrow{padding-right:calc(300px + var(--sp-4))}
+  #ops-shell .bar .clockbar{position:absolute;right:0;top:50%;transform:translateY(-50%);margin:0;padding:0}
+  /* The stage fills the room the bar gave back, and the picture fills the stage. */
+  #ops-shell[data-review="1"] .vs-stage{height:100%;align-self:stretch}
+  #ops-shell[data-review="1"] .vs-stage img,#ops-shell[data-review="1"] .vs-stage video{max-height:100%;max-width:100%;width:auto;height:auto}
+  #ops-shell .barrow{flex:1 1 auto;min-width:0}
+  #ops-shell .clockbar{flex:0 0 auto;padding-bottom:0}
+  #ops-shell .clockbar .clock{font-size:clamp(22px,2vw,30px)}
+  #ops-shell .clockbar button{min-height:32px}
+}
+#ops-shell[data-review="1"] .review-card{padding:var(--sp-2) var(--sp-3)}
+#ops-shell[data-review="1"] .review-card h2{font-size:clamp(17px,1.5vw,21px);line-height:1.2}
+#ops-shell[data-review="1"] .review-card .heading{gap:var(--sp-2);align-items:center}
+#ops-shell[data-review="1"] .review-card .review-why{margin:0}
+#ops-shell[data-review="1"] .vision-surface > .vs-chipmeta{margin-top:0}
+#ops-shell[data-review="1"] .vs-chiprow{min-height:30px}

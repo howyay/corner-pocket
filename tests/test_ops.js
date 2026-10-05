@@ -4131,3 +4131,15 @@ test('round 18 / owner items 1-6, read exactly: the red boxes go, the rest stays
   assert.equal(said.length, 1, 'and it is not silent');
   assert.equal(said[0][1], true, 'the operator is told, as a warning');
 });
+test('round 19 / owner item 9: the bar is one row, so the picture starts higher', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator', 'ops.css'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../annotator', 'ops.html'), 'utf8');
+  assert.ok(/#ops-shell \.bar \.clockbar\{position:absolute;right:0;top:50%/.test(css),
+    'the clock is pinned to the bar\u2019s own edge, so the nav and the clock share one row');
+  assert.ok(/#ops-shell\[data-review="1"\] \.vs-stage\{height:100%;align-self:stretch\}/.test(css),
+    'and the stage fills the room the bar gave back');
+  assert.ok(/\.vs-stage img,\.vs-stage video\{max-height:100%;max-width:100%/.test(css),
+    'with the picture filling the stage');
+  assert.ok(/ops\.css\?v=vision-stage-\d+/.test(html) && /app\.css\?v=vision-stage-\d+/.test(html),
+    'both stylesheets are version-tagged, so a CSS change is never read from the browser cache');
+});
