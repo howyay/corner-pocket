@@ -4160,3 +4160,21 @@ test('round 20 / owner item 9: the stage is not re-written on every paint', () =
     'and the facts note');
   assert.ok(!/^\s*(img|video|empty|note)\.hidden = /m.test(engine), 'no unguarded hidden write is left in the stage');
 });
+test('round 20 / owner item 10: the backfill does not ask the operator twice', () => {
+  // The three chains are statements inside the click dispatcher and the job adoption, so they are read
+  // from the source: each one replaces a decision the operator used to have to make.
+  assert.ok(source.includes("if(a==='bf-check'){await bfCheck();bfEstimate();return}"),
+    'the estimate follows the check');
+  assert.ok(source.includes("if(bf?.estimate?.already_imported)bfUseImported();else bfStartImport();"),
+    'and the estimate decides: reuse what is on disk, or download once the disk says there is room');
+  assert.ok(/if\(state==='done'\)\{[\s\S]{0,700}?bfStartMarking\(\)/.test(source),
+    'a finished import opens the marking canvas instead of stopping on a button');
+  // The two decisions that stay with the operator.
+  assert.ok(source.includes("if(a==='bf-confirm')"), 'every match is still confirmed by a person');
+  assert.ok(source.includes("if(a==='bf-commit')"), 'and the night is still written by one');
+  // Nothing in the chain removed a neighbouring branch.
+  for (const branch of ["if(a==='bf-start-import')", "if(a==='bf-use-imported')", "if(a==='bf-poll')", "if(a==='bf-start-marking')"]) {
+    assert.equal((source.match(new RegExp(branch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1,
+      `${branch} is still exactly one branch`);
+  }
+});
