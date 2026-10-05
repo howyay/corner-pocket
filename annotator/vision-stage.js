@@ -656,7 +656,8 @@ function layersHTML(s) {
     const gated = key === 'anchors' && s.dataset !== 'vod30';
     // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.
     const shown = s.overlay[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
-    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))}</button>`;
+    const count = Number(((s && s.drawn) || {})[key] || 0);
+    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))} ${count}</button>`;
   }).join('');
 }
 function identityHTML(s) {
