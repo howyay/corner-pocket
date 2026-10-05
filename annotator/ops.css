@@ -1223,3 +1223,19 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .bf-banner.err{border-left-color:var(--err, #c2503c)}
 #ops-shell .bf-banner .row{margin-top:var(--sp-2)}
 @media(prefers-reduced-motion:reduce){#ops-shell .ingest-dot{animation:none}}
+
+/* Rounds 18 and 18b, owner item 3: the workbench is one screen, and the scrub strip is part of it.
+   The page does not scroll; the rail, the stage image and the inspector fit inside the viewport and
+   scroll only where they must. The strip sits under the grid at its own height, so it is always
+   visible - the first attempt hid it below the fold (measured: strip top 981 in a 1045 px viewport). */
+@media(min-width:751px){
+  #ops-shell[data-review="1"]{height:100dvh;overflow:hidden}
+  #ops-shell[data-review="1"] main{height:calc(100dvh - var(--bar-h, 118px));min-height:0;overflow:hidden;display:flex;flex-direction:column}
+  #ops-shell[data-review="1"] main > .review-card{flex:0 0 auto}
+  #ops-shell[data-review="1"] .vision-surface{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  #ops-shell[data-review="1"] .vs-grid{flex:1 1 auto;min-height:0;overflow:hidden}
+  #ops-shell[data-review="1"] .vs-rail,#ops-shell[data-review="1"] .vs-inspector{min-height:0;overflow:auto;overscroll-behavior:contain}
+  #ops-shell[data-review="1"] .vs-stage{min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  #ops-shell[data-review="1"] .vs-stage img,#ops-shell[data-review="1"] .vs-stage video{max-height:100%;max-width:100%}
+  #ops-shell[data-review="1"] .vs-strip{flex:0 0 auto;max-height:40dvh;overflow:auto}
+}

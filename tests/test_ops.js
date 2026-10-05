@@ -4086,3 +4086,29 @@ test('round 17 / owner item 4: History shows the ingestion progress in one place
   assert.ok(css.includes('.ingest-line') && css.includes('.bf-banner.err'), 'both have their own styles');
   assert.ok(css.includes('prefers-reduced-motion:reduce') , 'and the pulse is off for reduced motion');
 });
+test('round 18 / owner items 1-6, read exactly: the red boxes go, the rest stays', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  const shell = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(!adapter.includes('class="vs-keys"'), 'red box 1: the keyboard-hint line is gone');
+  assert.ok(!adapter.includes('data-vs-action="run-inference"') && !adapter.includes("case 'run-inference'"),
+    'red box 2: no surface offers a manual inference run - a pause is the signal');
+  assert.ok(adapter.includes("const gated = key === 'anchors' && s.dataset !== 'vod30';") && !adapter.includes("if (gated) return '';"),
+    'everything boxed green stays: the anchors chip is a control, drawn disabled where it cannot act');
+  assert.ok(adapter.includes("t('coldStartHint')"), 'and the empty-state guidance is still there');
+  assert.ok(/\$\{\(s\.selection\?\.kind === 'person' \|\| \(s\.persons\.track !== null && s\.persons\.track !== undefined\)\) \? `/.test(adapter),
+    'order 2 read exactly: the label box opens for a picked person, by row or on the stage, and is closed otherwise');
+  assert.ok(adapter.includes('enrolBlock(s)'), 'while the identity block and its evidence stay');
+  assert.ok(!/vs-item vs-track[\s\S]{0,400}<select/.test(adapter), 'order 4: no roster select in a sidebar row');
+  assert.ok(adapter.includes('data-vs-role="track-identity"'), 'and the row still names who the pipeline thinks it is');
+  assert.ok(css.includes('#ops-shell[data-review="1"]{height:100dvh;overflow:hidden}'), 'order 3: the page fits the viewport');
+  assert.ok(/#ops-shell\[data-review="1"\] \.vs-strip\{flex:0 0 auto;/.test(css),
+    'and the scrub strip is pinned inside it, never below the fold');
+  assert.ok(shell.includes("setAttribute('data-review',reviewId&&!bf?'1':'0')"), 'the shell marks the layout');
+  const h = harness();
+  h.evaluate("messages=[];message=(text,error)=>messages.push([text,!!error]);busy=true");
+  assert.equal(h.evaluate("go('players')"), false, 'order 5: a navigation that cannot proceed is refused');
+  const said = JSON.parse(h.evaluate('JSON.stringify(messages)'));
+  assert.equal(said.length, 1, 'and it is not silent');
+  assert.equal(said[0][1], true, 'the operator is told, as a warning');
+});
