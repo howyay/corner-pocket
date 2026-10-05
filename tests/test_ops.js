@@ -3487,75 +3487,21 @@ test('round 9 / owner items 4 + 5: the destination balls are solid, on the ivory
     'the light scheme redefines no ball token at all, so the base cannot follow the theme by accident');
 });
 
-test('round 8 / owner item 3: the Vision tab is the live stream, the recorded review is opened from a Records row', () => {
-  // 1. the live panel, in both languages, with nothing running
-  for (const [lang, live, start, stop, note, archive, dets] of [
-    ['en', 'Live stream', 'Start', 'Stop', 'Recorded nights are reviewed from their row on Records', 'History', ['Table', 'Person', 'Ball']],
-    ['zh', '直播', '开始', '停止', '已结束的夜晚请从战绩档案里对应那一行进入审看', '历史赛事', ['球台', '人物', '球']],
-  ]) {
-    const h = harness();
-    h.evaluate(`lang='${lang}';data.sources=[{id:'s1',url:'https://twitch.tv/ttpoolfriday'}]`);
-    const html = h.evaluate('livePanelScreen()');
-    assert.ok(html.includes('id="live-screen"') && html.includes('id="live-panel-status"'), `${lang}: the panel has its own root and status line`);
-    assert.ok(html.includes(`<h2>${live}</h2>`), `${lang}: it is headed ${live}`);
-    assert.ok(html.includes(`>${start}</button>`) && !html.includes('data-action="live-stop"'),
-      `${lang}: with nothing running the page offers one action - start - and no stop toggle (round 14, owner item 4)`);
-    assert.ok(h.evaluate('visionSurface()').includes(`>${stop}</button>`),
-      `${lang}: the stop control is on the running surface, where the stream is`);
-    assert.equal((html.match(/data-action="live-detector"/g) || []).length, 3, `${lang}: three detectors are offered`);
-    for (const word of dets) assert.ok(html.includes(word), `${lang}: the detector ${word} is named`);
-    assert.ok(html.includes('data-action="live-pick"') && html.includes('ttpoolfriday'), `${lang}: the saved channel is one click away`);
-    assert.ok(html.includes(note), `${lang}: the panel says where recorded nights live`);
-    assert.ok(/<button[^>]*data-tab="records"/.test(html) && html.includes(archive), `${lang}: it links to Records`);
-    assert.ok(!html.includes('vision-surface'), `${lang}: the live tab renders no workbench markup`);
-    // and with frames arriving, the same tab is the workbench
-    h.evaluate("liveSnapshot={state:'running'};sortLive=liveVisionScreen()");
-    assert.ok(h.evaluate('sortLive').includes('class="vision-surface"'), `${lang}: once running, the live tab hosts the workbench`);
-    h.evaluate("liveSnapshot={state:'stopped'}");
-    assert.ok(h.evaluate('liveVisionScreen()').includes('id="live-screen"'), `${lang}: when it stops, the panel comes back`);
-  }
-  // 2. the workbench is hosted by exactly two screens (the leak the browser pass caught)
+test('round 20 / owner item 5: with no stream the Livestream tab is the status, the source and one debug door', () => {
   const h = harness();
-  h.evaluate("reviewId='n1';tab='records';hostedOnRecords=reviewHosted();tab='vision';reviewId=null;liveSnapshot={state:'stopped'};hostedIdle=reviewHosted();liveSnapshot={state:'running'};hostedLive=reviewHosted();liveSnapshot=null;reviewId=null;hostedNothing=reviewHosted()");
-  assert.equal(h.evaluate('hostedOnRecords'), true, "a night's review hosts the workbench");
-  assert.equal(h.evaluate('hostedIdle'), false, 'the idle live tab does not, so no recorded picture leaks under the panel');
-  assert.equal(h.evaluate('hostedLive'), true, 'the running live tab does');
-  assert.equal(h.evaluate('hostedNothing'), false, 'nowhere else does');
-  assert.ok(/const isActive=reviewHosted\(\)/.test(source), 'showReview mounts on that predicate');
-  assert.ok(/\$\('#main'\)\.classList\.toggle\('short',reviewHosted\(\)\)/.test(source), 'and the short main follows it');
-  // 3. the deep link, and the row that hands it out
-  h.evaluate("location.hash='#/records/review/abc123'");
-  assert.equal(h.evaluate('reviewRoute()'), 'abc123', 'a review deep link parses');
-  h.evaluate("location.hash='#/records'");
-  assert.ok(!h.evaluate('reviewRoute()'), 'a plain records link parses to no review');
-  const row = h.evaluate(`archiveRow({id:'2890514774',title:'Wednesday 8-Ball Open',created_at:'2026-10-02T05:00:00Z',length:15600,broadcast_type:'ARCHIVE'},[{link:{vodId:'2890514774',eventId:'abc123'},night:{id:'abc123',name:'Wednesday 8-Ball Open',source:{vodId:'2890514774'}},locked:true}])`);
-  assert.ok(row.includes('data-action="tl-review" data-id="2890514774"'), 'the card is the broadcast, and clicking it opens it (owner items 6-8)');
-  assert.ok(row.includes('is-made') && row.includes(h.evaluate("esc(t('vodMark'))")) && row.includes('Wednesday 8-Ball Open'),
-    'and it names the night that already holds it');
-  assert.ok(!row.includes('tl-open-night') && !/bf-pick/.test(row), 'with nothing left to build first');
-  assert.ok(/dataset\.vision=reviewId\?'recorded'/.test(source), 'the shell says which vision screen it is showing');
-  // 4. the review screen itself
-  for (const [lang, back, footage, broadcast] of [['en', 'Back to Records', 'footage', 'broadcast'], ['zh', '返回战绩档案', '素材', '直播']]) {
-    const r = harness();
-    r.evaluate(`lang='${lang}';data.history=[{id:'abc123',name:'Wednesday 8-Ball Open',source:{vodId:'2890514774'}}]`);
-    const html = r.evaluate('reviewScreen(data.history[0])');
-    assert.ok(html.includes('<h2>Wednesday 8-Ball Open</h2>'), `${lang}: the head names the night - not an entrant, not TBD`);
-    assert.ok(!html.includes('TBD'), `${lang}: the entrant-name helper never reaches this head`);
-    assert.ok(html.includes(footage) && html.includes(broadcast) && html.includes('2890514774'), `${lang}: the meta says what footage, and which broadcast`);
-    assert.ok(html.includes(`>${back}</button>`), `${lang}: there is a way back to the list`);
-    assert.ok(html.includes('class="vision-surface"'), `${lang}: the recorded workbench is the body`);
-  }
-  // 5. the adapter drops every recorded affordance on the live tab
-  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
-  assert.ok(/liveOnly:\(\)=>!reviewId&&tab==='vision'/.test(source), 'the console tells the adapter which tab it is on');
-  assert.equal((adapter.match(/const liveOnly\s*=\s*!!opts\.liveOnly\?\.\(\)/g) || []).length, 2, 'both the chip row and the source panel read that flag');
-  assert.ok(/data-vs-action="pick-dataset"/.test(adapter) && /liveOnly \? '' :/.test(adapter), 'and withholds the dataset rows when live-only');
-  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
-  assert.ok(css.includes('#ops-shell .vs-live-hidden{display:none}'), 'hidden dataset blocks collapse');
-  for (const gone of ['.vs-frame-input', '[data-vs-action=step]', '.vs-track']) {
-    assert.ok(css.includes(`#ops-shell[data-vision=live] .vs-strip ${gone}`), `the live tab has no recorded ${gone}`);
-  }
-  assert.ok(!/\[data-vision=live\] \.vs-strip\{display:none\}/.test(css), 'Freeze, Play and the facts line stay: they act on the live frame');
+  h.evaluate("data.players=[];data.events=[];data.history=[];liveSnapshot={state:'idle',frames_skipped:0};liveRunning=()=>false;render=()=>{}");
+  const html = h.evaluate('livePanelScreen()');
+  assert.ok(html.includes('id="live-screen"') && html.includes('id="live-panel-status"'), 'the panel keeps its root and status line');
+  assert.equal((html.match(/data-action="live-detector"/g) || []).length, 0, 'no detector row while nothing runs');
+  assert.equal((html.match(/class="primary"/g) || []).length, 0, 'and no Start until a channel is saved');
+  assert.ok(html.includes('data-action="sources-open"'), 'the source configurator is one of the two controls');
+  assert.ok(html.includes('data-action="live-debug"'), 'and the debug door is the other');
+  assert.ok(!/data-tab="records"/.test(html) && !html.includes('live-note'), 'no History shortcut and no note while idle');
+  // The door opens the workbench the stream would otherwise be needed to see, and a stream closes it.
+  assert.ok(h.evaluate('liveVisionScreen()').includes('id="live-screen"'), 'idle: the panel is the tab');
+  h.evaluate('debugWorkbench=true');
+  assert.ok(h.evaluate('liveVisionScreen()').includes('class="vision-surface"'), 'the debug door reaches the workbench');
+  h.evaluate('debugWorkbench=false');
 });
 test('round 10 / owner item 3: a broadcast with no night yet still gets the scrubber and the sidebars', () => {
   const h = harness();
@@ -3947,19 +3893,6 @@ test('round 14 / owner item 3: a recorded review offers no clip and no source ch
   h.evaluate('render=()=>{}');
   assert.ok(h.evaluate('livePanelScreen()').includes('data-action="sources-open"'),
     'while the live Vision page keeps the source door, where the stream comes from');
-});
-test('round 14 / owner item 4: the Vision page is the stream, not a stream toggle', () => {
-  const h = harness();
-  h.evaluate("lang='en';data.sources=[{id:'s1',url:'https://www.twitch.tv/ttpoolfriday'}]");
-  const html = h.evaluate('livePanelScreen()');
-  assert.equal((html.match(/<article class="live-card"/g) || []).length, 1, 'one card, not a control panel beside a second door');
-  assert.equal((html.match(/class="primary"/g) || []).length, 1, 'one primary action');
-  assert.ok(html.includes('data-action="live-start"') && !html.includes('data-action="live-stop"'),
-    'start, with no stop toggle beside it');
-  assert.ok(html.includes('data-action="live-detector"'), 'the detectors are the options that go with the start');
-  assert.ok(html.includes('data-action="sources-open"') && /data-tab="records"/.test(html),
-    'and the source door and the History door share the action row');
-  assert.ok(html.includes(h.evaluate("esc(t('reviewFromRecords'))")), 'the sentence about recorded nights stays, as one line');
 });
 
 // ---------------------------------------------------------------- round 15 (owner, m08064)

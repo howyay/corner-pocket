@@ -54,6 +54,8 @@ Object.assign(words,{
   bfNoMarks:['The marks appear here once the file is open.','文件打开后，场次标记会出现在这里。'],
   cancelEdit:['Cancel','取消'],
   recordLegend:['Tonight: wins-losses','本场战绩：胜-负'],
+  liveDebug:['Debug workbench','调试工作台'],
+  liveDebugOff:['Back to the livestream','回到直播'],
   signNow:['Confirm this result','确认本场结果'],
   signNoWinner:['A tied score has no winner to confirm.','比分打平，没有可确认的胜者。'],
   confirmSignInline:['Confirm: {name} wins {score}?','确认：{name} 以 {score} 胜出？'],
@@ -978,7 +980,9 @@ function autoEventName(){const d=new Date(),days=['Sun','Mon','Tue','Wed','Thu',
 // the live controls alone - no dataset chip, no recorded frames, no frame transport. When the
 // stream runs, the workbench the tab always had mounts and the live frames feed it; the recorded
 // workbench is opened from a night's row on Records, which is its only entrance.
-function liveVisionScreen(){return liveRunning()?visionSurface():livePanelScreen()}
+// Round 20, owner item 5: with no stream the tab shows the status, the source and one debug door.
+let debugWorkbench=false;
+function liveVisionScreen(){return (liveRunning()||debugWorkbench)?visionSurface():livePanelScreen()}
 function livePanelStatus(){
   const s=liveSnapshot||{},word=review()?.liveStateText?.(s.state||'idle')||liveText({idle:'idle',starting:'starting',running:'live',stopped:'stopped',error:'error'}[s.state]||'idle',{idle:'空闲',starting:'启动中',running:'直播中',stopped:'已停止',error:'出错'}[s.state]||'空闲');
   return `${word}${s.error?' · '+s.error:''} · ${liveText('Frame age','帧龄')}: ${s.frame_age_ms?.toFixed?.(0)??'—'} ms · ${liveText('Dropped','丢帧')}: ${s.frames_skipped??0}`}
@@ -987,16 +991,13 @@ function livePanelScreen(){
   // says liveNow, and the detector labels reuse table/person/ball exactly as the panel does.
   const list=channels()||[],active=liveSource(liveChoice);
   const chips=list.map(c=>{const value='twitch:'+c.id,on=active.kind==='twitch'&&String(active.source_id)===String(c.id);return `<button class="vs-chip${on?' active':''}" data-action="live-pick" data-value="${esc(value)}" aria-pressed="${on?'true':'false'}">${on?'● ':''}${esc(t('liveNow'))} · twitch ${esc(c.channel||'')}</button>`}).join('');
-  const boxes=[['table',t('table')],['person',t('person')],['ball',t('ball')]].map(([k,label])=>`<label class="vs-check"><input type="checkbox" data-action="live-detector" data-value="${k}" ${liveDetectors.includes(k)?'checked':''}> ${esc(label)}</label>`).join('');
   const note=list.length?t('livePanelNote'):t('liveNoChannel');
   return `<section class="stack live-screen" id="live-screen">
   <article class="live-card">
     <div class="heading"><h2>${esc(t('liveStream'))}</h2></div>
     <p class="vs-mono live-status" id="live-panel-status" role="status">${esc(livePanelStatus())}</p>
     ${list.length?`<div class="vs-chiprow" role="group" aria-label="${esc(t('sources'))}">${chips}</div>`:''}
-    <div class="vs-row live-actions"><button class="primary" data-action="live-start">${esc(t('start'))}</button>${btn(t('sources'),'sources-open')}<button data-tab="records">${esc(t('records'))} →</button></div>
-    <div class="vs-row live-detectors" role="group" aria-label="${esc(t('detectors'))}">${boxes}</div>
-    <p class="muted live-note">${esc(note)} ${esc(t('reviewFromRecords'))}</p>
+    <div class="vs-row live-actions">${list.length?`<button class="primary" data-action="live-start">${esc(t('start'))}</button>`:''}${btn(t('sources'),'sources-open')}<button data-action="live-debug" aria-pressed="${debugWorkbench?'true':'false'}">${esc(debugWorkbench?t('liveDebugOff'):t('liveDebug'))}</button></div>
   </article>
 </section>`}
 function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading" role="status">${L('visionLoading')}</p>`;return `<section class="vision-surface" id="vision-surface"${visionAdapter?'':' aria-busy="true" data-loading="true"'}>
@@ -1078,7 +1079,8 @@ if(a==='bf-pick'){if(!bf)bf=Object.assign(bfFresh(),{saved:readBfDraft()});bfPic
 if(a==='reload')return reload();
  // The Vision tab's own controls while no stream is running (owner item 3): the panel is not the
  // adapter's markup, so its buttons report through these branches and repaint through render().
- if(a==='live-start'){startLive();return}if(a==='live-stop'){stopLive();return}if(a==='live-pick'){pickLive(String(b.dataset.value||''));render();return}if(a==='live-detector'){const d=String(b.dataset.value||'');setLiveDetectors(liveDetectors.includes(d)?liveDetectors.filter(x=>x!==d):[...liveDetectors,d]);render();return}if(a==='clock-toggle'){clockToggle()}if(a==='clock-reset'){timer.remaining=timer.duration;timer.deadline=null;persistClock();render()}if(a==='clock-set'){const duration=Number(b.dataset.value);if(!Number.isFinite(duration)||duration<=0)return;if(await action('settings_update',{shotClock:duration})){timer={duration,remaining:duration,deadline:null};persistClock();render()}}
+ if(a==='live-debug'){debugWorkbench=!debugWorkbench;renderSurface();return}
+if(a==='live-start'){debugWorkbench=false;startLive();return}if(a==='live-stop'){stopLive();return}if(a==='live-pick'){pickLive(String(b.dataset.value||''));render();return}if(a==='live-detector'){const d=String(b.dataset.value||'');setLiveDetectors(liveDetectors.includes(d)?liveDetectors.filter(x=>x!==d):[...liveDetectors,d]);render();return}if(a==='clock-toggle'){clockToggle()}if(a==='clock-reset'){timer.remaining=timer.duration;timer.deadline=null;persistClock();render()}if(a==='clock-set'){const duration=Number(b.dataset.value);if(!Number.isFinite(duration)||duration<=0)return;if(await action('settings_update',{shotClock:duration})){timer={duration,remaining:duration,deadline:null};persistClock();render()}}
 if(a==='score'&&m){const delta=Number(b.dataset.delta);await matchWrite(id,'match_score',x=>{const score=[...x.score];score[side]=Math.max(0,Math.min(race(),score[side]+delta));return {payload:{score},apply:y=>{y.score=score}}})}if(a==='clear')await matchWrite(id,'match_score',()=>({payload:{score:[0,0]},apply:y=>{y.score=[0,0]}}));if(a==='sign'){const m=matches().find(x=>x.id===id);if(m&&m.score[0]!==m.score[1]){signDraft={id,winner:m.score[0]>m.score[1]?0:1};paintScoreFoot(m)}return}
 if(a==='sign-cancel'){const m=matches().find(x=>x.id===id);signDraft=null;paintScoreFoot(m||live());return}
 if(a==='sign-confirm'&&signDraft&&signDraft.id===id){signDraft=null;await matchWrite(id,'match_complete',()=>({payload:{}}))};if(a==='frame'&&m&&confirm(t('confirmSign'))){const score=[0,0];score[side]=1;if(await matchWrite(id,'match_score',()=>({payload:{score},apply:y=>{y.score=[...score]}})))await matchWrite(id,'match_complete',()=>({payload:{}}))};if(a==='open-setup'){setupOpen=true;render();return}if(a==='sources-open'){sourceOpen=true;render();return}if(a==='sources-close'){sourceOpen=false;render();return}if(a==='dismiss-setup'){setupOpen=false;render();return}if(a==='focus'){focusId=id;render();return}if(a==='card-open'){focusId=id;tab='clock';syncRoute(true);render();window.scrollTo?.(0,0);return}if(a==='source-remove'){if(await action('source_delete',{id}))render();return}if(a==='schedule'){if(await action('match_schedule',{id,table:b.dataset.table?Number(b.dataset.table):undefined})){focusId=id;render()}}if(a==='forfeit'&&confirm(t('confirmForfeit')))await action('match_forfeit',{id,side});if(a==='unschedule')await action('match_unschedule',{id});if(a==='entrant-remove')await action('entrant_remove',{id});if(a==='tournament-start'){const shown=document.querySelector('#settings-form [name=name]')?.value?.trim();if(!tournament().name&&shown&&!await action('tournament_setup',{name:shown}))return;tab='tonight';if((await action('tournament_start'))===false)returnsyncRoute(true)}if(a==='results-sheet'){sheetId=id;render();window.scrollTo?.(0,0)}if(a==='sheet-back'){sheetId=null;render()}if(a==='print-sheet')print();if(a==='copy-results'){const night=[tournament(),...(data.history||[])].find(n=>n.id===id);if(night){try{await navigator.clipboard.writeText(resultsText(night));message(t('copied'))}catch(e){message(t('copyFail'),true,e.message)}}}if(a==='revival-draw'&&confirm(t('confirmRevival')))await action('revival_draw',{confirm:true});if(a==='revival-undo'&&confirm(t('confirmRevivalUndo')))await action('revival_undo',{confirm:true});if(a==='pair-draw')await action('pair_draw');if(a==='pair-accept')await action('pair_accept',{seed:Number(b.dataset.seed)});if(a==='pair-clear')await action('pair_clear');if(a==='pool-remove')await action('pool_remove',{name:b.dataset.name});if(a==='toggle-hidden'){showHidden=!showHidden;render()}if(a==='event-delete'){const n=[tournament(),...(data.history||[])].find(n=>n.id===id);if(n&&confirm(t('confirmDelete').replace('{name}',quoted(n))))await action('tournament_delete',{id,confirm:true})}if(a==='event-hide'){const n=(data.history||[]).find(n=>n.id===id),hidden=b.dataset.hidden==='true';if(n&&confirm(t(hidden?'confirmHide':'confirmUnhide').replace('{name}',quoted(n))))await action('tournament_hide',{id,hidden,confirm:true})}if(a==='event-rename'){eventNameEditing=true;render();requestAnimationFrame?.(()=>{const i=document.querySelector('#event-name');i?.focus();i?.select?.()});return}
