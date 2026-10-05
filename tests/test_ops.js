@@ -359,7 +359,14 @@ test('instant: a score step shows at once as pending, then the server\u2019s ans
 test('instant: a signature is never shown before the server signs it', async () => {
   const h = instantHarness();
   h.evaluate("data.tournament.matches[0].score=[3,1];serverState=JSON.parse(JSON.stringify(data))");
-  const done = click(h, {action:'sign', id:'m1'});
+  // Round 19, owner item 5: the sign-off is two steps on the same surface. The first click asks, in
+  // place, and writes nothing.
+  const asked = click(h, {action:'sign', id:'m1'});
+  await flush();
+  // Asking paints the foot alone - the board is not rebuilt - so the proof is the draft, not a render.
+  assert.equal(h.evaluate('!!signDraft'), true, 'asking to sign holds a pending confirmation');
+  assert.equal(h.evaluate('JSON.stringify(signDraft)'), '{"id":"m1","winner":0}', 'for the winner the score already shows');
+  const done = click(h, {action:'sign-confirm', id:'m1'});
   await flush();
   assert.equal(h.evaluate('renders.at(-1).status'), 'live', 'while the signature is unconfirmed the match is still live');
   assert.equal(h.evaluate('renders.at(-1).pending'), true, 'and says it is saving');
@@ -691,9 +698,13 @@ test('the board scores in its own write, and Sign completes in a second one', as
   liveMatch(h);
   await scoreBtn(h, 'match-1', 0, 1);
   await scoreBtn(h, 'match-1', 1, -1);
+  // Round 19, owner item 5: the sign-off asks in place first, then writes. Two clicks, three writes.
   await boardClick(h, {action: 'sign', id: 'match-1'});
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c=>c.name))')), ['match_score', 'match_score'],
+    'asking to sign writes nothing');
+  await boardClick(h, {action: 'sign-confirm', id: 'match-1'});
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls.map(c=>c.name))')), ['match_score', 'match_score', 'match_complete'],
-    'each +/- is its own write, and the signature is a third one');
+    'each +/- is its own write, and the confirmed signature is a third one');
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(calls[0].payload)')), {id: 'match-1', score: [1, 0]},
     'and the first tap moves the side it names by one, clamped to the race');
 });
@@ -3239,7 +3250,10 @@ test("round 5 / owner item 5: the Scorekeeper's card has one action, and it is S
   assert.ok(!h.evaluate('tonightScreen()').includes('id="score-form"'), 'the manual scorecard is gone (owner item 3): the board is the scorer');
   h.evaluate("data.tournament.matches[1].status='live';data.tournament.matches[1].table=2");
   const board = h.evaluate('scoreboardScreen()');
-  assert.ok(board.includes('data-action="score"') && board.includes('data-action="sign"'), 'a live match is scored and signed on the board, and nowhere else');
+  // Round 19, owner item 5: the board carries the score controls always, and offers the sign-off only
+  // once a winner exists - a tied score shows the wait instead.
+  assert.ok(board.includes('data-action="score"') && (board.includes('data-action="sign"') || board.includes('sign-wait')),
+    'a live match is scored and signed on the board, and nowhere else');
   assert.ok(/class="digits"/.test(board), 'and the board carries the score itself');
   assert.ok(!/score-form/.test(source), 'no code path anywhere still looks for a manual score line');
   const settings = h.evaluate('setupForm(false)');
@@ -3802,7 +3816,9 @@ test('round 12 / owner item 2: the match follows the night onto the timer page, 
   const live = timer();
   assert.ok(live.includes('class="timer-card"') && live.includes('class="scoreboard"'), 'a night in play puts the match under the timer');
   assert.ok(live.includes(h.evaluate("esc(ename('b'))")) && live.includes(h.evaluate("esc(ename('g'))")), 'with both names on it');
-  assert.ok(/data-action="(score|frame)"/.test(live) && live.includes(h.evaluate("esc(t('sign'))")), 'and the controls that decide the frame');
+  assert.ok(/data-action="(score|frame)"/.test(live)
+    && (live.includes(h.evaluate("esc(t('signNow'))")) || live.includes(h.evaluate("esc(t('signNoWinner'))"))),
+    'and the controls that decide the frame, with the sign-off offered only once a winner exists (round 19, owner item 5)');
   tonightNight(h, 'done');
   assert.ok(!timer().includes('class="scoreboard"'), 'a finished night takes it away again');
   // The read that keeps a tablet at the table in step: this page, a night in play, never hidden.
