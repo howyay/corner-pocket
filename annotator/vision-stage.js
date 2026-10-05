@@ -732,7 +732,7 @@ function factsLine(s) {
   // A drawn pocket marker names its own source: the checked model quad, or the
   // saved anchors / calibration it was projected from (engine-localized).
   const pocketNote = pocketsHeld || (pocketCount && pocketSource === 'calibration' ? engineText(cloth.pockets?.reference || '') : '');
-  parts.push(`${t('pockets').toLowerCase()} ${pocketCount}${pocketNote ? ` (${pocketNote})` : ''}`);
+  if (pocketNote) parts.push(`${t('pockets').toLowerCase()} ${pocketCount} (${pocketNote})`);
   void 0;
   if (verdict.state === 'off' && verdict.mean != null) parts.push(`${t('quadOff')} ${Math.round(verdict.mean)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
   else if (verdict.state === 'off') parts.push(t('quadOff'));

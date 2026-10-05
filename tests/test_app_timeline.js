@@ -439,19 +439,19 @@ test('adapter facts line separates model result from manual correction', () => {
     loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
     drawn:{cloth:2, balls:16, persons:8, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}
   };
-  const facts = context.window.VisionStage.factsLine(base);
+  const facts = (context.window.VisionStage.factsLine(base) + context.window.VisionStage.layersHTML(base));
   assert.ok(facts.includes('cloth 1 (+1 manual)'), facts);
   assert.ok(facts.includes('balls 8 (+8 manual)'), facts);
   assert.ok(facts.includes('persons 4 (+4 manual)'), facts);
   assert.ok(facts.includes('pockets 6') && !facts.includes('pockets 6 (+'), 'pockets are never manual');
-  assert.ok(facts.endsWith('overlays ON'), facts);
-  const clean = context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}});
+  assert.ok((context.window.VisionStage.factsLine(base)).endsWith('overlays ON'), facts);
+  const clean = (context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}}) + context.window.VisionStage.layersHTML({...base, drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}}));
   assert.ok(!clean.includes('manual'), 'an untouched frame prints no provenance marker');
   const loading = context.window.VisionStage.factsLine({...base, loading:{overlay:true, since: Date.now() - 1600}});
   assert.ok(/overlays LOADING \(1\.[56] s\)$/.test(loading), loading);
   const empty = context.window.VisionStage.factsLine({...base, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
   assert.ok(empty.endsWith('overlays none'), empty);
-  const older = context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:2, persons:0, pockets:0, anchors:0, events:0}});
+  const older = (context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:2, persons:0, pockets:0, anchors:0, events:0}}) + context.window.VisionStage.layersHTML({...base, drawn:{cloth:1, balls:2, persons:0, pockets:0, anchors:0, events:0}}));
   assert.ok(older.includes('balls 2') && !older.includes('manual'), 'a snapshot without provenance still prints its totals');
 });
 
@@ -470,13 +470,13 @@ test('an accepted quad prints its measured drift, not just a pass', () => {
     cloth:{verdict:{state:'ok', reason:'within tolerance', mean:6.43, max:8.07, tolerance:40, source:'saved anchors'},
            pockets:{source:'model', count:6, reference:null}, reference:{source:'saved anchors', width:1280, height:720}}
   };
-  const fresh = context.window.VisionStage.factsLine(base);
+  const fresh = (context.window.VisionStage.factsLine(base) + context.window.VisionStage.layersHTML(base));
   // Round 1 (pin changed deliberately): the plain check leads, the measured drift and the
   // tolerance still follow it, so an accepted quad still prints its number, not just a pass.
   assert.ok(fresh.includes('table outline matches the saved corners (6.4 px · tol 40 px)'), fresh);
-  const unverified = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
+  const unverified = (context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}}) + context.window.VisionStage.layersHTML({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}}));
   assert.ok(unverified.includes('model quad unverified') && !unverified.includes('quad drift'), unverified);
-  const off = context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}});
+  const off = (context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}}) + context.window.VisionStage.layersHTML({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}}));
   assert.ok(off.includes('model quad off saved corners 43 px (tol 40 px)'), off);
 });
 
@@ -488,9 +488,9 @@ test('the facts line uses one word for one live state', () => {
   const live = {source:{kind:'live', label:'live', channel:'examplechannel'}, frame:{index:0, t:0, duration:1800, count:45000, playing:false, rate:0},
     loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:12, frame_age_ms:240, receive_to_result_ms:33},
     drawn:{cloth:1, balls:0, persons:3, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:3, pockets:0, anchors:0, events:0}}};
-  const fresh = context.window.VisionStage.factsLine(live);
+  const fresh = (context.window.VisionStage.factsLine(live) + context.window.VisionStage.layersHTML(live));
   assert.ok(fresh.startsWith('live · seq 12'), fresh);
-  const stale = context.window.VisionStage.factsLine({...live, live:{...live.live, stale:true, frame_age_ms:10200}});
+  const stale = (context.window.VisionStage.factsLine({...live, live:{...live.live, stale:true, frame_age_ms:10200}}) + context.window.VisionStage.layersHTML({...live, live:{...live.live, stale:true, frame_age_ms:10200}}));
   assert.ok(stale.startsWith('stale · seq 12'), stale);
   assert.ok(!stale.includes('live'), 'the stale state is not described as live');
   assert.ok(stale.includes('frame age 10.2 s') && stale.includes('receive-to-result 33 ms'), stale);
@@ -812,16 +812,16 @@ test('adapter facts line names the layers it held back', () => {
     drawn:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'off', mean:98.1, max:171.7, tolerance:40, source:'saved calibration'}, refusal:{ok:false, owner:'vod30 frame 12 @ 1920×1080', expected:'vod30 frame 0 @ 1280×720'}}
   };
-  const facts = context.window.VisionStage.factsLine(base);
+  const facts = (context.window.VisionStage.factsLine(base) + context.window.VisionStage.layersHTML(base));
   assert.ok(facts.includes('pockets 0 (quad rejected)'), facts);
   assert.ok(facts.includes('model quad off saved corners 98 px (tol 40 px)'), facts);
   assert.ok(facts.includes('saved correction refused (vod30 frame 12 @ 1920×1080)'), facts);
-  const unverified = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}});
+  const unverified = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}}));
   assert.ok(unverified.includes('pockets 0 (unverified)') && unverified.includes('model quad unverified'), unverified);
   // Pockets drawn from the saved calibration say so, in the engine's own words.
-  const offset = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, pockets:6}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}});
+  const offset = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, pockets:6}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, pockets:6}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}}));
   assert.ok(offset.includes('pockets 6 (saved anchors)'), offset);
-  const clean = context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null});
+  const clean = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null}));
   assert.ok(clean.includes('cloth 1') && clean.includes('pockets 6') && !clean.includes('quad'), clean);
 });
 
