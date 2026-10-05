@@ -1289,3 +1289,11 @@ html,body{-webkit-font-smoothing:antialiased}
      the picture keeps every pixel it had. */
   #ops-shell[data-label-overlay="1"] .vs-grid{grid-template-columns:280px minmax(0,1fr) 320px}
 }
+
+/* Round 20, owner items 3 and 4: every entrant row is the same height, and the numbers on it are
+   named by the legend in the card's heading. */
+#ops-shell .card--entrants .entry.row{min-height:48px;align-items:center;flex-wrap:nowrap;gap:var(--sp-2)}
+#ops-shell .card--entrants .entry.row .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ops-shell .card--entrants .entry.row .grow small{display:block}
+#ops-shell .card--entrants .entry.row > button{flex:none}
+#ops-shell .record-legend{font:var(--fs-sm) var(--mono);letter-spacing:.04em}

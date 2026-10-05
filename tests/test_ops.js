@@ -227,7 +227,7 @@ test('round 13, owner item 5: a delayed match is not offered a table, and nothin
   h.evaluate("data.tournament.matches=[{id:'m1',round:1,status:'delayed',sides:['e1','e2'],absent:['e1'],score:[0,0]}]");
   const html = h.evaluate('bracketScreen()');
   assert.ok(!html.includes('data-action="absence"') && !/未到场|Not here/.test(html), 'nothing on any card marks a side absent');
-  assert.ok(html.includes('data-action="card-open"'), 'a held match still opens its own board');
+  assert.ok(!html.includes('data-action="card-open"'), 'no card carries the retired open-board control (round 20, owner item 7)');
   assert.ok(!html.includes('data-action="schedule"'), 'and it is not offered a table while it is held');
 });
 test('the scoreboard focus picker includes live and delayed tables', () => {
@@ -513,7 +513,8 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
   assert.ok(!/m1/.test(card.replace(/data-(?:id|action|side)="[^"]*"/g, '')), 'and not the machine id: an operator never reads it');
   assert.ok(/class="table-chip">Table 1</.test(card), 'and the table is a chip on the first line, not a detail behind a hover (owner item 6)');
   assert.ok(/data-action="forfeit"/.test(card) && !/data-action="absence"/.test(card), 'forfeit stays reachable, attendance does not');
-  assert.ok(/data-action="card-open" data-id="m1"/.test(card), 'a live match hands itself to the timer page');
+  // Round 20, owner item 7: the card no longer carries an 'open its scoreboard' control.
+  assert.ok(!card.includes('card-open') && !card.includes('openTable'), 'the card does not open the board for you');
   assert.ok(view.includes('data-action="schedule" data-id="m2"'), 'Send to table stays reachable');
   assert.ok(view.includes('tabindex="0"'), 'a keyboard user can open a card');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
@@ -531,7 +532,7 @@ test('round 19 / owner item 4: a bracket card carries no collapse control, only 
   const html = h.evaluate('bracketScreen()');
   assert.ok(!html.includes('card-toggle'), 'no triangle in the corner: the card is never collapsed');
   assert.ok(!html.includes('cardExpand') && !html.includes('cardCollapse'), 'and its copy is retired with it');
-  assert.ok(/data-action="card-open" data-id="m1"/.test(html), 'a live match still hands itself to the timer page');
+  assert.ok(!html.includes('card-open'), 'and no card carries the retired control (round 20, owner item 7)');
   assert.ok(/data-action="schedule" data-id="m2"/.test(html), 'and a scheduled one still takes a table');
   assert.ok(html.includes('tabindex="0"'), 'a keyboard user can still open a card');
 });
@@ -1510,7 +1511,7 @@ test('standings count results, not ratings; the event table sorts wins, win %, n
     assert.ok(at > 0, `the standing lists ${name}`);
     return standing.slice(at, standing.indexOf('</button>', at));
   };
-  for (const [lang, rating, table] of [['en', 'House rating (manual)', 'Event table'], ['zh', '球房评分（手动）', '本场战绩表']]) {
+  for (const [lang, rating, legend] of [['en', 'House rating (manual)', 'Tonight: wins-losses'], ['zh', '球房评分（手动）', '本场战绩：胜-负']]) {
     h.evaluate(`lang='${lang}'`);
     const html = h.evaluate('playScreen()'), standing = h.evaluate('playersScreen()');
     assert.ok(standing.includes(`>${rating}<`), `${lang}: the rating still names itself on the row`);
@@ -1523,7 +1524,8 @@ test('standings count results, not ratings; the event table sorts wins, win %, n
     const cardHtml = html.slice(html.indexOf('class="card card--entrants"'));
     // Round 19, owner item 3: the record lives on each entrant's row, so the wording is a chip's
     // title rather than a fold's heading.
-    assert.ok(html.includes(`title="${table}"`), `${lang}: the record carries the wording`);
+    assert.ok(html.includes('data-vs-role="record-legend"') && html.includes(`>${legend}<`),
+      `${lang}: the heading names what the numbers are: ${legend}`);
     const order = [...cardHtml.matchAll(/<span class="grow">([^<]+)<small>/g)].map(m => m[1]);
     // Round 19, owner item 3: the entrants list is the entry order. The standings a table used to sort
     // into live in the draw, where the winner of each match is already visible.
