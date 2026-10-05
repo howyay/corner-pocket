@@ -1299,6 +1299,14 @@ html,body{-webkit-font-smoothing:antialiased}
 /* Round 21, owner item 4, measured: within a card the columns line up (ball/name/record at the same
    offsets), but a row with an extra action button pushed the record chip to a different x. The chip
    has a fixed slot on the row's right edge now, and the row's own parts have fixed widths. */
+/* Round 22, owner item 2, photographed: the two cards in one visual row sat 8px apart, because the
+   second item's own box was offset inside the grid. One alignment for every item in the grid. */
+#ops-shell .card--entrants .grid{align-items:stretch}
+#ops-shell .card--entrants .grid > .entry.row{align-self:start;margin:0;vertical-align:top;padding-top:var(--sp-2);padding-bottom:var(--sp-2)}
+/* Round 22, owner item 2, photographed: the two cards in one visual row sat 8px apart, because the
+   second item's own box was offset inside the grid. One alignment for every item in the grid. */
+#ops-shell .card--entrants .grid{align-items:stretch}
+#ops-shell .card--entrants .grid > .entry.row{align-self:start;margin:0;vertical-align:top;padding-top:var(--sp-2);padding-bottom:var(--sp-2)}
 #ops-shell .card--entrants .entry.row > button{flex:none}
 #ops-shell .card--entrants .entry.row > .ball{flex:none;width:26px}
 #ops-shell .card--entrants .entry.row > .entrant-record{flex:none;width:56px;margin-left:auto;text-align:center}
