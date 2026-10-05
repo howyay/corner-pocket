@@ -309,7 +309,7 @@ test('round 1 · Back room: operator panels first; system status and roadmap und
 });
 test('round 1 · empty states: no fake names, no blank tiles, no list-item empties, every panel headed', () => {
   for (const [lang, noMatch, wait, dflt] of [['en', 'No match is on a table', 'Register the entrants and rack the night first', 'default name · saved when you rack'],
-                                             ['zh', '暂无比赛上台', '请先登记参赛者并生成对阵', '默认名称 · 生成对阵时保存']]) {
+                                             ['zh', '球台上还没有比赛', '先登记参赛者，再生成对阵', '默认名称 · 生成对阵时保存']]) {
     const h = harness();
     h.evaluate(`lang='${lang}';data.players=[];data.history=[];data.events=[];data.tournament={id:'t1',name:'',format:'singles',raceTo:1,status:'registration',entrants:[],matches:[]}`);
     const floor = h.evaluate('scoreboardScreen()');
@@ -4156,4 +4156,25 @@ test('round 19 / owner item 8: the label box floats over the video while a track
   assert.ok(css.includes('.vs-inspector.label-moved .vs-labelblock{display:none}'), 'so no second copy is visible');
   assert.ok(/#ops-shell\[data-label-overlay="1"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\) 320px\}/.test(css),
     'and the stage keeps the width it had: narrowing the label column cost more than it gave');
+});
+test('round 19 / owner item 6: the Tonight screen reads like a person wrote it', () => {
+  const h = harness();
+  const words = JSON.parse(h.evaluate('JSON.stringify(words)'));
+  // Batch 1 of the Chinese copy pass. Each pair is checked for the three things that made the old
+  // copy read mechanical: a Latin word left in the Chinese, a sentence that is the English one with
+  // Chinese characters, and a reference to a control that no longer exists.
+  const batch = ['locked', 'closeNoEntrants', 'closeSigned', 'closeNoEvent', 'boardEmptyWait',
+                 'boardEmptySend', 'boardEmptyNoDraw', 'signNoWinner', 'noMatch'];
+  const allow = ['T{table}', 'VOD', 'Twitch', 'MB/s', '{n}', '{name}', '{score}', '{table}', '{id}', '{at}'];
+  for (const key of batch) {
+    const [en, zh] = words[key];
+    assert.ok(en && zh, `${key} has both languages`);
+    assert.notEqual(en, zh, `${key} is translated, not copied`);
+    const stripped = allow.reduce((text, token) => text.split(token).join(''), zh);
+    assert.ok(!/[A-Za-z]/.test(stripped), `${key} leaves no English word in the Chinese: ${zh}`);
+    assert.ok(/[\u3400-\u9fff]/.test(zh), `${key} is Chinese: ${zh}`);
+  }
+  assert.ok(!words.locked[1].includes('赛事设置'), 'the locked note no longer names a heading that is gone');
+  assert.ok(words.locked[1].includes('卡片'), 'it names the card the operator can see');
+  assert.ok(words.noMatch[1].includes('球台'), 'and the empty board names the table, not an abstraction');
 });
