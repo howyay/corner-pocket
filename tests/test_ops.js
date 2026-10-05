@@ -2968,14 +2968,14 @@ test('round 3 / F9: both search boxes carry a real accessible name that states i
   const h = harness();
   h.evaluate(`lang='en';data.history=[{id:'n1',name:'Wednesday 8-Ball Open',archivedAt:'2026-09-17T00:00:00Z',entrants:[],matches:[]}];data.events=[];
     data.players=[{id:'pa',name:'Ann',status:'Active',rating:700}];render=()=>{}`);
-  assert.ok(h.evaluate('recordsScreen()').includes('id="events-search" placeholder="Search names" aria-label="Search the records"'),
+  assert.ok(h.evaluate('recordsScreen()').includes('id="events-search" placeholder="Search" aria-label="Search the records"'),
     'F9: the records box names the archive it searches');
-  assert.ok(h.evaluate('playersScreen()').includes('id="roster-search" placeholder="Search names" aria-label="Search the regulars roster"'),
+  assert.ok(h.evaluate('playersScreen()').includes('id="roster-search" placeholder="Search" aria-label="Search the regulars roster"'),
     'F9: the roster box names the roster');
   h.evaluate("lang='zh'");
   assert.ok(h.evaluate('recordsScreen()').includes('aria-label="搜索赛事记录"'), 'F9: 中文 names the scope too');
   assert.ok(h.evaluate('playersScreen()').includes('aria-label="搜索常客名单"'), 'F9: both boxes, both languages');
-  assert.equal(h.evaluate("t('search')"), '搜索姓名', 'F9: the placeholder stays a hint; the aria-label is the name');
+  assert.equal(h.evaluate("t('search')"), '搜索', 'F9: the placeholder stays a hint; the aria-label is the name');
 });
 
 test('round 3 / F12: the honesty note leaves the individual panels and stays where the system is described', () => {
@@ -3826,7 +3826,9 @@ test('round 13 / owner item 2: the archive is a heading, then one toolbar', () =
     const heading = rec.slice(rec.indexOf('<div class="heading">'), rec.indexOf('class="toolbar"'));
     assert.ok(heading.includes(`>${h.evaluate("esc(t('records'))")}</h2>`) && heading.includes('archive-count'),
       `${lang}: the heading carries the name and the count - information belongs in the heading, not among the buttons`);
-    const bar = rec.slice(rec.indexOf('class="toolbar"'), rec.indexOf('archive-note'));
+    // Round 20, owner item 6: the note explains the box, so it sits in the heading. The toolbar slice ends
+  // at the line below it instead of at the note.
+  const bar = rec.slice(rec.indexOf('class="toolbar"'), rec.indexOf('id="auto-line"'));
     assert.ok(bar.indexOf('events-search') < bar.indexOf('sources-open'), `${lang}: the search leads the row`);
     assert.ok(bar.indexOf('sources-open') < bar.indexOf('archive-reload') && bar.indexOf('archive-reload') < bar.indexOf('backfill-open'),
       `${lang}: then Sources, Refresh, and the backfill as the one primary action`);
