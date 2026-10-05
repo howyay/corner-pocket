@@ -2871,3 +2871,44 @@ the saved `src/calib_segments.py` artifact and otherwise measures (the quad sear
 eval to score against. The 9 ft dimensions (100″ × 50″ playfield, 4.5″ corner and 5″ side pockets) and the
 parallel-pair invariant belong in that candidate ranking as a physical score term — a detector change measured
 by its own eval, not a front-end edit.
+
+## §31 — Round 17, item ③: the face box reaches the stage, and one human keeps one box (2026-10-04)
+
+**What the operator asked for.** Assign an identity whenever a face is visible; draw the face box if it is
+a separate box; keep exactly one box per human; and keep the labelling sidebar consistent per track type.
+
+**What the pipeline already had.** The person pipeline matches a quality face to each tracked person on its
+stride frames. It now carries that face's box and quality in the person record (`face_bbox`,
+`face_quality`), and the API's `_PERSON_FIELDS` publishes both.
+
+**What the stage does.** Each loaded frame asks `/api/identity/frame` for the frame it is showing. The
+request runs **after** the paint and is never awaited with the frame: the first call after a server restart
+takes **50 s** while the identity models build (measured), and a frame must not wait for that. The persons
+layer prefers the unified detection when it has people, and otherwise draws the identity record, so no
+person is drawn twice. The face box is one dashed box tied to that person's own track (`data-face-for`),
+with `pointer-events:none` and no `data-person`: it cannot be selected, edited or counted as a second
+human. **One human, one box, with the face shown inside it.**
+
+**Measured, live, on production** (`tw-2890514774`, frame 0, after the restart): the overlay holds
+**3 `u-person` groups and 2 `u-face` groups**; the identity endpoint answers 200 with 3 persons, 2 of them
+with a face box (track 3 `bbox [280,60,385,280]` with `face_bbox [303,67,330,104]`); `vod30` frame 8100
+gives 3 persons and 2 face boxes. Screenshot: `out/r17/face-boxes-1280.png`.
+
+**Two defects found by measuring, both fixed.** ① The restart exposed `KeyError: 'face_bbox'` at
+`unified_server.py:521` — the server projects every person through a fixed field list, and the pipeline only
+set the new keys when a face matched, so **every** identity frame answered 400. The pipeline now always
+emits both keys and the projection reads with `get()`. ② The identity fetch was awaited beside the frame
+result, which would have held the picture for those 50 s. Both fixes are committed with the measurement in
+the message.
+
+**Known limit, stated rather than hidden.** The track rows show the binding when the row's track id exists in
+the frame's identity record. On a recorded broadcast the sidebar's rows come from the analysed tracklet file
+and the identity record's ids come from the live pipeline, so the two id spaces do not meet there and the
+rows render no binding chip (measured: `rows: 3`, `chips: []`). The face boxes still draw, the inspector
+still labels the selected track, and on a source where both spaces are the pipeline's own the chip appears.
+Matching across two id spaces by box overlap would guess, so it is not done.
+
+**The labelling row.** Every human track carries the same control set the inspector shows — the roster
+select, the guest field and Clear — because a form control cannot live inside a `<button>`, each row is a
+`div` whose select action is its own button, and a control inside a row selects that row's track first.
+Verified live: 3 tracks → 3 rows × (select, input, Clear).
