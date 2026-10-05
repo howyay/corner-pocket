@@ -5,20 +5,20 @@ Run it with the project's interpreter:
     .venv/bin/python tools/playfield_vod_audit.py
 
 For every VOD in ``data/vods`` it takes frames at 10%, 50% and 90%, runs the real
-``TableStage`` on them - no saved calibration artifact exists for any ``tw-*``
-dataset, so this is the measured path the console falls back to - and records the
-playfield verdict with its reasons.
+``TableStage`` on them - no saved calibration artifact exists for any ``tw-*`` dataset,
+so this is the measured path the console falls back to - and records the playfield
+verdict with its reasons and metrics.
 
-The audit is deliberately separate from ``tests/``: it runs the table detector, so
-it takes minutes and needs the model weights.  ``out/playfield_vod_audit.json``
-holds the last run for a comparison.
+Two corrections shaped this tool.  A stage carries its measurement, so one stage per
+event is required: a reused stage reported the same quad for ten picks and an earlier
+run claimed 42 passes where the measured number is 24.  And the events that refuse
+everywhere are not refusing a real table: their cloth mask is a band across a rail (the
+probe on tw-2860883221 fitted a quad with an aspect of 8.345 against the 2.0 that a
+100x50 inch playfield has), so the detector is what those events need - not a looser
+tolerance.  They are named at the bottom instead of being averaged away.
 
-First run (2026-10-05, 19 VODs, 57 frames): 42 verdicts ok, 15 refused, and the
-split is bimodal - 14 VODs pass at every sampled frame, 5 refuse at every sampled
-frame with ``not-convex`` and ``no-parallel-pair`` together.  The check is doing
-its job; the quads those five events yield are what needs looking at.
+``out/playfield_vod_audit.json`` holds the last run for a comparison.
 """
-"""End-to-end: does the playfield check hold on the historical VODs, on real measured quads?"""
 import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -50,6 +50,8 @@ for vp in vods:
             row['picks'].append({'at': idx, 'error': str(exc)[:120]}); counts['unreadable'] += 1; continue
         pf = res.get('table_playfield')
         entry = {'at': idx, 't_s': round(idx / fps, 1),
+                 'aspect': None if not pf else pf.get('aspect'),
+                 'best_parallel_deg': None if not pf else pf.get('best_parallel_deg'),
                  'quad': [[round(float(q[0]), 1), round(float(q[1]), 1)]
                           for q in (res.get('table_polygon') or [])],
                  'polygon': bool(res.get('table_polygon')),
@@ -63,8 +65,12 @@ for vp in vods:
             counts['refused'] += 1
         row['picks'].append(entry)
     cap.release()
-    row['verdict'] = ('pass' if all(p.get('ok') is True for p in row['picks'])
-                      else 'refuse' if all(p.get('ok') is False for p in row['picks']) else 'mixed')
+    ok_flags = [p.get('ok') for p in row['picks']]
+    row['verdict'] = ('pass' if all(f is True for f in ok_flags)
+                      else 'refuse' if all(f is False for f in ok_flags)
+                      # Every pick read but no table came out of any of them: that is not "mixed",
+                      # and calling it that hid seven events behind one word.
+                      else 'no_quad' if all(f is None for f in ok_flags) else 'mixed')
     report.append(row)
     print('%-24s %-7s %s' % (vp.name, row['verdict'], ' '.join(
         'ok' if p.get('ok') else ('refused' if p.get('ok') is False else 'no-quad')
@@ -84,11 +90,37 @@ fixture.write_text(json.dumps({
     'counts': counts,
     'passing': full_pass,
     'picks': [{'vod': r['vod'], 'at': pick['at'], 'quad': pick.get('quad'),
-               'ok': pick.get('ok'), 'reasons': pick.get('reasons')}
+               'ok': pick.get('ok'), 'reasons': pick.get('reasons'),
+               'aspect': pick.get('aspect'),
+               'best_parallel_deg': pick.get('best_parallel_deg')}
               for r in report for pick in r['picks'] if pick.get('quad')]}, indent=1))
-# The floor is the measured value, not a hope: 5 of 19 events pass at every sampled frame when each
-# event gets its own stage.  A detector or tolerance change that pushes this down is a regression.
-FLOOR = 5
+# Two locks, both measured.  The floor is how many events pass at every sampled frame; the
+# exceptions are the events that do not, each named with what its measurement actually was.  An
+# event that refuses everywhere and is not named is a regression, so the run fails.
+FLOOR = 8
+KNOWN_REFUSED = {
+    # The cloth mask is a band across a rail, so the fit collapses and no table is reported.
+    'tw-2860883221.mp4': 'cloth mask is a band: the ordered fit collapses (aspect 8.345)',
+    'tw-2871819680.mp4': 'cloth mask is a band: the ordered fit collapses',
+    'tw-2885294870.mp4': 'cloth mask is a band: the ordered fit collapses',
+    'tw-2890340436.mp4': 'cloth mask is a band: the ordered fit collapses',
+    'tw-2890514774.mp4': 'cloth mask is a band: the ordered fit collapses',
+    # A quad is measured and the check refuses it.
+    'tw-2252489073.mp4': 'measured quad refused: no-parallel-pair',
+    'tw-2467528195.mp4': 'measured quad refused: no-parallel-pair',
+    'tw-2784932919.mp4': 'measured quad refused: no-parallel-pair',
+    'tw-2796131568.mp4': 'measured quad refused: no-parallel-pair',
+    # No table comes out at all.
+    'tw-2251161439.mp4': 'no quad measured',
+    'tw-2638346864.mp4': 'no quad measured',
+}
+unexpected = sorted(r['vod'] for r in report
+                    if r['verdict'] != 'pass' and r['vod'] not in KNOWN_REFUSED)
+if unexpected:
+    print('THRESHOLD FAIL: events that refuse everywhere and are not named: %s' % (unexpected,), flush=True)
+    raise SystemExit(1)
+print('EXCEPTIONS OK: %d named, %d not passing'
+      % (len(KNOWN_REFUSED), sum(1 for r in report if r['verdict'] != 'pass')), flush=True)
 if len(full_pass) < FLOOR:
     print('THRESHOLD FAIL: %d events pass at every frame, floor is %d' % (len(full_pass), FLOOR), flush=True)
     raise SystemExit(1)

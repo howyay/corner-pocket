@@ -66,13 +66,15 @@ def main():
     root = Path(__file__).resolve().parents[1]
     out_dir = root / 'out/playfield_evidence'
     out_dir.mkdir(parents=True, exist_ok=True)
-    stage = TableStage(root, dataset=None, measure_every_n=30)
     report = []
     for name in REFUSED:
         vp = root / 'data/vods' / f'{name}.mp4'
         if not vp.exists():
             print(f'{name}: no file')
             continue
+        # One stage per event: a stage carries its measurement, which made every event read the
+        # same quad when the tool reused one.
+        stage = TableStage(root, dataset=None, measure_every_n=30)
         cap = cv2.VideoCapture(str(vp))
         n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         fps = float(cap.get(cv2.CAP_PROP_FPS) or 0) or 30.0
