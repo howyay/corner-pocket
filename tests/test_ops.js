@@ -4039,7 +4039,7 @@ test('round 17 / owner item 2: inference runs when playback stops, and the stage
   for (const guard of ['state.autoInferOff', 'state.inferRunning', 'state.lastInferredFrame === state.frame', 'state.playing || state.inferRunning']) {
     assert.ok(engine.includes(guard), `the run is guarded: ${guard}`);
   }
-  assert.ok(/autoInferTimer = setTimeout\(\(\) => \{[\s\S]{0,700}?\}, 500\);/.test(engine),
+  assert.ok(/autoInferTimer = setTimeout\(async \(\) => \{[\s\S]{0,900}?\}, 500\);/.test(engine),
     'and debounced, so a scrub that lands somewhere does not start work the operator is about to leave');
   assert.ok(engine.includes('function setAutoInference(on) {') && engine.includes('runInference, setAutoInference,'),
     'the operator can turn it off');
