@@ -558,7 +558,7 @@ function chipsHTML(s) {
     ? `<button class="vs-infer running" data-vs-action="auto-infer" data-vs-value="on" data-vs-role="infer-status">${esc(t('inferAutoRunning'))} · ${esc(String(corr.inferStatus || '').slice(0, 90))}</button>`
     : `<button class="vs-infer${corr.autoInfer === false ? ' off' : ''}" data-vs-action="auto-infer" data-vs-value="${corr.autoInfer === false ? 'on' : 'off'}" data-vs-role="infer-status">${esc(corr.autoInfer === false ? t('inferAutoOff') : t('inferAutoOn'))}</button>`;
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
-  <div class="vs-chipmeta">${infer}${freshness}</div>${panel}`;
+  <div class="vs-chipmeta">${infer}${freshness}<span class="vs-keys" role="note" aria-label="${esc(t('keyMap'))}: ${esc(t('keys'))}">${esc(t('keys'))}</span></div>${panel}`;
 }
 // Who made this candidate: one quiet line under the card's facts, never a badge.
 // A machine-produced candidate says so in its own words (translated in 中); an
@@ -627,9 +627,15 @@ function railHTML(s) {
   // where the operator is looking - the same roster select and guest field the inspector shows for
   // the selected track, so one track type has one control set wherever it appears. A form control
   // cannot live inside a <button>, so the row is a div with the select action on its own button.
+  const labelControls = (id, seed) => `<div class="vs-track-labels" data-vs-role="track-labels">
+    <select data-vs-action="regular" data-vs-track="${esc(id)}" aria-label="${esc(t('whichRegular'))}">${['<option value="">' + esc(t('guestOption')) + '</option>'].concat((opts.regulars() || []).map(r => `<option value="${esc(r.id)}"${String(seed) === String(r.id) ? ' selected' : ''}>${esc(r.name)}${r.rating != null ? ` · ${esc(r.rating)}` : ''}</option>`)).join('')}</select>
+    <input type="text" data-vs-action="guest-name" data-vs-track="${esc(id)}" maxlength="60" placeholder="${esc(t('guestName'))}" aria-label="${esc(t('guestName'))}" value="${esc(seed && !isSeedRole(seed) ? seed : '')}">
+    <button data-vs-action="seed" data-vs-value="clear" data-vs-track="${esc(id)}">${esc(t('clear'))}</button>
+  </div>`;
   // Round 17, owner item 3: the row shows who the pipeline says this track is, from the per-frame
   // identity record, so an operator sees the binding without opening the inspector - and sees when
   // a face box is the evidence for it.
+  const roster = (opts?.regulars?.() || []);
   const identityFor = id => (s.persons.identity || []).find(p => String(p.track_id) === String(id)) || null;
   const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => {
     const label = x.seed || x.label; const selected = String(s.persons.track) === String(x.id);
@@ -639,7 +645,7 @@ function railHTML(s) {
     const chip = who ? `<span class="vs-tag bound" data-vs-role="track-identity">${esc(who)}${esc(sim)}</span>`
       : ident && ident.face_bbox ? `<span class="vs-tag${' '}face" data-vs-role="track-identity">${esc(t('faceOnly'))}</span>`
       : '';
-    return `<button class="vs-item vs-track${selected ? ' selected' : ''}" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span>${chip}<span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>`;
+    return `<div class="vs-item vs-track${selected ? ' selected' : ''}"><button class="vs-track-main" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span>${chip}<span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>${labelControls(x.id, label && isSeedRole(label) ? label : '')}</div>`;
   }).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
   return `<section class="vs-group${s.focus === 'events' ? ' focused' : ''}"><header><h3>${esc(t('events'))}</h3><span class="vs-mono">${esc(s.events.reviewed)} ${esc(t('reviewedWord'))}</span></header>
     <div class="vs-filters">${filters.map(([v, l]) => `<button class="vs-filter${s.eventFilter === v ? ' active' : ''}" data-vs-action="event-filter" data-vs-value="${v}">${esc(t(l))}</button>`).join('')}</div>${cards}</section>
@@ -650,7 +656,6 @@ function layersHTML(s) {
   const layers = [['cloth','cloth'],['balls','balls'],['persons','persons'],['pockets','pockets'],['anchors','anchors'],['events','events']];
   return layers.map(([key, label]) => {
     const gated = key === 'anchors' && s.dataset !== 'vod30';
-    if (gated) return '';                    // a chip that cannot do anything is not a control
     // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.
     const shown = s.overlay[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
     return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))}</button>`;
@@ -760,11 +765,11 @@ function coldFrameBlock(s) {
   return `<div class="vs-block vs-frame-tools"><h4>${esc(t('thisFrame'))}</h4>
     <div class="vs-row"><button class="${tool === 'select' ? 'active' : ''}" data-vs-action="tool" data-vs-value="select">${esc(t('selectTool'))}</button><button class="${tool === 'draw' ? 'active' : ''}" data-vs-action="tool" data-vs-value="draw">${esc(t('drawTool'))}</button></div>
     <div class="vs-row"><button data-vs-action="add-polygon">${esc(t('addPolygon'))}</button><button data-vs-action="clear-polygon">${esc(t('clearPolygon'))}</button></div>
-    <div class="vs-row"></div>
+    <div class="vs-row"><button data-vs-action="run-inference" ${s.corrections?.inferRunning ? 'disabled' : ''}>${esc(t('runInference'))}</button></div>
     ${inferenceLine(s)}${s.corrections?.inferStatus ? `<p class="vs-mono">${esc(engineText(s.corrections.inferStatus))}</p>` : ''}
     <p class="vs-note" data-vs-layers-note="1">${esc(t('layerNote'))}</p>
     ${s.dirty ? `<div class="vs-row"><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button></div>` : ''}
-  </div>`;
+    <p class="vs-note">${esc(t('coldStartHint'))}</p></div>`;
 }
 // The rail with nothing selected: selection-related copy only. The source
 // settings are not here any more - they open from the Source chip in the chip
@@ -1136,7 +1141,7 @@ function actionsHTML(s) {
     return `<button class="primary" data-vs-action="identity-save">${esc(t('saveBinding'))}</button><button data-vs-action="identity-clear">${esc(t('clearBinding'))}</button>`;
   }
   if (kind === 'anchor') return `<button class="primary" data-vs-action="save-anchors">${esc(t('saveAnchors'))}</button>`;
-  if (kind === 'box') return `<button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button>`;
+  if (kind === 'box') return `<button data-vs-action="run-inference">${esc(t('runInference'))}</button><button class="primary" data-vs-action="save-corrections">${esc(t('saveCorrections'))}</button>`;
   // Nothing selected: the live start/stop pair moved into the Source panel with
   // the rest of the source settings, so this footer only carries the frame's own
   // pending write.
@@ -1181,9 +1186,7 @@ function render() {
   if (railSig !== sig.rail) { const node = $('#vs-cues'); if (node) node.innerHTML = railHTML(s); sig.rail = railSig; }
   const layersSig = `${s.dataset}|${s.anchors?.loaded ? 1 : 0}|${Object.entries(s.overlay).map(([k, v]) => `${k}${v ? 1 : 0}`).join('')}`;
   if (layersSig !== sig.layers) { const node = $('#vs-layers'); if (node) node.innerHTML = layersHTML(s); sig.layers = layersSig; }
-  // Order 2: the label box belongs to a track. With nothing selected there is nothing to label, so it
-  // is closed - the row that selects a track is where the operator starts.
-  const identity = s.persons.track === null || s.persons.track === undefined ? '' : identityHTML(s);
+  const identity = identityHTML(s);
   if (identity !== sig.identity) { const node = $('#vs-identity'); if (node) node.innerHTML = identity; sig.identity = identity; }
   // The identity block reads the saved seed and the track's binding, so both
   // belong in the signature: a save must repaint the block that saved it.
@@ -1331,6 +1334,7 @@ function act(action, value, node) {
     case 'add-polygon': target.addPolygon(); break;
     case 'clear-polygon': target.clearPolygon(); break;
     case 'save-corrections': target.saveCorrections(node); break;
+    case 'run-inference': target.runInference(node); break;
     case 'step': target.stepFrame(num); break;
     case 'freeze': target.freeze(); break;
     case 'play': target.setPlaying(!s.frame.playing); break;

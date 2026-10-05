@@ -1223,16 +1223,3 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .bf-banner.err{border-left-color:var(--err, #c2503c)}
 #ops-shell .bf-banner .row{margin-top:var(--sp-2)}
 @media(prefers-reduced-motion:reduce){#ops-shell .ingest-dot{animation:none}}
-
-/* Round 18, owner item 3: the workbench is one screen. The page itself does not scroll; the rail,
-   the stage and the inspector scroll inside it. data-review is set by the shell only while a
-   recorded review is open, so the console's other screens keep their own scrolling. */
-@media(min-width:751px){
-  #ops-shell[data-review="1"]{height:100dvh;overflow:hidden}
-  #ops-shell[data-review="1"] #main{height:calc(100dvh - var(--bar-h, 118px));min-height:0;overflow:hidden;display:flex;flex-direction:column}
-  #ops-shell[data-review="1"] .review-card{flex:0 0 auto}
-  #ops-shell[data-review="1"] .vs-grid{flex:1 1 auto;min-height:0}
-  #ops-shell[data-review="1"] .vs-rail,#ops-shell[data-review="1"] .vs-inspector{min-height:0;overflow:auto;overscroll-behavior:contain}
-  #ops-shell[data-review="1"] .vs-stage{min-height:0;max-height:100%}
-  #ops-shell[data-review="1"] .vs-stage img,#ops-shell[data-review="1"] .vs-stage video{max-height:calc(100dvh - 320px)}
-}
