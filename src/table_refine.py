@@ -951,6 +951,20 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
     # the confidence a fully measured one earns.
     if inherited:
         confidence = round(confidence * (1.0 - 0.25 * len(inherited)), 3)
+    # The table's own geometry, applied where a quad is accepted (round 17, owner item 5): a 9 ft
+    # playfield is 100 x 50 inches, and at this venue at least one pair of its edges still reads
+    # parallel in the image. A quad that breaks either is not thrown away - the cloth boundary was
+    # still measured - but it is reported as such and cannot claim a fully measured confidence.
+    try:
+        from src.playfield import check_quad
+        ordered = _order(quad)
+        candidates = [ordered, [ordered[1], ordered[2], ordered[3], ordered[0]]]
+        verdicts = [check_quad([[float(p[0]), float(p[1])] for p in c]) for c in candidates]
+        playfield = min(verdicts, key=lambda v: (not v["ok"], len(v["reasons"])))
+    except Exception as exc:                      # a constraint must never break a detection
+        playfield = {"ok": True, "reasons": [], "metrics": {}, "error": str(exc)}
+    if not playfield["ok"]:
+        confidence = round(confidence * 0.6, 3)
     info = {"confidence": confidence, "reason": None, "mask": mask_note,
             "iterations": len(movements), "side_moves_px": movements,
             "verified_sides": 4 - len(inherited), "unverified_sides": [],
@@ -960,7 +974,9 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
             "edge_width_px": round(float(np.median(widths)) if widths else -1.0, 2),
             "scan_mad_px": round(float(np.median(spreads)) if spreads else -1.0, 2),
             "move_px": round(float(np.linalg.norm(quad - prior, axis=1).mean()), 2),
-            "sides": side_reports}
+            "sides": side_reports, "playfield": playfield}
+    if not playfield["ok"] and not inherited:
+        info["reason"] = "playfield:" + ",".join(playfield["reasons"])
     return quad, info
 
 
