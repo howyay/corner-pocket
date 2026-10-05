@@ -664,7 +664,10 @@ function layersHTML(s) {
     const count = auto && manual
       ? `${t(label).toLowerCase()} ${Number(auto[key] || 0)} (+${manual} ${t('manual')})`
       : `${t(label).toLowerCase()} ${total}`;
-    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(count)}</button>`;
+    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}"${esc(count + ((key === 'cloth' && s && s.cloth && s.cloth.polygon === 'inference')
+      ? ` (${(s.corrections && s.corrections.inferenceAt && s.corrections.storedInference
+            ? `${t('storedInference')} ${stampText(s.corrections.inferenceAt)}` : null) || t('inferenceSession')})`
+      : ''))}</button>`;
   }).join('');
 }
 function identityHTML(s) {
