@@ -27,9 +27,12 @@ from annotator.pipeline_stages import TableStage, StageContext
 
 root = Path(__file__).resolve().parents[1]
 vods = sorted((root / 'data/vods').glob('*.mp4'))
-stage = TableStage(root, dataset=None, measure_every_n=30)   # no saved calibration: measure, like live
+# One stage per VOD: a reused stage carries its measurement across events, which made every
+# event after the first report the same quad.  The audit measures each event on its own.
+STAGE_NOTE = 'one stage per VOD, no saved calibration: measure, like live'
 report, counts = [], {'ok': 0, 'refused': 0, 'no_quad': 0, 'unreadable': 0}
 for vp in vods:
+    stage = TableStage(root, dataset=None, measure_every_n=30)
     cap = cv2.VideoCapture(str(vp))
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0) or 30.0
@@ -47,6 +50,8 @@ for vp in vods:
             row['picks'].append({'at': idx, 'error': str(exc)[:120]}); counts['unreadable'] += 1; continue
         pf = res.get('table_playfield')
         entry = {'at': idx, 't_s': round(idx / fps, 1),
+                 'quad': [[round(float(q[0]), 1), round(float(q[1]), 1)]
+                          for q in (res.get('table_polygon') or [])],
                  'polygon': bool(res.get('table_polygon')),
                  'ok': None if not pf else bool(pf.get('ok')),
                  'reasons': (pf or {}).get('reasons')}
@@ -58,9 +63,33 @@ for vp in vods:
             counts['refused'] += 1
         row['picks'].append(entry)
     cap.release()
+    row['verdict'] = ('pass' if all(p.get('ok') is True for p in row['picks'])
+                      else 'refuse' if all(p.get('ok') is False for p in row['picks']) else 'mixed')
     report.append(row)
-    print(vp.name, json.dumps(row['picks']), flush=True)
+    print('%-24s %-7s %s' % (vp.name, row['verdict'], ' '.join(
+        'ok' if p.get('ok') else ('refused' if p.get('ok') is False else 'no-quad')
+        for p in row['picks'])), flush=True)
+full_pass = sorted(r['vod'] for r in report if r['verdict'] == 'pass')
 print('SUMMARY', json.dumps(counts), flush=True)
-print('REFUSED', json.dumps([{'vod': r['vod'], 'at': p['at'], 'reasons': p['reasons']}
-                             for r in report for p in r['picks'] if p.get('reasons')]), flush=True)
-root / 'out' / 'playfield_vod_audit.json'.write_text(json.dumps(report, indent=1))
+print('PASS-AT-EVERY-FRAME', json.dumps(full_pass), flush=True)
+out_file = root / 'out/playfield_vod_audit.json'
+out_file.parent.mkdir(parents=True, exist_ok=True)
+out_file.write_text(json.dumps({'counts': counts, 'passing': full_pass,
+                                'measured': '2026-10-05, one stage per VOD', 'report': report}, indent=1))
+# The replay test reads the fixture, so the recorded quads travel with the repository.
+fixture = root / 'tests/fixtures/playfield_quads.json'
+fixture.parent.mkdir(parents=True, exist_ok=True)
+fixture.write_text(json.dumps({
+    'measured': '2026-10-05, one stage per VOD',
+    'counts': counts,
+    'passing': full_pass,
+    'picks': [{'vod': r['vod'], 'at': pick['at'], 'quad': pick.get('quad'),
+               'ok': pick.get('ok'), 'reasons': pick.get('reasons')}
+              for r in report for pick in r['picks'] if pick.get('quad')]}, indent=1))
+# The floor is the measured value, not a hope: 5 of 19 events pass at every sampled frame when each
+# event gets its own stage.  A detector or tolerance change that pushes this down is a regression.
+FLOOR = 5
+if len(full_pass) < FLOOR:
+    print('THRESHOLD FAIL: %d events pass at every frame, floor is %d' % (len(full_pass), FLOOR), flush=True)
+    raise SystemExit(1)
+print('THRESHOLD OK: %d events pass at every frame (floor %d)' % (len(full_pass), FLOOR), flush=True)
