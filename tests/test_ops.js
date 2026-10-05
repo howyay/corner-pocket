@@ -4055,3 +4055,12 @@ test('round 17 / owner item 2: inference runs when playback stops, and the stage
     source.includes('setAutoInference:on=>review()?.setAutoInference?.(on)'),
     'with the one switch wired to the engine');
 });
+test('round 17: a superseded frame request does not lock the stage', () => {
+  const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  assert.ok(engine.includes('} else if (epoch === state.epoch) {'),
+    'the stale request releases the stage when the newer one could not start');
+  assert.ok(/else loadFrame\(state\.frame\);/.test(engine),
+    'and it loads the frame that is actually on screen, so the picture is never left blank');
+  assert.ok(engine.includes('state.busy = false; state.decoding = false;\n      const queued = state.pendingSeek; state.pendingSeek = null; notify();\n      if (queued !== null && queued !== undefined) loadFrame(queued);\n      else loadFrame(state.frame);'),
+    'the queued seek wins when there is one - that is the request that was refused');
+});

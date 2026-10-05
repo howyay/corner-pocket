@@ -526,10 +526,20 @@ async function loadFrame(n) {
   } catch (error) {
     if (epoch === state.epoch && request === state.frameReq) notice(`Frame load failed: ${error.message}`, true);
   } finally {
-    if (epoch === state.epoch && request === state.frameReq) {
+    if (request === state.frameReq) {
       state.busy = false; state.decoding = false;
       const queued = state.pendingSeek; state.pendingSeek = null; notify();
       if (queued !== null && queued !== undefined) loadFrame(queued);
+    } else if (epoch === state.epoch) {
+      // A newer request superseded this one, and that request could not start: loadFrame() returns
+      // early while busy is set. Nobody else owns the flag, so release it here or the stage stays
+      // "decoding" for the rest of the session (measured on production: frame 0 served in 400 ms
+      // while the stage reported decoding:true, has:false, so every later pause found nothing to
+      // run inference on).
+      state.busy = false; state.decoding = false;
+      const queued = state.pendingSeek; state.pendingSeek = null; notify();
+      if (queued !== null && queued !== undefined) loadFrame(queued);
+      else loadFrame(state.frame);
     }
   }
 }
