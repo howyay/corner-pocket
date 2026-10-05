@@ -656,8 +656,15 @@ function layersHTML(s) {
     const gated = key === 'anchors' && s.dataset !== 'vod30';
     // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.
     const shown = (s.overlay || {})[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
-    const count = Number(((s && s.drawn) || {})[key] || 0);
-    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))} ${count}</button>`;
+    // R24 item 2, step 3a: the chip says exactly what the facts line said - the layer's count with its
+    // provenance - so one readout can serve both and the duplicate can go.
+    const d = (s && s.drawn) || {}, auto = d.auto;
+    const total = Number(d[key] || 0);
+    const manual = auto ? Math.max(0, total - Number(auto[key] || 0)) : 0;
+    const count = auto && manual
+      ? `${t(label).toLowerCase()} ${Number(auto[key] || 0)} (+${manual} ${t('manual')})`
+      : `${t(label).toLowerCase()} ${total}`;
+    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(count)}</button>`;
   }).join('');
 }
 function identityHTML(s) {
