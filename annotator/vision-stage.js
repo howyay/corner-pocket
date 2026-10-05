@@ -693,11 +693,11 @@ function recordedLabel(s) {
 function factsLine(s) {
   const parts = [];
   const imported = importedRow(s);
-  if (imported) parts.push(recordedLabel(s), `${t('bcAt')} ${hms((imported.range?.start_s || 0) + Number(s.frame.t || 0))}`);
+  if (imported) parts.push(`${t('bcAt')} ${hms((imported.range?.start_s || 0) + Number(s.frame.t || 0))}`);
   // One word per state: the strip says the same thing the chip says.
   if (s.source.kind === 'live') parts.push(`${(s.live.stale ? t('stale') : t(liveWordKey(s))).toLowerCase()}${s.live.seq != null ? ` · seq ${s.live.seq}` : ''}`, `${t('age')} ${fmtAge(s.live.frame_age_ms)}`, `${t('receive')} ${fmtAge(s.live.receive_to_result_ms)}`);
   // The frame's time in the same m:ss.d the cue cards use (25:53.5), not a bare second count.
-  else parts.push(`${t('frameReadout')} ${s.frame.index}`, timecode(s.frame.t));
+  else parts.push(timecode(s.frame.t));
   const d = s.drawn, auto = d.auto;
   // Model vs operator provenance: `<model> (+<manual> manual)`. The two numbers
   // add up to exactly what the painter drew, so the totals stay honest. Without
