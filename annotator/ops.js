@@ -48,9 +48,17 @@ Object.assign(words,{
   bfFailedTitle:['The download stopped','下载中断'],bfRejectedTitle:['This range cannot be imported','这一段无法导入'],
   bfDiskNo:['Not enough free disk space for this range.','磁盘空间不足，装不下这一段。'],
   backfillSource:['Source: Twitch VOD {id} · {range} · confirmed match by match','来源：Twitch VOD {id} · {range} · 逐场人工确认'],signOffLine:['Confirmed match by match · {at}','逐场人工确认 · {at}'],
-  backfillOpenVod:['Open the broadcast','打开回放']});
+  backfillOpenVod:['Open the broadcast','打开回放'],
+  bfStepWord:['Step','步骤'],
+  bfSavedChannels:['Saved channels','已保存频道'],
+  bfNoMarks:['The marks appear here once the file is open.','文件打开后，场次标记会出现在这里。'],
+  ingestImporting:['Importing {what}','正在导入 {what}'],
+  ingestOpen:['Open backfill','打开回填']});
 let bf=null,eventsQuery='',openEvents=new Set();
-const BF_DRAFT='cp-ops-backfill',BF_STEPS={pick:1,verify:2,importing:3,dataset:4,marking:4,review:5,done:5,failed:2,rejected:2};
+// Round 17, owner item 4: the wizard keeps its states and loses its screens. Picking and verifying
+// are one screen, importing and marking another, confirming the third; done and failed are banners on
+// the screen the operator is already looking at, not new pages.
+const BF_DRAFT='cp-ops-backfill',BF_STEPS={pick:1,verify:1,importing:2,dataset:2,marking:2,review:3,done:3,failed:1,rejected:1},BF_SCREENS=3;
 const MONTHS=[['January','一月'],['February','二月'],['March','三月'],['April','四月'],['May','五月'],['June','六月'],['July','七月'],['August','八月'],['September','九月'],['October','十月'],['November','十一月'],['December','十二月']];
 const WEEKDAYS=[['Sun','周日'],['Mon','周一'],['Tue','周二'],['Wed','周三'],['Thu','周四'],['Fri','周五'],['Sat','周六']];
 const dateLine=at=>{const d=new Date(at);return Number.isNaN(d.getTime())?String(at??''):d.toLocaleString(lang==='zh'?'zh-CN':'en')};
@@ -183,7 +191,7 @@ function autoInner(){
   if(autoCount('skipped'))bits.push(t('autoSkipped').replace('{n}',autoCount('skipped')));
   if(rows.error)bits.push(String(rows.error));
   return `<p class="muted">${esc(t('autoDownload'))} · ${bits.map(esc).join(' · ')} ${btn(on?t('autoPause'):t('autoResume'),'auto-toggle')}</p>`}
-function paintAuto(){const host=$('#auto-line');if(host)host.innerHTML=autoInner()}
+function paintAuto(){const host=$('#auto-line');if(host)host.innerHTML=autoInner();const ingest=$('#ingest-line');if(ingest)ingest.innerHTML=bfProgressLine()}
 async function autoToggle(){
   const next=autoList.rows?.enabled?'off':'on';
   try{
@@ -413,6 +421,7 @@ function recordsScreen(){
   </div>
   <p class="muted archive-note">${esc(archiveNoteText())}</p>
   <div class="auto-line" id="auto-line">${autoInner()}</div>
+  <div class="auto-line" id="ingest-line">${bfProgressLine()}</div>
   <div id="records-list">${mergedTimeline()}</div>
   ${auditRest().length?auditFold(auditRest(),t('auditRest'),' tl-audit-rest'):''}
 </article></section>`}
@@ -619,11 +628,48 @@ function bfReviewStep(){
 function bfDoneStep(){return `<h2>${esc(t('bfDone'))}</h2><div class="row">${btn(t('bfOpenTimeline'),'bf-open-timeline','','primary')}</div>`}
 function bfFailedStep(){return `<h2>${esc(t(bf.step==='rejected'?'bfRejectedTitle':'bfFailedTitle'))}</h2>
   <div class="row">${btn(t('bfRetry'),'bf-retry','','primary')}${btn(t('bfOther'),'bf-choose-other')}${/Only saved channels/i.test(bf.detail||'')?`<a href="#/backroom">${esc(t('status'))}</a>`:''}</div>`}
+// A state the operator has left is a banner, not a screen: done, failed and rejected all sit on the
+// screen they ended on, with the action that resolves them beside the words.
+function bfBanner(step){
+  if(step==='done')return `<div class="bf-banner done" role="status"><strong>${esc(t('bfDone'))}</strong><div class="row">${btn(t('bfOpenTimeline'),'bf-open-timeline','','primary')}</div></div>`;
+  const title=step==='rejected'?t('bfRejectedTitle'):t('bfFailedTitle');
+  return `<div class="bf-banner err" role="alert"><strong>${esc(title)}</strong>${bf.detail?`<p class="note">${esc(bf.detail)}</p>`:''}
+  <div class="row">${btn(t('bfRetry'),'bf-retry','','primary')}${btn(t('bfOther'),'bf-choose-other')}${/Only saved channels/i.test(bf.detail||'')?`<a href="#/backroom">${esc(t('bfSavedChannels'))}</a>`:''}</div></div>`;}
+// One place that says how far the ingestion has got, so the operator never has to open the wizard to
+// find out. History renders it; the wizard renders the same numbers at full width.
+function bfProgressLine(){
+  const job=bf?.job;if(!job)return '';
+  const percent=Math.max(0,Math.min(100,Number(job.percent)||0));
+  const bits=[`${percent}%`,job.rate_mb_s?`${job.rate_mb_s} MB/s`:'',job.eta_s?`${hms(job.eta_s)}`:''].filter(Boolean).join(' · ');
+  return `<p class="ingest-line" role="status" data-ingest="backfill"><span class="ingest-dot"></span>${esc(t('ingestImporting').replace('{what}',bf.vod?.title||bf.vod?.id||bf.datasetId||''))} · ${esc(bits)} ${btn(t('ingestOpen'),'backfill-open')}</p>`;}
 function bfScreen(){
-  const step=bf?.step||'pick',body=step==='pick'?bfPickStep():step==='verify'?bfVerifyStep():step==='importing'?bfImportingStep():step==='dataset'?bfDatasetStep():step==='marking'?bfMarkingStep():step==='review'?bfReviewStep():step==='done'?bfDoneStep():bfFailedStep();
-  return `<section class="stack backfill" data-step="${esc(step)}">
-  <div class="bf-head"><button type="button" class="link" data-action="bf-exit">← ${esc(t('bfExit'))}</button><span class="bf-step muted">${esc(t('bfStep').replace('{n}',BF_STEPS[step]||1))}</span></div>
-  ${bfNoticeHtml(step==='pick')}
+  const step=bf?.step||'pick';
+  const screen=BF_STEPS[step]||1;
+  // Screen 1: choose and verify. The verification panel appears as soon as a broadcast is chosen, so
+  // choosing and checking are one decision on one page.
+  // Screen 2: import and mark. The progress is a header over the marking canvas, and the night's own
+  // fields sit above it, so the operator marks while the rest of the file arrives.
+  // Screen 3: confirm. Done, failed and rejected render as banners here.
+  // Every piece is guarded by the state it needs: one screen carries up to three panels, and a panel
+  // whose data has not arrived must not take the screen down with it.
+  const marks=Array.isArray(bf.marks)?bf.marks:[];
+  const draft=Array.isArray(bf.draft)?bf.draft:[];
+  const body=screen===1
+    ? `${bfPickStep()}${step==='verify'||bf.vod?.id?bfVerifyStep():''}`
+    : screen===2
+      ? `${step==='importing'||bf.job?bfImportingStep():''}`
+        + `${bf.night&&(bf.datasetId||bf.datasetTitle)?bfDatasetStep():''}`
+        + `${marks.length?bfMarkingStep():''}`
+        + `${step==='marking'&&!marks.length?`<p class="muted">${esc(t('bfNoMarks'))}</p>`:''}`
+        + `${step==='dataset'&&!marks.length?`<div class="row">${btn(t('bfStartMarking'),'bf-start-marking','','primary')}</div>`:''}`
+      : `${draft.length?bfReviewStep():`<p class="muted">${esc(t('bfNoMarks'))}</p>`}`;
+  // A finished or failed night is a banner wherever it lands: "done" closes the confirm screen, and a
+  // failure sends the operator back to the choice with the reason in front of them.
+  const banner=['done','failed','rejected'].includes(step)?bfBanner(step):'';
+  return `<section class="stack backfill" data-step="${esc(step)}" data-screen="${screen}">
+  <div class="bf-head"><button type="button" class="link" data-action="bf-exit">← ${esc(t('bfExit'))}</button><span class="bf-step muted" data-vs-role="bf-step">${esc(t('bfStepWord'))} ${screen}/${BF_SCREENS}</span></div>
+  ${bfNoticeHtml(screen===1)}
+  ${banner}
   ${body}
 </section>`}
 document.addEventListener('timeupdate',e=>{if(e.target?.id==='bf-media'&&bf){bf.clock=Math.round(Number(e.target.currentTime)||0);const read=$('#bf-clock-read');if(read)read.textContent=`@ ${hms(bf.clock)}`}},true);

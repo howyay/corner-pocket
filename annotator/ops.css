@@ -1214,3 +1214,12 @@ html,body{-webkit-font-smoothing:antialiased}
 /* Round 17, owner item 3: the row's binding chip and the face-only state. */
 #ops-shell .vs-tag.bound{color:var(--brass-hi);border-color:var(--brass)}
 #ops-shell .vs-tag.face{color:var(--ink-dim)}
+/* Round 17, owner item 4: one line that says how far the ingestion has got, wherever it is read. */
+#ops-shell .ingest-line{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin:0;padding:var(--sp-2) 0;font:var(--fs-sm) var(--mono);color:var(--ink-mid)}
+#ops-shell .ingest-dot{width:8px;height:8px;border-radius:50%;background:var(--brass);flex:none;animation:ingest-pulse 1.4s ease-in-out infinite}
+@keyframes ingest-pulse{0%,100%{opacity:.35}50%{opacity:1}}
+#ops-shell .ingest-line button{min-height:30px}
+#ops-shell .bf-banner{margin:var(--sp-3) 0;padding:var(--sp-3);border:1px solid var(--line);border-left:3px solid var(--brass);background:var(--panel2)}
+#ops-shell .bf-banner.err{border-left-color:var(--err, #c2503c)}
+#ops-shell .bf-banner .row{margin-top:var(--sp-2)}
+@media(prefers-reduced-motion:reduce){#ops-shell .ingest-dot{animation:none}}

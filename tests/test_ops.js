@@ -2185,53 +2185,32 @@ test('round 10 / owner item 3: the backfill import posts the broadcast, never a 
   assert.ok(/fetch\(`\/api\/vods\/estimate\?vod=\$\{encodeURIComponent\(id\)\}`/.test(source), 'and the estimate asks the same question the download will');
   assert.ok(!/bf\.startText|bf\.lengthText|id="bf-start"|id="bf-length"/.test(source), 'the fields that asked for the bounds are gone, not hidden');
 });
-test('the backfill is five human steps, and the page never pretends to detect anything (7.1)', () => {
+test('the backfill is three human screens, and the page never pretends to detect anything (7.1)', () => {
   const h = harness();
-  h.evaluate(`render=()=>{};lang='en';bf=bfFresh();
-    bf.recent=[{channel:'examplechannel',error:null,vods:[{id:'1234567890',title:'Monday night',created_at:'2026-09-02T04:00:00Z',length_s:7200}]}]`);
-  const step = n => h.evaluate(`t('bfStep').replace('{n}',${n})`);
-  const pick = h.evaluate('bfScreen()');
-  assert.ok(pick.includes('data-step="pick"') && pick.includes(step(1)), 'step 1: pick a broadcast');
-  assert.ok(pick.includes('data-length="7200"') && pick.includes('data-title="Monday night"') && pick.includes(h.evaluate("esc(t('bfPick'))")), 'the picker carries the length, so the estimate is about this broadcast');
-  assert.ok(pick.includes('data-action="bf-exit"'), 'leaving is always one click');
-  h.evaluate("bfPickVod('1234567890',7200,'Monday night')");
-  const verify = h.evaluate('bfScreen()');
-  assert.ok(verify.includes('data-step="verify"') && verify.includes(step(2)), 'step 2: estimate the download');
-  assert.ok(!verify.includes('id="bf-start"') && !verify.includes('id="bf-length"'), 'round 10, item 3: no time bounds to type - the download is the whole broadcast');
-  h.evaluate(`bf.startS=452;bf.endS=1690;bf.datasetId='tw-1234567890-452-1690';
-    bf.estimate={estimate_bytes:1200000000,disk:{free_bytes:84000000000,needed_bytes:1500000000,ok:true},already_imported:false}`);
-  const estimate = h.evaluate('bfScreen()');
-  assert.ok(/<p class="bf-estimate" role="status">/.test(estimate), 'the estimate is a stated fact');
-  assert.ok(estimate.includes('1.2 GB') && estimate.includes('84.0 GB'), 'the size and the free space, in real units');
-  assert.ok(estimate.includes('data-action="bf-start-import"') && estimate.includes('data-action="bf-choose-other"'), 'the import is one explicit click, never automatic');
-  h.evaluate("bf.step='importing';bf.job={percent:42,eta_s:300,rate_mb_s:12}");
-  const importing = h.evaluate('bfScreen()');
-  assert.ok(importing.includes('data-step="importing"') && importing.includes(step(3)), 'step 3: the download is visible');
-  assert.ok(importing.includes('role="progressbar"') && importing.includes('aria-valuenow="42"'), 'with a real percentage rather than a spinner');
-  assert.ok(importing.includes('data-action="bf-poll"'), 'and it can be left and come back to');
-  h.evaluate("bf.step='dataset';bf.datasetTitle='Monday night'");
-  const dataset = h.evaluate('bfScreen()');
-  assert.ok(dataset.includes('data-step="dataset"') && dataset.includes(step(4)), 'step 4: which night was this?');
-  assert.ok(dataset.includes(h.evaluate("esc(t('bfWhichNight'))")), 'the page asks the operator');
-  assert.ok(dataset.includes('id="bf-night-name"') && dataset.includes('id="bf-night-format"') && dataset.includes('id="bf-night-race"'), 'the name, the format and the race are typed by a person');
-  h.evaluate('bfStartMarking()');
-  const marking = h.evaluate('bfScreen()');
-  assert.ok(marking.includes('data-step="marking"'), 'step 4 continues: marking');
-  assert.ok(marking.includes('id="bf-media"') && marking.includes('/media/tw-1234567890-452-1690/video'), 'the video on the page is the range that was imported');
-  assert.ok(marking.includes(h.evaluate("esc(t('bfManual'))")), 'and the page says every boundary is marked by hand');
-  h.evaluate('bf.clock=452;bfMarkStart();bf.clock=780;bfMarkEnd();bf.clock=1690;bfMarkStart();bf.clock=2000;bfMarkEnd()');
-  const marked = h.evaluate('bfScreen()');
-  assert.ok(marked.includes(h.evaluate("esc(t('bfMarked').replace('{n}',2))")), 'two matches marked');
-  assert.equal([...marked.matchAll(/<li[ >]/g)].length, 2, 'one row per mark');
-  assert.ok(marked.includes('data-action="bf-unmark" data-id="0"'), 'a wrong mark can be dropped');
-  assert.ok(marked.includes('data-action="bf-to-review"'), 'and the next step is explicit');
-  h.evaluate('bfToReview()');
-  const review = h.evaluate('bfScreen()');
-  assert.ok(review.includes('data-step="review"') && review.includes(step(5)), 'step 5: confirm every result');
-  assert.ok(review.includes(h.evaluate("esc(t('bfHonest'))")), 'the page says nothing here was detected automatically');
-  assert.ok(review.includes('id="bf-review-form"') && review.includes('data-action="bf-confirm" data-id="0"'), 'one row per marked match, each waiting for a person');
-  assert.ok(review.includes(h.evaluate("esc(t('bfUnconfirmed').replace('{n}',2))")), 'and it says how many are still unconfirmed');
-  assert.ok(review.includes('data-action="bf-to-marking"'), 'going back to the marks is one click');
+  h.evaluate('BF_SCREENS===3||(()=>{throw new Error("three screens")})()');
+  const groups = JSON.parse(h.evaluate('JSON.stringify(BF_STEPS)'));
+  assert.equal(groups.pick, 1, 'choosing a broadcast is screen 1');
+  assert.equal(groups.verify, 1, 'and verifying it is the same screen');
+  assert.equal(groups.importing, 2, 'importing is screen 2');
+  assert.deepEqual([groups.dataset, groups.marking], [2, 2], 'with the night fields and the marking canvas on it');
+  assert.equal(groups.review, 3, 'confirming is screen 3');
+  assert.equal(groups.done, 3, 'and a finished night is a banner on it');
+  assert.deepEqual([groups.failed, groups.rejected], [1, 1], 'a failure sends the operator back to the choice, as a banner');
+  for (const step of ['pick', 'verify', 'importing', 'dataset', 'marking', 'review', 'done', 'failed', 'rejected']) {
+    h.evaluate(`bf={step:'${step}'}`);
+    const html = h.evaluate('bfScreen()');
+    assert.ok(/data-vs-role="bf-step">[^<]*\d\/3</.test(html), `${step}: the header counts three screens, not eight`);
+    assert.ok(!/>bf[A-Z]/.test(html), `${step}: no raw word key renders`);
+  }
+  h.evaluate("bf={step:'done'}");
+  assert.ok(/class="bf-banner done"/.test(h.evaluate('bfScreen()')), 'done is a banner, not a page of its own');
+  h.evaluate("bf={step:'failed',detail:'the disk is full'}");
+  const failed = h.evaluate('bfScreen()');
+  assert.ok(/class="bf-banner err"/.test(failed) && failed.includes('the disk is full'), 'and a failure says why, on the screen it happened on');
+  h.evaluate("bf={step:'importing',job:{percent:42,rate_mb_s:3.1,eta_s:95},vod:{title:'261001'}}");
+  const line = h.evaluate('bfProgressLine()');
+  assert.ok(line.includes('42%') && line.includes('3.1 MB/s') && line.includes('261001'), 'the one progress line carries the numbers and the name');
+  assert.ok(h.evaluate("bfProgressLine().includes('data-ingest=\"backfill\"')"), 'under a stable hook, so History can render it too');
 });
 test('a backfilled night cannot be committed without a person confirming every row, and the payload says so (7.0/7.5)', async () => {
   const h = harness();
@@ -4089,4 +4068,21 @@ test('round 17 / owner item 3: the identity frame reaches the overlay and the tr
     'each track row shows who the pipeline says it is, in both languages');
   assert.ok(engine.includes('const face = per.face_bbox && per.face_bbox.length === 4'),
     'the face box still rides inside the one person box');
+});
+test('round 17 / owner item 4: History shows the ingestion progress in one place', () => {
+  const h = harness();
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  h.evaluate("bf=null;data.history=[];data.events=[]");
+  assert.ok(h.evaluate("recordsScreen().includes('id=\"ingest-line\"')"),
+    'History carries one line for the ingestion, beside the download line');
+  assert.equal(h.evaluate('bfProgressLine()'), '', 'and it is empty when nothing is running: no permanent chrome');
+  h.evaluate("bf={step:'importing',job:{percent:42,rate_mb_s:3.1,eta_s:95},vod:{title:'261001'}}");
+  const line = h.evaluate('bfProgressLine()');
+  assert.ok(line.includes('42%') && line.includes('3.1 MB/s') && line.includes('261001'),
+    'while a job runs it carries the numbers and the name the wizard shows');
+  assert.ok(line.includes('data-action="backfill-open"'),
+    'and its button uses the action that already opens the wizard, not a second one');
+  assert.ok(h.evaluate("recordsScreen().includes('42%')"), 'so History shows it without opening the wizard');
+  assert.ok(css.includes('.ingest-line') && css.includes('.bf-banner.err'), 'both have their own styles');
+  assert.ok(css.includes('prefers-reduced-motion:reduce') , 'and the pulse is off for reduced motion');
 });
