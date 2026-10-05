@@ -4224,3 +4224,11 @@ test('round 21 / owner item 3: a late arrival joins as their own team', () => {
   assert.ok(html.includes('>Ann<') && !html.includes('>Bo<'), 'the roster suggests the active regulars only');
   assert.ok(html.includes('data-action="late-add"'), 'and one button to add them');
 });
+test('round 22 / owner item 3: a chosen point on the scrubber survives the repaint', () => {
+  const vs = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  // The console builds the input fresh on every render, so a refused seek used to reset the thumb to 0.
+  assert.ok(/if \(!engine\(\)\.seek\(want\)\) \{ render\(\); const scrub = \$\('#vs-scrub'\); if \(scrub\) scrub\.value = String\(want\); \}/.test(vs),
+    'the chosen value is restored after the repaint');
+  assert.ok(vs.includes("const scrub = $('#vs-scrub');"), 'and the adapter still owns the input');
+  assert.ok(!/if \(!engine\(\)\.seek\([^)]*\)\) render\(\);/.test(vs), 'the bare render-on-refusal is gone');
+});

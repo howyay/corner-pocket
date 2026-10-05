@@ -1417,7 +1417,14 @@ function onChange(event) {
   if (node && (FIELD_ACTIONS.includes(node.dataset.vsAction) || node.dataset.vsAction === 'live-detector' || node.dataset.vsAction === 'detector')) { act(node.dataset.vsAction, node.value, node); return; }
   if (event.target.id === 'vs-window') { engine().setWindow(event.target.value); return; }
   if (event.target.id === 'vs-frame-index') { if (!engine().seek(Number(event.target.value))) render(); return; }
-  if (event.target.id === 'vs-scrub') { if (!engine().seek(Number(event.target.value))) render(); return; }
+  if (event.target.id === 'vs-scrub') {
+    // R22 item 3: a seek that the engine refuses used to end in render(), and the render rebuilds the
+    // input from the console's markup - measured: the thumb snapped back to 0, so a chosen point could
+    // not be kept. The chosen value is put back after the repaint.
+    const want = Number(event.target.value);
+    if (!engine().seek(want)) { render(); const scrub = $('#vs-scrub'); if (scrub) scrub.value = String(want); }
+    return;
+  }
 }
 function attach(options) {
   opts = options; root = options.mount;
