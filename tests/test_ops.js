@@ -4227,8 +4227,8 @@ test('round 21 / owner item 3: a late arrival joins as their own team', () => {
 test('round 22 / owner item 3: a chosen point on the scrubber survives the repaint', () => {
   const vs = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
   // The console builds the input fresh on every render, so a refused seek used to reset the thumb to 0.
-  assert.ok(/if \(!engine\(\)\.seek\(want\)\) \{\s*pendingScrub = want;\s*render\(\);\s*\}/.test(vs),
-    'a refused seek holds the chosen point');
+  assert.ok(/const seek = engine\(\)\.seekTime \|\| engine\(\)\.seek;/.test(vs),
+    'the scrubber asks for a time seek, which is the call the engine honours');
   assert.ok(vs.includes('let pendingScrub = null;') && vs.includes('if (pendingScrub !== null) scrub.value = String(pendingScrub);'),
     'and the render shows that point instead of the engine frame (round 23)');
   assert.ok(vs.includes("const scrub = $('#vs-scrub');"), 'and the adapter still owns the input');

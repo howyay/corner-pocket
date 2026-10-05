@@ -522,9 +522,11 @@ test('the adapter localizes engine state, keeps one scrub range and one action f
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
   // 1. the scrub range is driven like the frame field, not left at max=0
-  assert.ok(/scrub\.getAttribute\('max'\) !== max/.test(adapter), 'the scrub range must publish frame_count - 1');
+  // R24 item 1: the range is a time control, so it publishes the clip's duration in seconds.
+  assert.ok(/scrub\.getAttribute\('max'\) !== max/.test(adapter) && adapter.includes('Number(s.frame.duration) || 0'),
+    'the scrub range must publish the clip duration');
   assert.ok(adapter.includes("scrub.setAttribute('max', max)"));
-  assert.ok(adapter.includes("scrub.setAttribute('step', '1')"));
+  assert.ok(adapter.includes("scrub.setAttribute('step', '0.1')"));
   // 2. engine-built strings render in the active language
   assert.ok(adapter.includes('engineText(s.notice.text)'), 'notices localize at render');
   // the reserved footer height is measured, never hardcoded

@@ -1241,11 +1241,11 @@ function render() {
   if (frameInput && document.activeElement !== frameInput) frameInput.value = s.frame.index;
   const scrub = $('#vs-scrub');
   if (scrub) {
-    const max = String(Math.max(0, s.frame.count - 1));
+    const max = String(Math.max(0, Number(s.frame.duration) || 0));
     if (scrub.getAttribute('max') !== max) scrub.setAttribute('max', max);
-    if (scrub.getAttribute('step') !== '1') scrub.setAttribute('step', '1');
+    if (scrub.getAttribute('step') !== '0.1') scrub.setAttribute('step', '0.1');
     if (pendingScrub !== null) scrub.value = String(pendingScrub);
-    else if (document.activeElement !== scrub) scrub.value = s.frame.index;
+    else if (document.activeElement !== scrub) scrub.value = String(Math.max(0, Number(s.frame.t) || 0));
   }
   const marksSig = `${s.dataset}|${s.frame.duration}|${s.events.items.map(e => `${e.id}:${e.t}:${e.type}`).join(',')}|${s.playback.on ? 1 : 0}|${s.playback.event || ''}|${s.playback.from}|${s.playback.to}|${s.playback.loops}|${s.playback.playing ? 1 : 0}`;
   const marks = $('#vs-marks');
@@ -1433,12 +1433,17 @@ function onChange(event) {
     // R22 item 3: a seek that the engine refuses used to end in render(), and the render rebuilds the
     // input from the console's markup - measured: the thumb snapped back to 0, so a chosen point could
     // not be kept. The chosen value is put back after the repaint.
+    // R24 item 1, measured: the engine's frame-based seek() returns false as soon as one load is in
+    // flight, but its seekTime() - the other exported call - lands: seekTime(900) on a 30 fps clip put
+    // the stage on frame 26994, where 900 x 30 = 27000. The scrubber is a time control now, so the drag
+    // says how many seconds in, and the engine seeks by time.
     const want = Number(event.target.value);
     // R23 item 2, measured: the engine refuses a seek while a mark is open or a frame is still decoding
     // (canLeave), the render then writes the engine's unchanged frame back, and the thumb jumps to the
     // start - 'I drag it to a random point, click play, and I get reset'. The chosen point is held, and
     // The chosen point is held until the engine can honour it.
-    if (!engine().seek(want)) {
+    const seek = engine().seekTime || engine().seek;
+    if (!seek.call(engine(), want)) {
       pendingScrub = want;
       render();
     } else {
