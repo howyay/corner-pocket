@@ -4086,3 +4086,31 @@ test('round 17 / owner item 4: History shows the ingestion progress in one place
   assert.ok(css.includes('.ingest-line') && css.includes('.bf-banner.err'), 'both have their own styles');
   assert.ok(css.includes('prefers-reduced-motion:reduce') , 'and the pulse is off for reduced motion');
 });
+test('round 18 / owner items 1-6: the workbench loses its noise and keeps its exits', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  const shell = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(!adapter.includes('class="vs-keys"'), 'the keyboard-hint line is gone: it was noise beside the stage');
+  assert.ok(!adapter.includes('data-vs-action="run-inference"') && !adapter.includes("case 'run-inference'"),
+    'and so is the manual inference button: a pause is the signal now');
+  assert.ok(adapter.includes("if (gated) return '';"), 'a layer chip that cannot act is not rendered at all');
+  assert.ok(!adapter.includes("t('coldStartHint')"), 'the empty-state essay is gone; the stage already says it in one line');
+  assert.ok(adapter.includes('s.persons.track === null || s.persons.track === undefined ? \'\' : identityHTML(s)'),
+    'the label box opens only while a track is selected');
+  assert.ok(!/vs-item vs-track[\s\S]{0,400}<select/.test(adapter),
+    'and the sidebar row is a selector again: no roster select, no guest field, no Clear');
+  assert.ok(adapter.includes('data-vs-role="track-identity"'), 'the row still names who the pipeline thinks the track is');
+  assert.ok(shell.includes('function whyCannotNavigate()'), 'and a refused tab change explains itself');
+  assert.ok(shell.includes("if(!canNavigate()){message(whyCannotNavigate(),true);return false}"), 'instead of doing nothing');
+  assert.ok(shell.includes("setAttribute('data-review',reviewId&&!bf?'1':'0')"), 'the shell marks the review layout');
+  assert.ok(css.includes('#ops-shell[data-review="1"]{height:100dvh;overflow:hidden}'),
+    'so the page fits the viewport and the panels scroll inside it');
+  const h = harness();
+  h.evaluate('busy=true');
+  h.evaluate("messages=[];message=(text,error)=>messages.push([text,!!error])");
+  assert.equal(h.evaluate("go('players')"), false, 'a navigation that cannot proceed is refused');
+  const said = JSON.parse(h.evaluate('JSON.stringify(messages)'));
+  assert.equal(said.length, 1, 'and it is not silent');
+  assert.ok(said[0][1] === true, 'the operator is told, as a warning');
+  h.evaluate('busy=false');
+});

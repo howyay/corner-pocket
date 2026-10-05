@@ -893,7 +893,7 @@ test('a cold frame can start a correction without a devtools call', () => {
     dirty:false, notice:{text:''}, receipts:[], persons:{tracks:[], track:null, windows:[], win:'', status:''}
   };
   const html = stage.inspectorHTML(base);
-  for (const action of ['data-vs-action="add-polygon"', 'data-vs-action="run-inference"', 'data-vs-value="draw"']) assert.ok(html.includes(action), `a cold frame must offer ${action}`);
+  for (const action of ['data-vs-action="add-polygon"', 'data-vs-value="draw"']) assert.ok(html.includes(action), `a cold frame must offer ${action}`);
   assert.ok(html.includes('data-vs-action="tool"') && html.includes('data-vs-action="clear-polygon"'));
   assert.ok(!html.includes('data-vs-action="save-corrections"'), 'an untouched frame has nothing to save');
   assert.ok(stage.inspectorHTML({...base, dirty:true}).includes('data-vs-action="save-corrections"'), 'unsaved edits expose the existing save action');
@@ -901,13 +901,17 @@ test('a cold frame can start a correction without a devtools call', () => {
   // the action footer for that block), and the person block stays identity-only.
   const box = stage.inspectorHTML({...base, selection:{kind:'box', box:0}});
   assert.ok(box.includes('data-vs-action="add-polygon"') && box.includes('data-vs-action="delete-box"'));
-  assert.ok(adapter.includes('data-vs-action="run-inference"'), 'the box footer keeps run-inference');
+  // Round 18, owner item 1: inference runs itself when the picture stops, so the manual button is gone
+  // from every surface, and the frame tools do not carry it.
+  assert.ok(!adapter.includes('data-vs-action="run-inference"'), 'no surface offers a manual inference run');
+  assert.ok(adapter.includes('function scheduleAutoInference') || fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8').includes('function scheduleAutoInference'),
+    'because the engine schedules it on pause');
   const person = stage.inspectorHTML({...base, selection:{kind:'person', track:3, person:{cluster_id:null}}});
   assert.ok(person.includes('Identity') && !person.includes('data-vs-action="add-polygon"'), 'the person block stays the identity block');
   assert.ok(!person.includes('data-vs-value="A"') && !person.includes('data-vs-value="B"'), 'the person block no longer offers the removed A/B seeds');
   assert.ok(adapter.includes('case \'identity-save\'') && adapter.includes('case \'identity-clear\''), 'the surface must act on both identity actions');
   // Every one of these buttons reaches a real engine entry point.
-  for (const action of ['tool','add-polygon','clear-polygon','run-inference','save-corrections']) {
+  for (const action of ['tool','add-polygon','clear-polygon','save-corrections']) {
     assert.ok(adapter.includes(`case '${action}'`), `the surface must act on ${action}`);
   }
   for (const api of ['setTool','addPolygon','clearPolygon','runInference','saveCorrections']) {
@@ -1498,7 +1502,7 @@ test('the source settings open from the Source chip and are no longer the rail e
   assert.ok(none.includes('data-vs-empty="no-selection"'), 'the rail marks its nothing-selected state');
   assert.ok(none.includes('<h3>Nothing selected</h3>') && !none.includes('<h3>Inspector</h3>'), 'and heads it as such, not as the rail itself');
   assert.ok(none.includes('Select a cue, a ball, a person or an anchor to label it.'), 'and says what to select (EN)');
-  assert.ok(none.includes('This frame') && none.includes('data-vs-action="add-polygon"') && none.includes('data-vs-action="run-inference"'), 'the frame tools stay, under their own heading');
+  assert.ok(none.includes('This frame') && none.includes('data-vs-action="add-polygon"') && !none.includes('data-vs-action="run-inference"'), 'the frame tools stay, under their own heading');
   assert.ok(none.indexOf('This frame') > none.indexOf('data-vs-empty="no-selection"'), 'and are separated from the empty-state copy');
   for (const gone of ['data-vs-action="pick-dataset"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-live"',
                       'data-vs-action="detector"', 'id="vs-live-status"', 'data-vs-action="open-sources"', 'Twitch upstream delay']) {
