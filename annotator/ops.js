@@ -1034,7 +1034,7 @@ function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading"
 <div class="vs-grid" id="vs-grid" data-sheet="cues">
 <aside class="vs-rail" id="vs-cues" aria-label="${L('visionCues')}" data-vs-aria="cuesRegion">${loadingLine}</aside>
 <section class="vs-stage" id="vs-stage" aria-label="${L('visionStage')}" data-vs-aria="stageRegion">
-<div class="vs-stagebar"><div class="vs-layers" id="vs-layers"></div><span class="vs-clock" title="${esc(t('shotTimer'))}"><strong class="clock${clockLow(clockLeft())?' low':''}" data-clock>${esc(clockText(clockLeft()))}</strong></span><span class="vs-identity" id="vs-identity"></span></div>
+
 <div class="vs-frame" id="vs-frame"></div>
 </section>
 <aside class="vs-inspector" id="vs-inspector" aria-label="${L('visionInspector')}" data-vs-aria="inspectorRegion"><div class="vs-inspector-scroll" id="vs-inspector-scroll">${loadingLine}</div><div class="vs-inspector-actions" id="vs-inspector-actions"></div></aside>
@@ -1042,6 +1042,8 @@ function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading"
 <div class="vs-sheettabs" role="tablist" aria-label="${L('visionPanels')}" data-vs-aria="sheetTabs"><button type="button" role="tab" aria-selected="true" aria-controls="vs-cues" data-sheet-tab="cues" class="active" data-vs-label="showCues">${L('visionCuesTab')}</button><button type="button" role="tab" aria-selected="false" aria-controls="vs-inspector" data-sheet-tab="inspector" data-vs-label="showInspector">${L('visionInspectorTab')}</button></div>
 <!-- R23 item 1: the layer chips and the source label sit with the scrubber, not above the picture. -->
   <div class="vs-head"><div class="vs-chips" id="vs-chips"></div><div class="row vs-sources">${reviewId?'':`${btn(t('sources'),'sources-open')}${btn(t('stop'),'live-stop')}`}</div></div>
+  <!-- R23 item 1: the layer chips and the source line belong with the frame scrubber. -->
+  <div class="vs-stagebar"><div class="vs-layers" id="vs-layers"></div><span class="vs-clock" title="${esc(t('shotTimer'))}"><strong class="clock${clockLow(clockLeft())?' low':''}" data-clock>${esc(clockText(clockLeft()))}</strong></span><span class="vs-identity" id="vs-identity"></span></div>
   <div class="vs-strip" id="vs-strip">
 <div class="vs-transport">
 <label class="vs-frame-input"><span data-vs-label="frameIndex">${L('visionFrame')}</span><input id="vs-frame-index" type="number" min="0" value="0"></label>
