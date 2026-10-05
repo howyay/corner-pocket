@@ -1259,7 +1259,6 @@ html,body{-webkit-font-smoothing:antialiased}
      Round 19's item 9 moved it to the bar's right edge; this puts it back. The bar's own padding is
      still the compact one. */
   #ops-shell .bar{padding-top:var(--sp-1);padding-bottom:var(--sp-1)}
-  #ops-shell .bar .clockbar{margin:0}
   /* The stage fills the room the bar gave back, and the picture fills the stage. */
   #ops-shell[data-review="1"] .vs-stage{height:100%;align-self:stretch}
   #ops-shell[data-review="1"] .vs-stage img,#ops-shell[data-review="1"] .vs-stage video{max-height:100%;max-width:100%;width:auto;height:auto}
@@ -1299,3 +1298,9 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .card--entrants .entry.row .grow small{display:block}
 #ops-shell .card--entrants .entry.row > button{flex:none}
 #ops-shell .record-legend{font:var(--fs-sm) var(--mono);letter-spacing:.04em}
+
+/* Round 21, owner items 2 and 7: the per-matchup score sits on the card's right edge, so the numbers
+   line up down the tree, and the shot timer keeps the spacing it had before round 19 pinned it. */
+#ops-shell .bracket-card .card-side{justify-content:space-between}
+#ops-shell .bracket-card .card-side > :last-child{margin-left:auto;text-align:right}
+#ops-shell .clockbar{gap:var(--sp-2);row-gap:var(--sp-1);padding-bottom:var(--sp-1)}

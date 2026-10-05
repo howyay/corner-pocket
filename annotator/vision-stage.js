@@ -646,7 +646,9 @@ function railHTML(s) {
   <section class="vs-group${s.focus === 'persons' ? ' focused' : ''}"><header><h3>${esc(t('tracks'))}</h3>${s.persons.windows.length ? `<select id="vs-window">${s.persons.windows.map(w => `<option value="${esc(w.win)}" ${w.win === s.persons.win ? 'selected' : ''}>${esc(w.win)} · ${w.count}</option>`).join('')}</select>` : ''}</header>${tracks}</section>`;
 }
 function layersHTML(s) {
-  const layers = [['cloth','cloth'],['balls','balls'],['persons','persons'],['pockets','pockets'],['anchors','anchors'],['events','events']];
+  // Round 21, owner item 6: the row is the four layers an operator switches while watching. The anchors
+  // and events layers were toggles with nothing to toggle on a live or a recorded picture.
+  const layers = [['cloth','cloth'],['balls','balls'],['persons','persons'],['pockets','pockets']];
   return layers.map(([key, label]) => {
     const gated = key === 'anchors' && s.dataset !== 'vod30';
     // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.

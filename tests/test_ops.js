@@ -511,7 +511,10 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
   assert.ok(card.includes('aria-label="Ann – Bo · On table"'), 'the whole match, with its status word, is the card\u2019s name');
   assert.ok(card.includes('class="row card-head"') && /Table 1/.test(card), 'the header row stays, with the table');
   assert.ok(!/m1/.test(card.replace(/data-(?:id|action|side)="[^"]*"/g, '')), 'and not the machine id: an operator never reads it');
-  assert.ok(/class="table-chip">Table 1</.test(card), 'and the table is a chip on the first line, not a detail behind a hover (owner item 6)');
+  // Round 21, owner item 1: the table stays on the card's first line (its head) and is not repeated
+  // beside a player's name.
+  assert.ok(card.replace(/<[^>]*>/g, ' ').includes('Table 1') && !card.includes('table-chip'),
+    'the table is on the first line, and not beside a player');
   assert.ok(/data-action="forfeit"/.test(card) && !/data-action="absence"/.test(card), 'forfeit stays reachable, attendance does not');
   // Round 20, owner item 7: the card no longer carries an 'open its scoreboard' control.
   assert.ok(!card.includes('card-open') && !card.includes('openTable'), 'the card does not open the board for you');
@@ -2733,8 +2736,11 @@ test('the four venue states decide which cards exist on Tonight, and a state cha
     'round 13, owner item 6: the board is on the timer page, and this tab shows the draw');
   active.evaluate("data.tournament.matches[1].status='live';data.tournament.matches[1].table=1");
   assert.equal(active.evaluate('dirtyComp()'), true, 'a ball on a table is what dirty means');
-  assert.ok(/class="table-chip">Table 1</.test(active.evaluate('tonightScreen()')),
-    'and the draw says which table that group is on');
+    // Round 21, owner item 1: the table belongs to the card's own head, where it already is; beside
+    // player A's name it read like part of their name.
+    const drawn = active.evaluate('tonightScreen()');
+    assert.ok(drawn.replace(/<[^>]*>/g, ' ').includes('Table 1') && !drawn.includes('table-chip'),
+      'the card says which table the group is on, in its own head');
   const done = harness();
   tonightNight(done, 'done');
   assert.equal(done.evaluate('tonightState()'), 'complete');
