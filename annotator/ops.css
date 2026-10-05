@@ -1273,3 +1273,18 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell[data-review="1"] .review-card .review-why{margin:0}
 #ops-shell[data-review="1"] .vision-surface > .vs-chipmeta{margin-top:0}
 #ops-shell[data-review="1"] .vs-chiprow{min-height:30px}
+
+/* Round 19, owner item 8: the label box floats over the video while a track is picked, so the stage
+   keeps the whole picture and the inspector stops holding a column open for a field the operator is
+   using on the picture itself. */
+@media(min-width:751px){
+  #ops-shell .vs-grid{position:relative}
+  /* left clears the rail: the overlay is anchored to the grid, and the stage starts after the rail. */
+  #ops-shell .vs-label-overlay{position:absolute;left:calc(280px + var(--sp-3));bottom:var(--sp-3);z-index:7;width:min(520px,46%);max-height:38dvh;overflow:auto;background:var(--panel);border:1px solid var(--brass);box-shadow:0 10px 30px rgba(0,0,0,.5);padding:var(--sp-2) var(--sp-3);display:grid;gap:var(--sp-2)}
+  #ops-shell .vs-label-overlay[hidden]{display:none}
+  #ops-shell .vs-inspector.label-moved .vs-labelblock{display:none}
+  /* The base three columns stay as they are. Measured: overriding them for a narrower label column took
+     more width off the stage than it gave back (872 -> 768), so the overlay floats over the picture and
+     the picture keeps every pixel it had. */
+  #ops-shell[data-label-overlay="1"] .vs-grid{grid-template-columns:280px minmax(0,1fr) 320px}
+}

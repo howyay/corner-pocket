@@ -1055,6 +1055,51 @@ function enrolBlock(s) {
   }
   return `<div class="vs-block vs-enrol"><h4>${esc(t('enrolTitle'))}</h4>${start}${body}<p class="vs-note">${esc(t('enrolHint'))}</p></div>`;
 }
+// Round 19, owner item 8: the label box is one piece of markup with two homes. It sits in the
+// inspector when the label column has room, and as an overlay on the video when a track is picked -
+// which is the moment the operator wants the picture at its largest and the field at hand.
+// Round 19, owner item 8: while a track is picked, the label box floats over the video, so the picture
+// keeps the whole stage and the field sits where the operator is looking. The overlay element is created
+// here if the surface does not provide one, which keeps the stage markup the engine's business.
+function paintLabelOverlay(s) {
+  if (typeof document === 'undefined') return;
+  let host = document.querySelector('#vs-label-overlay');
+  if (!host) {
+    const grid = document.querySelector('.vs-grid');
+    if (!grid) return;
+    host = document.createElement('div');
+    host.id = 'vs-label-overlay';
+    host.className = 'vs-label-overlay';
+    host.setAttribute('role', 'group');
+    grid.appendChild(host);
+  }
+  const html = labelBoxHTML(s);
+  if (host.innerHTML !== html) host.innerHTML = html;
+  host.hidden = !html;
+  const inspector = document.querySelector('#vs-inspector');
+  if (inspector && inspector.classList) inspector.classList.toggle('label-moved', !!html);
+  // The shell narrows the label column while the overlay is up, so the stage keeps the width.
+  const shell = document.querySelector('#ops-shell');
+  if (shell && shell.setAttribute) shell.setAttribute('data-label-overlay', html ? '1' : '0');
+}
+function labelBoxHTML(s) {
+  // Round 19, owner item 8: one piece of markup with two homes - the inspector when the label column
+  // has room, and an overlay on the video the moment a track is picked, when the picture matters most.
+  const pickedPerson = s.selection?.kind === 'person' || (s.persons.track !== null && s.persons.track !== undefined);
+  if (!pickedPerson) return '';
+  const facts = bindingFacts(s);
+  const roster = (opts?.regulars?.() || []);
+  const picked = facts.identity ? facts.identity.id : '';
+  const guestValue = facts.guest ? facts.label.raw : (guestDraft && String(guestDraft.track) === String(s.persons.track) ? guestDraft.value : '');
+  const options = [`<option value=""${picked ? '' : ' selected'}>${esc(t('guestOption'))}</option>`]
+    .concat(roster.map(row => `<option value="${esc(row.id)}"${String(row.id) === picked ? ' selected' : ''}>${esc(row.name)}${row.rating != null ? ` · ${esc(row.rating)}` : ''}${row.statusText && row.status && row.status !== 'Active' ? ` · ${esc(row.statusText)}` : ''}</option>`));
+  const guestOff = !!picked;
+  return `  <div class="vs-block vs-labelblock">
+    <label class="vs-field">${esc(t('whichRegular'))}<select data-vs-action="regular" ${roster.length ? '' : 'disabled'}>${options.join('')}</select></label>
+    <label class="vs-field${guestOff ? ' vs-guest-off' : ''}" data-vs-role="guest-field">${esc(t('guestName'))}<input type="text" data-vs-action="guest-name" maxlength="60" value="${esc(guestValue)}" placeholder="${esc(t('guestPlaceholder'))}" ${guestOff ? 'disabled' : ''}></label>
+    <p class="vs-note" data-vs-role="bind-hint">${esc(bindHint(facts, picked))}</p>
+  </div>`;
+}
 function personBlock(s) {
   const facts = bindingFacts(s);
   const roster = opts.regulars() || [];
@@ -1065,12 +1110,7 @@ function personBlock(s) {
   const guestOff = !!picked;
   return `<h3>${esc(t('identity'))}</h3>
   ${bindingLine(s)}
-  ${(s.selection?.kind === 'person' || (s.persons.track !== null && s.persons.track !== undefined)) ? `
-  <div class="vs-block vs-labelblock">
-    <label class="vs-field">${esc(t('whichRegular'))}<select data-vs-action="regular" ${roster.length ? '' : 'disabled'}>${options.join('')}</select></label>
-    <label class="vs-field${guestOff ? ' vs-guest-off' : ''}" data-vs-role="guest-field">${esc(t('guestName'))}<input type="text" data-vs-action="guest-name" maxlength="60" value="${esc(guestValue)}" placeholder="${esc(t('guestPlaceholder'))}" ${guestOff ? 'disabled' : ''}></label>
-    <p class="vs-note" data-vs-role="bind-hint">${esc(bindHint(facts, picked))}</p>
-  </div>` : ''}
+  ${labelBoxHTML(s)}
   ${enrolBlock(s)}
   <div class="vs-block vs-quiet"><div class="vs-row"><button data-vs-action="seed" data-vs-value="ignore">${esc(t('notAPlayer'))}</button></div>
     <p class="vs-note">${esc(t('ignoreHint'))}</p></div>
@@ -1188,7 +1228,8 @@ function render() {
   // belong in the signature: a save must repaint the block that saved it.
   const insSig = `${s.selection.kind}|${s.selection.event?.id || ''}|${s.selection.crop?.file || ''}|${s.selection.crop?.label ?? ''}|${s.selection.track ?? ''}|${s.selection.person?.cluster_id ?? ''}|${s.selection.person?.player_id ?? ''}|${s.selection.person?.bound_evidence?.source ?? ''}|${(s.persons.tracks || []).find(x => String(x.id) === String(s.persons.track))?.seed ?? ''}|${s.enroll?.status || ''}|${s.enroll?.payload?.token || ''}|${s.enroll?.payload?.reason || ''}|${s.enroll?.elapsed_ms == null ? '' : Math.round(s.enroll.elapsed_ms / 1000)}|${s.selection.anchor ?? ''}|${s.selection.box ?? ''}|${s.corrections.tool}|${s.corrections.boxLabel || ''}|${s.corrections.newBoxLabel || ''}|${s.corrections.inferStatus}|${s.corrections.result}|${s.corrections.manualBoxes ?? ''}/${s.corrections.modelBoxes ?? ''}|${s.persons.status}|${s.live.state}|${s.live.error || ''}|${s.live.attempt?.at || ''}|${s.live.detectors.join(',')}|${s.notice.text}|${s.busy}|${s.dataset}|${s.source.kind}|${s.source.channel || ''}|${s.live.source?.channel || ''}|${(s.receipts || []).map(r => `${r.key}:${r.at}`).join(',')}|${opts.lang}`;
   if (insSig !== sig.inspector) {
-    const body = $('#vs-inspector-scroll'), actions = $('#vs-inspector-actions');
+    paintLabelOverlay(s);
+  const body = $('#vs-inspector-scroll'), actions = $('#vs-inspector-actions');
     if (body) body.innerHTML = inspectorHTML(s);
     if (actions) actions.innerHTML = `<div class="vs-row">${actionsHTML(s)}</div>`;
     sig.inspector = insSig;

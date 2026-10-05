@@ -4115,7 +4115,7 @@ test('round 18 / owner items 1-6, read exactly: the red boxes go, the rest stays
   assert.ok(adapter.includes("const gated = key === 'anchors' && s.dataset !== 'vod30';") && !adapter.includes("if (gated) return '';"),
     'everything boxed green stays: the anchors chip is a control, drawn disabled where it cannot act');
   assert.ok(adapter.includes("t('coldStartHint')"), 'and the empty-state guidance is still there');
-  assert.ok(/\$\{\(s\.selection\?\.kind === 'person' \|\| \(s\.persons\.track !== null && s\.persons\.track !== undefined\)\) \? `/.test(adapter),
+  assert.ok(/const pickedPerson = s\.selection\?\.kind === 'person' \|\| \(s\.persons\.track !== null && s\.persons\.track !== undefined\);\n  if \(!pickedPerson\) return '';/.test(adapter),
     'order 2 read exactly: the label box opens for a picked person, by row or on the stage, and is closed otherwise');
   assert.ok(adapter.includes('enrolBlock(s)'), 'while the identity block and its evidence stay');
   assert.ok(!/vs-item vs-track[\s\S]{0,400}<select/.test(adapter), 'order 4: no roster select in a sidebar row');
@@ -4142,4 +4142,18 @@ test('round 19 / owner item 9: the bar is one row, so the picture starts higher'
     'with the picture filling the stage');
   assert.ok(/ops\.css\?v=vision-stage-\d+/.test(html) && /app\.css\?v=vision-stage-\d+/.test(html),
     'both stylesheets are version-tagged, so a CSS change is never read from the browser cache');
+});
+test('round 19 / owner item 8: the label box floats over the video while a track is picked', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(adapter.includes('function paintLabelOverlay(s)') && adapter.includes("host.id = 'vs-label-overlay'"),
+    'one function owns the overlay, and it creates the element when the surface has none');
+  assert.ok(adapter.includes("inspector.classList.toggle('label-moved', !!html)"),
+    'the inspector stops showing its own copy while the overlay is up');
+  assert.ok(adapter.includes('${labelBoxHTML(s)}'), 'and both homes render the same markup, not two versions');
+  assert.ok(/\.vs-label-overlay\{position:absolute;left:calc\(280px \+ var\(--sp-3\)\)/.test(css),
+    'the box is anchored over the stage, clear of the rail');
+  assert.ok(css.includes('.vs-inspector.label-moved .vs-labelblock{display:none}'), 'so no second copy is visible');
+  assert.ok(/#ops-shell\[data-label-overlay="1"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\) 320px\}/.test(css),
+    'and the stage keeps the width it had: narrowing the label column cost more than it gave');
 });
