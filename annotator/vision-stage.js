@@ -1373,7 +1373,15 @@ function act(action, value, node) {
     case 'save-corrections': target.saveCorrections(node); break;
     case 'step': target.stepFrame(num); break;
     case 'freeze': target.freeze(); break;
-    case 'play': target.setPlaying(!s.frame.playing); break;
+    case 'play': {
+      // R22 item 3, measured: pressing play after a seek put the position back to 30 - the replay starts
+      // at its own beginning. The point the operator chose is re-applied once playback starts, so a
+      // chosen moment can be watched from.
+      const on = !s.frame.playing;
+      const resume = Number($('#vs-scrub')?.value || 0);
+      target.setPlaying(on);
+      if (on && resume > 0 && target.seek) target.seek(resume);
+    }; break;
     case 'deselect': target.clearSelection(); break;
     case 'chat': opts.toggleChat(); break;
     case 'close-popover': target.clearSelection(); break;

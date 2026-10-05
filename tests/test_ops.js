@@ -4232,3 +4232,12 @@ test('round 22 / owner item 3: a chosen point on the scrubber survives the repai
   assert.ok(vs.includes("const scrub = $('#vs-scrub');"), 'and the adapter still owns the input');
   assert.ok(!/if \(!engine\(\)\.seek\([^)]*\)\) render\(\);/.test(vs), 'the bare render-on-refusal is gone');
 });
+test('round 22 / owner item 3: play resumes from the point the operator chose', () => {
+  const vs = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  // Measured before: a seek to 172740 followed by play put the scrubber back to 30.
+  assert.ok(/const resume = Number\(\$\('#vs-scrub'\)\?\.value \|\| 0\);/.test(vs),
+    'the chosen point is read from the scrubber');
+  assert.ok(/if \(on && resume > 0 && target\.seek\) target\.seek\(resume\);/.test(vs),
+    'and re-applied once playback starts');
+  assert.ok(vs.includes("target.setPlaying(on);"), 'the play toggle still goes through the engine');
+});
