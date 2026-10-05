@@ -2912,3 +2912,36 @@ Matching across two id spaces by box overlap would guess, so it is not done.
 select, the guest field and Clear — because a form control cannot live inside a `<button>`, each row is a
 `div` whose select action is its own button, and a control inside a row selects that row's track first.
 Verified live: 3 tracks → 3 rows × (select, input, Clear).
+
+## §32 — Round 17, items ① and ④: the constraint reaches the live stage, the wizard loses five screens (2026-10-04)
+
+**The constraint now speaks from the live pipeline.** `annotator/pipeline_stages.py`'s `TableStage` — the
+stage the running processor uses, which prefers the saved segment reference and otherwise measures every
+`measure_every_n` frames — checks the polygon it is about to publish with `src/playfield.py` and adds
+`table_playfield` to the result and to `evidence()`: `{ok, reasons, best_parallel_deg, aspect}`. A detection
+is never thrown away and a constraint can never stop a frame (the check is wrapped, and a polygon that is not
+a quad answers `None`). Four cases in `tests/test_live_processing_stages.py` hold it: a venue-shaped polygon
+passes, a square claim is refused with `aspect-too-square`, an empty or non-quad polygon answers without an
+exception, and the verdict travels in the stage evidence (`22 tests OK`).
+
+**Scored with the eval.** `PYTHONPATH=. .venv/bin/python src/eval_table_detect.py --detector naive
+--frames-vod30 6 --frames-highlight 3` ran in 2.4 s and wrote `out/table-detect-eval/naive.{json,txt}`:
+`vod30` vs `app-anchors@70.0s` → median **86.86 px**, p90 **92.62 px**, `accept@40` 0.0%; `highlight` vs
+`fixed-corners` → median **43.52 px**, p90 **68.55 px**, `accept@40` 50.0%. Read this as the no-regression
+baseline it is: the constraint labels and penalises a quad, it does not move the naive detector's corners, so
+these numbers are the same before and after. Making the verdict *steer* the candidate choice is a detector
+change with its own measurement, and it is the next step rather than a claim here.
+
+**The backfill is three screens.** The wizard kept eight states and showed eight pages; it still keeps every
+state, and now shows three screens: **① 选片** (choosing a broadcast and verifying it — the verification panel
+appears as soon as one is chosen), **② 导入并标注** (the import's progress is a header over the marking
+canvas, with the night's own fields above it), **③ 确认** (done, failed and rejected are banners on the screen
+they land on, with the reason and the resolving action beside them). Every panel is guarded by the state it
+needs, because one screen now carries up to three of them. Measured in the browser: opening the wizard from
+History renders **"Step 1/3"**, `data-screen="1"`, `data-step="pick"`, and **no raw word key** appears on the
+page.
+
+**One line for the ingestion.** `bfProgressLine()` renders the running job's percent, rate, remaining time
+and the broadcast's name, and History carries it in `#ingest-line` beside the download line, so nobody opens
+the wizard to find out; the line is empty when nothing runs, and its button uses the action that already opens
+the wizard. Measured: `#ingest-line` is present on History with no text while idle.

@@ -345,6 +345,28 @@ class TableStage(Stage):
         quad = [[round(float(x), 2), round(float(y), 2)] for x, y in segment.quad]
         return quad, segment, ('saved-clamped:%s' % segment.id if segment.clamped else 'saved:%s' % segment.id)
 
+    def _playfield(self, polygon):
+        """The table's own geometry, checked on the polygon this stage is about to publish.
+
+        Round 17, owner item 5: a 9 ft playfield is 100 x 50 inches and keeps at least one pair of
+        edges parallel at this venue. The verdict rides with the quad, so a consumer can say why a
+        polygon does not match the table instead of throwing a detection away silently. It never
+        raises: a constraint must not be able to stop a frame.
+        """
+        try:
+            from src.playfield import check_quad
+            pts = [[float(a), float(b)] for a, b in list(polygon or [])][:4]
+            if len(pts) != 4:
+                return None
+            ordered = [[pts[0], pts[1], pts[2], pts[3]], [pts[1], pts[2], pts[3], pts[0]]]
+            verdicts = [check_quad(q) for q in ordered]
+            best = min(verdicts, key=lambda v: (not v['ok'], len(v['reasons'])))
+            return {'ok': bool(best['ok']), 'reasons': list(best['reasons']),
+                    'best_parallel_deg': best['metrics'].get('best_parallel_deg'),
+                    'aspect': best['metrics'].get('aspect')}
+        except Exception as exc:                    # a constraint never stops a frame
+            return {'ok': True, 'reasons': [], 'error': str(exc)}
+
     def process(self, frame, context):
         from src.frame_inference import infer_frame
         quad, segment, source = self._saved(context)
@@ -358,21 +380,24 @@ class TableStage(Stage):
             scaled = [[round(x * scale_x, 2), round(y * scale_y, 2)] for x, y in quad]
             return {'boxes': [], 'table_polygon': scaled, 'table_source': source,
                     'table_age_frames': 0, 'table_measured_at': None,
-                    'table_reference_size': list(reference), 'table_segment': segment.as_dict()}
+                    'table_reference_size': list(reference), 'table_segment': segment.as_dict(),
+                    'table_playfield': self._playfield(scaled)}
         if self._measured is None or self._measured_at is None or \
                 context.frame_number % self.measure_every_n == 0:
             self._measured = infer_frame(frame, ['table'], self.root)
             self._measured_at = context.frame_number
         result = dict(self._measured)
         result.update(table_source='measured', table_age_frames=context.frame_number - self._measured_at,
-                      table_measured_at=self._measured_at, table_reference_size=[width, height])
+                      table_measured_at=self._measured_at, table_reference_size=[width, height],
+                      table_playfield=self._playfield(result.get('table_polygon')))
         return result
 
     def evidence(self, result):
         if not isinstance(result, dict):
             return {}
         return {key: result.get(key) for key in
-                ('table_source', 'table_age_frames', 'table_measured_at', 'table_reference_size')}
+                ('table_source', 'table_age_frames', 'table_measured_at', 'table_reference_size',
+                 'table_playfield')}
 
     def quad(self, result):
         """The cloth polygon a consumer would use, or None when the stage produced none."""

@@ -500,3 +500,37 @@ class LiveStageHarnessTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TablePlayfieldVerdict(unittest.TestCase):
+    """The live table stage publishes the table's own geometry with the quad it serves."""
+
+    def test_a_venue_shaped_polygon_passes_and_says_so(self):
+        from annotator.pipeline_stages import TableStage
+        stage = TableStage.__new__(TableStage)          # the verdict needs no stage state
+        verdict = stage._playfield([[120.0, 60.0], [1080.0, 60.0], [1100.0, 620.0], [60.0, 620.0]])
+        self.assertTrue(verdict['ok'], verdict['reasons'])
+        self.assertLess(verdict['best_parallel_deg'], 3.0)
+        self.assertGreater(verdict['aspect'], 1.6)
+
+    def test_a_square_claim_is_refused_with_its_reason(self):
+        from annotator.pipeline_stages import TableStage
+        stage = TableStage.__new__(TableStage)
+        verdict = stage._playfield([[0.0, 0.0], [600.0, 0.0], [600.0, 600.0], [0.0, 600.0]])
+        self.assertFalse(verdict['ok'])
+        self.assertIn('aspect-too-square', verdict['reasons'])
+
+    def test_a_constraint_failure_never_stops_a_frame(self):
+        from annotator.pipeline_stages import TableStage
+        stage = TableStage.__new__(TableStage)
+        self.assertIsNone(stage._playfield([]), 'no quad published, no verdict')
+        self.assertIsNone(stage._playfield([[1.0, 2.0], [3.0, 4.0]]), 'a polygon that is not a quad')
+        verdict = stage._playfield([[0, 0], [10, 0], [10, 10], [0, 10]])
+        self.assertIn('ok', verdict, 'and it always answers with a verdict, never an exception')
+
+    def test_the_evidence_list_carries_the_verdict(self):
+        from annotator.pipeline_stages import TableStage
+        stage = TableStage.__new__(TableStage)
+        evidence = stage.evidence({'table_source': 'measured', 'table_playfield': {'ok': False, 'reasons': ['no-parallel-pair']}})
+        self.assertEqual(evidence['table_playfield']['reasons'], ['no-parallel-pair'],
+                         'so a consumer reads the verdict from the stage evidence, not from a log')
