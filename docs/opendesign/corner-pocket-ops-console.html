@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Corner Pocket · Operations console — the whole UI</title>
 <style>
-/* Inlined from annotator/ops.css, one mechanical rename: #ops-shell -> .od-shell (772 occurrences),
+/* Inlined from annotator/ops.css, one mechanical rename: #ops-shell -> .od-shell (793 occurrences),
    so every frame below is scoped and no id is repeated. No other edit. */
 .od-shell #live-frame{display:block;width:100%;height:auto;background:#000}.od-shell #live-frame[hidden]{display:none}.od-shell #live-panel input[type=checkbox]{width:auto}.od-shell #live-status{overflow-wrap:anywhere}
 /* The one token source for the shell and the stage (app.css keeps no palette of its own).
@@ -1213,6 +1213,35 @@ html,body{-webkit-font-smoothing:antialiased}
 .od-shell .tl-day .tl-nights{margin:0}
 .od-shell .tl-day .tl-vods{margin:var(--sp-2) 0 0}
 @media (max-width:750px){.od-shell .vod-pick-host{min-width:9rem}}
+/* Round 17, owner item 2: the inference report sits with the chips, where the stage's state lives. */
+.od-shell .vs-infer{min-height:28px;padding:0 var(--sp-2);font:var(--fs-xs) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);background:transparent;border:1px solid var(--line);border-radius:2px}
+.od-shell .vs-infer.running{color:var(--brass-hi);border-color:var(--brass)}
+.od-shell .vs-infer.off{color:var(--ink-faint)}
+/* Round 17, owner item 3: the row's binding chip and the face-only state. */
+.od-shell .vs-tag.bound{color:var(--brass-hi);border-color:var(--brass)}
+.od-shell .vs-tag.face{color:var(--ink-dim)}
+/* Round 17, owner item 4: one line that says how far the ingestion has got, wherever it is read. */
+.od-shell .ingest-line{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin:0;padding:var(--sp-2) 0;font:var(--fs-sm) var(--mono);color:var(--ink-mid)}
+.od-shell .ingest-dot{width:8px;height:8px;border-radius:50%;background:var(--brass);flex:none;animation:ingest-pulse 1.4s ease-in-out infinite}
+@keyframes ingest-pulse{0%,100%{opacity:.35}50%{opacity:1}}
+.od-shell .ingest-line button{min-height:30px}
+.od-shell .bf-banner{margin:var(--sp-3) 0;padding:var(--sp-3);border:1px solid var(--line);border-left:3px solid var(--brass);background:var(--panel2)}
+.od-shell .bf-banner.err{border-left-color:var(--err, #c2503c)}
+.od-shell .bf-banner .row{margin-top:var(--sp-2)}
+@media(prefers-reduced-motion:reduce){.od-shell .ingest-dot{animation:none}}
+
+/* Round 18, owner item 3: the workbench is one screen. The page itself does not scroll; the rail,
+   the stage and the inspector scroll inside it. data-review is set by the shell only while a
+   recorded review is open, so the console's other screens keep their own scrolling. */
+@media(min-width:751px){
+  .od-shell[data-review="1"]{height:100dvh;overflow:hidden}
+  .od-shell[data-review="1"] #main{height:calc(100dvh - var(--bar-h, 118px));min-height:0;overflow:hidden;display:flex;flex-direction:column}
+  .od-shell[data-review="1"] .review-card{flex:0 0 auto}
+  .od-shell[data-review="1"] .vs-grid{flex:1 1 auto;min-height:0}
+  .od-shell[data-review="1"] .vs-rail,.od-shell[data-review="1"] .vs-inspector{min-height:0;overflow:auto;overscroll-behavior:contain}
+  .od-shell[data-review="1"] .vs-stage{min-height:0;max-height:100%}
+  .od-shell[data-review="1"] .vs-stage img,.od-shell[data-review="1"] .vs-stage video{max-height:calc(100dvh - 320px)}
+}
 
 
 .od-board{background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5 var(--body);padding:var(--sp-5);margin:0}
@@ -1382,6 +1411,7 @@ primary action per surface; and the console writes only through <code>/api/opera
   </div>
   <p class="muted archive-note">Every video this channel exposes, newest first, one row per day. Open any card to review its footage; a night enters the log below only when an import finishes. Nothing is inferred from the picture or the title.</p>
   <div class="auto-line" id="auto-line"><p class="muted" role="status">Reading the download queue…</p></div>
+  <div class="auto-line" id="ingest-line"></div>
   <div id="records-list"><p class="muted" role="status">Reading the archive…</p><div class="events"><h3 class="tl-year">2026</h3><section class="tl-month"><h3 class="tl-month-head">October</h3><section class="tl-day" data-day="2026-9-2">
   <div class="tl-day-head"><h3 class="tl-day-date">Friday, 2 October 2026</h3><span class="muted tl-day-count">1 event · 1 broadcast</span></div>
   <ol class="tl-nights"><li class="tl-item" data-event="h9">
@@ -1429,6 +1459,7 @@ primary action per surface; and the console writes only through <code>/api/opera
   </div>
   <p class="muted archive-note">Every video this channel exposes, newest first, one row per day. Open any card to review its footage; a night enters the log below only when an import finishes. Nothing is inferred from the picture or the title.</p>
   <div class="auto-line" id="auto-line"><p class="muted" role="status">Reading the download queue…</p></div>
+  <div class="auto-line" id="ingest-line"></div>
   <div id="records-list"><p class="muted" role="status">Reading the archive…</p><p class="empty-note">Archived nights appear here after “Archive &amp; new event” in Set up. <button type="button" class="" data-action="backfill-open" >Backfill a past event from a Twitch VOD…</button></p></div>
   
 </article></section></div></div>
@@ -1448,6 +1479,7 @@ primary action per surface; and the console writes only through <code>/api/opera
   </div>
   <p class="muted archive-note">Every video this channel exposes, newest first, one row per day. Open any card to review its footage; a night enters the log below only when an import finishes. Nothing is inferred from the picture or the title.</p>
   <div class="auto-line" id="auto-line"><p class="muted" role="status">Reading the download queue…</p></div>
+  <div class="auto-line" id="ingest-line"></div>
   <div id="records-list"><p class="muted" role="status">Reading the archive…</p><div class="events"><h3 class="tl-year">2026</h3><section class="tl-month"><h3 class="tl-month-head">October</h3><section class="tl-day" data-day="2026-9-2">
   <div class="tl-day-head"><h3 class="tl-day-date">Friday, 2 October 2026</h3><span class="muted tl-day-count">1 event · 1 broadcast</span></div>
   <ol class="tl-nights"><li class="tl-item" data-event="h9">
@@ -1495,6 +1527,7 @@ primary action per surface; and the console writes only through <code>/api/opera
   </div>
   <p class="muted archive-note">该频道公开的全部视频，最新的在最前，每天一行。点开任意卡片即可审看画面；只有导入完成后，才会有新的一晚写入下方日志。画面和标题都不会被自动推断。</p>
   <div class="auto-line" id="auto-line"><p class="muted" role="status">正在读取下载队列…</p></div>
+  <div class="auto-line" id="ingest-line"></div>
   <div id="records-list"><p class="muted" role="status">正在读取视频列表…</p><div class="events"><h3 class="tl-year">2026</h3><section class="tl-month"><h3 class="tl-month-head">十月</h3><section class="tl-day" data-day="2026-9-2">
   <div class="tl-day-head"><h3 class="tl-day-date">2026年10月2日星期五</h3><span class="muted tl-day-count">1 段直播</span></div>
   
@@ -1686,6 +1719,6 @@ primary action per surface; and the console writes only through <code>/api/opera
   </section>
 </div>
 
-<p><small>Generated by <code>docs/opendesign/capture.mjs</code> · 110809 bytes of stylesheet ·
-26 frames · 65364 bytes of captured markup.</small></p>
+<p><small>Generated by <code>docs/opendesign/capture.mjs</code> · 113302 bytes of stylesheet ·
+26 frames · 65560 bytes of captured markup.</small></p>
 </body></html>
