@@ -1292,7 +1292,9 @@ html,body{-webkit-font-smoothing:antialiased}
 
 /* Round 20, owner items 3 and 4: every entrant row is the same height, and the numbers on it are
    named by the legend in the card's heading. */
-#ops-shell .card--entrants .entry.row{min-height:48px;align-items:center;flex-wrap:nowrap;gap:var(--sp-2)}
+/* Round 20, owner item 4: measured on production, two rows came out 77px and 69px - the guest row's
+   extra button changed the height. A fixed height, not a minimum, is what makes them equal. */
+#ops-shell .card--entrants .entry.row{height:56px;min-height:56px;max-height:56px;overflow:hidden;align-items:center;flex-wrap:nowrap;gap:var(--sp-2)}
 #ops-shell .card--entrants .entry.row .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ops-shell .card--entrants .entry.row .grow small{display:block}
 #ops-shell .card--entrants .entry.row > button{flex:none}
