@@ -198,6 +198,7 @@ function autoInner(){
   if(!autoList.rows)return `<p class="muted" role="status">${esc(t('autoReading'))}</p>`;
   const rows=autoList.rows,on=!!rows.enabled,current=rows.current?String(rows.current.vod_id||rows.current.id||''):'';
   const bits=[on?t('autoOn'):t('autoPaused'),t('autoQueued').replace('{n}',autoCount('queued')),t('autoDone').replace('{n}',autoCount('done'))];
+  // Round 20, owner item 6: the line names itself first ('自动下载 · 运行中 · 排队 0 场 · …').
   if(current)bits.push(t('autoNow').replace('{id}',current));
   if(autoCount('skipped'))bits.push(t('autoSkipped').replace('{n}',autoCount('skipped')));
   if(rows.error)bits.push(String(rows.error));
@@ -262,7 +263,7 @@ function dayCounts(day){
   const bits=[];
   if(day.nights.length)bits.push(t(day.nights.length===1?'dayEventsOne':'dayEvents').replace('{n}',String(day.nights.length)));
   if(day.vods.length)bits.push(t(day.vods.length===1?'dayVodsOne':'dayVods').replace('{n}',String(day.vods.length)));
-  return bits.join(' · ')}
+  return t('autoDownload') + ' · ' + bits.join(' · ')}
 function daySection(day){
   const attrs=day.key==='none'?'':` data-day="${esc(day.key)}"`;
   return `<section class="tl-day"${attrs}>
@@ -430,6 +431,7 @@ function recordsScreen(){
     ${btn(t('refresh'),'archive-reload')}
     ${btn(t('backfillOpen'),'backfill-open','','primary')}
   </div>
+  
   <p class="muted archive-note">${esc(archiveNoteText())}</p>
   <div class="auto-line" id="auto-line">${autoInner()}</div>
   <div class="auto-line" id="ingest-line">${bfProgressLine()}</div>
