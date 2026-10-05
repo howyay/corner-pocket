@@ -44,6 +44,27 @@ def _order_corners(pts: np.ndarray) -> np.ndarray:
     return np.array([tl, tr, br, bl], dtype=np.float32)
 
 
+MIN_CORNER_GAP_PX = 2.0
+
+
+def corners_are_distinct(quad: np.ndarray) -> bool:
+    """Four corners are four points; a fit that repeats one is not a quadrilateral.
+
+    ``cv2.approxPolyDP`` repeats a point when the contour it approximates is a sliver.  On the
+    historical VODs that came out as a thin wedge hugging one rail, with one corner listed twice,
+    which the playfield check then refused as ``not-convex`` - correctly, but the pipeline had
+    already reported it as a measured table.  Refusing the fit here keeps a failed segmentation
+    from being published as a measurement.  A sliver whose four corners do survive approximation
+    is not caught by this test.
+    """
+    pts = np.asarray(quad, dtype=np.float32).reshape(4, 2)
+    for i in range(4):
+        for j in range(i + 1, 4):
+            if float(np.linalg.norm(pts[i] - pts[j])) < MIN_CORNER_GAP_PX:
+                return False
+    return True
+
+
 def fit_quadrilateral(mask: np.ndarray) -> np.ndarray | None:
     """Fit a 4-corner quadrilateral to the cloth mask; return ordered corners."""
     cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -55,15 +76,19 @@ def fit_quadrilateral(mask: np.ndarray) -> np.ndarray | None:
     # search for the epsilon that gives exactly 4 corners
     for eps in np.linspace(0.005, 0.06, 40):
         approx = cv2.approxPolyDP(c, eps * peri, True)
-        if len(approx) == 4 and cv2.isContourConvex(approx):
+        if len(approx) == 4 and cv2.isContourConvex(approx) and corners_are_distinct(approx):
             quad = approx
             break
     if quad is None:
         hull = cv2.convexHull(c)
         quad = cv2.approxPolyDP(hull, 0.02 * cv2.arcLength(hull, True), True)
-        if len(quad) != 4:
+        if len(quad) != 4 or not corners_are_distinct(quad):
             return None
-    return _order_corners(quad.reshape(4, 2))
+    ordered = _order_corners(quad.reshape(4, 2))
+    # The ordering itself can collapse two corners onto one index (a point can be the extreme of
+    # both the sum and the difference), and a collapsed ordering is not a table either.  The probe
+    # on tw-2860883221 showed exactly this: four distinct fit points, one repeated after ordering.
+    return ordered if corners_are_distinct(ordered) else None
 
 
 def detect_table(bgr: np.ndarray) -> dict:
