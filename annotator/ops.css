@@ -202,8 +202,6 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .bracket-card:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}
 #ops-shell .bracket-card:is(:hover,:focus-within,.selected,.open) .card-actions{flex-direction:column;align-items:stretch;gap:var(--sp-1);margin-top:var(--sp-1)}
 #ops-shell .bracket-card:is(:hover,:focus-within,.selected,.open){z-index:2}
-#ops-shell .card-toggle{position:absolute;top:var(--sp-1);right:var(--sp-1);width:var(--sp-5);height:var(--sp-5);min-height:0;padding:0;line-height:1;color:var(--ink-dim);background:var(--panel2);border-color:var(--line);display:flex;align-items:center;justify-content:center}
-#ops-shell .card-toggle[aria-expanded=true]{color:var(--brass-hi);border-color:var(--brass)}
 #ops-shell .bracket-card .card-side.first{padding-right:var(--sp-5)}
 /* The table a group is on is the one fact this tab owes the room (owner item 6), so it is a chip on
    the first line, not a detail behind a hover. */
@@ -851,7 +849,6 @@ html,body{-webkit-font-smoothing:antialiased}
   #ops-shell .tl-date{min-width:0}
   /* Round 2, B-08: the collapse toggle measured 24x24 px on a phone — under the 44 px tap
      target the rest of the console keeps. The glyph stays small; the target grows. */
-  #ops-shell .card-toggle{width:44px;height:44px;min-height:44px;top:0;right:0}
   #ops-shell .bf-review{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
   #ops-shell .bf-stage video{max-height:32vh}
 }

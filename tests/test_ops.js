@@ -502,7 +502,8 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
   const card = view.slice(view.indexOf('data-status="live"'), view.indexOf('data-status="scheduled"'));
   assert.ok(card.includes('class="row card-side first"') && card.includes('class="status-dot"'), 'a side line carries the status dot');
   assert.ok(card.includes('aria-label="Ann – Bo · On table"'), 'the whole match, with its status word, is the card\u2019s name');
-  assert.ok(card.includes('class="row card-head"') && card.includes('Table 1 · m1'), 'the header row stays, with the match id');
+  assert.ok(card.includes('class="row card-head"') && /Table 1/.test(card), 'the header row stays, with the table');
+  assert.ok(!/m1/.test(card.replace(/data-(?:id|action|side)="[^"]*"/g, '')), 'and not the machine id: an operator never reads it');
   assert.ok(/class="table-chip">Table 1</.test(card), 'and the table is a chip on the first line, not a detail behind a hover (owner item 6)');
   assert.ok(/data-action="forfeit"/.test(card) && !/data-action="absence"/.test(card), 'forfeit stays reachable, attendance does not');
   assert.ok(/data-action="card-open" data-id="m1"/.test(card), 'a live match hands itself to the timer page');
@@ -514,35 +515,18 @@ test('R9: the compact bracket is one line per side with a status dot; the full c
   assert.ok(css.includes('.bracket-card:is(:hover,:focus-within,.selected,.open) :is(.card-head,.card-actions){display:flex}'), 'hover, focus or the card\u2019s own control opens the details');
   for (const key of ['density', 'densityCompact', 'densityFull']) assert.equal(h.evaluate(`t('${key}')`), key, `${key} is retired from the words file, not just unrendered`);
 });
-test('R9 on touch: every compact card carries its own expand control, and pressing it does not re-render', async () => {
+test('round 19 / owner item 4: a bracket card carries no collapse control, only the actions it has', () => {
   const h = harness();
   h.evaluate(`data.players=[];data.tournament={id:'t1',name:'Friday',format:'singles',raceTo:3,status:'active',
     entrants:[{id:'e1',members:[{pid:null,name:'Ann'}]},{id:'e2',members:[{pid:null,name:'Bo'}]}],
-    matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]}]}`);
-  const compact = h.evaluate('bracketScreen()');
-  assert.ok(compact.includes('class="card-toggle" data-action="card-toggle" aria-expanded="false"'), 'the card carries a control of its own, so a thumb has something to press');
-  assert.ok(compact.includes('aria-label="Show the full card"'), 'the control says what it does');
-  // pressing it flips .open in place: no render(), no action(), so focus and scroll stay put
-  let open = false, toggled = null;
-  const attrs = {};
-  const card = {classList: {toggle(cls) { toggled = cls; open = !open; return open; }}};
-  const button = {dataset: {action: 'card-toggle'}, setAttribute(k, v) { attrs[k] = v; }, closest: sel => sel === '.entry' ? card : null};
-  const press = () => h.handlers.click({target: {closest: sel => sel === 'button,.modal-backdrop' ? button : null}});
-  await press();
-  assert.equal(toggled, 'open', 'the class that reveals the card is toggled on the card itself');
-  assert.equal(attrs['aria-expanded'], 'true', 'the control reports the open state');
-  assert.equal(attrs['aria-label'], 'Hide the details', 'and renames itself to the way back');
-  await press();
-  assert.equal(attrs['aria-expanded'], 'false', 'pressing again puts the card back');
-  assert.equal(attrs['aria-label'], 'Show the full card');
-  assert.equal(h.evaluate('calls.length'), 0, 'opening a card is not a server action');
-  // the same rules serve a pointer, a keyboard and a thumb; the control only exists where hover is missing
-  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
-  assert.ok(/\.card-toggle\{[^}]*display:flex/.test(css), 'shown on every card: there is no other view to hide it in');
-  assert.equal((h.evaluate('bracketScreen()').match(/data-action="card-toggle"/g) || []).length, 1, 'one card that can open carries one control');
-  assert.ok(css.includes('.bracket-card .card-side.first{padding-right:var(--sp-5)}'), 'the name never runs under the control');
-  for (const key of ['cardExpand', 'cardCollapse']) assert.match(source, new RegExp(`\\b${key}:\\['[^']+','[^']+'\\]`), `${key} has EN and 中`);
-  assert.equal(h.evaluate("lang='zh';bracketScreen()").includes('aria-label="展开完整卡片"'), true, 'the control is translated');
+    matches:[{id:'m1',round:1,sides:['e1','e2'],score:[1,0],status:'live',table:1,absent:[]},
+             {id:'m2',round:1,sides:['e1','e2'],score:[0,0],status:'scheduled',table:null,absent:[]}]}`);
+  const html = h.evaluate('bracketScreen()');
+  assert.ok(!html.includes('card-toggle'), 'no triangle in the corner: the card is never collapsed');
+  assert.ok(!html.includes('cardExpand') && !html.includes('cardCollapse'), 'and its copy is retired with it');
+  assert.ok(/data-action="card-open" data-id="m1"/.test(html), 'a live match still hands itself to the timer page');
+  assert.ok(/data-action="schedule" data-id="m2"/.test(html), 'and a scheduled one still takes a table');
+  assert.ok(html.includes('tabindex="0"'), 'a keyboard user can still open a card');
 });
 test('R13: every query word must match the name, after NFKC, accent and case folding', () => {
   const h = harness();
@@ -1465,7 +1449,14 @@ test('forfeit and in-match absence are reachable from the Matches bracket, each 
                {id:'m2',round:1,sides:['e3','e4'],score:[1,0],status:'live',table:1,absent:[]},
                {id:'m3',round:2,sides:[null,null],score:[0,0],status:'pending',table:null,absent:[],sources:['m1','m2']}]}`);
   const html = h.evaluate('bracketScreen()');
-  const card = id => html.slice(html.indexOf(`${id.slice(0, 8)}</small>`), html.indexOf('</div></div>', html.indexOf(`${id.slice(0, 8)}</small>`)) + 400);
+  // The card is found by the action it carries: the header no longer prints the machine id (round 19).
+  const card = id => {
+    const at = html.indexOf(`data-id="${id}"`);
+    if (at < 0) return '';
+    const start = html.lastIndexOf('class="entry', at);
+    const end = html.indexOf('class="entry', at);
+    return html.slice(start < 0 ? 0 : start, end < 0 ? html.length : end);
+  };
   for (const id of ['m1', 'm2']) {
     const c = card(id);
     assert.ok(/data-action="forfeit"[^>]*data-side="0"/.test(c) && /data-action="forfeit"[^>]*data-side="1"/.test(c), `${id}: forfeit for either side`);
@@ -2885,8 +2876,10 @@ test('round 2: the disclosure marker is authored, and the list reset covers ever
 
 test('round 2: the small toggles are still tappable at phone width (B-08)', () => {
   const phone = opsCss.slice(opsCss.indexOf('@media(max-width:750px)'));
-  assert.ok(/#ops-shell \.card-toggle\{[^}]*width:44px;height:44px/.test(phone), 'a 24 px glyph gets a 44 px target on a phone');
-  assert.ok(/#ops-shell \.card-toggle\{[^}]*min-height:44px/.test(phone), 'and outranks the base min-height:0');
+  // Round 19, owner item 4: the collapse triangle is gone, so the phone target rules went with it.
+  // What a phone must still reach is the card's own actions.
+  assert.ok(!phone.includes('.card-toggle'), 'no dead triangle rule is left in the phone block');
+  assert.ok(/#ops-shell \.bracket-card[^{]*\{[^}]*min-height:44px/.test(phone) || phone.includes('.match-controls'), 'the card and its actions keep a thumb-sized target');
 });
 
 test('round 2: the board’s bracket text keeps the console’s 11 px floor (B-06)', () => {
