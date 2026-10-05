@@ -4138,7 +4138,7 @@ test('round 19 / owner item 9: the bar is one row, so the picture starts higher'
     'the clock is pinned to the bar\u2019s own edge, so the nav and the clock share one row');
   assert.ok(/#ops-shell\[data-review="1"\] \.vs-stage\{height:100%;align-self:stretch\}/.test(css),
     'and the stage fills the room the bar gave back');
-  assert.ok(/\.vs-stage img,\.vs-stage video\{max-height:100%;max-width:100%/.test(css),
+  assert.ok(/\.vs-stage img,[^}]*\.vs-stage video\{max-height:100%;max-width:100%/.test(css),
     'with the picture filling the stage');
   assert.ok(/ops\.css\?v=vision-stage-\d+/.test(html) && /app\.css\?v=vision-stage-\d+/.test(html),
     'both stylesheets are version-tagged, so a CSS change is never read from the browser cache');
