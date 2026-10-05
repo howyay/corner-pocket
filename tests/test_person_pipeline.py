@@ -161,7 +161,8 @@ class PipelineTests(unittest.TestCase):
         out = p.process_frame(self.frame, frame_index=0)
         self.assertEqual(set(out), {'persons', 'events'})
         self.assertEqual(set(out['persons'][0]),
-                         {'track_id', 'bbox', 'cluster_id', 'player_id', 'face_sim', 'bound_evidence'})
+                         {'track_id', 'bbox', 'cluster_id', 'player_id', 'face_sim', 'bound_evidence',
+                          'face_bbox', 'face_quality'})
 
 
 class FaceCacheStrideTests(unittest.TestCase):

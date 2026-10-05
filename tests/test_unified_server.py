@@ -800,7 +800,8 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(data["timestamp_kind"], "nominal_cfr")
         # Internal fields (body_embedding) are stripped from persons.
         self.assertEqual(data["persons"], [{"track_id": 1, "bbox": [10, 20, 110, 220], "cluster_id": 3,
-                                            "player_id": None, "face_sim": None, "bound_evidence": None}])
+                                            "player_id": None, "face_sim": None, "bound_evidence": None,
+                                            "face_bbox": None, "face_quality": None}])
         self.assertEqual(data["events"], [{"kind": "bind", "player_id": "A", "cluster_id": 3,
                                            "similarity": 0.9, "frame_index": 7}])
         self.assertEqual(pipeline.process_frame.call_count, 2)
@@ -1275,7 +1276,8 @@ class UnifiedViewTests(unittest.TestCase):
         index.explicit_assign(1, 'playerZ')            # the durable change writes
         before = file_stamp(path)
         persons = [{'track_id': 2, 'bbox': [10, 20, 110, 220], 'cluster_id': 2,
-                    'player_id': None, 'face_sim': None, 'bound_evidence': None}]
+                    'player_id': None, 'face_sim': None, 'bound_evidence': None,
+                    'face_bbox': None, 'face_quality': None}]
         pipeline = Mock()
         pipeline.identity = index
         pipeline.process_frame.side_effect = lambda frame, frame_index, timestamp: (
@@ -1396,8 +1398,11 @@ class UnifiedViewTests(unittest.TestCase):
         with patch.object(Backend, "identity_pipeline", lambda self: pipeline):
             data = self.payload()
         self.assertEqual(data["persons_error"], None)
+        # A record that has neither key still projects: the API reads with get(), so an older build's
+        # person cannot turn the frame into a 400 (round 17: KeyError: 'face_bbox').
         self.assertEqual(data["persons"], [{"track_id": 3, "bbox": [1, 2, 3, 4], "cluster_id": 9,
-                                            "player_id": "A", "face_sim": 0.5, "bound_evidence": "x"}])
+                                            "player_id": "A", "face_sim": 0.5, "bound_evidence": "x",
+                                            "face_bbox": None, "face_quality": None}])
 
     def test_missing_table_yields_no_balls_and_no_pockets(self):
         self.patch_pipeline(table={"corners": None, "mask": None}, balls=[])
