@@ -1030,7 +1030,7 @@ function livePanelScreen(){
 </section>`}
 function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading" role="status">${L('visionLoading')}</p>`;return `<section class="vision-surface" id="vision-surface"${visionAdapter?'':' aria-busy="true" data-loading="true"'}>
 <h2 class="sr-only">${L('reviewTitle')}</h2>
-<div class="vs-head"><div class="vs-chips" id="vs-chips"></div><div class="row vs-sources">${reviewId?'':`${btn(t('sources'),'sources-open')}${btn(t('stop'),'live-stop')}`}</div></div>
+
 <div class="vs-grid" id="vs-grid" data-sheet="cues">
 <aside class="vs-rail" id="vs-cues" aria-label="${L('visionCues')}" data-vs-aria="cuesRegion">${loadingLine}</aside>
 <section class="vs-stage" id="vs-stage" aria-label="${L('visionStage')}" data-vs-aria="stageRegion">
@@ -1040,7 +1040,9 @@ function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading"
 <aside class="vs-inspector" id="vs-inspector" aria-label="${L('visionInspector')}" data-vs-aria="inspectorRegion"><div class="vs-inspector-scroll" id="vs-inspector-scroll">${loadingLine}</div><div class="vs-inspector-actions" id="vs-inspector-actions"></div></aside>
 </div>
 <div class="vs-sheettabs" role="tablist" aria-label="${L('visionPanels')}" data-vs-aria="sheetTabs"><button type="button" role="tab" aria-selected="true" aria-controls="vs-cues" data-sheet-tab="cues" class="active" data-vs-label="showCues">${L('visionCuesTab')}</button><button type="button" role="tab" aria-selected="false" aria-controls="vs-inspector" data-sheet-tab="inspector" data-vs-label="showInspector">${L('visionInspectorTab')}</button></div>
-<div class="vs-strip" id="vs-strip">
+<!-- R23 item 1: the layer chips and the source label sit with the scrubber, not above the picture. -->
+  <div class="vs-head"><div class="vs-chips" id="vs-chips"></div><div class="row vs-sources">${reviewId?'':`${btn(t('sources'),'sources-open')}${btn(t('stop'),'live-stop')}`}</div></div>
+  <div class="vs-strip" id="vs-strip">
 <div class="vs-transport">
 <label class="vs-frame-input"><span data-vs-label="frameIndex">${L('visionFrame')}</span><input id="vs-frame-index" type="number" min="0" value="0"></label>
 <button type="button" data-vs-action="step" data-vs-value="-1" aria-label="${L('visionPrev')}" data-vs-aria="stepBack">◀</button>
