@@ -518,7 +518,9 @@ class Backend:
         return {"frame_index": meta["frame_index"],
                 "timestamp_seconds": meta["timestamp_seconds"],
                 "timestamp_kind": meta["timestamp_kind"],
-                "persons": [{key: person[key] for key in self._PERSON_FIELDS}
+                # get(), not [key]: a person record written by an older pipeline build must not
+                # turn the whole frame into a 400.
+                "persons": [{key: person.get(key) for key in self._PERSON_FIELDS}
                             for person in result["persons"]],
                 "events": result["events"]}
 

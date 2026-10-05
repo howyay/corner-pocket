@@ -228,9 +228,13 @@ class PersonPipeline:
         for item in tracks_update:
             cluster = mapping[item['track_id']]
             state = self.identity.get(cluster)
+            # Every field the API publishes is present on every person, even when there is no face
+            # to describe: the server projects the record through a fixed field list, so a missing
+            # key is a 400 for the whole frame (measured: KeyError: 'face_bbox' after the restart).
             person = {'track_id': item['track_id'], 'bbox': [int(v) for v in item['bbox']],
                       'cluster_id': cluster, 'player_id': state['player_id'],
-                      'face_sim': None, 'bound_evidence': state['bound_evidence']}
+                      'face_sim': None, 'bound_evidence': state['bound_evidence'],
+                      'face_bbox': None, 'face_quality': None}
             face = item['face']
             # The face this frame already matched to this person, so a surface can draw where the
             # identity came from. It is evidence, not a second subject: the overlay ties it to the
