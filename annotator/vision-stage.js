@@ -733,7 +733,7 @@ function factsLine(s) {
   // saved anchors / calibration it was projected from (engine-localized).
   const pocketNote = pocketsHeld || (pocketCount && pocketSource === 'calibration' ? engineText(cloth.pockets?.reference || '') : '');
   parts.push(`${t('pockets').toLowerCase()} ${pocketCount}${pocketNote ? ` (${pocketNote})` : ''}`);
-  parts.push(t('anchors').toLowerCase() + ' ' + Number(d.anchors || 0), layer('events', t('events').toLowerCase()));
+  void 0;
   if (verdict.state === 'off' && verdict.mean != null) parts.push(`${t('quadOff')} ${Math.round(verdict.mean)} px (${t('tolerance')} ${Math.round(verdict.tolerance)} px)`);
   else if (verdict.state === 'off') parts.push(t('quadOff'));
   else if (verdict.state === 'unverified') parts.push(t('quadUnverified'));
