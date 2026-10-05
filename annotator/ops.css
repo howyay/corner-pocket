@@ -1304,3 +1304,10 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .bracket-card .card-side{justify-content:space-between}
 #ops-shell .bracket-card .card-side > :last-child{margin-left:auto;text-align:right}
 #ops-shell .clockbar{gap:var(--sp-2);row-gap:var(--sp-1);padding-bottom:var(--sp-1)}
+
+/* Round 21, owner item 2, measured: the two scores on a card ended 24px and 0px from its right edge.
+   A fixed score column, and one padding for both rows, is what makes them line up. */
+#ops-shell .bracket-card .card-side,
+#ops-shell .bracket-card .card-side.first{padding-right:var(--sp-2)}
+#ops-shell .bracket-card .card-side .side-score{flex:none;width:2.5ch;text-align:right;margin-left:auto;font-variant-numeric:tabular-nums}
+#ops-shell .bracket-card .card-side .grow{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
