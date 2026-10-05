@@ -772,19 +772,22 @@ function renderStage() {
   let videoShown = false;
   if (video && video.dataset) {
     videoShown = playing && !!stageVideo() && videoReady(video);
-    video.hidden = !videoShown;
+    if (video && video.hidden !== !videoShown) video.hidden = !videoShown;
   }
   const img = $('#t-img');
   // While the source is live the live frame owns the picture: a re-render (a
   // language switch, a rebuilt stage, a late frame decode) keeps the last live
   // frame and never slips the dataset still under the live overlay.
   const picture = liveStill() || state.shotUrl;
-  if (img && picture && img.getAttribute('src') !== picture) img.src = picture;
+  // Round 20, owner item 9: a frame already on the stage is not written again - every assignment to an
+  // <img> is a reload - and a null-ish source is never written.
+  if (img && picture && String(picture) !== 'null' && img.getAttribute('src') !== picture) img.src = picture;
   const showStill = !!state.shotUrl && !videoShown;
   if (img) img.hidden = !showStill && !liveStill();
   const empty = $('#stage-empty');
   if (empty) {
-    empty.hidden = !!state.shotUrl || !!liveStill() || videoShown;
+    const hideEmpty = !!state.shotUrl || !!liveStill() || videoShown;
+  if (empty.hidden !== hideEmpty) empty.hidden = hideEmpty;
     // The sentence is generated copy, so it is re-read in the current language on
     // every paint; the copy baked in when the stage was built kept that language
     // next to a banner that had been translated (round-2 F3).
@@ -1095,7 +1098,7 @@ function clothNotice(verdict, refusal, quad) {
 function paintStageNote() {
   const note = $('#stage-note'); if (!note) return;
   const lines = clothNotice(state.cloth.verdict, state.cloth.refusal, state.cloth.quad);
-  note.hidden = !lines.length;
+  if (note.hidden !== !lines.length) note.hidden = !lines.length;
   note.dataset.live = state.source.kind === 'live' ? '1' : '0';
   note.classList.toggle('error', !!(state.cloth.refusal && !state.cloth.refusal.ok));
   const body = lines.join(' ');

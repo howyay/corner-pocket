@@ -4211,3 +4211,17 @@ test('round 19 / owner item 6, batch 5: the workbench says it in Chinese too', (
     assert.ok(adapter.includes(zh), `${key} keeps its Chinese: ${zh}`);
   }
 });
+test('round 20 / owner item 9: the stage is not re-written on every paint', () => {
+  const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  // A VOD's first frame flashed because the same values were re-applied on every paint, and every
+  // assignment to an <img> is a reload. Each write is now guarded by a comparison.
+  assert.ok(engine.includes("String(picture) !== 'null' && img.getAttribute('src') !== picture"),
+    'the frame source is written only when it changes, and never as a null-ish string');
+  assert.ok(engine.includes('if (video && video.hidden !== !videoShown) video.hidden = !videoShown;'),
+    'the video element is shown or hidden only when that changes');
+  assert.ok(engine.includes('if (empty.hidden !== hideEmpty) empty.hidden = hideEmpty;'),
+    'and so is the empty-state note');
+  assert.ok(engine.includes('if (note.hidden !== !lines.length) note.hidden = !lines.length;'),
+    'and the facts note');
+  assert.ok(!/^\s*(img|video|empty|note)\.hidden = /m.test(engine), 'no unguarded hidden write is left in the stage');
+});
