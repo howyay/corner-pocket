@@ -655,7 +655,7 @@ function layersHTML(s) {
   return layers.map(([key, label]) => {
     const gated = key === 'anchors' && s.dataset !== 'vod30';
     // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.
-    const shown = s.overlay[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
+    const shown = (s.overlay || {})[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
     const count = Number(((s && s.drawn) || {})[key] || 0);
     return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(t(label))} ${count}</button>`;
   }).join('');
@@ -1470,7 +1470,7 @@ function attach(options) {
   render();
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput); }};
 }
-window.VisionStage = {attach, render, act, onInput, actionsHTML, factsLine, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
+window.VisionStage = {attach, render, act, onInput, actionsHTML, factsLine, layersHTML, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
 // The Broadcasts block, for tests: its state, the renderers and the refusal mapping.
 Object.assign(window.VisionStage, {broadcastsBlock, recordedLabel, serverText, bcState: () => bc, bcReset: () => { if (bc.poll) clearInterval(bc.poll); bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false}; }});
 })();

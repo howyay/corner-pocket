@@ -1015,28 +1015,32 @@ test('the facts line states a refused quad reason in both languages', () => {
     drawn:{cloth:0, balls:8, persons:4, pockets:0, anchors:0, events:1, auto:{cloth:0, balls:8, persons:4, pockets:0, anchors:0, events:1}},
     cloth:{verdict:{state:'none', reason:'no detection'}, quad, pockets:{source:null, count:0, reference:null}, reference:null}
   };
-  const refused = V.factsLine(base);
+  const refused = V.factsLine(base) + V.layersHTML(base);
   assert.ok(refused.includes('quad refused (the cloth is hidden'), 'A ' + refused);
   assert.ok(refused.includes('2/4 sides unverified: 1, 3'), 'B ' + refused);
   assert.ok(!/_/.test(refused.split('quad refused')[1].split(' · ')[0]), 'no snake_case code in the facts line');
   assert.ok(V.quadDetail(base).includes('reason: the cloth is hidden'), V.quadDetail(base));
   V.attach({mount: mountStub, lang:'zh'});
-  const zh = V.factsLine(base);
+  const zh = V.factsLine(base) + V.layersHTML(base);
   assert.ok(zh.includes('四边形已拒绝 (台面被遮挡'), 'Z1 ' + zh);
   assert.ok(zh.includes('未校验边 2/4：1, 3'), 'Z2 ' + zh);
   V.attach({mount: mountStub, lang:'en'});
   // A refusal with a drawn fallback quad says which quad the operator is looking at.
   const fallback = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
+                                cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}}) + V.layersHTML({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
                                 cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
   assert.ok(fallback.includes('quad from the naive fallback (the cloth is hidden'), 'F ' + fallback);
   // An accepted, fully verified quad keeps the drift line and grows no refusal.
   const ok = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
+                          cloth:{...base.cloth, quad:{...quad, state:'refined', reason:null, verified_sides:4, sides:[]},
+                                 verdict:{state:'ok', reason:'within tolerance', mean:5.7, tolerance:40, source:'saved anchors'}}}) + V.layersHTML({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
                           cloth:{...base.cloth, quad:{...quad, state:'refined', reason:null, verified_sides:4, sides:[]},
                                  verdict:{state:'ok', reason:'within tolerance', mean:5.7, tolerance:40, source:'saved anchors'}}});
   assert.ok(ok.includes('table outline matches the saved corners (5.7 px · tol 40 px)'), 'O ' + ok);
   assert.ok(!ok.includes('refused') && !ok.includes('fallback'), 'O2 ' + ok);
   // The stored-inference polygon names itself instead of hiding inside the total.
   const inference = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
+                                 drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}) + V.layersHTML({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
                                  drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
   // "stored inference" is reserved for a file an earlier run wrote; a polygon from
   // inference run on this frame now is this session's, and says so.
@@ -1044,10 +1048,13 @@ test('the facts line states a refused quad reason in both languages', () => {
   assert.ok(!inference.includes('stored inference'), 'I2 a session run is never called stored: ' + inference);
   const stored = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
                               corrections:{tool:'select', result:'inference', storedInference:true, inferenceAt:'2026-09-16T04:07:48+00:00'},
+                              drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}) + V.layersHTML({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
+                              corrections:{tool:'select', result:'inference', storedInference:true, inferenceAt:'2026-09-16T04:07:48+00:00'},
                               drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
   assert.ok(stored.includes('cloth 1 (stored inference') && /2026|9\/16/.test(stored),
     'I3 a file from an earlier run keeps its own timestamp: ' + stored);
   assert.ok(V.factsLine({...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
+                         drawn:{cloth:2, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}) + V.layersHTML({...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
                          drawn:{cloth:2, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}).includes('cloth 1 (+1 manual)'), 'M');
 });
 
