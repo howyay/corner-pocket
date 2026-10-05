@@ -625,6 +625,29 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(state['tournament']['matches'], before_draw)
         self.assertNotIn('revival', state['tournament'])
 
+    def test_a_late_entrant_joins_as_their_own_team(self):
+        """R21 item 3: somebody arriving after the draw gets a round-1 bye slot of their own."""
+        state = self.play_round_one(6)
+        t = state['tournament']
+        before = json.loads(json.dumps(t['matches']))
+        state = self.call('entrant_add_late', name='Late Lou')
+        t = state['tournament']
+        added = [m for m in t['matches'] if m.get('late')]
+        self.assertEqual(len(added), 1, 'exactly one late slot')
+        self.assertEqual((added[0]['round'], added[0]['sources']), (1, []), 'a round-1 bye slot of its own')
+        self.assertEqual(added[0]['sides'][1], None, 'with the other side still open')
+        self.assertEqual(t['entrants'][-1]['members'][0]['name'], 'Late Lou', 'and the person is on the list')
+        self.assertEqual(added[0]['sides'][0], t['entrants'][-1]['id'], 'the slot is theirs')
+        rest = [m for m in t['matches'] if not m.get('late')]
+        self.assertEqual(rest, before, 'the rest of the tree is byte-identical')
+        # A second late sign-up is refused. The gate that answers first is the state of the tournament
+        # after the draw (measured: the duplicate never reaches the name check), so the rule asserted
+        # here is that it is refused, not which sentence refuses it.
+        with self.assertRaises(ValueError):
+            self.call('entrant_add_late', name='late lou')
+        with self.assertRaises(ValueError):
+            self.call('entrant_add_late', name='   ')
+
     def test_revival_draw_can_be_told_who(self):
         """R21 item 3: the operator may name a round-1 loser, and anyone else is refused."""
         state = self.play_round_one(6)

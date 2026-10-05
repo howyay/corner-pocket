@@ -728,6 +728,25 @@ class Operations:
                 round_number += 1
             t['status'] = 'active'
             self._propagate(t)
+        elif action == 'entrant_add_late':
+            # Round 21, owner item 3: somebody who arrives after the draw joins as their own team, in a
+            # round-1 bye slot of their own with no sources, so the rest of the tree is untouched and
+            # _propagate has nothing to rewrite.
+            if t['status'] != 'active':
+                raise ValueError('The tournament is not running')
+            late_name = text(p.get('name'), 'name', 120)
+            late_pid = p.get('pid') or None
+            for existing in t['entrants']:
+                for member in existing.get('members', []):
+                    same_pid = late_pid and member.get('pid') == late_pid
+                    same_name = (member.get('name') or '').casefold() == late_name.casefold()
+                    if same_pid or same_name:
+                        raise ValueError('That person is already in this tournament')
+            late = dict(id=uid(), members=[dict(pid=late_pid, name=late_name)])
+            t['entrants'].append(late)
+            t['matches'].append(dict(id=uid(), round=1, sides=[late['id'], None], score=[0, 0], table=None,
+                                     status='pending', winnerId=None, absent=[], sources=[], late=True))
+            self._propagate(t)
         elif action in ('match_schedule', 'match_unschedule', 'match_score', 'match_complete', 'match_absence', 'match_forfeit'):
             match = self._find(t['matches'], p.get('id'))
             if match['status'] in ('complete', 'pending') or not all(match['sides']):
