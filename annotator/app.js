@@ -1374,15 +1374,20 @@ let autoInferTimer = null;             // module scope: a Timeout handle is not 
 function scheduleAutoInference() {
   clearTimeout(autoInferTimer); autoInferTimer = null;
   if (state.autoInferOff || state.inferRunning) return;
-  autoInferTimer = setTimeout(() => {
+  autoInferTimer = setTimeout(async () => {
     autoInferTimer = null;
     if (state.playing || state.inferRunning || state.autoInferOff) return;
     if (!state.fresult) return;                       // nothing frozen to run on
     if (state.lastInferredFrame === state.frame) return;
     const detectors = Object.keys(state.detectors).filter(k => state.detectors[k]);
     if (!detectors.length) return;
-    state.lastInferredFrame = state.frame;
-    runInference(null);
+    // The frame is only remembered once a run actually starts. A pause that lands while the stage
+    // is still decoding must not consume the frame: the operator would get no inference at all
+    // (measured on production: the first pause after a dataset load started nothing and the frame
+    // was marked as done).
+    const frame = state.frame;
+    if (await runInference(null) === false) return;
+    state.lastInferredFrame = frame;
   }, 500);
 }
 function setAutoInference(on) {

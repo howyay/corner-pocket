@@ -4034,6 +4034,8 @@ test('round 17 / owner item 2: inference runs when playback stops, and the stage
   const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
   assert.ok(engine.includes('if (!state.playing) scheduleAutoInference();'), 'a pause is the signal, not a click');
   assert.ok(engine.includes('function scheduleAutoInference() {'), 'and it is one named place');
+  assert.ok(/if \(await runInference\(null\) === false\) return;\s*\n\s*state\.lastInferredFrame = frame;/.test(engine),
+    'the frame is remembered only after a run starts, so a pause during a decode is not lost');
   for (const guard of ['state.autoInferOff', 'state.inferRunning', 'state.lastInferredFrame === state.frame', 'state.playing || state.inferRunning']) {
     assert.ok(engine.includes(guard), `the run is guarded: ${guard}`);
   }
