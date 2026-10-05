@@ -4188,3 +4188,21 @@ test('round 19 / owner item 6: the Tonight screen reads like a person wrote it',
   assert.ok(words.locked[1].includes('卡片'), 'it names the card the operator can see');
   assert.ok(words.noMatch[1].includes('球台'), 'and the empty board names the table, not an abstraction');
 });
+test('round 19 / owner item 6, batch 5: the workbench says it in Chinese too', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  // The three sentences this batch rewrote, and the phrases it removed. A character census cannot tell
+  // a product name from a translation, so the check is on the wording itself.
+  assert.ok(adapter.includes('把这条轨迹标为观众：不参与身份分配，也不会和上面两个标注选项混在一起。'),
+    'the ignore note says what the operator is doing, not a literal translation');
+  assert.ok(adapter.includes('先选一条线索、球、人物或锚点，再开始标注。'), 'the rail empty state stopped padding with 请');
+  assert.ok(adapter.includes('选中线索会在舞台上循环播放它的片段；冻结后可逐帧检查。'), 'and the cue note reads as one sentence');
+  for (const gone of ['争夺注意力', '请先选择线索', '再进行标注']) {
+    assert.ok(!adapter.includes(gone), `${gone} is gone from the workbench's Chinese`);
+  }
+  for (const key of ['keys', 'keyMap']) {
+    assert.ok(!new RegExp(`\\n\\s*${key}:'`).test(adapter), `${key} is out of the table: the hint line it fed went in round 18`);
+  }
+  for (const [key, zh] of [['ignoreHint', '把这条轨迹标为观众'], ['railEmpty', '先选一条线索'], ['selectCueHint', '选中线索会']]) {
+    assert.ok(adapter.includes(zh), `${key} keeps its Chinese: ${zh}`);
+  }
+});

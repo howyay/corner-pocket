@@ -1535,7 +1535,7 @@ test('the rail empty state and the labelling copy render in 中 as well', () => 
     assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zh), `${key} is translated in 中`);
   const VS = adapterStage('zh', ROSTER);
   const none = VS.inspectorHTML(visionSnapshot());
-  assert.ok(none.includes('请先选择线索、球、人物或锚点，再进行标注。'), 'the rail empty state is Chinese');
+  assert.ok(none.includes('先选一条线索、球、人物或锚点，再开始标注。'), 'the rail empty state is Chinese');
   assert.ok(none.includes('此帧'), 'the frame-tools heading is Chinese');
   const person = VS.inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
   assert.ok(person.includes('选择常客') && person.includes('访客姓名'), 'both labelling options are Chinese');
