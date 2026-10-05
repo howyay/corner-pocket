@@ -120,7 +120,8 @@ const COPY = {
     tierWindowHint:'A ball really moved in this window, but not the one or where the claim said. Review it as a moment, not as the claimed shot.',
     noPotsMeasured:'No pot candidate in this VOD survived measurement: the ball census refuted every claim (a ball said to be potted was still on the cloth) and 2 stayed unconfirmed, so this list is empty on purpose.',
     noShotsMeasured:'No shot candidate survived measurement: every served event is explained by occlusion — a person crossing the cloth at that moment — and at 720p one ball\'s best possible signal sits on the detection floor (motion measured over the whole VOD: 0 of 55 ball-scale onsets could be a single ball). The events stay in the report artifacts, not in the queue.',
-    loopWord:'loop', playingWord:'playing', pausedWord:'paused'
+    loopWord:'loop', playingWord:'playing', pausedWord:'paused',
+    inferAutoOn:'Inference runs when playback stops', inferAutoOff:'Auto inference off', inferAutoRunning:'Inferring'
   },
   zh: {
     cues:'线索', inspector:'检查器', sources:'视频源', events:'事件', balls:'球', persons:'人物',
@@ -228,7 +229,8 @@ const COPY = {
     tierWindowHint:'该窗口确有球在动，但不是声称的那颗，或不在声称的位置。请按「时刻」复核，而不是按声称的那次击球。',
     noPotsMeasured:'本场没有经测量存活的入袋候选：球数普查推翻了每一条断言（声称入袋的球仍在台面上），另有 2 条未确认，因此列表为空是刻意的。',
     noShotsMeasured:'没有击球候选通过测量：已服务的每条事件都被遮挡解释——那一刻有人穿过台面——且 720p 下单球的最强信号正好卡在检测底噪上（全片实测：55 个球尺度突变中 0 个可能来自单颗球）。这些事件保留在报告产物里，不在队列中。',
-    loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停'
+    loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停',
+    inferAutoOn:'暂停即自动推理', inferAutoOff:'自动推理已关闭', inferAutoRunning:'推理中'
   }
 };
 let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerObserver = null;
@@ -547,8 +549,14 @@ function chipsHTML(s) {
   const panel = sourceOpen ? `<div class="vs-source-panel" id="vs-source-panel" role="group" aria-label="${esc(t('sources'))}">
     <div class="vs-source-head"><strong>${esc(t('sources'))}</strong><button class="vs-source-close" data-vs-action="source-panel" aria-label="${esc(t('closePanel'))}">×</button></div>
     ${sourcePanelHTML(s)}</div>` : '';
+  // Round 17, owner item 2: inference runs itself when the picture stops, so the stage reports what it
+  // is doing and offers the one switch. The engine owns the run; this is its report.
+  const corr = s.corrections || {};
+  const infer = corr.inferRunning
+    ? `<button class="vs-infer running" data-vs-action="auto-infer" data-vs-value="on" data-vs-role="infer-status">${esc(t('inferAutoRunning'))} · ${esc(String(corr.inferStatus || '').slice(0, 90))}</button>`
+    : `<button class="vs-infer${corr.autoInfer === false ? ' off' : ''}" data-vs-action="auto-infer" data-vs-value="${corr.autoInfer === false ? 'on' : 'off'}" data-vs-role="infer-status">${esc(corr.autoInfer === false ? t('inferAutoOff') : t('inferAutoOn'))}</button>`;
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
-  <div class="vs-chipmeta">${freshness}<span class="vs-keys" role="note" aria-label="${esc(t('keyMap'))}: ${esc(t('keys'))}">${esc(t('keys'))}</span></div>${panel}`;
+  <div class="vs-chipmeta">${infer}${freshness}<span class="vs-keys" role="note" aria-label="${esc(t('keyMap'))}: ${esc(t('keys'))}">${esc(t('keys'))}</span></div>${panel}`;
 }
 // Who made this candidate: one quiet line under the card's facts, never a badge.
 // A machine-produced candidate says so in its own words (translated in 中); an
@@ -1235,6 +1243,7 @@ function act(action, value, node) {
     case 'live-stop': opts.stopLive(); break;
     case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
     case 'open-sources': opts.openSources?.(); break;
+    case 'auto-infer': opts.setAutoInference?.(String(node?.dataset?.vsValue || 'on') === 'on'); break;
     case 'use-saved-vod': { replayDraft = {...(replayDraft || {}), vod: `https://www.twitch.tv/videos/${value}`}; render(); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
     case 'live-detector': { const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
     case 'pick-replay': {

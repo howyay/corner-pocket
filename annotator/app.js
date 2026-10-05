@@ -39,6 +39,10 @@ const state = {
   dirty:false, busy:false, epoch:0, decoding:false, playing:false, playTimer:null, unifiedTimer:null, pendingSeek:null,
   playback:{on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN},
   detectors:{table:true,person:true,balls:false}, inferTimer:null, inferRunning:false, inferStatus:'',
+  // Round 17, owner item 2: inference runs itself when playback stops, once per frame, and the
+  // stage says so. autoInferOff lets an operator turn it off; lastInferredFrame keeps a pause
+  // that lands on the same frame from re-running the same work.
+  autoInferOff:false, lastInferredFrame:null,
   // Enrolling the person on screen: the preview only reads, the confirm is the
   // one write, and both live here so the rail renders one truth.
   enroll:{status:'idle', payload:null, name:'', startedAt:0, error:null},
@@ -561,6 +565,7 @@ function seekTime(t) { const meta = state.vmeta; if (!meta) return false; return
 function stepFrame(delta) { if (!state.vmeta || !canLeave()) return false; return seek((state.pendingSeek ?? state.frame) + delta); }
 function setPlaying(playing) {
   state.playing = !!playing;
+  if (!state.playing) scheduleAutoInference();
   clearTimeout(state.playTimer); state.playTimer = null;
   const video = stageVideo();
   if (state.playing) {
@@ -1361,6 +1366,31 @@ function nudgeAnchor(dx, dy) {
   p[0] = Math.max(0, Math.min(state.anchors.w - 1, p[0] + dx)); p[1] = Math.max(0, Math.min(state.anchors.h - 1, p[1] + dy));
   markDirty(); paintOverlay();
 }
+// Round 17, owner item 2: the operator should not have to click to freeze a frame. A pause is the
+// signal, one run per frame, debounced so a scrub that lands somewhere does not start a run the
+// operator is about to leave, and skipped while a run is in flight or while the operator has turned
+// it off. runInference() reports its own progress through inferRunning/inferStatus.
+let autoInferTimer = null;             // module scope: a Timeout handle is not readable state
+function scheduleAutoInference() {
+  clearTimeout(autoInferTimer); autoInferTimer = null;
+  if (state.autoInferOff || state.inferRunning) return;
+  autoInferTimer = setTimeout(() => {
+    autoInferTimer = null;
+    if (state.playing || state.inferRunning || state.autoInferOff) return;
+    if (!state.fresult) return;                       // nothing frozen to run on
+    if (state.lastInferredFrame === state.frame) return;
+    const detectors = Object.keys(state.detectors).filter(k => state.detectors[k]);
+    if (!detectors.length) return;
+    state.lastInferredFrame = state.frame;
+    runInference(null);
+  }, 500);
+}
+function setAutoInference(on) {
+  state.autoInferOff = !on;
+  if (on) scheduleAutoInference();
+  else { clearTimeout(autoInferTimer); autoInferTimer = null; }
+  notify();
+}
 async function runInference(button) {
   if (state.busy || !state.fresult) { if (!state.fresult) notice('Freeze a frame before running inference.', true); return false; }
   const detectors = Object.keys(state.detectors).filter(k => state.detectors[k]);
@@ -1743,7 +1773,7 @@ function snapshot() {
     balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
     persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
     anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
-    corrections: {tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
+    corrections: {inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff, tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
       // Where this frame's inference came from: a stored file from an earlier run
       // (marked by the server, with its own timestamp) or the result of inference
       // run on this frame now, which is never written to disk. A live or replay
@@ -1996,7 +2026,7 @@ window.CornerPocketReview = {
   selectStageBall, selectStagePerson,
   saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity, clearIdentity,
   enrollPreview, enrollConfirm, setEnrollName, cancelEnroll,
-  saveAnchors, saveCorrections, runInference, rebuild, refreshRebuild, setWindow,
+  saveAnchors, saveCorrections, runInference, setAutoInference, rebuild, refreshRebuild, setWindow,
   setTool, setBoxLabel, deleteBox, addPolygon, clearPolygon, setNewBoxLabel, nudgeAnchor,
   setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,
   // After a VOD import or delete: re-list the datasets, keeping the current one if it still exists.

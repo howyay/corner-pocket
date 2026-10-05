@@ -4029,3 +4029,23 @@ test('round 17 / owner item 1: the face a person was identified by is drawn, and
   assert.ok(!/class="u-face"[^>]*data-person=/.test(engine),
     'and it is not a person box: one human keeps one box (the face rides inside it)');
 });
+test('round 17 / owner item 2: inference runs when playback stops, and the stage says so', () => {
+  const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  assert.ok(engine.includes('if (!state.playing) scheduleAutoInference();'), 'a pause is the signal, not a click');
+  assert.ok(engine.includes('function scheduleAutoInference() {'), 'and it is one named place');
+  for (const guard of ['state.autoInferOff', 'state.inferRunning', 'state.lastInferredFrame === state.frame', 'state.playing || state.inferRunning']) {
+    assert.ok(engine.includes(guard), `the run is guarded: ${guard}`);
+  }
+  assert.ok(/autoInferTimer = setTimeout\(\(\) => \{[\s\S]{0,700}?\}, 500\);/.test(engine),
+    'and debounced, so a scrub that lands somewhere does not start work the operator is about to leave');
+  assert.ok(engine.includes('function setAutoInference(on) {') && engine.includes('runInference, setAutoInference,'),
+    'the operator can turn it off');
+  assert.ok(engine.includes('inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff,'),
+    'the snapshot carries the report the stage renders');
+  assert.ok(adapter.includes('data-vs-role="infer-status"') && adapter.includes("inferAutoOn:'Inference runs when playback stops'")
+    && adapter.includes("inferAutoOn:'暂停即自动推理'"), 'and the stage renders it in both languages');
+  assert.ok(adapter.includes("case 'auto-infer': opts.setAutoInference?.(") &&
+    source.includes('setAutoInference:on=>review()?.setAutoInference?.(on)'),
+    'with the one switch wired to the engine');
+});

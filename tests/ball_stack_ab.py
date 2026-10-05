@@ -221,6 +221,140 @@ def stage_cost(frames, size, threshold=0.425, repeats=40):
                 ms_min=round(float(np.min(warm)), 2), ms_max=round(float(np.max(warm)), 2))
 
 
+def reference_input(planes_bgr, size):
+    """The **old** input path, verbatim, as the bit-identity reference.
+
+    This is what ``BallStage.process`` did before the CHW-fill resident-tensor change:
+    concatenate three BGR planes converted to RGB, cast to float32, divide by 255,
+    transpose to CHW, make it contiguous.  It is kept here, not in the stage, because
+    it is a measurement reference and not a code path anybody should use.
+    """
+    import cv2
+    import numpy as np
+    stack = np.concatenate([cv2.cvtColor(plane, cv2.COLOR_BGR2RGB) for plane in planes_bgr],
+                           axis=2).astype(np.float32) / 255.0
+    return np.ascontiguousarray(stack.transpose(2, 0, 1))
+
+
+def sha256(array):
+    import hashlib
+    import numpy as np
+    return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
+
+
+def bit_identity(frames, order, size, threshold=0.425, device='cpu'):
+    """Element by element: does the new input path produce the *same* tensor?
+
+    Real frames, the real ``BallStage`` fill, the real reference expression, compared
+    as raw bytes (sha256) and element by element.  Nothing here is a metric: if one
+    float differs, the change is wrong rather than merely different, and no timing
+    number computed on top of it means anything.
+    """
+    import numpy as np
+    from annotator.pipeline_stages import BallStage, StageContext
+
+    stage = BallStage(ROOT, threshold=threshold, size=size, device=device, model=object())
+    stage.heatmap = lambda tensor: np.zeros((size[1], size[0]), np.float32)
+    seen, rows = [], []
+    for index in order:
+        frame = frames[index]
+        tensor = stage.input_for(frame, StageContext({}, frame_number=index))
+        got = tensor.cpu().numpy()[0]
+        seen.append(frame)
+        trio = seen[-stage.stack:]
+        while len(trio) < stage.stack:
+            trio.insert(0, trio[0])
+        want = reference_input(trio, size)
+        rows.append(dict(frame_number=index, shape=list(got.shape), dtype=str(got.dtype),
+                         byte_identical=sha256(got) == sha256(want),
+                         element_identical=bool(np.array_equal(got, want)),
+                         max_abs_difference=float(np.abs(got.astype(np.float64)
+                                                         - want.astype(np.float64)).max()),
+                         sha256=sha256(got)))
+    return dict(device=device, checked_frames=len(rows), stack=stage.stack,
+                all_byte_identical=all(row['byte_identical'] for row in rows),
+                all_element_identical=all(row['element_identical'] for row in rows),
+                max_abs_difference=max(row['max_abs_difference'] for row in rows),
+                frames=rows)
+
+
+def input_path_cost(frames, order, size, device, repeats=40):
+    """Old input path vs new, timed as a unit on the same frames and device.
+
+    "Old" is the reference stack build plus the float32 tensor it had to copy; "new"
+    is ``BallStage.input_for``.  Both include the host-to-device move their path
+    needs, because that move is part of the thing under test.
+    """
+    import time as clock
+    import numpy as np
+    import torch
+    from annotator.pipeline_stages import BallStage, StageContext
+
+    stage = BallStage(ROOT, threshold=0.425, size=size, device=device, model=object())
+    stage.heatmap = lambda tensor: np.zeros((size[1], size[0]), np.float32)
+    trio = [frames[index] for index in order[-stage.stack:]]
+    while len(trio) < stage.stack:
+        trio.insert(0, trio[0])
+    resolved = stage._device
+    stage.input_for(frames[order[-1]], StageContext({}, frame_number=order[-1]))
+
+    def timed(call, count):
+        call()
+        samples = []
+        for _ in range(count):
+            started = clock.perf_counter()
+            call()
+            samples.append((clock.perf_counter() - started) * 1000)
+        return dict(n=len(samples), p50=round(float(np.median(samples)), 2),
+                    p95=round(float(np.percentile(samples, 95)), 2),
+                    min=round(float(np.min(samples)), 2))
+
+    def old():
+        return torch.from_numpy(reference_input(trio, size))[None].to(resolved)
+
+    def new():
+        return stage.input_for(frames[order[-1]], StageContext({}, frame_number=order[-1]))
+
+    return dict(device=resolved, old=timed(old, repeats), new=timed(new, repeats))
+
+
+def whole_process_cost(video, size, device, frame_index, threshold=0.425, repeats=25,
+                       samples=6):
+    """``BallStage.process`` end to end with the **real** model - the figure §7 said was missing.
+
+    Every earlier timing measured a piece: the stage with the forward stubbed, or a
+    forward whose input was built outside the timed region.  This times the call the
+    pipeline actually makes, including whichever input path is current.
+    """
+    import time as clock
+    import cv2
+    import numpy as np
+    from annotator.pipeline_stages import BallStage, StageContext
+
+    cap = cv2.VideoCapture(str(video))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+    frames = []
+    for _ in range(samples):
+        ok, bgr = cap.read()
+        if not ok:
+            break
+        frames.append(cv2.resize(bgr, size, interpolation=cv2.INTER_AREA))
+    cap.release()
+    stage = BallStage(ROOT, threshold=threshold, size=size, device=device)
+    stage.process(frames[0], StageContext({}, frame_number=0))     # weights + kernels
+    times = []
+    for step in range(1, repeats + 1):
+        frame = frames[step % len(frames)]
+        started = clock.perf_counter()
+        stage.process(frame, StageContext({}, frame_number=step))
+        times.append((clock.perf_counter() - started) * 1000)
+    return dict(n=len(times), p50=round(float(np.median(times)), 2),
+                p95=round(float(np.percentile(times, 95)), 2),
+                min=round(float(np.min(times)), 2), device=stage._device,
+                checkpoint=BallStage.checkpoint,
+                note='whole process(): input build + forward + peak search, one call')
+
+
 def main():
     import numpy as np
     import torch
@@ -233,6 +367,9 @@ def main():
     parser.add_argument('--threshold', type=float, default=0.425)
     parser.add_argument('--output', default=str(ROOT / 'out/tiny_ball_probe/stack_ab.json'))
     parser.add_argument('--no-sweep', action='store_true', help='skip the 38-point F1 sweep')
+    parser.add_argument('--identity-frames', type=int, default=12,
+                        help='real frames compared element by element against the old '
+                             'input path (three ways: cpu, device, cadence 2)')
     args = parser.parse_args()
 
     size = tn.parse_size(args.size)
@@ -292,12 +429,27 @@ def main():
     anchor = tn.frame_index(tn.VIDEO, held[len(held) // 2])
     run_frames = decode_spans(tn.VIDEO, list(range(anchor, anchor + 60)), size)
     result['stage_cost_ms'] = stage_cost(run_frames, size, threshold=args.threshold)
+
+    # --- the input path: identity first, then cost.  Order is the point. ----------
+    run_order = sorted(run_frames)[:args.identity_frames]
+    result['bit_identity_cpu'] = bit_identity(run_frames, run_order, size,
+                                              args.threshold, device='cpu')
+    result['bit_identity_device'] = bit_identity(run_frames, run_order, size,
+                                                 args.threshold, device=device)
+    # cadence 2: the planes that land in the ring are not consecutive source frames
+    result['bit_identity_cadence2'] = bit_identity(run_frames, run_order[::2], size,
+                                                   args.threshold, device=device)
+    result['input_path_ms'] = input_path_cost(run_frames, run_order, size, device)
+    result['process_ms'] = whole_process_cost(tn.VIDEO, size, device, anchor,
+                                              threshold=args.threshold)
     result['reading'] = (
         'centred reproduces the published operating point; the causal stack is what a '
         'live pipeline can feed. delta_f1_operating is the cost of that, measured on the '
         'same frames with the same code path. recall_by_speed says whether the net loses '
         'fast balls, which is the one detector-side explanation for a dense track with no '
-        'sustained motion.')
+        'sustained motion. bit_identity_* compare the input tensor the stage builds today '
+        'with the one it built before the CHW-fill/resident-tensor change: byte for byte, '
+        'on real frames, on the CPU path, on the device path and at cadence 2.')
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(result, indent=1))
     print(json.dumps({key: value for key, value in result.items()
@@ -317,7 +469,23 @@ def main():
               % (entry['low'], '-' if entry['high'] is None else '%.0f' % entry['high'],
                  entry['n'], entry['found'], entry['recall']))
     print('stage cost without the forward:', json.dumps(result['stage_cost_ms']))
+    for name in ('bit_identity_cpu', 'bit_identity_device', 'bit_identity_cadence2'):
+        entry = result[name]
+        print('%-24s frames=%-3d bytes_identical=%-5s elements_identical=%-5s max|diff|=%g'
+              % (name, entry['checked_frames'], entry['all_byte_identical'],
+                 entry['all_element_identical'], entry['max_abs_difference']))
+    print('input path ms: old p50 %s / new p50 %s (device %s)'
+          % (result['input_path_ms']['old']['p50'], result['input_path_ms']['new']['p50'],
+             result['input_path_ms']['device']))
+    print('whole process():', json.dumps(result['process_ms']))
     print('wrote', args.output)
+    failed = [name for name in ('bit_identity_cpu', 'bit_identity_device',
+                                'bit_identity_cadence2')
+              if not result[name]['all_element_identical']]
+    if failed:
+        print('BIT-IDENTITY FAILED for: %s - the change is WRONG, not merely different'
+              % ', '.join(failed))
+        return 1
     return 0
 
 

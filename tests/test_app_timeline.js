@@ -49,7 +49,7 @@ test('lifecycle is the only public namespace and absent host does not mount', ()
   // +2 for the polish's clarify step: pocketText and colourWord, so the adapter names pockets and colours in one vocabulary.
   // +1 for the VOD selector: reloadDatasets, so the Source panel can list a VOD it just imported or deleted.
   assert.ok(api.includes('reloadDatasets'));
-  assert.strictEqual(api.length, 70, 'the engine exposes exactly its lifecycle + one-stage API');
+  assert.strictEqual(api.length, 71, 'the engine exposes exactly its lifecycle + one-stage API (round 17 adds setAutoInference)');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -2577,4 +2577,3 @@ test('a status payload carries its code into the console, as the cause or as his
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
-
