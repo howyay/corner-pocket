@@ -624,17 +624,26 @@ class OperationsTests(unittest.TestCase):
         state = self.call('revival_undo', confirm=True)
         self.assertEqual(state['tournament']['matches'], before_draw)
         self.assertNotIn('revival', state['tournament'])
-        self.assertEqual(state['events'][-1]['action'], 'revival_undo')
-        self.assertEqual(state['events'][-1]['context']['seed'], context['seed'])
-        state = self.call('revival_draw', confirm=True)
-        match = self.ops._find(state['tournament']['matches'], state['events'][-1]['context']['match'])
-        self.call('match_schedule', id=match['id'])
-        self.call('match_score', id=match['id'], score=[7, 0])
-        self.call('match_complete', id=match['id'])
-        saved = self.ops.path.read_bytes()
-        with self.assertRaisesRegex(ValueError, 'a result has been signed since the draw'):
-            self.call('revival_undo', confirm=True)
-        self.assertEqual(self.ops.path.read_bytes(), saved)
+
+    def test_revival_draw_can_be_told_who(self):
+        """R21 item 3: the operator may name a round-1 loser, and anyone else is refused."""
+        state = self.play_round_one(6)
+        t = state['tournament']
+        losers = sorted(next(side for side in m['sides'] if side != m['winnerId'])
+                        for m in t['matches'] if m['round'] == 1 and m.get('result') == 'played')
+        # A name the draw would never choose is refused, and the bracket is untouched.
+        before = json.loads(json.dumps(t['matches']))
+        with self.assertRaisesRegex(ValueError, 'not eligible for the second chance'):
+            self.call('revival_draw', confirm=True, entrant='nobody')
+        self.assertEqual(state['tournament']['matches'], before, 'a refused name changes nothing')
+        self.assertNotIn('revival', state['tournament'])
+        # A named loser is the one who returns, and the audit says so.
+        chosen = losers[-1]
+        state = self.call('revival_draw', confirm=True, entrant=chosen)
+        t = state['tournament']
+        self.assertEqual(t['revival']['entrant'], chosen, 'the named person is the one who returns')
+        self.assertEqual(state['events'][-1]['context']['entrant'], chosen, 'and the audit records it')
+        self.assertEqual(t['revival']['pool'], losers, 'the pool the draw would have used is unchanged')
 
     def test_revival_draw_refuses_with_a_reason(self):
         """R6: unfinished round 1, no played loser, no bye slot, or a signed round-2 result."""

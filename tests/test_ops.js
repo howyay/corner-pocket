@@ -4184,3 +4184,20 @@ test('round 20 / owner item 10: the backfill does not ask the operator twice', (
       `${branch} is still exactly one branch`);
   }
 });
+test('round 21 / owner item 3: the second chance can be told who to resurrect', () => {
+  const h = harness();
+  // The card offers the draw and a name; the payload carries the name only when one is chosen.
+  assert.ok(source.includes("id=\"revival-pick\""), 'the second-chance card offers a picker');
+  assert.ok(source.includes("t('revivalRandom')") && source.includes('function revivalPool(T)'),
+    'whose first option is the random draw, over the round-1 losers');
+  assert.ok(source.includes("pick?{confirm:true,entrant:pick}:{confirm:true}"),
+    'a chosen name travels in the payload, and the draw stays untouched when none is chosen');
+  // The pool is the round-1 losers, computed from the tournament the client holds.
+  h.evaluate(`data.tournament={id:'t1',format:'singles',raceTo:3,status:'active',
+    entrants:[{id:'a',members:[{pid:null,name:'A'}]},{id:'b',members:[{pid:null,name:'B'}]},
+              {id:'c',members:[{pid:null,name:'C'}]},{id:'d',members:[{pid:null,name:'D'}]}],
+    matches:[{id:'m1',round:1,sides:['a','b'],score:[3,1],status:'complete',result:'played',winnerId:'a',absent:[]},
+             {id:'m2',round:1,sides:['c','d'],score:[0,0],status:'scheduled',absent:[]}]}`);
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(revivalPool(tournament()))')), [{id:'b'}],
+    'only the loser of a played round-1 match is offered');
+});
