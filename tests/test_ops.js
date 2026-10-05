@@ -141,7 +141,7 @@ test('live JPEG bytes and their metadata stay atomically paired', () => {
 });
 test('Vision is one stage with two rails and no sub-tab navigation left', () => {
   const h = harness();
-  assert.equal(h.evaluate("t('vision')"), 'Vision');
+  assert.equal(h.evaluate("t('vision')"), 'Livestream');
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs)')), ['tonight','records','vision','players','status']);
   assert.ok(!source.includes('review-frame'));
   assert.ok(!source.includes('src="/app.html"'));
@@ -4134,8 +4134,11 @@ test('round 18 / owner items 1-6, read exactly: the red boxes go, the rest stays
 test('round 19 / owner item 9: the bar is one row, so the picture starts higher', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator', 'ops.css'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '../annotator', 'ops.html'), 'utf8');
-  assert.ok(/#ops-shell \.bar \.clockbar\{position:absolute;right:0;top:50%/.test(css),
-    'the clock is pinned to the bar\u2019s own edge, so the nav and the clock share one row');
+  // Round 20, owner item 8: the shot timer is its own bar again, so the rule that pinned it to the
+  // bar's edge is gone. What remains is the compact padding.
+  assert.ok(!/\.bar \.clockbar\{position:absolute/.test(css), 'the clock is not pinned into the nav row');
+  assert.ok(/#ops-shell \.bar\{padding-top:var\(--sp-1\);padding-bottom:var\(--sp-1\)\}/.test(css),
+    'the bar keeps the compact padding round 19 gave it');
   assert.ok(/#ops-shell\[data-review="1"\] \.vs-stage\{height:100%;align-self:stretch\}/.test(css),
     'and the stage fills the room the bar gave back');
   assert.ok(/\.vs-stage img,[^}]*\.vs-stage video\{max-height:100%;max-width:100%/.test(css),

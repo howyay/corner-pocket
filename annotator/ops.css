@@ -1255,10 +1255,11 @@ html,body{-webkit-font-smoothing:antialiased}
    video starts much higher. Measured before: the bar 110px and the review card 146px put the stage at
    y=317 in a 1045px viewport - 30% of the screen spent above the picture. */
 @media(min-width:1200px){
-  /* The clock is pinned to the bar's own right edge, so the bar is one row whatever the nav does. */
-  #ops-shell .bar{position:relative;padding-top:var(--sp-1);padding-bottom:var(--sp-1)}
-  #ops-shell .bar .barrow{padding-right:calc(300px + var(--sp-4))}
-  #ops-shell .bar .clockbar{position:absolute;right:0;top:50%;transform:translateY(-50%);margin:0;padding:0}
+  /* Round 20, owner item 8: the shot timer keeps its own bar under the destinations, as it always had.
+     Round 19's item 9 moved it to the bar's right edge; this puts it back. The bar's own padding is
+     still the compact one. */
+  #ops-shell .bar{padding-top:var(--sp-1);padding-bottom:var(--sp-1)}
+  #ops-shell .bar .clockbar{margin:0}
   /* The stage fills the room the bar gave back, and the picture fills the stage. */
   #ops-shell[data-review="1"] .vs-stage{height:100%;align-self:stretch}
   #ops-shell[data-review="1"] .vs-stage img,#ops-shell[data-review="1"] .vs-stage video{max-height:100%;max-width:100%;width:auto;height:auto}
