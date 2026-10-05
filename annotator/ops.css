@@ -1211,3 +1211,6 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .vs-infer{min-height:28px;padding:0 var(--sp-2);font:var(--fs-xs) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);background:transparent;border:1px solid var(--line);border-radius:2px}
 #ops-shell .vs-infer.running{color:var(--brass-hi);border-color:var(--brass)}
 #ops-shell .vs-infer.off{color:var(--ink-faint)}
+/* Round 17, owner item 3: the row's binding chip and the face-only state. */
+#ops-shell .vs-tag.bound{color:var(--brass-hi);border-color:var(--brass)}
+#ops-shell .vs-tag.face{color:var(--ink-dim)}

@@ -121,7 +121,8 @@ const COPY = {
     noPotsMeasured:'No pot candidate in this VOD survived measurement: the ball census refuted every claim (a ball said to be potted was still on the cloth) and 2 stayed unconfirmed, so this list is empty on purpose.',
     noShotsMeasured:'No shot candidate survived measurement: every served event is explained by occlusion — a person crossing the cloth at that moment — and at 720p one ball\'s best possible signal sits on the detection floor (motion measured over the whole VOD: 0 of 55 ball-scale onsets could be a single ball). The events stay in the report artifacts, not in the queue.',
     loopWord:'loop', playingWord:'playing', pausedWord:'paused',
-    inferAutoOn:'Inference runs when playback stops', inferAutoOff:'Auto inference off', inferAutoRunning:'Inferring'
+    inferAutoOn:'Inference runs when playback stops', inferAutoOff:'Auto inference off', inferAutoRunning:'Inferring',
+    faceOnly:'face seen'
   },
   zh: {
     cues:'线索', inspector:'检查器', sources:'视频源', events:'事件', balls:'球', persons:'人物',
@@ -230,7 +231,8 @@ const COPY = {
     noPotsMeasured:'本场没有经测量存活的入袋候选：球数普查推翻了每一条断言（声称入袋的球仍在台面上），另有 2 条未确认，因此列表为空是刻意的。',
     noShotsMeasured:'没有击球候选通过测量：已服务的每条事件都被遮挡解释——那一刻有人穿过台面——且 720p 下单球的最强信号正好卡在检测底噪上（全片实测：55 个球尺度突变中 0 个可能来自单颗球）。这些事件保留在报告产物里，不在队列中。',
     loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停',
-    inferAutoOn:'暂停即自动推理', inferAutoOff:'自动推理已关闭', inferAutoRunning:'推理中'
+    inferAutoOn:'暂停即自动推理', inferAutoOff:'自动推理已关闭', inferAutoRunning:'推理中',
+    faceOnly:'已见人脸'
   }
 };
 let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerObserver = null;
@@ -630,7 +632,21 @@ function railHTML(s) {
     <input type="text" data-vs-action="guest-name" data-vs-track="${esc(id)}" maxlength="60" placeholder="${esc(t('guestName'))}" aria-label="${esc(t('guestName'))}" value="${esc(seed && !isSeedRole(seed) ? seed : '')}">
     <button data-vs-action="seed" data-vs-value="clear" data-vs-track="${esc(id)}">${esc(t('clear'))}</button>
   </div>`;
-  const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => { const label = x.seed || x.label; const selected = String(s.persons.track) === String(x.id); return `<div class="vs-item vs-track${selected ? ' selected' : ''}"><button class="vs-track-main" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span><span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>${labelControls(x.id, label && isSeedRole(label) ? label : '')}</div>`; }).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
+  // Round 17, owner item 3: the row shows who the pipeline says this track is, from the per-frame
+  // identity record, so an operator sees the binding without opening the inspector - and sees when
+  // a face box is the evidence for it.
+  const roster = (opts?.regulars?.() || []);
+  const identityFor = id => (s.persons.identity || []).find(p => String(p.track_id) === String(id)) || null;
+  const tracks = s.persons.tracks.length ? s.persons.tracks.map(x => {
+    const label = x.seed || x.label; const selected = String(s.persons.track) === String(x.id);
+    const ident = identityFor(x.id);
+    const who = ident && ident.player_id ? ((roster.find(r => String(r.id) === String(ident.player_id)) || {}).name || ident.player_id) : null;
+    const sim = ident && ident.face_sim != null ? ` ${Number(ident.face_sim).toFixed(2)}` : '';
+    const chip = who ? `<span class="vs-tag bound" data-vs-role="track-identity">${esc(who)}${esc(sim)}</span>`
+      : ident && ident.face_bbox ? `<span class="vs-tag${' '}face" data-vs-role="track-identity">${esc(t('faceOnly'))}</span>`
+      : '';
+    return `<div class="vs-item vs-track${selected ? ' selected' : ''}"><button class="vs-track-main" data-vs-action="select-track" data-vs-value="${esc(x.id)}"><span class="vs-mono">${esc(t('trackWord'))} ${esc(x.id)}</span>${chip}<span class="vs-tag${label ? ' done' : ''}${label && !isSeedRole(label) ? ' guest' : ''}">${esc(seedText(label) || '?')}</span></button>${labelControls(x.id, label && isSeedRole(label) ? label : '')}</div>`;
+  }).join('') : `<p class="vs-empty">${esc(t('noTracks'))}</p>`;
   return `<section class="vs-group${s.focus === 'events' ? ' focused' : ''}"><header><h3>${esc(t('events'))}</h3><span class="vs-mono">${esc(s.events.reviewed)} ${esc(t('reviewedWord'))}</span></header>
     <div class="vs-filters">${filters.map(([v, l]) => `<button class="vs-filter${s.eventFilter === v ? ' active' : ''}" data-vs-action="event-filter" data-vs-value="${v}">${esc(t(l))}</button>`).join('')}</div>${cards}</section>
   <section class="vs-group${s.focus === 'balls' ? ' focused' : ''}"><header><h3>${esc(t('queue'))}</h3><span class="vs-mono">${crops.length} ${esc(t('crops'))}</span></header>${cropRows}</section>

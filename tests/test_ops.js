@@ -4064,3 +4064,22 @@ test('round 17: a superseded frame request does not lock the stage', () => {
   assert.ok(engine.includes('state.busy = false; state.decoding = false;\n      const queued = state.pendingSeek; state.pendingSeek = null; notify();\n      if (queued !== null && queued !== undefined) loadFrame(queued);\n      else loadFrame(state.frame);'),
     'the queued seek wins when there is one - that is the request that was refused');
 });
+test('round 17 / owner item 3: the identity frame reaches the overlay and the track rows', () => {
+  const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  assert.ok(engine.includes('identity = await api(`/api/identity/frame?dataset=${enc(state.dataset)}&frame=${n}`)'),
+    'the frame loads the identity record that belongs to it');
+  assert.ok(engine.includes('catch (_) { identity = null; }'),
+    'and a missing identity pipeline cannot break the picture (the endpoint answers 503 without models)');
+  assert.ok(engine.includes('state.identity = identity;'), 'the record is kept with the frame it describes');
+  assert.ok(/identityPersons\.map\(p => \(\{bbox: p\.bbox, track_id: p\.track_id/.test(engine),
+    'the persons layer falls back to the identity record when the unified detection has no people');
+  assert.ok(engine.includes('face_bbox: p.face_bbox, face_quality: p.face_quality}'),
+    'so the face box the pipeline drew is carried into the overlay');
+  assert.ok(engine.includes('persons: {identity: (state.identity?.persons || []).map('),
+    'and the rows can see the binding');
+  assert.ok(adapter.includes('data-vs-role="track-identity"') && adapter.includes('faceOnly:'),
+    'each track row shows who the pipeline says it is, in both languages');
+  assert.ok(engine.includes('const face = per.face_bbox && per.face_bbox.length === 4'),
+    'the face box still rides inside the one person box');
+});

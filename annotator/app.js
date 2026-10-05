@@ -42,7 +42,7 @@ const state = {
   // Round 17, owner item 2: inference runs itself when playback stops, once per frame, and the
   // stage says so. autoInferOff lets an operator turn it off; lastInferredFrame keeps a pause
   // that lands on the same frame from re-running the same work.
-  autoInferOff:false, lastInferredFrame:null,
+  autoInferOff:false, lastInferredFrame:null, identity:null,
   // Enrolling the person on screen: the preview only reads, the confirm is the
   // one write, and both live here so the rail renders one truth.
   enroll:{status:'idle', payload:null, name:'', startedAt:0, error:null},
@@ -516,9 +516,16 @@ async function loadFrame(n) {
   state.busy = true; state.decoding = true; notify();
   try {
     const [shot, result] = await Promise.all([fetchFrame(state.dataset, n), api(`/api/frame-result?dataset=${enc(state.dataset)}&frame=${n}`)]);
+    // Round 17, owner item 3: the per-frame identity record - who the pipeline matched to which track,
+    // and the face box that did it. Fetched beside the frame and never able to break it: without the
+    // identity models the endpoint answers 503, and the picture must still load.
+    let identity = null;
+    try { identity = await api(`/api/identity/frame?dataset=${enc(state.dataset)}&frame=${n}`); }
+    catch (_) { identity = null; }
     if (epoch !== state.epoch || request !== state.frameReq) { URL.revokeObjectURL(shot.url); return; }
     if (state.shotUrl) URL.revokeObjectURL(state.shotUrl);
     state.shotUrl = shot.url; state.frame = shot.frame; state.t = shot.t; state.fresult = result;
+    state.identity = identity;
     state.frameWidth = shot.w || state.frameWidth; state.frameHeight = shot.h || state.frameHeight;
     state.dirty = false; state.unified = null; state.drawn.source = 'none';
     applyFrameResult(); renderStage();
@@ -877,7 +884,17 @@ function paintOverlay() {
   // measurement, on production: four people, four tracked rects, four model
   // person boxes, each pair overlapping at IoU 0.98-0.99. This list is hoisted
   // out of the layer so the boxes loop below can see what is already framed.
-  const personRects = ov.persons && !playing ? (u?.persons || (isLive ? liveBoxes.filter(b => b.label === 'person') : [])) : [];
+  // The unified detection describes the frame; the identity pipeline describes the people on it,
+  // with the face box that named each one. The unified layer wins when it has people (it is the
+  // detector's own view); otherwise the identity record is what the stage draws, so a face box is
+  // never invented and a person is never drawn twice.
+  const identityPersons = (state.identity?.persons || []);
+  const personRects = ov.persons && !playing
+    ? ((u?.persons && u.persons.length) ? u.persons
+      : (isLive ? liveBoxes.filter(b => b.label === 'person')
+        : identityPersons.map(p => ({bbox: p.bbox, track_id: p.track_id, cluster_id: p.cluster_id,
+                                     player_id: p.player_id, face_bbox: p.face_bbox, face_quality: p.face_quality}))))
+    : [];
   if (personRects.length) {
     const persons = personRects;
     layers.push(persons.map(per => {
@@ -1791,7 +1808,7 @@ function snapshot() {
     reviewed: state.events.filter(e => state.annotations[String(e.id)]?.verdict).length},
     verdictDraft: state.verdictDraft ?? null,
     balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
-    persons: {win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
+    persons: {identity: (state.identity?.persons || []).map(p => ({track_id: p.track_id, cluster_id: p.cluster_id, player_id: p.player_id, face_sim: p.face_sim, bound_evidence: p.bound_evidence, face_bbox: p.face_bbox || null})), win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
     anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
     corrections: {inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff, tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
       // Where this frame's inference came from: a stored file from an earlier run
