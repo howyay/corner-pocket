@@ -821,8 +821,14 @@ class Operations:
                 raise ValueError('No round-2 bye slot to fill')
             # the last bye in the draw belongs to the lowest seed that has one
             match, following = slots[-1]
+            # Round 21, owner item 3: the operator may name the person instead of taking the draw. The
+            # pool is what the draw itself chooses from, so a name outside it is refused rather than
+            # quietly resurrecting somebody who is still playing.
+            chosen = p.get('entrant')
+            if chosen is not None and chosen not in pool:
+                raise ValueError('That person is not eligible for the second chance')
             seed = random.SystemRandom().randrange(2 ** 31)
-            entrant = random.Random(seed).choice(pool)
+            entrant = chosen if chosen is not None else random.Random(seed).choice(pool)
             side = match['sides'].index(None)
             holder = match['winnerId']
             members = self._find(t['entrants'], entrant)['members']
