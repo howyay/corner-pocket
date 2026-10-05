@@ -4167,7 +4167,9 @@ test('round 19 / owner item 6: the Tonight screen reads like a person wrote it',
                  'boardEmptySend', 'boardEmptyNoDraw', 'signNoWinner', 'noMatch',
                  // batch 2: the Back room, where the jargon lived ('持久化运营接口').
                  'persist', 'forMaintainersNote', 'systemStatusNote', 'noSimulation', 'observation',
-                 'review', 'notConnected'];
+                 'review', 'notConnected',
+                 // batch 3: History, where the long sentences live.
+                 'reviewNote', 'autoQueued', 'autoSkipped', 'autoDone'];
   const allow = ['T{table}', 'VOD', 'Twitch', 'MB/s', '{n}', '{name}', '{score}', '{table}', '{id}', '{at}'];
   for (const key of batch) {
     const [en, zh] = words[key];
