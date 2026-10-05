@@ -42,7 +42,7 @@ const state = {
   // Round 17, owner item 2: inference runs itself when playback stops, once per frame, and the
   // stage says so. autoInferOff lets an operator turn it off; lastInferredFrame keeps a pause
   // that lands on the same frame from re-running the same work.
-  autoInferOff:false, lastInferredFrame:null, identity:null, identityFor:null,
+  autoInferOff:false, lastInferredFrame:null, identity:null, identityFor:null, lastShotUrl:null,
   // Enrolling the person on screen: the preview only reads, the confirm is the
   // one write, and both live here so the rail renders one truth.
   enroll:{status:'idle', payload:null, name:'', startedAt:0, error:null},
@@ -518,7 +518,7 @@ async function loadFrame(n) {
     const [shot, result] = await Promise.all([fetchFrame(state.dataset, n), api(`/api/frame-result?dataset=${enc(state.dataset)}&frame=${n}`)]);
     if (epoch !== state.epoch || request !== state.frameReq) { URL.revokeObjectURL(shot.url); return; }
     if (state.shotUrl) URL.revokeObjectURL(state.shotUrl);
-    state.shotUrl = shot.url; state.frame = shot.frame; state.t = shot.t; state.fresult = result;
+    state.shotUrl = shot.url; state.lastShotUrl = shot.url; state.frame = shot.frame; state.t = shot.t; state.fresult = result;
     state.frameWidth = shot.w || state.frameWidth; state.frameHeight = shot.h || state.frameHeight;
     state.dirty = false; state.unified = null; state.drawn.source = 'none';
     applyFrameResult(); renderStage();
@@ -778,12 +778,16 @@ function renderStage() {
   // While the source is live the live frame owns the picture: a re-render (a
   // language switch, a rebuilt stage, a late frame decode) keeps the last live
   // frame and never slips the dataset still under the live overlay.
-  const picture = liveStill() || state.shotUrl;
+  // Round 21, owner item 5, measured: while a scrub step loads, state.shotUrl is briefly empty and the
+  // stage hid the picture it was already showing. The last painted frame stays the stage's picture
+  // until a new one is decoded; a dataset switch clears it, so nothing leaks between sources.
+  const still = liveStill() || state.shotUrl || state.lastShotUrl;
+  const picture = still;
   // Round 20, owner item 9: a frame already on the stage is not written again - every assignment to an
   // <img> is a reload - and a null-ish source is never written.
   if (img && picture && String(picture) !== 'null' && img.getAttribute('src') !== picture) img.src = picture;
-  const showStill = !!state.shotUrl && !videoShown;
-  if (img) img.hidden = !showStill && !liveStill();
+  const showStill = !!still && !videoShown;
+  if (img) { const hide = !showStill && !liveStill(); if (img.hidden !== hide) img.hidden = hide; }
   const empty = $('#stage-empty');
   if (empty) {
     const hideEmpty = !!state.shotUrl || !!liveStill() || videoShown;
@@ -1589,6 +1593,7 @@ function clearLiveError() {
 // dataset loads that is another stream's frame - the live edge's, or the last broadcast opened. Both
 // surfaces are blanked here, then frame 0 of the chosen dataset is what paints.
 function clearStageSurfaces() {
+  state.lastShotUrl = null;
   const img = $('#t-img'), video = $('#t-video');
   if (img) { img.removeAttribute('src'); img.hidden = true; }
   if (video) { try { video.pause(); } catch (_) {} video.removeAttribute('src'); video.hidden = true; try { video.load(); } catch (_) {} }

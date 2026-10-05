@@ -1103,7 +1103,7 @@ test('the Vision tab renders one picture surface for the selected cue', () => {
   assert.strictEqual((stage.match(/<img/g) || []).length, 1, 'one stage still');
   const app = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
   assert.ok(app.includes('videoShown = playing && !!stageVideo() && videoReady(video);'), 'the video needs a playable window');
-  assert.ok(app.includes('const showStill = !!state.shotUrl && !videoShown;'), 'the still is the same one surface, shown when the video cannot play');
+  assert.ok(app.includes('const showStill = !!still && !videoShown;'), 'the still is the same one surface, shown when the video cannot play');
 });
 
 test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {

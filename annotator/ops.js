@@ -1131,7 +1131,13 @@ function syncReviewDataset(){
   if(!id||!ids.includes(id)){if(reviewDatasetSynced!==reviewId){reviewDatasetSynced=reviewId;message(blanks(),true)}return}
   reviewDatasetSynced=reviewId;
   const asked=review()?.setDataset?.(id);
-  if(asked&&asked.catch)asked.catch(()=>{reviewDatasetSynced=null})}
+  // Round 21, owner item 5, measured: a setDataset() that does not take used to clear the guard, so the
+  // 200 ms tick asked again, and every attempt blanked the stage - six hidden toggles in four seconds on
+  // a page where no frame had loaded yet. The retry is bounded now.
+  if(asked&&asked.catch)asked.catch(()=>{
+    reviewDatasetTries++;
+    if(reviewDatasetTries<4)reviewDatasetSynced=null;
+  })}
 // A dataset can be listed and still hold no decoded frames - the listing comes from the archive, the
 // frames come from an import. The stage is blank in that case, and a blank stage reads as a broken one,
 // so this says which import fills it (round 16, owner item: the player must not look stale-or-broken).
