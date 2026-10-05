@@ -1130,13 +1130,18 @@ function syncReviewDataset(){
   const id=datasetForVod(vod);
   if(!id||!ids.includes(id)){if(reviewDatasetSynced!==reviewId){reviewDatasetSynced=reviewId;message(blanks(),true)}return}
   reviewDatasetSynced=reviewId;
+  // Round 21, owner item 5, measured: the tick called setDataset() once a second for a broadcast whose
+  // dataset was already the stage's own, and every call blanked the stage - measured as
+  // 'clearStageSurfaces <- setDataset <- syncReviewDataset <- tick, 4 calls in 5 s'. A dataset that is
+  // already the one on the stage needs no switch, and no blank.
+  if(String(reviewState().dataset||'')===String(id))return;
   const asked=review()?.setDataset?.(id);
   // Round 21, owner item 5, measured: a setDataset() that does not take used to clear the guard, so the
   // 200 ms tick asked again, and every attempt blanked the stage - six hidden toggles in four seconds on
   // a page where no frame had loaded yet. The retry is bounded now.
   if(asked&&asked.catch)asked.catch(()=>{
     reviewDatasetTries++;
-    if(reviewDatasetTries<4)reviewDatasetSynced=null;
+    if(reviewDatasetTries<2)reviewDatasetSynced=null;
   })}
 // A dataset can be listed and still hold no decoded frames - the listing comes from the archive, the
 // frames come from an import. The stage is blank in that case, and a blank stage reads as a broken one,
