@@ -2188,9 +2188,11 @@ test('a live or replay frame is drawn with its own detections only, never the da
   same([d.cloth, d.balls, d.persons, d.pockets, d.anchors, d.events], [0, 0, 2, 0, 0, 0]);
   const snap = snapshot();
   assert.strictEqual(snap.corrections.storedInference, false, 'the stored inference is not reported for a live frame');
-  const facts = adapterStage('en', ROSTER).factsLine({...visionSnapshot(), ...snap, live:{...snap.live, stale:false, seq:5, frame_age_ms:40, receive_to_result_ms:20}});
+  const liveState = {...visionSnapshot(), ...snap, live:{...snap.live, stale:false, seq:5, frame_age_ms:40, receive_to_result_ms:20}};
+  const facts = adapterStage('en', ROSTER).factsLine(liveState);
+  const liveChips = adapterStage('en', ROSTER).layersHTML(liveState);
   assert.ok(!/stored inference/.test(facts), 'the facts line never says stored inference over a live frame: ' + facts);
-  assert.ok(/persons 2\b/.test(facts) && /cloth 0\b/.test(facts) && /balls 0\b/.test(facts), 'and counts only what is drawn: ' + facts);
+  assert.ok(/persons 2\b/.test(liveChips) && /cloth 0\b/.test(liveChips) && /balls 0\b/.test(liveChips), 'and counts only what is drawn: ' + liveChips);
   // No live detector on: nothing at all.
   T.state.live.detections = null;
   T.paintOverlay();

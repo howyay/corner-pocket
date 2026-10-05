@@ -726,9 +726,8 @@ function factsLine(s) {
   const storedInference = s.corrections?.inferenceAt && s.corrections?.storedInference
     ? `${t('storedInference')} ${stampText(s.corrections.inferenceAt)}`
     : null;
-  const clothLabel = layer('cloth', t('cloth').toLowerCase())
-    + (cloth.polygon === 'inference' ? ` (${storedInference || t('inferenceSession')})` : '');
-  parts.push(clothLabel, layer('balls', t('balls').toLowerCase()), layer('persons', t('persons').toLowerCase()));
+  const clothNote = cloth.polygon === 'inference' ? ` (${storedInference || t('inferenceSession')})` : '';
+  if (clothNote) parts.push(clothNote);
   const pocketCount = Number(d.pockets || 0);
   const pocketSource = cloth.pockets?.source || null;
   const pocketsHeld = !pocketCount && verdict.state === 'off' ? t('pocketsHeldRejected') : !pocketCount && verdict.state === 'unverified' ? t('pocketsHeldUnverified') : '';
