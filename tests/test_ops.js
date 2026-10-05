@@ -3879,7 +3879,8 @@ test('round 14 / owner item 1: the event table lives in the entrants card, so th
   tonightNight(h, 'drawn');
   h.evaluate('render=()=>{}');
   const html = h.evaluate('playScreen()');
-  assert.equal((html.match(/class="card card--/g) || []).length, 2, 'the event card and the entrants card');
+  // Round 21, owner item 3 added the late-join card, which renders while the event is running.
+  assert.equal((html.match(/class="card card--/g) || []).length, 3, 'the event card, the entrants card and the late-join card');
   assert.equal((html.match(/class="bracket-view"/g) || []).length, 1, 'and the draw between them');
   assert.ok(html.indexOf('class="card card--event"') < html.indexOf('class="bracket-view"') && html.indexOf('class="bracket-view"') < html.indexOf('class="card card--entrants"'),
     'in the owner\u2019s order: the event, the draw, the entrants');
@@ -4200,4 +4201,19 @@ test('round 21 / owner item 3: the second chance can be told who to resurrect', 
              {id:'m2',round:1,sides:['c','d'],score:[0,0],status:'scheduled',absent:[]}]}`);
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(revivalPool(tournament()))')), [{id:'b'}],
     'only the loser of a played round-1 match is offered');
+});
+test('round 21 / owner item 3: a late arrival joins as their own team', () => {
+  const h = harness();
+  const SRC = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  assert.ok(SRC.includes("if(a==='late-add')") && SRC.includes("action('entrant_add_late',{name:n})"),
+    'the control sends the name to the action that gives them their own slot');
+  assert.ok(SRC.includes('${entrantsCard()}${lateCard()}'), 'and it is on the event tab');
+  // It renders only while the event is running: a finished event takes no late arrivals.
+  h.evaluate("data.tournament={id:'t1',name:'Open',format:'singles',raceTo:3,status:'complete',entrants:[],matches:[]};data.players=[];render=()=>{}");
+  assert.equal(h.evaluate("lateCard()"), '', 'a finished event offers nothing');
+  h.evaluate("data.tournament.status='active';data.players=[{id:'pa',name:'Ann',status:'Active',rating:700},{id:'pb',name:'Bo',status:'Inactive',rating:600}]");
+  const html = h.evaluate('lateCard()');
+  assert.ok(html.includes('id="late-name"') && html.includes('id="late-people"'), 'a running event offers a name');
+  assert.ok(html.includes('value="Ann"') && !html.includes('value="Bo"'), 'the roster suggests the active regulars only');
+  assert.ok(html.includes('data-action="late-add"'), 'and one button to add them');
 });
