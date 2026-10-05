@@ -3734,7 +3734,7 @@ test('round 11: the day head is not the row date, and every search still reaches
 test('round 8 / owner item 2: Records says what the automatic download is doing, and carries its one switch', () => {
   for (const [lang, title, on, off, queued, done, now, pause, failed] of [
     ['en', 'Automatic download', 'running', 'paused', '3 queued', '12 done', 'now 2890514774', 'Pause', 'The download queue could not be read'],
-    ['zh', '自动下载', '运行中', '已暂停', '队列 3', '已完成 12', '正在 2890514774', '暂停', '无法读取下载队列']]) {
+    ['zh', '自动下载', '运行中', '已暂停', '排队 3 场', '已完成 12 场', '正在 2890514774', '暂停', '无法读取下载队列']]) {
     const h = harness();
     h.evaluate(`lang='${lang}';autoList.rows={enabled:true,queued:[1,2,3],done:Array.from({length:12}),current:{vod_id:'2890514774'},skipped:[],error:null};autoList.error=''`);
     const html = h.evaluate('autoInner()');
