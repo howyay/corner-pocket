@@ -42,7 +42,7 @@ const state = {
   // Round 17, owner item 2: inference runs itself when playback stops, once per frame, and the
   // stage says so. autoInferOff lets an operator turn it off; lastInferredFrame keeps a pause
   // that lands on the same frame from re-running the same work.
-  autoInferOff:false, lastInferredFrame:null, identity:null,
+  autoInferOff:false, lastInferredFrame:null, identity:null, identityFor:null,
   // Enrolling the person on screen: the preview only reads, the confirm is the
   // one write, and both live here so the rail renders one truth.
   enroll:{status:'idle', payload:null, name:'', startedAt:0, error:null},
@@ -516,20 +516,17 @@ async function loadFrame(n) {
   state.busy = true; state.decoding = true; notify();
   try {
     const [shot, result] = await Promise.all([fetchFrame(state.dataset, n), api(`/api/frame-result?dataset=${enc(state.dataset)}&frame=${n}`)]);
-    // Round 17, owner item 3: the per-frame identity record - who the pipeline matched to which track,
-    // and the face box that did it. Fetched beside the frame and never able to break it: without the
-    // identity models the endpoint answers 503, and the picture must still load.
-    let identity = null;
-    try { identity = await api(`/api/identity/frame?dataset=${enc(state.dataset)}&frame=${n}`); }
-    catch (_) { identity = null; }
     if (epoch !== state.epoch || request !== state.frameReq) { URL.revokeObjectURL(shot.url); return; }
     if (state.shotUrl) URL.revokeObjectURL(state.shotUrl);
     state.shotUrl = shot.url; state.frame = shot.frame; state.t = shot.t; state.fresult = result;
-    state.identity = identity;
     state.frameWidth = shot.w || state.frameWidth; state.frameHeight = shot.h || state.frameHeight;
     state.dirty = false; state.unified = null; state.drawn.source = 'none';
     applyFrameResult(); renderStage();
     scheduleUnified(shot.frame, epoch, request);
+    // Round 17, owner item 3: the identity record is fetched *after* the picture is on the stage, and
+    // it is never awaited here. The endpoint builds its models on first use, so awaiting it would hold
+    // the frame back (measured: the first call after a restart takes longer than a frame load).
+    fetchIdentity(state.dataset, shot.frame, epoch, request);
   } catch (error) {
     if (epoch === state.epoch && request === state.frameReq) notice(`Frame load failed: ${error.message}`, true);
   } finally {
@@ -549,6 +546,18 @@ async function loadFrame(n) {
       else loadFrame(state.frame);
     }
   }
+}
+// Round 17, owner item 3: who the pipeline matched to which track on this frame, and the face box
+// that did it. Fetched after the paint, guarded by the frame request, and never fatal: without the
+// identity models the endpoint answers 503 and the stage simply has no identity record.
+async function fetchIdentity(dataset, n, epoch, request) {
+  const key = `${dataset}:${n}`;
+  if (state.identityFor === key) return;
+  try {
+    const identity = await api(`/api/identity/frame?dataset=${enc(dataset)}&frame=${n}`);
+    if (epoch !== state.epoch || request !== state.frameReq) return;
+    state.identity = identity; state.identityFor = key; notify();
+  } catch (_) { state.identity = null; state.identityFor = key; }
 }
 function applyFrameResult() {
   // Scope first: a correction whose stored scope is not this frame is dropped

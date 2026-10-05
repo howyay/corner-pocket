@@ -4067,11 +4067,18 @@ test('round 17: a superseded frame request does not lock the stage', () => {
 test('round 17 / owner item 3: the identity frame reaches the overlay and the track rows', () => {
   const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
-  assert.ok(engine.includes('identity = await api(`/api/identity/frame?dataset=${enc(state.dataset)}&frame=${n}`)'),
-    'the frame loads the identity record that belongs to it');
-  assert.ok(engine.includes('catch (_) { identity = null; }'),
-    'and a missing identity pipeline cannot break the picture (the endpoint answers 503 without models)');
-  assert.ok(engine.includes('state.identity = identity;'), 'the record is kept with the frame it describes');
+  assert.ok(engine.includes('fetchIdentity(state.dataset, shot.frame, epoch, request);'),
+    'the frame asks for the identity record that belongs to it');
+  assert.ok(/async function fetchIdentity\(dataset, n, epoch, request\) \{/.test(engine),
+    'in one named place');
+  assert.ok(engine.includes('if (epoch !== state.epoch || request !== state.frameReq) return;'),
+    'and a record for a frame that has left the stage is dropped');
+  assert.ok(engine.includes('catch (_) { state.identity = null; state.identityFor = key; }'),
+    'a missing identity pipeline cannot break the picture (the endpoint answers 503 without models)');
+  assert.ok(engine.includes('state.identity = identity; state.identityFor = key; notify();'),
+    'the record is kept with the frame it describes, and the stage is told');
+  assert.ok(!/const \[shot, result\] = await Promise\.all\(\[[^\]]*identity/.test(engine),
+    'the identity fetch is never awaited with the frame: its models build on first use');
   assert.ok(/identityPersons\.map\(p => \(\{bbox: p\.bbox, track_id: p\.track_id/.test(engine),
     'the persons layer falls back to the identity record when the unified detection has no people');
   assert.ok(engine.includes('face_bbox: p.face_bbox, face_quality: p.face_quality}'),
