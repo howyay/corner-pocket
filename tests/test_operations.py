@@ -648,6 +648,17 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.call('entrant_add_late', name='   ')
 
+    def test_a_late_entrant_can_bring_a_partner(self):
+        """R22 item 1: the arrival may be a team of two, and a partner already in the event is refused."""
+        state = self.play_round_one(6)
+        state = self.call('entrant_add_late', name='Late Lou', partner='Late Sue')
+        entry = state['tournament']['entrants'][-1]
+        self.assertEqual([m['name'] for m in entry['members']], ['Late Lou', 'Late Sue'],
+                         'the two names are one team')
+        self.assertEqual(len(entry['members']), 2, 'a team of two, not a second entrant')
+        late = [m for m in state['tournament']['matches'] if m.get('late')]
+        self.assertEqual(len(late), 1, 'and still one slot of their own')
+
     def test_revival_draw_can_be_told_who(self):
         """R21 item 3: the operator may name a round-1 loser, and anyone else is refused."""
         state = self.play_round_one(6)

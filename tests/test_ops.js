@@ -4205,15 +4205,22 @@ test('round 21 / owner item 3: the second chance can be told who to resurrect', 
 test('round 21 / owner item 3: a late arrival joins as their own team', () => {
   const h = harness();
   const SRC = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
-  assert.ok(SRC.includes("if(a==='late-add')") && SRC.includes("action('entrant_add_late',{name:n})"),
+  assert.ok(SRC.includes("if(a==='late-add')") && SRC.includes("action('entrant_add_late',body)"),
     'the control sends the name to the action that gives them their own slot');
+  // Round 22, owner item 1: the same two ways in as registration, plus a partner.
+  assert.ok(SRC.includes('name="late_pid"') && SRC.includes("input('late_name'"),
+    'a regular from the roster or a guest by name, as registration does');
+  assert.ok(SRC.includes('name="late_partner"') && SRC.includes('function revivalPool(T)'),
+    'and an optional partner, offered from the round-1 losers');
+  assert.ok(SRC.includes('if(partnerId)body.partner=ename(partnerId);'), 'which travels in the payload');
   assert.ok(SRC.includes('${entrantsCard()}${lateCard()}'), 'and it is on the event tab');
   // It renders only while the event is running: a finished event takes no late arrivals.
   h.evaluate("data.tournament={id:'t1',name:'Open',format:'singles',raceTo:3,status:'complete',entrants:[],matches:[]};data.players=[];render=()=>{}");
   assert.equal(h.evaluate("lateCard()"), '', 'a finished event offers nothing');
   h.evaluate("data.tournament.status='active';data.players=[{id:'pa',name:'Ann',status:'Active',rating:700},{id:'pb',name:'Bo',status:'Inactive',rating:600}]");
   const html = h.evaluate('lateCard()');
-  assert.ok(html.includes('id="late-name"') && html.includes('id="late-people"'), 'a running event offers a name');
-  assert.ok(html.includes('value="Ann"') && !html.includes('value="Bo"'), 'the roster suggests the active regulars only');
+  assert.ok(html.includes('name="late_pid"') && html.includes('name="late_name"'),
+    'a running event offers a name, as registration does (round 22, owner item 1)');
+  assert.ok(html.includes('>Ann<') && !html.includes('>Bo<'), 'the roster suggests the active regulars only');
   assert.ok(html.includes('data-action="late-add"'), 'and one button to add them');
 });

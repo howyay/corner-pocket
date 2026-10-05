@@ -742,7 +742,19 @@ class Operations:
                     same_name = (member.get('name') or '').casefold() == late_name.casefold()
                     if same_pid or same_name:
                         raise ValueError('That person is already in this tournament')
-            late = dict(id=uid(), members=[dict(pid=late_pid, name=late_name)])
+            # Round 22, owner item 1: the late arrival may bring a partner, which is how an operator
+            # teams them with somebody the second chance did not use.
+            partner_name = text(p.get('partner'), 'name', 120) if p.get('partner') else None
+            partner_pid = p.get('partner_pid') or None
+            members = [dict(pid=late_pid, name=late_name)]
+            if partner_name:
+                for existing in t['entrants']:
+                    for member in existing.get('members', []):
+                        if (partner_pid and member.get('pid') == partner_pid) or \
+                           (member.get('name') or '').casefold() == partner_name.casefold():
+                            raise ValueError('That partner is already in this tournament')
+                members.append(dict(pid=partner_pid, name=partner_name))
+            late = dict(id=uid(), members=members)
             t['entrants'].append(late)
             t['matches'].append(dict(id=uid(), round=1, sides=[late['id'], None], score=[0, 0], table=None,
                                      status='pending', winnerId=None, absent=[], sources=[], late=True))
