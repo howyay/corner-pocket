@@ -2945,3 +2945,22 @@ page.
 and the broadcast's name, and History carries it in `#ingest-line` beside the download line, so nobody opens
 the wizard to find out; the line is empty when nothing runs, and its button uses the action that already opens
 the wizard. Measured: `#ingest-line` is present on History with no text while idle.
+
+## Round 30 · the scrubber owns the layer row (2026-10-06)
+
+The layer chips and the source label were a bar of their own above the picture. They are now the
+first cell of the scrubber component at the bottom, together with the shot clock and the identity
+span, so the chips, the source label, the frame transport, the track and the facts line are one
+bordered component. No separate row was left behind (`vs-stagebar` is gone from the markup and the
+stylesheet).
+
+Measured on the review screen at http://127.0.0.1:8130/ops.html#/records/review/2853972244:
+
+- `.vs-stagebar` 0, `.vs-strip` 1.
+- `#vs-layers` sits inside `#vs-strip` and is the first child of `.vs-transport`.
+- The transport row reads `vs-layers`, frame input, step back, step forward, freeze, play, clock,
+  identity (height 54 px; the strip is 138 px).
+- The four layer chips read `cloth 0 (+1 manual)`, `balls 10`, `persons 4`, `pockets 6`, all inside
+  the strip box.
+- The source label inside the strip reads `recorded broadcast of ttpoolfriday · from 2026-08-23 ·
+  whole broadcast`; the facts line reads `broadcast time 0:00:00 · 0:00.0 · overlays ON`.
