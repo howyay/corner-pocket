@@ -289,7 +289,8 @@ test('round 1 · Vision loading: the first paint is labelled and says what is lo
   }
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   assert.ok(/\.vision-surface\[data-loading\] \.vs-rail,#ops-shell \.vision-surface\[data-loading\] \.vs-inspector\{min-height:/.test(css), 'the rails hold their loaded size while loading');
-  assert.ok(css.includes('.vision-surface[data-loading] .vs-stagebar{min-height:50px}'), 'the stagebar row is reserved');
+  assert.ok(css.includes('.vision-surface[data-loading] .vs-strip{min-height:150px}'), 'the scrubber row is reserved');
+  assert.ok(!css.includes('.vs-stagebar'), 'the layer row is not a separate bar');
 });
 test('round 1 · Back room: operator panels first; system status and roadmap under a collapsed, labelled maintainers section', () => {
   for (const [lang, maint, status] of [['en', 'For maintainers', 'System status'], ['zh', '维护人员', '系统状态']]) {
@@ -4305,14 +4306,11 @@ test('round 22 / owner item 3: play resumes from the point the operator chose', 
 });
 test('round 23 / owner item 1: the layer chips and the source line live with the scrubber', () => {
   const src = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
-  const bar = src.indexOf('<div class="vs-stagebar">');
   const strip = src.indexOf('<div class="vs-strip" id="vs-strip">');
-  const grid = src.indexOf('<div class="vs-grid"');
-  assert.ok(bar > 0 && strip > 0 && grid > 0, 'the three blocks are in the console markup');
-  // Measured on production: the bar's top is below the picture grid and above the scrubber input.
-  assert.ok(bar > grid, 'the stage bar is written after the picture grid, so it renders under it');
-  assert.ok(bar < strip, 'and right before the transport strip that holds the scrubber');
-  assert.ok(src.slice(bar, strip).includes('id="vs-layers"'), 'the bar carries the layer chips');
+  const track = src.indexOf('<div class="vs-track">');
+  assert.ok(strip >= 0 && track > strip, 'the scrubber holds its track');
+  assert.ok(src.slice(strip, track).includes('id="vs-layers"'), 'the scrubber carries the layer chips');
+  assert.ok(!src.includes('vs-stagebar'), 'the layer chips are not a row of their own');
 });
 
 // Owner round 25, workstream A: a refresh or a shared link lands on the viewer route and renders

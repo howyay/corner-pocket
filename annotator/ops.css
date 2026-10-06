@@ -284,7 +284,7 @@ html{scroll-padding-top:var(--sp-4)}
    motion the user did not cause, so it is kept (it only follows their own scroll). */
 @media(prefers-reduced-motion:reduce){
 #ops-shell,#ops-shell *{transition-duration:0s!important;scroll-behavior:auto!important}
-#ops-shell *:not(.vs-stagebar,.table-wrap){animation-duration:0s!important;animation-iteration-count:1!important}
+#ops-shell *:not(.table-wrap){animation-duration:0s!important;animation-iteration-count:1!important}
 }
 /* --- Fidelity pass vs design/corner-pocket/Corner Pocket Ops standalone-src.dc.html --- */
 html,body{-webkit-font-smoothing:antialiased}
@@ -380,7 +380,6 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-inspector-actions .vs-row{flex-wrap:wrap}
 :is(#ops-shell) .vs-inspector-actions .primary{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
 :is(#ops-shell) .vs-stage{min-width:0;display:flex;flex-direction:column;gap:var(--sp-2)}
-:is(#ops-shell) .vs-stagebar{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);flex-wrap:wrap}
 :is(#ops-shell) .vs-layers{display:flex;gap:var(--sp-1);flex-wrap:wrap}
 :is(#ops-shell) .vs-layer{padding:var(--sp-1) var(--sp-2);min-height:28px;border:1px solid var(--btn-line);border-radius:2px;background:transparent;color:var(--ink-dim);font:var(--fs-sm) var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 :is(#ops-shell) .vs-layer.on{background:var(--rail);border-color:var(--brass);color:var(--ink-hi);box-shadow:inset 0 -2px 0 var(--brass)}
@@ -400,6 +399,11 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-strip{display:flex;flex-direction:column;gap:var(--sp-1);border:1px solid var(--line);border-top:3px solid var(--brass);background:var(--panel);padding:var(--sp-1h) var(--sp-3) var(--sp-2)}
 :is(#ops-shell) .vs-transport{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 :is(#ops-shell) .vs-transport button{min-height:30px;padding:0 var(--sp-3);font-size:var(--fs-sm)}
+/* Round 30 item 1: the layer chips and the source label are the first cell of the scrubber row. */
+:is(#ops-shell) .vs-transport>.vs-layers{flex:1 1 auto;min-width:0;align-items:center;gap:var(--sp-1h)}
+:is(#ops-shell) .vs-transport>.vs-layers .vs-chipmeta{margin-left:auto}
+:is(#ops-shell) .vs-transport>.vs-clock{flex:0 0 auto}
+:is(#ops-shell) .vs-strip[data-loading="1"] .vs-layers{min-height:50px}
 :is(#ops-shell) .vs-transport .primary{background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
 :is(#ops-shell) .vs-frame-input{display:flex;align-items:center;gap:var(--sp-1h);font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 :is(#ops-shell) .vs-frame-input input{width:96px;min-height:32px;padding:0 var(--sp-2);font:var(--fs-sm) var(--mono)}
@@ -551,7 +555,6 @@ html,body{-webkit-font-smoothing:antialiased}
   :is(#ops-shell) .vs-source-chip{min-height:28px;padding:var(--sp-1) var(--sp-2)}
   /* The layer row scrolls sideways; its right edge fades out while there is more to
      reach, and a thin scrollbar shows position (scroll-driven, so it clears at the end). */
-  :is(#ops-shell) .vs-stagebar{flex-wrap:nowrap;overflow-x:auto;gap:var(--sp-2);scrollbar-width:thin;scrollbar-color:var(--btn-line) transparent;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);animation:vs-row-end linear both;animation-timeline:scroll(self inline)}
   @keyframes vs-row-end{to{-webkit-mask-image:linear-gradient(90deg,#000 100%,transparent);mask-image:linear-gradient(90deg,#000 100%,transparent)}}
   :is(#ops-shell) .vs-layers{flex-wrap:nowrap;flex:none}
   :is(#ops-shell) .vs-identity{white-space:nowrap}
@@ -676,7 +679,7 @@ html,body{-webkit-font-smoothing:antialiased}
    EN / 64 中, stagebar 50, facts 28 EN / 16 中; at 390: chips 40-42, facts 32). The larger value,
    so the stage never moves down when they fill; a shorter 中 row only leaves space below it. */
 #ops-shell .vision-surface[data-loading] .vs-chips{min-height:92px}
-#ops-shell .vision-surface[data-loading] .vs-stagebar{min-height:50px}
+#ops-shell .vision-surface[data-loading] .vs-strip{min-height:150px}
 #ops-shell .vision-surface[data-loading] .vs-facts{min-height:28px}
 @media(max-width:1100px){#ops-shell .vision-surface[data-loading] .vs-chips{min-height:40px}#ops-shell .vision-surface[data-loading] .vs-facts{min-height:32px}}
 /* Round 1, finding 6: provenance kept one step away. The detector string on a cue card is read by
