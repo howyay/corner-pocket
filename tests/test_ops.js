@@ -4254,3 +4254,22 @@ test('round 23 / owner item 1: the layer chips and the source line live with the
   assert.ok(bar < strip, 'and right before the transport strip that holds the scrubber');
   assert.ok(src.slice(bar, strip).includes('id="vs-layers"'), 'the bar carries the layer chips');
 });
+
+// Owner round 25, workstream A: a refresh or a shared link lands on the viewer route and renders
+// before the archive list has arrived, so the review id cannot be resolved yet. Dropping it there
+// was why a direct load showed an empty console while an in-app click showed the viewer.
+test('a direct load of a review route keeps its id until the archive list arrives', () => {
+  const h = harness({hash: '#/records/review/261001'});
+  h.evaluate("data={revision:1,settings:{},tournament:{raceTo:7,entrants:[],matches:[]},players:[],history:[]}");
+  assert.equal(h.evaluate("String(reviewId)"), '261001', 'the boot keeps the route id');
+  assert.equal(h.evaluate("archiveList.rows"), null, 'the archive list has not been read yet');
+  assert.ok(h.evaluate("recordsScreen().includes('review-card')"), 'the review shell is what renders');
+  assert.equal(h.evaluate("String(reviewId)"), '261001', 'the id survives the first render');
+  // Once the list is known and does not hold the id, the id is dropped as before.
+  h.evaluate("archiveList.rows=[]");
+  assert.ok(!h.evaluate("recordsScreen().includes('review-card')"), 'an unknown id falls back to the archive');
+  assert.equal(h.evaluate("String(reviewId)"), 'null', 'a known-missing id is cleared');
+  // A review that is not yet a night must not offer the import action for an empty broadcast.
+  h.evaluate("reviewId='261001'");
+  assert.ok(h.evaluate("!recordsScreen().includes('data-action=\"bf-pick\"')"), 'no import action without a broadcast');
+});

@@ -187,7 +187,9 @@ async function loadArchiveList(force=false){
     if(!r.ok)throw Error(body.error||`HTTP ${r.status}`);
     archiveList.rows=body.channels||[];archiveList.error=''
   }catch(error){archiveList.rows=[];archiveList.error=String(error?.message||error)}
-  archiveList.loading=false;paintArchive()}
+  archiveList.loading=false;paintArchive()
+  // A viewer opened by a direct load waits for this list to learn its broadcast.
+  if(reviewId&&tab==='records'&&!bf)render()}
 // Owner item 2 (round 8): the box downloads every archived broadcast by itself. The console's job
 // is to say what that queue is doing and to hand the operator the one switch, so the work is
 // visible instead of silent. Reading /api/vods/queue is also what arms the beat on a fresh console.
@@ -406,12 +408,12 @@ function datasetForVod(vodId){
   const ids=(reviewState().datasets||[]).map(d=>String(d.id||''));
   return ids.find(id=>id==='tw-'+digits)||ids.find(id=>id.includes(digits))||''}
 function reviewScreen(night,vod){
-  const isVod=!night,vodId=String(isVod?vod?.id:night?.source?.vodId||''),when=isVod?vodWhen(vod):null;
+  const isVod=!night,vodId=String(isVod?(vod?.id||''):(night?.source?.vodId||'')),when=isVod?vodWhen(vod):null;
   const title=isVod?(String(vod?.title||'')||t('unnamed')):(night.name||t('unnamed'));
   const meta=isVod
     ?[dayFull(when),clockLabel(when),hms(Number(vod?.length_s)||0)].filter(Boolean).join(' · ')
     :[t('reviewFootage'),vodId?`${t('reviewBroadcast')} ${vodId}`:''].filter(Boolean).join(' · ');
-  const act=isVod?btn(t('reviewImport'),'bf-pick',`data-id="${esc(vodId)}" data-length="${esc(String(Number(vod?.length_s)||0))}" data-title="${esc(String(vod?.title||''))}"`,'primary'):'';
+  const act=isVod&&vodId?btn(t('reviewImport'),'bf-pick',`data-id="${esc(vodId)}" data-length="${esc(String(Number(vod?.length_s)||0))}" data-title="${esc(String(vod?.title||''))}"`,'primary'):'';
   // Round 13, owner item 7: the review's header was a card of four stacked blocks - 380 px of frame
   // above the work, at 1280. The title and its date stay in the heading; the one action and the one
   // link control stand beside them; and the sentence that explains the chips is a fold, because it is
@@ -427,6 +429,10 @@ function recordsScreen(){
     if(night)return reviewScreen(night);
     const vod=archiveVods().find(v=>String(v.id)===String(reviewId));
     if(vod)return reviewScreen(null,vod);
+    // A direct load of the viewer route - a refresh or a shared link - renders before the archive
+    // list arrives, so the id cannot be resolved yet. Keep it and show the review shell; the
+    // list's own load re-renders when it lands (owner round 25, workstream A).
+    if(archiveList.rows===null)return reviewScreen(null,null);
     reviewId=null}
   if(sheetId){const night=(data.history||[]).find(n=>n.id===sheetId);if(night)return resultsSheet(night);sheetId=null}
   const hiddenN=(data.history||[]).filter(n=>n.hidden).length;
