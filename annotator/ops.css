@@ -1292,6 +1292,11 @@ html,body{-webkit-font-smoothing:antialiased}
      the picture keeps every pixel it had. */
   #ops-shell[data-label-overlay="1"] .vs-grid{grid-template-columns:280px minmax(0,1fr) 320px}
 }
+/* Round 26, owner item 3: with nothing selected there is no panel, so the third column collapses and
+   the stage keeps the width. Wide layout only: below 1101px the grid is already one column. */
+@media(min-width:1101px){
+  #ops-shell[data-vs-panel="0"] .vs-grid{grid-template-columns:280px minmax(0,1fr)}
+}
 
 /* Round 20, owner items 3 and 4: every entrant row is the same height, and the numbers on it are
    named by the legend in the card's heading. */

@@ -1812,6 +1812,20 @@ test('the inference switch names the source it governs, in one control (owner ro
   }
 });
 
+test('the panel column shows a selection and nothing else (owner round 26 item 3)', () => {
+  // The empty state held the third column and told the operator to select something. It is gone: no
+  // selection, no column, and the stage keeps the width.
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  assert.ok(adapter.includes("const selected = s.selection.kind !== 'none';"), 'the overlay reads the selection');
+  assert.ok(adapter.includes('inspector.hidden = !selected;'), 'and hides the panel column without one');
+  assert.ok(adapter.includes('tabs.hidden = !selected;'), 'and the sheet tabs that open it');
+  assert.ok(adapter.includes("shell.setAttribute('data-vs-panel', selected ? '1' : '0');"), 'and tells the shell whether the column is used');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
+  assert.ok(/#ops-shell\[data-vs-panel="0"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\)\}/.test(css),
+    'the third column collapses when there is no panel');
+  assert.ok(/#ops-shell \[hidden\]/.test(css), 'and [hidden] outranks the panel display rules');
+});
+
 test('the enrol block shows the evidence level, the crops and one confirm', () => {
   // The engine's two calls: a read for the preview, the write only on confirm.
   assert.ok(source.includes("api('/api/identity/enroll-preview', body)"), 'the preview is a read of its own endpoint');

@@ -1102,11 +1102,22 @@ function paintLabelOverlay(s) {
   const html = labelBoxHTML(s);
   if (host.innerHTML !== html) host.innerHTML = html;
   host.hidden = !html;
+  // Round 26, owner item 3: the panel column carries a real selection and nothing else. The empty
+  // state used to hold the third column with a paragraph that told the operator to select something.
+  const selected = s.selection.kind !== 'none';
   const inspector = document.querySelector('#vs-inspector');
-  if (inspector && inspector.classList) inspector.classList.toggle('label-moved', !!html);
+  if (inspector) {
+    inspector.hidden = !selected;
+    if (inspector.classList) inspector.classList.toggle('label-moved', !!html);
+  }
+  const tabs = document.querySelector('.vs-sheettabs');
+  if (tabs) tabs.hidden = !selected;
   // The shell narrows the label column while the overlay is up, so the stage keeps the width.
   const shell = document.querySelector('#ops-shell');
-  if (shell && shell.setAttribute) shell.setAttribute('data-label-overlay', html ? '1' : '0');
+  if (shell && shell.setAttribute) {
+    shell.setAttribute('data-label-overlay', html ? '1' : '0');
+    shell.setAttribute('data-vs-panel', selected ? '1' : '0');
+  }
 }
 function labelBoxHTML(s) {
   // Round 19, owner item 8: one piece of markup with two homes - the inspector when the label column
