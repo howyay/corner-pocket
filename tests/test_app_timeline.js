@@ -813,14 +813,18 @@ test('adapter facts line names the layers it held back', () => {
     cloth:{verdict:{state:'off', mean:98.1, max:171.7, tolerance:40, source:'saved calibration'}, refusal:{ok:false, owner:'vod30 frame 12 @ 1920×1080', expected:'vod30 frame 0 @ 1280×720'}}
   };
   const facts = (context.window.VisionStage.factsLine(base) + context.window.VisionStage.layersHTML(base));
-  assert.ok(facts.includes('pockets 0 (quad rejected)'), facts);
+  // The pockets count lives on its chip; the facts line carries only the reason (owner round 24 item 2).
+  assert.ok(facts.includes('pockets 0') && facts.includes('(quad rejected)'), facts);
   assert.ok(facts.includes('model quad off saved corners 98 px (tol 40 px)'), facts);
   assert.ok(facts.includes('saved correction refused (vod30 frame 12 @ 1920×1080)'), facts);
   const unverified = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}}));
-  assert.ok(unverified.includes('pockets 0 (unverified)') && unverified.includes('model quad unverified'), unverified);
+  assert.ok(unverified.includes('pockets 0') && unverified.includes('(unverified)') && unverified.includes('model quad unverified'), unverified);
   // Pockets drawn from the saved calibration say so, in the engine's own words.
-  const offset = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, pockets:6}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, pockets:6}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}}));
-  assert.ok(offset.includes('pockets 6 (saved anchors)'), offset);
+  // The chip owns the count, so this fixture says how the six were drawn (auto); the facts
+  // line owns the reason (owner round 24 item 2).
+  const offsetState = {...base, drawn:{...base.drawn, pockets:6, auto:{...base.drawn.auto, pockets:6}}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}};
+  const offset = (context.window.VisionStage.factsLine(offsetState) + context.window.VisionStage.layersHTML(offsetState));
+  assert.ok(offset.includes('pockets 6') && offset.includes('(saved anchors)'), offset);
   const clean = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null}));
   assert.ok(clean.includes('cloth 1') && clean.includes('pockets 6') && !clean.includes('quad'), clean);
 });
