@@ -1,0 +1,169 @@
+/* ============================================================================
+   Prototype chrome — the review board around the console frames.
+   Prototype-only styling lives here; every colour goes through a token.
+   ========================================================================== */
+*{box-sizing:border-box}
+html,body{margin:0}
+body.od-board{
+  background:var(--bg);color:var(--ink);
+  font:var(--fs-body)/1.55 var(--body);
+  padding:0 0 var(--sp-5);
+  -webkit-font-smoothing:antialiased;
+}
+.pf-wide{max-width:1680px;margin:0 auto;padding:0 var(--sp-5)}
+
+/* ---------- masthead ---------- */
+.pf-mast{padding:var(--sp-5) 0 var(--sp-3);border-bottom:1px solid var(--line)}
+.pf-kicker{
+  font:500 var(--fs-xs) var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--brass);margin:0 0 var(--sp-2);
+}
+.pf-mast h1{font:600 34px/1.1 var(--display);margin:0 0 var(--sp-2);max-width:22ch}
+.pf-mast .pf-lede{margin:0;color:var(--ink-mid);max-width:78ch}
+.pf-facts{
+  display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);
+  margin:var(--sp-3) 0 0;padding:0;list-style:none;
+}
+.pf-facts li{font:var(--fs-sm) var(--mono);color:var(--ink-dim)}
+.pf-facts strong{color:var(--ink-hi);font-weight:600}
+.pf-mast .pf-note{
+  margin:var(--sp-3) 0 0;border:1px solid var(--line);background:var(--panel);
+  padding:var(--sp-2) var(--sp-3);
+}
+.pf-mast .pf-note p{margin:0 0 var(--sp-1);color:var(--ink-mid);max-width:100ch}
+.pf-mast .pf-note p:last-child{margin-bottom:0}
+
+/* ---------- notes and sheets ---------- */
+.pf-sheet{
+  margin:var(--sp-4) 0;border:1px solid var(--line);background:var(--panel);
+  border-left:3px solid var(--brass);padding:var(--sp-3) var(--sp-4);
+}
+.pf-sheet h2{font:600 var(--fs-lg)/1.2 var(--display);margin:0 0 var(--sp-2)}
+.pf-sheet p{margin:0 0 var(--sp-1);color:var(--ink-mid);max-width:96ch}
+.pf-sheet code{font:var(--fs-sm) var(--mono);color:var(--brass-hi)}
+.pf-grid-2{display:grid;gap:var(--sp-4);grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr))}
+
+/* ---------- control deck ---------- */
+.pf-deck{
+  position:sticky;top:0;z-index:40;
+  background:var(--panel2);border:1px solid var(--line);border-top:2px solid var(--brass);
+  padding:var(--sp-2) var(--sp-3);margin:var(--sp-4) 0;
+  display:flex;flex-direction:column;gap:6px;
+  box-shadow:0 10px 24px var(--shadow);
+}
+.pf-deck-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pf-deck .pf-label{
+  font:500 var(--fs-xs) var(--mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.pf-tabs{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 420px}
+.pf-tab{
+  font:500 var(--fs-sm) var(--body);color:var(--ink-mid);background:var(--panel);
+  border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;
+}
+.pf-tab:hover{border-color:var(--btn-line);color:var(--ink)}
+.pf-tab.is-on{background:var(--brass);border-color:var(--brass-hi);color:var(--brass-fg);font-weight:600}
+.pf-seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.pf-seg button{
+  font:500 var(--fs-sm) var(--body);background:var(--panel);color:var(--ink-mid);
+  border:0;border-right:1px solid var(--line);padding:5px 12px;cursor:pointer;
+}
+.pf-seg button:last-child{border-right:0}
+.pf-seg button.is-on{background:var(--brass);color:var(--brass-fg);font-weight:600}
+
+/* ---------- stage and frames ---------- */
+.pf-stage{margin:var(--sp-3) 0 0}
+.pf-frame{
+  display:none;position:relative;background:var(--bg);
+  border:1px solid var(--line);border-top:3px solid var(--brass);
+  box-shadow:0 18px 40px var(--shadow);
+}
+.pf-frame.is-on{display:block}
+.pf-frame > .pf-cap{
+  display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);align-items:baseline;
+  padding:var(--sp-2) var(--sp-3);background:var(--panel2);border-bottom:1px solid var(--line);
+}
+.pf-cap strong{font:600 var(--fs-md)/1.2 var(--display);margin:0;color:var(--ink-hi)}
+.pf-cap .pf-route{font:var(--fs-xs) var(--mono);color:var(--brass);letter-spacing:.04em}
+.pf-cap .pf-tag{
+  font:500 var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-faint);border:1px solid var(--line);border-radius:999px;padding:2px 8px;
+}
+.pf-canvas{position:relative;overflow:hidden;min-height:640px}
+.pf-canvas > .od-shell{
+  display:block;background:var(--bg);color:var(--ink);position:relative;
+  padding-bottom:var(--sp-3);
+}
+.pf-frame[data-screen="clock"] .pf-canvas{min-height:520px}
+.pf-frame[data-screen="records-review"] .pf-canvas{min-height:760px}
+.pf-frame--modal .pf-canvas{min-height:620px;background:var(--panel2)}
+.pf-frame--modal .pf-overlay > .modal-backdrop{border:1px solid var(--line)}
+/* the console's own chrome must not float over the frame */
+.pf-canvas header{position:static}
+.pf-canvas .modal-backdrop{position:absolute;inset:0}
+.pf-overlay{position:absolute;inset:0;z-index:12;display:none;background:none}
+.pf-overlay.is-on{display:block}
+.pf-overlay > .modal-backdrop{background:var(--scrim)}
+.pf-ctl-bar{
+  display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;
+  padding:var(--sp-1) var(--sp-3);background:var(--panel2);border-bottom:1px solid var(--line);
+}
+.pf-ctl-bar--float{
+  position:absolute;top:6px;left:6px;right:6px;z-index:61;border:1px solid var(--line);
+  border-radius:999px;padding:4px 8px;background:var(--panel2);box-shadow:0 6px 16px var(--shadow);
+}
+.pf-ctl-hint{font:var(--fs-xs) var(--mono);color:var(--ink-faint);letter-spacing:.02em}
+.pf-note-inline{
+  padding:0;border:0;background:none;color:var(--ink-dim);
+  font:var(--fs-sm) var(--body);margin:0 0 var(--sp-2);max-width:110ch;
+}
+.pf-visually-hidden{
+  position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0;
+}
+.pf-note{
+  padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line);
+  background:var(--panel);color:var(--ink-dim);font:var(--fs-sm) var(--body);margin:0;
+}
+.pf-note b{color:var(--ink-mid);font-weight:600}
+
+/* prototype-only inline controls shown next to a live state */
+.pf-ctl{
+  display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;
+  border:1px dashed var(--btn-line);border-radius:999px;
+  padding:4px 10px;background:var(--panel2);
+}
+.pf-ctl .pf-ctl-label{
+  font:500 var(--fs-xs) var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);
+}
+.pf-btn{
+  font:500 var(--fs-sm) var(--body);cursor:pointer;border-radius:999px;
+  border:1px solid var(--btn-line);background:var(--panel);color:var(--ink);padding:4px 11px;
+}
+.pf-btn:hover{background:var(--rail)}
+.pf-btn.is-on{background:var(--brass);border-color:var(--brass-hi);color:var(--brass-fg)}
+
+/* gallery mode */
+body.pf-gallery .pf-frame.is-on{display:block;margin:0 0 var(--sp-4)}
+body.pf-gallery .pf-deck .pf-seg,
+body.pf-gallery .pf-deck .pf-tab[data-pf-go]{opacity:.55}
+body.pf-gallery .pf-deck .pf-tab.is-on{opacity:1}
+.pf-board{margin:0}
+body:not(.pf-gallery) .pf-board .pf-frame{margin:var(--sp-4) 0}
+
+/* ---------- token sheet ---------- */
+.pf-swatches{display:grid;gap:var(--sp-2);grid-template-columns:repeat(auto-fill,minmax(184px,1fr))}
+.pf-sw{display:flex;align-items:center;gap:var(--sp-2);border:1px solid var(--line);background:var(--panel);padding:6px 8px}
+.pf-sw i{width:26px;height:26px;border-radius:4px;border:1px solid var(--line);flex:0 0 auto}
+.pf-sw code{font:var(--fs-xs) var(--mono);color:var(--ink-hi)}
+.pf-sw small{font:var(--fs-xs) var(--mono);color:var(--ink-faint);margin-left:auto}
+.pf-rules{margin:0;padding-left:1.2em;color:var(--ink-mid);max-width:96ch}
+.pf-rules li{margin:0 0 6px}
+.pf-rules b{color:var(--ink-hi)}
+.pf-hidden{display:none !important}
+
+/* Prototype: the real markup carries the shot clock inside the merged scrubber row,
+   but ops.css hides it at desktop width. Show it here so the whole row can be seen. */
+.pf-canvas .vs-transport>.vs-clock{display:inline-flex;align-items:baseline;gap:var(--sp-1);flex:none}
+/* a dialog frame's shell is the full canvas, so the scrim covers it */
+.pf-frame--modal .pf-canvas > .od-shell{position:absolute;inset:0;padding:0;background:var(--panel2)}

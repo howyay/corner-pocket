@@ -1,0 +1,206 @@
+<!-- ==========================================================================
+     Authored console screens — states the running fixture does not reach.
+     Markup, class names and copy come from annotator/ops.js: entrantsCard(),
+     deskSlot(), bracketScreen(), revivalCard(), pairingCard(), setupForm().
+     ======================================================================== -->
+
+<!-- ============================================== 2 · Registration desk ===>
+     The entrants card in its open phase: comp() === 'registration', so the
+     form is live. deskSlot() renders the match-desk keypad. -->
+<template class="pf-src" data-screen="registration" data-label="Registration desk" data-route="#/tonight · registration" data-tag="screen" data-tab-of="tonight">
+<main id="main">
+  <section class="stack tonight">
+    <article class="card card--event">
+      <div class="heading event-head">
+        <h3 class="event-title">{{t:eventSettings}}</h3>
+      </div>
+      <form id="settings-form">
+        <fieldset class="bare">
+          <div class="fields">
+            <label class="field"><span>{{t:event}}</span><input name="name" type="text" required maxlength="120" value="8-Ball Open · Sun 10/4"></label>
+            <label class="field"><span>{{t:format}}</span><select name="format"><option value="singles" selected>{{t:singles}}</option><option value="doubles">{{t:doubles}}</option></select></label>
+            <label class="field"><span>{{t:race}}</span><select name="raceTo"><option value="1" selected>1</option><option value="3">3</option><option value="5">5</option><option value="7">7</option></select></label>
+            <label class="field"><span>{{t:tables}}</span><input name="tables" type="number" min="1" max="32" required value="2"></label>
+          </div>
+          <div class="actions mt-3"><button class="primary">{{t:save}}</button></div>
+        </fieldset>
+      </form>
+    </article>
+
+    <article class="card card--entrants">
+      <div class="heading">
+        <h3>{{t:entrants}}</h3>
+        <span class="muted record-legend" data-vs-role="record-legend"></span>
+        <span class="muted">3 · 1 {{t:guests}}</span>
+      </div>
+
+      <form id="entrant-form">
+        <div class="fields">
+          <div class="stack desk">
+            <span class="desk-label">{{t:member}}</span>
+            <div class="pick">
+              <button type="button" class="pick-btn open" data-action="desk-open" data-desk="0" aria-haspopup="listbox" aria-expanded="true" aria-controls="desk-list0"><span class="grow">{{t:guest}}</span><span class="pick-caret" aria-hidden="true">▾</span></button>
+              <div class="pick-panel" id="desk-list0" role="listbox" aria-label="{{t:pick}}" data-total="6">
+                <input class="pick-search" data-desk="0" type="search" autocomplete="off" value="an" placeholder="{{t:deskSearch}}" aria-label="{{t:deskSearch}}" aria-controls="desk-list0">
+                <p class="muted pick-count">{{t:searchCount|n=2|m=6}}</p>
+                <div class="pick-rows">
+                  <button type="button" role="option" aria-selected="false" class="pick-row" data-action="desk-pick" data-desk="0" data-id="">{{t:guest}}<small>{{t:guestName}}</small></button>
+                  <button type="button" role="option" aria-selected="true" class="pick-row on" data-action="desk-pick" data-desk="0" data-id="p-wanwan" data-name="Wanwan">Wanwan<small>0</small></button>
+                  <button type="button" role="option" aria-selected="false" class="pick-row" data-action="desk-pick" data-desk="0" data-id="p-alan" data-name="Alan">Alan<small>0</small></button>
+                  <button type="button" role="option" aria-selected="false" class="pick-row" data-action="desk-pick" data-desk="0" data-id="p-lulu" data-name="Lulu" hidden>Lulu<small>0</small></button>
+                  <button type="button" role="option" aria-selected="false" class="pick-row" data-action="desk-pick" data-desk="0" data-id="p-su" data-name="Su" hidden>Su<small>0</small></button>
+                  <button type="button" role="option" aria-selected="false" class="pick-row" data-action="desk-pick" data-desk="0" data-id="p-haoye" data-name="Haoye" hidden>Haoye<small>0</small></button>
+                  <button type="button" role="option" aria-selected="false" class="pick-row" data-action="desk-pick" data-desk="0" data-id="p-tjj" data-name="TJJ" hidden>TJJ<small>0</small></button>
+                </div>
+              </div>
+            </div>
+            <input type="hidden" name="pid0" id="desk-pid0" value="p-wanwan">
+          </div>
+        </div>
+        <div class="row">
+          <button>{{t:add}}</button>
+          <button type="button" class="primary" data-action="tournament-start">{{t:startEvent}}</button>
+        </div>
+        <p class="grow muted">{{t:rackHint}}</p>
+      </form>
+
+      <div class="grid">
+        <div class="entry row">
+          <span class="ball" style="--ball-c:#f2c14e"><i>1</i></span>
+          <span class="grow">Wanwan<small>{{t:member}}</small></span>
+          <button type="button" data-action="entrant-remove" data-id="e-1">{{t:remove}}</button>
+        </div>
+        <div class="entry row">
+          <span class="ball" style="--ball-c:#2f6fd0"><i>2</i></span>
+          <span class="grow">Su<small>{{t:member}}</small></span>
+          <button type="button" data-action="entrant-remove" data-id="e-2">{{t:remove}}</button>
+        </div>
+        <div class="entry row">
+          <span class="ball" style="--ball-c:#c8382f"><i>3</i></span>
+          <span class="grow">Alan<small>{{t:guest}}</small></span>
+          <button type="button" data-action="promote" data-name="Alan">{{t:promote}}</button>
+          <button type="button" data-action="entrant-remove" data-id="e-3">{{t:remove}}</button>
+        </div>
+      </div>
+    </article>
+
+    <article class="card card--late">
+      <div class="heading"><h3>{{t:reg}}</h3></div>
+      <p class="muted">{{t:guestNote}}</p>
+      <div><button type="button" data-action="late-open">{{t:lateTitle}}</button></div>
+    </article>
+  </section>
+</main>
+</template>
+
+<!-- ================================= 1 · Tonight: every bracket card state ===>
+     bracketScreen() with one card per data-status, plus revivalCard() and
+     pairingCard(). The prototype control steps the first card through the
+     six states the console can put it in. -->
+<template class="pf-src" data-screen="tonight-draw" data-label="Tonight · bracket, revival, pairing" data-route="#/tonight · draw" data-tag="states" data-tab-of="tonight">
+<main id="main">
+  <section class="stack">
+    <article class="bracket-view">
+      <div class="heading">
+        <h3>{{t:bracketTitle}}</h3>
+        <span class="muted">4/6 signed · 1 on table</span>
+      </div>
+
+      <div class="pf-ctl-bar">
+        <div class="pf-ctl">
+          <span class="pf-ctl-label">Prototype control · card state</span>
+          <button type="button" class="pf-btn" data-pf-step="0">Step the first card → <span data-pf-step-out>scheduled</span></button>
+          <span class="pf-ctl-hint">{{t:savingNow}} → {{t:scheduled}} → {{t:live}} → {{t:delayed}} → {{t:bye}} → {{t:complete}}</span>
+        </div>
+      </div>
+
+      <div class="rounds">
+        <article class="round">
+          <h3>{{t:round}} 1</h3>
+
+          <div class="entry bracket-card pending" tabindex="0" aria-busy="true" data-status="scheduled" aria-label="Wanwan – Su · {{t:savingNow}}">
+            <span class="pending-note" role="status">{{t:savingNow}}</span>
+            <div class="row card-head"><small class="grow">{{t:table}} 1</small><span class="badge scheduled">{{t:scheduled}}</span></div>
+            <div class="row card-side first"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">Wanwan</strong><strong class="side-score">0</strong></div>
+            <div class="row card-side"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">Su</strong><strong class="side-score">0</strong></div>
+            <div class="card-actions">
+              <div class="row match-controls">
+                <button type="button" class="danger" data-action="forfeit" data-id="m-1" data-side="0">{{t:forfeit}}: Wanwan</button>
+                <button type="button" class="danger" data-action="forfeit" data-id="m-1" data-side="1">{{t:forfeit}}: Su</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="entry bracket-card live" tabindex="0" data-status="live" aria-label="Lulu – Alan · {{t:live}}">
+            <div class="row card-head"><small class="grow">{{t:table}} 2</small><span class="badge live">{{t:live}}</span></div>
+            <div class="row card-side first"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">Lulu</strong><strong class="side-score">1</strong></div>
+            <div class="row card-side"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">Alan</strong><strong class="side-score">0</strong></div>
+            <div class="card-actions">
+              <div class="row match-controls">
+                <button type="button" class="danger" data-action="forfeit" data-id="m-2" data-side="0">{{t:forfeit}}: Lulu</button>
+                <button type="button" class="danger" data-action="forfeit" data-id="m-2" data-side="1">{{t:forfeit}}: Alan</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="entry bracket-card held" tabindex="0" data-status="delayed" aria-label="TJJ – Haoye · {{t:delayed}}">
+            <div class="row card-head"><small class="grow">{{t:table}} 3</small><span class="badge delayed">{{t:delayed}}</span></div>
+            <div class="row card-side first"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">TJJ</strong><strong class="side-score">0</strong></div>
+            <div class="row card-side"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">Haoye</strong><strong class="side-score">0</strong></div>
+            <div class="card-actions">
+              <div class="row match-controls">
+                <button type="button" data-action="unschedule" data-id="m-3">{{t:tableFree}}</button>
+                <button type="button" class="danger" data-action="forfeit" data-id="m-3" data-side="0">{{t:forfeit}}: TJJ</button>
+                <button type="button" class="danger" data-action="forfeit" data-id="m-3" data-side="1">{{t:forfeit}}: Haoye</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="entry bracket-card" tabindex="0" data-status="bye" aria-label="Wanwan – {{t:bye}}">
+            <div class="row card-head"><small class="grow">—</small><span class="badge bye">{{t:bye}}</span></div>
+            <div class="row card-side first"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">Wanwan</strong><strong class="side-score"></strong></div>
+            <div class="row card-side"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">—</strong><strong class="side-score"></strong></div>
+            <p class="note">{{t:byeLine|a=Wanwan}}</p>
+          </div>
+        </article>
+
+        <article class="round">
+          <h3>{{t:round}} 2</h3>
+          <div class="entry bracket-card" tabindex="0" data-status="complete" aria-label="Wanwan – Lulu · {{t:complete}}">
+            <div class="row card-head"><small class="grow">{{t:table}} 1</small><span class="badge complete">{{t:complete}}</span></div>
+            <div class="row card-side first won"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--brass-hi)">Wanwan</strong><strong class="side-score">1</strong></div>
+            <div class="row card-side"><i class="status-dot" aria-hidden="true"></i><strong class="grow" style="color:var(--ink)">Lulu</strong><strong class="side-score">0</strong></div>
+            <div class="card-actions"></div>
+          </div>
+        </article>
+      </div>
+    </article>
+
+    <section class="stack">
+      <article class="revival">
+        <h3>{{t:secondChance}}</h3>
+        <p class="note">{{t:revivalHint}}</p>
+        <p class="muted">{{t:revivalSoFar|n=1}}</p>
+        <select id="revival-pick" aria-label="{{t:secondChance}}">
+          <option value="">{{t:revivalRandom}}</option>
+          <option value="e-3">Alan</option>
+          <option value="e-5">Haoye</option>
+        </select>
+        <button type="button" class="primary" data-action="revival-draw">{{t:revivalDraw}}</button>
+      </article>
+
+      <article class="pairing">
+        <h3>{{t:randomPair}}</h3>
+        <p class="note">{{t:pairHint}}</p>
+        <p class="muted">{{t:pairSeed|seed=4187}}</p>
+        <ol class="pair-teams"><li>Lulu / Alan</li><li>TJJ / Haoye</li></ol>
+        <div class="row">
+          <button type="button" class="primary" data-action="pair-accept" data-seed="4187">{{t:pairAccept}}</button>
+          <button type="button" data-action="pair-draw">{{t:pairReroll}}</button>
+          <button type="button" data-action="pair-clear">{{t:pairClear}}</button>
+        </div>
+      </article>
+    </section>
+  </section>
+</main>
+</template>

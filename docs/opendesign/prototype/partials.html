@@ -1,0 +1,215 @@
+<!-- ==========================================================================
+     Modal partials — one per dialog of the console.
+     Markup, class names and copy come from annotator/ops.js (lateModal,
+     sourceModal, recordView, playerForm, appearancePanel); {{t:key}} is
+     resolved from the console's own EN/中 dictionary at build time.
+     ======================================================================== -->
+
+<!-- ---------------------------------------------------------- late join --->
+<template class="pf-partial" data-part="late">
+<div class="modal-backdrop" data-action="late-cancel">
+  <div class="modal modal--late" role="dialog" aria-modal="true" aria-labelledby="late-title">
+    <div class="modal-head">
+      <h3 id="late-title">{{t:lateTitle}}</h3>
+      <button type="button" class="close-x" data-action="late-cancel" aria-label="{{t:closeLabel}}">×</button>
+    </div>
+    <p class="muted">{{t:lateHint}}</p>
+    <form id="late-form" class="fields">
+      <label class="field"><span>{{t:member}}</span>
+        <select name="late_pid">
+          <option value="">{{t:guest}}</option>
+          <option value="p-wanwan">Wanwan</option>
+          <option value="p-su">Su</option>
+          <option value="p-lulu">Lulu</option>
+          <option value="p-alan">Alan</option>
+          <option value="p-tjj">TJJ</option>
+        </select>
+      </label>
+      <label class="field"><span>{{t:guestName}}</span><input name="late_name" type="text" maxlength="120"></label>
+
+      <fieldset class="late-slot">
+        <legend>{{t:lateMatchup}}</legend>
+        <label class="radio"><input type="radio" name="late_opponent" value="none" required checked>{{t:lateNone}}</label>
+        <label class="radio"><input type="radio" name="late_opponent" value="revive" required>{{t:lateRevive}}</label>
+        <label class="radio"><input type="radio" name="late_opponent" value="new" required>{{t:lateNew}}</label>
+        <label class="field"><span>{{t:lateRevivePick}}</span>
+          <select name="late_opponent_entrant">
+            <option value="e-2">Su</option>
+            <option value="e-3">Lulu</option>
+          </select>
+        </label>
+        <label class="field"><span>{{t:lateNewName}}</span><input name="late_opponent_name" type="text" maxlength="120"></label>
+      </fieldset>
+
+      <fieldset class="late-slot pf-hidden" data-pf-doubles>
+        <legend>{{t:lateTeammate}}</legend>
+        <label class="radio"><input type="radio" name="late_partner" value="none" required checked>{{t:lateNonePartner}}</label>
+        <label class="radio"><input type="radio" name="late_partner" value="revive" required>{{t:lateRevivePartner}}</label>
+        <label class="radio"><input type="radio" name="late_partner" value="new" required>{{t:lateNewPartner}}</label>
+        <label class="field"><span>{{t:lateRevivePick}}</span>
+          <select name="late_partner_entrant">
+            <option value="e-3">Lulu</option>
+            <option value="e-4">Alan</option>
+          </select>
+        </label>
+        <label class="field"><span>{{t:lateNewPartnerName}}</span><input name="late_partner_name" type="text" maxlength="120"></label>
+      </fieldset>
+
+      <div class="actions mt-3">
+        <button class="primary" type="submit">{{t:lateAdd}}</button>
+        <button type="button" data-action="late-cancel">{{t:closeLabel}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+</template>
+
+<!-- ------------------------------------------------------------ sources --->
+<template class="pf-partial" data-part="sources">
+<div class="modal-backdrop" data-action="sources-close">
+  <div class="modal modal--sources" role="dialog" aria-modal="true" aria-labelledby="sources-title">
+    <div class="modal-head">
+      <h3 id="sources-title">{{t:sourcesTitle}}</h3>
+      <button type="button" class="close-x" data-action="sources-close" aria-label="{{t:closeLabel}}">×</button>
+    </div>
+    <p class="muted">{{t:sourcesNote}}</p>
+    <form id="sources-form">
+      <label class="field"><span>{{t:source}}</span>
+        <input name="url" type="url" required placeholder="https://www.twitch.tv/yourchannel" aria-describedby="sources-hint" value="https://www.twitch.tv/cornerpocket">
+        <small class="muted" id="sources-hint">{{t:sourceHint}}</small>
+      </label>
+      <div class="actions mt-3">
+        <button class="primary">{{t:sourceAdd}}</button>
+        <button type="button" data-action="sources-close">{{t:closeLabel}}</button>
+      </div>
+    </form>
+    <div class="stack source-list">
+      <div class="entry row">
+        <span class="grow"><strong>channel</strong> <small class="source-url">https://www.twitch.tv/cornerpocket</small></span>
+        <button type="button" data-action="source-remove" data-id="s-1">{{t:remove}}</button>
+      </div>
+      <div class="entry row">
+        <span class="grow"><strong>vod</strong> <small class="source-url">https://www.twitch.tv/videos/2890514774</small></span>
+        <button type="button" data-action="source-remove" data-id="s-2">{{t:remove}}</button>
+      </div>
+    </div>
+  </div>
+</div>
+</template>
+
+<!-- ------------------------------------------------------- player record --->
+<template class="pf-partial" data-part="player">
+<div class="modal-backdrop" data-action="close-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="record-title">
+    <div class="modal-head">
+      <h3 id="record-title">{{t:playerRecord}} · Wanwan</h3>
+      <button type="button" class="close-x" data-action="close-modal" aria-label="{{t:closeLabel}}">×</button>
+    </div>
+    <div class="record">
+      <p class="muted">{{t:recordScope|n=1|date=2026-09-28}}</p>
+      <div class="tiles">
+        <div class="tile"><small>{{t:played}}</small><strong>1</strong></div>
+        <div class="tile"><small>{{t:wins}}</small><strong>1</strong></div>
+        <div class="tile"><small>{{t:losses}}</small><strong>0</strong></div>
+        <div class="tile"><small>{{t:winPct}}</small><strong>100%</strong></div>
+      </div>
+      <h3>{{t:perEvent}}</h3>
+      <div class="table-wrap">
+        <table class="per-event">
+          <thead><tr><th>{{t:event}}</th><th>{{t:wl}}</th></tr></thead>
+          <tbody>
+            <tr><td>8-Ball Open · Sun 10/4<small>2026-10-04</small></td><td>1–0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>{{t:headToHead}}</h3>
+      <p class="muted">{{t:h2hNote}}</p>
+      <div class="table-wrap">
+        <table class="h2h">
+          <thead><tr><th>{{t:opponent}}</th><th>{{t:wl}}</th><th>{{t:winPct}}</th><th>{{t:sample}}</th><th>{{t:forfeit}}</th></tr></thead>
+          <tbody>
+            <tr><td>Su</td><td>1–0</td><td>100%</td><td>1</td><td>0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="row"><button type="button" data-action="close-modal">{{t:back}}</button></div>
+    </div>
+  </div>
+</div>
+</template>
+
+<!-- --------------------------------------------------------- new player --->
+<template class="pf-partial" data-part="newplayer">
+<div class="modal-backdrop" data-action="close-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="newplayer-title">
+    <div class="modal-head">
+      <h3 id="newplayer-title">{{t:newPlayer}}</h3>
+      <button type="button" class="close-x" data-action="close-modal" aria-label="{{t:closeLabel}}">×</button>
+    </div>
+    <form class="player-form mb-4">
+      <div class="fields">
+        <label class="field"><span>{{t:name}}</span><input name="name" type="text" required maxlength="120" value=""></label>
+        <input name="status" type="hidden" value="Active">
+      </div>
+      <div><button class="primary">{{t:save}}</button></div>
+    </form>
+  </div>
+</div>
+</template>
+
+<!-- ---------------------------------------------- appearance / settings --->
+<template class="pf-partial" data-part="appearance">
+<div class="modal-backdrop" data-action="close-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="appearance-title">
+    <div class="modal-head">
+      <h3 id="appearance-title">{{t:appearance}}</h3>
+      <button type="button" class="close-x" data-action="close-modal" aria-label="{{t:closeLabel}}">×</button>
+    </div>
+    <article>
+      <form id="appearance-form">
+        <div class="fields">
+          <label class="field"><span>{{t:cloth}}</span>
+            <select name="clothColor">
+              <option value="#1d5c44" selected>{{t:greenCloth}}</option>
+              <option value="#1f4a70">{{t:blueCloth}}</option>
+              <option value="#6a2130">{{t:redCloth}}</option>
+              <option value="#2f3a3f">{{t:grayCloth}}</option>
+            </select>
+          </label>
+          <label class="field"><span>{{t:lamp}}</span><input name="lampGlow" type="range" min="0" max="0.5" step="0.02" value="0.22"></label>
+          <label class="field"><span>{{t:diamonds}}</span><input type="checkbox" name="showDiamonds" checked></label>
+          <label class="field"><span>{{t:publicBoard}}</span><input type="hidden" name="publicBoard" value="off"><input type="checkbox" name="publicBoard" value="on" checked></label>
+        </div>
+        <div><button class="primary">{{t:save}}</button></div>
+      </form>
+      <div class="cloth-preview" role="img" aria-label="{{t:appearanceNote}}">
+        <span class="rail-diamonds">◆　◆　◆　◆　◆　◆</span>
+        <span>{{t:appearanceNote}}</span>
+        <span class="rail-diamonds">◆　◆　◆　◆　◆　◆</span>
+      </div>
+    </article>
+  </div>
+</div>
+</template>
+
+<!-- ------------------------------------- prototype controls (not UI) ----->
+<template class="pf-partial" data-part="ctl-format">
+<div class="pf-ctl-bar">
+  <div class="pf-ctl">
+    <span class="pf-ctl-label">Prototype control · event format</span>
+    <button type="button" class="pf-btn is-on" data-pf-format="singles">{{t:singles}}</button>
+    <button type="button" class="pf-btn" data-pf-format="doubles">{{t:doubles}}</button>
+    <span class="pf-ctl-hint">the teammate fieldset is drawn only when the event format is doubles</span>
+  </div>
+</div>
+</template>
+
+<template class="pf-partial" data-part="ctl-bracket">
+<div class="pf-ctl-bar">
+  <div class="pf-ctl">
+    <span class="pf-ctl-label">Prototype control · card state</span>
+    <button type="button" class="pf-btn" data-pf-step="0">Step the card → <span data-pf-step-out>scheduled</span></button>
+    <span class="pf-ctl-hint">saving… → Racked → On table → Delayed → Bye → Signed</span>
+  </div>
+</div>
+</template>
