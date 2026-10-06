@@ -225,6 +225,10 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .toolbar-search input{width:100%}
 #ops-shell .toolbar-gap{flex:1 1 auto}
 #ops-shell .modal--sources{width:min(560px,calc(100vw - 32px))}
+#ops-shell .modal--late{width:min(620px,calc(100vw - 32px))}
+#ops-shell .late-slot{border:0;padding:0;margin:0 0 var(--sp-3)}
+#ops-shell .late-slot legend{padding:0;font-weight:600}
+#ops-shell .late-slot legend span{font-weight:400}
 #ops-shell .source-list{margin-top:var(--sp-4)}
 #ops-shell .source-url{overflow-wrap:anywhere}
 #ops-shell .vs-sources{margin:0 0 var(--sp-2)}

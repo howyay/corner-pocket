@@ -630,7 +630,7 @@ class OperationsTests(unittest.TestCase):
         state = self.play_round_one(6)
         t = state['tournament']
         before = json.loads(json.dumps(t['matches']))
-        state = self.call('entrant_add_late', name='Late Lou')
+        state = self.call('entrant_add_late', name='Late Lou', opponent='none')
         t = state['tournament']
         added = [m for m in t['matches'] if m.get('late')]
         self.assertEqual(len(added), 1, 'exactly one late slot')
@@ -644,20 +644,117 @@ class OperationsTests(unittest.TestCase):
         # after the draw (measured: the duplicate never reaches the name check), so the rule asserted
         # here is that it is refused, not which sentence refuses it.
         with self.assertRaises(ValueError):
-            self.call('entrant_add_late', name='late lou')
+            self.call('entrant_add_late', name='late lou', opponent='none')
         with self.assertRaises(ValueError):
-            self.call('entrant_add_late', name='   ')
+            self.call('entrant_add_late', name='   ', opponent='none')
 
     def test_a_late_entrant_can_bring_a_partner(self):
-        """R22 item 1: the arrival may be a team of two, and a partner already in the event is refused."""
-        state = self.play_round_one(6)
-        state = self.call('entrant_add_late', name='Late Lou', partner='Late Sue')
+        """R22 item 1 + R29: a doubles arrival is a team of two, and the teammate is a decision."""
+        state = self.play_doubles_round_one(4)
+        state = self.call('entrant_add_late', name='Late Lou', opponent='none',
+                          partner='new', partner_name='Late Sue')
         entry = state['tournament']['entrants'][-1]
         self.assertEqual([m['name'] for m in entry['members']], ['Late Lou', 'Late Sue'],
                          'the two names are one team')
         self.assertEqual(len(entry['members']), 2, 'a team of two, not a second entrant')
         late = [m for m in state['tournament']['matches'] if m.get('late')]
         self.assertEqual(len(late), 1, 'and still one slot of their own')
+
+    def play_doubles_round_one(self, teams=4):
+        """Four teams, racked, round 1 signed 1-0 to side A. The format the teammate slot needs."""
+        self.call('tournament_setup', name='Doubles night', format='doubles', tables=2, raceTo=1)
+        for n in range(teams):
+            self.call('entrant_add', members=[{'name': f'Team {n} A'}, {'name': f'Team {n} B'}])
+        state = self.call('tournament_start')
+        for match in [m for m in state['tournament']['matches'] if m['round'] == 1 and m.get('result') != 'bye']:
+            self.call('match_schedule', id=match['id'])
+            self.call('match_score', id=match['id'], score=[1, 0])
+            state = self.call('match_complete', id=match['id'])
+        return state
+
+    @staticmethod
+    def round_one_losers(state):
+        return sorted(next(side for side in m['sides'] if side != m['winnerId'])
+                      for m in state['tournament']['matches'] if m['round'] == 1 and m.get('result') == 'played')
+
+    @staticmethod
+    def late_slot(state):
+        return [m for m in state['tournament']['matches'] if m.get('late')][-1]
+
+    @staticmethod
+    def entrant_name(state, entrant_id):
+        entry = next(e for e in state['tournament']['entrants'] if e['id'] == entrant_id)
+        return entry['members'][0]['name']
+
+    def test_a_late_entrant_must_choose_the_match_up(self):
+        """R29 item 1: the dialog's answer is enforced on the server, not only drawn in the browser."""
+        state = self.play_round_one(6)
+        with self.assertRaisesRegex(ValueError, '^Choose the match-up: nobody, a second chance, or a new player$'):
+            self.call('entrant_add_late', name='Late Lou')
+        with self.assertRaisesRegex(ValueError, '^Choose the match-up'):
+            self.call('entrant_add_late', name='Late Lou', opponent='a friend')
+        with self.assertRaisesRegex(ValueError, '^A teammate needs a doubles event$'):
+            self.call('entrant_add_late', name='Late Lou', opponent='none', partner='new', partner_name='Guest Pat')
+        # Nobody: a slot of their own that _propagate signs as a bye, so they advance without a match.
+        state = self.call('entrant_add_late', name='Late Lou', opponent='none')
+        late = self.late_slot(state)
+        self.assertEqual((late['sides'][1], late['status'], late['result'], late['lateOpponent']),
+                         (None, 'complete', 'bye', 'none'))
+        self.assertEqual(late['winnerId'], late['sides'][0], 'the arrival advances')
+        # A second chance: the named round-1 loser takes the other side, so the slot is a real match.
+        losers = self.round_one_losers(state)
+        state = self.call('entrant_add_late', name='Late Sue', opponent='revive', opponent_entrant=losers[-1])
+        late = self.late_slot(state)
+        self.assertEqual(late['sides'][1], losers[-1], 'the loser is the opponent')
+        self.assertEqual((late['status'], late['lateOpponent']), ('scheduled', 'revive'))
+        with self.assertRaisesRegex(ValueError, '^That person is not eligible for the second chance$'):
+            self.call('entrant_add_late', name='Late Ann', opponent='revive', opponent_entrant='nobody')
+        # A new person: registered in the same action and put on the other side.
+        state = self.call('entrant_add_late', name='Late Pat', opponent='new', opponent_name='New Nate')
+        late = self.late_slot(state)
+        self.assertEqual(self.entrant_name(state, late['sides'][1]), 'New Nate')
+        self.assertEqual((late['status'], late['lateOpponent']), ('scheduled', 'new'))
+        with self.assertRaisesRegex(ValueError, '^A new opponent needs a name$'):
+            self.call('entrant_add_late', name='Late Sam', opponent='new')
+        with self.assertRaisesRegex(ValueError, '^That person is already in this tournament$'):
+            self.call('entrant_add_late', name='Late Kate', opponent='new', opponent_name='New Nate')
+
+    def test_a_doubles_late_entrant_names_the_teammate(self):
+        """R29 item 2: doubles refuse a team without a decision, and the teammate can come back."""
+        state = self.play_doubles_round_one(4)
+        with self.assertRaisesRegex(ValueError, '^Choose the teammate for a doubles event$'):
+            self.call('entrant_add_late', name='Late Lou', opponent='none')
+        loser = self.round_one_losers(state)[0]
+        loser_name = self.entrant_name(state, loser)
+        state = self.call('entrant_add_late', name='Late Lou', opponent='none',
+                          partner='revive', partner_entrant=loser)
+        entry = state['tournament']['entrants'][-1]
+        self.assertEqual([m['name'] for m in entry['members']], ['Late Lou', loser_name],
+                         'the person who comes back is the teammate')
+        state = self.call('entrant_add_late', name='Late Sue', opponent='none', partner='none')
+        entry = state['tournament']['entrants'][-1]
+        self.assertEqual([m['name'] for m in entry['members']], ['Late Sue'], 'or they play alone')
+        with self.assertRaisesRegex(ValueError, '^A new teammate needs a name$'):
+            self.call('entrant_add_late', name='Late Pat', opponent='none', partner='new')
+
+    def test_a_doubles_late_team_cannot_field_one_person_twice(self):
+        """R29 item 2: a revived pair cannot be both the opponent and the teammate."""
+        state = self.play_doubles_round_one(4)
+        loser = self.round_one_losers(state)[0]
+        other = self.round_one_losers(state)[1]
+        with self.assertRaisesRegex(ValueError, '^That person cannot play on both sides of the match$'):
+            self.call('entrant_add_late', name='Late Lou', opponent='revive', opponent_entrant=loser,
+                      partner='revive', partner_entrant=loser)
+        state = self.call('entrant_add_late', name='Late Lou', opponent='revive', opponent_entrant=loser,
+                          partner='none')
+        late = self.late_slot(state)
+        self.assertIsNotNone(late['sides'][1], 'a revived pair can still be the opponent')
+        state = self.call('entrant_add_late', name='Late Sue', opponent='revive', opponent_entrant=other,
+                          partner='revive', partner_entrant=loser)
+        entry = state['tournament']['entrants'][-1]
+        self.assertEqual(entry['members'][0]['name'], 'Late Sue')
+        self.assertEqual(len(entry['members']), 2, 'the teammate comes from the other losing pair')
+        self.assertNotEqual(entry['members'][1]['name'], entry['members'][0]['name'])
 
     def test_revival_draw_can_be_told_who(self):
         """R21 item 3: the operator may name a round-1 loser, and anyone else is refused."""

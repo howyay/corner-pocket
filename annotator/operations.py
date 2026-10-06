@@ -401,6 +401,58 @@ class Operations:
         return person
 
     @staticmethod
+    def _late_pool(t):
+        """The round-1 losers who may come back. A forfeit loser did not play, so they are not here."""
+        return sorted(next(side for side in m['sides'] if side != m['winnerId'])
+                      for m in t['matches'] if m['round'] == 1 and m.get('result') == 'played')
+
+    @staticmethod
+    def _late_refuse_member(t, name, pid, sentence):
+        """One person, one place in the event: the arrival, the opponent and the partner all pass here."""
+        for existing in t['entrants']:
+            for member in existing.get('members', []):
+                same_pid = bool(pid) and member.get('pid') == pid
+                same_name = (member.get('name') or '').casefold() == name.casefold()
+                if same_pid or same_name:
+                    raise ValueError(sentence)
+
+    def _late_entrant(self, t, mode, entrant, name, pool):
+        """The person on the other side of the late slot, as an entrant id."""
+        if mode == 'revive':
+            if entrant not in pool:
+                raise ValueError('That person is not eligible for the second chance')
+            return entrant
+        if not name:
+            raise ValueError('A new opponent needs a name')
+        name = text(name, 'name', 120)
+        Operations._late_refuse_member(t, name, None, 'That person is already in this tournament')
+        rival = dict(id=uid(), members=[dict(pid=None, name=name)])
+        t['entrants'].append(rival)
+        return rival['id']
+
+    def _late_partner(self, t, mode, entrant, name, pool):
+        """The partner is a member of the team, so the person is copied, not the entrant."""
+        if mode == 'revive':
+            if entrant not in pool:
+                raise ValueError('That person is not eligible for the second chance')
+            # They are an entrant already, so the duplicate check does not apply to them.
+            member = self._find(t['entrants'], entrant)['members'][0]
+            return dict(pid=member.get('pid'), name=member['name'])
+        if not name:
+            raise ValueError('A new teammate needs a name')
+        name = text(name, 'name', 120)
+        Operations._late_refuse_member(t, name, None, 'That person is already in this tournament')
+        return dict(pid=None, name=name)
+
+    @staticmethod
+    def _late_refuse_both_sides(members, rival):
+        """One person cannot play on both sides of the same match."""
+        def keys(rows):
+            return {(row.get('pid') or str(row.get('name') or '').casefold()) for row in rows}
+        if keys(members) & keys(rival):
+            raise ValueError('That person cannot play on both sides of the match')
+
+    @staticmethod
     def _propagate(t):
         for match in t['matches']:
             if match['status'] == 'complete':
@@ -419,8 +471,13 @@ class Operations:
                                    if Operations._find(t['entrants'], side).get('absent', False)]
                 if match['absent']:
                     match['status'] = 'delayed'
-        if t['matches'] and t['matches'][-1]['status'] == 'complete':
-            t['status'] = 'complete'
+        if t['matches']:
+            # Round 29: the last match in the list is not always the last round. A late entrant's round-1
+            # bye slot is appended after the final, and this test used to read it as the night being over.
+            final_round = max(match['round'] for match in t['matches'])
+            final = [match for match in t['matches'] if match['round'] == final_round]
+            if all(match['status'] == 'complete' for match in final):
+                t['status'] = 'complete'
 
     def _backfill_source(self, s, source, vod, start, end):
         """The source line of a backfilled night, or the refusal that stops it.
@@ -732,32 +789,39 @@ class Operations:
             # Round 21, owner item 3: somebody who arrives after the draw joins as their own team, in a
             # round-1 bye slot of their own with no sources, so the rest of the tree is untouched and
             # _propagate has nothing to rewrite.
+            # Round 29, owner item 1: the operator decides that slot in a dialog. The match-up and, for
+            # doubles, the teammate are each one of three choices: nobody (the arrival advances), a
+            # second chance (a round-1 loser who played comes back into the slot), or a new person
+            # (registered here by name as the opponent or the partner). A payload without those choices
+            # is refused, so no client can skip the decision.
             if t['status'] != 'active':
                 raise ValueError('The tournament is not running')
+            doubles = t.get('format') == 'doubles'
             late_name = text(p.get('name'), 'name', 120)
             late_pid = p.get('pid') or None
-            for existing in t['entrants']:
-                for member in existing.get('members', []):
-                    same_pid = late_pid and member.get('pid') == late_pid
-                    same_name = (member.get('name') or '').casefold() == late_name.casefold()
-                    if same_pid or same_name:
-                        raise ValueError('That person is already in this tournament')
-            # Round 22, owner item 1: the late arrival may bring a partner, which is how an operator
-            # teams them with somebody the second chance did not use.
-            partner_name = text(p.get('partner'), 'name', 120) if p.get('partner') else None
-            partner_pid = p.get('partner_pid') or None
+            self._late_refuse_member(t, late_name, late_pid, 'That person is already in this tournament')
+            opponent = p.get('opponent')
+            if opponent not in ('none', 'revive', 'new'):
+                raise ValueError('Choose the match-up: nobody, a second chance, or a new player')
+            partner = p.get('partner')
+            if doubles:
+                if partner not in ('none', 'revive', 'new'):
+                    raise ValueError('Choose the teammate for a doubles event')
+            elif partner not in (None, 'none'):
+                raise ValueError('A teammate needs a doubles event')
+            pool = Operations._late_pool(t)
             members = [dict(pid=late_pid, name=late_name)]
-            if partner_name:
-                for existing in t['entrants']:
-                    for member in existing.get('members', []):
-                        if (partner_pid and member.get('pid') == partner_pid) or \
-                           (member.get('name') or '').casefold() == partner_name.casefold():
-                            raise ValueError('That partner is already in this tournament')
-                members.append(dict(pid=partner_pid, name=partner_name))
+            if doubles and partner != 'none':
+                members.append(self._late_partner(t, partner, p.get('partner_entrant'), p.get('partner_name'), pool))
             late = dict(id=uid(), members=members)
             t['entrants'].append(late)
-            t['matches'].append(dict(id=uid(), round=1, sides=[late['id'], None], score=[0, 0], table=None,
-                                     status='pending', winnerId=None, absent=[], sources=[], late=True))
+            rival = None if opponent == 'none' else self._late_entrant(
+                t, opponent, p.get('opponent_entrant'), p.get('opponent_name'), pool)
+            if rival is not None:
+                Operations._late_refuse_both_sides(members, self._find(t['entrants'], rival)['members'])
+            t['matches'].append(dict(id=uid(), round=1, sides=[late['id'], rival], score=[0, 0], table=None,
+                                     status='pending', winnerId=None, absent=[], sources=[], late=True,
+                                     lateOpponent=opponent, latePartner=partner or 'none'))
             self._propagate(t)
         elif action in ('match_schedule', 'match_unschedule', 'match_score', 'match_complete', 'match_absence', 'match_forfeit'):
             match = self._find(t['matches'], p.get('id'))

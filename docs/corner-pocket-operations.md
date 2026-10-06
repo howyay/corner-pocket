@@ -107,3 +107,26 @@ Every successful mutation appends a revision-ordered audit event to `events` (ne
 The source server now routes `/` to operations and keeps `/app.html` as the review workbench. The running production process has not been restarted to activate that route. Browser acceptance remains necessary for all six tabs, bilingual forms, mobile layout, tournament lifecycle, reload persistence, and existing review integration.
 
 No hosting restart or external deployment is part of the implementation verification phase.
+
+## The late arrival chooses a match-up
+
+The console card "Join after the draw" opens a dialog. The server refuses any arrival that does
+not state a match-up, so every client is compelled, not only the browser.
+
+- Match-up: `none` (the arrival takes a slot of their own and advances on a bye), `revive` (a
+  first-round loser plays them), or `new` (a person registers as the opponent).
+- Teammate, in a doubles event: the same three choices. A doubles arrival that states none is
+  refused.
+
+`POST entrant_add_late` takes `opponent` and, for doubles, `partner` in that set; `opponent_entrant`
+and `partner_entrant` name a round-one loser and must be in the second-chance pool; `opponent_name`
+and `partner_name` name a new person, who is registered as an entrant. One person may not appear on
+both sides of the match. The match records `lateOpponent` and `latePartner`.
+
+Measured on a scratch club (4 entrants, round one played, race to 7): no answer is refused by the
+browser and the revision does not move; `revive` gives one late match, sides "Late Lou" / "Bo",
+status `scheduled`; `new` with the name "Nina New" gives "Late Sam" / "Nina New"; one person in both
+slots is refused with "That person cannot play on both sides of the match"; in doubles, `revive` /
+`revive` gives "Doubles Late + D1" / "B1 + B2" with both pair members present. A defect the run
+found: the dialog stayed open after a save, so the poll could not repaint it and the operator was
+stuck. The save now closes the dialog.

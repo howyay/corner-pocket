@@ -4229,28 +4229,61 @@ test('round 21 / owner item 3: the second chance can be told who to resurrect', 
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(revivalPool(tournament()))')), [{id:'b'}],
     'only the loser of a played round-1 match is offered');
 });
-test('round 21 / owner item 3: a late arrival joins as their own team', () => {
+test('round 21 / owner item 3 + round 29 / owner item 1: the late arrival card opens a dialog', () => {
   const h = harness();
   const SRC = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
-  assert.ok(SRC.includes("if(a==='late-add')") && SRC.includes("action('entrant_add_late',body)"),
-    'the control sends the name to the action that gives them their own slot');
-  // Round 22, owner item 1: the same two ways in as registration, plus a partner.
-  assert.ok(SRC.includes('name="late_pid"') && SRC.includes("input('late_name'"),
-    'a regular from the roster or a guest by name, as registration does');
-  assert.ok(SRC.includes('name="late_partner"') && SRC.includes('function revivalPool(T)'),
-    'and an optional partner, offered from the round-1 losers');
-  assert.ok(SRC.includes('if(partnerId)body.partner=ename(partnerId);'), 'which travels in the payload');
-  assert.ok(SRC.includes('${entrantsCard()}${lateCard()}'), 'and it is on the event tab');
+  assert.ok(SRC.includes("if(a==='late-open'){lateOpen=true;render();return}") &&
+    SRC.includes("if(a==='late-cancel'){lateOpen=false;render();return}"),
+    'the card opens the dialog, and the dialog closes it');
+  assert.ok(SRC.includes("(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'')"), 'the shell mounts it');
+  assert.ok(SRC.includes('&&!setupOpen&&!lateOpen)'), 'and the poll does not repaint under the operator');
+  assert.ok(SRC.includes('${entrantsCard()}${lateCard()}'), 'the card is on the event tab');
   // It renders only while the event is running: a finished event takes no late arrivals.
   h.evaluate("data.tournament={id:'t1',name:'Open',format:'singles',raceTo:3,status:'complete',entrants:[],matches:[]};data.players=[];render=()=>{}");
-  assert.equal(h.evaluate("lateCard()"), '', 'a finished event offers nothing');
+  assert.equal(h.evaluate('lateCard()'), '', 'a finished event offers nothing');
   h.evaluate("data.tournament.status='active';data.players=[{id:'pa',name:'Ann',status:'Active',rating:700},{id:'pb',name:'Bo',status:'Inactive',rating:600}]");
   const html = h.evaluate('lateCard()');
-  assert.ok(html.includes('name="late_pid"') && html.includes('name="late_name"'),
-    'a running event offers a name, as registration does (round 22, owner item 1)');
-  assert.ok(html.includes('>Ann<') && !html.includes('>Bo<'), 'the roster suggests the active regulars only');
-  assert.ok(html.includes('data-action="late-add"'), 'and one button to add them');
+  assert.ok(html.includes('data-action="late-open"') && !html.includes('<form'), 'the card is one button, not a form');
+  assert.ok(!html.includes('name="late_pid"') && !html.includes('data-action="late-add"'),
+    'the fields and the submit moved into the dialog');
 });
+
+test('round 29 / owner item 1: the dialog compels the match-up and the teammate, in both languages', () => {
+  const h = harness();
+  const SRC = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  const PY = fs.readFileSync(path.join(__dirname, '../annotator/operations.py'), 'utf8');
+  h.evaluate("data.tournament={id:'t1',name:'Open',format:'singles',raceTo:3,status:'active',entrants:[{id:'e1',members:[{name:'Ann'}]},{id:'e2',members:[{name:'Bo'}]}],matches:[{id:'m1',round:1,sides:['e1','e2'],score:[7,3],status:'complete',winnerId:'e1',result:'played',absent:[],sources:[]}]};data.players=[];render=()=>{}");
+  const singles = h.evaluate('lateModal()');
+  for (const value of ['none', 'revive', 'new']) {
+    assert.ok(singles.includes(`name="late_opponent" value="${value}" required`),
+      `the ${value} answer is offered for the match-up, and required`);
+  }
+  assert.ok(singles.includes('name="late_opponent_entrant"') && singles.includes('>Bo<'),
+    'the second chance offers the round-1 losers, named');
+  assert.ok(singles.includes('name="late_opponent_name"'), 'and the new person is named in the dialog');
+  assert.ok(!singles.includes('name="late_partner"'), 'a singles event asks for no teammate');
+  h.evaluate("data.tournament.format='doubles'");
+  const doubles = h.evaluate('lateModal()');
+  for (const value of ['none', 'revive', 'new']) {
+    assert.ok(doubles.includes(`name="late_partner" value="${value}" required`),
+      `a doubles event requires the teammate answer (${value})`);
+  }
+  assert.ok(doubles.includes('name="late_partner_entrant"') && doubles.includes('name="late_partner_name"'),
+    'and offers the same two ways to name the teammate');
+  assert.ok(SRC.includes("if(!opponent||(doubles&&!partner)){message(t('lateNeedChoice'),true);return}"),
+    'the handler refuses a submit with a decision missing');
+  assert.ok(SRC.includes("if(await action('entrant_add_late',body)){lateOpen=false;render()}"),
+    'and a successful add closes the dialog and repaints, so the operator is not left looking at it');
+  assert.ok(SRC.includes("if(f.getAttribute('id')==='late-form')") && SRC.includes("if(opponent==='revive')body.opponent_entrant") &&
+    SRC.includes("if(doubles&&partner==='new')body.partner_name"),
+    'the dialog submits through the form path, and the answers travel in the payload');
+  assert.ok(PY.includes("if opponent not in ('none', 'revive', 'new'):") &&
+    PY.includes("raise ValueError('Choose the teammate for a doubles event')"),
+    'the server refuses a payload without the choices, whatever the client');
+  assert.ok(PY.includes("final_round = max(match['round'] for match in t['matches'])"),
+    'and a late bye slot no longer reads as the night being over');
+});
+
 test('round 22 / owner item 3: a chosen point on the scrubber survives the repaint', () => {
   const vs = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
   // The console builds the input fresh on every render, so a refused seek used to reset the thumb to 0.
