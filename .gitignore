@@ -49,3 +49,4 @@ secrets.json
 
 # tool caches
 .pytest_cache/
+docs/opendesign/.capture/
