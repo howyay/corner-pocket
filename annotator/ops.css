@@ -410,6 +410,9 @@ html,body{-webkit-font-smoothing:antialiased}
 :is(#ops-shell) .vs-rate{color:var(--ink-faint);font-size:var(--fs-xs);min-width:56px}
 :is(#ops-shell) .vs-track{position:relative;padding:var(--sp-4) 0 0}
 :is(#ops-shell) .vs-track input[type=range]{width:100%;margin:0;min-height:22px}
+:is(#ops-shell) .vs-scrub-bubble{position:absolute;top:-6px;transform:translateX(-50%);padding:1px 6px;border:1px solid var(--brass);border-radius:var(--r-1);background:var(--panel);color:var(--ink);font:var(--fs-xs) var(--mono);white-space:nowrap;pointer-events:none;z-index:2}
+:is(#ops-shell) .vs-track[data-held="1"] input[type=range]::-webkit-slider-thumb{box-shadow:0 0 0 4px var(--brass-a, rgba(200,160,60,.25))}
+:is(#ops-shell) .vs-track[data-held="1"] input[type=range]{cursor:grabbing}
 :is(#ops-shell) .vs-strip[data-live="1"] .vs-track input[type=range]{opacity:.35}
 :is(#ops-shell) .vs-strip[data-live="1"] .vs-transport button{opacity:.55}
 :is(#ops-shell) .vs-edge{position:absolute;top:0;bottom:14px;width:3px;transform:translateX(-50%);background:var(--live-bg);border-left:2px solid var(--neutral-bg)}

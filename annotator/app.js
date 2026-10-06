@@ -580,7 +580,13 @@ function applyFrameResult() {
 function seek(n) {
   const meta = state.vmeta; if (!meta) return false;
   n = clampFrame(n, meta);
-  if (!canLeave()) return false;
+  // Round 31, owner item 3, measured: a decode in flight is not a reason to refuse a point. canLeave()
+  // refuses while busy, so it ran first and the queued-seek branch below was unreachable - a seek
+  // issued during a decode was dropped, which left the stage on the previous frame after a drag while
+  // the thumb held the chosen point (measured: a 5:11:38 thumb over a 4:03:28 picture). The busy case
+  // is queued now, which is what the comment above this function always claimed. The unsaved-changes
+  // half of the guard still refuses, in every state.
+  if (state.dirty && !confirm(text('Discard unsaved changes?'))) return false;
   // Freezing is the exit from video mode: pause the picture and decode the
   // still through the unchanged guarded path below.
   exitPlayback();
@@ -588,7 +594,10 @@ function seek(n) {
   loadFrame(n); return true;
 }
 function seekTime(t) { const meta = state.vmeta; if (!meta) return false; return seek(frameFromTime(meta, t)); }
-function stepFrame(delta) { if (!state.vmeta || !canLeave()) return false; return seek((state.pendingSeek ?? state.frame) + delta); }
+// A step is a point like any other: while a decode runs it is computed from the point already
+// queued and queued again, so a held step button walks the stage. canLeave() refuses while busy,
+// which made every tick of a press-and-hold a no-op.
+function stepFrame(delta) { if (!state.vmeta) return false; return seek((state.pendingSeek ?? state.frame) + delta); }
 function setPlaying(playing) {
   state.playing = !!playing;
   clearTimeout(state.playTimer); state.playTimer = null;

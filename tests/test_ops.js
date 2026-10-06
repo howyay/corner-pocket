@@ -4346,3 +4346,39 @@ test('a direct load of a review route keeps its id until the archive list arrive
   h.evaluate("reviewId='261001'");
   assert.ok(h.evaluate("!recordsScreen().includes('data-action=\"bf-pick\"')"), 'no import action without a broadcast');
 });
+
+test('round 31 / owner item 3: the scrubber follows the pointer, a held step repeats, and the keys the app skips work', () => {
+  const stage = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  // The drag: the press holds the point, the preview is throttled, and the last position always lands.
+  assert.ok(stage.includes('let scrubHold = null;') && stage.includes('previewScrub(scrubHold);'),
+    'the press holds the point');
+  assert.ok(stage.includes('if (now - scrubAt >= 250) { scrubAt = now; seekScrub(want); }'),
+    'the drag sends one preview seek each 250 ms, not one for each pixel');
+  assert.ok(stage.includes('scrubTimer = setTimeout(() => { scrubTimer = 0; if (scrubHold !== null) { scrubAt = 0; seekScrub(scrubHold); } }, 250);'),
+    'and a trailing seek carries the last position of a fast drag');
+  assert.ok(stage.includes('if (scrubHold !== null) scrub.value = String(scrubHold);'),
+    'the render keeps the held point under the thumb');
+  assert.ok(stage.includes('if (pendingScrub !== null && Math.abs((Number(s.frame.t) || 0) - pendingScrub) <= 0.25) pendingScrub = null;'),
+    'and drops the pin as soon as the engine lands on it');
+  // The bubble states the target time, and the preview writes in place.
+  assert.ok(src.includes('id="vs-scrub-bubble"') && css.includes('.vs-scrub-bubble{'), 'the track carries the bubble');
+  assert.ok(stage.includes('mark.textContent = scrubT(seconds);') && stage.includes('function scrubT(seconds)'),
+    'the bubble states the time');
+  const preview = stage.slice(stage.indexOf('function previewScrub'), stage.indexOf('function endScrub'));
+  assert.ok(preview.length > 100 && !preview.includes('render()'),
+    'and the preview writes in place: a shell render during a gesture would drop the pointer');
+  // The keys: only the ones the app does not already own.
+  assert.ok(stage.includes("const SCRUB_KEYS = ['j', 'J', 'l', 'L', 'k', 'K', 'Home', 'End'];"),
+    'the transport words and the two ends');
+  assert.ok(stage.includes("const SCRUB_RANGE_KEYS = [' ', 'Spacebar', ',', '.', 'ArrowLeft', 'ArrowRight'];"),
+    'and the transport keys while the range itself has focus, where the app skips them');
+  assert.ok(stage.includes("root.addEventListener('keydown', onKey, true);"), 'read before the app sees them');
+  // A held step button repeats, which is what makes a long jump practical.
+  assert.ok(stage.includes('stepTimer = setTimeout(tick, 350);') && stage.includes('stepTimer = setTimeout(tick, 90);'),
+    'a held step button repeats after 350 ms, then each 90 ms');
+  assert.ok(stage.includes("root.addEventListener('pointerdown', onPointerDown);") &&
+    stage.includes("root.addEventListener('pointerup', onPointerUp);"), 'the pointer starts and ends it');
+  assert.ok(stage.includes("root.removeEventListener('pointerdown', onPointerDown);"), 'and detach removes it');
+});

@@ -2964,3 +2964,29 @@ Measured on the review screen at http://127.0.0.1:8130/ops.html#/records/review/
   the strip box.
 - The source label inside the strip reads `recorded broadcast of ttpoolfriday · from 2026-08-23 ·
   whole broadcast`; the facts line reads `broadcast time 0:00:00 · 0:00.0 · overlays ON`.
+
+## Round 31 · the review player owns the gesture (2026-10-06)
+
+The owner asked for a player whose scrubbing and jumping work. While the pointer is down the stage
+previews the chosen point in place, and the engine queues a point that arrives while a frame decodes.
+
+| What the operator does | What the console does | Measured |
+| --- | --- | --- |
+| Drag the scrubber | The thumb holds the point, a bubble states the time, the layer chips stay inside the scrubber | 10 of 10 drag steps tracked, `held` 1, `trackHeld` 1, bubble hidden on release |
+| Release the scrubber | One seek for the last point, queued when a decode runs | 974 s to frame 29214, 23372 s to frame 701166 (30 fps) |
+| `l` `j` `Home` `ArrowRight` on a focused scrubber | +5 s, -5 s, start, +0.1 s | `Home` then `ArrowRight` settles at frame 1, `t` 0 |
+| `k` | Play, then pause | play to frame 589 (`t` 20 s), one pause |
+| Click a step button | One frame | 595 to 596 |
+| Hold a step button | Repeats after 350 ms, then each 90 ms, at most 120 steps | 596 to 603 in 1.4 s, 7 frames |
+
+Two defects were measured and fixed in `annotator/app.js`:
+
+- `seek()` read `canLeave()`, which refuses while a decode runs. The queued-seek branch under it was
+  therefore unreachable, and a point chosen during a decode was dropped. Measured before the fix: a
+  5:11:38 thumb over a 4:03:28 picture. The unsaved-changes half of the guard still refuses.
+- `stepFrame()` read `canLeave()` too, so every tick of a held step button was a no-op. Measured
+  before the fix: 0 frames walked. After: 7 frames in 1.4 s.
+
+Environment: the review record `2853972244` resolves to a 10.8-hour Twitch VOD. Frame extraction takes
+seconds per frame and the first load can take minutes, so the picture lags the input; the queue keeps
+the last choice.

@@ -1090,6 +1090,7 @@ function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading"
 <div class="vs-track">
 <div class="scrub-marks" id="vs-marks"></div>
 <input id="vs-scrub" type="range" min="0" max="0" step="1" value="0">
+<span class="vs-scrub-bubble" id="vs-scrub-bubble" hidden></span>
 <span class="vs-edge" id="vs-edge"></span>
 </div>
 <p class="vs-facts" id="vs-facts" role="status"></p>

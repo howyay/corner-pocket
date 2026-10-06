@@ -2688,6 +2688,39 @@ test('a status payload carries its code into the console, as the cause or as his
   T.state.live.error_params = null; T.state.live.last_error = null;
 });
 
+
+test('round 31 / owner item 3: the scrub bubble states the same time the strip does', () => {
+  const stage = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(stage, context);
+  const scrubT = context.window.VisionStage.scrubT;
+  assert.equal(scrubT(0), '0:00.0', 'the start of a clip');
+  assert.equal(scrubT(59.94), '0:59.9', 'a tenth is kept');
+  assert.equal(scrubT(25 * 60 + 53.5), '25:53.5', 'the same m:ss.d the cue cards use');
+  assert.equal(scrubT(3600 + 49 * 60 + 42.1), '1:49:42.1', 'over an hour the hour field appears');
+  assert.equal(scrubT('17.44'), '0:17.4', 'the value arrives as a string from a range input');
+  assert.equal(scrubT(-4), '0:00.0', 'a negative is clamped');
+});
+
+
+
+test('round 31 / owner item 3: a point chosen while a frame decodes is queued, never dropped', () => {
+  const engine = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
+  // The comments in these functions name the guard they removed, so the checks read code only.
+  const code = text => text.replace(/\/\/[^\n]*/g, '');
+  const seekBody = code(engine.slice(engine.indexOf('function seek(n)'), engine.indexOf('function seekTime(t)')));
+  assert.ok(seekBody.includes("if (state.dirty && !confirm(text('Discard unsaved changes?'))) return false;"),
+    'the unsaved-changes half of the guard still refuses a seek');
+  assert.ok(!seekBody.includes('canLeave()'),
+    'canLeave() refuses while a decode runs, which dropped the point the operator chose');
+  assert.ok(seekBody.includes('if (state.busy) { state.pendingSeek = n; notify(); return true; }'),
+    'a seek during a decode is queued and the running load drains it');
+  const stepBody = code(engine.slice(engine.indexOf('function stepFrame(delta)'), engine.indexOf('function setPlaying(')));
+  assert.ok(!stepBody.includes('canLeave()'), 'a step during a decode is queued too, so a held step walks');
+  assert.ok(stepBody.includes('state.pendingSeek ?? state.frame'), 'a step counts from the point already queued');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
 

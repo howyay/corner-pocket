@@ -242,6 +242,13 @@ let opts = null, root = null, sig = {}, sheet = 'cues', ageTimer = null, footerO
 // not engine state: the engine owns no frame or source selection ambiguity.
 // R23 item 2: the point the operator chose, held until the engine can honour it.
 let pendingScrub = null;
+// Owner round 31, item 3. The scrubber follows the pointer: the wanted point lives in scrubHold, the
+// preview seek is throttled to one call each 250 ms and the last one always lands, so the picture
+// moves with the thumb instead of appearing only on release. stepTimer repeats a held step button.
+let scrubHold = null;
+let scrubAt = 0;
+let scrubTimer = 0;
+let stepTimer = 0;
 
 let sourceOpen = false, guestDraft = null;
 // The VOD fields keep what the operator typed: the panel is rebuilt whenever the
@@ -1309,7 +1316,11 @@ function render() {
     const max = String(Math.max(0, Number(s.frame.duration) || 0));
     if (scrub.getAttribute('max') !== max) scrub.setAttribute('max', max);
     if (scrub.getAttribute('step') !== '0.1') scrub.setAttribute('step', '0.1');
-    if (pendingScrub !== null) scrub.value = String(pendingScrub);
+    // R31 item 3: the pin is dropped as soon as the engine lands on it, so a seek the engine refuses
+    // for good (a live mark is open) cannot hold the thumb at one point for the rest of the session.
+    if (pendingScrub !== null && Math.abs((Number(s.frame.t) || 0) - pendingScrub) <= 0.25) pendingScrub = null;
+    if (scrubHold !== null) scrub.value = String(scrubHold);
+    else if (pendingScrub !== null) scrub.value = String(pendingScrub);
     else if (document.activeElement !== scrub) scrub.value = String(Math.max(0, Number(s.frame.t) || 0));
   }
   const marksSig = `${s.dataset}|${s.frame.duration}|${s.events.items.map(e => `${e.id}:${e.t}:${e.type}`).join(',')}|${s.playback.on ? 1 : 0}|${s.playback.event || ''}|${s.playback.from}|${s.playback.to}|${s.playback.loops}|${s.playback.playing ? 1 : 0}`;
@@ -1488,9 +1499,109 @@ function syncGuestField(value) {
   if (input) input.disabled = off;
   if (hint) hint.textContent = off ? (snap()?.selection?.person?.cluster_id == null ? t('noCluster') : t('bindIdentityHint')) : t('bindGuestHint');
 }
+// R31 item 3: the same m:ss.d the cue cards and the facts line use, so the bubble and the strip agree.
+// Over an hour it grows the hour field. Pure, so the suite pins the format.
+function scrubT(seconds) {
+  const tenths = Math.max(0, Math.round((Number(seconds) || 0) * 10));
+  const h = Math.floor(tenths / 36000), m = Math.floor(tenths / 600) % 60, s = Math.floor(tenths / 10) % 60, d = tenths % 10;
+  return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s).padStart(2, '0') + '.' + d;
+}
+// In place, never through the shell: a rebuild of #main during a gesture would drop the pointer.
+function previewScrub(seconds, held) {
+  if (!root) return;
+  const scrub = root.querySelector('#vs-scrub'), mark = root.querySelector('#vs-scrub-bubble');
+  if (scrub) { scrub.value = String(seconds); scrub.dataset.held = held === false ? '0' : '1'; }
+  const track = root.querySelector('.vs-track');
+  if (track) track.dataset.held = held === false ? '0' : '1';
+  const max = Math.max(0.1, Number(scrub && scrub.getAttribute('max')) || 0);
+  if (mark) {
+    mark.hidden = held === false;
+    if (held !== false) { mark.textContent = scrubT(seconds); mark.style.left = Math.min(100, Math.max(0, seconds / max * 100)) + '%'; }
+  }
+}
+function endScrub() {
+  if (!root) return;
+  const scrub = root.querySelector('#vs-scrub'), mark = root.querySelector('#vs-scrub-bubble'), track = root.querySelector('.vs-track');
+  if (scrub) scrub.dataset.held = '0';
+  if (track) track.dataset.held = '0';
+  if (mark) mark.hidden = true;
+}
+function seekScrub(want) { pendingScrub = want; const api = engine(); const seek = api && (api.seekTime || api.seek); return seek ? !!seek.call(api, want) : false; }
+// A press starts the drag: the value is previewed at once and the first seek goes out with the first
+// input event. A press on a step button repeats it, which is what makes a long jump practical.
+function onPointerDown(event) {
+  if (!root || (root.contains && !root.contains(event.target))) return;
+  const scrub = event.target.closest ? event.target.closest('#vs-scrub') : null;
+  if (scrub) { scrubHold = Number(scrub.value); scrubAt = 0; endScrub(); previewScrub(scrubHold); return; }
+  const step = event.target.closest ? event.target.closest('[data-vs-action="step"]') : null;
+  if (step && typeof setTimeout === 'function') {
+    const delta = Number(step.dataset.vsValue) || 1;
+    let n = 0;
+    const tick = () => {
+      const api = engine();
+      if (api && api.stepFrame) api.stepFrame(delta);
+      else if (api) api.seek(Number((snap() && snap().frame && snap().frame.index) || 0) + delta);
+      if (++n < 120) stepTimer = setTimeout(tick, 90);
+    };
+    if (stepTimer) clearTimeout(stepTimer);
+    stepTimer = setTimeout(tick, 350);
+  }
+}
+function onPointerUp() {
+  if (stepTimer) { clearTimeout(stepTimer); stepTimer = 0; }
+  if (scrubHold === null) return;
+  const want = scrubHold;
+  scrubHold = null;
+  if (scrubTimer) { clearTimeout(scrubTimer); scrubTimer = 0; }
+  endScrub();
+  seekScrub(want); // the change event asks for the same point; the engine coalesces a repeat
+}
+// The keys the app already owns (space, the comma pair, the arrows, the digits) are left alone. This
+// set covers what it skips: the transport words, the ends, and every key while the range has focus.
+const SCRUB_KEYS = ['j', 'J', 'l', 'L', 'k', 'K', 'Home', 'End'];
+const SCRUB_RANGE_KEYS = [' ', 'Spacebar', ',', '.', 'ArrowLeft', 'ArrowRight'];
+function onKey(event) {
+  if (!root || (root.contains && !root.contains(event.target))) return;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+  const node = event.target, tag = String((node && node.tagName) || '').toUpperCase();
+  if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A' || (node && node.isContentEditable)) return;
+  const range = tag === 'INPUT' && node.type === 'range';
+  const key = event.key;
+  const mine = SCRUB_KEYS.indexOf(key) >= 0 || (range && SCRUB_RANGE_KEYS.indexOf(key) >= 0);
+  if (!mine) return;
+  const s = snap(), api = engine();
+  if (!s || !s.frame || !api) return;
+  const step = (delta) => { if (api.stepFrame) api.stepFrame(delta); else api.seek(Number(s.frame.index || 0) + delta); };
+  const byTime = (delta) => seekScrub(Math.max(0, Math.min(Number(s.frame.duration) || 0, (Number(s.frame.t) || 0) + delta)));
+  if (key === 'j' || key === 'J') byTime(-5);
+  else if (key === 'l' || key === 'L') byTime(5);
+  else if (key === 'k' || key === 'K') api.setPlaying(!s.frame.playing);
+  else if (key === 'Home') seekScrub(0);
+  else if (key === 'End') seekScrub(Number(s.frame.duration) || 0);
+  else if (key === ' ') api.setPlaying(!s.frame.playing);
+  else if (key === ',') step(-1);
+  else if (key === '.') step(1);
+  else if (key === 'ArrowLeft') step(event.shiftKey ? -10 : -1);
+  else if (key === 'ArrowRight') step(event.shiftKey ? 10 : 1);
+  if (scrubHold !== null) { scrubHold = null; endScrub(); }
+  event.__cpHandled = true;
+  event.preventDefault();
+}
 function onInput(event) {
   if (!root || (root.contains && !root.contains(event.target))) return;
   const target = event.target;
+  // R31 item 3: a drag reads as a picture that moves. One seek each 250 ms while the pointer moves,
+  // plus a trailing seek for the last position, so a gesture costs a handful of frames, not one per
+  // pixel, and the thumb never leaves the point the operator chose.
+  if (target.id === 'vs-scrub') {
+    const want = Number(target.value);
+    scrubHold = want;
+    previewScrub(want);
+    const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    if (now - scrubAt >= 250) { scrubAt = now; seekScrub(want); }
+    else if (!scrubTimer) scrubTimer = setTimeout(() => { scrubTimer = 0; if (scrubHold !== null) { scrubAt = 0; seekScrub(scrubHold); } }, 250);
+    return;
+  }
   const guest = target.closest ? target.closest('[data-vs-action="guest-name"]') : null;
   if (guest) { guestDraft = {track: String(snap()?.persons?.track ?? ''), value: guest.value}; return; }
   const field = target.dataset?.vsField;
@@ -1525,6 +1636,12 @@ function onChange(event) {
     // (canLeave), the render then writes the engine's unchanged frame back, and the thumb jumps to the
     // start - 'I drag it to a random point, click play, and I get reset'. The chosen point is held, and
     // The chosen point is held until the engine can honour it.
+    // R31 item 3: the release asks once for the final point. The preview seeks already sent the frames
+    // the operator has seen, so this is the only request a slow drag adds at the end.
+    if (scrubTimer) { clearTimeout(scrubTimer); scrubTimer = 0; }
+    if (scrubHold !== null || pendingScrub !== want) endScrub();
+    scrubHold = null;
+    scrubAt = 0;
     const seek = engine().seekTime || engine().seek;
     if (!seek.call(engine(), want)) {
       pendingScrub = want;
@@ -1548,11 +1665,18 @@ function attach(options) {
   root.addEventListener('click', onClick);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);
+  // R31 item 3: the pointer, for the drag preview and the held step button, and the keys the app skips.
+  root.addEventListener('pointerdown', onPointerDown);
+  root.addEventListener('pointerup', onPointerUp);
+  root.addEventListener('pointercancel', onPointerUp);
+  root.addEventListener('keydown', onKey, true);
   const unsubscribe = engine()?.subscribe ? engine().subscribe(render) : null;
   render();
-  return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput); }};
+  return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput);
+    root.removeEventListener('pointerdown', onPointerDown); root.removeEventListener('pointerup', onPointerUp);
+    root.removeEventListener('pointercancel', onPointerUp); root.removeEventListener('keydown', onKey, true); }};
 }
-window.VisionStage = {attach, render, act, onInput, actionsHTML, factsLine, layersHTML, identityHTML, chipsHTML, inspectorHTML, linkBlock, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
+window.VisionStage = {attach, render, act, onInput, scrubT, actionsHTML, factsLine, layersHTML, identityHTML, chipsHTML, inspectorHTML, linkBlock, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
 // The Broadcasts block, for tests: its state, the renderers and the refusal mapping.
 Object.assign(window.VisionStage, {broadcastsBlock, recordedLabel, serverText, bcState: () => bc, bcReset: () => { if (bc.poll) clearInterval(bc.poll); bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false}; }});
 })();
