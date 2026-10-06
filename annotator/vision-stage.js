@@ -664,7 +664,10 @@ function layersHTML(s) {
     const count = auto && manual
       ? `${t(label).toLowerCase()} ${Number(auto[key] || 0)} (+${manual} ${t('manual')})`
       : `${t(label).toLowerCase()} ${total}`;
-    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}"${esc(count + ((key === 'cloth' && s && s.cloth && s.cloth.polygon === 'inference')
+    // Owner round 26 item 1: the count is this chip's text, so the opening tag must be closed before
+    // it. The copy used to land inside the tag, the browser read it as attributes and the chip drew
+    // an empty dot - a string assertion on the copy could not see that.
+    return `<button class="vs-layer${shown ? ' on' : ''}" aria-pressed="${shown ? 'true' : 'false'}" data-vs-action="layer" data-vs-value="${key}" ${gated ? 'disabled' : ''} title="${gated ? esc(t('vodOnlyAnchors')) : esc(t(label))}">${esc(count + ((key === 'cloth' && s && s.cloth && s.cloth.polygon === 'inference')
       ? ` (${(s.corrections && s.corrections.inferenceAt && s.corrections.storedInference
             ? `${t('storedInference')} ${stampText(s.corrections.inferenceAt)}` : null) || t('inferenceSession')})`
       : ''))}</button>`;

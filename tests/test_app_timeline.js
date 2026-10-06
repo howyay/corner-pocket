@@ -829,6 +829,28 @@ test('adapter facts line names the layers it held back', () => {
   assert.ok(clean.includes('cloth 1') && clean.includes('pockets 6') && !clean.includes('quad'), clean);
 });
 
+test('every layer chip states its count as the chip text (owner round 26 item 1)', () => {
+  // A string assertion on the copy cannot see WHERE the copy landed. The chips once wrote the count
+  // inside the opening tag, so the browser read it as attributes and drew four empty dots: this test
+  // reads each chip's body, which is what the operator sees.
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  const state = {
+    source:{kind:'vod', label:'vod30', channel:null}, frame:{index:0, t:0, duration:1800, count:45000, playing:false, rate:0},
+    loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
+    drawn:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0}},
+    cloth:{verdict:{state:'off', mean:98.1, max:171.7, tolerance:40, source:'saved calibration'}, refusal:null}
+  };
+  const html = context.window.VisionStage.layersHTML(state);
+  for (const key of ['cloth', 'balls', 'persons', 'pockets']) {
+    const m = html.match(new RegExp(`data-vs-value="${key}"[^>]*>([\\s\\S]*?)</button>`));
+    assert.ok(m, `the ${key} chip has no body: ${html}`);
+    assert.ok(m[1].trim().startsWith(`${key} `), `the ${key} chip does not state its count: ${m[1]}`);
+  }
+});
+
 test('a refused model quad falls back to the saved calibration for the pockets', () => {
   const anchors = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
   same(T.POCKET_ANCHOR_ORDER, ['head-left','head-right','foot-right','foot-left','left-side','right-side']);
