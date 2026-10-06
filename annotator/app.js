@@ -591,7 +591,6 @@ function seekTime(t) { const meta = state.vmeta; if (!meta) return false; return
 function stepFrame(delta) { if (!state.vmeta || !canLeave()) return false; return seek((state.pendingSeek ?? state.frame) + delta); }
 function setPlaying(playing) {
   state.playing = !!playing;
-  if (!state.playing) scheduleAutoInference();
   clearTimeout(state.playTimer); state.playTimer = null;
   const video = stageVideo();
   if (state.playing) {
@@ -1389,7 +1388,10 @@ function setDetector(kind, on) { if (!(kind in state.detectors)) return false; s
 function setShooter(value) { state.shooterDraft = value; notify(); }
 function setNote(value) { state.noteDraft = value; }
 function setEventFilter(filter) { state.eventFilter = ['all','shot','pot','pending','geometry','window'].includes(filter) ? filter : 'all'; notify(); }
-function freeze() { setPlaying(false); return seek(state.frame); }
+// Owner round 27 item 1: the freeze action is the request. It used to be any stop (a scrub, a step,
+// the end of a clip), which conflicted with the freeze button - two designs for one gesture. Freezing
+// is the one gesture that asks for a frame to be read, so the run follows it and nothing else.
+function freeze() { setPlaying(false); const ok = seek(state.frame); scheduleAutoInference(); return ok; }
 async function setWindow(win) {
   if (state.busy) return false;
   state.persons.win = win;
@@ -1409,10 +1411,10 @@ function nudgeAnchor(dx, dy) {
   p[0] = Math.max(0, Math.min(state.anchors.w - 1, p[0] + dx)); p[1] = Math.max(0, Math.min(state.anchors.h - 1, p[1] + dy));
   markDirty(); paintOverlay();
 }
-// Round 17, owner item 2: the operator should not have to click to freeze a frame. A pause is the
-// signal, one run per frame, debounced so a scrub that lands somewhere does not start a run the
-// operator is about to leave, and skipped while a run is in flight or while the operator has turned
-// it off. runInference() reports its own progress through inferRunning/inferStatus.
+// Round 17, owner item 2 / round 27 item 1: the operator should not have to click twice - freezing a
+// frame is the request, one run per frame, debounced so a scrub that lands somewhere does not start a
+// run the operator is about to leave, and skipped while a run is in flight or while inference is off.
+// runInference() reports its own progress through inferRunning/inferStatus.
 let autoInferTimer = null;             // module scope: a Timeout handle is not readable state
 function scheduleAutoInference() {
   clearTimeout(autoInferTimer); autoInferTimer = null;

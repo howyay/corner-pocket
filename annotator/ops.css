@@ -1205,13 +1205,9 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .tl-day .tl-vods{margin:var(--sp-2) 0 0}
 @media (max-width:750px){#ops-shell .vod-pick-host{min-width:9rem}}
 /* Round 17, owner item 2: the inference report sits with the chips, where the stage's state lives. */
-#ops-shell .vs-infer{min-height:28px;padding:0 var(--sp-2);font:var(--fs-xs) var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);background:transparent;border:1px solid var(--line);border-radius:2px}
 /* Round 26, owner item 2: the switch and the source it governs are one control, so the source is text
    inside it, not a second chip. */
-#ops-shell .vs-infer{display:inline-flex;align-items:center;gap:var(--sp-1h);text-align:left;flex-wrap:wrap}
-#ops-shell .vs-infer .vs-fresh{padding:0;border:0;background:transparent;color:inherit;letter-spacing:inherit;text-transform:inherit}
-#ops-shell .vs-infer.running{color:var(--brass-hi);border-color:var(--brass)}
-#ops-shell .vs-infer.off{color:var(--ink-faint)}
+#ops-shell .vs-chipmeta .vs-fresh{padding:0;border:0;background:transparent;color:inherit;letter-spacing:inherit;text-transform:inherit}
 /* Round 17, owner item 3: the row's binding chip and the face-only state. */
 #ops-shell .vs-tag.bound{color:var(--brass-hi);border-color:var(--brass)}
 #ops-shell .vs-tag.face{color:var(--ink-dim)}

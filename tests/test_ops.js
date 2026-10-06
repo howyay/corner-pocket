@@ -3971,10 +3971,13 @@ test('round 17 / owner item 1: the face a person was identified by is drawn, and
   assert.ok(!/class="u-face"[^>]*data-person=/.test(engine),
     'and it is not a person box: one human keeps one box (the face rides inside it)');
 });
-test('round 17 / owner item 2: inference runs when playback stops, and the stage says so', () => {
+test('round 27 / owner item 1: the freeze control owns inference, and a plain stop starts nothing', () => {
   const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
-  assert.ok(engine.includes('if (!state.playing) scheduleAutoInference();'), 'a pause is the signal, not a click');
+  assert.ok(engine.includes('function freeze() { setPlaying(false); const ok = seek(state.frame); scheduleAutoInference(); return ok; }'),
+    'freezing a frame is the request that starts a run');
+  assert.ok(!engine.includes('if (!state.playing) scheduleAutoInference();'),
+    'a stop on its own (a scrub, a step, the end of a clip) starts nothing');
   assert.ok(engine.includes('function scheduleAutoInference() {'), 'and it is one named place');
   assert.ok(/if \(tries > 0\) \{ attempt\(tries - 1\); return; \}/.test(engine),
     'a pause the stage cannot serve yet is retried, not dropped');
@@ -3991,11 +3994,12 @@ test('round 17 / owner item 2: inference runs when playback stops, and the stage
     'the operator can turn it off');
   assert.ok(engine.includes('inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff,'),
     'the snapshot carries the report the stage renders');
-  assert.ok(adapter.includes('data-vs-role="infer-status"') && adapter.includes("inferAutoOn:'Inference runs when playback stops'")
-    && adapter.includes("inferAutoOn:'暂停即自动推理'"), 'and the stage renders it in both languages');
-  assert.ok(adapter.includes("case 'auto-infer': opts.setAutoInference?.(") &&
-    source.includes('setAutoInference:on=>review()?.setAutoInference?.(on)'),
-    'with the one switch wired to the engine');
+  assert.ok(!adapter.includes('data-vs-role="infer-status"') && !adapter.includes("case 'auto-infer'"),
+    'the stage carries no second control for the same gesture');
+  assert.ok(adapter.includes("const key = corr.inferRunning ? 'freezeRunning' : 'freeze';"),
+    'the freeze button reports a run in flight, under its own label key');
+  assert.ok(source.includes('setAutoInference:on=>review()?.setAutoInference?.(on)'),
+    'and the engine still exposes the switch for a settings surface to call');
 });
 test('round 17: a superseded frame request does not lock the stage', () => {
   const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');

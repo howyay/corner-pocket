@@ -1790,25 +1790,25 @@ test('a VOD replay is never called live on the stage chip, the freshness line, t
   }
 });
 
-test('the inference switch names the source it governs, in one control (owner round 26 item 2)', () => {
-  // Two elements could name two sources. The switch and its source are one element now, so the readout
-  // cannot disagree with itself: the state, the broadcast and the age are one string.
+test('the chip row states the source once, and the freeze control owns inference (owner round 27 item 1)', () => {
+  // The switch that promised "inference runs when playback stops" described the same gesture as the
+  // freeze button: two designs for one action. The row states the source and nothing else now, and the
+  // control that starts a run is the one that says so.
   for (const lang of ['en', 'zh']) {
     const VSr = adapterStage(lang, ROSTER);
     const vod = {...visionSnapshot({source:{kind:'vod', label:'vod30', channel:null}}), dataset:'tw-1',
       datasets:[{id:'tw-1', kind:'vod', channel:'TTPOOLFRIDAY', created_at:'2026-08-23T10:00:00Z', range:{whole:true}}]};
     const html = VSr.chipsHTML(vod);
-    const body = (html.match(/<button[^>]*data-vs-role="infer-status"[^>]*>([\s\S]*?)<\/button>/) || [])[1] || '';
-    const switchOn = lang === 'zh' ? '暂停即自动推理' : 'Inference runs when playback stops';
     const recorded = lang === 'zh' ? '录制回放' : 'recorded broadcast';
-    assert.ok(body.includes('vs-fresh'), `${lang}: the source sits inside the switch: ${body}`);
-    assert.ok(body.includes(switchOn), `${lang}: the switch states its own state: ${body}`);
-    assert.ok(body.includes('TTPOOLFRIDAY') && body.includes(recorded), `${lang}: and names the broadcast it will infer on: ${body}`);
-    assert.strictEqual((html.match(/vs-fresh/g) || []).length, 1, `${lang}: the source is stated once, never beside the switch`);
+    const meta = (html.match(/<div class="vs-chipmeta">([\s\S]*?)<\/div>/) || [])[1] || '';
+    assert.ok(meta.includes('vs-fresh') && meta.includes('TTPOOLFRIDAY') && meta.includes(recorded),
+      `${lang}: the row names the broadcast once: ${meta}`);
+    assert.ok(!meta.includes('<button'), `${lang}: and holds no control of its own: ${meta}`);
+    assert.strictEqual((html.match(/vs-fresh/g) || []).length, 1, `${lang}: the source is stated once`);
+    assert.ok(!html.includes('auto-infer') && !html.includes('infer-status'),
+      `${lang}: no second inference control sits in the row`);
     const running = {...vod, corrections:{...(vod.corrections || {}), inferRunning:true, inferStatus:'frame 12'}};
-    const rbody = (VSr.chipsHTML(running).match(/<button[^>]*data-vs-role="infer-status"[^>]*>([\s\S]*?)<\/button>/) || [])[1] || '';
-    assert.ok(rbody.includes(lang === 'zh' ? '推理中' : 'Inferring') && rbody.includes('TTPOOLFRIDAY'),
-      `${lang}: a run reports on the same source: ${rbody}`);
+    assert.ok(VSr.chipsHTML(running).includes('TTPOOLFRIDAY'), `${lang}: a run does not move the source out of the row`);
   }
 });
 

@@ -120,7 +120,7 @@ const COPY = {
     noPotsMeasured:'No pot candidate in this VOD survived measurement: the ball census refuted every claim (a ball said to be potted was still on the cloth) and 2 stayed unconfirmed, so this list is empty on purpose.',
     noShotsMeasured:'No shot candidate survived measurement: every served event is explained by occlusion — a person crossing the cloth at that moment — and at 720p one ball\'s best possible signal sits on the detection floor (motion measured over the whole VOD: 0 of 55 ball-scale onsets could be a single ball). The events stay in the report artifacts, not in the queue.',
     loopWord:'loop', playingWord:'playing', pausedWord:'paused',
-    inferAutoOn:'Inference runs when playback stops', inferAutoOff:'Auto inference off', inferAutoRunning:'Inferring',
+    inferAutoRunning:'Inferring', freezeRunning:'Inferring…', freezeInferTitle:'Freeze this frame and run inference on it',
     faceOnly:'face seen'
   },
   zh: {
@@ -229,7 +229,7 @@ const COPY = {
     noPotsMeasured:'本场没有经测量存活的入袋候选：球数普查推翻了每一条断言（声称入袋的球仍在台面上），另有 2 条未确认，因此列表为空是刻意的。',
     noShotsMeasured:'没有击球候选通过测量：已服务的每条事件都被遮挡解释——那一刻有人穿过台面——且 720p 下单球的最强信号正好卡在检测底噪上（全片实测：55 个球尺度突变中 0 个可能来自单颗球）。这些事件保留在报告产物里，不在队列中。',
     loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停',
-    inferAutoOn:'暂停即自动推理', inferAutoOff:'自动推理已关闭', inferAutoRunning:'推理中',
+    inferAutoRunning:'推理中', freezeRunning:'推理中…', freezeInferTitle:'冻结这一帧并对其运行推理',
     faceOnly:'已见人脸'
   }
 };
@@ -535,16 +535,12 @@ function windowBandHTML(s) {
 // A Twitch VOD replay reaches the stage through the live path but is never called
 // live: the server's own status (kind 'vod-replay') decides the word.
 function liveWordKey(s) { return s.live?.source?.kind === 'vod-replay' || s.live?.replay?.kind === 'vod-replay' ? 'replayNow' : 'live'; }
-// Owner round 26 item 2: one control states the inference switch and the source it governs, so the
-// stage reads both from the same state instead of rendering two elements that can name two sources.
+// Owner round 26 item 2: the stage states the source once, from one piece of state, because two
+// elements could name two sources. Owner round 27 item 1 moved the inference switch out of this row:
+// the freeze control owns that behaviour now, so the row states the source and nothing else.
 function sourceWord(s, liveOnly) {
   if (s.source.kind === 'live') return `${s.live.stale ? t('stale') : t(liveWordKey(s))} · ${t('age')} ${fmtAge(s.live.frame_age_ms)}`;
   return liveOnly ? t('live') : (recordedLabel(s) || s.source.label);
-}
-function switchWord(corr) {
-  return corr.inferRunning
-    ? `${t('inferAutoRunning')} · ${String(corr.inferStatus || '').slice(0, 90)}`
-    : (corr.autoInfer === false ? t('inferAutoOff') : t('inferAutoOn'));
 }
 function chipsHTML(s) {
   // Owner item 3: the Vision tab is the live stream. When the console says so, the chip row
@@ -561,14 +557,12 @@ function chipsHTML(s) {
   const panel = sourceOpen ? `<div class="vs-source-panel" id="vs-source-panel" role="group" aria-label="${esc(t('sources'))}">
     <div class="vs-source-head"><strong>${esc(t('sources'))}</strong><button class="vs-source-close" data-vs-action="source-panel" aria-label="${esc(t('closePanel'))}">×</button></div>
     ${sourcePanelHTML(s)}</div>` : '';
-  // Round 17, owner item 2: inference runs itself when the picture stops, so the stage reports what it
-  // is doing and offers the one switch. The engine owns the run; this is its report.
-  // Owner round 26 item 2: the switch and the source it governs are one control. As two elements they
-  // could name two different sources; one readout cannot disagree with itself.
-  const corr = s.corrections || {};
-  const infer = `<button class="vs-infer${corr.inferRunning ? ' running' : ''}${corr.autoInfer === false && !corr.inferRunning ? ' off' : ''}" data-vs-action="auto-infer" data-vs-value="${corr.autoInfer === false ? 'on' : 'off'}" data-vs-role="infer-status">${esc(switchWord(corr))} · <span class="vs-fresh${s.source.kind === 'live' && s.live.stale ? ' stale' : ''}">${esc(freshness)}</span></button>`;
+  // Owner round 27 item 1: the freeze control owns inference, so this row states the source and
+  // nothing else. The switch that promised "inference runs when playback stops" described the same
+  // gesture as the freeze button - two designs for one action. The run is reported by the control
+  // that starts it (below), and the inspector states its progress.
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
-  <div class="vs-chipmeta">${infer}</div>${panel}`;
+  <div class="vs-chipmeta"><span class="vs-fresh${s.source.kind === 'live' && s.live.stale ? ' stale' : ''}">${esc(freshness)}</span></div>${panel}`;
 }
 // Who made this candidate: one quiet line under the card's facts, never a badge.
 // A machine-produced candidate says so in its own words (translated in 中); an
@@ -1301,6 +1295,16 @@ function render() {
   if (facts) { facts.textContent = factsLine(s); facts.title = quadDetail(s); }
   const edge = $('#vs-edge'); if (edge) { edge.dataset.live = s.source.kind === 'live' ? '1' : '0'; edge.style.left = `${s.source.kind === 'live' ? 100 : (s.frame.duration ? Math.min(100, Math.max(0, s.frame.t / s.frame.duration * 100)) : 0)}%`; }
   const play = $('#vs-play'); if (play) play.textContent = s.frame.playing ? `❚❚ ${t('pause')}` : `▶ ${t('play')}`;
+  // Owner round 27 item 1: the freeze control owns inference, so it says when a run is in flight. The
+  // word is a COPY key, which the label pass below resolves, so it follows the language toggle too.
+  const freezeBtn = root.querySelector('[data-vs-action="freeze"]');
+  if (freezeBtn) {
+    const corr = s.corrections || {};
+    const key = corr.inferRunning ? 'freezeRunning' : 'freeze';
+    if (freezeBtn.dataset.vsLabel !== key) freezeBtn.dataset.vsLabel = key;
+    const note = corr.inferRunning ? `${t('inferAutoRunning')}: ${String(corr.inferStatus || '').slice(0, 120)}` : t('freezeInferTitle');
+    if (freezeBtn.title !== note) freezeBtn.title = note;
+  }
   root.querySelectorAll('[data-vs-label]').forEach(node => { const copy = t(node.dataset.vsLabel); if (node.textContent !== copy) node.textContent = copy; });
   // Accessible names follow the language toggle too (data-vs-aria names the COPY key).
   root.querySelectorAll('[data-vs-aria]').forEach(node => { const copy = t(node.dataset.vsAria); if (node.getAttribute('aria-label') !== copy) node.setAttribute('aria-label', copy); });
@@ -1344,7 +1348,6 @@ function act(action, value, node) {
     case 'live-stop': opts.stopLive(); break;
     case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
     case 'open-sources': opts.openSources?.(); break;
-    case 'auto-infer': opts.setAutoInference?.(String(node?.dataset?.vsValue || 'on') === 'on'); break;
     case 'use-saved-vod': { replayDraft = {...(replayDraft || {}), vod: `https://www.twitch.tv/videos/${value}`}; render(); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
     case 'live-detector': { const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
     case 'pick-replay': {
