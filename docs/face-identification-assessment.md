@@ -39,13 +39,18 @@ Two gate details worth knowing before trusting a binding:
 - The **effective bar is 0.47, not 0.35**: `best_match` accepts at ≥0.35 with a ≥0.12 gap
   (`src/face_id.py:200`), then `bind_face` adds `similarity >= threshold + margin`
   (`src/person_identity.py:211`). Both are composed in `process_frame` (204-207).
-- **`bind_face` does not check the runner-up margin itself** (`src/person_identity.py:199-221`
-  only compares the single similarity). The margin is enforced upstream by `best_match`; a
-  direct `bind_face` call with a raw similarity can bind without the ambiguity check.
+- **`bind_face` enforces the same margin as `best_match`** since the fix round (see 7.1). The
+  binding path calls the shared `src.face_id.accept_match()` with `bind=True`
+  (`src/person_identity.py:293-315`), so a probe must reach the binding bar, 0.47, and, when a
+  runner-up is supplied, trail that runner-up by >= 0.12. Before this fix the binding path
+  compared the single similarity only. One enrolment photo then produced 2 impostor binds out
+  of 35 measured faces, at 0.60 and 0.55.
 
-Roster state today: `out/corner-pocket/state.json` → `"players": []`; no
-`out/corner-pocket/face_embeddings.json` at all. Zero enrolled faces, so `best_match` always
-returns `None` (`src/face_id.py:187`) and no cluster can bind.
+Roster state at the round-27 re-measurement: `out/corner-pocket/state.json` holds **7
+players** (Wanwan, Su, Lulu, Alan, TJJ, Haoye, Yuefu). There is still no
+`out/corner-pocket/face_embeddings.json`, so locally `best_match` returns `None`
+(`src/face_id.py:187`), the 48 clusters in `out/identity/clusters.json` are all unbound, and
+no cluster can bind until a regular is enrolled. The production console keeps its own store.
 
 ## 2. Face detectability on the real footage
 
@@ -326,3 +331,40 @@ What would confirm or refute the candidate (do **not** re-tune on this window):
 4. **Report both errors** per window: the false-accept rate at the chosen bar and the
    lost-bind rate it causes, with the enrolment-photo count used.
 
+
+## 8. Association end to end, on one real window (round 27 re-measurement)
+
+The question was whether the face-to-human-track association is reliable. The chain has three
+steps, and they do not have the same reliability.
+
+**Step 1 - a usable face exists.** Over 240 sampled frames of two recordings, 484 person
+instances were measured. A face that passes both quality gates, eye distance >= 8 px and
+detection score >= 0.4, and whose centre falls inside the person box, exists for 334 of them:
+**69.01%**. In the enrolment window below, 23 of 71 tracks held **no usable face at all**.
+
+**Step 2 - the face names the right player.** 182 pairs of different people in one frame were
+measured. Their highest cosine is **0.226**. The match bar is 0.35 and the binding bar is 0.47,
+so **0.00%** of impostor pairs accept. 95.96% of same-person pairs accept at 0.35, and 93.11%
+accept at 0.47. Where a usable face exists, the naming step is reliable on this footage.
+
+**Step 3 - one human is one identity.** This step is weak, and it is weak by design. Body
+matching is disabled because the measured distributions overlap: the same person >= 1 s apart
+scores p05 0.755 and median 0.830, while different people in one frame score p95 0.882 and
+median 0.811. A track therefore joins a cluster through a face only. One window of 180 frames
+produced **71 tracks that group into 23 identities**, and the largest group holds **16 tracks**.
+The association is per appearance. A player who steps out and returns is a new track until a
+face links it.
+
+**What enrolment does with an unsure track.** An enrolment run over that window enrolled
+**17 of 71 tracks** and refused 54 with a reason: `no_face_in_track` 23, `single_face_only` 12,
+`face_too_small` 8, `mixed_track` 6 (the track holds two people), `inconsistent_faces` 5. The
+refusals are the safety property: the system refuses instead of guessing.
+
+**One photo is not enough.** A single enrolment photo put the worst impostor accept at 0.603.
+That is below the candidate bar 0.65, but above the 0.47 in use (see 7.3). The production flow
+therefore requires at least two agreeing faces before it writes a name (`PURITY_DEFAULT=0.5`,
+`PURITY_PROBES_MIN=2`, `src/enroll_from_tracklet.py:87-88`), and the operator confirms the
+preview.
+
+**Sources:** `out/face-eval/analysis.json` (steps 1 and 2), `out/enroll-eval/verify.json` and
+`out/enroll-eval/report.json` (step 3 and the refusals).
