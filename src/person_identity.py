@@ -290,6 +290,63 @@ class IdentityIndex:
         cluster.evidence = {"source": "explicit_assign", "reason": reason, "player_id": player_id}
         self.save()
 
+    def link_track(self, track_id: int, cluster_id: int) -> dict[str, Any]:
+        """Associate a tracker track with an identity cluster (operator decision).
+
+        The review panel calls this when an operator says "this body track is that
+        identity". The track's own cluster is merged into the target: its body
+        bank, its stored face and its enrolment samples move across, every track
+        that already pointed at the merged cluster points at the target, and the
+        track itself resolves to the target on every later frame, because
+        register() reads the same map.
+
+        Two refusals, both deliberate:
+
+        - a cluster bound to a player is never swallowed by a link. One click
+          would otherwise move a finished identity into another player's record;
+          the caller unbinds it first.
+        - an unknown cluster_id is an error, not a new cluster. A link names an
+          identity that already exists.
+
+        A link is a real decision, so it saves the index. The link itself lives in
+        the running index (tracker ids are session state); the merge it performs
+        is persisted in the target cluster.
+        """
+        tid = int(track_id)
+        cid = int(cluster_id)
+        target = self._require(cid)
+        current = self._track_to_cluster.get(tid)
+        if current == cid:
+            return {"track_id": tid, "cluster_id": cid, "merged": None, "moved_tracks": 0,
+                    "player_id": target.player_id, "already": True}
+        merged: int | None = None
+        moved = 0
+        if current is not None:
+            source = self._require(current)
+            if source.player_id is not None:
+                raise ValueError(
+                    f"cluster {current} is bound to {source.player_id!r}; unbind it before linking")
+            for value in list(source.bank):
+                target.bank.append(value)
+            if target.face is None and source.face is not None:
+                target.face = source.face
+            for sample in source.faces:
+                target.faces.append(sample)
+            target.faces.sort(key=_sample_rank, reverse=True)
+            del target.faces[self.face_samples_max:]
+            if source.last_seen_frame is not None:
+                target.last_seen_frame = max(target.last_seen_frame or 0, source.last_seen_frame)
+            del self._clusters[current]
+            for key, value in list(self._track_to_cluster.items()):
+                if value == current:
+                    self._track_to_cluster[key] = cid
+                    moved += 1
+            merged = current
+        self._track_to_cluster[tid] = cid
+        self.save()
+        return {"track_id": tid, "cluster_id": cid, "merged": merged,
+                "moved_tracks": moved, "player_id": target.player_id, "already": False}
+
     def bind_face(self, cluster_id: int, player_id: str, similarity: float, evidence: Any = None,
                   runner_up: float | None = None, persist: bool = True) -> bool:
         """Bind player via face match; first confident match only.
@@ -343,6 +400,15 @@ class IdentityIndex:
 
     def clusters(self) -> list[int]:
         return sorted(self._clusters)
+
+    def tracks_of(self, cluster_id: int) -> list[int]:
+        """The tracker tracks that resolve to this cluster, ascending (read view)."""
+        self._require(cluster_id)
+        return sorted(t for t, c in self._track_to_cluster.items() if c == int(cluster_id))
+
+    def track_cluster(self, track_id: int) -> int | None:
+        """The cluster a track resolves to, or None when the track is unseen."""
+        return self._track_to_cluster.get(int(track_id))
 
     def forget_player(self, player_id: str) -> dict[str, int]:
         """Remove a player's face data from the index and unbind their clusters.

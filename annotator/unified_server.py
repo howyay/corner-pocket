@@ -562,7 +562,13 @@ class Backend:
             raise APIError(f"identity models unavailable: {exc}", 503) from exc
         return {"tracks": tracks, "clusters": len(clusters),
                 "bound": [{"cluster_id": cluster, "player_id": state["player_id"]}
-                          for cluster, state in states.items() if state["player_id"] is not None]}
+                          for cluster, state in states.items() if state["player_id"] is not None],
+                "rows": [{"cluster_id": cluster,
+                          "player_id": state["player_id"],
+                          "samples": state["samples"],
+                          "last_seen_frame": state["last_seen_frame"],
+                          "tracks": identity.tracks_of(cluster)}
+                         for cluster, state in states.items()]}
 
     def identity_seed(self, payload):
         cluster_id = payload.get("cluster_id")
@@ -577,6 +583,31 @@ class Backend:
         except RuntimeError as exc:
             raise APIError(f"identity models unavailable: {exc}", 503) from exc
         return {"seeded": True}
+
+    def identity_link(self, payload):
+        """Associate one tracker track with an identity cluster (operator decision).
+
+        The panel's "this track is that identity" button. The track's own cluster
+        is merged into the target, so two labels for one person become one
+        identity, and the track resolves to the target on every later frame.
+        409 when the track's cluster already carries a player: one click must not
+        move a finished identity into another record. 404 for an unknown cluster.
+        """
+        track_id = payload.get("track_id")
+        cluster_id = payload.get("cluster_id")
+        if isinstance(track_id, bool) or not isinstance(track_id, int):
+            raise APIError("track_id must be an integer")
+        if isinstance(cluster_id, bool) or not isinstance(cluster_id, int):
+            raise APIError("cluster_id must be an integer")
+        try:
+            with self._identity_lock:
+                return self.identity_pipeline().identity.link_track(track_id, cluster_id)
+        except KeyError as exc:
+            raise APIError(f"unknown cluster_id {cluster_id}", 404) from exc
+        except ValueError as exc:
+            raise APIError(str(exc), 409) from exc
+        except RuntimeError as exc:
+            raise APIError(f"identity models unavailable: {exc}", 503) from exc
 
     def identity_unbind(self, payload):
         """Undo an explicit binding: the cluster keeps its samples, the player id
@@ -1660,6 +1691,8 @@ class Backend:
             return self.identity_enroll(payload)
         if parts == ['api', 'identity', 'seed']:
             return self.identity_seed(payload)
+        if parts == ['api', 'identity', 'link']:
+            return self.identity_link(payload)
         if parts == ['api', 'identity', 'unbind']:
             return self.identity_unbind(payload)
         if parts == ['api', 'identity', 'forget']:

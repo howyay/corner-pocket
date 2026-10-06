@@ -835,9 +835,16 @@ class BackendTests(unittest.TestCase):
         pipeline._tracks = {1: {}, 2: {}}
         identity = pipeline.identity
         identity.clusters.return_value = [3, 4]
-        identity.get.side_effect = lambda c: {"player_id": "B" if c == 3 else None, "bound_evidence": "x"}
+        identity.get.side_effect = lambda c: {"player_id": "B" if c == 3 else None,
+                                              "samples": 1 if c == 3 else 0,
+                                              "last_seen_frame": 10 * c}
+        identity.tracks_of.side_effect = lambda c: [1] if c == 3 else [2]
         self.assertEqual(self.backend.get(["api", "identity", "status"], {}),
-                         {"tracks": 2, "clusters": 2, "bound": [{"cluster_id": 3, "player_id": "B"}]})
+                         {"tracks": 2, "clusters": 2, "bound": [{"cluster_id": 3, "player_id": "B"}],
+                          "rows": [{"cluster_id": 3, "player_id": "B", "samples": 1,
+                                    "last_seen_frame": 30, "tracks": [1]},
+                                   {"cluster_id": 4, "player_id": None, "samples": 0,
+                                    "last_seen_frame": 40, "tracks": [2]}]})
         self.assertEqual(self.backend.post(["api", "identity", "seed"], {"cluster_id": 4, "player_id": "A"}),
                          {"seeded": True})
         pipeline.explicit_seed.assert_called_once_with(4, "A")
@@ -845,6 +852,33 @@ class BackendTests(unittest.TestCase):
             self.backend.post(["api", "identity", "seed"], {"cluster_id": "3", "player_id": "A"})
         with self.assertRaises(APIError):
             self.backend.post(["api", "identity", "seed"], {"cluster_id": True, "player_id": "A"})
+
+    def test_identity_link_merges_the_tracks_cluster_into_the_named_identity(self):
+        pipeline = self._identity_pipeline_stub()
+        pipeline.identity.link_track.return_value = {"track_id": 5, "cluster_id": 3, "merged": 4,
+                                                     "moved_tracks": 1, "player_id": "A", "already": False}
+        self.assertEqual(self.backend.post(["api", "identity", "link"], {"track_id": 5, "cluster_id": 3}),
+                         {"track_id": 5, "cluster_id": 3, "merged": 4, "moved_tracks": 1,
+                          "player_id": "A", "already": False})
+        pipeline.identity.link_track.assert_called_once_with(5, 3)
+        for payload in ({"cluster_id": 3}, {"track_id": 5}, {"track_id": "5", "cluster_id": 3},
+                        {"track_id": 5, "cluster_id": True}, {}):
+            with self.subTest(payload=payload):
+                with self.assertRaises(APIError) as error:
+                    self.backend.post(["api", "identity", "link"], payload)
+                self.assertEqual(error.exception.status, 400)
+
+    def test_identity_link_reports_an_unknown_cluster_and_a_bound_source(self):
+        pipeline = self._identity_pipeline_stub()
+        pipeline.identity.link_track.side_effect = KeyError("unknown cluster_id 9")
+        with self.assertRaises(APIError) as error:
+            self.backend.post(["api", "identity", "link"], {"track_id": 5, "cluster_id": 9})
+        self.assertEqual(error.exception.status, 404)
+        pipeline.identity.link_track.side_effect = ValueError("cluster 4 is bound to 'B'; unbind it before linking")
+        with self.assertRaises(APIError) as error:
+            self.backend.post(["api", "identity", "link"], {"track_id": 5, "cluster_id": 3})
+        self.assertEqual(error.exception.status, 409)
+        self.assertIn("unbind it before linking", str(error.exception))
 
     def test_identity_unbind_clears_the_binding_and_keeps_the_samples(self):
         # Clear in the review rail is a real undo of "Save": the cluster keeps its

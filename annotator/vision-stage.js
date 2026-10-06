@@ -40,6 +40,8 @@ const COPY = {
     // (this track's label). The legacy A/B/ignore values stay readable.
     whichRegular:'Which regular?', guestOption:'— not a regular (guest) —', guestName:'Guest name',
     guestPlaceholder:'Type the guest’s name', saveBinding:'Save', clearBinding:'Clear',
+    linkTitle:'Link to another appearance', linkTarget:'Identity in this frame', linkAction:'Link', thisTrack:'track', unnamed:'unnamed', hasFace:'face',
+    linkHint:'Linking merges the two identities: this track joins the picked one, and one regular then names both.', linkNoFace:'No face on this frame: linking still merges the tracks, and the identity keeps the face it already has.',
     notAPlayer:'Ignore (not a player)',
     ignoreHint:'Marks this track as a spectator: excluded from identity assignment, and never competing with the two labelling options above.',
     railEmpty:'Select a cue, a ball, a person or an anchor to label it.', thisFrame:'This frame', noSelection:'Nothing selected',
@@ -156,6 +158,8 @@ const COPY = {
     seedA:'选手 A', seedB:'选手 B',
     whichRegular:'选择常客', guestOption:'— 不是常客（访客）—', guestName:'访客姓名',
     guestPlaceholder:'输入访客姓名', saveBinding:'保存', clearBinding:'清除',
+    linkTitle:'关联到另一个出现', linkTarget:'本帧身份', linkAction:'关联', thisTrack:'轨迹', unnamed:'未命名', hasFace:'有人脸',
+    linkHint:'关联会合并两个身份：该轨迹并入所选身份，之后一次常客指派即可命名两者。', linkNoFace:'本帧没有人脸：关联仍会合并轨迹，身份保留它已有的人脸。',
     notAPlayer:'忽略（不是球员）',
     ignoreHint:'把这条轨迹标为观众：不参与身份分配，也不会和上面两个标注选项混在一起。',
     railEmpty:'先选一条线索、球、人物或锚点，再开始标注。', thisFrame:'此帧', noSelection:'未选择',
@@ -1138,6 +1142,28 @@ function labelBoxHTML(s) {
     <p class="vs-note" data-vs-role="bind-hint">${esc(bindHint(facts, picked))}</p>
   </div>`;
 }
+// Round 28, owner item: this appearance is another appearance of someone already
+// on the frame. Linking merges the two identity clusters, so a body track with no
+// face inherits the face of the track that has one, and one regular pick then names
+// both. The list is this frame's identities - the ones the pipeline already built -
+// and it marks the ones that carry a face, because that is the point of the link.
+function linkBlock(s) {
+  const rows = (s.persons.identity || []).filter(p => p.cluster_id !== null && p.cluster_id !== undefined);
+  const others = rows.filter(p => String(p.track_id) !== String(s.persons.track));
+  if (!others.length) return '';
+  const faceCount = others.filter(p => p.face_bbox).length;
+  const options = others.map(p => {
+    const name = p.player_id ? String(p.player_id) : t('unnamed');
+    const face = p.face_bbox ? ` \u00b7 ${t('hasFace')}` : '';
+    const sim = Number.isFinite(p.face_sim) ? ` \u00b7 ${Number(p.face_sim).toFixed(2)}` : '';
+    return `<option value="${esc(p.cluster_id)}">${esc(t('thisTrack'))} ${esc(p.track_id)} \u00b7 ${esc(name)}${esc(face)}${esc(sim)}</option>`;
+  });
+  return `<div class="vs-block vs-linkblock" data-vs-link="1">
+    <h4>${esc(t('linkTitle'))}</h4>
+    <label class="vs-field">${esc(t('linkTarget'))}<select data-vs-action="link-target">${options.join('')}</select></label>
+    <div class="vs-row"><button data-vs-action="link-track">${esc(t('linkAction'))}</button></div>
+    <p class="vs-note">${esc(t(faceCount ? 'linkHint' : 'linkNoFace'))}</p></div>`;
+}
 function personBlock(s) {
   const facts = bindingFacts(s);
   const roster = opts.regulars() || [];
@@ -1149,6 +1175,7 @@ function personBlock(s) {
   return `<h3>${esc(t('identity'))}</h3>
   ${bindingLine(s)}
   ${labelBoxHTML(s)}
+  ${linkBlock(s)}
   ${enrolBlock(s)}
   <div class="vs-block vs-quiet"><div class="vs-row"><button data-vs-action="seed" data-vs-value="ignore">${esc(t('notAPlayer'))}</button></div>
     <p class="vs-note">${esc(t('ignoreHint'))}</p></div>
@@ -1403,6 +1430,15 @@ function act(action, value, node) {
       else { guestDraft = null; target.setSeed(node, name); }
       break;
     }
+    // Round 28, owner item: joining this track to another identity on the frame.
+    // The picker is read at click time, so a re-render between choosing and clicking
+    // cannot send a stale cluster.
+    case 'link-track': {
+      const holder = node.closest('.vs-linkblock');
+      const select = holder ? holder.querySelector('[data-vs-action="link-target"]') : null;
+      target.linkTrack(node, select ? select.value : null);
+      break;
+    }
     case 'identity-clear': guestDraft = null; target.clearIdentity(node); break;
     // The preview only reads; the confirm is the write, and it happens here.
     case 'enroll-preview': target.enrollPreview(node); break;
@@ -1516,7 +1552,7 @@ function attach(options) {
   render();
   return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput); }};
 }
-window.VisionStage = {attach, render, act, onInput, actionsHTML, factsLine, layersHTML, identityHTML, chipsHTML, inspectorHTML, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
+window.VisionStage = {attach, render, act, onInput, actionsHTML, factsLine, layersHTML, identityHTML, chipsHTML, inspectorHTML, linkBlock, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
 // The Broadcasts block, for tests: its state, the renderers and the refusal mapping.
 Object.assign(window.VisionStage, {broadcastsBlock, recordedLabel, serverText, bcState: () => bc, bcReset: () => { if (bc.poll) clearInterval(bc.poll); bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false}; }});
 })();

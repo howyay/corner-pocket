@@ -368,3 +368,49 @@ preview.
 
 **Sources:** `out/face-eval/analysis.json` (steps 1 and 2), `out/enroll-eval/verify.json` and
 `out/enroll-eval/report.json` (step 3 and the refusals).
+
+## 9. One body track joins a face track (round 28: the link control)
+
+The panel now associates a body track with a face track, and one name then covers both.
+
+**The control.** Pick a person track on the stage. The identity panel shows "Link to another
+appearance", a list of the identities that are visible in this frame, and one button. The
+list excludes the picked track. A face mark follows the identity that carries a face. A
+note states that the link merges the two identities. A second note appears when the frame
+holds one identity only, because there is nothing to link to.
+
+**The rule.** `IdentityIndex.link_track(track_id, cluster_id)` (`src/person_identity.py`)
+moves the track's cluster into the picked one. The merge appends the body bank, inherits
+the face when the target has none, merges the face samples under the 8-sample cap, keeps
+the larger `last_seen_frame`, deletes the source cluster, and re-points every track that
+pointed at it. The target keeps its player. A cluster that is already bound to a player is
+refused (ValueError, HTTP 409), because a merge cannot decide which name wins. The method
+saves the index, so the merge survives a restart.
+
+**The route.** `POST /api/identity/link` takes `{"track_id", "cluster_id"}` and answers
+`{"track_id", "cluster_id", "merged", "moved_tracks", "player_id"}`. A value that is not an
+integer answers 400, an unknown cluster 404, and a bound source 409. `GET
+/api/identity/status` now also returns `rows`: one entry per cluster with `cluster_id`,
+`player_id`, `samples`, `last_seen_frame` and `tracks`, so the panel lists real identities.
+
+**Measured** on the local console (`http://127.0.0.1:8130/ops.html#/records/review/2853972244`,
+dataset `tw-2853972244`, frame 300, 9 person instances). The rail pickers were 1, 2 and 4.
+The link list held 5 other identities, with the face mark on those that carried one. The
+status held 60 clusters before the link and 59 after it, and cluster 52 then owned tracks
+[2, 4, 5]. The roster select was set to Wanwan and Save was pressed: the status answered
+`bound: [{cluster_id: 52, player_id: "a3c749f3..."}]`, and the cluster row held the same
+player with 3 tracks. After `systemctl --user restart pool-workbench.service` the status
+still held 59 clusters and the same binding, and the cluster row held 8 face samples with
+`tracks: []`: the track map is session state, and it refills when frames are read again.
+
+**The one defect the run found.** After a merge the panel's selection still pointed at the
+cluster that the merge had deleted. The next Save therefore answered 404 and the name
+stayed empty. `linkTrack` now moves the pick to the cluster that survived, which carries no
+player yet (`annotator/app.js:1312`).
+
+**Tests.** `tests/test_person_identity.py` holds four link tests: the merge, the idempotent
+second link, the bound-source refusal, and a merge that survives a reload.
+`tests/test_unified_server.py` holds two route tests. `tests/test_app_timeline.js` renders
+the link block and asserts its options, its wording in both languages, and the engine
+lines. `tests/test_ops.js` holds the contract that ties the route, the handler, the index
+method and the panel together.

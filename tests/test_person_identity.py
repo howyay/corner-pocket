@@ -210,6 +210,66 @@ class PersonIdentityTest(unittest.TestCase):
         self.assertFalse(self.index.bind_face(cid, "playerX", similarity=0.99, evidence="late"))
         self.assertEqual(self.index.get(cid)["player_id"], "playerS")
 
+    def test_link_track_moves_the_track_and_merges_its_cluster(self):
+        """The operator's "this track is that identity": one cluster afterwards."""
+        a = self.index.register(1, unit(0))[1]
+        b = self.index.register(2, unit(3))[2]
+        self.assertNotEqual(a, b)
+        out = self.index.link_track(2, a)
+        self.assertEqual(out["merged"], b)
+        self.assertEqual(out["cluster_id"], a)
+        self.assertEqual(out["moved_tracks"], 1)
+        self.assertFalse(out["already"])
+        self.assertEqual(self.index.clusters(), [a])
+        self.assertEqual(self.index.get(a)["samples"], 2)
+        # the linked track resolves to the target on every later frame
+        self.assertEqual(self.index.register(2, unit(3))[2], a)
+        self.assertEqual(self.index.get(a)["samples"], 3)
+        self.assertEqual(self.index.tracks_of(a), [1, 2])
+        self.assertEqual(self.index.track_cluster(2), a)
+
+    def test_link_track_before_the_track_is_seen_and_again_is_idempotent(self):
+        a = self.index.register(1, unit(0))[1]
+        first = self.index.link_track(7, a)
+        self.assertIsNone(first["merged"])
+        self.assertEqual(first["moved_tracks"], 0)
+        self.assertEqual(self.index.register(7, unit(5))[7], a)
+        again = self.index.link_track(1, a)
+        self.assertTrue(again["already"])
+        self.assertEqual(self.index.clusters(), [a])
+
+    def test_link_track_refuses_to_swallow_a_cluster_bound_to_a_player(self):
+        """One click must not move a finished identity into another player's record."""
+        a = self.index.register(1, unit(0))[1]
+        b = self.index.register(2, unit(3))[2]
+        self.index.explicit_assign(a, "playerA")
+        with self.assertRaises(ValueError):
+            self.index.link_track(1, b)
+        self.assertEqual(self.index.clusters(), sorted([a, b]))
+        self.assertEqual(self.index.get(a)["player_id"], "playerA")
+        self.assertIsNone(self.index.get(b)["player_id"])
+        with self.assertRaises(KeyError):
+            self.index.link_track(1, 999)
+
+    def test_link_track_into_a_bound_cluster_assigns_that_identity(self):
+        """The operator's flow: this track belongs to the player already there."""
+        a = self.index.register(1, unit(0))[1]
+        b = self.index.register(2, unit(3))[2]
+        self.index.explicit_assign(b, "playerB")
+        out = self.index.link_track(1, b)
+        self.assertEqual(out["merged"], a)
+        self.assertEqual(out["player_id"], "playerB")
+        self.assertEqual(self.index.clusters(), [b])
+        self.assertEqual(self.index.tracks_of(b), [1, 2])
+
+    def test_link_track_merges_into_a_cluster_that_survives_a_reload(self):
+        a = self.index.register(1, unit(0))[1]
+        self.index.register(2, unit(3), face_embedding=unit(6))
+        self.index.link_track(2, a)
+        reloaded = IdentityIndex(path=self.path)
+        self.assertEqual(reloaded.clusters(), [a])
+        self.assertEqual(reloaded.get(a)["samples"], 2)
+
     def test_persistence_roundtrip(self):
         idx = body_enabled_index(self.path)
         cid = idx.register(1, unit(0), face_embedding=unit(7), frame_index=5)[1]

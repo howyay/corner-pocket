@@ -49,7 +49,7 @@ test('lifecycle is the only public namespace and absent host does not mount', ()
   // +2 for the polish's clarify step: pocketText and colourWord, so the adapter names pockets and colours in one vocabulary.
   // +1 for the VOD selector: reloadDatasets, so the Source panel can list a VOD it just imported or deleted.
   assert.ok(api.includes('reloadDatasets'));
-  assert.strictEqual(api.length, 71, 'the engine exposes exactly its lifecycle + one-stage API (round 17 adds setAutoInference)');
+  assert.strictEqual(api.length, 72, 'the engine exposes exactly its lifecycle + one-stage API (round 17 adds setAutoInference, round 28 adds linkTrack)');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -1327,6 +1327,40 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
   for (const key of ['gateCheck', 'gateConfirmed', 'gateRejected', 'gateCensus', 'gateVanish', 'gateMove'])
     assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zh), `${key} is translated in 中`);
   assert.ok(adapterSource.includes('gateEvidence(e)'), 'the cue rail renders the gate numbers on the card');
+});
+
+test('round 28 / owner item: the link block lists this frames other identities, face first in the wording', () => {
+  const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
+               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
+               console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
+  const VS = box.window.VisionStage;
+  const snap = {persons:{track:7, identity:[
+    {track_id:7, cluster_id:11, player_id:null, face_bbox:null},
+    {track_id:8, cluster_id:12, player_id:'Su', face_sim:0.66, face_bbox:[10,20,40,60]},
+    {track_id:9, cluster_id:13, player_id:null, face_sim:null, face_bbox:null}]}};
+  const html = VS.linkBlock(snap);
+  assert.ok(html.includes('data-vs-link="1"'), 'the block says which one it is');
+  assert.ok(html.includes('data-vs-action="link-target"') && html.includes('data-vs-action="link-track"'), 'one picker and one button');
+  assert.ok(html.includes('<option value="12">') && html.includes('track 8 \u00b7 Su \u00b7 face \u00b7 0.66'),
+    'the option names the track, the player, the face and the similarity that put it there');
+  assert.ok(html.includes('<option value="13">') && !html.includes('value="11"'), 'this track is never offered to itself');
+  assert.ok(html.includes('Linking merges the two identities'), 'the note says what the click will do');
+  const noFace = VS.linkBlock({persons:{track:7, identity:[{track_id:7, cluster_id:11}, {track_id:9, cluster_id:13, face_bbox:null}]}});
+  assert.ok(noFace.includes('No face on this frame') && !noFace.includes('Linking merges'),
+    'with no face on the frame the note says so instead of promising one');
+  assert.strictEqual(VS.linkBlock({persons:{track:7, identity:[{track_id:7, cluster_id:11}]}}), '',
+    'alone on the frame there is nothing to link to, so no dead picker is drawn');
+  const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
+  for (const key of ['linkTitle', 'linkTarget', 'linkAction', 'linkHint', 'linkNoFace', 'thisTrack', 'unnamed', 'hasFace'])
+    assert.ok(new RegExp(`${key}:'[^']*[\u4e00-\u9fff]`).test(zh), `${key} is translated in 中`);
+  const engine = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
+  assert.ok(engine.includes('state.identityFor = null;'), 'the engine drops the cached frame record, because the merge changed it');
+  assert.ok(engine.includes('cluster_id: other, player_id: null, bound_evidence: null'),
+    'and moves the pick to the cluster that survived, so the next Save cannot hit a cluster the merge deleted');
 });
 
 test('the confirmation tier is badged on the card and in the inspector, in both languages', () => {

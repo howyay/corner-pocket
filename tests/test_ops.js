@@ -3957,6 +3957,29 @@ test('round 16 / owner item 1: a listed broadcast with no decoded frames says so
     reviewFramesTold=null;reviewFramesAt=0;syncReviewFrames()`);
   assert.equal(JSON.parse(h.evaluate('JSON.stringify(messages)')).length, 1, 'and nothing at all once frames are decoded');
 });
+test('round 28 / owner item: one player in two appearances - the label panel links a body track to a face track', () => {
+  const stage = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, '../annotator/unified_server.py'), 'utf8');
+  const index = fs.readFileSync(path.join(__dirname, '../src/person_identity.py'), 'utf8');
+  assert.ok(server.includes("['api', 'identity', 'link']"), 'the route exists, so the panel has something to call');
+  assert.ok(server.includes('def identity_link(self, payload)') && server.includes('identity.link_track(track_id, cluster_id)'),
+    'and it reaches the index under the identity lock');
+  assert.ok(server.includes('KeyError') && server.includes('ValueError'),
+    'an unknown cluster and a bound source are answered, not turned into a 500');
+  assert.ok(server.includes('tracks_of(cluster)'),
+    'the status route reports which tracks each identity owns, so a merge is visible to the operator');
+  assert.ok(index.includes('def link_track(self, track_id: int, cluster_id: int)'),
+    'the index owns the merge, so every caller shares one rule');
+  assert.ok(index.includes('unbind it before linking'),
+    'and it refuses to discard an operator binding, instead of silently rebinding');
+  assert.ok(stage.includes('data-vs-action="link-target"') && stage.includes('data-vs-action="link-track"'),
+    'the panel offers the identities of this frame and one button');
+  assert.ok(stage.includes('target.linkTrack(node, select ? select.value : null)'),
+    'the click sends the picker value read at click time, never a draft from an earlier render');
+  assert.ok(engine.includes("save(button, '/api/identity/link', {track_id: trackId(track), cluster_id: other}"),
+    'the engine posts the track and the cluster it was picked for');
+});
 test('round 17 / owner item 1: the face a person was identified by is drawn, and never as a second human', () => {
   const engine = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
   const pipeline = fs.readFileSync(path.join(__dirname, '../src/person_pipeline.py'), 'utf8');

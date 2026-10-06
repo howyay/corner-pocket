@@ -1288,6 +1288,32 @@ async function seedIdentity(button, playerId) {
   if (!person.cluster_id) { notice('This track has no identity cluster yet.', true); return false; }
   return save(button, '/api/identity/seed', {cluster_id: person.cluster_id, player_id: playerId}, null, 'person', `cluster ${String(person.cluster_id).slice(0, 6)} → ${playerId}`);
 }
+// Round 28, owner item: the same player appears more than once on a frame. The
+// body track on screen may carry no face; linking it to the cluster of a face
+// track on this frame merges the two, so the face names both appearances and one
+// regular pick covers the pair. A source track that is already bound to a regular
+// is refused by the server: that binding is the operator's own earlier answer, so
+// it must be unbound (Clear) first, never silently discarded.
+async function linkTrack(button, clusterId) {
+  const track = state.sel.track;
+  if (track === null || track === undefined) { notice('Select a visible track first.', true); return false; }
+  const person = state.sel.person || {};
+  const other = Number(clusterId);
+  if (!Number.isInteger(other)) { notice('Pick the identity to link this track to.', true); return false; }
+  if (person.cluster_id !== null && person.cluster_id !== undefined && Number(person.cluster_id) === other) {
+    notice('This track is already on that identity.', true); return false;
+  }
+  return save(button, '/api/identity/link', {track_id: trackId(track), cluster_id: other}, () => {
+    // Measured on the console: the merge deletes the cluster this track pointed at,
+    // so a selection left as it was would send the next Save to a cluster that no
+    // longer exists (a 404 the operator cannot read). The pick moves to the cluster
+    // that survived - it carries no player yet - and the frame record is asked for
+    // again, because the merge changed it. The picture is untouched.
+    if (state.sel.person) state.sel.person = {...state.sel.person, cluster_id: other, player_id: null, bound_evidence: null};
+    state.identityFor = null;
+    fetchIdentity(state.dataset, state.frame, state.epoch, state.frameReq);
+  }, 'person', `track ${track} → cluster ${String(other).slice(0, 6)}`);
+}
 // Clear is a real undo of either labelling path: the seeds label (guest name or
 // a legacy A/B/ignore value) is removed, and an identity binding on this track's
 // cluster is unbound. Both writes are explicit; nothing else is touched.
@@ -2080,7 +2106,7 @@ window.CornerPocketReview = {
   seek, seekTime, stepFrame, setPlaying, setOverlay, toggleOverlay, freeze, setDetector, setEventFilter,
   selectEvent, playEvent, selectCrop, selectTrack, selectTrackAndSeek, selectAnchor, selectBox, clearSelection,
   selectStageBall, selectStagePerson,
-  saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity, clearIdentity,
+  saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity, linkTrack, clearIdentity,
   enrollPreview, enrollConfirm, setEnrollName, cancelEnroll,
   saveAnchors, saveCorrections, runInference, setAutoInference, rebuild, refreshRebuild, setWindow,
   setTool, setBoxLabel, deleteBox, addPolygon, clearPolygon, setNewBoxLabel, nudgeAnchor,
