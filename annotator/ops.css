@@ -1284,8 +1284,10 @@ html,body{-webkit-font-smoothing:antialiased}
 @media(min-width:751px){
   #ops-shell .vs-grid{position:relative}
   /* left clears the rail: the overlay is anchored to the grid, and the stage starts after the rail. */
-  #ops-shell .vs-label-overlay{position:absolute;left:calc(280px + var(--sp-3));bottom:var(--sp-3);z-index:7;width:min(520px,46%);max-height:38dvh;overflow:auto;background:var(--panel);border:1px solid var(--brass);box-shadow:0 10px 30px rgba(0,0,0,.5);padding:var(--sp-2) var(--sp-3);display:grid;gap:var(--sp-2)}
+  #ops-shell .vs-label-overlay{position:absolute;left:calc(280px + var(--sp-3));bottom:var(--sp-3);z-index:7;width:min(520px,46%);max-height:min(56dvh,520px);overflow:auto;background:var(--panel);border:1px solid var(--brass);box-shadow:0 10px 30px rgba(0,0,0,.5);padding:var(--sp-2) var(--sp-3);display:grid;gap:var(--sp-2)}
   #ops-shell .vs-label-overlay[hidden]{display:none}
+  /* Round 26, owner item 3: the overlay is the whole track panel now, so its write row sits in it. */
+  #ops-shell .vs-label-overlay .vs-inspector-actions{padding:var(--sp-2) 0 0;background:transparent}
   #ops-shell .vs-inspector.label-moved .vs-labelblock{display:none}
   /* The base three columns stay as they are. Measured: overriding them for a narrower label column took
      more width off the stage than it gave back (872 -> 768), so the overlay floats over the picture and

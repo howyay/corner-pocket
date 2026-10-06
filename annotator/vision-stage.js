@@ -1099,24 +1099,31 @@ function paintLabelOverlay(s) {
     host.setAttribute('role', 'group');
     grid.appendChild(host);
   }
-  const html = labelBoxHTML(s);
+  // Round 26, owner item 3: a picked track has ONE panel, and it is this overlay. It used to show the
+  // label form while the identity block stayed in the third column: two boxes about the same person,
+  // with the same words in both. The overlay now carries the whole block, the column carries nothing.
+  const picked = s.selection.kind === 'person';
+  const html = picked
+    ? `${inspectorHTML(s)}<div class="vs-inspector-actions"><div class="vs-row">${actionsHTML(s)}</div></div>`
+    : labelBoxHTML(s);
   if (host.innerHTML !== html) host.innerHTML = html;
   host.hidden = !html;
-  // Round 26, owner item 3: the panel column carries a real selection and nothing else. The empty
-  // state used to hold the third column with a paragraph that told the operator to select something.
+  // Round 26, owner item 3: the panel column carries a selection the overlay does not take, and nothing
+  // else. The empty state used to hold the third column with a paragraph about selecting something.
   const selected = s.selection.kind !== 'none';
+  const inColumn = selected && !picked;
   const inspector = document.querySelector('#vs-inspector');
   if (inspector) {
-    inspector.hidden = !selected;
+    inspector.hidden = !inColumn;
     if (inspector.classList) inspector.classList.toggle('label-moved', !!html);
   }
   const tabs = document.querySelector('.vs-sheettabs');
-  if (tabs) tabs.hidden = !selected;
+  if (tabs) tabs.hidden = !inColumn;
   // The shell narrows the label column while the overlay is up, so the stage keeps the width.
   const shell = document.querySelector('#ops-shell');
   if (shell && shell.setAttribute) {
     shell.setAttribute('data-label-overlay', html ? '1' : '0');
-    shell.setAttribute('data-vs-panel', selected ? '1' : '0');
+    shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');
   }
 }
 function labelBoxHTML(s) {
@@ -1267,8 +1274,11 @@ function render() {
   if (insSig !== sig.inspector) {
     paintLabelOverlay(s);
   const body = $('#vs-inspector-scroll'), actions = $('#vs-inspector-actions');
-    if (body) body.innerHTML = inspectorHTML(s);
-    if (actions) actions.innerHTML = `<div class="vs-row">${actionsHTML(s)}</div>`;
+    // Round 26, owner item 3: a picked track is written in the overlay, so the column keeps no copy of
+    // it. The column is hidden anyway; a second copy left two "Which regular?" boxes in the document.
+    const inColumn = s.selection.kind !== 'person';
+    if (body) body.innerHTML = inColumn ? inspectorHTML(s) : '';
+    if (actions) actions.innerHTML = inColumn ? `<div class="vs-row">${actionsHTML(s)}</div>` : '';
     sig.inspector = insSig;
   }
   const frameInput = $('#vs-frame-index');

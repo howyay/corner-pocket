@@ -1814,12 +1814,14 @@ test('the inference switch names the source it governs, in one control (owner ro
 
 test('the panel column shows a selection and nothing else (owner round 26 item 3)', () => {
   // The empty state held the third column and told the operator to select something. It is gone: no
-  // selection, no column, and the stage keeps the width.
+  // selection, no column, and the stage keeps the width. A picked track is written in the overlay, so
+  // the column does not count as used for it either.
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   assert.ok(adapter.includes("const selected = s.selection.kind !== 'none';"), 'the overlay reads the selection');
-  assert.ok(adapter.includes('inspector.hidden = !selected;'), 'and hides the panel column without one');
-  assert.ok(adapter.includes('tabs.hidden = !selected;'), 'and the sheet tabs that open it');
-  assert.ok(adapter.includes("shell.setAttribute('data-vs-panel', selected ? '1' : '0');"), 'and tells the shell whether the column is used');
+  assert.ok(adapter.includes('const inColumn = selected && !picked;'), 'and keeps the column for a selection it does not own');
+  assert.ok(adapter.includes('inspector.hidden = !inColumn;'), 'and hides the panel column without one');
+  assert.ok(adapter.includes('tabs.hidden = !inColumn;'), 'and the sheet tabs that open it');
+  assert.ok(adapter.includes("shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');"), 'and tells the shell whether the column is used');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
   assert.ok(/#ops-shell\[data-vs-panel="0"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\)\}/.test(css),
     'the third column collapses when there is no panel');
@@ -2654,3 +2656,19 @@ test('a status payload carries its code into the console, as the cause or as his
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
+
+
+test('round 26 / owner item 3: a picked track has one panel, and it is the overlay', () => {
+  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
+  assert.ok(adapter.includes('? `${inspectorHTML(s)}<div class="vs-inspector-actions">'),
+    'the overlay carries the whole track block, not just the label form');
+  assert.ok(adapter.includes("const picked = s.selection.kind === 'person';"),
+    'the overlay knows which selection it owns');
+  assert.ok(adapter.includes("body.innerHTML = inColumn ? inspectorHTML(s) : '';"),
+    'the column keeps no second copy of the track block');
+  assert.ok(adapter.includes("shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');"),
+    'the column collapses while the overlay holds the block');
+  assert.ok(css.includes('max-height:min(56dvh,520px)'),
+    'the overlay is tall enough to hold the whole block');
+});
