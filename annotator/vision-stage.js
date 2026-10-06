@@ -535,6 +535,17 @@ function windowBandHTML(s) {
 // A Twitch VOD replay reaches the stage through the live path but is never called
 // live: the server's own status (kind 'vod-replay') decides the word.
 function liveWordKey(s) { return s.live?.source?.kind === 'vod-replay' || s.live?.replay?.kind === 'vod-replay' ? 'replayNow' : 'live'; }
+// Owner round 26 item 2: one control states the inference switch and the source it governs, so the
+// stage reads both from the same state instead of rendering two elements that can name two sources.
+function sourceWord(s, liveOnly) {
+  if (s.source.kind === 'live') return `${s.live.stale ? t('stale') : t(liveWordKey(s))} · ${t('age')} ${fmtAge(s.live.frame_age_ms)}`;
+  return liveOnly ? t('live') : (recordedLabel(s) || s.source.label);
+}
+function switchWord(corr) {
+  return corr.inferRunning
+    ? `${t('inferAutoRunning')} · ${String(corr.inferStatus || '').slice(0, 90)}`
+    : (corr.autoInfer === false ? t('inferAutoOff') : t('inferAutoOn'));
+}
 function chipsHTML(s) {
   // Owner item 3: the Vision tab is the live stream. When the console says so, the chip row
   // offers live sources and nothing recorded - the datasets and the replay form belong to a
@@ -542,9 +553,7 @@ function chipsHTML(s) {
   const liveOnly = !!opts.liveOnly?.(), fixed = !!opts.fixedClip?.();
   const channels = (fixed ? [] : (opts.channels() || [])).map(c => `<button class="vs-chip${s.source.kind === 'live' && s.source.channel === c.channel ? ' active' : ''}" data-vs-action="pick-live" data-vs-value="twitch:${esc(c.id)}">${s.source.kind === 'live' && s.source.channel === c.channel ? '● ' : ''}${esc(t('live'))} · twitch ${esc(c.channel || '')}</button>`).join('');
   const datasets = (liveOnly || fixed) ? '' : (s.datasets || []).map(d => `<button class="vs-chip${s.source.kind === 'vod' && d.id === s.dataset ? ' active' : ''}" data-vs-action="pick-dataset" data-vs-value="${esc(d.id)}">${esc(d.label || d.id)}</button>`).join('');
-  const freshness = s.source.kind === 'live'
-    ? `<span class="vs-fresh${s.live.stale ? ' stale' : ''}">${s.live.stale ? esc(t('stale')) : esc(t(liveWordKey(s)))} · ${esc(t('age'))} ${fmtAge(s.live.frame_age_ms)}</span>`
-    : liveOnly ? `<span class="vs-fresh">${esc(t('live'))}</span>` : `<span class="vs-fresh">${esc(recordedLabel(s) || s.source.label)}</span>`;
+  const freshness = sourceWord(s, liveOnly);
   // The source settings hang off the chip row itself: one chip opens the panel
   // that used to be the rail's nothing-selected state, so the rail stays about
   // the selection and the settings are still one click away at any width.
@@ -554,12 +563,12 @@ function chipsHTML(s) {
     ${sourcePanelHTML(s)}</div>` : '';
   // Round 17, owner item 2: inference runs itself when the picture stops, so the stage reports what it
   // is doing and offers the one switch. The engine owns the run; this is its report.
+  // Owner round 26 item 2: the switch and the source it governs are one control. As two elements they
+  // could name two different sources; one readout cannot disagree with itself.
   const corr = s.corrections || {};
-  const infer = corr.inferRunning
-    ? `<button class="vs-infer running" data-vs-action="auto-infer" data-vs-value="on" data-vs-role="infer-status">${esc(t('inferAutoRunning'))} · ${esc(String(corr.inferStatus || '').slice(0, 90))}</button>`
-    : `<button class="vs-infer${corr.autoInfer === false ? ' off' : ''}" data-vs-action="auto-infer" data-vs-value="${corr.autoInfer === false ? 'on' : 'off'}" data-vs-role="infer-status">${esc(corr.autoInfer === false ? t('inferAutoOff') : t('inferAutoOn'))}</button>`;
+  const infer = `<button class="vs-infer${corr.inferRunning ? ' running' : ''}${corr.autoInfer === false && !corr.inferRunning ? ' off' : ''}" data-vs-action="auto-infer" data-vs-value="${corr.autoInfer === false ? 'on' : 'off'}" data-vs-role="infer-status">${esc(switchWord(corr))} · <span class="vs-fresh${s.source.kind === 'live' && s.live.stale ? ' stale' : ''}">${esc(freshness)}</span></button>`;
   return `<div class="vs-chiprow" role="group" aria-label="${esc(t('dataset'))}">${chip}${datasets}${channels}</div>
-  <div class="vs-chipmeta">${infer}${freshness}</div>${panel}`;
+  <div class="vs-chipmeta">${infer}</div>${panel}`;
 }
 // Who made this candidate: one quiet line under the card's facts, never a badge.
 // A machine-produced candidate says so in its own words (translated in 中); an
