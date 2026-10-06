@@ -3494,16 +3494,25 @@ test('round 9 / owner items 4 + 5: the destination balls are solid, on the ivory
     'the light scheme redefines no ball token at all, so the base cannot follow the theme by accident');
 });
 
-test('round 20 / owner item 5: with no stream the Livestream tab is the status, the source and one debug door', () => {
+test('round 20 / owner item 5 + round 31 / owner item 1: the Livestream tab is the state, the source and a refresh', () => {
   const h = harness();
   h.evaluate("data.players=[];data.events=[];data.history=[];liveSnapshot={state:'idle',frames_skipped:0};liveRunning=()=>false;render=()=>{}");
   const html = h.evaluate('livePanelScreen()');
   assert.ok(html.includes('id="live-screen"') && html.includes('id="live-panel-status"'), 'the panel keeps its root and status line');
   assert.equal((html.match(/data-action="live-detector"/g) || []).length, 0, 'no detector row while nothing runs');
   assert.equal((html.match(/class="primary"/g) || []).length, 0, 'and no Start until a channel is saved');
+  assert.equal((html.match(/<h2>/g) || []).length, 0, 'round 31: the tab is not a card with a heading any more');
   assert.ok(html.includes('data-action="sources-open"'), 'the source configurator is one of the two controls');
-  assert.ok(html.includes('data-action="live-debug"'), 'and the debug door is the other');
+  assert.ok(html.includes('data-action="live-refresh"'), 'round 31: a refresh stands in while the stream is off');
+  assert.equal((html.match(/data-action="live-debug"/g) || []).length, 0, 'round 31: the workbench toggle left this tab');
   assert.ok(!/data-tab="records"/.test(html) && !html.includes('live-note'), 'no History shortcut and no note while idle');
+  // Round 31: the state is the headline of the tab, so the stylesheet sets it well above body size.
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(/\.live-status\{[^}]*font-size:clamp\(22px,3vw,32px\)/.test(css), 'the state is set in large type');
+  const src = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  assert.ok(src.includes("if(a==='live-refresh'){liveGeneration++;pollLive(liveGeneration);return}"), 'the refresh reads /api/live again');
+  // The toggle keeps its capability, in the back room's maintainers block.
+  assert.ok(src.includes("${btn(t('refresh'),'reload')}<button data-action=\"live-debug\""), 'the debug door lives in the back room now');
   // The door opens the workbench the stream would otherwise be needed to see, and a stream closes it.
   assert.ok(h.evaluate('liveVisionScreen()').includes('id="live-screen"'), 'idle: the panel is the tab');
   h.evaluate('debugWorkbench=true');
