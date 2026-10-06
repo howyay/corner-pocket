@@ -798,7 +798,7 @@ function eventCard(){
   const head=eventNameEditing
     ? `<form id="event-name-form" class="row event-rename-form"><input id="event-name" name="name" value="${esc(T.name||'')}" maxlength="120" aria-label="${esc(t('renameEvent'))}" autofocus><button class="primary" type="submit">${esc(t('save'))}</button><button type="button" data-action="event-rename-cancel">${esc(t('cancelEdit'))}</button></form>`
     : `<h3 class="event-title">${esc(name)}</h3><button type="button" class="link event-rename" data-action="event-rename" aria-label="${esc(t('renameEvent'))}" title="${esc(t('renameEvent'))}">✎</button>`;
-  return `<article class="card card--event"><div class="heading event-head">${head}<p class="muted event-params" data-vs-role="event-params">${esc(eventParams(T))}</p></div>${closeCard(drawn)}</article>`}
+  return `<article class="card card--event"><div class="heading event-head">${head}<p class="muted event-params" data-vs-role="event-params">${esc(eventParams(T))}</p></div>${lateCard()}${closeCard(drawn)}</article>`}
 function panel(key,count,body){return `<details class="panel"><summary><h3>${esc(t(key))}</h3>${count?`<span class="muted">${count}</span>`:''}</summary>${body}</details>`}
 // Round 13, owner items 3, 6 and 9. One body for every state the night can be in: the event card,
 // the draw, the entrants. The scoreboard left this tab (item 6) - it is the timer page's board, and
@@ -825,7 +825,7 @@ function clockNavButton(){const cur=!bf&&tab==='clock',face=ballHTML(1).replace(
 // matches, the live tables and the signed results each sat in both cards, in two scroll boxes,
 // and the drawer around them closed itself again after every write. One list, always open: a
 // scheduled match is sent from its own card in the draw, where its table and its two names are.
-function playScreen(){return `${eventCard()}${bracketScreen()}${revivalCard()}${entrantsCard()}${lateCard()}`}
+function playScreen(){return `${eventCard()}${bracketScreen()}${revivalCard()}${entrantsCard()}`}
 function matchId(form){const named=form?.elements?.id?.value||form?.querySelector?.('[name=id]')?.value;const id=(typeof named==='string'?named:'')||(typeof form?.id==='string'?form.id:'');if(!id)return null;return matches().find(m=>m.id===id)||{id}}
 
 function closeCard(drawn){const T=tournament(),entrantN=(T.entrants||[]).length,signed=hasSigned(T),started=!!T.id,canDelete=started&&entrantN>0&&!signed,why=!started?t('closeNoEvent'):signed?t('closeSigned'):entrantN?'':t('closeNoEntrants');return `<div class="end-night"><div class="row">${drawn&&started&&tonightState()==='complete'?btn(t('resultsSheet'),'results-sheet',`data-id="${esc(T.id)}"`):''}${btn(t('new'),'new-event',started?'':'disabled')}${btn(t('deleteEvent'),'event-delete',`data-id="${esc(T.id)}"${canDelete?'':' disabled'}`,'danger')}</div>${why?`<p class="note close-why" role="status">${esc(why)}</p>`:''}</div>`}
@@ -1001,12 +1001,10 @@ function revivalPool(T){const out=[];for(const m of T.matches||[]){if(m.round!==
 // round-1 bye slot of their own; the server refuses anyone who is already in the tournament.
 function lateCard(){const T=tournament();if(!T||T.status!=='active')return '';
   // Round 21, owner item 3: somebody who arrives after the draw joins as their own team. Round 29,
-  // owner item 1: the two decisions (the match-up and, for doubles, the teammate) are made in a
-  // dialog, and the server refuses a payload without them, so no client can add a late entrant
-  // without deciding.
-  return `<article class="card card--late"><div class="heading"><h3>${esc(t('lateTitle'))}</h3></div>
-  <p class="muted">${esc(t('lateHint'))}</p>
-  <div><button data-action="late-open">${esc(t('lateOpen'))}</button></div></article>`}
+  // owner item 1: the match-up and the teammate are decided in a dialog, and the server refuses a
+  // payload without them. Round 31, owner item 2: the control is a row of the event settings card at
+  // the top of the tab, so the tab itself is the event, the draw, the second chance and the entrants.
+  return `<div class="row event-late"><button data-action="late-open" title="${esc(t('lateHint'))}">${esc(t('lateOpen'))}</button></div>`}
 // Round 29, owner item 1: the dialog. Each slot offers the three answers the owner named - nobody, a
 // second chance for a first-round loser, or a new person registered here - and the radios are
 // required, so the browser refuses a submit that leaves a decision open.

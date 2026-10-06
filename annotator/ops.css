@@ -1152,6 +1152,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell[data-vision=live] .vs-strip .vs-track{display:none}
 #ops-shell .vs-live-hidden{display:none}
 #ops-shell .live-screen{display:grid;gap:var(--sp-2);align-content:start}
+#ops-shell .event-late{margin:var(--sp-1) 0 0}
 #ops-shell .live-status{margin:0 0 var(--sp-2);color:var(--ink);font-size:clamp(22px,3vw,32px);line-height:1.15;font-weight:600}
 #ops-shell .live-actions,#ops-shell .live-detectors{margin-top:var(--sp-2);flex-wrap:wrap}
 #ops-shell .live-note{margin:var(--sp-1h) 0 0;font-size:var(--fs-sm)}

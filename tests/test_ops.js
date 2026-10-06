@@ -3889,8 +3889,13 @@ test('round 14 / owner item 1: the event table lives in the entrants card, so th
   tonightNight(h, 'drawn');
   h.evaluate('render=()=>{}');
   const html = h.evaluate('playScreen()');
-  // Round 21, owner item 3 added the late-join card, which renders while the event is running.
-  assert.equal((html.match(/class="card card--/g) || []).length, 3, 'the event card, the entrants card and the late-join card');
+  // Round 21, owner item 3 added the late-join card. Round 31, owner item 2 moved its control into the
+  // event settings card, so the tab is the event card and the entrants card again, the draw between them.
+  assert.equal((html.match(/class="card card--/g) || []).length, 2, 'the event card and the entrants card');
+  const eventBlock = html.slice(0, html.indexOf('class="bracket-view"'));
+  assert.ok(eventBlock.includes('data-action="late-open"'), 'the late-join control is a row of the event settings card');
+  assert.equal((html.match(/data-action="late-open"/g) || []).length, 1, 'one late-join door on the tab, not two');
+  assert.ok(!html.includes('card--late'), 'and no card of its own any more');
   assert.equal((html.match(/class="bracket-view"/g) || []).length, 1, 'and the draw between them');
   assert.ok(html.indexOf('class="card card--event"') < html.indexOf('class="bracket-view"') && html.indexOf('class="bracket-view"') < html.indexOf('class="card card--entrants"'),
     'in the owner\u2019s order: the event, the draw, the entrants');
@@ -4247,7 +4252,8 @@ test('round 21 / owner item 3 + round 29 / owner item 1: the late arrival card o
     'the card opens the dialog, and the dialog closes it');
   assert.ok(SRC.includes("(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'')"), 'the shell mounts it');
   assert.ok(SRC.includes('&&!setupOpen&&!lateOpen)'), 'and the poll does not repaint under the operator');
-  assert.ok(SRC.includes('${entrantsCard()}${lateCard()}'), 'the card is on the event tab');
+  assert.ok(SRC.includes("${esc(eventParams(T))}</p></div>${lateCard()}${closeCard(drawn)}"), 'round 31: the control is a row of the event settings card');
+  assert.ok(!SRC.includes('${entrantsCard()}${lateCard()}'), 'and the tab no longer carries a card of its own');
   // It renders only while the event is running: a finished event takes no late arrivals.
   h.evaluate("data.tournament={id:'t1',name:'Open',format:'singles',raceTo:3,status:'complete',entrants:[],matches:[]};data.players=[];render=()=>{}");
   assert.equal(h.evaluate('lateCard()'), '', 'a finished event offers nothing');
