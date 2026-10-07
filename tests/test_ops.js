@@ -59,6 +59,90 @@ test('live start and stop send only processor contract fields', async () => {
   await h.evaluate("liveAction('stop')");
   assert.deepEqual(h.context.sent.payload,{action:'stop'});
 });
+// ---- The adapter seam: a test drives the console, not its renderers --------------------------
+// A stub mount records the regions the adapter paints, so a test reads the markup the operator
+// sees or sends that mount a real click, change or input event.
+function stageNodeStub() {
+  return {innerHTML: '', textContent: '', value: '', title: '', hidden: false, disabled: false, dataset: {}, attributes: {}, offsetHeight: 1,
+    style: {left: '', getPropertyValue: () => '', setProperty() {}},
+    classList: {toggle() {}, add() {}, remove() {}},
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    getBoundingClientRect: () => ({top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0}),
+    focus() {}, setSelectionRange() {}, remove() {}, contains: () => false,
+    querySelector: () => null, querySelectorAll: () => [], closest: () => null,
+    addEventListener() {}, removeEventListener() {}};
+}
+function stageMountStub() {
+  const nodes = new Map(), handlers = {};
+  return {
+    region(selector) { if (!nodes.has(selector)) nodes.set(selector, stageNodeStub()); return nodes.get(selector); },
+    querySelector(selector) { return this.region(selector); },
+    querySelectorAll: () => [],
+    contains: () => true,
+    style: {getPropertyValue: () => '', setProperty() {}},
+    addEventListener(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
+    removeEventListener(type, fn) { handlers[type] = (handlers[type] || []).filter(f => f !== fn); },
+    html(selector) { return this.region(selector).innerHTML; },
+    text(selector) { return this.region(selector).textContent; },
+    fire(type, target) { for (const fn of handlers[type] || []) fn({type, target, preventDefault() {}, stopPropagation() {}}); },
+  };
+}
+// The clicked node: closest() answers the selectors the adapter asks for.
+function stageControlStub(action, value, extra = {}) {
+  const dataset = {vsAction: action};
+  if (value !== undefined && value !== null && value !== '') dataset.vsValue = String(value);
+  return {dataset, value: extra.value === undefined ? '' : extra.value, checked: extra.checked === undefined ? false : extra.checked,
+    closest(selector) {
+      if (selector === '[data-sheet-tab]') return null;
+      if (selector === '[data-vs-action]' || selector === `[data-vs-action="${action}"]`) return this;
+      if (selector === '.vs-linkblock') return extra.holder || null;
+      return null;
+    }};
+}
+// The Source panel hangs off its chip: open it when it is closed, then read the panel alone.
+function openSourcePanel(mount) {
+  if (!mount.html('#vs-chips').includes('id="vs-source-panel"')) mount.fire('click', stageControlStub('source-panel'));
+}
+function sourcePanelHTML(mount) {
+  const html = mount.html('#vs-chips'), at = html.indexOf('id="vs-source-panel"');
+  return at < 0 ? '' : html.slice(html.lastIndexOf('<', at));
+}
+// The engine state render() reads. A test overrides only the fields it cares about.
+function stageStateStub(over = {}) {
+  const base = {
+    selection:{kind:'none', box:-1}, source:{kind:'vod', label:'vod30 · 1800 s', channel:null},
+    datasets:[{id:'vod30', label:'vod30'}], set:'unlabeled_crops', frame:{index:500, t:20, duration:1800, count:54206, playing:false},
+    live:{state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person'], stale:false, seq:null},
+    detectors:{table:true, person:true, balls:false},
+    corrections:{tool:'select', newBoxLabel:'ball', box:-1, boxLabel:null, polygon:false, result:'none', dirty:false, inferRunning:false, inferStatus:''},
+    dirty:false, notice:{text:''}, receipts:[], busy:false, loading:{overlay:false, since:0}, overlay:{}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0},
+    cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
+    eventFilter:'all', focus:'events',
+    events:{items:[], index:0, reviewed:0}, balls:{items:[], index:0},
+    anchors:{items:[], points:[], index:0, t:0, loaded:false},
+    playback:{on:false, playing:false, event:null, from:0, to:0, loops:1},
+    enroll:{status:'idle'},
+    persons:{tracks:[], track:null, windows:[{win:'68-94', count:3}], win:'68-94', status:'', predictions:null}};
+  const plain = value => value && typeof value === 'object' && !Array.isArray(value);
+  for (const [key, value] of Object.entries(over)) base[key] = plain(value) && plain(base[key]) ? {...base[key], ...value} : value;
+  return base;
+}
+// One seam: attach, then set the state, render, read a region or click a control.
+function stageSeamStub(h, mount, options = {}) {
+  const state = {value: null};
+  const review = {snapshot: () => state.value, subscribe: () => () => {}, reloadDatasets: async () => true, ...(options.review || {})};
+  h.context.window.CornerPocketReview = review;
+  const handle = h.context.window.VisionStage.attach({mount, lang: options.lang || 'en', channels: () => [], vods: () => [], regulars: () => [], chat: () => false, notice() {},
+    ...(options.attach || {}), review});
+  return {mount, handle, state, review,
+    show(snapshot) { state.value = stageStateStub(snapshot); handle.render(); return this; },
+    render() { handle.render(); return this; },
+    click(action, value, extra) { mount.fire('click', stageControlStub(action, value, extra)); return this; },
+    html(selector) { handle.render(); return mount.html(selector); },
+    text(selector) { handle.render(); return mount.text(selector); },
+    panel(snapshot) { if (snapshot !== undefined) this.show(snapshot); openSourcePanel(mount); return sourcePanelHTML(mount); }};
+}
 test('live detector ticks accumulate: the boxes show and Start sends exactly what the operator ticked', async () => {
   // The panel derived the boxes from the engine's live.detectors, which nothing
   // writes, so every click started again from ['table','person'] (untick Person,
@@ -70,19 +154,20 @@ test('live detector ticks accumulate: the boxes show and Start sends exactly wha
     source:{kind:'vod', label:'vod30', channel:null}, datasets:[{id:'vod30', label:'vod30'}], dataset:'vod30', frame:{count:54206}, detectors:{table:true, person:true, balls:false}};
   // The snapshot is handed over after attach, so attach's own first render is a no-op.
   let attached = false;
-  h.context.window.CornerPocketReview = {snapshot: () => attached ? engineSnap : null, setLiveAttempt() {}, clearLiveError() {}, applyLiveStatus() {}};
+  h.context.window.CornerPocketReview = {snapshot: () => attached ? stageStateStub(engineSnap) : null, setLiveAttempt() {}, clearLiveError() {}, applyLiveStatus() {}};
   h.context.fetch = async (url, options) => { h.context.sent = JSON.parse(options.body); return {ok:true, json: async () => ({state:'starting'})}; };
   // The shell's own attachSurface() wires the adapter, exactly as on the Vision tab.
-  const mount = {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}, contains: () => true};
+  const mount = stageMountStub();
   const shellQuery = h.context.document.querySelector;
   h.context.document.querySelector = selector => selector === '#vision-surface' ? mount : shellQuery(selector);
   h.evaluate('attachSurface()');
   h.evaluate('renderSurface=()=>{}');
-  const VS = h.context.window.VisionStage;
+  const handle = h.evaluate('visionAdapter');
   attached = true;
   // Only the live row: the Frame detectors row below it has its own table/person boxes.
-  const ticked = () => ['table','person','ball'].filter(d => new RegExp(`data-vs-action="live-detector" data-vs-value="${d}" checked`).test(VS.sourcePanelHTML(engineSnap)));
-  const click = (value, checked) => VS.act('live-detector', value, {checked});
+  const ticked = () => { handle.render(); openSourcePanel(mount);
+    return ['table','person','ball'].filter(d => new RegExp(`data-vs-action="live-detector" data-vs-value="${d}" checked`).test(sourcePanelHTML(mount))); };
+  const click = (value, checked) => mount.fire('click', stageControlStub('live-detector', value, {checked}));
   assert.deepEqual(ticked(), ['table','person'], 'the defaults are shown');
   click('person', false);
   assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(liveDetectors)')), ['table']);
@@ -1869,7 +1954,6 @@ function broadcastsHarness(lang = 'en') {
   const h = harness();
   const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
   vm.runInContext(adapter, h.context, {filename:'vision-stage.js'});
-  const VS = h.context.window.VisionStage;
   const vodRow = {id:'tw-1000000001-3600-3900', label:'examplechannel · 2026-09-26 · 1:00:00–1:05:00', kind:'vod', vod_id:'1000000001', channel:'examplechannel',
     title:'260918', created_at:'2026-09-26T06:46:33Z', range:{start_s:3600, end_s:3900, whole:false}, fps:30, frames:9002, width:1280, height:720, media:true};
   const snap = {live:{state:'idle', error:null, attempt:null, detectors:['table','person'], stages:[], skipped:0}, source:{kind:'vod', label:'x', channel:null},
@@ -1881,22 +1965,22 @@ function broadcastsHarness(lang = 'en') {
   h.context.fetch = async (url, options) => { calls.push({url, body: options?.body ? JSON.parse(options.body) : null});
     const key = String(url).split('?')[0];
     if (key === '/api/vods/import' && calls.at(-1).body.vod === '1111111111') return {ok:false, status:400, json: async () => ({error:'This VOD belongs to someoneelse. Only saved channels can be analysed; add the channel under Source first.'})};
+    // The estimate answers for the VOD it was asked about, as the server does.
+    if (key === '/api/vods/estimate') { const vod = decodeURIComponent(String(url).split('vod=')[1] || ''); return {ok:true, status:200, json: async () => ({...replies[key], vod_id: vod})}; }
     return {ok:true, status:200, json: async () => replies[key] || {}}; };
   h.context.setInterval = () => 1; h.context.clearInterval = () => {};
   h.context.setTimeout = fn => { fn(); return 0; }; h.context.URLSearchParams = URLSearchParams;
-  // render() reads the engine snapshot; a null one keeps it a no-op, and the tests call the block renderers directly.
-  h.context.window.CornerPocketReview = {snapshot: () => null, subscribe: () => () => {}, reloadDatasets: async () => true};
-  const mount = {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}, contains: () => true};
-  VS.attach({mount, lang, review: h.context.window.CornerPocketReview, channels: () => [{id:'c1', channel:'examplechannel', url:'https://www.twitch.tv/examplechannel'}], vods: () => [], notice() {}});
-  VS.bcReset();
-  return {h, VS, snap, calls, replies, vodRow};
+  // The seam: the tests set the engine snapshot, render, and read the region the operator sees.
+  const mount = stageMountStub();
+  const seam = stageSeamStub(h, mount, {lang, attach: {channels: () => [{id:'c1', channel:'examplechannel', url:'https://www.twitch.tv/examplechannel'}], vods: () => []}});
+  return {h, mount, seam, snap, calls, replies, vodRow};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 test('Broadcasts lists each saved channel\'s recent VODs, the job progress and every existing Source control', async () => {
-  const {VS, snap, calls} = broadcastsHarness();
-  VS.sourcePanelHTML(snap);                       // first render asks the server
+  const {seam, snap, calls} = broadcastsHarness();
+  seam.panel(snap);                              // the first render asks the server
   await settle(); await settle();
-  const html = VS.sourcePanelHTML(snap);
+  const html = seam.panel(snap);
   assert.ok(calls.some(c => c.url === '/api/vods/recent'), 'recent broadcasts are fetched');
   assert.match(html, /<h4>Broadcasts<\/h4>/);
   assert.match(html, /examplechannel · 2026-09-26 · 3:43:17 · 260918 · imported 1/, 'title, date, duration and imported state');
@@ -1912,44 +1996,55 @@ test('Broadcasts lists each saved channel\'s recent VODs, the job progress and e
   assert.ok(html.includes('data-vs-action="pick-dataset" data-vs-value="tw-1000000001-3600-3900"'), 'the imported VOD is a dataset chip');
 });
 test('Import takes the whole broadcast, shows the estimated size before confirming, and maps the other-channel refusal to 中文', async () => {
-  const {h, VS, snap, calls, replies} = broadcastsHarness('zh');
+  const {seam, snap, calls, replies} = broadcastsHarness('zh');
   replies['/api/vods/estimate'] = {id:'tw-1000000001', vod_id:'1000000001', channel:'examplechannel', range:{start_s:0, end_s:13397, whole:true},
     estimate_bytes:5505302893, disk:{ok:true, free_bytes:52196323328, needed_bytes:8606363471, refusal:null}, already_imported:false, eta_s:442};
-  VS.bcState().recent = replies['/api/vods/recent'];
-  VS.act('bc-open', '1000000001', {dataset:{}});
+  seam.panel(snap);                              // the block reads the saved list before an open
+  await settle(); await settle();
+  seam.click('bc-open', '1000000001');
   await settle(); await settle();
   assert.ok(calls.some(c => c.url === '/api/vods/estimate?vod=1000000001'), 'round 10, item 3: the estimate is for the whole broadcast, with no bounds to send');
-  const html = VS.sourcePanelHTML(snap);
+  const html = seam.panel(snap);
   assert.match(html, /examplechannel · 整场回放 · 约 5\.5 GB, 约 7 min 22 s · 52\.2 GB 可用/, 'size and time before committing');
   assert.match(html, /data-vs-action="bc-import"[^>]*>导入 · 5\.5 GB</);
   assert.ok(!/data-vs-field="bc-start"|data-vs-field="bc-minutes"/.test(html), 'round 10, item 3: no start and no length to type');
-  VS.bcState().estimate = {...replies['/api/vods/estimate'], vod_id:'1111111111'};
-  VS.act('bc-import', '', {dataset:{}});
+  // Another channel's broadcast is refused, and the console states the refusal in 中文.
+  seam.click('bc-open', '1111111111');
+  await settle(); await settle();
+  seam.click('bc-import', '');
   await settle(); await settle();
   assert.deepEqual(calls.filter(c => c.url === '/api/vods/import').map(c => c.body), [{vod:'1111111111'}], 'the whole broadcast, and nothing that bounds it');
-  assert.equal(VS.bcState().error, '此回放属于 someoneelse。只能分析已保存的频道；请先在“来源”中添加该频道。');
-  assert.match(VS.sourcePanelHTML(snap), /role="alert">此回放属于 someoneelse/);
-  h.context.window.VisionStage.bcReset();
+  assert.match(seam.panel(snap), /role="alert">此回放属于 someoneelse。只能分析已保存的频道；请先在“来源”中添加该频道。/);
 });
-test('an imported VOD reads as a recorded broadcast in broadcast time, and its empty rail says why', () => {
-  const {VS, snap, vodRow} = broadcastsHarness();
+test('an imported VOD reads as a recorded broadcast in broadcast time, and its empty rail says why', async () => {
+  const {h, seam, snap, vodRow} = broadcastsHarness();
   const on = {...snap, dataset: vodRow.id, frame: {count:9002, t:144.03, index:4321}, eventsAnalysed: false};
-  assert.equal(VS.recordedLabel(on), 'recorded broadcast of examplechannel · from 2026-09-26 · 1:00:00–1:05:00');
-  assert.ok(!/live/i.test(VS.recordedLabel(on)), 'never "live"');
-  const facts = VS.factsLine({...on, loading: {overlay: false, since: 0}, busy: false, live: {stale: false},
-    drawn: {cloth: 1, balls: 1, persons: 2, pockets: 6, anchors: 0, events: 0, auto: {cloth: 1, balls: 1, persons: 2, pockets: 6, anchors: 0, events: 0}}});
+  // The chip row states the source in words: that is where the recorded label lands.
+  const freshness = state => { seam.show(state); return (/<span class="vs-fresh[^"]*">([^<]*)<\/span>/.exec(seam.html('#vs-chips')) || [])[1]; };
+  assert.equal(freshness(on), 'recorded broadcast of examplechannel · from 2026-09-26 · 1:00:00–1:05:00');
+  assert.ok(!/live/i.test(freshness(on)), 'never "live"');
+  const facts = seam.show({...on, loading: {overlay: false, since: 0}, busy: false, live: {stale: false},
+    drawn: {cloth: 1, balls: 1, persons: 2, pockets: 6, anchors: 0, events: 0, auto: {cloth: 1, balls: 1, persons: 2, pockets: 6, anchors: 0, events: 0}}}).text('#vs-facts');
   assert.ok(facts.includes('broadcast time 1:02:24'), `broadcast time = range start + t: ${facts}`);
-  const rail = VS.railHTML({...on, events: {items: [], index: 0, reviewed: 0}, eventFilter: 'all', selection: {}, balls: {items: [], index: 0}, persons: {tracks: [], windows: [], win: ''}, focus: 'events'});
+  const rail = seam.show({...on, events: {items: [], index: 0, reviewed: 0}, eventFilter: 'all', selection: {}, balls: {items: [], index: 0}, persons: {tracks: [], windows: [], win: ''}, focus: 'events'}).html('#vs-cues');
   assert.match(rail, /data-vs-empty="not-scanned">Not scanned for events — browse frames and run inference on a frozen frame\./);
-  assert.equal(VS.recordedLabel(snap), '', 'vod30 keeps its own label');
-  assert.equal(VS.serverText('some other sentence'), 'some other sentence');
-});
-test('Refresh list also re-reads the import job, so an import started in another tab shows its progress', async () => {
-  const {VS, calls} = broadcastsHarness();
-  VS.act('bc-refresh', '', {dataset:{}});
+  assert.equal(freshness(snap), 'x', 'vod30 keeps its own label');
+  // A server sentence the console cannot translate reaches the operator unchanged.
+  h.context.fetch = async url => String(url).includes('/api/vods/estimate')
+    ? {ok:false, status:400, json: async () => ({error:'some other sentence'})}
+    : {ok:true, status:200, json: async () => ({})};
+  seam.click('bc-open', '1000000001');
+  await settle(); await settle();
+  assert.match(seam.panel(snap), /role="alert">some other sentence</, 'an unmapped server sentence is shown as it arrives');
+});test('Refresh list also re-reads the import job, so an import started in another tab shows its progress', async () => {
+  const {seam, snap, calls} = broadcastsHarness();
+  seam.panel(snap);
+  await settle(); await settle();
+  calls.length = 0;
+  seam.click('bc-refresh', '');
   await settle(); await settle();
   assert.ok(calls.some(c => c.url === '/api/vods/recent') && calls.some(c => c.url === '/api/vods/job'));
-  assert.equal(VS.bcState().job.state, 'running');
+  assert.match(seam.panel(snap), /data-vs-bc-job="running"/, 'the job row states the state the server reported');
 });
 // ---- IA C′ stage 2: hash routes. The URL names the screen; back/forward walk it; old ids map onto it.
 test('routes: every tab has a hash route, a tab click pushes it, and back/forward walk the screens', async () => {

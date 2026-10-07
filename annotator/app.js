@@ -7,6 +7,9 @@
 // chips, inspector and scrub strip from snapshot() and drives this engine
 // through the public API below; it owns no frame state and performs no fetch.
 let root = null, active = false, mounting = null, initialized = false;
+// The network the engine uses. attach() can replace it with a stub.
+let net = null;
+const netFetch = (path, init) => (net || fetch)(path, init);
 // What the embedding shell hands the engine at mount (e.g. reloadRoster); the
 // standalone page mounts without any.
 let hooks = {};
@@ -56,7 +59,7 @@ function canLeave() { return !state.busy && (!state.dirty || confirm(text('Disca
 function markDirty() { state.dirty = true; notify(); }
 function counts() { return {cloth: state.drawn.cloth, balls: state.drawn.balls, persons: state.drawn.persons, pockets: state.drawn.pockets, anchors: state.drawn.anchors, events: state.drawn.events}; }
 async function api(path, body) {
-  const response = await fetch(path, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const response = await netFetch(path, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   let data; try { data = await response.json(); } catch { throw new Error(`Server returned non-JSON (${response.status}). Open this workbench through the review server.`); }
   if (!response.ok || data.error) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
@@ -481,7 +484,7 @@ async function fetchFrame(dataset, n) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25000);
   let response;
-  try { response = await fetch(`/api/frame?dataset=${enc(dataset)}&frame=${n}`, {signal: controller.signal}); }
+  try { response = await netFetch(`/api/frame?dataset=${enc(dataset)}&frame=${n}`, {signal: controller.signal}); }
   catch (error) { throw new Error(error.name === 'AbortError' ? `Frame ${n} request timed out after 25 s` : error.message); }
   finally { clearTimeout(timeout); }
   if (!response.ok) { let message = `Frame request failed (${response.status})`; try { message = (await response.json()).error || message; } catch {} throw new Error(message); }
@@ -497,7 +500,7 @@ function scheduleUnified(frame, epoch, request) {
 async function loadUnified(dataset, frame, epoch, request) {
   state.loading = {overlay: true, since: Date.now()}; notify();
   try {
-    const response = await fetch(`/api/unified?dataset=${enc(dataset)}&frame=${frame}`, {cache:'no-store'});
+    const response = await netFetch(`/api/unified?dataset=${enc(dataset)}&frame=${frame}`, {cache:'no-store'});
     if (!response.ok) throw Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (epoch !== state.epoch || request !== state.frameReq) return;
@@ -2108,18 +2111,49 @@ function setAppearance(lang, theme) {
   if (changed && (state.vmeta || $('#t-overlay'))) { renderStage(); }
   notify();
 }
+// The engine seam. The console mounts the engine with mount(). An offline test
+// mounts the same engine with attach(): a stub root, a stub network, one handle.
+// The handle carries the live state and the readings a caller can observe.
+// Behaviour is unchanged: the console never calls attach().
+function attach(options = {}) {
+  if (options.mount) root = options.mount;
+  if (typeof options.fetch === 'function') net = options.fetch;
+  return {
+    state,
+    // Point the engine at a root. The console uses mount(); a test uses this.
+    setRoot(host) { root = host; return root; },
+    // Paint the stage, the overlay and the chips from the state.
+    render: renderStage,
+    // Release the mount: drop every subscriber and stop pointing at a root.
+    detach() { subscribers.length = 0; root = null; active = false; },
+    // Clear the tag queue before the next overlay paint.
+    beginTags: () => { tagQueue = []; },
+    // Pure readings and painters. A caller observes the engine through these.
+    clampFrame, frameTime, frameFromTime, timecode, markerLeft, ballLabel, boxCenter, normalizeBox,
+    displayBoxes, applyFrameResult, text, tagRow, pocketText, validateCloth, correctionScope,
+    exitPlayback, onKeydown, translateEditor, CLOTH_TOLERANCE_PX, calibratedPockets, polygonSource,
+    stageHTML, clothTolerance, markBoxEdited, personChip, eventWindow, placeTags, boxTagKind,
+    POCKET_ANCHOR_ORDER, quadReasonText, paintCueGeometry, paintLiveChip, correctionBody,
+    ghostModelBox, updateOverlayFacts, POCKET_LABELS, CLIP_BEFORE_S, CLIP_AFTER_S, bindVideo,
+    stageVideo, playEvent, dropPerFrame, drawnPocket, cueGeometryVisible, manualBoxCount,
+    modelBoxCount, paintOverlay, liveErrorCodes, liveRefusals, liveErrorText, liveErrorDetail,
+    snapshot, enrollPreview, enrollConfirm, selectStagePerson
+  };
+}
 window.CornerPocketReview = {
+  // The mounted seam for an offline test. It returns one handle.
+  attach,
   mount, activate, deactivate, setAppearance,
   canLeave: () => !active || canLeave(),
   subscribe, snapshot, notify,
   seek, seekTime, stepFrame, setPlaying, setOverlay, toggleOverlay, freeze, setDetector, setEventFilter,
   selectEvent, playEvent, selectCrop, selectTrack, selectTrackAndSeek, selectAnchor, selectBox, clearSelection,
-  selectStageBall, selectStagePerson,
-  saveVerdict, cycleVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity, linkTrack, clearIdentity,
+  selectStagePerson,
+  saveVerdict, setVerdictDraft, setShooter, setNote, labelBall, setSeed, seedIdentity, linkTrack, clearIdentity,
   enrollPreview, enrollConfirm, setEnrollName, cancelEnroll,
   saveAnchors, saveCorrections, runInference, setAutoInference, rebuild, refreshRebuild, setWindow,
   setTool, setBoxLabel, deleteBox, addPolygon, clearPolygon, setNewBoxLabel, nudgeAnchor,
-  setDataset, loadAnchors, loadPersons, loadTracks, loadCrops, loadSeeds, loadEvents,
+  setDataset, loadAnchors, loadPersons, loadTracks,
   // After a VOD import or delete: re-list the datasets, keeping the current one if it still exists.
   reloadDatasets: async () => { const current = state.dataset; await loadDatasets(); if (state.datasets.some(d => d.id === current)) { state.dataset = current; notify(); return true; } return setDataset(state.dataset); },
   applyLiveStatus, ingestLiveFrame, setLiveAttempt, clearLiveError, liveStateText,

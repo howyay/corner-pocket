@@ -1676,7 +1676,7 @@ function attach(options) {
     root.removeEventListener('pointerdown', onPointerDown); root.removeEventListener('pointerup', onPointerUp);
     root.removeEventListener('pointercancel', onPointerUp); root.removeEventListener('keydown', onKey, true); }};
 }
-window.VisionStage = {attach, render, act, onInput, scrubT, actionsHTML, factsLine, layersHTML, identityHTML, chipsHTML, inspectorHTML, linkBlock, quadReason, quadDetail, gateEvidence, eventGeometry, tierBadge, railHTML, bindingFacts, sourcePanelHTML, emptyRailBlock, seedText, syncGuestField};
-// The Broadcasts block, for tests: its state, the renderers and the refusal mapping.
-Object.assign(window.VisionStage, {broadcastsBlock, recordedLabel, serverText, bcState: () => bc, bcReset: () => { if (bc.poll) clearInterval(bc.poll); bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false}; }});
+// The console holds one adapter. attach() binds it to a mount and returns the
+// handle its caller uses. Every renderer stays private to this module.
+window.VisionStage = {attach};
 })();

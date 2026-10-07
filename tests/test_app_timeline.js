@@ -20,19 +20,12 @@ const sandbox = {
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-// Instrument within the closure; production exports only its lifecycle API.
-vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
-  globalThis.T = {clampFrame, frameTime, frameFromTime, timecode, markerLeft, ballLabel, boxCenter, normalizeBox, displayBoxes, state,
-    setRoot: host => { root = host; }, onKeydown, text, translateEditor, updateOverlayFacts,
-    pocketText, pocketWord, POCKET_LABELS, CLOTH_TOLERANCE_PX, clothTolerance, quadDistance, quadSanity, validateCloth,
-    correctionScope, sourceTag, sourceTagLabel, personChip, applyFrameResult, paintOverlay, clothNotice, loadClothReference,
-    calibratedPockets, POCKET_ANCHOR_ORDER, polygonSource, quadRefusalText, quadFallbackText, quadReasonText,
-    playEvent, eventWindow, dropPerFrame, exitPlayback, stageHTML, bindVideo, stageVideo, paintPlayChip, paintLiveChip,
-    placeTags, tagRow, beginTags: () => { tagQueue = []; }, boxTagKind, markBoxEdited, ghostModelBox, boxIou, boxesMatch, isPairedModel, correctionBody, manualBoxCount, modelBoxCount,
-    paintCueGeometry, cueGeometryVisible, drawnPocket, staticQuad, colourWord, CLIP_BEFORE_S, CLIP_AFTER_S,
-    liveErrorCodes, liveRefusals, liveErrorText, liveErrorDetail};
-})();`), sandbox, {filename: 'app.js'});
-const T = sandbox.T;
+// The engine runs the source it ships: no test rewrites the file to reach inside.
+vm.runInContext(source, sandbox, {filename: 'app.js'});
+// The engine seam. attach() takes a stub root and a stub network, and it returns
+// one handle. The handle carries the live state and the readings a test observes.
+// setRoot() points the engine at the root of the test that is running.
+const T = sandbox.window.CornerPocketReview.attach({fetch: sandbox.fetch});
 
 const META = {dataset: 'vod30', fps: 25, frame_count: 45000, duration: 1800, width: 1920, height: 1080, timestamp_kind: 'nominal_cfr'};
 let passed = 0, failed = 0;
@@ -43,13 +36,176 @@ function test(name, fn) {
   catch (error) { console.error(`FAIL ${name}: ${error.message}`); failed++; }
 }
 
+// ---- the Vision adapter seam: one mount in, one handle out ------------------
+// window.VisionStage publishes attach() alone. A test mounts a stub root, drives
+// the real events, and reads the region the operator sees.
+function stageNode() {
+  const node = {
+    innerHTML: '', textContent: '', value: '', title: '', hidden: false, disabled: false,
+    offsetHeight: 0, dataset: {}, attributes: {}, style: {left: '', getPropertyValue: () => '', setProperty() {}},
+    classList: {toggle() {}, add() {}, remove() {}},
+    getAttribute(key) { return Object.prototype.hasOwnProperty.call(node.attributes, key) ? node.attributes[key] : null; },
+    setAttribute(key, value) { node.attributes[key] = String(value); },
+    getBoundingClientRect: () => ({top: 0, bottom: 0, left: 0, width: 0, height: 0}),
+    focus() {}, setSelectionRange() {}, contains: () => false, remove() {},
+    querySelector: () => null, querySelectorAll: () => [], closest: () => null,
+    addEventListener() {}, removeEventListener() {}
+  };
+  return node;
+}
+// The mount the console hands attach(): one region per selector, made on first ask.
+function stageMount() {
+  const nodes = new Map(), handlers = {};
+  return {
+    querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, stageNode()); return nodes.get(selector); },
+    querySelectorAll: () => [],
+    addEventListener(type, fn) { handlers[type] = fn; },
+    removeEventListener(type) { delete handlers[type]; },
+    contains: () => true,
+    style: {getPropertyValue: () => '', setProperty() {}},
+    region: selector => nodes.get(selector),
+    html(selector) { const node = nodes.get(selector); return node ? node.innerHTML : ''; },
+    text(selector) { const node = nodes.get(selector); return node ? node.textContent : ''; },
+    fire(type, target) { if (handlers[type]) handlers[type]({target, preventDefault() {}}); }
+  };
+}
+// One control, as event.target reports it: closest() answers with the control.
+function stageControl(action, value, extra = {}) {
+  const {holder, dataset, ...rest} = extra;
+  const control = {...rest,
+    dataset: {vsAction: action, ...(value === undefined ? {} : {vsValue: String(value)}), ...(dataset || {})},
+    value: extra.value === undefined ? '' : extra.value,
+    checked: !!extra.checked,
+    closest: selector => {
+      if (selector === '[data-vs-action]') return control;
+      const named = /^\[data-vs-action="([^"]+)"\]$/.exec(selector);
+      if (named) return named[1] === action ? control : null;
+      return selector === '.vs-linkblock' && holder ? holder : null;
+    }};
+  return control;
+}
+// Mount the adapter on a stub root, paint one engine state, and return the seam.
+function stageSeam(context, snapshot, options = {}) {
+  const mount = stageMount();
+  // The console always renders a whole state. A test states only the fields it is about.
+  const base = visionSnapshot();
+  const state = {...base, ...snapshot};
+  for (const key of Object.keys(snapshot || {})) {
+    const given = snapshot[key], whole = base[key];
+    if (given && whole && typeof given === 'object' && typeof whole === 'object' && !Array.isArray(given) && !Array.isArray(whole)) {
+      state[key] = {...whole, ...given};
+    }
+  }
+  const review = {snapshot: () => state, subscribe: () => () => {}, ...(options.review || {})};
+  const handle = context.window.VisionStage.attach({lang: 'en', channels: () => [], vods: () => [], regulars: () => [], chat: () => false, ...options, mount, review});
+  return {
+    mount, handle,
+    html: selector => mount.html(selector), text: selector => mount.text(selector), region: selector => mount.region(selector),
+    // The facts line and the layer chips are the two halves of one strip in the console.
+    facts: () => mount.text('#vs-facts') + mount.html('#vs-layers'),
+    // One panel per state: the column for a drawn selection, the overlay for a picked track.
+    overlay: () => (context.overlay ? context.overlay.innerHTML : ''),
+    panel: () => mount.html('#vs-inspector-scroll') || (context.overlay ? context.overlay.innerHTML : ''),
+    actions: () => mount.html('#vs-inspector-actions') || (context.overlay ? context.overlay.innerHTML : ''),
+    render: () => handle.render(),
+    fire: (type, target) => mount.fire(type, target),
+    press(action, value, extra) { const control = stageControl(action, value, extra); mount.fire('click', control); return control; },
+    pick(action, value, extra) { const control = stageControl(action, value, extra); mount.fire('change', control); return control; },
+    field(action, value, extra) { const control = stageControl(action, value, extra); mount.fire('input', control); return control; }
+  };
+}
+const stageHTML = (context, snapshot, selector, options) => stageSeam(context, snapshot, options).html(selector);
+const stageText = (context, snapshot, selector, options) => stageSeam(context, snapshot, options).text(selector);
+const stageFacts = (context, snapshot, options) => stageSeam(context, snapshot, options).facts();
+const stagePanel = (context, snapshot, options) => stageSeam(context, snapshot, options).panel();
+// One wrapper per region: a test reads the markup the console shows, not a renderer.
+const stageRail = (context, snapshot, options) => stageHTML(context, snapshot, '#vs-cues', options);
+const stageChips = (context, snapshot, options) => stageHTML(context, snapshot, '#vs-chips', options);
+const stageActions = (context, snapshot, options) => stageSeam(context, snapshot, options).actions();
+// The source panel opens from its chip, so the seam opens it when it is closed
+// and then reads the panel, not the chip row above it.
+function stageSource(context, snapshot, options) {
+  const seam = stageSeam(context, snapshot, options);
+  if (!seam.html('#vs-chips').includes('id="vs-source-panel"')) seam.press('source-panel');
+  const html = seam.html('#vs-chips');
+  const at = html.indexOf('id="vs-source-panel"');
+  return at < 0 ? html : html.slice(html.lastIndexOf('<', at));
+}
+// The document the adapter sees: a registry of the few elements it reaches for
+// outside its mount. The label overlay lives on the video, not in the mount.
+function stageDocument() {
+  const registry = new Map(), overlay = stageNode();
+  registry.set('#vs-label-overlay', overlay);
+  return {
+    overlay,
+    querySelector: selector => registry.get(selector) || null,
+    querySelectorAll: () => [],
+    createElement: () => stageNode(),
+    addEventListener() {},
+    register(selector, node) { registry.set(selector, node || stageNode()); return registry.get(selector); }
+  };
+}
+// A standalone adapter realm: no network, no DOM, and no receipt ticker.
+function adapterBox() {
+  const document_ = stageDocument();
+  const box = {window: {}, document: document_, location: {hostname: '127.0.0.1'},
+    URL: {}, fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {},
+    console, Math, Number, Object, JSON, Date};
+  box.globalThis = box;
+  box.overlay = document_.overlay;
+  vm.createContext(box);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8'), box, {filename: 'vision-stage.js'});
+  return box;
+}
+
+function visionSnapshot(over = {}) {
+  return {
+    selection:{kind:'none', box:-1}, source:{kind:'vod', label:'vod30 · 1800 s', channel:null},
+    datasets:[{id:'vod30', label:'vod30'}], set:'unlabeled_crops', frame:{index:500, t:20, duration:1800, count:54206, playing:false},
+    live:{state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person'], stale:false, seq:null},
+    detectors:{table:true, person:true, balls:false},
+    corrections:{tool:'select', newBoxLabel:'ball', box:-1, boxLabel:null, polygon:false, result:'none', dirty:false, inferRunning:false, inferStatus:''},
+    dirty:false, notice:{text:''}, receipts:[], busy:false, loading:{overlay:false, since:0}, overlay:{}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0},
+    cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
+    eventFilter:'all', focus:'events',
+    events:{items:[], index:0, reviewed:0}, balls:{items:[], index:0},
+    anchors:{items:[], points:[], index:0, t:0, loaded:false},
+    playback:{on:false, playing:false, event:null, from:0, to:0, loops:1},
+    enroll:{status:'idle'},
+    persons:{tracks:[], track:null, windows:[{win:'68-94', count:3}], win:'68-94', status:'', predictions:null},
+    ...over
+  };
+}
+const ADAPTER_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+const ROSTER = [{id:'p1', name:'Ana', rating:78, status:'Active', statusText:'Active'},
+                {id:'p2', name:'Bo', rating:52, status:'Visitor', statusText:'Visitor'}];
+// The panel for one event: the numbers behind a detection gate, as the operator reads them.
+function stageEventPanel(context, item) {
+  return stagePanel(context, visionSnapshot({selection:{kind:'event', event:item},
+    events:{items:[item], index:0, reviewed:0}}));
+}
+// The identity column for a person track: the link block lives in that panel.
+function stageLinkPanel(context, snap) {
+  const track = snap.persons.track;
+  return stagePanel(context, visionSnapshot({
+    selection:{kind:'person', track, person:{track_id:track, cluster_id:null, player_id:null, bound_evidence:null}},
+    persons:{tracks:[], track, windows:[], win:null, status:'', predictions:null, identity:snap.persons.identity}}));
+}
+// The rail card for one event at a known confirmation tier.
+function stageTierCard(context, tier) {
+  return stageRail(context, visionSnapshot({eventFilter:'all', selection:{}, focus:'events',
+    events:{items:[{id:9, type:'shot', t:9.0, color:'white', tier}], index:0, reviewed:0}}));
+}
+
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
-  for (const name of ['mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts','pocketText','colourWord']) assert.ok(api.includes(name), `missing engine API: ${name}`);
+  for (const name of ['attach','mount','activate','deactivate','canLeave','setAppearance','subscribe','snapshot','seek','seekTime','stepFrame','setPlaying','setOverlay','toggleOverlay','selectEvent','playEvent','selectCrop','selectTrack','selectAnchor','selectBox','clearSelection','saveVerdict','labelBall','setSeed','seedIdentity','clearIdentity','enrollPreview','enrollConfirm','setEnrollName','cancelEnroll','saveAnchors','saveCorrections','runInference','setDataset','applyLiveStatus','ingestLiveFrame','liveStateText','freeze','counts','pocketText','colourWord']) assert.ok(api.includes(name), `missing engine API: ${name}`);
   // +2 for the polish's clarify step: pocketText and colourWord, so the adapter names pockets and colours in one vocabulary.
   // +1 for the VOD selector: reloadDatasets, so the Source panel can list a VOD it just imported or deleted.
   assert.ok(api.includes('reloadDatasets'));
-  assert.strictEqual(api.length, 72, 'the engine exposes exactly its lifecycle + one-stage API (round 17 adds setAutoInference, round 28 adds linkTrack)');
+  // +1 for the mounted seam (attach). -5 keys no caller names any more:
+  // selectStageBall, cycleVerdict, loadCrops, loadSeeds and loadEvents.
+  assert.strictEqual(api.length, 68, 'the engine exposes its lifecycle, one stage and the mounted seam (round 17 adds setAutoInference, round 28 adds linkTrack)');
   assert.strictEqual(sandbox.state, undefined);
   assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false);
 });
@@ -430,28 +586,25 @@ test('browser regression: translated options keep submitted values, stage copy k
 });
 
 test('adapter facts line separates model result from manual correction', () => {
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(adapter, context);
+  const context = adapterBox();
   const base = {
     source:{kind:'vod', label:'vod30', channel:null}, frame:{index:8100, t:270, duration:1800, count:45000, playing:false, rate:0},
     loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
     drawn:{cloth:2, balls:16, persons:8, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}
   };
-  const facts = (context.window.VisionStage.factsLine(base) + context.window.VisionStage.layersHTML(base));
+  const facts = stageFacts(context, base);
   assert.ok(facts.includes('cloth 1 (+1 manual)'), facts);
   assert.ok(facts.includes('balls 8 (+8 manual)'), facts);
   assert.ok(facts.includes('persons 4 (+4 manual)'), facts);
   assert.ok(facts.includes('pockets 6') && !facts.includes('pockets 6 (+'), 'pockets are never manual');
-  assert.ok((context.window.VisionStage.factsLine(base)).endsWith('overlays ON'), facts);
-  const clean = (context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}}) + context.window.VisionStage.layersHTML({...base, drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}}));
+  assert.ok((stageText(context, base, '#vs-facts')).endsWith('overlays ON'), facts);
+  const clean = stageFacts(context, {...base, drawn:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1, auto:{cloth:1, balls:8, persons:4, pockets:6, anchors:0, events:1}}});
   assert.ok(!clean.includes('manual'), 'an untouched frame prints no provenance marker');
-  const loading = context.window.VisionStage.factsLine({...base, loading:{overlay:true, since: Date.now() - 1600}});
+  const loading = stageText(context, {...base, loading:{overlay:true, since: Date.now() - 1600}}, '#vs-facts');
   assert.ok(/overlays LOADING \(1\.[56] s\)$/.test(loading), loading);
-  const empty = context.window.VisionStage.factsLine({...base, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
+  const empty = stageText(context, {...base, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}}, '#vs-facts');
   assert.ok(empty.endsWith('overlays none'), empty);
-  const older = (context.window.VisionStage.factsLine({...base, drawn:{cloth:1, balls:2, persons:0, pockets:0, anchors:0, events:0}}) + context.window.VisionStage.layersHTML({...base, drawn:{cloth:1, balls:2, persons:0, pockets:0, anchors:0, events:0}}));
+  const older = stageFacts(context, {...base, drawn:{cloth:1, balls:2, persons:0, pockets:0, anchors:0, events:0}});
   assert.ok(older.includes('balls 2') && !older.includes('manual'), 'a snapshot without provenance still prints its totals');
 });
 
@@ -459,10 +612,7 @@ test('an accepted quad prints its measured drift, not just a pass', () => {
   // The detector searches around the saved anchors it is validated against
   // (src/frame_inference.app_prior_for), so "ok" alone would hide the number
   // that says how far the refinement moved from the operator's corners.
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(adapter, context);
+  const context = adapterBox();
   const base = {
     source:{kind:'vod', label:'vod30', channel:null}, frame:{index:8100, t:270, duration:1800, count:45000, playing:false, rate:0},
     loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
@@ -470,31 +620,28 @@ test('an accepted quad prints its measured drift, not just a pass', () => {
     cloth:{verdict:{state:'ok', reason:'within tolerance', mean:6.43, max:8.07, tolerance:40, source:'saved anchors'},
            pockets:{source:'model', count:6, reference:null}, reference:{source:'saved anchors', width:1280, height:720}}
   };
-  const fresh = (context.window.VisionStage.factsLine(base) + context.window.VisionStage.layersHTML(base));
+  const fresh = stageFacts(context, base);
   // Round 1 (pin changed deliberately): the plain check leads, the measured drift and the
   // tolerance still follow it, so an accepted quad still prints its number, not just a pass.
   assert.ok(fresh.includes('table outline matches the saved corners (6.4 px · tol 40 px)'), fresh);
-  const unverified = (context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}}) + context.window.VisionStage.layersHTML({...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}}));
+  const unverified = stageFacts(context, {...base, cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
   assert.ok(unverified.includes('model quad unverified') && !unverified.includes('quad drift'), unverified);
-  const off = (context.window.VisionStage.factsLine({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}}) + context.window.VisionStage.layersHTML({...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}}));
+  const off = stageFacts(context, {...base, cloth:{...base.cloth, verdict:{state:'off', reason:'off saved corners', mean:43.2, tolerance:40}}});
   assert.ok(off.includes('model quad off saved corners 43 px (tol 40 px)'), off);
 });
 
 test('the facts line uses one word for one live state', () => {
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(adapter, context);
+  const context = adapterBox();
   const live = {source:{kind:'live', label:'live', channel:'examplechannel'}, frame:{index:0, t:0, duration:1800, count:45000, playing:false, rate:0},
     loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:12, frame_age_ms:240, receive_to_result_ms:33},
     drawn:{cloth:1, balls:0, persons:3, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:3, pockets:0, anchors:0, events:0}}};
-  const fresh = (context.window.VisionStage.factsLine(live) + context.window.VisionStage.layersHTML(live));
+  const fresh = stageFacts(context, live);
   assert.ok(fresh.startsWith('live · seq 12'), fresh);
-  const stale = (context.window.VisionStage.factsLine({...live, live:{...live.live, stale:true, frame_age_ms:10200}}) + context.window.VisionStage.layersHTML({...live, live:{...live.live, stale:true, frame_age_ms:10200}}));
+  const stale = stageFacts(context, {...live, live:{...live.live, stale:true, frame_age_ms:10200}});
   assert.ok(stale.startsWith('stale · seq 12'), stale);
   assert.ok(!stale.includes('live'), 'the stale state is not described as live');
   assert.ok(stale.includes('frame age 10.2 s') && stale.includes('receive-to-result 33 ms'), stale);
-  assert.ok(adapter.includes('not glass-to-glass') || adapter.includes('latency'), 'the latency caveat string is untouched');
+  assert.ok(ADAPTER_SOURCE.includes('not glass-to-glass') || ADAPTER_SOURCE.includes('latency'), 'the latency caveat string is untouched');
 });
 
 test('the verdict keys act on the selected cue only', () => {
@@ -802,30 +949,27 @@ test('a foreign correction and a rejected quad are both stated on the stage', ()
 });
 
 test('adapter facts line names the layers it held back', () => {
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(adapter, context);
+  const context = adapterBox();
   const base = {
     source:{kind:'vod', label:'vod30', channel:null}, frame:{index:0, t:0, duration:1800, count:45000, playing:false, rate:0},
     loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
     drawn:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'off', mean:98.1, max:171.7, tolerance:40, source:'saved calibration'}, refusal:{ok:false, owner:'vod30 frame 12 @ 1920×1080', expected:'vod30 frame 0 @ 1280×720'}}
   };
-  const facts = (context.window.VisionStage.factsLine(base) + context.window.VisionStage.layersHTML(base));
+  const facts = stageFacts(context, base);
   // The pockets count lives on its chip; the facts line carries only the reason (owner round 24 item 2).
   assert.ok(facts.includes('pockets 0') && facts.includes('(quad rejected)'), facts);
   assert.ok(facts.includes('model quad off saved corners 98 px (tol 40 px)'), facts);
   assert.ok(facts.includes('saved correction refused (vod30 frame 12 @ 1920×1080)'), facts);
-  const unverified = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}}));
+  const unverified = stageFacts(context, {...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}}, cloth:{verdict:{state:'unverified'}, refusal:null}});
   assert.ok(unverified.includes('pockets 0') && unverified.includes('(unverified)') && unverified.includes('model quad unverified'), unverified);
   // Pockets drawn from the saved calibration say so, in the engine's own words.
   // The chip owns the count, so this fixture says how the six were drawn (auto); the facts
   // line owns the reason (owner round 24 item 2).
   const offsetState = {...base, drawn:{...base.drawn, pockets:6, auto:{...base.drawn.auto, pockets:6}}, cloth:{verdict:{state:'off', mean:95, tolerance:40}, pockets:{source:'calibration', count:6, reference:'saved anchors'}, refusal:null}};
-  const offset = (context.window.VisionStage.factsLine(offsetState) + context.window.VisionStage.layersHTML(offsetState));
+  const offset = stageFacts(context, offsetState);
   assert.ok(offset.includes('pockets 6') && offset.includes('(saved anchors)'), offset);
-  const clean = (context.window.VisionStage.factsLine({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null}) + context.window.VisionStage.layersHTML({...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null}));
+  const clean = stageFacts(context, {...base, drawn:{...base.drawn, cloth:1, pockets:6, auto:{...base.drawn.auto, cloth:1, pockets:6}}, cloth:null});
   assert.ok(clean.includes('cloth 1') && clean.includes('pockets 6') && !clean.includes('quad'), clean);
 });
 
@@ -833,17 +977,14 @@ test('every layer chip states its count as the chip text (owner round 26 item 1)
   // A string assertion on the copy cannot see WHERE the copy landed. The chips once wrote the count
   // inside the opening tag, so the browser read it as attributes and drew four empty dots: this test
   // reads each chip's body, which is what the operator sees.
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(adapter, context);
+  const context = adapterBox();
   const state = {
     source:{kind:'vod', label:'vod30', channel:null}, frame:{index:0, t:0, duration:1800, count:45000, playing:false, rate:0},
     loading:{overlay:false, since:0}, busy:false, live:{stale:false, seq:null, frame_age_ms:null, receive_to_result_ms:null},
     drawn:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:6, persons:4, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'off', mean:98.1, max:171.7, tolerance:40, source:'saved calibration'}, refusal:null}
   };
-  const html = context.window.VisionStage.layersHTML(state);
+  const html = stageHTML(context, state, '#vs-layers');
   for (const key of ['cloth', 'balls', 'persons', 'pockets']) {
     const m = html.match(new RegExp(`data-vs-value="${key}"[^>]*>([\\s\\S]*?)</button>`));
     assert.ok(m, `the ${key} chip has no body: ${html}`);
@@ -907,40 +1048,37 @@ test('a refused model quad falls back to the saved calibration for the pockets',
 });
 
 test('a cold frame can start a correction without a devtools call', () => {
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(adapter, context);
-  const stage = context.window.VisionStage;
-  // attach() only needs a host to bind to: the surface state is module-level.
-  stage.attach({mount:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, lang:'en', review:{snapshot: () => null}, channels: () => [], regulars: () => [], chat: () => false});
+  const context = adapterBox();
+  // The seam mounts the same panel the console mounts, so the block is read as the operator sees it.
+  const stage = state => stagePanel(context, state);
+
   const base = {
     selection:{kind:'none', box:-1}, source:{kind:'vod', label:'vod30', channel:null}, datasets:[{id:'vod30', label:'vod30'}], set:'unlabeled_crops',
     frame:{count:54206, index:500}, live:{state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person']},
     detectors:{table:true, person:true, balls:false}, corrections:{tool:'select', newBoxLabel:'ball', box:-1, boxLabel:null, polygon:false, result:'none', dirty:false, inferRunning:false, inferStatus:''},
     dirty:false, notice:{text:''}, receipts:[], persons:{tracks:[], track:null, windows:[], win:'', status:''}
   };
-  const html = stage.inspectorHTML(base);
+  const html = stage(base);
   for (const action of ['data-vs-action="add-polygon"', 'data-vs-value="draw"']) assert.ok(html.includes(action), `a cold frame must offer ${action}`);
   assert.ok(html.includes('data-vs-action="tool"') && html.includes('data-vs-action="clear-polygon"'));
   assert.ok(!html.includes('data-vs-action="save-corrections"'), 'an untouched frame has nothing to save');
-  assert.ok(stage.inspectorHTML({...base, dirty:true}).includes('data-vs-action="save-corrections"'), 'unsaved edits expose the existing save action');
+  assert.ok(stage({...base, dirty:true}).includes('data-vs-action="save-corrections"'), 'unsaved edits expose the existing save action');
   // The box block keeps its own copy of the same controls (inference stays in
   // the action footer for that block), and the person block stays identity-only.
-  const box = stage.inspectorHTML({...base, selection:{kind:'box', box:0}});
+  const box = stage({...base, selection:{kind:'box', box:0}});
   assert.ok(box.includes('data-vs-action="add-polygon"') && box.includes('data-vs-action="delete-box"'));
   // Round 18, read exactly: inference runs itself when the picture stops, so the manual button is gone
   // from every surface and no frame tool carries it.
-  assert.ok(!adapter.includes('data-vs-action="run-inference"'), 'no surface offers a manual inference run');
+  assert.ok(!ADAPTER_SOURCE.includes('data-vs-action="run-inference"'), 'no surface offers a manual inference run');
   assert.ok(fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8').includes('function scheduleAutoInference'),
     'because the engine schedules it on pause');
-  const person = stage.inspectorHTML({...base, selection:{kind:'person', track:3, person:{cluster_id:null}}});
+  const person = stage({...base, selection:{kind:'person', track:3, person:{cluster_id:null}}});
   assert.ok(person.includes('Identity') && !person.includes('data-vs-action="add-polygon"'), 'the person block stays the identity block');
   assert.ok(!person.includes('data-vs-value="A"') && !person.includes('data-vs-value="B"'), 'the person block no longer offers the removed A/B seeds');
-  assert.ok(adapter.includes('case \'identity-save\'') && adapter.includes('case \'identity-clear\''), 'the surface must act on both identity actions');
+  assert.ok(ADAPTER_SOURCE.includes('case \'identity-save\'') && ADAPTER_SOURCE.includes('case \'identity-clear\''), 'the surface must act on both identity actions');
   // Every one of these buttons reaches a real engine entry point.
   for (const action of ['tool','add-polygon','clear-polygon','save-corrections']) {
-    assert.ok(adapter.includes(`case '${action}'`), `the surface must act on ${action}`);
+    assert.ok(ADAPTER_SOURCE.includes(`case '${action}'`), `the surface must act on ${action}`);
   }
   for (const api of ['setTool','addPolygon','clearPolygon','runInference','saveCorrections']) {
     assert.ok(typeof sandbox.window.CornerPocketReview[api] === 'function', `the engine must expose ${api}`);
@@ -1022,15 +1160,9 @@ test('the cloth count follows where the polygon came from', () => {
 test('the facts line states a refused quad reason in both languages', () => {
   // Fix 1 end to end on the render side: table_quad.reason exists, so the facts
   // line says why there is no quad instead of an unexplained `cloth 0`.
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(adapter, context);
-  const V = context.window.VisionStage;
+  const context = adapterBox();
   // zh copy comes from the adapter's own opts (ops.js passes the shell language in),
-  // so the bilingual assertions attach with lang:'zh' first and switch back.
-  const mountStub = {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}};
-  V.attach({mount: mountStub, lang:'en'});
+  // so the bilingual assertions mount the same state in that language.
   const quad = {state:'naive_fallback', reason:'low_cloth_area', confidence:0.0, source:'naive', verified_sides:2,
                 sides:[{side:0, state:'unverified', reason:'low_cloth_area'}, {side:1, state:'verified'},
                        {side:2, state:'unverified', reason:'low_cloth_area'}, {side:3, state:'verified'}],
@@ -1041,46 +1173,37 @@ test('the facts line states a refused quad reason in both languages', () => {
     drawn:{cloth:0, balls:8, persons:4, pockets:0, anchors:0, events:1, auto:{cloth:0, balls:8, persons:4, pockets:0, anchors:0, events:1}},
     cloth:{verdict:{state:'none', reason:'no detection'}, quad, pockets:{source:null, count:0, reference:null}, reference:null}
   };
-  const refused = V.factsLine(base) + V.layersHTML(base);
+  const refused = stageFacts(context, base);
   assert.ok(refused.includes('quad refused (the cloth is hidden'), 'A ' + refused);
   assert.ok(refused.includes('2/4 sides unverified: 1, 3'), 'B ' + refused);
   assert.ok(!/_/.test(refused.split('quad refused')[1].split(' · ')[0]), 'no snake_case code in the facts line');
-  assert.ok(V.quadDetail(base).includes('reason: the cloth is hidden'), V.quadDetail(base));
-  V.attach({mount: mountStub, lang:'zh'});
-  const zh = V.factsLine(base) + V.layersHTML(base);
+  assert.ok(stageSeam(context, base).region('#vs-facts').title.includes('reason: the cloth is hidden'), 'D');
+  const zh = stageFacts(context, base, {lang:'zh'});
   assert.ok(zh.includes('四边形已拒绝 (台面被遮挡'), 'Z1 ' + zh);
   assert.ok(zh.includes('未校验边 2/4：1, 3'), 'Z2 ' + zh);
-  V.attach({mount: mountStub, lang:'en'});
   // A refusal with a drawn fallback quad says which quad the operator is looking at.
-  const fallback = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
-                                cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}}) + V.layersHTML({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
+  const fallback = stageFacts(context, {...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
                                 cloth:{...base.cloth, verdict:{state:'unverified', mean:null, tolerance:null}}});
   assert.ok(fallback.includes('quad from the naive fallback (the cloth is hidden'), 'F ' + fallback);
   // An accepted, fully verified quad keeps the drift line and grows no refusal.
-  const ok = V.factsLine({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
-                          cloth:{...base.cloth, quad:{...quad, state:'refined', reason:null, verified_sides:4, sides:[]},
-                                 verdict:{state:'ok', reason:'within tolerance', mean:5.7, tolerance:40, source:'saved anchors'}}}) + V.layersHTML({...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
+  const ok = stageFacts(context, {...base, drawn:{...base.drawn, cloth:1, auto:{...base.drawn.auto, cloth:1}},
                           cloth:{...base.cloth, quad:{...quad, state:'refined', reason:null, verified_sides:4, sides:[]},
                                  verdict:{state:'ok', reason:'within tolerance', mean:5.7, tolerance:40, source:'saved anchors'}}});
   assert.ok(ok.includes('table outline matches the saved corners (5.7 px · tol 40 px)'), 'O ' + ok);
   assert.ok(!ok.includes('refused') && !ok.includes('fallback'), 'O2 ' + ok);
   // The stored-inference polygon names itself instead of hiding inside the total.
-  const inference = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
-                                 drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}) + V.layersHTML({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
+  const inference = stageFacts(context, {...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
                                  drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
   // "stored inference" is reserved for a file an earlier run wrote; a polygon from
   // inference run on this frame now is this session's, and says so.
   assert.ok(inference.includes('cloth 1 (inference · this session)'), 'I ' + inference);
   assert.ok(!inference.includes('stored inference'), 'I2 a session run is never called stored: ' + inference);
-  const stored = V.factsLine({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
-                              corrections:{tool:'select', result:'inference', storedInference:true, inferenceAt:'2026-09-16T04:07:48+00:00'},
-                              drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}) + V.layersHTML({...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
+  const stored = stageFacts(context, {...base, cloth:{...base.cloth, polygon:'inference', quad:null, verdict:{state:'none'}},
                               corrections:{tool:'select', result:'inference', storedInference:true, inferenceAt:'2026-09-16T04:07:48+00:00'},
                               drawn:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
   assert.ok(stored.includes('cloth 1 (stored inference') && /2026|9\/16/.test(stored),
     'I3 a file from an earlier run keeps its own timestamp: ' + stored);
-  assert.ok(V.factsLine({...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
-                         drawn:{cloth:2, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}) + V.layersHTML({...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
+  assert.ok(stageFacts(context, {...base, cloth:{...base.cloth, polygon:'manual', quad:null, verdict:{state:'none'}},
                          drawn:{cloth:2, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:1, balls:0, persons:0, pockets:0, anchors:0, events:0}}}).includes('cloth 1 (+1 manual)'), 'M');
 });
 
@@ -1110,7 +1233,7 @@ test('the Vision tab renders one picture surface for the selected cue', () => {
   // stage; two pictures of the same moment read as one stale picture. The
   // inspector now carries no picture at all, and the rail cards carry none:
   // every cue-shaped selection has exactly the stage.
-  const VS = adapterStage('en');
+  const context = adapterSeam('en');
   const item = {id:1046, type:'shot', t:484.1, color:'blue', from_px:[100, 200], to_px:[300, 400], disp_mm:727,
                 speed_mm_s:47.75, window_s:[482.6, 486.6], px_source:'scan cloth quad', projectable:true, tier:'geometry',
                 annotation:{verdict:'correct', shooter:'A', note:'checked'}};
@@ -1120,13 +1243,13 @@ test('the Vision tab renders one picture surface for the selected cue', () => {
     events:{items:[item], index:0, reviewed:1},
     balls:{items:[], index:0, set:'unlabeled_crops', labels:{}},
   });
-  const inspector = VS.inspectorHTML(snapshot);
+  const inspector = context.panel(snapshot);
   assert.ok(!/<img|<video/.test(inspector), 'the inspector block for a cue holds no picture at all');
   assert.ok(inspector.includes('data-vs-action="play-event"'), 'the cue still offers the stage playback');
   assert.ok(inspector.includes('The clip plays in the stage with its overlay'), 'the note explaining the one surface stays');
   assert.ok(inspector.includes('#1046') && inspector.includes('Detected geometry') && inspector.includes('Verdict') && inspector.includes('Correct'),
     'the id, geometry and verdict stay in the block that lost its picture');
-  const rail = VS.railHTML(snapshot);
+  const rail = context.rail(snapshot);
   assert.ok(!/<img|<video/.test(rail), 'the cues rail carries no per-cue thumbnail picture');
   assert.ok(rail.includes('data-vs-action="select-event"') && rail.includes('tier-geometry'), 'the rail card keeps its pick action and tier badge');
   // The stage markup holds the playing video and the frozen still; renderStage
@@ -1296,13 +1419,7 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
   // the re-measured move. Loading the adapter standalone proves the formatting
   // without a browser.
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
-               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
-               console, Math, Number, Object, JSON, Date};
-  box.globalThis = box;
-  vm.createContext(box);
-  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
-  const VS = box.window.VisionStage;
+  const context = adapterBox();
   const pot = {id:1, type:'pot', t:5.6, color:'blue', dup_count:3,
                gate:{status:'rejected', gate:'census', reasons:['census_recovered'],
                      numbers:{census_pre:3, census_post:2, color_census_pre:2, color_census_post:1,
@@ -1312,15 +1429,17 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
                       reasons:['displacement_corroborated', 'geometry_mismatch'],
                       numbers:{disp_mm:777, disp_color:'white', window_motion:16.85, geometry_gap_px:386.5}}};
   // Without an engine the adapter prints the stored pocket key; with one (below), the position word.
-  same(VS.gateEvidence(pot), ['3→2', '60 mm · foot-right', '×3']);
-  same(VS.gateEvidence(shot), ['777 mm white', 'motion 16.85']);
-  same(VS.gateEvidence({id:3, type:'pot'}), []);          // no gate block: no invented numbers
-  const potFacts = VS.eventGeometry(pot);
+    const evCard = item => stageRail(context, visionSnapshot({eventFilter:'all', selection:{}, focus:'events', events:{items:[item], index:0, reviewed:0}}));
+  assert.ok(evCard(pot).includes('3→2') && evCard(pot).includes('60 mm · foot-right') && evCard(pot).includes('×3'), 'the card carries the census, the pocket distance and the repeat count');
+  assert.ok(evCard(shot).includes('777 mm white') && evCard(shot).includes('motion 16.85'), 'and the re-measured move with its colour');
+  // No gate block means no invented numbers.
+  assert.ok(!/\d+ mm/.test(evCard({id:3, type:'pot'})), 'a plain detection shows no distance');
+  const potFacts = stageEventPanel(context, pot);
   assert.ok(potFacts.includes('Ball census') && potFacts.includes('3 → 2'), 'the census reaches the inspector');
   assert.ok(potFacts.includes('Vanished ball') && potFacts.includes('60 mm · foot-right'), 'so does the pocket distance');
   assert.ok(potFacts.includes('rejected · census') && potFacts.includes('census_recovered'), 'and why the gate failed');
   assert.ok(potFacts.includes('Duplicate detections merged'), 'and how many repeats were merged');
-  const shotFacts = VS.eventGeometry(shot);
+  const shotFacts = stageEventPanel(context, shot);
   assert.ok(shotFacts.includes('Re-measured move') && shotFacts.includes('777 mm · white'), 'the re-measured move reaches the inspector');
   assert.ok(shotFacts.includes('387 px'), 'so does the claim-vs-measured gap');
   const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
@@ -1331,28 +1450,22 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
 
 test('round 28 / owner item: the link block lists this frames other identities, face first in the wording', () => {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
-               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
-               console, Math, Number, Object, JSON, Date};
-  box.globalThis = box;
-  vm.createContext(box);
-  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
-  const VS = box.window.VisionStage;
+  const context = adapterBox();
   const snap = {persons:{track:7, identity:[
     {track_id:7, cluster_id:11, player_id:null, face_bbox:null},
     {track_id:8, cluster_id:12, player_id:'Su', face_sim:0.66, face_bbox:[10,20,40,60]},
     {track_id:9, cluster_id:13, player_id:null, face_sim:null, face_bbox:null}]}};
-  const html = VS.linkBlock(snap);
+  const html = stageLinkPanel(context, snap);
   assert.ok(html.includes('data-vs-link="1"'), 'the block says which one it is');
   assert.ok(html.includes('data-vs-action="link-target"') && html.includes('data-vs-action="link-track"'), 'one picker and one button');
   assert.ok(html.includes('<option value="12">') && html.includes('track 8 \u00b7 Su \u00b7 face \u00b7 0.66'),
     'the option names the track, the player, the face and the similarity that put it there');
   assert.ok(html.includes('<option value="13">') && !html.includes('value="11"'), 'this track is never offered to itself');
   assert.ok(html.includes('Linking merges the two identities'), 'the note says what the click will do');
-  const noFace = VS.linkBlock({persons:{track:7, identity:[{track_id:7, cluster_id:11}, {track_id:9, cluster_id:13, face_bbox:null}]}});
+  const noFace = stageLinkPanel(context, {persons:{track:7, identity:[{track_id:7, cluster_id:11}, {track_id:9, cluster_id:13, face_bbox:null}]}});
   assert.ok(noFace.includes('No face on this frame') && !noFace.includes('Linking merges'),
     'with no face on the frame the note says so instead of promising one');
-  assert.strictEqual(VS.linkBlock({persons:{track:7, identity:[{track_id:7, cluster_id:11}]}}), '',
+  assert.strictEqual(stageLinkPanel(context, {persons:{track:7, identity:[{track_id:7, cluster_id:11}]}}).includes('data-vs-link="1"'), false,
     'alone on the frame there is nothing to link to, so no dead picker is drawn');
   const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
   for (const key of ['linkTitle', 'linkTarget', 'linkAction', 'linkHint', 'linkNoFace', 'thisTrack', 'unnamed', 'hasFace'])
@@ -1365,32 +1478,26 @@ test('round 28 / owner item: the link block lists this frames other identities, 
 
 test('the confirmation tier is badged on the card and in the inspector, in both languages', () => {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
-               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
-               console, Math, Number, Object, JSON, Date};
-  box.globalThis = box;
-  vm.createContext(box);
-  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
-  const VS = box.window.VisionStage;
-  const geometry = VS.tierBadge({tier:'geometry'});
-  const window_ = VS.tierBadge({tier:'window'});
+  const context = adapterBox();
+  const geometry = stageTierCard(context, 'geometry');
+  const window_ = stageTierCard(context, 'window');
   assert.ok(geometry.includes('geometry-verified') && geometry.includes('data-vs-tier="geometry"'), 'the solid tier is badged');
   assert.ok(window_.includes('motion window only') && window_.includes('data-vs-tier="window"'), 'the window tier is badged');
   assert.ok(geometry.includes('vs-badge tier-geometry') && window_.includes('vs-badge tier-window'),
     'the two tiers carry different classes, so the rail can tell them apart at a glance');
-  assert.strictEqual(VS.tierBadge({id:9, type:'shot'}), '', 'an event with no tier is never badged as verified');
+  assert.ok(!stageTierCard(context, null).includes('data-vs-tier='), 'an event with no tier is never badged as verified');
   const shot = {id:1011, type:'shot', t:1799.1, color:'white', tier:'window',
                 gate:{status:'confirmed', gate:'displacement', reasons:['displacement_corroborated','geometry_mismatch'],
                       numbers:{disp_mm:318, disp_color:'white', geometry_gap_px:263.2, calibration_frac:0.351}},
                 geometry_check:{matches:false, gap_px:263.2, tol_px:60}};
-  const facts = VS.eventGeometry(shot);
+  const facts = stageEventPanel(context, shot);
   assert.ok(facts.includes('Confirmation tier') && facts.includes('motion window only'),
     'the tier survives into the inspector verdict block');
   const served = {id:28, type:'shot', t:483.4, color:'black', tier:'geometry',
                   gate:{status:'confirmed', gate:'displacement', reasons:['displacement_corroborated'],
                         numbers:{disp_mm:1837, disp_color:'black', geometry_gap_px:29}}};
-  assert.ok(VS.eventGeometry(served).includes('geometry-verified'), 'and so does the geometry tier');
-  const rail = VS.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[shot, served], index:0, reviewed:0},
+  assert.ok(stageEventPanel(context, served).includes('geometry-verified'), 'and so does the geometry tier');
+  const rail = stageRail(context, {eventFilter:'all', selection:{}, focus:'events', events:{items:[shot, served], index:0, reviewed:0},
                             balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
   assert.ok(rail.includes('data-vs-tier="geometry"') && rail.includes('data-vs-tier="window"'),
     'the rail shows both tiers side by side');
@@ -1404,16 +1511,10 @@ test('the confirmation tier is badged on the card and in the inspector, in both 
 
 test('an emptied queue explains itself instead of showing a bare list', () => {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
-               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
-               console, Math, Number, Object, JSON, Date};
-  box.globalThis = box;
-  vm.createContext(box);
-  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
-  const VS = box.window.VisionStage;
+  const context = adapterBox();
   const emptyQueue = {eventFilter:'all', selection:{}, focus:'events', events:{items:[], index:0, reviewed:0},
                       balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}};
-  const rail = VS.railHTML(emptyQueue);
+  const rail = stageRail(context, emptyQueue);
   assert.ok(rail.includes('data-vs-empty="shots-measured-none"'), 'the empty queue is marked as measured-empty');
   assert.ok(rail.includes('No shot candidate survived measurement'), 'and says so');
   assert.ok(rail.includes('explained by occlusion'), 'naming the measured reason: occlusion');
@@ -1421,19 +1522,19 @@ test('an emptied queue explains itself instead of showing a bare list', () => {
   assert.ok(rail.includes('report artifacts'), 'and where the events still live');
   assert.ok(!rail.includes('data-vs-action="select-event"'), 'no card is invented for an empty queue');
   assert.ok(!rail.includes('No event candidates in this filter.'), 'the bare copy is not used while the reason exists');
-  const geometryFilter = VS.railHTML({...emptyQueue, eventFilter:'geometry'});
+  const geometryFilter = stageRail(context, {...emptyQueue, eventFilter:'geometry'});
   assert.ok(geometryFilter.includes('data-vs-empty="shots-measured-none"'), 'a tier filter inherits the same reason');
-  const pots = VS.railHTML({...emptyQueue, eventFilter:'pot'});
+  const pots = stageRail(context, {...emptyQueue, eventFilter:'pot'});
   assert.ok(pots.includes('data-vs-empty="pots-measured-none"') && pots.includes('No pot candidate in this VOD survived measurement'),
     'the pots tab keeps its own reason');
   const shot = {id:28, type:'shot', t:483.4, color:'black', tier:'geometry', gate:{status:'confirmed', gate:'displacement', numbers:{disp_mm:1837}}};
-  const withEvent = VS.railHTML({...emptyQueue, events:{items:[shot], index:0, reviewed:0}});
+  const withEvent = stageRail(context, {...emptyQueue, events:{items:[shot], index:0, reviewed:0}});
   assert.ok(withEvent.includes('data-vs-value="geometry"') && withEvent.includes('data-vs-value="window"'),
     'with a tiered event the tier controls come back');
-  const untiered = VS.railHTML({...emptyQueue, events:{items:[{...shot, tier:null}], index:0, reviewed:0}});
+  const untiered = stageRail(context, {...emptyQueue, events:{items:[{...shot, tier:null}], index:0, reviewed:0}});
   assert.ok(!untiered.includes('data-vs-value="geometry"'), 'without a tiered event they are not offered');
   assert.ok(!untiered.includes('data-vs-tier='), 'and no badge is invented');
-  const inspector = VS.inspectorHTML ? '' : '';
+
   const zhShots = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
   for (const key of ['noShotsMeasured', 'noPotsMeasured', 'tierGeometry', 'tierWindow'])
     assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zhShots), `${key} is translated in 中`);
@@ -1442,21 +1543,15 @@ test('an emptied queue explains itself instead of showing a bare list', () => {
 
 test('the pots tab explains its empty state instead of showing a bare list', () => {
   const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []}, URL:{},
-               fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout,
-               console, Math, Number, Object, JSON, Date};
-  box.globalThis = box;
-  vm.createContext(box);
-  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
-  const VS = box.window.VisionStage;
+  const context = adapterBox();
   const shot = {id:28, type:'shot', t:483.4, color:'black', tier:'geometry', gate:{status:'confirmed', gate:'displacement', numbers:{disp_mm:1837}}};
-  const rail = VS.railHTML({eventFilter:'pot', selection:{}, focus:'events', events:{items:[shot], index:0, reviewed:0},
+  const rail = stageRail(context, {eventFilter:'pot', selection:{}, focus:'events', events:{items:[shot], index:0, reviewed:0},
                             balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
   assert.ok(rail.includes('data-vs-empty="pots-measured-none"'), 'the empty pots list is marked as measured-empty');
   assert.ok(rail.includes('No pot candidate in this VOD survived measurement'), 'and names why: no candidate survived measurement');
   assert.ok(rail.includes('the ball census refuted every claim'), 'with the refuting gate named');
   assert.ok(!rail.includes('data-vs-action="select-event"'), 'no shot is smuggled into the pots tab');
-  const empty = VS.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[], index:0, reviewed:0},
+  const empty = stageRail(context, {eventFilter:'all', selection:{}, focus:'events', events:{items:[], index:0, reviewed:0},
                              balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
   assert.ok(empty.includes('data-vs-empty="shots-measured-none"'), 'an empty queue gets the shot reason, not the pot one');
   assert.ok(!empty.includes('No pot candidate'), 'the pot reason never leaks onto the shots filter');
@@ -1465,52 +1560,40 @@ test('the pots tab explains its empty state instead of showing a bare list', () 
 });
 
 // ---- identity labelling + source panel (owner request, 2026-09-23) --------
-// The adapter under test: loaded once per language with a stub host, so the
-// blocks can be rendered without a browser or a live engine.
-function adapterStage(lang, roster, extra) {
-  const adapterSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  // setInterval is a no-op: a full render starts the receipt-age ticker, which would
-  // otherwise keep this test process alive.
-  const box = {window:{}, document:{querySelector: () => null, querySelectorAll: () => []},
-               location:{hostname:'127.0.0.1'}, URL:{}, fetch: () => Promise.reject(new Error('no network in tests')),
-               setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {}, console, Math, Number, Object, JSON, Date};
-  box.globalThis = box;
-  vm.createContext(box);
-  vm.runInContext(adapterSource, box, {filename:'vision-stage.js'});
-  const VS = box.window.VisionStage;
-  VS.attach({mount:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {}},
-             lang, review:{snapshot: () => null}, channels: () => [], regulars: () => roster || [], chat: () => false, ...(extra || {})});
-  return VS;
-}
-// The smallest snapshot the identity block and the chip row read.
-function visionSnapshot(over = {}) {
+// The adapter under test: one realm per language, and one mount per rendered state.
+// Every reader below mounts that state, so a test never calls a renderer by name.
+function adapterSeam(lang, roster, extra) {
+  const context = adapterBox();
+  const options = {lang, regulars: () => roster || [], chat: () => false, ...(extra || {})};
+  const mount = state => stageSeam(context, state, options);
   return {
-    selection:{kind:'none', box:-1}, source:{kind:'vod', label:'vod30 · 1800 s', channel:null},
-    datasets:[{id:'vod30', label:'vod30'}], set:'unlabeled_crops', frame:{index:500, t:20, duration:1800, count:54206, playing:false},
-    live:{state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person'], stale:false, seq:null},
-    detectors:{table:true, person:true, balls:false},
-    corrections:{tool:'select', newBoxLabel:'ball', box:-1, boxLabel:null, polygon:false, result:'none', dirty:false, inferRunning:false, inferStatus:''},
-    dirty:false, notice:{text:''}, receipts:[], busy:false, loading:{overlay:false, since:0}, overlay:{}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0},
-    cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
-    persons:{tracks:[], track:null, windows:[{win:'68-94', count:3}], win:'68-94', status:'', predictions:null},
-    ...over
+    context,
+    panel: state => stagePanel(context, state, options),
+    actions: state => stageActions(context, state, options),
+    rail: state => stageRail(context, state, options),
+    chips: state => stageChips(context, state, options),
+    source: state => stageSource(context, state, options),
+    facts: state => stageFacts(context, state, options),
+    layers: state => stageHTML(context, state, '#vs-layers', options),
+    mount,
+    press: (state, action, value, node) => mount(state).press(action, value, node),
+    pick: (state, action, value, node) => mount(state).pick(action, value, node),
+    field: (state, action, value, node) => mount(state).field(action, value, node)
   };
 }
-const ADAPTER_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-const ROSTER = [{id:'p1', name:'Ana', rating:78, status:'Active', statusText:'Active'},
-                {id:'p2', name:'Bo', rating:52, status:'Visitor', statusText:'Visitor'}];
+// The smallest snapshot the identity block and the chip row read.
 
 test('a person track is labelled as one regular or one guest name, and Save hits the matching endpoint', () => {
-  const VS = adapterStage('en', ROSTER);
+  const context = adapterSeam('en', ROSTER);
   const person = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null, player_id:null, bound_evidence:null}}});
-  const block = VS.inspectorHTML(person);
+  const block = context.panel(person);
   assert.ok(block.includes('Which regular?') && block.includes('data-vs-action="regular"'), 'option 1: the roster dropdown');
   assert.ok(block.includes('Guest name') && block.includes('data-vs-action="guest-name"'), 'option 2: the guest textbox');
   assert.ok(block.includes('— not a regular (guest) —'), 'the guest option is explicit, not an empty label');
   assert.ok(block.includes('Ana · 78') && block.includes('Bo · 52 · Visitor'), 'the roster carries name + rating (+ status when not Active)');
   assert.ok(block.includes('data-vs-binding="none"') && block.includes('no label yet'), 'an unlabelled track says so honestly');
   assert.ok(!block.includes('data-vs-value="A"') && !block.includes('data-vs-action="bind-regular"'), 'the removed A/B buttons are gone');
-  const footer = VS.actionsHTML(person);
+  const footer = context.actions(person);
   assert.ok(footer.includes('data-vs-action="identity-save"') && footer.includes('data-vs-action="identity-clear"'), 'Save and Clear are the only writes');
   assert.ok(!footer.includes('data-vs-value="A"') && !footer.includes('data-vs-value="B"') && !footer.includes('data-vs-value="clear"'), 'the footer keeps no legacy seed buttons');
   // Which path each choice takes, pinned at the call site and in the engine.
@@ -1521,41 +1604,45 @@ test('a person track is labelled as one regular or one guest name, and Save hits
   assert.ok(source.includes("save(button, '/api/identity/seed', {cluster_id: person.cluster_id, player_id: playerId}"), 'the regular path posts /api/identity/seed with the player id');
   assert.ok(source.includes("return save(button, '/api/vod30/seeds', body"), 'the guest path posts /api/vod30/seeds with the typed name');
   assert.ok(source.includes("save(button, '/api/identity/unbind', {cluster_id: person.cluster_id}"), 'Clear unbinds through /api/identity/unbind');
-  // The idle guest box and the disabled guest box are the same control.
-  assert.ok(VS.syncGuestField('p1') === undefined && ADAPTER_SOURCE.includes("input.disabled = off"), 'picking a regular turns the guest box off, not away');
+  // Picking a regular turns the guest box off instead of leaving two competing inputs.
+  const driven = context.mount(person);
+  driven.pick('regular', 'p1', {value: 'p1'});
+  assert.ok(driven.region('[data-vs-action="guest-name"]').disabled === true, 'picking a regular turns the guest box off, not away');
+  driven.pick('regular', '', {value: ''});
+  assert.strictEqual(driven.region('[data-vs-action="guest-name"]').disabled, false, 'and choosing a guest turns the box back on');
   // A regular with a cluster states what Save will do; without one it says why not.
   const bound = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7, player_id:'p1', bound_evidence:{source:'explicit_assign'}}},
                                 persons:{tracks:[{id:2, seed:null}], track:2, windows:[], win:'68-94', status:'', predictions:null}});
-  const boundBlock = VS.inspectorHTML(bound);
+  const boundBlock = context.panel(bound);
   assert.ok(boundBlock.includes('data-vs-binding="regular"') && boundBlock.includes('Ana · manual bind'), 'an explicit pick reads as a manual bind');
   assert.ok(boundBlock.includes('value="p1" selected'), 'the dropdown preselects the bound regular');
   assert.ok(boundBlock.includes('Saves through the identity pipeline'), 'and the hint names the pipeline');
-  assert.ok(VS.inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null, player_id:null}}})).includes('Saves the typed name'), 'with no cluster the guest path is the one described');
+  assert.ok(context.panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null, player_id:null}}})).includes('Saves the typed name'), 'with no cluster the guest path is the one described');
   // The automatic match is named as such, never as the operator's pick.
   const auto = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7, player_id:'p1', bound_evidence:{source:'bind_face'}}},
                                persons:{tracks:[{id:2, seed:null}], track:2, windows:[], win:'68-94', status:'', predictions:{map:{'2:68-94':'B'}, detail:{}, stale:false}}});
-  const autoBlock = VS.inspectorHTML(auto);
+  const autoBlock = context.panel(auto);
   assert.ok(autoBlock.includes('automatic face match') && autoBlock.includes('prediction B'), 'an automatic match says it is one, next to the stored prediction');
   assert.ok(!autoBlock.includes('manual bind'), 'an automatic match is never reported as a manual bind');
 });
 
 test('a legacy A/B seed still renders on the rail and in the identity block', () => {
-  const VS = adapterStage('en', ROSTER);
+  const context = adapterSeam('en', ROSTER);
   for (const [seed, text] of [['A','Player A'], ['B','Player B'], ['ignore','Ignore']]) {
     const s = visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
                               persons:{tracks:[{id:2, seed}], track:2, windows:[], win:'68-94', status:'', predictions:null}});
-    const block = VS.inspectorHTML(s);
+    const block = context.panel(s);
     assert.ok(block.includes(`data-vs-binding="legacy-${seed}"`), `a stored ${seed} seed keeps its own binding state`);
     assert.ok(block.includes(text) && block.includes('legacy A/B seed'), `a stored ${seed} seed reads as ${text}, named as a legacy value`);
-    const rail = VS.railHTML({eventFilter:'all', selection:{}, focus:'persons', events:{items:[], index:0, reviewed:0},
+    const rail = context.rail({eventFilter:'all', selection:{}, focus:'persons', events:{items:[], index:0, reviewed:0},
                               balls:{items:[], index:0}, persons:{tracks:[{id:2, seed}], windows:[], win:'68-94', track:null}, frame:{}, source:{}, live:{}});
     assert.ok(rail.includes(text), `the rail tag reads ${text}, not the raw ${seed}`);
   }
   // A guest name is a label too, and it is not shouted in upper case or read as a role.
   const guest = visionSnapshot({selection:{kind:'person', track:3, person:{track_id:3, cluster_id:null}},
                                 persons:{tracks:[{id:3, seed:'Minh'}], track:3, windows:[], win:'68-94', status:'', predictions:null}});
-  assert.ok(VS.inspectorHTML(guest).includes('data-vs-binding="guest"'), 'a typed name is stored and read as a guest label');
-  const guestRail = VS.railHTML({eventFilter:'all', selection:{}, focus:'persons', events:{items:[], index:0, reviewed:0},
+  assert.ok(context.panel(guest).includes('data-vs-binding="guest"'), 'a typed name is stored and read as a guest label');
+  const guestRail = context.rail({eventFilter:'all', selection:{}, focus:'persons', events:{items:[], index:0, reviewed:0},
                                  balls:{items:[], index:0}, persons:{tracks:[{id:3, seed:'Minh'}], windows:[], win:'68-94', track:null}, frame:{}, source:{}, live:{}});
   assert.ok(guestRail.includes('>Minh<') && guestRail.includes('vs-tag done guest'), 'a guest name is not put in the legacy A/B uppercase style');
   // Nothing was removed from the pipeline's reach: the keyboard seeds still post
@@ -1565,9 +1652,9 @@ test('a legacy A/B seed still renders on the rail and in the identity block', ()
 });
 
 test('the source settings open from the Source chip and are no longer the rail empty state', () => {
-  const VS = adapterStage('en', ROSTER);
+  const context = adapterSeam('en', ROSTER);
   const base = visionSnapshot();
-  const none = VS.inspectorHTML(base);
+  const none = context.panel(base);
   assert.ok(none.includes('data-vs-empty="no-selection"'), 'the rail marks its nothing-selected state');
   assert.ok(none.includes('<h3>Nothing selected</h3>') && !none.includes('<h3>Inspector</h3>'), 'and heads it as such, not as the rail itself');
   assert.ok(none.includes('Select a cue, a ball, a person or an anchor to label it.'), 'and says what to select (EN)');
@@ -1577,12 +1664,12 @@ test('the source settings open from the Source chip and are no longer the rail e
                       'data-vs-action="detector"', 'id="vs-live-status"', 'data-vs-action="open-sources"', 'Twitch upstream delay']) {
     assert.ok(!none.includes(gone), `the rail's nothing-selected state no longer carries ${gone}`);
   }
-  assert.ok(!VS.actionsHTML(base), 'and its footer carries no source action either');
-  const closed = VS.chipsHTML(base);
+  assert.ok(!/data-vs-action=/.test(context.actions(base)), 'and its footer carries no source action either');
+  const closed = context.chips(base);
   assert.ok(closed.includes('data-vs-action="source-panel"') && closed.includes('aria-expanded="false"'), 'the Source chip sits in the chip row, closed');
   assert.ok(!closed.includes('id="vs-source-panel"'), 'nothing is rendered until it is asked for');
-  VS.act('source-panel');
-  const open = VS.chipsHTML(base);
+  context.press(null, 'source-panel');
+  const open = context.chips(base);
   assert.ok(open.includes('id="vs-source-panel"') && open.includes('aria-expanded="true"'), 'one click opens the settings panel');
   for (const kept of ['data-vs-action="pick-dataset"', 'data-vs-action="live-start"', 'data-vs-action="live-stop"', 'data-vs-action="pick-live"',
                       'data-vs-action="live-detector"', 'data-vs-action="detector"', 'id="vs-live-status"', 'data-vs-action="open-sources"',
@@ -1591,10 +1678,10 @@ test('the source settings open from the Source chip and are no longer the rail e
   }
   assert.ok(open.includes('data-vs-action="live-start"') && open.includes('data-vs-action="live-stop"'),
     'start/stop moved with the block instead of disappearing from the rail footer');
-  assert.ok(VS.sourcePanelHTML(visionSnapshot({live:{state:'error', error:'no frames', attempt:{source:'twitch:abc', error:'no frames', at:1}, frame_age_ms:null, receive_to_result_ms:null, skipped:3, detectors:[]}}))
+  assert.ok(context.source(visionSnapshot({live:{state:'error', error:'no frames', attempt:{source:'twitch:abc', error:'no frames', at:1}, frame_age_ms:null, receive_to_result_ms:null, skipped:3, detectors:[]}}))
     .includes('Start attempt'), 'the refusal reason block still renders inside the panel');
-  VS.act('source-panel');
-  assert.ok(!VS.chipsHTML(base).includes('id="vs-source-panel"'), 'and the chip closes it again');
+  context.press(null, 'source-panel');
+  assert.ok(!context.chips(base).includes('id="vs-source-panel"'), 'and the chip closes it again');
 });
 
 test('the rail empty state and the labelling copy render in 中 as well', () => {
@@ -1602,17 +1689,17 @@ test('the rail empty state and the labelling copy render in 中 as well', () => 
   for (const key of ['railEmpty', 'noSelection', 'thisFrame', 'whichRegular', 'guestOption', 'guestName', 'saveBinding', 'clearBinding', 'notAPlayer',
                      'bindNone', 'bindLegacy', 'bindGuest', 'boundManual', 'boundAuto', 'bindIdentityHint', 'bindGuestHint', 'ignoreHint'])
     assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zh), `${key} is translated in 中`);
-  const VS = adapterStage('zh', ROSTER);
-  const none = VS.inspectorHTML(visionSnapshot());
+  const context = adapterSeam('zh', ROSTER);
+  const none = context.panel(visionSnapshot());
   assert.ok(none.includes('先选一条线索、球、人物或锚点，再开始标注。'), 'the rail empty state is Chinese');
   assert.ok(none.includes('此帧'), 'the frame-tools heading is Chinese');
-  const person = VS.inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
+  const person = context.panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
   assert.ok(person.includes('选择常客') && person.includes('访客姓名'), 'both labelling options are Chinese');
   assert.ok(person.includes('— 不是常客（访客）—'), 'the guest option is Chinese');
-  const legacy = VS.inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
+  const legacy = context.panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
                                                  persons:{tracks:[{id:2, seed:'A'}], track:2, windows:[], win:'68-94', status:'', predictions:null}}));
   assert.ok(legacy.includes('选手 A') && legacy.includes('旧版 A/B 种子'), 'a legacy A seed reads as 选手 A in 中 too');
-  const en = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot());
+  const en = adapterSeam('en', ROSTER).panel(visionSnapshot());
   assert.ok(en.includes('Select a cue, a ball, a person or an anchor to label it.'), 'EN keeps its own copy, not a translation of 中');
 });
 
@@ -1627,33 +1714,33 @@ test('an inference run says it was not stored, and a stored file is labelled as 
                  dirty:false, inferRunning:false, inferStatus:'Idle.'};
   const stored = visionSnapshot({selection:{kind:'box', box:0},
                                  corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00'}});
-  const storedHTML = adapterStage('en', ROSTER).inspectorHTML(stored);
+  const storedHTML = adapterSeam('en', ROSTER).panel(stored);
   assert.ok(storedHTML.includes('data-vs-inference="stored"') && storedHTML.includes('stored inference'),
     'a stored file is named as stored');
   assert.ok(/2026|9\/2[0-9]|09\/2[0-9]/.test(storedHTML), 'with its own timestamp');
   const session = visionSnapshot({selection:{kind:'box', box:0},
                                   corrections:{...boxes, storedInference:false, inferenceAt:'2026-09-23T21:10:00+00:00'}});
-  const sessionHTML = adapterStage('en', ROSTER).inspectorHTML(session);
+  const sessionHTML = adapterSeam('en', ROSTER).panel(session);
   assert.ok(sessionHTML.includes('data-vs-inference="session"') && sessionHTML.includes('run on this frame, not stored'),
     'this session\'s run says it was not stored');
-  const zhHTML = adapterStage('zh', ROSTER).inspectorHTML(stored);
+  const zhHTML = adapterSeam('zh', ROSTER).panel(stored);
   assert.ok(zhHTML.includes('已存推理') && zhHTML.includes('推理来源'), 'and the stored label is Chinese too');
-  const facts = adapterStage('en', ROSTER).factsLine(visionSnapshot({
+  const facts = adapterSeam('en', ROSTER).facts(visionSnapshot({
     drawn:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
     corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00', modelBoxes:2}}));
   assert.ok(facts.includes('stored inference'), 'the facts line names the earlier run too: ' + facts);
-  assert.ok(!adapterStage('en', ROSTER).factsLine(visionSnapshot({
+  assert.ok(!adapterSeam('en', ROSTER).facts(visionSnapshot({
     drawn:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:2, persons:0, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'none'}, quad:null, pockets:{}, refusal:null},
     corrections:{...boxes, storedInference:false, inferenceAt:'2026-09-23T21:10:00+00:00', modelBoxes:2}})).includes('stored inference'),
     'a session run never says stored in the facts line either');
-  const zhStored = adapterStage('zh', ROSTER).factsLine(visionSnapshot({
+  const zhStored = adapterSeam('zh', ROSTER).facts(visionSnapshot({
     drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'none'}, polygon:'inference', quad:null, pockets:{}, refusal:null},
     corrections:{...boxes, storedInference:true, inferenceAt:'2026-09-23T20:58:05+00:00', modelBoxes:0}}));
   assert.ok(zhStored.includes('已存推理'), '中 says 已存推理 for a stored file: ' + zhStored);
-  const zhSession = adapterStage('zh', ROSTER).factsLine(visionSnapshot({
+  const zhSession = adapterSeam('zh', ROSTER).facts(visionSnapshot({
     drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}},
     cloth:{verdict:{state:'none'}, polygon:'inference', quad:null, pockets:{}, refusal:null},
     corrections:{...boxes, storedInference:false, inferenceAt:'2026-09-23T21:10:00+00:00', modelBoxes:0}}));
@@ -1662,13 +1749,13 @@ test('an inference run says it was not stored, and a stored file is labelled as 
 });
 
 test('the live ball detector is selectable and named as the trained net', () => {
-  const VS = adapterStage('en', ROSTER);
+  const context = adapterSeam('en', ROSTER);
   const running = visionSnapshot({live:{state:'running', error:null, attempt:null, frame_age_ms:20, receive_to_result_ms:30,
     skipped:0, detectors:['table','person','ball'], stale:false, seq:1,
     stages:[{name:'table', every_n_frames:30, runs:2, skips:28, budget_ms:12},
             {name:'person', every_n_frames:1, runs:30, skips:0, budget_ms:10},
             {name:'ball', every_n_frames:2, runs:15, skips:15, budget_ms:120}]}});
-  const panel = VS.sourcePanelHTML(running);
+  const panel = context.source(running);
   for (const option of ['data-vs-value="table"', 'data-vs-value="person"', 'data-vs-value="ball"']) {
     assert.ok(panel.includes(option), `the live detector row offers ${option}`);
   }
@@ -1679,13 +1766,13 @@ test('the live ball detector is selectable and named as the trained net', () => 
   assert.ok(panel.includes('every 2 frames') && panel.includes('not run on the skipped frames'),
     'a partitioned stage states its cadence and what a skipped frame means: ' + panel.slice(0, 400));
   assert.ok(panel.includes('15 runs'), 'with how often it actually ran');
-  const zhPanel = adapterStage('zh', ROSTER).sourcePanelHTML(running);
+  const zhPanel = adapterSeam('zh', ROSTER).source(running);
   assert.ok(zhPanel.includes('球（训练网络）') && zhPanel.includes('每 2 帧'), 'the row and the cadence are Chinese: ' + zhPanel.slice(0, 300));
   // A refusal is the server's sentence, shown as it comes - never a green state.
   const refused = visionSnapshot({live:{state:'error', error:"Requested detector 'ball' cannot run: no weights at /x/960x540-scratch.pt",
     attempt:{source:'dataset:vod30', error:"Requested detector 'ball' cannot run: no weights at /x/960x540-scratch.pt", at: 1},
     frame_age_ms:null, receive_to_result_ms:null, skipped:0, detectors:['table','person'], stale:false, seq:null, stages:[]}});
-  const refusalPanel = adapterStage('en', ROSTER).sourcePanelHTML(refused);
+  const refusalPanel = adapterSeam('en', ROSTER).source(refused);
   assert.ok(refusalPanel.includes('cannot run: no weights at /x/960x540-scratch.pt'),
     'the refusal sentence reaches the panel verbatim (escaped, not rewritten)');
   assert.ok(refusalPanel.includes('error · Requested detector &#39;ball&#39;'), 'and the live row keeps the state error');
@@ -1703,18 +1790,18 @@ test('a fresh load of a stopped processor shows no failure box, only its history
   review.applyLiveStatus({state:'stopped', error:'Live stream ended or read timed out; restart to reconnect', frames_skipped:0});
   assert.strictEqual(T.state.live.attempt, null, 'a stopped processor\'s leftover error is not a start this page made');
   assert.ok(!/Live start failed/.test(T.state.notice.text), 'no failure notice on a fresh load: ' + T.state.notice.text);
-  const stale = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  const stale = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!stale.includes('vs-error-block') && !stale.includes('restart to reconnect'), 'and the panel claims no failure at all');
   review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0,
                           last_error:'Live stream ended or read timed out; restart to reconnect', last_error_at:1790506028.8});
   assert.strictEqual(T.state.live.attempt, null, 'no start attempt is invented for this page');
   assert.ok(!/Live start failed/.test(T.state.notice.text), 'and no failure notice: ' + T.state.notice.text);
-  const panel = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  const panel = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!panel.includes('vs-error-block') && !panel.includes('Start attempt'), 'no red failure box on a fresh load');
   assert.ok(panel.includes('data-vs-last-live-error') && panel.includes('Last live session ended with an error at '),
     'the previous session\'s cause is a muted line that says it is history');
   assert.ok(panel.includes('restart to reconnect'), 'with its own sentence');
-  const zh = adapterStage('zh', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  const zh = adapterSeam('zh', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(zh.includes('上一次直播会话于'), 'in Chinese too');
   // The same status while it is still in error is the current failure, stated as such.
   review.applyLiveStatus({state:'error', error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue',
@@ -1727,7 +1814,7 @@ test('a fresh load of a stopped processor shows no failure box, only its history
                           last_error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue', last_error_at:1790506028.8});
   assert.strictEqual(T.state.live.attempt, null, 'an observed failure does not outlive its session');
   assert.ok(!/Live start failed/.test(T.state.notice.text), 'nor does its notice: ' + T.state.notice.text);
-  const after = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  const after = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!after.includes('vs-error-block') && after.includes('data-vs-last-live-error'), 'history line only');
   // This page's own refused start is different: it stays stated until a start succeeds.
   review.setLiveAttempt({source:'twitch:saved', error:'Select a saved canonical Twitch channel', at:1});
@@ -1737,7 +1824,7 @@ test('a fresh load of a stopped processor shows no failure box, only its history
   // A clean idle processor: nothing at all.
   review.applyLiveStatus({state:'idle', error:null, frames_skipped:0, last_error:null});
   T.state.live.attempt = null;
-  const idle = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
+  const idle = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!idle.includes('vs-error-block') && !idle.includes('data-vs-last-live-error'), 'an idle processor with no history shows neither');
   T.state.live.attempt = before.attempt; T.state.notice = before.notice; T.state.live.state = 'idle'; T.state.live.error = null; T.state.live.last_error = null;
 });
@@ -1745,23 +1832,23 @@ test('a fresh load of a stopped processor shows no failure box, only its history
 test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => {
   const base = {state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0,
                 detectors:['table','person'], stale:false, seq:null, stages:[], source:null, replay:null};
-  const chosen = adapterStage('en', ROSTER, {replayChoice: () => ({vod_id: '1000000011', start_s: 30, rate: 2})})
-    .sourcePanelHTML(visionSnapshot({live:{...base}}));
-  assert.ok(chosen.includes('data-vs-replay="chosen"'), 'a chosen VOD is shown before it starts');
-  assert.ok(chosen.includes('vod 1000000011') && chosen.includes('a replay, never a live broadcast'),
-    'and it is named a replay, never a broadcast: ' + chosen.slice(chosen.indexOf('vs-replay'), chosen.indexOf('vs-replay') + 200));
-  const running = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...base, state:'running',
+  const context = adapterSeam('en', ROSTER, {replayChoice: () => ({vod_id: '1000000011', start_s: 30, rate: 2})})
+    .source(visionSnapshot({live:{...base}}));
+  assert.ok(context.includes('data-vs-replay="chosen"'), 'a chosen VOD is shown before it starts');
+  assert.ok(context.includes('vod 1000000011') && context.includes('a replay, never a live broadcast'),
+    'and it is named a replay, never a broadcast: ' + context.slice(context.indexOf('vs-replay'), context.indexOf('vs-replay') + 200));
+  const running = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...base, state:'running',
     source:{kind:'vod-replay', vod_id:'1000000011', rate:2, start_s:30},
     replay:{kind:'vod-replay', live:false, vod_id:'1000000011', rate:2, drift_s:-0.42, network:'hls', pacing:'wall-clock', wall_s:12.5, video_s:12.1}}}));
   assert.ok(running.includes('data-vs-replay="running"'), 'a running replay reports itself');
   assert.ok(running.includes('kind vod-replay') && running.includes('live false'), 'kind and live come from the server: ' + running.slice(running.indexOf('vs-replay'), running.indexOf('vs-replay') + 260));
   assert.ok(running.includes('vod 1000000011') && running.includes('×2') && running.includes('drift -0.42 s'), 'with the id, the rate and the drift');
   assert.ok(!/live true/.test(running), 'nothing here claims it is live');
-  const failed = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot({live:{...base, state:'error',
+  const failed = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...base, state:'error',
     error:'Twitch VOD playlist request failed (HTTP 403)', attempt:{source:'vod-replay', error:'Twitch VOD playlist request failed (HTTP 403)', at:1}}}));
   assert.ok(failed.includes('data-vs-replay="failed"') && failed.includes('Twitch VOD playlist request failed (HTTP 403)'),
     'a refusal shows its cause instead of a spinner that never ends');
-  const zhRunning = adapterStage('zh', ROSTER).sourcePanelHTML(visionSnapshot({live:{...base, state:'running',
+  const zhRunning = adapterSeam('zh', ROSTER).source(visionSnapshot({live:{...base, state:'running',
     source:{kind:'vod-replay', vod_id:'1000000011', rate:2, start_s:30}, replay:{kind:'vod-replay', live:false, vod_id:'1000000011', rate:2, drift_s:-0.42}}}));
   assert.ok(zhRunning.includes('回放') && zhRunning.includes('漂移'), 'and the panel is bilingual');
 });
@@ -1809,18 +1896,18 @@ test('a VOD replay is never called live on the stage chip, the freshness line, t
     // The adapter's chip-row freshness and the facts line.
     const snapshot = visionSnapshot({source:{kind:'live', label, channel:null}, live:replayLive,
       loading:{overlay:false, since:0}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
-    const VSr = adapterStage(lang, ROSTER);
-    const fresh = (VSr.chipsHTML(snapshot).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
+    const context = adapterSeam(lang, ROSTER);
+    const fresh = (context.chips(snapshot).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
     assert.ok(fresh && !fresh.includes(liveWord), `${lang}: the freshness line of a replay is not live: "${fresh}"`);
     assert.ok(/240 ms/.test(fresh), `${lang}: and it still says how old the frame is: "${fresh}"`);
-    const facts = VSr.factsLine(snapshot);
+    const facts = context.facts(snapshot);
     assert.ok(!facts.toLowerCase().includes(liveWord), `${lang}: the facts line of a replay is not live: "${facts.slice(0, 80)}"`);
     // A stale replay says stale, as a stale broadcast does.
-    const staleFresh = (VSr.chipsHTML({...snapshot, live:{...replayLive, stale:true}}).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
+    const staleFresh = (context.chips({...snapshot, live:{...replayLive, stale:true}}).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '';
     assert.ok(staleFresh.includes(lang === 'zh' ? '已过期' : 'STALE'), `${lang}: a stale replay says stale: "${staleFresh}"`);
     // A real channel keeps its live word on both.
     const channel = {...snapshot, live:{...replayLive, source:{kind:'twitch', source_id:'x', channel:'examplechannel'}, replay:null}};
-    assert.ok(((VSr.chipsHTML(channel).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '').startsWith(liveWord), `${lang}: a channel is live`);
+    assert.ok(((context.chips(channel).match(/<span class="vs-fresh[^"]*">([^<]*)<\/span>/) || [])[1] || '').startsWith(liveWord), `${lang}: a channel is live`);
   }
 });
 
@@ -1829,10 +1916,10 @@ test('the chip row states the source once, and the freeze control owns inference
   // freeze button: two designs for one action. The row states the source and nothing else now, and the
   // control that starts a run is the one that says so.
   for (const lang of ['en', 'zh']) {
-    const VSr = adapterStage(lang, ROSTER);
+    const context = adapterSeam(lang, ROSTER);
     const vod = {...visionSnapshot({source:{kind:'vod', label:'vod30', channel:null}}), dataset:'tw-1',
       datasets:[{id:'tw-1', kind:'vod', channel:'TTPOOLFRIDAY', created_at:'2026-08-23T10:00:00Z', range:{whole:true}}]};
-    const html = VSr.chipsHTML(vod);
+    const html = context.chips(vod);
     const recorded = lang === 'zh' ? '录制回放' : 'recorded broadcast';
     const meta = (html.match(/<div class="vs-chipmeta">([\s\S]*?)<\/div>/) || [])[1] || '';
     assert.ok(meta.includes('vs-fresh') && meta.includes('TTPOOLFRIDAY') && meta.includes(recorded),
@@ -1842,7 +1929,7 @@ test('the chip row states the source once, and the freeze control owns inference
     assert.ok(!html.includes('auto-infer') && !html.includes('infer-status'),
       `${lang}: no second inference control sits in the row`);
     const running = {...vod, corrections:{...(vod.corrections || {}), inferRunning:true, inferStatus:'frame 12'}};
-    assert.ok(VSr.chipsHTML(running).includes('TTPOOLFRIDAY'), `${lang}: a run does not move the source out of the row`);
+    assert.ok(context.chips(running).includes('TTPOOLFRIDAY'), `${lang}: a run does not move the source out of the row`);
   }
 });
 
@@ -1868,10 +1955,10 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
   assert.ok(source.includes("body.cluster_id = person.cluster_id"), 'it carries the cluster id when the track has one, for the fast path');
   assert.ok(source.includes("save(button, '/api/identity/enroll-confirm', {token: payload.token, player_name: name}"),
     'the confirm is the one write, with the token and the typed name');
-  const idle = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
+  const idle = adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
   assert.ok(idle.includes('data-vs-action="enroll-preview"') && idle.includes('Enrol as regular'), 'the person rail offers the action');
   assert.ok(idle.includes('nothing is written until you confirm'), 'and says the preview writes nothing');
-  const pending = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
+  const pending = adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
     enroll:{status:'pending', payload:null, name:'', elapsed_ms:4200, error:null}}));
   assert.ok(pending.includes('data-vs-enrol="pending"') && pending.includes('collecting faces · 4 s'),
     'a slow preview reports itself working, with elapsed seconds: ' + pending.slice(0, 80));
@@ -1882,7 +1969,7 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
              {index:1, frame_index:2040, t:68.0, det_score:0.81, eye_px:13.1, jpeg_data_url:'data:image/jpeg;base64,BBB'}],
       purity:{probes:49, agreement:0.98}, quality:{kept:2, usable:2},
       evidence:{source:'window_scan', stored_face:false, cross_checked:true, crops:2, frames_scanned:2}}};
-  const readyHTML = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:ready}));
+  const readyHTML = adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:ready}));
   assert.ok(readyHTML.includes('data-vs-crop="0"') && readyHTML.includes('data-vs-crop="1"'), 'the crops are shown');
   assert.ok(readyHTML.includes('data:image/jpeg;base64,AAA'), 'as data URLs, so no file route is needed');
   assert.ok(readyHTML.includes('det 0.80') && readyHTML.includes('eye 12.7 px'), 'with the detection and eye numbers');
@@ -1894,7 +1981,7 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
   // One stored face: weaker evidence, said out loud.
   const cluster = {...ready, payload:{...ready.payload, evidence:{source:'cluster_face', stored_face:true, cross_checked:false, crops:1, frames_scanned:0},
     crops:[ready.payload.crops[0]], quality:{kept:1, usable:1}, purity:{probes:0, agreement:null}}};
-  const clusterHTML = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7}}, enroll:cluster}));
+  const clusterHTML = adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7}}, enroll:cluster}));
   assert.ok(clusterHTML.includes('evidence: stored cluster face · 1 crops · not cross-checked'),
     'the cluster path says it is not cross-checked: ' + clusterHTML.slice(clusterHTML.indexOf('evidence:'), clusterHTML.indexOf('evidence:') + 90));
   assert.ok(clusterHTML.includes('no other face to cross-check'), 'and why purity is absent');
@@ -1902,7 +1989,7 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
   const refused = {status:'refused', name:'', elapsed_ms:null, error:null,
     payload:{ok:false, reason:'single_face_only', message:'only one usable face: upload a second photo to prove consistency',
              crops:[{index:0, frame_index:2010, t:67.0, det_score:0.79, eye_px:12.7, jpeg_data_url:'data:image/jpeg;base64,AAA'}]}};
-  const refusedHTML = adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:refused}));
+  const refusedHTML = adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:refused}));
   assert.ok(refusedHTML.includes('data-vs-enrol="refused"') && refusedHTML.includes('only one usable face: no second face to cross-check it'),
     'the refusal is a sentence, in operator language');
   assert.ok(refusedHTML.includes('single_face_only') && refusedHTML.includes('upload a second photo'), 'with the module code and its own sentence beside it');
@@ -1910,7 +1997,6 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
   // A refusal on confirm (the server answers 200 ok:false: token_mismatch,
   // preview_expired, player_name_required) reaches the operator as its real
   // reason in both languages, and nothing about it looks like a success.
-  const confirmSource = source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state, enrollConfirm, snapshot, setRoot: host => { root = host; }}; })();');
   // Runs the real async confirm against a stubbed server answer and returns the
   // engine snapshot and what confirm resolved to.
   const confirmWith = answer => {
@@ -1921,10 +2007,11 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     // microtaskMode drains the confirm's awaits before runInContext returns, so the
     // real async write runs to its end without an async test.
     const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
-    vm.runInContext(confirmSource, context, {filename:'app.js'});
+    vm.runInContext(source, context, {filename:'app.js'});
     // The stub lives in the context's realm: an outer-realm promise would settle on
-    // the outer microtask queue, after runInContext has already returned.
-    vm.runInContext(`fetch = async () => ({ok:true, status:200, json: async () => (${JSON.stringify(answer)})});
+    // the outer microtask queue, after runInContext has already returned. The seam
+    // takes that stub as its network, so the engine writes through it.
+    vm.runInContext(`globalThis.E = window.CornerPocketReview.attach({fetch: async () => ({ok:true, status:200, json: async () => (${JSON.stringify(answer)})})});
       E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
       E.state.enroll = {status:'ready', name:'Ana', startedAt:0, error:null, payload:${JSON.stringify(ready.payload)}};
       E.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, context);
@@ -1949,12 +2036,10 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
       `${reason}: nothing was written, so the receipt is an error naming the refusal: ${JSON.stringify(engineSnap.receipts)}`);
     const selection = {kind:'person', track:2, person:{track_id:2, cluster_id:null}};
     for (const [lang, sentence] of [['en', en], ['zh', zh]]) {
-      // The adapter reads the receipts from the engine it is attached to (handed
-      // over after attach, so attach's own first render stays a no-op here).
-      let attached = false;
-      const VSe = adapterStage(lang, ROSTER, {review:{snapshot: () => attached ? engineSnap : null}});
-      attached = true;
-      const html = VSe.inspectorHTML(visionSnapshot({selection, enroll:engineSnap.enroll}));
+      // The receipt line reads the receipts of the engine snapshot, so the seam mounts
+      // one state: the engine's enroll result and the receipts it wrote.
+      const html = adapterSeam(lang, ROSTER)
+        .panel(visionSnapshot({selection, enroll:engineSnap.enroll, receipts:engineSnap.receipts}));
       assert.ok(!html.includes('✓'), `${reason} (${lang}): no success mark anywhere in the person block`);
       const line = (html.match(/<p class="vs-receipt[^"]*"[^>]*>[^<]*<\/p>/) || [''])[0];
       assert.ok(line.includes('vs-receipt error') && line.includes('>! ') && !/Saved|已保存/.test(line),
@@ -1966,9 +2051,9 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     }
   }
   const none = {status:'refused', name:'', elapsed_ms:null, error:null, payload:{ok:false, reason:'no_face_in_track', message:'x', crops:[]}};
-  assert.ok(adapterStage('en', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:none}))
+  assert.ok(adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:none}))
     .includes('no usable crop was kept'), 'a refusal with no crops says so instead of showing an empty box');
-  const zh = adapterStage('zh', ROSTER).inspectorHTML(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:cluster}));
+  const zh = adapterSeam('zh', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:cluster}));
   assert.ok(zh.includes('已存聚类人脸') && zh.includes('未交叉核对') && zh.includes('确认登记'), 'the whole block is Chinese too');
 });
 
@@ -2172,12 +2257,13 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
                localStorage:{getItem: () => null, setItem() {}}, setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
   box.globalThis = box;
   const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
-  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state}; })();'), context, {filename:'app.js'});
+  vm.runInContext(source, context, {filename:'app.js'});
   // Only the enrol write answers; every other request mount() makes stays pending.
   vm.runInContext(`fetch = (url, init) => url === '/api/identity/enroll-confirm'
       ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true, player_id:'p9', player_name:'Nina', revision:8, embeddings:3})})
       : new Promise(() => {});
-    globalThis.rosterReads = 0;`, context);
+    globalThis.rosterReads = 0;
+    globalThis.E = window.CornerPocketReview.attach({});`, context);
   const review = box.window.CornerPocketReview;
   review.mount(host, {reloadRoster: () => { box.rosterReads++; }});
   vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
@@ -2190,9 +2276,10 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
   const bare = {...box, rosterReads:0, confirmed:undefined, confirmError:undefined};
   bare.globalThis = bare;
   const bareContext = vm.createContext(bare, {microtaskMode:'afterEvaluate'});
-  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state}; })();'), bareContext, {filename:'app.js'});
+  vm.runInContext(source, bareContext, {filename:'app.js'});
   vm.runInContext(`fetch = (url) => url === '/api/identity/enroll-confirm'
-      ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true})}) : new Promise(() => {});`, bareContext);
+      ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true})}) : new Promise(() => {});
+    globalThis.E = window.CornerPocketReview.attach({});`, bareContext);
   bare.window.CornerPocketReview.mount({...host});
   vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
     window.CornerPocketReview.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, bareContext);
@@ -2212,13 +2299,14 @@ test('a stage click on a person sends the enrol preview an integer cluster, or n
                setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
   box.globalThis = box;
   const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
-  vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.E = {state, selectStagePerson, enrollPreview, setRoot: host => { root = host; }}; })();'), context, {filename:'app.js'});
+  vm.runInContext(source, context, {filename:'app.js'});
   // The preview body is recorded; loadPersons() and the preview answer at once.
   vm.runInContext(`globalThis.bodies = [];
     fetch = (url, init) => {
       if (url === '/api/identity/enroll-preview') { bodies.push(JSON.parse(init.body)); return Promise.resolve({ok:true, status:200, json: async () => ({ok:true, token:'tok', crops:[]})}); }
       return Promise.resolve({ok:true, status:200, json: async () => ({windows:[{win:'68-94', tracks:[1]}], seeds:{}})});
     };
+    globalThis.E = window.CornerPocketReview.attach({});
     E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
     E.state.dataset = 'vod30'; E.state.frame = 0; E.state.unified = {persons:[]};`, context);
   const click = dataset => vm.runInContext(`E.state.enroll = {status:'idle', payload:null, name:'', startedAt:0, error:null};
@@ -2287,8 +2375,8 @@ test('a live or replay frame is drawn with its own detections only, never the da
   const snap = snapshot();
   assert.strictEqual(snap.corrections.storedInference, false, 'the stored inference is not reported for a live frame');
   const liveState = {...visionSnapshot(), ...snap, live:{...snap.live, stale:false, seq:5, frame_age_ms:40, receive_to_result_ms:20}};
-  const facts = adapterStage('en', ROSTER).factsLine(liveState);
-  const liveChips = adapterStage('en', ROSTER).layersHTML(liveState);
+  const facts = adapterSeam('en', ROSTER).facts(liveState);
+  const liveChips = adapterSeam('en', ROSTER).layers(liveState);
   assert.ok(!/stored inference/.test(facts), 'the facts line never says stored inference over a live frame: ' + facts);
   assert.ok(/persons 2\b/.test(liveChips) && /cloth 0\b/.test(liveChips) && /balls 0\b/.test(liveChips), 'and counts only what is drawn: ' + liveChips);
   // No live detector on: nothing at all.
@@ -2403,46 +2491,49 @@ test('a running Twitch channel has its chat toggle and embed, named by the proce
   // processor's own status names the channel it is reading.
   let chatOn = true;
   const toggles = [];
-  const VSc = adapterStage('en', ROSTER, {chat: () => chatOn, toggleChat: () => { toggles.push(1); chatOn = !chatOn; }});
+  const context = adapterSeam('en', ROSTER, {chat: () => chatOn, toggleChat: () => { toggles.push(1); chatOn = !chatOn; }});
   const running = {...visionSnapshot().live, state:'running', source:{kind:'twitch', source_id:'77777777777777777777777777777777', channel:'examplechannel'}, replay:null};
   // The frame arrived with no channel from the shell (its picker said dataset:vod30).
   const shot = visionSnapshot({source:{kind:'live', label:'● live · dataset vod30', channel:null}, live:running});
-  const html = VSc.inspectorHTML(shot);
+  const html = context.panel(shot);
   const frame = (html.match(/<iframe[^>]*src="([^"]+)"/) || [])[1] || '';
   assert.ok(frame.startsWith('https://www.twitch.tv/embed/examplechannel/chat?parent=127.0.0.1'), 'the chat embed names the running channel and this host: ' + (frame || html.slice(0, 160)));
   assert.ok(/data-vs-action="chat"[^>]*>Hide chat</.test(html), 'with a toggle that says what it does');
   chatOn = false;
-  const hidden = VSc.inspectorHTML(shot);
+  const hidden = context.panel(shot);
   assert.ok(!hidden.includes('<iframe'), 'hidden: no embed');
   assert.ok(/data-vs-action="chat"[^>]*>Show chat</.test(hidden), 'and the toggle offers it back');
   // A VOD replay and a dataset feed have no chat to show.
   const replay = visionSnapshot({source:{kind:'live', label:'VOD replay 1000000001', channel:null},
                                  live:{...running, source:{kind:'vod-replay', vod_id:'1000000001', start_s:600, rate:1}}});
   chatOn = true;
-  assert.ok(!/<iframe|data-vs-action="chat"/.test(VSc.inspectorHTML(replay)), 'a replay has no chat');
-  assert.ok(!/<iframe|data-vs-action="chat"/.test(VSc.inspectorHTML(visionSnapshot())), 'a dataset frame has no chat');
+  assert.ok(!/<iframe|data-vs-action="chat"/.test(context.panel(replay)), 'a replay has no chat');
+  assert.ok(!/<iframe|data-vs-action="chat"/.test(context.panel(visionSnapshot())), 'a dataset frame has no chat');
 });
 
 test('the VOD fields are reachable and keep what the operator typed', () => {
   // (1) The panel used to list the replay controls last, so at 1280x900 the button
   // sat below the panel's own scroll box: elementFromPoint on it returned the
   // frame-index input and a mouse click never reached it. The block is first now.
-  const panel = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot());
-  assert.ok(panel.indexOf('data-vs-replay=') > 0 || panel.indexOf('data-vs-field="vod"') > 0, 'the replay block is in the panel');
-  assert.ok(panel.indexOf('data-vs-field="vod"') < panel.indexOf('data-vs-action="pick-dataset"'),
+  const panelHTML = adapterSeam('en', ROSTER).source(visionSnapshot());
+  assert.ok(panelHTML.indexOf('data-vs-replay=') > 0 || panelHTML.indexOf('data-vs-field="vod"') > 0, 'the replay block is in the panel');
+  assert.ok(panelHTML.indexOf('data-vs-field="vod"') < panelHTML.indexOf('data-vs-action="pick-dataset"'),
     'and it comes before the dataset block, so its controls are inside the panel\u2019s visible box');
-  assert.ok(panel.indexOf('data-vs-action="pick-replay"') < panel.indexOf('data-vs-action="open-sources"'),
+  assert.ok(panelHTML.indexOf('data-vs-action="pick-replay"') < panelHTML.indexOf('data-vs-action="open-sources"'),
     'above the door to the one source configurator too (round 13, owner item 8)');
   // (2) The value lives in adapter state, not only in the DOM: the panel is rebuilt
   // on every live-status poll, and a half-typed id used to vanish with it.
-  const VS = adapterStage('en', ROSTER);
-  VS.onInput({target: {dataset: {vsField: 'vod'}, closest: () => null, value: 'https://www.twitch.tv/videos/1000000011'}});
-  VS.onInput({target: {dataset: {vsField: 'vod-start'}, closest: () => null, value: '30'}});
-  const again = VS.sourcePanelHTML(visionSnapshot());
+  const V = adapterSeam('en', ROSTER);
+  const typed = V.mount(null);
+  typed.field(null, null, {dataset: {vsField: 'vod'}, value: 'https://www.twitch.tv/videos/1000000011'});
+  typed.field(null, null, {dataset: {vsField: 'vod-start'}, value: '30'});
+
+
+  const again = V.source(visionSnapshot());
   assert.ok(again.includes('value="https://www.twitch.tv/videos/1000000011"'), 'the typed id survives a rebuild');
   assert.ok(/data-vs-field="vod-start"[^>]*value="30"/.test(again), 'and so does the start offset');
-  VS.act('source-panel');   // the panel is open while an id is being typed
-  assert.ok(VS.chipsHTML(visionSnapshot()).includes('value="https://www.twitch.tv/videos/1000000011"'),
+  // The panel stays open while an id is typed, so the chips re-render the poll triggers keeps it.
+  assert.ok(V.chips(visionSnapshot()).includes('value="https://www.twitch.tv/videos/1000000011"'),
     'including a chips re-render, which is what the poll triggers');
   assert.ok(ADAPTER_SOURCE.includes('document.activeElement') && ADAPTER_SOURCE.includes('setSelectionRange'),
     'and a focused field keeps its focus and caret across that rebuild');
@@ -2457,14 +2548,14 @@ test('F2: the Anchors chip reads off until anchors are drawn, and one click load
                   toggleOverlay: kind => { calls.push('toggle ' + kind); s.overlay[kind] = !s.overlay[kind]; return s.overlay[kind]; },
                   loadAnchors: t => { calls.push('load ' + t); return Promise.resolve(); },
                   selectAnchor() {}, seekTime() {}};
-  const VSx = adapterStage('en', ROSTER, {review});
+  const context = adapterSeam('en', ROSTER, {review});
   assert.ok(ADAPTER_SOURCE.includes("(key !== 'anchors' || s.anchors.loaded)"), 'the chip is on only when anchors are loaded');
   assert.ok(ADAPTER_SOURCE.includes('aria-pressed="${shown ? \'true\' : \'false\'}"'), 'and says so to a screen reader');
-  VSx.act('layer', 'anchors');
+  context.press(s, 'layer', 'anchors');
   assert.deepStrictEqual(calls, ['load 70'], 'the first click loads the anchors; it does not switch the layer off');
   assert.strictEqual(s.overlay.anchors, true, 'and the layer stays on');
   s.anchors.loaded = true;
-  VSx.act('layer', 'anchors');
+  context.press(s, 'layer', 'anchors');
   assert.deepStrictEqual(calls, ['load 70', 'toggle anchors'], 'once drawn, a click hides them as before');
 });
 
@@ -2475,17 +2566,17 @@ test('clarify: one pocket name per card, the distance with its error, reasons in
   const words = {'right-side':['right-middle','右中']}, colours = {blue:['blue','蓝']};
   for (const [lang, pocket, colour, reason] of [['en', 'right-middle', 'blue', 'a person covered the cloth when the ball vanished'],
                                                 ['zh', '右中', '蓝', '球消失时有人挡住了台呢']]) {
-    const review = {snapshot: () => null, text: s => s,
+    const review = {text: s => s,
                     pocketText: v => (words[String(v).replace(/ \(.*\)$/, '')] || [v, v])[lang === 'zh' ? 1 : 0],
                     colourWord: v => (colours[v] || ['', ''])[lang === 'zh' ? 1 : 0]};
-    const VSx = adapterStage(lang, ROSTER, {review});
-    same(VSx.gateEvidence(pot), [`148 ± 54 mm · ${pocket}`]);
-    const card = VSx.railHTML({eventFilter:'all', selection:{}, focus:'events', events:{items:[pot], index:0, reviewed:0},
-      balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
+    const context = adapterSeam(lang, ROSTER, {review});
+    const state = visionSnapshot({eventFilter:'all', selection:{}, focus:'events', events:{items:[pot], index:0, reviewed:0}});
+    const card = context.rail(state);
     const row = card.match(/<div class="vs-card-row">[\s\S]*?<\/div>/)[0];
     assert.ok(row.includes(`>${pocket}<`), `${lang}: the card names the pocket once, as a position word`);
+    assert.ok(card.includes('148 ± 54 mm · ' + pocket), `${lang}: the card carries the distance with its error`);
     assert.ok(!card.includes('right-side') && !/\(148 ± 54mm\)/.test(card), `${lang}: no second spelling of the same pocket`);
-    const inspector = VSx.eventGeometry(pot);
+    const inspector = context.panel(visionSnapshot({...state, selection:{kind:'event', event:pot}}));
     assert.ok(inspector.includes(`148 ± 54 mm · ${pocket}`), `${lang}: the inspector reads the same distance`);
     assert.ok(inspector.includes(`${reason} (cloth_occluded_at_disappearance)`), `${lang}: reasons in words, the code kept as evidence`);
     assert.ok(inspector.includes(colour), `${lang}: the colour is a word, not a raw key`);
@@ -2494,12 +2585,12 @@ test('clarify: one pocket name per card, the distance with its error, reasons in
 
 test('F5: a saved VOD URL is listed, can fill the replay form, and can be removed', () => {
   const vods = () => [{id:'s9', url:'https://www.twitch.tv/videos/1234567890', video:'1234567890'}];
-  const VSx = adapterStage('en', ROSTER, {vods, forgetChannel() {}});
-  const panel = VSx.sourcePanelHTML(visionSnapshot());
+  const context = adapterSeam('en', ROSTER, {vods, forgetChannel() {}});
+  const panel = context.source(visionSnapshot());
   assert.ok(panel.includes('Saved VODs') && panel.includes('https://www.twitch.tv/videos/1234567890'), 'the saved VOD is listed');
   assert.ok(panel.includes('data-vs-action="use-saved-vod" data-vs-value="1234567890"'), 'with a Use button');
   assert.ok(panel.includes('data-vs-action="forget-channel" data-vs-id="s9"'), 'and a Remove button');
-  const none = adapterStage('en', ROSTER).sourcePanelHTML(visionSnapshot());
+  const none = adapterSeam('en', ROSTER).source(visionSnapshot());
   assert.ok(!none.includes('Saved VODs'), 'no heading when nothing is saved');
   const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
   assert.ok(shell.includes("parsed.kind==='vod'?{id:s.id,url:s.url,video:parsed.video}") && shell.includes('channels,vods,regulars'),
@@ -2510,8 +2601,8 @@ test('F5: a saved VOD URL is listed, can fill the replay form, and can be remove
 test('F6: Use this VOD with an empty id says what to do instead of doing nothing', () => {
   for (const [lang, sentence] of [['en', 'Enter a Twitch VOD id or URL first.'], ['zh', '请先输入 Twitch 回放 id 或网址。']]) {
     const notices = [], picked = [];
-    const VSx = adapterStage(lang, ROSTER, {notice: text => notices.push(text), pickReplay: choice => picked.push(choice)});
-    VSx.act('pick-replay');
+    const context = adapterSeam(lang, ROSTER, {notice: text => notices.push(text), pickReplay: choice => picked.push(choice)});
+    context.press(visionSnapshot(), 'pick-replay');
     assert.deepStrictEqual(notices, [sentence], `${lang}: one notice, a sentence, not the field label`);
     assert.strictEqual(picked.length, 0, 'and no replay is requested');
   }
@@ -2520,11 +2611,11 @@ test('F6: Use this VOD with an empty id says what to do instead of doing nothing
 });
 
 function VSrail({events, lang = 'en'}) {
-  return adapterStage(lang, ROSTER).railHTML({eventFilter:'all', selection:{}, focus:'events',
+  return adapterSeam(lang, ROSTER).rail({eventFilter:'all', selection:{}, focus:'events',
     events:{items: events, index: 0, reviewed: 0}, balls:{items:[], index:0},
     persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
 }
-const VS = adapterStage('en', ROSTER);   // one handle for the pure formatters
+const V = adapterSeam('en', ROSTER);   // one handle for the pure formatters
 
 test('a machine-produced candidate says so on its card, and an event without provenance says nothing', () => {
   const shot = {id:9002, type:'shot', t:1580.1, color:'blue', tier:'window',
@@ -2558,12 +2649,12 @@ test('a machine-produced candidate says so on its card, and an event without pro
   assert.ok(confirmed.includes('data-vs-provenance="human"') && confirmed.includes('confirmed by a person'),
     'a human-confirmed candidate says so');
   // The inspector's gate block carries the pair that separates a shot from jitter.
-  const numbers = VS.eventGeometry(shot);
+  const numbers = stageEventPanel(V.context, shot);
   assert.ok(numbers.includes('Net move / path') && numbers.includes('159.1 / 159.9 px'), 'net vs path is in the gate block: ' + numbers);
   assert.ok(numbers.includes('Peak speed') && numbers.includes('492 px/s'), 'with the peak speed and window');
-  const jitter = VS.eventGeometry({...shot, gate:{...shot.gate, numbers:{...shot.gate.numbers, dense_net_displacement_px:0.2, dense_path_length_px:80.56}}});
+  const jitter = stageEventPanel(V.context, {...shot, gate:{...shot.gate, numbers:{...shot.gate.numbers, dense_net_displacement_px:0.2, dense_path_length_px:80.56}}});
   assert.ok(jitter.includes('0.2 / 80.6 px'), 'a jittery candidate reads 0.2 / 80.6 px');
-  const legacy = VS.eventGeometry({id:11, type:'shot', t:9.0, gate:{status:'confirmed', gate:'displacement', reasons:[], numbers:{disp_mm:1837}}});
+  const legacy = stageEventPanel(V.context, {id:11, type:'shot', t:9.0, gate:{status:'confirmed', gate:'displacement', reasons:[], numbers:{disp_mm:1837}}});
   assert.ok(!legacy.includes('Net move / path'), 'an event without dense numbers grows no row');
   // The engine hands the rail the payload as stored.
   assert.ok(source.includes('provenance: e.provenance && typeof e.provenance === \'object\' ? {...e.provenance} : null'),
@@ -2690,17 +2781,18 @@ test('a status payload carries its code into the console, as the cause or as his
 
 
 test('round 31 / owner item 3: the scrub bubble states the same time the strip does', () => {
-  const stage = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  const context = {window:{}, document:{querySelector: () => null, querySelectorAll: () => [], addEventListener() {}}, location:{hostname:'127.0.0.1'}};
-  vm.createContext(context);
-  vm.runInContext(stage, context);
-  const scrubT = context.window.VisionStage.scrubT;
-  assert.equal(scrubT(0), '0:00.0', 'the start of a clip');
-  assert.equal(scrubT(59.94), '0:59.9', 'a tenth is kept');
-  assert.equal(scrubT(25 * 60 + 53.5), '25:53.5', 'the same m:ss.d the cue cards use');
-  assert.equal(scrubT(3600 + 49 * 60 + 42.1), '1:49:42.1', 'over an hour the hour field appears');
-  assert.equal(scrubT('17.44'), '0:17.4', 'the value arrives as a string from a range input');
-  assert.equal(scrubT(-4), '0:00.0', 'a negative is clamped');
+  const context = adapterSeam('en', ROSTER);
+  const seam = context.mount(visionSnapshot({}));
+  const bubble = seconds => {
+    seam.fire('input', {id: 'vs-scrub', value: String(seconds), dataset: {}, closest: () => null});
+    return seam.text('#vs-scrub-bubble');
+  };
+  assert.equal(bubble(0), '0:00.0', 'the start of a clip');
+  assert.equal(bubble(59.94), '0:59.9', 'a tenth is kept');
+  assert.equal(bubble(25 * 60 + 53.5), '25:53.5', 'the same m:ss.d the cue cards use');
+  assert.equal(bubble(3600 + 49 * 60 + 42.1), '1:49:42.1', 'over an hour the hour field appears');
+  assert.equal(bubble('17.44'), '0:17.4', 'the value arrives as a string from a range input');
+  assert.equal(bubble(-4), '0:00.0', 'a negative is clamped');
 });
 
 
@@ -2719,6 +2811,52 @@ test('round 31 / owner item 3: a point chosen while a frame decodes is queued, n
   const stepBody = code(engine.slice(engine.indexOf('function stepFrame(delta)'), engine.indexOf('function setPlaying(')));
   assert.ok(!stepBody.includes('canLeave()'), 'a step during a decode is queued too, so a held step walks');
   assert.ok(stepBody.includes('state.pendingSeek ?? state.frame'), 'a step counts from the point already queued');
+});
+
+test('the engine mounts a stub DOM and a stub network through one seam', () => {
+  const painted = {
+    innerHTML: '', dataset: {}, hidden: false, setAttribute() {}, addEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [], classList: {add() {}, remove() {}, toggle() {}},
+  };
+  const host = {
+    id: 'review-root', lang: 'en', dataset: {}, style: {setProperty() {}, getPropertyValue: () => ''},
+    querySelector: selector => (selector === '#content' ? painted : null), querySelectorAll: () => [], addEventListener() {},
+  };
+  const hits = [];
+  const realm = {
+    host,
+    net: url => { hits.push(String(url)); return Promise.resolve({ok: true, status: 200, json: async () => ({datasets: [{id: 'vod30', label: 'VOD 30'}]})}); },
+    window: {addEventListener() {}},
+    document: {
+      querySelector: () => null, querySelectorAll: () => [], addEventListener() {},
+      createElement: () => ({style: {}, dataset: {}, setAttribute() {}, addEventListener() {}, classList: {add() {}, remove() {}}}),
+    },
+    confirm: () => true, URL, setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date,
+    microtaskMode: 'afterEvaluate',
+  };
+  realm.globalThis = realm;
+  const box = vm.createContext(realm);
+  // No source rewrite: the file runs as it ships, and the seam carries the stub DOM and the stub network.
+  vm.runInContext(source, box, {filename: 'app.js'});
+  vm.runInContext(`globalThis.seam = window.CornerPocketReview.attach({mount: globalThis.host, fetch: globalThis.net});
+    window.CornerPocketReview.reloadDatasets();`, box);
+
+  const seam = realm.seam;
+  assert.ok(seam && seam.state && typeof seam.render === 'function' && typeof seam.detach === 'function',
+    'attach() returns one handle: the live state, a render and a detach');
+  // The runner is synchronous, so a promise continuation cannot settle here. This test
+  // proves the request path and the DOM path, not the answer that comes back later.
+  assert.deepStrictEqual(hits, ['/api/datasets'],
+    'the engine asked the stub network for its data, so no page request left the seam');
+
+  seam.render();
+  assert.strictEqual(painted.dataset.stage, '1', 'render paints the stage into the stub root');
+  assert.ok(painted.innerHTML.includes('id="t-overlay"'), 'with the overlay layer the console draws into');
+
+  seam.detach();
+  seam.render();
+  assert.ok(painted.innerHTML.includes('id="t-overlay"'),
+    'after detach a render is a no-op, so the last frame stays and nothing throws');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
