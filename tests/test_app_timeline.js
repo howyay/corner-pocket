@@ -36,6 +36,102 @@ function test(name, fn) {
   catch (error) { console.error(`FAIL ${name}: ${error.message}`); failed++; }
 }
 
+// ---- the engine in a private realm ------------------------------------------
+// One realm runs the source as it ships. A stub network records every request
+// and answers it with a declared reply. The context drains its microtasks after
+// each evaluate call, so a reply settles and the test reads the state it built.
+// A deterministic clock holds every timer, because the test decides when one runs.
+function engineRealm(replies = {}, options = {}) {
+  const paint = {};
+  const element = () => ({
+    innerHTML: '', textContent: '', hidden: false, value: '', checked: false, disabled: false, files: [], children: [],
+    dataset: {}, style: {setProperty() {}, getPropertyValue: () => ''},
+    setAttribute() {}, getAttribute: () => null, removeAttribute() {}, hasAttribute: () => false,
+    load() {}, play() {}, pause() {}, addEventListener() {}, removeEventListener() {}, focus() {}, blur() {},
+    appendChild() {}, remove() {}, closest: () => null,
+    getBoundingClientRect: () => ({left: 0, top: 0, width: 1280, height: 720}),
+    querySelector: () => null, querySelectorAll: () => [],
+    classList: {add() {}, remove() {}, toggle() {}},
+  });
+  const root = element(); root.id = 'review-root'; root.lang = 'en';
+  // One stub element per selector, so a test reads what the engine painted where.
+  root.querySelector = selector => (paint[selector] ||= element());
+  root.querySelectorAll = () => [];
+  const timers = [];
+  const realm = {
+    root, paint, timers, window: {addEventListener() {}},
+    document: {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: element},
+    // mount() reads both of these keys, so the stub must answer them.
+    localStorage: {getItem: () => null, setItem() {}, removeItem() {}},
+    confirm: () => true, AbortController, URL: {createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+    // The clock belongs to the test: no timer fires until the test flushes it.
+    setTimeout: (fn, ms) => { const timer = {fn, ms: ms || 0}; timers.push(timer); return timer; },
+    clearTimeout: timer => { const at = timers.indexOf(timer); if (at >= 0) timers.splice(at, 1); },
+    console, Math, Number, Object, JSON, Date,
+  };
+  realm.globalThis = realm;
+  // A reply answers one exact URL, one path without its query, or one prefix that ends in '*'.
+  realm.reply = url => {
+    const bare = url.split('?')[0];
+    if (replies[url]) return replies[url];
+    if (replies[bare]) return replies[bare];
+    const key = Object.keys(replies).find(name => name.endsWith('*') && url.startsWith(name.slice(0, -1)));
+    return key ? replies[key] : {};
+  };
+  const box = vm.createContext(realm, {microtaskMode: 'afterEvaluate'});
+  vm.runInContext(source, box, {filename: 'app.js'});
+  // The stub network lives inside the realm, so its promises settle inside the realm.
+  vm.runInContext(`globalThis.REQUESTS = [];
+    globalThis.net = (url, init) => {
+      globalThis.REQUESTS.push({url: String(url), init: init || {}});
+      const reply = globalThis.reply(String(url));
+      return Promise.resolve({ok: reply.ok !== false, status: reply.status || 200,
+        headers: {get: name => (reply.headers || {})[name] ?? null},
+        json: async () => reply.json || {}, blob: async () => reply.blob || 'blob:test'});
+    };
+    globalThis.seam = window.CornerPocketReview.attach({fetch: globalThis.net});`, box);
+  const run = code => vm.runInContext(code, box);
+  // The engine mounts its own root, and that load drives the whole read contract.
+  if (options.mount !== false) run('window.CornerPocketReview.mount(globalThis.root);');
+  return {
+    realm, box, run, root, paint, seam: realm.seam, calls: realm.REQUESTS,
+    review: () => realm.window.CornerPocketReview,
+    // Array.from copies the realm array into this realm, so a deep compare holds.
+    paths: () => Array.from(realm.REQUESTS, entry => entry.url),
+    clear: () => { realm.REQUESTS.length = 0; },
+    // Run every timer inside the window, in order, as a real clock would.
+    flush: (upToMs = 0) => {
+      for (;;) {
+        const at = timers.findIndex(timer => timer.ms <= upToMs);
+        if (at < 0) return;
+        const [timer] = timers.splice(at, 1);
+        timer.fn();
+        run('0');
+      }
+    },
+  };
+}
+
+// ---- the remaining source-text dependency, in one countable place -----------
+// A browser seam cannot observe a Python file, a stylesheet or an unused read.
+// The caller states the file, the fragment and why no seam can reach it.
+// The 4th argument marks an absence claim (true), or a scope: {absent, between}.
+const sourceContracts = [];
+function assertSourceContract(file, snippet, why, options) {
+  const opts = options === true ? {absent: true} : (options || {});
+  const text = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  let scope = text;
+  if (opts.between) {
+    const from = text.indexOf(opts.between[0]);
+    const to = opts.between.length > 1 ? text.indexOf(opts.between[1], from) : text.length;
+    scope = from < 0 || to < 0 ? '' : text.slice(from, to);
+  }
+  if (opts.comments) scope = scope.replace(/\/\/[^\n]*/g, '');
+  const found = snippet instanceof RegExp ? snippet.test(scope) : scope.includes(snippet);
+  sourceContracts.push({file, snippet: String(snippet), why});
+  assert.ok(opts.absent ? !found : found, `${file} must ${opts.absent ? 'not ' : ''}keep "${snippet}" (${why})`);
+}
+
 // ---- the Vision adapter seam: one mount in, one handle out ------------------
 // window.VisionStage publishes attach() alone. A test mounts a stub root, drives
 // the real events, and reads the region the operator sees.
@@ -342,16 +438,215 @@ test('timeline state defaults are safe', () => {
   assert.strictEqual(T.state.tool, 'select');
 });
 
-test('app.js pins the backend request contract and required labels', () => {
-  for (const needle of [
-    '/api/video?dataset=', '/api/frame?dataset=', '/api/frame-result?dataset=', '/api/inference?dataset=',
-    "'/api/inference',", "'/api/frame-correction',", '/api/unified?dataset=',
-    'X-Frame-Index', 'X-Timestamp-Seconds', 'X-Timestamp-Kind', 'X-Frame-Width', 'X-Frame-Height',
-    "'/api/' + 'vod30/anchors'", '/api/vod30/seeds', '/api/identity/seed', '/api/balls/',
-    'X-Frame-Index', 'AbortController'
-  ]) assert.ok(source.includes(needle) || source.includes(needle.replace("' + '", '')), `missing contract fragment: ${needle}`);
-  assert.ok(!source.includes('id="vod"'), 'the second VOD video surface is gone');
-  assert.ok(!source.includes('Frozen frame inspector'), 'the duplicate frozen-frame panel is gone');
+test('app.js drives the backend request contract and reads the frame headers', () => {
+  // The stage answers each call with a declared reply. The test then reads the
+  // requests it received and the state those replies built.
+  const realm = engineRealm({
+    '/api/datasets': {json: {datasets: [{id: 'vod30', label: 'VOD 30'}], ball_sets: [{id: 'unlabeled_crops'}]}},
+    '/api/video?dataset=vod30': {json: {dataset: 'vod30', fps: 25, frame_count: 45000, duration: 1800, width: 1920, height: 1080, timestamp_kind: 'nominal_cfr'}},
+    '/api/vod30/events': {json: {analysed: true, events: [], annotations: {}}},
+    '/api/balls/unlabeled_crops/meta': {json: {items: [{file: 'a.jpg', t: 0}], labels: {}}},
+    '/api/balls/unlabeled_crops/label': {json: {}},
+    '/api/vod30/anchors?t=70': {json: {pts: null, width: 1920, height: 1080}},
+    '/api/vod30/anchors': {json: {}},
+    '/api/vod30/seeds': {json: {seeds: {}}},
+    '/api/vod30/tracklets': {json: {windows: [{win: '0-100', tracks: [{track_id: 1}]}], seeds: {}, predictions: null}},
+    '/api/vod30/tracks': {json: {tracks: [{track_id: 1, bbox: [10, 20, 30, 40]}], t: 7}},
+    // Four of the five reply headers must name what the engine stores.
+    '/api/frame?dataset=vod30&frame=7': {headers: {'X-Frame-Index': '7', 'X-Timestamp-Seconds': '0.28', 'X-Timestamp-Kind': 'nominal_cfr', 'X-Frame-Width': '1280', 'X-Frame-Height': '720'}},
+    '/api/frame-result?dataset=vod30&frame=7': {json: {correction: null, inference: null}},
+    '/api/identity/frame?dataset=vod30&frame=7': {json: {}},
+    '/api/unified?dataset=vod30&frame=7': {json: {}},
+    '/api/identity/enroll-preview': {json: {ok: true}},
+    '/api/identity/seed': {json: {}},
+    '/api/inference': {json: {frame_index: 7, stage: 'queued'}},
+    '/api/inference?dataset=vod30': {json: {status: 'completed', frame_index: 7}},
+    '/api/frame-correction': {json: {correction: null}},
+  });
+  const seam = realm.seam;
+
+  // The mount reads the workspace, so every read surface must appear once.
+  const loaded = realm.paths();
+  for (const path of ['/api/datasets', '/api/video?dataset=vod30', '/api/vod30/events',
+                      '/api/balls/unlabeled_crops/meta', '/api/vod30/anchors?t=70']) {
+    assert.ok(loaded.includes(path), `the mount asks for ${path}`);
+  }
+  assert.strictEqual(seam.state.vmeta.duration, 1800, 'the video reply carries the frame span');
+  assert.strictEqual(seam.state.dataset, 'vod30', 'the dataset menu selects the replied dataset');
+
+  // One seek loads the frame, its result and its identity overlay in one turn.
+  realm.clear();
+  realm.run('window.CornerPocketReview.seek(7);');
+  assert.deepStrictEqual(realm.paths(), [
+    '/api/frame?dataset=vod30&frame=7',
+    '/api/frame-result?dataset=vod30&frame=7',
+    '/api/identity/frame?dataset=vod30&frame=7',
+  ], 'one seek asks for the frame, its result and its identity overlay');
+  assert.strictEqual(realm.calls[0].init.signal.aborted, false, 'the frame request carries its own cancel signal');
+
+  // The five reply headers name the readings the engine stores.
+  assert.strictEqual(seam.state.frame, 7, 'X-Frame-Index names the stored frame');
+  assert.strictEqual(seam.state.t, 0.28, 'X-Timestamp-Seconds names the stored time');
+  assert.strictEqual(seam.state.frameWidth, 1280, 'X-Frame-Width names the stored width');
+  assert.strictEqual(seam.state.frameHeight, 720, 'X-Frame-Height names the stored height');
+  assertSourceContract('annotator/app.js', 'X-Timestamp-Kind', 'the frame reply carries this header, but no seam reads the parsed value');
+
+  // The overlay follows the settled frame, and it waits for the declared delay.
+  assert.ok(!realm.paths().includes('/api/unified?dataset=vod30&frame=7'), 'the overlay waits for the frame to settle');
+  realm.flush(300);
+  assert.ok(realm.paths().includes('/api/unified?dataset=vod30&frame=7'), 'the settled frame asks for its overlay');
+
+  // A run posts its frame and its detectors, then polls the result.
+  realm.clear();
+  realm.run('window.CornerPocketReview.runInference(null);');
+  const started = realm.calls.find(entry => entry.url === '/api/inference');
+  assert.ok(started, 'a run posts to /api/inference');
+  assert.strictEqual(started.init.method, 'POST', 'a run is a POST');
+  assert.deepStrictEqual(Object.keys(started.init.headers), ['Content-Type'], 'a run declares its JSON body');
+  assert.deepStrictEqual(JSON.parse(started.init.body), {dataset: 'vod30', frame_index: 7, detectors: ['table', 'person']},
+    'the run carries the frame and the enabled detectors');
+  realm.flush(1500);
+  assert.ok(realm.paths().includes('/api/inference?dataset=vod30'), 'the run is then polled by dataset');
+
+  // Each editor posts to its own store.
+  realm.run(`window.CornerPocketReview.selectStagePerson({person: '1', bbox: '10,20,30,40', cluster: '7', player: ''});`);
+  realm.clear();
+  realm.run('window.CornerPocketReview.saveAnchors(null);');
+  assert.ok(realm.paths().includes('/api/vod30/anchors'), 'the anchors post to their dataset path');
+  realm.clear();
+  realm.run("window.CornerPocketReview.setSeed(null, 'A', null);");
+  assert.ok(realm.paths().includes('/api/vod30/seeds'), 'a track label posts to the seeds store');
+  realm.clear();
+  realm.run("window.CornerPocketReview.seedIdentity(null, 'p1');");
+  assert.ok(realm.paths().includes('/api/identity/seed'), 'a regular pick posts to the identity seed');
+  realm.clear();
+  realm.run('window.CornerPocketReview.saveCorrections(null);');
+  assert.ok(realm.paths().includes('/api/frame-correction'), 'the manual boxes post to the correction store');
+  realm.clear();
+  realm.run("window.CornerPocketReview.selectCrop('a.jpg');");
+  realm.run('window.CornerPocketReview.labelBall(null, 2);');
+  assert.ok(realm.paths().includes('/api/balls/unlabeled_crops/label'), 'a crop label posts under its ball set');
+
+  // The painted stage holds one video surface and no duplicate panel.
+  const painted = Object.entries(realm.paint)
+    .map(([selector, node]) => `${selector} ${node.innerHTML} ${node.textContent}`).join('\n');
+  assert.strictEqual(painted.split('id="t-video"').length - 1, 1, 'the stage paints exactly one video surface');
+  assert.ok(!painted.includes('id="vod"'), 'the stage paints no second VOD video');
+  assert.ok(!painted.includes('Frozen frame inspector'), 'the stage paints no duplicate frozen-frame panel');
+});
+
+test('the engine drives its identity stores, its merge and its event snapshot', () => {
+  const realm = engineRealm({
+    '/api/datasets': {json: {datasets: [{id: 'vod30', label: 'VOD 30'}], ball_sets: [{id: 'crops'}]}},
+    '/api/video?dataset=vod30': {json: {dataset: 'vod30', fps: 25, frame_count: 45000, duration: 1800, width: 1920, height: 1080, timestamp_kind: 'nominal_cfr'}},
+    '/api/vod30/events': {json: {analysed: true, annotations: {}, events: [
+      {id: 4, type: 'shot', t: 3.5, geometry_check: {ok: true}, provenance: {source: 'auto', model: 'm1'},
+       gate: {status: 'confirmed', gate: 'displacement', reasons: [], numbers: {}}}]}},
+    '/api/balls/crops/meta': {json: {items: [{file: 'a.jpg', t: 0}], labels: {}}},
+    '/api/vod30/anchors?t=70': {json: {pts: null}},
+    '/api/vod30/tracklets': {json: {windows: [{win: '0-100', tracks: [{track_id: 1}]}], seeds: {}, predictions: null}},
+    '/api/vod30/tracks': {json: {tracks: [{track_id: 1, bbox: [10, 20, 30, 40]}], t: 0}},
+    '/api/frame?dataset=vod30&frame=0': {headers: {'X-Frame-Index': '0', 'X-Frame-Width': '1280', 'X-Frame-Height': '720'}},
+    '/api/frame-result?dataset=vod30&frame=0': {json: {correction: null, inference: null}},
+    '/api/identity/frame?dataset=vod30&frame=0': {json: {}},
+    '/api/identity/seed': {json: {}},
+    '/api/identity/link': {json: {}},
+    '/api/identity/unbind': {json: {}},
+    '/api/identity/enroll-preview': {json: {token: 'tok-1', crops: [], plan: {}}},
+    '/api/identity/enroll-confirm': {json: {ok: true}},
+    '/api/vod30/seeds': {json: {seeds: {}}},
+    '/api/inference': {json: {frame_index: 0, stage: 'queued'}},
+    '/api/inference?dataset=vod30': {json: {status: 'completed', frame_index: 0}},
+  });
+  const seam = realm.seam;
+  const pick = cluster => realm.run(`window.CornerPocketReview.selectStagePerson({person:'1',bbox:'10,20,30,40',cluster:'${cluster}',player:''});`);
+  const posts = url => realm.calls.filter(entry => entry.url === url && entry.init.method === 'POST');
+  const bodyOf = url => JSON.parse(posts(url)[0].init.body);
+  const valuesOf = url => Object.values(bodyOf(url));
+
+  // A dataset switch keeps no queued seek and no live detection.
+  seam.state.pendingSeek = 5;
+  seam.state.live.detections = [{cls: 'ball'}];
+  realm.run("window.CornerPocketReview.setDataset('vod30');");
+  assert.ok(!seam.state.pendingSeek, 'a dataset switch queues no seek for the old frame');
+  assert.strictEqual(seam.state.live.detections, null, 'live detections never survive a dataset switch');
+
+  // A merge posts the pair, moves the pick to the survivor, and drops the frame cache.
+  pick(7);
+  realm.clear();
+  realm.run('window.CornerPocketReview.linkTrack(null, 13);');
+  assert.ok(posts('/api/identity/link').length === 1, 'a merge posts to /api/identity/link');
+  assert.deepStrictEqual(bodyOf('/api/identity/link'), {track_id: 1, cluster_id: 13},
+    'the merge carries the track and the target cluster');
+  assert.strictEqual(seam.state.sel.person.cluster_id, 13, 'the pick moves to the cluster that survived');
+  assert.strictEqual(seam.state.sel.person.player_id, null, 'and the survivor starts unbound');
+  assert.ok(realm.paths().includes('/api/identity/frame?dataset=vod30&frame=0'),
+    'the merge drops the cached frame record, so the frame reads it again');
+
+  // The regular path posts the cluster and the picked player.
+  pick(7);
+  realm.clear();
+  realm.run("window.CornerPocketReview.seedIdentity(null, 'p9');");
+  assert.deepStrictEqual(bodyOf('/api/identity/seed'), {cluster_id: 7, player_id: 'p9'},
+    'the regular path posts the cluster and the player to /api/identity/seed');
+
+  // Clear unbinds a bound cluster, and says why when nothing is bound.
+  realm.clear();
+  realm.run("window.CornerPocketReview.selectStagePerson({person:'1',bbox:'10,20,30,40',cluster:'7',player:'Dana'});");
+  realm.clear();
+  realm.run('window.CornerPocketReview.clearIdentity(null);');
+  assert.deepStrictEqual(bodyOf('/api/identity/unbind'), {cluster_id: 7}, 'Clear unbinds through /api/identity/unbind');
+  assert.strictEqual(seam.state.receipts[0].text, 'cluster 7 unbound', 'and the receipt names the cluster');
+  pick(7);
+  realm.clear();
+  realm.run('window.CornerPocketReview.clearIdentity(null);');
+  assert.deepStrictEqual(realm.paths(), [], 'an unbound track sends no unbind request');
+  assert.strictEqual(seam.state.notice.error, true, 'and the console says why instead');
+
+  // One seeds writer carries a guest name, a legacy role and a clear.
+  realm.clear();
+  realm.run("window.CornerPocketReview.setSeed(null, 'Minh');");
+  assert.ok(valuesOf('/api/vod30/seeds').includes('Minh'), 'a typed guest name reaches the seeds writer');
+  realm.clear();
+  realm.run("window.CornerPocketReview.setSeed(null, 'A');");
+  assert.ok(valuesOf('/api/vod30/seeds').includes('A'), 'a legacy A seed reaches the same writer');
+  realm.clear();
+  realm.run("window.CornerPocketReview.setSeed(null, 'clear');");
+  assert.ok(valuesOf('/api/vod30/seeds').includes(null), 'and a clear empties the role instead of naming one');
+
+  // The enrol preview reads the frame, and carries the cluster only when it has one.
+  pick(7);
+  realm.clear();
+  realm.run('window.CornerPocketReview.enrollPreview(null);');
+  assert.ok(posts('/api/identity/enroll-preview').length === 1, 'the preview reads its own endpoint');
+  assert.deepStrictEqual(bodyOf('/api/identity/enroll-preview'),
+    {dataset: 'vod30', frame_index: 0, bbox: [10, 20, 30, 40], cluster_id: 7},
+    'a clustered track sends its cluster id for the fast path');
+  realm.clear();
+  realm.run("window.CornerPocketReview.enrollConfirm(null, 'Dana');");
+  assert.strictEqual(bodyOf('/api/identity/enroll-confirm').token, 'tok-1',
+    'the confirm is the one write, and it carries the preview token');
+  pick('');
+  realm.clear();
+  realm.run('window.CornerPocketReview.enrollPreview(null);');
+  assert.ok(!('cluster_id' in bodyOf('/api/identity/enroll-preview')), 'an unclustered track sends no cluster id');
+
+  // The event snapshot carries the tier, the geometry check and a copy of the provenance.
+  const item = realm.review().snapshot().events.items[0];
+  assert.ok('tier' in item && 'geometry_check' in item, 'the snapshot exposes the tier and the geometry check');
+  assert.deepStrictEqual({...item.geometry_check}, {ok: true}, 'the geometry check arrives as stored');
+  assert.deepStrictEqual({...item.provenance}, {source: 'auto', model: 'm1'}, 'the provenance arrives as stored');
+  assert.notStrictEqual(item.provenance, seam.state.events[0].provenance,
+    'and it is a copy, so a rail edit never rewrites the store');
+
+  // The completion line claims no storage, and 中 renders the same sentence.
+  realm.run('window.CornerPocketReview.runInference(null);');
+  realm.flush(1500);
+  assert.strictEqual(seam.state.inferStatus, 'Inference completed for frame 0 (not stored).',
+    'the completion line says the result was not stored');
+  seam.setRoot({id: 'review-root', lang: 'zh'});
+  assert.strictEqual(seam.text('Inference completed for frame 0 (not stored).'), '帧 0 推理已完成（未存储）。',
+    'and 中 renders the same sentence');
 });
 
 test('every processor state translates and never leaks raw English', () => {
@@ -370,14 +665,15 @@ test('every processor state translates and never leaks raw English', () => {
   assert.strictEqual(review.liveStateText('stopped'), 'stopped');
   assert.strictEqual(review.liveStateText('brand-new-state'), 'brand-new-state', 'unknown values stay verbatim');
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assert.ok(adapter.includes('liveStateText') && !/esc\(live\.state\)/.test(adapter), 'the adapter must not print the raw state');
+  assertSourceContract('annotator/vision-stage.js', 'liveStateText', 'the adapter must not print the raw state');
+  assertSourceContract('annotator/vision-stage.js', /esc\(live\.state\)/, 'the adapter must not print the raw state', true);
 });
 
 test('form and video targets never double-consume the stage keys', () => {
   const review = sandbox.window.CornerPocketReview;
   T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
   assert.strictEqual(review.activate('timeline'), true);
-  assert.ok(source.includes("closest('input,textarea,select,button,video,[contenteditable=\"true\"]')"), 'video is in the early-return selector list');
+  assertSourceContract('annotator/app.js', "closest('input,textarea,select,button,video,[contenteditable=\"true\"]')", 'video is in the early-return selector list');
   T.state.vmeta = {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080};
   const before = T.state.frame;
   T.onKeydown({key:'ArrowRight', target:{closest: selector => selector.includes('video') ? {} : null}});
@@ -415,7 +711,8 @@ test('overlay tags never overprint: YOURS keeps its spot, the rest move to free 
 test('round 1 · overlay tags stay legible at the displayed scale and never overprint; nothing they said is lost', () => {
   // A 1280-wide frame shown 372 px wide (the 390 phone): tags scale so the text is >= 11 px on screen.
   const src = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
-  assert.ok(/const MIN_TAG_PX = 11;/.test(src) && /tagScale = measureTagScale\(svg, state\.frameWidth \|\| 1280\);/.test(src), 'the scale is measured every paint');
+  assertSourceContract('annotator/app.js', /const MIN_TAG_PX = 11;/, 'the scale is measured every paint');
+  assertSourceContract('annotator/app.js', /tagScale = measureTagScale\(svg, state\.frameWidth \|\| 1280\);/, 'the scale is measured every paint');
   // measureTagScale: 14 px frame text shown at 372/1280 would be 4 px; the tag scales so it is 11 px.
   const measure = new Function(`${src.slice(src.indexOf('const SRC_TAG_HEIGHT'), src.indexOf('function glyphWidth'))}; return measureTagScale;`)();
   const k = measure({getBoundingClientRect: () => ({width: 372})}, 1280);
@@ -440,7 +737,8 @@ test('round 1 · overlay tags stay legible at the displayed scale and never over
   for (const r of rows.filter(r => r.title)) assert.strictEqual(r.title, 'person', 'a chip-only row keeps its label in <title>');
   // Confidence is not printed on the frame any more; it is in the box's <title>, with who drew it.
   assert.ok(!/\bperson 0\.\d\d\b/.test(src.slice(src.indexOf('function paintOverlay'))), 'the score left the tag text');
-  assert.ok(src.includes("text('confidence')") && src.includes("'confidence':'置信度'"), 'and is in the box title, EN and 中');
+  assertSourceContract('annotator/app.js', "text('confidence')", 'and is in the box title, EN and 中');
+  assertSourceContract('annotator/app.js', "'confidence':'置信度'", 'and is in the box title, EN and 中');
 });
 
 test('F3: with a box selected the arrows nudge it both ways (Shift = 10 px); with none, ←/→ step frames', () => {
@@ -496,35 +794,36 @@ test('engine copy localizes notices, statuses and save receipts', () => {
 
 test('app.html is one stage host with no sub-tab navigation', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.html'), 'utf8');
-  assert.ok(html.includes('id="review-root"') && html.includes('id="content"'));
-  assert.ok(!html.includes('data-mode='), 'review mode buttons are gone');
-  assert.ok(!html.includes('ops-header'), 'the duplicate review header is gone');
+  assertSourceContract('annotator/app.html', 'id="review-root"', 'the review root and its content host exist');
+  assertSourceContract('annotator/app.html', 'id="content"', 'the review root and its content host exist');
+  assertSourceContract('annotator/app.html', 'data-mode=', 'review mode buttons are gone', true);
+  assertSourceContract('annotator/app.html', 'ops-header', 'the duplicate review header is gone', true);
 });
 
 test('app.css styles the one stage surface, ops.css styles the rails and strip', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.css'), 'utf8');
   for (const needle of ['.stage > img', '#t-overlay', '.draw-preview', '.t-poly', '.center-dot', '.stage-popover', '.pop-grid']) {
-    assert.ok(css.includes(needle), `missing stage css: ${needle}`);
+    assertSourceContract('annotator/app.css', needle, `missing stage css: ${needle}`);
   }
-  assert.ok(!css.includes('.timeline-grid'), 'the two-panel timeline grid is gone');
-  assert.ok(!css.includes('[data-embedded] nav'), 'the hidden review nav rule is gone');
+  assertSourceContract('annotator/app.css', '.timeline-grid', 'the two-panel timeline grid is gone', true);
+  assertSourceContract('annotator/app.css', '[data-embedded] nav', 'the hidden review nav rule is gone', true);
   const ops = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
   for (const needle of ['.vs-grid', '.vs-rail', '.vs-inspector', '.vs-strip', '.scrub-mark', '.vs-layer', '.vs-sheettabs', 'grid-template-columns:280px minmax(0,1fr) 320px']) {
-    assert.ok(ops.includes(needle), `missing surface css: ${needle}`);
+    assertSourceContract('annotator/ops.css', needle, `missing surface css: ${needle}`);
   }
   // The inspector scrolls above a fixed action footer: the scroll region reserves
   // the footer's measured height, so no row hides under it at 390 or at short heights.
-  assert.ok(ops.includes('padding-bottom:calc(12px + var(--vs-footer-h,0px))'), 'the scroll region must reserve the footer height');
-  assert.ok(ops.includes('scroll-padding-bottom:calc(var(--vs-footer-h,0px) + 8px)'));
-  assert.ok(ops.includes('.vs-inspector-actions{flex:none'), 'the footer is a flex sibling, not an overlay');
-  assert.ok(ops.includes(':is(#ops-shell) .vs-rail{overflow:auto}'), 'only the rail keeps its own mobile scroll');
-  assert.ok(!/bottom:44px;max-height:44vh;overflow:auto/.test(ops), 'the mobile aside must not scroll under the footer');
+  assertSourceContract('annotator/ops.css', 'padding-bottom:calc(12px + var(--vs-footer-h,0px))', 'the scroll region must reserve the footer height');
+  assertSourceContract('annotator/ops.css', 'scroll-padding-bottom:calc(var(--vs-footer-h,0px) + 8px)', 'the scroll region must reserve the footer height');
+  assertSourceContract('annotator/ops.css', '.vs-inspector-actions{flex:none', 'the footer is a flex sibling, not an overlay');
+  assertSourceContract('annotator/ops.css', ':is(#ops-shell) .vs-rail{overflow:auto}', 'only the rail keeps its own mobile scroll');
+  assertSourceContract('annotator/ops.css', /bottom:44px;max-height:44vh;overflow:auto/, 'the mobile aside must not scroll under the footer', true);
   // On a phone the sheet stops where the 16:9 stage ends (measured), so it never covers the picture.
-  assert.ok(ops.includes('var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))') && !ops.includes('var(--vs-strip-h,150px) - 240px)'),
-    'the sheet height gives way to the measured stage bottom, not a fixed 240 px');
+  assertSourceContract('annotator/ops.css', 'var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))', 'the sheet height gives way to the measured stage bottom, not a fixed 240 px');
+  assertSourceContract('annotator/ops.css', 'var(--vs-strip-h,150px) - 240px)', 'the sheet height gives way to the measured stage bottom, not a fixed 240 px', true);
   const adapterCode = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assert.ok(adapterCode.includes("root.style.setProperty('--vs-stage-bottom'") && adapterCode.includes("footerObserver.observe(frame)"),
-    'the stage bottom is measured and re-measured when the frame resizes');
+  assertSourceContract('annotator/vision-stage.js', "root.style.setProperty('--vs-stage-bottom'", 'the stage bottom is measured and re-measured when the frame resizes');
+  assertSourceContract('annotator/vision-stage.js', 'footerObserver.observe(frame)', 'the stage bottom is measured and re-measured when the frame resizes');
 });
 
 test('editor translation preserves dirty values, focus, selection and pending save state', () => {
@@ -641,7 +940,8 @@ test('the facts line uses one word for one live state', () => {
   assert.ok(stale.startsWith('stale · seq 12'), stale);
   assert.ok(!stale.includes('live'), 'the stale state is not described as live');
   assert.ok(stale.includes('frame age 10.2 s') && stale.includes('receive-to-result 33 ms'), stale);
-  assert.ok(ADAPTER_SOURCE.includes('not glass-to-glass') || ADAPTER_SOURCE.includes('latency'), 'the latency caveat string is untouched');
+  assertSourceContract('annotator/vision-stage.js', 'not glass-to-glass', 'the latency caveat string is untouched');
+  assertSourceContract('annotator/vision-stage.js', 'latency', 'the latency caveat string is untouched');
 });
 
 test('the verdict keys act on the selected cue only', () => {
@@ -670,28 +970,28 @@ test('the adapter localizes engine state, keeps one scrub range and one action f
   const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
   // 1. the scrub range is driven like the frame field, not left at max=0
   // R24 item 1: the range is a time control, so it publishes the clip's duration in seconds.
-  assert.ok(/scrub\.getAttribute\('max'\) !== max/.test(adapter) && adapter.includes('Number(s.frame.duration) || 0'),
-    'the scrub range must publish the clip duration');
-  assert.ok(adapter.includes("scrub.setAttribute('max', max)"));
-  assert.ok(adapter.includes("scrub.setAttribute('step', '0.1')"));
+  assertSourceContract('annotator/vision-stage.js', /scrub\.getAttribute\('max'\) !== max/, 'the scrub range must publish the clip duration');
+  assertSourceContract('annotator/vision-stage.js', 'Number(s.frame.duration) || 0', 'the scrub range follows the frame duration');
+  assertSourceContract('annotator/vision-stage.js', "scrub.setAttribute('max', max)", 'the scrub range follows the frame duration');
+  assertSourceContract('annotator/vision-stage.js', "scrub.setAttribute('step', '0.1')", 'the scrub steps in tenths of a second');
   // 2. engine-built strings render in the active language
-  assert.ok(adapter.includes('engineText(s.notice.text)'), 'notices localize at render');
+  assertSourceContract('annotator/vision-stage.js', 'engineText(s.notice.text)', 'notices localize at render');
   // the reserved footer height is measured, never hardcoded
-  assert.ok(adapter.includes('footer.offsetHeight') && adapter.includes("setProperty('--vs-footer-h'"), 'the footer height must be derived');
-  assert.ok(adapter.includes('new ResizeObserver(syncFooterHeight)'), 'footer height changes must re-derive the padding');
-  assert.ok(adapter.includes("data-vs-action=\"verdict-draft\""), 'the verdict verbs live in the always-visible footer');
-  assert.ok(adapter.includes('engineText(row.text)'), 'receipts localize at render');
-  assert.ok(adapter.includes('engineText(s.corrections.inferStatus'));
-  assert.ok(adapter.includes('engineText(s.persons.status'));
+  assertSourceContract('annotator/vision-stage.js', 'footer.offsetHeight', 'the footer height must be derived');
+  assertSourceContract('annotator/vision-stage.js', "setProperty('--vs-footer-h'", 'the footer height must be derived');
+  assertSourceContract('annotator/vision-stage.js', 'new ResizeObserver(syncFooterHeight)', 'footer height changes must re-derive the padding');
+  assertSourceContract('annotator/vision-stage.js', "data-vs-action=\"verdict-draft\"", 'the verdict verbs live in the always-visible footer');
+  assertSourceContract('annotator/vision-stage.js', 'engineText(row.text)', 'receipts localize at render');
+  assertSourceContract('annotator/vision-stage.js', 'engineText(s.corrections.inferStatus', 'the inference status localizes at render');
+  assertSourceContract('annotator/vision-stage.js', 'engineText(s.persons.status', 'the roster status localizes at render');
   // 3. a failed start is a failed state in the status row
-  assert.ok(adapter.includes('liveRowState'), 'the live row must not read idle after a failed start');
+  assertSourceContract('annotator/vision-stage.js', 'liveRowState', 'the live row must not read idle after a failed start');
   // 4. the primary action of each block lives in an always-visible footer
-  assert.ok(adapter.includes('function actionsHTML'));
-  assert.ok(shell.includes('id="vs-inspector-scroll"') && shell.includes('id="vs-inspector-actions"'));
-  assert.ok(!adapter.includes('vs-sticky'), 'the footer replaced the sticky row');
+  assertSourceContract('annotator/vision-stage.js', 'function actionsHTML', 'the action footer comes from one helper');
+  assertSourceContract('annotator/ops.js', 'id="vs-inspector-scroll"', 'the inspector scrolls in its own region');
+  assertSourceContract('annotator/ops.js', 'id="vs-inspector-actions"', 'the inspector keeps one action footer');
+  assertSourceContract('annotator/vision-stage.js', 'vs-sticky', 'the footer replaced the sticky row', true);
   // 5. a dataset switch re-loads the stage even while a decode owns it
-  assert.ok(source.includes('state.pendingSeek = 0'), 'the dataset switch must queue its frame reload');
-  assert.ok(source.includes('state.live.detections = null'), 'live detections must not survive a dataset switch');
 });
 
 test('every adapter string ships in both languages', () => {
@@ -708,7 +1008,9 @@ test('every adapter string ships in both languages', () => {
     assert.ok(/[\u4e00-\u9fff]/.test(table.zh[key]), `${key} has no Chinese copy`);
   }
   const zhBlock = adapter.slice(adapter.indexOf('zh: {'));
-  assert.ok(zhBlock.includes('线索') && zhBlock.includes('启动尝试') && zhBlock.includes('已过期'));
+  assertSourceContract('annotator/vision-stage.js', '线索', 'the zh copy table carries this string', {between:['zh: {']});
+  assertSourceContract('annotator/vision-stage.js', '启动尝试', 'the zh copy table carries this string', {between:['zh: {']});
+  assertSourceContract('annotator/vision-stage.js', '已过期', 'the zh copy table carries this string', {between:['zh: {']});
 });
 
 test('pocket labels are position words in both languages, never rail terms', () => {
@@ -905,14 +1207,15 @@ test('every drawn group is tagged by source, in both languages', () => {
 });
 
 test('rail-corner keys are display-only and zhCopy is keyed by the slot it labels', () => {
-  const zhBlock = source.slice(source.indexOf('const zhCopy'), source.indexOf('const editorCopy'));
-  assert.ok(!/'(head|foot)-(left|right)'\s*:/.test(zhBlock), 'zhCopy must not key copy by pocket name');
-  assert.ok(zhBlock.includes("'footer-left':'本地数据 · 显式保存'") && zhBlock.includes("'footer-right':'复核结论在核验前不是真值。'"));
-  assert.ok(source.includes('pocketText(pk.name)'), 'stage pocket labels go through the display map');
-  assert.ok(!source.includes('esc(pk.name)'), 'the raw pocket key is never printed');
+  assertSourceContract('annotator/app.js', /'(head|foot)-(left|right)'\s*:/, 'zhCopy must not key copy by pocket name', {between:['const zhCopy', 'const editorCopy'], absent: true});
+  assertSourceContract('annotator/app.js', "'footer-left':'本地数据 · 显式保存'", 'the zh copy table carries this string', {between:['const zhCopy', 'const editorCopy']});
+  assertSourceContract('annotator/app.js', "'footer-right':'复核结论在核验前不是真值。'", 'the zh copy table carries this string', {between:['const zhCopy', 'const editorCopy']});
+  assertSourceContract('annotator/app.js', 'pocketText(pk.name)', 'stage pocket labels go through the display map');
+  assertSourceContract('annotator/app.js', 'esc(pk.name)', 'the raw pocket key is never printed', true);
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assert.ok(adapter.includes('nearest_pocket_text'), 'the rail card shows the mapped name');
-  assert.ok(!adapter.includes('esc(e.nearest_pocket)') && !adapter.includes('esc(item.nearest_pocket)'), 'the rail and inspector never print the raw key');
+  assertSourceContract('annotator/vision-stage.js', 'nearest_pocket_text', 'the rail card shows the mapped name');
+  assertSourceContract('annotator/vision-stage.js', 'esc(e.nearest_pocket)', 'the rail never prints the raw pocket key', true);
+  assertSourceContract('annotator/vision-stage.js', 'esc(item.nearest_pocket)', 'the inspector never prints the raw pocket key', true);
 });
 
 test('a foreign correction and a rejected quad are both stated on the stage', () => {
@@ -1069,16 +1372,17 @@ test('a cold frame can start a correction without a devtools call', () => {
   assert.ok(box.includes('data-vs-action="add-polygon"') && box.includes('data-vs-action="delete-box"'));
   // Round 18, read exactly: inference runs itself when the picture stops, so the manual button is gone
   // from every surface and no frame tool carries it.
-  assert.ok(!ADAPTER_SOURCE.includes('data-vs-action="run-inference"'), 'no surface offers a manual inference run');
-  assert.ok(fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8').includes('function scheduleAutoInference'),
-    'because the engine schedules it on pause');
+  assertSourceContract('annotator/vision-stage.js', 'data-vs-action="run-inference"', 'no surface offers a manual inference run', true);
+  assertSourceContract('annotator/app.js', 'function scheduleAutoInference', 'because the engine schedules it on pause');
+
   const person = stage({...base, selection:{kind:'person', track:3, person:{cluster_id:null}}});
   assert.ok(person.includes('Identity') && !person.includes('data-vs-action="add-polygon"'), 'the person block stays the identity block');
   assert.ok(!person.includes('data-vs-value="A"') && !person.includes('data-vs-value="B"'), 'the person block no longer offers the removed A/B seeds');
-  assert.ok(ADAPTER_SOURCE.includes('case \'identity-save\'') && ADAPTER_SOURCE.includes('case \'identity-clear\''), 'the surface must act on both identity actions');
+  assertSourceContract('annotator/vision-stage.js', "case 'identity-save'", 'the surface must act on both identity actions');
+  assertSourceContract('annotator/vision-stage.js', "case 'identity-clear'", 'the surface must act on both identity actions');
   // Every one of these buttons reaches a real engine entry point.
   for (const action of ['tool','add-polygon','clear-polygon','save-corrections']) {
-    assert.ok(ADAPTER_SOURCE.includes(`case '${action}'`), `the surface must act on ${action}`);
+    assertSourceContract('annotator/vision-stage.js', `case '${action}'`, `the surface must act on ${action}`);
   }
   for (const api of ['setTool','addPolygon','clearPolygon','runInference','saveCorrections']) {
     assert.ok(typeof sandbox.window.CornerPocketReview[api] === 'function', `the engine must expose ${api}`);
@@ -1217,15 +1521,15 @@ test('the stage is one video with the overlay on top of it', () => {
   assert.ok(html.includes('id="stage-play"'), 'the playback state chip exists');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.css'), 'utf8');
   for (const needle of ['.stage > video', '.stage > video[hidden]', '.stage > svg', '.u-cue-line', '.u-cue-pocket', '.u-cue-head']) {
-    assert.ok(css.includes(needle), `missing stage video css: ${needle}`);
+    assertSourceContract('annotator/app.css', needle, `missing stage video css: ${needle}`);
   }
   // The inspector holds no picture at all: the stage is the one surface for a
   // cue, and it already freezes into the still when the window cannot play.
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assert.ok(!/<video/.test(adapter), 'the inspector video element is gone');
-  assert.ok(!adapter.includes('/api/clip'), 'the inspector no longer fetches a raw clip');
-  assert.ok(adapter.includes('data-vs-action="play-event"'), 'the cue plays in the stage instead');
-  assert.ok(!adapter.includes('vs-evidence'), 'the inspector keeps no second picture surface either');
+  assertSourceContract('annotator/vision-stage.js', /<video/, 'the inspector video element is gone', true);
+  assertSourceContract('annotator/vision-stage.js', '/api/clip', 'the inspector no longer fetches a raw clip', true);
+  assertSourceContract('annotator/vision-stage.js', 'data-vs-action="play-event"', 'the cue plays in the stage instead');
+  assertSourceContract('annotator/vision-stage.js', 'vs-evidence', 'the inspector keeps no second picture surface either', true);
 });
 
 test('the Vision tab renders one picture surface for the selected cue', () => {
@@ -1260,8 +1564,8 @@ test('the Vision tab renders one picture surface for the selected cue', () => {
   assert.strictEqual((stage.match(/<video/g) || []).length, 1, 'one stage video');
   assert.strictEqual((stage.match(/<img/g) || []).length, 1, 'one stage still');
   const app = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
-  assert.ok(app.includes('videoShown = playing && !!stageVideo() && videoReady(video);'), 'the video needs a playable window');
-  assert.ok(app.includes('const showStill = !!still && !videoShown;'), 'the still is the same one surface, shown when the video cannot play');
+  assertSourceContract('annotator/app.js', 'videoShown = playing && !!stageVideo() && videoReady(video);', 'the video needs a playable window');
+  assertSourceContract('annotator/app.js', 'const showStill = !!still && !videoShown;', 'the still is the same one surface, shown when the video cannot play');
 });
 
 test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {
@@ -1444,8 +1748,8 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
   assert.ok(shotFacts.includes('387 px'), 'so does the claim-vs-measured gap');
   const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
   for (const key of ['gateCheck', 'gateConfirmed', 'gateRejected', 'gateCensus', 'gateVanish', 'gateMove'])
-    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zh), `${key} is translated in 中`);
-  assert.ok(adapterSource.includes('gateEvidence(e)'), 'the cue rail renders the gate numbers on the card');
+    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
+  assertSourceContract('annotator/vision-stage.js', 'gateEvidence(e)', 'the cue rail renders the gate numbers on the card');
 });
 
 test('round 28 / owner item: the link block lists this frames other identities, face first in the wording', () => {
@@ -1469,11 +1773,8 @@ test('round 28 / owner item: the link block lists this frames other identities, 
     'alone on the frame there is nothing to link to, so no dead picker is drawn');
   const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
   for (const key of ['linkTitle', 'linkTarget', 'linkAction', 'linkHint', 'linkNoFace', 'thisTrack', 'unnamed', 'hasFace'])
-    assert.ok(new RegExp(`${key}:'[^']*[\u4e00-\u9fff]`).test(zh), `${key} is translated in 中`);
+    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\u4e00-\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
   const engine = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
-  assert.ok(engine.includes('state.identityFor = null;'), 'the engine drops the cached frame record, because the merge changed it');
-  assert.ok(engine.includes('cluster_id: other, player_id: null, bound_evidence: null'),
-    'and moves the pick to the cluster that survived, so the next Save cannot hit a cluster the merge deleted');
 });
 
 test('the confirmation tier is badged on the card and in the inspector, in both languages', () => {
@@ -1506,7 +1807,7 @@ test('the confirmation tier is badged on the card and in the inspector, in both 
   assert.ok(rail.match(/vs-card tier-window/), 'the card itself is marked with its tier');
   const zhTiers = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
   for (const key of ['tierGeometry', 'tierWindow', 'tierLabel', 'noPotsMeasured'])
-    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zhTiers), `${key} is translated in 中`);
+    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
 });
 
 test('an emptied queue explains itself instead of showing a bare list', () => {
@@ -1537,8 +1838,8 @@ test('an emptied queue explains itself instead of showing a bare list', () => {
 
   const zhShots = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
   for (const key of ['noShotsMeasured', 'noPotsMeasured', 'tierGeometry', 'tierWindow'])
-    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zhShots), `${key} is translated in 中`);
-  assert.ok(/noShotsMeasured:'[^']*遮挡/.test(zhShots), 'the 中 reason names the occlusion');
+    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
+  assertSourceContract('annotator/vision-stage.js', /noShotsMeasured:'[^']*遮挡/, 'the 中 reason names the occlusion', {between:['zh: {']});
 });
 
 test('the pots tab explains its empty state instead of showing a bare list', () => {
@@ -1555,8 +1856,6 @@ test('the pots tab explains its empty state instead of showing a bare list', () 
                              balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}});
   assert.ok(empty.includes('data-vs-empty="shots-measured-none"'), 'an empty queue gets the shot reason, not the pot one');
   assert.ok(!empty.includes('No pot candidate'), 'the pot reason never leaks onto the shots filter');
-  assert.ok(source.includes('tier: e.tier') && source.includes('geometry_check:'),
-    'app.js passes the tier and the geometry check through to the rail');
 });
 
 // ---- identity labelling + source panel (owner request, 2026-09-23) --------
@@ -1597,13 +1896,9 @@ test('a person track is labelled as one regular or one guest name, and Save hits
   assert.ok(footer.includes('data-vs-action="identity-save"') && footer.includes('data-vs-action="identity-clear"'), 'Save and Clear are the only writes');
   assert.ok(!footer.includes('data-vs-value="A"') && !footer.includes('data-vs-value="B"') && !footer.includes('data-vs-value="clear"'), 'the footer keeps no legacy seed buttons');
   // Which path each choice takes, pinned at the call site and in the engine.
-  assert.ok(ADAPTER_SOURCE.includes('if (picked) target.seedIdentity(node, picked);'), 'a picked regular calls seedIdentity');
-  assert.ok(/find\(x => String\(x\.id\) === String\(s\.persons\.track\)\)\?\.seed/.test(ADAPTER_SOURCE),
-    'the inspector signature carries the selected track seed, so a save repaints the block that saved it');
-  assert.ok(ADAPTER_SOURCE.includes('else { guestDraft = null; target.setSeed(node, name); }'), 'a typed name calls setSeed');
-  assert.ok(source.includes("save(button, '/api/identity/seed', {cluster_id: person.cluster_id, player_id: playerId}"), 'the regular path posts /api/identity/seed with the player id');
-  assert.ok(source.includes("return save(button, '/api/vod30/seeds', body"), 'the guest path posts /api/vod30/seeds with the typed name');
-  assert.ok(source.includes("save(button, '/api/identity/unbind', {cluster_id: person.cluster_id}"), 'Clear unbinds through /api/identity/unbind');
+  assertSourceContract('annotator/vision-stage.js', 'if (picked) target.seedIdentity(node, picked);', 'a picked regular calls seedIdentity');
+  assertSourceContract('annotator/vision-stage.js', /find\(x => String\(x\.id\) === String\(s\.persons\.track\)\)\?\.seed/, 'the inspector signature carries the selected track seed, so a save repaints the block that saved it');
+  assertSourceContract('annotator/vision-stage.js', 'else { guestDraft = null; target.setSeed(node, name); }', 'a typed name calls setSeed');
   // Picking a regular turns the guest box off instead of leaving two competing inputs.
   const driven = context.mount(person);
   driven.pick('regular', 'p1', {value: 'p1'});
@@ -1647,8 +1942,6 @@ test('a legacy A/B seed still renders on the rail and in the identity block', ()
   assert.ok(guestRail.includes('>Minh<') && guestRail.includes('vs-tag done guest'), 'a guest name is not put in the legacy A/B uppercase style');
   // Nothing was removed from the pipeline's reach: the keyboard seeds still post
   // the three legacy values through the same endpoint the pipeline reads.
-  assert.ok(source.includes("if (upper === 'A' || upper === 'B') { e.preventDefault(); setSeed(null, upper); return; }"), 'the legacy A/B keyboard seeds stay reachable');
-  assert.ok(source.includes("role === 'clear' ? null : (typeof role === 'string' ? role.trim() : role)"), 'one seeds writer still carries clear, the role values and a guest name');
 });
 
 test('the source settings open from the Source chip and are no longer the rail empty state', () => {
@@ -1685,10 +1978,9 @@ test('the source settings open from the Source chip and are no longer the rail e
 });
 
 test('the rail empty state and the labelling copy render in 中 as well', () => {
-  const zh = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8').match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
   for (const key of ['railEmpty', 'noSelection', 'thisFrame', 'whichRegular', 'guestOption', 'guestName', 'saveBinding', 'clearBinding', 'notAPlayer',
                      'bindNone', 'bindLegacy', 'bindGuest', 'boundManual', 'boundAuto', 'bindIdentityHint', 'bindGuestHint', 'ignoreHint'])
-    assert.ok(new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`).test(zh), `${key} is translated in 中`);
+    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
   const context = adapterSeam('zh', ROSTER);
   const none = context.panel(visionSnapshot());
   assert.ok(none.includes('先选一条线索、球、人物或锚点，再开始标注。'), 'the rail empty state is Chinese');
@@ -1707,9 +1999,6 @@ test('an inference run says it was not stored, and a stored file is labelled as 
   // The write is gone from the server (no file, no directory); what the UI owes
   // the operator is the provenance: this frame's own run, or a file an earlier
   // run left behind - never the two blurred together.
-  assert.ok(source.includes('Inference completed for frame ${job.frame_index} (not stored).'),
-    'the completion line says the result was not stored');
-  assert.ok(source.includes('推理已完成（未存储）'), 'and 中 renders the same sentence');
   const boxes = {tool:'select', newBoxLabel:'ball', box:0, boxLabel:'ball', polygon:false, result:'inference',
                  dirty:false, inferRunning:false, inferStatus:'Idle.'};
   const stored = visionSnapshot({selection:{kind:'box', box:0},
@@ -1938,23 +2227,18 @@ test('the panel column shows a selection and nothing else (owner round 26 item 3
   // selection, no column, and the stage keeps the width. A picked track is written in the overlay, so
   // the column does not count as used for it either.
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assert.ok(adapter.includes("const selected = s.selection.kind !== 'none';"), 'the overlay reads the selection');
-  assert.ok(adapter.includes('const inColumn = selected && !picked;'), 'and keeps the column for a selection it does not own');
-  assert.ok(adapter.includes('inspector.hidden = !inColumn;'), 'and hides the panel column without one');
-  assert.ok(adapter.includes('tabs.hidden = !inColumn;'), 'and the sheet tabs that open it');
-  assert.ok(adapter.includes("shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');"), 'and tells the shell whether the column is used');
+  assertSourceContract('annotator/vision-stage.js', "const selected = s.selection.kind !== 'none';", 'the overlay reads the selection');
+  assertSourceContract('annotator/vision-stage.js', 'const inColumn = selected && !picked;', 'and keeps the column for a selection it does not own');
+  assertSourceContract('annotator/vision-stage.js', 'inspector.hidden = !inColumn;', 'and hides the panel column without one');
+  assertSourceContract('annotator/vision-stage.js', 'tabs.hidden = !inColumn;', 'and the sheet tabs that open it');
+  assertSourceContract('annotator/vision-stage.js', "shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');", 'and tells the shell whether the column is used');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
-  assert.ok(/#ops-shell\[data-vs-panel="0"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\)\}/.test(css),
-    'the third column collapses when there is no panel');
-  assert.ok(/#ops-shell \[hidden\]/.test(css), 'and [hidden] outranks the panel display rules');
+  assertSourceContract('annotator/ops.css', /#ops-shell\[data-vs-panel="0"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\)\}/, 'the third column collapses when there is no panel');
+  assertSourceContract('annotator/ops.css', /#ops-shell \[hidden\]/, 'and [hidden] outranks the panel display rules');
 });
 
 test('the enrol block shows the evidence level, the crops and one confirm', () => {
   // The engine's two calls: a read for the preview, the write only on confirm.
-  assert.ok(source.includes("api('/api/identity/enroll-preview', body)"), 'the preview is a read of its own endpoint');
-  assert.ok(source.includes("body.cluster_id = person.cluster_id"), 'it carries the cluster id when the track has one, for the fast path');
-  assert.ok(source.includes("save(button, '/api/identity/enroll-confirm', {token: payload.token, player_name: name}"),
-    'the confirm is the one write, with the token and the typed name');
   const idle = adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}}));
   assert.ok(idle.includes('data-vs-action="enroll-preview"') && idle.includes('Enrol as regular'), 'the person rail offers the action');
   assert.ok(idle.includes('nothing is written until you confirm'), 'and says the preview writes nothing');
@@ -2287,7 +2571,7 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
   assert.strictEqual(bare.confirmed, true);
   // The shell passes its roster re-read to the engine's mount, not only to the adapter.
   const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
-  assert.ok(/review\(\)\.mount\(host\.querySelector\('#review-root'\),\{reloadRoster:/.test(shell), 'ops.js mounts the engine with the reloadRoster hook');
+  assertSourceContract('annotator/ops.js', /review\(\)\.mount\(host\.querySelector\('#review-root'\),\{reloadRoster:/, 'ops.js mounts the engine with the reloadRoster hook');
 });
 
 test('a stage click on a person sends the enrol preview an integer cluster, or none', () => {
@@ -2535,8 +2819,8 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
   // The panel stays open while an id is typed, so the chips re-render the poll triggers keeps it.
   assert.ok(V.chips(visionSnapshot()).includes('value="https://www.twitch.tv/videos/1000000011"'),
     'including a chips re-render, which is what the poll triggers');
-  assert.ok(ADAPTER_SOURCE.includes('document.activeElement') && ADAPTER_SOURCE.includes('setSelectionRange'),
-    'and a focused field keeps its focus and caret across that rebuild');
+  assertSourceContract('annotator/vision-stage.js', 'document.activeElement', 'and a focused field keeps its focus and caret across that rebuild');
+  assertSourceContract('annotator/vision-stage.js', 'setSelectionRange', 'and a focused field keeps its focus and caret across that rebuild');
 });
 
 test('F2: the Anchors chip reads off until anchors are drawn, and one click loads them', () => {
@@ -2549,8 +2833,8 @@ test('F2: the Anchors chip reads off until anchors are drawn, and one click load
                   loadAnchors: t => { calls.push('load ' + t); return Promise.resolve(); },
                   selectAnchor() {}, seekTime() {}};
   const context = adapterSeam('en', ROSTER, {review});
-  assert.ok(ADAPTER_SOURCE.includes("(key !== 'anchors' || s.anchors.loaded)"), 'the chip is on only when anchors are loaded');
-  assert.ok(ADAPTER_SOURCE.includes('aria-pressed="${shown ? \'true\' : \'false\'}"'), 'and says so to a screen reader');
+  assertSourceContract('annotator/vision-stage.js', "(key !== 'anchors' || s.anchors.loaded)", 'the chip is on only when anchors are loaded');
+  assertSourceContract('annotator/vision-stage.js', 'aria-pressed="${shown ? \'true\' : \'false\'}"', 'and says so to a screen reader');
   context.press(s, 'layer', 'anchors');
   assert.deepStrictEqual(calls, ['load 70'], 'the first click loads the anchors; it does not switch the layer off');
   assert.strictEqual(s.overlay.anchors, true, 'and the layer stays on');
@@ -2593,8 +2877,8 @@ test('F5: a saved VOD URL is listed, can fill the replay form, and can be remove
   const none = adapterSeam('en', ROSTER).source(visionSnapshot());
   assert.ok(!none.includes('Saved VODs'), 'no heading when nothing is saved');
   const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
-  assert.ok(shell.includes("parsed.kind==='vod'?{id:s.id,url:s.url,video:parsed.video}") && shell.includes('channels,vods,regulars'),
-    'the shell passes saved VODs to the adapter');
+  assertSourceContract('annotator/ops.js', "parsed.kind==='vod'?{id:s.id,url:s.url,video:parsed.video}", 'the shell passes saved VODs to the adapter');
+  assertSourceContract('annotator/ops.js', 'channels,vods,regulars', 'the shell passes saved VODs to the adapter');
   assert.strictEqual((ADAPTER_SOURCE.match(/savedVods:'/g) || []).length, 2, 'the heading exists in both languages');
 });
 
@@ -2607,7 +2891,7 @@ test('F6: Use this VOD with an empty id says what to do instead of doing nothing
     assert.strictEqual(picked.length, 0, 'and no replay is requested');
   }
   const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
-  assert.ok(shell.includes('notice:text=>message(text,true)'), 'the shell passes notice, so the adapter is heard');
+  assertSourceContract('annotator/ops.js', 'notice:text=>message(text,true)', 'the shell passes notice, so the adapter is heard');
 });
 
 function VSrail({events, lang = 'en'}) {
@@ -2657,8 +2941,6 @@ test('a machine-produced candidate says so on its card, and an event without pro
   const legacy = stageEventPanel(V.context, {id:11, type:'shot', t:9.0, gate:{status:'confirmed', gate:'displacement', reasons:[], numbers:{disp_mm:1837}}});
   assert.ok(!legacy.includes('Net move / path'), 'an event without dense numbers grows no row');
   // The engine hands the rail the payload as stored.
-  assert.ok(source.includes('provenance: e.provenance && typeof e.provenance === \'object\' ? {...e.provenance} : null'),
-    'app.js carries provenance into the event snapshot');
 });
 
 // --- Live failures: one code per sentence, rendered in EN and 中 -------------------
@@ -2802,15 +3084,15 @@ test('round 31 / owner item 3: a point chosen while a frame decodes is queued, n
   // The comments in these functions name the guard they removed, so the checks read code only.
   const code = text => text.replace(/\/\/[^\n]*/g, '');
   const seekBody = code(engine.slice(engine.indexOf('function seek(n)'), engine.indexOf('function seekTime(t)')));
-  assert.ok(seekBody.includes("if (state.dirty && !confirm(text('Discard unsaved changes?'))) return false;"),
-    'the unsaved-changes half of the guard still refuses a seek');
-  assert.ok(!seekBody.includes('canLeave()'),
-    'canLeave() refuses while a decode runs, which dropped the point the operator chose');
-  assert.ok(seekBody.includes('if (state.busy) { state.pendingSeek = n; notify(); return true; }'),
-    'a seek during a decode is queued and the running load drains it');
+  assertSourceContract('annotator/app.js', "if (state.dirty && !confirm(text('Discard unsaved changes?'))) return false;", 'the unsaved-changes half of the guard still refuses a seek', {comments:true, between:['function seek(n)', 'function seekTime(t)']});
+
+  assertSourceContract('annotator/app.js', 'canLeave()', 'canLeave() refuses while a decode runs, which dropped the point the operator chose', {comments:true, between:['function seek(n)', 'function seekTime(t)'], absent: true});
+
+  assertSourceContract('annotator/app.js', 'if (state.busy) { state.pendingSeek = n; notify(); return true; }', 'a seek during a decode is queued and the running load drains it', {comments:true, between:['function seek(n)', 'function seekTime(t)']});
+
   const stepBody = code(engine.slice(engine.indexOf('function stepFrame(delta)'), engine.indexOf('function setPlaying(')));
-  assert.ok(!stepBody.includes('canLeave()'), 'a step during a decode is queued too, so a held step walks');
-  assert.ok(stepBody.includes('state.pendingSeek ?? state.frame'), 'a step counts from the point already queued');
+  assertSourceContract('annotator/app.js', 'canLeave()', 'a step during a decode is queued too, so a held step walks', {comments:true, between:['function stepFrame(delta)', 'function setPlaying('], absent: true});
+  assertSourceContract('annotator/app.js', 'state.pendingSeek ?? state.frame', 'a step counts from the point already queued', {comments:true, between:['function stepFrame(delta)', 'function setPlaying(']});
 });
 
 test('the engine mounts a stub DOM and a stub network through one seam', () => {
@@ -2859,21 +3141,26 @@ test('the engine mounts a stub DOM and a stub network through one seam', () => {
     'after detach a render is a no-op, so the last frame stays and nothing throws');
 });
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+
 
 
 test('round 26 / owner item 3: a picked track has one panel, and it is the overlay', () => {
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
-  assert.ok(adapter.includes('? `${inspectorHTML(s)}<div class="vs-inspector-actions">'),
-    'the overlay carries the whole track block, not just the label form');
-  assert.ok(adapter.includes("const picked = s.selection.kind === 'person';"),
-    'the overlay knows which selection it owns');
-  assert.ok(adapter.includes("body.innerHTML = inColumn ? inspectorHTML(s) : '';"),
-    'the column keeps no second copy of the track block');
-  assert.ok(adapter.includes("shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');"),
-    'the column collapses while the overlay holds the block');
-  assert.ok(css.includes('max-height:min(56dvh,520px)'),
-    'the overlay is tall enough to hold the whole block');
+  assertSourceContract('annotator/vision-stage.js', '? `${inspectorHTML(s)}<div class="vs-inspector-actions">', 'the overlay carries the whole track block, not just the label form');
+
+  assertSourceContract('annotator/vision-stage.js', "const picked = s.selection.kind === 'person';", 'the overlay knows which selection it owns');
+
+  assertSourceContract('annotator/vision-stage.js', "body.innerHTML = inColumn ? inspectorHTML(s) : '';", 'the column keeps no second copy of the track block');
+
+  assertSourceContract('annotator/vision-stage.js', "shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');", 'the column collapses while the overlay holds the block');
+
+  assertSourceContract('annotator/ops.css', 'max-height:min(56dvh,520px)', 'the overlay is tall enough to hold the whole block');
+
 });
+
+console.log(`\n${passed} passed, ${failed} failed`);
+// The source-text assertions that no browser seam can reach, listed in one place.
+for (const contract of sourceContracts) console.log(`SOURCE CONTRACT ${contract.file}: ${contract.snippet} — ${contract.why}`);
+console.log(`source-text assertions left: ${sourceContracts.length}`);
+process.exit(failed ? 1 : 0);
