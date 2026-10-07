@@ -2990,3 +2990,92 @@ Two defects were measured and fixed in `annotator/app.js`:
 Environment: the review record `2853972244` resolves to a 10.8-hour Twitch VOD. Frame extraction takes
 seconds per frame and the first load can take minutes, so the picture lags the input; the queue keeps
 the last choice.
+
+## Round 32 · the architecture review (2026-10-07)
+
+An architecture review of the console and the service named twelve candidates. Ten shipped in five
+commits. The owner skipped the two speculative ones. Each row states what the seam was, what it is
+now, and the number that proves it.
+
+| # | Candidate | Before | After | Measured |
+| --- | --- | --- | --- | --- |
+| c1 | The review workbench is one module, not a string protocol | `annotator/ops.js` authored 18 `id="vs-…"` elements and read the stage's own `vs-frame` id | The stage builds the whole shell from its markup; the console hands over a host, a heading, one loading line, and the picture host as the `frameHost` option | Element ids across the seam: 18 out and 1 in before, 0 and 0 after. `#vs-cues` 2058 characters, scrub maximum 38953.943, the picture host parent is the frame region |
+| c2 | Close the engine's interface | 73 keys in the literal, 72 live, and a test that demanded 72 | A `net` seam replaces three direct fetches; `attach({mount, fetch})` returns a handle | Published surface 68 keys, five dead keys removed (`selectStageBall`, `cycleVerdict`, `loadCrops`, `loadSeeds`, `loadEvents`) |
+| c3 | Each screen is a module that owns its own paint | `render()` at `annotator/ops.js:887` repainted all six screens; `pollOps()` guarded by seven terms | `screenModule(id, build, spec)` returns `{id, root, mount, update, detach, mayRepaint}`; `screenModules` holds the six tab ids; the poll guard is `!busy && !pendingMatches.size && registry.mayRepaint()` | Per tab `{buttons, main text, main children, main sections}` stayed the same across the change: clock 32/158/1/1, tonight 28/260/1/1, records 63/7822/1/1, vision 26/90/1/1, players 36/678/1/1, status 26/1414/1/1 |
+| c4 | The tests drive seams instead of reading source text | `tests/test_app_timeline.js` held 89 assertion lines with 105 `includes` calls, and 526 over the whole file | 103 `assertSourceContract(file, snippet, why)` call sites, each printing its claim on every run | Inline source-text assertion lines 0; 157 claims at first, 155 after two of them moved to the suite that builds the shell; tests 88 → 90 |
+| c5 | One named tournament interface, not `post(action)` | `post()` dispatched 30 action names and 25 private helpers by name, and the audit was read by name prefixes | `Operation(name, apply, audit, requires, refuse_missing_first)`, `operations_registry()`, 34 rows in `OPERATIONS`, `run(state, payload)` as the only caller of `_apply` | `tests/test_operations.py` 65 OK; a mis-declared row cannot half register (7 bad rows refused) |
+| c8 | The Vision adapter has one seam | `window.VisionStage` published 28 names; production called one of them | `window.VisionStage = {attach}`; every renderer is private | Browser: `window.VisionStage` reads `["attach"]` |
+| c9 | Stop rewriting `annotator/app.js` to reach inside it | The suite rewrote the source with `source.replace(/\}\)\(\);\s*$/, …)` and injected 69 internal names | The suite runs the source in a sandbox and takes the handle that `attach()` returns | `grep -c "source.replace"` = 0 |
+| c10 | One registry for an operator action | The client, `annotator/operations.py` and `annotator/unified_server.py` each held their own list of write actions | `OPERATOR_ACTIONS` holds 21 rows, one per write URL, and `GET /api/actions` serves the same table to the client | All 7 client POST paths have exactly one row; no orphan rows; 30 of 34 operation names are called by the client or the tests |
+| c11 | Hand the clock over instead of forging a `StorageEvent` | `annotator/clock-sync.js:442` forged a `StorageEvent`, because `annotator/ops.js` is one IIFE that exports nothing | `annotator/ops.js` publishes `window.OpsClock.receive(value)` and keeps its real `storage` listener | Forged events 1 → 0. A perturbation that puts the forged event back fails 2 tests |
+| c12 | Fold the store pass-through and the path it leaks | `_StoreOperations` forwarded calls from `annotator/unified_server.py:319` to `annotator/operations.py:124` | `Store.place(kind, key=None)` is in the protocol and in both backings; `Backend.operations()` returns the store | Every `type(...).__name__ ==` test is gone from the server. `tests/test_unified_server.py` 76 OK, `tests/test_board_api.py` 21 OK (2 skipped), `tests/test_vod_import.py` 32 OK |
+
+### The five commits
+
+| Commit | Candidates | Subject |
+| --- | --- | --- |
+| `07973dd` | c12, c5, c10 | store: the store owns the operations interface, and one registry names each action |
+| `2452d94` | c8, c9, c2 | console: one seam for the stage adapter, one mounted seam for the engine |
+| `c763069` | c3 | console: each screen is a module that owns its own paint |
+| `a17f259` | c4 | tests: the review suite drives seams instead of reading source text |
+| `a113933` | c11, c1 | console: one named seam for the clock, one host for the workbench |
+
+A commit carries more than one candidate when the candidates share a file. The message of each
+commit names its candidates and holds the measurements for each of them.
+
+### A defect this round found in its own test work
+
+The helper at `tests/test_app_timeline.js:120` asserted `assert.ok(opts.absent !== found, …)`. For a
+claim about a needle that must be present, `opts.absent` is `undefined`, so the comparison was true
+whatever the source said. 138 of the 157 claims proved nothing while the suite stayed green. The
+repair is `assert.ok(opts.absent ? !found : found, …)`. Two claims then failed, and both named the
+wrong file: the inspector's scroll region is authored by the stage, and the 中文 footer copy lives in
+the `zhCopy` table in `annotator/app.js:1951`.
+
+The proof that a claim bites needs a replacement that does not contain the needle. Replacing all 53
+`#t-overlay` rules in `annotator/app.css` with `.zzz-overlay` prints 2 failures; restoring the file
+prints 90 passed and 0 failed. Changing `#t-overlay` to `#t-overlayX` proves nothing, because the
+needle still matches inside the longer string.
+
+### What still stands open
+
+- c6 (group the 93 handlers of the service) and c7 (give the backfill wizard its own module) were
+  speculative. The owner skipped both.
+- c2: the engine handle still exposes 55 readings that the tests call directly (`T.paintOverlay` 42
+  references, `T.applyFrameResult` 12).
+- c3: `render()` still repaints the nav, the tabbar, the clock slot and the shell. The backfill
+  wizard and `paintArchive()` / `paintAuto()` paint outside the registry.
+- c4: 155 source contracts remain: `annotator/vision-stage.js` 95, `annotator/app.js` 19,
+  `annotator/ops.css` 18, `annotator/app.css` 15, `annotator/ops.js` 4, `annotator/app.html` 4. The
+  timeline harness has no `insertAdjacentHTML`, so the shell's markup can be claimed only in the ops
+  suite.
+- c10: `entrant_absence` and `match_absence` are posted by tests only. The console stopped sending
+  them when round 13a removed the attendance UI. They stay, because a server contract can have
+  callers outside this repository.
+- c1: a controlled run of the build before the change put the picture host in the frame region too,
+  because a later `render()` pass repeated the placement. The old code was therefore not a visible
+  defect. The change closes the seam; it does not repair a picture.
+
+### The numbers for the round
+
+- Python: `Ran 1321 tests in 213.9 s`, `OK (skipped=51)`.
+- JavaScript: `tests/test_ops.js` 195 pass and 0 fail (191 before), `tests/test_app_timeline.js` 90
+  passed and 0 failed (88 before; one test sat after `process.exit` and never ran),
+  `tests/test_board.js` 16 pass and 0 fail.
+- Browser at http://127.0.0.1:8130/ops.html with `ops.js?v=vision-stage-61`, buttons | main text
+  characters: clock 32|158, tonight 28|260, records 63|7826, vision 26|102, players 36|678, status
+  26|1414. The console log and the error log are empty after a walk of all six tabs and a review
+  session.
+- File sizes: `annotator/ops.js` 1268 → 1280, `annotator/vision-stage.js` 1682 → 1741,
+  `annotator/app.js` 2134 → 2168, `tests/test_ops.js` 4384 → 4629, `tests/test_app_timeline.js` 2879
+  → 3166, `annotator/operations.py` 1035 → 1259, `annotator/unified_server.py` 2416 → 2559.
+- The Postgres half of `tests/test_store_contract.py` ran against a real server: 59 OK, and it left
+  no schema behind.
+
+### Environment
+
+The console under test is http://127.0.0.1:8130/ops.html, served by the systemd user unit
+`pool-workbench.service`. The browser walk used one browser, one viewport 1280 px wide with 599 px
+inner height, and one recorded match (`2853972244`, a 10.8-hour VOD). Frame extraction takes seconds
+per frame, so the picture lags the input. `curl` is refused by a host hook, so the live checks used
+`.venv/bin/python` with `urllib.request`.
