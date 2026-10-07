@@ -658,8 +658,8 @@ One module, `src/store.py`, with a `Store` protocol and two implementations:
 ```python
 class Store(Protocol):
     # operations (§2)
-    def ops_get(self) -> dict: ...                              # the document, as today
-    def ops_post(self, payload: dict) -> dict: ...              # ConflictError on stale revision
+    def get(self) -> dict: ...                              # the document, as today
+    def post(self, payload: dict) -> dict: ...              # ConflictError on stale revision
     def enroll_player(self, player: dict, context: dict, faces: list[dict]) -> dict: ...
     # identity (§3)
     def identity_load(self) -> dict: ...; def identity_save(self, clusters: dict, dirty: set[int]) -> None: ...

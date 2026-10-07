@@ -100,17 +100,17 @@ class Selection(StoreTestCase):
 
 class OperationsContract(StoreTestCase):
     def test_the_document_and_its_revision_contract_are_the_operations_module(self):
-        first = self.store.ops_get()
+        first = self.store.get()
         self.assertEqual(first["revision"], 0)
-        saved = self.store.ops_post({"action": "player_save", "revision": 0, "name": "Ada"})
+        saved = self.store.post({"action": "player_save", "revision": 0, "name": "Ada"})
         self.assertEqual(saved["revision"], 1)
-        self.assertEqual(self.store.ops_get(), saved)
+        self.assertEqual(self.store.get(), saved)
         self.assertEqual(Operations(self.root).get(), saved, "same file, same format as Operations")
         with self.assertRaises(ConflictError):
-            self.store.ops_post({"action": "note_add", "revision": 0, "text": "stale"})
+            self.store.post({"action": "note_add", "revision": 0, "text": "stale"})
 
     def test_enrol_player_goes_through_the_revisioned_store(self):
-        self.store.ops_post({"action": "note_add", "revision": 0, "text": "kept"})
+        self.store.post({"action": "note_add", "revision": 0, "text": "kept"})
         state = self.store.enroll_player({"id": "p1", "name": "Ana"}, {"player_id": "p1", "name": "Ana"})
         self.assertEqual([p["name"] for p in state["players"]], ["Ana"])
         self.assertEqual([n["text"] for n in state["notes"]], ["kept"])
@@ -207,7 +207,7 @@ class ReadOnlyContract(StoreTestCase):
     """A GET never writes: every read method leaves every file's bytes, size and mtime."""
 
     def test_every_read_leaves_every_file_alone(self):
-        self.store.ops_post({"action": "player_save", "revision": 0, "name": "Ada"})
+        self.store.post({"action": "player_save", "revision": 0, "name": "Ada"})
         self.store.faces_add({"A": [{"embedding": unit(1), "eye_px": 12.0, "det_score": 0.9}]})
         self.store.seed_put("vod30", "1:68-94", {"win": "68-94", "t": 68, "track_id": 1, "label": "A"})
         self.store.verdict_put("vod30", 1, {"verdict": "correct"})
@@ -217,16 +217,47 @@ class ReadOnlyContract(StoreTestCase):
         (self.out / "scan30" / "events.json").write_text(json.dumps([{"id": 1, "t": 5.0}]))
         files = sorted(p for p in self.out.rglob("*") if p.is_file())
         before = {p: stamp(p) for p in files}
-        for read in (lambda s: s.ops_get(), lambda s: s.faces_load(), lambda s: s.identity_load(),
+        for read in (lambda s: s.get(), lambda s: s.faces_load(), lambda s: s.identity_load(),
                      lambda s: s.seeds_get("vod30"), lambda s: s.verdicts_get("vod30"),
                      lambda s: s.verdicts_get("highlight"), lambda s: s.labels_get("unlabeled_crops"),
                      lambda s: s.correction_get("vod30", 5), lambda s: s.correction_get("vod30", 6),
                      lambda s: s.anchors_get("vod30"), lambda s: s.queue("vod30"),
                      lambda s: s.queue_window("vod30", 0, 10), lambda s: s.tracklets("vod30"),
-                     lambda s: s.artifact("queue_report", "vod30"), lambda s: s.frame_detections("vod30", 1)):
+                     lambda s: s.artifact("queue_report", "vod30"), lambda s: s.frame_detections("vod30", 1),
+                     lambda s: s.place("operations"), lambda s: s.place("faces"),
+                     lambda s: s.place("anchors", "vod30")):
             read(self.store)
         self.assertEqual(sorted(p for p in self.out.rglob("*") if p.is_file()), files, "no file appears")
         self.assertEqual({p: stamp(p) for p in files}, before, "no file changes")
+
+
+class PlaceContract(StoreTestCase):
+    """Store.place answers where a record set lives. The answer is the file that the
+    writer really uses, so a receipt cannot name a file the store never writes."""
+
+    def test_the_operations_answer_is_the_file_the_writer_owns(self):
+        self.assertEqual(self.store.place("operations"), Operations(self.root).path)
+        self.assertEqual(self.store.place("operations"), self.out / "corner-pocket" / "state.json")
+        self.store.post({"action": "note_add", "revision": 0, "text": "x"})
+        self.assertTrue(self.store.place("operations").is_file(), "the answer names the file that was written")
+        self.assertEqual(json.loads(self.store.place("operations").read_text())["revision"], 1)
+
+    def test_the_face_and_anchor_answers_are_the_files_those_writers_use(self):
+        self.assertEqual(self.store.place("faces"), self.out / "corner-pocket" / "face_embeddings.json")
+        self.store.faces_add({"A": [{"embedding": unit(1), "eye_px": 12.0, "det_score": 0.9}]})
+        self.assertIn("A", json.loads(self.store.place("faces").read_text()))
+        self.assertEqual(self.store.place("anchors", "vod30"), self.out / "pid_anchors_vod30.json")
+        self.store.anchors_put("vod30", "70.0", [[1, 2]] * 6)
+        self.assertEqual(json.loads(self.store.place("anchors", "vod30").read_text())["anchors"]["70.0"],
+                         [[1, 2]] * 6)
+
+    def test_an_unknown_record_set_or_dataset_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.store.place("verdicts")
+        with self.assertRaises(ValueError):
+            self.store.place("anchors")
+        with self.assertRaises(ValueError):
+            self.store.place("anchors", "no-such-dataset")
 
 
 class Concurrency(StoreTestCase):

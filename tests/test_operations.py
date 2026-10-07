@@ -2,12 +2,14 @@
 import json
 from pathlib import Path
 import random
+import re
 import tempfile
 import threading
 import unittest
 from unittest.mock import patch
 
-from annotator.operations import ConflictError, Operations
+from annotator.operations import (ACTION_NAMES, ConflictError, Operation, OPERATIONS, Operations,
+                                  operations_registry)
 
 
 class OperationsTests(unittest.TestCase):
@@ -1413,6 +1415,97 @@ class VodLinkTests(unittest.TestCase):
         state = self.call('tournament_new', confirm=True)
         self.assertEqual(state['history'][0]['id'], tonight)
         self.assertEqual([row['eventId'] for row in state['links']], [tonight])
+
+
+class OperationRegistryTests(unittest.TestCase):
+    """P2: one declaration per action names its writer, its audit line and its fields."""
+
+    def test_every_dispatched_action_is_declared_once_with_a_writer_and_an_audit(self):
+        self.assertEqual(set(ACTION_NAMES), set(OPERATIONS))
+        self.assertEqual(len(ACTION_NAMES), len(set(ACTION_NAMES)))
+        for name, operation in OPERATIONS.items():
+            with self.subTest(name=name):
+                self.assertEqual(operation.name, name)
+                self.assertTrue(callable(operation.apply))
+                self.assertTrue(callable(operation.audit))
+
+    def test_a_mis_declared_action_cannot_half_register(self):
+        """A row without a name, a writer, an audit line or a good field list is refused."""
+        def writer(ops, state, payload):
+            return None
+
+        good = Operation('probe_action', writer, lambda state, payload: {})
+        cases = [
+            ('operation must be an Operation', ['not an operation']),
+            ('operation needs a name', [Operation('', writer, good.audit)]),
+            ('operation probe_action is declared twice', [good, good]),
+            ('operation probe_action has no writer', [Operation('probe_action', None, good.audit)]),
+            ('operation probe_action has no audit projection', [Operation('probe_action', writer, None)]),
+            ('operation probe_action needs a tuple of required fields',
+             [Operation('probe_action', writer, good.audit, ['text'])]),
+            ('operation probe_action declares a bad required field',
+             [Operation('probe_action', writer, good.audit, ('text',))]),
+        ]
+        for message, rows in cases:
+            with self.subTest(message=message):
+                # the refusal names the fault; two of them add the offending value after it
+                with self.assertRaisesRegex(ValueError, f'^{re.escape(message)}'):
+                    operations_registry(rows)
+
+    def test_the_writer_and_the_audit_line_come_from_the_one_declaration(self):
+        """Replace the declaration and both the dispatch and the audit line change."""
+        seen = {}
+
+        def writer(ops, state, payload):
+            seen['writer'] = payload.get('action')
+            state['notes'].append(dict(id='n1', text='written', createdAt='now'))
+
+        def audit(state, payload):
+            seen['audit'] = payload.get('action')
+            return {'id': 'declared'}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Operations(Path(tmp))
+            with patch.dict(OPERATIONS, {'probe_action': Operation('probe_action', writer, audit)}, clear=True):
+                state = ops.post({'revision': 0, 'action': 'probe_action'})
+                self.assertEqual(seen, {'writer': 'probe_action', 'audit': 'probe_action'})
+                self.assertEqual(state['events'][-1]['action'], 'probe_action')
+                self.assertEqual(state['events'][-1]['context'], {'id': 'declared'})
+                self.assertEqual([note['text'] for note in state['notes']], ['written'])
+                # an action the registry does not hold has no branch left to reach
+                with self.assertRaisesRegex(ValueError, '^Unknown operations action$'):
+                    ops.post({'revision': state['revision'], 'action': 'note_add', 'text': 'x'})
+
+    def test_a_declared_field_is_refused_with_the_reason_the_declaration_carries(self):
+        """The refusal text lives in the declaration, so a client reads one list."""
+        self.assertEqual(OPERATIONS['note_add'].requires,
+                         (('text', 'note must contain 1–4000 characters'),))
+        self.assertEqual(OPERATIONS['tournament_hide'].requires,
+                         (('id', 'Unknown id'), ('confirm', 'Explicit confirmation required'),
+                          ('hidden', 'hidden must be boolean')))
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Operations(Path(tmp))
+            for name, field, refusal in [('note_add', 'text', 'note must contain 1–4000 characters'),
+                                         ('match_forfeit', 'id', 'Unknown id'),
+                                         ('tournament_new', 'confirm', 'Explicit confirmation required'),
+                                         ('source_add', 'url', 'Twitch URL must contain 1–500 characters')]:
+                with self.subTest(name=name):
+                    self.assertEqual(OPERATIONS[name].requires[0], (field, refusal))
+                    with self.assertRaisesRegex(ValueError, f'^{re.escape(refusal)}$'):
+                        ops.post({'revision': ops.get()['revision'], 'action': name})
+
+    def test_an_action_that_refuses_a_state_precondition_first_says_so(self):
+        """A closed registration is refused before the fields, exactly as it was."""
+        for name in ('solo_add', 'pool_remove', 'pair_accept', 'entrant_add', 'entrant_remove',
+                     'entrant_absence', 'entrant_add_late'):
+            with self.subTest(name=name):
+                self.assertFalse(OPERATIONS[name].refuse_missing_first)
+                self.assertTrue(OPERATIONS[name].requires)
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Operations(Path(tmp))
+            # the default event is singles, so the pairing group refuses the format first
+            with self.assertRaisesRegex(ValueError, '^Random pairing is for doubles$'):
+                ops.post({'revision': 0, 'action': 'solo_add'})
 
 
 if __name__ == '__main__':

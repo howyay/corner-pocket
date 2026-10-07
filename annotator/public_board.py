@@ -19,7 +19,7 @@ RESULTS = ("played", "forfeit", "bye")
 
 
 def build(state):
-    """The board for the operations document `state` (as Store.ops_get returns it)."""
+    """The board for the operations document `state` (as Store.get returns it)."""
     if (state.get("settings") or {}).get("publicBoard") is False:
         return dict(OFF)
     t = state["tournament"]

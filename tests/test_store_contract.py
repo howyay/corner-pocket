@@ -50,10 +50,10 @@ class Contract:
 
     # -- operations: the revisioned document ---------------------------------
     def post(self, action, **fields):
-        return self.store.ops_post(dict(action=action, revision=self.store.ops_get()["revision"], **fields))
+        return self.store.post(dict(action=action, revision=self.store.get()["revision"], **fields))
 
     def test_a_fresh_store_has_the_default_document(self):
-        doc = self.store.ops_get()
+        doc = self.store.get()
         self.assertEqual((doc["revision"], doc["players"], doc["history"], doc["events"]), (0, [], [], []))
         self.assertEqual(doc["tournament"]["status"], "registration")
 
@@ -65,10 +65,10 @@ class Contract:
         if same:
             with self.assertRaisesRegex(ValueError, "already exists"):
                 self.post("player_save", name=second)
-            self.assertEqual([p["name"] for p in self.store.ops_get()["players"]], [first])
+            self.assertEqual([p["name"] for p in self.store.get()["players"]], [first])
         else:
             self.post("player_save", name=second)
-            self.assertEqual([p["name"] for p in self.store.ops_get()["players"]], [first, second])
+            self.assertEqual([p["name"] for p in self.store.get()["players"]], [first, second])
 
     def test_dotted_capital_i_is_another_name_than_plain_i(self):
         self.assertNotEqual("İlker".casefold(), "ilker".casefold())
@@ -92,15 +92,15 @@ class Contract:
         self.assertEqual([(p["id"], p["name"]) for p in state["players"]], [(a, "bea"), (b, "Cat")])
 
     def test_the_revision_advances_and_a_stale_one_is_a_conflict_that_writes_nothing(self):
-        saved = self.store.ops_post({"action": "player_save", "revision": 0, "name": "Ada"})
+        saved = self.store.post({"action": "player_save", "revision": 0, "name": "Ada"})
         self.assertEqual(saved["revision"], 1)
-        self.assertEqual(self.store.ops_get(), saved)
+        self.assertEqual(self.store.get(), saved)
         with self.assertRaises(ConflictError):
-            self.store.ops_post({"action": "note_add", "revision": 0, "text": "stale"})
-        self.assertEqual(self.store.ops_get(), saved, "a refused post leaves the document as it was")
+            self.store.post({"action": "note_add", "revision": 0, "text": "stale"})
+        self.assertEqual(self.store.get(), saved, "a refused post leaves the document as it was")
         with self.assertRaises(ValueError):
-            self.store.ops_post({"action": "player_save", "revision": 1, "name": "ADA"})   # casefold duplicate
-        self.assertEqual(self.store.ops_get(), saved, "a rule refusal writes nothing either")
+            self.store.post({"action": "player_save", "revision": 1, "name": "ADA"})   # casefold duplicate
+        self.assertEqual(self.store.get(), saved, "a rule refusal writes nothing either")
 
     def test_a_whole_night_round_trips_through_the_store(self):
         self.post("tournament_setup", raceTo=2, tables=2, name="Friday")
@@ -111,7 +111,7 @@ class Contract:
         self.post("match_schedule", id=first["id"])
         self.post("match_score", id=first["id"], score=[2, 1])
         state = self.post("match_complete", id=first["id"])
-        self.assertEqual(self.store.ops_get(), state)
+        self.assertEqual(self.store.get(), state)
         self.assertEqual([e["revision"] for e in state["events"]], list(range(1, state["revision"] + 1)))
         self.assertEqual(next(m for m in state["tournament"]["matches"] if m["id"] == first["id"])["result"], "played")
 
@@ -126,12 +126,12 @@ class Contract:
         signed = self.post("match_complete", id=match["id"])
         with self.assertRaises(ValueError):
             self.post("tournament_delete", id=signed["tournament"]["id"], confirm=True)
-        self.assertEqual(self.store.ops_get(), signed)
+        self.assertEqual(self.store.get(), signed)
 
     def test_delete_of_an_unsigned_event_resets_it_and_hide_changes_only_the_flag(self):
         self.post("tournament_setup", raceTo=1, name="Mistake")
         self.post("entrant_add", members=[{"name": "Ana"}])
-        current = self.store.ops_get()["tournament"]["id"]
+        current = self.store.get()["tournament"]["id"]
         deleted = self.post("tournament_delete", id=current, confirm=True)
         self.assertNotEqual(deleted["tournament"]["id"], current)
         self.assertEqual((deleted["tournament"]["entrants"], deleted["tournament"]["status"]), ([], "registration"))
@@ -149,7 +149,7 @@ class Contract:
         self.assertEqual(hidden["history"][-1], dict(archived, hidden=True), "only the flag changed")
         shown = self.post("tournament_hide", id=archived["id"], hidden=False, confirm=True)
         self.assertIs(shown["history"][-1]["hidden"], False, "false stays false, not absent")
-        self.assertEqual(self.store.ops_get(), shown)
+        self.assertEqual(self.store.get(), shown)
 
     def test_enrol_player_is_one_revision_and_keeps_concurrent_writes(self):
         self.post("note_add", text="kept")
@@ -161,7 +161,7 @@ class Contract:
         self.assertEqual(len(again["players"]), 1, "an existing regular gains no second row")
         with self.assertRaises(ValueError):
             self.store.enroll_player({"id": "p2", "name": "ANA"}, {"player_id": "p2", "name": "ANA"})
-        self.assertEqual(self.store.ops_get(), again, "the refused enrolment wrote nothing")
+        self.assertEqual(self.store.get(), again, "the refused enrolment wrote nothing")
 
     def test_eight_concurrent_posts_at_one_revision_one_wins_seven_conflict(self):
         barrier, results = threading.Barrier(8), []
@@ -169,7 +169,7 @@ class Contract:
         def worker(n):
             barrier.wait()
             try:
-                self.store.ops_post({"action": "note_add", "revision": 0, "text": f"n{n}"})
+                self.store.post({"action": "note_add", "revision": 0, "text": f"n{n}"})
                 results.append("ok")
             except ConflictError:
                 results.append("conflict")
@@ -180,7 +180,7 @@ class Contract:
         for thread in threads:
             thread.join()
         self.assertEqual(sorted(results), ["conflict"] * 7 + ["ok"])
-        self.assertEqual((self.store.ops_get()["revision"], len(self.store.ops_get()["notes"])), (1, 1))
+        self.assertEqual((self.store.get()["revision"], len(self.store.get()["notes"])), (1, 1))
 
     # -- identity and faces ----------------------------------------------------
     def test_faces_merge_per_player_and_forget_removes_one_player(self):
@@ -315,13 +315,25 @@ class Contract:
         self.store.anchors_put("vod30", "70", [[3, 4]] * 6)        # the same time, written another way
         self.assertEqual(self.store.anchors_get("vod30"), {"anchors": {"70.0": [[3, 4]] * 6}})
 
+    def test_an_unknown_record_set_is_refused_and_the_answer_is_stable(self):
+        """Store.place names where a record set lives. Both backings refuse a kind they
+        do not keep, and neither answer changes when the records do."""
+        with self.assertRaises(ValueError):
+            self.store.place("verdicts")
+        first = self.store.place("operations")
+        self.assertEqual(self.store.place("operations"), first)
+        self.store.faces_add({"A": [face(1)]})
+        self.store.anchors_put("vod30", "70.0", [[0, 0]] * 6)
+        self.assertEqual(self.store.place("operations"), first, "a receipt is a name, not a snapshot")
+
     # -- the read-only contract (design 7.2) -------------------------------------
-    READS = (lambda s: s.ops_get(), lambda s: s.faces_load(), lambda s: s.identity_load(),
+    READS = (lambda s: s.get(), lambda s: s.faces_load(), lambda s: s.identity_load(),
              lambda s: s.seeds_get("vod30"), lambda s: s.verdicts_get("vod30"), lambda s: s.verdicts_get("highlight"),
              lambda s: s.labels_get("unlabeled_crops"), lambda s: s.correction_get("vod30", 5),
              lambda s: s.correction_get("vod30", 6), lambda s: s.anchors_get("vod30"),
              lambda s: s.queue("vod30"), lambda s: s.queue_window("vod30", 0, 10), lambda s: s.tracklets("vod30"),
-             lambda s: s.artifact("queue_report", "vod30"), lambda s: s.frame_detections("vod30", 1))
+             lambda s: s.artifact("queue_report", "vod30"), lambda s: s.frame_detections("vod30", 1),
+             lambda s: s.place("operations"), lambda s: s.place("faces"), lambda s: s.place("anchors", "vod30"))
 
     def populate(self):
         self.post("player_save", name="Ada")
@@ -359,14 +371,21 @@ class JsonContract(Contract, unittest.TestCase):
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps(before_round_11()))
         before = self.snapshot()
-        doc = self.store.ops_get()
+        doc = self.store.get()
         self.assertEqual([k for k in ("vods", "links") if k in doc], ["vods", "links"])
         self.assertEqual(doc["links"], [{"vodId": "2274501933", "eventId": "night1",
                                          "startS": 3600, "endS": 11400, "at": ""}])
         self.assertEqual([v["id"] for v in doc["vods"]], ["2274501933"])
         self.assertEqual(doc["vods"][0]["title"], "Wednesday 8-Ball Open")
         self.assertEqual(self.snapshot(), before, "reading adopted the link; it did not write it")
-        self.assertEqual(self.store.ops_get(), doc, "adoption is idempotent")
+        self.assertEqual(self.store.get(), doc, "adoption is idempotent")
+
+    def test_the_receipts_name_the_files_this_backing_writes(self):
+        """A file backing answers with a Path. The three answers are the files that the
+        operations writer, the face writer and the anchor writer really use."""
+        self.assertEqual(self.store.place("operations"), self.root / "out" / "corner-pocket" / "state.json")
+        self.assertEqual(self.store.place("faces"), self.root / "out" / "corner-pocket" / "face_embeddings.json")
+        self.assertEqual(self.store.place("anchors", "vod30"), self.root / "out" / "pid_anchors_vod30.json")
 
 
 @unittest.skipUnless(HAVE_DB, f"{db.ENV} is not set (docs/postgres.md)")
@@ -419,7 +438,7 @@ class PostgresContract(Contract, unittest.TestCase):
         with db.connect() as conn:
             conn.execute(f"SET search_path TO {self.schema}")
             put_document(conn, STATE, text)
-        doc = self.store.ops_get()
+        doc = self.store.get()
         self.assertEqual([k for k in ("vods", "links") if k in doc], ["vods", "links"])
         self.assertEqual(doc["links"], [{"vodId": "2274501933", "eventId": "night1",
                                          "startS": 3600, "endS": 11400, "at": ""}])
@@ -428,7 +447,14 @@ class PostgresContract(Contract, unittest.TestCase):
             conn.execute(f"SET search_path TO {self.schema}")
             stored = get_document(conn, STATE)
         self.assertEqual(stored, text, "reading adopted the link; the stored text is untouched")
-        self.assertEqual(self.store.ops_get(), doc, "adoption is idempotent")
+        self.assertEqual(self.store.get(), doc, "adoption is idempotent")
+
+    def test_the_receipts_name_the_documents_this_backing_writes(self):
+        """The enrolment receipt shows the database name, not a file path. These three
+        strings are what the console and the enrolment already display - keep them."""
+        self.assertEqual(self.store.place("operations"), "postgres:json_documents/out/corner-pocket/state.json")
+        self.assertEqual(self.store.place("faces"), "postgres:face_embeddings")
+        self.assertEqual(self.store.place("anchors", "vod30"), "postgres:json_documents/out/pid_anchors_vod30.json")
 
     def test_the_projection_check_runs_after_every_write_and_catches_drift(self):
         from src.store_check import check
@@ -448,19 +474,19 @@ class PostgresContract(Contract, unittest.TestCase):
         from unittest import mock
         from annotator.operations import Operations
         from src.store import StoreConstraintError
-        first = self.store.ops_post({"action": "player_save", "revision": 0, "name": "Ana"})
+        first = self.store.post({"action": "player_save", "revision": 0, "name": "Ana"})
 
         def buggy_apply(self_ops, state, payload):          # a rule that forgot the name check
             state["players"].append(dict(id="dup", name="ANA", joinedAt="t", rating=0, status="Active"))
 
         with mock.patch.object(Operations, "_apply", buggy_apply), \
                 self.assertRaises(StoreConstraintError) as refused:
-            self.store.ops_post({"action": "player_save", "revision": 1, "name": "ignored"})
+            self.store.post({"action": "player_save", "revision": 1, "name": "ignored"})
         self.assertEqual(refused.exception.constraint, "players_name_key")
         self.assertIn("players_name_key", str(refused.exception))
         self.assertIn("nothing was written", str(refused.exception))
         self.assertIsInstance(refused.exception, ValueError, "the server answers it as a 4xx, not a 500")
-        self.assertEqual(self.store.ops_get(), first, "the refused write left the document as it was")
+        self.assertEqual(self.store.get(), first, "the refused write left the document as it was")
 
     def test_binding_a_cluster_to_an_id_off_the_roster_is_refused_by_the_foreign_key(self):
         """The reviewed FK on identity_clusters.player_id: POST /api/identity/seed with a

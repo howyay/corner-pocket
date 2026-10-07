@@ -234,7 +234,7 @@ class LiveProcessor:
             raise ValueError('Pass either infer or stages, not both')
         self.root = Path(root).resolve()
         # callable returning the operations document (the server sets its store's
-        # ops_get); None = read out/corner-pocket/state.json, as before
+        # get()); None = read out/corner-pocket/state.json, as before
         self.operations_document = None
         self._capture_factory = capture_factory or self._open_capture
         self._live_read_timeout_ms = live_read_timeout_ms

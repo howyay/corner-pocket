@@ -20,6 +20,7 @@ import sys
 import tempfile
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -29,6 +30,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 # Datasets (the two recordings and imported VODs) resolve through src/datasets.py.
 from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, lookup as dataset_lookup  # noqa: E402
+# The tournament declares the action names it accepts (annotator/operations.py).
+# This module imports it here, so one table joins the route to that declaration.
+from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E402
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
@@ -52,6 +56,119 @@ def error_reference(exc):
           + "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
           file=sys.stderr, flush=True)
     return ref
+
+
+@dataclass(frozen=True)
+class OperatorAction:
+    """One write the console may send. The dispatcher and the validation read this row.
+
+    `name` is the operator action. `parts` is the URL shape of the write, one list of
+    parts, spelled as the console spells the URL it calls. A part that
+    starts with ':' matches one part of the request. `handler` is the Backend method
+    that serves the write. `takes` says what the handler receives: 'payload' takes the
+    payload, 'parts' takes the parts and the payload, 'verb' takes the last part and
+    the payload. `locked` says whether the store lock is held. `requires` declares the
+    payload fields the write needs, as (field, refusal) pairs. `refuse_missing_first`
+    says whether this row refuses a missing field before the handler runs; a write
+    whose own first refusal is a state precondition sets it False and the handler then
+    names that refusal. `actions` names the operations the route accepts."""
+
+    name: str
+    parts: list
+    handler: str
+    takes: str = 'payload'
+    locked: bool = False
+    requires: tuple = ()
+    refuse_missing_first: bool = True
+    actions: tuple = ()
+
+    def match(self, parts):
+        """The captured parts when this row serves the request, else None."""
+        if len(parts) != len(self.parts):
+            return None
+        captured = {}
+        for declared, actual in zip(self.parts, parts):
+            if declared.startswith(':'):
+                captured[declared[1:]] = actual
+            elif declared != actual:
+                return None
+        return captured
+
+    def refuse_missing(self, payload):
+        """Refuse the first declared field the payload does not carry."""
+        if not self.refuse_missing_first:
+            return
+        for field, refusal in self.requires:
+            if field not in payload:
+                raise APIError(refusal)
+
+
+class Actions:
+    """The declared writes. One name, one shape, one handler for each write."""
+
+    def __init__(self, table, literal, shaped):
+        self.table = table
+        self._literal = literal
+        self._shaped = shaped
+
+    def __len__(self):
+        return len(self.table)
+
+    def __iter__(self):
+        return iter(self.table.values())
+
+    def get(self, name):
+        return self.table.get(name)
+
+    def names(self):
+        """The declared names, in declaration order."""
+        return tuple(self.table)
+
+    def match(self, parts):
+        """The row that serves these parts, else None. A literal part wins."""
+        for row in self._literal + self._shaped:
+            if row.match(parts) is not None:
+                return row
+        return None
+
+    def contract(self):
+        """The writes and their fields, for a console that checks itself."""
+        return [dict(name=row.name, parts=list(row.parts), required=[field for field, _ in row.requires],
+                     actions=list(row.actions)) for row in self.table.values()]
+
+
+def operator_actions(backend, rows):
+    """Index the rows. Refuse a row that is not complete, so no write half-registers.
+
+    A row must name a real Backend method. The table is the only dispatch list, so a
+    write that no row declares cannot be served."""
+    table = {}
+    literal, shaped = [], []
+    for row in rows:
+        if not isinstance(row, OperatorAction):
+            raise ValueError(f'write must be an OperatorAction, not {type(row).__name__}')
+        if not row.name:
+            raise ValueError('write needs a name')
+        if row.name in table:
+            raise ValueError(f'write {row.name} is declared twice')
+        if not isinstance(row.parts, (list, tuple)) or not row.parts:
+            raise ValueError(f'write {row.name} needs a URL shape')
+        if row.parts[0] != 'api':
+            raise ValueError(f'write {row.name} must start at api')
+        if row.takes not in ('payload', 'parts', 'verb'):
+            raise ValueError(f'write {row.name} has a bad takes: {row.takes!r}')
+        if not isinstance(row.requires, tuple):
+            raise ValueError(f'write {row.name} needs a tuple of required fields')
+        for entry in row.requires:
+            if not (isinstance(entry, tuple) and len(entry) == 2 and all(isinstance(v, str) for v in entry)):
+                raise ValueError(f'write {row.name} declares a bad required field: {entry!r}')
+        if not isinstance(row.actions, tuple):
+            raise ValueError(f'write {row.name} needs a tuple of actions')
+        if not callable(getattr(backend, row.handler, None)):
+            raise ValueError(f'write {row.name} names no handler: {row.handler!r}')
+        table[row.name] = row
+        (shaped if any(part.startswith(':') for part in row.parts) else literal).append(row)
+    return Actions(table, tuple(literal), tuple(shaped))
 
 
 #: An absolute POSIX path (not a URL's path: '//' and 'host/...' do not match).
@@ -313,31 +430,6 @@ def vod_replay_processor_class():
     return VodReplayLiveProcessor
 
 
-class _StoreOperations:
-    """The operations interface the handlers use (get / post / enroll_player), backed
-    by the store. ConflictError and ValueError reach the handlers unchanged."""
-
-    def __init__(self, store):
-        self._store = store
-
-    def get(self):
-        return self._store.ops_get()
-
-    def post(self, payload):
-        return self._store.ops_post(payload)
-
-    def enroll_player(self, player, context):
-        return self._store.enroll_player(player, context)
-
-    @property
-    def path(self):
-        """Where the document lives, for receipts: the file, or the database table."""
-        root = getattr(self._store, "root", None)
-        if type(self._store).__name__ == "JsonStore" and root is not None:
-            return root / "out" / "corner-pocket" / "state.json"
-        return "postgres:json_documents/out/corner-pocket/state.json"
-
-
 class Backend:
     def __init__(self, root=ROOT):
         self.root = Path(root)
@@ -371,7 +463,7 @@ class Backend:
             if self._live is None:
                 self._live = vod_replay_processor_class()(self.root)
                 # the saved Twitch channel is read from the store, like everything else
-                self._live.operations_document = self.store().ops_get
+                self._live.operations_document = self.store().get
             return self._live
 
     def close(self):
@@ -405,10 +497,10 @@ class Backend:
     def operations(self):
         # Keep operations optional until requested; annotation-only fixtures remain usable.
         # The operations document lives in the store (src/store.py): the JSON files by
-        # default, Postgres when POOL_DATABASE_URL is set - the same get/post contract.
+        # default, Postgres when POOL_DATABASE_URL is set - one interface, get/post.
         with self.lock:
             if self._operations is None:
-                self._operations = _StoreOperations(self.store())
+                self._operations = self.store()
             return self._operations
 
     def public_board(self):
@@ -741,10 +833,7 @@ class Backend:
             store = self.store()
             result = confirm_enrollment(self.root, plan, token, name,
                                         scratch_root=self.out / "enroll-eval" / "scratch",
-                                        dataset=plan.dataset,
-                                        # the roster comes from the store; None keeps the
-                                        # module's own file read (the JSON default)
-                                        store=None if type(store).__name__ == "JsonStore" else store)
+                                        dataset=plan.dataset, store=store)
         except EnrollmentTokenError as exc:
             return exc.to_dict()
         if result.get("ok"):
@@ -780,7 +869,7 @@ class Backend:
                 state = self.operations().enroll_player(player, event["context"])
             except ValueError as error:
                 raise APIError(str(error), 409) from error
-            promoted.update(state=str(self.operations().path), revision=state["revision"])
+            promoted.update(state=str(self.operations().place("operations")), revision=state["revision"])
         source = written.get("store")
         if source:
             payload = load(Path(source))
@@ -793,9 +882,7 @@ class Backend:
                 store.faces_add(payload)
                 if self._identity_pipeline is not None:
                     self._identity_pipeline.reload_gallery()
-            promoted["store"] = (str(self.out / "corner-pocket" / "face_embeddings.json")
-                                 if type(store).__name__ == "JsonStore"
-                                 else "postgres:face_embeddings")
+            promoted["store"] = str(store.place("faces"))
         return promoted
 
     # -- unified viewer: one overlay payload per frozen frame ---------------
@@ -853,14 +940,15 @@ class Backend:
         return value
 
     def _prior_source(self, dataset):
-        """Where the hand anchors behind the prior live (shown with the quad), or None."""
+        """Where the hand anchors behind the prior live (shown with the quad), or None.
+
+        The store answers with the file it really reads (a Path) or the database name
+        it really writes (text). The quad check above already proved the anchors exist,
+        so the answer needs no second read of the file."""
         if self._prior_for(dataset) is None:
             return None
-        from src.frame_inference import app_prior_source
-        source = app_prior_source(dataset, root=self.root)
-        if source is not None and type(self.store()).__name__ == "JsonStore":
-            return source
-        return f"postgres:json_documents/out/pid_anchors_{dataset}.json"
+        place = self.store().place("anchors", dataset)
+        return place if isinstance(place, Path) else str(place)
 
     def _unified_detection(self, dataset, frame_index, frame):
         """Table quad + ball candidates in full-res frame pixels. Detection
@@ -1221,7 +1309,7 @@ class Backend:
             if self._vod_importer is None:
                 from annotator.vod_import import VodImporter
                 ffmpeg = lambda: [self._ffmpeg()]  # noqa: E731 - resolved when an import starts
-                self._vod_importer = VodImporter(self.root, self.store().ops_get, ffmpeg=ffmpeg,
+                self._vod_importer = VodImporter(self.root, self.store().get, ffmpeg=ffmpeg,
                                                  public_error=public_error)
             return self._vod_importer
 
@@ -1587,6 +1675,10 @@ class Backend:
     def get(self, parts, query):
         if parts == ['api', 'operations']:
             return self.operations().get()
+        if parts == ['api', 'actions']:
+            # The write registry itself: what the console may send, and what each write
+            # needs. A console reads this instead of repeating the route list.
+            return {'writes': OPERATOR_ACTIONS.contract(), 'operations': list(TOURNAMENT_ACTIONS)}
         if parts == ['api', 'clock']:
             return self.clock_state()
         dataset = query.get('dataset', ['vod30'])[0]
@@ -1671,117 +1763,119 @@ class Backend:
         raise APIError("route not found", 404)
 
     def post(self, parts, payload):
+        """Serve the write that the registry declares. One table, one dispatcher.
+
+        A write that no row declares is not served, so a route cannot exist in the
+        dispatcher alone. The row also checks the fields it declares."""
         if not isinstance(payload, dict):
             raise APIError("JSON object required")
-        if parts == ['api', 'clock']:
-            return self.clock_action(payload)
-        if parts == ['api', 'operations']:
-            from annotator.operations import ConflictError
-            try:
-                return self.operations().post(payload)
-            except ConflictError as error:
-                raise APIError(str(error), 409) from error
-            except ValueError as error:
-                raise APIError(str(error)) from error
-        if parts == ['api', 'inference']:
-            return self.start_inference(payload)
-        if parts == ['api', 'frame-correction']:
-            return self.save_frame_correction(payload)
-        if parts == ['api', 'identity', 'enroll']:
-            return self.identity_enroll(payload)
-        if parts == ['api', 'identity', 'seed']:
-            return self.identity_seed(payload)
-        if parts == ['api', 'identity', 'link']:
-            return self.identity_link(payload)
-        if parts == ['api', 'identity', 'unbind']:
-            return self.identity_unbind(payload)
-        if parts == ['api', 'identity', 'forget']:
-            return self.identity_forget(payload)
-        if parts == ['api', 'identity', 'enroll-preview']:
-            return self.enroll_preview(payload)
-        if parts == ['api', 'identity', 'enroll-confirm']:
-            return self.enroll_confirm(payload)
-        if len(parts) == 3 and parts[:2] == ['api', 'vods'] and parts[2] in ('import', 'cancel', 'delete', 'auto'):
-            return self.vod_request(parts[2], payload)
-        with self.lock:
-            return self._post(parts, payload)
-
-    def _post(self, parts, p):
-        if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "label":
-            base = self.crops(parts[2])
-            rows = load(base / "meta.json", [])
-            row = next((r for r in rows if Path(r["file"]).name == p.get("file")), None)
-            if row is None:
-                raise APIError("unknown crop")
-            if "label" not in p:
-                raise APIError("label required; use null to clear")
-            label = p["label"]
-            if isinstance(label, bool) or not (label in (None, "u", "clear", -1, -2) or type(label) is int and 0 <= label <= 15):
-                raise APIError("invalid ball label")
-            # None / "clear" / -2 clear the label; -1 is "u" (unknown). A crop labelled for
-            # the first time is keyed by its meta.json path, as before.
-            stored = None if label in (None, "clear", -2) else ("u" if label == -1 else label)
-            self.store().label_put(parts[2], p["file"], stored, new_key=row["file"])
-            return {"ok": True}
-        if len(parts) != 3 or parts[0] != "api":
+        row = OPERATOR_ACTIONS.match(parts)
+        if row is None:
             raise APIError("route not found", 404)
-        _, dataset, route = parts
-        base = self.dataset(dataset)
-        if route == "annotate":
-            key = str(p.get("event_id"))
-            if not any(str(e["id"]) == key for e in load(base / "events.json", [])):
-                raise APIError("unknown event")
-            if "verdict" in p and p["verdict"] not in ("correct", "wrong", "unsure"):
-                raise APIError("invalid verdict")
-            if "shooter" in p and p["shooter"] not in ("A", "B", "?", ""):
-                raise APIError("invalid shooter")
-            if "note" in p and (not isinstance(p["note"], str) or len(p["note"]) > 10000):
-                raise APIError("invalid note")
-            # merge + updated_at, one locked read-modify-write in the store
-            record = self.store().verdict_put(dataset, key, {k: p[k] for k in ("verdict", "note", "shooter") if k in p})
-            return {"ok": True, "annotation": record}
+        row.refuse_missing(payload)
+        handler = getattr(self, row.handler)
+        if row.takes == 'parts':
+            arguments = (parts, payload)
+        elif row.takes == 'verb':
+            arguments = (parts[-1], payload)
+        else:
+            arguments = (payload,)
+        if row.locked:
+            with self.lock:
+                return handler(*arguments)
+        return handler(*arguments)
+
+    def _route_operations(self, payload):
+        from annotator.operations import ConflictError
+        try:
+            return self.operations().post(payload)
+        except ConflictError as error:
+            raise APIError(str(error), 409) from error
+        except ValueError as error:
+            raise APIError(str(error)) from error
+
+    def _vod30(self, dataset):
+        """Resolve the dataset, then refuse everything but vod30. One route guard."""
+        self.dataset(dataset)
         if dataset != "vod30":
             raise APIError("feature only available for vod30", 404)
-        if route == "anchors":
-            info = self.anchor_info(p.get("t"))
-            pts = p.get("pts")
-            if not isinstance(pts, list) or len(pts) != 6:
-                raise APIError("six anchor points required")
-            clean = []
-            for point in pts:
-                if not isinstance(point, list) or len(point) != 2:
-                    raise APIError("each anchor must be [x,y]")
-                clean.append([number(point[0], 0, info["width"] - 1, "x"), number(point[1], 0, info["height"] - 1, "y")])
-            # an existing time keeps its key spelling, a new one is keyed str(t) - as before
-            self.store().anchors_put("vod30", str(info["t"]), clean)
-            return {"ok": True, "t": info["t"], "pts": clean}
-        if route == "seeds":
-            if self.job["status"] == "running":
-                raise APIError("cannot edit seeds during rebuild", 409)
-            win, tid = p.get("win"), p.get("track_id")
-            if not isinstance(win, str) or type(tid) is not int:
-                raise APIError("invalid window or track")
-            window = self.tracks().get(win, {})
-            track = next((tk for tk in window.get("tracklets", []) if tk["id"] == tid), None)
-            if not track or not track["samples"]:
-                raise APIError("unknown track")
-            t = number(p.get("t"), min(s[0] for s in track["samples"]), max(s[0] for s in track["samples"]), "t")
-            if "label" not in p:
-                raise APIError("explicit A/B/ignore label, a guest name, or null is required")
-            label = self.seed_label(p.get("label"))
-            if p.get("label") is not None and label is None:
-                raise APIError("label must be A, B, ignore, a guest name up to 60 characters, or null")
-            # the same merge (existing keys kept, these four set) or removal, one locked write
-            seeds = self.store().seed_put("vod30", f"{tid}:{win}",
-                                          None if label is None else dict(win=win, t=t, track_id=tid, label=label))
-            return {"ok": True, "seeds": seeds}
-        if route == "rebuild":
-            if self.job["status"] == "running":
-                raise APIError("rebuild already running", 409)
-            self.job = {"status": "running", "error": None}
-            threading.Thread(target=self._rebuild, daemon=True).start()
-            return dict(self.job)
-        raise APIError("route not found", 404)
+
+    def _route_ball_label(self, parts, p):
+        base = self.crops(parts[2])
+        rows = load(base / "meta.json", [])
+        row = next((r for r in rows if Path(r["file"]).name == p.get("file")), None)
+        if row is None:
+            raise APIError("unknown crop")
+        if "label" not in p:
+            raise APIError("label required; use null to clear")
+        label = p["label"]
+        if isinstance(label, bool) or not (label in (None, "u", "clear", -1, -2) or type(label) is int and 0 <= label <= 15):
+            raise APIError("invalid ball label")
+        # None / "clear" / -2 clear the label; -1 is "u" (unknown). A crop labelled for
+        # the first time is keyed by its meta.json path, as before.
+        stored = None if label in (None, "clear", -2) else ("u" if label == -1 else label)
+        self.store().label_put(parts[2], p["file"], stored, new_key=row["file"])
+        return {"ok": True}
+
+    def _route_annotate(self, parts, p):
+        base = self.dataset(parts[1])
+        key = str(p.get("event_id"))
+        if not any(str(e["id"]) == key for e in load(base / "events.json", [])):
+            raise APIError("unknown event")
+        if "verdict" in p and p["verdict"] not in ("correct", "wrong", "unsure"):
+            raise APIError("invalid verdict")
+        if "shooter" in p and p["shooter"] not in ("A", "B", "?", ""):
+            raise APIError("invalid shooter")
+        if "note" in p and (not isinstance(p["note"], str) or len(p["note"]) > 10000):
+            raise APIError("invalid note")
+        # merge + updated_at, one locked read-modify-write in the store
+        record = self.store().verdict_put(parts[1], key, {k: p[k] for k in ("verdict", "note", "shooter") if k in p})
+        return {"ok": True, "annotation": record}
+
+    def _route_anchors(self, parts, p):
+        self._vod30(parts[1])
+        info = self.anchor_info(p.get("t"))
+        pts = p.get("pts")
+        if not isinstance(pts, list) or len(pts) != 6:
+            raise APIError("six anchor points required")
+        clean = []
+        for point in pts:
+            if not isinstance(point, list) or len(point) != 2:
+                raise APIError("each anchor must be [x,y]")
+            clean.append([number(point[0], 0, info["width"] - 1, "x"), number(point[1], 0, info["height"] - 1, "y")])
+        # an existing time keeps its key spelling, a new one is keyed str(t) - as before
+        self.store().anchors_put("vod30", str(info["t"]), clean)
+        return {"ok": True, "t": info["t"], "pts": clean}
+
+    def _route_seeds(self, parts, p):
+        self._vod30(parts[1])
+        if self.job["status"] == "running":
+            raise APIError("cannot edit seeds during rebuild", 409)
+        win, tid = p.get("win"), p.get("track_id")
+        if not isinstance(win, str) or type(tid) is not int:
+            raise APIError("invalid window or track")
+        window = self.tracks().get(win, {})
+        track = next((tk for tk in window.get("tracklets", []) if tk["id"] == tid), None)
+        if not track or not track["samples"]:
+            raise APIError("unknown track")
+        t = number(p.get("t"), min(s[0] for s in track["samples"]), max(s[0] for s in track["samples"]), "t")
+        if "label" not in p:
+            raise APIError("explicit A/B/ignore label, a guest name, or null is required")
+        label = self.seed_label(p.get("label"))
+        if p.get("label") is not None and label is None:
+            raise APIError("label must be A, B, ignore, a guest name up to 60 characters, or null")
+        # the same merge (existing keys kept, these four set) or removal, one locked write
+        seeds = self.store().seed_put("vod30", f"{tid}:{win}",
+                                      None if label is None else dict(win=win, t=t, track_id=tid, label=label))
+        return {"ok": True, "seeds": seeds}
+
+    def _route_rebuild(self, parts, p):
+        self._vod30(parts[1])
+        if self.job["status"] == "running":
+            raise APIError("rebuild already running", 409)
+        self.job = {"status": "running", "error": None}
+        threading.Thread(target=self._rebuild, daemon=True).start()
+        return dict(self.job)
 
     def _rebuild(self):
         try:
@@ -1849,6 +1943,59 @@ SECURITY_HEADERS = (
     ("Cross-Origin-Opener-Policy", "same-origin"),
     ("X-Content-Type-Options", "nosniff"),
 )
+
+
+# THE WRITE REGISTRY. Every write the console may send is one row here. The dispatcher
+# (Backend.post) reads this table, the field validation reads each row, and
+# GET /api/actions publishes it. A write with no row is not served, so a route cannot
+# exist in the dispatcher alone. The operations row names the tournament's own action
+# declaration (annotator/operations.py ACTION_NAMES), so the two cannot drift apart.
+# A row with refuse_missing_first False keeps its declared fields but lets its handler
+# name the refusal: those writes check a revision or resolve a dataset before a field,
+# and a pre-dispatch check would change the answer the console shows.
+OPERATOR_ACTIONS = operator_actions(Backend, [
+    OperatorAction('operations', ['api', 'operations'], '_route_operations',
+                   refuse_missing_first=False, actions=TOURNAMENT_ACTIONS),
+    OperatorAction('clock', ['api', 'clock'], 'clock_action'),
+    OperatorAction('live', ['api', 'live'], 'live_action',
+                   requires=(('action', 'action must be start or stop'),)),
+    OperatorAction('inference', ['api', 'inference'], 'start_inference',
+                   refuse_missing_first=False),
+    OperatorAction('frame_correction', ['api', 'frame-correction'], 'save_frame_correction',
+                   refuse_missing_first=False),
+    OperatorAction('identity_enroll', ['api', 'identity', 'enroll'], 'identity_enroll',
+                   requires=(('player_id', 'player_id must be a non-empty string'),)),
+    OperatorAction('identity_seed', ['api', 'identity', 'seed'], 'identity_seed',
+                   requires=(('cluster_id', 'cluster_id must be an integer'),)),
+    OperatorAction('identity_link', ['api', 'identity', 'link'], 'identity_link',
+                   requires=(('track_id', 'track_id must be an integer'),)),
+    OperatorAction('identity_unbind', ['api', 'identity', 'unbind'], 'identity_unbind',
+                   requires=(('cluster_id', 'cluster_id must be an integer'),)),
+    OperatorAction('identity_forget', ['api', 'identity', 'forget'], 'identity_forget',
+                   requires=(('player_id', 'player_id must be a non-empty string'),)),
+    OperatorAction('enroll_preview', ['api', 'identity', 'enroll-preview'], 'enroll_preview',
+                   refuse_missing_first=False),
+    OperatorAction('enroll_confirm', ['api', 'identity', 'enroll-confirm'], 'enroll_confirm',
+                   refuse_missing_first=False),
+    OperatorAction('vod_import', ['api', 'vods', 'import'], 'vod_request', takes='verb'),
+    OperatorAction('vod_cancel', ['api', 'vods', 'cancel'], 'vod_request', takes='verb'),
+    OperatorAction('vod_delete', ['api', 'vods', 'delete'], 'vod_request', takes='verb'),
+    OperatorAction('vod_auto', ['api', 'vods', 'auto'], 'vod_request', takes='verb'),
+    OperatorAction('ball_label', ['api', 'balls', ':set', 'label'], '_route_ball_label',
+                   takes='parts', locked=True, refuse_missing_first=False,
+                   requires=(('file', 'unknown crop'), ('label', 'label required; use null to clear'))),
+    OperatorAction('annotate', ['api', ':dataset', 'annotate'], '_route_annotate',
+                   takes='parts', locked=True, refuse_missing_first=False,
+                   requires=(('event_id', 'unknown event'),)),
+    OperatorAction('anchors', ['api', ':dataset', 'anchors'], '_route_anchors',
+                   takes='parts', locked=True, refuse_missing_first=False,
+                   requires=(('pts', 'six anchor points required'),)),
+    OperatorAction('seeds', ['api', ':dataset', 'seeds'], '_route_seeds',
+                   takes='parts', locked=True, refuse_missing_first=False,
+                   requires=(('label', 'explicit A/B/ignore label, a guest name, or null is required'),)),
+    OperatorAction('rebuild', ['api', ':dataset', 'rebuild'], '_route_rebuild',
+                   takes='parts', locked=True),
+])
 
 
 class BoundedHTTPServer(ThreadingHTTPServer):
@@ -2282,10 +2429,6 @@ def make_handler(backend):
                     if not 0 < size <= limit:
                         raise APIError("invalid request size", 413)
                     payload = json.loads(self.rfile.read(size))
-                    if parts == ['api', 'live']:
-                        if not isinstance(payload, dict):
-                            raise APIError('object required')
-                        return self.json(200, backend.live_action(payload))
                     return self.json(202 if parts == ['api', 'inference'] else 200, backend.post(parts, payload))
                 if path in ('/app.html', '/ops.html'):
                     return self.send(308, b'', 'text/plain', {'Location': '/'})

@@ -5,6 +5,7 @@ import os
 import math
 import random
 import re
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 from pathlib import Path
 import tempfile
@@ -112,6 +113,54 @@ def normalise(state):
     state.setdefault('links', [])
     Operations._adopt_sources(state)
     return state
+
+
+@dataclass(frozen=True)
+class Operation:
+    """One named write on the operations document, declared in one place.
+
+    The name, the code that writes the change, the audit line the change produces and
+    the fields the payload must carry all live in this record. The dispatcher and the
+    declaration check read the same record, so an action cannot register half of itself."""
+
+    name: str
+    apply: object            # (Operations, state, payload) -> None
+    audit: object            # (state, payload) -> dict
+    requires: tuple = ()     # ((field, refusal message), ...)
+    # True when a missing declared field is refused before the action runs. Some actions
+    # refuse a state precondition first (a closed registration, a stopped tournament), so
+    # their own code keeps the field check and the order of the two refusals stays.
+    refuse_missing_first: bool = True
+
+    def refuse_missing(self, payload):
+        """Refuse a payload that does not carry a field this action needs."""
+        for field, refusal in self.requires:
+            if field not in payload:
+                raise ValueError(refusal)
+
+
+def operations_registry(rows):
+    """Check each declaration, then key them by name. A half-declared action fails here."""
+    registry = {}
+    for row in rows:
+        if not isinstance(row, Operation):
+            raise ValueError(f'operation must be an Operation, not {type(row).__name__}')
+        if not isinstance(row.name, str) or not row.name:
+            raise ValueError('operation needs a name')
+        if row.name in registry:
+            raise ValueError(f'operation {row.name} is declared twice')
+        if not callable(row.apply):
+            raise ValueError(f'operation {row.name} has no writer')
+        if not callable(row.audit):
+            raise ValueError(f'operation {row.name} has no audit projection')
+        if not isinstance(row.requires, tuple):
+            raise ValueError(f'operation {row.name} needs a tuple of required fields')
+        for entry in row.requires:
+            if (not isinstance(entry, tuple) or len(entry) != 2
+                    or not all(isinstance(part, str) and part for part in entry)):
+                raise ValueError(f'operation {row.name} declares a bad required field: {entry!r}')
+        registry[row.name] = row
+    return registry
 
 
 class Operations:
@@ -247,6 +296,7 @@ class Operations:
             return self._load()
 
     def post(self, payload):
+        """Run the operation the payload names. The registry holds its declaration."""
         if not isinstance(payload, dict):
             raise ValueError('JSON object required')
         with self.lock:
@@ -255,36 +305,55 @@ class Operations:
                 raise ValueError('integer revision required')
             if payload['revision'] != state['revision']:
                 raise ConflictError('State changed; reload before retrying')
-            if payload.get('action') in ('tournament_start', 'tournament_new'):
-                # R2: an event that is drawn or archived is never nameless; the
-                # server fills the default the form displays (the audit reads it).
-                t = state['tournament']
-                if not t['name'].strip() and (payload['action'] == 'tournament_start' or t['entrants'] or t['matches']):
-                    t['name'] = default_name()
-            context = self._event_context(state, payload)
-            self._apply(state, payload)
-            if payload.get('action') not in ('tournament_new', 'tournament_delete'):
-                context.update(self._event_context(state, payload))
-            return self._commit(state, payload['action'], context)
+            action, context = self.run(state, payload)
+            return self._commit(state, action, context)
+
+    def run(self, state, payload):
+        """Apply one payload to one document. Answer (action, audit context).
+
+        The file backing and the database backing both call this method. Thus one
+        registry holds the writer, the audit line and the required fields, and the two
+        backings cannot drift apart. This method is the only caller of `_apply`."""
+        action = payload.get('action')
+        operation = OPERATIONS.get(action) if isinstance(action, str) else None
+        if operation is not None and operation.refuse_missing_first:
+            operation.refuse_missing(payload)
+        if action in ('tournament_start', 'tournament_new'):
+            # R2: an event that is drawn or archived is never nameless; the
+            # server fills the default the form displays (the audit reads it).
+            t = state['tournament']
+            if not t['name'].strip() and (action == 'tournament_start' or t['entrants'] or t['matches']):
+                t['name'] = default_name()
+        context = self._event_context(state, payload)
+        self._apply(state, payload)
+        if action not in ('tournament_new', 'tournament_delete'):
+            context.update(self._event_context(state, payload))
+        return action, context
+
+    def roster_add(self, state, player):
+        """Add the enrolled regular to the roster once. One roster rule, two backings.
+
+        `player` is the roster record the enrolment planned; it is added only when its
+        id is not on the roster yet (an existing regular gains faces, not a row), and
+        a name that another player already holds (casefold) is refused, the rule
+        `player_save` enforces."""
+        if not any(existing.get('id') == player['id'] for existing in state['players']):
+            name = text(player.get('name'), 'name')
+            if any(existing['name'].casefold() == name.casefold() for existing in state['players']):
+                raise ValueError('Player name already exists')
+            # the defaults player_save gives a new regular: the plan carries only
+            # {id, name} when it matched a regular who has since been deleted
+            state['players'].append({'joinedAt': timestamp(), 'rating': 0, 'status': 'Active',
+                                     **player, 'name': name})
 
     def enroll_player(self, player, context):
         """Add a player confirmed from the footage: one read-modify-write under the
         store lock, at the CURRENT revision, never a stale document written over it.
 
-        `player` is the roster record the enrolment planned; it is added only when its
-        id is not on the roster yet (an existing regular gains faces, not a row), and
-        a name that another player already holds (casefold) is refused, the rule
-        `player_save` enforces. The event is appended to the same log."""
+        The event is appended to the same log."""
         with self.lock:
             state = self._load()
-            if not any(existing.get('id') == player['id'] for existing in state['players']):
-                name = text(player.get('name'), 'name')
-                if any(existing['name'].casefold() == name.casefold() for existing in state['players']):
-                    raise ValueError('Player name already exists')
-                # the defaults player_save gives a new regular: the plan carries only
-                # {id, name} when it matched a regular who has since been deleted
-                state['players'].append({'joinedAt': timestamp(), 'rating': 0, 'status': 'Active',
-                                         **player, 'name': name})
+            self.roster_add(state, player)
             return self._commit(state, 'player_enroll_from_tracklet', context)
 
     def _commit(self, state, action, context):
@@ -310,66 +379,14 @@ class Operations:
 
     @staticmethod
     def _event_context(state, payload):
-        """Whitelist domain identity only: never copy request or note contents."""
+        """The audit line of one action, read from that action's own declaration.
+
+        Whitelist domain identity only: never copy request or note contents. An action
+        the registry does not hold answers with no context, so the refusal that follows
+        is the dispatcher's, not this function's."""
         action = payload.get('action')
-        t = state['tournament']
-        context = {}
-        groups = [('player_', state['players']), ('entrant_', t['entrants']),
-                  ('match_', t['matches']), ('source_', state.get('sources', [])),
-                  ('note_', state['notes'])]
-        if not isinstance(action, str):
-            return context
-        if action in ('revival_draw', 'revival_undo'):
-            # the whole draw is audited, so anyone can re-run it: seed, sorted pool, pick, slot
-            return dict(t['revival']) if t.get('revival') else context
-        if action in ('pair_draw', 'pair_accept') and t.get('pairing'):
-            # R3: the seed and the teams it made (names only; pool order is sign-up order)
-            return dict(seed=t['pairing']['seed'],
-                        teams=[' / '.join(m['name'] for m in team) for team in t['pairing']['teams']])
-        if action in ('tournament_rename', 'tournament_delete', 'tournament_hide'):
-            night = next((n for n in [t] + state['history'] if n['id'] == payload.get('id')), None)
-            if night and action == 'tournament_hide' and 'hidden' in night:
-                return dict(id=night['id'], name=night['name'], hidden=night['hidden'])
-            return dict(id=night['id'], name=night['name']) if night else context
-        if action in ('vod_link', 'vod_unlink'):
-            # the audit line names the pair a person made: the event, and the broadcast
-            vod, event = payload.get('vodId'), payload.get('eventId')
-            night = next((n for n in [t] + state['history'] if n['id'] == event), None)
-            context = dict(vodId=str(vod)) if isinstance(vod, str) else {}
-            if night is not None:
-                context.update(id=night['id'], name=night['name'])
-            return context
-        if action == 'event_backfill':
-            # 7.6: the audit line of a backfill names the night it wrote and the broadcast it
-            # came from, read back from the store rather than copied from the request.
-            source = payload.get('source') if isinstance(payload.get('source'), dict) else {}
-            night = next((n for n in reversed(state['history'])
-                          if (n.get('source') or {}).get('datasetId') == source.get('datasetId')), None)
-            if night is None:
-                return dict(vodId=source['vodId']) if isinstance(source.get('vodId'), str) else context
-            return dict(id=night['id'], name=night['name'], vodId=night['source'].get('vodId'),
-                        datasetId=night['source'].get('datasetId'))
-        if action.startswith('tournament_'):
-            return dict(id=t['id'], name=t['name'])
-        if action == 'guest_promote':
-            name = payload.get('name')
-            if isinstance(name, str):
-                matches = [p for p in state['players'] if p['name'].casefold() == name.strip().casefold()]
-                if matches:
-                    return dict(id=matches[0]['id'], name=matches[0]['name'])
-            return context
-        for prefix, items in groups:
-            if not action.startswith(prefix):
-                continue
-            item = next((item for item in items if item['id'] == payload.get('id')), None)
-            if item is None and not payload.get('id') and items:
-                item = items[-1]
-            if item:
-                context['id'] = item['id']
-                if prefix == 'player_':
-                    context['name'] = item['name']
-            break
-        return context
+        operation = OPERATIONS.get(action) if isinstance(action, str) else None
+        return operation.audit(state, payload) if operation else {}
 
     @staticmethod
     def _find(items, ident):
@@ -655,381 +672,588 @@ class Operations:
                                  archivedAt=signed, source=line, signOff=dict(at=signed)))
 
     def _apply(self, s, p):
+        """Run the operation the payload names. The registry holds the one writer."""
+        action = p.get('action')
+        operation = OPERATIONS.get(action) if isinstance(action, str) else None
+        if operation is None:
+            raise ValueError('Unknown operations action')
+        operation.apply(self, s, p)
+
+    def _do_player_save(self, s, p):
+        t = s['tournament']
+        name = text(p.get('name'), 'name')
+        if any(x['name'].casefold() == name.casefold() and x['id'] != p.get('id') for x in s['players']):
+            raise ValueError('Player name already exists')
+        # A guest's name is a claim too: two different people must never read the same.
+        if any(m['name'].casefold() == name.casefold() for e in t['entrants'] for m in e['members'] if not m['pid']):
+            raise ValueError('Name held by a guest in this event; add the guest to the regulars instead')
+        player = self._find(s['players'], p['id']) if p.get('id') else dict(id=uid(), joinedAt=timestamp(), rating=0, status='Active')
+        status = optional(p, 'status', player['status'])
+        if status not in ('Active', 'Visitor', 'Prospect', 'Inactive'):
+            raise ValueError('Invalid player status')
+        player.update(name=name, rating=integer(optional(p, 'rating', player['rating']), 0, 1000, 'rating'), status=status)
+        if p.get('notes') is not None:
+            if not isinstance(p['notes'], str) or len(p['notes']) > 4000:
+                raise ValueError('Player notes must be text up to 4000 characters')
+            player['notes'] = p['notes'].strip()
+        if not p.get('id'):
+            s['players'].append(player)
+
+    def _do_guest_promote(self, s, p):
+        t = s['tournament']
+        name = text(p.get('name'), 'guest name').casefold()
+        members = [member for entrant in t['entrants'] for member in entrant['members']
+                   if member['name'].casefold() == name]
+        if len(members) != 1 or members[0]['pid'] is not None:
+            raise ValueError('Exactly one unregistered current tournament guest is required')
+        if any(player['name'].casefold() == name for player in s['players']):
+            raise ValueError('Player name already exists; cannot infer guest identity')
+        member = members[0]
+        player = dict(id=uid(), name=member['name'], joinedAt=timestamp(), rating=0, status='Active')
+        s['players'].append(player)
+        member['pid'] = player['id']
+
+    def _do_player_delete(self, s, p):
+        t = s['tournament']
+        player = self._find(s['players'], p.get('id'))
+        if any(m.get('pid') == player['id'] for night in [t] + s['history'] for e in night['entrants'] for m in e['members']):
+            raise ValueError('Player has tournament history; mark Inactive instead')
+        s['players'].remove(player)
+
+    def _do_tournament_setup(self, s, p):
+        t = s['tournament']
+        if t['status'] != 'registration':
+            raise ValueError('Tournament already started')
+        fmt = p.get('format', t['format'])
+        if fmt not in ('singles', 'doubles'):
+            raise ValueError('Invalid format')
+        if fmt != t['format'] and t['entrants']:
+            raise ValueError('Remove entrants before changing format')
+        if fmt != t['format'] and t.get('pool'):
+            raise ValueError('Remove solo players before changing format')
+        t.update(format=fmt, tables=integer(p.get('tables', t['tables']), 1, 32, 'tables'),
+                 raceTo=integer(p.get('raceTo', t['raceTo']), 1, 99, 'raceTo'))
+        if 'name' in p:
+            t['name'] = text(p['name'], 'name')
+
+    def _do_pairing(self, s, p):
+        """R3: an optional random pairing of solo sign-ups; pairing only, never a result."""
         action = p.get('action')
         t = s['tournament']
-        if action == 'player_save':
-            name = text(p.get('name'), 'name')
-            if any(x['name'].casefold() == name.casefold() and x['id'] != p.get('id') for x in s['players']):
-                raise ValueError('Player name already exists')
-            # A guest's name is a claim too: two different people must never read the same.
-            if any(m['name'].casefold() == name.casefold() for e in t['entrants'] for m in e['members'] if not m['pid']):
-                raise ValueError('Name held by a guest in this event; add the guest to the regulars instead')
-            player = self._find(s['players'], p['id']) if p.get('id') else dict(id=uid(), joinedAt=timestamp(), rating=0, status='Active')
-            status = optional(p, 'status', player['status'])
-            if status not in ('Active', 'Visitor', 'Prospect', 'Inactive'):
-                raise ValueError('Invalid player status')
-            player.update(name=name, rating=integer(optional(p, 'rating', player['rating']), 0, 1000, 'rating'), status=status)
-            if p.get('notes') is not None:
-                if not isinstance(p['notes'], str) or len(p['notes']) > 4000:
-                    raise ValueError('Player notes must be text up to 4000 characters')
-                player['notes'] = p['notes'].strip()
-            if not p.get('id'):
-                s['players'].append(player)
-        elif action == 'guest_promote':
-            name = text(p.get('name'), 'guest name').casefold()
-            members = [member for entrant in t['entrants'] for member in entrant['members']
-                       if member['name'].casefold() == name]
-            if len(members) != 1 or members[0]['pid'] is not None:
-                raise ValueError('Exactly one unregistered current tournament guest is required')
-            if any(player['name'].casefold() == name for player in s['players']):
-                raise ValueError('Player name already exists; cannot infer guest identity')
-            member = members[0]
-            player = dict(id=uid(), name=member['name'], joinedAt=timestamp(), rating=0, status='Active')
-            s['players'].append(player)
-            member['pid'] = player['id']
-        elif action == 'player_delete':
-            player = self._find(s['players'], p.get('id'))
-            if any(m.get('pid') == player['id'] for night in [t] + s['history'] for e in night['entrants'] for m in e['members']):
-                raise ValueError('Player has tournament history; mark Inactive instead')
-            s['players'].remove(player)
-        elif action == 'tournament_setup':
-            if t['status'] != 'registration':
-                raise ValueError('Tournament already started')
-            fmt = p.get('format', t['format'])
-            if fmt not in ('singles', 'doubles'):
-                raise ValueError('Invalid format')
-            if fmt != t['format'] and t['entrants']:
-                raise ValueError('Remove entrants before changing format')
-            if fmt != t['format'] and t.get('pool'):
-                raise ValueError('Remove solo players before changing format')
-            t.update(format=fmt, tables=integer(p.get('tables', t['tables']), 1, 32, 'tables'),
-                     raceTo=integer(p.get('raceTo', t['raceTo']), 1, 99, 'raceTo'))
-            if 'name' in p:
-                t['name'] = text(p['name'], 'name')
-        elif action in ('solo_add', 'pool_remove', 'pair_draw', 'pair_clear', 'pair_accept'):
-            # R3: an optional random pairing of solo sign-ups; pairing only, never a result.
-            if t['status'] != 'registration':
-                raise ValueError('Registration is closed')
-            if t['format'] != 'doubles':
-                raise ValueError('Random pairing is for doubles')
-            pool, pairing = t.setdefault('pool', []), t.get('pairing')
-            if action == 'pair_clear':
-                t['pairing'] = None
-            elif action == 'pair_accept':
-                if not pairing:
-                    raise ValueError('No pairing to accept')
-                if p.get('seed') != pairing['seed']:
-                    raise ValueError('The pairing changed; review the teams again')
-                if len(t['entrants']) + len(pairing['teams']) > 128:
-                    raise ValueError('Maximum 128 entrants')
-                t['entrants'].extend(dict(id=uid(), members=team) for team in pairing['teams'])
-                t.update(pool=[], pairing=None)
-            elif pairing and action != 'pair_draw':
-                raise ValueError('Registration is locked while a pairing is shown; accept or clear it first')
-            elif action == 'solo_add':
-                pool.append(self._person(s, t, p.get('member')))
-            elif action == 'pool_remove':
-                name = text(p.get('name'), 'name').casefold()
-                pool.remove(next((m for m in pool if m['name'].casefold() == name), None) or self._find([], None))
-            else:
-                if len(pool) < 2 or len(pool) % 2:
-                    raise ValueError('An even number of solo players is needed to pair')
-                seed = random.SystemRandom().randrange(2 ** 31)
-                order = list(range(len(pool)))
-                random.Random(seed).shuffle(order)
-                t['pairing'] = dict(seed=seed, teams=[[pool[order[i]], pool[order[i + 1]]] for i in range(0, len(order), 2)])
-        elif action in ('entrant_add', 'entrant_remove', 'entrant_absence'):
-            if t['status'] != 'registration':
-                raise ValueError('Registration is closed')
-            if t.get('pairing'):
-                raise ValueError('Registration is locked while a pairing is shown; accept or clear it first')
-            if action == 'entrant_absence':
-                if type(p.get('absent')) is not bool:
-                    raise ValueError('absent must be boolean')
-                self._find(t['entrants'], p.get('id'))['absent'] = p['absent']
-                return
-            if action == 'entrant_remove':
-                t['entrants'].remove(self._find(t['entrants'], p.get('id')))
-                return
-            members = p.get('members')
-            if not isinstance(members, list) or len(members) != (2 if t['format'] == 'doubles' else 1):
-                raise ValueError('Wrong number of team members')
-            if len(t['entrants']) >= 128:
+        if t['status'] != 'registration':
+            raise ValueError('Registration is closed')
+        if t['format'] != 'doubles':
+            raise ValueError('Random pairing is for doubles')
+        pool, pairing = t.setdefault('pool', []), t.get('pairing')
+        if action == 'pair_clear':
+            t['pairing'] = None
+        elif action == 'pair_accept':
+            if not pairing:
+                raise ValueError('No pairing to accept')
+            if p.get('seed') != pairing['seed']:
+                raise ValueError('The pairing changed; review the teams again')
+            if len(t['entrants']) + len(pairing['teams']) > 128:
                 raise ValueError('Maximum 128 entrants')
-            result = []
-            for member in members:
-                result.append(self._person(s, t, member, result))
-            t['entrants'].append(dict(id=uid(), members=result))
-        elif action == 'tournament_start':
-            if t['status'] != 'registration' or len(t['entrants']) < 2:
-                raise ValueError('Need an unstarted tournament with at least two entrants')
-            size = 1 << (len(t['entrants']) - 1).bit_length()
-            ids = [e['id'] for e in t['entrants']]
-            # Give byes to the first seeds; never create empty/empty first-round matches.
-            byes = size - len(ids)
-            pairs = [[ids[i], None] for i in range(byes)]
-            pairs += [ids[i:i + 2] for i in range(byes, len(ids), 2)]
-            previous = []
-            round_number = 1
-            while pairs:
-                current = []
-                for index, sides in enumerate(pairs):
-                    match = dict(id=uid(), round=round_number, sides=sides, score=[0, 0], table=None,
-                                 status='pending', winnerId=None, absent=[], sources=previous[index * 2:index * 2 + 2])
-                    t['matches'].append(match)
-                    current.append(match['id'])
-                if len(current) == 1:
-                    break
-                previous = current
-                pairs = [[None, None] for _ in range(len(current) // 2)]
-                round_number += 1
-            t['status'] = 'active'
-            self._propagate(t)
-        elif action == 'entrant_add_late':
-            # Round 21, owner item 3: somebody who arrives after the draw joins as their own team, in a
-            # round-1 bye slot of their own with no sources, so the rest of the tree is untouched and
-            # _propagate has nothing to rewrite.
-            # Round 29, owner item 1: the operator decides that slot in a dialog. The match-up and, for
-            # doubles, the teammate are each one of three choices: nobody (the arrival advances), a
-            # second chance (a round-1 loser who played comes back into the slot), or a new person
-            # (registered here by name as the opponent or the partner). A payload without those choices
-            # is refused, so no client can skip the decision.
-            if t['status'] != 'active':
-                raise ValueError('The tournament is not running')
-            doubles = t.get('format') == 'doubles'
-            late_name = text(p.get('name'), 'name', 120)
-            late_pid = p.get('pid') or None
-            self._late_refuse_member(t, late_name, late_pid, 'That person is already in this tournament')
-            opponent = p.get('opponent')
-            if opponent not in ('none', 'revive', 'new'):
-                raise ValueError('Choose the match-up: nobody, a second chance, or a new player')
-            partner = p.get('partner')
-            if doubles:
-                if partner not in ('none', 'revive', 'new'):
-                    raise ValueError('Choose the teammate for a doubles event')
-            elif partner not in (None, 'none'):
-                raise ValueError('A teammate needs a doubles event')
-            pool = Operations._late_pool(t)
-            members = [dict(pid=late_pid, name=late_name)]
-            if doubles and partner != 'none':
-                members.append(self._late_partner(t, partner, p.get('partner_entrant'), p.get('partner_name'), pool))
-            late = dict(id=uid(), members=members)
-            t['entrants'].append(late)
-            rival = None if opponent == 'none' else self._late_entrant(
-                t, opponent, p.get('opponent_entrant'), p.get('opponent_name'), pool)
-            if rival is not None:
-                Operations._late_refuse_both_sides(members, self._find(t['entrants'], rival)['members'])
-            t['matches'].append(dict(id=uid(), round=1, sides=[late['id'], rival], score=[0, 0], table=None,
-                                     status='pending', winnerId=None, absent=[], sources=[], late=True,
-                                     lateOpponent=opponent, latePartner=partner or 'none'))
-            self._propagate(t)
-        elif action in ('match_schedule', 'match_unschedule', 'match_score', 'match_complete', 'match_absence', 'match_forfeit'):
-            match = self._find(t['matches'], p.get('id'))
-            if match['status'] in ('complete', 'pending') or not all(match['sides']):
-                raise ValueError('Match is not editable')
-            if action == 'match_schedule':
-                if match['absent']:
-                    raise ValueError('Absent player; match held')
-                occupied = {m['table'] for m in t['matches'] if m['id'] != match['id'] and m['status'] == 'live'}
-                table = p.get('table', next((n for n in range(1, t['tables'] + 1) if n not in occupied), None))
-                if table is None:
-                    raise ValueError('All tables are in use')
-                table = integer(table, 1, t['tables'], 'table')
-                if table in occupied:
-                    raise ValueError('Table is occupied')
-                match.update(table=table, status='live')
-            elif action == 'match_unschedule':
-                if match['status'] != 'live':
-                    raise ValueError('Match is not on a table')
-                match.update(table=None, status='scheduled')
-            elif action == 'match_score':
-                if match['status'] != 'live':
-                    raise ValueError('Schedule match before scoring')
-                score = p.get('score')
-                if not isinstance(score, list) or len(score) != 2:
-                    raise ValueError('Two scores required')
-                score = [integer(v, 0, t['raceTo'], 'score') for v in score]
-                if score == [t['raceTo'], t['raceTo']]:
-                    raise ValueError('Both players cannot win')
-                match['score'] = score
-            elif action == 'match_absence':
-                side = integer(p.get('side'), 0, 1, 'side')
-                if type(p.get('absent')) is not bool:
-                    raise ValueError('absent must be boolean')
-                self._find(t['entrants'], match['sides'][side])['absent'] = p['absent']
-                absent = set(match['absent'])
-                if p['absent']:
-                    absent.add(match['sides'][side])
-                else:
-                    absent.discard(match['sides'][side])
-                match.update(absent=sorted(absent), status='delayed' if absent else 'scheduled', table=None)
-            else:
-                if action == 'match_forfeit':
-                    side = integer(p.get('side'), 0, 1, 'side')
-                    winner = 1 - side
-                else:
-                    if match['status'] != 'live' or max(match['score']) != t['raceTo'] or match['score'][0] == match['score'][1]:
-                        raise ValueError('A live race-winning score is required')
-                    winner = 0 if match['score'][0] > match['score'][1] else 1
-                match.update(status='complete', winnerId=match['sides'][winner], table=None,
-                             result='forfeit' if action == 'match_forfeit' else 'played', completedAt=timestamp())
-                self._propagate(t)
-        elif action in ('revival_draw', 'revival_undo'):
-            if p.get('confirm') is not True:
-                raise ValueError('Explicit confirmation required')
-            signed = sum(1 for m in t['matches'] if m.get('result') in ('played', 'forfeit'))
-            if action == 'revival_undo':
-                drawn = t.get('revival')
-                if not drawn:
-                    raise ValueError('No revival draw to undo')
-                if signed != drawn['signed']:
-                    raise ValueError('Undo is closed: a result has been signed since the draw')
-                match = self._find(t['matches'], drawn['match'])
-                match['sides'][drawn['side']] = None
-                match.update(status='complete', winnerId=drawn['holder'], result='bye', table=None, absent=[], score=[0, 0])
-                self._find(t['matches'], drawn['next']).update(status='pending', table=None, absent=[], score=[0, 0])
-                del t['revival']
-                self._propagate(t)
-                return
-            # R6, the honest version: chance picks WHO re-enters, never who wins.
-            if t.get('revival'):
-                raise ValueError('A second chance was already drawn for this event')
-            if not t['matches']:
-                raise ValueError('The draw has not started')
-            if any(m['round'] >= 2 and m.get('result') in ('played', 'forfeit') for m in t['matches']):
-                raise ValueError('Round 2 has a signed result; the draw is closed')
-            first = [m for m in t['matches'] if m['round'] == 1]
-            if any(all(m['sides']) and m['status'] != 'complete' for m in first):
-                raise ValueError('Finish round 1 first; every round-1 loser must be in the draw')
-            # a forfeit loser did not play (no-show or withdrawal) and is not revived
-            pool = sorted(next(side for side in m['sides'] if side != m['winnerId'])
-                          for m in first if m.get('result') == 'played')
-            if not pool:
-                raise ValueError('No round-1 loser to draw from')
-            slots = []
-            for m in first:
-                following = next((d for d in t['matches'] if m['id'] in d['sources']), None)
-                if (m.get('result') == 'bye' and following and following['status'] in ('pending', 'scheduled', 'delayed')
-                        and not following['table'] and following['score'] == [0, 0]):
-                    slots.append((m, following))
-            if not slots:
-                raise ValueError('No round-2 bye slot to fill')
-            # the last bye in the draw belongs to the lowest seed that has one
-            match, following = slots[-1]
-            # Round 21, owner item 3: the operator may name the person instead of taking the draw. The
-            # pool is what the draw itself chooses from, so a name outside it is refused rather than
-            # quietly resurrecting somebody who is still playing.
-            chosen = p.get('entrant')
-            if chosen is not None and chosen not in pool:
-                raise ValueError('That person is not eligible for the second chance')
-            seed = random.SystemRandom().randrange(2 ** 31)
-            entrant = chosen if chosen is not None else random.Random(seed).choice(pool)
-            side = match['sides'].index(None)
-            holder = match['winnerId']
-            members = self._find(t['entrants'], entrant)['members']
-            names = {x['id']: x['name'] for x in s['players']}
-            # Every successful draw counts, and undo never lowers it: a re-roll until a
-            # wanted loser comes up stays visible on the card, the sheet and in the log.
-            t['revival_draws'] = t.get('revival_draws', 0) + 1
-            t['revival'] = dict(seed=seed, pool=pool, entrant=entrant, match=match['id'], next=following['id'],
-                                side=side, holder=holder, signed=signed, drawnAt=timestamp(),
-                                name=' / '.join(names.get(x['pid'], x['name']) for x in members),
-                                attempt=t['revival_draws'])
-            match['sides'][side] = entrant
-            match.pop('result')
-            match.update(status='pending', winnerId=None, table=None, absent=[])
-            following.update(status='pending', table=None, absent=[])
-            self._propagate(t)
-        elif action == 'tournament_rename':
-            # Name only, current or archived: format, race, tables and results stay locked.
-            self._find([t] + s['history'], p.get('id'))['name'] = text(p.get('name'), 'name', 120)
-        elif action == 'tournament_delete':
-            # R1: only a mistake with nothing signed may go; a signed result is permanent.
-            night = self._find([t] + s['history'], p.get('id'))
-            if p.get('confirm') is not True:
-                raise ValueError('Explicit confirmation required')
-            if any(m.get('result') in ('played', 'forfeit') for m in night['matches']):
-                raise ValueError('An event with a signed result cannot be deleted; hide it from history instead')
-            if night is t:
-                s['tournament'] = tournament()
-            else:
-                s['history'].remove(night)
-            self._drop_links(s, night['id'])
-        elif action == 'tournament_hide':
-            # R1: a flag on an archived event; every match and stat stays.
-            night = self._find(s['history'] + [t], p.get('id'))
-            if p.get('confirm') is not True:
-                raise ValueError('Explicit confirmation required')
-            if night is t:
-                raise ValueError('Only an archived event can be hidden')
-            if type(p.get('hidden')) is not bool:
-                raise ValueError('hidden must be boolean')
-            night['hidden'] = p['hidden']
-        elif action == 'tournament_new':
-            if p.get('confirm') is not True:
-                raise ValueError('Explicit confirmation required')
-            if t['entrants'] or t['matches']:
-                archived = copy.deepcopy(t)
-                archived['archivedAt'] = timestamp()
-                s['history'].append(archived)
-            else:
-                self._drop_links(s, t['id'])
-            s['tournament'] = tournament()
-        elif action == 'event_backfill':
-            self._backfill(s, p)
-        elif action == 'vod_link':
-            self._link_vod(s, p)
-        elif action == 'vod_unlink':
-            self._unlink_vod(s, p)
-        elif action == 'source_add':
-            url = text(p.get('url'), 'Twitch URL', 500)
-            parsed = urlsplit(url)
-            if parsed.scheme != 'https' or parsed.netloc not in ('twitch.tv', 'www.twitch.tv') or parsed.query or parsed.fragment:
-                raise ValueError('Use an HTTPS Twitch channel or video URL without query parameters')
-            path = parsed.path.rstrip('/')
-            video = re.fullmatch(r'/videos/([0-9]+)', path)
-            channel = re.fullmatch(r'/([A-Za-z0-9_]{1,25})', path)
-            if not video and (not channel or channel[1].lower() in ('videos', 'directory', 'downloads', 'settings', 'search', 'login', 'signup', 'subscriptions', 'inventory', 'wallet', 'jobs', 'turbo')):
-                raise ValueError('Use a Twitch channel or videos/<digits> URL')
-            canonical = 'https://www.twitch.tv' + path.lower()
-            sources = s.setdefault('sources', [])
-            if any(source['url'] == canonical for source in sources):
-                raise ValueError('Source already added')
-            source = dict(id=uid(), url=canonical, kind='video' if video else 'channel')
-            source['video' if video else 'channel'] = video[1] if video else channel[1].lower()
-            sources.append(source)
-        elif action == 'source_delete':
-            sources = s.setdefault('sources', [])
-            sources.remove(self._find(sources, p.get('id')))
-        elif action == 'settings_update':
-            if 'clothColor' in p:
-                if p['clothColor'] not in ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f'):
-                    raise ValueError('Invalid cloth color')
-                s['settings']['clothColor'] = p['clothColor']
-            if 'lampGlow' in p:
-                glow = p['lampGlow']
-                if type(glow) not in (float, int) or not math.isfinite(glow) or not 0 <= glow <= 0.5:
-                    raise ValueError('lampGlow must be between 0 and 0.5')
-                s['settings']['lampGlow'] = glow
-            if 'showDiamonds' in p:
-                if type(p['showDiamonds']) is not bool:
-                    raise ValueError('showDiamonds must be boolean')
-                s['settings']['showDiamonds'] = p['showDiamonds']
-            if 'shotClock' in p:
-                s['settings']['shotClock'] = integer(p['shotClock'], 5, 300, 'shotClock')
-            if 'autoFrame' in p:
-                if type(p['autoFrame']) is not bool:
-                    raise ValueError('autoFrame must be boolean')
-                s['settings']['autoFrame'] = p['autoFrame']
-            if 'publicBoard' in p:
-                # The public board's only control (docs/public-board.md, "Board off" and 6): false
-                # makes GET /api/board answer {"board":"off"}. Read side: public_board.build.
-                if type(p['publicBoard']) is not bool:
-                    raise ValueError('publicBoard must be boolean')
-                s['settings']['publicBoard'] = p['publicBoard']
-        elif action == 'note_add':
-            s['notes'].append(dict(id=uid(), text=text(p.get('text'), 'note', 4000), createdAt=timestamp()))
-        elif action == 'note_delete':
-            s['notes'].remove(self._find(s['notes'], p.get('id')))
+            t['entrants'].extend(dict(id=uid(), members=team) for team in pairing['teams'])
+            t.update(pool=[], pairing=None)
+        elif pairing and action != 'pair_draw':
+            raise ValueError('Registration is locked while a pairing is shown; accept or clear it first')
+        elif action == 'solo_add':
+            pool.append(self._person(s, t, p.get('member')))
+        elif action == 'pool_remove':
+            name = text(p.get('name'), 'name').casefold()
+            pool.remove(next((m for m in pool if m['name'].casefold() == name), None) or self._find([], None))
         else:
-            raise ValueError('Unknown operations action')
+            if len(pool) < 2 or len(pool) % 2:
+                raise ValueError('An even number of solo players is needed to pair')
+            seed = random.SystemRandom().randrange(2 ** 31)
+            order = list(range(len(pool)))
+            random.Random(seed).shuffle(order)
+            t['pairing'] = dict(seed=seed, teams=[[pool[order[i]], pool[order[i + 1]]] for i in range(0, len(order), 2)])
+
+    def _do_entrants(self, s, p):
+        action = p.get('action')
+        t = s['tournament']
+        if t['status'] != 'registration':
+            raise ValueError('Registration is closed')
+        if t.get('pairing'):
+            raise ValueError('Registration is locked while a pairing is shown; accept or clear it first')
+        if action == 'entrant_absence':
+            if type(p.get('absent')) is not bool:
+                raise ValueError('absent must be boolean')
+            self._find(t['entrants'], p.get('id'))['absent'] = p['absent']
+            return
+        if action == 'entrant_remove':
+            t['entrants'].remove(self._find(t['entrants'], p.get('id')))
+            return
+        members = p.get('members')
+        if not isinstance(members, list) or len(members) != (2 if t['format'] == 'doubles' else 1):
+            raise ValueError('Wrong number of team members')
+        if len(t['entrants']) >= 128:
+            raise ValueError('Maximum 128 entrants')
+        result = []
+        for member in members:
+            result.append(self._person(s, t, member, result))
+        t['entrants'].append(dict(id=uid(), members=result))
+
+    def _do_tournament_start(self, s, p):
+        t = s['tournament']
+        if t['status'] != 'registration' or len(t['entrants']) < 2:
+            raise ValueError('Need an unstarted tournament with at least two entrants')
+        size = 1 << (len(t['entrants']) - 1).bit_length()
+        ids = [e['id'] for e in t['entrants']]
+        # Give byes to the first seeds; never create empty/empty first-round matches.
+        byes = size - len(ids)
+        pairs = [[ids[i], None] for i in range(byes)]
+        pairs += [ids[i:i + 2] for i in range(byes, len(ids), 2)]
+        previous = []
+        round_number = 1
+        while pairs:
+            current = []
+            for index, sides in enumerate(pairs):
+                match = dict(id=uid(), round=round_number, sides=sides, score=[0, 0], table=None,
+                             status='pending', winnerId=None, absent=[], sources=previous[index * 2:index * 2 + 2])
+                t['matches'].append(match)
+                current.append(match['id'])
+            if len(current) == 1:
+                break
+            previous = current
+            pairs = [[None, None] for _ in range(len(current) // 2)]
+            round_number += 1
+        t['status'] = 'active'
+        self._propagate(t)
+
+    def _do_entrant_add_late(self, s, p):
+        # Round 21, owner item 3: somebody who arrives after the draw joins as their own team, in a
+        # round-1 bye slot of their own with no sources, so the rest of the tree is untouched and
+        # _propagate has nothing to rewrite.
+        # Round 29, owner item 1: the operator decides that slot in a dialog. The match-up and, for
+        # doubles, the teammate are each one of three choices: nobody (the arrival advances), a
+        # second chance (a round-1 loser who played comes back into the slot), or a new person
+        # (registered here by name as the opponent or the partner). A payload without those choices
+        # is refused, so no client can skip the decision.
+        t = s['tournament']
+        if t['status'] != 'active':
+            raise ValueError('The tournament is not running')
+        doubles = t.get('format') == 'doubles'
+        late_name = text(p.get('name'), 'name', 120)
+        late_pid = p.get('pid') or None
+        self._late_refuse_member(t, late_name, late_pid, 'That person is already in this tournament')
+        opponent = p.get('opponent')
+        if opponent not in ('none', 'revive', 'new'):
+            raise ValueError('Choose the match-up: nobody, a second chance, or a new player')
+        partner = p.get('partner')
+        if doubles:
+            if partner not in ('none', 'revive', 'new'):
+                raise ValueError('Choose the teammate for a doubles event')
+        elif partner not in (None, 'none'):
+            raise ValueError('A teammate needs a doubles event')
+        pool = Operations._late_pool(t)
+        members = [dict(pid=late_pid, name=late_name)]
+        if doubles and partner != 'none':
+            members.append(self._late_partner(t, partner, p.get('partner_entrant'), p.get('partner_name'), pool))
+        late = dict(id=uid(), members=members)
+        t['entrants'].append(late)
+        rival = None if opponent == 'none' else self._late_entrant(
+            t, opponent, p.get('opponent_entrant'), p.get('opponent_name'), pool)
+        if rival is not None:
+            Operations._late_refuse_both_sides(members, self._find(t['entrants'], rival)['members'])
+        t['matches'].append(dict(id=uid(), round=1, sides=[late['id'], rival], score=[0, 0], table=None,
+                                 status='pending', winnerId=None, absent=[], sources=[], late=True,
+                                 lateOpponent=opponent, latePartner=partner or 'none'))
+        self._propagate(t)
+
+    def _do_match(self, s, p):
+        action = p.get('action')
+        t = s['tournament']
+        match = self._find(t['matches'], p.get('id'))
+        if match['status'] in ('complete', 'pending') or not all(match['sides']):
+            raise ValueError('Match is not editable')
+        if action == 'match_schedule':
+            if match['absent']:
+                raise ValueError('Absent player; match held')
+            occupied = {m['table'] for m in t['matches'] if m['id'] != match['id'] and m['status'] == 'live'}
+            table = p.get('table', next((n for n in range(1, t['tables'] + 1) if n not in occupied), None))
+            if table is None:
+                raise ValueError('All tables are in use')
+            table = integer(table, 1, t['tables'], 'table')
+            if table in occupied:
+                raise ValueError('Table is occupied')
+            match.update(table=table, status='live')
+        elif action == 'match_unschedule':
+            if match['status'] != 'live':
+                raise ValueError('Match is not on a table')
+            match.update(table=None, status='scheduled')
+        elif action == 'match_score':
+            if match['status'] != 'live':
+                raise ValueError('Schedule match before scoring')
+            score = p.get('score')
+            if not isinstance(score, list) or len(score) != 2:
+                raise ValueError('Two scores required')
+            score = [integer(v, 0, t['raceTo'], 'score') for v in score]
+            if score == [t['raceTo'], t['raceTo']]:
+                raise ValueError('Both players cannot win')
+            match['score'] = score
+        elif action == 'match_absence':
+            side = integer(p.get('side'), 0, 1, 'side')
+            if type(p.get('absent')) is not bool:
+                raise ValueError('absent must be boolean')
+            self._find(t['entrants'], match['sides'][side])['absent'] = p['absent']
+            absent = set(match['absent'])
+            if p['absent']:
+                absent.add(match['sides'][side])
+            else:
+                absent.discard(match['sides'][side])
+            match.update(absent=sorted(absent), status='delayed' if absent else 'scheduled', table=None)
+        else:
+            if action == 'match_forfeit':
+                side = integer(p.get('side'), 0, 1, 'side')
+                winner = 1 - side
+            else:
+                if match['status'] != 'live' or max(match['score']) != t['raceTo'] or match['score'][0] == match['score'][1]:
+                    raise ValueError('A live race-winning score is required')
+                winner = 0 if match['score'][0] > match['score'][1] else 1
+            match.update(status='complete', winnerId=match['sides'][winner], table=None,
+                         result='forfeit' if action == 'match_forfeit' else 'played', completedAt=timestamp())
+            self._propagate(t)
+
+    def _do_revival(self, s, p):
+        action = p.get('action')
+        t = s['tournament']
+        if p.get('confirm') is not True:
+            raise ValueError('Explicit confirmation required')
+        signed = sum(1 for m in t['matches'] if m.get('result') in ('played', 'forfeit'))
+        if action == 'revival_undo':
+            drawn = t.get('revival')
+            if not drawn:
+                raise ValueError('No revival draw to undo')
+            if signed != drawn['signed']:
+                raise ValueError('Undo is closed: a result has been signed since the draw')
+            match = self._find(t['matches'], drawn['match'])
+            match['sides'][drawn['side']] = None
+            match.update(status='complete', winnerId=drawn['holder'], result='bye', table=None, absent=[], score=[0, 0])
+            self._find(t['matches'], drawn['next']).update(status='pending', table=None, absent=[], score=[0, 0])
+            del t['revival']
+            self._propagate(t)
+            return
+        # R6, the honest version: chance picks WHO re-enters, never who wins.
+        if t.get('revival'):
+            raise ValueError('A second chance was already drawn for this event')
+        if not t['matches']:
+            raise ValueError('The draw has not started')
+        if any(m['round'] >= 2 and m.get('result') in ('played', 'forfeit') for m in t['matches']):
+            raise ValueError('Round 2 has a signed result; the draw is closed')
+        first = [m for m in t['matches'] if m['round'] == 1]
+        if any(all(m['sides']) and m['status'] != 'complete' for m in first):
+            raise ValueError('Finish round 1 first; every round-1 loser must be in the draw')
+        # a forfeit loser did not play (no-show or withdrawal) and is not revived
+        pool = sorted(next(side for side in m['sides'] if side != m['winnerId'])
+                      for m in first if m.get('result') == 'played')
+        if not pool:
+            raise ValueError('No round-1 loser to draw from')
+        slots = []
+        for m in first:
+            following = next((d for d in t['matches'] if m['id'] in d['sources']), None)
+            if (m.get('result') == 'bye' and following and following['status'] in ('pending', 'scheduled', 'delayed')
+                    and not following['table'] and following['score'] == [0, 0]):
+                slots.append((m, following))
+        if not slots:
+            raise ValueError('No round-2 bye slot to fill')
+        # the last bye in the draw belongs to the lowest seed that has one
+        match, following = slots[-1]
+        # Round 21, owner item 3: the operator may name the person instead of taking the draw. The
+        # pool is what the draw itself chooses from, so a name outside it is refused rather than
+        # quietly resurrecting somebody who is still playing.
+        chosen = p.get('entrant')
+        if chosen is not None and chosen not in pool:
+            raise ValueError('That person is not eligible for the second chance')
+        seed = random.SystemRandom().randrange(2 ** 31)
+        entrant = chosen if chosen is not None else random.Random(seed).choice(pool)
+        side = match['sides'].index(None)
+        holder = match['winnerId']
+        members = self._find(t['entrants'], entrant)['members']
+        names = {x['id']: x['name'] for x in s['players']}
+        # Every successful draw counts, and undo never lowers it: a re-roll until a
+        # wanted loser comes up stays visible on the card, the sheet and in the log.
+        t['revival_draws'] = t.get('revival_draws', 0) + 1
+        t['revival'] = dict(seed=seed, pool=pool, entrant=entrant, match=match['id'], next=following['id'],
+                            side=side, holder=holder, signed=signed, drawnAt=timestamp(),
+                            name=' / '.join(names.get(x['pid'], x['name']) for x in members),
+                            attempt=t['revival_draws'])
+        match['sides'][side] = entrant
+        match.pop('result')
+        match.update(status='pending', winnerId=None, table=None, absent=[])
+        following.update(status='pending', table=None, absent=[])
+        self._propagate(t)
+
+    def _do_tournament_rename(self, s, p):
+        # Name only, current or archived: format, race, tables and results stay locked.
+        self._find([s['tournament']] + s['history'], p.get('id'))['name'] = text(p.get('name'), 'name', 120)
+
+    def _do_tournament_delete(self, s, p):
+        # R1: only a mistake with nothing signed may go; a signed result is permanent.
+        t = s['tournament']
+        night = self._find([t] + s['history'], p.get('id'))
+        if p.get('confirm') is not True:
+            raise ValueError('Explicit confirmation required')
+        if any(m.get('result') in ('played', 'forfeit') for m in night['matches']):
+            raise ValueError('An event with a signed result cannot be deleted; hide it from history instead')
+        if night is t:
+            s['tournament'] = tournament()
+        else:
+            s['history'].remove(night)
+        self._drop_links(s, night['id'])
+
+    def _do_tournament_hide(self, s, p):
+        # R1: a flag on an archived event; every match and stat stays.
+        t = s['tournament']
+        night = self._find(s['history'] + [t], p.get('id'))
+        if p.get('confirm') is not True:
+            raise ValueError('Explicit confirmation required')
+        if night is t:
+            raise ValueError('Only an archived event can be hidden')
+        if type(p.get('hidden')) is not bool:
+            raise ValueError('hidden must be boolean')
+        night['hidden'] = p['hidden']
+
+    def _do_tournament_new(self, s, p):
+        t = s['tournament']
+        if p.get('confirm') is not True:
+            raise ValueError('Explicit confirmation required')
+        if t['entrants'] or t['matches']:
+            archived = copy.deepcopy(t)
+            archived['archivedAt'] = timestamp()
+            s['history'].append(archived)
+        else:
+            self._drop_links(s, t['id'])
+        s['tournament'] = tournament()
+
+    def _do_event_backfill(self, s, p):
+        self._backfill(s, p)
+
+    def _do_vod_link(self, s, p):
+        self._link_vod(s, p)
+
+    def _do_vod_unlink(self, s, p):
+        self._unlink_vod(s, p)
+
+    def _do_source_add(self, s, p):
+        url = text(p.get('url'), 'Twitch URL', 500)
+        parsed = urlsplit(url)
+        if parsed.scheme != 'https' or parsed.netloc not in ('twitch.tv', 'www.twitch.tv') or parsed.query or parsed.fragment:
+            raise ValueError('Use an HTTPS Twitch channel or video URL without query parameters')
+        path = parsed.path.rstrip('/')
+        video = re.fullmatch(r'/videos/([0-9]+)', path)
+        channel = re.fullmatch(r'/([A-Za-z0-9_]{1,25})', path)
+        if not video and (not channel or channel[1].lower() in ('videos', 'directory', 'downloads', 'settings', 'search', 'login', 'signup', 'subscriptions', 'inventory', 'wallet', 'jobs', 'turbo')):
+            raise ValueError('Use a Twitch channel or videos/<digits> URL')
+        canonical = 'https://www.twitch.tv' + path.lower()
+        sources = s.setdefault('sources', [])
+        if any(source['url'] == canonical for source in sources):
+            raise ValueError('Source already added')
+        source = dict(id=uid(), url=canonical, kind='video' if video else 'channel')
+        source['video' if video else 'channel'] = video[1] if video else channel[1].lower()
+        sources.append(source)
+
+    def _do_source_delete(self, s, p):
+        sources = s.setdefault('sources', [])
+        sources.remove(self._find(sources, p.get('id')))
+
+    def _do_settings_update(self, s, p):
+        if 'clothColor' in p:
+            if p['clothColor'] not in ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f'):
+                raise ValueError('Invalid cloth color')
+            s['settings']['clothColor'] = p['clothColor']
+        if 'lampGlow' in p:
+            glow = p['lampGlow']
+            if type(glow) not in (float, int) or not math.isfinite(glow) or not 0 <= glow <= 0.5:
+                raise ValueError('lampGlow must be between 0 and 0.5')
+            s['settings']['lampGlow'] = glow
+        if 'showDiamonds' in p:
+            if type(p['showDiamonds']) is not bool:
+                raise ValueError('showDiamonds must be boolean')
+            s['settings']['showDiamonds'] = p['showDiamonds']
+        if 'shotClock' in p:
+            s['settings']['shotClock'] = integer(p['shotClock'], 5, 300, 'shotClock')
+        if 'autoFrame' in p:
+            if type(p['autoFrame']) is not bool:
+                raise ValueError('autoFrame must be boolean')
+            s['settings']['autoFrame'] = p['autoFrame']
+        if 'publicBoard' in p:
+            # The public board's only control (docs/public-board.md, "Board off" and 6): false
+            # makes GET /api/board answer {"board":"off"}. Read side: public_board.build.
+            if type(p['publicBoard']) is not bool:
+                raise ValueError('publicBoard must be boolean')
+            s['settings']['publicBoard'] = p['publicBoard']
+
+    def _do_note_add(self, s, p):
+        s['notes'].append(dict(id=uid(), text=text(p.get('text'), 'note', 4000), createdAt=timestamp()))
+
+    def _do_note_delete(self, s, p):
+        s['notes'].remove(self._find(s['notes'], p.get('id')))
+
+
+def _audit_none(state, payload):
+    """No domain identity: the change names no record of its own."""
+    return {}
+
+
+def _audit_current_event(state, payload):
+    """The current event: every tournament action that names no night of its own."""
+    t = state['tournament']
+    return dict(id=t['id'], name=t['name'])
+
+
+def _audit_night(state, payload):
+    """The event the action names, current or archived."""
+    t = state['tournament']
+    night = next((n for n in [t] + state['history'] if n['id'] == payload.get('id')), None)
+    if night and payload.get('action') == 'tournament_hide' and 'hidden' in night:
+        return dict(id=night['id'], name=night['name'], hidden=night['hidden'])
+    return dict(id=night['id'], name=night['name']) if night else {}
+
+
+def _audit_revival(state, payload):
+    """The whole draw, so anyone can re-run it: seed, sorted pool, pick, slot."""
+    drawn = state['tournament'].get('revival')
+    return dict(drawn) if drawn else {}
+
+
+def _audit_pairing(state, payload):
+    """R3: the seed and the teams it made (names only; pool order is sign-up order)."""
+    pairing = state['tournament'].get('pairing')
+    if not pairing:
+        return {}
+    return dict(seed=pairing['seed'],
+                teams=[' / '.join(m['name'] for m in team) for team in pairing['teams']])
+
+
+def _audit_guest_promote(state, payload):
+    """The roster row the guest became, read back by the name the payload claims."""
+    name = payload.get('name')
+    if isinstance(name, str):
+        matches = [p for p in state['players'] if p['name'].casefold() == name.strip().casefold()]
+        if matches:
+            return dict(id=matches[0]['id'], name=matches[0]['name'])
+    return {}
+
+
+def _audit_vod(state, payload):
+    """The pair a person made: the event, and the broadcast."""
+    t = state['tournament']
+    vod, event = payload.get('vodId'), payload.get('eventId')
+    night = next((n for n in [t] + state['history'] if n['id'] == event), None)
+    context = dict(vodId=str(vod)) if isinstance(vod, str) else {}
+    if night is not None:
+        context.update(id=night['id'], name=night['name'])
+    return context
+
+
+def _audit_backfill(state, payload):
+    """7.6: the night the backfill wrote and the broadcast it came from, read back from
+    the store rather than copied from the request."""
+    source = payload.get('source') if isinstance(payload.get('source'), dict) else {}
+    night = next((n for n in reversed(state['history'])
+                  if (n.get('source') or {}).get('datasetId') == source.get('datasetId')), None)
+    if night is None:
+        return dict(vodId=source['vodId']) if isinstance(source.get('vodId'), str) else {}
+    return dict(id=night['id'], name=night['name'], vodId=night['source'].get('vodId'),
+                datasetId=night['source'].get('datasetId'))
+
+
+def _audit_group(state, payload):
+    """The record the action names, taken from the group its name belongs to."""
+    action = payload.get('action')
+    if not isinstance(action, str):
+        return {}
+    t = state['tournament']
+    groups = [('player_', state['players']), ('entrant_', t['entrants']),
+              ('match_', t['matches']), ('source_', state.get('sources', [])),
+              ('note_', state['notes'])]
+    context = {}
+    for prefix, items in groups:
+        if not action.startswith(prefix):
+            continue
+        item = next((item for item in items if item['id'] == payload.get('id')), None)
+        if item is None and not payload.get('id') and items:
+            item = items[-1]
+        if item:
+            context['id'] = item['id']
+            if prefix == 'player_':
+                context['name'] = item['name']
+        break
+    return context
+
+
+# The one registry: every action names its writer, its audit projection and the fields
+# its payload must carry. `refuse_missing_first` is False where the action refuses a state
+# precondition before it reads those fields, so the two refusals keep today's order.
+OPERATIONS = operations_registry([
+    Operation('player_save', Operations._do_player_save, _audit_group,
+              (('name', 'name must contain 1–200 characters'),)),
+    Operation('guest_promote', Operations._do_guest_promote, _audit_guest_promote,
+              (('name', 'guest name must contain 1–200 characters'),)),
+    Operation('player_delete', Operations._do_player_delete, _audit_group,
+              (('id', 'Unknown id'),)),
+    Operation('tournament_setup', Operations._do_tournament_setup, _audit_current_event),
+    Operation('solo_add', Operations._do_pairing, _audit_none,
+              (('member', 'Invalid member'),), refuse_missing_first=False),
+    Operation('pool_remove', Operations._do_pairing, _audit_none,
+              (('name', 'name must contain 1–200 characters'),), refuse_missing_first=False),
+    Operation('pair_draw', Operations._do_pairing, _audit_pairing, refuse_missing_first=False),
+    Operation('pair_clear', Operations._do_pairing, _audit_none, refuse_missing_first=False),
+    Operation('pair_accept', Operations._do_pairing, _audit_pairing,
+              (('seed', 'The pairing changed; review the teams again'),), refuse_missing_first=False),
+    Operation('entrant_add', Operations._do_entrants, _audit_group,
+              (('members', 'Wrong number of team members'),), refuse_missing_first=False),
+    Operation('entrant_remove', Operations._do_entrants, _audit_group,
+              (('id', 'Unknown id'),), refuse_missing_first=False),
+    Operation('entrant_absence', Operations._do_entrants, _audit_group,
+              (('absent', 'absent must be boolean'), ('id', 'Unknown id')), refuse_missing_first=False),
+    Operation('tournament_start', Operations._do_tournament_start, _audit_current_event),
+    Operation('entrant_add_late', Operations._do_entrant_add_late, _audit_group,
+              (('name', 'name must contain 1–120 characters'),
+               ('opponent', 'Choose the match-up: nobody, a second chance, or a new player')),
+              refuse_missing_first=False),
+    Operation('match_schedule', Operations._do_match, _audit_group, (('id', 'Unknown id'),)),
+    Operation('match_unschedule', Operations._do_match, _audit_group, (('id', 'Unknown id'),)),
+    Operation('match_score', Operations._do_match, _audit_group,
+              (('id', 'Unknown id'), ('score', 'Two scores required'))),
+    Operation('match_complete', Operations._do_match, _audit_group, (('id', 'Unknown id'),)),
+    Operation('match_absence', Operations._do_match, _audit_group,
+              (('id', 'Unknown id'), ('side', 'side must be an integer from 0 to 1'),
+               ('absent', 'absent must be boolean'))),
+    Operation('match_forfeit', Operations._do_match, _audit_group,
+              (('id', 'Unknown id'), ('side', 'side must be an integer from 0 to 1'))),
+    Operation('revival_draw', Operations._do_revival, _audit_revival,
+              (('confirm', 'Explicit confirmation required'),)),
+    Operation('revival_undo', Operations._do_revival, _audit_revival,
+              (('confirm', 'Explicit confirmation required'),)),
+    Operation('tournament_rename', Operations._do_tournament_rename, _audit_night,
+              (('name', 'name must contain 1–120 characters'), ('id', 'Unknown id'))),
+    Operation('tournament_delete', Operations._do_tournament_delete, _audit_night,
+              (('id', 'Unknown id'), ('confirm', 'Explicit confirmation required'))),
+    Operation('tournament_hide', Operations._do_tournament_hide, _audit_night,
+              (('id', 'Unknown id'), ('confirm', 'Explicit confirmation required'),
+               ('hidden', 'hidden must be boolean'))),
+    Operation('tournament_new', Operations._do_tournament_new, _audit_current_event,
+              (('confirm', 'Explicit confirmation required'),)),
+    Operation('event_backfill', Operations._do_event_backfill, _audit_backfill,
+              (('source', 'event object required'),)),
+    Operation('vod_link', Operations._do_vod_link, _audit_vod,
+              (('vodId', 'Expected a Twitch VOD id or https://www.twitch.tv/videos/<id> URL'),
+               ('eventId', 'eventId must contain 1–120 characters'))),
+    Operation('vod_unlink', Operations._do_vod_unlink, _audit_vod,
+              (('vodId', 'Expected a Twitch VOD id or https://www.twitch.tv/videos/<id> URL'),
+               ('eventId', 'eventId must contain 1–120 characters'))),
+    Operation('source_add', Operations._do_source_add, _audit_group,
+              (('url', 'Twitch URL must contain 1–500 characters'),)),
+    Operation('source_delete', Operations._do_source_delete, _audit_group, (('id', 'Unknown id'),)),
+    Operation('settings_update', Operations._do_settings_update, _audit_none),
+    Operation('note_add', Operations._do_note_add, _audit_group,
+              (('text', 'note must contain 1–4000 characters'),)),
+    Operation('note_delete', Operations._do_note_delete, _audit_group, (('id', 'Unknown id'),)),
+])
+
+#: every action name the dispatcher accepts, in declaration order.
+ACTION_NAMES = tuple(OPERATIONS)

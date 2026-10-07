@@ -12,7 +12,9 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from annotator.unified_server import APIError, Backend, atomic_save, load, make_handler
+from annotator.unified_server import (APIError, Backend, OPERATOR_ACTIONS, OperatorAction,
+                                      atomic_save, load, make_handler, operator_actions)
+from annotator.operations import ACTION_NAMES
 from src.pid_seed_rebuild import explicit_seeds, run
 
 
@@ -1045,10 +1047,10 @@ class BackendTests(unittest.TestCase):
         from src import enroll_from_tracklet
         self.backend.post(['api', 'operations'], {'action': 'player_save', 'revision': 0, 'name': 'Early'})
         selection, _ = self._enrol_selection()
-        real_load_state = enroll_from_tracklet.load_state
 
-        def others_write_after_the_read(root):
-            snapshot = real_load_state(root)
+        def others_write_after_the_read(root, store=None):
+            self.assertIsNotNone(store, 'the confirm reads the roster through the store')
+            snapshot = store.get()
             now = self.backend.get(['api', 'operations'], {})['revision']
             self.backend.post(['api', 'operations'], {'action': 'note_add', 'revision': now,
                                                       'text': 'table 2 cloth replaced'})
@@ -1091,6 +1093,23 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(result['player_id'], saved['players'][0]['id'])
         self.assertEqual(state['events'][-1]['action'], 'player_enroll_from_tracklet')
         self.assertEqual(state['revision'], 2)
+
+    def test_the_store_and_the_file_answer_the_roster_question_the_same_way(self):
+        """The confirm passed `store=None` for the JSON store and the store itself for
+        Postgres. It now passes the store always. The change is behaviour-identical
+        because `confirm_enrollment` reads one field - `players` - and the two loaders
+        agree on it: both are empty before the first write, and the same list after."""
+        from src import enroll_from_tracklet
+        document = self.out / 'corner-pocket' / 'state.json'
+        self.assertFalse(document.exists(), 'a fresh root holds no operations document')
+        self.assertEqual(enroll_from_tracklet.load_state(self.root), {}, 'the file loader answers {}')
+        self.assertEqual(enroll_from_tracklet.load_state(self.root, store=self.backend.store()).get('players'), [],
+                         'and the store answers its default document, with the same empty roster')
+        self.backend.post(['api', 'operations'], {'action': 'player_save', 'revision': 0, 'name': 'Ada'})
+        by_file = enroll_from_tracklet.load_state(self.root)['players']
+        by_store = enroll_from_tracklet.load_state(self.root, store=self.backend.store())['players']
+        self.assertEqual([p['name'] for p in by_file], ['Ada'])
+        self.assertEqual(by_file, by_store, 'the one field the enrolment reads is identical')
 
     def test_a_second_enrolment_keeps_the_first_players_faces_and_matches_at_once(self):
         """Enrol A, then B, through the real confirm. The face store keeps both
@@ -1480,6 +1499,160 @@ class UnifiedViewTests(unittest.TestCase):
             self.backend.unified("vod30", frame)
         self.assertIn(("vod30", 1), self.backend._unified_cache)
         self.assertNotIn(("vod30", 2), self.backend._unified_cache)
+
+
+class WriteRegistryTests(unittest.TestCase):
+    """One registry declares every write: the dispatcher and the check read it.
+
+    A row carries the operator action, the URL shape, the handler, what the handler
+    receives, whether the store lock is held, and the fields the write requires. A
+    write with no row is not served."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.backend = Backend(Path(self.temp.name))
+
+    def test_every_write_is_declared_once_with_a_handler_and_a_url(self):
+        declared = []
+        for name, row in OPERATOR_ACTIONS.table.items():
+            self.assertEqual(name, row.name)
+            self.assertNotIn(row.name, declared)
+            declared.append(row.name)
+            self.assertEqual(row.parts[0], 'api', 'every write starts at api')
+            self.assertIn(row.takes, ('payload', 'parts', 'verb'))
+            self.assertTrue(callable(getattr(Backend, row.handler, None)),
+                            f'{name} names no Backend method')
+            self.assertIsInstance(row.requires, tuple)
+            self.assertIsInstance(row.actions, tuple)
+        # The operations route names the tournament's own declaration, so the route and
+        # the tournament cannot list different actions.
+        self.assertEqual(OPERATOR_ACTIONS.get('operations').actions, ACTION_NAMES)
+        self.assertEqual(OPERATOR_ACTIONS.names(), tuple(declared))
+
+    def test_every_route_the_dispatcher_served_before_is_declared(self):
+        declared = {tuple(row.parts) for row in OPERATOR_ACTIONS}
+        for parts in (('api', 'operations'), ('api', 'clock'), ('api', 'live'), ('api', 'inference'),
+                      ('api', 'frame-correction'), ('api', 'identity', 'enroll'),
+                      ('api', 'identity', 'seed'), ('api', 'identity', 'link'),
+                      ('api', 'identity', 'unbind'), ('api', 'identity', 'forget'),
+                      ('api', 'identity', 'enroll-preview'), ('api', 'identity', 'enroll-confirm'),
+                      ('api', 'vods', 'import'), ('api', 'vods', 'cancel'), ('api', 'vods', 'delete'),
+                      ('api', 'vods', 'auto'), ('api', 'balls', ':set', 'label'),
+                      ('api', ':dataset', 'annotate'), ('api', ':dataset', 'anchors'),
+                      ('api', ':dataset', 'seeds'), ('api', ':dataset', 'rebuild')):
+            self.assertIn(parts, declared)
+
+    def test_a_mis_declared_write_cannot_half_register(self):
+        good = OperatorAction('probe', ('api', 'probe'), 'clock_action')
+        for rows, message in (
+                (['probe'], 'write must be an OperatorAction, not str'),
+                ([OperatorAction('', ('api', 'probe'), 'clock_action')], 'write needs a name'),
+                ([good, good], 'write probe is declared twice'),
+                ([OperatorAction('probe', 'api/probe', 'clock_action')], 'write probe needs a URL shape'),
+                ([OperatorAction('probe', ('nope', 'probe'), 'clock_action')], 'write probe must start at api'),
+                ([OperatorAction('probe', ('api', 'probe'), 'clock_action', takes='files')],
+                 "write probe has a bad takes: 'files'"),
+                ([OperatorAction('probe', ('api', 'probe'), 'clock_action', requires=[('x', 'y')])],
+                 'write probe needs a tuple of required fields'),
+                ([OperatorAction('probe', ('api', 'probe'), 'clock_action', requires=(('x', 'y', 'z'),))],
+                 'write probe declares a bad required field'),
+                ([OperatorAction('probe', ('api', 'probe'), 'clock_action', actions=['a'])],
+                 'write probe needs a tuple of actions'),
+                ([OperatorAction('probe', ('api', 'probe'), 'no_such_method')],
+                 "write probe names no handler: 'no_such_method'")):
+            with self.subTest(message=message):
+                with self.assertRaises(ValueError) as caught:
+                    operator_actions(Backend, rows)
+                # The refusal names the fault; two of them add the offending value after it.
+                self.assertRegex(str(caught.exception), '^' + re.escape(message))
+
+    def test_the_dispatcher_serves_the_table_and_nothing_else(self):
+        calls = []
+
+        def probe(self, payload):
+            calls.append(payload)
+            return {'ok': True}
+
+        with patch.object(Backend, 'probe', probe, create=True):
+            rows = list(OPERATOR_ACTIONS) + [OperatorAction('probe', ('api', 'probe'), 'probe')]
+            from annotator import unified_server
+            with patch.object(unified_server, 'OPERATOR_ACTIONS', operator_actions(Backend, rows)):
+                self.assertEqual(self.backend.post(['api', 'probe'], {'a': 1}), {'ok': True})
+                self.assertEqual(calls, [{'a': 1}])
+        # The row is gone, so the route is gone: a route cannot exist in the dispatcher alone.
+        with self.assertRaises(APIError) as caught:
+            self.backend.post(['api', 'probe'], {'a': 1})
+        self.assertEqual((str(caught.exception), caught.exception.status), ('route not found', 404))
+        calls.clear()
+        with self.assertRaises(APIError):
+            self.backend.post(['api', 'clock', 'stream'], {})
+        self.assertEqual(calls, [])
+
+    def test_the_store_lock_is_held_for_the_rows_that_declare_it(self):
+        class Tracker:
+            def __init__(self):
+                self.entered = 0
+
+            def __enter__(self):
+                self.entered += 1
+                return self
+
+            def __exit__(self, *info):
+                return False
+
+        def probe(self, payload):
+            return {'ok': True}
+
+        for locked, expected in ((True, 1), (False, 0)):
+            with self.subTest(locked=locked):
+                self.backend.lock = tracker = Tracker()
+                with patch.object(Backend, 'probe', probe, create=True):
+                    rows = list(OPERATOR_ACTIONS) + [
+                        OperatorAction('probe', ('api', 'probe'), 'probe', locked=locked)]
+                    registry = operator_actions(Backend, rows)
+                    from annotator import unified_server
+                    with patch.object(unified_server, 'OPERATOR_ACTIONS', registry):
+                        self.assertEqual(self.backend.post(['api', 'probe'], {}), {'ok': True})
+                self.assertEqual(tracker.entered, expected)
+
+    def test_a_declared_field_is_refused_with_the_reason_the_row_carries(self):
+        for parts, message in ((['api', 'live'], 'action must be start or stop'),
+                               (['api', 'identity', 'enroll'], 'player_id must be a non-empty string'),
+                               (['api', 'identity', 'seed'], 'cluster_id must be an integer'),
+                               (['api', 'identity', 'link'], 'track_id must be an integer'),
+                               (['api', 'identity', 'unbind'], 'cluster_id must be an integer'),
+                               (['api', 'identity', 'forget'], 'player_id must be a non-empty string')):
+            with self.subTest(parts=parts):
+                with self.assertRaises(APIError) as caught:
+                    self.backend.post(parts, {})
+                self.assertEqual(str(caught.exception), message)
+                self.assertEqual(caught.exception.status, 400)
+                self.assertIn(message, [refusal for _, refusal in OPERATOR_ACTIONS.match(parts).requires])
+
+    def test_a_write_that_checks_its_own_order_keeps_that_order(self):
+        # seeds declares `label`, yet its handler refuses the window first: the field is
+        # declared for the console, the handler names the sentence the console shows.
+        with self.assertRaises(APIError) as caught:
+            self.backend.post(['api', 'vod30', 'seeds'], {})
+        self.assertEqual(str(caught.exception), 'invalid window or track')
+        row = OPERATOR_ACTIONS.get('seeds')
+        self.assertFalse(row.refuse_missing_first)
+        self.assertEqual([field for field, _ in row.requires], ['label'])
+        # The operations row checks the revision before any field: a stale write stays 400.
+        with self.assertRaises(APIError) as caught:
+            self.backend.post(['api', 'operations'], {'action': 'note_add'})
+        self.assertEqual(str(caught.exception), 'integer revision required')
+
+    def test_the_registry_is_published_for_a_console_that_checks_itself(self):
+        answer = self.backend.get(['api', 'actions'], {})
+        self.assertEqual([write['name'] for write in answer['writes']], list(OPERATOR_ACTIONS.names()))
+        self.assertEqual(answer['operations'], list(ACTION_NAMES))
+        rows = {write['name']: write for write in answer['writes']}
+        self.assertEqual(rows['live']['required'], ['action'])
+        self.assertEqual(set(rows['live']), {'name', 'parts', 'required', 'actions'})
+        self.assertEqual(rows['operations']['actions'], list(ACTION_NAMES))
+        self.assertEqual(rows['vod_import']['parts'], ['api', 'vods', 'import'])
 
 
 if __name__ == "__main__":

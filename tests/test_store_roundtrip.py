@@ -159,8 +159,8 @@ class RoundTrip(unittest.TestCase):
         stores = [JsonStore(json_root), PostgresStore(self.source, search_path=self.schema)]
         self.addCleanup(stores[1].close)
         for store in stores:
-            state = store.ops_post({"action": "player_save", "revision": 0, "name": "Ana"})
-            store.ops_post({"action": "note_add", "revision": state["revision"], "text": "kept"})
+            state = store.post({"action": "player_save", "revision": 0, "name": "Ana"})
+            store.post({"action": "note_add", "revision": state["revision"], "text": "kept"})
             store.seed_put("vod30", "1:68-94", {"win": "68-94", "t": 68, "track_id": 1, "label": "A"})
             store.verdict_put("vod30", 9001, {"shooter": "A"})
             store.label_put("unlabeled_crops", "b.png", "u")

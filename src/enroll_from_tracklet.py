@@ -159,9 +159,13 @@ def stats(values) -> dict:
 
 def load_state(root=REPO, store=None) -> dict:
     """The operations document: from `store` (a src.store Store) when given, else the
-    state.json file under `root` ({} when it does not exist)."""
+    state.json file under `root` ({} when it does not exist).
+
+    The two answers differ only where nothing reads them: a missing file gives {} and
+    the store gives its default document. Both carry an empty `players` list, and that
+    list is the only field the enrolment reads (see `_player_id_from_name`)."""
     if store is not None:
-        return store.ops_get()
+        return store.get()
     path = Path(root) / DEFAULT_STATE
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 

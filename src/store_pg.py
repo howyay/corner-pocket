@@ -10,7 +10,7 @@ same cases against both):
     row (SELECT ... FOR UPDATE, design 2.3), checks the revision (ConflictError =
     409 when stale), runs the application's own Operations._apply on the document
     and writes the changed document back.  The tournament rules live in one place.
-    The event log keeps every event; ops_get returns the last 500, like the file.
+    The event log keeps every event; get() returns the last 500, like the file.
   * every read method runs in a READ ONLY transaction, so a read cannot write
     (design 7.2); PostgreSQL refuses any write inside one.
   * floats are double precision, so every value the files hold round-trips exactly.
@@ -35,6 +35,9 @@ from src.store_files import dataset_dir, dump, fmt_of, get_document, put_documen
 
 MAX_EVENTS = 500
 STATE = "out/corner-pocket/state.json"
+# The table that holds the documents of migration 0003 (src/store_files.py). The
+# operations document and the anchor documents live in it; receipts name them so.
+DOCUMENTS = "json_documents"
 
 
 def _doc_path(kind: str, key: str) -> str:
@@ -150,11 +153,11 @@ class PostgresStore:
         row = conn.execute("SELECT revision FROM ops_meta FOR UPDATE").fetchone()
         return None if row is None else row[0]
 
-    def ops_get(self) -> dict:
+    def get(self) -> dict:
         with self._read() as conn:
             return self._document(conn)
 
-    def ops_post(self, payload: dict) -> dict:
+    def post(self, payload: dict) -> dict:
         from annotator.operations import ConflictError, Operations
         if not isinstance(payload, dict):
             raise ValueError("JSON object required")
@@ -166,32 +169,27 @@ class PostgresStore:
                 raise ValueError("integer revision required")
             if payload["revision"] != doc["revision"]:
                 raise ConflictError("State changed; reload before retrying")
-            return self._apply_and_save(conn, ops, doc, payload)
-
-    def _apply_and_save(self, conn, ops, doc, payload):
-        from annotator.operations import default_name
-        if payload.get("action") in ("tournament_start", "tournament_new"):
-            t = doc["tournament"]
-            if not t["name"].strip() and (payload["action"] == "tournament_start" or t["entrants"] or t["matches"]):
-                t["name"] = default_name()
-        context = ops._event_context(doc, payload)
-        ops._apply(doc, payload)
-        if payload.get("action") not in ("tournament_new", "tournament_delete"):
-            context.update(ops._event_context(doc, payload))
-        return self._save(conn, doc, payload["action"], context)
+            action, context = ops.run(doc, payload)       # the one dispatcher and the one check
+            return self._save(conn, doc, action, context)
 
     def enroll_player(self, player: dict, context: dict) -> dict:
-        from annotator.operations import text, timestamp
+        from annotator.operations import Operations
+        ops = Operations.__new__(Operations)
         with self._write() as conn:
             self._locked(conn)
             doc = self._document(conn)
-            if not any(existing.get("id") == player["id"] for existing in doc["players"]):
-                name = text(player.get("name"), "name")
-                if any(existing["name"].casefold() == name.casefold() for existing in doc["players"]):
-                    raise ValueError("Player name already exists")
-                doc["players"].append({"joinedAt": timestamp(), "rating": 0, "status": "Active",
-                                       **player, "name": name})
+            ops.roster_add(doc, player)                   # the one roster rule
             return self._save(conn, doc, "player_enroll_from_tracklet", context)
+
+    def place(self, kind: str, key: str | None = None):
+        """The database name a record set is written under (Store.place)."""
+        if kind == "operations":
+            return f"postgres:{DOCUMENTS}/{STATE}"
+        if kind == "faces":
+            return "postgres:face_embeddings"
+        if kind == "anchors":
+            return f"postgres:{DOCUMENTS}/{_doc_path('anchors', key)}"
+        raise ValueError(f"unknown record set: {kind}")
 
     # -- identity (design 3) ----------------------------------------------------
     def identity_load(self) -> dict:

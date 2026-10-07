@@ -67,9 +67,20 @@ ARTIFACTS = {
 @runtime_checkable
 class Store(Protocol):
     # operations (design section 2)
-    def ops_get(self) -> dict: ...
-    def ops_post(self, payload: dict) -> dict: ...
+    def get(self) -> dict: ...
+    def post(self, payload: dict) -> dict: ...
     def enroll_player(self, player: dict, context: dict) -> dict: ...
+    # where a record set lives, for receipts
+    def place(self, kind: str, key: str | None = None):
+        """Where this backing keeps one record set. Receipts show the answer.
+
+        `kind` is one of:
+          * `operations` - the operations document. `key` is not used.
+          * `faces` - the face embeddings. `key` is not used.
+          * `anchors` - one dataset's pocket anchors. `key` is the dataset.
+        A file backing answers with a Path. A database backing answers with the
+        database name as text. The answer is for display only."""
+        ...
     # identity (section 3)
     def identity_load(self) -> dict: ...
     def identity_save(self, clusters: dict) -> None: ...
@@ -193,14 +204,28 @@ class JsonStore:
         return self._ops
 
     # -- operations ---------------------------------------------------------
-    def ops_get(self) -> dict:
+    def get(self) -> dict:
         return self._operations().get()
 
-    def ops_post(self, payload: dict) -> dict:
+    def post(self, payload: dict) -> dict:
         return self._operations().post(payload)
 
     def enroll_player(self, player: dict, context: dict) -> dict:
         return self._operations().enroll_player(player, context)
+
+    def place(self, kind: str, key: str | None = None):
+        """The file this backing keeps `kind` in (Store.place).
+
+        The answer is a real Path, never a copy of the literal. For `operations` the
+        Path comes from the Operations object that owns the file. Thus the receipt and
+        the writer cannot name different files."""
+        if kind == "operations":
+            return self._operations().path
+        if kind == "faces":
+            return self._faces_path()
+        if kind == "anchors":
+            return self._anchors_path(key)
+        raise ValueError(f"unknown record set: {kind}")
 
     # -- identity -----------------------------------------------------------
     def identity_path(self) -> Path:
