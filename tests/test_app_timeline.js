@@ -988,8 +988,8 @@ test('the adapter localizes engine state, keeps one scrub range and one action f
   assertSourceContract('annotator/vision-stage.js', 'liveRowState', 'the live row must not read idle after a failed start');
   // 4. the primary action of each block lives in an always-visible footer
   assertSourceContract('annotator/vision-stage.js', 'function actionsHTML', 'the action footer comes from one helper');
-  assertSourceContract('annotator/ops.js', 'id="vs-inspector-scroll"', 'the inspector scrolls in its own region');
-  assertSourceContract('annotator/ops.js', 'id="vs-inspector-actions"', 'the inspector keeps one action footer');
+  // The inspector's two regions are the stage's own markup now; tests/test_ops.js builds that shell
+  // and proves them there, on the markup the browser gets.
   assertSourceContract('annotator/vision-stage.js', 'vs-sticky', 'the footer replaced the sticky row', true);
   // 5. a dataset switch re-loads the stage even while a decode owns it
 });

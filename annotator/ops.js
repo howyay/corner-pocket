@@ -842,7 +842,7 @@ function go(next){if(!next)return false;if(!canNavigate()){message(whyCannotNavi
 function openReview(id){reviewId=String(id);sheetId=null;bf=null;tab='records';syncRoute(true);render();window.scrollTo?.(0,0)}
 window.addEventListener('hashchange',()=>{const next=routeOf(location.hash)||'tonight',wasReview=reviewId;reviewId=reviewRoute();if((next!==tab||reviewId!==wasReview)&&canNavigate()){tab=next;sheetId=null;recordId=null;render()}syncRoute(false)});
 tab=routeOf(location.hash)||tab;reviewId=reviewRoute();syncRoute(false);
-async function showReview(){const host=$('#vision-host');if(!host)return;const isActive=reviewHosted();const slot=document.getElementById('vs-frame');if(slot&&host.parentElement!==slot)slot.appendChild(host);host.hidden=!isActive;if(!isActive){review()?.deactivate();return}try{if(!reviewPromise)reviewPromise=(async()=>{const response=await fetch('/api/review-template');if(!response.ok)throw Error(`HTTP ${response.status}`);const parsed=new DOMParser().parseFromString((await response.json()).html,'text/html');const root=parsed.querySelector('#review-root');if(!root)throw Error('Review markup is unavailable');root.dataset.embedded='true';root.hidden=false;const placeholder=root.querySelector('#content .empty');if(placeholder){placeholder.textContent=t('visionLoading');placeholder.setAttribute('role','status')}if(!host.querySelector('#review-root'))host.appendChild(document.importNode(root,true));await review().mount(host.querySelector('#review-root'),{reloadRoster:()=>reload()});review().activate('timeline');attachSurface();review().loadPersons().then(()=>review().loadTracks()).catch(()=>{})})();await reviewPromise;if(isActive){review().setAppearance(lang,theme);review().activate(reviewState().focus||'timeline');const want=datasetForVod(broadcastVodId());if(want&&reviewState().dataset!==want&&want!==vodDatasetAsked){vodDatasetAsked=want;review()?.setDataset?.(want)}}renderSurface()}catch(error){reviewPromise=null;message(`${t('error')}: ${error.message}`,true)}}
+async function showReview(){const host=$('#vision-host');if(!host)return;const isActive=reviewHosted();host.hidden=!isActive;if(!isActive){review()?.deactivate();return}try{if(!reviewPromise)reviewPromise=(async()=>{const response=await fetch('/api/review-template');if(!response.ok)throw Error(`HTTP ${response.status}`);const parsed=new DOMParser().parseFromString((await response.json()).html,'text/html');const root=parsed.querySelector('#review-root');if(!root)throw Error('Review markup is unavailable');root.dataset.embedded='true';root.hidden=false;const placeholder=root.querySelector('#content .empty');if(placeholder){placeholder.textContent=t('visionLoading');placeholder.setAttribute('role','status')}if(!host.querySelector('#review-root'))host.appendChild(document.importNode(root,true));await review().mount(host.querySelector('#review-root'),{reloadRoster:()=>reload()});review().activate('timeline');attachSurface();review().loadPersons().then(()=>review().loadTracks()).catch(()=>{})})();await reviewPromise;if(isActive){review().setAppearance(lang,theme);review().activate(reviewState().focus||'timeline');const want=datasetForVod(broadcastVodId());if(want&&reviewState().dataset!==want&&want!==vodDatasetAsked){vodDatasetAsked=want;review()?.setDataset?.(want)}}renderSurface()}catch(error){reviewPromise=null;message(`${t('error')}: ${error.message}`,true)}}
 let timer;try{timer=JSON.parse(localStorage.getItem('cp-ops-clock'))}catch{}if(!timer||!Number.isFinite(timer.remaining))timer={duration:30,remaining:30,deadline:null};
 const t=k=>words[k]?.[lang==='zh'?1:0]??k, btn=(label,action,attrs='',kind='')=>`<button type="button" class="${kind}" data-action="${action}" ${attrs}>${esc(label)}</button>`,badge=(status)=>`<span class="badge ${esc(status)}">${esc(t(status))}</span>`,isBye=m=>m.result==='bye',mbadge=m=>badge(isBye(m)?'bye':m.status),sideName=(m,id)=>!id&&isBye(m)?'—':ename(id),field=(label,html)=>`<label><span>${esc(label)}</span>${html}</label>`,input=(name,value='',type='text',extra='')=>`<input name="${name}" type="${type}" value="${esc(value)}" ${extra}>`,option=(v,label,current)=>`<option value="${esc(v)}" ${String(current)===String(v)?'selected':''}>${esc(label)}</option>`,tiles=items=>`<div class="tiles">${items.map(([label,value,note])=>`<div class="tile"><small>${esc(label)}</small><strong>${esc(value)}</strong>${note?`<span class="tile-note">${esc(note)}</span>`:''}</div>`).join('')}</div>`
 const tournament=()=>data.tournament, entrants=()=>tournament().entrants||[], matches=()=>data?.tournament?.matches||[], player=id=>data.players.find(p=>p.id===id), entrant=id=>entrants().find(e=>e.id===id),ename=id=>{const e=entrant(id);return e?(e.members||[]).map(m=>player(m.pid)?.name||m.name||t('unknown')).join(' / '):t('pending')},live=()=>matches().find(m=>m.id===focusId&&['live','delayed'].includes(m.status))||matches().find(m=>m.status==='live')||matches().find(m=>m.status==='delayed'),race=()=>tournament().raceTo||7,guestPeople=()=>[...new Set(entrants().flatMap(e=>(e.members||[]).filter(m=>!m.pid).map(m=>m.name)))],roster=()=>data.players.slice().sort((a,b)=>b.rating-a.rating),allowed=()=>!busy&&data;
@@ -860,6 +860,11 @@ const paint=()=>{try{render()}catch(e){console.warn('repaint skipped',e)}};
 function matchWrite(id,name,build){const run=async()=>{const m=data?.tournament?.matches?.find(x=>x.id===id);const {payload,apply}=build(m||{score:[0,0]});const snapshot=JSON.parse(JSON.stringify(data));pendingMatches.set(id,(pendingMatches.get(id)||0)+1);if(apply&&m)apply(m);paint();try{return await action(name,{id,...payload},{snapshot})}finally{const n=pendingMatches.get(id)-1;if(n>0)pendingMatches.set(id,n);else pendingMatches.delete(id);paint()}};const next=(matchQueues.get(id)||Promise.resolve()).then(run,run);matchQueues.set(id,next.then(()=>{},()=>{}));return next}
 async function action(name,payload={},opts={}){const queued=!!opts.snapshot;if(!queued&&!allowed())return false;if(!queued){busy=true;document.querySelectorAll('#main button').forEach(b=>b.disabled=true)}try{const r=await fetch('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:data.revision,action:name,...payload})});const result=await r.json();if(r.status===409){if(queued)data=opts.snapshot;await reload();throw Error(t('conflict'))}if(!r.ok){const detail=result.error||result.message||`HTTP ${r.status}`;throw Object.assign(Error(validationMessage(detail)),{detail})}data=result;if(['match_complete','match_forfeit','tournament_new','tournament_start'].includes(name)){timer.remaining=timer.duration;timer.deadline=null;persistClock()}render();message(t('saved'));return true}catch(e){if(queued&&e.message!==t('conflict'))data=opts.snapshot;if(queued&&e instanceof TypeError){message(t('netRolledBack'),true,e.message);render();return false}message(`${t('error')}: ${e.message}`,true,e.detail);render();return false}finally{if(!queued){busy=false;document.querySelectorAll('#main button').forEach(b=>b.disabled=false)}}}
 function persistClock(){localStorage.setItem('cp-ops-clock',JSON.stringify(timer))}function clockLeft(){return timer.deadline?Math.max(0,(timer.deadline-Date.now())/1000):timer.remaining}
+// One named seam for the shared clock: annotator/clock-sync.js hands this tab the server's instant
+// by calling it, instead of forging a StorageEvent at us. The payload is the string a real storage
+// event carries in newValue; an object is accepted too, so a caller that already parsed one is not
+// silently dropped. One parser, one paint path.
+function receiveClock(value){try{const next=(value&&typeof value==='object'?value:JSON.parse(value))||timer;const durationChanged=next.duration!==timer.duration;timer=next;durationChanged?render():tick()}catch{/* a payload this build cannot read leaves the clock as it was */}}
 // One clock, one formatter. Every view (all six tabs, the Vision stagebar on
 // mobile, the floor scoreboard, a second tab) paints from these and the single
 // interval writes with them, so a re-render can never show a different instant -
@@ -883,7 +888,7 @@ function clockScreen(){const left=clockLeft(),running=!!timer.deadline;return `<
 // The clock is the one always-available element (owner §13.1): it paints before the first
 // fetch answers and in every venue state, because nothing here reads comp().
 paintClockSlot();function tick(){const left=clockLeft();if(reviewId&&!document.hidden){syncReviewDataset();syncReviewFrames()}document.querySelectorAll('[data-clock]').forEach(e=>{const text=clockText(left);if(e.textContent!==text)e.textContent=text;e.classList.toggle('low',clockLow(left))});document.querySelectorAll('[data-progress]').forEach(e=>e.style.transform=`scaleX(${clockScale(left)})`);if(timer.deadline&&left===0){timer.remaining=0;timer.deadline=null;persistClock();render();message(lang==='zh'?'击球时间到。未自动判罚。':'Shot time expired. No penalty applied.')}}
-// Architecture candidate c3: a screen is a module, not a name in a list. The module paints its own
+// A screen is a module, not a name in a list. The module paints its own
 // markup, mounts once, gives the screen up on a tab switch, and answers the poll for the state it
 // holds open. spec.holds() reports an open card that a repaint would destroy.
 function screenModule(id,build,spec={}){return {id,root:null,mount(root,context){this.root=root;this.update(context)},update(context){if(!this.root)return false;spec.beforePaint?.(context);this.root.innerHTML=build(context);return true},detach(context){if(!this.root)return;spec.beforePaint?.(context);this.root.innerHTML='';this.root=null},mayRepaint(){return !spec.holds||!spec.holds()}}}
@@ -916,7 +921,9 @@ function render(){stopLivePolling();stopOpsPolling();if(!data)return;const shell
 // page is hidden, a write is in flight, or the registry says a screen holds a card open.
 let sourceOpen=false,opsTimer=null;
 function stopOpsPolling(){clearTimeout(opsTimer);opsTimer=null}
-function syncOpsPolling(){stopOpsPolling();if(tab==='clock'&&liveComp()&&!document.hidden)opsTimer=setTimeout(pollOps,4000)}
+// A cold load of the clock route fires pageshow before the first snapshot lands, and liveComp() reads
+// that snapshot: with no data yet the poll schedules nothing instead of throwing out of that listener.
+function syncOpsPolling(){stopOpsPolling();if(data&&tab==='clock'&&liveComp()&&!document.hidden)opsTimer=setTimeout(pollOps,4000)}
 async function pollOps(){opsTimer=null;if(tab!=='clock'||!liveComp()||document.hidden)return;if(!busy&&!pendingMatches.size&&registry.mayRepaint()){try{const response=await fetch('/api/operations',{cache:'no-store'});if(response.ok){const next=await response.json();if(next.revision!==data?.revision&&!busy&&!pendingMatches.size){data=next;render();return}}}catch(error){/* the desk owns the truth; a failed read changes nothing here */}}syncOpsPolling()}
 // It lives below render() for a reason: the clock bar paints in every venue state and reads no
 // match state (round 7's rule), and that rule is only true while the poll is not part of it.
@@ -1086,39 +1093,12 @@ function livePanelScreen(){
     <div class="vs-row live-actions">${list.length?`<button class="primary" data-action="live-start">${esc(t('start'))}</button>`:''}${btn(t('sources'),'sources-open')}${running?'':`<button data-action="live-refresh">${esc(t('refresh'))}</button>`}</div>
   </article>
 </section>`}
-function visionSurface(){const L=k=>esc(t(k)),loadingLine=`<p class="vs-loading" role="status">${L('visionLoading')}</p>`;return `<section class="vision-surface" id="vision-surface"${visionAdapter?'':' aria-busy="true" data-loading="true"'}>
+// The workbench's own markup lives in annotator/vision-stage.js: attach() grows the regions
+// inside the host this function returns. The console keeps the host, its heading and the loading
+// line, and hands the stage the clock, the language and the live/fixed flags as attach() options.
+function visionSurface(){const L=k=>esc(t(k));return `<section class="vision-surface" id="vision-surface"${visionAdapter?'':' aria-busy="true" data-loading="true"'}>
 <h2 class="sr-only">${L('reviewTitle')}</h2>
-
-<div class="vs-grid" id="vs-grid" data-sheet="cues">
-<aside class="vs-rail" id="vs-cues" aria-label="${L('visionCues')}" data-vs-aria="cuesRegion">${loadingLine}</aside>
-<section class="vs-stage" id="vs-stage" aria-label="${L('visionStage')}" data-vs-aria="stageRegion">
-
-<div class="vs-frame" id="vs-frame"></div>
-</section>
-<aside class="vs-inspector" id="vs-inspector" aria-label="${L('visionInspector')}" data-vs-aria="inspectorRegion"><div class="vs-inspector-scroll" id="vs-inspector-scroll">${loadingLine}</div><div class="vs-inspector-actions" id="vs-inspector-actions"></div></aside>
-</div>
-<div class="vs-sheettabs" role="tablist" aria-label="${L('visionPanels')}" data-vs-aria="sheetTabs"><button type="button" role="tab" aria-selected="true" aria-controls="vs-cues" data-sheet-tab="cues" class="active" data-vs-label="showCues">${L('visionCuesTab')}</button><button type="button" role="tab" aria-selected="false" aria-controls="vs-inspector" data-sheet-tab="inspector" data-vs-label="showInspector">${L('visionInspectorTab')}</button></div>
-<!-- R23 item 1: the layer chips and the source label sit with the scrubber, not above the picture. -->
-  <div class="vs-head"><div class="vs-chips" id="vs-chips"></div><div class="row vs-sources">${reviewId?'':`${btn(t('sources'),'sources-open')}${btn(t('stop'),'live-stop')}`}</div></div>
-  <!-- Round 30 item 1: the layer chips, the source label and the clock are one scrubber row. -->
-  <div class="vs-strip" id="vs-strip">
-<div class="vs-transport">
-<div class="vs-layers" id="vs-layers"></div>
-<label class="vs-frame-input"><span data-vs-label="frameIndex">${L('visionFrame')}</span><input id="vs-frame-index" type="number" min="0" value="0"></label>
-<button type="button" data-vs-action="step" data-vs-value="-1" aria-label="${L('visionPrev')}" data-vs-aria="stepBack">◀</button>
-<button type="button" data-vs-action="step" data-vs-value="1" aria-label="${L('visionNext')}" data-vs-aria="stepForward">▶</button>
-<button type="button" data-vs-action="freeze" class="primary" data-vs-label="freeze">${L('visionFreeze')}</button>
-<button type="button" id="vs-play" data-vs-action="play">▶ ${L('visionPlay')}</button>
-<span class="vs-clock" title="${esc(t('shotTimer'))}"><strong class="clock${clockLow(clockLeft())?' low':''}" data-clock>${esc(clockText(clockLeft()))}</strong></span><span class="vs-identity" id="vs-identity"></span>
-</div>
-<div class="vs-track">
-<div class="scrub-marks" id="vs-marks"></div>
-<input id="vs-scrub" type="range" min="0" max="0" step="1" value="0">
-<span class="vs-scrub-bubble" id="vs-scrub-bubble" hidden></span>
-<span class="vs-edge" id="vs-edge"></span>
-</div>
-<p class="vs-facts" id="vs-facts" role="status"></p>
-</div>
+<p class="vs-loading" role="status">${L('visionLoading')}</p>
 </section>`}
 // R13/R14: search is local and instant (no request per keystroke). Every query word must
 // occur in the name (AND), after NFKC (full-width forms), accent folding and case folding.
@@ -1208,7 +1188,12 @@ document.addEventListener('submit',async e=>{
     if(doubles&&partner==='new')body.partner_name=String(v.late_partner_name||'').trim();
     if(await action('entrant_add_late',body)){lateOpen=false;render()}}
     if(f.getAttribute('id')==='note-form')await action('note_add',{text:v.text})});
-setInterval(tick,200);window.addEventListener('storage',e=>{if(e.key==='cp-ops-clock'){try{const next=JSON.parse(e.newValue)||timer;const durationChanged=next.duration!==timer.duration;timer=next;durationChanged?render():tick()}catch{}}});reload();
+setInterval(tick,200);
+// Real storage events stay a path in: another tab writes the key and this tab adopts it. The seam
+// below is the path in from the sync layer in this tab - no synthetic event, no listener hop.
+window.addEventListener('storage',e=>{if(e.key==='cp-ops-clock')receiveClock(e.newValue)});
+window.OpsClock={receive:receiveClock};
+reload();
 
 // ---- Vision: one stage, two rails, zero subtabs ---------------------------
 // The review engine (app.js) owns the single frame surface; this shell owns the
@@ -1283,7 +1268,7 @@ async function forgetChannel(id){await action('source_delete',{id});renderSurfac
 // The workbench adapter binds to the markup that owns it, so it goes when that markup goes. The
 // Vision module calls this before every repaint and again when the operator leaves the screen.
 function releaseVisionAdapter(){visionAdapter?.detach();visionAdapter=null}
-function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;mount.removeAttribute?.('aria-busy');mount.removeAttribute?.('data-loading');mount.querySelectorAll?.('.vs-loading').forEach(n=>n.remove());visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,fixedClip:()=>!!reviewId,setAutoInference:on=>review()?.setAutoInference?.(on),openSources:()=>{sourceOpen=true;render()},pickReplay,replayChoice,notice:text=>message(text,true),
+function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;mount.removeAttribute?.('aria-busy');mount.removeAttribute?.('data-loading');mount.querySelectorAll?.('.vs-loading').forEach(n=>n.remove());visionAdapter=window.VisionStage.attach({mount,frameHost:$('#vision-host'),lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,fixedClip:()=>!!reviewId,clock:()=>({title:t('shotTimer'),text:clockText(clockLeft()),low:!!clockLow(clockLeft())}),setAutoInference:on=>review()?.setAutoInference?.(on),openSources:()=>{sourceOpen=true;render()},pickReplay,replayChoice,notice:text=>message(text,true),
 // Owner item 3: on the Vision tab the workbench is the live stream - no dataset chip, no replay
 // form, no frame transport. Those belong to a night's recorded review, which is opened from
 // Records and is the only place `liveOnly` answers false while the console is not on Vision.

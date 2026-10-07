@@ -6,7 +6,7 @@
 'use strict';
 const COPY = {
   en: {
-    cues:'Cues', inspector:'Inspector', sources:'Source', events:'Events', balls:'Balls', persons:'Persons',
+    cues:'Cues', inspector:'Inspector', sources:'Source', visionLoading:'Loading the review workspace…', sourcesBtn:'Sources', events:'Events', balls:'Balls', persons:'Persons',
     anchors:'Anchors', cloth:'Cloth', pockets:'Pockets', verdict:'Verdict', shooter:'Shooter', notes:'Notes',
     all:'All', shots:'Shots', pots:'Pots', pending:'Unreviewed', labels:'Label ball', queue:'Ball queue',
     tracks:'Person tracks', identity:'Identity', calibration:'Calibration', frameIndex:'Frame', step:'Step',
@@ -126,7 +126,7 @@ const COPY = {
     faceOnly:'face seen'
   },
   zh: {
-    cues:'线索', inspector:'检查器', sources:'视频源', events:'事件', balls:'球', persons:'人物',
+    cues:'线索', inspector:'检查器', sources:'视频源', visionLoading:'正在加载复核工作区…', sourcesBtn:'来源', events:'事件', balls:'球', persons:'人物',
     anchors:'锚点', cloth:'台呢', pockets:'袋口', verdict:'判定', shooter:'击球者', notes:'备注',
     all:'全部', shots:'击球', pots:'入袋', pending:'未复核', labels:'球号标注', queue:'裁剪图队列',
     tracks:'人物轨迹', identity:'身份', calibration:'标定', frameIndex:'帧', step:'步进',
@@ -1652,9 +1652,67 @@ function onChange(event) {
     return;
   }
 }
+// The workbench markup is this module's own. The console hands attach() a host element plus the
+// clock, the language and the live/fixed flags, and every region below is authored here — so no
+// element id is written by one side and read by the other. A host that already carries the shell is
+// reused: #main is rebuilt on every render and the review engine keeps its mounted DOM inside
+// .vs-frame, so a second attach() must never build a second workbench over it.
+function btnHTML(label, action, attrs = '') {
+  return `<button type="button" ${attrs} data-action="${action}">${esc(label)}</button>`;
+}
+function markup(options = opts || {}) {
+  const say = key => { const table = COPY[options.lang] || COPY.en; return table[key] || COPY.en[key] || key; };
+  const clock = typeof options.clock === 'function' ? (options.clock() || {}) : (options.clock || {});
+  const fixed = typeof options.fixedClip === 'function' ? !!options.fixedClip() : !!options.fixedClip;
+  const loading = `<p class="vs-loading" role="status">${say('visionLoading')}</p>`;
+  return `<div class="vs-grid" id="vs-grid" data-sheet="cues">
+<aside class="vs-rail" id="vs-cues" aria-label="${say('cuesRegion')}" data-vs-aria="cuesRegion">${loading}</aside>
+<section class="vs-stage" id="vs-stage" aria-label="${say('stageRegion')}" data-vs-aria="stageRegion">
+<div class="vs-frame" id="vs-frame"></div>
+</section>
+<aside class="vs-inspector" id="vs-inspector" aria-label="${say('inspectorRegion')}" data-vs-aria="inspectorRegion"><div class="vs-inspector-scroll" id="vs-inspector-scroll">${loading}</div><div class="vs-inspector-actions" id="vs-inspector-actions"></div></aside>
+</div>
+<div class="vs-sheettabs" role="tablist" aria-label="${say('sheetTabs')}" data-vs-aria="sheetTabs"><button type="button" role="tab" aria-selected="true" aria-controls="vs-cues" data-sheet-tab="cues" class="active" data-vs-label="showCues">${say('showCues')}</button><button type="button" role="tab" aria-selected="false" aria-controls="vs-inspector" data-sheet-tab="inspector" data-vs-label="showInspector">${say('showInspector')}</button></div>
+<!-- R23 item 1: the layer chips and the source label sit with the scrubber, not above the picture. -->
+<div class="vs-head"><div class="vs-chips" id="vs-chips"></div><div class="row vs-sources">${fixed ? '' : `${btnHTML(say('sourcesBtn'), 'sources-open', 'data-vs-label="sourcesBtn"')}${btnHTML(say('stop'), 'live-stop', 'data-vs-label="stop"')}`}</div></div>
+<!-- Round 30 item 1: the layer chips, the source label and the clock are one scrubber row. -->
+<div class="vs-strip" id="vs-strip">
+<div class="vs-transport">
+<div class="vs-layers" id="vs-layers"></div>
+<label class="vs-frame-input"><span data-vs-label="frameIndex">${say('frameIndex')}</span><input id="vs-frame-index" type="number" min="0" value="0"></label>
+<button type="button" data-vs-action="step" data-vs-value="-1" aria-label="${say('stepBack')}" data-vs-aria="stepBack">◀</button>
+<button type="button" data-vs-action="step" data-vs-value="1" aria-label="${say('stepForward')}" data-vs-aria="stepForward">▶</button>
+<button type="button" data-vs-action="freeze" class="primary" data-vs-label="freeze">${say('freeze')}</button>
+<button type="button" id="vs-play" data-vs-action="play">▶ ${say('play')}</button>
+<span class="vs-clock" title="${esc(clock.title || '')}"><strong class="clock${clock.low ? ' low' : ''}" data-clock>${esc(clock.text || '')}</strong></span><span class="vs-identity" id="vs-identity"></span>
+</div>
+<div class="vs-track">
+<div class="scrub-marks" id="vs-marks"></div>
+<input id="vs-scrub" type="range" min="0" max="0" step="1" value="0">
+<span class="vs-scrub-bubble" id="vs-scrub-bubble" hidden></span>
+<span class="vs-edge" id="vs-edge"></span>
+</div>
+<p class="vs-facts" id="vs-facts" role="status"></p>
+</div>`;
+}
+function mountShell(host) {
+  if (!host || typeof host.querySelector !== 'function' || typeof host.insertAdjacentHTML !== 'function') return false;
+  if (host.querySelector('.vs-grid')) return false;
+  host.insertAdjacentHTML('beforeend', markup(opts));
+  return true;
+}
+// The console owns the element the picture is painted in and hands it in as data. This module puts
+// it inside the region the shell built, so neither module looks the other's id up. The console
+// moves that element out before a repaint, so this runs on every attach, not only on a rebuild.
+function adoptFrameHost(host) {
+  const slot = host.querySelector('.vs-frame'), adopt = opts && opts.frameHost;
+  if (slot && adopt && typeof slot.appendChild === 'function' && adopt.parentElement !== slot) slot.appendChild(adopt);
+}
 function attach(options) {
   opts = options; root = options.mount;
   sig = {}; // the shell rebuilds #main on every render: never trust cached regions
+  mountShell(root);
+  adoptFrameHost(root);
   const footer = root.querySelector('#vs-inspector-actions');
   if (footerObserver) { footerObserver.disconnect(); footerObserver = null; }
   if (footer && typeof ResizeObserver !== 'undefined') {
@@ -1676,7 +1734,8 @@ function attach(options) {
     root.removeEventListener('pointerdown', onPointerDown); root.removeEventListener('pointerup', onPointerUp);
     root.removeEventListener('pointercancel', onPointerUp); root.removeEventListener('keydown', onKey, true); }};
 }
-// The console holds one adapter. attach() binds it to a mount and returns the
-// handle its caller uses. Every renderer stays private to this module.
+// The console holds one adapter. attach() binds it to a mount, builds the workbench inside that
+// mount and returns the handle its caller uses. Every renderer stays private to this module, and
+// so does markup(): a caller that wants the shell asks attach() for it, which is the one seam.
 window.VisionStage = {attach};
 })();

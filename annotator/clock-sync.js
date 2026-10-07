@@ -6,17 +6,15 @@
  * that repaints every [data-clock] / [data-progress], and the strip, the floor
  * scoreboard and the vision stage bar all painted from that same `timer`. That
  * closure is unreachable from outside — ops.js is a single IIFE that exports
- * nothing — but it already publishes the seam another device needs:
+ * nothing — so ops.js publishes one named seam for it:
  *
- *   window.addEventListener('storage', e => { if (e.key === 'cp-ops-clock') {
- *     const next = JSON.parse(e.newValue) || timer;
- *     const durationChanged = next.duration !== timer.duration;
- *     timer = next; durationChanged ? render() : tick(); } });
+ *   window.OpsClock = { receive(value) };   // value: the JSON a storage event carries
  *
  * So this module hands ops.js a clock whose deadline is expressed in *this
- * device's* clock base (server deadline − measured offset) by dispatching that
- * same storage event. ops.js stays the only painter, so its single interval and
- * "every view shows the same instant" still hold, and it needs no edit here.
+ * device's* clock base (server deadline − measured offset) by calling that seam.
+ * ops.js stays the only painter, so its single interval and "every view shows the
+ * same instant" still hold. A real `storage` event from another tab is the other
+ * way in, and ops.js keeps listening for it; this module no longer forges one.
  *
  * Offset, NTP style: offset = server_now_ms − (t_send + rtt/2), measured around
  * one GET /api/clock. What is displayed is deadline_ms − (Date.now() + offset),
@@ -437,20 +435,15 @@ function decorate(doc, status, errorText) {
   }
 }
 
+// The console publishes one named seam for the clock: annotator/ops.js sets window.OpsClock with a
+// receive() that takes the same string a storage event carries in newValue. The one page that loads
+// this file, annotator/ops.html, defers ops.js before it, so the seam is always there first. No
+// synthetic StorageEvent is dispatched, and no page without ops.js is served (checked: only
+// annotator/ops.html loads this file).
 function pushToOps(win, local) {
   const value = JSON.stringify(local);
-  let event = null;
-  try {
-    event = new win.StorageEvent('storage', {key: CLOCK_KEY, newValue: value, oldValue: null, url: win.location ? win.location.href : '', storageArea: null});
-  } catch (error) {
-    event = null;
-  }
-  if (!event) {
-    event = new win.Event('storage');
-    event.key = CLOCK_KEY;
-    event.newValue = value;
-  }
-  win.dispatchEvent(event);
+  const seam = win.OpsClock;
+  if (seam && typeof seam.receive === 'function') seam.receive(value);
 }
 
 function openEventStream(win, url, handlers) {

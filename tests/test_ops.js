@@ -8,6 +8,21 @@ const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
 const clockSync = require('../annotator/clock-sync.js');
 const clockSyncSource = fs.readFileSync(path.join(__dirname, '../annotator/clock-sync.js'), 'utf8');
+const stageSource = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+// The workbench markup is the stage's own, built into the host the console hands attach(). These
+// tests take the shell the way the console does - attach() on a host stub - so what they read is
+// the markup the browser gets, not a string this file asked for. The clock is the console's part of
+// it: it travels as a callback, so the shell carries the console's own instant.
+const consoleClock = "()=>({title:t('shotTimer'),text:clockText(clockLeft()),low:!!clockLow(clockLeft())})";
+function stageMarkup(h, {lang = 'en', clock = consoleClock, fixed = false} = {}) {
+  if (!h.context.window.VisionStage) vm.runInContext(stageSource, h.context);
+  const mount = stageMountStub();
+  const review = {snapshot: () => null, subscribe: () => () => {}, reloadDatasets: async () => true};
+  h.context.window.CornerPocketReview = review;
+  h.context.window.VisionStage.attach({mount, lang, clock: h.evaluate(clock), fixedClip: () => fixed,
+    channels: () => [], vods: () => [], regulars: () => [], chat: () => false, notice() {}, review});
+  return mount.shellHTML();
+}
 function harness(opts = {}) {
   const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [];
   const document = {addEventListener(event, fn) { handlers[event] = fn; }, querySelector() { return {}; }, querySelectorAll() { return []; }, documentElement: {dataset: {}, lang: ''}};
@@ -17,7 +32,9 @@ function harness(opts = {}) {
   const history = {pushState(state, title, url) { location.hash = url; visits.push(['push', url]); }, replaceState(state, title, url) { location.hash = url; visits.push(['replace', url]); }};
   const context = {document, location, history, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener(event, fn) { windowHandlers[event] = fn; handlers['window:' + event] = fn; }}, setInterval() {}, setTimeout() {}, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
   vm.createContext(context);
-  vm.runInContext(source.replace("(() => {", '').replace('});reload();', '});').replace(/\}\)\(\);\s*$/, ''), context);
+  // reload() boots the page from the network; the states below are driven by hand. Strip it either
+  // way it is written: alone on its own line (as ops.js does now) or trailing its block's brace.
+  vm.runInContext(source.replace("(() => {", '').replace(/^reload\(\);$/m, '').replace('});reload();', '});').replace(/\}\)\(\);\s*$/, ''), context);
   vm.runInContext("data={revision:1,settings:{},tournament:{raceTo:7,entrants:[],matches:[]},players:[],history:[]}; calls=[]; realAction=action; action=async(name,payload)=>{calls.push({name,payload});return true}", context);
   return {context, handlers, windowHandlers, visits, storage, evaluate: expression => vm.runInContext(expression, context)};
 }
@@ -71,18 +88,28 @@ function stageNodeStub() {
     getBoundingClientRect: () => ({top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0}),
     focus() {}, setSelectionRange() {}, remove() {}, contains: () => false,
     querySelector: () => null, querySelectorAll: () => [], closest: () => null,
+    appendChild(node) {
+      const previous = node.parentElement;
+      if (previous && Array.isArray(previous.children)) previous.children = previous.children.filter(child => child !== node);
+      node.parentElement = this; (this.children = this.children || []).push(node); return node;
+    },
     addEventListener() {}, removeEventListener() {}};
 }
 function stageMountStub() {
   const nodes = new Map(), handlers = {};
+  let shell = '';
   return {
     region(selector) { if (!nodes.has(selector)) nodes.set(selector, stageNodeStub()); return nodes.get(selector); },
-    querySelector(selector) { return this.region(selector); },
+    // The stage builds its own workbench on the first attach and reuses the one it finds after
+    // that, exactly as it does in the browser: an empty host has no .vs-grid yet.
+    querySelector(selector) { return selector === '.vs-grid' && !shell ? null : this.region(selector); },
     querySelectorAll: () => [],
     contains: () => true,
     style: {getPropertyValue: () => '', setProperty() {}},
     addEventListener(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
     removeEventListener(type, fn) { handlers[type] = (handlers[type] || []).filter(f => f !== fn); },
+    insertAdjacentHTML(position, markup) { shell += markup; },
+    shellHTML: () => shell,
     html(selector) { return this.region(selector).innerHTML; },
     text(selector) { return this.region(selector).textContent; },
     fire(type, target) { for (const fn of handlers[type] || []) fn({type, target, preventDefault() {}, stopPropagation() {}}); },
@@ -237,9 +264,42 @@ test('Vision is one stage with two rails and no sub-tab navigation left', () => 
   assert.ok(!source.includes('visionTab'));
   assert.ok(!source.includes('vision-host-host'));
   assert.ok(!source.includes('twitchEmbed'));
-  const surface = h.evaluate('visionSurface()');
+  // The console hands over a host, its heading and one loading line; the workbench regions are the
+  // stage's own markup, so a host that named them would be the old id protocol again.
+  const host = h.evaluate('visionSurface()');
+  assert.ok(host.includes('id="vision-surface"') && host.includes('class="vs-loading"'),
+    'the console hands the stage a host with its heading and one loading line');
+  assert.ok(!/id="vs-(grid|cues|stage|frame|inspector|strip|scrub|chips|marks)"/.test(host),
+    'and authors no workbench region of its own');
+  const surface = stageMarkup(h);
   for (const id of ['id="vs-chips"','id="vs-cues"','id="vs-stage"','id="vs-inspector"','id="vs-strip"','data-sheet-tab="cues"','data-sheet-tab="inspector"','id="vs-frame"','id="vs-marks"','data-vs-action="freeze"']) assert.ok(surface.includes(id), `vision surface missing ${id}`);
+  // These two claims came here from tests/test_app_timeline.js with the markup they are about: that
+  // suite mounts the stage on a root with no shell, so only this one can see the inspector's regions.
+  assert.ok(surface.includes('id="vs-inspector-scroll"'), 'the inspector scrolls in its own region');
+  assert.ok(surface.includes('id="vs-inspector-actions"'), 'the inspector keeps one action footer');
   assert.ok(surface.indexOf('id="vs-frame"') < surface.indexOf('id="vs-inspector"'));
+});
+test('the console hands the picture host in as data, so no shell id crosses the seam', () => {
+  // The console used to look the stage's own id up (document.getElementById('vs-frame')) to move
+  // #vision-host inside the workbench. That id is the stage's business, so the element is handed
+  // over as an option instead and the stage puts it where its own shell says the picture goes.
+  const h = harness();
+  const adapter = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+  vm.runInContext(adapter, h.context, {filename:'vision-stage.js'});
+  h.context.window.CornerPocketReview = {snapshot: () => null, subscribe: () => () => {}, reloadDatasets: async () => true};
+  const mount = stageMountStub();
+  const adopt = {parentElement: null};
+  const shellQuery = h.context.document.querySelector;
+  h.context.document.querySelector = selector => selector === '#vision-surface' ? mount : (selector === '#vision-host' ? adopt : shellQuery(selector));
+  h.evaluate('attachSurface()');
+  const slot = mount.region('.vs-frame');
+  assert.deepEqual(slot.children, [adopt], 'the stage adopts the host it is handed into the frame region');
+  assert.equal(adopt.parentElement, slot, 'and that region becomes the host parent');
+  // The console hoists the host out of the shell before every repaint, so a later attach puts it back.
+  stageNodeStub().appendChild(adopt);
+  h.evaluate('attachSurface()');
+  assert.deepEqual(slot.children, [adopt], 'an attach after the console moved the host puts it back');
+  assert.ok(!source.includes("getElementById('vs-frame')"), 'the console never looks up an id the stage authored');
 });
 test('dirty or busy review vetoes top-level and subtab navigation', async () => {
   for (const dataset of [{tab:'vision'}, {tab:'setup'}, {action:'floor'}]) {
@@ -360,8 +420,10 @@ test('round 1 · Vision loading: the first paint is labelled and says what is lo
   for (const [lang, loading, play, freeze, cues] of [['en', 'Loading the review workspace…', 'Play', 'Freeze', 'Cues'], ['zh', '正在加载复核工作区…', '播放', '冻结', '线索']]) {
     const h = harness();
     h.evaluate(`lang='${lang}';visionAdapter=null`);
-    const html = h.evaluate('visionSurface()');
-    assert.ok(html.includes('aria-busy="true" data-loading="true"'), `${lang}: the surface is marked busy until the adapter attaches`);
+    const host = h.evaluate('visionSurface()');
+    assert.ok(host.includes('aria-busy="true" data-loading="true"'), `${lang}: the surface is marked busy until the adapter attaches`);
+    assert.equal((host.match(/<p class="vs-loading" role="status">/g) || []).length, 1, `${lang}: the console's loading line stands until the stage takes the host`);
+    const html = stageMarkup(h, {lang});
     assert.equal((html.match(new RegExp(`<p class="vs-loading" role="status">${loading}</p>`, 'g')) || []).length, 2, `${lang}: both rails say what is loading`);
     // no control is unlabelled on the first paint
     for (const button of html.match(/<button[^>]*>[^<]*<\/button>/g) || []) {
@@ -720,7 +782,7 @@ test('harden: fields show focus that a border shorthand cannot erase; names and 
   assert.ok(!/animation:none!important;transition:none!important/.test(css), 'reduced motion keeps state changes instead of a global kill');
   const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   assert.ok(!html.includes('aria-label="Color theme"'), 'the theme group name is bilingual');
-  const surface = harness().evaluate('visionSurface()');
+  const surface = stageMarkup(harness());
   assert.ok(surface.includes('role="tab" aria-selected="true" aria-controls="vs-cues"'), 'the sheet bar holds real tabs');
   for (const key of ['cuesRegion', 'stageRegion', 'inspectorRegion', 'sheetTabs', 'stepBack', 'stepForward']) {
     assert.ok(surface.includes(`data-vs-aria="${key}"`), `${key} follows the language toggle`);
@@ -943,7 +1005,7 @@ test('the clock paints the true remaining time on the first render, in every vie
   assert.equal(h.evaluate('clockText(clockLeft())'), '0:13', 'and both go through clockText()');
   // Every view: the Vision surface carries its own [data-clock] (mobile hides the
   // strip that carries the desktop one), and it is painted by the same helpers.
-  const surface = h.evaluate('visionSurface()');
+  const surface = stageMarkup(h);
   assert.ok(surface.includes('data-clock'), 'the Vision stagebar carries the same clock element');
   assert.ok(surface.includes('>0:13<'), 'and its first paint is the same instant');
   // A cross-tab tick repaints; only a duration change re-renders the view.
@@ -965,9 +1027,74 @@ test('the clock paints the true remaining time on the first render, in every vie
   assert.ok(shared === '0:30' || shared === '0:29', 'the shared instant survives the skew: ' + shared);
   assert.equal(h.evaluate('timer.duration'), 60, 'and ops.js kept the server duration');
   assert.ok(h.evaluate('clockHTML()').includes('>' + shared + '<'), 'the strip paints it');
-  assert.ok(h.evaluate('visionSurface()').includes('>' + shared + '<'), 'and the Vision view paints the same instant');
+  assert.ok(stageMarkup(h).includes('>' + shared + '<'), 'and the Vision view paints the same instant');
   assert.ok(!clockSyncSource.includes('setInterval(tick'), 'the sync layer adds no second painter');
   assert.equal((source.match(/setInterval\(tick,200\)/g) || []).length, 1, 'ops.js keeps its one 200 ms interval');
+});
+
+// The console publishes one named seam for the shared clock, so the sync
+// layer calls it instead of forging a StorageEvent that only happens to look like a tab event. The
+// payload is the same one the event carried — the JSON string in newValue — and one parser serves
+// both ways in, so a real cross-tab event and the hand-over cannot drift apart.
+test('the console hands the clock over one named seam, not a forged StorageEvent', () => {
+  const h = harness();
+  assert.equal(h.evaluate('typeof window.OpsClock'), 'object', 'ops.js publishes window.OpsClock');
+  assert.equal(h.evaluate('typeof window.OpsClock.receive'), 'function', 'with one receive() entry point');
+  assert.ok(!/dispatchEvent\s*\(/.test(source), 'the console dispatches no synthetic event for the clock');
+  assert.ok(!/new\s+(win\.)?StorageEvent/.test(clockSyncSource), 'the sync layer builds no StorageEvent');
+  assert.ok(!/dispatchEvent\s*\(/.test(clockSyncSource), 'and dispatches nothing at the console');
+  // What the sync layer sends: the same instant in this device's base, as JSON.
+  const serverNow = Date.now() - 5000;                       // this device is 5 s fast
+  const snapshot = {duration: 45, running: true, deadline_ms: serverNow + 20000, remaining_ms: 20000, seq: 11};
+  const payload = JSON.stringify(clockSync.toLocalClock(snapshot, Date.now(), -5000));
+  h.evaluate("timer={duration:60,remaining:12.4,deadline:null}");
+  h.evaluate('window.OpsClock.receive(' + JSON.stringify(payload) + ')');
+  const shown = h.evaluate('clockText(clockLeft())');
+  assert.ok(shown === '0:20' || shown === '0:19', 'the handed-over instant is what the console shows: ' + shown);
+  assert.equal(h.evaluate('timer.duration'), 45, 'and the server duration came with it');
+  assert.ok(h.evaluate('clockHTML()').includes('>' + shown + '<'), 'the strip paints it');
+  // One parser serves both ways in: a real storage event from another tab still lands in receive().
+  assert.equal(typeof h.handlers['window:storage'], 'function', 'a real cross-tab event still lands');
+  h.handlers['window:storage']({key: 'cp-ops-clock', newValue: JSON.stringify({duration: 30, remaining: 9, deadline: null})});
+  assert.equal(h.evaluate('clockText(clockLeft())'), '0:09', 'and adopts through the same parser');
+  // A hand-over that cannot be read leaves the clock alone instead of throwing into the sync layer.
+  h.evaluate("window.OpsClock.receive('not json')");
+  assert.equal(h.evaluate('clockText(clockLeft())'), '0:09', 'a malformed payload is not adopted');
+  h.evaluate("window.OpsClock.receive({duration: 20, remaining: 5, deadline: null})");
+  assert.equal(h.evaluate('clockText(clockLeft())'), '0:05', 'an already-parsed payload is accepted too');
+});
+
+test('the sync layer hands the console the clock over that seam, and dispatches no event', async () => {
+  const handed = [], dispatched = [];
+  const doc = {
+    hidden: false,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    addEventListener() {},
+    documentElement: {dataset: {}, lang: 'en', getAttribute: () => null}
+  };
+  const win = {
+    document: doc,
+    location: {href: 'http://127.0.0.1:8130/ops.html'},
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: id => clearTimeout(id),
+    setInterval: () => 0,                       // the retry/poll cadence is not under test here
+    clearInterval() {},
+    addEventListener() {},
+    dispatchEvent(event) { dispatched.push(event); return true; },
+    localStorage: {getItem: () => null, setItem() {}},
+    OpsClock: {receive(value) { handed.push(value); }},
+    EventSource: function () { this.addEventListener = () => {}; this.close = () => {}; },
+    fetch: async () => ({ok: true, status: 200, json: async () => clockSnapshot({running: true, deadline_ms: Date.now() + 30000, remaining_ms: 30000, server_now_ms: Date.now()})})
+  };
+  const sync = clockSync.install(win);
+  assert.ok(sync, 'install() wired the page up');
+  await settle();
+  assert.equal(handed.length, 1, 'the first snapshot went to the console over the seam');
+  assert.ok(handed[0].includes('"deadline"'), 'with the same JSON the event used to carry: ' + handed[0]);
+  assert.deepEqual(Object.keys(JSON.parse(handed[0])).sort(), ['deadline', 'duration', 'remaining'], 'and nothing else');
+  assert.deepEqual(dispatched, [], 'no synthetic event was dispatched at the console');
+  assert.equal(win.__clockSync, sync, 'the page keeps one sync object, as before');
 });
 
 // ---- the shared shot clock: annotator/clock-sync.js ------------------------
@@ -2527,7 +2654,7 @@ test('old phase routes fold into the one Tonight route, in place', () => {
 
 test('every tab id resolves to a screen module, so no tab can blank the console (stage 6)', () => {
   const h = harness();
-  // Architecture candidate c3: the registry holds modules. A module mounts into a host and paints
+  // The registry holds modules. A module mounts into a host and paints
   // markup there, so this asserts the behaviour, not a name in a list.
   const painted = JSON.parse(h.evaluate(`JSON.stringify(Object.keys(screenModules).map(id=>{const module=screenModules[id],host={innerHTML:''};module.mount(host);const size=host.innerHTML.length;module.detach();return {id,size}}))`));
   assert.deepEqual(painted.filter(row => row.size === 0), [], 'every registered screen mounts and paints markup, so no tab can blank the console');
@@ -3623,8 +3750,11 @@ test('round 10 / owner item 3: a broadcast with no night yet still gets the scru
   h.evaluate("lang='en';data.history=[]");
   const html = h.evaluate("reviewScreen(null,{id:'2890514774',title:'261001',length_s:16455,created_at:'2026-10-02T23:07:00Z'})");
   assert.ok(html.includes('class="vision-surface"'), 'the recorded page carries the workbench, not only an import button');
+  // The stage grows the regions inside the host the screen paints: the page the
+  // operator gets is the screen's host plus the stage's shell, and neither half is optional.
+  const page = html + stageMarkup(h);
   for (const part of ['id="vs-grid"', 'class="vs-rail"', 'class="vs-inspector"', 'id="vs-scrub"', 'class="vs-track"', 'id="vs-frame-index"'])
-    assert.ok(html.includes(part), `and the ${part} the owner was missing`);
+    assert.ok(page.includes(part), `and the ${part} the owner was missing`);
   assert.ok(html.includes('data-action="bf-pick"') && html.includes('data-id="2890514774"'), 'the import is still offered for this broadcast');
   assert.ok(html.includes('data-length="16455"'), 'with the length it will download');
   assert.ok(!html.includes('TBD'), 'and no invented night name');
@@ -3901,6 +4031,15 @@ test('round 12 / owner item 2: the match follows the night onto the timer page, 
   h.evaluate('busy=false;stopOpsPolling()');
   assert.equal(h.evaluate('opsTimer'), null, 'with the timer stopped, so no read outlives the test');
 });
+test('a cold load of the timer route waits for the snapshot instead of reading a null one', () => {
+  const h = harness();
+  h.evaluate("data=null;tab='clock';document.hidden=false;timers=[];setTimeout=(fn,ms)=>{timers.push(ms);return timers.length}");
+  assert.doesNotThrow(() => h.evaluate('syncOpsPolling()'),
+    'pageshow fires before the first snapshot lands, and the poll must not read that snapshot from the listener');
+  assert.equal(h.evaluate('timers.length'), 0, 'so a load with no state yet schedules no read');
+  h.evaluate("data={revision:1,tournament:{status:'active',matches:[]}};syncOpsPolling()");
+  assert.equal(h.evaluate('timers.join()'), '4000', 'and a live night on the timer page still schedules its four-second read');
+});
 test('round 12 / owner item 3: the end of the night is one card, one row, one reason', () => {
   const h = harness();
   tonightNight(h, 'done');
@@ -3960,7 +4099,7 @@ test('round 13 / owner item 8: one Twitch source configurator, on History and on
   h.evaluate(`lang='en';render=()=>{};data.sources=[{id:'s1',url:'https://www.twitch.tv/ttpoolfriday'},{id:'s2',url:'https://www.twitch.tv/videos/2890514774'}]`);
   assert.ok(h.evaluate('recordsScreen()').includes('data-action="sources-open"'), 'History carries the one button');
   assert.ok(h.evaluate('livePanelScreen()').includes('data-action="sources-open"'), 'so does the Vision panel');
-  assert.ok(h.evaluate('visionSurface()').includes('data-action="sources-open"'), 'and the review surface');
+  assert.ok(stageMarkup(h).includes('data-action="sources-open"'), 'and the review surface');
   assert.ok(source.includes("const overlays=(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'');if(overlays)$('#main').insertAdjacentHTML('beforeend',overlays);"),
     'and render() mounts it over whichever tab the operator is on');
   const dialog = h.evaluate('sourceModal()');
@@ -4011,8 +4150,11 @@ test('round 14 / owner item 3: a recorded review offers no clip and no source ch
   assert.ok(adapter.includes("const chip = fixed ? '' : `<button"), 'nor the source chip');
   assert.ok(adapter.includes('const channels = (fixed ? [] : (opts.channels() || []))'),
     'and no live-channel chip: a recorded broadcast is not a live source');
-  assert.ok(source.includes("${reviewId?'':`${btn(t('sources'),'sources-open')}${btn(t('stop'),'live-stop')}`}"),
-    'and the review surface carries neither the source door nor the stop control');
+  const clip = stageMarkup(h, {fixed: true}), undecided = stageMarkup(h);
+  assert.ok(!clip.includes('data-action="sources-open"') && !clip.includes('data-action="live-stop"'),
+    'and the recorded review surface carries neither the source door nor the stop control');
+  assert.ok(undecided.includes('data-action="sources-open"') && undecided.includes('data-action="live-stop"'),
+    'while a surface whose clip is not yet decided offers both');
   h.evaluate('render=()=>{}');
   assert.ok(h.evaluate('livePanelScreen()').includes('data-action="sources-open"'),
     'while the live Vision page keeps the source door, where the stream comes from');
@@ -4420,12 +4562,16 @@ test('round 22 / owner item 3: play resumes from the point the operator chose', 
   assert.ok(vs.includes("target.setPlaying(on);"), 'the play toggle still goes through the engine');
 });
 test('round 23 / owner item 1: the layer chips and the source line live with the scrubber', () => {
-  const src = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
+  // The strip is the stage's markup. The console hands over a host and no region of
+  // its own, so the row can only be read here.
+  const src = stageSource;
+  const console_ = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
   const strip = src.indexOf('<div class="vs-strip" id="vs-strip">');
   const track = src.indexOf('<div class="vs-track">');
   assert.ok(strip >= 0 && track > strip, 'the scrubber holds its track');
   assert.ok(src.slice(strip, track).includes('id="vs-layers"'), 'the scrubber carries the layer chips');
   assert.ok(!src.includes('vs-stagebar'), 'the layer chips are not a row of their own');
+  assert.ok(!console_.includes('id="vs-strip"') && !console_.includes('vs-stagebar'), 'and the console authors neither');
 });
 
 // Owner round 25, workstream A: a refresh or a shared link lands on the viewer route and renders
@@ -4449,7 +4595,6 @@ test('a direct load of a review route keeps its id until the archive list arrive
 
 test('round 31 / owner item 3: the scrubber follows the pointer, a held step repeats, and the keys the app skips work', () => {
   const stage = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
-  const src = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   // The drag: the press holds the point, the preview is throttled, and the last position always lands.
   assert.ok(stage.includes('let scrubHold = null;') && stage.includes('previewScrub(scrubHold);'),
@@ -4463,7 +4608,7 @@ test('round 31 / owner item 3: the scrubber follows the pointer, a held step rep
   assert.ok(stage.includes('if (pendingScrub !== null && Math.abs((Number(s.frame.t) || 0) - pendingScrub) <= 0.25) pendingScrub = null;'),
     'and drops the pin as soon as the engine lands on it');
   // The bubble states the target time, and the preview writes in place.
-  assert.ok(src.includes('id="vs-scrub-bubble"') && css.includes('.vs-scrub-bubble{'), 'the track carries the bubble');
+  assert.ok(stage.includes('id="vs-scrub-bubble"') && css.includes('.vs-scrub-bubble{'), 'the track carries the bubble');
   assert.ok(stage.includes('mark.textContent = scrubT(seconds);') && stage.includes('function scrubT(seconds)'),
     'the bubble states the time');
   const preview = stage.slice(stage.indexOf('function previewScrub'), stage.indexOf('function endScrub'));
