@@ -883,17 +883,41 @@ function clockScreen(){const left=clockLeft(),running=!!timer.deadline;return `<
 // The clock is the one always-available element (owner §13.1): it paints before the first
 // fetch answers and in every venue state, because nothing here reads comp().
 paintClockSlot();function tick(){const left=clockLeft();if(reviewId&&!document.hidden){syncReviewDataset();syncReviewFrames()}document.querySelectorAll('[data-clock]').forEach(e=>{const text=clockText(left);if(e.textContent!==text)e.textContent=text;e.classList.toggle('low',clockLow(left))});document.querySelectorAll('[data-progress]').forEach(e=>e.style.transform=`scaleX(${clockScale(left)})`);if(timer.deadline&&left===0){timer.remaining=0;timer.deadline=null;persistClock();render();message(lang==='zh'?'击球时间到。未自动判罚。':'Shot time expired. No penalty applied.')}}
-const screens={clock:clockScreen,tonight:tonightScreen,records:recordsScreen,vision:liveVisionScreen,players:playersScreen,status:statusScreen};
-function render(){stopLivePolling();stopOpsPolling();if(!data)return;const shell=document.querySelector('#ops-shell');if(shell&&shell.setAttribute)shell.setAttribute('data-review',reviewId&&!bf?'1':'0');document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.documentElement.dataset.theme=theme;$('#nav').innerHTML=clockNavButton()+primaryNav().map((k,i)=>{const cur=!bf&&tab===k,key=String(i+2);return `<button data-tab="${k}" class="${cur?'active':''}" aria-current="${cur?'page':'false'}" aria-keyshortcuts="Digit${key}" title="${esc(t('keyHint').replace('{key}',t('digitKey').replace('{n}',key)))}">${ballHTML(i+2)}${esc(navLabel(k))}<small>${k==='tonight'?(matches().length?matches().filter(m=>m.status!=='complete').length:entrants().length):k==='players'?data.players.length:''}</small></button>`}).join('');const tb=$('#tabbar');if(tb)tb.innerHTML=tabbarHTML();const m=live();$('#ops-shell').dataset.tab=bf?'backfill':tab;$('#ops-shell').dataset.lang=lang==='zh'?'zh':'en';$('#ops-shell').dataset.vision=reviewId?'recorded':(tab==='vision'?'live':'');paintClockSlot();const host=$('#vision-host');if(host&&host.parentElement!==document.body)document.body.appendChild(host);visionAdapter?.detach();visionAdapter=null;$('#main').innerHTML=(bf?bfScreen():screens[tab]())+(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'');liveWasRunning=liveRunning();$('#main').classList.toggle('short',reviewHosted());showReview();syncLivePolling();syncOpsPolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}document.querySelectorAll('[data-lang]').forEach(b=>{b.classList.toggle('active',b.dataset.lang===lang);b.setAttribute('aria-pressed',String(b.dataset.lang===lang))});document.querySelectorAll('#ops-shell button[data-theme]').forEach(b=>{b.classList.toggle('active',b.dataset.theme===theme);b.setAttribute('aria-pressed',String(b.dataset.theme===theme))});document.querySelector('[data-theme-group]')?.setAttribute('aria-label',lang==='zh'?'配色 / Color theme':'Color theme / 配色');document.querySelector('#vision-host')?.setAttribute('aria-label',lang==='zh'?'视觉复核':'Vision review');tick()}
+// Architecture candidate c3: a screen is a module, not a name in a list. The module paints its own
+// markup, mounts once, gives the screen up on a tab switch, and answers the poll for the state it
+// holds open. spec.holds() reports an open card that a repaint would destroy.
+function screenModule(id,build,spec={}){return {id,root:null,mount(root,context){this.root=root;this.update(context)},update(context){if(!this.root)return false;spec.beforePaint?.(context);this.root.innerHTML=build(context);return true},detach(context){if(!this.root)return;spec.beforePaint?.(context);this.root.innerHTML='';this.root=null},mayRepaint(){return !spec.holds||!spec.holds()}}}
+// The registry is the only list of screens. The key order is the tab order.
+const screenModules={
+  clock:screenModule('clock',clockScreen),
+  tonight:screenModule('tonight',tonightScreen,{holds:()=>deskOpen!==null||setupOpen||lateOpen}),
+  records:screenModule('records',recordsScreen),
+  vision:screenModule('vision',liveVisionScreen,{beforePaint:releaseVisionAdapter}),
+  players:screenModule('players',playersScreen,{holds:()=>selected!==null}),
+  status:screenModule('status',statusScreen)
+};
+// The backfill wizard is a mode, not a destination: it has no tab and no route. It owns the whole
+// console while it runs.
+const backfillScreen=screenModule('backfill',bfScreen);
+// The registry owns the active screen and the poll's one question. render() paints the active
+// screen only. A tab switch mounts the new module and detaches the old one.
+const registry={
+  active:()=>bf?backfillScreen:(screenModules[tab]||screenModules.tonight),
+  // Every screen answers, not only the mounted one: render() hosts Tonight's late card over the
+  // console, and a repaint would destroy what the operator typed in it.
+  mayRepaint:()=>!bf&&Object.values(screenModules).every(module=>module.mayRepaint())
+};
+let mountedScreen=null;
+function render(){stopLivePolling();stopOpsPolling();if(!data)return;const shell=document.querySelector('#ops-shell');if(shell&&shell.setAttribute)shell.setAttribute('data-review',reviewId&&!bf?'1':'0');document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.documentElement.dataset.theme=theme;$('#nav').innerHTML=clockNavButton()+primaryNav().map((k,i)=>{const cur=!bf&&tab===k,key=String(i+2);return `<button data-tab="${k}" class="${cur?'active':''}" aria-current="${cur?'page':'false'}" aria-keyshortcuts="Digit${key}" title="${esc(t('keyHint').replace('{key}',t('digitKey').replace('{n}',key)))}">${ballHTML(i+2)}${esc(navLabel(k))}<small>${k==='tonight'?(matches().length?matches().filter(m=>m.status!=='complete').length:entrants().length):k==='players'?data.players.length:''}</small></button>`}).join('');const tb=$('#tabbar');if(tb)tb.innerHTML=tabbarHTML();const m=live();$('#ops-shell').dataset.tab=bf?'backfill':tab;$('#ops-shell').dataset.lang=lang==='zh'?'zh':'en';$('#ops-shell').dataset.vision=reviewId?'recorded':(tab==='vision'?'live':'');paintClockSlot();const host=$('#vision-host');if(host&&host.parentElement!==document.body)document.body.appendChild(host);const active=registry.active();if(mountedScreen!==active){mountedScreen?.detach();mountedScreen=active;active.mount($('#main'))}else active.update();const overlays=(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'');if(overlays)$('#main').insertAdjacentHTML('beforeend',overlays);liveWasRunning=liveRunning();$('#main').classList.toggle('short',reviewHosted());showReview();syncLivePolling();syncOpsPolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}document.querySelectorAll('[data-lang]').forEach(b=>{b.classList.toggle('active',b.dataset.lang===lang);b.setAttribute('aria-pressed',String(b.dataset.lang===lang))});document.querySelectorAll('#ops-shell button[data-theme]').forEach(b=>{b.classList.toggle('active',b.dataset.theme===theme);b.setAttribute('aria-pressed',String(b.dataset.theme===theme))});document.querySelector('[data-theme-group]')?.setAttribute('aria-label',lang==='zh'?'配色 / Color theme':'Color theme / 配色');document.querySelector('#vision-host')?.setAttribute('aria-label',lang==='zh'?'视觉复核':'Vision review');tick()}
 // Round 12, owner item 2: the match follows the night onto the timer's own page. The desk sends a
 // match and signs a frame; the tablet at the table only ever reads, so this page re-reads the
 // document the desk writes, four seconds at a time - and never while a hand is mid-sentence: it
 // never writes, it runs only on this tab while a night is played, and it stands down while the
-// page is hidden or a form, a dialog or a picker is open on it.
+// page is hidden, a write is in flight, or the registry says a screen holds a card open.
 let sourceOpen=false,opsTimer=null;
 function stopOpsPolling(){clearTimeout(opsTimer);opsTimer=null}
 function syncOpsPolling(){stopOpsPolling();if(tab==='clock'&&liveComp()&&!document.hidden)opsTimer=setTimeout(pollOps,4000)}
-async function pollOps(){opsTimer=null;if(tab!=='clock'||!liveComp()||document.hidden)return;if(!busy&&!bf&&!pendingMatches.size&&deskOpen===null&&!selected&&!setupOpen&&!lateOpen){try{const response=await fetch('/api/operations',{cache:'no-store'});if(response.ok){const next=await response.json();if(next.revision!==data?.revision&&!busy&&!pendingMatches.size){data=next;render();return}}}catch(error){/* the desk owns the truth; a failed read changes nothing here */}}syncOpsPolling()}
+async function pollOps(){opsTimer=null;if(tab!=='clock'||!liveComp()||document.hidden)return;if(!busy&&!pendingMatches.size&&registry.mayRepaint()){try{const response=await fetch('/api/operations',{cache:'no-store'});if(response.ok){const next=await response.json();if(next.revision!==data?.revision&&!busy&&!pendingMatches.size){data=next;render();return}}}catch(error){/* the desk owns the truth; a failed read changes nothing here */}}syncOpsPolling()}
 // It lives below render() for a reason: the clock bar paints in every venue state and reads no
 // match state (round 7's rule), and that rule is only true while the poll is not part of it.
 // Onboard: before the first match exists, the Floor says what to do first, from real state:
@@ -1256,6 +1280,9 @@ function startLive(){visionAttempt=null;review()?.setLiveAttempt(null);liveActio
 function stopLive(){liveAction('stop')}
 function setLiveDetectors(list){liveDetectors=list.length?list:['table'];renderSurface()}
 async function forgetChannel(id){await action('source_delete',{id});renderSurface()}
+// The workbench adapter binds to the markup that owns it, so it goes when that markup goes. The
+// Vision module calls this before every repaint and again when the operator leaves the screen.
+function releaseVisionAdapter(){visionAdapter?.detach();visionAdapter=null}
 function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;mount.removeAttribute?.('aria-busy');mount.removeAttribute?.('data-loading');mount.querySelectorAll?.('.vs-loading').forEach(n=>n.remove());visionAdapter=window.VisionStage.attach({mount,lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,fixedClip:()=>!!reviewId,setAutoInference:on=>review()?.setAutoInference?.(on),openSources:()=>{sourceOpen=true;render()},pickReplay,replayChoice,notice:text=>message(text,true),
 // Owner item 3: on the Vision tab the workbench is the live stream - no dataset chip, no replay
 // form, no frame transport. Those belong to a night's recorded review, which is opened from

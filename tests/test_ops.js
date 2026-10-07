@@ -2525,16 +2525,20 @@ test('old phase routes fold into the one Tonight route, in place', () => {
   }
 });
 
-test('every tab id resolves to a screen, so no tab can blank the console (stage 6)', () => {
+test('every tab id resolves to a screen module, so no tab can blank the console (stage 6)', () => {
   const h = harness();
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs.filter(id=>typeof screens[id]!=="function"))')), [], 'every tab id has a screen');
-  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(Object.keys(screens))')), ['clock', 'tonight', 'records', 'vision', 'players', 'status'], 'the five destinations and the shot timer, and nothing else: the retired ones are gone, not hidden');
+  // Architecture candidate c3: the registry holds modules. A module mounts into a host and paints
+  // markup there, so this asserts the behaviour, not a name in a list.
+  const painted = JSON.parse(h.evaluate(`JSON.stringify(Object.keys(screenModules).map(id=>{const module=screenModules[id],host={innerHTML:''};module.mount(host);const size=host.innerHTML.length;module.detach();return {id,size}}))`));
+  assert.deepEqual(painted.filter(row => row.size === 0), [], 'every registered screen mounts and paints markup, so no tab can blank the console');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(navTabs.filter(id=>!screenModules[id]))')), [], 'and every tab id resolves to one of them');
+  assert.deepEqual(JSON.parse(h.evaluate('JSON.stringify(Object.keys(screenModules))')), ['clock', 'tonight', 'records', 'vision', 'players', 'status'], 'the five destinations and the shot timer, and nothing else: the retired ones are gone, not hidden');
   // Owner item 4 (round 5): the shot timer is a destination like any other - a route, a
   // screen and a name - so no tab can blank it and a deep link reaches it.
   assert.equal(h.evaluate("routeOf('#/clock')"), 'clock', 'the clock has its own route');
-  assert.equal(h.evaluate('typeof screens.clock'), 'function', 'and a screen behind it');
-  assert.equal(h.evaluate('typeof screens.floor'), 'undefined', 'the Floor screen is retired');
-  assert.equal(h.evaluate('typeof screens.matches'), 'undefined', 'and so is Matches');
+  assert.equal(h.evaluate('typeof screenModules.clock.update'), 'function', 'and a screen behind it');
+  assert.equal(h.evaluate('typeof screenModules.floor'), 'undefined', 'the Floor screen is retired');
+  assert.equal(h.evaluate('typeof screenModules.matches'), 'undefined', 'and so is Matches');
 });
 test('Close is the night\u2019s end: the results sheet, second chance, archive and delete (stage 6)', async () => {
   const h = harness();
@@ -3323,7 +3327,7 @@ test('round 7 / owner item 2: the timer is a bar of its own and ball 1 is its ow
       `${name} reads no match state, so the clock is usable with no competition running`);
   };
   noState(source.slice(source.indexOf('function clockHTML()'), source.indexOf('function clockScreen()')), 'the clock bar and its host');
-  noState(source.slice(source.indexOf('function tick()'), source.indexOf('const screens=')), 'the repaint loop');
+  noState(source.slice(source.indexOf('function tick()'), source.indexOf('const screenModules=')), 'the repaint loop');
   const page = source.slice(source.indexOf('function clockScreen()'), source.indexOf('function tick()'));
   assert.ok(page.includes("${liveComp()?scoreboardScreen():''}"), 'the timer page carries the match block (round 12, owner item 2)');
   assert.equal((page.match(/liveComp\(\)/g) || []).length, 1, 'and reads match state exactly once, for that block');
@@ -3957,7 +3961,7 @@ test('round 13 / owner item 8: one Twitch source configurator, on History and on
   assert.ok(h.evaluate('recordsScreen()').includes('data-action="sources-open"'), 'History carries the one button');
   assert.ok(h.evaluate('livePanelScreen()').includes('data-action="sources-open"'), 'so does the Vision panel');
   assert.ok(h.evaluate('visionSurface()').includes('data-action="sources-open"'), 'and the review surface');
-  assert.ok(source.includes("(bf?bfScreen():screens[tab]())+(sourceOpen?sourceModal():'')"),
+  assert.ok(source.includes("const overlays=(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'');if(overlays)$('#main').insertAdjacentHTML('beforeend',overlays);"),
     'and render() mounts it over whichever tab the operator is on');
   const dialog = h.evaluate('sourceModal()');
   assert.ok(dialog.includes('id="sources-form"') && dialog.includes('name="url"') && dialog.includes('type="url"'),
@@ -4346,7 +4350,8 @@ test('round 21 / owner item 3 + round 29 / owner item 1: the late arrival card o
     SRC.includes("if(a==='late-cancel'){lateOpen=false;render();return}"),
     'the card opens the dialog, and the dialog closes it');
   assert.ok(SRC.includes("(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'')"), 'the shell mounts it');
-  assert.ok(SRC.includes('&&!setupOpen&&!lateOpen)'), 'and the poll does not repaint under the operator');
+  assert.ok(SRC.includes('&&!pendingMatches.size&&registry.mayRepaint()'), 'and the poll asks the registry, not a screen variable (c3)');
+  assert.ok(SRC.includes('{holds:()=>deskOpen!==null||setupOpen||lateOpen}'), 'so the Tonight module owns the three cards that stand the repaint down');
   assert.ok(SRC.includes("${esc(eventParams(T))}</p></div>${lateCard()}${closeCard(drawn)}"), 'round 31: the control is a row of the event settings card');
   assert.ok(!SRC.includes('${entrantsCard()}${lateCard()}'), 'and the tab no longer carries a card of its own');
   // It renders only while the event is running: a finished event takes no late arrivals.
