@@ -3125,10 +3125,14 @@ after a move to `#/records` the shell review flag reads `0` and `#main` holds 29
 
 ### What still stands open
 
-- Candidate 02, the time-resolved calibration seam, is not started. `src/calib_segments.py` is
-  imported by eight modules and called for a load in four places. Nine private loaders in six modules
-  rebuild the same chain. `src/motion_scan.py:294` says that the per-time segment lookup belongs to
-  the calibration, and then takes `segments[0]` at `:291`.
+- Candidate 02, the time-resolved calibration seam, is not started. Nine files name `calib_segments`,
+  18 times in all, and eight call sites load through it: `src/table_refine.py:95` and `:139`,
+  `src/segment_calib_report.py:198`, `src/sam3_ball_cache.py:186`, `src/eval_events.py:88`,
+  `src/sam3_frame_audit.py:130`, `annotator/pipeline_stages.py:331` and
+  `annotator/unified_server.py:1106`. Beside that, the private loader at `src/motion_scan.py:294`
+  reads the artifact itself, `:297` takes `segments[0]`, and the note at `:300-301` says that
+  "per-time segment lookup belongs to the calibration, not to this measurement". The note states the
+  seam that the module does not have.
 - Candidate 01 covered the four modules that held the frame, and it left three other frame copies in
   place because they are outside its scope: `src/audit_calib.py:21-22` holds a landscape
   `TABLE_W, TABLE_H = 2540.0, 1270.0` with its own destination, `src/calib_vod30.py:30` holds an
