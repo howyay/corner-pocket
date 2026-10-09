@@ -605,3 +605,27 @@ millimetre distance is also inside the error bar (31-54 mm).
   in the jaws (`parked_in_jaws_possible` + `unknown`), and its pot rule is only as
   good as the detector's identity persistence.
 
+## 2026-10-09 (correction) — the canonical frame moves the events_v2 numbers
+
+`src/rebuild_events_v2.py` now takes its frame and its pockets from
+`src/table_geometry.py`, so the frame is the canonical portrait 1270 x 2540 mm. The
+round-4 block above describes the transposed landscape frame, and its numbers no
+longer hold.
+
+`.venv/bin/python src/rebuild_events_v2.py` on 2026-10-09 rebuilt
+`out/scan30/events_v2.json`:
+
+- 67 events, 57 shots, 10 pot rows, the same event ids as the artifact before it.
+- `linked: 10/10  causality violations: 0  unlinked: 0`, and the same pot chain
+  10->8->6->5->4->3->1->0.
+- Pocket distances 244, 246, 336, 336, 338, 386, 431, 493, 498, 696 mm. The artifact
+  of the landscape frame held 345, 349, 389, 418, 419, 439, 440, 440, 634, 1133 mm.
+- 7 of the 10 rows now sit within 440 mm. The landscape artifact held 8 of 10, so
+  the round-4 line "pocket distances <= 440 mm (bogus 1.1 m rows eliminated)"
+  overstated its own file.
+- The largest row falls from 1133 mm (t = 387 s) to 696 mm. Three rows still sit
+  above 440 mm, and the smallest row of the landscape frame, 345 mm, becomes 493 mm.
+- The frame name in the round-4 block, `corners_30min_v2 (2540x1270)`, is the
+  transposed frame. The canonical frame is portrait: 1270 wide, 2540 high, head at
+  the top.
+

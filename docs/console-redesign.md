@@ -3133,10 +3133,13 @@ after a move to `#/records` the shell review flag reads `0` and `#main` holds 29
   place because they are outside its scope: `src/audit_calib.py:21-22` holds a landscape
   `TABLE_W, TABLE_H = 2540.0, 1270.0` with its own destination, `src/calib_vod30.py:30` holds an
   inline portrait destination, and `src/pipeline.py:28` re-exports the names through a flat import.
-- `out/scan30/events_v2.json` is not regenerated, so its numbers stay those of the transposed frame:
-  10 pot rows with x = 1426.5 … 2291.6, which no point of the canonical frame can reach. The line
-  "distances <= 440 mm" in `docs/state.md:119` is stale for the same reason. Both move when
-  `.venv/bin/python src/rebuild_events_v2.py` runs against `data/vod_30min_260815.mp4`.
+- Candidate 01 changed the artifact that `src/rebuild_events_v2.py` writes, so the round ran it.
+  `out/scan30/events_v2.json` now holds the same 67 events, 57 shots and 10 pot rows with the same
+  ids, and its pocket distances read 244, 246, 336, 336, 338, 386, 431, 493, 498, 696 mm, where the
+  artifact of the landscape frame read 345, 349, 389, 418, 419, 439, 440, 440, 634, 1133 mm. 7 of the
+  10 rows now sit within 440 mm, and the round-4 line in `docs/state.md` claimed 440 mm for all of
+  them. Three rows still sit above 440 mm, and a correction section at the end of `docs/state.md`
+  records both sets of numbers.
 - Candidate 08 closed the import side of the enrolment module. The exported surface of that module
   still holds names that no caller uses.
 
@@ -3145,6 +3148,9 @@ after a move to `#/records` the shell review flag reads `0` and `#main` holds 29
 - Python: `Ran 1335 tests in 134.951 s`, `OK (skipped=51)`.
 - JavaScript: `tests/test_ops.js` 197 pass and 0 fail (195 before), `tests/test_app_timeline.js` 90
   passed and 0 failed, `tests/test_board.js` 16 pass and 0 fail.
+- The events rebuild prints `57 shots, 10 pot rows, 67 events`, `linked: 10/10  causality violations:
+  0  unlinked: 0`, `window drops: [2, 2, 2, 2, 1, 1, 1, 2, 2, 1]` and
+  `pocket dists mm: [244, 246, 336, 336, 338, 386, 431, 493] ...`.
 - The browser at http://127.0.0.1:8130/ops.html#/records/review/2853972244, viewport 1596 by 1045,
   loads `app.js?v=vision-stage-64`, `vision-stage.js?v=vision-stage-62`,
   `ops.js?v=vision-stage-65` and `clock-sync.js?v=clock-sync-2`. `window.OpsConsole` reads
