@@ -2111,15 +2111,72 @@ function setAppearance(lang, theme) {
   if (changed && (state.vmeta || $('#t-overlay'))) { renderStage(); }
   notify();
 }
+// The one frame verb. A frame result and the edits that follow it arrive
+// together, so the paint order lives here. A caller cannot split the paint, and
+// a caller does not invent a dirty flag between two passes.
+// result: one frame result, or undefined to re-paint the frame already held.
+// edits: {dirty, edited}. edited names the boxes that the operator changed, as
+// a box, or as an index into the current box list.
+function frame(result, edits = {}) {
+  if (result !== undefined) { state.fresult = result; applyFrameResult(); }
+  if (edits.dirty !== undefined) state.dirty = !!edits.dirty;
+  for (const box of edits.edited || []) markBoxEdited(typeof box === 'number' ? state.boxes[box] : box);
+  paintOverlay();
+}
+// The one scene verb. A caller arranges the facts it needs by name. A dotted key
+// reaches one fact inside a group, for example 'cloth.reference'. The engine
+// sends no notification, so the caller paints with frame() or render().
+function scene(patch = {}) {
+  for (const key of Object.keys(patch)) {
+    const path = key.split('.');
+    let node = state;
+    for (let i = 0; i < path.length - 1 && node && typeof node === 'object'; i += 1) node = node[path[i]];
+    if (node && typeof node === 'object') node[path[path.length - 1]] = patch[key];
+  }
+}
+// Named readings. A caller observes one fact group through one name. A caller
+// never reaches into a field. Each reading copies the group that it returns.
+const readings = {
+  mode: () => state.mode,
+  dirty: () => state.dirty,
+  busy: () => state.busy,
+  dataset: () => state.dataset,
+  detectors: () => ({...state.detectors}),
+  tool: () => state.tool,
+  vmeta: () => state.vmeta,
+  frameIndex: () => state.frame,
+  frameSize: () => ({width: state.frameWidth, height: state.frameHeight}),
+  frameSeconds: () => state.t,
+  pendingSeek: () => state.pendingSeek,
+  inferStatus: () => state.inferStatus,
+  receipts: () => state.receipts,
+  boxes: () => state.boxes,
+  polygon: () => state.polygon,
+  frameResult: () => state.fresult,
+  unified: () => state.unified,
+  events: () => state.events,
+  annotations: () => state.annotations,
+  selection: () => state.sel,
+  playback: () => ({...state.playback}),
+  overlay: () => ({...state.overlay}),
+  drawn: () => ({...state.drawn, auto: {...(state.drawn.auto || {})}}),
+  cloth: () => ({...state.cloth}),
+  notice: () => ({...state.notice}),
+  source: () => ({...state.source}),
+  live: () => ({...state.live}),
+  shotUrl: () => state.shotUrl,
+  verdictDraft: () => state.verdictDraft,
+  counts
+};
 // The engine seam. The console mounts the engine with mount(). An offline test
 // mounts the same engine with attach(): a stub root, a stub network, one handle.
-// The handle carries the live state and the readings a caller can observe.
+// The handle carries the readings a caller can observe and the verbs a caller
+// can run. The state stays private to the engine.
 // Behaviour is unchanged: the console never calls attach().
 function attach(options = {}) {
   if (options.mount) root = options.mount;
   if (typeof options.fetch === 'function') net = options.fetch;
   return {
-    state,
     // Point the engine at a root. The console uses mount(); a test uses this.
     setRoot(host) { root = host; return root; },
     // Paint the stage, the overlay and the chips from the state.
@@ -2137,7 +2194,10 @@ function attach(options = {}) {
     ghostModelBox, updateOverlayFacts, POCKET_LABELS, CLIP_BEFORE_S, CLIP_AFTER_S, bindVideo,
     stageVideo, playEvent, dropPerFrame, drawnPocket, cueGeometryVisible, manualBoxCount,
     modelBoxCount, paintOverlay, liveErrorCodes, liveRefusals, liveErrorText, liveErrorDetail,
-    snapshot, enrollPreview, enrollConfirm, selectStagePerson
+    snapshot, enrollPreview, enrollConfirm, selectStagePerson,
+    // The two verbs and the named readings. A caller paints one frame with
+    // frame(), arranges facts with scene(), and reads a fact group by name.
+    frame, scene, ...readings
   };
 }
 window.CornerPocketReview = {

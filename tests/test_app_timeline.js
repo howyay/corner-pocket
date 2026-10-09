@@ -332,32 +332,32 @@ test('persistent lifecycle preserves edits and uses mode leave guards', () => {
   const host = {id:'review-root', dataset:{}, querySelector: () => content, querySelectorAll: () => []};
   T.setRoot(host);
   assert.strictEqual(review.activate('events'), true);
-  T.state.dirty = true;
+  T.scene({dirty: true});
   sandbox.confirm = () => false;
   assert.strictEqual(review.canLeave(), false);
   assert.strictEqual(review.activate('balls'), false);
-  assert.strictEqual(T.state.mode, 'events');
+  assert.strictEqual(T.mode(), 'events');
   sandbox.confirm = () => true;
   assert.strictEqual(review.canLeave(), true);
-  assert.strictEqual(T.state.dirty, true);
+  assert.strictEqual(T.dirty(), true);
   review.setAppearance('zh', 'light');
   assert.strictEqual(content.innerHTML, 'unsaved form');
   assert.strictEqual(content.value, 'draft');
-  assert.strictEqual(T.state.dirty, true);
+  assert.strictEqual(T.dirty(), true);
   assert.strictEqual(host.lang, 'zh');
   assert.strictEqual(host.dataset.theme, 'light');
-  T.state.busy = true;
+  T.scene({busy: true});
   assert.strictEqual(review.canLeave(), false);
   assert.strictEqual(review.activate('timeline'), false);
   review.deactivate();
   assert.strictEqual(review.canLeave(), true, 'hidden review must not block other shell pages');
   T.onKeydown({target:{closest() { throw new Error('inactive keyboard handler ran'); }}});
-  T.state.busy = false;
+  T.scene({busy: false});
   assert.strictEqual(review.activate('events'), true);
-  assert.strictEqual(T.state.dirty, true);
+  assert.strictEqual(T.dirty(), true);
   assert.strictEqual(content.value, 'draft');
   assert.strictEqual(review.activate('invalid'), false);
-  T.state.dirty = false;
+  T.scene({dirty: false});
   review.deactivate();
 });
 
@@ -432,10 +432,10 @@ test('displayBoxes keeps both layers, each box with its own origin', () => {
 });
 
 test('timeline state defaults are safe', () => {
-  assert.strictEqual(T.state.detectors.balls, false, 'CPU-heavy balls detector is explicit opt-in');
-  assert.strictEqual(T.state.detectors.table, true);
-  assert.strictEqual(T.state.detectors.person, true);
-  assert.strictEqual(T.state.tool, 'select');
+  assert.strictEqual(T.detectors().balls, false, 'CPU-heavy balls detector is explicit opt-in');
+  assert.strictEqual(T.detectors().table, true);
+  assert.strictEqual(T.detectors().person, true);
+  assert.strictEqual(T.tool(), 'select');
 });
 
 test('app.js drives the backend request contract and reads the frame headers', () => {
@@ -471,8 +471,8 @@ test('app.js drives the backend request contract and reads the frame headers', (
                       '/api/balls/unlabeled_crops/meta', '/api/vod30/anchors?t=70']) {
     assert.ok(loaded.includes(path), `the mount asks for ${path}`);
   }
-  assert.strictEqual(seam.state.vmeta.duration, 1800, 'the video reply carries the frame span');
-  assert.strictEqual(seam.state.dataset, 'vod30', 'the dataset menu selects the replied dataset');
+  assert.strictEqual(seam.vmeta().duration, 1800, 'the video reply carries the frame span');
+  assert.strictEqual(seam.dataset(), 'vod30', 'the dataset menu selects the replied dataset');
 
   // One seek loads the frame, its result and its identity overlay in one turn.
   realm.clear();
@@ -485,10 +485,10 @@ test('app.js drives the backend request contract and reads the frame headers', (
   assert.strictEqual(realm.calls[0].init.signal.aborted, false, 'the frame request carries its own cancel signal');
 
   // The five reply headers name the readings the engine stores.
-  assert.strictEqual(seam.state.frame, 7, 'X-Frame-Index names the stored frame');
-  assert.strictEqual(seam.state.t, 0.28, 'X-Timestamp-Seconds names the stored time');
-  assert.strictEqual(seam.state.frameWidth, 1280, 'X-Frame-Width names the stored width');
-  assert.strictEqual(seam.state.frameHeight, 720, 'X-Frame-Height names the stored height');
+  assert.strictEqual(seam.frameIndex(), 7, 'X-Frame-Index names the stored frame');
+  assert.strictEqual(seam.frameSeconds(), 0.28, 'X-Timestamp-Seconds names the stored time');
+  assert.strictEqual(seam.frameSize().width, 1280, 'X-Frame-Width names the stored width');
+  assert.strictEqual(seam.frameSize().height, 720, 'X-Frame-Height names the stored height');
   assertSourceContract('annotator/app.js', 'X-Timestamp-Kind', 'the frame reply carries this header, but no seam reads the parsed value');
 
   // The overlay follows the settled frame, and it waits for the declared delay.
@@ -565,11 +565,11 @@ test('the engine drives its identity stores, its merge and its event snapshot', 
   const valuesOf = url => Object.values(bodyOf(url));
 
   // A dataset switch keeps no queued seek and no live detection.
-  seam.state.pendingSeek = 5;
-  seam.state.live.detections = [{cls: 'ball'}];
+  seam.scene({pendingSeek: 5});
+  seam.scene({"live.detections": [{cls: 'ball'}]});
   realm.run("window.CornerPocketReview.setDataset('vod30');");
-  assert.ok(!seam.state.pendingSeek, 'a dataset switch queues no seek for the old frame');
-  assert.strictEqual(seam.state.live.detections, null, 'live detections never survive a dataset switch');
+  assert.ok(!seam.pendingSeek(), 'a dataset switch queues no seek for the old frame');
+  assert.strictEqual(seam.live().detections, null, 'live detections never survive a dataset switch');
 
   // A merge posts the pair, moves the pick to the survivor, and drops the frame cache.
   pick(7);
@@ -578,8 +578,8 @@ test('the engine drives its identity stores, its merge and its event snapshot', 
   assert.ok(posts('/api/identity/link').length === 1, 'a merge posts to /api/identity/link');
   assert.deepStrictEqual(bodyOf('/api/identity/link'), {track_id: 1, cluster_id: 13},
     'the merge carries the track and the target cluster');
-  assert.strictEqual(seam.state.sel.person.cluster_id, 13, 'the pick moves to the cluster that survived');
-  assert.strictEqual(seam.state.sel.person.player_id, null, 'and the survivor starts unbound');
+  assert.strictEqual(seam.selection().person.cluster_id, 13, 'the pick moves to the cluster that survived');
+  assert.strictEqual(seam.selection().person.player_id, null, 'and the survivor starts unbound');
   assert.ok(realm.paths().includes('/api/identity/frame?dataset=vod30&frame=0'),
     'the merge drops the cached frame record, so the frame reads it again');
 
@@ -596,12 +596,12 @@ test('the engine drives its identity stores, its merge and its event snapshot', 
   realm.clear();
   realm.run('window.CornerPocketReview.clearIdentity(null);');
   assert.deepStrictEqual(bodyOf('/api/identity/unbind'), {cluster_id: 7}, 'Clear unbinds through /api/identity/unbind');
-  assert.strictEqual(seam.state.receipts[0].text, 'cluster 7 unbound', 'and the receipt names the cluster');
+  assert.strictEqual(seam.receipts()[0].text, 'cluster 7 unbound', 'and the receipt names the cluster');
   pick(7);
   realm.clear();
   realm.run('window.CornerPocketReview.clearIdentity(null);');
   assert.deepStrictEqual(realm.paths(), [], 'an unbound track sends no unbind request');
-  assert.strictEqual(seam.state.notice.error, true, 'and the console says why instead');
+  assert.strictEqual(seam.notice().error, true, 'and the console says why instead');
 
   // One seeds writer carries a guest name, a legacy role and a clear.
   realm.clear();
@@ -636,13 +636,13 @@ test('the engine drives its identity stores, its merge and its event snapshot', 
   assert.ok('tier' in item && 'geometry_check' in item, 'the snapshot exposes the tier and the geometry check');
   assert.deepStrictEqual({...item.geometry_check}, {ok: true}, 'the geometry check arrives as stored');
   assert.deepStrictEqual({...item.provenance}, {source: 'auto', model: 'm1'}, 'the provenance arrives as stored');
-  assert.notStrictEqual(item.provenance, seam.state.events[0].provenance,
+  assert.notStrictEqual(item.provenance, seam.events()[0].provenance,
     'and it is a copy, so a rail edit never rewrites the store');
 
   // The completion line claims no storage, and 中 renders the same sentence.
   realm.run('window.CornerPocketReview.runInference(null);');
   realm.flush(1500);
-  assert.strictEqual(seam.state.inferStatus, 'Inference completed for frame 0 (not stored).',
+  assert.strictEqual(seam.inferStatus(), 'Inference completed for frame 0 (not stored).',
     'the completion line says the result was not stored');
   seam.setRoot({id: 'review-root', lang: 'zh'});
   assert.strictEqual(seam.text('Inference completed for frame 0 (not stored).'), '帧 0 推理已完成（未存储）。',
@@ -674,13 +674,13 @@ test('form and video targets never double-consume the stage keys', () => {
   T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
   assert.strictEqual(review.activate('timeline'), true);
   assertSourceContract('annotator/app.js', "closest('input,textarea,select,button,video,[contenteditable=\"true\"]')", 'video is in the early-return selector list');
-  T.state.vmeta = {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080};
-  const before = T.state.frame;
+  T.scene({vmeta: {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080}});
+  const before = T.frameIndex();
   T.onKeydown({key:'ArrowRight', target:{closest: selector => selector.includes('video') ? {} : null}});
-  assert.strictEqual(T.state.frame, before, 'a focused video keeps its own arrow keys');
+  assert.strictEqual(T.frameIndex(), before, 'a focused video keeps its own arrow keys');
   T.onKeydown({key:'ArrowRight', target:{closest: selector => selector.includes('input') ? {} : null}});
-  assert.strictEqual(T.state.frame, before, 'a form field keeps its own arrow keys');
-  T.state.vmeta = null; T.state.dirty = false;
+  assert.strictEqual(T.frameIndex(), before, 'a form field keeps its own arrow keys');
+  T.scene({vmeta: null, dirty: false});
   review.deactivate();
 });
 
@@ -748,21 +748,21 @@ test('F3: with a box selected the arrows nudge it both ways (Shift = 10 px); wit
   const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   T.setRoot({lang:'en', dataset:{}, querySelector: s => s === '#t-overlay' ? svg : s === '#stage-note' ? note : null, querySelectorAll: () => []});
-  T.state.vmeta = {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080};
-  T.state.frameWidth = 1920; T.state.frameHeight = 1080;
-  T.state.boxes = [{label:'ball', bbox:[100, 100, 140, 140], source:'manual'}];
-  T.state.sel.kind = 'box'; T.state.sel.box = 0;
-  const frame = T.state.frame;
+  T.scene({vmeta: {dataset:'vod30', fps:25, frame_count:45000, duration:1800, width:1920, height:1080}});
+  T.scene({frameWidth: 1920, frameHeight: 1080});
+  T.scene({boxes: [{label:'ball', bbox:[100, 100, 140, 140], source:'manual'}]});
+  T.scene({"sel.kind": 'box', "sel.box": 0});
+  const frame = T.frameIndex();
   const key = (k, shift = false) => T.onKeydown({key:k, shiftKey:shift, preventDefault() {}, target:{closest: () => null}});
   key('ArrowRight');
-  assert.deepStrictEqual([...T.state.boxes[0].bbox], [101, 100, 141, 140], '→ moves the box 1 px right');
+  assert.deepStrictEqual([...T.boxes()[0].bbox], [101, 100, 141, 140], '→ moves the box 1 px right');
   key('ArrowLeft', true);
-  assert.deepStrictEqual([...T.state.boxes[0].bbox], [91, 100, 131, 140], 'Shift+← moves it 10 px left');
+  assert.deepStrictEqual([...T.boxes()[0].bbox], [91, 100, 131, 140], 'Shift+← moves it 10 px left');
   key('ArrowDown', true);
-  assert.deepStrictEqual([...T.state.boxes[0].bbox], [91, 110, 131, 150], 'Shift+↓ moves it 10 px down');
-  assert.strictEqual(T.state.frame, frame, 'and the frame never steps while a box is selected');
-  T.state.sel.kind = 'none'; T.state.sel.box = -1; T.state.boxes = [];
-  T.state.vmeta = null; T.state.dirty = false;
+  assert.deepStrictEqual([...T.boxes()[0].bbox], [91, 110, 131, 150], 'Shift+↓ moves it 10 px down');
+  assert.strictEqual(T.frameIndex(), frame, 'and the frame never steps while a box is selected');
+  T.scene({"sel.kind": 'none', "sel.box": -1, boxes: []});
+  T.scene({vmeta: null, dirty: false});
   review.deactivate();
 });
 
@@ -836,9 +836,14 @@ test('editor translation preserves dirty values, focus, selection and pending sa
   sandbox.MutationObserver = class { constructor(callback) { onMutation = callback; } observe() {} };
   sandbox.fetch = () => { requests++; throw new Error('language switch must not fetch'); };
   const host = {lang:'en', dataset:{}, querySelector: () => elementStub(), querySelectorAll: selector => selector.includes('[data-i18n]') ? [] : selector.includes('[placeholder]') ? [note] : selector.includes('[aria-label]') ? [] : [button, option]};
-  T.setRoot(host); T.state.dirty = true; T.state.busy = true; T.state.sel = 2;
+  // Every fact the engine publishes: a language switch must move none of them.
+  const published = () => JSON.stringify([T.mode(), T.dirty(), T.busy(), T.dataset(), T.detectors(), T.tool(), T.vmeta(),
+    T.frameIndex(), T.frameSize(), T.frameSeconds(), T.pendingSeek(), T.inferStatus(), T.boxes(), T.polygon(),
+    T.frameResult(), T.unified(), T.events(), T.annotations(), T.selection(), T.playback(), T.overlay(), T.drawn(),
+    T.cloth(), T.notice(), T.receipts(), T.source(), T.live(), T.shotUrl(), T.verdictDraft(), T.counts()]);
+  T.setRoot(host); T.scene({dirty: true, busy: true, sel: 2});
   sandbox.document.activeElement = note;
-  const before = JSON.stringify(T.state);
+  const before = published();
   sandbox.window.CornerPocketReview.setAppearance('zh', 'light');
   assert.strictEqual(requests, 0);
   assert.strictEqual(caption.nodeValue, '帧加载失败');
@@ -847,7 +852,7 @@ test('editor translation preserves dirty values, focus, selection and pending sa
   assert.strictEqual(note.value, 'Save review — my raw note');
   assert.strictEqual(note.selectionStart, 4); assert.strictEqual(note.selectionEnd, 9);
   assert.strictEqual(sandbox.document.activeElement, note);
-  assert.strictEqual(button.disabled, true); assert.strictEqual(JSON.stringify(T.state), before);
+  assert.strictEqual(button.disabled, true); assert.strictEqual(published(), before);
   host.lang = 'en'; T.translateEditor();
   assert.strictEqual(caption.nodeValue, 'Frame load failed');
   assert.strictEqual(note.placeholder, 'What does the source actually show?');
@@ -860,7 +865,7 @@ test('editor translation preserves dirty values, focus, selection and pending sa
   // The facts line is composed by the vision-stage adapter from state.drawn, so the
   // engine only has to record what the painter drew.
   T.updateOverlayFacts('manual corrections');
-  assert.strictEqual(T.state.drawn.source, 'manual corrections');
+  assert.strictEqual(T.drawn().source, 'manual corrections');
   assert.strictEqual(T.text('RAW DECODED FRAME · vod30 · frame 100 · nominal 4.000s (nominal_cfr) · OVERLAYS: manual corrections'), '原始解码帧 · vod30 · 帧 100 · 名义时间 4.000s (nominal_cfr) · 叠加层：人工修正');
   host.lang = 'zh';
   // The person-identity copy moved to the adapter when the players sub-tab became
@@ -868,7 +873,7 @@ test('editor translation preserves dirty values, focus, selection and pending sa
   assert.strictEqual(T.text('Status: failed — MODEL_PATH=/tmp/a'), '状态：失败 — MODEL_PATH=/tmp/a');
   assert.strictEqual(T.text('RAW DECODED FRAME · vod30 · frame 100 · nominal 4.000s (nominal_cfr) · OVERLAYS: manual corrections'), '原始解码帧 · vod30 · 帧 100 · 名义时间 4.000s (nominal_cfr) · 叠加层：人工修正');
   assert.strictEqual(T.text('Inference running for frame 100: SAM3_CPU…'), '正在对帧 100 运行推理：SAM3_CPU…');
-  T.state.dirty = false; T.state.busy = false;
+  T.scene({dirty: false, busy: false});
 });
 
 test('browser regression: translated options keep submitted values, stage copy keeps parity', () => {
@@ -948,20 +953,20 @@ test('the verdict keys act on the selected cue only', () => {
   const review = sandbox.window.CornerPocketReview;
   T.setRoot({id:'review-root', dataset:{}, querySelector: () => elementStub(), querySelectorAll: () => []});
   assert.strictEqual(review.activate('timeline'), true);
-  T.state.events = [{id: 29, type: 'pot', t: 8100}, {id: 30, type: 'shot', t: 9000}];
-  T.state.annotations = {};
-  T.state.verdictDraft = null;
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.scene({events: [{id: 29, type: 'pot', t: 8100}, {id: 30, type: 'shot', t: 9000}]});
+  T.scene({annotations: {}});
+  T.scene({verdictDraft: null});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
   const key = (k, opts = {}) => T.onKeydown({key: k, target:{closest: () => null}, preventDefault() {}, ...opts});
   key('v');
-  assert.strictEqual(T.state.verdictDraft, null, 'V must not draft a verdict with no cue selected');
-  assert.strictEqual(T.state.notice.text, 'Select a cue first.');
+  assert.strictEqual(T.verdictDraft(), null, 'V must not draft a verdict with no cue selected');
+  assert.strictEqual(T.notice().text, 'Select a cue first.');
   key('Enter');
-  assert.deepStrictEqual(T.state.annotations, {}, '⏎ must not save a verdict with no cue selected');
-  T.state.sel = {kind:'event', event: T.state.events[0], crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  assert.deepStrictEqual(T.annotations(), {}, '⏎ must not save a verdict with no cue selected');
+  T.scene({sel: {kind:'event', event: T.events()[0], crop:null, ball:null, person:null, track:null, anchor:0, box:-1}});
   key('v');
-  assert.strictEqual(T.state.verdictDraft, 'correct');
-  T.state.verdictDraft = null; T.state.dirty = false;
+  assert.strictEqual(T.verdictDraft(), 'correct');
+  T.scene({verdictDraft: null, dirty: false});
   review.deactivate();
 });
 
@@ -1031,12 +1036,12 @@ test('pocket labels are position words in both languages, never rail terms', () 
   assert.strictEqual(Object.keys(T.POCKET_LABELS).sort().join(','), 'foot-left,foot-right,head-left,head-right,left-side,right-side');
   assert.strictEqual(T.pocketText('brand-new-pocket'), 'brand-new-pocket', 'unknown tokens stay verbatim');
   // The engine publishes the display name beside the stored one.
-  T.state.events = [{id: 1, type: 'pot', t: 5.6, nearest_pocket: 'foot-right (124mm)'}];
-  T.state.annotations = {};
+  T.scene({events: [{id: 1, type: 'pot', t: 5.6, nearest_pocket: 'foot-right (124mm)'}]});
+  T.scene({annotations: {}});
   const snap = sandbox.window.CornerPocketReview.snapshot();
   assert.strictEqual(snap.events.items[0].nearest_pocket, 'foot-right (124mm)');
   assert.strictEqual(snap.events.items[0].nearest_pocket_text, 'bottom-right (124mm)');
-  T.state.events = [];
+  T.scene({events: []});
 });
 
 test('the automatic cloth quad is validated against the dataset reference', () => {
@@ -1087,24 +1092,22 @@ test('a saved correction is drawn only for the frame it belongs to', () => {
   // The stage drops a foreign correction from state, so nothing downstream can
   // paint it or count it as this frame's manual geometry.
   T.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
-  T.state.dataset = 'vod30'; T.state.frame = 2101; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
-  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[5,5,20,20]}], table_polygon:null}, correction:{...good, frame_index:2100, boxes:[{label:'person', bbox:[9,9,99,99]}]}};
-  T.applyFrameResult();
-  assert.strictEqual(T.state.fresult.correction, null);
+  T.scene({dataset: 'vod30', frame: 2101, frameWidth: 1280, frameHeight: 720});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
+  T.frame({inference:{boxes:[{label:'ball', bbox:[5,5,20,20]}], table_polygon:null}, correction:{...good, frame_index:2100, boxes:[{label:'person', bbox:[9,9,99,99]}]}});
+  assert.strictEqual(T.frameResult().correction, null);
   // The foreign correction was dropped, so what is left is the model's own box:
   // the surviving layer's provenance is the inference's, not the correction's.
-  same(T.state.boxes, [{label:'ball', bbox:[5,5,20,20], origin:'auto', edited:false}]);
-  assert.strictEqual(T.state.polygon, null);
-  assert.strictEqual(T.state.cloth.refusal.ok, false);
-  assert.strictEqual(T.state.cloth.refusal.owner, 'vod30 frame 2100 @ 1280×720');
+  same(T.boxes(), [{label:'ball', bbox:[5,5,20,20], origin:'auto', edited:false}]);
+  assert.strictEqual(T.polygon(), null);
+  assert.strictEqual(T.cloth().refusal.ok, false);
+  assert.strictEqual(T.cloth().refusal.owner, 'vod30 frame 2100 @ 1280×720');
   // The same correction on its own frame is kept and counted as manual.
-  T.state.fresult = {inference:null, correction:{...good, boxes:[{label:'person', bbox:[9,9,99,99]}]}};
-  T.applyFrameResult();
-  assert.strictEqual(T.state.cloth.refusal, null);
-  same(T.state.boxes, [{label:'person', bbox:[9,9,99,99], origin:'manual', edited:false}]);
-  same(T.state.polygon, [[0,0],[10,0],[10,10],[0,10]]);
-  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null;
+  T.frame({inference:null, correction:{...good, boxes:[{label:'person', bbox:[9,9,99,99]}]}});
+  assert.strictEqual(T.cloth().refusal, null);
+  same(T.boxes(), [{label:'person', bbox:[9,9,99,99], origin:'manual', edited:false}]);
+  same(T.polygon(), [[0,0],[10,0],[10,10],[0,10]]);
+  T.scene({fresult: null, boxes: [], polygon: null});
 });
 
 test('a model box stays the model\'s until the operator edits that box', () => {
@@ -1115,38 +1118,33 @@ test('a model box stays the model\'s until the operator edits that box', () => {
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
-  T.state.cloth.reference = null; T.state.unified = null; T.state.polygon = null;
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
-  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[10,10,30,30]}, {label:'ball', bbox:[40,40,60,60]}], table_polygon:null}, correction:null};
-  T.applyFrameResult();
-  T.state.dirty = true;                       // an unsaved edit somewhere on this frame
-  T.paintOverlay();
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({overlay: {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false}});
+  T.scene({"cloth.reference": null, unified: null, polygon: null});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
+  T.frame({inference:{boxes:[{label:'ball', bbox:[10,10,30,30]}, {label:'ball', bbox:[40,40,60,60]}], table_polygon:null}, correction:null},
+    {dirty: true});                             // an unsaved edit somewhere on this frame
   assert.strictEqual(svg.dataset.boxes, 'auto', 'a dirty frame does not make the model\'s boxes the operator\'s');
   assert.strictEqual((svg.innerHTML.match(/data-src="auto"/g) || []).length, 2, 'both boxes keep the model tag');
   assert.ok(svg.innerHTML.includes('>MODEL<') && !svg.innerHTML.includes('>YOURS<'), 'nothing reads YOURS yet');
-  assert.strictEqual(T.state.drawn.balls, 2);
-  assert.strictEqual(T.state.drawn.auto.balls, 2);
-  assert.strictEqual(T.state.drawn.balls - T.state.drawn.auto.balls, 0, 'the facts split agrees: nothing manual');
+  assert.strictEqual(T.drawn().balls, 2);
+  assert.strictEqual(T.drawn().auto.balls, 2);
+  assert.strictEqual(T.drawn().balls - T.drawn().auto.balls, 0, 'the facts split agrees: nothing manual');
   // The operator touches one box: that box is theirs, the other is still the model's.
-  T.markBoxEdited(T.state.boxes[0]);
-  T.paintOverlay();
+  T.frame(undefined, {edited: [0]});
   assert.strictEqual(svg.dataset.boxes, 'mixed', 'the frame carries both provenances');
   assert.strictEqual((svg.innerHTML.match(/data-src="manual"/g) || []).length, 1, 'one box is tagged YOURS');
   assert.strictEqual((svg.innerHTML.match(/data-src="auto"/g) || []).length, 1, 'the untouched one is still MODEL');
   assert.ok(svg.innerHTML.includes('>MODEL<') && svg.innerHTML.includes('>YOURS<'), 'the histogram shows both');
-  assert.strictEqual(T.state.drawn.balls - T.state.drawn.auto.balls, 1, 'the facts split counts exactly one manual box');
+  assert.strictEqual(T.drawn().balls - T.drawn().auto.balls, 1, 'the facts split counts exactly one manual box');
   // A stored correction is the operator's; a stored inference is the model's.
-  T.state.fresult = {inference:null, correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'ball', bbox:[10,10,30,30]}]}};
-  T.applyFrameResult(); T.paintOverlay();
-  assert.strictEqual(T.boxTagKind(T.state.boxes[0]), 'manual', 'a stored correction is the operator\'s');
-  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[10,10,30,30]}], table_polygon:null}, correction:null};
-  T.applyFrameResult(); T.paintOverlay();
-  assert.strictEqual(T.boxTagKind(T.state.boxes[0]), 'auto', 'a stored inference is the model\'s');
-  assert.strictEqual(T.state.boxes[0].edited, false, 'a reloaded box does not inherit this session\'s edit');
-  T.state.dirty = false; T.state.fresult = null; T.state.boxes = [];
+  T.frame({inference:null, correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'ball', bbox:[10,10,30,30]}]}});
+  assert.strictEqual(T.boxTagKind(T.boxes()[0]), 'manual', 'a stored correction is the operator\'s');
+  T.frame({inference:{boxes:[{label:'ball', bbox:[10,10,30,30]}], table_polygon:null}, correction:null});
+  assert.strictEqual(T.boxTagKind(T.boxes()[0]), 'auto', 'a stored inference is the model\'s');
+  assert.strictEqual(T.boxes()[0].edited, false, 'a reloaded box does not inherit this session\'s edit');
+  T.scene({dirty: false, fresult: null, boxes: []});
 });
 
 test('every drawn group is tagged by source, in both languages', () => {
@@ -1154,20 +1152,18 @@ test('every drawn group is tagged by source, in both languages', () => {
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.cloth.reference = null;
-  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true};
-  T.state.dirty = false;
-  T.state.fresult = {correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'person', bbox:[30,140,200,590]}, {label:'ball', bbox:[600,390,620,410]}], table_polygon:[[128,72],[1152,72],[1152,648],[128,648]]}};
-  T.applyFrameResult();
-  T.state.unified = {
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({"cloth.reference": null});
+  T.scene({overlay: {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true}});
+  T.scene({dirty: false});
+  T.scene({unified: {
     table_corners:[[190,176],[806,324],[1024,596],[384,566]],
     pockets:[{name:'head-left', cx:200, cy:180}, {name:'foot-right', cx:1000, cy:590}],
     persons:[{bbox:[30,140,200,590], track_id:12, cluster_id:68}],
     balls:[{cx:600, cy:400, r:12}], events:[{type:'pot', nearest_pocket:'foot-right (124mm)'}]
-  };
-  T.paintOverlay();
+  }});
+  T.frame({correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'person', bbox:[30,140,200,590]}, {label:'ball', bbox:[600,390,620,410]}], table_polygon:[[128,72],[1152,72],[1152,648],[128,648]]}});
   const html = svg.innerHTML;
   assert.ok(html.includes('data-src="model"') && html.includes('data-src="manual"'), 'both sources are tagged');
   assert.ok(html.includes('>MODEL<') && html.includes('>YOURS<'), html.slice(0, 200));
@@ -1179,7 +1175,7 @@ test('every drawn group is tagged by source, in both languages', () => {
   assert.strictEqual(note.hidden, false);
   // 中: the same tags and the same vocabulary, translated.
   host.lang = 'zh';
-  T.paintOverlay();
+  T.frame();
   assert.ok(svg.innerHTML.includes('>模型<') && svg.innerHTML.includes('>人工<'), 'tags are bilingual');
   assert.ok(svg.innerHTML.includes('未绑定 · 轨迹 12'), 'the chip is bilingual');
   assert.ok(note.textContent.includes('没有已保存的角点集'), note.textContent);
@@ -1190,20 +1186,20 @@ test('every drawn group is tagged by source, in both languages', () => {
   assert.strictEqual(T.personChip({cluster_id: 68, track_id:12}, 12), 'unbound · track 12');
   assert.strictEqual(T.personChip({player_id:'B', cluster_id: 70, track_id:3}, 3), 'B');
   // A checked quad paints the model outline and its pockets, still tagged.
-  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved calibration', width:1280, height:720};
-  T.state.unified.table_corners = [[455,308],[800,320],[1024,573],[450,564]];
-  T.paintOverlay();
+  T.scene({"cloth.reference": {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved calibration', width:1280, height:720}});
+  T.scene({"unified.table_corners": [[455,308],[800,320],[1024,573],[450,564]]});
+  T.frame();
   assert.ok(svg.innerHTML.includes('u-cloth'), 'a checked quad is drawn');
   assert.ok(svg.innerHTML.includes('u-pocket'), 'pockets follow a checked quad');
   assert.ok(svg.innerHTML.includes('bottom-right'), 'the pocket marker is renamed in place');
   assert.strictEqual(note.hidden, true, 'no reason to show once the quad is checked');
   // A rejected quad paints nothing and says why.
-  T.state.unified.table_corners = [[190,176],[806,324],[1024,596],[384,566]];
-  T.paintOverlay();
+  T.scene({"unified.table_corners": [[190,176],[806,324],[1024,596],[384,566]]});
+  T.frame();
   assert.ok(!svg.innerHTML.includes('u-cloth'), 'a rejected quad is not drawn');
   assert.ok(!svg.innerHTML.includes('u-pocket'), 'its pockets are not drawn');
   assert.ok(note.textContent.includes("off this dataset's saved corners (saved calibration, tolerance 40 px)"), note.textContent);
-  T.state.unified = null; T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.cloth.reference = null;
+  T.scene({unified: null, fresult: null, boxes: [], polygon: null, "cloth.reference": null});
 });
 
 test('rail-corner keys are display-only and zhCopy is keyed by the slot it labels', () => {
@@ -1223,31 +1219,31 @@ test('a foreign correction and a rejected quad are both stated on the stage', ()
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.unified = null; T.state.fresult = null; T.state.boxes = []; T.state.polygon = null;
-  T.state.cloth.reference = null;
-  T.state.cloth.refusal = {ok:false, owner:'vod30 frame 12 @ 1920×1080', expected:'vod30 frame 0 @ 1280×720', detail:'width 1920 ≠ 1280'};
-  T.paintOverlay();
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({unified: null, fresult: null, boxes: [], polygon: null});
+  T.scene({"cloth.reference": null});
+  T.scene({"cloth.refusal": {ok:false, owner:'vod30 frame 12 @ 1920×1080', expected:'vod30 frame 0 @ 1280×720', detail:'width 1920 ≠ 1280'}});
+  T.frame();
   assert.strictEqual(note.hidden, false);
   assert.strictEqual(note.textContent, 'Saved correction belongs to vod30 frame 12 @ 1920×1080, not this frame (vod30 frame 0 @ 1280×720) — not drawn.');
   host.lang = 'zh';
-  T.paintOverlay();
+  T.frame();
   assert.strictEqual(note.textContent, '已保存的修正属于 vod30 frame 12 @ 1920×1080，与当前帧（vod30 frame 0 @ 1280×720）不符——未绘制。');
   host.lang = 'en';
-  T.state.cloth.refusal = null;
+  T.scene({"cloth.refusal": null});
   // A quad that is off the dataset's saved corners: refused with the number.
-  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved anchors', width:1280, height:720};
-  T.state.unified = {table_corners:[[190,176],[806,324],[1024,596],[384,566]], pockets:[{name:'head-left', cx:200, cy:180}], persons:[], balls:[], events:[]};
-  T.paintOverlay();
-  assert.strictEqual(T.state.cloth.verdict.state, 'off');
+  T.scene({"cloth.reference": {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved anchors', width:1280, height:720}});
+  T.scene({unified: {table_corners:[[190,176],[806,324],[1024,596],[384,566]], pockets:[{name:'head-left', cx:200, cy:180}], persons:[], balls:[], events:[]}});
+  T.frame();
+  assert.strictEqual(T.cloth().verdict.state, 'off');
   assert.match(note.textContent, /^The model table quad is \d+ px off this dataset's saved corners \(saved anchors, tolerance 40 px\) — not drawn\.$/);
   // A quad that is not a table quad at all: refused before any distance check.
-  T.state.unified.table_corners = [[0,0],[2000,0],[2000,2000],[0,2000]];
-  T.paintOverlay();
+  T.scene({"unified.table_corners": [[0,0],[2000,0],[2000,2000],[0,2000]]});
+  T.frame();
   assert.strictEqual(note.textContent, 'The model table quad is not a valid table quad for this frame (outside frame) — not drawn.');
-  T.state.unified = null;
-  T.paintOverlay();
+  T.scene({unified: null});
+  T.frame();
   assert.strictEqual(note.hidden, true);
 });
 
@@ -1306,21 +1302,21 @@ test('a refused model quad falls back to the saved calibration for the pockets',
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.cloth.refusal = null;
-  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true};
-  T.state.cloth.reference = anchors;
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({fresult: null, boxes: [], polygon: null, "cloth.refusal": null});
+  T.scene({overlay: {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true}});
+  T.scene({"cloth.reference": anchors});
   // The per-frame model quad is 95 px off (measured on vod30 frame 0): refused,
   // but the pockets are drawn from the saved anchors instead of going dark.
-  T.state.unified = {table_corners:[[190,176],[806,324],[1024,596],[384,566]], pockets:[{name:'head-left', cx:200, cy:180}, {name:'foot-right', cx:1000, cy:590}], persons:[], balls:[], events:[{type:'pot', nearest_pocket:'foot-right (124mm)'}]};
-  T.paintOverlay();
+  T.scene({unified: {table_corners:[[190,176],[806,324],[1024,596],[384,566]], pockets:[{name:'head-left', cx:200, cy:180}, {name:'foot-right', cx:1000, cy:590}], persons:[], balls:[], events:[{type:'pot', nearest_pocket:'foot-right (124mm)'}]}});
+  T.frame();
   const html = svg.innerHTML;
-  assert.strictEqual(T.state.cloth.verdict.state, 'off');
-  assert.strictEqual(T.state.cloth.pockets.source, 'calibration');
-  assert.strictEqual(T.state.cloth.pockets.reference, 'saved anchors');
-  assert.strictEqual(T.state.drawn.pockets, 6);
-  assert.strictEqual(T.state.drawn.events, 1, 'the pot pulse follows the trusted pockets');
+  assert.strictEqual(T.cloth().verdict.state, 'off');
+  assert.strictEqual(T.cloth().pockets.source, 'calibration');
+  assert.strictEqual(T.cloth().pockets.reference, 'saved anchors');
+  assert.strictEqual(T.drawn().pockets, 6);
+  assert.strictEqual(T.drawn().events, 1, 'the pot pulse follows the trusted pockets');
   assert.ok(html.includes('data-src="calib"'), 'pocket markers are tagged as calibration-derived');
   assert.ok(!html.includes('data-src="model"'), 'no model tag for a quad that was refused (no cloth/ball/person drawn)');
   assert.ok(!/head-left|foot-right/.test(html), 'storage keys never reach the stage');
@@ -1332,22 +1328,22 @@ test('a refused model quad falls back to the saved calibration for the pockets',
   assert.strictEqual(Math.round(pulse), 1024);
   assert.ok(html.includes('>CALIB<'));
   host.lang = 'zh';
-  T.paintOverlay();
+  T.frame();
   assert.ok(svg.innerHTML.includes('>标定<') && svg.innerHTML.includes('右下'), 'the calibration tag and pocket names are bilingual');
   host.lang = 'en';
   // Live has no dataset calibration: nothing to borrow, nothing drawn.
-  T.state.source = {kind:'live', label:'twitch', channel:'x'};
-  T.paintOverlay();
-  assert.strictEqual(T.state.cloth.pockets.source, null);
+  T.scene({source: {kind:'live', label:'twitch', channel:'x'}});
+  T.frame();
+  assert.strictEqual(T.cloth().pockets.source, null);
   assert.ok(!svg.innerHTML.includes('u-pocket'));
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
   // A dataset without saved anchors keeps the held-back report.
-  T.state.cloth.reference = null;
-  T.paintOverlay();
-  assert.strictEqual(T.state.cloth.pockets.source, null);
+  T.scene({"cloth.reference": null});
+  T.frame();
+  assert.strictEqual(T.cloth().pockets.source, null);
   assert.ok(!svg.innerHTML.includes('u-pocket'), 'no trusted pocket geometry: nothing is drawn');
   assert.ok(note.textContent.includes('No saved corner set exists for this dataset'), note.textContent);
-  T.state.unified = null; T.state.cloth.reference = null;
+  T.scene({unified: null, "cloth.reference": null});
 });
 
 test('a cold frame can start a correction without a devtools call', () => {
@@ -1396,37 +1392,37 @@ test('a refused quad states its reason on the stage, in both languages', () => {
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null;
-  T.state.cloth.reference = null; T.state.cloth.refusal = null;
-  T.state.unified = {table_corners:null, pockets:[], persons:[], balls:[], events:[], table_quad:{
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({fresult: null, boxes: [], polygon: null});
+  T.scene({"cloth.reference": null, "cloth.refusal": null});
+  T.scene({unified: {table_corners:null, pockets:[], persons:[], balls:[], events:[], table_quad:{
     state:'naive_fallback', reason:'low_cloth_area', confidence:0.0, source:'naive', verified_sides:2,
     sides:[{side:0, state:'unverified', reason:'low_cloth_area'}, {side:1, state:'verified'},
            {side:2, state:'unverified', reason:'low_cloth_area'}, {side:3, state:'verified'}],
-    seed_file:'/tmp/out/pid_anchors_vod30.json'}};
-  T.paintOverlay();
-  assert.strictEqual(T.state.cloth.verdict.state, 'none', 'no quad was returned, so nothing is painted');
+    seed_file:'/tmp/out/pid_anchors_vod30.json'}}});
+  T.frame();
+  assert.strictEqual(T.cloth().verdict.state, 'none', 'no quad was returned, so nothing is painted');
   assert.strictEqual(note.hidden, false, 'a silent absence is what this fixes');
   assert.ok(note.textContent.includes('Table quad refused: the cloth is hidden'), note.textContent);
   assert.ok(note.textContent.includes('(2/4 sides unverified: 1, 3)'), note.textContent);
   assert.ok(!/_/.test(note.textContent), 'no raw snake_case code reaches the operator');
   host.lang = 'zh';
-  T.paintOverlay();
+  T.frame();
   assert.ok(note.textContent.includes('球桌四边形已拒绝：台面被遮挡'), note.textContent);
   assert.ok(note.textContent.includes('（未校验边 2/4：1, 3）'), note.textContent);
   host.lang = 'en';
   // An accepted quad keeps the plain stage: no refusal sentence, drift stays in the facts line.
   const anchors = [[532,323],[800,324],[997,569],[384,563]];
-  T.state.cloth.reference = {points:anchors, source:'saved anchors', width:1280, height:720};
-  T.state.unified.table_quad = {state:'refined', reason:null, confidence:0.8, source:'refined_saved_prior',
-                                verified_sides:4, sides:[], seed_file:'/tmp/out/pid_anchors_vod30.json'};
-  T.state.unified.table_corners = anchors;
-  T.paintOverlay();
+  T.scene({"cloth.reference": {points:anchors, source:'saved anchors', width:1280, height:720}});
+  T.scene({"unified.table_quad": {state:'refined', reason:null, confidence:0.8, source:'refined_saved_prior',
+                                verified_sides:4, sides:[], seed_file:'/tmp/out/pid_anchors_vod30.json'}});
+  T.scene({"unified.table_corners": anchors});
+  T.frame();
   assert.strictEqual(note.hidden, true);
   assert.strictEqual(T.quadReasonText('boundary_outside_band'), 'the rail edge sits outside the search band');
   assert.strictEqual(T.quadReasonText('a_new_code'), 'the detector reported "a new code"');
-  T.state.unified = null;
+  T.scene({unified: null});
 });
 
 test('the cloth count follows where the polygon came from', () => {
@@ -1436,28 +1432,26 @@ test('the cloth count follows where the polygon came from', () => {
   const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.unified = null; T.state.cloth.reference = null; T.state.boxes = []; T.state.dirty = false;
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({unified: null, "cloth.reference": null, boxes: [], dirty: false});
   const poly = [[100,100],[600,100],[600,400],[100,400]];
-  T.state.polygon = poly;
-  T.state.fresult = {correction:{table_polygon:poly, boxes:[]}, inference:null};
-  T.paintOverlay();
+  T.scene({polygon: poly});
+  T.frame({correction:{dataset:'vod30', frame_index:0, width:1280, height:720, table_polygon:poly, boxes:[]}, inference:null});
   assert.strictEqual(T.polygonSource(), 'manual');
-  assert.strictEqual(T.state.cloth.polygon, 'manual');
-  assert.strictEqual(T.state.drawn.cloth, 1, 'one cloth polygon is on the stage in total');
-  assert.strictEqual(T.state.drawn.auto.cloth, 0, 'a stored correction is not counted as auto');
-  assert.strictEqual(T.state.drawn.cloth - T.state.drawn.auto.cloth, 1, 'the facts split sees one manual polygon');
+  assert.strictEqual(T.cloth().polygon, 'manual');
+  assert.strictEqual(T.drawn().cloth, 1, 'one cloth polygon is on the stage in total');
+  assert.strictEqual(T.drawn().auto.cloth, 0, 'a stored correction is not counted as auto');
+  assert.strictEqual(T.drawn().cloth - T.drawn().auto.cloth, 1, 'the facts split sees one manual polygon');
   assert.ok(svg.innerHTML.includes('YOURS'), 'a stored correction is tagged as the operator\'s');
-  T.state.fresult = {correction:null, inference:{table_polygon:poly, boxes:[]}};
-  T.paintOverlay();
+  T.frame({correction:null, inference:{table_polygon:poly, boxes:[]}});
   assert.strictEqual(T.polygonSource(), 'inference');
-  assert.strictEqual(T.state.drawn.auto.cloth, 1, 'a stored inference polygon is model-derived');
-  assert.strictEqual(T.state.drawn.cloth - T.state.drawn.auto.cloth, 0, 'nothing manual to report');
+  assert.strictEqual(T.drawn().auto.cloth, 1, 'a stored inference polygon is model-derived');
+  assert.strictEqual(T.drawn().cloth - T.drawn().auto.cloth, 0, 'nothing manual to report');
   assert.ok(svg.innerHTML.includes('MODEL') && !svg.innerHTML.includes('YOURS'), 'tag matches the count');
-  T.state.dirty = true;
+  T.scene({dirty: true});
   assert.strictEqual(T.polygonSource(), 'manual', 'an edited inference polygon becomes the operator\'s');
-  T.state.dirty = false; T.state.polygon = null; T.state.fresult = null;
+  T.scene({dirty: false, polygon: null, fresult: null});
   assert.strictEqual(T.polygonSource(), null);
 });
 
@@ -1512,8 +1506,8 @@ test('the facts line states a refused quad reason in both languages', () => {
 });
 
 test('the stage is one video with the overlay on top of it', () => {
-  T.state.shotUrl = null;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.scene({shotUrl: null});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
   const html = T.stageHTML();
   assert.strictEqual((html.match(/<video/g) || []).length, 1, 'exactly one stage video surface');
   assert.ok(html.includes('id="t-video"') && html.includes('id="t-img"'), 'video and the frozen still share the stage');
@@ -1558,8 +1552,8 @@ test('the Vision tab renders one picture surface for the selected cue', () => {
   assert.ok(rail.includes('data-vs-action="select-event"') && rail.includes('tier-geometry'), 'the rail card keeps its pick action and tier badge');
   // The stage markup holds the playing video and the frozen still; renderStage
   // shows exactly one of them, so the tab never has two live pictures.
-  T.state.shotUrl = null;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
+  T.scene({shotUrl: null});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
   const stage = T.stageHTML();
   assert.strictEqual((stage.match(/<video/g) || []).length, 1, 'one stage video');
   assert.strictEqual((stage.match(/<img/g) || []).length, 1, 'one stage still');
@@ -1571,7 +1565,7 @@ test('the Vision tab renders one picture surface for the selected cue', () => {
 test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {
   assert.strictEqual(T.CLIP_BEFORE_S, 1.5, 'the same before the /api/clip endpoint defaults to');
   assert.strictEqual(T.CLIP_AFTER_S, 2.5, 'the same after the /api/clip endpoint defaults to');
-  T.state.vmeta = {dataset:'vod30', fps:30, frame_count:54206, duration:1806.8, width:1280, height:720};
+  T.scene({vmeta: {dataset:'vod30', fps:30, frame_count:54206, duration:1806.8, width:1280, height:720}});
   same(T.eventWindow({t: 100}), {from: 98.5, to: 102.5, before: 1.5, after: 2.5});
   same(T.eventWindow({t: 0.5}), {from: 0, to: 3, before: 1.5, after: 2.5}, 'never before the start of the video');
   assert.strictEqual(T.eventWindow({t: 1806}).to, 1806.8, 'never past the end of the video');
@@ -1583,70 +1577,68 @@ test('the stage video loops inside the event window it was given', () => {
                  load() {}, pause() { this.paused = true; }, play() { this.paused = false; this.played++; return Promise.resolve(); }};
   const host = {lang:'en', querySelector: selector => selector === '#t-video' ? video : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.vmeta = {dataset:'vod30', fps:30, frame_count:54206, duration:1806.8, width:1280, height:720};
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.events = [{id: 4, t: 100, type:'pot', last_mm:[1,2], last_px:[3,4], pocket_name:'foot-right', pocket_px:[5,6], px_source:'scan cloth quad', window_s:[99,103]}];
-  T.state.annotations = {};
+  T.scene({dataset: 'vod30', vmeta: {dataset:'vod30', fps:30, frame_count:54206, duration:1806.8, width:1280, height:720}});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({events: [{id: 4, t: 100, type:'pot', last_mm:[1,2], last_px:[3,4], pocket_name:'foot-right', pocket_px:[5,6], px_source:'scan cloth quad', window_s:[99,103]}]});
+  T.scene({annotations: {}});
   T.bindVideo(video);
   assert.strictEqual(T.stageVideo(), video, 'the real video element is the stage video');
   assert.strictEqual(T.playEvent(0), true);
   assert.strictEqual(video.attrs.src, '/media/vod30/video', 'the stage plays the dataset video, not a pre-rendered clip');
   assert.strictEqual(video.currentTime, 98.5, 'it seeks to t - before');
   assert.strictEqual(video.played, 1, 'and plays');
-  same([T.state.playback.from, T.state.playback.to], [98.5, 102.5]);
+  same([T.playback().from, T.playback().to], [98.5, 102.5]);
   // Past the end of the window it wraps to the start and counts the loop.
   video.currentTime = 102.6;
   video.ontimeupdate();
   assert.strictEqual(video.currentTime, 98.5, 'the window loops instead of running past it');
-  assert.strictEqual(T.state.playback.loops, 1);
+  assert.strictEqual(T.playback().loops, 1);
   video.currentTime = 100.2;
   video.ontimeupdate();
   assert.strictEqual(video.currentTime, 100.2, 'inside the window nothing is rewound');
-  assert.strictEqual(T.state.frame, 3006, 'the strip follows the playing picture');
+  assert.strictEqual(T.frameIndex(), 3006, 'the strip follows the playing picture');
   // Freezing leaves video mode: the picture pauses and the still path takes over.
   T.exitPlayback();
-  assert.strictEqual(T.state.playback.on, false);
+  assert.strictEqual(T.playback().on, false);
   assert.strictEqual(video.paused, true, 'freezing pauses the video');
-  T.state.vmeta = null; T.state.events = [];
+  T.scene({vmeta: null, events: []});
 });
 
 test('playing drops per-frame detections and never paints a stale mark', () => {
   const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.t = 5; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true};
-  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[480,397],[865,398]], source:'saved anchors', width:1280, height:720};
-  T.state.unified = {
+  T.scene({dataset: 'vod30', frame: 0, t: 5, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({overlay: {cloth:true, balls:true, persons:true, pockets:true, anchors:false, events:true}});
+  T.scene({"cloth.reference": {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[480,397],[865,398]], source:'saved anchors', width:1280, height:720}});
+  T.scene({unified: {
     table_corners:[[455,308],[800,320],[1024,573],[450,564]],
     pockets:[{name:'head-left', cx:459, cy:269}, {name:'foot-right', cx:1024, cy:573}],
     persons:[{bbox:[30,140,200,590], track_id:12}], balls:[{cx:600, cy:400, r:12}], events:[]
-  };
-  T.state.fresult = {inference:{boxes:[{label:'ball', bbox:[600,390,620,410]}], table_polygon:null}, correction:null};
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
-  T.applyFrameResult();
+  }});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
   T.exitPlayback();
-  T.paintOverlay();
+  T.frame({inference:{boxes:[{label:'ball', bbox:[600,390,620,410]}], table_polygon:null}, correction:null});
   assert.ok(svg.innerHTML.includes('u-ball') && svg.innerHTML.includes('u-person'), 'a frozen frame draws its detections');
   assert.ok(svg.innerHTML.includes('t-box'), 'and its editable boxes');
-  assert.strictEqual(T.state.drawn.perFrame, 1);
+  assert.strictEqual(T.drawn().perFrame, 1);
   // The video runs: the painter must clear them rather than leave them behind.
-  T.state.playback = {on:true, playing:true, event:null, from:0, to:0, loops:0, seek:NaN};
-  T.paintOverlay();
+  T.scene({playback: {on:true, playing:true, event:null, from:0, to:0, loops:0, seek:NaN}});
+  T.frame();
   assert.ok(!svg.innerHTML.includes('u-ball'), 'no stale ball marker while the video plays');
   assert.ok(!svg.innerHTML.includes('u-person'), 'no stale person box while the video plays');
   assert.ok(!svg.innerHTML.includes('t-box'), 'no stale editable box while the video plays');
   assert.ok(svg.innerHTML.includes('u-cloth') && svg.innerHTML.includes('u-pocket'), 'the static layers stay drawn');
   assert.ok(svg.innerHTML.includes('>CALIB<'), 'and say they are calibration, not a detection');
-  assert.strictEqual(T.state.drawn.perFrame, 0);
+  assert.strictEqual(T.drawn().perFrame, 0);
   // Playback drops the state itself, so a later paint cannot resurrect it.
-  T.state.unified = {balls:[{cx:1, cy:1, r:9}]}; T.state.boxes = [{label:'ball', bbox:[1,1,9,9]}];
+  T.scene({unified: {balls:[{cx:1, cy:1, r:9}]}, boxes: [{label:'ball', bbox:[1,1,9,9]}]});
   T.dropPerFrame();
-  assert.strictEqual(T.state.unified, null);
-  assert.strictEqual(T.state.fresult, null);
-  assert.strictEqual(T.state.boxes.length, 0);
-  assert.strictEqual(T.state.dirty, false);
+  assert.strictEqual(T.unified(), null);
+  assert.strictEqual(T.frameResult(), null);
+  assert.strictEqual(T.boxes().length, 0);
+  assert.strictEqual(T.dirty(), false);
   T.exitPlayback();
 });
 
@@ -1654,17 +1646,17 @@ test('the selected cue draws its own projected geometry, or says it cannot', () 
   const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:true};
-  T.state.unified = null; T.state.fresult = null; T.state.boxes = [];
-  T.state.cloth.reference = {points:[[532,323],[800,324],[997,569],[384,563],[480,397],[865,398]], source:'saved anchors', width:1280, height:720};
-  T.state.playback = {on:true, playing:true, event:null, from:0, to:0, loops:0, seek:NaN};
+  T.scene({dataset: 'vod30', frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({overlay: {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:true}});
+  T.scene({unified: null, fresult: null, boxes: []});
+  T.scene({"cloth.reference": {points:[[532,323],[800,324],[997,569],[384,563],[480,397],[865,398]], source:'saved anchors', width:1280, height:720}});
+  T.scene({playback: {on:true, playing:true, event:null, from:0, to:0, loops:0, seek:NaN}});
   const pot = {id: 1, type:'pot', t: 5.6, color:'blue', last_mm:[1146.2,2547.9], last_px:[965.4,605.0],
                pocket_name:'foot-right', pocket_px:[1021.1,608.2], nearest_pocket:'foot-right (124mm)', px_source:'measured ball correspondences'};
-  T.state.sel = {kind:'event', event: pot, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
-  T.state.playback = {on:true, playing:true, event: pot, from:4.1, to:8.2, loops:0, seek:NaN};
-  T.paintOverlay();
+  T.scene({sel: {kind:'event', event: pot, crop:null, ball:null, person:null, track:null, anchor:0, box:-1}});
+  T.scene({playback: {on:true, playing:true, event: pot, from:4.1, to:8.2, loops:0, seek:NaN}});
+  T.frame();
   assert.ok(svg.innerHTML.includes('u-cue-ball') && svg.innerHTML.includes('u-cue-pocket'), 'the ball and its pocket are marked');
   assert.ok(svg.innerHTML.includes('u-cue-line'), 'and a line joins them');
   assert.ok(svg.innerHTML.includes('blue → bottom-right (124mm)'), 'labelled with the colour and the distance');
@@ -1674,31 +1666,31 @@ test('the selected cue draws its own projected geometry, or says it cannot', () 
   // A shot draws the direction, the displacement and the speed.
   const shot = {id: 2, type:'shot', t: 6.0, color:null, disp_mm:172, speed_m_s:2.6, speed_mm_s:2600,
                 from_px:[463.2,284.8], to_px:[600,400], px_source:'measured ball correspondences'};
-  T.state.sel = {kind:'event', event: shot, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
-  T.state.playback = {on:true, playing:true, event: shot, from:4.5, to:8.5, loops:0, seek:NaN};
-  T.paintOverlay();
+  T.scene({sel: {kind:'event', event: shot, crop:null, ball:null, person:null, track:null, anchor:0, box:-1}});
+  T.scene({playback: {on:true, playing:true, event: shot, from:4.5, to:8.5, loops:0, seek:NaN}});
+  T.frame();
   assert.ok(svg.innerHTML.includes('u-cue-head'), 'the shot arrow has a head');
   assert.ok(svg.innerHTML.includes('172 mm · 2600 mm/s'), 'shot labels carry both numbers');
   // A cue the scan has no colour for leaves it out instead of printing "unknown".
-  T.state.sel = {kind:'event', event: {...shot, color:'blue'}, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
+  T.scene({sel: {kind:'event', event: {...shot, color:'blue'}, crop:null, ball:null, person:null, track:null, anchor:0, box:-1}});
   assert.ok(T.paintCueGeometry({...shot, color:'blue'}).markup.includes('blue · 172 mm'), 'a known colour is named');
   // An event the dataset cannot project draws no geometry at all.
   const raw = {id: 3, type:'pot', t: 9.4, last_mm:[1287.7,2526.4], nearest_pocket:'foot-right (22mm)'};
   assert.strictEqual(T.cueGeometryVisible(raw), false);
   assert.strictEqual(T.paintCueGeometry(raw), null);
-  T.state.sel = {kind:'event', event: raw, crop:null, ball:null, person:null, track:null, anchor:0, box:-1};
-  T.state.playback = {on:true, playing:true, event: raw, from:7.9, to:11.9, loops:0, seek:NaN};
-  T.paintOverlay();
+  T.scene({sel: {kind:'event', event: raw, crop:null, ball:null, person:null, track:null, anchor:0, box:-1}});
+  T.scene({playback: {on:true, playing:true, event: raw, from:7.9, to:11.9, loops:0, seek:NaN}});
+  T.frame();
   assert.ok(!svg.innerHTML.includes('u-cue-ball') && !svg.innerHTML.includes('u-cue-line'), 'nothing is invented for it');
   T.exitPlayback();
 });
 
 test('the snapshot carries the event geometry and the playback window', () => {
   const review = sandbox.window.CornerPocketReview;
-  T.state.dataset = 'vod30';
-  T.state.events = [{id: 1, type:'pot', t: 5.6, nearest_pocket:'foot-right (124mm)', last_mm:[1146.2,2547.9],
-                     last_px:[965.4,605.0], pocket_name:'foot-right', pocket_px:[1021.1,608.2], px_source:'measured ball correspondences', color:'blue'}];
-  T.state.annotations = {};
+  T.scene({dataset: 'vod30'});
+  T.scene({events: [{id: 1, type:'pot', t: 5.6, nearest_pocket:'foot-right (124mm)', last_mm:[1146.2,2547.9],
+                     last_px:[965.4,605.0], pocket_name:'foot-right', pocket_px:[1021.1,608.2], px_source:'measured ball correspondences', color:'blue'}]});
+  T.scene({annotations: {}});
   T.exitPlayback();
   const snap = review.snapshot();
   const item = snap.events.items[0];
@@ -1708,13 +1700,13 @@ test('the snapshot carries the event geometry and the playback window', () => {
   assert.strictEqual(item.projectable, true);
   assert.strictEqual(item.nearest_pocket_text, 'bottom-right (124mm)', 'and the label stays a position word');
   assert.strictEqual(snap.playback.on, false);
-  T.state.playback = {on:true, playing:true, event:{id:1}, from:4.1, to:8.1, loops:2, seek:NaN};
+  T.scene({playback: {on:true, playing:true, event:{id:1}, from:4.1, to:8.1, loops:2, seek:NaN}});
   const playing = review.snapshot();
   assert.strictEqual(playing.playback.on, true);
   assert.strictEqual(playing.playback.loops, 2);
   assert.strictEqual(playing.playback.event, 1);
   assert.strictEqual(playing.frame.video, true);
-  T.exitPlayback(); T.state.events = [];
+  T.exitPlayback(); T.scene({events: []});
 });
 
 test('the cue card and the inspector show the numbers behind a detection gate', () => {
@@ -2073,18 +2065,18 @@ test('a fresh load of a stopped processor shows no failure box, only its history
   // Vision load then showed "Live start failed" from that session's leftover error.
   const review = sandbox.window.CornerPocketReview;
   const snapshotLive = () => visionSnapshot().live;
-  const before = {attempt: T.state.live.attempt, notice: {...T.state.notice}};
-  T.state.live.attempt = null; T.state.notice = {text:'', error:false};
+  const before = {attempt: T.live().attempt, notice: {...T.notice()}};
+  T.scene({"live.attempt": null, notice: {text:'', error:false}});
   // The exact ship14 payload: a stopped processor still carrying the dead session's error.
   review.applyLiveStatus({state:'stopped', error:'Live stream ended or read timed out; restart to reconnect', frames_skipped:0});
-  assert.strictEqual(T.state.live.attempt, null, 'a stopped processor\'s leftover error is not a start this page made');
-  assert.ok(!/Live start failed/.test(T.state.notice.text), 'no failure notice on a fresh load: ' + T.state.notice.text);
+  assert.strictEqual(T.live().attempt, null, 'a stopped processor\'s leftover error is not a start this page made');
+  assert.ok(!/Live start failed/.test(T.notice().text), 'no failure notice on a fresh load: ' + T.notice().text);
   const stale = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!stale.includes('vs-error-block') && !stale.includes('restart to reconnect'), 'and the panel claims no failure at all');
   review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0,
                           last_error:'Live stream ended or read timed out; restart to reconnect', last_error_at:1790506028.8});
-  assert.strictEqual(T.state.live.attempt, null, 'no start attempt is invented for this page');
-  assert.ok(!/Live start failed/.test(T.state.notice.text), 'and no failure notice: ' + T.state.notice.text);
+  assert.strictEqual(T.live().attempt, null, 'no start attempt is invented for this page');
+  assert.ok(!/Live start failed/.test(T.notice().text), 'and no failure notice: ' + T.notice().text);
   const panel = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!panel.includes('vs-error-block') && !panel.includes('Start attempt'), 'no red failure box on a fresh load');
   assert.ok(panel.includes('data-vs-last-live-error') && panel.includes('Last live session ended with an error at '),
@@ -2095,27 +2087,27 @@ test('a fresh load of a stopped processor shows no failure box, only its history
   // The same status while it is still in error is the current failure, stated as such.
   review.applyLiveStatus({state:'error', error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue',
                           frames_skipped:0, last_error:null, last_error_at:null});
-  assert.ok(T.state.live.attempt?.error.startsWith('Replay stalled'), 'a session in error is a failure now');
-  assert.ok(/Live start failed/.test(T.state.notice.text));
+  assert.ok(T.live().attempt?.error.startsWith('Replay stalled'), 'a session in error is a failure now');
+  assert.ok(/Live start failed/.test(T.notice().text));
   // Another tab (or the operator) stops that session: this page made no start, so the
   // box it only observed goes with it; the cause stays as the muted history line.
   review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0,
                           last_error:'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue', last_error_at:1790506028.8});
-  assert.strictEqual(T.state.live.attempt, null, 'an observed failure does not outlive its session');
-  assert.ok(!/Live start failed/.test(T.state.notice.text), 'nor does its notice: ' + T.state.notice.text);
+  assert.strictEqual(T.live().attempt, null, 'an observed failure does not outlive its session');
+  assert.ok(!/Live start failed/.test(T.notice().text), 'nor does its notice: ' + T.notice().text);
   const after = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!after.includes('vs-error-block') && after.includes('data-vs-last-live-error'), 'history line only');
   // This page's own refused start is different: it stays stated until a start succeeds.
   review.setLiveAttempt({source:'twitch:saved', error:'Select a saved canonical Twitch channel', at:1});
   review.applyLiveStatus({state:'error', error:'Select a saved canonical Twitch channel', frames_skipped:0});
   review.applyLiveStatus({state:'stopped', error:null, frames_skipped:0});
-  assert.strictEqual(T.state.live.attempt?.error, 'Select a saved canonical Twitch channel', 'a start this page made keeps its box');
+  assert.strictEqual(T.live().attempt?.error, 'Select a saved canonical Twitch channel', 'a start this page made keeps its box');
   // A clean idle processor: nothing at all.
   review.applyLiveStatus({state:'idle', error:null, frames_skipped:0, last_error:null});
-  T.state.live.attempt = null;
+  T.scene({"live.attempt": null});
   const idle = adapterSeam('en', ROSTER).source(visionSnapshot({live:{...snapshotLive(), ...review.snapshot().live}}));
   assert.ok(!idle.includes('vs-error-block') && !idle.includes('data-vs-last-live-error'), 'an idle processor with no history shows neither');
-  T.state.live.attempt = before.attempt; T.state.notice = before.notice; T.state.live.state = 'idle'; T.state.live.error = null; T.state.live.last_error = null;
+  T.scene({"live.attempt": before.attempt, notice: before.notice, "live.state": 'idle', "live.error": null, "live.last_error": null});
 });
 
 test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => {
@@ -2172,16 +2164,16 @@ test('a VOD replay is never called live on the stage chip, the freshness line, t
     // The engine's stage chip.
     const chip = {hidden:true, className:'', textContent:''};
     T.setRoot({lang, querySelector: selector => selector === '#stage-live' ? chip : null, querySelectorAll: () => []});
-    T.state.source = {kind:'live', label, channel:null};
-    Object.assign(T.state.live, {stale:false, frame_age_ms:240, source:replayLive.source, replay:replayLive.replay});
+    T.scene({source: {kind:'live', label, channel:null}});
+    T.scene({'live.stale': false, 'live.frame_age_ms': 240, 'live.source': replayLive.source, 'live.replay': replayLive.replay});
     T.paintLiveChip();
     assert.ok(!chip.hidden && chip.textContent && !chip.textContent.includes(liveWord), `${lang}: the stage chip of a replay is not live: "${chip.textContent}"`);
     assert.ok(!/\bon\b/.test(chip.className), `${lang}: nor styled as the live-on chip: ${chip.className}`);
-    Object.assign(T.state.live, {source:{kind:'twitch', source_id:'x', channel:'examplechannel'}, replay:null});
+    T.scene({'live.source': {kind:'twitch', source_id:'x', channel:'examplechannel'}, 'live.replay': null});
     T.paintLiveChip();
     assert.strictEqual(chip.textContent, `● ${lang === 'zh' ? '直播' : 'live'}`, `${lang}: a real channel keeps the live chip`);
-    Object.assign(T.state.live, {source:null, replay:null, stale:false, frame_age_ms:null});
-    T.state.source = {kind:'vod', label:'vod30', channel:null};
+    T.scene({'live.source': null, 'live.replay': null, 'live.stale': false, 'live.frame_age_ms': null});
+    T.scene({source: {kind:'vod', label:'vod30', channel:null}});
     // The adapter's chip-row freshness and the facts line.
     const snapshot = visionSnapshot({source:{kind:'live', label, channel:null}, live:replayLive,
       loading:{overlay:false, since:0}, drawn:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0, auto:{cloth:0, balls:0, persons:0, pockets:0, anchors:0, events:0}}});
@@ -2231,7 +2223,7 @@ test('the panel column shows a selection and nothing else (owner round 26 item 3
   assertSourceContract('annotator/vision-stage.js', 'const inColumn = selected && !picked;', 'and keeps the column for a selection it does not own');
   assertSourceContract('annotator/vision-stage.js', 'inspector.hidden = !inColumn;', 'and hides the panel column without one');
   assertSourceContract('annotator/vision-stage.js', 'tabs.hidden = !inColumn;', 'and the sheet tabs that open it');
-  assertSourceContract('annotator/vision-stage.js', "shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');", 'and tells the shell whether the column is used');
+  assertSourceContract('annotator/vision-stage.js', 'if (setShell) setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'and tells the shell, through the console, whether the column is used');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
   assertSourceContract('annotator/ops.css', /#ops-shell\[data-vs-panel="0"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\)\}/, 'the third column collapses when there is no panel');
   assertSourceContract('annotator/ops.css', /#ops-shell \[hidden\]/, 'and [hidden] outranks the panel display rules');
@@ -2297,7 +2289,7 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     // takes that stub as its network, so the engine writes through it.
     vm.runInContext(`globalThis.E = window.CornerPocketReview.attach({fetch: async () => ({ok:true, status:200, json: async () => (${JSON.stringify(answer)})})});
       E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
-      E.state.enroll = {status:'ready', name:'Ana', startedAt:0, error:null, payload:${JSON.stringify(ready.payload)}};
+      E.scene({enroll: {status:'ready', name:'Ana', startedAt:0, error:null, payload:${JSON.stringify(ready.payload)}}});
       E.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, context);
     return {engineSnap: vm.runInContext('E.snapshot()', context), confirmed: box.confirmed, confirmError: box.confirmError};
   };
@@ -2346,22 +2338,20 @@ test('two layers on one frame: model dashed, yours solid, and only yours are sav
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
-  T.state.cloth.reference = null; T.state.unified = null; T.state.polygon = null;
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({overlay: {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false}});
+  T.scene({"cloth.reference": null, unified: null, polygon: null});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
   // The reported frame: a stored correction (the operator's) and the model's own
   // inference, with one ball in both layers and one only the model saw.
-  T.state.fresult = {correction:{dataset:'vod30', frame_index:0, width:1280, height:720,
-                                 boxes:[{label:'ball', bbox:[100,100,120,120]}]},
-                     inference:{boxes:[{label:'ball', bbox:[101,101,121,121]}, {label:'ball', bbox:[400,300,420,320]}], table_polygon:null}};
-  T.state.dirty = false;
-  T.applyFrameResult();
-  assert.strictEqual(T.state.boxes.length, 3, 'both layers are in state.boxes');
+  T.frame({correction:{dataset:'vod30', frame_index:0, width:1280, height:720,
+                       boxes:[{label:'ball', bbox:[100,100,120,120]}]},
+           inference:{boxes:[{label:'ball', bbox:[101,101,121,121]}, {label:'ball', bbox:[400,300,420,320]}], table_polygon:null}},
+    {dirty: false});
+  assert.strictEqual(T.boxes().length, 3, 'both layers are in state.boxes');
   assert.strictEqual(T.manualBoxCount(), 1);
   assert.strictEqual(T.modelBoxCount(), 2);
-  T.paintOverlay();
   const html = svg.innerHTML;
   assert.ok(html.includes('data-origin="manual"') && html.includes('data-origin="auto"'), 'both origins are drawn');
   assert.ok(html.includes('>YOURS<') && html.includes('>MODEL<'), 'with their own tags');
@@ -2379,13 +2369,12 @@ test('two layers on one frame: model dashed, yours solid, and only yours are sav
   assert.ok(body.boxes.every(box => box.origin === undefined), 'and the payload carries no origin bookkeeping of its own');
   // Dragging a model box makes it the operator's, and the model's original stays as
   // a frozen ghost until the frame is reloaded.
-  const model = T.state.boxes[2];
+  const model = T.boxes()[2];
   T.ghostModelBox(model);
   model.bbox = [460, 300, 480, 320];
-  T.markBoxEdited(model);
-  T.paintOverlay();
+  T.frame(undefined, {edited: [model]});
   assert.strictEqual(model.origin, 'manual', 'the dragged box is the operator\u2019s');
-  const ghost = T.state.boxes.find(box => box.frozen);
+  const ghost = T.boxes().find(box => box.frozen);
   same(ghost.bbox, [400, 300, 420, 320]);
   assert.strictEqual(ghost.origin, 'auto');
   assert.ok(/data-ghost="1"/.test(svg.innerHTML), 'and it is drawn as a ghost');
@@ -2393,11 +2382,11 @@ test('two layers on one frame: model dashed, yours solid, and only yours are sav
   assert.strictEqual(after.boxes.length, 2, 'the edited model box is now included in the save payload');
   assert.ok(after.boxes.some(box => JSON.stringify(box.bbox) === JSON.stringify([460, 300, 480, 320])), 'at its new geometry');
   assert.ok(!after.boxes.some(box => JSON.stringify(box.bbox) === JSON.stringify([400, 300, 420, 320])), 'the ghost is never saved');
-  assert.strictEqual(T.state.boxes.filter(box => box.origin === 'auto' && !box.frozen).length, 1,
+  assert.strictEqual(T.boxes().filter(box => box.origin === 'auto' && !box.frozen).length, 1,
     'the paired model box stays the model\u2019s: a counterpart is never promoted to a decision');
   // The painter says the same thing the payload does.
   assert.ok(svg.innerHTML.includes('data-origin="auto"'), 'the model\u2019s layer is still on the stage after the edit');
-  T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
+  T.scene({fresult: null, boxes: [], dirty: false});
 });
 
 // Round 7, owner item 1: "for every human i still see two tracking boxes why?" --
@@ -2410,41 +2399,37 @@ test('round 7 / owner item 1: one human on the stage carries one rectangle, not 
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.overlay = {cloth:false, balls:false, persons:true, pockets:false, anchors:false, events:false};
-  T.state.cloth.reference = null; T.state.polygon = null; T.state.unified = null; T.state.dirty = false;
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({overlay: {cloth:false, balls:false, persons:true, pockets:false, anchors:false, events:false}});
+  T.scene({"cloth.reference": null, polygon: null, unified: null, dirty: false});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
   // The frame the pipeline answered: the track layer's own person, and the frame
   // inference's box for that very same human a pixel away, plus one ball.
-  T.state.unified = {persons:[{bbox:[500,200,600,500], track_id:4}], balls:[], events:[]};
-  T.state.fresult = {correction:null, inference:{table_polygon:null,
-    boxes:[{label:'person', bbox:[502,201,601,501]}, {label:'ball', bbox:[100,100,120,120]}]}};
-  T.applyFrameResult();
-  assert.strictEqual(T.state.boxes.length, 2, 'both layers are still in state.boxes');
-  T.paintOverlay();
+  T.scene({unified: {persons:[{bbox:[500,200,600,500], track_id:4}], balls:[], events:[]}});
+  T.frame({correction:null, inference:{table_polygon:null,
+    boxes:[{label:'person', bbox:[502,201,601,501]}, {label:'ball', bbox:[100,100,120,120]}]}});
+  assert.strictEqual(T.boxes().length, 2, 'both layers are still in state.boxes');
   const html = svg.innerHTML;
   assert.strictEqual((html.match(/class="u-person/g) || []).length, 1, 'the tracked person is framed once');
   assert.strictEqual((html.match(/class="t-box/g) || []).length, 1, 'the model person box over the same human is not drawn again: ' + html.slice(0, 200));
   const boxTitles = [...html.matchAll(/class="t-box[^"]*"[^>]*><title>([^<]*)<\/title>/g)].map(m => m[1]);
   assert.deepStrictEqual(boxTitles.length, 1, 'one editable rectangle for the frame: ' + JSON.stringify(boxTitles));
   assert.ok(/^ball/.test(boxTitles[0]), 'and it names the ball, never the person the track layer already framed: ' + JSON.stringify(boxTitles));
-  assert.strictEqual(T.state.drawn.persons, 1, 'and the facts line counts one person, not two');
+  assert.strictEqual(T.drawn().persons, 1, 'and the facts line counts one person, not two');
   assert.ok(/data-origin="auto"[^>]*class="t-box auto/.test(html) && html.includes('x="100"'), 'the ball is what is left of the editable layer');
   // The index survives the skip: selection, handles and delete address the ball at 1.
   assert.ok(html.includes('data-box="1"') && !html.includes('data-box="0"'), 'the skipped box leaves no hole in the indices');
-  T.state.sel = {kind:'box', box:1, crop:null, ball:null, person:null, track:null, anchor:0, event:null};
-  T.paintOverlay();
+  T.scene({sel: {kind:'box', box:1, crop:null, ball:null, person:null, track:null, anchor:0, event:null}});
+  T.frame();
   assert.ok(/data-box="1"[^>]*class="t-box auto selected"/.test(svg.innerHTML) || /class="t-box auto selected"/.test(svg.innerHTML),
     'and index 1 really is the ball the operator can still select: ' + svg.innerHTML.slice(0, 200));
   // A model person the track layer did not see is a disagreement: it still draws.
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
-  T.state.unified = {persons:[{bbox:[500,200,600,500], track_id:4}], balls:[], events:[]};
-  T.state.fresult = {correction:null, inference:{table_polygon:null,
-    boxes:[{label:'person', bbox:[502,201,601,501]}, {label:'person', bbox:[900,210,1000,520]}]}};
-  T.state.dirty = false;
-  T.applyFrameResult();
-  T.paintOverlay();
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
+  T.scene({unified: {persons:[{bbox:[500,200,600,500], track_id:4}], balls:[], events:[]}});
+  T.frame({correction:null, inference:{table_polygon:null,
+    boxes:[{label:'person', bbox:[502,201,601,501]}, {label:'person', bbox:[900,210,1000,520]}]}},
+    {dirty: false});
   const two = svg.innerHTML;
   assert.strictEqual((two.match(/class="u-person/g) || []).length, 1, 'still one tracked person');
   assert.strictEqual((two.match(/class="t-box/g) || []).length, 1, 'and the unmatched model person still draws');
@@ -2452,13 +2437,13 @@ test('round 7 / owner item 1: one human on the stage carries one rectangle, not 
   // Two rectangles are on the stage -- the tracked person and the model's unmatched
   // box -- and the facts line says so. Before the fix this frame reported three:
   // the matched model box was counted although it drew nothing.
-  assert.strictEqual(T.state.drawn.persons, 2, 'the matched pair counts once, the unmatched box counts as itself');
+  assert.strictEqual(T.drawn().persons, 2, 'the matched pair counts once, the unmatched box counts as itself');
   // The switch the operator has: persons off, and the model boxes are all they get.
-  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
-  T.paintOverlay();
+  T.scene({overlay: {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false}});
+  T.frame();
   assert.strictEqual((svg.innerHTML.match(/class="u-person/g) || []).length, 0, 'persons off draws no tracked rect');
   assert.strictEqual((svg.innerHTML.match(/class="t-box/g) || []).length, 2, 'and every model box draws then');
-  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.unified = null; T.state.dirty = false;
+  T.scene({fresult: null, boxes: [], polygon: null, unified: null, dirty: false});
 });
 
 // The painter and app.css must speak one vocabulary. The test above checks the
@@ -2491,21 +2476,20 @@ test('app.css styles the classes the painter emits: model dashed, yours solid, c
   const note = {hidden:true, textContent:'', dataset:{}, classList:{toggle() {}}};
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.state.overlay = {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false};
-  T.state.cloth.reference = null; T.state.unified = null; T.state.polygon = null;
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.scene({overlay: {cloth:false, balls:false, persons:false, pockets:false, anchors:false, events:false}});
+  T.scene({"cloth.reference": null, unified: null, polygon: null});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
   // One YOURS box with its model counterpart, one lone model box, and one model box
   // the operator drags away (it becomes YOURS and leaves a frozen ghost behind).
-  T.state.fresult = {correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'ball', bbox:[100,100,120,120]}]},
-                     inference:{boxes:[{label:'ball', bbox:[101,101,121,121]}, {label:'ball', bbox:[400,300,420,320]},
-                                       {label:'ball', bbox:[600,300,620,320]}], table_polygon:null}};
-  T.state.dirty = false;
-  T.applyFrameResult();
-  const dragged = T.state.boxes[3];
-  T.ghostModelBox(dragged); dragged.bbox = [660, 300, 680, 320]; T.markBoxEdited(dragged);
-  T.paintOverlay();
+  T.frame({correction:{dataset:'vod30', frame_index:0, width:1280, height:720, boxes:[{label:'ball', bbox:[100,100,120,120]}]},
+           inference:{boxes:[{label:'ball', bbox:[101,101,121,121]}, {label:'ball', bbox:[400,300,420,320]},
+                             {label:'ball', bbox:[600,300,620,320]}], table_polygon:null}},
+    {dirty: false});
+  const dragged = T.boxes()[3];
+  T.ghostModelBox(dragged); dragged.bbox = [660, 300, 680, 320];
+  T.frame(undefined, {edited: [dragged]});
   const html = svg.innerHTML;
   const groups = [...html.matchAll(/<g data-box="(\d+)" data-origin="(\w+)"( data-ghost="1")? class="([^"]+)"/g)]
     .map(([, index, origin, ghost, cls]) => ({index: Number(index), origin, ghost: !!ghost, classes: cls.split(/\s+/)}));
@@ -2527,7 +2511,7 @@ test('app.css styles the classes the painter emits: model dashed, yours solid, c
   assert.strictEqual(overlayRuleStyle(css, modelTag.classes, 'rect').stroke, 'var(--brass)',
     `a box's MODEL tag (class "${modelTag.classes.join(' ')}") has the brass stroke`);
   assert.strictEqual(overlayRuleStyle(css, yoursTag.classes, 'rect').stroke, 'var(--green)', 'and a YOURS tag the green one');
-  T.state.fresult = null; T.state.boxes = []; T.state.dirty = false;
+  T.scene({fresult: null, boxes: [], dirty: false});
 });
 
 test('a successful enrol confirm resolves true and re-reads the roster through the hook the shell mounted', () => {
@@ -2550,11 +2534,11 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
     globalThis.E = window.CornerPocketReview.attach({});`, context);
   const review = box.window.CornerPocketReview;
   review.mount(host, {reloadRoster: () => { box.rosterReads++; }});
-  vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
+  vm.runInContext(`E.scene({enroll: {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}}});
     window.CornerPocketReview.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, context);
   assert.strictEqual(box.confirmError, undefined, 'a successful confirm throws nothing');
   assert.strictEqual(box.confirmed, true, 'and resolves true');
-  assert.strictEqual(vm.runInContext('E.state.enroll.status', context), 'written');
+  assert.strictEqual(vm.runInContext('E.snapshot().enroll.status', context), 'written');
   assert.strictEqual(box.rosterReads, 1, 'the roster is re-read once, through the mounted hook');
   // A shell that mounts without hooks (the standalone review page) still confirms cleanly.
   const bare = {...box, rosterReads:0, confirmed:undefined, confirmError:undefined};
@@ -2565,7 +2549,7 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
       ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true})}) : new Promise(() => {});
     globalThis.E = window.CornerPocketReview.attach({});`, bareContext);
   bare.window.CornerPocketReview.mount({...host});
-  vm.runInContext(`E.state.enroll = {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}};
+  vm.runInContext(`E.scene({enroll: {status:'ready', name:'Nina', startedAt:0, error:null, payload:{ok:true, token:'tok', crops:[]}}});
     window.CornerPocketReview.enrollConfirm(null).then(value => { globalThis.confirmed = value; }, error => { globalThis.confirmError = String(error); });`, bareContext);
   assert.strictEqual(bare.confirmError, undefined, 'without a hook there is still no exception');
   assert.strictEqual(bare.confirmed, true);
@@ -2592,16 +2576,16 @@ test('a stage click on a person sends the enrol preview an integer cluster, or n
     };
     globalThis.E = window.CornerPocketReview.attach({});
     E.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
-    E.state.dataset = 'vod30'; E.state.frame = 0; E.state.unified = {persons:[]};`, context);
-  const click = dataset => vm.runInContext(`E.state.enroll = {status:'idle', payload:null, name:'', startedAt:0, error:null};
-    E.selectStagePerson(${JSON.stringify(dataset)}); E.enrollPreview(null); E.state.sel.person.cluster_id`, context);
+    E.scene({dataset: 'vod30', frame: 0, unified: {persons:[]}});`, context);
+  const click = dataset => vm.runInContext(`E.scene({enroll: {status:'idle', payload:null, name:'', startedAt:0, error:null}});
+    E.selectStagePerson(${JSON.stringify(dataset)}); E.enrollPreview(null); E.selection().person.cluster_id`, context);
   // A clustered person, exactly as the painter writes it.
   const clustered = click({person:'4', bbox:'796,197,928,418', cluster:'148', player:''});
   assert.strictEqual(clustered, 148, 'the selection holds the cluster as a number');
   const sent = vm.runInContext('bodies[bodies.length - 1]', context);
   assert.strictEqual(sent.cluster_id, 148, 'and the preview is sent the integer the server requires');
   assert.strictEqual(typeof sent.cluster_id, 'number');
-  assert.strictEqual(vm.runInContext('E.state.enroll.status', context), 'ready', 'so the preview is answered, not refused');
+  assert.strictEqual(vm.runInContext('E.snapshot().enroll.status', context), 'ready', 'so the preview is answered, not refused');
   // A person with no cluster keeps the no-cluster path: no cluster_id at all.
   const bare = click({person:'7', bbox:'10,20,110,220', cluster:'', player:''});
   assert.strictEqual(bare, null, 'no cluster stays null');
@@ -2609,7 +2593,7 @@ test('a stage click on a person sends the enrol preview an integer cluster, or n
   assert.ok(!('cluster_id' in sentBare), 'and the preview body carries no cluster_id: ' + JSON.stringify(sentBare));
   same(sentBare.bbox, [10, 20, 110, 220]);
   // A cluster the frame's identity row knows still wins when the click carries none.
-  vm.runInContext("E.state.unified = {persons:[{track_id:9, cluster_id:31, player_id:null}]}", context);
+  vm.runInContext("E.scene({unified: {persons:[{track_id:9, cluster_id:31, player_id:null}]}})", context);
   assert.strictEqual(click({person:'9', bbox:'1,2,3,4', cluster:'', player:''}), 31, 'the identity row fills an empty data-cluster');
 });
 
@@ -2622,31 +2606,29 @@ test('a live or replay frame is drawn with its own detections only, never the da
   const host = {lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : selector === '#stage-note' ? note : null, querySelectorAll: () => []};
   const snapshot = () => sandbox.window.CornerPocketReview.snapshot();
   T.setRoot(host);
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true};
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
-  T.state.playback = {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN};
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({overlay: {cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true}});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
+  T.scene({playback: {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN}});
   // vod30 frame 0 as the stage holds it: a stored inference (boxes + polygon), the
   // frame's unified detections, the dataset's saved anchors (calibration pockets).
   const anchors = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
-  T.state.fresult = {inference:{stored_inference:true, saved_at:'2026-09-16T11:07:48Z', table_polygon:[[128,72],[1152,72],[1152,648],[128,648]],
-                                boxes:[{label:'ball', bbox:[680,484,702,507], score:0.86}, {label:'person', bbox:[33,134,200,591], score:0.89}]}, correction:null};
-  T.state.dirty = false;
-  T.applyFrameResult();
-  T.state.cloth.reference = anchors;
-  T.state.anchors.loaded = true; T.state.anchors.pts = [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]];
+  T.scene({"cloth.reference": anchors});
+  T.scene({"anchors.loaded": true, "anchors.pts": [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]]});
   const frame0 = {table_corners:[[454,307],[799,319],[1023,573],[449,563]], pockets:[{name:'head-left', cx:455, cy:308}],
                   persons:[{bbox:[33,134,200,591], track_id:4, cluster_id:148}], balls:[{cx:691, cy:495, r:11}], events:[]};
-  T.state.unified = frame0;
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.paintOverlay();
+  T.scene({unified: frame0});
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.frame({inference:{stored_inference:true, saved_at:'2026-09-16T11:07:48Z', table_polygon:[[128,72],[1152,72],[1152,648],[128,648]],
+                      boxes:[{label:'ball', bbox:[680,484,702,507], score:0.86}, {label:'person', bbox:[33,134,200,591], score:0.89}]}, correction:null},
+    {dirty: false});
   const vodHtml = svg.innerHTML;
   assert.ok(vodHtml.includes('t-box') && vodHtml.includes('t-poly') && vodHtml.includes('u-person'), 'the dataset frame draws its own layers');
   // The replay frame arrives: its own detections are two persons and no polygon.
-  T.state.source = {kind:'live', label:'VOD replay 1000000011', channel:null};
-  T.state.live.detections = {boxes:[{label:'person', bbox:[500,200,600,500]}, {label:'person', bbox:[700,210,800,520]}], table_polygon:null};
-  T.state.unified = frame0;           // a unified answer for frame 0 that is still in state
-  T.paintOverlay();
+  T.scene({source: {kind:'live', label:'VOD replay 1000000011', channel:null}});
+  T.scene({"live.detections": {boxes:[{label:'person', bbox:[500,200,600,500]}, {label:'person', bbox:[700,210,800,520]}], table_polygon:null}});
+  T.scene({unified: frame0});           // a unified answer for frame 0 that is still in state
+  T.frame();
   const html = svg.innerHTML;
   assert.ok(!html.includes('t-box') && !html.includes('t-poly'), 'no stored-inference box or polygon over a live frame: ' + html.slice(0, 160));
   assert.ok(!html.includes('u-cloth') && !html.includes('u-pocket') && !html.includes('u-anchor') && !html.includes('u-ball'),
@@ -2654,7 +2636,7 @@ test('a live or replay frame is drawn with its own detections only, never the da
   assert.ok(!html.includes('data-cluster="148"'), 'no dataset-frame person');
   assert.strictEqual((html.match(/class="u-person/g) || []).length, 2, 'only the live frame\'s own two persons');
   assert.ok(html.includes('data-src="model"'), 'drawn with their own MODEL provenance');
-  const d = T.state.drawn;
+  const d = T.drawn();
   same([d.cloth, d.balls, d.persons, d.pockets, d.anchors, d.events], [0, 0, 2, 0, 0, 0]);
   const snap = snapshot();
   assert.strictEqual(snap.corrections.storedInference, false, 'the stored inference is not reported for a live frame');
@@ -2664,26 +2646,26 @@ test('a live or replay frame is drawn with its own detections only, never the da
   assert.ok(!/stored inference/.test(facts), 'the facts line never says stored inference over a live frame: ' + facts);
   assert.ok(/persons 2\b/.test(liveChips) && /cloth 0\b/.test(liveChips) && /balls 0\b/.test(liveChips), 'and counts only what is drawn: ' + liveChips);
   // No live detector on: nothing at all.
-  T.state.live.detections = null;
-  T.paintOverlay();
+  T.scene({"live.detections": null});
+  T.frame();
   assert.ok(!/<(g|polygon|rect|circle)\b/.test(svg.innerHTML), 'no detections, nothing drawn: ' + svg.innerHTML.slice(0, 120));
   // The operator stops the source: the stage goes back to the dataset frame it
   // held, and that frame's layers return untouched.
-  T.state.live.state = 'running';
+  T.scene({"live.state": 'running'});
   sandbox.window.CornerPocketReview.applyLiveStatus({state:'stopped', frames_skipped:0});
-  assert.strictEqual(T.state.source.kind, 'vod', 'a stop returns the stage to the dataset frame');
-  T.state.unified = frame0;           // the frame's unified answer, re-read after the stop
-  T.paintOverlay();
+  assert.strictEqual(T.source().kind, 'vod', 'a stop returns the stage to the dataset frame');
+  T.scene({unified: frame0});           // the frame's unified answer, re-read after the stop
+  T.frame();
   assert.strictEqual(svg.innerHTML, vodHtml, 'the dataset frame\'s layers come back exactly');
   assert.strictEqual(snapshot().corrections.storedInference, true);
   // A feed that stalls or ends is not a stop: its last frame stays, still live.
-  T.state.source = {kind:'live', label:'VOD replay 1000000011', channel:null};
-  T.state.live.state = 'running';
+  T.scene({source: {kind:'live', label:'VOD replay 1000000011', channel:null}});
+  T.scene({"live.state": 'running'});
   sandbox.window.CornerPocketReview.applyLiveStatus({state:'eos', frames_skipped:0});
-  assert.strictEqual(T.state.source.kind, 'live', 'end of stream keeps the last live frame on the stage');
-  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.live.state = 'idle';
-  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.unified = null; T.state.live.detections = null;
-  T.state.cloth.reference = null; T.state.anchors.loaded = false; T.state.anchors.pts = [];
+  assert.strictEqual(T.source().kind, 'live', 'end of stream keeps the last live frame on the stage');
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}, "live.state": 'idle'});
+  T.scene({fresult: null, boxes: [], polygon: null, unified: null, "live.detections": null});
+  T.scene({"cloth.reference": null, "anchors.loaded": false, "anchors.pts": []});
 });
 
 test('the saved-anchor pockets and anchor marks never land on a live picture, whatever the source flag says', () => {
@@ -2701,70 +2683,70 @@ test('the saved-anchor pockets and anchor marks never land on a live picture, wh
   const content = {dataset:{stage:'1'}, innerHTML:''};   // a mounted stage: renderStage() runs for real
   T.setRoot({lang:'en', dataset:{}, querySelector: selector => ({'#t-overlay': svg, '#stage-note': note, '#t-img': img, '#content': content})[selector] || null, querySelectorAll: () => []});
   const review = sandbox.window.CornerPocketReview;
-  T.state.dataset = 'vod30'; T.state.frame = 0; T.state.frameWidth = 1280; T.state.frameHeight = 720;
-  T.state.overlay = {cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true};
-  T.state.sel = {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1};
-  T.state.playback = {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN};
-  T.state.fresult = null; T.state.boxes = []; T.state.polygon = null; T.state.unified = null;
+  T.scene({dataset: 'vod30', frame: 0, frameWidth: 1280, frameHeight: 720});
+  T.scene({overlay: {cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true}});
+  T.scene({sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
+  T.scene({playback: {on:false, playing:false, event:null, from:0, to:0, loops:0, seek:NaN}});
+  T.scene({fresult: null, boxes: [], polygon: null, unified: null});
   // The dataset's saved-anchor document is loaded, and the anchors layer is on.
-  T.state.cloth.reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
-  T.state.anchors.loaded = true; T.state.anchors.pts = [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]];
+  T.scene({"cloth.reference": {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720}});
+  T.scene({"anchors.loaded": true, "anchors.pts": [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]]});
   const layers = () => ({pockets:(svg.innerHTML.match(/class="u-pocket"/g) || []).length, calib:(svg.innerHTML.match(/data-src="calib"/g) || []).length,
                          anchors:(svg.innerHTML.match(/class="u-anchor/g) || []).length, cloth:(svg.innerHTML.match(/class="u-cloth"/g) || []).length});
   // Frame 0 on the stage: its calibration pockets and anchor marks are its own.
-  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.shotUrl = 'blob:frame0'; img.src = 'blob:frame0';
-  T.paintOverlay();
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}, shotUrl: 'blob:frame0'}); img.src = 'blob:frame0';
+  T.frame();
   const frameHtml = svg.innerHTML;
   same(layers(), {pockets:6, calib:7, anchors:6, cloth:1});
   // Vision mounts while a session runs: the first live frame lands before the stage
   // has its picture element; the stage built after it shows that frame, not frame 0.
   const noStage = {lang:'en', dataset:{}, querySelector: () => null, querySelectorAll: () => []};
   T.setRoot(noStage);
-  T.state.live.state = 'running';
+  T.scene({"live.state": 'running'});
   review.ingestLiveFrame('blob:live-0', {seq:0, detections:{boxes:[], table_polygon:null}}, {label:'live', channel:null});
   assert.ok(T.stageHTML().includes('src="blob:live-0"'), 'a stage built after the first live frame shows that frame');
   T.setRoot({lang:'en', dataset:{}, querySelector: selector => ({'#t-overlay': svg, '#stage-note': note, '#t-img': img, '#content': content})[selector] || null, querySelectorAll: () => []});
-  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.live.state = 'idle'; T.state.live.shown = null;
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}, "live.state": 'idle', "live.shown": null});
   // The live feed runs; its detector measured a quad and it was refused (as on 09-26).
-  T.state.live.state = 'running';
+  T.scene({"live.state": 'running'});
   review.ingestLiveFrame('blob:live-1', {seq:1, detections:{boxes:[{label:'person', bbox:[500,200,600,500]}], table_polygon:[[0,0],[10,0],[10,10],[0,10]]}}, {label:'● live · twitch examplechannel', channel:'examplechannel'});
   same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'the live frame: no saved-anchor pockets, marks or quad');
-  assert.strictEqual(T.state.drawn.pockets, 0); assert.strictEqual(T.state.drawn.anchors, 0);
+  assert.strictEqual(T.drawn().pockets, 0); assert.strictEqual(T.drawn().anchors, 0);
   // (1) The picture is live but the source flag says 'vod' (mount order; a dataset
   // chip clicked while the feed runs; Stop after a live error): still nothing.
-  T.state.source = {kind:'vod', label:'vod30', channel:null};
-  T.paintOverlay();
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}});
+  T.frame();
   same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'a live picture under a vod source flag gets no dataset layers');
-  assert.strictEqual(T.state.drawn.pockets, 0, 'and the facts line counts none');
-  assert.strictEqual(T.state.drawn.anchors, 0);
-  T.state.source = {kind:'live', label:'● live · twitch examplechannel', channel:'examplechannel'};
+  assert.strictEqual(T.drawn().pockets, 0, 'and the facts line counts none');
+  assert.strictEqual(T.drawn().anchors, 0);
+  T.scene({source: {kind:'live', label:'● live · twitch examplechannel', channel:'examplechannel'}});
   // A re-render while live (a language switch, a rebuilt stage markup) keeps the live
   // picture: the dataset still never slips under the live overlay.
-  T.state.source = {kind:'live', label:'● live · twitch examplechannel', channel:'examplechannel'};
-  const vmeta = T.state.vmeta; T.state.vmeta = vmeta || {width:1280, height:720, fps:30, duration:1800, frame_count:54000};
+  T.scene({source: {kind:'live', label:'● live · twitch examplechannel', channel:'examplechannel'}});
+  const vmeta = T.vmeta(); T.scene({vmeta: vmeta || {width:1280, height:720, fps:30, duration:1800, frame_count:54000}});
   review.setAppearance('zh', 'dark');           // a language switch re-renders the stage
   assert.strictEqual(img.src, 'blob:live-1', 'a re-render keeps the live picture');
   review.setAppearance('en', 'dark');
-  T.state.vmeta = vmeta;
+  T.scene({vmeta: vmeta});
   assert.ok(T.stageHTML().includes('src="blob:live-1"'), 'and so does a rebuilt stage');
   same(layers(), {pockets:0, calib:0, anchors:0, cloth:0});
   // (2) The feed dies (state error, the last live picture stays), then the operator stops.
   review.applyLiveStatus({state:'error', error:'Live stream ended or read timed out; restart to reconnect', frames_skipped:0});
-  T.paintOverlay();
+  T.frame();
   same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'a dead feed keeps its last live picture without dataset layers');
   review.applyLiveStatus({state:'stopped', frames_skipped:0});
-  assert.strictEqual(T.state.source.kind, 'vod', 'a stop after an error hands the stage back as well');
+  assert.strictEqual(T.source().kind, 'vod', 'a stop after an error hands the stage back as well');
   assert.strictEqual(img.src, 'blob:frame0', 'with the dataset picture on it');
-  T.paintOverlay();
+  T.frame();
   assert.strictEqual(svg.innerHTML, frameHtml, 'frame 0\'s layers come back byte-identical');
   // (3) A live measured quad that passes its check: its pockets are the model's own.
-  T.state.live.state = 'running';
+  T.scene({"live.state": 'running'});
   review.ingestLiveFrame('blob:live-2', {seq:2, detections:{boxes:[], table_polygon:[[455,308],[799,320],[1023,573],[450,563]], pockets:[{name:'head-left', cx:455, cy:308}]}}, {label:'live', channel:'examplechannel'});
   assert.ok(!svg.innerHTML.includes('data-src="calib"'), 'never a CALIB tag on a live frame');
   assert.strictEqual((svg.innerHTML.match(/class="u-anchor/g) || []).length, 0, 'never a saved anchor mark on a live frame');
   review.applyLiveStatus({state:'stopped', frames_skipped:0});
-  T.state.source = {kind:'vod', label:'vod30', channel:null}; T.state.live.state = 'idle'; T.state.live.detections = null; T.state.shotUrl = null;
-  T.state.cloth.reference = null; T.state.anchors.loaded = false; T.state.anchors.pts = [];
+  T.scene({source: {kind:'vod', label:'vod30', channel:null}, "live.state": 'idle', "live.detections": null, shotUrl: null});
+  T.scene({"cloth.reference": null, "anchors.loaded": false, "anchors.pts": []});
 });
 
 test('a running Twitch channel has its chat toggle and embed, named by the processor', () => {
@@ -3030,25 +3012,25 @@ test('a refused start is mapped to Chinese, and anything unmapped stays the serv
 
 test('a status payload carries its code into the console, as the cause or as history', () => {
   const review = sandbox.window.CornerPocketReview;
-  const before = {attempt: T.state.live.attempt, notice: {...T.state.notice}};
+  const before = {attempt: T.live().attempt, notice: {...T.notice()}};
   const stalled = 'Replay stalled: no data from Twitch for 8 s at 0:12:34 of 3:43:17; restart with start_s=754 to continue';
   const params = {waited_s: 8, at_s: 754, length_s: 13397, start_s: 754};
-  T.state.live.attempt = null; T.state.notice = {text:'', error:false};
+  T.scene({"live.attempt": null, notice: {text:'', error:false}});
 
   review.applyLiveStatus({state:'error', error:stalled, error_code:'replay_stalled', error_params:params, frames_skipped:0});
-  assert.strictEqual(T.state.live.attempt.code, 'replay_stalled', 'the attempt keeps the code with its sentence');
-  assert.strictEqual(T.state.live.attempt.params.start_s, 754, 'and the numbers the sentence was built from');
-  assert.ok(T.state.notice.text === 'Live start failed: ' + stalled,
-    'the notice still carries the server sentence: ' + T.state.notice.text);
+  assert.strictEqual(T.live().attempt.code, 'replay_stalled', 'the attempt keeps the code with its sentence');
+  assert.strictEqual(T.live().attempt.params.start_s, 754, 'and the numbers the sentence was built from');
+  assert.ok(T.notice().text === 'Live start failed: ' + stalled,
+    'the notice still carries the server sentence: ' + T.notice().text);
   assert.strictEqual(T.liveErrorDetail(stalled, 'en'), stalled, 'and can be read back in English');
   assert.ok(/回放中断/.test(T.liveErrorDetail(stalled, 'zh')), 'or in Chinese');
 
   review.applyLiveStatus({state:'stopped', error:null, error_code:null, error_params:null, frames_skipped:0,
                           last_error:stalled, last_error_code:'replay_stalled', last_error_params:params,
                           last_error_at:1790506028.8});
-  assert.strictEqual(T.state.live.attempt, null, 'an observed failure does not outlive its session');
-  assert.strictEqual(T.state.live.error_code, null, 'and its code is not the current one');
-  assert.strictEqual(T.state.live.last_error.code, 'replay_stalled', 'the code moves to history with the sentence');
+  assert.strictEqual(T.live().attempt, null, 'an observed failure does not outlive its session');
+  assert.strictEqual(T.live().error_code, null, 'and its code is not the current one');
+  assert.strictEqual(T.live().last_error.code, 'replay_stalled', 'the code moves to history with the sentence');
   assert.ok(/回放中断/.test(T.liveErrorDetail(stalled, 'zh')), 'the history line renders in Chinese too');
 
   review.setLiveAttempt({source:'twitch:saved', error:"a newer server's own sentence", at:1});
@@ -3056,9 +3038,9 @@ test('a status payload carries its code into the console, as the cause or as his
     assert.strictEqual(T.liveErrorDetail("a newer server's own sentence", lang), "a newer server's own sentence",
       'a sentence nobody mapped keeps the server English in either language');
   }
-  T.state.live.attempt = before.attempt; T.state.notice = before.notice;
-  T.state.live.state = 'idle'; T.state.live.error = null; T.state.live.error_code = null;
-  T.state.live.error_params = null; T.state.live.last_error = null;
+  T.scene({"live.attempt": before.attempt, notice: before.notice});
+  T.scene({"live.state": 'idle', "live.error": null, "live.error_code": null});
+  T.scene({"live.error_params": null, "live.last_error": null});
 });
 
 
@@ -3124,8 +3106,9 @@ test('the engine mounts a stub DOM and a stub network through one seam', () => {
     window.CornerPocketReview.reloadDatasets();`, box);
 
   const seam = realm.seam;
-  assert.ok(seam && seam.state && typeof seam.render === 'function' && typeof seam.detach === 'function',
-    'attach() returns one handle: the live state, a render and a detach');
+  assert.ok(seam && !seam.state && typeof seam.render === 'function' && typeof seam.detach === 'function'
+    && typeof seam.frame === 'function' && typeof seam.boxes === 'function' && typeof seam.snapshot === 'function',
+    'attach() returns one handle: named readings, a frame verb, a render and a detach');
   // The runner is synchronous, so a promise continuation cannot settle here. This test
   // proves the request path and the DOM path, not the answer that comes back later.
   assert.deepStrictEqual(hits, ['/api/datasets'],
@@ -3153,7 +3136,7 @@ test('round 26 / owner item 3: a picked track has one panel, and it is the overl
 
   assertSourceContract('annotator/vision-stage.js', "body.innerHTML = inColumn ? inspectorHTML(s) : '';", 'the column keeps no second copy of the track block');
 
-  assertSourceContract('annotator/vision-stage.js', "shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');", 'the column collapses while the overlay holds the block');
+  assertSourceContract('annotator/vision-stage.js', 'if (setShell) setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'the column collapses while the overlay holds the block');
 
   assertSourceContract('annotator/ops.css', 'max-height:min(56dvh,520px)', 'the overlay is tall enough to hold the whole block');
 
