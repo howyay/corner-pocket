@@ -41,6 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.datasets import media_relpath  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import (GateConfig, _on_table, _quad_box_overlap_area,  # noqa: E402
                                     match_balls, to_table_mm)
@@ -619,7 +620,7 @@ def write_plan(scan_path, out_dir="out/scan30", top_pots: int = 12, top_shots: i
 def main():
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--video", default="data/vod_30min_260815.mp4")
+    ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
     ap.add_argument("--out", default="out/scan30/raw_scan.json")
     ap.add_argument("--limit-s", type=float, default=None)
     ap.add_argument("--stride", type=int, default=2)

@@ -172,6 +172,27 @@ def lookup(root, dataset_id):
     return Dataset(dataset_id, "vod", out_dir, root / "data" / "vods", dataset_id + ".mp4", frames or None)
 
 
+def media_path(root, dataset_id):
+    """The media file of ``dataset_id`` under ``root``, or None for an unknown id.
+
+    The answer comes from the registry, so the path names the file also when the
+    file is absent.  The path is not resolved and not checked: the caller decides
+    what to do with a missing recording.  None means that no dataset has this id.
+    """
+    found = lookup(root, dataset_id)
+    return None if found is None else found.media_dir / found.media_name
+
+
+def media_relpath(root, dataset_id):
+    """``media_path(root, dataset_id)`` relative to ``root``, or None.
+
+    A command line uses this form.  The other defaults of those parsers are
+    relative to the workspace root.
+    """
+    path = media_path(root, dataset_id)
+    return None if path is None else str(path.relative_to(Path(root)))
+
+
 def _text(value):
     return value if isinstance(value, str) and value else None
 

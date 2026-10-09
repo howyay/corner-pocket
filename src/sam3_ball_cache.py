@@ -34,6 +34,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_census import classify_ball_color  # noqa: E402
+from src.datasets import media_relpath  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 
 APP_CACHE = "out/scan30/sam3_results.json"      # the app's own 56 frames: read-only
@@ -360,7 +361,7 @@ def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--video", default="data/vod_30min_260815.mp4")
+    ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
     ap.add_argument("--times", default="", help="comma-separated timestamps, in priority order")
     ap.add_argument("--times-file", default=None,
                     help="JSON list (or one timestamp per line); overrides --times")

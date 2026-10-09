@@ -26,7 +26,8 @@ from src.motion_scan import (BALL_K_NATIVE, FLOOR_MARGIN, SCAN_H, SCAN_W, WORK_H
                              channel_planes, enforce_gap, freeze, load_quad, load_scan,
                              moving_ball_instances, noise_floor, onset_signal,
                              probe_pair, rolling_baseline, sample_window, save_scan,
-                             series_fields, window_bounds, window_profile)
+                             sam3_ball_radius, series_fields, video_for, window_bounds,
+                             window_profile)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -730,6 +731,53 @@ class SyntheticVideoTest(unittest.TestCase):
         detail = frame_detail(self.path, self.onset_frame + 3, ctx, cfg)
         self.assertIn("ball_peak_box", detail)
         self.assertEqual(len(detail["cell_counts"]), ctx.n_cells)
+
+
+class DatasetPathTest(unittest.TestCase):
+    """The registry names the media file and the scan folder; the old probes stay last."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+
+    def test_video_for_asks_the_registry_before_it_guesses(self):
+        self.assertEqual(video_for("vod30", self.root), self.root / "data" / "vod_vod30.mp4")
+        media = self.root / "data" / "vod_30min_260815.mp4"
+        media.parent.mkdir(parents=True)
+        media.write_bytes(b"mp4")
+        self.assertEqual(video_for("vod30", self.root), media)
+        self.assertEqual(video_for("highlight", self.root), self.root / "data" / "vod_highlight.mp4")
+        self.assertEqual(video_for("gone", self.root), self.root / "data" / "vod_gone.mp4")
+
+    def test_video_for_finds_an_imported_vods_media(self):
+        key = "tw-9-1-2"
+        (self.root / "out" / "vods" / key).mkdir(parents=True)
+        (self.root / "out" / "vods" / "index.json").write_text(
+            json.dumps({"vods": {key: {"vod_id": 9, "frames": 30}}}))
+        self.assertEqual(video_for(key, self.root), self.root / "data" / ("vod_" + key + ".mp4"))
+        media = self.root / "data" / "vods" / (key + ".mp4")
+        media.parent.mkdir(parents=True)
+        media.write_bytes(b"mp4")
+        self.assertEqual(video_for(key, self.root), media)
+
+    def test_sam3_ball_radius_reads_the_scan_folder_of_the_dataset(self):
+        for folder in ("scan30", "scan_highlight"):
+            path = self.root / "out" / folder / "sam3_results.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"1": [{"r": 4.0}, {"r": 6.0}]}))
+        measured = sam3_ball_radius("vod30", self.root)
+        self.assertEqual(measured["source"], str(self.root / "out" / "scan30" / "sam3_results.json"))
+        self.assertEqual(measured["radius"], 5.0)
+        self.assertEqual(sam3_ball_radius("highlight", self.root)["source"],
+                         str(self.root / "out" / "scan_highlight" / "sam3_results.json"))
+
+    def test_sam3_ball_radius_keeps_the_old_folder_probes_for_an_unknown_id(self):
+        path = self.root / "out" / "scan_unit" / "sam3_results.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"1": [{"r": 3.0}]}))
+        self.assertEqual(sam3_ball_radius("unit", self.root)["source"], str(path))
+        self.assertIsNone(sam3_ball_radius("nowhere", self.root)["source"])
 
 
 if __name__ == "__main__":

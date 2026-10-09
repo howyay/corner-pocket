@@ -29,6 +29,7 @@ import argparse
 import json
 import math
 import random
+import sys
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -37,11 +38,15 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.datasets import media_path  # noqa: E402
 
 OUT = ROOT / "out" / "tiny_ball_probe"
 CENSUS = ROOT / "out" / "scan30" / "sam3_census.json"
 RESULTS = ROOT / "out" / "scan30" / "sam3_results.json"
-VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
+VIDEO = media_path(ROOT, "vod30")
 CORNERS = ROOT / "out" / "scan30" / "corners.json"
 QUAD_SEGMENTS = ROOT / "out" / "calib_vod30_segments.json"
 

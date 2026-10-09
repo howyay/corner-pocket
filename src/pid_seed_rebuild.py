@@ -56,7 +56,8 @@ def run(root=ROOT):
     if missing or result.unexpected_keys:
         raise RuntimeError(f"OSNet checkpoint mismatch: missing={missing}, unexpected={result.unexpected_keys}")
     model.eval()
-    cap = cv2.VideoCapture(str(root / "data" / "vod_30min_260815.mp4"))
+    from src.datasets import media_path
+    cap = cv2.VideoCapture(str(media_path(root, "vod30")))
     if not cap.isOpened():
         cap.release()
         raise RuntimeError("Cannot open vod30 video")

@@ -34,10 +34,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.datasets import media_path  # noqa: E402
+
 OUT = ROOT / "out" / "segcalib" / "segment_calib_report.json"
 CANDIDATES = ROOT / "out" / "scan-ic" / "events.json"
 SEGMENT_ARTIFACT = ROOT / "out" / "calib_vod30_segments.json"
-VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
+VIDEO = media_path(ROOT, "vod30")
 SMALL_W, SMALL_H = 960, 540
 
 

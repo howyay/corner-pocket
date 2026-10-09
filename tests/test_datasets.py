@@ -121,6 +121,24 @@ class DatasetRegistryTests(unittest.TestCase):
         self.assertEqual(list(entries), ["tw-1"])
         self.assertEqual(error, "4 entries in out/vods/index.json are not valid and not listed")
 
+    def test_media_path_names_the_file_before_it_exists(self):
+        self.assertEqual(datasets.media_path(self.root, "vod30"),
+                         self.root / "data" / "vod_30min_260815.mp4")
+        self.assertEqual(datasets.media_relpath(self.root, "vod30"), "data/vod_30min_260815.mp4")
+        self.assertEqual(datasets.media_path(self.root, "highlight"),
+                         self.root / "data" / "vod_highlight.mp4")
+        for unknown in ("tw-9", "nope", "../scan30", None):
+            self.assertIsNone(datasets.media_path(self.root, unknown), repr(unknown))
+            self.assertIsNone(datasets.media_relpath(self.root, unknown), repr(unknown))
+
+    def test_media_path_resolves_an_imported_vod_while_it_is_listed(self):
+        key = "tw-1000000001-3600-3900"
+        self.assertIsNone(datasets.media_path(self.root, key))
+        self.write_index({key: ENTRY})
+        self.assertEqual(datasets.media_path(self.root, key),
+                         self.root / "data" / "vods" / (key + ".mp4"))
+        self.assertEqual(datasets.media_relpath(self.root, key), "data/vods/" + key + ".mp4")
+
     def test_listing_keeps_the_built_in_rows_and_describes_imports(self):
         rows, error = listing(self.root)
         self.assertEqual((rows, error), ([{"id": "vod30", "label": "vod30"},

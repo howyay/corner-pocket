@@ -49,6 +49,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -58,9 +59,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.datasets import lookup as dataset_lookup, media_path  # noqa: E402
+
 # --------------------------------------------------------------- geometry ----
 
-SCAN_W, SCAN_H = 1280, 720      # native frame size of vod_30min_260815.mp4
+SCAN_W, SCAN_H = 1280, 720      # native frame size of the vod30 recording
 WORK_W, WORK_H = 960, 540       # the pipeline's working resolution (0.75x native)
 
 # --------------------------------------------------------------- channels ----
@@ -338,15 +344,20 @@ def load_quad(dataset: str = "vod30", root=None, quad_file=None, frame_size=None
 def sam3_ball_radius(dataset: str, root=None) -> dict:
     """The measured ball radius this dataset's SAM3 cache holds, if it has one.
 
+    The cache sits in the scan folder of the dataset, which the registry names.
+    An id the registry does not know keeps the old name probes.
+
     Using the measurement beats scaling the vod30 radius by the frame size: the two
     datasets sit at different camera distances, so their balls are not related by
     the frame ratio alone.
     """
     root = Path(root or ROOT)
-    names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
-                                                          f"scan{dataset}", dataset]
-    for name in names:
-        path = root / "out" / name / "sam3_results.json"
+    known = dataset_lookup(root, dataset)
+    folders = ([known.out_dir] if known is not None else []) + (
+        [root / "out" / "scan30"] if dataset == "vod30" else []) + [
+        root / "out" / name for name in (f"scan_{dataset}", f"scan{dataset}", dataset)]
+    for folder in dict.fromkeys(folders):
+        path = folder / "sam3_results.json"
         if not path.exists():
             continue
         payload = json.loads(path.read_text())
@@ -364,14 +375,17 @@ def sam3_ball_radius(dataset: str, root=None) -> dict:
 
 
 def video_for(dataset: str, root=None) -> Path:
+    """The media file of this dataset, or the old guess when the file is absent.
+
+    The registry names the media file of every dataset it knows, imported VODs
+    included.  An absent file, and an id the registry does not know, keep the old
+    ``data/vod_<id>.mp4`` answer, so a caller still gets a path to report.
+    """
     root = Path(root or ROOT)
-    names = [f"vod_{dataset}.mp4"]
-    if dataset == "vod30":
-        names.insert(0, "vod_30min_260815.mp4")
-    for name in names:
-        if (root / "data" / name).exists():
-            return root / "data" / name
-    return root / "data" / names[-1]
+    found = media_path(root, dataset)
+    if found is not None and found.exists():
+        return found
+    return root / "data" / f"vod_{dataset}.mp4"
 
 
 def config_for(video, dataset: str = "vod30", root=None, **overrides) -> "MotionConfig":

@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.datasets import media_relpath  # noqa: E402
 from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
@@ -400,7 +401,7 @@ def _pair_candidates(prev: dict, cur: dict, H, cfg: GateConfig, gap: float) -> t
 def main():
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--video', default='data/vod_30min_260815.mp4')
+    ap.add_argument('--video', default=media_relpath(ROOT, 'vod30'))
     ap.add_argument('--corners', default='out/scan30/corners.json')
     ap.add_argument('--out', default='out/scan-ic')
     ap.add_argument('--stride', type=int, default=2, help='process every Nth frame')

@@ -39,6 +39,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.datasets import media_relpath  # noqa: E402
+
 BLACK_MEAN = 12.0        # below this the frame is not a picture of anything
 FLAT_STD = 6.0           # below this the frame is a flat colour
 SAME_FRAME_MAD = 1.5     # mean abs difference below this = the same image
@@ -212,7 +214,7 @@ def audit(video, times, out_dir="out/scan30/zeroball", dumps=True) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--video", default="data/vod_30min_260815.mp4")
+    ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
     ap.add_argument("--times", default="", help="comma-separated timestamps")
     ap.add_argument("--times-file", default=None,
                     help="JSON list of timestamps (e.g. the zero-ball frames of a cache)")

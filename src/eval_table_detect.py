@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -48,8 +49,13 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.datasets import media_path  # noqa: E402
+
 OUT_DIR = ROOT / "out" / "table-detect-eval"
-VOD30 = ROOT / "data" / "vod_30min_260815.mp4"
+VOD30 = media_path(ROOT, "vod30")
 HIGHLIGHT = ROOT / "data" / "vod_highlight.mp4"
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 CORNERS_V2 = ROOT / "out" / "corners_30min_v2.json"

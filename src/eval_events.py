@@ -51,6 +51,7 @@ from src.ball_census import (CENSUS_VERSION, build_census, classify_ball_color, 
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
+from src.datasets import media_relpath  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540
 FULL_W, FULL_H = 1280, 720            # the reference quad's own resolution
@@ -1061,7 +1062,7 @@ def main():
     ap.add_argument("--queue", default="out/scan30/events.json", help="served queue artifact")
     ap.add_argument("--candidates", default="out/scan-ic/events.json",
                     help="scan candidates the queue was built from (default) or the queue itself")
-    ap.add_argument("--video", default="data/vod_30min_260815.mp4")
+    ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
     ap.add_argument("--anchors", default="out/pid_anchors_vod30.json")
     ap.add_argument("--scan-quad", default="out/scan30/corners.json")
     ap.add_argument("--dataset", default="vod30",
