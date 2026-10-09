@@ -82,24 +82,17 @@ import math
 from statistics import median
 from typing import Any, Iterable, NamedTuple, Sequence
 
+from src.table_geometry import CANON_H, CANON_W, POCKETS_MM
+
 # ---------------------------------------------------------------------------
 # reference geometry (verified; reused, not re-derived)
 # ---------------------------------------------------------------------------
 
-#: canonical playing surface, millimetres - same frame as src/pipeline.py and
-#: src/event_gates.py (portrait: x = width 1270, y = length 2540, head at top).
-CANON_W, CANON_H = 1270.0, 2540.0
-
-#: the repo's canonical pocket positions (identical to src.event_gates.POCKETS_MM,
-#: so a pocket name means the same place in both modules).
-POCKETS_MM: dict[str, tuple[float, float]] = {
-    "head-left": (0.0, 0.0),
-    "head-right": (CANON_W, 0.0),
-    "foot-right": (CANON_W, CANON_H),
-    "foot-left": (0.0, CANON_H),
-    "left-side": (0.0, CANON_H / 2),
-    "right-side": (CANON_W, CANON_H / 2),
-}
+#: The canonical playing surface (portrait: x = width 1270, y = length 2540,
+#: head at top) and the pocket table come from src/table_geometry.py, their
+#: single definition site, so a pocket name means the same place in every
+#: module.  That module holds no numpy and no OpenCV at import time, so this
+#: file keeps its stdlib-only import graph.
 
 #: verified reference cloth quad, source pixels, order [TL, TR, BR, BL].
 #: Provenance: out/calib_vod30_segments.json -> segments[0].quad_px (t 0..1800 s,

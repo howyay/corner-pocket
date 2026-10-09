@@ -79,16 +79,9 @@ from dataclasses import dataclass, field
 import math
 from typing import Any, Iterable
 
-# canonical table geometry, same frame the scan uses
-CANON_W, CANON_H = 1270.0, 2540.0
-POCKETS_MM = {
-    "head-left": (0.0, 0.0),
-    "head-right": (CANON_W, 0.0),
-    "foot-right": (CANON_W, CANON_H),
-    "foot-left": (0.0, CANON_H),
-    "left-side": (0.0, CANON_H / 2),
-    "right-side": (CANON_W, CANON_H / 2),
-}
+# src/table_geometry.py is the single definition site of the canonical frame and
+# of the pocket table, so the gates judge on the same frame as the scan.
+from src.table_geometry import CANON_H, CANON_W, POCKETS_MM, nearest_pocket
 
 
 @dataclass
@@ -198,15 +191,6 @@ def _pocket_name(value: Any):
     if len(tail) == 2 and tail[1].strip() in POCKETS_MM:
         return tail[1].strip()
     return None
-
-
-def nearest_pocket(x_mm: float, y_mm: float) -> tuple:
-    name, best = None, float("inf")
-    for pocket, (px, py) in POCKETS_MM.items():
-        distance = math.hypot(x_mm - px, y_mm - py)
-        if distance < best:
-            name, best = pocket, distance
-    return name, best
 
 
 # --------------------------------------------------------------------- dedup

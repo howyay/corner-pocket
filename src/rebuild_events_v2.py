@@ -3,9 +3,12 @@
 Fixes vs the old out/scan30/events.json build:
 1. H: sam3 image coords were reprojected with the highlight (1080p) calibration
    (calib_final.json) — wrong camera. events_v2 uses the vod30 segment corners
-   (corners_30min_v2.json) mapped onto the real Rasson playing surface
-   2540 x 1270 mm.
-2. Pockets: real pocket centers in mm (4 corners + 2 side midpoints).
+   (corners_30min_v2.json) mapped onto the canonical playing surface through
+   ``table_geometry.homography_to_canonical`` (portrait 1270 x 2540 mm, head at
+   top). The earlier hand-built destination put 2540 mm on the head rail, which
+   is the 1270 mm side, so it doubled every x distance and halved every y one.
+2. Pockets: the canonical pocket centers in mm (4 corners + 2 side midpoints),
+   imported from ``table_geometry.POCKETS_MM``.
 3. Occlusion gate: cloth area recomputed per SAM3 timestamp from the video
    (records.json predates the cloth_area patch); drops touching an occluded
    sample are not pots.
@@ -24,34 +27,18 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
+
+from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: E402
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 SCAN = ROOT.parent / "out" / "scan30"
 CORNERS = ROOT.parent / "out" / "corners_30min_v2.json"
 
-POCKETS_MM = {
-    "head-left": (0.0, 0.0),
-    "head-right": (2540.0, 0.0),
-    "foot-right": (2540.0, 1270.0),
-    "foot-left": (0.0, 1270.0),
-    "left-side": (0.0, 635.0),
-    "right-side": (2540.0, 635.0),
-}
-
-
-def nearest_pocket(x, y):
-    best, bd = None, 1e18
-    for name, (px, py) in POCKETS_MM.items():
-        d = np.hypot(x - px, y - py)
-        if d < bd:
-            best, bd = name, d
-    return best, float(bd)
-
 
 def main():
     corners = np.array(json.load(open(CORNERS))["corners"], np.float32)
-    dst = np.array([[0, 0], [2540, 0], [2540, 1270], [0, 1270]], np.float32)
-    H = cv2.getPerspectiveTransform(corners, dst)          # 720p px -> mm
+    H = homography_to_canonical(corners)                   # 720p px -> canonical mm
     sam3_raw = json.load(open(SCAN / "sam3_results.json"))
     records = json.load(open(SCAN / "records.json"))
     rec_by_t = {r["t"]: r for r in records}

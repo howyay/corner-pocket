@@ -40,6 +40,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.table_geometry import CANON_H, CANON_W  # noqa: E402
+
 MEASURE = ROOT / "out" / "calib_vod30_segments.measure.json"
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
@@ -48,7 +50,6 @@ OUT = ROOT / "out" / "calib_vod30_segments.json"
 GATE_FRACTION = 0.80          # GateConfig.calibration_warn_fraction
 PHASE_MOVE_PX = 2.0           # a camera move this large is not sub-pixel noise
 SIDE_NOISE_PX = 8.0           # refinement's own scatter on a verified side
-CANON_W, CANON_H = 1270.0, 2540.0
 
 
 def _quad(row, key="refined"):

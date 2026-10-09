@@ -21,20 +21,16 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* imports
 
 from ball_detect import detect_ball_candidates
-from table_geometry import homography_to_canonical, CANON_W, CANON_H
+from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_canonical,
+                                nearest_pocket)
 from table_detect import detect_table
 
-# physical geometry (Rasson Victory III 9ft, playing surface 2540 x 1270 mm)
-POCKETS_MM = {
-    "head-left": (0.0, 0.0),
-    "head-right": (float(CANON_W), 0.0),
-    "foot-right": (float(CANON_W), float(CANON_H)),
-    "foot-left": (0.0, float(CANON_H)),
-    "left-side": (0.0, float(CANON_H) / 2),
-    "right-side": (float(CANON_W), float(CANON_H) / 2),
-}
+# physical geometry (Rasson Victory III 9ft, 2540 x 1270 mm): the canonical
+# frame and the pocket table live in table_geometry.py, their only definition
+# site, so this scan writes the same millimetres the gates and the server use.
 
 SHOT_DISP_MM = 300.0    # confirmed shot: fastest ball moves > 300 mm
 MOTION_THRESH = 4.5     # table-region frame diff for a shot candidate
@@ -89,15 +85,6 @@ def classical_scan(video: str, every: float) -> tuple[list, np.ndarray]:
     cap.release()
     med = np.median(np.array(corners_list), axis=0) if corners_list else None
     return records, med
-
-
-def nearest_pocket(x_mm: float, y_mm: float) -> tuple[str, float]:
-    best, bd = None, 1e18
-    for name, (px, py) in POCKETS_MM.items():
-        d = np.hypot(x_mm - px, y_mm - py)
-        if d < bd:
-            best, bd = name, d
-    return best, bd
 
 
 def sam3_confirm(video: str, times: list[float], out_dir: Path):
