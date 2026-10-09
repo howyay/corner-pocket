@@ -3079,3 +3079,86 @@ The console under test is http://127.0.0.1:8130/ops.html, served by the systemd 
 inner height, and one recorded match (`2853972244`, a 10.8-hour VOD). Frame extraction takes seconds
 per frame, so the picture lags the input. `curl` is refused by a host hook, so the live checks used
 `.venv/bin/python` with `urllib.request`.
+
+## Round 33 · the architecture review, the second pass (2026-10-09)
+
+A second architecture review, `/tmp/architecture-review-20261007-123400.html`, named eight
+candidates. Seven shipped in five commits. One candidate, the time-resolved calibration seam, is
+still open. Each row states what the seam was, what it is now, and the number that proves it.
+
+| # | Candidate | Before | After | Measured |
+| --- | --- | --- | --- | --- |
+| 01 | One canonical frame | `src/table_geometry.py`, `src/event_gates.py`, `src/scan_events.py` and `src/rebuild_events_v2.py` each held `CANON_W`, `CANON_H` and `POCKETS_MM`, and three of them wrote their own `nearest_pocket`. The rebuild held a fifth copy, and that copy was transposed | `src/table_geometry.py` is the only definition site: `CANON_W` :20, `CANON_H` :21, `POCKETS_MM` :25, `nearest_pocket` :35, `homography_to_canonical` :45. The other modules import the names | Definition sites 4 → 1, `nearest_pocket` 3 → 1. The rebuild edge TL → TR measures 2540.0 mm before and 1269.0 mm after. The pocket name changes for 0 of the 10 committed pot rows: row t=81.0 moves from [2126.6, 1206.4], foot-right 418 mm, to [1062.5, 2411.9], foot-right 244 mm |
+| 03 | One dataset registry | Thirteen modules built a media path by hand from the repository root and the dataset id, so each one knew the artifact layout | `src/datasets.py:175` `media_path(root, dataset_id)` and `:186` `media_relpath` answer that question | Hand-built media path literals 41 lines in 38 files → 26 lines in 24 files. `src/motion_scan.py` names the sample `vod_30min_260815` 0 times |
+| 04 | The mounted seam the engine got | `annotator/ops.js` published one global, and the suite rewrote the source text in four places to reach the console's own names | `attach(options)` at `annotator/ops.js:1341` returns one handle, and `:1356` publishes `window.OpsConsole = {attach, setShell, publishShell, shellState}` | Source-text rewrites before boot 4 → 0. The suite runs the file as the page loads it and mounts the console with `window.OpsConsole.attach({document})`. The browser reads 4 keys |
+| 05 | One paint owner for the console's own DOM | `paintArchive()` and `paintAuto()` both painted the records region of `#main`, with 7 call sites | `paintRecords()` at `annotator/ops.js:197` owns that screen, and `screenModule()` gained `paint()` at `:900` | Definitions 2 → 0, call sites 7 → 0, and `node tests/test_ops.js` 195 → 197 pass with 0 fail |
+| 06 | The engine handle publishes a scenario | The handle carried the engine's private `state` object, named by 60 keys | `frame(result, edits)` at `annotator/app.js:2120`, `scene(patch)` at `:2129`, the named readings at `:2139`, and the handle tail `frame, scene, ...readings` at `:2200` | `attach()` names 91 keys, 61 named plus the 30 readings. Lines that name `T.state` 302 → 0. `window.CornerPocketReview` holds 68 keys, and `'state' in window.CornerPocketReview` is false |
+| 07 | One vocabulary for the shell state | The stage named the console's element by id, `annotator/vision-stage.js:1128` `document.querySelector('#ops-shell')`, and `render()` at `annotator/ops.js:916` wrote the attributes itself | `shellState` at `annotator/ops.js:926`, one writer `publishShell` at `:927` for all five attributes, and `setShell` at `:928` as the only patch path. The stage calls `OpsConsole.setShell` | Mentions of the shell id in the stage 1 → 0. Attribute write statements 2 → 5, all in one function. `setShell({vsPanel:true})` changes the review grid from 280px 1204px to 280px 872px 320px, and back |
+| 08 | Enrolment uses six names, not fifty-two | `src/enroll_from_tracklet.py` imported `src/person_pipeline` at load time, so an import pulled torch, cv2, argparse and ultralytics | The module names the six objects it uses and keeps `PersonPipeline` inside the two functions that need it, `scan_frames` :518 and `_infer` :1385 | File 1483 → 1520 lines, tests 1068 → 1105, with a fresh interpreter that finds no torch, cv2, argparse or ultralytics |
+
+### The five commits
+
+| Commit | Candidates | Subject |
+| --- | --- | --- |
+| `987f68c` | 01 | geometry: one canonical frame for the table, the quad and the pockets |
+| `14b4352` | 03 | datasets: one registry says where a dataset's media lives |
+| `f2cd950` | 06 | console: the engine handle publishes a scenario, not its state |
+| `3ba5683` | 04, 05, 07 | console: one vocabulary for the shell, one paint owner per screen |
+| `dfc19d6` | 08 | enrol: the enrolment module imports only the six names it uses |
+
+One commit carries three candidates because they share `annotator/ops.js` and `tests/test_ops.js`.
+The message of each commit names its candidates and holds the measurements for each of them.
+
+### Two defects the measured check found
+
+The browser check of the review route found two defects, and both are older than this round.
+
+The 200 ms tick called `syncReviewDataset()` before the night list arrived, so `broadcastVodId()` at
+`annotator/ops.js:420` read `history` of a null `data` and threw
+`TypeError: Cannot read properties of null (reading 'history')`. The tick now waits for `data`. The
+old code sits at `HEAD` too, so the defect was not a product of this round.
+
+The `hashchange` handler cleared `reviewId` before it asked `canNavigate()`. A refused navigation
+therefore lost the review and its address: the handler wrote `#/records` and dropped the review id.
+The handler now compares the next route with the current one first. The browser shows the repair:
+after a move to `#/records` the shell review flag reads `0` and `#main` holds 29898 characters.
+
+### What still stands open
+
+- Candidate 02, the time-resolved calibration seam, is not started. `src/calib_segments.py` is
+  imported by eight modules and called for a load in four places. Nine private loaders in six modules
+  rebuild the same chain. `src/motion_scan.py:294` says that the per-time segment lookup belongs to
+  the calibration, and then takes `segments[0]` at `:291`.
+- Candidate 01 covered the four modules that held the frame, and it left three other frame copies in
+  place because they are outside its scope: `src/audit_calib.py:21-22` holds a landscape
+  `TABLE_W, TABLE_H = 2540.0, 1270.0` with its own destination, `src/calib_vod30.py:30` holds an
+  inline portrait destination, and `src/pipeline.py:28` re-exports the names through a flat import.
+- `out/scan30/events_v2.json` is not regenerated, so its numbers stay those of the transposed frame:
+  10 pot rows with x = 1426.5 … 2291.6, which no point of the canonical frame can reach. The line
+  "distances <= 440 mm" in `docs/state.md:119` is stale for the same reason. Both move when
+  `.venv/bin/python src/rebuild_events_v2.py` runs against `data/vod_30min_260815.mp4`.
+- Candidate 08 closed the import side of the enrolment module. The exported surface of that module
+  still holds names that no caller uses.
+
+### The numbers for the round
+
+- Python: `Ran 1335 tests in 134.951 s`, `OK (skipped=51)`.
+- JavaScript: `tests/test_ops.js` 197 pass and 0 fail (195 before), `tests/test_app_timeline.js` 90
+  passed and 0 failed, `tests/test_board.js` 16 pass and 0 fail.
+- The browser at http://127.0.0.1:8130/ops.html#/records/review/2853972244, viewport 1596 by 1045,
+  loads `app.js?v=vision-stage-64`, `vision-stage.js?v=vision-stage-62`,
+  `ops.js?v=vision-stage-65` and `clock-sync.js?v=clock-sync-2`. `window.OpsConsole` reads
+  `[attach, setShell, publishShell, shellState]` and `window.VisionStage` reads `[attach]`. The
+  shell element carries its attributes. `#vs-cues` holds 18570 characters in 86 buttons, `#vs-scrub`
+  reports 38953.943, and the error log and the console log stay empty.
+
+### Environment
+
+The console under test is http://127.0.0.1:8130/ops.html, served by pid 1192095. That process
+started on 2026-10-07 at 02:50, so it serves the JavaScript of the working tree but the Python of
+that morning: every Python change of this round is proved by unit tests, not by the live service.
+
+The browser walk used a raw DevTools-protocol driver. The `agent-browser` daemon cannot write its
+socket under `/run/user/1000`, and Chromium hangs on the D-Bus keyring before its first network
+request until it starts with `--password-store=basic`. `/dev/shm` is also closed to it, so the driver
+adds `--disable-dev-shm-usage` and `--no-zygote`. One browser, one viewport, one recorded match.
