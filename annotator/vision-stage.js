@@ -1125,11 +1125,9 @@ function paintLabelOverlay(s) {
   const tabs = document.querySelector('.vs-sheettabs');
   if (tabs) tabs.hidden = !inColumn;
   // The shell narrows the label column while the overlay is up, so the stage keeps the width.
-  const shell = document.querySelector('#ops-shell');
-  if (shell && shell.setAttribute) {
-    shell.setAttribute('data-label-overlay', html ? '1' : '0');
-    shell.setAttribute('data-vs-panel', inColumn ? '1' : '0');
-  }
+  // The console owns the shell state, so the stage hands these two values in.
+  const setShell = window.OpsConsole && window.OpsConsole.setShell;
+  if (setShell) setShell({ labelOverlay: !!html, vsPanel: !!inColumn });
 }
 function labelBoxHTML(s) {
   // Round 19, owner item 8: one piece of markup with two homes - the inspector when the label column
