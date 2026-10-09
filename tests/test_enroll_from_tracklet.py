@@ -1,6 +1,7 @@
 """enroll_from_tracklet tests: synthetic observations only, no models, no network."""
 import json
 import math
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -1066,3 +1067,39 @@ class WriterReaderIntegrationTest(unittest.TestCase):
         self.assertTrue(all(not record["samples"] for record in production.values()))
         self.assertEqual(plan_for_cluster(Path(__file__).resolve().parents[1], 1).reason,
                          "no_stored_evidence")
+
+
+class InProcessInterfaceTest(unittest.TestCase):
+    """The server seam: six names, and an import that loads no vision stack."""
+
+    # The exact list annotator/unified_server.py imports, inside its two handlers.
+    SERVER_INTERFACE = ("Selection", "plan_for_cluster", "plan_for_selection",
+                        "preview_payload", "EnrollmentTokenError", "confirm_enrollment")
+
+    def test_every_name_the_server_imports_is_here(self):
+        from src import enroll_from_tracklet
+        for name in self.SERVER_INTERFACE:
+            self.assertTrue(hasattr(enroll_from_tracklet, name), name)
+        # The same seam one level out: the objects the payload carries and the two
+        # helpers the server tests call on the module.
+        for name in ("Candidate", "Enrollment", "plan_enrollment", "enrollment_token",
+                     "load_state", "crop_jpeg"):
+            self.assertTrue(hasattr(enroll_from_tracklet, name), name)
+
+    def test_a_fresh_interpreter_imports_no_vision_stack_and_no_cli_parser(self):
+        """The server imports this module at request time; torch must stay out."""
+        code = ("import sys, src.enroll_from_tracklet\n"
+                "print([n for n in ('torch', 'cv2', 'argparse', 'ultralytics') "
+                "if n in sys.modules])")
+        root = Path(__file__).resolve().parents[1]
+        done = subprocess.run([sys.executable, "-c", code], cwd=root,
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout.strip(), "[]", done.stderr)
+
+    def test_the_repo_root_constant_points_at_this_checkout(self):
+        """REPO is a local copy of src.person_pipeline.REPO (same expression there)."""
+        from src.enroll_from_tracklet import REPO
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(REPO, root)
+        self.assertTrue((root / "src" / "person_pipeline.py").is_file())

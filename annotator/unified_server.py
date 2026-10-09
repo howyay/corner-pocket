@@ -781,6 +781,9 @@ class Backend:
             self._preview_busy.release()
 
     def _enroll_preview_scan(self, dataset, frame_index, bbox, window_s, cluster_id):
+        # The read half of the enrolment interface. The two planners answer with a
+        # Selection or a Refusal, and preview_payload renders it. This method writes
+        # nothing. See the module docstring of src/enroll_from_tracklet.py.
         from src.enroll_from_tracklet import Selection, plan_for_cluster, plan_for_selection, preview_payload
         if cluster_id is not None:
             # The fast path: the identity index already stored a face for this

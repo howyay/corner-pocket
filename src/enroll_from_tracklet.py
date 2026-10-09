@@ -61,6 +61,37 @@ different person than the one it displayed.
 Writes: `write_enrollment()` copies the production state into the caller's scratch
 root and writes only there. The production roster and face store are never touched;
 the caller decides when the enrolment becomes real.
+
+In-process interface. The annotator server uses six names and no others. It imports
+them inside its two enrolment handlers (annotator/unified_server.py), where one
+handler only reads and the next one writes:
+
+- `plan_for_cluster(root, cluster_id, ...)` -> `Selection` or `Refusal`: the fast
+  path, built from evidence the identity index already stored.
+- `plan_for_selection(root, dataset, frame_index, bbox, ...)` -> `Selection` or
+  `Refusal`: the slow path, built from the frame the operator clicked.
+- `Selection`: the plan the preview holds. It carries `dataset`, `track_id`,
+  `frames_scanned`, and `enrollment` with its `crops` and `evidence`.
+- `preview_payload(plan, *, root, dataset)` -> a JSON-safe dict. The crops travel
+  as data URLs and an `ok` payload carries the confirmation `token`. It reads only.
+- `confirm_enrollment(root, plan, token, player_name, *, scratch_root, dataset,
+  store)` -> the one write on this path. It recomputes the token first.
+- `EnrollmentTokenError`: the typed refusal `confirm_enrollment` raises in place of
+  a write. `to_dict()` is already the payload the server returns.
+
+No name is missing from that list. The server tests build a `Selection` out of
+`Candidate`, `Enrollment`, `plan_enrollment` and `enrollment_token`, and they read
+the roster with `load_state`. Those names belong to the same seam.
+
+Import weight. An import of this module must not load the vision stack or a command
+line parser. It imports numpy and src.face_id only, and src.face_id itself imports
+the standard library and numpy alone. `cv2` and `src.person_pipeline` (which brings
+`torch`) load inside `scan_frames`, `scan_nearest`, `crop_jpeg`, `render_sheet`,
+`_crop_image`, `_infer` and `bench`; `argparse` loads inside `main` and
+`_bench_main`. A fresh interpreter therefore prints `False False` for:
+  python -c "import sys, src.enroll_from_tracklet; print('cv2' in sys.modules, 'argparse' in sys.modules)"
+`REPO` is the only value the interface needs at import time, so this module keeps
+its own copy of it.
 """
 from __future__ import annotations
 
@@ -75,7 +106,11 @@ from pathlib import Path
 import numpy as np
 
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
-from src.person_pipeline import REPO, PersonPipeline
+
+# The repository root. The value equals src.person_pipeline.REPO, and the same
+# expression is used there, but this module keeps its own copy: an import of
+# src.person_pipeline loads torch and cv2 at its top level.
+REPO = Path(__file__).resolve().parents[1]
 
 DATASETS = {"vod30": "data/vod_30min_260815.mp4", "highlight": "data/vod_highlight.mp4"}
 DEFAULT_STATE = Path("out") / "corner-pocket" / "state.json"
@@ -480,6 +515,7 @@ def scan_frames(root, dataset, start_frame, end_frame, stride=30, *, detector=No
     embedding (4dp) once they clear the detection gate.
     """
     import cv2
+    from src.person_pipeline import PersonPipeline
     video = REPO / DATASETS[dataset]
     detector = detector or PersonPipeline(root)._get_detector()
     if engine is None:
@@ -1346,6 +1382,7 @@ def _observation(frame_index, fps, free, faces) -> dict:
 
 def _infer(root, detector, engine, dataset):
     import cv2
+    from src.person_pipeline import PersonPipeline
     pipeline = PersonPipeline(root)
     detector = detector or pipeline._get_detector()
     if engine is None:
