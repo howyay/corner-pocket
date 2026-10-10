@@ -37,7 +37,17 @@ _DATASETS = {'vod30': 'vod_30min_260815.mp4', 'highlight': 'vod_highlight.mp4'}
 
 
 class _SourceError(RuntimeError):
-    pass
+    """A source failure that names its stable code when this file knows the code.
+
+    A sentence from the Twitch layer carries no code: ``_fail`` maps it through
+    ``_ERROR_CODES`` and ``_ERROR_PATTERNS``, which exist for the sentences this file does
+    not raise.  A code on the raise site cannot drift from the sentence beside it.
+    """
+
+    def __init__(self, sentence, code=None, **params):
+        super().__init__(sentence)
+        self.code = code
+        self.params = params
 
 
 #: Stable codes for the sentences a live session can end with.  The English sentence
@@ -385,13 +395,22 @@ class LiveProcessor:
                                    ms=None if ms is None else round(ms, 2),
                                    budget_ms=None if budget_ms is None else round(budget_ms, 2))
 
-    def _fail(self, generation, message):
+    def _fail(self, generation, failure):
         """Enter ``error`` with the operator's English sentence, plus the stable code (and
-        params) the client renders in the operator's language (EN/中)."""
+        params) the client renders in the operator's language (EN/中).
+
+        A failure that names its own code is used as it stands.  Any other value is a
+        sentence from outside this file, so the two adapters map it.
+        """
+        message = str(failure)
+        code, params = getattr(failure, 'code', None), getattr(failure, 'params', None)
         with self._condition:
             if generation == self._generation and not self._stop.is_set():
                 self._state, self._error, self._error_at = 'error', message, self._wall_clock()
-                self._error_code, self._error_params = _error_code(message)
+                if code:
+                    self._error_code, self._error_params = code, dict(params or {})
+                else:
+                    self._error_code, self._error_params = _error_code(message)
                 self._stop.set()
                 if self._pending is not None:
                     dropped, self._pending = self._pending, None
@@ -446,7 +465,7 @@ class LiveProcessor:
         """
         kind = self._source['kind']
         if kind not in ('twitch', 'dataset', 'vod-replay'):
-            raise _SourceError('Unsupported live source kind')
+            raise _SourceError('Unsupported live source kind', 'unsupported_kind')
         return kind == 'twitch'
 
     def _open_capture(self, media):
@@ -475,7 +494,7 @@ class LiveProcessor:
             # (the vod-replay pacer does), and the default one picks the read deadline.
             capture = self._capture_factory(media)
             if not capture.isOpened():
-                raise _SourceError('Could not open the selected media source')
+                raise _SourceError('Could not open the selected media source', 'open_failed')
             if not replay:
                 # Live-edge age, measured in-process from the playlist's own timing tags.
                 self._start_upstream_probe(generation, media)
@@ -502,7 +521,7 @@ class LiveProcessor:
                         self._fail(generation, stalled)
                     break
                 if frame is None or len(frame.shape) != 3 or frame.shape[2] != 3 or not (0 < frame.shape[0] <= 2160 and 0 < frame.shape[1] <= 3840):
-                    raise _SourceError('Decoded frame must be a color image no larger than 3840 × 2160')
+                    raise _SourceError('Decoded frame must be a color image no larger than 3840 × 2160', 'frame_invalid')
                 # The media position is what a per-segment calibration resolves against;
                 # a live stream has none, so both stay None there.
                 frame_index = None
@@ -537,16 +556,16 @@ class LiveProcessor:
                 # Do not burst through a backlog after a decoder stall.
                 deadline = max(deadline + 1 / fps, received)
         except _SourceError as exc:
-            self._fail(generation, str(exc))
+            self._fail(generation, exc)
         except Exception:
             # Decoder/resolver exceptions can contain signed media URLs or credentials.
-            self._fail(generation, 'Media resolution or decoding failed; check source availability')
+            self._fail(generation, _SourceError('Media resolution or decoding failed; check source availability', 'decode_failed'))
         finally:
             try:
                 if capture is not None:
                     capture.release()
             except Exception:
-                self._fail(generation, 'Media decoder cleanup failed')
+                self._fail(generation, _SourceError('Media decoder cleanup failed', 'decode_failed'))
             finally:
                 with self._condition:
                     if generation == self._generation:
@@ -638,7 +657,7 @@ class LiveProcessor:
                 if not published and generation == self._generation:
                     self._drop('stale', seq)
         except Exception:
-            self._fail(generation, 'Frame inference or JPEG encoding failed; check local detector weights and runtime')
+            self._fail(generation, _SourceError('Frame inference or JPEG encoding failed; check local detector weights and runtime', 'inference_failed'))
         finally:
             with self._condition:
                 if generation == self._generation and self._state != 'error':

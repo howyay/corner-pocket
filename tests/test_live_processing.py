@@ -592,6 +592,69 @@ class LiveProcessingTests(unittest.TestCase):
         self.assertIsNone(status['upstream_clock'])
 
 
+    def test_the_cleanup_failure_names_its_code_at_the_raise_site(self):
+        # Round 34, service candidate 3: the sentence 'Media decoder cleanup failed' was the one
+        # code path of the thirteen that no test observed, and the code lived in a table far
+        # from the raise. The failure now carries the code, so the never-observed path is pinned.
+        class EndsThenFailsToRelease(Capture):
+            def release(self):
+                self.released = True
+                raise RuntimeError('token=secret')
+
+        capture = EndsThenFailsToRelease(count=1)
+        processor = self.processor(capture_factory=lambda _: capture)
+        processor.start(self.source)
+        status = self.finished(processor)
+        self.assertTrue(capture.released)
+        self.assertEqual(status['state'], 'error')
+        self.assertEqual(status['error'], 'Media decoder cleanup failed')
+        self.assertEqual(status['error_code'], 'decode_failed',
+                         'the cleanup failure reports the code its raise site names')
+        self.assertNotIn('secret', json.dumps(status))
+
+    def test_each_in_process_source_failure_carries_its_code(self):
+        from annotator.live_processing import _SourceError
+        failures = [
+            (_SourceError('Unsupported live source kind', 'unsupported_kind'), 'unsupported_kind'),
+            (_SourceError('Could not open the selected media source', 'open_failed'), 'open_failed'),
+            (_SourceError('Decoded frame must be a color image no larger than 3840 × 2160', 'frame_invalid'), 'frame_invalid'),
+        ]
+        for failure, code in failures:
+            with self.subTest(code=code):
+                stream = self.stream_for(failure)
+                status = self.finished(stream)
+                self.assertEqual(status['state'], 'error')
+                self.assertEqual(status['error_code'], code)
+                self.assertEqual(status['error'], str(failure))
+
+    def stream_for(self, failure):
+        """Start a session whose capture factory raises the given failure."""
+        def factory(_):
+            raise failure
+        processor = self.processor(capture_factory=factory)
+        processor.start(self.source)
+        return processor
+
+    def test_every_in_process_raise_names_its_code(self):
+        # A new failure cannot be added with the sentence alone: the code is part of the raise,
+        # and only the Twitch adapter (an external sentence) may omit it.
+        import ast
+        tree = ast.parse(Path('annotator/live_processing.py').read_text())
+        bare = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
+                continue
+            func = node.exc.func
+            name = getattr(func, 'id', None) or getattr(func, 'attr', None)
+            if name != '_SourceError' or len(node.exc.args) >= 2:
+                continue
+            sentence = node.exc.args[0]
+            if isinstance(sentence, ast.Call) and getattr(sentence.func, 'id', '') == 'str':
+                continue          # the Twitch layer's own sentence: the adapters map it
+            bare.append(node.lineno)
+        self.assertEqual(bare, [], f'raise sites without a code: {bare}')
+
+
 class UpstreamDelayTests(unittest.TestCase):
     """upstream_delay_ms is computed in-process from the live playlist, or stays None."""
 
