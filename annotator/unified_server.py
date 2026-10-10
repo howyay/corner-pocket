@@ -69,6 +69,27 @@ LIVE_ACTIONS = ('start', 'stop')
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
 _MAX_ENROLL_BYTES = 8 * 1024 * 1024
+#: The page files this handler serves. The list is closed on purpose: only these files
+#: reach a browser. A closed list drifts, and a page that loads a file this handler
+#: refuses fails in the browser only - no node suite sees the 404.
+#: tests/test_pages_served.py binds the list to the pages' own <script> and <link> tags
+#: in both directions, so a new console module must land in both places (round 46).
+#: The name must not be BOARD_FILES: the --public-port handler below owns that name for
+#: its own map, and a second module-level name would shadow it (the later line wins).
+PAGE_FILES = ('/', '/app.css', '/app.js', '/ops.css', '/ops.js', '/vision-stage.js',
+              '/clock-sync.js', '/duration.js')
+#: The file a page path answers with, where the path is not the file's own name.
+PAGE_ALIASES = {'/': 'ops.html'}
+#: The legacy page URLs: a permanent redirect to the page route, so one URL and one file
+#: name stay the pair a bookmark can use. '/ops.html' and '/app.html' are not served as
+#: files, so PAGE_FILES must not name them. app.html reaches the browser through
+#: GET /api/review-template, which hands its text to the review screen.
+LEGACY_PAGE_REDIRECTS = {'/ops.html': '/', '/app.html': '/'}
+#: The public board as the console serves it. BOARD_FILES below is a different list: it
+#: is the --public-port surface, it answers under a prefix, and its '/' is the board page.
+BOARD_ROUTES = ('/display', '/board.js', '/board.css')
+BOARD_ROUTE_ALIASES = {'/display': 'board.html'}
+FAVICON_FILES = ('/favicon.svg', '/favicon-32.png', '/favicon-16.png', '/favicon.ico')
 
 
 class APIError(Exception):
@@ -2818,8 +2839,8 @@ def make_handler(backend):
                         raise APIError("invalid request size", 413)
                     payload = json.loads(self.rfile.read(size))
                     return self.json(202 if parts == ['api', 'inference'] else 200, backend.post(parts, payload))
-                if path in ('/app.html', '/ops.html'):
-                    return self.send(308, b'', 'text/plain', {'Location': '/'})
+                if path in LEGACY_PAGE_REDIRECTS:
+                    return self.send(308, b'', 'text/plain', {'Location': LEGACY_PAGE_REDIRECTS[path]})
                 if path == '/api/review-template':
                     return self.json(200, {'html': (backend.root / 'annotator' / 'app.html').read_text()})
                 if path == '/api/clock/stream':
@@ -2852,18 +2873,18 @@ def make_handler(backend):
                 if path == '/api/vods/thumb':
                     content_type, raw = backend.vod_thumb(query)
                     return self.send(200, raw, content_type)
-                if path in ("/favicon.svg", "/favicon-32.png", "/favicon-16.png", "/favicon.ico"):
+                if path in FAVICON_FILES:
                     return self.file(safe_file(backend.root / "annotator", path[1:]))
                 # Self-hosted web fonts and their OFL texts: one flat directory, no build script.
                 if len(parts) == 2 and parts[0] == "fonts" and parts[1].endswith((".woff2", ".txt")):
                     return self.file(safe_file(backend.root / "annotator" / "fonts", parts[1]))
                 # The public board, for a TV logged in here (--public-port serves it without login).
-                if path in ("/display", "/board.js", "/board.css"):
-                    return self.file(safe_file(backend.root / "annotator", "board.html" if path == "/display" else path[1:]))
+                if path in BOARD_ROUTES:
+                    return self.file(safe_file(backend.root / "annotator", BOARD_ROUTE_ALIASES.get(path, path[1:])))
                 if path == "/api/board":
                     return self.send(200, backend.public_board()[1])
-                if path in ("/", "/app.html", "/app.css", "/app.js", "/ops.html", "/ops.css", "/ops.js", "/vision-stage.js", "/clock-sync.js"):
-                    return self.file(safe_file(backend.root / "annotator", "ops.html" if path == "/" else path[1:]))
+                if path in PAGE_FILES:
+                    return self.file(safe_file(backend.root / "annotator", PAGE_ALIASES.get(path, path[1:])))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
                     return self.send(200, backend.event_frame(parts[1], parts[3]), "image/jpeg")
                 if len(parts) == 3 and parts[0] == "media" and parts[2] == "frame":
