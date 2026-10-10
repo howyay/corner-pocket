@@ -6,11 +6,16 @@ import sys
 
 import numpy as np
 
+from src.table_geometry import CANON_H, CANON_W
+
+# The canonical frame is a closed box. The rail itself is part of the surface,
+# so a ball at the far corner (CANON_W, CANON_H) counts as inside. The check
+# below accepts that point, and the test in tests/test_qa.py pins it.
+
 
 def main():
     results = json.load(open(sys.argv[1] if len(sys.argv) > 1 else "out/run1/results.json"))
     print(f"frames: {len(results)}")
-    H, W = 500, 1000
     n_out = 0
     corners_list = []
     for r in results:
@@ -19,7 +24,7 @@ def main():
         inside = 0
         for b in balls:
             tx, ty = b["table"]
-            if 0 <= tx <= W and 0 <= ty <= H:
+            if 0 <= tx <= CANON_W and 0 <= ty <= CANON_H:
                 inside += 1
             else:
                 n_out += 1
