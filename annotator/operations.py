@@ -763,13 +763,17 @@ class Operations:
         elif action == 'pool_remove':
             name = text(p.get('name'), 'name').casefold()
             pool.remove(next((m for m in pool if m['name'].casefold() == name), None) or self._find([], None))
-        else:
+        elif action == 'pair_draw':
             if len(pool) < 2 or len(pool) % 2:
                 raise ValueError('An even number of solo players is needed to pair')
             seed = random.SystemRandom().randrange(2 ** 31)
             order = list(range(len(pool)))
             random.Random(seed).shuffle(order)
             t['pairing'] = dict(seed=seed, teams=[[pool[order[i]], pool[order[i + 1]]] for i in range(0, len(order), 2)])
+        else:
+            # A name this writer does not implement is refused here. The old fall-through drew a
+            # pairing for any unknown name, so a bad registry row paired a tournament.
+            raise ValueError(f'Unknown pairing action: {action}')
 
     def _do_entrants(self, s, p):
         action = p.get('action')
@@ -905,7 +909,7 @@ class Operations:
             else:
                 absent.discard(match['sides'][side])
             match.update(absent=sorted(absent), status='delayed' if absent else 'scheduled', table=None)
-        else:
+        elif action in ('match_complete', 'match_forfeit'):
             if action == 'match_forfeit':
                 side = integer(p.get('side'), 0, 1, 'side')
                 winner = 1 - side
@@ -916,6 +920,10 @@ class Operations:
             match.update(status='complete', winnerId=match['sides'][winner], table=None,
                          result='forfeit' if action == 'match_forfeit' else 'played', completedAt=timestamp())
             self._propagate(t)
+        else:
+            # A name this writer does not implement is refused here. The old fall-through ran
+            # match_complete for any unknown name, so a bad registry row played a match.
+            raise ValueError(f'Unknown match action: {action}')
 
     def _do_revival(self, s, p):
         action = p.get('action')

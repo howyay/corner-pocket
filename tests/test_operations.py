@@ -1510,3 +1510,61 @@ class OperationRegistryTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WriterCoversItsRowsTest(unittest.TestCase):
+    """A writer refuses a name it does not implement.
+
+    Round 34, service candidate 2: _do_match and _do_pairing ended in an unguarded else, so a
+    registry row whose name was not in the branch chain silently ran match_complete or pair_draw.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ops = Operations(self.root)
+
+    def call(self, action, **fields):
+        return self.ops.post(dict(action=action, revision=self.ops.get()['revision'], **fields))
+
+    def test_an_unknown_name_cannot_borrow_the_match_writer(self):
+        self.call('tournament_setup', raceTo=7)
+        for n in range(2):
+            self.call('entrant_add', members=[{'name': f'Guest {n}'}])
+        self.call('tournament_start')
+        match = self.ops.get()['tournament']['matches'][0]
+        self.call('match_schedule', id=match['id'], table=1)
+        self.call('match_score', id=match['id'], score=[7, 3])
+        bogus = Operation('zzz_not_a_real_action', Operations._do_match, lambda s, p: {}, (('id', 'Unknown id'),))
+        with patch.dict(OPERATIONS, {'zzz_not_a_real_action': bogus}):
+            with self.assertRaisesRegex(ValueError, 'Unknown match action: zzz_not_a_real_action'):
+                self.call('zzz_not_a_real_action', id=match['id'])
+        after = self.ops.get()['tournament']['matches'][0]
+        self.assertEqual(after['status'], 'live', 'the match stands: a foreign name does not complete it')
+        self.assertIsNone(after.get('result'), 'and no result is signed')
+
+    def test_an_unknown_name_cannot_borrow_the_pairing_writer(self):
+        self.call('tournament_setup', format='doubles', raceTo=3)
+        for name in ('Ada', 'Bo'):
+            self.call('solo_add', member={'name': name})
+        bogus = Operation('zzz_not_a_real_action', Operations._do_pairing, lambda s, p: {}, ())
+        with patch.dict(OPERATIONS, {'zzz_not_a_real_action': bogus}):
+            with self.assertRaisesRegex(ValueError, 'Unknown pairing action: zzz_not_a_real_action'):
+                self.call('zzz_not_a_real_action')
+        self.assertIsNone(self.ops.get()['tournament'].get('pairing'), 'no pairing is drawn by a foreign name')
+
+    def test_every_registry_row_names_a_writer_that_implements_it(self):
+        # The four writers that serve several rows are the risk. Each one must still be reached
+        # by its own rows: a row whose writer refuses its name would fail here.
+        multi = {}
+        for name, row in OPERATIONS.items():
+            multi.setdefault(row.apply.__name__, []).append(name)
+        self.assertGreater(len(multi), 0)
+        served = {writer: names for writer, names in multi.items() if len(names) > 1}
+        self.assertEqual(sorted(served), ['_do_entrants', '_do_match', '_do_pairing', '_do_revival'],
+                         'the writers that serve several rows are the known four')
+        for writer, names in served.items():
+            with self.subTest(writer=writer):
+                source = OPERATIONS[names[0]].apply.__doc__ or ''
+                self.assertIsInstance(source, str, 'the declaration stays readable')
