@@ -834,6 +834,36 @@ class GateThresholds:
         return {k: (list(v) if isinstance(v, tuple) else v) for k, v in self.__dict__.items()}
 
 
+#: The threshold names the review rail reads.  src/dense_queue.py `provenance`
+#: copies these names into `provenance.run.gate_thresholds`, in this order.
+RAIL_THRESHOLD_KEYS: tuple[str, ...] = (
+    "motion_speed_px_s",
+    "pocket_r_mm",
+    "min_net_displacement_diameters",
+    "localisation_error_px",
+)
+
+#: The threshold names the run report reads beside the rail names.
+#: src/dense_queue.py `build` serves the rail names and these two names.
+REPORT_EXTRA_THRESHOLD_KEYS: tuple[str, ...] = (
+    "ball_diameter_px",
+    "persistence_s",
+)
+
+#: The threshold names the run report reads, in the report's own order.
+#: src/dense_queue.py `build` copies these names into
+#: `generated_from.gate_thresholds`.  The set is RAIL_THRESHOLD_KEYS plus
+#: REPORT_EXTRA_THRESHOLD_KEYS, and the names are GateThresholds fields.
+REPORT_THRESHOLD_KEYS: tuple[str, ...] = (
+    "min_net_displacement_diameters",
+    "ball_diameter_px",
+    "localisation_error_px",
+    "pocket_r_mm",
+    "motion_speed_px_s",
+    "persistence_s",
+)
+
+
 # ---------------------------------------------------------------------------
 # event records
 # ---------------------------------------------------------------------------

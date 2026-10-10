@@ -64,6 +64,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src import events_document  # noqa: E402
+#: The gate owns the served threshold names.  This tool never spells them again.
+from src.shot_pot_gate import RAIL_THRESHOLD_KEYS, REPORT_THRESHOLD_KEYS  # noqa: E402
 
 WORK_W, WORK_H = 960, 540
 NATIVE_W, NATIVE_H = 1280, 720
@@ -349,11 +351,8 @@ def provenance(artifact, extra: dict) -> dict:
                     "ball_samples": artifact.get("samples", {}).get("balls"),
                     "identities": artifact.get("tracks", {}).get("n"),
                     "occlusion_source": artifact.get("occlusion", {}).get("source"),
-                    "gate_thresholds": {
-                        "motion_speed_px_s": thresholds.get("motion_speed_px_s"),
-                        "pocket_r_mm": thresholds.get("pocket_r_mm"),
-                        "min_net_displacement_diameters": thresholds.get("min_net_displacement_diameters"),
-                        "localisation_error_px": thresholds.get("localisation_error_px")}},
+                    "gate_thresholds": {name: thresholds.get(name)
+                                        for name in RAIL_THRESHOLD_KEYS}},
             **extra}
 
 
@@ -641,10 +640,8 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
     after = _md5(ANNOTATIONS)
     report = {
         "generated_from": {"artifact": artifact_path, "artifact_md5": _md5(artifact_path),
-                           "gate_thresholds": {k: artifact["thresholds"].get(k) for k in
-                                               ("min_net_displacement_diameters", "ball_diameter_px",
-                                                "localisation_error_px", "pocket_r_mm",
-                                                "motion_speed_px_s", "persistence_s")},
+                           "gate_thresholds": {name: artifact["thresholds"].get(name)
+                                               for name in REPORT_THRESHOLD_KEYS},
                            "detector": DETECTOR,
                            "calibration": "the run's own cloth quad (verified hand anchors)"},
         "queue": {"path": queue_path, "events": len(entries),
