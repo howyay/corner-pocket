@@ -26,7 +26,11 @@ missing and identifiable rather than silently reused.
 of (measured now, read from a saved reference, cached N frames ago).  That is the
 opposite situation from a skipped stage: geometry such as the cloth quad *is* a
 property of the camera, not of the frame, so serving a saved quad is correct - as
-long as the frame says so and says how old it is.
+long as the frame says so and says how old it is.  The registry owns ``ran`` and
+``age_frames``; a hook adds names beside them and cannot replace them.  A hook that
+returns something other than a dict, or that raises, never stops a frame: its entry
+carries ``evidence_error`` instead, because provenance that failed must still be
+visible rather than absent.
 
 Nothing here queues or retries.  Metrics are a fixed-size rolling window
 (count/p50/p95/max/last) per step, and budget enforcement is deliberately the
@@ -40,6 +44,10 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
+
+#: The evidence keys the registry owns.  A stage's ``evidence`` hook adds names
+#: beside these two; a hook that returns them is refused and its entry says so.
+REGISTRY_KEYS = ('ran', 'age_frames')
 
 #: The trained ball detector (``src/tiny_ball_net.py``, round ``960x540-scratch``,
 #: 300 train frames / 20 epochs) and the operating point its held-out sweep chose:
@@ -212,10 +220,27 @@ class StageRegistry:
             ran.append(name)
             self._last_ran[name] = self._frame
             hook = getattr(stage, 'evidence', None)
-            extra = hook(results[name]) if callable(hook) else None
             entry = dict(ran=True, age_frames=0)
-            if isinstance(extra, dict):
-                entry.update(extra)
+            if callable(hook):
+                try:
+                    extra = hook(results[name])
+                except Exception as exc:            # a hook never stops a frame
+                    entry['evidence_error'] = ('the evidence hook of stage %s raised %s: %s'
+                                               % (name, type(exc).__name__, exc))
+                else:
+                    if isinstance(extra, dict):
+                        claimed = sorted(key for key in extra if key in REGISTRY_KEYS)
+                        if claimed:
+                            # The registry's own answer is not the stage's to replace: a hook
+                            # that answers `ran` could make the frame claim the stage did not
+                            # run while its timing sample sits in timings[name].
+                            entry['evidence_error'] = ('the evidence hook of stage %s returned the '
+                                                       'registry keys %s' % (name, ', '.join(claimed)))
+                        entry.update({key: value for key, value in extra.items()
+                                      if key not in REGISTRY_KEYS})
+                    else:
+                        entry['evidence_error'] = ('the evidence hook of stage %s returned %s, not a dict'
+                                                   % (name, type(extra).__name__))
             evidence[name] = entry
             if overrun is not None:
                 continue

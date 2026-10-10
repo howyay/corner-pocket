@@ -243,6 +243,70 @@ class PipelineStageTests(unittest.TestCase):
         run = StageRegistry([Provenance()]).run('frame')
         self.assertEqual(run.evidence['table'], dict(ran=True, age_frames=0, source='saved:seg-1'))
 
+    def test_a_hook_cannot_replace_the_registrys_own_answer(self):
+        class Claiming(Stage):
+            name = 'ball'
+
+            def process(self, frame, context):
+                return {'balls': []}
+
+            def evidence(self, result):
+                return {'ran': False, 'age_frames': 99, 'ball_source': 'cached'}
+
+        run = StageRegistry([Claiming()]).run('frame')
+        entry = run.evidence['ball']
+        # The registry's two keys are its own: the timing sample exists, so the frame
+        # cannot claim this stage did not run.
+        self.assertEqual(entry['ran'], True)
+        self.assertEqual(entry['age_frames'], 0)
+        self.assertIn('ball', run.timings_ms)
+        self.assertEqual(entry['ball_source'], 'cached')
+        self.assertIn('age_frames, ran', entry['evidence_error'])
+
+    def test_a_hook_that_returns_no_dict_says_so_instead_of_vanishing(self):
+        class Broken(Stage):
+            name = 'ball'
+
+            def process(self, frame, context):
+                return {'balls': []}
+
+            def evidence(self, result):
+                return ['ball_source', 'cached']
+
+        run = StageRegistry([Broken()]).run('frame')
+        entry = run.evidence['ball']
+        self.assertEqual(entry['ran'], True)
+        self.assertEqual(entry['age_frames'], 0)
+        self.assertIn('returned list, not a dict', entry['evidence_error'])
+
+    def test_a_hook_that_raises_does_not_stop_the_frame(self):
+        class Raising(Stage):
+            name = 'ball'
+
+            def process(self, frame, context):
+                return {'balls': [1, 2]}
+
+            def evidence(self, result):
+                raise RuntimeError('no provenance today')
+
+        run = StageRegistry([Raising(), Recorder('after', [])]).run('frame')
+        self.assertEqual(run.ran, ['ball', 'after'])
+        self.assertEqual(run.results['ball'], {'balls': [1, 2]})
+        self.assertIn('ball', run.timings_ms)
+        self.assertIn('RuntimeError: no provenance today', run.evidence['ball']['evidence_error'])
+        self.assertEqual(run.evidence['after'], dict(ran=True, age_frames=0))
+
+    def test_a_stage_object_without_a_hook_reports_no_error(self):
+        class Plain:
+            name = 'plain'
+            budget_ms = None
+
+            def process(self, frame, context):
+                return {'ok': True}
+
+        run = StageRegistry([Plain()]).run('frame')
+        self.assertEqual(run.evidence['plain'], dict(ran=True, age_frames=0))
+
 
 class TableStageTests(unittest.TestCase):
     """The static-table stage: saved segment reference first, measured cadence second."""
