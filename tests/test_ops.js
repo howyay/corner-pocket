@@ -2181,7 +2181,7 @@ function broadcastsHarness(lang = 'en') {
     '/api/vods/job': {state:'running', id:'tw-1000000001-0-600', percent:42.5, mb:51.2, rate_mb_s:12.3, eta_s:95}};
   h.context.fetch = async (url, options) => { calls.push({url, body: options?.body ? JSON.parse(options.body) : null});
     const key = String(url).split('?')[0];
-    if (key === '/api/vods/import' && calls.at(-1).body.vod === '1111111111') return {ok:false, status:400, json: async () => ({error:'This VOD belongs to someoneelse. Only saved channels can be analysed; add the channel under Source first.'})};
+    if (key === '/api/vods/import' && calls.at(-1).body.vod === '1111111111') return {ok:false, status:400, json: async () => ({error:'This VOD belongs to someoneelse. Only saved channels can be analysed; add the channel under Source first.', code:'vod_channel_not_saved', channel:'someoneelse', zh:'此回放属于 someoneelse。只能分析已保存的频道；请先在“来源”中添加该频道。'})};
     // The estimate answers for the VOD it was asked about, as the server does.
     if (key === '/api/vods/estimate') { const vod = decodeURIComponent(String(url).split('vod=')[1] || ''); return {ok:true, status:200, json: async () => ({...replies[key], vod_id: vod})}; }
     return {ok:true, status:200, json: async () => replies[key] || {}}; };
@@ -2212,7 +2212,7 @@ test('Broadcasts lists each saved channel\'s recent VODs, the job progress and e
     assert.ok(html.includes(kept), `kept: ${kept}`);
   assert.ok(html.includes('data-vs-action="pick-dataset" data-vs-value="tw-1000000001-3600-3900"'), 'the imported VOD is a dataset chip');
 });
-test('Import takes the whole broadcast, shows the estimated size before confirming, and maps the other-channel refusal to 中文', async () => {
+test('Import takes the whole broadcast, shows the estimated size before confirming, and reads the served 中文 of the other-channel refusal', async () => {
   const {seam, snap, calls, replies} = broadcastsHarness('zh');
   replies['/api/vods/estimate'] = {id:'tw-1000000001', vod_id:'1000000001', channel:'examplechannel', range:{start_s:0, end_s:13397, whole:true},
     estimate_bytes:5505302893, disk:{ok:true, free_bytes:52196323328, needed_bytes:8606363471, refusal:null}, already_imported:false, eta_s:442};
@@ -2225,7 +2225,8 @@ test('Import takes the whole broadcast, shows the estimated size before confirmi
   assert.match(html, /examplechannel · 整场回放 · 约 5\.5 GB, 约 7 min 22 s · 52\.2 GB 可用/, 'size and time before committing');
   assert.match(html, /data-vs-action="bc-import"[^>]*>导入 · 5\.5 GB</);
   assert.ok(!/data-vs-field="bc-start"|data-vs-field="bc-minutes"/.test(html), 'round 10, item 3: no start and no length to type');
-  // Another channel's broadcast is refused, and the console states the refusal in 中文.
+  // Round 41: another channel's broadcast is refused, and the console states the Chinese sentence
+  // that the service sends beside the code. It holds no rule for that sentence of its own.
   seam.click('bc-open', '1111111111');
   await settle(); await settle();
   seam.click('bc-import', '');
@@ -4608,7 +4609,8 @@ test('round 19 / owner item 6: the Tonight screen reads like a person wrote it',
                  // batch 3: History, where the long sentences live.
                  'reviewNote', 'autoQueued', 'autoSkipped', 'autoDone',
                  // batch 4: the backfill wizard, which is where the longest notes live.
-                 'bfHonest', 'bfManual', 'bfPickNote', 'bfLeft', 'bfLinkedCount', 'bfChannel'];
+                 // Round 41: bfChannel left the table - the served Chinese sentence replaced it.
+                 'bfHonest', 'bfManual', 'bfPickNote', 'bfLeft', 'bfLinkedCount'];
   const allow = ['T{table}', 'VOD', 'Twitch', 'MB/s', '{n}', '{name}', '{score}', '{table}', '{id}', '{at}'];
   for (const key of batch) {
     const [en, zh] = words[key];

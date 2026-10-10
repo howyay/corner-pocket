@@ -36,6 +36,7 @@ import time
 from urllib.parse import urlencode
 
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
+from annotator.refusals import CHANNEL_REFUSAL, channel_refusal, disk_refusal, gb, job_identity
 from src.atomic_write import write_atomic
 from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
 
@@ -65,8 +66,9 @@ RESERVE_BYTES = 2 * 10**9
 #: FFmpeg may open only these protocols (the operator's private audit record,
 #: not published; finding B-6): HLS over HTTPS.
 PROTOCOLS = "file,http,https,tcp,tls,crypto"
-REFUSED_CHANNEL = ("This VOD belongs to {channel}. Only saved channels can be analysed; "
-                   "add the channel under Source first.")
+#: The channel refusal sentence.  ``annotator/refusals.py`` owns the identity beside it: the
+#: code, the Chinese sentence, and the channel field.  Fill it with ``channel_refusal``.
+REFUSED_CHANNEL = CHANNEL_REFUSAL.en
 _URL = re.compile(r"(?:https?|file|tcp|tls|crypto)://\S+|/\S*\.m3u8\S*")
 
 
@@ -86,19 +88,30 @@ def thumb_path(channel, vod):
 
 
 class VodImportError(Exception):
-    """A refusal or failure with the sentence the operator reads and an HTTP status."""
+    """A refusal or failure with the sentence the operator reads and an HTTP status.
 
-    def __init__(self, message, status=400):
+    ``identity`` holds the code and the named facts of a refusal, or nothing when the failure
+    carries none.  ``annotator/unified_server.py`` copies it into the response body beside
+    ``error``, and the console reads it there.
+    """
+
+    def __init__(self, message, status=400, identity=None):
         super().__init__(message)
         self.status = status
+        self.identity = dict(identity or {})
+
+
+def failure_identity(exc):
+    """The code and the named facts of one failure, or nothing when it carries none.
+
+    Only a refusal carries them.  Any other exception is a failure: it adds no code, so the
+    console falls back to its generic line.
+    """
+    return dict(exc.identity) if isinstance(exc, VodImportError) else {}
 
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
-
-
-def gb(count):
-    return f"{count / 1e9:.1f} GB"
 
 
 def size_text(count):
@@ -326,8 +339,8 @@ class VodImporter:
         """
         name = str(channel or "").lower()
         if name not in self.saved_channels():
-            raise VodImportError(REFUSED_CHANNEL.format(channel=name or "a channel Twitch did not name"),
-                                 403)
+            sentence, identity = channel_refusal(name)
+            raise VodImportError(sentence, 403, identity)
         content_type, body = self._twitch_call(self.tw.vod_thumbnail, vod_id)
         return content_type, body
 
@@ -339,7 +352,8 @@ class VodImporter:
         info = self._twitch_call(self.tw.vod_info, vod_id)
         channel = str(info.get("channel") or "").lower()
         if not channel or channel not in self.saved_channels():
-            raise VodImportError(REFUSED_CHANNEL.format(channel=channel or "a channel Twitch did not name"))
+            sentence, identity = channel_refusal(channel)
+            raise VodImportError(sentence, identity=identity)
         length = info.get("length_s")
         if isinstance(length, bool) or not isinstance(length, int) or length <= 0:
             raise VodImportError("Twitch reports no length for this VOD, so no range can be checked", 502)
@@ -377,10 +391,12 @@ class VodImporter:
         free = int(self._disk_usage(folder).free)
         needed = int(estimate * HEADROOM + RESERVE_BYTES)
         disk = {"free_bytes": free, "needed_bytes": needed, "ok": free >= needed}
-        disk["refusal"] = None if disk["ok"] else (
-            f"Not enough free disk space: this import needs {gb(needed)} (about {gb(estimate)} "
-            f"estimated x 1.2 + 2 GB reserve) and {gb(free)} is free. "
-            "Import a shorter range or free some space first.")
+        if disk["ok"]:
+            disk["refusal"], disk["identity"] = None, {}
+        else:
+            # One builder writes the sentence the operator reads and the identity the console
+            # reads beside it, so a rewording here cannot drop the code or the numbers.
+            disk["refusal"], disk["identity"] = disk_refusal(needed, estimate, free)
         return disk
 
     def _last_rate(self):
@@ -403,8 +419,11 @@ class VodImporter:
                     rate_Bps=rate, eta_s=round(estimate / rate) if rate else None)
 
     def job(self):
+        """The record the console polls: the sentence, and the refusal identity beside it."""
         with self._lock:
             view = {key: value for key, value in self._job.items() if not key.startswith("_")}
+            identity = dict(self._job.get("_identity") or {})
+        view.update(identity)
         if isinstance(view.get("bytes"), int):
             view["mb"] = round(view["bytes"] / 1e6, 1)
         if view.get("rate_Bps"):
@@ -434,20 +453,23 @@ class VodImporter:
         if "vod" not in payload:
             raise VodImportError("vod is required: a Twitch VOD id or https://www.twitch.tv/videos/<id>")
         if not self._start_lock.acquire(blocking=False):
-            raise VodImportError("An import is already starting; wait for it or cancel it first.", 409)
+            raise VodImportError("An import is already starting; wait for it or cancel it first.", 409,
+                                 job_identity("already_starting"))
         try:
             with self._lock:
                 if self._job["state"] == "running":
                     raise VodImportError(f"An import is already running ({self._job['id']}); "
-                                         "wait for it or cancel it first.", 409)
+                                         "wait for it or cancel it first.", 409,
+                                         job_identity("already_running", id=self._job["id"]))
             self._index_document()                  # a damaged index is refused before any download
             plan = self._plan(payload["vod"], payload.get("start_s"), payload.get("duration_s"))
             if plan["id"] in read_index(self.root)[0] and self._media(plan["id"]).is_file():
-                raise VodImportError(f"{plan['id']} is already imported; delete it first to import it again.", 409)
+                raise VodImportError(f"{plan['id']} is already imported; delete it first to import it again.",
+                                     409, job_identity("already_imported", id=plan["id"]))
             media_url, variant, estimate = self._resolve(plan)
             disk = self._disk(estimate)
             if not disk["ok"]:
-                raise VodImportError(disk["refusal"], 507)
+                raise VodImportError(disk["refusal"], 507, disk["identity"])
             part = self._media(plan["id"], part=True)
             part.parent.mkdir(parents=True, exist_ok=True)
             part.unlink(missing_ok=True)            # a stale partial file of the same id
@@ -458,7 +480,8 @@ class VodImporter:
             job = dict(plan, state="running", variant=variant, estimate_bytes=estimate,
                        total_s=span["end_s"] - span["start_s"], done_s=0.0, percent=0.0, bytes=0,
                        rate_Bps=None, speed=None, eta_s=None, elapsed_s=0.0, started_at=now_iso(),
-                       finished_at=None, error=None, message=None, _t0=self._monotonic())
+                       finished_at=None, error=None, message=None, _t0=self._monotonic(),
+                       _identity={})
             thread = threading.Thread(target=self._run, args=(proc, plan, variant, part), daemon=True)
             with self._lock:
                 self._job, self._proc, self._thread = job, proc, thread
@@ -481,10 +504,21 @@ class VodImporter:
                 job.update(bytes=int(size), rate_Bps=int(size) / elapsed if elapsed > 0 else None)
             job.update(elapsed_s=round(elapsed, 1), speed=float(speed[1]) if speed else None)
 
-    def _finish(self, **fields):
+    def _finish(self, identity=None, **fields):
+        """Close the job: the outcome fields, and the refusal identity beside the sentence.
+
+        An import that ends with no refusal clears the identity, so a stale code cannot
+        outlive the failure it belongs to.
+        """
         with self._lock:
             self._job.update(fields, finished_at=now_iso(),
-                             elapsed_s=round(self._monotonic() - self._job["_t0"], 1))
+                             elapsed_s=round(self._monotonic() - self._job["_t0"], 1),
+                             _identity=dict(identity or {}))
+
+    def _job_identity(self):
+        """The code and the named facts the job record carries beside its sentence, if any."""
+        with self._lock:
+            return dict(self._job.get("_identity") or {})
 
     def _run(self, proc, plan, variant, part):
         try:
@@ -533,7 +567,8 @@ class VodImporter:
         except Exception as exc:
             part.unlink(missing_ok=True)
             text = str(exc) if isinstance(exc, VodImportError) else self._public_error(exc)
-            self._finish(state="error", error=f"{text}. The partial file was removed.")
+            self._finish(identity=failure_identity(exc), state="error",
+                         error=f"{text}. The partial file was removed.")
 
     def _stop(self, reason):
         with self._lock:
@@ -642,10 +677,15 @@ class VodImporter:
             self._auto["current"] = row
             return row
 
-    def _auto_finish(self, row, state, error=None):
-        """Move the current item to ``done`` or ``skipped``, and keep only the last few."""
+    def _auto_finish(self, row, state, error=None, identity=None):
+        """Move the current item to ``done`` or ``skipped``, and keep only the last few.
+
+        ``identity`` is the code and the named facts of the refusal, copied into the row beside
+        the sentence the console shows.
+        """
         row["state"] = state
         row["error"] = error
+        row.update(identity or {})
         with self._lock:
             self._auto["current"] = None
             bucket = self._auto["done" if state == "done" else "skipped"]
@@ -671,7 +711,7 @@ class VodImporter:
             return self._auto_requeue(row)
         disk = self._disk(0)                    # the 2 GB reserve alone: is even that too much?
         if not disk["ok"]:
-            return self._auto_finish(row, "skipped", disk["refusal"])
+            return self._auto_finish(row, "skipped", disk["refusal"], identity=disk["identity"])
         # An operator's own import holds the single-flight slot. Waiting for it is honest;
         # spending the item on a 409 would drop a broadcast that is already in the queue.
         while not self._auto_stop.is_set():
@@ -693,7 +733,7 @@ class VodImporter:
         try:
             started = self.start(payload)
         except VodImportError as exc:
-            return self._auto_finish(row, "skipped", str(exc))
+            return self._auto_finish(row, "skipped", str(exc), identity=exc.identity)
         except Exception as exc:                # one item must never kill the drain thread
             return self._auto_finish(row, "skipped", self._public_error(exc))
         with self._lock:
@@ -704,12 +744,15 @@ class VodImporter:
         if final.get("id") == job_id:
             done = final.get("state") == "done"
             error = final.get("error") or final.get("message")
+            identity = self._job_identity()
         else:
             # Another import replaced the status in the instant between ours ending and this
             # read; the index is then the only honest record of how ours ended.
             done = started["id"] in read_index(self.root)[0]
             error = None if done else "the import ended as another one started; it is not in the index"
-        self._auto_finish(row, "done" if done else "skipped", None if done else error)
+            identity = {}
+        self._auto_finish(row, "done" if done else "skipped", None if done else error,
+                          identity=None if done else identity)
 
     def _auto_wake(self):
         """Make sure one drain thread runs, unless auto is off or the server is closing."""

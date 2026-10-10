@@ -44,14 +44,12 @@ Object.assign(words,{
   bfLinkedCount:['{n} of {m} names are regulars: their results count towards their house standing. The rest are guests and count towards nobody.','{m} 个名字中有 {n} 个是常客：他们的成绩计入球房排名；其余按访客处理，不计入任何人的排名。'],
   bfSameVod:['This range is already in the console. Open it, or pick another range.','这一段已经在控制台里了。打开它，或换一段。'],
   bfLeft:['The draft is on this device. The download keeps running without this page.','草稿保存在本机。离开这个页面下载会继续。'],
-  bfChannel:['Add this channel under Back room first, or pick a saved channel.','请先在后台添加这个频道，或换一个已保存的频道。'],
   bfNoVods:['No recent broadcasts for the saved channels','已存频道没有最近的回放'],bfPick:['Use this one','选这段'],
   bfNeedVod:['Paste a VOD link or id first','请先粘贴回放链接或 id'],bfNeedMarks:['Mark at least one match first','请先标记至少一场'],
   bfMarkOrder:['The end must come after the start','结束时间必须晚于开始时间'],bfToReview:['Confirm each match →','逐场确认 →'],
   bfBackMarking:['Back to marking','返回标记'],bfUnmark:['Remove','删除'],bfIncomplete:['Every match needs both players, the winner and the score.','每一场都需要两位球员、胜者和比分。'],
   bfResumePrompt:['Continue the marks from last time ({n} matches)?','继续上次的标记（{n} 场）？'],bfResumeYes:['Continue','继续'],bfResumeNo:['Start over','重新开始'],
   bfFailedTitle:['The download stopped','下载中断'],bfRejectedTitle:['This range cannot be imported','这一段无法导入'],
-  bfDiskNo:['Not enough free disk space for this range.','磁盘空间不足，装不下这一段。'],
   backfillSource:['Source: Twitch VOD {id} · {range} · confirmed match by match','来源：Twitch VOD {id} · {range} · 逐场人工确认'],signOffLine:['Confirmed match by match · {at}','逐场人工确认 · {at}'],
   backfillOpenVod:['Open the broadcast','打开回放'],
   bfStepWord:['Step','步骤'],
@@ -474,11 +472,17 @@ function recordsScreen(){
   ${auditRest().length?auditFold(auditRest(),t('auditRest'),' tl-audit-rest'):''}
 </article></section>`}
 // ---- Backfill one past night from a Twitch VOD (7.1) ------------------------------------
-function bfFresh(){return {step:'pick',vod:null,startS:0,endS:0,estimate:null,job:null,datasetId:'',datasetTitle:'',paste:'',night:{name:'',format:'singles',raceTo:7,tables:1},clock:0,marks:[],draft:[],error:'',detail:'',notice:'',conflict:'',nightId:'',busy:false,recent:null,saved:null}}
+function bfFresh(){return {step:'pick',vod:null,startS:0,endS:0,estimate:null,job:null,datasetId:'',datasetTitle:'',paste:'',night:{name:'',format:'singles',raceTo:7,tables:1},clock:0,marks:[],draft:[],error:'',code:'',detail:'',notice:'',conflict:'',nightId:'',busy:false,recent:null,saved:null}}
 function readBfDraft(){try{const raw=JSON.parse(localStorage.getItem(BF_DRAFT)||'null');return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:null}catch(_){return null}}
 function saveBfDraft(){if(!bf)return;try{localStorage.setItem(BF_DRAFT,JSON.stringify({datasetId:bf.datasetId,vodId:bf.vod?.id||'',channel:bf.vod?.channel||'',title:bf.vod?.title||'',startS:bf.startS,endS:bf.endS,night:bf.night,marks:bf.marks,draft:bf.draft,savedAt:new Date().toISOString()}))}catch(_){}}
 function clearBfDraft(){try{localStorage.removeItem(BF_DRAFT)}catch(_){}}
-function bfError(error){const detail=String(error?.message||error||'');if(/Only saved channels/i.test(detail))return t('bfChannel');if(/Not enough free disk space/i.test(detail))return t('bfDiskNo');return validationMessage(detail)}
+// Round 41, second half: a refusal arrives as the sentence plus its identity - a stable code and
+// the Chinese sentence. annotator/refusals.py builds both, so the console reads the code and holds
+// no copy of the sentence. bfRefusalCodes names only the codes this console branches on.
+const bfRefusalCodes={channel_not_saved:'vod_channel_not_saved',already_imported:'vod_already_imported'};
+function bfCode(served){return String((served&&served.code)||'')}
+function bfError(error,served){return validationMessage(String(error?.message||error||''),served)}
+function bfRefusal(step,error,served){bf.detail=String(error?.message||error||'');bf.code=bfCode(served);bf.error=bfError(error,served);if(step)bf.step=step}
 function bfConflictId(text){const all=[...String(text||'').matchAll(/\(([^()]+)\)/g)];return all.length?all[all.length-1][1]:''}
 // Round 34 card 11: the service sends the night as data beside the sentence. Read that key when
 // the service sends it. The parse above serves an older service only. Then a rewording of the
@@ -500,11 +504,11 @@ async function bfEstimate(){
   // a second place - and the disk figure is the one number that must be about the real download.
   try{
     const r=await fetch(`/api/vods/estimate?vod=${encodeURIComponent(id)}`,{cache:'no-store'}),body=await r.json().catch(()=>({}));
-    if(!r.ok)throw Object.assign(Error(body.error||`HTTP ${r.status}`),{status:r.status});
+    if(!r.ok)throw Object.assign(Error(body.error||`HTTP ${r.status}`),{status:r.status,served:body});
     bf.estimate=body;bf.datasetId=String(body.id||'');bf.startS=Number(body.range?.start_s)||0;bf.endS=Number(body.range?.end_s)||0;
     bf.vod=Object.assign({},bf.vod,{title:body.title||bf.vod.title,channel:body.channel||'',length_s:body.length_s||bf.vod.length_s});
-    bf.error='';bf.detail='';bf.notice=body.already_imported?t('bfReuse'):'';bf.step='verify'}
-  catch(error){bf.detail=String(error?.message||error);bf.error=bfError(error);bf.step='rejected'}
+    bf.error='';bf.code='';bf.detail='';bf.notice=body.already_imported?t('bfReuse'):'';bf.step='verify'}
+  catch(error){bfRefusal('rejected',error,error?.served)}
   bf.busy=false;render()}
 async function bfStartImport(){
   if(!bf.estimate){await bfEstimate();if(!bf.estimate||bf.error)return}
@@ -518,22 +522,22 @@ async function bfStartImport(){
     const r=await fetch('/api/vods/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vod:bf.vod.id})});
     const job=await r.json().catch(()=>({}));
     if(r.status===409){
-      bf.detail=String(job.error||'');
-      if(/already imported/i.test(bf.detail)){bf.notice=t('bfReuse');bf.error='';bf.step='dataset';bf.busy=false;saveBfDraft();render();return}
+      bf.detail=String(job.error||'');bf.code=bfCode(job);
+      if(bf.code===bfRefusalCodes.already_imported){bf.notice=t('bfReuse');bf.error='';bf.step='dataset';bf.busy=false;saveBfDraft();render();return}
       bf.notice=t('bfBusy');bf.step='importing';bf.job=Object.assign({state:'running'},job);bf.busy=false;render();return}
-    if(!r.ok)throw Object.assign(Error(job.error||`HTTP ${r.status}`),{status:r.status});
-    bf.job=job;bf.datasetId=String(job.id||bf.datasetId);bf.error='';bf.detail='';bf.step='importing'}
-  catch(error){bf.detail=String(error?.message||error);bf.error=bfError(error);bf.step='failed'}
+    if(!r.ok)throw Object.assign(Error(job.error||`HTTP ${r.status}`),{status:r.status,served:job});
+    bf.job=job;bf.datasetId=String(job.id||bf.datasetId);bf.error='';bf.code='';bf.detail='';bf.step='importing'}
+  catch(error){bfRefusal('failed',error,error?.served)}
   bf.busy=false;saveBfDraft();render();if(bf.step==='importing')bfSchedule()}
-async function bfPoll(){try{const r=await fetch('/api/vods/job',{cache:'no-store'}),job=await r.json().catch(()=>({}));if(!r.ok)throw Error(job.error||`HTTP ${r.status}`);bfAdoptJob(job)}catch(error){bf.detail=String(error?.message||error);bf.error=bfError(error);render()}}
-async function bfCancel(){try{const r=await fetch('/api/vods/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})}),job=await r.json().catch(()=>({}));if(!r.ok)throw Error(job.error||`HTTP ${r.status}`);bfAdoptJob(job)}catch(error){bf.detail=String(error?.message||error);bf.error=bfError(error);render()}}
+async function bfPoll(){try{const r=await fetch('/api/vods/job',{cache:'no-store'}),job=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(Error(job.error||`HTTP ${r.status}`),{served:job});bfAdoptJob(job)}catch(error){bfRefusal(bf.step,error,error?.served);render()}}
+async function bfCancel(){try{const r=await fetch('/api/vods/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})}),job=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(Error(job.error||`HTTP ${r.status}`),{served:job});bfAdoptJob(job)}catch(error){bfRefusal(bf.step,error,error?.served);render()}}
 function bfAdoptJob(job){
   if(!bf)return;bf.job=job;const state=String(job.state||'');
   if(state==='done'){bf.step='dataset';bf.datasetId=String(job.id||bf.datasetId);bf.datasetTitle=job.title||'';bf.vod=Object.assign({},bf.vod,{title:job.title||bf.vod.title,channel:job.channel||bf.vod.channel||''});bf.notice='';saveBfDraft();
     // Round 20, owner item 10: the import finishes into the marking canvas by itself. The night's name
     // and rules stay on the same screen, so the operator can still change them before marking.
     try{const started=bfStartMarking();if(started&&started.catch)started.catch(()=>{})}catch(_){}}
-  else if(state==='error'||state==='failed'){bf.step='failed';bf.detail=String(job.error||'');bf.error=bfError(job.error||'')}
+  else if(state==='error'||state==='failed'){bfRefusal('failed',job.error,job)}
   else if(state==='cancelled'){bf.step='verify';bf.notice=String(job.message||'');bf.job=null}
   render();if(bf?.step==='importing')bfSchedule()}
 function bfSchedule(){if(bf?.step==='importing')setTimeout(()=>{bfPoll()},2000)}
@@ -631,7 +635,7 @@ function bfVerifyStep(){
   <p class="muted">${esc(bf.vod?.channel||'')} · ${esc(bf.vod?.title||bf.vod?.id||'')} · ${esc(hms(bf.vod?.length_s||0))}</p>
   <div class="row">${btn(t('bfEstimate'),'bf-estimate','','primary')}</div>
   ${e?`<p class="bf-estimate" role="status">${esc(t('bfEstimateLine').replace('{size}',sizeText(e.estimate_bytes)).replace('{free}',sizeText(disk.free_bytes)).replace('{reuse}',reuse))}</p>`:''}
-  ${disk.ok===false?`<p class="note err">${esc(disk.refusal||t('bfDiskNo'))}</p><div class="row">${btn(t('bfOther'),'bf-choose-other')}</div>`:''}
+  ${disk.ok===false?`<p class="note err">${esc(bfError(disk.refusal||'',disk.identity))}</p><div class="row">${btn(t('bfOther'),'bf-choose-other')}</div>`:''}
   ${e&&disk.ok!==false&&!e.already_imported?`<div class="row">${btn(t('bfStartImport'),'bf-start-import','','primary')}${btn(t('bfOther'),'bf-choose-other')}</div>`:''}
   ${e?.already_imported?`<p class="note">${esc(t('bfReuse'))}</p><div class="row">${btn(t('bfUseImported'),'bf-use-imported','','primary')}${btn(t('bfStartImport'),'bf-start-import')}${btn(t('bfOther'),'bf-choose-other')}</div>`:''}
   ${bfPrompt()}`}
@@ -683,14 +687,14 @@ function bfReviewStep(){
   ${bf.nightId?`<p class="note err">${esc(t('bfSameVod'))} ${btn(t('bfOpen'),'bf-open-night')}</p>`:''}`}
 function bfDoneStep(){return `<h2>${esc(t('bfDone'))}</h2><div class="row">${btn(t('bfOpenTimeline'),'bf-open-timeline','','primary')}</div>`}
 function bfFailedStep(){return `<h2>${esc(t(bf.step==='rejected'?'bfRejectedTitle':'bfFailedTitle'))}</h2>
-  <div class="row">${btn(t('bfRetry'),'bf-retry','','primary')}${btn(t('bfOther'),'bf-choose-other')}${/Only saved channels/i.test(bf.detail||'')?`<a href="#/backroom">${esc(t('status'))}</a>`:''}</div>`}
+  <div class="row">${btn(t('bfRetry'),'bf-retry','','primary')}${btn(t('bfOther'),'bf-choose-other')}${bf.code===bfRefusalCodes.channel_not_saved?`<a href="#/backroom">${esc(t('status'))}</a>`:''}</div>`}
 // A state the operator has left is a banner, not a screen: done, failed and rejected all sit on the
 // screen they ended on, with the action that resolves them beside the words.
 function bfBanner(step){
   if(step==='done')return `<div class="bf-banner done" role="status"><strong>${esc(t('bfDone'))}</strong><div class="row">${btn(t('bfOpenTimeline'),'bf-open-timeline','','primary')}</div></div>`;
   const title=step==='rejected'?t('bfRejectedTitle'):t('bfFailedTitle');
   return `<div class="bf-banner err" role="alert"><strong>${esc(title)}</strong>${bf.detail?`<p class="note">${esc(bf.detail)}</p>`:''}
-  <div class="row">${btn(t('bfRetry'),'bf-retry','','primary')}${btn(t('bfOther'),'bf-choose-other')}${/Only saved channels/i.test(bf.detail||'')?`<a href="#/backroom">${esc(t('bfSavedChannels'))}</a>`:''}</div></div>`;}
+  <div class="row">${btn(t('bfRetry'),'bf-retry','','primary')}${btn(t('bfOther'),'bf-choose-other')}${bf.code===bfRefusalCodes.channel_not_saved?`<a href="#/backroom">${esc(t('bfSavedChannels'))}</a>`:''}</div></div>`;}
 // One place that says how far the ingestion has got, so the operator never has to open the wizard to
 // find out. History renders it; the wizard renders the same numbers at full width.
 function bfProgressLine(){

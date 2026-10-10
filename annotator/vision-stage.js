@@ -92,7 +92,6 @@ const COPY = {
     bcRecorded:'recorded broadcast', bcOf:'of', bcFrom:'from', bcAt:'broadcast time',
     bcAria:'Import progress',
     bcEventsNone:'Not scanned for events — browse frames and run inference on a frozen frame.',
-    bcOtherChannel:'This VOD belongs to {channel}. Only saved channels can be analysed; add the channel under Source first.',
     vodNote:'The server resolves the VOD with Twitch and replays it in real time. The panel reports what the server and the capture say it is: kind, live, the VOD id, the rate and the drift it is carrying.',
     vodResolving:'resolving the VOD with Twitch…', vodFailed:'the VOD could not be resolved',
     vodDrift:'drift', vodVideoAt:'video at', vodWall:'wall', liveFlag:'live', pace:'pacing',
@@ -205,7 +204,6 @@ const COPY = {
     bcRecorded:'录制回放', bcOf:'·', bcFrom:'日期', bcAt:'直播时间',
     bcAria:'导入进度',
     bcEventsNone:'未做事件扫描——可逐帧浏览，并对冻结帧运行推理。',
-    bcOtherChannel:'此回放属于 {channel}。只能分析已保存的频道；请先在“来源”中添加该频道。',
     vodNote:'由服务端向 Twitch 解析该回放并实时播放。面板只报服务端与采集器的原话：类型、是否直播、回放 id、倍速以及当前漂移。',
     vodResolving:'正在向 Twitch 解析该回放…', vodFailed:'该回放无法解析',
     vodDrift:'漂移', vodVideoAt:'视频位置', vodWall:'墙钟', liveFlag:'直播', pace:'节拍',
@@ -893,27 +891,28 @@ let bc = {recent: null, loading: false, error: '', form: null, estimate: null, j
 const hms = s => { const v = Math.max(0, Math.round(Number(s) || 0)); return `${Math.floor(v / 3600)}:${String(Math.floor(v % 3600 / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
 const sizeText = bytes => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
 const minutesText = s => { const v = Math.max(0, Math.round(Number(s) || 0)); return v >= 600 ? `${Math.round(v / 60)} min` : v >= 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v} s`; };
-// The one refusal the owner asked to have in both languages; any other server sentence is shown as sent.
-function serverText(message) {
-  const other = /^This VOD belongs to (\S+)\. Only saved channels can be analysed; add the channel under Source first\.$/.exec(String(message || ''));
-  return other ? t('bcOtherChannel').replace('{channel}', other[1]) : String(message || '');
-}
+// Round 41: annotator/refusals.py owns the code and the Chinese sentence of every refusal, and the
+// service sends both beside `error`. The panel reads that identity, so it holds no copy of a
+// service sentence. A sentence with no identity is shown as it arrives.
+function bcIdentity(served) { return served && typeof served === 'object' && served.code ? String(served.zh || '') : ''; }
+function bcText(message, served) { const text = String(message || ''); return opts?.lang === 'zh' ? (bcIdentity(served) || text) : text; }
+function bcError(error) { return bcText(error?.message || error, error?.served); }
 async function bcApi(path, body) {
   const response = await fetch(path, body === undefined ? {cache: 'no-store'} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   let data = null; try { data = await response.json(); } catch (_) { /* a non-JSON body is reported below */ }
-  if (!response.ok || !data || data.error) throw new Error(serverText(data?.error) || `HTTP ${response.status}`);
+  if (!response.ok || !data || data.error) throw Object.assign(new Error(String(data?.error || `HTTP ${response.status}`)), {served: data || {}});
   return data;
 }
 function bcRender() { sig.chips = null; render(); }
 async function bcLoadRecent() {
   bc.loading = true; bc.error = ''; bcRender();
-  try { bc.recent = await bcApi('/api/vods/recent'); } catch (error) { bc.error = error.message; }
+  try { bc.recent = await bcApi('/api/vods/recent'); } catch (error) { bc.error = bcError(error); }
   bc.loading = false; bcRender();
 }
 // The server's job, polled every second while it runs (an import started in another tab too).
 async function bcPollJob() {
   const was = bc.job?.state;
-  try { bc.job = await bcApi('/api/vods/job'); } catch (error) { bc.error = error.message; }
+  try { bc.job = await bcApi('/api/vods/job'); } catch (error) { bc.error = bcError(error); }
   const running = bc.job?.state === 'running';
   if (running && !bc.poll) bc.poll = setInterval(bcPollJob, 1000);
   if (!running && bc.poll) { clearInterval(bc.poll); bc.poll = null; }
@@ -927,7 +926,7 @@ function bcWatch() { bcPollJob(); }
 async function bcEstimate() {
   const form = bc.form || {};
   bc.busy = true; bc.error = ''; bc.estimate = null; bcRender();
-  try { bc.estimate = await bcApi(`/api/vods/estimate?vod=${encodeURIComponent(form.vod)}`); } catch (error) { bc.error = error.message; }
+  try { bc.estimate = await bcApi(`/api/vods/estimate?vod=${encodeURIComponent(form.vod)}`); } catch (error) { bc.error = bcError(error); }
   bc.busy = false; bcRender();
 }
 async function bcImport() {
@@ -936,18 +935,18 @@ async function bcImport() {
   try {
     bc.job = await bcApi('/api/vods/import', {vod: e.vod_id});
     bc.form = null; bc.estimate = null; bcWatch();
-  } catch (error) { bc.error = error.message; }
+  } catch (error) { bc.error = bcError(error); }
   bc.busy = false; bcRender();
 }
 async function bcCancel() {
   if (!confirm(t('bcCancelAsk'))) return;
-  try { bc.job = await bcApi('/api/vods/cancel', {confirm: true}); } catch (error) { bc.error = error.message; }
+  try { bc.job = await bcApi('/api/vods/cancel', {confirm: true}); } catch (error) { bc.error = bcError(error); }
   bcPollJob();
 }
 async function bcDelete(id) {
   if (!confirm(t('bcDeleteAsk'))) return;
   try { const done = await bcApi('/api/vods/delete', {id, confirm: true}); opts.notice?.(done.message); await engine()?.reloadDatasets?.(); bcLoadRecent(); }
-  catch (error) { bc.error = error.message; bcRender(); }
+  catch (error) { bc.error = bcError(error); bcRender(); }
 }
 function bcJobHTML() {
   const job = bc.job;
@@ -957,14 +956,14 @@ function bcJobHTML() {
     ? [`${Number(job.percent || 0).toFixed(1)}%`, `${job.mb ?? 0} ${t('bcMb')}`, job.rate_mb_s ? `${job.rate_mb_s} MB/s` : '', job.eta_s != null ? `${minutesText(job.eta_s)} ${t('bcEta')}` : ''].filter(Boolean).join(' · ')
     : (job.error || job.message || job.state);
   const bar = running ? `<progress max="100" value="${esc(Number(job.percent || 0))}" aria-label="${esc(`${t('bcAria')} ${job.id}`)}"></progress>` : '';
-  return `<div class="vs-channel vs-bc-job" data-vs-bc-job="${esc(job.state)}" role="status" aria-live="polite"><span class="vs-mono">${esc(t('bcJob'))} ${esc(job.id || '')}: ${esc(serverText(facts))}</span>${bar}${running ? `<button data-vs-action="bc-cancel" aria-label="${esc(t('bcCancel'))}">${esc(t('bcCancel'))}</button>` : ''}</div>`;
+  return `<div class="vs-channel vs-bc-job" data-vs-bc-job="${esc(job.state)}" role="status" aria-live="polite"><span class="vs-mono">${esc(t('bcJob'))} ${esc(job.id || '')}: ${esc(bcText(facts, job))}</span>${bar}${running ? `<button data-vs-action="bc-cancel" aria-label="${esc(t('bcCancel'))}">${esc(t('bcCancel'))}</button>` : ''}</div>`;
 }
 function bcFormHTML() {
   const form = bc.form; if (!form) return '';
   const e = bc.estimate;
   const span = e ? (e.range.whole ? t('bcWhole') : `${hms(e.range.start_s)}–${hms(e.range.end_s)}`) : '';
   const eta = e ? (e.eta_s != null ? `${t('bcTime')} ${minutesText(e.eta_s)}` : t('bcTimeUnknown')) : '';
-  const summary = e ? `<p class="vs-mono" data-vs-bc-estimate="${esc(e.id)}">${esc(e.channel)} · ${esc(span)} · ${esc(t('bcSize'))} ${esc(sizeText(e.estimate_bytes))}, ${esc(eta)} · ${esc(sizeText(e.disk.free_bytes))} ${esc(t('bcFree'))}${e.already_imported ? ` · ${esc(t('bcAlready'))}` : ''}</p>${e.disk.ok ? '' : `<p class="vs-mono vs-bc-refusal">${esc(e.disk.refusal)}</p>`}` : '';
+  const summary = e ? `<p class="vs-mono" data-vs-bc-estimate="${esc(e.id)}">${esc(e.channel)} · ${esc(span)} · ${esc(t('bcSize'))} ${esc(sizeText(e.estimate_bytes))}, ${esc(eta)} · ${esc(sizeText(e.disk.free_bytes))} ${esc(t('bcFree'))}${e.already_imported ? ` · ${esc(t('bcAlready'))}` : ''}</p>${e.disk.ok ? '' : `<p class="vs-mono vs-bc-refusal">${esc(bcText(e.disk.refusal, e.disk.identity))}</p>`}` : '';
   return `<div class="vs-bc-form" data-vs-bc-form="${esc(form.vod)}">
     <p class="vs-mono">vod ${esc(form.vod)}${form.title ? ` · ${esc(form.title)}` : ''}</p>
     ${summary}

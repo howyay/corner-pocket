@@ -14,6 +14,12 @@ The sentence is the exact argument a raise site passes to ``ValueError`` or ``AP
 with no row here keeps the English sentence, and the console then shows its own generic
 Chinese line.  ``tests/test_refusal_identity.py`` pins how many raised sentences have no
 row, so no one adds a refusal without a decision about this table.
+
+A few refusals name facts inside the sentence: the channel a VOD belongs to, the free
+space an import needs, the id of the import that already runs.  Their sentence cannot be a
+key of the table, because the service builds it.  The ``FactRefusal`` rows below hold both
+templates and the field names, and the small functions under them fill both languages from
+one set of facts.  ``tests/test_job_refusal_identity.py`` holds a code to a raise site.
 """
 from typing import NamedTuple
 
@@ -80,6 +86,86 @@ REFUSALS = {
     'State changed; reload before retrying': Refusal('revision_conflict', '数据已被修改，请刷新后重试。'),
     'Use an HTTPS Twitch channel or video URL without query parameters': Refusal('source_url_https_no_query', '请输入不带查询参数的HTTPS Twitch频道或视频网址。'),
 }
+
+
+class FactRefusal(NamedTuple):
+    """One refusal whose sentence names facts, so its Chinese is a template too.
+
+    ``en`` and ``zh`` hold the same placeholder names, and ``fields`` names the facts the
+    sentence carries.  Fill both templates from one set of facts, and never send a template:
+    a placeholder that reaches the operator is a broken line.
+    """
+
+    code: str
+    en: str
+    zh: str
+    fields: tuple
+
+
+# A job refusal names facts, so the service builds its sentence from them.  The English and
+# the Chinese template are spelled here, once each.  The English sentence is the operator's
+# text and it stays byte for byte as it was before this work.
+CHANNEL_REFUSAL = FactRefusal(
+    'vod_channel_not_saved',
+    "This VOD belongs to {channel}. Only saved channels can be analysed; "
+    "add the channel under Source first.",
+    '此回放属于 {channel}。只能分析已保存的频道；请先在“来源”中添加该频道。',
+    ('channel',))
+
+DISK_REFUSAL = FactRefusal(
+    'vod_disk_space',
+    "Not enough free disk space: this import needs {needed} (about {estimate} "
+    "estimated x 1.2 + 2 GB reserve) and {free} is free. "
+    "Import a shorter range or free some space first.",
+    '磁盘空间不足：本次导入需要 {needed}（按 {estimate} 估算 × 1.2，另留 2 GB 余量），'
+    '当前可用 {free}。请缩短导入范围，或先释放一些空间。',
+    ('needed_bytes', 'estimate_bytes', 'free_bytes'))
+
+# The refusals of the import slot.  Their sentence names the import it talks about, and the
+# operator's English line keeps that id.  The Chinese line names the state, not the id: the
+# served field ``id`` carries the id beside it.
+ALREADY_STARTING = Refusal('vod_already_starting', '已有一个导入正在启动，请等待它，或先取消。')
+ALREADY_RUNNING = Refusal('vod_already_running', '已有一个导入在运行，请等待它结束，或先取消。')
+ALREADY_IMPORTED = Refusal('vod_already_imported', '这一段已经导入；要再次导入，请先删除它。')
+
+#: The import-slot refusals by the short name the service builds them with.
+JOB_REFUSALS = {'already_starting': ALREADY_STARTING, 'already_running': ALREADY_RUNNING,
+                'already_imported': ALREADY_IMPORTED}
+
+
+def gb(count):
+    """A byte count as both sentences write it (``annotator/vod_import.py`` re-exports this)."""
+    return f"{count / 1e9:.1f} GB"
+
+
+def channel_refusal(channel):
+    """The channel refusal: the sentence, and the identity beside it.
+
+    ``channel`` is the channel the VOD belongs to.  An empty name becomes the sentence's own
+    words for a channel Twitch did not name, so the operator never reads a blank.
+    """
+    named = channel or "a channel Twitch did not name"
+    return (CHANNEL_REFUSAL.en.format(channel=named),
+            {CODE_KEY: CHANNEL_REFUSAL.code, ZH_KEY: CHANNEL_REFUSAL.zh.format(channel=named),
+             'channel': named})
+
+
+def disk_refusal(needed_bytes, estimate_bytes, free_bytes):
+    """The disk refusal: the sentence, and the identity beside it.
+
+    The identity names the three byte counts the sentence prints, so the console reads the
+    numbers as data and never parses them back out of the text.
+    """
+    text = {'needed': gb(needed_bytes), 'estimate': gb(estimate_bytes), 'free': gb(free_bytes)}
+    return (DISK_REFUSAL.en.format(**text),
+            {CODE_KEY: DISK_REFUSAL.code, ZH_KEY: DISK_REFUSAL.zh.format(**text),
+             'needed_bytes': needed_bytes, 'estimate_bytes': estimate_bytes, 'free_bytes': free_bytes})
+
+
+def job_identity(name, **facts):
+    """The identity of one import-slot refusal: its code, its Chinese, and its named facts."""
+    row = JOB_REFUSALS[name]
+    return {CODE_KEY: row.code, ZH_KEY: row.zh, **facts}
 
 
 def of(sentence):

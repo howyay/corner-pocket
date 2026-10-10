@@ -210,6 +210,10 @@ class ImporterTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), REFUSED_CHANNEL.format(channel="someoneelse"))
         self.assertEqual(str(caught.exception), "This VOD belongs to someoneelse. Only saved channels can be "
                                                 "analysed; add the channel under Source first.")
+        # Round 41, second half: the code, the Chinese sentence and the named channel travel with it.
+        self.assertEqual(caught.exception.identity,
+                         {"code": "vod_channel_not_saved", "channel": "someoneelse",
+                          "zh": "此回放属于 someoneelse。只能分析已保存的频道；请先在“来源”中添加该频道。"})
         self.assertNotIn(("resolve", OTHER), self.calls)
         self.assertFalse((self.root / "data").exists())
         self.sources = []                                       # no saved channel at all
@@ -438,6 +442,11 @@ class ImporterTests(unittest.TestCase):
             self.assertIn("Not enough free disk space", row["error"])
             self.assertIn("needs 2.0 GB", row["error"])       # _disk(0): the reserve is the gate
             self.assertIn("1.0 GB is free", row["error"])
+            # Round 41, second half: the skip reason carries its identity beside the sentence.
+            self.assertEqual(row["code"], "vod_disk_space")
+            self.assertEqual((row["needed_bytes"], row["estimate_bytes"], row["free_bytes"]),
+                             (2 * 10**9, 0, 10**9))
+            self.assertIn("磁盘空间不足：本次导入需要 2.0 GB", row["zh"])
         self.assertNotIn(("info", OWN), self.calls)           # refused before any plan or token
         self.assertFalse((self.root / "data" / "vods").exists())
         self.assertFalse((self.root / "out" / "vods" / "index.json").exists())
@@ -633,6 +642,9 @@ class EndpointTests(unittest.TestCase):
         status, error = self.request("GET", "/api/vods/thumb?channel=someoneelse&id=" + OWN)
         self.assertEqual(status, 403)
         self.assertIn("Only saved channels", error["error"])
+        # Round 41, second half: the 403 body identifies the refusal beside the sentence.
+        self.assertEqual((error["code"], error["channel"]), ("vod_channel_not_saved", "someoneelse"))
+        self.assertIn("此回放属于 someoneelse", error["zh"])
         status, error = self.request("GET", "/api/vods/thumb?channel=examplechannel&id=" + OTHER)
         self.assertEqual(status, 502)
         self.assertIn("no such video", error["error"])
@@ -640,7 +652,11 @@ class EndpointTests(unittest.TestCase):
 
     def test_refusals_are_plain_json_errors(self):
         status, body = self.request("POST", "/api/vods/import", {"vod": OTHER})
-        self.assertEqual((status, body), (400, {"error": REFUSED_CHANNEL.format(channel="someoneelse")}))
+        # Round 41, second half: the sentence keeps its bytes and the identity arrives beside it.
+        self.assertEqual((status, body), (400, {"error": REFUSED_CHANNEL.format(channel="someoneelse"),
+                                                "code": "vod_channel_not_saved", "channel": "someoneelse",
+                                                "zh": "此回放属于 someoneelse。只能分析已保存的频道；"
+                                                      "请先在“来源”中添加该频道。"}))
         status, body = self.request("POST", "/api/vods/import", {"vod": OWN},
                                     headers={"Origin": "http://evil.example"})
         self.assertEqual((status, body["error"]), (403, "cross-origin write rejected"))

@@ -232,8 +232,10 @@ def refusal_body(exc, fields=None):
     owns the stable ``code`` and the Chinese sentence for each refusal the console must
     know.  The console reads those two fields, so it holds no copy of a sentence that a
     rewording in python can break.  A sentence with no row in that module adds nothing,
-    and the console then shows its generic Chinese line.  Both refusal sites build their
-    body here, so one rule carries the identity to every answer (round 41).
+    and the console then shows its generic Chinese line.  A refusal whose sentence names
+    facts (the channel refusal and the disk refusal) carries its identity in the fields of
+    its own exception, and those fields arrive here the same way.  Both refusal sites build
+    their body here, so one rule carries the identity to every answer (round 41).
     """
     sentence = operator_message(exc)
     body = {"error": sentence}
@@ -1683,7 +1685,7 @@ class Backend:
                 return importer.cancel(payload)
             return importer.delete(payload)
         except VodImportError as exc:
-            raise APIError(str(exc), exc.status) from exc
+            raise APIError(str(exc), exc.status, **exc.identity) from exc
 
     def vod_thumb(self, query):
         """A saved channel's broadcast preview picture, as ``(content_type, bytes)``.
@@ -1696,7 +1698,7 @@ class Backend:
         try:
             return importer.thumbnail(query.text("channel"), query.text("id"))
         except VodImportError as exc:
-            raise APIError(str(exc), exc.status) from exc
+            raise APIError(str(exc), exc.status, **exc.identity) from exc
 
     def registered(self, dataset):
         """The registry entry of ``dataset`` (src/datasets.py), or a 404."""
