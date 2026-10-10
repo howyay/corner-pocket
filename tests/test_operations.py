@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from annotator.operations import (ACTION_NAMES, ConflictError, Operation, OPERATIONS, Operations,
-                                  operations_registry)
+                                  RECORD_COLLECTIONS, Record, operations_registry)
 
 
 class OperationsTests(unittest.TestCase):
@@ -1445,6 +1445,14 @@ class OperationRegistryTests(unittest.TestCase):
              [Operation('probe_action', writer, good.audit, ['text'])]),
             ('operation probe_action declares a bad required field',
              [Operation('probe_action', writer, good.audit, ('text',))]),
+            ('operation probe_action needs audit_before_write to be a boolean',
+             [Operation('probe_action', writer, good.audit, (), True, 'yes')]),
+            ('operation probe_action needs a Record, not',
+             [Operation('probe_action', writer, good.audit, (), True, False, 'players')]),
+            ('operation probe_action names an unknown collection: nowhere',
+             [Operation('probe_action', writer, good.audit, (), True, False, Record('nowhere'))]),
+            ('operation probe_action needs a payload field that names its row',
+             [Operation('probe_action', writer, good.audit, (), True, False, Record('players', ''))]),
         ]
         for message, rows in cases:
             with self.subTest(message=message):
@@ -1568,3 +1576,139 @@ class WriterCoversItsRowsTest(unittest.TestCase):
             with self.subTest(writer=writer):
                 source = OPERATIONS[names[0]].apply.__doc__ or ''
                 self.assertIsInstance(source, str, 'the declaration stays readable')
+
+
+class DeclaredAuditTests(unittest.TestCase):
+    """Round 35, service candidates 5 and 6: the row declares the audit it needs.
+
+    Candidate 5 replaced _audit_group's prefix table and its items[-1] guess with a Record on the
+    row, handed over by the write or found by the field the payload names, and a refusal when
+    neither names one. Candidate 6 put the side the audit is read on next to refuse_missing_first,
+    resolved the registry once per write, and moved the R2 default-name rule into the two writers
+    that own a name. Measured by the deterministic probe (7 scenarios, 111 steps): the state
+    without its event log is byte-identical, and the only audit that changed is entrant_add_late
+    bringing a new opponent, which named the rival it added and now names the arrival.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ops = Operations(self.root)
+
+    def call(self, action, **fields):
+        return self.ops.post(dict(action=action, revision=self.ops.get()['revision'], **fields))
+
+    def context(self, state):
+        return state['events'][-1]['context']
+
+    def played_night(self, count=4):
+        """A singles night with one signed round-1 result: the state a late arrival acts on."""
+        self.call('tournament_setup', raceTo=2)
+        for n in range(count):
+            self.call('entrant_add', members=[{'name': f'Guest {n}'}])
+        state = self.call('tournament_start')
+        match = state['tournament']['matches'][0]
+        self.call('match_schedule', id=match['id'], table=1)
+        self.call('match_score', id=match['id'], score=[2, 0])
+        self.call('match_complete', id=match['id'])
+        return self.ops.get()
+
+    def test_a_write_that_cannot_name_its_record_is_refused_not_guessed(self):
+        """The case the items[-1] fallback hid: a payload with no id whose write makes no row.
+
+        The old audit asked the action's name prefix for a list and, with no id in the payload,
+        answered with the last row of it. A row that declares a record and can neither find nor
+        hand one over is refused when the audit is read: the write ran and handed nothing over,
+        and no audit line was kept for it.
+        """
+        self.call('player_save', name='Ada')
+        self.call('player_save', name='Bo')
+        handed = []
+
+        def writer(ops, state, payload):
+            handed.append(payload['action'])
+            return None                                     # this write makes no row either
+
+        row = Operation('player_ghost', writer, lambda state, payload: {},
+                        record=Record('players'))
+        with patch.dict(OPERATIONS, {'player_ghost': row}):
+            with self.assertRaisesRegex(ValueError,
+                                        '^This action must name the players row it acts on$'):
+                self.call('player_ghost')
+        self.assertEqual(handed, ['player_ghost'], 'the write ran and handed no row over')
+        state = self.ops.get()
+        self.assertEqual([player['name'] for player in state['players']], ['Ada', 'Bo'],
+                         'the two rows the guess chose from are untouched')
+        self.assertNotIn('player_ghost', [event['action'] for event in state['events']],
+                         'nothing was logged for the refused write')
+
+    def test_a_write_hands_over_the_row_it_made(self):
+        """The four rows whose payload carries no id: the audit names the row the write made."""
+        state = self.call('player_save', name='  Ada  ')
+        self.assertEqual(self.context(state), {'id': state['players'][0]['id'], 'name': 'Ada'})
+        state = self.call('note_add', text='first desk note')
+        self.assertEqual(self.context(state), {'id': state['notes'][0]['id']})
+        state = self.call('source_add', url='https://www.twitch.tv/somechannel/')
+        # the scanned document already holds the example channel, so the made one is the last row
+        self.assertEqual(self.context(state), {'id': state['sources'][-1]['id']})
+        self.call('tournament_setup', raceTo=7)
+        state = self.call('entrant_add', members=[{'name': 'Cy'}])
+        self.assertEqual(self.context(state), {'id': state['tournament']['entrants'][0]['id']})
+
+    def test_a_late_arrival_is_audited_as_the_arrival_not_the_rival_it_brought(self):
+        """Measured candidate-5 defect: the rival is the last row, so the guess took the rival."""
+        self.played_night(4)
+        state = self.call('entrant_add_late', name='Late Ann', opponent='new',
+                          opponent_name='New Nate')
+        rows = state['tournament']['entrants'][-2:]
+        self.assertEqual([row['members'][0]['name'] for row in rows], ['Late Ann', 'New Nate'],
+                         'the arrival and the rival are two rows, the rival last')
+        self.assertEqual(self.context(state), {'id': rows[0]['id']},
+                         'the audit names the arrival, where items[-1] named the rival')
+
+    def test_the_side_the_audit_is_read_on_is_declared_per_row(self):
+        """Candidate 6: a flag next to refuse_missing_first, not a two-name tuple inside run()."""
+        self.assertEqual({name for name, row in OPERATIONS.items() if row.audit_before_write},
+                         {'pair_accept', 'revival_undo', 'tournament_delete'})
+        for name, row in OPERATIONS.items():
+            with self.subTest(name=name):
+                self.assertIsInstance(row.audit_before_write, bool)
+                if row.record is not None:
+                    self.assertIn(row.record.collection, RECORD_COLLECTIONS)
+        # the pairing the accepting write clears is still the one the log names
+        self.call('tournament_setup', format='doubles', raceTo=3)
+        for name in ('Ada', 'Bo'):
+            self.call('solo_add', member={'name': name})
+        seed = self.call('pair_draw')['tournament']['pairing']['seed']
+        state = self.call('pair_accept', seed=seed)
+        self.assertIsNone(state['tournament'].get('pairing'), 'the write clears the pairing')
+        self.assertEqual(self.context(state)['seed'], seed, 'so the audit was read before it did')
+
+    def test_the_default_name_rule_lives_in_the_two_writers_that_need_it(self):
+        """Candidate 6: the R2 rule moved out of run() into the writers that own a name."""
+        made_name = '8-Ball Open · 周一 1/1'
+        self.call('tournament_setup', raceTo=3)
+        for name in ('Ada', 'Bo'):
+            self.call('entrant_add', members=[{'name': name}])
+        with patch('annotator.operations.default_name', return_value=made_name) as made:
+            state = self.ops.get()
+            self.assertEqual(state['tournament']['name'], '', 'the night is nameless as it stands')
+            self.ops._do_tournament_start(state, {'action': 'tournament_start'})
+            self.assertEqual(state['tournament']['name'], made_name,
+                             'the start writer fills it, called with no run() around it')
+            self.assertEqual(made.call_count, 1)
+            made.reset_mock()
+            self.call('settings_update', shotClock=40)
+            self.assertEqual(made.call_count, 0, 'a write that is not one of the two never fills it')
+            state = self.ops.get()
+            self.ops._do_tournament_new(state, {'action': 'tournament_new', 'confirm': True})
+            self.assertEqual(state['history'][-1]['name'], made_name,
+                             'the retire writer fills it for the night it archives')
+            self.assertEqual(state['tournament']['name'], '', 'the fresh night starts nameless')
+            made.reset_mock()
+            empty = self.ops.get()
+            empty['tournament'].update(name='', entrants=[], matches=[], status='setup')
+            self.ops._do_tournament_new(empty, {'action': 'tournament_new', 'confirm': True})
+            self.assertEqual(made.call_count, 0, 'an empty night is dropped, so no name is invented')
+            self.assertEqual(empty['history'], [], 'and nothing was archived for it')

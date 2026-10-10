@@ -115,6 +115,23 @@ def normalise(state):
     return state
 
 
+#: the state collections an action can name as the one row it acts on (see Record).
+RECORD_COLLECTIONS = ('players', 'entrants', 'matches', 'sources', 'notes', 'history')
+
+
+@dataclass(frozen=True)
+class Record:
+    """The one row of the store an action acts on, declared by the action itself.
+
+    `collection` is the state list that holds the row and `field` the payload field that
+    names it. A payload that names nothing is not guessed at: the write hands the row over
+    (the row it created, changed or removed), and a write that names nothing either is
+    refused. The prefix table and the last-row fallback this replaces are gone."""
+
+    collection: str
+    field: str = 'id'
+
+
 @dataclass(frozen=True)
 class Operation:
     """One named write on the operations document, declared in one place.
@@ -124,13 +141,20 @@ class Operation:
     declaration check read the same record, so an action cannot register half of itself."""
 
     name: str
-    apply: object            # (Operations, state, payload) -> None
+    apply: object            # (Operations, state, payload) -> the row it acted on, or None
     audit: object            # (state, payload) -> dict
     requires: tuple = ()     # ((field, refusal message), ...)
     # True when a missing declared field is refused before the action runs. Some actions
     # refuse a state precondition first (a closed registration, a stopped tournament), so
     # their own code keeps the field check and the order of the two refusals stays.
     refuse_missing_first: bool = True
+    # True when the audit is read before the write, because the write clears what the
+    # audit reads: a deleted event, an accepted pairing, an undone draw. Every other
+    # action is audited after the write, on the document the caller gets back.
+    audit_before_write: bool = False
+    # The one row this action acts on, when it has one; it then needs no audit projection
+    # of its own (the dispatcher reads the row the payload or the write names).
+    record: object = None
 
     def refuse_missing(self, payload):
         """Refuse a payload that does not carry a field this action needs."""
@@ -159,6 +183,15 @@ def operations_registry(rows):
             if (not isinstance(entry, tuple) or len(entry) != 2
                     or not all(isinstance(part, str) and part for part in entry)):
                 raise ValueError(f'operation {row.name} declares a bad required field: {entry!r}')
+        if not isinstance(row.audit_before_write, bool):
+            raise ValueError(f'operation {row.name} needs audit_before_write to be a boolean')
+        if row.record is not None:
+            if not isinstance(row.record, Record):
+                raise ValueError(f'operation {row.name} needs a Record, not {type(row.record).__name__}')
+            if row.record.collection not in RECORD_COLLECTIONS:
+                raise ValueError(f'operation {row.name} names an unknown collection: {row.record.collection}')
+            if not isinstance(row.record.field, str) or not row.record.field:
+                raise ValueError(f'operation {row.name} needs a payload field that names its row')
         registry[row.name] = row
     return registry
 
@@ -313,22 +346,11 @@ class Operations:
 
         The file backing and the database backing both call this method. Thus one
         registry holds the writer, the audit line and the required fields, and the two
-        backings cannot drift apart. This method is the only caller of `_apply`."""
-        action = payload.get('action')
-        operation = OPERATIONS.get(action) if isinstance(action, str) else None
-        if operation is not None and operation.refuse_missing_first:
-            operation.refuse_missing(payload)
-        if action in ('tournament_start', 'tournament_new'):
-            # R2: an event that is drawn or archived is never nameless; the
-            # server fills the default the form displays (the audit reads it).
-            t = state['tournament']
-            if not t['name'].strip() and (action == 'tournament_start' or t['entrants'] or t['matches']):
-                t['name'] = default_name()
-        context = self._event_context(state, payload)
-        self._apply(state, payload)
-        if action not in ('tournament_new', 'tournament_delete'):
-            context.update(self._event_context(state, payload))
-        return action, context
+        backings cannot drift apart. The one write step is `_apply`, and the row is
+        resolved there once: neither the audit nor the writer looks it up again."""
+        applied = self._apply(state, payload)
+        # A caller that replaced the write step with its own write leaves nothing to log.
+        return applied if applied is not None else (payload.get('action'), {})
 
     def roster_add(self, state, player):
         """Add the enrolled regular to the roster once. One roster rule, two backings.
@@ -378,15 +400,16 @@ class Operations:
         return state
 
     @staticmethod
-    def _event_context(state, payload):
+    def _event_context(state, payload, operation, written=None):
         """The audit line of one action, read from that action's own declaration.
 
         Whitelist domain identity only: never copy request or note contents. An action
-        the registry does not hold answers with no context, so the refusal that follows
-        is the dispatcher's, not this function's."""
-        action = payload.get('action')
-        operation = OPERATIONS.get(action) if isinstance(action, str) else None
-        return operation.audit(state, payload) if operation else {}
+        that declares the one row it acts on adds that row's identity: the row the
+        payload names, or - when the payload cannot name it - the row its write named."""
+        context = operation.audit(state, payload)
+        if operation.record is not None:
+            context.update(_row_context(operation.record, state, payload, written))
+        return context
 
     @staticmethod
     def _find(items, ident):
@@ -672,12 +695,25 @@ class Operations:
                                  archivedAt=signed, source=line, signOff=dict(at=signed)))
 
     def _apply(self, s, p):
-        """Run the operation the payload names. The registry holds the one writer."""
+        """The one write step: resolve the row once, then declare, audit and write.
+
+        One registry lookup per write, and the row it answers is the one the refusal,
+        the audit and the writer all read (candidate 6). The audit is read on the side
+        the row declares: before the write when the write clears what the audit reads,
+        after it otherwise, on the document the caller gets back. Answer (action, audit
+        context), or None when a caller replaced this method with its own write."""
         action = p.get('action')
         operation = OPERATIONS.get(action) if isinstance(action, str) else None
         if operation is None:
             raise ValueError('Unknown operations action')
-        operation.apply(self, s, p)
+        if operation.refuse_missing_first:
+            operation.refuse_missing(p)
+        if operation.audit_before_write:
+            context = self._event_context(s, p, operation)
+            operation.apply(self, s, p)
+            return action, context
+        written = operation.apply(self, s, p)
+        return action, self._event_context(s, p, operation, written)
 
     def _do_player_save(self, s, p):
         t = s['tournament']
@@ -698,6 +734,7 @@ class Operations:
             player['notes'] = p['notes'].strip()
         if not p.get('id'):
             s['players'].append(player)
+        return player
 
     def _do_guest_promote(self, s, p):
         t = s['tournament']
@@ -719,6 +756,7 @@ class Operations:
         if any(m.get('pid') == player['id'] for night in [t] + s['history'] for e in night['entrants'] for m in e['members']):
             raise ValueError('Player has tournament history; mark Inactive instead')
         s['players'].remove(player)
+        return player
 
     def _do_tournament_setup(self, s, p):
         t = s['tournament']
@@ -785,11 +823,13 @@ class Operations:
         if action == 'entrant_absence':
             if type(p.get('absent')) is not bool:
                 raise ValueError('absent must be boolean')
-            self._find(t['entrants'], p.get('id'))['absent'] = p['absent']
-            return
+            entrant = self._find(t['entrants'], p.get('id'))
+            entrant['absent'] = p['absent']
+            return entrant
         if action == 'entrant_remove':
-            t['entrants'].remove(self._find(t['entrants'], p.get('id')))
-            return
+            entrant = self._find(t['entrants'], p.get('id'))
+            t['entrants'].remove(entrant)
+            return entrant
         members = p.get('members')
         if not isinstance(members, list) or len(members) != (2 if t['format'] == 'doubles' else 1):
             raise ValueError('Wrong number of team members')
@@ -798,12 +838,19 @@ class Operations:
         result = []
         for member in members:
             result.append(self._person(s, t, member, result))
-        t['entrants'].append(dict(id=uid(), members=result))
+        entrant = dict(id=uid(), members=result)
+        t['entrants'].append(entrant)
+        return entrant
 
     def _do_tournament_start(self, s, p):
         t = s['tournament']
         if t['status'] != 'registration' or len(t['entrants']) < 2:
             raise ValueError('Need an unstarted tournament with at least two entrants')
+        if not t['name'].strip():
+            # R2: an event that is drawn is never nameless. The server fills the default
+            # the form displays here, where the draw the name belongs to is made; the
+            # audit of this write and every later read then name it (candidate 6).
+            t['name'] = default_name()
         size = 1 << (len(t['entrants']) - 1).bit_length()
         ids = [e['id'] for e in t['entrants']]
         # Give byes to the first seeds; never create empty/empty first-round matches.
@@ -866,6 +913,9 @@ class Operations:
                                  status='pending', winnerId=None, absent=[], sources=[], late=True,
                                  lateOpponent=opponent, latePartner=partner or 'none'))
         self._propagate(t)
+        # The arrival is the row this write made, whatever it then drew: the rival it may
+        # have added is a second row of the same collection (candidate 5, measured).
+        return late
 
     def _do_match(self, s, p):
         action = p.get('action')
@@ -924,6 +974,7 @@ class Operations:
             # A name this writer does not implement is refused here. The old fall-through ran
             # match_complete for any unknown name, so a bad registry row played a match.
             raise ValueError(f'Unknown match action: {action}')
+        return match
 
     def _do_revival(self, s, p):
         action = p.get('action')
@@ -1029,12 +1080,19 @@ class Operations:
         if p.get('confirm') is not True:
             raise ValueError('Explicit confirmation required')
         if t['entrants'] or t['matches']:
+            if not t['name'].strip():
+                # R2: an event that is archived is never nameless either. Filling the
+                # name here, in the writer, keeps the archived night and the audit line
+                # that names it in step (candidate 6).
+                t['name'] = default_name()
             archived = copy.deepcopy(t)
             archived['archivedAt'] = timestamp()
             s['history'].append(archived)
         else:
             self._drop_links(s, t['id'])
         s['tournament'] = tournament()
+        # The night this write retired, archived or dropped: the audit names it (candidate 5).
+        return t
 
     def _do_event_backfill(self, s, p):
         self._backfill(s, p)
@@ -1062,10 +1120,13 @@ class Operations:
         source = dict(id=uid(), url=canonical, kind='video' if video else 'channel')
         source['video' if video else 'channel'] = video[1] if video else channel[1].lower()
         sources.append(source)
+        return source
 
     def _do_source_delete(self, s, p):
         sources = s.setdefault('sources', [])
-        sources.remove(self._find(sources, p.get('id')))
+        source = self._find(sources, p.get('id'))
+        sources.remove(source)
+        return source
 
     def _do_settings_update(self, s, p):
         if 'clothColor' in p:
@@ -1095,14 +1156,18 @@ class Operations:
             s['settings']['publicBoard'] = p['publicBoard']
 
     def _do_note_add(self, s, p):
-        s['notes'].append(dict(id=uid(), text=text(p.get('text'), 'note', 4000), createdAt=timestamp()))
+        note = dict(id=uid(), text=text(p.get('text'), 'note', 4000), createdAt=timestamp())
+        s['notes'].append(note)
+        return note
 
     def _do_note_delete(self, s, p):
-        s['notes'].remove(self._find(s['notes'], p.get('id')))
+        note = self._find(s['notes'], p.get('id'))
+        s['notes'].remove(note)
+        return note
 
 
 def _audit_none(state, payload):
-    """No domain identity: the change names no record of its own."""
+    """No audit document of its own: the store logs the row the action declares."""
     return {}
 
 
@@ -1169,40 +1234,62 @@ def _audit_backfill(state, payload):
                 datasetId=night['source'].get('datasetId'))
 
 
-def _audit_group(state, payload):
-    """The record the action names, taken from the group its name belongs to."""
-    action = payload.get('action')
-    if not isinstance(action, str):
-        return {}
+def _rows(state, collection):
+    """The state rows one declared collection holds: a Record names one of these.
+
+    Only the collection the action declared is read, so an action never depends on a
+    part of the document it does not touch."""
     t = state['tournament']
-    groups = [('player_', state['players']), ('entrant_', t['entrants']),
-              ('match_', t['matches']), ('source_', state.get('sources', [])),
-              ('note_', state['notes'])]
-    context = {}
-    for prefix, items in groups:
-        if not action.startswith(prefix):
-            continue
-        item = next((item for item in items if item['id'] == payload.get('id')), None)
-        if item is None and not payload.get('id') and items:
-            item = items[-1]
-        if item:
-            context['id'] = item['id']
-            if prefix == 'player_':
-                context['name'] = item['name']
-        break
+    if collection == 'players':
+        return state['players']
+    if collection == 'entrants':
+        return t['entrants']
+    if collection == 'matches':
+        return t['matches']
+    if collection == 'sources':
+        return state.get('sources', [])
+    if collection == 'notes':
+        return state['notes']
+    return state['history']
+
+
+def _named_row(record, state, payload):
+    """The row the payload names, or None. The last row of a collection is never a guess."""
+    named = payload.get(record.field) if isinstance(payload, dict) else None
+    if not named:
+        return None
+    return next((row for row in _rows(state, record.collection)
+                 if row.get(record.field) == named), None)
+
+
+def _row_context(record, state, payload, written):
+    """The audit identity of the one row an action acts on.
+
+    The payload names it when it can; otherwise the write named it, by handing over the
+    row it created, changed or removed. A payload that names nothing and a write that
+    named nothing is refused rather than resolved to a neighbour (candidate 5)."""
+    item = _named_row(record, state, payload) or written
+    if item is None:
+        raise ValueError(f'This action must name the {record.collection} row it acts on')
+    context = dict(id=item['id'])
+    if 'name' in item:
+        context['name'] = item['name']
     return context
 
 
 # The one registry: every action names its writer, its audit projection and the fields
 # its payload must carry. `refuse_missing_first` is False where the action refuses a state
 # precondition before it reads those fields, so the two refusals keep today's order.
+# `audit_before_write` is True where the write clears what the audit reads. `record` names
+# the one row the action acts on: the payload names it when it can, the write names it
+# otherwise, and a row that neither names is refused (candidate 5).
 OPERATIONS = operations_registry([
-    Operation('player_save', Operations._do_player_save, _audit_group,
-              (('name', 'name must contain 1–200 characters'),)),
+    Operation('player_save', Operations._do_player_save, _audit_none,
+              (('name', 'name must contain 1–200 characters'),), record=Record('players')),
     Operation('guest_promote', Operations._do_guest_promote, _audit_guest_promote,
               (('name', 'guest name must contain 1–200 characters'),)),
-    Operation('player_delete', Operations._do_player_delete, _audit_group,
-              (('id', 'Unknown id'),)),
+    Operation('player_delete', Operations._do_player_delete, _audit_none,
+              (('id', 'Unknown id'),), record=Record('players')),
     Operation('tournament_setup', Operations._do_tournament_setup, _audit_current_event),
     Operation('solo_add', Operations._do_pairing, _audit_none,
               (('member', 'Invalid member'),), refuse_missing_first=False),
@@ -1211,41 +1298,49 @@ OPERATIONS = operations_registry([
     Operation('pair_draw', Operations._do_pairing, _audit_pairing, refuse_missing_first=False),
     Operation('pair_clear', Operations._do_pairing, _audit_none, refuse_missing_first=False),
     Operation('pair_accept', Operations._do_pairing, _audit_pairing,
-              (('seed', 'The pairing changed; review the teams again'),), refuse_missing_first=False),
-    Operation('entrant_add', Operations._do_entrants, _audit_group,
-              (('members', 'Wrong number of team members'),), refuse_missing_first=False),
-    Operation('entrant_remove', Operations._do_entrants, _audit_group,
-              (('id', 'Unknown id'),), refuse_missing_first=False),
-    Operation('entrant_absence', Operations._do_entrants, _audit_group,
-              (('absent', 'absent must be boolean'), ('id', 'Unknown id')), refuse_missing_first=False),
+              (('seed', 'The pairing changed; review the teams again'),), refuse_missing_first=False,
+              audit_before_write=True),
+    Operation('entrant_add', Operations._do_entrants, _audit_none,
+              (('members', 'Wrong number of team members'),), refuse_missing_first=False,
+              record=Record('entrants')),
+    Operation('entrant_remove', Operations._do_entrants, _audit_none,
+              (('id', 'Unknown id'),), refuse_missing_first=False, record=Record('entrants')),
+    Operation('entrant_absence', Operations._do_entrants, _audit_none,
+              (('absent', 'absent must be boolean'), ('id', 'Unknown id')), refuse_missing_first=False,
+              record=Record('entrants')),
     Operation('tournament_start', Operations._do_tournament_start, _audit_current_event),
-    Operation('entrant_add_late', Operations._do_entrant_add_late, _audit_group,
+    Operation('entrant_add_late', Operations._do_entrant_add_late, _audit_none,
               (('name', 'name must contain 1–120 characters'),
                ('opponent', 'Choose the match-up: nobody, a second chance, or a new player')),
-              refuse_missing_first=False),
-    Operation('match_schedule', Operations._do_match, _audit_group, (('id', 'Unknown id'),)),
-    Operation('match_unschedule', Operations._do_match, _audit_group, (('id', 'Unknown id'),)),
-    Operation('match_score', Operations._do_match, _audit_group,
-              (('id', 'Unknown id'), ('score', 'Two scores required'))),
-    Operation('match_complete', Operations._do_match, _audit_group, (('id', 'Unknown id'),)),
-    Operation('match_absence', Operations._do_match, _audit_group,
+              refuse_missing_first=False, record=Record('entrants')),
+    Operation('match_schedule', Operations._do_match, _audit_none, (('id', 'Unknown id'),),
+              record=Record('matches')),
+    Operation('match_unschedule', Operations._do_match, _audit_none, (('id', 'Unknown id'),),
+              record=Record('matches')),
+    Operation('match_score', Operations._do_match, _audit_none,
+              (('id', 'Unknown id'), ('score', 'Two scores required')), record=Record('matches')),
+    Operation('match_complete', Operations._do_match, _audit_none, (('id', 'Unknown id'),),
+              record=Record('matches')),
+    Operation('match_absence', Operations._do_match, _audit_none,
               (('id', 'Unknown id'), ('side', 'side must be an integer from 0 to 1'),
-               ('absent', 'absent must be boolean'))),
-    Operation('match_forfeit', Operations._do_match, _audit_group,
-              (('id', 'Unknown id'), ('side', 'side must be an integer from 0 to 1'))),
+               ('absent', 'absent must be boolean')), record=Record('matches')),
+    Operation('match_forfeit', Operations._do_match, _audit_none,
+              (('id', 'Unknown id'), ('side', 'side must be an integer from 0 to 1')),
+              record=Record('matches')),
     Operation('revival_draw', Operations._do_revival, _audit_revival,
               (('confirm', 'Explicit confirmation required'),)),
     Operation('revival_undo', Operations._do_revival, _audit_revival,
-              (('confirm', 'Explicit confirmation required'),)),
+              (('confirm', 'Explicit confirmation required'),), audit_before_write=True),
     Operation('tournament_rename', Operations._do_tournament_rename, _audit_night,
               (('name', 'name must contain 1–120 characters'), ('id', 'Unknown id'))),
     Operation('tournament_delete', Operations._do_tournament_delete, _audit_night,
-              (('id', 'Unknown id'), ('confirm', 'Explicit confirmation required'))),
+              (('id', 'Unknown id'), ('confirm', 'Explicit confirmation required')),
+              audit_before_write=True),
     Operation('tournament_hide', Operations._do_tournament_hide, _audit_night,
               (('id', 'Unknown id'), ('confirm', 'Explicit confirmation required'),
                ('hidden', 'hidden must be boolean'))),
-    Operation('tournament_new', Operations._do_tournament_new, _audit_current_event,
-              (('confirm', 'Explicit confirmation required'),)),
+    Operation('tournament_new', Operations._do_tournament_new, _audit_none,
+              (('confirm', 'Explicit confirmation required'),), record=Record('history')),
     Operation('event_backfill', Operations._do_event_backfill, _audit_backfill,
               (('source', 'event object required'),)),
     Operation('vod_link', Operations._do_vod_link, _audit_vod,
@@ -1254,13 +1349,15 @@ OPERATIONS = operations_registry([
     Operation('vod_unlink', Operations._do_vod_unlink, _audit_vod,
               (('vodId', 'Expected a Twitch VOD id or https://www.twitch.tv/videos/<id> URL'),
                ('eventId', 'eventId must contain 1–120 characters'))),
-    Operation('source_add', Operations._do_source_add, _audit_group,
-              (('url', 'Twitch URL must contain 1–500 characters'),)),
-    Operation('source_delete', Operations._do_source_delete, _audit_group, (('id', 'Unknown id'),)),
+    Operation('source_add', Operations._do_source_add, _audit_none,
+              (('url', 'Twitch URL must contain 1–500 characters'),), record=Record('sources')),
+    Operation('source_delete', Operations._do_source_delete, _audit_none, (('id', 'Unknown id'),),
+              record=Record('sources')),
     Operation('settings_update', Operations._do_settings_update, _audit_none),
-    Operation('note_add', Operations._do_note_add, _audit_group,
-              (('text', 'note must contain 1–4000 characters'),)),
-    Operation('note_delete', Operations._do_note_delete, _audit_group, (('id', 'Unknown id'),)),
+    Operation('note_add', Operations._do_note_add, _audit_none,
+              (('text', 'note must contain 1–4000 characters'),), record=Record('notes')),
+    Operation('note_delete', Operations._do_note_delete, _audit_none, (('id', 'Unknown id'),),
+              record=Record('notes')),
 ])
 
 #: every action name the dispatcher accepts, in declaration order.
