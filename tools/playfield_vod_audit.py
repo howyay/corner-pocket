@@ -29,11 +29,13 @@ every gate passes:
 
 A run that fails a gate writes no fixture, and it prints the gate that failed.  A
 regression therefore cannot enter the golden record.  The record names its
-producer, its rule set, its counts and its gates, and ``tests/test_playfield_quads.py``
-reads them back.
+producer, its revision, its rule set, its counts, its gates and the hash of its
+picks, and ``tests/test_playfield_quads.py`` reads them back.  The test computes
+that hash again with its own code, so a hand edit of one pick fails the test.
 """
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,6 +54,11 @@ FRAME_FRACTIONS = (0.10, 0.50, 0.90)
 RUN_LOG = ROOT / 'out/playfield_vod_audit.json'
 FIXTURE = ROOT / 'tests/fixtures/playfield_quads.json'
 USAGE = 'usage: .venv/bin/python tools/playfield_vod_audit.py [--write-fixture]'
+# The record names the revision that produced it.  A missing git or a missing repository gives
+# this value, and the run continues: a record with no revision is weaker evidence, not wrong
+# evidence.  GIT_TIMEOUT_S stops a git call that hangs.
+REVISION_UNKNOWN = 'unknown'
+GIT_TIMEOUT_S = 10
 # Two gates, both measured.  The floor is how many events pass at every sampled frame; the
 # exceptions are the events that do not, each named with what its measurement actually was.  An
 # event that refuses everywhere and is not named is a regression, so the run fails.
@@ -87,6 +94,38 @@ def sha1(path):
     return hashlib.sha1(Path(path).read_bytes()).hexdigest()
 
 
+def picks_sha1(picks):
+    """The hash of the picks, over one stated sequence of bytes.
+
+    The bytes are the picks as JSON text.  The keys are sorted, the separators carry no
+    space, and the encoding is UTF-8.  ``tests/test_playfield_quads.py`` builds the same
+    bytes with its own code and compares the two hashes, so one hand edit of one pick
+    fails the test.
+    """
+    body = json.dumps(picks, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha1(body.encode('utf-8')).hexdigest()
+
+
+def git_revision():
+    """The revision of this checkout, or REVISION_UNKNOWN when git cannot name one.
+
+    The record must name the revision that produced it, so a reader can compare the record
+    with the code of that revision.  A missing git, a missing repository, a slow call and a
+    rejected call all give REVISION_UNKNOWN, and none of them stops the run.
+    """
+    try:
+        done = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=str(ROOT),
+                              capture_output=True, text=True, timeout=GIT_TIMEOUT_S)
+    except (OSError, subprocess.SubprocessError):
+        return REVISION_UNKNOWN
+    revision = done.stdout.strip()
+    if done.returncode != 0 or len(revision) != 40:
+        return REVISION_UNKNOWN
+    if any(char not in '0123456789abcdef' for char in revision):
+        return REVISION_UNKNOWN
+    return revision
+
+
 def passes_at_every_frame(report):
     """The events whose every sampled pick passed the playfield check."""
     return sorted(row['vod'] for row in report if row['verdict'] == 'pass')
@@ -118,16 +157,24 @@ def gate_failures(report, *, floor=FLOOR, known_refused=KNOWN_REFUSED):
 
 
 def fixture_payload(report, counts, passing):
-    """The golden record of one run: the producer, the rule set, the gates, the picks.
+    """The golden record of one run: the provenance, the gates, the verdicts, the picks.
 
-    A reader must see which rule set built the record, so the record carries the tolerance and
-    the gates with the picks.  A record without them cannot be judged against the code that
-    made it.
+    A reader must see which revision and which rule set built the record, so the record
+    carries them with the picks.  A record without them cannot be judged against the code
+    that made it.  The record carries the hash of its picks, and the verdict of every
+    sampled event, so a reader can verify the picks and name a refusal that no lock covers.
     """
+    picks = [{'vod': row['vod'], 'at': pick['at'], 'quad': pick.get('quad'),
+              'ok': pick.get('ok'), 'reasons': pick.get('reasons'),
+              'aspect': pick.get('aspect'),
+              'best_parallel_deg': pick.get('best_parallel_deg')}
+             for row in report for pick in row['picks'] if pick.get('quad')]
     return {
         'provenance': {
             'producer': PRODUCER,
             'measured': MEASURED,
+            'revision': git_revision(),
+            'picks_sha1': picks_sha1(picks),
             'sampling': {'frame_fractions': list(FRAME_FRACTIONS),
                          'picks_per_vod': len(FRAME_FRACTIONS),
                          'vods': len(report),
@@ -139,11 +186,8 @@ def fixture_payload(report, counts, passing):
         },
         'counts': counts,
         'passing': passing,
-        'picks': [{'vod': row['vod'], 'at': pick['at'], 'quad': pick.get('quad'),
-                   'ok': pick.get('ok'), 'reasons': pick.get('reasons'),
-                   'aspect': pick.get('aspect'),
-                   'best_parallel_deg': pick.get('best_parallel_deg')}
-                  for row in report for pick in row['picks'] if pick.get('quad')],
+        'verdicts': {row['vod']: row['verdict'] for row in report},
+        'picks': picks,
     }
 
 
@@ -245,9 +289,9 @@ def main(argv=None):
     payload = fixture_payload(report, counts, passing)
     FIXTURE.parent.mkdir(parents=True, exist_ok=True)
     write_atomic(FIXTURE, lambda stream: stream.write(json.dumps(payload, indent=1)))
-    print('FIXTURE WRITTEN: %s: %d picks over %d events, counts %s, sha1 %s'
+    print('FIXTURE WRITTEN: %s: %d picks over %d events, counts %s, revision %s, file sha1 %s'
           % (label(FIXTURE), len(payload['picks']), payload['provenance']['sampling']['vods'],
-             json.dumps(counts), sha1(FIXTURE)), flush=True)
+             json.dumps(counts), payload['provenance']['revision'], sha1(FIXTURE)), flush=True)
     return 0
 
 

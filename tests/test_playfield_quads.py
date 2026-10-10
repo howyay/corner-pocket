@@ -4,9 +4,10 @@
 every sampled quad together with the verdict the check gave it.  This test replays those quads
 through the check.  Move a tolerance, or change what counts as a table, and the recorded
 verdicts stop matching - without paying for the detector a second time.  It also reads the
-record's own provenance back: the producer, the rule set, the floor and the named exceptions
-must still be the ones the tool holds, so the golden record stays equal to the code
-that built it.
+record's own provenance back: the producer, the revision, the rule set, the floor and the named
+exceptions must still be the ones the tool holds, so the golden record stays equal to the code
+that built it.  The record carries the hash of its picks, and this test builds the hashed bytes
+again with its own code, so a hand edit of one pick fails it.
 
     PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_playfield_quads.py'
 """
@@ -171,6 +172,37 @@ class PlayfieldQuadReplayTests(unittest.TestCase):
         self.assertTrue(self.provenance('measured'),
                         '%s does not say when the run was measured' % RECORD)
 
+    def test_the_record_names_the_revision_that_produced_it(self):
+        """A record that names no revision cannot be compared with the code that made it.
+
+        The tool owns the two forms: a git revision of 40 hexadecimal digits, or the marker it
+        writes when git does not answer.  A record with neither form is hand edited.
+        """
+        revision = self.provenance('revision')
+        self.assertIsInstance(revision, str,
+                              '%s records revision %r, but a revision is text' % (RECORD, revision))
+        is_revision = len(revision) == 40 and all(c in '0123456789abcdef' for c in revision)
+        self.assertTrue(is_revision or revision == AUDIT.REVISION_UNKNOWN,
+                        stale('%s records revision %r, but the tool writes 40 hexadecimal digits or %r'
+                              % (RECORD, revision, AUDIT.REVISION_UNKNOWN)))
+
+    def test_the_record_carries_the_hash_of_the_picks_it_holds(self):
+        """A hand edit of one pick changes this hash, so the record cannot claim that pick.
+
+        This test builds the hashed bytes with its own code.  The rule is in the tool: the
+        picks as JSON text, with sorted keys, without spaces, in UTF-8.  The test then calls
+        the tool's own function, because two rules that disagree cannot both be right.
+        """
+        recorded = self.provenance('picks_sha1')
+        body = json.dumps(self.data['picks'], sort_keys=True, separators=(',', ':'))
+        expected = hashlib.sha1(body.encode('utf-8')).hexdigest()
+        self.assertEqual(recorded, expected,
+                         stale('%s records picks_sha1 %s, but its picks hash to %s'
+                               % (RECORD, recorded, expected)))
+        self.assertEqual(recorded, AUDIT.picks_sha1(self.data['picks']),
+                         '%s and %s give different hashes for the same picks'
+                         % (RECORD, defined_at(TOOL_NAME, 'picks_sha1')))
+
     def test_the_record_names_the_rules_the_tolerance_was_built_with(self):
         """The tolerance is the measured threshold, so the record must carry the one it used."""
         rules = self.provenance('rules')
@@ -204,9 +236,25 @@ class PlayfieldQuadReplayTests(unittest.TestCase):
                                   len(named))))
 
     def test_every_event_that_does_not_pass_is_a_named_exception(self):
-        """The tool fails a run over an unnamed refusal, so the record must not hold one."""
+        """The tool fails a run over an unnamed refusal, so the record must not hold one.
+
+        The record names the verdict of every sampled event, so this test sees an event that
+        produced no quad at all.  A reading of the picks alone cannot see that event, and it
+        would let a refusal through that no lock covers.
+        """
+        self.assertIn('verdicts', self.data,
+                      stale('%s holds no verdicts, so this test cannot name a refusal' % RECORD))
+        verdicts = self.data['verdicts']
+        sampled = self.provenance('sampling')['vods']
+        self.assertEqual(len(verdicts), sampled,
+                         stale('%s names %d verdicts, but the run sampled %d events'
+                               % (RECORD, len(verdicts), sampled)))
+        unknown = sorted({vod for vod, _ in self.picks} - set(verdicts))
+        self.assertEqual(unknown, [],
+                         stale('%s holds picks of events outside its verdicts: %s'
+                               % (RECORD, unknown)))
         named = set(AUDIT.KNOWN_REFUSED)
-        refused = sorted({vod for vod, pick in self.picks if pick['ok'] is not True})
+        refused = sorted(vod for vod, verdict in verdicts.items() if verdict != 'pass')
         unnamed = [vod for vod in refused if vod not in named]
         self.assertEqual(unnamed, [],
                          '%s holds an event that does not pass and is not named in %s: %s'

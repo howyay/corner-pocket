@@ -2,6 +2,8 @@
  "provenance": {
   "producer": "tools/playfield_vod_audit.py",
   "measured": "2026-10-05, one stage per VOD",
+  "revision": "3cf3502111a83945e98f367c21ed69ec22eb2b6d",
+  "picks_sha1": "ca1b61d9b54c82f15d837db1a1fb7d8f90b6f46d",
   "sampling": {
    "frame_fractions": [
     0.1,
@@ -53,6 +55,27 @@
   "tw-2846878242.mp4",
   "tw-2853972244.mp4"
  ],
+ "verdicts": {
+  "tw-2166669605.mp4": "pass",
+  "tw-2197329931.mp4": "pass",
+  "tw-2239246314.mp4": "pass",
+  "tw-2251161439.mp4": "no_quad",
+  "tw-2252489073.mp4": "refuse",
+  "tw-2291681895.mp4": "pass",
+  "tw-2303230741.mp4": "pass",
+  "tw-2467528195.mp4": "refuse",
+  "tw-2529109664.mp4": "pass",
+  "tw-2638346864.mp4": "no_quad",
+  "tw-2784932919.mp4": "refuse",
+  "tw-2796131568.mp4": "refuse",
+  "tw-2846878242.mp4": "pass",
+  "tw-2853972244.mp4": "pass",
+  "tw-2860883221.mp4": "no_quad",
+  "tw-2871819680.mp4": "no_quad",
+  "tw-2885294870.mp4": "no_quad",
+  "tw-2890340436.mp4": "no_quad",
+  "tw-2890514774.mp4": "no_quad"
+ },
  "picks": [
   {
    "vod": "tw-2166669605.mp4",
