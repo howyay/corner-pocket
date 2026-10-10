@@ -31,12 +31,12 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import tempfile
 import threading
 import time
 from urllib.parse import urlencode
 
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
+from src.atomic_write import write_atomic
 from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
 
 # How many broadcasts one channel contributes to the archive. The Twitch GraphQL `videos`
@@ -177,17 +177,12 @@ def probe_media(path, ffmpeg_command):
 
 def _atomic_json(path, document):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as stream:
-            json.dump(document, stream, indent=2, sort_keys=True, allow_nan=False)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(name, path)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
+
+    def dump(stream):
+        json.dump(document, stream, indent=2, sort_keys=True, allow_nan=False)
+        stream.write("\n")
+
+    write_atomic(path, dump, fsync=True)
 
 
 _INDEX_LOCKS = {}

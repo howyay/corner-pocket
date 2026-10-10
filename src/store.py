@@ -15,8 +15,8 @@ concurrency rules are identical to today's:
                    stale revision, one process-wide lock per path);
   * face store  -> src.face_id.add_faces / remove_faces (locked merge per path);
   * everything else -> a locked read-modify-write of the same JSON file, written
-                   with the same atomic temp-file + fsync + os.replace as
-                   annotator.unified_server.atomic_save.
+                   by src.atomic_write.write_atomic with the same fsync and
+                   os.replace as annotator.unified_server.atomic_save.
 Read methods never write (the read-only contract, tested for every read).
 """
 from __future__ import annotations
@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from src.atomic_write import write_atomic
 from src.face_id import add_faces, load_faces, remove_faces
 
 ENV = "POOL_DATABASE_URL"
@@ -162,17 +163,12 @@ def _read(path: Path, default):
 def _write(path: Path, data) -> None:
     """annotator.unified_server.atomic_save, byte for byte (indent=2, trailing newline)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as stream:
-            json.dump(data, stream, indent=2, allow_nan=False)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(name, path)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
+
+    def dump(stream) -> None:
+        json.dump(data, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+
+    write_atomic(path, dump, fsync=True)
 
 
 class JsonStore:
@@ -239,9 +235,10 @@ class JsonStore:
         path = self.identity_path()
         with self._lock(path):
             path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(clusters, indent=1), encoding="utf-8")
-            os.replace(tmp, path)
+            # The temp file is <stem>.json.tmp beside the target, and a failed write
+            # leaves it: the behavior this writer always had (no fsync, no cleanup).
+            write_atomic(path, lambda stream: stream.write(json.dumps(clusters, indent=1)),
+                         temp_name="{stem}.json.tmp", encoding="utf-8", remove_on_failure=False)
 
     def _faces_path(self) -> Path:
         return self.out / "corner-pocket" / "face_embeddings.json"

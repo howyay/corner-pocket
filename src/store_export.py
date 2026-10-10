@@ -21,11 +21,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
-import tempfile
 from pathlib import Path
 
+from src.atomic_write import write_atomic
 from src.store_files import INDENT1, dump, documents, fmt_of
 
 TABLES = ("ops_meta", "players", "tournaments", "entrants", "entrant_members", "matches", "notes", "sources",
@@ -34,17 +33,9 @@ TABLES = ("ops_meta", "players", "tournaments", "entrants", "entrant_members", "
 
 
 def _atomic_write(path: Path, text: str) -> None:
+    """Write `text` to `path` in one step (the module's fsync + cleanup behavior)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(text)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(name, path)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
+    write_atomic(path, lambda stream: stream.write(text), fsync=True, encoding="utf-8")
 
 
 def export_texts(conn) -> dict[str, str]:

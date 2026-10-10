@@ -65,6 +65,8 @@ from typing import Any
 
 import numpy as np
 
+from src.atomic_write import write_atomic
+
 try:  # package import (src.person_identity); tests may load this as a flat module
     from src.face_id import DEFAULT_BIND_BAR, DEFAULT_MARGIN, DEFAULT_THRESHOLD, accept_match
 except ImportError:  # pragma: no cover - tests/test_person_identity.py adds src/ to sys.path
@@ -484,10 +486,10 @@ class IdentityIndex:
             self.store.identity_save(payload)
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".json.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=1)
-        os.replace(tmp, self.path)  # atomic
+        # The temp file is <stem>.json.tmp beside the target, and a failed write
+        # leaves it: the behavior this writer always had (no fsync, no cleanup).
+        write_atomic(self.path, lambda stream: json.dump(payload, stream, indent=1),
+                     temp_name="{stem}.json.tmp", encoding="utf-8", remove_on_failure=False)
 
     def _load(self) -> None:
         if self.store is not None:

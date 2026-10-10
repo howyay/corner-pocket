@@ -22,11 +22,11 @@ clock survives a restart because its deadline is absolute.
 """
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
-import tempfile
 import threading
 import time
+
+from src.atomic_write import write_atomic
 
 ACTIONS = ('start', 'pause', 'reset', 'set')
 MIN_DURATION = 5
@@ -223,14 +223,9 @@ class ShotClock:
 
     def _save(self, state):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(prefix='.clock-', dir=self.path.parent)
-        try:
-            with os.fdopen(fd, 'w') as stream:
-                json.dump(state, stream, indent=2, allow_nan=False)
-                stream.write('\n')
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(name, self.path)
-        finally:
-            if os.path.exists(name):
-                os.unlink(name)
+
+        def dump(stream):
+            json.dump(state, stream, indent=2, allow_nan=False)
+            stream.write('\n')
+
+        write_atomic(self.path, dump, fsync=True, temp_prefix='.clock-')

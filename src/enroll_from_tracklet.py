@@ -96,7 +96,6 @@ its own copy of it.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import uuid
 from dataclasses import dataclass, field
@@ -105,6 +104,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src.atomic_write import write_atomic
 from src.datasets import STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
 
@@ -627,11 +627,15 @@ def write_enrollment(scratch_root, enrollment, *, source_root=REPO) -> dict:
 def _write_json(path, payload) -> None:
     """json.dump(indent=2) + trailing newline: the format Operations writes."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + f".tmp{os.getpid()}")
-    with open(tmp, "w", encoding="utf-8") as stream:
+
+    def dump(stream) -> None:
         json.dump(payload, stream, indent=2, allow_nan=False)
         stream.write("\n")
-    os.replace(tmp, path)
+
+    # The temp file is <name>.tmp<pid> beside the target, and a failed write leaves
+    # it: the behavior this writer always had (no fsync, no cleanup).
+    write_atomic(path, dump, temp_name="{name}.tmp{pid}", encoding="utf-8",
+                 remove_on_failure=False)
 
 
 # --------------------------------------------------------------------------

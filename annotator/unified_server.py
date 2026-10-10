@@ -13,12 +13,10 @@ import functools
 import json
 import math
 import mimetypes
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -30,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 # Datasets (the two recordings and imported VODs) resolve through src/datasets.py.
+from src.atomic_write import write_atomic
 from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, lookup as dataset_lookup  # noqa: E402
 # The tournament declares the action names it accepts (annotator/operations.py).
 # This module imports it here, so one table joins the route to that declaration.
@@ -210,17 +209,12 @@ def load(path, default=None):
 
 def atomic_save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as stream:
-            json.dump(data, stream, indent=2, allow_nan=False)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(name, path)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
+
+    def dump(stream):
+        json.dump(data, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+
+    write_atomic(path, dump, fsync=True)
 
 
 def number(value, low, high, name):

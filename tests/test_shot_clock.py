@@ -153,7 +153,7 @@ class ShotClockTests(unittest.TestCase):
         clock = ShotClock(self.path)
         clock.apply('start', now_ms=1_000)
         stamp, before = file_stamp(self.path), clock.snapshot(now_ms=2_000)
-        with patch('annotator.shot_clock.os.replace', side_effect=OSError('disk full')):
+        with patch('src.atomic_write.os.replace', side_effect=OSError('disk full')):
             with self.assertRaises(OSError):
                 clock.apply('pause', now_ms=2_000)
         self.assertEqual(file_stamp(self.path), stamp)

@@ -49,6 +49,8 @@ from pathlib import Path
 
 import numpy as np
 
+from src.atomic_write import write_atomic
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FACE_STORE = ROOT / "out" / "corner-pocket" / "face_embeddings.json"
 
@@ -310,9 +312,11 @@ def store_faces(path, gallery):
             })
         stored[pid] = rows
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.tmp{os.getpid()}")
-    tmp.write_text(json.dumps(stored, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
+    # The temp file is <name>.tmp<pid> beside the target, and a failed write leaves
+    # it: the behavior this writer always had (no fsync, no cleanup). One writer per
+    # path holds the store lock, so the fixed name cannot meet a second writer.
+    write_atomic(path, lambda stream: stream.write(json.dumps(stored, indent=1)),
+                 temp_name="{name}.tmp{pid}", encoding="utf-8", remove_on_failure=False)
     return stored
 
 
