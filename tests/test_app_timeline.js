@@ -116,6 +116,8 @@ function engineRealm(replies = {}, options = {}) {
 // A browser seam cannot observe a Python file, a stylesheet or an unused read.
 // The caller states the file, the fragment and why no seam can reach it.
 // The 4th argument marks an absence claim (true), or a scope: {absent, between}.
+// A window that misses an anchor fails here: an absence claim over an empty string would
+// otherwise pass, and a renamed anchor would silently switch the claim off.
 const sourceContracts = [];
 function assertSourceContract(file, snippet, why, options) {
   const opts = options === true ? {absent: true} : (options || {});
@@ -124,7 +126,9 @@ function assertSourceContract(file, snippet, why, options) {
   if (opts.between) {
     const from = text.indexOf(opts.between[0]);
     const to = opts.between.length > 1 ? text.indexOf(opts.between[1], from) : text.length;
-    scope = from < 0 || to < 0 ? '' : text.slice(from, to);
+    assert.ok(from >= 0 && to > from,
+      `${file} must hold both anchors of this window: ${JSON.stringify(opts.between)} (${why})`);
+    scope = text.slice(from, to);
   }
   if (opts.comments) scope = scope.replace(/\/\/[^\n]*/g, '');
   const found = snippet instanceof RegExp ? snippet.test(scope) : scope.includes(snippet);
