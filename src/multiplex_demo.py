@@ -159,7 +159,6 @@ def main():
     ap.add_argument("--prompt-frame", type=int, default=0)
     ap.add_argument("--max-frames", type=int, default=0, help="0 = all")
     ap.add_argument("--points", default=None, help="'x1,y1;x2,y2' absolute px point prompts (overrides text)")
-    ap.add_argument("--frames", type=int, default=0, help="0 = all frames")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
