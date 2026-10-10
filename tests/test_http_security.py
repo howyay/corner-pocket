@@ -4,6 +4,7 @@ That record is not published.  Each test starts its own loopback server on an
 ephemeral port over a temporary root: no repository data is read or written.
 """
 import http.client
+import json
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 import tempfile
@@ -375,6 +376,20 @@ class ContentLengthTests(unittest.TestCase):
         status = int(data.split(b' ', 2)[1])
         return status, data.split(b'\r\n\r\n', 1)[1]
 
+    def sentence(self, body):
+        """The refusal sentence of a body, with the additive identity keys allowed.
+
+        The claim of this class is the sentence: the server answers with the operator
+        sentence and never with Python's exception text. A sentence with a row in
+        annotator/refusals.py also carries the code of that row and its Chinese
+        sentence, so this case pins the sentence and the set of keys, not the bytes.
+        """
+        self.assertNotIn(b'Traceback', body, body)
+        payload = json.loads(body)
+        self.assertEqual(set(payload) - {'code', 'zh'}, {'error'}, payload)
+        self.assertIsInstance(payload['error'], str)
+        return payload['error']
+
     def test_malformed_lengths_are_a_plain_400(self):
         # RFC 9110: Content-Length = 1*DIGIT. '²' (latin-1 0xb2) passes str.isdigit()
         # but not int(); '-5' and '+2' are not digits at all.
@@ -382,7 +397,7 @@ class ContentLengthTests(unittest.TestCase):
             with self.subTest(length=length):
                 status, body = self.post(length)
                 self.assertEqual(status, 400)
-                self.assertEqual(body, b'{"error": "invalid Content-Length"}')
+                self.assertEqual(self.sentence(body), 'invalid Content-Length')
 
     def test_well_formed_lengths_keep_their_meaning(self):
         self.assertEqual(self.post(b'2')[0], 400)                    # {} reaches validation: revision required
@@ -391,7 +406,7 @@ class ContentLengthTests(unittest.TestCase):
             with self.subTest(length=length):
                 status, body = self.post(length)
                 self.assertEqual(status, 413)
-                self.assertEqual(body, b'{"error": "invalid request size"}')
+                self.assertEqual(self.sentence(body), 'invalid request size')
 
 
 class ErrorBodyTests(unittest.TestCase):

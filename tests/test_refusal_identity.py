@@ -7,6 +7,8 @@ then dropped the Chinese, and no test caught it.
 ``annotator/refusals.py`` owns that identity now: one stable code and one Chinese sentence for
 each refusal the console must know.  This module walks the modules that raise.  A new refusal
 cannot arrive without a row, and a row cannot name a sentence that no raise site produces.
+Every raised sentence has a row: the 48 that moved out of the console, and the 121 that had no
+Chinese line and were given one.
 """
 import ast
 import hashlib
@@ -24,8 +26,9 @@ CONSOLE = 'annotator/ops.js'
 
 # How many raised sentences carry no row in annotator/refusals.py.  The console shows its
 # generic Chinese line for each one, and the English sentence stays.  This number is a
-# decision, not a measurement: change it only when you decide about a sentence.
-RAISED_SENTENCES_WITHOUT_A_ROW = 121
+# decision, not a measurement: change it only when you decide about a sentence.  It reached
+# zero when the 121 sentences that had no Chinese line were given a row.
+RAISED_SENTENCES_WITHOUT_A_ROW = 0
 
 # The console owns its own English/Chinese word pairs (annotator/ops.js ``words``).  One pair
 # repeats a refusal sentence by coincidence: the enroll form shows it for a name that is a bye
@@ -35,10 +38,28 @@ CONSOLE_WORDS_THAT_REPEAT_A_REFUSAL = {
     'annotator/ops.js': {'placeholderName': '轮空由抽签自动安排，请输入访客的真实姓名。'},
 }
 
+# One console sentence contains the words of a refusal sentence inside a longer line of its own:
+# annotator/app.js says 'Frame inference or JPEG encoding failed; check local detector weights
+# and runtime' for the live panel.  That line has its own purpose and its own longer text, so it
+# stays.  A pair is (file, sentence): the scan below stays a plain substring search, so a new
+# copy of a refusal sentence in javascript still fails this test.
+CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL = {
+    ('annotator/app.js', 'JPEG encoding failed'),
+}
+
 # The 48 Chinese sentences as the console held them before round 41.  This digest is the record
-# of the move: the table left javascript byte for byte, and no translation happened.
+# of the move: the table left javascript byte for byte, and no translation happened.  The 121
+# rows added after them were written below those 48 and stay there, so the moved block is still
+# the table's first MOVED_ROWS rows.
+MOVED_ROWS = 48
 CHINESE_SENTENCES_DIGEST = '194fce1ca9d59243f67f9994dc1054ea14dbec8e'
 SENTENCES_DIGEST = '4c1f5c7e255f55dbcd69b0051b58f9374e47a2c4'
+
+# The whole table, both languages.  The English key is the sentence a raise site passes, and the
+# Chinese is the line the operator reads: a rewording of either one is a decision, not an
+# accident.
+TABLE_SENTENCES_DIGEST = 'a8df47024779ea26eb90809da710e3dbe51c4733'
+TABLE_CHINESE_DIGEST = '709056e976347dcddc257687fbaa327f8b3f1071'
 
 _SENTENCES = {}
 
@@ -83,6 +104,19 @@ class RefusalIdentityTest(unittest.TestCase):
                 self.assertIn(sentence, produced,
                               f'{refusal.code} names a sentence that no raise site produces: {sentence}')
 
+    def test_the_table_names_every_raised_sentence(self):
+        """One row per raised sentence: no sentence reaches the operator as English only.
+
+        Every row names a sentence some raise site produces, so these two sets can only differ
+        by count when a raised sentence has no row.  A row that is deleted fails here at once.
+        """
+        raised = all_raised_sentences()
+        self.assertEqual(len(refusals.REFUSALS), len(raised),
+                         f'the table holds {len(refusals.REFUSALS)} rows and the raise sites '
+                         f'produce {len(raised)} distinct sentences')
+        self.assertEqual(set(refusals.REFUSALS), raised,
+                         'a raised sentence has no row, or a row names a sentence nothing raises')
+
     def test_no_code_is_dead(self):
         """Every row reaches a refusal body, so no code waits for a route that never sends it."""
         for sentence, refusal in refusals.REFUSALS.items():
@@ -108,9 +142,21 @@ class RefusalIdentityTest(unittest.TestCase):
                                 refusals.ZH_KEY: refusal.zh})
 
     def test_a_body_for_an_unknown_sentence_carries_the_sentence_only(self):
-        for sentence in sorted(all_raised_sentences() - set(refusals.REFUSALS))[:3]:
-            with self.subTest(sentence=sentence):
-                self.assertEqual(refusal_body(ValueError(sentence)), {'error': sentence})
+        """A sentence with no row keeps the English text and adds no identity.
+
+        Every raised sentence has a row now, so this case builds its own sentence.  The first
+        assertion makes the case fail when a sentence loses its row: a row may not go while its
+        sentence still reaches the operator.
+        """
+        without = sorted(all_raised_sentences() - set(refusals.REFUSALS))
+        self.assertEqual(without, [],
+                         'a raised sentence lost its row in annotator/refusals.py:\n'
+                         + '\n'.join(without)
+                         + '\nIt now reaches the operator as English only.  Give it a code and a '
+                           'Chinese sentence, or remove the raise site.')
+        sentence = 'no row names this sentence'
+        self.assertNotIn(sentence, refusals.REFUSALS)
+        self.assertEqual(refusal_body(ValueError(sentence)), {'error': sentence})
 
     def test_extra_fields_survive_and_the_table_owns_the_identity(self):
         exc = APIError('Source already added', 409, nightId='n1')
@@ -152,9 +198,16 @@ class RefusalIdentityTest(unittest.TestCase):
         self.assertTrue(files, 'the scan found no javascript file to read')
         for path in files:
             text = path.read_text()
+            relative = path.relative_to(ROOT).as_posix()
             for sentence in refusals.REFUSALS:
+                if (relative, sentence) in CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL:
+                    continue
                 with self.subTest(file=path.name, sentence=sentence):
                     self.assertNotIn(sentence, text, f'{path.name} holds the English refusal sentence')
+        for relative, sentence in CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL:
+            with self.subTest(file=relative, sentence=sentence):
+                self.assertIn(sentence, (ROOT / relative).read_text(),
+                              'the console line this exception names is gone')
         held = {}
         chinese = {refusal.zh for refusal in refusals.REFUSALS.values()}
         for path in files:
@@ -184,11 +237,21 @@ class RefusalIdentityTest(unittest.TestCase):
 
     def test_the_moved_sentences_are_the_ones_the_console_held(self):
         """The English keys and the Chinese sentences are the table the console held."""
-        self.assertEqual(SENTENCES_DIGEST, digest(refusals.REFUSALS),
-                         'the English sentences of the table changed')
+        moved = list(refusals.REFUSALS)[:MOVED_ROWS]
+        self.assertEqual(MOVED_ROWS, len(moved), 'the table lost rows')
+        self.assertEqual(SENTENCES_DIGEST, digest(moved),
+                         'the English sentences that moved out of the console changed')
         self.assertEqual(CHINESE_SENTENCES_DIGEST,
-                         digest(refusal.zh for refusal in refusals.REFUSALS.values()),
+                         digest(refusals.REFUSALS[sentence].zh for sentence in moved),
                          'a Chinese sentence changed, so the move was not byte for byte')
+
+    def test_the_whole_table_is_pinned_in_both_languages(self):
+        """Every row of the table, English and Chinese, is the text a reviewer accepted."""
+        self.assertEqual(TABLE_SENTENCES_DIGEST, digest(refusals.REFUSALS),
+                         'the English sentences of the table changed')
+        self.assertEqual(TABLE_CHINESE_DIGEST,
+                         digest(refusal.zh for refusal in refusals.REFUSALS.values()),
+                         'a Chinese sentence of the table changed')
 
 
 if __name__ == '__main__':
