@@ -27,8 +27,10 @@ def build(state):
     t = state["tournament"]
     roster = {p["id"]: p["name"] for p in state.get("players", [])}
     # An entrant as the console names it (ops.js ename): each member's current
-    # roster name, else the name they registered under.
-    names = {e["id"]: " / ".join(roster.get(m.get("pid")) or m["name"] for m in e["members"])
+    # roster name, else the name they registered under. Where the console has no
+    # name at all it fills the hole with a word of its own (ops.js t('unknown'));
+    # this payload carries no words, so a member with no name adds nothing here.
+    names = {e["id"]: " / ".join(roster.get(m.get("pid")) or m.get("name") or "" for m in e["members"])
              for e in t["entrants"]}
     slots, in_round = {}, {}
     for m in t["matches"]:
@@ -39,9 +41,18 @@ def build(state):
              for e in state.get("events", []) if e.get("action") == "match_schedule"}
 
     def side(m, index):
+        """A side as the console names it, a bye, or the board's own word-free marker.
+
+        ops.js sideName (annotator/ops.js:853) hands a side no entrant holds to ename,
+        which answers with a word from the console's table in the console's language
+        (t('pending')). This payload carries no words - annotator/board.js owns the
+        board's, and its tbd is "To be decided"/"待定" - so a side the board cannot name
+        is marked, never given a word of its own. A side it can name carries the name the
+        console gives it, the empty one included: only the word is out of reach.
+        """
         entrant = m["sides"][index]
         if entrant:
-            return {"name": names.get(entrant, "?")}
+            return {"name": names[entrant]} if entrant in names else {"tbd": True}
         return {"bye": True} if m.get("result") == "bye" else {"tbd": True}
 
     def match(m):
@@ -63,7 +74,13 @@ def build(state):
         games = [m for m in t["matches"] if signed(m) and e["id"] in m["sides"]]
         won = sum(1 for m in games if m["winnerId"] == e["id"])
         standings.append({"name": names[e["id"]], "won": won, "lost": len(games) - won, "played": len(games)})
-    # ops.js eventTable: wins, then win rate (unplayed last), then name.
+    # The table's order: wins, then win rate (unplayed last), then name. The console
+    # ordered entrants this way when it kept an event table (ops.js eventTable:
+    # b.wins-a.wins || win rate || a.name.localeCompare(b.name)); 2f6eb14 deleted that
+    # function, and the console now shows each entrant's record on their own row, in
+    # registration order. So this order is the board's own - its name tie-break is
+    # casefold, not localeCompare - and tests/test_board_api.py pins the order and
+    # compares the numbers sorted here field by field with the console's record().
     standings.sort(key=lambda r: (-r["won"], -(r["won"] / r["played"] if r["played"] else -1), r["name"].casefold()))
 
     rounds = {}

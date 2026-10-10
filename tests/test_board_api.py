@@ -10,6 +10,8 @@ import http.client
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -212,6 +214,156 @@ class BuildTest(unittest.TestCase):
         changed = json.loads(json.dumps(self.board))
         changed["tables"][0]["score"] = [3, 1]
         self.assertNotEqual(public_board.encode(changed)[0], etag)
+
+
+def console_answers(document, ask=()):
+    """Ask annotator/ops.js itself: the names, records and words the console answers with.
+
+    The console is a browser script, so it is loaded here the way the console loads it -
+    window, localStorage, a document stub for the listener it wires at load - and its
+    attach() seam (annotator/ops.js, last line) is asked for ename(), record() and the two
+    words it fills a side or an entrant it cannot name with, in both languages. The
+    document goes in as JSON on stdin and the answers come back as JSON on stdout, so the
+    rules compared here are read out of the console's own module rather than restated.
+
+    node is required for that, and this case fails without it rather than skipping: a run
+    time skip branch is a budgeted cost in this checkout (tests/test_suite_inventory.py
+    counts the run-time skip call sites under tests/ and holds their number), and the
+    console is not optional here - the node suites are part of what the checkout runs.
+    tests/test_ops.js exercises the same seam.
+    """
+    node = shutil.which("node")
+    if not node:
+        raise AssertionError("node is required to ask annotator/ops.js for the console's rules")
+    done = subprocess.run([node, "-e", CONSOLE_DRIVER % json.dumps(str(CONSOLE_SOURCE))],
+                          input=json.dumps({"document": document, "ask": list(ask)}),
+                          capture_output=True, text=True, timeout=60)
+    if done.returncode:
+        raise AssertionError(f"node could not answer with the console's rules:\n{done.stderr}")
+    return json.loads(done.stdout)
+
+
+CONSOLE_SOURCE = Path(__file__).resolve().parents[1] / "annotator" / "ops.js"
+#: node driver: load the console, hand it a document, print what it answers about it.
+CONSOLE_DRIVER = """
+const fs = require('node:fs'), vm = require('node:vm');
+globalThis.window = {addEventListener() {}, removeEventListener() {}};
+globalThis.localStorage = {getItem: () => null, setItem() {}, removeItem() {}};
+globalThis.document = {addEventListener() {}, querySelector: () => null, querySelectorAll: () => []};
+globalThis.location = {hash: '', href: 'http://console/', pathname: '/', search: ''};
+globalThis.history = {replaceState() {}, pushState() {}};
+globalThis.navigator = {userAgent: 'node'};
+globalThis.requestAnimationFrame = () => 0;
+globalThis.setInterval = () => 0;
+globalThis.clearInterval = () => {};
+vm.runInThisContext(fs.readFileSync(%s, 'utf8'));
+const ops = globalThis.window.OpsConsole.attach({});
+const asked = JSON.parse(fs.readFileSync(0, 'utf8'));
+ops.data = asked.document;
+const answers = {names: {}, records: {}, entrants: [], asked: {}, words: {}};
+for (const lang of ['en', 'zh']) {
+  ops.lang = lang;
+  answers.words[lang] = {unknown: ops.t('unknown'), pending: ops.t('pending')};
+}
+ops.lang = 'en';
+for (const entrant of ops.tournament().entrants || []) {
+  answers.names[entrant.id] = ops.ename(entrant.id);
+  answers.records[entrant.id] = ops.record(ops.tournament(), entrant.id);
+  answers.entrants.push(entrant.id);
+}
+for (const id of asked.ask || []) answers.asked[id] = ops.ename(id);
+process.stdout.write(JSON.stringify(answers));
+"""
+
+
+class TheBoardAnswersTheConsoleTest(unittest.TestCase):
+    """One fixture, both answers: the board beside the console that owns the rules.
+
+    annotator/public_board.py is a second implementation of rules the console holds in
+    annotator/ops.js - the name a side is shown under (ename), the record a row counts
+    (signedResult, record) - and nothing compared the two answers, so a change to the
+    console's rule left the board silently wrong. This case asks ops.js itself about the
+    document BuildTest builds and compares the answers field by field: every side in the
+    bracket, every row of the table. The board's own order for its table is then checked
+    over the console's numbers, and no word of the console's may reach the payload - the
+    board carries the names, annotator/board.js carries the words.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.root, cls.ops = rich_root(cls.temp.name)
+        cls.state = cls.ops.get()
+        cls.board = board_of(cls.state)
+        cls.console = console_answers(cls.state)
+        cls.matches = {}
+        in_round = {}
+        for m in cls.state["tournament"]["matches"]:
+            in_round[m["round"]] = in_round.get(m["round"], 0) + 1
+            cls.matches[f"r{m['round']}m{in_round[m['round']]}"] = m
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def sides(self, board):
+        """Every side the payload publishes, in the one list that holds every match."""
+        for r in board["bracket"]:
+            for m in r["matches"]:
+                for index, shown in enumerate(m["sides"]):
+                    yield m["slot"], index, shown
+
+    def test_every_side_is_named_the_way_the_console_names_it(self):
+        compared = set()
+        for slot, index, shown in self.sides(self.board):
+            m = self.matches[slot]
+            entrant = m["sides"][index]
+            with self.subTest(slot=slot, side=index):
+                if not entrant:
+                    self.assertEqual(shown, {"bye": True} if m.get("result") == "bye" else {"tbd": True})
+                    continue
+                asked = self.console["names"][entrant]
+                self.assertEqual(shown, {"name": asked})
+                compared.add(asked)
+        # All six entrants were named on a side, so no side took the branch below, and the
+        # guest's side shows the roster name the console shows, not the name she signed up
+        # under (which the board is not allowed to publish).
+        self.assertEqual(compared, {"Ana", "Bo", "Cy", "Dee", "Eve", "Gina Park"})
+        self.assertIn("Guest Gina",
+                      [m["name"] for e in self.state["tournament"]["entrants"] for m in e["members"]])
+
+    def test_every_row_counts_the_record_the_console_counts(self):
+        rows = [(row["name"], row["won"], row["lost"], row["played"]) for row in self.board["standings"]]
+        asked = sorted((self.console["names"][eid], r["wins"], r["losses"], r["played"])
+                       for eid, r in self.console["records"].items())
+        self.assertEqual(sorted(rows), asked)
+
+        #: The order the board states for its table, applied to the console's own numbers:
+        #: wins, then win rate (unplayed last), then name. 2f6eb14 deleted the console rule
+        #: that ordered entrants this way (ops.js eventTable), so this order is the board's
+        #: own and no console rule can contradict it - but the numbers it sorts are not.
+        def order(row):
+            return -row[1], -(row[1] / row[3] if row[3] else -1), row[0].casefold()
+
+        self.assertEqual([r[0] for r in rows], [r[0] for r in sorted(asked, key=order)])
+
+    def test_a_side_the_console_cannot_name_is_marked_not_given_a_word(self):
+        state = json.loads(json.dumps(self.state))
+        gone = self.matches["r2m1"]["id"]
+        m = next(m for m in state["tournament"]["matches"] if m["id"] == gone)
+        m["sides"][0] = "e-gone"
+        board = board_of(state)
+        console = console_answers(state, ask=["e-gone"])
+        published = {(slot, index): shown for slot, index, shown in self.sides(board)}
+        self.assertEqual(published[("r2m1", 0)], {"tbd": True})
+        # The console answers that same side with a word of its own, in both languages; the
+        # payload may carry neither the word nor a word of its own making ("?" used to be one).
+        self.assertIn(console["asked"]["e-gone"], set(console["words"]["en"].values()) | set(console["words"]["zh"].values()))
+        body = json.dumps(board)
+        for lang in console["words"].values():
+            for word in lang.values():
+                self.assertNotIn(word, body)
+        self.assertNotIn("?", body)
 
 
 class Loopback:
