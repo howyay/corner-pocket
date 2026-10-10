@@ -384,7 +384,9 @@ class TableStage(Stage):
         Round 17, owner item 5: a 9 ft playfield is 100 x 50 inches and keeps at least one pair of
         edges parallel at this venue. The verdict rides with the quad, so a consumer can say why a
         polygon does not match the table instead of throwing a detection away silently. It never
-        raises: a constraint must not be able to stop a frame.
+        raises: a constraint must not be able to stop a frame. A fault inside the check is not a
+        pass either: the verdict says ``check-unavailable`` and the fault text rides beside it, so
+        a reader can tell "the table is correct" from "nobody measured the table".
         """
         try:
             from src.playfield import check_quad
@@ -398,7 +400,7 @@ class TableStage(Stage):
                     'best_parallel_deg': best['metrics'].get('best_parallel_deg'),
                     'aspect': best['metrics'].get('aspect')}
         except Exception as exc:                    # a constraint never stops a frame
-            return {'ok': True, 'reasons': [], 'error': str(exc)}
+            return {'ok': False, 'reasons': ['check-unavailable'], 'error': str(exc)}
 
     def process(self, frame, context):
         from src.frame_inference import infer_frame
