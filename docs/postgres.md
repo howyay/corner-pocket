@@ -213,19 +213,22 @@ and replaces nothing until it reads back.  The script has no default directory: 
 
 The two `.service` files in `deploy/systemd/` are **templates** — no host paths in the
 repository; `@REPO_DIR@`, `@BACKUP_DIR@` and `@PODMAN@` are filled in when they are
-installed (the timers need nothing).  Install and enable them — at cutover, not before:
+installed (the timers need nothing).  `scripts/pool-render-units.sh` renders the whole tree
+— 2 services, 2 timers, 3 drop-ins — and copies a file that holds no placeholder byte for
+byte.  It refuses the live user unit directory of this machine, so render into a staging
+directory and copy that in.  Install and enable them — at cutover, not before:
 
 ```sh
 # the values for THIS host - set them explicitly, then render
 REPO_DIR=~/projects/pool
 BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups           # exists, mode 700
 PODMAN=/run/current-system/sw/bin/podman                 # `command -v podman`
+scripts/pool-render-units.sh --to /tmp/pool-units \
+    --repo-dir "$REPO_DIR" --backup-dir "$BACKUP_DIR" --podman "$PODMAN"   # 7 files, 0 placeholders
 U=~/.config/systemd/user
-for unit in pool-postgres-backup pool-postgres-verify; do
-  sed -e "s#@REPO_DIR@#$REPO_DIR#g" -e "s#@BACKUP_DIR@#$BACKUP_DIR#g" -e "s#@PODMAN@#$PODMAN#g" \
-      deploy/systemd/$unit.service > $U/$unit.service
-  cp deploy/systemd/$unit.timer $U/$unit.timer
-done
+mkdir -p $U/pool-workbench.service.d
+cp -a /tmp/pool-units/. $U/          # the renderer refuses $U on purpose: a script never
+                                     # overwrites the live units of the machine it runs on
 grep -c '@[A-Z_]*@' $U/pool-postgres-backup.service $U/pool-postgres-verify.service   # 0 and 0
 systemctl --user daemon-reload
 systemctl --user cat pool-postgres-backup.service pool-postgres-verify.service    # review the rendered units
@@ -382,16 +385,14 @@ After=pool-postgres.service
 [Service]
 EnvironmentFile=%h/.config/pool/postgres.env
 EOF
-# the backup units: render the templates with this host's values ("Scheduled backups")
+# the backup units: render every unit with this host's values ("Scheduled backups")
 REPO_DIR=~/projects/pool
 BACKUP_DIR=$POOL_PG_ROOT/pool-postgres/backups
 PODMAN=/run/current-system/sw/bin/podman
+scripts/pool-render-units.sh --to /tmp/pool-units \
+    --repo-dir "$REPO_DIR" --backup-dir "$BACKUP_DIR" --podman "$PODMAN"   # 7 files, 0 placeholders
 U=~/.config/systemd/user
-for unit in pool-postgres-backup pool-postgres-verify; do
-  sed -e "s#@REPO_DIR@#$REPO_DIR#g" -e "s#@BACKUP_DIR@#$BACKUP_DIR#g" -e "s#@PODMAN@#$PODMAN#g" \
-      deploy/systemd/$unit.service > $U/$unit.service
-  cp deploy/systemd/$unit.timer $U/$unit.timer
-done
+cp -a /tmp/pool-units/. $U/
 grep -c '@[A-Z_]*@' $U/pool-postgres-backup.service $U/pool-postgres-verify.service   # 0 and 0
 systemctl --user daemon-reload && systemctl --user start pool-workbench
 systemctl --user cat pool-workbench.service pool-postgres-backup.service pool-postgres-verify.service   # review
