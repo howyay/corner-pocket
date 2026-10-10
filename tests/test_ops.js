@@ -1361,8 +1361,15 @@ test('the shared clock re-syncs when the tab is shown again, focused, or back on
 });
 
 test('the clock labels stay honest in English and 中文, and only a failure is printed', () => {
-  assert.equal(clockSync.LABELS.en.kicker, 'Shot timer');
-  assert.equal(clockSync.LABELS.zh.kicker, '出杆计时');
+  // §12.1: the shot timer has one name, and this half no longer holds a copy of it. ops.js owns
+  // words.shotTimer and publishes it on the seam, so the console's label and the clock's idea of
+  // the console's language cannot drift apart - there is only one of each.
+  assert.equal(clockSync.LABELS.en.kicker, undefined, 'the name is not copied into the sync half');
+  assert.equal(clockSync.LABELS.zh.kicker, undefined, 'in either language');
+  assert.equal(clockSync.LOCAL_TIMER_LIE, undefined, 'nor is the rendered text it used to match');
+  assert.equal(clockSync.decorate, undefined, 'so the pass that rewrote labels on screen is gone');
+  assert.equal(typeof clockSync.announce, 'function', 'and the one sentence is handed over the seam instead');
+  assert.ok(/shotTimer:\['Shot timer','出杆计时'\]/.test(source), 'ops.js still defines the name exactly once, in both languages');
   // §13.3: the bar stopped narrating sync state. statusText() is now the failure path
   // only, in the language the shell publishes.
   assert.equal(clockSync.statusText('live', 'en', null), '', 'a synced clock says nothing at all');
@@ -1373,8 +1380,7 @@ test('the clock labels stay honest in English and 中文, and only a failure is 
     'clock command failed — nothing changed', 'a failed command still speaks');
   assert.equal(clockSync.statusText('busy', 'zh', '服务器繁忙 — 正在重试'), '服务器繁忙 — 正在重试', 'and so does a busy server');
   for (const words of [clockSync.LABELS.en, clockSync.LABELS.zh]) {
-    assert.ok(!/local timer|本机计时/.test(words.kicker), 'no label claims the clock is local any more');
-    assert.ok(!/Shot clock|shared across devices|多设备同步/.test(words.kicker), 'and no label invents a second name for it');
+    assert.deepEqual(Object.keys(words).sort(), ['busy', 'failed'], 'the table holds two sentences and no name at all');
   }
   // The retired sentences are gone from the copy table itself, both languages, so a state
   // cannot leak back into the bar through the dictionary.
@@ -1387,119 +1393,102 @@ test('the clock labels stay honest in English and 中文, and only a failure is 
   assert.equal(clockSync.LABELS.zh.failed, '计时指令失败 — 未改变');
   assert.equal(clockSync.LABELS.en.busy, 'server busy — retrying');
   assert.equal(clockSync.LABELS.zh.busy, '服务器繁忙 — 正在重试');
-  assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '出杆计时'], 'the two words the shell paints are exactly what the shared clock adopts');
 });
 
-// The smallest DOM decorate() needs: one clock mount, an optional .kicker (the Vision stage
-// bar's label and any page whose shell does not publish a language), an optional shell that
-// publishes one, and the slot's own .sync-error span.
-function fakeClockNode(attrs) {
-  const node = {attrs: {...attrs}, textContent: '', className: '', hidden: false,
-    classList: {toggle() {}, add() {}, remove() {}},
-    setAttribute(name, value) { node.attrs[name] = value; },
-    getAttribute(name) { return name in node.attrs ? node.attrs[name] : null; },
-    removeAttribute(name) { delete node.attrs[name]; }};
-  return node;
-}
-function fakeClockMount(options) {
-  const opts = options || {};
-  const children = [];
-  let holder = null;
-  const kicker = opts.kicker === null ? null : fakeClockNode({});
-  if (kicker) kicker.textContent = opts.kicker || '';
-  const error = opts.error === null ? null : fakeClockNode({});
-  if (error && opts.error) error.textContent = opts.error;
-  const strong = {closest: selector => (selector === '.vs-clock' && opts.vsClock ? holder : null), parentElement: null, nextSibling: null};
-  holder = {
-    querySelector: selector => {
-      if (selector === '.kicker') return kicker;
-      if (selector === '.sync-error') return error;
-      if (selector === '[data-clock-sync]') return children.find(child => child.attrs && 'data-clock-sync' in child.attrs) || null;
-      return null;
-    },
-    getAttribute: name => (name === 'title' ? (opts.title || null) : null),
-    setAttribute: (name, value) => { if (name === 'title') opts.title = value; },
-    insertBefore: (node, anchor) => { const at = anchor ? children.indexOf(anchor) : -1; children.splice(at < 0 ? children.length : at, 0, node); },
-    appendChild: node => { children.push(node); node.parentNode = holder; },
-    removeChild: node => { const at = children.indexOf(node); if (at >= 0) children.splice(at, 1); }
-  };
-  strong.parentElement = holder;
-  if (kicker) {
-    children.push(kicker);
-    kicker.nextSibling = strong;
-  } else {
-    children.push(strong);
-  }
-  if (error) children.push(error);
-  const shell = fakeClockNode({});
-  if (opts.lang) shell.attrs['data-lang'] = opts.lang;
-  const doc = {
-    querySelector: selector => (selector === '#ops-shell' ? shell : null),
-    createElement: () => fakeClockNode({}),
-    querySelectorAll: () => [strong],
-    documentElement: {getAttribute: name => (name === 'lang' ? (opts.rootLang || 'en') : null)}
-  };
-  return {doc, shell, kicker, error, holder, children,
-    lines: () => children.filter(child => child.attrs && 'data-clock-sync' in child.attrs)};
-}
+test('round 34 / console candidate 5: the console publishes the shot timer name and its language on the seam, and paints the one sentence itself', () => {
+  // The console's own facts leave through window.OpsClock, and the sync line is painted by the
+  // file that emits it. No pass over the console's renders, and no language recovered by matching
+  // text that happens to be on screen.
+  const h = harness({richDom: true});
+  const seam = h.context.window.OpsClock;
+  assert.equal(typeof seam.words, 'function', 'the label leaves the console as a call, not as screen text');
+  assert.deepEqual({...seam.words()}, {lang: 'en', kicker: 'Shot timer'}, 'the name and the language it is painted in, in one answer');
+  assert.equal(seam.lang(), 'en', 'and the language on its own, for the sentence');
+  h.lang = 'zh';
+  assert.deepEqual({...seam.words()}, {lang: 'zh', kicker: '出杆计时'}, "the same call in the shell's other language");
+  assert.equal(seam.lang(), 'zh');
+  // The bar paints that same one name, from that same table.
+  tabClick(h, 'clock');
+  h.render();
+  const slot = h.context.document.region('#ops-shell .clockbar');
+  assert.ok(slot.innerHTML.includes('出杆计时'), 'the bar paints the one name the seam published');
+  assert.ok(!/kicker/.test(slot.innerHTML), 'with no second line for a label: there is nothing left to rewrite');
+  assert.ok(/<span class="sync-error" hidden><\/span>/.test(slot.innerHTML), 'a healthy clock leaves the sync line hidden and empty');
+  // A failed command is the one sentence, and it is written into the markup this file emits.
+  seam.sync('计时指令失败 — 未改变');
+  assert.ok(slot.innerHTML.includes('>计时指令失败 — 未改变<'), 'the sentence is painted by the console, not by the sync half');
+  assert.ok(!/class="sync-error" hidden/.test(slot.innerHTML), 'and it is not hidden while it says something');
+  seam.sync('');
+  assert.ok(/<span class="sync-error" hidden><\/span>/.test(slot.innerHTML), 'an empty sentence leaves it hidden and empty again');
+});
 
-test('one shot-timer name in both clocks, no sync line, and the slot speaks only when a command failed', () => {
-  assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], ['Shot timer', '出杆计时']);
-  // One name, checked across all three places that can paint it: the shell dictionary,
-  // the shared clock's own labels, and the mount point in the top bar.
-  const dictionary = JSON.parse(`[${/shotTimer:\[([^\]]*)\]/.exec(source)[1]}]`.replace(/'/g, '"'));
-  assert.deepEqual(dictionary, ['Shot timer', '出杆计时'], 'the shell paints one name');
-  assert.deepEqual([...clockSync.LOCAL_TIMER_LIE], dictionary, 'the shared clock adopts exactly the label ops.js paints');
-  assert.equal(clockSync.LABELS.en.kicker, dictionary[0]);
-  assert.equal(clockSync.LABELS.zh.kicker, dictionary[1]);
-  const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
-  assert.ok(html.includes('aria-label="Shot timer / 出杆计时"'), 'the top-bar mount point is named the same');
-  const shell = {attrs: {}};
-  const en = fakeClockMount({lang: 'en'});
-  clockSync.decorate(en.doc, 'live', null);
-  assert.equal(en.lines().length, 0, 'nothing is written beside a healthy clock');
-  assert.equal(en.error.hidden, false, 'the stub starts visible, so hiding it is something decorate() does');
-  assert.equal(en.error.attrs.hidden, '', 'a healthy clock leaves the error span hidden and empty');
-  clockSync.decorate(en.doc, 'polling', null);
-  assert.equal(en.lines().length, 0, 'reconnecting is not a line either');
-  assert.equal(en.error.attrs.hidden, '', 'and it is still hidden');
-  // The Vision stage bar's only label is the title attribute: it still adopts the one name.
-  const vs = fakeClockMount({kicker: null, vsClock: true, title: clockSync.LOCAL_TIMER_LIE[1], lang: 'en'});
-  clockSync.decorate(vs.doc, 'polling', null);
-  assert.equal(vs.error.attrs.hidden, '', 'the stage bar is quiet too');
-  assert.equal(vs.lines().length, 0, 'and carries no sync line');
-  // The swap is still whitelist-gated: nothing else in the chrome is rewritten behind ops.js's back.
-  const other = fakeClockMount({kicker: 'Tables open', lang: 'en'});
-  clockSync.decorate(other.doc, 'live', null);
-  assert.equal(other.kicker.textContent, 'Tables open', 'a label that is not the shot timer is left alone');
-  // A failed command is the one thing that shows, in the language the shell published.
-  const err = fakeClockMount({lang: 'en'});
-  clockSync.decorate(err.doc, 'live', 'clock command failed — nothing changed');
-  assert.equal(err.error.textContent, 'clock command failed — nothing changed');
-  assert.equal(err.error.attrs.hidden, undefined, 'an error is not hidden');
-  assert.equal(err.lines().length, 0, 'and it comes as itself, not as a sync line');
-  const errZh = fakeClockMount({lang: 'zh'});
-  clockSync.decorate(errZh.doc, 'busy', '服务器繁忙 — 正在重试');
-  assert.equal(errZh.error.textContent, '服务器繁忙 — 正在重试', 'the error follows the published language');
-  // The language is published by render() on the shell, with documentElement.lang as the
-  // fallback before the old label sniff is ever needed (owner §13.2).
-  const published = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0], lang: 'zh'});
-  clockSync.decorate(published.doc, 'live', '计时指令失败 — 未改变');
-  assert.equal(published.error.textContent, '计时指令失败 — 未改变', 'the shell dataset outranks the label it paints');
-  const byRoot = fakeClockMount({kicker: null, vsClock: true, title: clockSync.LOCAL_TIMER_LIE[1], rootLang: 'zh-CN'});
-  clockSync.decorate(byRoot.doc, 'live', '计时指令失败 — 未改变');
-  assert.equal(byRoot.error.textContent, '计时指令失败 — 未改变', 'documentElement.lang is the second source');
-  const sniffed = fakeClockMount({kicker: clockSync.LOCAL_TIMER_LIE[0], rootLang: ''});
-  clockSync.decorate(sniffed.doc, 'live', 'clock command failed — nothing changed');
-  assert.equal(sniffed.error.textContent, 'clock command failed — nothing changed', 'the old sniff still answers when nothing is published');
-  // Nowhere in the three shipped files does a label claim a local timer, or name it twice.
-  for (const [name, text] of [['clock-sync.js', clockSyncSource], ['ops.js', source], ['ops.html', html]]) {
-    assert.ok(!/local timer|本机计时/.test(text), `${name}: no label claims the timer is local`);
-    assert.ok(!/Shot clock · local|多设备同步|shared across devices/.test(text), `${name}: no second name for the shot timer survives`);
-    assert.ok(!/\.muted\[data-clock-sync\]/.test(text.split('querySelector')[0]), `${name}: nothing paints a sync line any more`);
-    assert.ok(!/live · synced|实时 · 已同步/.test(text), `${name}: the redundant sync text is gone, both languages`);
-  }
-  assert.ok(!shell.attrs['data-lang'], 'and the fixture shell starts without a language, so publishing one is something render() does');
+test('round 34 / console candidate 5: the sync half hands its one sentence over the seam and reads an accepted press back, with no observer and no store poll', async () => {
+  // The other half: ops.js is the only writer of the clock, so it is the only thing that can say
+  // a press was taken. The page this runs on offers no observer, no createElement and no readable
+  // store - install() still wires the clock up, and the console's DOM is never touched.
+  let reads = 0, created = 0;
+  const sentences = [], requests = [], handed = [];
+  const doc = {
+    hidden: false,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    addEventListener() {},
+    createElement() { created += 1; return {classList: {add() {}, remove() {}}, setAttribute() {}, removeAttribute() {}}; },
+    documentElement: {dataset: {}, lang: 'en', getAttribute: () => null}
+  };
+  const win = {
+    document: doc,
+    location: {href: 'http://127.0.0.1:8130/ops.html'},
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: id => clearTimeout(id),
+    setInterval: () => 0,
+    clearInterval() {},
+    addEventListener() {},
+    localStorage: {getItem() { reads += 1; return null; }, setItem() {}},
+    OpsClock: {
+      receive(value) { handed.push(value); },
+      words: () => ({lang: 'zh', kicker: '出杆计时'}),
+      sync(text) { sentences.push(text); }
+    },
+    EventSource: function () { this.addEventListener = () => {}; this.close = () => {}; },
+    fetch: async (url, options) => {
+      const method = (options && options.method) || 'GET';
+      requests.push({url, method});
+      if (method === 'POST') return {ok: true, status: 200, json: async () => clockSnapshot({running: true, deadline_ms: Date.now() + 20000, remaining_ms: 20000, server_now_ms: Date.now()})};
+      return {ok: true, status: 200, json: async () => clockSnapshot({running: true, deadline_ms: Date.now() + 30000, remaining_ms: 30000, server_now_ms: Date.now()})};
+    }
+  };
+  assert.equal(typeof win.MutationObserver, 'undefined', 'the page has no observer to install one on');
+  const sync = clockSync.install(win);
+  assert.ok(sync, 'install() still wires the clock up without one');
+  await settle();
+  assert.equal(created, 0, "and creates no node in it: the sync line belongs to ops.js's markup");
+  assert.equal(reads, 0, 'the store is never opened');
+  assert.equal(typeof win.OpsClock.onAccepted, 'function', 'the console reports an accepted press on the seam');
+  assert.equal(sentences[sentences.length - 1], '', 'a healthy clock hands over an empty sentence, not a state line');
+  assert.equal(handed.length, 1, 'and the first snapshot still reaches the console over receive()');
+  // ops.js calls onAccepted in the very branches that write the clock: an accepted press is news.
+  win.OpsClock.onAccepted('clock-toggle', undefined, {duration: 30, remaining: 20, deadline: Date.now() + 20000});
+  await settle();
+  assert.equal(requests.filter(r => r.method === 'POST').length, 1, 'the accepted press is mirrored to the server');
+  assert.equal(reads, 0, 'still without opening the store');
+  assert.equal(created, 0, "and still without touching the console's DOM");
+  // A press ops.js refused is never reported, so a stale clock is never mirrored.
+  win.OpsClock.onAccepted('clock-set', 45, {duration: 30, remaining: 20, deadline: null});
+  await settle();
+  assert.equal(requests.filter(r => r.method === 'POST').length, 1, 'a press the console did not take is not mirrored');
+  // The language of the one sentence comes from the console as well, not from a rendered label.
+  win.fetch = async (url, options) => {
+    const method = (options && options.method) || 'GET';
+    requests.push({url, method});
+    if (method === 'POST') return {ok: false, status: 503, json: async () => ({error: 'busy'})};
+    return {ok: true, status: 200, json: async () => clockSnapshot({})};
+  };
+  win.OpsClock.onAccepted('clock-reset', undefined, {duration: 30, remaining: 20, deadline: null});
+  await settle();
+  assert.equal(sentences[sentences.length - 1], '服务器繁忙 — 正在重试',
+    'a failed command speaks the language the seam published: ' + sentences[sentences.length - 1]);
+  assert.equal(created, 0, 'and even a failure paints nothing here: the sentence travelled, the node stayed');
 });
 
 test('a Twitch VOD picker sends the replay source the server accepts, never a live label', () => {
@@ -2919,7 +2908,8 @@ test('the timer slot renders and works in all four venue states, and nothing in 
   // one helper: once at boot and once on every render.
   assert.ok(!/function clockHTML\([^)]*comp/.test(source), 'clockHTML() reads no venue state');
   assert.ok(!/function clockHTML\(\)\{[^}]*comp\(/.test(source), 'nothing inside clockHTML() asks the venue state either');
-  assert.equal((source.match(/paintClockSlot\(\)/g) || []).length, 2, 'one definition and one boot paint; every later paint goes through the clock module');
+  assert.equal((source.match(/paintClockSlot\(\)/g) || []).length, 3, 'one definition, one boot paint, and the one repaint the sync sentence asks for; every other paint goes through the clock module');
+  assert.ok(/function showSyncError\(text\)\{[^}]*paintClockSlot\(\)/.test(source), 'and that third call is inside showSyncError(): the slot is still painted from the one helper');
 });
 
 test('#connection is not a revision slogan: silent while the API answers, one bilingual line when it does not (stage 9)', async () => {
@@ -3545,14 +3535,17 @@ test('round 5 / owner item 6: the timer bar never narrates its own sync state', 
   assert.equal(statusText('polling', 'en', ''), '', 'and nor a reconnect');
   assert.equal(statusText('live', 'en', 'clock command failed — nothing changed'), 'clock command failed — nothing changed',
     'only a failure speaks, and it is the sentence ops.js handed in');
-  assert.deepEqual(Object.keys(LABELS.en).sort(), ['busy', 'failed', 'kicker'],
-    'the label map holds a name and two failures, nothing else');
+  assert.deepEqual(Object.keys(LABELS.en).sort(), ['busy', 'failed'],
+    'the label map holds two failures and no name: the shot timer has one name, defined in ops.js');
   for (const dead of ['showing last known', 'live · synced', '实时 · 已同步', 'connecting…', 'connecting...', 'reconnecting —']) {
     assert.ok(!clockSyncSource.includes(dead), `no "${dead}" copy is left in the clock's client half`);
   }
-  assert.ok(clockSyncSource.includes("line.className = 'sync-error'"),
-    'a failure has its own element, hidden while it is empty');
-  assert.ok(/ERROR_MS = \d+/.test(clockSyncSource), 'and it clears itself on a timer');
+  // Round 34 / candidate 5: the failure line is the console's own node, emitted hidden while the
+  // sentence is empty, and the sync half only hands the sentence over.
+  assert.ok(source.includes('<span class="sync-error"' + "${clockSyncError?'':' hidden'}>" + '${esc(clockSyncError)}</span>'),
+    'the console emits the line it paints, hidden while the sentence is empty');
+  assert.ok(!clockSyncSource.includes("className = 'sync-error'"), 'the sync half no longer writes that node');
+  assert.ok(/ERROR_MS = \d+/.test(clockSyncSource), 'and the sentence still clears itself on a timer');
 });
 
 test('round 7 / owner item 2 on the phone: the header keeps the clock, the bottom bar all six', () => {

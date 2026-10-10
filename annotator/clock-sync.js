@@ -8,13 +8,21 @@
  * closure is unreachable from outside — ops.js is a single IIFE that exports
  * nothing — so ops.js publishes one named seam for it:
  *
- *   window.OpsClock = { receive(value) };   // value: the JSON a storage event carries
+ *   window.OpsClock = {
+ *     receive(value),       // in:  the JSON a storage event carries
+ *     words(),              // out: { lang, kicker } — the one name, and the language it is in
+ *     sync(text)            // out: the one sentence the sync line shows, painted by ops.js
+ *     onAccepted(a, v, t)   // in:  published here; ops.js calls it when it takes a press
+ *   };
  *
  * So this module hands ops.js a clock whose deadline is expressed in *this
  * device's* clock base (server deadline − measured offset) by calling that seam.
- * ops.js stays the only painter, so its single interval and "every view shows the
- * same instant" still hold. A real `storage` event from another tab is the other
- * way in, and ops.js keeps listening for it; this module no longer forges one.
+ * ops.js stays the only painter: it paints the shot timer's name, and it paints
+ * the sync line it already emits, from the sentence this module sends back
+ * over the same seam. Nothing here writes into the page, so no observer of the
+ * console's renders is needed and no language has to be guessed from screen text.
+ * A real `storage` event from another tab is the other way in, and ops.js keeps
+ * listening for it; this module no longer forges one.
  *
  * Offset, NTP style: offset = server_now_ms − (t_send + rtt/2), measured around
  * one GET /api/clock. What is displayed is deadline_ms − (Date.now() + offset),
@@ -40,34 +48,24 @@ const POLL_MS = 1000;                /* fallback poll while the stream is down *
 const HEARTBEAT_TIMEOUT_MS = 30000;  /* two missed 15 s heartbeats: stream dead */
 const RECONNECT_MS = 2000;           /* the retry: the server's stream asks for */
 const OFFLINE_AFTER_MS = 10000;      /* no answer this long while polling = offline */
-const WATCH_MS = 2000;               /* ops.js may await settings_update first */
-const WATCH_EVERY_MS = 50;
-const DECORATE_MS = 50;              /* coalesce decoration after ops.js renders */
 const ERROR_MS = 6000;               /* how long a failed command stays on screen */
 
 const LABELS = Object.freeze({
   en: Object.freeze({
-    kicker: 'Shot timer',
     failed: 'clock command failed — nothing changed',
     busy: 'server busy — retrying'
   }),
   zh: Object.freeze({
-    kicker: '出杆计时',
     failed: '计时指令失败 — 未改变',
     busy: '服务器繁忙 — 正在重试'
   })
 });
 
-/* The two strings ops.js still paints on every render. They are replaced at the
- * DOM level (see decorate) because `words` is closure-private and ops.js is not
- * ours to edit; matching the exact text is also how decorate knows which
- * language the surrounding chrome is in. §12.1: the shot timer has one name in
- * both clocks, so the "lie" and the honest label are the same two words — the
- * machine/local difference is carried by the sync-state line, never by a label. */
-const LOCAL_TIMER_LIE = Object.freeze([
-  'Shot timer',
-  '出杆计时'
-]);
+/* §12.1: the shot timer has one name in both clocks, and that name has one definition —
+ * words.shotTimer in annotator/ops.js, in both languages. This file holds no copy of it: not to
+ * paint it, and not to read a language off it. The console publishes the name and the language it
+ * is painted in on window.OpsClock (seamNames below), so both facts arrive as data instead of as
+ * text that happens to be on screen. */
 
 function labels(lang) {
   return LABELS[lang === 'zh' ? 'zh' : 'en'];
@@ -374,7 +372,19 @@ function createClockSync(deps) {
 
 /* -- DOM half ------------------------------------------------------------- */
 
-function nodeLang(doc, holder) {
+/* The console publishes what only it knows: the shot timer's one name, and the language that name
+ * is painted in (words.shotTimer in annotator/ops.js, handed out as window.OpsClock.words()).
+ * Reading it is a call, never a comparison against rendered text. */
+function seamNames(win) {
+  const seam = win && win.OpsClock;
+  const names = seam && typeof seam.words === 'function' ? seam.words() : null;
+  return names && (names.lang === 'zh' || names.lang === 'en') ? names : null;
+}
+
+function nodeLang(doc, win) {
+  // The console answers first, and its answer covers a page whose document element lies.
+  const names = seamNames(win);
+  if (names) return names.lang;
   // ops.js publishes the language it paints in on the shell (owner §13.2), which is
   // the shell element or its dataset, depending on which DOM is asking.
   const shell = (doc.querySelector && doc.querySelector('#ops-shell')) || (doc.getElementById && doc.getElementById('ops-shell')) || null;
@@ -382,57 +392,18 @@ function nodeLang(doc, holder) {
   if (published === 'zh' || published === 'en') return published;
   const root = doc.documentElement;
   const attr = ((root && root.getAttribute && root.getAttribute('lang')) || '').toLowerCase();
-  if (attr) return attr.indexOf('zh') === 0 ? 'zh' : 'en';
-  // Last resort for a page that publishes neither: the one label the shell paints.
-  const kicker = holder.querySelector ? holder.querySelector('.kicker') : null;
-  const sample = ((kicker && kicker.textContent) || (holder.getAttribute && holder.getAttribute('title')) || '').trim();
-  if (sample === LOCAL_TIMER_LIE[1]) return 'zh';
-  if (sample === LOCAL_TIMER_LIE[0]) return 'en';
-  return 'en';
+  return attr.indexOf('zh') === 0 ? 'zh' : 'en';
 }
 
-/* One idempotent pass over the clock mounts ops.js renders (the bar's timer slot, the
- * floor scoreboard, the vision stage bar): adopt the shell's one shot-timer name in the
- * whitelisted label, and speak only when something is wrong — a failed or busy command
- * is a fact the operator has to see, while connecting/live/polling/offline are states the
- * bar no longer narrates (owner §13.3). Re-running it after any render is safe. */
-function decorate(doc, status, errorText) {
-  const nodes = doc.querySelectorAll('[data-clock]');
-  for (let i = 0; i < nodes.length; i++) {
-    const clockNode = nodes[i];
-    const holder = (clockNode.closest && clockNode.closest('.vs-clock')) || clockNode.parentElement;
-    if (!holder) continue;
-    const lang = nodeLang(doc, holder);
-    const words = labels(lang);
-    const kicker = holder.querySelector ? holder.querySelector('.kicker') : null;
-    if (kicker && LOCAL_TIMER_LIE.indexOf(kicker.textContent.trim()) >= 0) kicker.textContent = words.kicker;
-    if (holder.getAttribute && LOCAL_TIMER_LIE.indexOf((holder.getAttribute('title') || '').trim()) >= 0) {
-      holder.setAttribute('title', words.kicker);
-    }
-    const text = statusText(status, lang, errorText);
-    let line = holder.querySelector ? holder.querySelector('.sync-error') : null;
-    if (!line && text) {
-      line = doc.createElement('span');
-      line.className = 'sync-error';
-      line.setAttribute('hidden', '');
-      if (holder.appendChild) holder.appendChild(line);
-    }
-    if (line) {
-      if (line.textContent !== text) line.textContent = text;
-      if (text) {
-        if (line.removeAttribute) line.removeAttribute('hidden');
-        else line.hidden = false;
-        if (line.classList && line.classList.add) line.classList.add('low');
-      } else {
-        if (line.setAttribute) line.setAttribute('hidden', '');
-        else line.hidden = true;
-        if (line.classList && line.classList.remove) line.classList.remove('low');
-      }
-    }
-    // The retired sync line is not left behind on a page that still carries one.
-    const stale = holder.querySelector ? holder.querySelector('.muted[data-clock-sync]') : null;
-    if (stale && stale.parentNode && stale.parentNode.removeChild) stale.parentNode.removeChild(stale);
-  }
+/* The clock's news has one home: annotator/ops.js paints the sync line inside the clock
+ * markup it emits itself. This half decides only what the sentence is — a failed or busy command
+ * is a fact the operator has to see, while connecting/live/polling/offline are states the bar no
+ * longer narrates (owner §13.3) — and hands it over on the seam. The label above the digits is
+ * never rewritten, no node is created, and nothing is read back out of the page. */
+function announce(win, status, errorText) {
+  const seam = win && win.OpsClock;
+  if (!seam || typeof seam.sync !== 'function') return;
+  seam.sync(statusText(status, nodeLang(win.document, win), errorText));
 }
 
 // The console publishes one named seam for the clock: annotator/ops.js sets window.OpsClock with a
@@ -466,7 +437,7 @@ function install(win) {
   let errorTimer = null;
 
   function paint() {
-    decorate(doc, win.__clockSync ? win.__clockSync.status() : 'connecting', errorText);
+    announce(win, win.__clockSync ? win.__clockSync.status() : 'connecting', errorText);
   }
 
   const sync = createClockSync({
@@ -487,11 +458,7 @@ function install(win) {
       errorTimer = win.setTimeout(function () { errorText = null; errorTimer = null; paint(); }, ERROR_MS);
       paint();
     },
-    lang: function () {
-      const nodes = doc.querySelectorAll('[data-clock]');
-      const holder = nodes.length ? ((nodes[0].closest && nodes[0].closest('.vs-clock')) || nodes[0].parentElement) : null;
-      return holder ? nodeLang(doc, holder) : 'en';
-    }
+    lang: function () { return nodeLang(doc, win); }
   });
 
   win.__clockSync = sync;
@@ -503,54 +470,17 @@ function install(win) {
     if (!doc.hidden) sync.resync('visibilitychange');
   });
 
-  /* A click on a clock button is mirrored to the server only once ops.js has
-   * accepted it — which it shows by writing its own clock to localStorage
-   * (a refused press, e.g. the "delayed" guard, writes nothing). Capture phase:
-   * this listener must read the old value before ops.js's bubble handler runs. */
-  function readStore() {
-    try {
-      return win.localStorage.getItem(CLOCK_KEY);
-    } catch (error) {
-      return null;
-    }
-  }
-  function watchLocalWrite(action, value, before) {
-    const deadline = Date.now() + WATCH_MS;
-    function check() {
-      const current = readStore();
-      if (current !== before) {
-        const next = parseJson(current);
-        const intent = intentFor(action, value, next);
-        if (intent) sync.intent(intent.action, intent.duration);
-        return true;
-      }
-      return Date.now() > deadline;
-    }
-    if (check()) return;
-    const timer = win.setInterval(function () {
-      if (check()) win.clearInterval(timer);
-    }, WATCH_EVERY_MS);
-  }
-  doc.addEventListener('click', function (event) {
-    const target = event.target;
-    const button = target && target.closest ? target.closest('[data-action^="clock-"]') : null;
-    if (!button) return;
-    const action = button.dataset ? button.dataset.action : button.getAttribute('data-action');
-    const raw = button.dataset ? button.dataset.value : button.getAttribute('data-value');
-    const value = raw === null || raw === undefined || raw === '' ? undefined : Number(raw);
-    const before = readStore();
-    win.setTimeout(function () { watchLocalWrite(action, value, before); }, 0);
-  }, true);
-
-  /* ops.js rebuilds its views on every render, so the honest labels and the
-   * sync line have to be re-applied whenever it does. */
-  if (win.MutationObserver) {
-    let pending = null;
-    const observer = new win.MutationObserver(function () {
-      if (pending !== null) return;
-      pending = win.setTimeout(function () { pending = null; paint(); }, DECORATE_MS);
-    });
-    observer.observe(doc.body || doc.documentElement, {childList: true, subtree: true, characterData: true});
+  /* An accepted press is the console's news, not something to be inferred afterwards. ops.js
+   * calls window.OpsClock.onAccepted(action, value, timer) in the very branches that write its
+   * own clock, so a press it refuses (the "delayed" guard) is never reported — the same
+   * condition the old store watch could only guess at, without reading the store at all. The
+   * seam is there to be widened because annotator/ops.html defers ops.js before this file. */
+  const seam = win.OpsClock;
+  if (seam) {
+    seam.onAccepted = function (action, value, written) {
+      const intent = intentFor(action, value, written);
+      if (intent) sync.intent(intent.action, intent.duration);
+    };
   }
 
   paint();
@@ -565,7 +495,6 @@ const api = {
   HEARTBEAT_TIMEOUT_MS: HEARTBEAT_TIMEOUT_MS,
   OFFLINE_AFTER_MS: OFFLINE_AFTER_MS,
   LABELS: LABELS,
-  LOCAL_TIMER_LIE: LOCAL_TIMER_LIE,
   labels: labels,
   statusText: statusText,
   offsetEstimate: offsetEstimate,
@@ -574,7 +503,9 @@ const api = {
   intentFor: intentFor,
   retryAfterMsFrom: retryAfterMsFrom,
   createClockSync: createClockSync,
-  decorate: decorate,
+  seamNames: seamNames,
+  nodeLang: nodeLang,
+  announce: announce,
   install: install
 };
 
