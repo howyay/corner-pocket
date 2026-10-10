@@ -536,6 +536,79 @@ class ReadQuery:
         return dict(self._values)
 
 
+#: What ``Cache.get`` holds where a value is absent or stale.  ``None`` is a value
+#: these caches really store - a dataset with no hand anchors has no prior quad - so
+#: an absence needs its own object.
+ABSENT = object()
+
+
+class Cache:
+    """A cache whose every entry declares the source it was built from.
+
+    ``source(key)`` is the provenance rule: it returns the stamp the value for ``key``
+    belongs to (a file's mtime and size, or None for a source that leaves no trace).
+    ``get`` reads that stamp and serves the stored value only while the entry's own
+    stamp is still the source's answer, so a cache cannot be added without answering
+    "which inputs does this value belong to" - the constructor demands the rule - and
+    the caches in this module cannot each answer it differently.
+
+    A stamp covers a source that leaves a trace (a file).  A write that leaves no
+    trace where the stamp looks - the anchors route against a database store, whose
+    ``place`` answers a name and not a path - is covered by ``invalidate``: the write
+    route names the caches its write made wrong (``Backend.invalidate``).
+
+    ``limit`` bounds the entry count; ``get`` and ``put`` refresh recency (LRU).
+    Callers hold ``Backend.lock``, as every call site in this module does.
+    """
+
+    def __init__(self, source, *, limit=None):
+        self._source = source
+        self._limit = limit
+        self._entries = OrderedDict()
+
+    def __len__(self):
+        return len(self._entries)
+
+    def __contains__(self, key):
+        """Whether a live entry is held for ``key`` (present, and its stamp unbroken)."""
+        return self.get(key)[1] is not ABSENT
+
+    def get(self, key):
+        """``(stamp, value)`` for ``key``: the source's answer now, and what is held.
+
+        ``value`` is ``ABSENT`` when nothing is held, and when the entry was built
+        from a stamp the source no longer answers.  The stamp is the one this call
+        read, so a caller that builds the value hands it back to ``put``, and the
+        entry names the source as it was when the value was built.
+        """
+        stamp = self._source(key)
+        entry = self._entries.get(key)
+        if entry is None or entry[0] != stamp:
+            self._entries.pop(key, None)
+            return stamp, ABSENT
+        self._entries.move_to_end(key)
+        return stamp, entry[1]
+
+    def put(self, key, value, stamp):
+        """Store ``value`` for ``key`` under ``stamp``, the source it was built from."""
+        self._entries[key] = (stamp, value)
+        self._entries.move_to_end(key)
+        if self._limit is not None:
+            while len(self._entries) > self._limit:
+                self._entries.popitem(last=False)
+
+    def invalidate(self, key=None):
+        """Drop the entry for ``key``, or every entry when ``key`` is None.
+
+        A write route calls this with the caches its own write made wrong, for the
+        sources whose stamp cannot see that write.  Returns the number dropped.
+        """
+        if key is None:
+            dropped, self._entries = len(self._entries), OrderedDict()
+            return dropped
+        return 1 if self._entries.pop(key, None) is not None else 0
+
+
 class Backend:
     def __init__(self, root=ROOT):
         self.root = Path(root)
@@ -544,7 +617,10 @@ class Backend:
         self.job = {"status": "idle", "error": None}
         self.inference_jobs = {}
         self.inference_busy = False
-        self.video_cache = {}
+        # Every cache in this module is the one type, and every source rule is declared
+        # in ``Backend.CACHES``: ``cache(name)`` builds them, so no call site can hold
+        # an entry that cannot name the source it belongs to.
+        self._caches = {}
         self._clip_semaphore = threading.Semaphore(2)
         self._operations = None
         self._board_lock = threading.Lock()
@@ -556,8 +632,6 @@ class Backend:
         self._identity_pipeline = None
         self._identity_error = None
         self._identity_lock = threading.Lock()
-        self._unified_cache = OrderedDict()
-        self._projection_cache = {}
         self._enroll_plans = OrderedDict()
         # One enrolment preview at a time: each scans frames with the person
         # detector and face engine (~6.5 CPU-s); a second click waits for a 409.
@@ -994,9 +1068,149 @@ class Backend:
             promoted["store"] = str(store.place("faces"))
         return promoted
 
-    # -- unified viewer: one overlay payload per frozen frame ---------------
+    # -- caches: one type, one declared source each -------------------------
 
     _UNIFIED_CACHE_MAX = 24
+
+    #: Every cache this backend holds: the name a write route invalidates it by, the
+    #: source rule that stamps its entries (a method of this class), and its entry
+    #: limit.  One table, because a cache that is not declared here is a cache no write
+    #: route can name and no reader can reach, and the rule those entries answer to
+    #: ("which inputs does this value belong to") is written once per cache instead of
+    #: once at every read and write site.
+    CACHES = {
+        'video': ('_media_stamp', None),
+        'unified': ('_detection_stamp', _UNIFIED_CACHE_MAX),
+        'projection': ('_projection_stamp', None),
+        'prior': ('_anchors_stamp', None),
+        'segments': ('_segments_stamp', None),
+    }
+
+    def cache(self, name):
+        """The named cache from ``CACHES``, built on first use.
+
+        One accessor, so a reader names a cache instead of reaching into one, a route
+        can only name a cache that is declared, and a Backend built without
+        ``__init__`` (the probe stub in ``out/app_path_probe.py``, which carries only
+        the state the two methods it borrows touch) still gets the declared type on
+        first use instead of a bare dict.
+        """
+        row = self.CACHES.get(name)
+        if row is None:
+            raise ValueError(f'no cache named {name!r}: {sorted(self.CACHES)}')
+        caches = self.__dict__.get('_caches')
+        if caches is None:
+            caches = self.__dict__['_caches'] = {}
+        cache = caches.get(name)
+        if cache is None:
+            source, limit = row
+            cache = caches[name] = Cache(getattr(self, source), limit=limit)
+        return cache
+
+    def invalidate(self, *names):
+        """Drop the named caches: a write route names what its write made wrong.
+
+        The stamp covers the sources that leave a trace.  This is the other half of
+        the rule: a store that answers a database name instead of a file, and any
+        write whose effect no stamp can see, is corrected by the route that made it.
+        Every name is looked up before anything is dropped, so a route that names a
+        cache that does not exist changes nothing and says so.
+        """
+        caches = [self.cache(name) for name in names]
+        return sum(cache.invalidate() for cache in caches)
+
+    def _media_stamp(self, dataset):
+        """``(mtime_ns, size)`` of a dataset's media file, or None when it has none.
+
+        The media file decides both the metadata and every decoded frame, so the two
+        caches for those answer to it.  It is strict: the route that needs the video
+        resolves it first (``video_metadata`` still answers 404 for a dataset without
+        one), while a caller that only wants a stamp wraps it itself.
+        """
+        path = self.video(dataset)
+        info = path.stat()
+        return (info.st_mtime_ns, info.st_size)
+
+    def _anchors_stamp(self, dataset):
+        """The stamp of the file that holds a dataset's hand anchors, or None.
+
+        ``store().place('anchors', dataset)`` answers the file the store really reads
+        (a ``Path``) or the database name it really writes (text).  A file carries a
+        stamp, so a writer outside this process - the anchors script, another server -
+        is seen; a database name carries none, so a quad cached there is corrected only
+        by the write route that names these caches (``_route_anchors`` invalidates
+        ``prior`` and ``unified``).
+        """
+        try:
+            place = self.store().place("anchors", dataset)
+        except Exception:
+            return None
+        if not isinstance(place, Path):
+            return None
+        try:
+            info = place.stat()
+        except OSError:
+            return None
+        return (info.st_mtime_ns, info.st_size)
+
+    def _detection_stamp(self, dataset):
+        """What a cached frame detection belongs to: the media file and the anchors.
+
+        ``_unified_detection`` decodes the frame from the media file and searches
+        around the prior the anchors give, so a change in either makes the stored
+        corners wrong.  A dataset without a usable media file still has a detection
+        (the test fixtures decode a stub frame), so that half is asked with the
+        stamp's own tolerance and answers None instead of raising.
+        """
+        try:
+            media = self._media_stamp(dataset)
+        except Exception:
+            media = None
+        return (media, self._anchors_stamp(dataset))
+
+    def _segments_stamp(self, dataset):
+        """``(mtime_ns, size)`` of ``out/calib_<dataset>_segments.json``, or None."""
+        try:
+            info = (self.out / f'calib_{dataset}_segments.json').stat()
+        except OSError:
+            return None
+        return (info.st_mtime_ns, info.st_size)
+
+    def _event_sources(self, dataset):
+        """The candidate files the event projection is fitted from, in priority order.
+
+        ``_EVENT_QUADS`` names the refits first; then the operator's hand anchors, then
+        the scan's own ball correspondences (``src/table_geometry.py``).  An unknown
+        dataset keeps its own 404, like every other reader.
+        """
+        base = self.dataset(dataset)
+        sources = [(base / name, label) for name, label in self._EVENT_QUADS]
+        sources.append((self.out / f'pid_anchors_{dataset}.json', 'saved anchors'))
+        sources.append((base / 'sam3_results.json', 'measured ball correspondences'))
+        return sources
+
+    def _projection_stamp(self, dataset):
+        """The stamp of every source ``_event_sources`` offers, each name included.
+
+        One tuple over all of them: a file that is rewritten changes its own stamp, and
+        a file that appears or disappears changes the tuple even while the others keep
+        theirs - any of them can be the one the projection is fitted from.
+        """
+        try:
+            sources = self._event_sources(dataset)
+        except APIError:
+            return None
+        stamped = []
+        for path, _ in sources:
+            try:
+                info = path.stat()
+            except OSError:
+                stamped.append((path.name, None, None))
+                continue
+            stamped.append((path.name, info.st_mtime_ns, info.st_size))
+        return tuple(stamped)
+
+    # -- unified viewer: one overlay payload per frozen frame ---------------
 
     def unified(self, dataset, frame_index):
         """Everything the unified viewer overlays on one decoded frame: table
@@ -1029,15 +1243,15 @@ class Backend:
         so the detection and the check describe the same boundary), else None - the
         refinement-derived reference ``out/corners_30min_v2.json`` is a measured-bad
         seed and is never searched around again (docs/app-path-refusal.md).  Cached
-        per dataset: the reference is a file on disk and the viewer asks for it on
-        every unified frame.  A missing or unreadable reference returns None rather
-        than raising - the detector then falls back to the naive quad.
+        per dataset, stamped with the anchors file it was read from: a missing or
+        unreadable reference returns None rather than raising - the detector then
+        falls back to the naive quad.
         """
-        cache = getattr(self, '_prior_cache', None)
-        if cache is None:
-            cache = self._prior_cache = {}
-        if dataset in cache:
-            return cache[dataset]
+        cache = self.cache('prior')
+        with self.lock:
+            stamp, cached = cache.get(dataset)
+        if cached is not ABSENT:
+            return cached
         try:
             # the hand anchors come from the store (the file by default); the quad rule
             # is src.frame_inference's (earliest saved time, first four points, ordered)
@@ -1045,15 +1259,17 @@ class Backend:
             value = anchor_quad(self.store().anchors_get(dataset))
         except Exception:
             value = None
-        cache[dataset] = value
+        with self.lock:
+            cache.put(dataset, value, stamp)
         return value
 
     def _prior_source(self, dataset):
         """Where the hand anchors behind the prior live (shown with the quad), or None.
 
         The store answers with the file it really reads (a Path) or the database name
-        it really writes (text). The quad check above already proved the anchors exist,
-        so the answer needs no second read of the file."""
+        it really writes (text). The prior's own answer decides whether there are any
+        anchors to name - under a database store the file may not exist at all, so a
+        second stat of it would report an absence that is not one."""
         if self._prior_for(dataset) is None:
             return None
         place = self.store().place("anchors", dataset)
@@ -1065,11 +1281,11 @@ class Backend:
         that space during scans) and scales results back; an LRU keyed by
         (dataset, frame) keeps scrubbing cheap."""
         key = (dataset, frame_index)
+        cache = self.cache('unified')
         with self.lock:
-            cached = self._unified_cache.get(key)
-            if cached is not None:
-                self._unified_cache.move_to_end(key)
-                return cached['corners'], cached['balls']
+            stamp, cached = cache.get(key)
+        if cached is not ABSENT:
+            return cached['corners'], cached['balls']
         import cv2
         import numpy as np
         from src.table_detect import detect_table
@@ -1107,11 +1323,7 @@ class Backend:
                       'r': round(c['r'] * scale, 1), 'color': c['color']}
                      for c in detect_ball_candidates(small, table.get('mask'))]
         with self.lock:
-            cache = self._unified_cache
-            cache[key] = {'corners': corners, 'balls': balls, 'quad': note}
-            cache.move_to_end(key)
-            while len(cache) > self._UNIFIED_CACHE_MAX:
-                cache.popitem(last=False)
+            cache.put(key, {'corners': corners, 'balls': balls, 'quad': note}, stamp)
         return corners, balls
 
     def _unified_quad(self, dataset, frame_index):
@@ -1123,8 +1335,8 @@ class Backend:
         the exact result the payload's corners came from.
         """
         with self.lock:
-            cached = self._unified_cache.get((dataset, frame_index))
-            return None if cached is None else cached.get('quad')
+            _, cached = self.cache('unified').get((dataset, frame_index))
+            return None if cached is ABSENT else cached.get('quad')
 
     def _unified_pockets(self, corners):
         """Six physical pockets mapped back to frame pixels through the inverse
@@ -1196,21 +1408,18 @@ class Backend:
         without the artifact keeps the dataset-level projection unchanged, so this
         is additive for every existing fixture.
         """
-        cache = getattr(self, '_segments_cache', None)
-        if cache is None:
-            cache = self._segments_cache = {}
+        cache = self.cache('segments')
         try:
             from src import calib_segments
         except Exception:
             return None
         path = self.out / f'calib_{dataset}_segments.json'
-        stamp = path.stat().st_mtime_ns if path.exists() else None
         with self.lock:
-            cached = cache.get(dataset)
-            if cached is not None and cached[0] == stamp:
-                return cached[1]
+            stamp, cached = cache.get(dataset)
+            if cached is not ABSENT:
+                return cached
             loaded = calib_segments.load(dataset, path=path, use_cache=False) if stamp else None
-            cache[dataset] = (stamp, loaded)
+            cache.put(dataset, loaded, stamp)
         return loaded
 
     def _event_segment_projection(self, dataset, t):
@@ -1262,25 +1471,18 @@ class Backend:
 
     def _event_projection(self, dataset):
         """(inverse homography: canonical millimetres -> frame pixels, label)."""
-        cache = getattr(self, '_projection_cache', None)
-        if cache is None:
-            cache = self._projection_cache = {}
+        cache = self.cache('projection')
         try:
-            base = self.dataset(dataset)
+            sources = self._event_sources(dataset)
         except APIError:
             return None
-        sources = [(base / name, label) for name, label in self._EVENT_QUADS]
-        sources.append((self.out / f'pid_anchors_{dataset}.json', 'saved anchors'))
-        sources.append((base / 'sam3_results.json', 'measured ball correspondences'))
-        stamp = tuple((path.name, path.stat().st_mtime_ns, path.stat().st_size)
-                      if path.exists() else (path.name, None, None) for path, _ in sources)
         with self.lock:
-            cached = cache.get(dataset)
-            if cached is not None and cached[0] == stamp:
-                return cached[1]
+            stamp, cached = cache.get(dataset)
+            if cached is not ABSENT:
+                return cached
         projection = self._fit_event_projection(sources)
         with self.lock:
-            cache[dataset] = (stamp, projection)
+            cache.put(dataset, projection, stamp)
         return projection
 
     def _fit_event_projection(self, sources):
@@ -1509,11 +1711,11 @@ class Backend:
     def video_metadata(self, dataset):
         path = self.video(dataset)
         import cv2
-        stamp = (path.stat().st_mtime_ns, path.stat().st_size)
+        cache = self.cache('video')
         with self.lock:
-            cached = self.video_cache.get(dataset)
-            if cached and cached[0] == stamp:
-                return dict(cached[1])
+            stamp, cached = cache.get(dataset)
+            if cached is not ABSENT:
+                return dict(cached)
         cap = cv2.VideoCapture(str(path))
         try:
             fps = float(cap.get(cv2.CAP_PROP_FPS))
@@ -1525,7 +1727,7 @@ class Backend:
             meta = dict(dataset=dataset, fps=fps, frame_count=count, duration=count/fps,
                         width=width, height=height, timestamp_kind='nominal_cfr')
             with self.lock:
-                self.video_cache[dataset] = (stamp, meta)
+                cache.put(dataset, meta, stamp)
             return dict(meta)
         finally:
             cap.release()
@@ -1964,6 +2166,11 @@ class Backend:
             clean.append([number(point[0], 0, info["width"] - 1, "x"), number(point[1], 0, info["height"] - 1, "y")])
         # an existing time keeps its key spelling, a new one is keyed str(t) - as before
         self.store().anchors_put("vod30", str(info["t"]), clean)
+        # The write names the caches it made wrong.  The stamps would cover it when the
+        # store answers a file (another process rewriting it is seen), but a database
+        # store answers a name, not a file, so nothing in a stat can see this put: the
+        # prior quad and every detection searched around it are stale from here on.
+        self.invalidate('prior', 'unified')
         return {"ok": True, "t": info["t"], "pts": clean}
 
     def _route_seeds(self, parts, p):

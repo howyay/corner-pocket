@@ -13,8 +13,8 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from annotator.unified_server import (APIError, Backend, OPERATOR_ACTIONS, OperatorAction, ReadQuery,
-                                      atomic_save, load, make_handler, operator_actions)
+from annotator.unified_server import (ABSENT, APIError, Backend, Cache, OPERATOR_ACTIONS, OperatorAction,
+                                      ReadQuery, atomic_save, load, make_handler, operator_actions)
 from annotator.operations import ACTION_NAMES
 from src.pid_seed_rebuild import explicit_seeds, run
 
@@ -1597,7 +1597,7 @@ class UnifiedViewTests(unittest.TestCase):
         for frame in range(30):
             self.backend.unified("vod30", frame)  # 30 distinct misses evict 150
         self.assertEqual(len(calls), 31)
-        self.assertNotIn(("vod30", 150), self.backend._unified_cache)
+        self.assertNotIn(("vod30", 150), self.backend.cache('unified'))
         self.backend.unified("vod30", 10)  # still cached: no new detection
         self.assertEqual(len(calls), 31)
 
@@ -1608,8 +1608,220 @@ class UnifiedViewTests(unittest.TestCase):
         self.backend.unified("vod30", 1)
         for frame in range(3, 26):
             self.backend.unified("vod30", frame)
-        self.assertIn(("vod30", 1), self.backend._unified_cache)
-        self.assertNotIn(("vod30", 2), self.backend._unified_cache)
+        self.assertIn(("vod30", 1), self.backend.cache('unified'))
+        self.assertNotIn(("vod30", 2), self.backend.cache('unified'))
+
+
+    def test_the_anchors_write_invalidates_the_detection_and_prior_caches(self):
+        """The route that writes geometry names the caches that geometry fed.
+
+        Round 36 candidate C2: `anchors_put` was followed by nothing, so a detection
+        cached before the write kept answering the quad it was searched around and
+        `_prior_for` kept answering the quad it was read from.
+        """
+        self.patch_pipeline()
+        detections, refined = [], []
+
+        def refined_table(bgr, prior=None, **kwargs):
+            refined.append(prior)
+            return dict(self.FAKE_TABLE)
+
+        for patcher in [patch("src.ball_detect.detect_ball_candidates",
+                              lambda small, mask=None, **kwargs: detections.append(1) or list(self.FAKE_BALLS)),
+                        patch("src.frame_inference.detect_table_for_frame", refined_table),
+                        patch.object(Backend, "frame", lambda *a, **k: np.zeros((720, 1280, 3), np.uint8))]:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.backend.unified("vod30", 150)
+        self.backend.unified("vod30", 150)
+        self.assertEqual(len(detections), 1, "the second request is served from the cache")
+        self.assertIn(("vod30", 150), self.backend.cache('unified'))
+        self.assertIsNone(self.backend._prior_for("vod30"))  # no anchors yet, and now held
+        self.assertIn("vod30", self.backend.cache('prior'))
+        pts = [[100, 80], [540, 76], [540, 280], [100, 284], [70, 180], [610, 178]]
+        answer = self.backend._route_anchors(["api", "vod30", "anchors"], {"t": 5.0, "pts": pts})
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(self.backend.store().anchors_get("vod30")["anchors"]["5.0"], pts)
+        self.assertEqual((len(self.backend.cache('unified')), len(self.backend.cache('prior'))), (0, 0),
+                         "the write named both caches its geometry fed")
+        self.assertIsNotNone(self.backend._prior_for("vod30"), "the new quad, not the cached None")
+        self.backend.unified("vod30", 150)
+        self.assertEqual(len(detections), 2, "the frame is detected again instead of served stale")
+        self.assertEqual(len(refined), 1, "and it is searched around the anchors just written")
+        self.assertIsNotNone(refined[0])
+
+    def test_a_stamp_sees_an_anchors_writer_this_process_never_made(self):
+        """The provenance half: another writer of the anchors file is enough."""
+        self.patch_pipeline()
+        self.assertIsNone(self.backend._prior_for("vod30"))
+        self.assertIn("vod30", self.backend.cache('prior'))
+        place = self.backend.store().place("anchors", "vod30")
+        # this test's foreign writer is a file writer, the default store's answer; the
+        # database answer (a name, not a path) is the blindness the route test covers
+        self.assertIsInstance(place, Path)
+        pts = [[100, 80], [540, 76], [540, 280], [100, 284], [70, 180], [610, 178]]
+        place.write_text(json.dumps({"anchors": {"5.0": pts}}))
+        self.assertIsNotNone(self.backend._prior_for("vod30"),
+                             "the anchors file changed, so the held None is not the answer")
+
+    def test_a_store_that_answers_a_name_leaves_the_stamp_blind(self):
+        """Why the write route has to name the caches: a database write leaves no file.
+
+        The store answers the database name it truly writes (src/store_pg.py), so
+        nothing in `_anchors_stamp` can see an `anchors_put`, and the stamp before the
+        write is the stamp after it.  The route's own `invalidate` is then the only
+        thing between the previous quad and the viewer.
+        """
+        self.patch_pipeline()
+        first_pts = [[100, 80], [540, 76], [540, 280], [100, 284], [70, 180], [610, 178]]
+        saved = {"anchors": {"5.0": first_pts}}
+        store = self.backend.store()
+        for patcher in [patch.object(store, "place", lambda kind, key=None: f"postgres:documents/pid_anchors_{key}.json"),
+                        patch.object(store, "anchors_get", lambda dataset: json.loads(json.dumps(saved))),
+                        patch.object(store, "anchors_put",
+                                     lambda dataset, key, pts: saved["anchors"].__setitem__(key, pts)),
+                        patch.object(Backend, "frame", lambda *a, **k: np.zeros((720, 1280, 3), np.uint8))]:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        first = self.backend._prior_for("vod30")
+        self.assertIsNotNone(first)
+        stamp_before, held = self.backend.cache('prior').get("vod30")
+        self.assertIs(held, first)
+        pts = [[120, 90], [560, 86], [560, 300], [120, 304], [90, 190], [630, 188]]
+        answer = self.backend._route_anchors(["api", "vod30", "anchors"], {"t": 5.0, "pts": pts})
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(saved["anchors"]["5.0"], pts, "the write really landed in the store")
+        stamp_after, held = self.backend.cache('prior').get("vod30")
+        self.assertEqual(stamp_after, stamp_before, "a database write leaves no stamp to see")
+        self.assertIs(held, ABSENT, "and the route dropped the entry anyway")
+        # the stamp cannot tell the two answers apart: put the previous quad back under
+        # the stamp the source still answers and it is served as if it were current
+        stale = self.backend.cache('prior')
+        stale.put("vod30", first, stamp_after)
+        self.assertIs(stale.get("vod30")[1], first)
+        self.assertIs(self.backend._prior_for("vod30"), first,
+                      "with no invalidation this quad is served for the life of the process")
+
+    def test_every_cache_is_reachable_only_through_its_accessor(self):
+        """A reader names a cache; nothing reads a bare dict any more."""
+        self.patch_pipeline()
+        self.backend.unified("vod30", 150)
+        self.backend._prior_for("vod30")
+        for name in Backend.CACHES:
+            self.assertIsInstance(self.backend.cache(name), Cache, name)
+        self.assertEqual(sorted(self.backend._caches), sorted(Backend.CACHES))
+        import annotator.unified_server as module
+        source = Path(module.__file__).read_text()
+        for attribute in ("self.video_cache", "self._prior_cache", "self._unified_cache",
+                          "self._segments_cache", "self._projection_cache"):
+            self.assertNotIn(attribute, source, attribute)
+
+
+class CacheProvenanceTests(unittest.TestCase):
+    """One cache type, one declared source per cache, writes that name what they break.
+
+    Round 36 candidate C2: three caches carried a hand-written stamp and two carried
+    none, so a write route could leave the geometry cache holding the previous quad
+    for the life of the process, and nothing in the module said which inputs a cached
+    value belonged to.  ``Backend.CACHES`` is now the one table, ``Cache`` the one
+    type, and ``Backend.invalidate`` the one way a write says what it made wrong.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.backend = Backend(self.root)
+
+    def test_a_cache_cannot_be_built_without_a_source_rule(self):
+        # the rule is a constructor argument: a cache with no provenance cannot exist
+        with self.assertRaises(TypeError):
+            Cache()
+        file = self.root / "anchors.json"
+        file.write_text("{}")
+        cache = Cache(lambda key: file.stat().st_mtime_ns)
+        self.assertEqual(cache.get("vod30"), (file.stat().st_mtime_ns, ABSENT))
+
+    def test_an_entry_is_served_only_while_its_source_stamp_holds(self):
+        """The biting half of the rule: a rewritten source is never answered stale."""
+        file = self.root / "anchors.json"
+        file.write_text(json.dumps({"anchors": {"5.0": [[0, 0]]}}))
+        cache = Cache(lambda key: (file.stat().st_mtime_ns, file.stat().st_size))
+        stamp, held = cache.get("vod30")
+        self.assertIs(held, ABSENT)
+        cache.put("vod30", "the old quad", stamp)
+        self.assertEqual(cache.get("vod30")[1], "the old quad")
+        self.assertIn("vod30", cache)
+        # a writer this process never saw: the same stamp rule, a different content
+        time.sleep(0.002)
+        file.write_text(json.dumps({"anchors": {"5.0": [[1, 1]], "9.0": [[2, 2]]}}))
+        new_stamp, held = cache.get("vod30")
+        self.assertNotEqual(new_stamp, stamp)
+        self.assertIs(held, ABSENT, "the entry's stamp is not the source's answer any more")
+        self.assertNotIn("vod30", cache)
+        cache.put("vod30", "the new quad", new_stamp)
+        self.assertEqual(cache.get("vod30")[1], "the new quad")
+
+    def test_a_none_stamp_still_tells_a_stored_none_from_an_absence(self):
+        # None is a value these caches really store (a dataset with no prior quad),
+        # so an absence needs its own object and must not read as a cached None
+        cache = Cache(lambda key: None)
+        self.assertIs(cache.get("vod30")[1], ABSENT)
+        cache.put("vod30", None, None)
+        self.assertIsNone(cache.get("vod30")[1])
+        self.assertIn("vod30", cache)
+
+    def test_invalidate_names_the_entries_a_write_made_wrong(self):
+        cache = Cache(lambda key: None)
+        for key in ("vod30", "highlight"):
+            cache.put(key, key, None)
+        self.assertEqual(cache.invalidate("highlight"), 1)
+        self.assertNotIn("highlight", cache)
+        self.assertIn("vod30", cache)
+        self.assertEqual(cache.invalidate("highlight"), 0)
+        self.assertEqual(cache.invalidate(), 1)
+        self.assertEqual(len(cache), 0)
+
+    def test_the_limit_drops_the_least_recently_used_entry(self):
+        cache = Cache(lambda key: None, limit=2)
+        cache.put("a", 1, None)
+        cache.put("b", 2, None)
+        self.assertEqual(cache.get("a")[1], 1)  # refreshes a, so b is the oldest
+        cache.put("c", 3, None)
+        self.assertNotIn("b", cache)
+        self.assertIn("a", cache)
+        self.assertIn("c", cache)
+
+    def test_every_cache_in_the_module_is_the_declared_type_with_a_declared_source(self):
+        rows = sorted(Backend.CACHES)
+        self.assertEqual(rows, ["prior", "projection", "segments", "unified", "video"])
+        for name in rows:
+            source, limit = Backend.CACHES[name]
+            cache = self.backend.cache(name)
+            self.assertIsInstance(cache, Cache, name)
+            self.assertIs(cache._source.__func__, getattr(Backend, source), name)
+            self.assertIs(cache._source.__self__, self.backend, name)
+            self.assertEqual(cache._limit, limit, name)
+            self.assertIs(cache, self.backend.cache(name), "one instance per name")
+        self.assertEqual(sorted(self.backend._caches), rows)
+        # the two caches that used to carry no provenance are gone as bare dicts
+        for old in ("video_cache", "_prior_cache", "_unified_cache", "_segments_cache", "_projection_cache"):
+            self.assertNotIn(old, self.backend.__dict__, old)
+
+    def test_an_undeclared_cache_is_refused(self):
+        with self.assertRaises(ValueError) as ctx:
+            self.backend.cache("scratch")
+        self.assertIn("scratch", str(ctx.exception))
+        self.assertIn("unified", str(ctx.exception))
+
+    def test_invalidate_is_the_only_way_a_write_can_say_what_it_broke(self):
+        # a route can only name a cache that is declared, and a good name next to a
+        # bad one drops nothing: the table is the contract
+        self.backend.cache("prior").put("vod30", "stale quad", None)
+        with self.assertRaises(ValueError):
+            self.backend.invalidate("prior", "scratch")
+        self.assertEqual(self.backend.invalidate("prior"), 1)
+        self.assertEqual(self.backend.invalidate(), 0)
 
 
 class WriteRegistryTests(unittest.TestCase):
