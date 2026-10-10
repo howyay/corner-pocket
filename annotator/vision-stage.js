@@ -4,6 +4,33 @@
    state and performs no fetch of its own. */
 (() => {
 'use strict';
+
+// One action table for both consoles, so a check can prove two things: every control that the
+// page renders has a handler, and every handler has a control. This module makes the table.
+// ops.js reads the same object from globalThis, because the page loads this module first.
+function newActionRegistry() {
+  const modules = {};   // module name -> rows: the key is the action name, the value runs it
+  const fields = {};    // module name -> names of form fields, which are read and not dispatched
+  const registry = {
+    define(name, rows) { modules[name] = rows; return registry; },
+    defineFields(name, list) { fields[name] = [...list]; return registry; },
+    module(name) { return modules[name] || null; },
+    modules() { return Object.keys(modules); },
+    names(name) { return Object.keys(modules[name] || {}); },
+    fieldNames(name) { return [...(fields[name] || [])]; },
+    has(name, action) { return Object.prototype.hasOwnProperty.call(modules[name] || {}, action); },
+    isField(name, action) { return (fields[name] || []).includes(action); },
+    row(name, action) { const rows = modules[name]; return rows ? rows[action] : undefined; },
+    find(action) { return Object.keys(modules).filter(name => registry.has(name, action)); },
+    run(name, action, ...args) {
+      const row = registry.row(name, action);
+      return typeof row === 'function' ? row(...args) : undefined;
+    }
+  };
+  return registry;
+}
+const ensureRegistry = () => globalThis.ActionRegistry || (globalThis.ActionRegistry = newActionRegistry());
+const registry = ensureRegistry();
 const COPY = {
   en: {
     cues:'Cues', inspector:'Inspector', sources:'Source', visionLoading:'Loading the review workspace…', sourcesBtn:'Sources', events:'Events', balls:'Balls', persons:'Persons',
@@ -1359,49 +1386,41 @@ function render() {
   if (!ageTimer) ageTimer = setInterval(receiptAge, 1000);
 }
 // ---- actions -------------------------------------------------------------
-function act(action, value, node) {
-  const target = engine();
-  const s = snap();
-  const num = Number(value);
-  // A control inside a track row belongs to that row's track, not to whichever track happened to
-  // be selected, so the row selects its own track before the action is interpreted.
-  const rowTrack = node?.dataset?.vsTrack;
-  if (rowTrack && ['regular','guest-name','seed'].includes(action) && String(s?.persons?.track ?? '') !== String(rowTrack)) {
-    // selectTrack() inside this call sets the selection synchronously; the loads it starts are
-    // awaited by the engine, and the action below reads the selection, so nothing needs to wait here.
-    const switching = target.selectTrackAndSeek(rowTrack);
-    if (switching && switching.catch) switching.catch(() => {});
-  }
-  switch (action) {
-    case 'pick-dataset': target.setDataset(value); break;
-    case 'bc-refresh': bcLoadRecent(); bcPollJob(); break;   // an import started elsewhere shows up too
-    case 'bc-open': { const vod = (bc.recent?.channels || []).flatMap(c => c.vods || []).find(v => v.id === value); bc.form = {vod: value, title: vod?.title || ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
-    case 'bc-paste': { const vod = String(bc.paste || '').trim(); if (!vod) { root.querySelector('[data-vs-field="bc-paste"]')?.focus(); break; } bc.form = {vod, title: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); break; }
-    case 'bc-estimate': bcEstimate(); break;
-    case 'bc-import': bcImport(); break;
-    case 'bc-close': bc.form = null; bc.estimate = null; bc.error = ''; bcRender(); break;
-    case 'bc-cancel': bcCancel(); break;
-    case 'bc-delete': bcDelete(value); break;
-    case 'pick-live': opts.pickLive(value); break;
-    case 'live-start': opts.startLive(); break;
-    case 'live-stop': opts.stopLive(); break;
-    case 'forget-channel': opts.forgetChannel(node.dataset.vsId); break;
-    case 'open-sources': opts.openSources?.(); break;
-    case 'use-saved-vod': { replayDraft = {...(replayDraft || {}), vod: `https://www.twitch.tv/videos/${value}`}; render(); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
-    case 'live-detector': { const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); break; }
-    case 'pick-replay': {
-      // A VOD id or URL, where in it to start, and how fast: the server resolves it
+// The stage's action table. One row for each action the stage answers. The registry holds the
+// table, so a check can read the names without a browser. A row reads the act context
+// (target, s, num, value, node), which the runner sets just before it runs the row.
+const stageAct = (() => {
+  let target = null, s = null, num = 0, value = null, node = null;
+  const table = {
+    'pick-dataset':()=>{target.setDataset(value); return;},
+    'bc-refresh':()=>{bcLoadRecent(); bcPollJob(); return;   // an import started elsewhere shows up too
+    },
+    'bc-open':()=>{const vod = (bc.recent?.channels || []).flatMap(c => c.vods || []).find(v => v.id === value); bc.form = {vod: value, title: vod?.title || ''}; bc.estimate = null; bc.error = ''; bcEstimate(); return;},
+    'bc-paste':()=>{const vod = String(bc.paste || '').trim(); if (!vod) { root.querySelector('[data-vs-field="bc-paste"]')?.focus(); return; } bc.form = {vod, title: ''}; bc.estimate = null; bc.error = ''; bcEstimate(); return;},
+    'bc-estimate':()=>{bcEstimate(); return;},
+    'bc-import':()=>{bcImport(); return;},
+    'bc-close':()=>{bc.form = null; bc.estimate = null; bc.error = ''; bcRender(); return;},
+    'bc-cancel':()=>{bcCancel(); return;},
+    'bc-delete':()=>{bcDelete(value); return;},
+    'pick-live':()=>{opts.pickLive(value); return;},
+    'live-start':()=>{opts.startLive(); return;},
+    'live-stop':()=>{opts.stopLive(); return;},
+    'forget-channel':()=>{opts.forgetChannel(node.dataset.vsId); return;},
+    'open-sources':()=>{opts.openSources?.(); return;},
+    'use-saved-vod':()=>{replayDraft = {...(replayDraft || {}), vod: `https://www.twitch.tv/videos/${value}`}; render(); root.querySelector('[data-vs-field="vod"]')?.focus(); return;
+    },
+    'live-detector':()=>{const list = new Set(liveDetectorList(s)); if (node.checked) list.add(value); else list.delete(value); opts.setLiveDetectors([...list]); return;},
+    'pick-replay':()=>{// A VOD id or URL, where in it to start, and how fast: the server resolves it
       // and the panel reports the capture's own kind/live/rate/drift afterwards.
       const field = name => (root.querySelector(`[data-vs-field="${name}"]`) || {}).value || '';
       const vod = String(field('vod')).trim();
-      if (!vod) { opts.notice?.(t('vodIdNeeded')); root.querySelector('[data-vs-field="vod"]')?.focus(); break; }
+      if (!vod) { opts.notice?.(t('vodIdNeeded')); root.querySelector('[data-vs-field="vod"]')?.focus(); return; }
       replayDraft = {vod, start: field('vod-start'), rate: field('vod-rate')};
       opts.pickReplay({vod_id: vod, start_s: Number(field('vod-start')) || 0, rate: Number(field('vod-rate')) || 1});
-      break;
-    }
-    case 'detector': target.setDetector(value, node.checked); break;
-    case 'layer': {
-      // F2: the Anchors chip reads off until anchors are loaded, so its first click loads them.
+      return;
+    },
+    'detector':()=>{target.setDetector(value, node.checked); return;},
+    'layer':()=>{// F2: the Anchors chip reads off until anchors are loaded, so its first click loads them.
       const on = value === 'anchors' && s.overlay.anchors && !s.anchors.loaded ? true : target.toggleOverlay(value);
       // Calibration is a layer: turning it on loads the anchors for their saved
       // time and seeks the one stage there, and the inspector echoes the anchor.
@@ -1409,70 +1428,71 @@ function act(action, value, node) {
         if (!s.anchors.loaded) target.loadAnchors(70).then(() => { target.selectAnchor(0); target.seekTime(70); });
         else target.selectAnchor(s.anchors.index ?? 0);
       }
-      break;
-    }
-    case 'event-filter': target.setEventFilter(value); break;
-    case 'select-event': { const index = s.events.items.findIndex(e => String(e.id) === String(node.dataset.vsId)); if (index >= 0) target.selectEvent(index); break; }
-    case 'play-event': { const index = Number(value); if (Number.isInteger(index) && s.events.items[index]) target.playEvent(index); break; }
-    case 'select-event-time': { const index = s.events.items.findIndex(e => Number(e.t) === num); if (index >= 0) target.selectEvent(index); else target.seekTime(num); break; }
-    case 'verdict': { const index = s.events.items.findIndex(e => String(e.id) === String(node.dataset.vsId)); if (index >= 0) { target.selectEvent(index); target.saveVerdict(null, value); } break; }
-    case 'verdict-draft': target.setVerdictDraft(value); break;
-    case 'shooter': target.setShooter(node.value); break;
-    case 'note': target.setNote(node.value); break;
-    case 'save-verdict': target.saveVerdict(node, null); break;
-    case 'next-event': target.selectEvent(Math.min(s.events.items.length - 1, s.events.index + 1)); break;
-    case 'select-crop': target.selectCrop(value); break;
-    case 'crop-step': { const items = s.balls.items; const i = Math.max(0, Math.min(items.length - 1, s.balls.index + num)); if (items[i]) target.selectCrop(items[i].file); break; }
-    case 'label-ball': target.labelBall(null, value === 'clear' ? 'clear' : Number(value)); break;
-    case 'select-track': target.selectTrackAndSeek(value); break;
-    case 'seed': target.setSeed(null, value); break;
-    case 'source-panel': sourceOpen = !sourceOpen; sig.chips = null; render(); break;
-    case 'regular': syncGuestField(value); break;
-    case 'guest-name': guestDraft = {track: String(s.persons.track ?? ''), value: node.value}; break;
+      return;
+    },
+    'event-filter':()=>{target.setEventFilter(value); return;},
+    'select-event':()=>{const index = s.events.items.findIndex(e => String(e.id) === String(node.dataset.vsId)); if (index >= 0) target.selectEvent(index); return;},
+    'play-event':()=>{const index = Number(value); if (Number.isInteger(index) && s.events.items[index]) target.playEvent(index); return;},
+    'select-event-time':()=>{const index = s.events.items.findIndex(e => Number(e.t) === num); if (index >= 0) target.selectEvent(index); else target.seekTime(num); return;},
+    'verdict':()=>{const index = s.events.items.findIndex(e => String(e.id) === String(node.dataset.vsId)); if (index >= 0) { target.selectEvent(index); target.saveVerdict(null, value); } return;},
+    'verdict-draft':()=>{target.setVerdictDraft(value); return;},
+    'shooter':()=>{target.setShooter(node.value); return;},
+    'note':()=>{target.setNote(node.value); return;},
+    'save-verdict':()=>{target.saveVerdict(node, null); return;},
+    'next-event':()=>{target.selectEvent(Math.min(s.events.items.length - 1, s.events.index + 1)); return;},
+    'select-crop':()=>{target.selectCrop(value); return;},
+    'crop-step':()=>{const items = s.balls.items; const i = Math.max(0, Math.min(items.length - 1, s.balls.index + num)); if (items[i]) target.selectCrop(items[i].file); return;},
+    'label-ball':()=>{target.labelBall(null, value === 'clear' ? 'clear' : Number(value)); return;},
+    'select-track':()=>{target.selectTrackAndSeek(value); return;},
+    'seed':()=>{target.setSeed(null, value); return;},
+    'source-panel':()=>{sourceOpen = !sourceOpen; sig.chips = null; render(); return;},
+    'regular':()=>{syncGuestField(value); return;},
+    'guest-name':()=>{guestDraft = {track: String(s.persons.track ?? ''), value: node.value}; return;
     // The two labelling paths, never mixed: a regular goes through the identity
     // pipeline (the player's id on this track's cluster), a guest name is this
     // track's label in the seeds store. An empty form is refused by setSeed
     // before any write happens.
-    case 'identity-save': {
+    },
+    'identity-save':()=>{{
       const select = root.querySelector('[data-vs-action="regular"]');
       const input = root.querySelector('[data-vs-action="guest-name"]');
       const picked = select ? select.value : '';
       const name = input ? input.value.trim() : '';
       if (picked) target.seedIdentity(node, picked);
       else { guestDraft = null; target.setSeed(node, name); }
-      break;
+      return;
     }
     // Round 28, owner item: joining this track to another identity on the frame.
     // The picker is read at click time, so a re-render between choosing and clicking
     // cannot send a stale cluster.
-    case 'link-track': {
-      const holder = node.closest('.vs-linkblock');
+    },
+    'link-track':()=>{const holder = node.closest('.vs-linkblock');
       const select = holder ? holder.querySelector('[data-vs-action="link-target"]') : null;
       target.linkTrack(node, select ? select.value : null);
-      break;
-    }
-    case 'identity-clear': guestDraft = null; target.clearIdentity(node); break;
+      return;},
+    'identity-clear':()=>{guestDraft = null; target.clearIdentity(node); return;
     // The preview only reads; the confirm is the write, and it happens here.
-    case 'enroll-preview': target.enrollPreview(node); break;
-    case 'enroll-confirm': target.enrollConfirm(node); break;
-    case 'enroll-cancel': target.cancelEnroll(); break;
-    case 'enroll-name': target.setEnrollName(node.value); break;
-    case 'rebuild': target.rebuild(node); break;
-    case 'rebuild-refresh': target.refreshRebuild(); break;
-    case 'select-anchor': target.selectAnchor(Number(value)); break;
-    case 'nudge': { const [dx, dy] = String(value).split(',').map(Number); target.nudgeAnchor(dx, dy); break; }
-    case 'anchors-at': target.loadAnchors(num).then(() => { target.selectAnchor(target.snapshot().anchors.index); target.seekTime(num); }); break;
-    case 'save-anchors': target.saveAnchors(node); break;
-    case 'tool': target.setTool(value); break;
-    case 'new-box-label': target.setNewBoxLabel(node.value); break;
-    case 'box-label': target.setBoxLabel(node.value); break;
-    case 'delete-box': target.deleteBox(); break;
-    case 'add-polygon': target.addPolygon(); break;
-    case 'clear-polygon': target.clearPolygon(); break;
-    case 'save-corrections': target.saveCorrections(node); break;
-    case 'step': target.stepFrame(num); break;
-    case 'freeze': target.freeze(); break;
-    case 'play': {
+    },
+    'enroll-preview':()=>{target.enrollPreview(node); return;},
+    'enroll-confirm':()=>{target.enrollConfirm(node); return;},
+    'enroll-cancel':()=>{target.cancelEnroll(); return;},
+    'enroll-name':()=>{target.setEnrollName(node.value); return;},
+    'rebuild':()=>{target.rebuild(node); return;},
+    'rebuild-refresh':()=>{target.refreshRebuild(); return;},
+    'select-anchor':()=>{target.selectAnchor(Number(value)); return;},
+    'nudge':()=>{const [dx, dy] = String(value).split(',').map(Number); target.nudgeAnchor(dx, dy); return;},
+    'anchors-at':()=>{target.loadAnchors(num).then(() => { target.selectAnchor(target.snapshot().anchors.index); target.seekTime(num); }); return;},
+    'save-anchors':()=>{target.saveAnchors(node); return;},
+    'tool':()=>{target.setTool(value); return;},
+    'new-box-label':()=>{target.setNewBoxLabel(node.value); return;},
+    'box-label':()=>{target.setBoxLabel(node.value); return;},
+    'delete-box':()=>{target.deleteBox(); return;},
+    'add-polygon':()=>{target.addPolygon(); return;},
+    'clear-polygon':()=>{target.clearPolygon(); return;},
+    'save-corrections':()=>{target.saveCorrections(node); return;},
+    'step':()=>{target.stepFrame(num); return;},
+    'freeze':()=>{target.freeze(); return;},
+    'play':()=>{{
       // R22 item 3, measured: pressing play after a seek put the position back to 30 - the replay starts
       // at its own beginning. The point the operator chose is re-applied once playback starts, so a
       // chosen moment can be watched from.
@@ -1480,14 +1500,40 @@ function act(action, value, node) {
       const resume = Number($('#vs-scrub')?.value || 0);
       target.setPlaying(on);
       if (on && resume > 0 && target.seek) target.seek(resume);
-    }; break;
-    case 'deselect': target.clearSelection(); break;
-    case 'chat': opts.toggleChat(); break;
-    case 'close-popover': target.clearSelection(); break;
-    default: break;
-  }
+    }; return;
+    },
+    'deselect':()=>{target.clearSelection(); return;},
+    'chat':()=>{opts.toggleChat(); return;},
+    'close-popover':()=>{target.clearSelection(); return;},
+  };
+  return {
+    table,
+    run(action, rawValue, rawNode) {
+      target = engine(); s = snap(); num = Number(rawValue); value = rawValue; node = rawNode;
+      // A control inside a track row belongs to that row's track, not to whichever track happened
+      // to be selected, so the row selects its own track before the action is interpreted.
+      const rowTrack = node?.dataset?.vsTrack;
+      if (rowTrack && ['regular','guest-name','seed'].includes(action) && String(s?.persons?.track ?? '') !== String(rowTrack)) {
+        const switching = target.selectTrackAndSeek(rowTrack);
+        if (switching && switching.catch) switching.catch(() => {});
+      }
+      return registry.run('vision-stage', action);
+    }
+  };
+})();
+function act(action, value, node) { return stageAct.run(action, value, node); }
+// The stage publishes its rows and its fields. registerStage() also returns the registry, so a
+// caller can read both tables through one object.
+function registerStage() {
+  registry.define('vision-stage', stageAct.table);
+  registry.defineFields('vision-stage', FIELD_ACTIONS);
+  return registry;
 }
-const FIELD_ACTIONS = ['shooter','note','regular','guest-name','enroll-name','box-label','new-box-label'];
+
+// A field is a control that the operator sets. Its value is read by an action and is never
+// dispatched on its own. link-target is such a control: link-track reads the select.
+const FIELD_ACTIONS = ['shooter','note','regular','guest-name','enroll-name','box-label','new-box-label','link-target'];
+registerStage();
 // The guest box is the fallback path, so a chosen regular turns it off instead
 // of leaving two competing inputs on screen. The hint says what Save will do,
 // including the honest reason a regular cannot be saved on this track yet.

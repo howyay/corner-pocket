@@ -389,8 +389,13 @@ test('attach() publishes the stage interface: every option, verb and reading, by
     'no name is published as a verb and as a reading');
   // 6. the lists are not a wish: the source calls and reads exactly these names
   const src = ADAPTER_SOURCE;
-  const at = src.indexOf('function act(action, value, node) {');
-  const act = src.slice(at, src.indexOf('\nfunction ', at));
+  // The one dispatch table is the adapter's whole reach into the engine. act() is a three-line
+  // call into it, so the table is the slice to read, and nothing outside the table may call target.
+  const at = src.indexOf('const stageAct = (() => {');
+  const act = src.slice(at, src.indexOf('\nfunction act(', at));
+  assert.deepStrictEqual(
+    PUBLISHED_VERBS.filter(name => new RegExp(`\\btarget\\.${name}\\b`).test(src.slice(0, at) + src.slice(src.indexOf('\nfunction act(', at)))),
+    [], 'the dispatch table is the only place that reaches the engine');
   const grab = (text, re) => [...new Set([...text.matchAll(re)].map(match => match[1]))];
   assertSourceNames('every published verb is called by the adapter and no other engine member is: the verb list is the interface, not a wish',
     PUBLISHED_VERBS, [...new Set([...grab(act, /\btarget\.([A-Za-z_$][\w$]*)/g),

@@ -3242,7 +3242,7 @@ test('round 3 / F5: the backfilled-night marker is a control, not text dressed a
   assert.ok(rec.includes('<button type="button" class="badge tl-source-badge" data-action="backfill-open">Backfill from a VOD</button>'),
     'F5: it is a real button wearing the same badge class, so it can carry the row style without reading as a primary button');
   assert.ok(rec.includes('data-action="tl-toggle"'), 'F5: and the row still has its own Expand control beside it');
-  assert.ok(source.includes("if(a==='backfill-open'){bfOpen();return}"), 'F5: the one click handler already routes that action');
+  assert.ok(h.actions().includes('backfill-open'), 'F5: the one click handler already routes that action');
 });
 
 test('round 3 / F9: both search boxes carry a real accessible name that states its scope', () => {
@@ -3375,7 +3375,7 @@ test('round 3 / F17 + round 5 owner item 1: backfill is an entry point where the
   assert.ok(source.includes("btn(t('backfillOpen'),'backfill-open','','primary')"), 'the archive list keeps its own backfill button');
   assert.ok(source.includes("emptyNote('emptyHistory','backfill-open','backfillOpen')"), 'the empty archive still invites one');
   assert.ok(source.includes("data-action=\"backfill-open\">${esc(t('backfill'))}"), 'and a backfilled night still links back to its VOD');
-  assert.ok(source.includes("if(a==='backfill-open'){bfOpen();return}"), 'all three still open the wizard');
+  assert.ok(harness().actions().includes('backfill-open'), 'all three still open the wizard');
 });
 
 test('round 3 / F18: the “paste a VOD link first” note sits with the field it is about', () => {
@@ -3679,7 +3679,7 @@ test('round 6: a refused, empty or unsaved archive is a state on the page -- nev
   h.lang='zh';
   assert.ok(h.mergedTimeline().includes('还没有保存 Twitch 频道'), 'the states are written in the console language, not translated on the way out');
 });
-test('round 6: the archive paints its own card, so a late answer never rebuilds the page under an operator', () => {
+test('round 6: the archive paints its own card, so a late answer never rebuilds the page under an operator', async () => {
   const painter = source.slice(source.indexOf('function paintRecords(){'), source.indexOf('function loadArchiveList('));
   assert.ok(painter.includes("const list=$('#records-list')") && painter.includes('list.innerHTML=mergedTimeline()'),
     'the loader paints the one list and returns');
@@ -3692,7 +3692,12 @@ test('round 6: the archive paints its own card, so a late answer never rebuilds 
     'and never re-renders the whole screen after the network answers (the search box and the scroll survive)');
   assert.ok(source.includes("if(tab==='records'&&!bf){loadArchiveList();loadAuto()}"),
     'Records asks for the archive - and the download queue beside it - when it becomes the screen');
-  assert.ok(source.includes("if(a==='archive-reload'){loadArchiveList(true);loadAuto(true);return}"),
+  // Read above, run here: Refresh is the one deliberate re-read, and the click asks for both lists.
+  const refreshed = harness({richDom: true});
+  const read = [];
+  refreshed.context.fetch = async url => { read.push(String(url).split('?')[0]); return {ok: true, json: async () => ({channels: [], queue: []})}; };
+  await refreshed.dispatch('archive-reload');
+  assert.deepEqual(read, ['/api/vods/recent', '/api/vods/queue'],
     'Refresh is the one deliberate re-read, for both');
   // Read above, run here: that step is the only caller of the two, so the render that makes Records the
   // screen asks for both, and a render on any other screen asks for neither.
@@ -3784,7 +3789,7 @@ test('round 9 / owner items 4 + 5: the destination balls are solid, on the ivory
     'the light scheme redefines no ball token at all, so the base cannot follow the theme by accident');
 });
 
-test('round 20 / owner item 5 + round 31 / owner item 1: the Livestream tab is the state, the source and a refresh', () => {
+test('round 20 / owner item 5 + round 31 / owner item 1: the Livestream tab is the state, the source and a refresh', async () => {
   const h = harness();
   (()=>{h.data.players=[];h.data.events=[];h.data.history=[];h.liveSnapshot={state:'idle',frames_skipped:0};h.liveRunning=()=>false;return h.render=()=>{}})();
   const html = h.livePanelScreen();
@@ -3800,7 +3805,12 @@ test('round 20 / owner item 5 + round 31 / owner item 1: the Livestream tab is t
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   assert.ok(/\.live-status\{[^}]*font-size:clamp\(22px,3vw,32px\)/.test(css), 'the state is set in large type');
   const src = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
-  assert.ok(src.includes("if(a==='live-refresh'){liveGeneration++;pollLive(liveGeneration);return}"), 'the refresh reads /api/live again');
+  // Run the refresh instead of reading it: the click reads the live endpoint again.
+  const refreshed = harness();
+  const read = [];
+  refreshed.context.fetch = async url => { read.push(String(url).split('?')[0]); return {ok: true, json: async () => ({state: 'idle', frames_skipped: 0})}; };
+  await refreshed.dispatch('live-refresh');
+  assert.equal(read[0], '/api/live', 'the refresh reads /api/live again');
   // The toggle keeps its capability, in the back room's maintainers block.
   assert.ok(src.includes("${btn(t('refresh'),'reload')}<button data-action=\"live-debug\""), 'the debug door lives in the back room now');
   // The door opens the workbench the stream would otherwise be needed to see, and a stream closes it.
@@ -3989,7 +3999,7 @@ test('round 11: the day head is not the row date, and every search still reaches
   h.eventsQuery='';
 });
 
-test('round 8 / owner item 2: Records says what the automatic download is doing, and carries its one switch', () => {
+test('round 8 / owner item 2: Records says what the automatic download is doing, and carries its one switch', async () => {
   for (const [lang, title, on, off, queued, done, now, pause, failed] of [
     ['en', 'Automatic download', 'running', 'paused', '3 queued', '12 done', 'now 2890514774', 'Pause', 'The download queue could not be read'],
     ['zh', '自动下载', '运行中', '已暂停', '排队 3 场', '已完成 12 场', '正在 2890514774', '暂停', '无法读取下载队列']]) {
@@ -4006,7 +4016,13 @@ test('round 8 / owner item 2: Records says what the automatic download is doing,
     const unread = h.unread;
     assert.ok(unread.includes(failed) && unread.includes('data-action="auto-reload"'), `${lang}: an unread queue degrades to one sentence and a retry`);
   }
-  assert.ok(/if\(a==='auto-toggle'\)\{autoToggle\(\)/.test(source), 'the switch is wired to the click handler');
+  // Run the switch instead of reading it: the click posts the opposite of the state on screen.
+  const toggle = harness();
+  toggle.autoList.rows = {enabled: true, queued: [], done: [], current: null, skipped: [], error: null};
+  const posted = [];
+  toggle.context.fetch = async (url, options) => { posted.push({url: String(url), body: JSON.parse(options.body)}); return {ok: true, json: async () => ({enabled: false, queued: [], done: []})}; };
+  await toggle.dispatch('auto-toggle');
+  assert.deepEqual(posted, [{url: '/api/vods/auto', body: {action: 'off'}}], 'the switch is wired to the click handler');
   assert.ok(/loadArchiveList\(\);loadAuto\(\)/.test(source), 'Records reads the queue with the archive list');
   assert.ok(/next=autoList\.rows\?\.enabled\?'off':'on'/.test(source), 'and posts the opposite of the current state');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
@@ -4528,20 +4544,22 @@ test('round 20 / owner item 9: the stage is not re-written on every paint', () =
 test('round 20 / owner item 10: the backfill does not ask the operator twice', () => {
   // The three chains are statements inside the click dispatcher and the job adoption, so they are read
   // from the source: each one replaces a decision the operator used to have to make.
-  assert.ok(source.includes("if(a==='bf-check'){await bfCheck();bfEstimate();return}"),
+  const bfActions = harness().actions();
+  assert.ok(bfActions.includes('bf-check'),
     'the estimate follows the check');
   assert.ok(source.includes("if(bf?.estimate?.already_imported)bfUseImported();else bfStartImport();"),
     'and the estimate decides: reuse what is on disk, or download once the disk says there is room');
   assert.ok(/if\(state==='done'\)\{[\s\S]{0,700}?bfStartMarking\(\)/.test(source),
     'a finished import opens the marking canvas instead of stopping on a button');
   // The two decisions that stay with the operator.
-  assert.ok(source.includes("if(a==='bf-confirm')"), 'every match is still confirmed by a person');
-  assert.ok(source.includes("if(a==='bf-commit')"), 'and the night is still written by one');
-  // Nothing in the chain removed a neighbouring branch.
-  for (const branch of ["if(a==='bf-start-import')", "if(a==='bf-use-imported')", "if(a==='bf-poll')", "if(a==='bf-start-marking')"]) {
-    assert.equal((source.match(new RegExp(branch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1,
-      `${branch} is still exactly one branch`);
+  assert.ok(bfActions.includes('bf-confirm'), 'every match is still confirmed by a person');
+  assert.ok(bfActions.includes('bf-commit'), 'and the night is still written by one');
+  // Nothing in the chain removed a neighbouring action. The table routes each one, and a table
+  // cannot hold the same name twice, so the old "exactly one branch" count is now structural.
+  for (const name of ['bf-start-import', 'bf-use-imported', 'bf-poll', 'bf-start-marking']) {
+    assert.ok(bfActions.includes(name), `${name} is still a routed action`);
   }
+  assert.equal(new Set(bfActions).size, bfActions.length, 'the table cannot hold one name twice');
 });
 test('round 21 / owner item 3: the second chance can be told who to resurrect', () => {
   const h = harness();
@@ -4563,8 +4581,15 @@ test('round 21 / owner item 3: the second chance can be told who to resurrect', 
 test('round 21 / owner item 3 + round 29 / owner item 1: the late arrival card opens a dialog', () => {
   const h = harness();
   const SRC = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
-  assert.ok(SRC.includes("if(a==='late-open'){lateOpen=true;render();return}") &&
-    SRC.includes("if(a==='late-cancel'){lateOpen=false;render();return}"),
+  // Run both clicks instead of reading them: each one repaints, and both names are routed.
+  const paints = [];
+  const held = h.render;
+  h.render = () => paints.push(1);
+  h.dispatch('late-open');
+  h.dispatch('late-cancel');
+  h.render = held;
+  assert.equal(paints.length, 2, 'each click repaints the shell');
+  assert.ok(h.actions().includes('late-open') && h.actions().includes('late-cancel'),
     'the card opens the dialog, and the dialog closes it');
   assert.ok(SRC.includes("(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'')"), 'the shell mounts it');
   assert.ok(SRC.includes('&&!pendingMatches.size&&registry.mayRepaint()'), 'and the poll asks the registry, not a screen variable (c3)');
@@ -4828,4 +4853,112 @@ test('one render() is a list of named steps, and deleting one call is a visible 
     assert.notDeepStrictEqual(stamp(see(without(name))), want, `and ${name}() is what does it: ${claim}`);
   }
   assert.deepStrictEqual(steps.map(step => step.name), names, 'every step of the composition is walked, so a new one has to answer too');
+});
+// ---- One action registry, two modules: coverage is a checkable property ------------------------
+// The console and the stage route a click through one table each, and one registry holds both. These
+// tests read the live table out of the running modules and the emitters out of the page scripts, so
+// a control that renders a name no module handles, or a row no control can reach, is a failing test.
+const PAGE_SCRIPTS = ['ops.js', 'vision-stage.js', 'app.js', 'clock-sync.js'];
+const pageText = Object.fromEntries(PAGE_SCRIPTS.map(f => [f, fs.readFileSync(path.join(__dirname, '../annotator/', f), 'utf8')]));
+// A helper call carries a nested call in its first argument, so the reader splits the arguments by
+// depth instead of by a comma. A literal first argument that is not a string yields nothing.
+function callArguments(text, name) {
+  const found = [], re = new RegExp(`\\b${name}\\(`, 'g');
+  let m;
+  while ((m = re.exec(text))) {
+    let depth = 1, i = re.lastIndex, arg = '', args = [], quote = null;
+    for (; i < text.length && depth > 0; i++) {
+      const c = text[i];
+      if (quote) { if (c === '\\') { arg += c + text[++i]; continue; } if (c === quote) quote = null; arg += c; continue; }
+      if (c === "'" || c === '"' || c === '`') { quote = c; arg += c; continue; }
+      if (c === '(') depth++;
+      if (c === ')') { depth--; if (!depth) break; }
+      if (c === ',' && depth === 1) { args.push(arg); arg = ''; continue; }
+      arg += c;
+    }
+    args.push(arg);
+    found.push(args);
+    re.lastIndex = i;
+  }
+  return found;
+}
+const stringLiteral = value => {
+  const text = String(value || '').trim();
+  const m = text.match(/^'([^']*)'$/) || text.match(/^"([^"]*)"$/);
+  return m ? m[1] : null;
+};
+// Five ways a page script names an action: a literal attribute, a ternary inside an attribute, the
+// console's btn() helper, the stage's btnHTML() helper, and the emptyNote() invitation. The two
+// helpers write the console attribute, so the stage reader must not count them.
+function emittedInto(text, attribute, helpers = false) {
+  const out = new Set();
+  for (const m of text.matchAll(new RegExp(`${attribute}="([^"$]*)"`, 'g'))) if (m[1]) out.add(m[1]);
+  for (const m of text.matchAll(new RegExp(`${attribute}='([^'$]*)'`, 'g'))) if (m[1]) out.add(m[1]);
+  for (const m of text.matchAll(new RegExp(`${attribute}="\\$\\{([^}]*)\\}"`, 'g'))) for (const q of m[1].matchAll(/'([^']+)'/g)) out.add(q[1]);
+  if (helpers) {
+    for (const name of ['btn', 'btnHTML']) for (const args of callArguments(text, name)) { const v = stringLiteral(args[1]); if (v) out.add(v); }
+    for (const args of callArguments(text, 'emptyNote')) { const v = stringLiteral(args[1]); if (v) out.add(v); }
+  }
+  for (const n of [...out]) if (!n || n.startsWith('tab:')) out.delete(n);   // a tab name is a route, not an action
+  return out;
+}
+const CONSOLE_EMITTED = new Set([...emittedInto(pageText['ops.js'], 'data-action', true), ...emittedInto(pageText['vision-stage.js'], 'data-action', true)]);
+const STAGE_EMITTED = new Set([...emittedInto(pageText['vision-stage.js'], 'data-vs-action'), ...emittedInto(pageText['app.js'], 'data-vs-action')]);
+// The rows no control reaches today. Naming them here is the point: a new one fails this test until
+// somebody decides whether it is a row to delete or a control that was never written.
+const UNREACHABLE_ROWS = {ops: ['card-open', 'chat', 'focus', 'live-detector', 'open-setup', 'source-delete', 'source-select', 'tl-open-night'], 'vision-stage': []};
+// The page builds the registry in the stage, which loads first, and the console reads it. A second
+// module is a second namespace in the same object, so a name both tables hold stays two rows.
+function sharedRegistry(h) {
+  if (!h.context.window.VisionStage) vm.runInContext(stageSource, h.context);
+  const registry = h.registry();
+  assert.ok(registry, 'the two modules share one registry');
+  return registry;
+}
+test('every action a control renders resolves to an entry in the shared table', () => {
+  const registry = sharedRegistry(harness());
+  assert.deepStrictEqual([...CONSOLE_EMITTED].filter(name => !registry.has('ops', name)), [],
+    'every rendered console action has a row in the console table');
+  assert.deepStrictEqual([...STAGE_EMITTED].filter(name => !registry.has('vision-stage', name) && !registry.isField('vision-stage', name)), [],
+    'every rendered stage action has a row in the stage table, or is a declared form field');
+  assert.ok(STAGE_EMITTED.has('link-target') && registry.isField('vision-stage', 'link-target') && !registry.has('vision-stage', 'link-target'),
+    'link-target is read as a field, never dispatched, and the table says so');
+  assert.ok(CONSOLE_EMITTED.size > 80 && STAGE_EMITTED.size > 60, 'and both readers found the controls, so an empty scan cannot pass');
+});
+test('every entry has an emitter, or is named on the list of rows no control reaches', () => {
+  const registry = sharedRegistry(harness());
+  assert.deepStrictEqual([...registry.names('ops').filter(name => !CONSOLE_EMITTED.has(name))].sort(), UNREACHABLE_ROWS.ops,
+    'the console table says which rows no control renders, and names nothing else');
+  assert.deepStrictEqual([...registry.names('vision-stage').filter(name => !STAGE_EMITTED.has(name))].sort(), UNREACHABLE_ROWS['vision-stage'],
+    'every stage row is a control the operator can press');
+  assert.deepStrictEqual([...registry.modules()].sort(), Object.keys(UNREACHABLE_ROWS).sort(),
+    'and every module has to answer the question, so a third module cannot pass by being absent');
+});
+test('both modules route through one table, and the click runs the row the table holds', () => {
+  const h = harness();
+  assert.strictEqual(h.registry(), null, 'the console alone has no shared registry: it dispatches through its own table');
+  const registry = sharedRegistry(h);
+  assert.deepStrictEqual([...registry.modules()].sort(), ['ops', 'vision-stage'], 'one registry holds both modules');
+  assert.deepStrictEqual([...h.actions()].sort(), [...registry.names('ops')].sort(),
+    'the handle reads the same console table the click reads, not a copy of it');
+  assert.deepStrictEqual([...registry.names('ops').filter(name => registry.names('vision-stage').includes(name))].sort(),
+    ['chat', 'live-detector', 'live-start', 'live-stop'], 'a name both tables hold stays two rows in two namespaces');
+  assert.strictEqual(registry.run('ops', 'no-such-action-exists'), undefined, 'a name no table holds is a no-op, not a throw');
+  assert.strictEqual(registry.find('live-start').length, 2, 'and a name can be found in more than one module');
+  // The dispatcher reads the table when the click arrives: swap a row and the swapped one runs.
+  const table = registry.module('ops'), held = table['archive-reload'], seen = [];
+  assert.strictEqual(registry.row('ops', 'archive-reload'), held, 'the table holds the row the click runs');
+  table['archive-reload'] = () => { seen.push('swapped'); };
+  h.dispatch('archive-reload');
+  table['archive-reload'] = held;
+  assert.deepStrictEqual(seen, ['swapped'], 'so the click runs the row the table holds now, not a branch chain');
+});
+test('no branch chain is left in either module: the table is the only route', () => {
+  assert.strictEqual((source.match(/if\(a===/g) || []).length, 0, 'the console click handler has no if-chain left');
+  const at = stageSource.indexOf('const stageAct = (() => {');
+  const table = stageSource.slice(at, stageSource.indexOf('\nfunction act(', at));
+  assert.ok(at > 0 && table.length > 1000, 'the stage table is where the dispatcher reads');
+  assert.strictEqual((table.match(/\bcase '/g) || []).length, 0, 'the stage act() has no case chain left');
+  assert.strictEqual((source.match(/opsAct\.run\(/g) || []).length, 1, 'one call site reaches the console table');
+  assert.strictEqual((table.match(/registry\.run\('vision-stage'/g) || []).length, 1, 'one call site reaches the stage table');
 });

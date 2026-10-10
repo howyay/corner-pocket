@@ -1211,6 +1211,148 @@ function parseSource(value){try{const u=new URL(value);if(u.protocol!=='https:'|
 function appearancePanel(){const s=data.settings||{};return `<article><h3>${esc(t('appearance'))}</h3><form id="appearance-form"><div class="fields">${field(t('cloth'),`<select name="clothColor">${[['#1d5c44','greenCloth'],['#1f4a70','blueCloth'],['#6a2130','redCloth'],['#2f3a3f','grayCloth']].map(([color,key])=>option(color,t(key),s.clothColor||'#1d5c44')).join('')}</select>`)}${field(t('lamp'),input('lampGlow',s.lampGlow??.22,'range','min="0" max="0.5" step="0.02"'))}${field(t('diamonds'),`<input type="checkbox" name="showDiamonds" ${s.showDiamonds!==false?'checked':''}>`)}${field(t('publicBoard'),`<input type="hidden" name="publicBoard" value="off"><input type="checkbox" name="publicBoard" value="on" ${s.publicBoard!==false?'checked':''}>`)}</div><div><button class="primary">${esc(t('save'))}</button></div></form><div class="cloth-preview" style="background-color:${esc(s.clothColor||'#1d5c44')};background-image:radial-gradient(ellipse at top,rgba(255,230,170,${Number(s.lampGlow)||0}),transparent 75%)" role="img" aria-label="${esc(t('appearanceNote'))}">${s.showDiamonds!==false?'<span class="rail-diamonds">◆　◆　◆　◆　◆　◆</span>':''}<span>${esc(t('appearanceNote'))}</span>${s.showDiamonds!==false?'<span class="rail-diamonds">◆　◆　◆　◆　◆　◆</span>':''}</div></article>`}
 function roadmapPanel(){const zh=lang==='zh',rows=[['House ledger server writes','球房账本服务写入','Local operations persistence only; no dedicated ledger service','仅本地运营持久化，尚无专用账本服务','P1'],['Online signups','在线报名','Local registration only; public signup service absent','仅本地报名，尚无公开报名服务','P1'],['Scotch-doubles turn order','苏格兰双打轮次','Doubles entrants supported; turn enforcement absent','支持双打报名，尚无轮次强制检查','P2'],['Result undo trail','赛果撤销轨迹','Audit history exists; result undo absent','已有审计记录，尚无赛果撤销','P1'],['Trained ball detector','训练球检测器','Explicit local inference available; accuracy unverified','可显式运行本地推理，准确度未经验证','P1'],['Safe people detector','可靠人员检测器','Review tools available; safety validation absent','已有复核工具，尚无可靠性验证','P2'],['Calibrated replay beyond 2.5D','超越2.5D的标定回放','Pocket calibration available; advanced replay absent','已有袋口标定，尚无高级回放','P1'],['Per-shot automatic clock start','逐杆自动启动计时','Manual device clock only; shot integration absent','仅设备手动计时，尚无击球联动','P2'],['Automatic reseeding / forfeit timer','自动重排 / 弃权计时','Explicit manual actions only; automation absent','仅显式手动操作，尚无自动化','P1']];return `<article><h3>${zh?'后续计划 · 非实时监控':'Roadmap · not live monitoring'}</h3><div class="table-wrap"><table><thead><tr><th>${zh?'目标领域':'Target area'}</th><th>${zh?'当前能力 / 尚缺功能':'Current capability / gap'}</th><th>${zh?'优先级':'Priority'}</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r[zh?1:0])}</td><td>${esc(r[zh?3:2])}</td><td>${r[4]}</td></tr>`).join('')}</tbody></table></div></article>`}
 function statusScreen(){return `<section class="stack">${appearancePanel()}<article><h3>${esc(t('notes'))}</h3><form id="note-form">${field(t('note'),'<textarea name="text" required maxlength="4000" rows="3"></textarea>')}<div><button>${esc(t('addNote'))}</button></div></form><div class="mt-3">${(data.notes||[]).map(n=>`<div class="entry row"><span class="grow pre-wrap">${esc(n.text)}</span>${btn(t('remove'),'note-delete',`data-id="${n.id}"`)}</div>`).join('')}</div></article><details class="maintainers"><summary><h2>${esc(t('forMaintainers'))}</h2><span class="muted">${esc(t('forMaintainersNote'))}</span></summary><div class="stack"><article class="maint-status"><h3>${esc(t('systemStatus'))}</h3><p class="muted">${esc(t('systemStatusNote'))}</p><p class="muted last-write">${esc(t('lastWrite').replace('{n}',String(data.revision)))}</p><div class="table-wrap"><table><caption class="sr-only">${esc(t('systemStatus'))}</caption><thead><tr><th>${esc(t('area'))}</th><th>${esc(t('now'))}</th></tr></thead><tbody>${[[t('revision'),data.revision],[t('persist'),'/api/operations'],[t('scoreboardTitle'),t('manual')],[t('observation'),t('notConnected')],[t('review'),`${t('vision')} · VOD`]].map(row=>`<tr>${row.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div><p class="note">${esc(t('noSimulation'))}</p>${btn(t('refresh'),'reload')}<button data-action="live-debug" aria-pressed="${debugWorkbench?'true':'false'}">${esc(debugWorkbench?t('liveDebugOff'):t('liveDebug'))}</button></article>${roadmapPanel()}</div></details></section>`}
+// The console's action table. One row for each action a control can send. The registry holds the
+// table, so a check can read the names without a browser. A row reads the click context
+// (a, id, side, m, b, e), which the adapter sets just before it runs the row.
+
+// This module holds its own action table. It publishes that table into the one shared registry,
+// so a check can compare the controls of the page with the handlers of this module. A test that
+// loads this module alone has no registry, and then the module dispatches through its own table.
+const registerOps = () => {
+  const shared = globalThis.ActionRegistry;
+  if (!shared) return null;
+  if (shared.module('ops') !== opsAct.table) shared.define('ops', opsAct.table);
+  return shared;
+};
+const dispatchOps = name => {
+  const shared = registerOps();
+  if (shared) return shared.run('ops', name);
+  const row = opsAct.table[name];
+  return typeof row === 'function' ? row() : undefined;
+};
+const opsActions = () => Object.keys(opsAct.table);
+const opsAct = (() => {
+  let a = '', id = undefined, side = 0, m = null, b = null, e = null;
+  const table = {
+    'vod-open':async()=>{const kind=String(b.dataset.kind||'event'),key=String(b.dataset.id||'');
+  vodPick=vodPick&&vodPick.kind===kind&&String(vodPick.id)===key?null:{kind,id:key,q:''};render();return},
+    'vod-link':async()=>{const payload={vodId:String(b.dataset.vod||''),eventId:String(b.dataset.id||'')};
+  if(b.dataset.title)payload.title=b.dataset.title;if(b.dataset.channel)payload.channel=b.dataset.channel;
+  if(Number(b.dataset.length))payload.length_s=Number(b.dataset.length);if(b.dataset.created)payload.created_at=b.dataset.created;
+  if(await action('vod_link',payload)){vodPick=null;render()}return},
+    'vod-unlink':async()=>{if(await action('vod_unlink',{vodId:String(b.dataset.vod||''),eventId:String(b.dataset.id||'')})){vodPick=null;render()}return},
+    'desk-open':async()=>{readDeskDraft();deskOpen=deskOpen===Number(b.dataset.desk)?null:Number(b.dataset.desk);render();return},
+    'desk-pick':async()=>{readDeskDraft();const slot=Number(b.dataset.desk);deskPick[slot]=id||'';if(id)deskDraft[slot]={...deskDraft[slot],guest:''};deskOpen=null;render();return},
+    'backfill-open':async()=>{bfOpen();return},
+    'tl-toggle':async()=>{const key=String(id);openEvents.has(key)?openEvents.delete(key):openEvents.add(key);render();return},
+    'archive-reload':async()=>{loadArchiveList(true);loadAuto(true);return},
+    'auto-toggle':async()=>{autoToggle();return},
+    'auto-reload':async()=>{loadAuto(true);return},
+    'tl-open-night':async()=>{const key=String(id);openEvents.add(key);render();const node=$(`[data-event="${key}"]`);if(node&&typeof node.scrollIntoView==='function')node.scrollIntoView({block:'center'});return},
+    'tl-review':async()=>{openReview(id);return},
+    'review-back':async()=>{reviewId=null;syncRoute(true);render();window.scrollTo?.(0,0);return},
+    'bf-exit':async()=>{bfExit();return},
+    'bf-pick':async()=>{if(!bf)bf=Object.assign(bfFresh(),{saved:readBfDraft()});bfPickVod(id,b.dataset.length,b.dataset.title);return},
+    'bf-check':async()=>{await bfCheck();bfEstimate();return},
+    'bf-estimate':async()=>{await bfEstimate();if(bf?.estimate?.already_imported)bfUseImported();else bfStartImport();return},
+    'bf-start-import':async()=>{bfStartImport();return},
+    'bf-use-imported':async()=>{bfUseImported();return},
+    'bf-cancel':async()=>{bfCancel();return},
+    'bf-poll':async()=>{bfPoll();return},
+    'bf-retry':async()=>{bfRetry();return},
+    'bf-choose-other':async()=>{bfChooseOther();return},
+    'bf-resume':async()=>{bfResumeDraft();return},
+    'bf-drop-draft':async()=>{bfDropDraft();return},
+    'bf-start-marking':async()=>{bfStartMarking();return},
+    'bf-mark-start':async()=>{bfMarkStart();return},
+    'bf-mark-end':async()=>{bfMarkEnd();return},
+    'bf-unmark':async()=>{bfUnmark(Number(id));return},
+    'bf-to-review':async()=>{bfToReview();return},
+    'bf-to-marking':async()=>{if(bf){bf.step='marking';render()}return},
+    'bf-confirm':async()=>{bfConfirm(Number(id));return},
+    'bf-commit':async()=>{bfCommit();return},
+    'bf-open-timeline':async()=>{bfOpenTimeline();return},
+    'bf-open-night':async()=>{bfOpenNight();return},
+    'reload':async()=>{return reload();},
+    'live-debug':async()=>{debugWorkbench=!debugWorkbench;renderSurface();return},
+    'live-refresh':async()=>{liveGeneration++;pollLive(liveGeneration);return},
+    'live-start':async()=>{debugWorkbench=false;startLive();return},
+    'live-stop':async()=>{stopLive();return},
+    'live-pick':async()=>{pickLive(String(b.dataset.value||''));render();return},
+    'live-detector':async()=>{const d=String(b.dataset.value||'');setLiveDetectors(liveDetectors.includes(d)?liveDetectors.filter(x=>x!==d):[...liveDetectors,d]);render();return},
+    'clock-toggle':async()=>{clockToggle();clockTook('clock-toggle')},
+    'clock-reset':async()=>{timer.remaining=timer.duration;timer.deadline=null;persistClock();clockTook('clock-reset');render()},
+    'clock-set':async()=>{const duration=Number(b.dataset.value);if(!Number.isFinite(duration)||duration<=0)return;if(await action('settings_update',{shotClock:duration})){timer={duration,remaining:duration,deadline:null};persistClock();clockTook('clock-set',duration);render()}},
+    'score':async()=>{if(!(m))return;const delta=Number(b.dataset.delta);await matchWrite(id,'match_score',x=>{const score=[...x.score];score[side]=Math.max(0,Math.min(race(),score[side]+delta));return {payload:{score},apply:y=>{y.score=score}}})},
+    'clear':async()=>{await matchWrite(id,'match_score',()=>({payload:{score:[0,0]},apply:y=>{y.score=[0,0]}}));},
+    'sign':async()=>{const m=matches().find(x=>x.id===id);if(m&&m.score[0]!==m.score[1]){signDraft={id,winner:m.score[0]>m.score[1]?0:1};paintScoreFoot(m)}return},
+    'sign-cancel':async()=>{const m=matches().find(x=>x.id===id);signDraft=null;paintScoreFoot(m||live());return},
+    'sign-confirm':async()=>{if(!(signDraft&&signDraft.id===id))return;signDraft=null;await matchWrite(id,'match_complete',()=>({payload:{}}))},
+    'frame':async()=>{if(!(m&&confirm(t('confirmSign'))))return;const score=[0,0];score[side]=1;if(await matchWrite(id,'match_score',()=>({payload:{score},apply:y=>{y.score=[...score]}})))await matchWrite(id,'match_complete',()=>({payload:{}}))},
+    'open-setup':async()=>{setupOpen=true;render();return},
+    'sources-open':async()=>{sourceOpen=true;render();return},
+    'sources-close':async()=>{sourceOpen=false;render();return},
+    'dismiss-setup':async()=>{setupOpen=false;render();return},
+    'focus':async()=>{focusId=id;render();return},
+    'card-open':async()=>{focusId=id;tab='clock';syncRoute(true);render();window.scrollTo?.(0,0);return},
+    'source-remove':async()=>{if(await action('source_delete',{id}))render();return},
+    'schedule':async()=>{if(await action('match_schedule',{id,table:b.dataset.table?Number(b.dataset.table):undefined})){focusId=id;render()}},
+    'forfeit':async()=>{if(!(confirm(t('confirmForfeit'))))return;await action('match_forfeit',{id,side});},
+    'unschedule':async()=>{await action('match_unschedule',{id});},
+    'entrant-remove':async()=>{await action('entrant_remove',{id});},
+    'tournament-start':async()=>{const shown=document.querySelector('#settings-form [name=name]')?.value?.trim();if(!tournament().name&&shown&&!await action('tournament_setup',{name:shown}))return;tab='tonight';if((await action('tournament_start'))===false)returnsyncRoute(true)},
+    'results-sheet':async()=>{sheetId=id;render();window.scrollTo?.(0,0)},
+    'sheet-back':async()=>{sheetId=null;render()},
+    'print-sheet':async()=>{print();},
+    'copy-results':async()=>{const night=[tournament(),...(data.history||[])].find(n=>n.id===id);if(night){try{await navigator.clipboard.writeText(resultsText(night));message(t('copied'))}catch(e){message(t('copyFail'),true,e.message)}}},
+    'late-open':async()=>{lateOpen=true;render();return},
+    'late-cancel':async()=>{lateOpen=false;render();return},
+    'revival-draw':async()=>{if(!(confirm(t('confirmRevival'))))return;const pick=document.querySelector('#revival-pick')?.value||'';await action('revival_draw',pick?{confirm:true,entrant:pick}:{confirm:true})},
+    'revival-undo':async()=>{if(!(confirm(t('confirmRevivalUndo'))))return;await action('revival_undo',{confirm:true});},
+    'pair-draw':async()=>{await action('pair_draw');},
+    'pair-accept':async()=>{await action('pair_accept',{seed:Number(b.dataset.seed)});},
+    'pair-clear':async()=>{await action('pair_clear');},
+    'pool-remove':async()=>{await action('pool_remove',{name:b.dataset.name});},
+    'toggle-hidden':async()=>{showHidden=!showHidden;render()},
+    'event-delete':async()=>{const n=[tournament(),...(data.history||[])].find(n=>n.id===id);if(n&&confirm(t('confirmDelete').replace('{name}',quoted(n))))await action('tournament_delete',{id,confirm:true})},
+    'event-hide':async()=>{const n=(data.history||[]).find(n=>n.id===id),hidden=b.dataset.hidden==='true';if(n&&confirm(t(hidden?'confirmHide':'confirmUnhide').replace('{name}',quoted(n))))await action('tournament_hide',{id,hidden,confirm:true})},
+    'event-rename':async()=>{eventNameEditing=true;render();requestAnimationFrame?.(()=>{const i=document.querySelector('#event-name');i?.focus();i?.select?.()});return},
+    'event-rename-cancel':async()=>{eventNameEditing=false;render();return},
+    'rename-archived':async()=>{const h=(data.history||[]).find(h=>h.id===id);const name=prompt(t('renameArchived'),h?.name||'');if(name!==null&&name.trim())await action('tournament_rename',{id,name:name.trim()})},
+    'new-event':async()=>{if(!(confirm(t('newConfirm'))))return;await action('tournament_new',{confirm:true});},
+    'select-player':async()=>{selected=id;recordId=null;render()},
+    'player-record':async()=>{if(tab!=='records')selected=id;recordId=id;render()},
+    'record-back':async()=>{recordId=null;render()},
+    'open-add-player':async()=>{selected='new';render()},
+    'close-modal':async()=>{selected=null;recordId=null;render()},
+    'filter':async()=>{filter=b.dataset.value;render()},
+    'player-delete':async()=>{if(!(confirm(t('deleteConfirm'))&&await action('player_delete',{id})))return;selected=null;},
+    'face-forget':async()=>{if(!(confirm(t('faceForgetConfirm'))))return;try{const r=await fetch('/api/identity/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:id})});const result=await r.json().catch(()=>({}));if(!r.ok)throw Error(result.error||`HTTP ${r.status}`);const n=result.removed||{};message(lang==='zh'?`${t('faceForgetDone')}：${n.store_faces||0} 张人脸，解除 ${n.clusters_unbound||0} 个匹配人物，${n.face_samples||0} 个人脸样本`:`${t('faceForgetDone')}: ${n.store_faces||0} stored faces, ${n.clusters_unbound||0} matched person unbound, ${n.face_samples||0} face samples`)}catch(error){message(`${t('faceForgetFail')}: ${validationMessage(error.message)}`,true,lang==='zh'?error.message:'')}},
+    'promote':async()=>{await action('guest_promote',{name:b.dataset.name});},
+    'source-select':async()=>{sourceId=id;render()},
+    'source-delete':async()=>{await action('source_delete',{id});},
+    'chat':async()=>{chat=!chat;render()},
+    'note-delete':async()=>{await action('note_delete',{id})},
+  };
+  return {
+    table,
+    dispatch(name, ctx = {}) {
+      a = name; id = ctx.id; side = Number(ctx.side || 0);
+      b = ctx.node || {dataset: {}}; e = ctx.event || null;
+      m = matches().find(x => x.id === id);
+      return dispatchOps(name);
+    },
+    run(node, event) {
+      b = node; e = event;
+      a = String(node.dataset.action || '');
+      id = node.dataset.id; side = Number(node.dataset.side);
+      m = matches().find(x => x.id === id);
+      if (!a) return undefined;
+      return dispatchOps(a);
+    }
+  };
+})();
+registerOps();
 document.addEventListener('click',async e=>{if(e.target.closest?.('#review-root'))return;
 // Round 9, owner item 4: the desk's listbox closes on any click that lands outside the form,
 // before the click is interpreted. Clicks inside it - the search box, a row, Add entrant - are
@@ -1219,28 +1361,8 @@ if(deskOpen!==null&&!e.target.closest?.('#entrant-form')){deskOpen=null;render()
 if(vodPick&&!e.target.closest?.('.vod-pick-host')){vodPick=null;render()}
 const b=e.target.closest('button,.modal-backdrop');if(!b)return;if(b.classList?.contains('modal-backdrop')&&e.target.closest('.modal'))return;if(b.dataset.lang){if(busy)return;lang=b.dataset.lang;localStorage.setItem('cp-ops-lang',lang);render();return}if(b.dataset.theme){if(busy)return;theme=b.dataset.theme;localStorage.setItem('cp-ops-theme',theme);render();return}if(b.dataset.action==='card-toggle'){const card=b.closest('.entry');if(card){const open=card.classList.toggle('open');b.setAttribute('aria-expanded',String(open));const label=t(open?'cardCollapse':'cardExpand');b.setAttribute('aria-label',label);b.setAttribute('title',label)}return}
 if(b.dataset.tab){go(routeOf(b.dataset.tab));return}const a=b.dataset.action,id=b.dataset.id,side=Number(b.dataset.side),m=matches().find(m=>m.id===id);if(!a)return;
-if(a==='vod-open'){const kind=String(b.dataset.kind||'event'),key=String(b.dataset.id||'');
-  vodPick=vodPick&&vodPick.kind===kind&&String(vodPick.id)===key?null:{kind,id:key,q:''};render();return}
-if(a==='vod-link'){const payload={vodId:String(b.dataset.vod||''),eventId:String(b.dataset.id||'')};
-  if(b.dataset.title)payload.title=b.dataset.title;if(b.dataset.channel)payload.channel=b.dataset.channel;
-  if(Number(b.dataset.length))payload.length_s=Number(b.dataset.length);if(b.dataset.created)payload.created_at=b.dataset.created;
-  if(await action('vod_link',payload)){vodPick=null;render()}return}
-if(a==='vod-unlink'){if(await action('vod_unlink',{vodId:String(b.dataset.vod||''),eventId:String(b.dataset.id||'')})){vodPick=null;render()}return}
-if(a==='desk-open'){readDeskDraft();deskOpen=deskOpen===Number(b.dataset.desk)?null:Number(b.dataset.desk);render();return}if(a==='desk-pick'){readDeskDraft();const slot=Number(b.dataset.desk);deskPick[slot]=id||'';if(id)deskDraft[slot]={...deskDraft[slot],guest:''};deskOpen=null;render();return}if(a==='backfill-open'){bfOpen();return}if(a==='tl-toggle'){const key=String(id);openEvents.has(key)?openEvents.delete(key):openEvents.add(key);render();return}if(a==='archive-reload'){loadArchiveList(true);loadAuto(true);return}if(a==='auto-toggle'){autoToggle();return}if(a==='auto-reload'){loadAuto(true);return}if(a==='tl-open-night'){const key=String(id);openEvents.add(key);render();const node=$(`[data-event="${key}"]`);if(node&&typeof node.scrollIntoView==='function')node.scrollIntoView({block:'center'});return}if(a==='tl-review'){openReview(id);return}if(a==='review-back'){reviewId=null;syncRoute(true);render();window.scrollTo?.(0,0);return}if(a==='bf-exit'){bfExit();return}// Two entrances meet here: the picker inside the backfill (bf is already set) and a row on
-// Records' archive, where the operator has chosen the broadcast before the flow was open.
-if(a==='bf-pick'){if(!bf)bf=Object.assign(bfFresh(),{saved:readBfDraft()});bfPickVod(id,b.dataset.length,b.dataset.title);return}if(a==='bf-check'){await bfCheck();bfEstimate();return}if(a==='bf-estimate'){await bfEstimate();if(bf?.estimate?.already_imported)bfUseImported();else bfStartImport();return}if(a==='bf-start-import'){bfStartImport();return}if(a==='bf-use-imported'){bfUseImported();return}if(a==='bf-cancel'){bfCancel();return}if(a==='bf-poll'){bfPoll();return}if(a==='bf-retry'){bfRetry();return}if(a==='bf-choose-other'){bfChooseOther();return}if(a==='bf-resume'){bfResumeDraft();return}if(a==='bf-drop-draft'){bfDropDraft();return}if(a==='bf-start-marking'){bfStartMarking();return}if(a==='bf-mark-start'){bfMarkStart();return}if(a==='bf-mark-end'){bfMarkEnd();return}if(a==='bf-unmark'){bfUnmark(Number(id));return}if(a==='bf-to-review'){bfToReview();return}if(a==='bf-to-marking'){if(bf){bf.step='marking';render()}return}if(a==='bf-confirm'){bfConfirm(Number(id));return}if(a==='bf-commit'){bfCommit();return}if(a==='bf-open-timeline'){bfOpenTimeline();return}if(a==='bf-open-night'){bfOpenNight();return}
-if(a==='reload')return reload();
- // The Vision tab's own controls while no stream is running (owner item 3): the panel is not the
- // adapter's markup, so its buttons report through these branches and repaint through render().
- if(a==='live-debug'){debugWorkbench=!debugWorkbench;renderSurface();return}if(a==='live-refresh'){liveGeneration++;pollLive(liveGeneration);return}
-if(a==='live-start'){debugWorkbench=false;startLive();return}if(a==='live-stop'){stopLive();return}if(a==='live-pick'){pickLive(String(b.dataset.value||''));render();return}if(a==='live-detector'){const d=String(b.dataset.value||'');setLiveDetectors(liveDetectors.includes(d)?liveDetectors.filter(x=>x!==d):[...liveDetectors,d]);render();return}if(a==='clock-toggle'){clockToggle();clockTook('clock-toggle')}if(a==='clock-reset'){timer.remaining=timer.duration;timer.deadline=null;persistClock();clockTook('clock-reset');render()}if(a==='clock-set'){const duration=Number(b.dataset.value);if(!Number.isFinite(duration)||duration<=0)return;if(await action('settings_update',{shotClock:duration})){timer={duration,remaining:duration,deadline:null};persistClock();clockTook('clock-set',duration);render()}}
-if(a==='score'&&m){const delta=Number(b.dataset.delta);await matchWrite(id,'match_score',x=>{const score=[...x.score];score[side]=Math.max(0,Math.min(race(),score[side]+delta));return {payload:{score},apply:y=>{y.score=score}}})}if(a==='clear')await matchWrite(id,'match_score',()=>({payload:{score:[0,0]},apply:y=>{y.score=[0,0]}}));if(a==='sign'){const m=matches().find(x=>x.id===id);if(m&&m.score[0]!==m.score[1]){signDraft={id,winner:m.score[0]>m.score[1]?0:1};paintScoreFoot(m)}return}
-if(a==='sign-cancel'){const m=matches().find(x=>x.id===id);signDraft=null;paintScoreFoot(m||live());return}
-if(a==='sign-confirm'&&signDraft&&signDraft.id===id){signDraft=null;await matchWrite(id,'match_complete',()=>({payload:{}}))};if(a==='frame'&&m&&confirm(t('confirmSign'))){const score=[0,0];score[side]=1;if(await matchWrite(id,'match_score',()=>({payload:{score},apply:y=>{y.score=[...score]}})))await matchWrite(id,'match_complete',()=>({payload:{}}))};if(a==='open-setup'){setupOpen=true;render();return}if(a==='sources-open'){sourceOpen=true;render();return}if(a==='sources-close'){sourceOpen=false;render();return}if(a==='dismiss-setup'){setupOpen=false;render();return}if(a==='focus'){focusId=id;render();return}if(a==='card-open'){focusId=id;tab='clock';syncRoute(true);render();window.scrollTo?.(0,0);return}if(a==='source-remove'){if(await action('source_delete',{id}))render();return}if(a==='schedule'){if(await action('match_schedule',{id,table:b.dataset.table?Number(b.dataset.table):undefined})){focusId=id;render()}}if(a==='forfeit'&&confirm(t('confirmForfeit')))await action('match_forfeit',{id,side});if(a==='unschedule')await action('match_unschedule',{id});if(a==='entrant-remove')await action('entrant_remove',{id});if(a==='tournament-start'){const shown=document.querySelector('#settings-form [name=name]')?.value?.trim();if(!tournament().name&&shown&&!await action('tournament_setup',{name:shown}))return;tab='tonight';if((await action('tournament_start'))===false)returnsyncRoute(true)}if(a==='results-sheet'){sheetId=id;render();window.scrollTo?.(0,0)}if(a==='sheet-back'){sheetId=null;render()}if(a==='print-sheet')print();if(a==='copy-results'){const night=[tournament(),...(data.history||[])].find(n=>n.id===id);if(night){try{await navigator.clipboard.writeText(resultsText(night));message(t('copied'))}catch(e){message(t('copyFail'),true,e.message)}}}if(a==='late-open'){lateOpen=true;render();return}
-if(a==='late-cancel'){lateOpen=false;render();return}
-if(a==='revival-draw'&&confirm(t('confirmRevival'))){const pick=document.querySelector('#revival-pick')?.value||'';await action('revival_draw',pick?{confirm:true,entrant:pick}:{confirm:true})}if(a==='revival-undo'&&confirm(t('confirmRevivalUndo')))await action('revival_undo',{confirm:true});if(a==='pair-draw')await action('pair_draw');if(a==='pair-accept')await action('pair_accept',{seed:Number(b.dataset.seed)});if(a==='pair-clear')await action('pair_clear');if(a==='pool-remove')await action('pool_remove',{name:b.dataset.name});if(a==='toggle-hidden'){showHidden=!showHidden;render()}if(a==='event-delete'){const n=[tournament(),...(data.history||[])].find(n=>n.id===id);if(n&&confirm(t('confirmDelete').replace('{name}',quoted(n))))await action('tournament_delete',{id,confirm:true})}if(a==='event-hide'){const n=(data.history||[]).find(n=>n.id===id),hidden=b.dataset.hidden==='true';if(n&&confirm(t(hidden?'confirmHide':'confirmUnhide').replace('{name}',quoted(n))))await action('tournament_hide',{id,hidden,confirm:true})}if(a==='event-rename'){eventNameEditing=true;render();requestAnimationFrame?.(()=>{const i=document.querySelector('#event-name');i?.focus();i?.select?.()});return}
-if(a==='event-rename-cancel'){eventNameEditing=false;render();return}
-if(a==='rename-archived'){const h=(data.history||[]).find(h=>h.id===id);const name=prompt(t('renameArchived'),h?.name||'');if(name!==null&&name.trim())await action('tournament_rename',{id,name:name.trim()})}if(a==='new-event'&&confirm(t('newConfirm')))await action('tournament_new',{confirm:true});if(a==='select-player'){selected=id;recordId=null;render()}if(a==='player-record'){if(tab!=='records')selected=id;recordId=id;render()}if(a==='record-back'){recordId=null;render()}if(a==='open-add-player'){selected='new';render()}if(a==='close-modal'){selected=null;recordId=null;render()}if(a==='filter'){filter=b.dataset.value;render()}if(a==='player-delete'&&confirm(t('deleteConfirm'))&&await action('player_delete',{id}))selected=null;if(a==='face-forget'&&confirm(t('faceForgetConfirm'))){try{const r=await fetch('/api/identity/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:id})});const result=await r.json().catch(()=>({}));if(!r.ok)throw Error(result.error||`HTTP ${r.status}`);const n=result.removed||{};message(lang==='zh'?`${t('faceForgetDone')}：${n.store_faces||0} 张人脸，解除 ${n.clusters_unbound||0} 个匹配人物，${n.face_samples||0} 个人脸样本`:`${t('faceForgetDone')}: ${n.store_faces||0} stored faces, ${n.clusters_unbound||0} matched person unbound, ${n.face_samples||0} face samples`)}catch(error){message(`${t('faceForgetFail')}: ${validationMessage(error.message)}`,true,lang==='zh'?error.message:'')}}if(a==='promote')await action('guest_promote',{name:b.dataset.name});if(a==='source-select'){sourceId=id;render()}if(a==='source-delete')await action('source_delete',{id});if(a==='chat'){chat=!chat;render()}if(a==='note-delete')await action('note_delete',{id})});
+await opsAct.run(b,e);
+});
 // Owner round 2 (F15): the numbered ball in front of each destination is a real shortcut.
 // Digit1 is the shot timer's slot 1 (start/pause); a text field or a held modifier keeps the key.
 // The timer key activates the control instead of calling the toggle behind its back: the shot
@@ -1418,7 +1540,8 @@ function attach(options={}){
   if(typeof options.fetch==="function")net=options.fetch;
   const state={};
   const handle={state,setRoot(host){if(host)document=host;return document},
-    detach(){stopLivePolling();stopOpsPolling();return true}};
+    detach(){stopLivePolling();stopOpsPolling();return true},
+    dispatch:opsAct.dispatch,actions:opsActions,registry:registerOps};
   for(const row of SEAM){
     const prop={enumerable:true,get:row[1]};
     if(row[2])prop.set=row[2];
