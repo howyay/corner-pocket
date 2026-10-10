@@ -1,12 +1,25 @@
 #!/usr/bin/env python3
 """Reproduce the Vision stage's "is the model quad drawable?" check offline.
 
-``annotator/app.js`` refuses the automatic cloth quad when its mean corner
-distance to the dataset's saved corners exceeds 40 px (``CLOTH_TOLERANCE_PX``,
-* 1.0 for a same-size frame) or when the quad fails ``quadSanity``.  This script
-runs that exact rule - same best-of-four-cyclic-alignments distance, same sanity
-gates - on the frames of ``src/eval_table_detect``'s sample, for both the naive
-detector and the refined one, against both saved vod30 references.
+The rule has one owner: ``src.eval_table_detect`` holds ``quad_sanity``,
+``quad_area_px``, ``cloth_tolerance`` and every number of the contract.  This
+script applies that rule and does not state it a second time.
+
+``annotator/app.js`` holds the browser copy of the rule:
+
+  * ``quadSanity`` - the four rejection gates.
+  * ``clothTolerance`` - 40 px at the reference frame width, scaled by the frame
+    width (``CLOTH_TOLERANCE_PX``).
+  * ``validateCloth`` - the sanity gate first, then the mean corner distance
+    against the bar.
+
+Line numbers are not cited: another worker edits ``app.js``, so a symbol name is
+the locator that does not go stale.
+
+``tests/test_app_quad_contract.py`` reads the app.js text and compares the two
+copies.  This script runs the rule on the frames of ``src/eval_table_detect``'s
+sample, for both the naive detector and the refined one, against both saved
+vod30 references.
 
 The point is to answer "will the app still refuse?" without a browser:
 
@@ -28,7 +41,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.eval_table_detect import (ANCHORS, CORNERS_V2, HIGHLIGHT, TOLERANCE_PX, VOD30,
+from src.eval_table_detect import (ANCHORS, CLOTH_TOLERANCE_PX, CORNERS_V2, HIGHLIGHT, VOD30,
                                    load_references, quad_distance, quad_sanity)
 from src.frame_inference import app_prior_for
 from src.table_detect import detect_table
@@ -38,14 +51,19 @@ OUT = Path(__file__).resolve().parent.parent / 'out' / 'table-detect-eval'
 
 
 def verdict(corners, reference, width, height):
-    """The app's rule, verbatim in spirit: sanity first, then 40 px."""
+    """The app's rule: the sanity gate first, then the mean distance bar.
+
+    ``quad_sanity`` and ``CLOTH_TOLERANCE_PX`` come from ``src.eval_table_detect``,
+    which owns the contract with the ``annotator/app.js`` ``quadSanity`` and
+    ``CLOTH_TOLERANCE_PX``.
+    """
     bad = quad_sanity(corners, width, height)
     if corners is None:
         return 'no detection', None
     if bad:
         return f'invalid geometry ({bad})', None
     fit = quad_distance(corners, reference['corners'])
-    return ('ok' if fit['mean'] <= TOLERANCE_PX else 'off'), fit['mean']
+    return ('ok' if fit['mean'] <= CLOTH_TOLERANCE_PX else 'off'), fit['mean']
 
 
 def run(dataset, video, frames, detector):
@@ -94,7 +112,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--frames', type=int, default=45)
     args = ap.parse_args()
-    report = {'tolerance_px': TOLERANCE_PX,
+    report = {'tolerance_px': CLOTH_TOLERANCE_PX,
               'circularity_note': ('corners30-v2 came from a refinement method and is scored '
                                    'against a refinement detector; app-anchors are pocket-jaw '
                                    'points, not cloth corners')}
@@ -118,7 +136,7 @@ def main():
     path = OUT / 'app-verdict.json'
     path.write_text(json.dumps(report, indent=1))
     for dataset in ('vod30', 'highlight'):
-        print(f"== {dataset}  frames={report[dataset]['frames']}  tolerance={TOLERANCE_PX}px")
+        print(f"== {dataset}  frames={report[dataset]['frames']}  tolerance={CLOTH_TOLERANCE_PX}px")
         for name, v in report[dataset]['verdicts'].items():
             print(f"   {name:34s} ok={v['ok']:3d} refused={v['refused']:3d} "
                   f"no_detection={v['no_detection']:2d} invalid={v['invalid_geometry']:2d} "

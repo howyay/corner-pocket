@@ -60,7 +60,7 @@ HIGHLIGHT = ROOT / "data" / "vod_highlight.mp4"
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 CORNERS_V2 = ROOT / "out" / "corners_30min_v2.json"
 FIXED_CORNERS = ROOT / "out" / "fixed_corners.json"
-TOLERANCE_PX = 40.0
+CLOTH_TOLERANCE_PX = 40.0  # annotator/app.js CLOTH_TOLERANCE_PX - the app's mean-distance bar
 
 
 # -- references ---------------------------------------------------------------
@@ -190,6 +190,107 @@ def _detector_app(frame, dataset, t, refs):
 
 DETECTORS = {"naive": _detector_naive, "refined": _detector_refined, "app": _detector_app}
 
+# -- the app's quad contract ---------------------------------------------------
+# annotator/app.js holds the browser copy of this rule, in the functions
+# quadSanity, clothTolerance and validateCloth.  Each constant below is a copy of
+# one literal in that file.  Line numbers are not cited: another worker edits
+# app.js, so a symbol name is the locator that does not go stale, and
+# tests/test_app_quad_contract.py reads the app.js text and fails when the two
+# copies stop to agree.
+
+CLOTH_TOLERANCE_MM_PER_PX = 1.9     # app.js CLOTH_TOLERANCE_PX comment - "~76 mm at ... 1.9 mm/px"
+SANITY_EDGE_MARGIN_PX = 2.0         # app.js quadSanity - x < -2, x > w + 2
+SANITY_MIN_CORNER_PX = 8.0          # app.js quadSanity - Math.hypot(...) < 8
+SANITY_AREA_FRACTION_MIN = 0.02     # app.js quadSanity - fraction >= 0.02
+SANITY_AREA_FRACTION_MAX = 0.9      # app.js quadSanity - fraction <= 0.9
+# The rejection reasons of app.js quadSanity, in source order.  The last
+# reason carries the covered percentage, so compare it as a prefix only.
+SANITY_REASONS = ("malformed", "outside frame", "degenerate corner", "implausible area")
+
+
+def cloth_tolerance(reference_width, frame_width) -> float:
+    """Return the px clearance bar for one frame width.
+
+    The bar is CLOTH_TOLERANCE_PX at the width of the saved reference.  The bar
+    grows with the frame, so a wider frame gets a wider bar.  A missing width,
+    or a width that is not above 0, gives CLOTH_TOLERANCE_PX.
+
+    This function is the python copy of clothTolerance in annotator/app.js.  The
+    vod30 reference is 1280 px wide, so a 1920 px frame gives 60 px.
+    tests/test_app_timeline.js pins that same 60 px for the browser copy.
+    """
+    try:
+        base, width = float(reference_width), float(frame_width)
+    except (TypeError, ValueError):
+        return CLOTH_TOLERANCE_PX
+    if not (np.isfinite(base) and base > 0 and np.isfinite(width) and width > 0):
+        return CLOTH_TOLERANCE_PX
+    return CLOTH_TOLERANCE_PX * (width / base)
+
+
+def quad_area_px(points) -> float:
+    """Return the px^2 area that quad_sanity tests against the frame size.
+
+    The value is the sum of the two triangles (p0, p1, p3) and (p0, p3, p2).
+
+    WARNING: this is not the area that app.js quadSanity computes.  The app
+    uses the shoelace sum over the vertices in the order given, that is the
+    triangle pair (p0, p1, p2) and (p0, p2, p3).  The two values are equal for a
+    convex quad and different for a self-intersecting one.  On the app's own
+    anchor quad [[532,323],[800,324],[997,569],[384,563]] at 1280x720 the app
+    gives 106735.5 px^2 and this function gives 106238.0 px^2, that is 0.47 %
+    less.  tests/test_app_quad_contract.py pins both values.
+    """
+    p = np.asarray(points, np.float64).reshape(4, 2)
+
+    def _cross(a, b):  # numpy>=2 dropped 2-D np.cross
+        return float(a[0] * b[1] - a[1] * b[0])
+    return (abs(_cross(p[1] - p[0], p[3] - p[0]))
+            + abs(_cross(p[3] - p[0], p[2] - p[0]))) / 2.0
+
+
+def quad_sanity(points, width, height):
+    """Return the rejection reason of a quad, or None when the quad is sane.
+
+    The rule rejects a quad for one of these reasons, in this order:
+
+    1. "malformed" - no points, or not 4 finite (x, y) pairs.
+    2. "outside frame" - one point is more than SANITY_EDGE_MARGIN_PX outside
+       the frame.
+    3. "degenerate corner" - two corners are closer than SANITY_MIN_CORNER_PX.
+    4. "implausible area N%" - the quad covers less than
+       SANITY_AREA_FRACTION_MIN or more than SANITY_AREA_FRACTION_MAX of the
+       frame.  N is the covered percentage to one decimal place.
+
+    annotator/app.js quadSanity holds the browser copy of the same rule, and
+    validateCloth calls it.  The reason words and
+    their order are the same on both sides.
+
+    Two differences from the browser copy are known and measured:
+
+    * The browser copy returns "malformed" when the frame width or the frame
+      height is not above 0 (the app.js frame-size guard).  This function reaches
+      "outside frame" instead, because a frame of 0 px has no inside.
+    * The area formula differs.  See quad_area_px.
+    """
+    if points is None:
+        return "malformed"
+    p = np.asarray(points, np.float64)
+    if p.shape != (4, 2) or not np.isfinite(p).all():
+        return "malformed"
+    for x, y in p:
+        if x < -SANITY_EDGE_MARGIN_PX or y < -SANITY_EDGE_MARGIN_PX \
+                or x > width + SANITY_EDGE_MARGIN_PX or y > height + SANITY_EDGE_MARGIN_PX:
+            return "outside frame"
+    for i in range(4):
+        if np.hypot(*(p[i] - p[(i + 1) % 4])) < SANITY_MIN_CORNER_PX:
+            return "degenerate corner"
+    frac = quad_area_px(p) / (width * height)
+    if SANITY_AREA_FRACTION_MIN <= frac <= SANITY_AREA_FRACTION_MAX:
+        return None
+    return f"implausible area {frac * 100:.1f}%"
+
+
 def quad_distance(quad, reference):
     """Best of the four cyclic alignments; mean and max over 4 corners."""
     q = np.asarray(quad, np.float64).reshape(4, 2)
@@ -202,27 +303,6 @@ def quad_distance(quad, reference):
             best = {"mean": mean, "max": float(d.max()), "shift": shift,
                     "distances": [round(float(v), 1) for v in d]}
     return best
-
-
-def quad_sanity(points, width, height):
-    """Same rejection rule as annotator/app.js quadSanity."""
-    if points is None:
-        return "malformed"
-    p = np.asarray(points, np.float64)
-    if p.shape != (4, 2) or not np.isfinite(p).all():
-        return "malformed"
-    for x, y in p:
-        if x < -2 or y < -2 or x > width + 2 or y > height + 2:
-            return "outside frame"
-    for i in range(4):
-        if np.hypot(*(p[i] - p[(i + 1) % 4])) < 8:
-            return "degenerate corner"
-    def _cross(a, b):  # numpy>=2 dropped 2-D np.cross
-        return float(a[0] * b[1] - a[1] * b[0])
-    area = (abs(_cross(p[1] - p[0], p[3] - p[0]))
-            + abs(_cross(p[3] - p[0], p[2] - p[0]))) / 2.0
-    frac = area / (width * height)
-    return None if 0.02 <= frac <= 0.9 else f"implausible area {frac * 100:.1f}%"
 
 
 # -- sampling -----------------------------------------------------------------
@@ -277,7 +357,7 @@ def evaluate(detector, dataset, n_frames, refs, video):
                 entry = {"state": "size mismatch", "mean": None}
             else:
                 fit = quad_distance(corners, ref["corners"])
-                entry = {"state": "ok" if fit["mean"] <= TOLERANCE_PX else "off",
+                entry = {"state": "ok" if fit["mean"] <= CLOTH_TOLERANCE_PX else "off",
                          "mean": round(fit["mean"], 2), "max": round(fit["max"], 2),
                          "shift": fit["shift"], "distances": fit["distances"]}
             verdicts[ref["name"]] = entry
@@ -298,7 +378,7 @@ def _stats(values):
 
 def summarise(rows, refs, detector_name, dataset, wall_s):
     summary = {"detector": detector_name, "dataset": dataset, "frames": len(rows),
-               "wall_seconds": round(wall_s, 1), "tolerance_px": TOLERANCE_PX,
+               "wall_seconds": round(wall_s, 1), "tolerance_px": CLOTH_TOLERANCE_PX,
                "authoritative_reference": authoritative_reference(refs),
                "seeded_from": next((r["seed_file"] for r in rows if r.get("seed_file")), None),
                "references": {}}
@@ -390,7 +470,7 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     refs = load_references()
     detect = DETECTORS[args.detector]
-    report = {"detector": args.detector, "tolerance_px": TOLERANCE_PX,
+    report = {"detector": args.detector, "tolerance_px": CLOTH_TOLERANCE_PX,
               "authoritative_reference_by_dataset": {
                   dataset: authoritative_reference(refs[dataset]) for dataset in refs},
               "reference_note": (
