@@ -149,6 +149,26 @@ class OneOwnerTests(unittest.TestCase):
                          (ew.EVENT_BEFORE_S, ew.EVENT_AFTER_S))
         self.assertEqual(motion_scan.AT_TOL_S, ew.AT_TOL_S)
 
+    def test_the_clip_route_reads_the_owner_and_spells_no_window(self):
+        """The route that answers /api/clip may not hold a second copy of the span.
+
+        A literal 1.5 there would agree with the owner today and drift tomorrow, and
+        no behavioural test can tell the two apart while they are equal: only the
+        text of that path can.  The route itself must also pass no default, because a
+        default written there is that same second copy.
+        """
+        source = (ROOT / "annotator" / "unified_server.py").read_text()
+        self.assertTrue("from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S" in source,
+                        "annotator/unified_server.py must import both window names from the owner")
+        clip = source.split("def event_clip(", 1)[1].split("\n    def ", 1)[0]
+        written = re.findall(r"\b(?:1\.5|2\.5)\b", clip)
+        self.assertEqual(written, [], f"event_clip spells a window number: {written}")
+        for name in ("EVENT_BEFORE_S", "EVENT_AFTER_S"):
+            self.assertTrue(name in clip, f"event_clip must read {name} from the owner")
+        for name in ("before", "after"):
+            self.assertTrue(re.search(r"query\.text\('%s'\s*,\s*[0-9]" % name, source) is None,
+                            f"the clip route passes a window number as the {name} default")
+
 
 class TheThreeSensesTests(unittest.TestCase):
     def test_the_served_window_is_asymmetric(self):
@@ -170,11 +190,13 @@ class TheThreeSensesTests(unittest.TestCase):
         self.assertEqual(ew.AT_TOL_S, 0.5)
         self.assertLess(ew.AT_TOL_S, ew.EVENT_AFTER_S)
 
-    def test_the_owner_records_the_repair_and_the_sites_it_does_not_own(self):
+    def test_the_owner_records_the_repair_and_the_numbers_it_does_not_own(self):
         doc = ew.__doc__
-        for needle in ("b87e47e", "judge_window", "annotator/unified_server.py",
-                       "--event-half-s", "decay_shape", "prediction_residuals"):
+        for needle in ("b87e47e", "judge_window", "--event-half-s", "decay_shape",
+                       "prediction_residuals"):
             self.assertIn(needle, doc, f"the owner must record {needle}")
+        for needle in ("annotator/app.js", "annotator/unified_server.py"):
+            self.assertIn(needle, doc, f"the owner must name its reader {needle}")
 
 
 if __name__ == "__main__":

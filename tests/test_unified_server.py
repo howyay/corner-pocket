@@ -16,6 +16,7 @@ import numpy as np
 from annotator.unified_server import (ABSENT, APIError, Backend, Cache, OPERATOR_ACTIONS, OperatorAction,
                                       ReadQuery, atomic_save, load, make_handler, operator_actions)
 from annotator.operations import ACTION_NAMES
+from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S
 from src.pid_seed_rebuild import explicit_seeds, run
 
 
@@ -781,6 +782,33 @@ class BackendTests(unittest.TestCase):
             self.backend.event_clip('vod30', 10 ** 6, 1.5, 2.5)
         self.backend.event_clip('vod30', 30.0, 99.0, 2.5)  # clamped, not rejected
         self.assertIn((25.0, 7.5), encoded)
+
+    def test_the_clip_window_a_caller_does_not_name_is_the_owner_window(self):
+        """The served window has one owner: src/event_window.py, not this route."""
+        encoded = []
+
+        def fake_encode(ffmpeg, source, destination, t0, duration):
+            encoded.append((round(t0, 3), round(duration, 3)))
+            destination.write_bytes(b"fake-mp4")
+
+        self.backend._encode_clip = fake_encode
+        self.backend.video_metadata = lambda dataset: dict(dataset=dataset, fps=30.0, frame_count=54206,
+                                                           duration=1806.8, width=1280, height=720,
+                                                           timestamp_kind='nominal_cfr')
+        self.backend.video = lambda dataset: self.root / 'data' / 'vod_30min_260815.mp4'
+        self.backend.event_clip('vod30', 30.0)
+        self.assertEqual(encoded, [(round(30.0 - EVENT_BEFORE_S, 3), EVENT_BEFORE_S + EVENT_AFTER_S)])
+        self.assertNotEqual(EVENT_BEFORE_S, EVENT_AFTER_S)  # asymmetric, so the window is not a half
+        # The route that names no window climbs the same path: the request below carries
+        # only a time, so a default written in the route would be a second copy.
+        handler = self.handler('/api/clip?dataset=vod30&t=30')
+        handler.do_GET()
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(handler.wfile.getvalue(), b"fake-mp4")
+        self.assertEqual(encoded, [(28.5, 4.0)])  # one window, one cache entry
+        # A caller's own window still wins, and is still clamped.
+        self.backend.event_clip('vod30', 30.0, 0.5, 0.5)
+        self.assertEqual(encoded[-1], (29.5, 1.0))
 
     def test_static_assets_allowlisted(self):
         folder = self.root / "annotator"

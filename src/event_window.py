@@ -12,7 +12,10 @@ such a time, and they are different numbers on purpose:
     proxy per event) and ``src/eval_events.py`` (the census around a potential
     shot).  ``src/timing_verify.py`` keeps its own two names, because
     ``tests/test_timing_verify.py`` holds ``annotator/app.js`` to them; both names
-    read this module now.
+    read this module now.  ``annotator/unified_server.py`` answers ``/api/clip`` with
+    this span: a caller that names no window gets these two numbers, and a window a
+    caller does name is clamped to ``[CLIP_MIN_S, CLIP_MAX_S]`` - a bound on what a
+    request may ask for, which is a different decision from the span itself.
 
   * the **symmetric calibration half**: :data:`CONTROL_HALF_S` = 2.5 s.  The
     calibration reads ``[t - half, t + half]`` around each control time, so a
@@ -31,7 +34,7 @@ That is a coincidence, not a shared decision: a change to the served window must
 move the calibration, and a change to the calibration must not move the served
 window.
 
-Four numbers in the same modules are **not** owned here.  A later reader must not
+Three numbers in the same modules are **not** owned here.  A later reader must not
 merge them into the three above:
 
   * ``--event-half-s`` = 0.5 s (``src/motion_scan.py``, the ``channels``
@@ -39,10 +42,6 @@ merge them into the three above:
     It equals :data:`AT_TOL_S` today and answers a different question.
   * ``decay_shape(window_s=1.5)`` (``src/motion_scan.py``) is the span *after* an
     onset over which the raw signal's decay is described.  It looks forward only.
-  * ``annotator/unified_server.py`` (``event_clip``) still spells 1.5 and 2.5 inside
-    the route that answers ``/api/clip``, each clamped to ``[0.25, 5.0]``.  That
-    file is not part of this change, and ``tests/test_event_window.py`` records the
-    site instead of hiding it.
   * ``prediction_residuals(max_gap_s=2.5)`` (``src/ball_association_audit.py``) is
     the largest gap two predictions may have and still be paired.
 

@@ -50,6 +50,10 @@ from annotator.shot_clock import ACTIONS as CLOCK_ACTIONS  # noqa: E402
 # (annotator/vod_import.py AUTO_ACTIONS). This module imports it here, so the write
 # registry's 'vod_auto' row publishes the very set that handler refuses with.
 from annotator.vod_import import AUTO_ACTIONS as VOD_AUTO_ACTIONS  # noqa: E402
+# The window of an event - the seconds read either side of its time - has one owner:
+# src/event_window.py. This module imports it here, so the clip route and the tools that
+# judge a reading over that window cannot hold two different spans.
+from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 #: The live route reads its accepted verbs from this one tuple: `live_action` gates on
 #: it and the write registry imports it for its 'live' row, so the gate and the contract
 #: GET /api/actions publishes cannot name two different sets.
@@ -326,6 +330,13 @@ ENROLL_WINDOW_S_MAX = 600.0
 #: the operator was shown. A restart loses them - the endpoint says so and asks
 #: for a fresh preview rather than enrolling something it cannot re-verify.
 ENROLL_PLAN_CACHE_MAX = 4
+#: What a caller of /api/clip may ask for.  A request that names no window gets the
+#: served window of src/event_window.py (EVENT_BEFORE_S before the event time,
+#: EVENT_AFTER_S after it); a request that names one is clamped into this range, so
+#: one call can never ask the encoder for an unbounded span.  The range is a bound on
+#: a request, and the span is a decision about what is judged - two different things.
+CLIP_MIN_S = 0.25
+CLIP_MAX_S = 5.0
 
 
 def replay_request(source):
@@ -1775,13 +1786,19 @@ class Backend:
         except MediaBinaryMissing as exc:
             raise APIError(str(exc), 503) from exc
 
-    def event_clip(self, dataset, t, before, after):
-        """Real short H.264 fragment around the event time, cached and bounded."""
+    def event_clip(self, dataset, t, before=None, after=None):
+        """Real short H.264 fragment around the event time, cached and bounded.
+
+        A caller that names no window gets the served window of
+        ``src/event_window.py`` - the span the console clips and the span the
+        analysis tools judge a reading over.  A caller that names one is clamped
+        into ``[CLIP_MIN_S, CLIP_MAX_S]``.
+        """
         meta = self.video_metadata(dataset)
         if not isinstance(t, (int, float)) or isinstance(t, bool) or not math.isfinite(t) or not 0 <= t <= meta['duration']:
             raise APIError('t must be seconds inside the video')
-        before = min(max(float(before if before is not None else 1.5), 0.25), 5.0)
-        after = min(max(float(after if after is not None else 2.5), 0.25), 5.0)
+        before = min(max(EVENT_BEFORE_S if before is None else float(before), CLIP_MIN_S), CLIP_MAX_S)
+        after = min(max(EVENT_AFTER_S if after is None else float(after), CLIP_MIN_S), CLIP_MAX_S)
         t0 = max(0.0, t - before)
         duration = min(before + after, meta['duration'] - t0)
         if duration < 0.2:
@@ -2778,10 +2795,12 @@ def make_handler(backend):
                         'X-Live-Sequence': str(meta['seq']),
                         'X-Live-Metadata': json.dumps(meta, separators=(',', ':'), allow_nan=False)})
                 if path == '/api/clip':
+                    # A request that names no window passes None here, so the served
+                    # window of src/event_window.py is applied once, inside event_clip.
                     clip = backend.event_clip(query.text('dataset', 'vod30'),
                                               _number(query.text('t'), 't'),
-                                              _number(query.text('before', 1.5), 'before', allow_none=True),
-                                              _number(query.text('after', 2.5), 'after', allow_none=True))
+                                              _number(query.text('before'), 'before', allow_none=True),
+                                              _number(query.text('after'), 'after', allow_none=True))
                     return self.file(clip)
                 if path == '/api/frame':
                     raw, meta = backend.indexed_jpeg(query.text('dataset', 'vod30'), query.text('frame'))
