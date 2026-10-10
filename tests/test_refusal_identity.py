@@ -15,6 +15,7 @@ import hashlib
 from pathlib import Path
 import unittest
 
+import console_text
 from annotator import refusals
 from annotator.unified_server import APIError, operator_message, refusal_body
 
@@ -33,19 +34,15 @@ RAISED_SENTENCES_WITHOUT_A_ROW = 0
 # The console owns its own English/Chinese word pairs (annotator/ops.js ``words``).  One pair
 # repeats a refusal sentence by coincidence: the enroll form shows it for a name that is a bye
 # placeholder.  The pair has its own English text and its own purpose, so it stays.  A new copy
-# of a refusal sentence in javascript fails this test.
-CONSOLE_WORDS_THAT_REPEAT_A_REFUSAL = {
-    'annotator/ops.js': {'placeholderName': '轮空由抽签自动安排，请输入访客的真实姓名。'},
-}
+# of a refusal sentence in javascript fails this test.  tests/console_text.py owns that fact and
+# the one below it, as one row per exception.  This module reads the rows and holds neither
+# literal, so the two facts cannot disagree with the copy the job module reads.
 
 # One console sentence contains the words of a refusal sentence inside a longer line of its own:
 # annotator/app.js says 'Frame inference or JPEG encoding failed; check local detector weights
 # and runtime' for the live panel.  That line has its own purpose and its own longer text, so it
 # stays.  A pair is (file, sentence): the scan below stays a plain substring search, so a new
 # copy of a refusal sentence in javascript still fails this test.
-CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL = {
-    ('annotator/app.js', 'JPEG encoding failed'),
-}
 
 # The 48 Chinese sentences as the console held them before round 41.  This digest is the record
 # of the move: the table left javascript byte for byte, and no translation happened.  The 121
@@ -87,6 +84,46 @@ def all_raised_sentences():
     found = set()
     for relative_path in RAISING_MODULES:
         found |= raised_sentences(relative_path)
+    return found
+
+
+def declared_names(path):
+    """Every name one test module binds, with the line that binds it.
+
+    A binding is an assignment, an annotated assignment or a walrus.  An import is not a
+    binding: it reads a name another module owns, and that is the wanted form here.
+    """
+    tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        elif isinstance(node, ast.NamedExpr):
+            targets = [node.target]
+        else:
+            continue
+        for target in targets:
+            for child in ast.walk(target):
+                if isinstance(child, ast.Name):
+                    found.append((child.id, node.lineno))
+    return found
+
+
+def console_texts(path):
+    """Every string literal in one test module, read from the source.
+
+    The docstrings do not count.  A docstring describes a fact, while a literal holds one.
+    """
+    tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+    docstrings = {id(node.body[0].value) for node in ast.walk(tree)
+                  if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                  and node.body and isinstance(node.body[0], ast.Expr)
+                  and isinstance(node.body[0].value, ast.Constant)
+                  and isinstance(node.body[0].value.value, str)}
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
+            found.append((node.lineno, node.value))
     return found
 
 
@@ -200,11 +237,11 @@ class RefusalIdentityTest(unittest.TestCase):
             text = path.read_text()
             relative = path.relative_to(ROOT).as_posix()
             for sentence in refusals.REFUSALS:
-                if (relative, sentence) in CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL:
+                if (relative, sentence) in console_text.sentences_that_contain_a_refusal():
                     continue
                 with self.subTest(file=path.name, sentence=sentence):
                     self.assertNotIn(sentence, text, f'{path.name} holds the English refusal sentence')
-        for relative, sentence in CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL:
+        for relative, sentence in console_text.sentences_that_contain_a_refusal():
             with self.subTest(file=relative, sentence=sentence):
                 self.assertIn(sentence, (ROOT / relative).read_text(),
                               'the console line this exception names is gone')
@@ -216,13 +253,13 @@ class RefusalIdentityTest(unittest.TestCase):
                 if line in text:
                     held.setdefault(path.relative_to(ROOT).as_posix(), set()).add(line)
         allowed = {name: set(words.values())
-                   for name, words in CONSOLE_WORDS_THAT_REPEAT_A_REFUSAL.items()}
+                   for name, words in console_text.words_that_repeat_a_refusal().items()}
         self.assertEqual(allowed, held,
                          'a javascript file holds a refusal sentence, or the console word pair moved')
         # Each exception above is the console's own word pair: the console shows it for its own
         # form check, so it is not a copy of a refusal.
         console = (ROOT / CONSOLE).read_text()
-        for words in CONSOLE_WORDS_THAT_REPEAT_A_REFUSAL.values():
+        for words in console_text.words_that_repeat_a_refusal().values():
             for key in words:
                 with self.subTest(word=key):
                     self.assertIn(f"t('{key}')", console, 'the console no longer shows this word pair')
@@ -253,6 +290,39 @@ class RefusalIdentityTest(unittest.TestCase):
                          digest(refusal.zh for refusal in refusals.REFUSALS.values()),
                          'a Chinese sentence of the table changed')
 
+    def test_the_console_exception_facts_live_in_one_module(self):
+        """One module states each fact, and no test module states it again.
+
+        The three names and the two literals were stated in two test modules before
+        tests/console_text.py owned them.  A second statement of one fact can disagree with the
+        first, so this case fails when a test module declares one of the names again or writes
+        one of the literals again.  The case reads source text, so it sees a module that the
+        runner has not loaded yet.
+        """
+        owner = Path(console_text.__file__).resolve()
+        owner_source = owner.read_text(encoding='utf-8')
+        missing = [name for name in console_text.DECLARATIONS if name not in owner_source]
+        self.assertEqual([], missing,
+                         'tests/console_text.py no longer declares these names, so the scan below '
+                         'would pass for the wrong reason:\n' + '\n'.join(missing))
+        # None of the three names may be bound again in a test module.  The name alone is not the
+        # defect: the imports above bind two of them to the owner's view on purpose, and a reader
+        # still finds the name in the module he read before.  A second *binding* is the second
+        # statement that starts the drift this round removes.
+        stated = []
+        for path in sorted((ROOT / 'tests').glob('test_*.py')):
+            if path.resolve() == owner:
+                continue
+            for name, line in declared_names(path):
+                if name in console_text.DECLARATIONS:
+                    stated.append(f'{path.name}:{line}: binds {name} again')
+            for line, value in console_texts(path):
+                if value in console_text.CONSOLE_EXCEPTION_TEXTS:
+                    stated.append(f'{path.name}:{line}: {value}')
+        self.assertEqual([], stated,
+                         'a test module states a fact that tests/console_text.py owns. Keep one '
+                         'row per exception in tests/console_text.py, and read the derived view '
+                         'beside it:\n' + '\n'.join(stated))
 
 if __name__ == '__main__':
     unittest.main()

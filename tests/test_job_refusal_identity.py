@@ -20,6 +20,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
+import console_text
 from annotator import refusals
 from annotator.vod_import import REFUSED_CHANNEL, VodImporter, VodImportError
 
@@ -48,17 +49,14 @@ IMPORTED_SENTENCE = f"{DATASET_ID} is already imported; delete it first to impor
 IMPORTED_ZH = "这一段已经导入；要再次导入，请先删除它。"
 EXPECTED_CODES = frozenset({"vod_channel_not_saved", "vod_disk_space", "vod_already_starting",
                             "vod_already_running", "vod_already_imported"})
-# The only refusal text a javascript file may hold: the console's own hint for an empty name, and
-# one longer line of the live panel.  The hint is a REFUSALS row used as display text.  The live
-# panel line 'Frame inference or JPEG encoding failed; check local detector weights and runtime'
-# is a sentence of its own, and it contains the words of the row 'JPEG encoding failed'.  Both are
-# display text: no module reads a sentence to decide anything.
-# tests/test_refusal_identity.py prints the same two decisions, so a new exception must be made in
-# both modules.
-ALLOWED_CONSOLE_HINTS = {
-    "annotator/ops.js": {"轮空由抽签自动安排，请输入访客的真实姓名。"},
-    "annotator/app.js": {"JPEG encoding failed"},
-}
+# The only refusal text a javascript file may hold, and the module that owns that fact.
+# tests/console_text.py holds one row per exception, and this module reads the allow list from it,
+# so the two test modules cannot hold two copies that disagree.
+# The list is: the console's own hint for an empty name, and one longer line of the live panel.
+# The hint is a REFUSALS row used as display text.  The live panel line 'Frame inference or JPEG
+# encoding failed; check local detector weights and runtime' is a sentence of its own, and it
+# contains the words of the row 'JPEG encoding failed'.  Both are display text: no module reads a
+# sentence to decide anything.
 # The tokens this round removed: a sentence regex or a console copy of a service sentence.
 REMOVED_MATCHERS = ("Only saved channels", "Not enough free disk space", "serverText",
                     "bcOtherChannel", "bfChannel", "bfDiskNo")
@@ -352,7 +350,7 @@ class DeclaredCodeTests(unittest.TestCase):
             for token in REMOVED_MATCHERS:
                 if token in source:
                     removed.setdefault(name, set()).add(token)
-        self.assertEqual(held, ALLOWED_CONSOLE_HINTS)
+        self.assertEqual(held, console_text.allowed_console_hints())
         self.assertEqual(removed, {})
 
     def test_the_console_reads_the_identity_it_was_served(self):
