@@ -23,14 +23,51 @@ function stageMarkup(h, {lang = 'en', fixed = false} = {}) {
     channels: () => [], vods: () => [], regulars: () => [], chat: () => false, notice() {}, review});
   return mount.shellHTML();
 }
+// Round 34, console candidate 1: render() is the console's whole composition path, and the suite
+// never ran it (42 tests replaced it instead). A page-shaped stub lets one test execute it, so the
+// nav, the tabbar, the mounted screen, the vision host move and the poll schedule are observable.
+function domNode(selector = '') {
+  const node = {
+    selector, innerHTML: '', textContent: '', hidden: false, value: '', title: '', children: [],
+    dataset: {tab: '', lang: '', theme: '', action: ''}, style: {setProperty() {}, getPropertyValue: () => ''},
+    classList: {add() {}, remove() {}, toggle() {}}, appended: [], inserted: [], attributes: {},
+    setAttribute(key, value) { node.attributes[key] = String(value); },
+    getAttribute(key) { return Object.prototype.hasOwnProperty.call(node.attributes, key) ? node.attributes[key] : null; },
+    removeAttribute() {}, appendChild(child) { node.appended.push(child); node.children.push(child); return child; },
+    insertAdjacentHTML(_where, html) { node.inserted.push(html); node.innerHTML += html; },
+    addEventListener() {}, removeEventListener() {}, querySelector: () => null, querySelectorAll: () => [],
+    closest: () => null, contains: () => false, focus() {}, remove() {}
+  };
+  return node;
+}
+// One stub document with a region per selector, so render() runs as it does in the browser.
+function richDocument(handlers) {
+  const regions = new Map();
+  const body = domNode('body');
+  const documentElement = {dataset: {}, lang: '', classList: {toggle() {}, add() {}, remove() {}}};
+  return {
+    addEventListener(event, fn) { handlers[event] = fn; },
+    querySelector(selector) {
+      if (selector === '#ops-shell') return null;      // the shell state stays observable instead
+      if (!regions.has(selector)) regions.set(selector, domNode(selector));
+      return regions.get(selector);
+    },
+    querySelectorAll: () => [],
+    createElement: () => domNode(),
+    body, documentElement,
+    region: selector => regions.get(selector)
+  };
+}
 function harness(opts = {}) {
-  const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [];
-  const document = {addEventListener(event, fn) { handlers[event] = fn; }, querySelector(selector) { return selector === '#ops-shell' ? null : {}; }, querySelectorAll() { return []; }, documentElement: {dataset: {}, lang: ''}};
+  const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [], timers = [];
+  const document = opts.richDom
+    ? richDocument(handlers)
+    : {addEventListener(event, fn) { handlers[event] = fn; }, querySelector(selector) { return selector === '#ops-shell' ? null : {}; }, querySelectorAll() { return []; }, documentElement: {dataset: {}, lang: ''}};
   // The URL is a hash route: pushState/replaceState update location.hash, and a test drives back/forward by
   // setting location.hash and calling the captured hashchange listener, as the browser does.
   const location = {hash: opts.hash || ''};
   const history = {pushState(state, title, url) { location.hash = url; visits.push(['push', url]); }, replaceState(state, title, url) { location.hash = url; visits.push(['replace', url]); }};
-  const context = {document, location, history, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener(event, fn) { windowHandlers[event] = fn; handlers['window:' + event] = fn; }}, setInterval() {}, setTimeout() {}, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
+  const context = {document, location, history, localStorage: {getItem: key => storage[key] || null, setItem: (key, value) => storage[key] = value}, window: {addEventListener(event, fn) { windowHandlers[event] = fn; handlers['window:' + event] = fn; }}, setInterval() {}, setTimeout(fn, ms) { timers.push({fn, ms}); return timers.length }, clearTimeout() {}, URL, console, confirm: () => true, FormData: function(form) { return Object.entries(form.values); }};
   vm.createContext(context);
   // The console runs as the page loads it. The suite does not rewrite its text. The stub page
   // carries no shell, so the console does not boot itself; the test drives it through the handle.
@@ -42,7 +79,7 @@ function harness(opts = {}) {
   h.realAction = h.action;
   h.VmTypeError = vm.runInContext('TypeError', context);
   h.action = async (name, payload) => { h.calls.push({name, payload}); return true };
-  return Object.assign(h, {context, handlers, windowHandlers, visits, storage});
+  return Object.assign(h, {context, handlers, windowHandlers, visits, storage, timers});
 }
 const tabClick = (h, name) => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {tab: name}}}});
 const browserBack = (h, hash) => { h.context.location.hash = hash; h.windowHandlers.hashchange(); };
@@ -4658,4 +4695,28 @@ test('the console hands the shell-state writer to the stage it mounts, as an opt
   assert.strictEqual(h.shellState.vsPanel, '1', 'so a patch from the stage reaches the one shell writer');
   bag.setShell({vsPanel: false});
   assert.strictEqual(h.shellState.vsPanel, '0', 'and a patch that clears the column reaches it too');
+});
+
+test('one render() composes the console: the nav, the screen, the vision host and the poll', () => {
+  // Round 34, console candidate 1: render() is one line of 2077 characters with 33 statements and
+  // it rebuilds the whole page. The suite replaced it 42 times and never ran it, so every
+  // composition bug the source comments record was invisible to the tests.
+  const h = harness({richDom: true});
+  h.render();
+  const doc = h.context.document;
+  const nav = doc.region('#nav');
+  assert.ok(nav && nav.innerHTML.includes('data-tab="tonight"'), 'the nav is rebuilt with its destinations');
+  assert.ok(nav.innerHTML.includes('aria-current="page"'), 'and it marks the destination the operator is on');
+  const tabbar = doc.region('#tabbar');
+  assert.ok(tabbar && tabbar.innerHTML.includes('data-tab="records"'), 'the phone bar follows the same destinations');
+  const main = doc.region('#main');
+  assert.ok(main && main.innerHTML.length > 0, 'the active screen paints into #main');
+  assert.ok(doc.body.appended.some(node => node.selector === '#vision-host'), 'and the vision host is moved to the body');
+  assert.strictEqual(h.timers.length, 0, 'the Tonight screen arms no poller: it has no live source to poll');
+  tabClick(h, 'clock');
+  h.render();
+  const slot = doc.region('#ops-shell .clockbar');
+  assert.ok(slot && slot.innerHTML.length > 0, 'the clock bar is painted on every render, whatever the venue state');
+  assert.deepStrictEqual({...h.shellState}, {review: '0', vision: '', labelOverlay: '0', vsPanel: '0'},
+    'and the one shell writer was told what the page shows');
 });
