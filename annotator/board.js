@@ -53,6 +53,19 @@
     },
   };
 
+  /** The words a match may carry, with the module that owns them: annotator/operations.py
+      MATCH_STATUSES and MATCH_RESULTS, the tuples that module is the only writer of. A browser
+      cannot import python, and this repository has no build step, so board.js keeps the one copy
+      on this side of the wire. Every branch below reads this table; none compares a status or a
+      result against a literal. tests/test_board.js reads both tuples back out of that file and
+      fails on a difference, the way tests/test_app_timeline.js:3252 holds the console's live
+      codes to annotator/live_processing.py.
+      The board branches on live, delayed and complete, and on played, forfeit and bye. The copy
+      carries the whole list anyway: a word added to the registry then shows up here, and in the
+      stylesheet that receives it as a class (board.css). */
+  const STATUS = {pending: 'pending', scheduled: 'scheduled', live: 'live', delayed: 'delayed', complete: 'complete'};
+  const RESULT = {played: 'played', forfeit: 'forfeit', bye: 'bye'};
+
   /** Escapes one value for HTML. An absent value (null or undefined) becomes no text.
       The payload comes from another program as JSON. A field that program leaves out
       must show an empty cell. It must never show the word "undefined" on a TV.
@@ -121,19 +134,19 @@
   }
 
   function nextItem(m, lang, round) {
-    const held = m.status === 'delayed';
+    const held = m.status === STATUS.delayed;
     return `<li class="next-item${held ? ' held' : ''}"><span class="names">${sideName(m.sides[0], lang)} ` +
       `<span class="vs">${esc(say(lang, 'vs'))}</span> ${sideName(m.sides[1], lang)}</span>` +
       `<span class="detail">${esc(round)} · ${esc(say(lang, held ? 'held' : 'ready'))}</span></li>`;
   }
 
   function bracketMatch(m, lang) {
-    const scored = m.status === 'live' || (m.status === 'complete' && m.result === 'played');
+    const scored = m.status === STATUS.live || (m.status === STATUS.complete && m.result === RESULT.played);
     const side = i => `<p class="bs${m.winner === i ? ' won' : ''}"><span class="name">${sideName(m.sides[i], lang)}</span>` +
       `<span class="score">${scored ? esc(m.score[i]) : ''}</span></p>`;
-    const note = m.status === 'live' ? say(lang, 'live', {n: m.table}) : m.result === 'forfeit' ? say(lang, 'forfeit')
-      : m.status === 'delayed' ? say(lang, 'held') : '';
-    return `<li class="bm ${esc(m.status)}${m.result === 'bye' ? ' bye' : ''}">${side(0)}${side(1)}` +
+    const note = m.status === STATUS.live ? say(lang, 'live', {n: m.table}) : m.result === RESULT.forfeit ? say(lang, 'forfeit')
+      : m.status === STATUS.delayed ? say(lang, 'held') : '';
+    return `<li class="bm ${esc(m.status)}${m.result === RESULT.bye ? ' bye' : ''}">${side(0)}${side(1)}` +
       `${note ? `<p class="bm-note">${esc(note)}</p>` : ''}</li>`;
   }
 
@@ -142,6 +155,9 @@
   function render(board, lang, elapsedOf) {
     const rounds = board.bracket || [], event = board.event;
     const final = rounds.length ? rounds[rounds.length - 1].matches[0] : null;
+    // event.phase is the night's own word (annotator/operations.py tournament(): 'registration',
+    // 'active', 'complete'), a different vocabulary from a match's. No tuple publishes it, so it
+    // keeps its literal here; this is not STATUS.complete.
     const winner = event.phase === 'complete' && final && final.winner != null ? final.sides[final.winner].name : null;
     let tables = `<li class="empty">${esc(say(lang, 'noTables'))}</li>`;
     if (winner != null) {
@@ -162,11 +178,11 @@
       tablesNote: winner == null && board.tables.length ? say(lang, 'timeOnTable') : '',
       next: board.next.length ? board.next.map(m => nextItem(m, lang, roundName(rounds, m.round, lang))).join('')
         : `<li class="empty">${esc(say(lang, 'noNext'))}</li>`,
-      bracket: rounds.length ? rounds.map(r => `<section class="round${r.matches.every(m => m.status === 'complete') ? ' done' : ''}">` +
+      bracket: rounds.length ? rounds.map(r => `<section class="round${r.matches.every(m => m.status === STATUS.complete) ? ' done' : ''}">` +
         `<h3>${esc(roundName(rounds, r.round, lang))}</h3><ol>${r.matches.map(m => bracketMatch(m, lang)).join('')}</ol></section>`).join('')
         : `<p class="empty">${esc(say(lang, 'noBracket'))}</p>`,
       // The TV hides byes (the next round shows who went through): its tallest column.
-      bracketRows: Math.max(0, ...rounds.map(r => r.matches.filter(m => m.result !== 'bye').length)),
+      bracketRows: Math.max(0, ...rounds.map(r => r.matches.filter(m => m.result !== RESULT.bye).length)),
       standings: standings || `<tr class="empty"><td colspan="4">${esc(say(lang, 'noStandings'))}</td></tr>`,
       standingRows: board.standings.length,
     };
@@ -337,5 +353,5 @@
     return {poller, paint, lang: () => lang};
   }
 
-  return {WORDS, POLL_MS, MAX_TABLE_COLS, STALE_MS, esc, say, countBucket, pickLang, duration, roundName, render, freshness, apiUrl, createPoller, elapsedOf, start};
+  return {WORDS, STATUS, RESULT, POLL_MS, MAX_TABLE_COLS, STALE_MS, esc, say, countBucket, pickLang, duration, roundName, render, freshness, apiUrl, createPoller, elapsedOf, start};
 }));

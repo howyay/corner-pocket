@@ -367,6 +367,116 @@ test('the table-count buckets and the stylesheet carry the same list', () => {
   assert.equal(board.countBucket(board.MAX_TABLE_COLS + 1), 'many');
 });
 
+// --- The match words: one owner (annotator/operations.py), and every reader held to it -----
+// A match's status and result travel as words on the wire. annotator/operations.py writes those
+// words and publishes MATCH_STATUSES and MATCH_RESULTS. annotator/public_board.py imports the two
+// tuples instead of keeping a copy, and tests/test_public_board.py already fails on a word the
+// registry writes and does not publish. The other two readers are here: board.js cannot import
+// python and this repository has no build step, so it keeps the one JavaScript copy, and board.css
+// is the last reader, keying on the words as CSS classes. The cases below read the tuples back out
+// of that file, the way tests/test_app_timeline.js:3252 reads annotator/live_processing.py for the
+// console's live codes.
+const OPERATIONS_PY = fs.readFileSync(path.join(__dirname, '../annotator/operations.py'), 'utf8');
+const BOARD_SOURCE = fs.readFileSync(path.join(__dirname, '../annotator/board.js'), 'utf8');
+
+function publishedWords(name) {
+  const tuple = OPERATIONS_PY.match(new RegExp(`^${name} = \\(([\\s\\S]*?)\\)`, 'm'));
+  assert.ok(tuple, `annotator/operations.py no longer defines ${name}: board.js copies a list that has no owner`);
+  return [...tuple[1].matchAll(/'([^']+)'/g)].map(hit => hit[1]);
+}
+
+/** The registry's own word for one state of the board, by the name the board gives that state.
+    A registry that renames the word fails the case below with that name, so a person re-decides
+    the branch instead of it going quiet. */
+function registryWord(list, name) {
+  assert.ok(list.includes(name), `annotator/operations.py no longer publishes ${name}`);
+  return name;
+}
+
+test('the match words board.js reads are the registry\'s own, and no branch spells its own', () => {
+  const statuses = publishedWords('MATCH_STATUSES'), results = publishedWords('MATCH_RESULTS');
+  assert.deepEqual(statuses, ['pending', 'scheduled', 'live', 'delayed', 'complete'],
+    'the words annotator/operations.py publishes today; a change here is a change to the board');
+  assert.deepEqual(results, ['played', 'forfeit', 'bye'], 'and the results');
+  assert.deepEqual(Object.values(board.STATUS), statuses,
+    'board.js carries a copy of MATCH_STATUSES: a word in the registry and not here would reach the page as ' +
+    'an unknown class, with no rule in board.css and no error anywhere');
+  assert.deepEqual(Object.values(board.RESULT), results, 'and a copy of MATCH_RESULTS');
+  // The copy is the only one. A branch that spells a wire word itself is a second copy, and this
+  // case cannot see it drift.
+  const bare = BOARD_SOURCE.match(/\.(?:status|result)\s*[!=]==?\s*['"][a-z_]+['"]/g) || [];
+  assert.deepEqual(bare, [],
+    'these compare a match field against a literal; read board.STATUS or board.RESULT instead');
+});
+
+test('every word the registry publishes reaches the page through the branch that word names', () => {
+  const statuses = publishedWords('MATCH_STATUSES'), results = publishedWords('MATCH_RESULTS');
+  const live = registryWord(statuses, 'live'), delayed = registryWord(statuses, 'delayed');
+  const complete = registryWord(statuses, 'complete'), played = registryWord(results, 'played');
+  const forfeit = registryWord(results, 'forfeit'), bye = registryWord(results, 'bye');
+  // One round, one match, and no live table: the board renders the bracket rather than a champion,
+  // so every branch below is read.
+  const bracket = (extra, lang = 'en') => board.render({...SAMPLE, tables: [], next: [],
+    bracket: [{round: 1, matches: [match('r1m1', 1, {name: 'Ana'}, {name: 'Bo'}, extra)]}]}, lang, () => null);
+  const html = extra => bracket(extra).bracket;
+
+  // A status reaches the page as its own class, which is the hook board.css keys on.
+  for (const status of statuses) {
+    assert.ok(html({status, score: [4, 2]}).includes(`class="bm ${status}`), `${status} carries its own class`);
+  }
+  // live: both scores are shown and the note names the table.
+  const onTable = html({status: live, table: 2, score: [4, 2]});
+  assert.ok(onTable.includes('>4<') && onTable.includes('>2<'), 'a live match shows both scores');
+  assert.ok(onTable.includes(board.say('en', 'live', {n: 2})), 'and says which table it is on');
+  // complete + played: the score stays, with no note.
+  const signed = html({status: complete, result: played, winner: 0, score: [4, 2]});
+  assert.ok(signed.includes('>4<') && signed.includes('>2<') && !signed.includes('bm-note'),
+    'a played match keeps its score and needs no note');
+  // complete + forfeit: the note is the forfeit word.
+  assert.ok(html({status: complete, result: forfeit, winner: 0, score: [0, 0]})
+    .includes(`<p class="bm-note">${board.say('en', 'forfeit')}</p>`), 'a forfeit says so');
+  // complete + bye: the row carries the class board.css hides, and measures no column.
+  const byes = bracket({status: complete, result: bye, winner: 0});
+  assert.ok(byes.bracket.includes(`class="bm ${complete} ${bye}"`), 'a bye row carries both words as classes');
+  assert.equal(byes.bracketRows, 0, 'and the TV does not count it');
+  // pending and scheduled: the word reaches the page and the branch adds nothing of its own.
+  for (const status of statuses.filter(word => ![live, delayed, complete].includes(word))) {
+    const quiet = html({status, score: [4, 2]});
+    assert.ok(!quiet.includes('bm-note') && !quiet.includes('>4<'), `${status} shows no score and no note`);
+  }
+  // delayed: the next-up row waits, styled by board.css's .next-item.held.
+  const waiting = board.render({...SAMPLE, tables: [], bracket: [],
+    next: [match('r1m1', 1, {name: 'Ana'}, {name: 'Bo'}, {status: delayed})]}, 'en', () => null);
+  assert.ok(waiting.next.includes('class="next-item held"'), 'a delayed match waits in the held style');
+  assert.ok(waiting.next.includes(board.say('en', 'held')), 'and says why it waits');
+});
+
+test('the stylesheet keys on the registry\'s words, and on no word of its own', () => {
+  const statuses = publishedWords('MATCH_STATUSES'), results = publishedWords('MATCH_RESULTS');
+  const published = new Set([...statuses, ...results]);
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/board.css'), 'utf8');
+  const styled = [...new Set([...css.matchAll(/\.bm\.([a-z][\w-]*)/g)].map(hit => hit[1]))].sort();
+  assert.deepEqual(styled, ['bye', 'delayed', 'live'],
+    'the match words board.css styles today; a word added here must be one the registry publishes');
+  for (const word of styled) {
+    assert.ok(published.has(word), `board.css styles .bm.${word}, which annotator/operations.py does not publish: ` +
+      'the rule can never fire, because the registry is the only writer of a match word');
+  }
+  // ...and every word the stylesheet styles is a class the board really writes.
+  const written = new Set();
+  for (const status of statuses) {
+    for (const result of [undefined, ...results]) {
+      const html = board.render({...SAMPLE, tables: [], next: [],
+        bracket: [{round: 1, matches: [match('r1m1', 1, {name: 'Ana'}, {name: 'Bo'}, {status, result})]}]},
+        'en', () => null).bracket;
+      for (const hit of html.matchAll(/class="bm ([^"]*)"/g)) for (const name of hit[1].split(' ')) written.add(name);
+    }
+  }
+  for (const word of styled) {
+    assert.ok(written.has(word), `board.css styles .bm.${word}, a class board.js never writes: the rule is dead`);
+  }
+});
+
 test('the page: no inline script or style, and nothing from the console', () => {
   const html = fs.readFileSync(path.join(__dirname, '../annotator/board.html'), 'utf8');
   assert.deepEqual([...html.matchAll(/<script\b([^>]*)>/g)].map(m => m[1].trim()), ['src="./board.js" defer']);
