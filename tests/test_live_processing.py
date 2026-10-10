@@ -11,8 +11,8 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from annotator.live_processing import LiveProcessor
-from annotator.pipeline_stages import CallableStage
+from annotator.live_processing import LIVE_DETECTORS, LiveProcessor
+from annotator.pipeline_stages import CallableStage, detector_names, resolve_detector
 
 
 class Capture:
@@ -120,16 +120,65 @@ class LiveDetectorRequestTests(unittest.TestCase):
     def test_a_requested_ball_without_a_ball_stage_is_refused(self):
         # The legacy single-detector path builds one 'detect' stage: a caller asking
         # for ball there would get a pipeline that never produces a ball result.
+        # Both spellings name that one detector, so both are refused.
         self.weights()
-        processor = self.processor(infer=infer)
-        with self.assertRaises(ValueError) as caught:
-            processor.start(self.source, ['ball'])
-        self.assertIn('no stage', str(caught.exception))
-        self.assertEqual(processor.status()['state'], 'idle')
+        for detectors in (['ball'], ['balls']):
+            processor = self.processor(infer=infer)
+            with self.assertRaises(ValueError) as caught:
+                processor.start(self.source, detectors)
+            self.assertIn('no stage', str(caught.exception))
+            self.assertEqual(processor.status()['state'], 'idle')
 
-    def test_unknown_detector_names_are_refused(self):
+    def test_the_detector_names_come_from_the_vocabulary(self):
+        # No second tuple of detector names lives in the live module: what it accepts
+        # is what the table holds.
+        self.assertEqual(LIVE_DETECTORS, detector_names())
+
+    def test_both_ball_spellings_build_the_same_one_ball_stage(self):
+        # 'balls' is the vocabulary's other spelling of the ball detector: it builds
+        # the same causal BallStage as 'ball', never a second implementation and never
+        # a refusal.
         self.weights()
-        for detectors in (['balls'], ['sam3'], ['BALL'], ['table', 'ball', 'balls'], [], 'ball'):
+        built = {}
+        for detectors in (['ball'], ['balls'], ['ball', 'balls']):
+            processor = self.processor()
+            status = processor.start(self.source, detectors)
+            self.assertEqual(status['detectors'], detectors)      # echoed as asked
+            built[tuple(detectors)] = processor.status()['stages']
+        self.assertEqual([stage['name'] for stage in built[('balls',)]], ['ball'])
+        self.assertEqual(built[('ball',)], built[('balls',)])
+        self.assertEqual(built[('ball', 'balls')], built[('balls',)])   # one detector
+
+    def test_the_request_order_does_not_change_the_stage_order(self):
+        # The table owns the order: a caller that asks for ball first still runs the
+        # table first, and the consumer reading stage results in order sees that.
+        self.weights()
+        processor = self.processor()
+        processor.start(self.source, ['ball', 'table'])
+        self.assertEqual([stage['name'] for stage in processor.status()['stages']],
+                         ['table', 'ball'])
+
+    def test_an_unknown_detector_is_refused_with_the_vocabularys_sentence(self):
+        # The sentence is the table's own: a second sentence written in the live module
+        # could drift from the spellings it names.
+        self.weights()
+        for offender in ('bal', 'BALL', 'sam3', 'ballss'):
+            with self.assertRaises(ValueError) as table:
+                resolve_detector(offender)
+            expected = str(table.exception)
+            self.assertIn('unknown detector %r' % offender, expected)
+            for name in detector_names():          # the sentence lists what IS accepted
+                self.assertIn(name, expected)
+            for detectors in ([offender], ['table', 'ball', offender]):
+                processor = self.processor()
+                with self.assertRaises(ValueError, msg=repr(detectors)) as caught:
+                    processor.start(self.source, detectors)
+                self.assertEqual(str(caught.exception), expected, detectors)
+                self.assertEqual(processor.status()['state'], 'idle', detectors)
+
+    def test_an_empty_or_non_list_request_is_still_refused(self):
+        self.weights()
+        for detectors in ([], (), 'table', {'table'}):
             processor = self.processor()
             with self.assertRaises(ValueError, msg=repr(detectors)):
                 processor.start(self.source, detectors)
@@ -571,7 +620,7 @@ class LiveProcessingTests(unittest.TestCase):
                        dict(kind='dataset', dataset='vod30', url='https://example.com')]:
             with self.assertRaises(ValueError):
                 processor.start(source)
-        for detectors in [[], ['balls'], ['unknown'], 'table', [None]]:
+        for detectors in [[], ['bal'], ['unknown'], 'table', [None]]:
             with self.assertRaises(ValueError):
                 processor.start(self.source, detectors)
         path = self.root / 'data/vod_30min_260815.mp4'

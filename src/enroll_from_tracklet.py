@@ -105,6 +105,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src.datasets import STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
 
 # The repository root. The value equals src.person_pipeline.REPO, and the same
@@ -112,7 +113,10 @@ from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
 # src.person_pipeline loads torch and cv2 at its top level.
 REPO = Path(__file__).resolve().parents[1]
 
-DATASETS = {"vod30": "data/vod_30min_260815.mp4", "highlight": "data/vod_highlight.mp4"}
+#: The built-in recordings this module can enroll from: id -> media path relative to
+#: the repository root.  ``src.datasets.STATIC`` owns the file names and this module
+#: only prefixes the folder its call sites join onto a root.
+DATASETS = {key: str(Path("data") / value[1]) for key, value in STATIC.items()}
 DEFAULT_STATE = Path("out") / "corner-pocket" / "state.json"
 DEFAULT_FACE_STORE = Path("out") / "corner-pocket" / "face_embeddings.json"
 

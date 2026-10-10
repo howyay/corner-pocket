@@ -4,9 +4,12 @@ Sources: {'kind': 'dataset', 'dataset': 'vod30' | 'highlight'} or
 {'kind': 'twitch', 'source_id': <saved Operations channel id>}.
 No caller-provided media URLs, files, stream credentials, or detector models.
 
-Detectors: ``table``, ``person`` and ``ball`` (the trained tiny ball net).  The
-``balls`` (SAM3) detector of the offline frame scan remains excluded - it is a
-different, much more expensive measurement with no live stage.
+Detectors come from the pipeline vocabulary (:mod:`annotator.pipeline_stages`): this
+module spells no detector name of its own, and it accepts every spelling that table
+knows.  ``balls`` is the vocabulary's second spelling of the ball detector, so a
+request that asks for ``balls`` builds the same causal ``BallStage`` as ``ball``.
+That spelling also names the offline SAM3 frame scan; that scan is a different route
+and is not part of a live pipeline.
 
 Per-frame work is an ordered list of stages (:mod:`annotator.pipeline_stages`);
 the decode loop never changes to add one.  Every step (decode, scale, encode,
@@ -23,17 +26,20 @@ import threading
 import time
 
 from annotator.pipeline_stages import (CallableStage, LatencyWindow, StageRegistry,
-                                       check_ball_weights, default_stages, merge_detections)
+                                       check_ball_weights, default_stages, detector_names,
+                                       merge_detections, resolve_detectors)
+from src.datasets import STATIC
 
 _DROP_REASONS = ('no_frame_ready', 'stage_overrun', 'stale')
 
-#: Detectors a caller may ask for.  ``ball`` is the trained tiny ball net
-#: (``annotator.pipeline_stages.BallStage``); the SAM3 ``balls`` detector is NOT
-#: this one and is still excluded - it is a separate offline scan, not a live stage.
-LIVE_DETECTORS = ('table', 'person', 'ball')
+#: Every detector spelling a caller may ask for, from the one vocabulary.  ``ball`` is
+#: the trained tiny ball net (``annotator.pipeline_stages.BallStage``); ``balls`` is
+#: the same detector's other spelling there, so both build that one stage.
+LIVE_DETECTORS = detector_names()
 
-
-_DATASETS = {'vod30': 'vod_30min_260815.mp4', 'highlight': 'vod_highlight.mp4'}
+#: The built-in recordings this source may replay: id -> bare media file name under
+#: ``data/``.  The file names come from the one registry, ``src.datasets.STATIC``.
+_DATASETS = {key: value[1] for key, value in STATIC.items()}
 
 
 class _SourceError(RuntimeError):
@@ -102,14 +108,17 @@ def _error_code(message):
 def _check_requested_ball(detectors, stages):
     """Refuse a start that asked for the ball detector but cannot run it.
 
-    A requested detector whose stage is absent, or whose weights are missing, would
-    otherwise produce a pipeline that runs, publishes frames and quietly contains no
-    ball result at all - every downstream number would read as "the detector found
-    nothing".  Raises ``ValueError`` naming the detector and, for weights, the full
-    expected path.  An injected stage that brings its own weights (a test stub, the
-    envelope harness) has no ``verify`` and is trusted as given.
+    The vocabulary decides which requests ask for that detector: each of its ball
+    spellings (``ball``, ``balls``) resolves to the one ball row, so a request in
+    either spelling is checked here.  A requested detector whose stage is absent, or
+    whose weights are missing, would otherwise produce a pipeline that runs,
+    publishes frames and quietly contains no ball result at all - every downstream
+    number would read as "the detector found nothing".  Raises ``ValueError`` naming
+    the detector and, for weights, the full expected path.  An injected stage that
+    brings its own weights (a test stub, the envelope harness) has no ``verify`` and
+    is trusted as given.
     """
-    if 'ball' not in detectors:
+    if not any(row.name == 'ball' for row in resolve_detectors(detectors)):
         return
     ball = next((stage for stage in stages if getattr(stage, 'name', None) == 'ball'), None)
     if ball is None:
@@ -344,9 +353,13 @@ class LiveProcessor:
 
     def start(self, source, detectors=None):
         detectors = ['table', 'person'] if detectors is None else detectors
-        if (not isinstance(detectors, (list, tuple)) or not detectors or
-                any(not isinstance(d, str) or d not in LIVE_DETECTORS for d in detectors)):
-            raise ValueError('Live detectors must be table, person and/or ball; SAM balls are not supported')
+        if not isinstance(detectors, (list, tuple)) or not detectors:
+            raise ValueError('Live detectors must be a non-empty list of %s'
+                             % ', '.join(LIVE_DETECTORS))
+        # The vocabulary owns which spelling names a detector: it accepts every
+        # spelling the table knows and raises the table's own sentence for a name it
+        # does not know.
+        resolve_detectors(detectors)
         safe_source, media = self._source_media(source)
         with self._condition:
             if any(t and t.is_alive() for t in (self._decoder, self._worker, self._probe_thread)):

@@ -1,16 +1,19 @@
 """Every dataset the workbench can open, in one registry.
 
-Two recordings are built in and never change: ``vod30`` (scan folder ``out/scan30``,
-media ``data/vod_30min_260815.mp4``) and ``highlight`` (``out/scan_highlight``,
-``data/vod_highlight.mp4``).  Imported Twitch VODs of a saved channel are listed in
-``out/vods/index.json``; each keeps its operator data under ``out/vods/<id>/`` and
-its media at ``data/vods/<id>.mp4`` (``annotator/vod_import.py`` writes both).
+Two recordings are built in and never change: ``vod30`` (scan folder ``out/scan30``) and
+``highlight`` (scan folder ``out/scan_highlight``).  :data:`STATIC` below holds each one's
+scan folder and the name of its media file under ``data/``, and it is the only place in
+this package that spells a built-in media file name.  Imported Twitch VODs of a saved
+channel are listed in ``out/vods/index.json``; each keeps its operator data under
+``out/vods/<id>/`` and its media at ``data/vods/<id>.mp4`` (``annotator/vod_import.py``
+writes both).
 
 This module only reads.  A lookup never creates a folder and never rewrites the
 index, so every GET that resolves a dataset stays a read.  The built-in ids never
 read the index at all, so a damaged index cannot change how they behave.
-``annotator/live_processing.py`` keeps its own list of the two built-in files: the
-live source replays those, and an imported VOD is browsed, not replayed.
+``annotator/live_processing.py`` and ``src/enroll_from_tracklet.py`` replay the two
+built-in files, and both read the file names from :data:`STATIC` below, so a built-in
+media file name has one definition site.  An imported VOD is browsed, not replayed.
 """
 from __future__ import annotations
 

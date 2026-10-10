@@ -1103,3 +1103,29 @@ class InProcessInterfaceTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         self.assertEqual(REPO, root)
         self.assertTrue((root / "src" / "person_pipeline.py").is_file())
+
+    def test_the_built_in_media_paths_are_the_registrys(self):
+        """The two recordings enrollment opens are named once, in src.datasets.STATIC."""
+        from src import datasets
+        from src.enroll_from_tracklet import DATASETS, REPO
+        self.assertEqual(sorted(DATASETS), sorted(datasets.STATIC))
+        for dataset_id, (scan, media) in datasets.STATIC.items():
+            self.assertEqual(DATASETS[dataset_id], "data/" + media)
+            self.assertEqual(DATASETS[dataset_id], datasets.media_relpath(REPO, dataset_id))
+            # The path this module opens is the path the registry resolves: one file,
+            # named in one place, whatever root the caller joins it onto.
+            self.assertEqual(REPO / DATASETS[dataset_id], datasets.media_path(REPO, dataset_id))
+
+    def test_this_module_does_not_spell_a_built_in_media_name(self):
+        """The names live in the registry: repeating one here could drift from it."""
+        import ast
+        from src import datasets
+        source = (Path(__file__).resolve().parents[1] / "src/enroll_from_tracklet.py").read_text()
+        for dataset_id, (scan, media) in datasets.STATIC.items():
+            self.assertTrue(media not in source, "src/enroll_from_tracklet.py spells %s" % media)
+        values = [node.value for node in ast.walk(ast.parse(source))
+                  if isinstance(node, ast.Assign) and len(node.targets) == 1
+                  and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "DATASETS"]
+        self.assertEqual(len(values), 1, "src/enroll_from_tracklet.py must define DATASETS once")
+        names = {node.id for node in ast.walk(values[0]) if isinstance(node, ast.Name)}
+        self.assertIn("STATIC", names, "DATASETS must be computed from src.datasets.STATIC")

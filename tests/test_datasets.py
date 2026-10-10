@@ -1,4 +1,5 @@
 """The dataset registry (src/datasets.py): built-in ids, imported ids, safe paths, pure reads."""
+import ast
 import hashlib
 import json
 import os
@@ -7,7 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src import datasets
+from annotator import live_processing
+from src import datasets, enroll_from_tracklet
 from src.datasets import imported_id, listing, lookup, parse_imported_id, read_index
 
 ENTRY = {"vod_id": "1000000001", "channel": "examplechannel", "title": "Friday 8-ball",
@@ -176,6 +178,83 @@ class DatasetRegistryTests(unittest.TestCase):
         self.assertEqual(tree_stamp(self.root), before)
         self.assertFalse((self.root / "out" / "vods" / key).exists())
         self.assertFalse((self.root / "data").exists())
+
+
+class BuiltInMediaNameTests(unittest.TestCase):
+    """A built-in media file name is spelled once: in ``src.datasets.STATIC``.
+
+    The live source (``annotator/live_processing.py``) and the enrollment tool
+    (``src/enroll_from_tracklet.py``) both replay those two files, and both read their
+    file names from that one registry.  A name typed again in either module could drift
+    from the file the registry resolves.  The offline scan and calibration tools that
+    also name these files are outside this refactor and are not asserted here.
+    """
+
+    #: module -> the one constant there that maps a built-in id to its media file.
+    consumers = (("annotator/live_processing.py", "_DATASETS"),
+                 ("src/enroll_from_tracklet.py", "DATASETS"))
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+
+    def source(self, relative):
+        return (Path(__file__).resolve().parents[1] / relative).read_text()
+
+    def test_the_registry_is_where_the_two_file_names_are_spelled(self):
+        self.assertEqual({key: value[1] for key, value in datasets.STATIC.items()},
+                         {"vod30": "vod_30min_260815.mp4", "highlight": "vod_highlight.mp4"})
+
+    def test_the_registry_spells_each_name_once(self):
+        source = self.source("src/datasets.py")
+        for dataset_id, (scan, media) in datasets.STATIC.items():
+            self.assertEqual(source.count(media), 1,
+                             "src/datasets.py spells %s %d times" % (media, source.count(media)))
+
+    def test_no_consumer_spells_a_media_file_name(self):
+        for dataset_id, (scan, media) in datasets.STATIC.items():
+            for relative, constant in self.consumers:
+                self.assertTrue(media not in self.source(relative),
+                                "%s names %s instead of reading it from STATIC"
+                                % (relative, media))
+
+    def test_each_consumer_computes_its_mapping_from_the_registry(self):
+        for relative, constant in self.consumers:
+            values = [node.value for node in ast.walk(ast.parse(self.source(relative)))
+                      if isinstance(node, ast.Assign) and len(node.targets) == 1
+                      and isinstance(node.targets[0], ast.Name)
+                      and node.targets[0].id == constant]
+            self.assertEqual(len(values), 1, "%s must define %s exactly once" % (relative, constant))
+            names = {node.id for node in ast.walk(values[0]) if isinstance(node, ast.Name)}
+            self.assertIn("STATIC", names,
+                          "%s must take %s from src.datasets.STATIC" % (relative, constant))
+
+    def test_both_consumers_resolve_the_same_two_media_paths(self):
+        (self.root / "data").mkdir()
+        for dataset_id, (scan, media) in datasets.STATIC.items():
+            from_registry = datasets.media_path(self.root, dataset_id).resolve()
+            self.assertEqual(from_registry, self.root / "data" / media)
+            self.assertEqual((self.root / "data" / media).resolve(), from_registry)
+            self.assertEqual(datasets.media_relpath(self.root, dataset_id), "data/" + media)
+            # The live source keeps the bare file name and joins it under data/ ...
+            self.assertEqual(live_processing._DATASETS[dataset_id], media)
+            self.assertEqual((self.root / "data" / live_processing._DATASETS[dataset_id]).resolve(),
+                             from_registry)
+            # ... and enrollment keeps the data/-prefixed path it joins onto a root.
+            self.assertEqual(enroll_from_tracklet.DATASETS[dataset_id], "data/" + media)
+            self.assertEqual((self.root / enroll_from_tracklet.DATASETS[dataset_id]).resolve(),
+                             from_registry)
+            (self.root / "data" / media).touch()
+        # Both modules describe exactly the registry's built-in ids, no more and no fewer.
+        self.assertEqual(sorted(live_processing._DATASETS), sorted(datasets.STATIC))
+        self.assertEqual(sorted(enroll_from_tracklet.DATASETS), sorted(datasets.STATIC))
+        # The live source itself hands out the registry's path for a built-in id.
+        processor = live_processing.LiveProcessor(self.root)
+        for dataset_id in datasets.STATIC:
+            source, path = processor._source_media({"kind": "dataset", "dataset": dataset_id})
+            self.assertEqual(source, {"kind": "dataset", "dataset": dataset_id})
+            self.assertEqual(path, str(datasets.media_path(self.root, dataset_id).resolve()))
 
 
 class RegistryConsumerTests(unittest.TestCase):
