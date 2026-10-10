@@ -39,6 +39,7 @@ import math
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass
 
 #: The trained ball detector (``src/tiny_ball_net.py``, round ``960x540-scratch``,
 #: 300 train frames / 20 epochs) and the operating point its held-out sweep chose:
@@ -647,8 +648,105 @@ class CallableStage(Stage):
         return self.call(frame, self.detectors, self.root)
 
 
+@dataclass(frozen=True)
+class Detector:
+    """One detector the pipeline can run, and every way a caller may name it.
+
+    ``name`` is the stage's own ``Stage.name`` and the detector's identity: two rows
+    never share it, and ``spellings`` may hold more than one name for the same row.
+    A caller that uses another spelling of an existing detector gets that detector -
+    never a second implementation of it, and never silence.
+
+    ``stage_class`` is the stage the live pipeline builds for this detector.
+    ``frame_name`` is the spelling the per-frame route runs it under
+    (``src/frame_inference.py``), so the two call paths can share one vocabulary
+    while each keeps its own implementation.  ``build`` constructs the stage; every
+    builder takes the same four values and ignores the ones its stage does not need.
+    """
+
+    name: str
+    spellings: tuple
+    stage_class: type
+    frame_name: str
+    build: object
+
+
+def _build_table(root, _dataset, table_measure_every_n, _ball_every_n):
+    return TableStage(root, dataset=_dataset, measure_every_n=table_measure_every_n)
+
+
+def _build_person(root, _dataset, _table_measure_every_n, _ball_every_n):
+    return PersonStage(root)
+
+
+def _build_ball(root, _dataset, _table_measure_every_n, ball_every_n):
+    return BallStage(root, every_n_frames=ball_every_n)
+
+
+#: The detector vocabulary: one row per detector, one shared constant.
+#: ``'balls'`` is the SAM3 spelling the per-frame route runs; ``'ball'`` is the
+#: causal stage the live pipeline builds.  They are one detector in two spellings,
+#: which is exactly what a caller could not tell before this table existed.
+DETECTORS = (
+    Detector('table', ('table',), TableStage, 'table', _build_table),
+    Detector('person', ('person',), PersonStage, 'person', _build_person),
+    Detector('ball', ('ball', 'balls'), BallStage, 'balls', _build_ball),
+)
+
+
+def detector_names():
+    """Every accepted detector spelling, in table order."""
+    return tuple(name for row in DETECTORS for name in row.spellings)
+
+
+def resolve_detector(name):
+    """The row ``name`` spells.  ``ValueError`` for a name outside the table."""
+    for row in DETECTORS:
+        if name in row.spellings:
+            return row
+    raise ValueError('unknown detector %r; accepted names: %s'
+                     % (name, ', '.join(detector_names())))
+
+
+def resolve_detectors(names):
+    """The rows ``names`` asks for, one per detector, in pipeline order.
+
+    A name the vocabulary knows resolves to its row; a name it does not know raises
+    ``ValueError`` instead of being dropped.  Naming one detector twice - ``['ball',
+    'balls']`` - resolves to one row, and the result follows the table, so the stage
+    order never depends on the caller's list order.  ``[]`` resolves to ``()``.
+    """
+    if isinstance(names, str) or not hasattr(names, '__iter__'):
+        raise ValueError('detectors must be a list of detector names, not %r' % (names,))
+    wanted = {resolve_detector(name).name for name in names}
+    return tuple(row for row in DETECTORS if row.name in wanted)
+
+
+def frame_detectors(names):
+    """The spellings ``src/frame_inference.py`` runs for a frame request, in request order.
+
+    The per-frame route accepts every spelling of :data:`DETECTORS` and translates
+    here before it calls ``infer_frame``, which knows only ``frame_name``: handed
+    ``'ball'`` it matches no branch and returns silently as if nothing was requested.
+    A request that is not a non-empty unique list of known spellings raises
+    ``ValueError`` naming every accepted spelling.
+    """
+    if (isinstance(names, str) or not isinstance(names, (list, tuple)) or not names
+            or any(not isinstance(name, str) for name in names)
+            or len(set(names)) != len(names)):
+        raise ValueError('detectors must be a nonempty unique list of %s'
+                         % ', '.join(detector_names()))
+    return [resolve_detector(name).frame_name for name in names]
+
+
 def default_stages(detectors, root, dataset=None, table_measure_every_n=30, ball_every_n=1):
     """Registry for the live pipeline's detectors, in inference order (table first).
+
+    :data:`DETECTORS` owns the names, and this factory builds one stage per detector
+    ``detectors`` names, in table order.  A name the vocabulary does not know raises
+    ``ValueError`` listing the accepted spellings - never a shorter pipeline: a run
+    that quietly drops a detector it was asked for publishes frames that look
+    complete and are not.  Both ball spellings build the one causal ball stage.
 
     ``dataset`` lets the table stage answer from that dataset's saved segment
     reference instead of measuring a static quad again on every frame; without it
@@ -662,14 +760,8 @@ def default_stages(detectors, root, dataset=None, table_measure_every_n=30, ball
     and the cost of each cadence under a real 30 fps source is measured in
     ``docs/live-processing-verification.md`` rather than guessed at here.
     """
-    stages = []
-    if 'table' in detectors:
-        stages.append(TableStage(root, dataset=dataset, measure_every_n=table_measure_every_n))
-    if 'person' in detectors:
-        stages.append(PersonStage(root))
-    if 'ball' in detectors:
-        stages.append(BallStage(root, every_n_frames=ball_every_n))
-    return stages
+    return [row.build(root, dataset, table_measure_every_n, ball_every_n)
+            for row in resolve_detectors(detectors)]
 
 
 def merge_detections(results, detectors):

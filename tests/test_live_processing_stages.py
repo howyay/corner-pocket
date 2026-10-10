@@ -17,7 +17,8 @@ import cv2
 import numpy as np
 
 from annotator.live_processing import LiveProcessor
-from annotator.pipeline_stages import BallStage, Stage, TableStage
+from annotator.pipeline_stages import (DETECTORS, BallStage, Stage, TableStage, default_stages,
+                                       detector_names, frame_detectors, resolve_detector)
 
 
 class Capture:
@@ -534,3 +535,70 @@ class TablePlayfieldVerdict(unittest.TestCase):
         evidence = stage.evidence({'table_source': 'measured', 'table_playfield': {'ok': False, 'reasons': ['no-parallel-pair']}})
         self.assertEqual(evidence['table_playfield']['reasons'], ['no-parallel-pair'],
                          'so a consumer reads the verdict from the stage evidence, not from a log')
+
+
+class DetectorVocabularyTests(unittest.TestCase):
+    """One concept, one vocabulary: the factory builds a known name and refuses the rest.
+
+    Before this table, `default_stages` tested for the literal strings 'table',
+    'person' and 'ball' with three independent `if` statements and ignored every
+    other name.  Measured then: ['balls'] -> [], ['bal'] -> [], and
+    ['table', 'person', 'balls'] -> ['table', 'person'] - two of five inputs gave an
+    empty pipeline that publishes frames and contains no ball result at all, one
+    silently lost the detector it was asked for, and none of the five raised.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()   # no constructor here reads the filesystem
+
+    def names(self, detectors):
+        return [stage.name for stage in default_stages(detectors, self.root)]
+
+    def test_the_five_measured_inputs_still_hold_their_contract(self):
+        self.assertEqual(self.names(['balls']), ['ball'],
+                         'the SAM3 spelling names the one ball detector, so it builds the causal stage')
+        with self.assertRaises(ValueError) as caught:
+            default_stages(['bal'], self.root)
+        for accepted in detector_names():
+            self.assertIn(accepted, str(caught.exception),
+                          'a name outside the vocabulary is refused, and the refusal lists what it accepts')
+        self.assertEqual(self.names(['table', 'person', 'balls']), ['table', 'person', 'ball'],
+                         'no requested detector is dropped for being spelled the other way')
+        self.assertEqual(self.names(['table', 'person', 'ball']), ['table', 'person', 'ball'])
+        self.assertEqual(default_stages([], self.root), [],
+                         'an empty request is an empty pipeline, which is what its caller asked for')
+
+    def test_the_vocabulary_names_every_detector_and_both_ball_spellings(self):
+        self.assertEqual(detector_names(), ('table', 'person', 'ball', 'balls'))
+        self.assertIs(resolve_detector('ball'), resolve_detector('balls'),
+                      'two spellings of one detector resolve to one row')
+        self.assertIs(resolve_detector('ball').stage_class, BallStage)
+        self.assertEqual(resolve_detector('ball').frame_name, 'balls',
+                         'the frame route runs the SAM3 spelling, the live factory builds the causal stage')
+        self.assertEqual([row.name for row in DETECTORS if row.name == 'ball'], ['ball'],
+                         'the ball detector appears once in the table, whatever it is called')
+
+    def test_a_detector_named_twice_builds_one_stage(self):
+        self.assertEqual(self.names(['ball', 'balls']), ['ball'])
+        self.assertEqual(self.names(['ball', 'ball']), ['ball'])
+
+    def test_the_stage_order_comes_from_the_table_not_the_caller(self):
+        self.assertEqual(self.names(['person', 'table']), ['table', 'person'])
+        self.assertEqual(self.names(['person', 'ball', 'table']), ['table', 'person', 'ball'],
+                         'the table order is the inference order, so one request has one pipeline')
+
+    def test_a_bare_string_is_a_refused_request_not_a_letter_by_letter_match(self):
+        with self.assertRaises(ValueError) as caught:
+            default_stages('ball', self.root)
+        self.assertIn('list of detector names', str(caught.exception))
+
+    def test_the_frame_route_translates_to_the_spelling_that_implementation_runs(self):
+        self.assertEqual(frame_detectors(['balls']), ['balls'])
+        self.assertEqual(frame_detectors(['ball']), ['balls'],
+                         'handing the frame path "ball" would match no branch and do nothing')
+        self.assertEqual(frame_detectors(['person', 'balls']), ['person', 'balls'])
+        for refused in (['bal'], [], ['balls', 'balls'], 'balls', [None]):
+            with self.assertRaises(ValueError) as caught:
+                frame_detectors(refused)
+            self.assertIn(', '.join(detector_names()), str(caught.exception))
+

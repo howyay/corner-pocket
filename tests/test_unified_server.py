@@ -948,6 +948,78 @@ class BackendTests(unittest.TestCase):
         with patch.object(self.backend, 'frame_metadata', return_value=meta):
             self.assertIsNone(self.backend.frame_result('vod30', 12345)['inference'])
 
+    def test_the_inference_route_speaks_the_factory_vocabulary(self):
+        """Both ball spellings name one detector, and this route translates it.
+
+        The route held its own tuple ('table', 'person', 'balls') while the stage
+        factory held 'ball', so one request worked here and the other spelling
+        worked in the live route.  The accepted names now come from
+        annotator/pipeline_stages.py, and 'ball' reaches the frame implementation
+        as the 'balls' spelling that implementation actually runs - handing it the
+        singular name would match no branch and return as if nothing was asked.
+        """
+        meta = {'dataset': 'vod30', 'frame_index': 12345, 'timestamp_seconds': 1.0,
+                'timestamp_kind': 'nominal_cfr', 'width': 1280, 'height': 720}
+        with patch.object(self.backend, 'frame_metadata', return_value=meta), \
+             patch.object(self.backend, 'decode_frame', return_value=(object(), meta)), \
+             patch('src.frame_inference.infer_frame', return_value={'boxes': [], 'table_polygon': None}) as infer_frame:
+            job = self.backend.start_inference({'dataset': 'vod30', 'frame_index': 12345,
+                                                'detectors': ['ball']})
+            self.assertEqual(job['detectors'], ['balls'],
+                             'the singular spelling is the same detector, translated for the frame path')
+            deadline = time.time() + 10
+            while self.backend.inference_jobs['vod30']['status'] == 'running' and time.time() < deadline:
+                time.sleep(0.01)
+        self.assertEqual(self.backend.inference_jobs['vod30']['status'], 'completed')
+        self.assertEqual(infer_frame.call_args[0][1], ['balls'],
+                         'the frame implementation never sees a spelling it does not run')
+
+    def test_the_inference_route_keeps_the_requested_order(self):
+        """A request that works today reaches the worker unchanged, spelling for spelling."""
+        meta = {'dataset': 'vod30', 'frame_index': 12345, 'timestamp_seconds': 1.0,
+                'timestamp_kind': 'nominal_cfr', 'width': 1280, 'height': 720}
+        with patch.object(self.backend, 'frame_metadata', return_value=meta), \
+             patch.object(self.backend, 'decode_frame', return_value=(object(), meta)), \
+             patch('src.frame_inference.infer_frame', return_value={'boxes': [], 'table_polygon': None}) as infer_frame:
+            job = self.backend.start_inference({'dataset': 'vod30', 'frame_index': 12345,
+                                                'detectors': ['balls', 'person']})
+            self.assertEqual(job['detectors'], ['balls', 'person'])
+            deadline = time.time() + 10
+            while self.backend.inference_jobs['vod30']['status'] == 'running' and time.time() < deadline:
+                time.sleep(0.01)
+        self.assertEqual(self.backend.inference_jobs['vod30']['status'], 'completed')
+        self.assertEqual(infer_frame.call_args[0][1], ['balls', 'person'],
+                         'the vocabulary translates names, never the caller\'s order')
+
+    def test_the_inference_route_refuses_a_name_the_vocabulary_does_not_know(self):
+        """One sentence, generated from the vocabulary, names every accepted spelling."""
+        from annotator.pipeline_stages import detector_names
+        meta = {'dataset': 'vod30', 'frame_index': 12345, 'timestamp_seconds': 1.0,
+                'timestamp_kind': 'nominal_cfr', 'width': 1280, 'height': 720}
+        with patch.object(self.backend, 'frame_metadata', return_value=meta):
+            for detectors in (['bal'], ['sam3'], [], ['balls', 'balls'], 'balls', [None]):
+                with self.assertRaises(APIError) as error:
+                    self.backend.start_inference({'dataset': 'vod30', 'frame_index': 12345,
+                                                  'detectors': detectors})
+                self.assertEqual(error.exception.status, 400, detectors)
+                self.assertIn(', '.join(detector_names()), str(error.exception), detectors)
+        self.assertFalse(self.backend.inference_busy, 'a refused request starts no job')
+
+    def test_the_inference_route_refuses_a_bad_detector_name_over_http(self):
+        """The refusal reaches the client as a 400 whose sentence comes from the vocabulary."""
+        meta = {'dataset': 'vod30', 'frame_index': 12345, 'timestamp_seconds': 1.0,
+                'timestamp_kind': 'nominal_cfr', 'width': 1280, 'height': 720}
+        body = json.dumps({'dataset': 'vod30', 'frame_index': 12345, 'detectors': ['bal']}).encode()
+        headers = {'Host': '127.0.0.1:8130', 'Origin': 'http://127.0.0.1:8130',
+                   'Content-Type': 'application/json', 'Content-Length': str(len(body))}
+        with patch.object(self.backend, 'frame_metadata', return_value=meta):
+            handler = self.handler('/api/inference', headers, body)
+            handler.dispatch(post=True)
+        self.assertEqual(handler.status, 400)
+        error = json.loads(handler.wfile.getvalue())['error']
+        for accepted in ('table', 'person', 'ball', 'balls'):
+            self.assertIn(accepted, error, 'the refusal names every accepted spelling')
+
     def test_a_stored_inference_file_is_marked_as_an_earlier_run(self):
         """Pre-existing files stay readable evidence, labelled as what they are."""
         path = self.out / 'scan30' / 'frame_results' / '2100' / 'inference.json'

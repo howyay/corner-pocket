@@ -33,6 +33,10 @@ from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, 
 # The tournament declares the action names it accepts (annotator/operations.py).
 # This module imports it here, so one table joins the route to that declaration.
 from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E402
+# The detector vocabulary (annotator/pipeline_stages.py) owns what a detector is
+# called.  This module imports it here, so this route and the stage factory that
+# builds the live pipeline cannot hold two different lists of accepted names.
+from annotator.pipeline_stages import frame_detectors  # noqa: E402
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
@@ -1566,8 +1570,14 @@ class Backend:
     def start_inference(self, data):
         meta = self.frame_metadata(data.get('dataset'), data.get('frame_index'))
         detectors = data.get('detectors', ['table', 'person'])
-        if not isinstance(detectors, list) or not detectors or any(not isinstance(d, str) or d not in ('table', 'person', 'balls') for d in detectors) or len(set(detectors)) != len(detectors):
-            raise APIError('detectors must be a nonempty unique list of table, person, balls')
+        # The vocabulary (annotator/pipeline_stages.py) decides what a detector is
+        # called; this route only translates to the spelling the per-frame
+        # implementation speaks, so ``ball`` and ``balls`` reach it as one detector
+        # instead of the singular name matching no branch and doing nothing.
+        try:
+            detectors = frame_detectors(detectors)
+        except ValueError as exc:
+            raise APIError(str(exc)) from None
         dataset = meta['dataset']
         job = dict(meta, detectors=detectors, status='running', stage='queued', error=None, started_at=now())
         with self.lock:
