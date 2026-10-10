@@ -41,6 +41,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from src.ball_gate import SAM3_BALL_MIN_SCORE
+
 ROOT = Path(__file__).resolve().parents[1]
 
 OUT = ROOT / "out" / "fast_ball_labels"
@@ -48,7 +50,7 @@ LABELS_OUT = ROOT / "out" / "tiny_ball_probe" / "new_labels.json"
 CHECKPOINT = ROOT / "data" / "sam3.safetensors"
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
 
-MIN_SCORE = 0.62                 # the production cut the delivered caches were written at
+MIN_SCORE = SAM3_BALL_MIN_SCORE  # the production cut the delivered caches were written at
 SPLIT_GAP_S = 5.0                # imported from tiny_ball_net's contract, stated once here
 RECORD_MIN_SCORE = 0.30          # the teacher's raw score is recorded down to here
 RESOLUTION = 1008                # SAM3's own input resolution; not tuned here

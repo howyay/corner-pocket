@@ -36,11 +36,13 @@ if str(ROOT) not in sys.path:
 from src.ball_census import classify_ball_color  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
+from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,  # noqa: E402
+                           SAM3_BALL_MIN_SCORE)
 
 APP_CACHE = "out/scan30/sam3_results.json"      # the app's own 56 frames: read-only
 OWN_CACHE = "out/scan30/sam3_census.json"       # added by this tool: written
-MIN_SCORE = 0.62
-MIN_AREA, MAX_AREA = 60, 9000
+MIN_SCORE = SAM3_BALL_MIN_SCORE
+MIN_AREA, MAX_AREA = SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MAX_AREA_PX
 MIN_R, MAX_R = 4.0, 60.0
 
 

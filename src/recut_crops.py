@@ -21,8 +21,11 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+sys.path.insert(0, str(ROOT))            # the repo root, for the src.* imports
 from PIL import Image
 from sam3_cpu import load_sam3_image_model, make_processor
+from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
+                           SAM3_BALL_MIN_SCORE)
 
 VIDEO = ROOT / 'data' / 'vod_highlight.mp4'
 CROP_DIR = ROOT / 'out' / 'unlabeled_crops'
@@ -89,11 +92,11 @@ for t in TIMES:
     # collect candidate instances (same filters as original collection)
     insts = []
     for i in range(len(scores)):
-        if scores[i] < 0.62:
+        if scores[i] < SAM3_BALL_MIN_SCORE:
             continue
         m = np.squeeze(masks[i])
         area = float(m.sum())
-        if area < 60 or area > 9000:
+        if area < SAM3_BALL_MIN_AREA_PX or area > SAM3_BALL_MAX_AREA_PX:
             continue
         ys, xs = np.where(m > 0)
         y0, y1 = int(ys.min()), int(ys.max())

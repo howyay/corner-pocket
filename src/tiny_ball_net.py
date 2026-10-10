@@ -42,6 +42,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.datasets import media_path  # noqa: E402
+from src.ball_gate import SAM3_BALL_MIN_SCORE  # noqa: E402
 
 OUT = ROOT / "out" / "tiny_ball_probe"
 CENSUS = ROOT / "out" / "scan30" / "sam3_census.json"
@@ -57,7 +58,7 @@ NATIVE_WH = (1280, 720)
 SIGMA_PX = 2.5                  # target Gaussian sigma at TRAIN_WH
 STACK = 3                       # frames per sample: (t-1, t, t+1)
 SPLIT_GAP_S = 5.0               # no two frames within this across train/held-out
-TEACHER_MIN_SCORE = 0.62        # what the existing caches were filtered at
+TEACHER_MIN_SCORE = SAM3_BALL_MIN_SCORE   # what the existing caches were filtered at
 NEW_LABEL_MIN_SCORE = 0.30      # the labeller records raw teacher score down to here
 LOC_BAR_PX = 4.0                # p90 localisation bar for the production operating point
 F1_BAR = 0.90                   # held-out F1 bar

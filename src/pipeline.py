@@ -21,15 +21,18 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # the repo root, for the src.* imports
 
 from ball_detect import BALL_COLORS, detect_ball_candidates
 from sam3_cpu import load_sam3_image_model, make_processor
 from table_detect import detect_table
 from table_geometry import CANON_W, CANON_H, homography_to_canonical
+from src.ball_gate import (POC_PIPELINE_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
+                           SAM3_BALL_MIN_SCORE)
 
 CANON_BALL_R = 28.6  # mm (57.15 mm ball)
 POCKET_R = 24
-MIN_SCORE = 0.62
+MIN_SCORE = SAM3_BALL_MIN_SCORE
 
 # BGR renders for ball colors
 RENDER_COLORS = {
@@ -159,7 +162,7 @@ def filter_instances(state, cloth_mask, bgr) -> list[dict]:
             continue
         m = np.squeeze(masks[i])
         area = float(m.sum())
-        if area < 60 or area > 6000:
+        if area < SAM3_BALL_MIN_AREA_PX or area > POC_PIPELINE_BALL_MAX_AREA_PX:
             continue
         cx, cy, r = ball_center(m)
         # require most of the mask to lie on the cloth (tolerant of mask

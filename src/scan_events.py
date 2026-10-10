@@ -27,6 +27,8 @@ from ball_detect import detect_ball_candidates
 from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_canonical,
                                 nearest_pocket)
 from table_detect import detect_table
+from src.ball_gate import (CLASSICAL_BALL_MAX_AREA_960X540_PX, SAM3_BALL_MAX_AREA_PX,
+                           SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_SCORE)
 
 # physical geometry (Rasson Victory III 9ft, 2540 x 1270 mm): the canonical
 # frame and the pocket table live in table_geometry.py, their only definition
@@ -35,7 +37,7 @@ from table_detect import detect_table
 SHOT_DISP_MM = 300.0    # confirmed shot: fastest ball moves > 300 mm
 MOTION_THRESH = 4.5     # table-region frame diff for a shot candidate
 MIN_BALL_AREA_720 = 14.0
-MAX_BALL_AREA_720 = 4200.0
+MAX_BALL_AREA_720 = CLASSICAL_BALL_MAX_AREA_960X540_PX
 
 
 def motion_energy(gray_now: np.ndarray, gray_prev: np.ndarray, mask) -> float:
@@ -123,11 +125,11 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
         cloth = tab["mask"] > 0
         balls = []
         for i in range(len(scores)):
-            if scores[i] < 0.62:
+            if scores[i] < SAM3_BALL_MIN_SCORE:
                 continue
             m = np.squeeze(masks[i])
             area = float(m.sum())
-            if area < 60 or area > 9000:
+            if area < SAM3_BALL_MIN_AREA_PX or area > SAM3_BALL_MAX_AREA_PX:
                 continue
             cx, cy, r = ball_center(m)
             if not (0 <= int(cy) < cloth.shape[0] and 0 <= int(cx) < cloth.shape[1]):

@@ -57,6 +57,9 @@ import math
 import time
 from pathlib import Path
 
+from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
+                           SAM3_BALL_MIN_SCORE)
+
 ROOT = Path(__file__).resolve().parents[1]
 
 PROBE = ROOT / "out" / "tiny_ball_probe"
@@ -74,10 +77,11 @@ TABLE_OUT = AUDIT / "verdicts.md"
 # ------------------------------------------------------------------ constants --
 # The production cut.  A teacher instance below this score was never stored, so a
 # label missing here is production recall that was thrown away, not a refutation.
-PRODUCTION_CUT = 0.62
+PRODUCTION_CUT = SAM3_BALL_MIN_SCORE
 # What the sweep reports.  0.20 is the floor the audit is willing to call a ball;
-# everything above 0.62 is teacher recall that production already kept.
-SWEEP_THRESHOLDS = (0.20, 0.35, 0.50, 0.62)
+# everything above the production cut is teacher recall that production already
+# kept.  The first three points are the sweep's own, the last one is the gate's.
+SWEEP_THRESHOLDS = (0.20, 0.35, 0.50, PRODUCTION_CUT)
 # The processor's own confidence floor.  It must sit *below* the lowest sweep
 # threshold or the 0.20 row would be a clipped measurement rather than a real one.
 SAM3_FLOOR = 0.15
@@ -91,10 +95,11 @@ MATCH_TOL_PX = 6.0
 # FN recovery counts line up with the precision/recall cost already measured.
 FN_THRESHOLDS = tuple(round(0.05 + 0.025 * i, 3) for i in range(38))
 
-# Mirrors of ``src.sam3_ball_cache``'s admission gate.  Copied rather than
-# imported so this module stays importable without cv2/the table detector; a test
-# asserts they have not drifted from the module that owns them.
-BALL_MIN_AREA, BALL_MAX_AREA = 60, 9000
+# The area window of the admission gate.  The values come from ``src.ball_gate``,
+# their only definition site.  That module imports no cv2 and no table detector,
+# so this module no longer needs a copy of them; a test asserts the identity of
+# both objects.
+BALL_MIN_AREA, BALL_MAX_AREA = SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MAX_AREA_PX
 BALL_MIN_R, BALL_MAX_R = 4.0, 60.0
 BALL_AREA_RANGE = (BALL_MIN_AREA, BALL_MAX_AREA)
 BALL_R_RANGE = (BALL_MIN_R, BALL_MAX_R)

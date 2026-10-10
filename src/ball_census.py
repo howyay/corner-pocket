@@ -35,6 +35,8 @@ from dataclasses import dataclass, field
 import math
 from typing import Any, Iterable
 
+from src.ball_gate import SAM3_BALL_MIN_SCORE
+
 CENSUS_VERSION = 1
 
 # Same-ball thresholds between two observations (960x540 frame pixels; the
@@ -102,9 +104,10 @@ UNIQUE_COLORS = frozenset({"black"})
 COLOR_ALIASES = {"red2": "red", "red1": "red"}
 
 # SAM3 detections below this score were already dropped upstream (see
-# src/scan_events.sam3_confirm); mirrored here so a caller cannot smuggle in a
-# weaker detection and call it a measurement.
-SAM3_MIN_SCORE = 0.62
+# src/scan_events.sam3_confirm); stated here as well so a caller cannot smuggle
+# in a weaker detection and call it a measurement.  The value comes from
+# src/ball_gate.py, its only definition site.
+SAM3_MIN_SCORE = SAM3_BALL_MIN_SCORE
 # A settled table with a rack on it holds at least this many balls: a frame
 # whose measured count is below it measured occlusion or a bad exposure, not an
 # empty table.  Applied to SAM3-covered sides only (the classical detector's
