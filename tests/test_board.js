@@ -87,6 +87,37 @@ test('every name is escaped', () => {
   assert.equal(view.title, evil);  // the title is set as text, never as HTML
 });
 
+test('an absent value escapes to no text, never the word "undefined"', () => {
+  assert.equal(board.esc('<b>&"\'</b>'), '&lt;b&gt;&amp;&quot;&#39;&lt;/b&gt;');
+  assert.equal(board.esc(0), '0');
+  assert.equal(board.esc(null), '');
+  assert.equal(board.esc(undefined), '');
+  // The payload is another program's JSON, so a field that program leaves out must not
+  // reach the screen as text. The console's own helper states the same contract
+  // (annotator/app.js:17).
+  const thin = {...SAMPLE, tables: [{...SAMPLE.tables[0], score: []}], standings: [{name: null, won: 0, lost: 0, played: 0}]};
+  const view = board.render(thin, 'en', () => null);
+  for (const html of [view.tables, view.standings]) assert.ok(!html.includes('undefined'), html);
+  assert.equal(board.say('en', 'noSuchWord'), undefined, 'a word that WORDS does not carry');
+  assert.equal(board.esc(board.say('en', 'noSuchWord')), '', 'and it reaches the page as no text');
+});
+
+test('one substitution engine: the table number goes through say()', () => {
+  for (const [lang, template] of [['en', 'Table {n}'], ['zh', '{n} 号台']]) {
+    assert.equal(board.say(lang, 'tableN'), template, `${lang}: the template is the owner of the hole`);
+    assert.ok(board.render(SAMPLE, lang, twelveMinutes).tables.includes(board.say(lang, 'tableN', {n: '<b>1</b>'})),
+      `${lang}: the card carries what say() makes of that template`);
+  }
+  // The value in the hole is escaped before it goes in: a table number is data, not markup.
+  const hostile = {...SAMPLE, tables: [{...SAMPLE.tables[0], table: '<img src=x>'}]};
+  const html = board.render(hostile, 'en', twelveMinutes).tables;
+  assert.ok(!html.includes('<img'), html);
+  assert.ok(html.includes('<b>&lt;img src=x&gt;</b>'), html);
+  // No other site fills a hole itself: the engine in board.js is the only one.
+  const js = fs.readFileSync(path.join(__dirname, '../annotator/board.js'), 'utf8');
+  assert.doesNotMatch(js, /\.replace\((['"])[^'"]*\{/, 'a {n} hole is filled by say(), never by hand');
+});
+
 test('language: ?lang= wins, else the browser', () => {
   assert.equal(board.pickLang('?lang=zh', ['en-US']), 'zh');
   assert.equal(board.pickLang('?lang=en', ['zh-CN']), 'en');
@@ -211,7 +242,20 @@ test('start(): paints the board, and a missing or refused wake lock throws nothi
     assert.equal(page.elements.stale.hidden, true);
     assert.equal(page.elements.off.hidden, true);
     assert.equal(page.elements.board.attributes['aria-busy'], 'false');
-    assert.equal(page.timers.at(-1).ms, 3000, 'the next poll is 3 s away');
+    assert.ok(Number.isFinite(board.POLL_MS) && board.POLL_MS > 0, 'POLL_MS is the poll interval');
+    assert.equal(page.timers.at(-1).ms, board.POLL_MS, 'the next poll waits one POLL_MS, the value the module exports');
+  }
+});
+
+test('start(): the painted count is the bucket for the tables in play', async () => {
+  const tables = n => Array.from({length: n}, (_, i) => match(`r2m${i}`, 2, {name: 'A'}, {name: 'B'},
+    {score: [1, 0], status: 'live', table: i + 1}));
+  for (const n of [0, 1, board.MAX_TABLE_COLS - 1, board.MAX_TABLE_COLS, board.MAX_TABLE_COLS + 1]) {
+    const page = fakePage({responses: [{status: 200, etag: 'W/"n-1"', body: {...SAMPLE, tables: tables(n)}}]});
+    board.start(page.win);
+    await settle();
+    await settle();
+    assert.equal(page.elements.tables.dataset.count, board.countBucket(n), `${n} tables in play`);
   }
 });
 
@@ -297,6 +341,30 @@ test('one file, both mounts: every reference stays inside the mount', () => {
   }
   assert.equal(new URL(urls[0], 'http://board.test/board/board.css').pathname,
     '/board/fonts/noto-sans-sc-500-common.woff2');
+});
+
+test('the table-count buckets and the stylesheet carry the same list', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/board.css'), 'utf8');
+  const rules = [...css.matchAll(/([\w.-]*)\[data-count="([^"]+)"\]/g)].map(m => ({selector: m[1], value: m[2]}));
+  assert.ok(rules.length >= 4, `expected the stylesheet to size the grid by count, got ${rules.length}`);
+  for (const rule of rules) {
+    assert.equal(rule.selector, '.table-cards', `data-count="${rule.value}" sizes another element`);
+  }
+  const covered = new Set(rules.map(rule => rule.value));
+  const published = new Set();
+  for (let n = 0; n <= board.MAX_TABLE_COLS + 4; n++) published.add(board.countBucket(n));
+  for (const value of published) {
+    assert.ok(covered.has(value), `the script can publish data-count="${value}" and board.css has no rule ` +
+      'for it: the grid would fall back to one column');
+  }
+  for (const value of covered) {
+    assert.ok(published.has(value), `board.css sizes data-count="${value}", a count the script can never publish`);
+  }
+  // A count keeps its own name up to MAX_TABLE_COLS, and "many" starts above it.
+  assert.equal(board.countBucket(0), '0');
+  assert.equal(board.countBucket(board.MAX_TABLE_COLS - 1), String(board.MAX_TABLE_COLS - 1));
+  assert.equal(board.countBucket(board.MAX_TABLE_COLS), String(board.MAX_TABLE_COLS));
+  assert.equal(board.countBucket(board.MAX_TABLE_COLS + 1), 'many');
 });
 
 test('the page: no inline script or style, and nothing from the console', () => {

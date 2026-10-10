@@ -134,14 +134,16 @@ tbody tr.empty td{text-align:left;color:var(--ink-dim)}
   h2{margin-bottom:.4rem;font-size:.7rem}
   .tables-note{margin:-.1rem 0 .5rem;font-size:.85rem}
 
-  /* Tables in play, read from across the room: sized by how many are live. */
+  /* Tables in play, read from across the room: sized by how many are live. Every count
+     the script can publish has a rule here; board.js countBucket() owns that list. */
   .table-cards{--k:1;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));gap:.8rem}
+  .table-cards[data-count="0"]{--cols:1}
   .table-cards[data-count="1"]{--k:1.2;grid-template-columns:minmax(0,44rem);justify-content:center}
   .table-cards[data-count="2"]{--cols:2;--k:1.1}
   .table-cards[data-count="3"]{--cols:3;--k:.92}
   .table-cards[data-count="4"]{--cols:4;--k:.8}
   .table-cards[data-count="5"],.table-cards[data-count="6"]{--cols:3;--k:.6}
-  .table-cards[data-count="8"]{--cols:4;--k:.52}
+  .table-cards[data-count="7"],.table-cards[data-count="8"]{--cols:4;--k:.52}
   .table-cards[data-count="many"]{--cols:6;--k:.42}
   .table-card{padding:calc(.6rem*var(--k)) calc(1rem*var(--k));border-radius:calc(.6rem*var(--k))}
   .table-no{font-size:calc(1.05rem*var(--k))}

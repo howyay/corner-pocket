@@ -2,7 +2,7 @@
 /* Corner Pocket, the public board (docs/public-board.md): tonight's tables, what is
    next, the bracket and tonight's table, for the hall's TV and players' phones.
    Read-only: the one control is the language toggle. It polls the API beside the page
-   every 3 s with the last ETag and never looks fresher than its last good answer. Every
+   once per POLL_MS with the last ETag and never looks fresher than its last good answer. Every
    URL is built from the mount that served the page, so one file works at "/", at
    "/board/" (--public-prefix) and at the console's own "/display".
    The core is DOM-free, so tests/test_board.js renders and ages it under node
@@ -53,11 +53,26 @@
     },
   };
 
-  const esc = value => String(value).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  /** Escapes one value for HTML. An absent value (null or undefined) becomes no text.
+      The payload comes from another program as JSON. A field that program leaves out
+      must show an empty cell. It must never show the word "undefined" on a TV.
+      Same contract as the console's own helper (annotator/app.js:17). */
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  /** Fills the {name} holes of one word of WORDS. This function is the only
+      substitution engine on the board. A caller that passes a value for an HTML hole
+      escapes that value first. Every other caller passes plain text. A key that WORDS
+      does not carry returns undefined, and esc() then makes no text of it. */
   function say(lang, key, values) {
     const text = (WORDS[lang] || WORDS.en)[key];
     return values && text ? text.replace(/\{(\w+)\}/g, (_, name) => values[name]) : text;
   }
+
+  /** The layout bucket for a count of tables in play (board.css). Each count up to
+      MAX_TABLE_COLS keeps its own name, so no count falls back to the one-column
+      default. A count above MAX_TABLE_COLS says "many". tests/test_board.js holds the
+      stylesheet to exactly this list. */
+  const MAX_TABLE_COLS = 8;
+  const countBucket = n => n <= MAX_TABLE_COLS ? String(Math.max(0, n)) : 'many';
 
   /** 'en' or 'zh': ?lang= wins, else the browser's first language. */
   function pickLang(search, languages) {
@@ -101,7 +116,7 @@
     // would be a guess. When the shared shot clock reaches main, /api/board gains a
     // per-table clock field and its face goes here, between the scores and the foot.
     return `<li class="table-card${late ? ' late' : ''}"${elapsed == null ? '' : ` data-elapsed="${Math.round(elapsed)}"`}>` +
-      `<p class="table-no">${esc(say(lang, 'tableN')).replace('{n}', `<b>${esc(m.table)}</b>`)}</p>` +
+      `<p class="table-no">${say(lang, 'tableN', {n: `<b>${esc(m.table)}</b>`})}</p>` +
       `${side(0)}${side(1)}<p class="card-foot"><span>${esc(round)}</span>${time}</p></li>`;
   }
 
@@ -265,7 +280,7 @@
       html('standings', view.standings);
       // Layout buckets for the TV, which cannot scroll (board.css).
       const n = view.tableCount;
-      $('tables').dataset.count = n <= 6 ? String(n) : n <= 8 ? '8' : 'many';
+      $('tables').dataset.count = countBucket(n);
       $('bracket').dataset.rows = view.bracketRows > 8 ? 'many' : view.bracketRows > 4 ? 'some' : 'few';
       $('standings').dataset.rows = view.standingRows > 16 ? 'many' : view.standingRows > 12 ? 'some' : 'few';
       $('board').setAttribute('aria-busy', 'false');
@@ -312,7 +327,7 @@
     doc.addEventListener('visibilitychange', () => {
       if (doc.visibilityState === 'visible') {
         keepAwake();
-        cycle();  // a phone waking up asks at once instead of showing an old board for 3 s
+        cycle();  // a phone that wakes asks at once, not after one poll interval
       }
     });
     paint();
@@ -322,5 +337,5 @@
     return {poller, paint, lang: () => lang};
   }
 
-  return {WORDS, POLL_MS, STALE_MS, esc, say, pickLang, duration, roundName, render, freshness, apiUrl, createPoller, elapsedOf, start};
+  return {WORDS, POLL_MS, MAX_TABLE_COLS, STALE_MS, esc, say, countBucket, pickLang, duration, roundName, render, freshness, apiUrl, createPoller, elapsedOf, start};
 }));
