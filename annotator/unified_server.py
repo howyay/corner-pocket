@@ -64,9 +64,12 @@ _MAX_ENROLL_BYTES = 8 * 1024 * 1024
 
 
 class APIError(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, **fields):
         super().__init__(message)
         self.status = status
+        # Extra keys for the response body, beside the operator sentence. The console acts on a
+        # fact from here. Then a rewording of the sentence cannot move that fact (round 34).
+        self.fields = fields
 
 
 def error_reference(exc):
@@ -2128,7 +2131,7 @@ class Backend:
         try:
             return self.operations().post(payload)
         except ConflictError as error:
-            raise APIError(str(error), 409) from error
+            raise APIError(str(error), 409, nightId=error.night_id) from error
         except ValueError as error:
             raise APIError(str(error)) from error
 
@@ -2832,7 +2835,7 @@ def make_handler(backend):
                     return self.json(200, backend.get(parts, query))
                 return self.file(backend.media(parts))
             except APIError as exc:
-                self.json(exc.status, {"error": operator_message(exc)})
+                self.json(exc.status, {"error": operator_message(exc), **getattr(exc, 'fields', {})})
             except ValueError as exc:
                 # Validation sentences written for the operator (and JSON decode positions).
                 self.json(400, {"error": operator_message(exc)})

@@ -15,7 +15,15 @@ from uuid import uuid4
 
 
 class ConflictError(ValueError):
-    """The caller must reload before retrying a stale mutation."""
+    """The caller must reload before retrying a stale mutation.
+
+    ``night_id`` names the night of this conflict. A caller opens that night from data. A caller
+    must not read the sentence for that identity (round 34).
+    """
+
+    def __init__(self, message, night_id=None):
+        super().__init__(message)
+        self.night_id = night_id
 
 
 def uid():
@@ -553,7 +561,8 @@ class Operations:
             # spelling of the same segment cannot slip past the ranged one.
             if line.get('datasetId') == claimed or (line.get('vodId'), line.get('startS'), line.get('endS')) == (vod, start, end):
                 raise ConflictError(f'{line.get("datasetId") or claimed} is already in the timeline as '
-                                    f'"{night.get("name") or "an unnamed event"}" ({night["id"]}); open it instead')
+                                    f'"{night.get("name") or "an unnamed event"}" ({night["id"]}); open it instead',
+                                    night_id=night['id'])
         channel = source.get('channel')
         channel = channel.strip() if isinstance(channel, str) else ''
         title = source.get('title')

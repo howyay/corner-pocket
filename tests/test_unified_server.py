@@ -647,6 +647,41 @@ class BackendTests(unittest.TestCase):
         handler.dispatch()
         self.assertEqual(json.loads(handler.wfile.getvalue()), saved)
 
+    def test_a_conflict_body_carries_the_night_identity_beside_the_sentence(self):
+        """Round 34 card 11: the console reads nightId, so the 409 body names the night as data."""
+        atomic_save(self.out / 'vods' / 'index.json',
+                    {'vods': {'tw-1234567890-452-1690': {'vod_id': '1234567890',
+                                                         'channel': 'examplechannel', 'title': 'Monday night'}}})
+        payload = {'action': 'event_backfill',
+                   'event': {'name': 'Night (2)', 'format': 'singles', 'raceTo': 7, 'tables': 4,
+                             'entrants': [{'name': 'Wanwan'}, {'name': 'Su'}],
+                             'matches': [{'round': 1, 'sides': ['Wanwan', 'Su'], 'score': [3, 1],
+                                          'winner': 'Wanwan', 'result': 'played', 'clip': [452, 1690]}]},
+                   'source': {'kind': 'vod-backfill', 'vodId': '1234567890',
+                              'datasetId': 'tw-1234567890-452-1690', 'startS': 452, 'endS': 1690,
+                              'channel': 'examplechannel', 'title': 'Monday night', 'humanReviewed': True}}
+        first = self.backend.post(['api', 'operations'], dict(payload, revision=0))
+        night = first['history'][0]
+        self.assertEqual(night['name'], 'Night (2)')
+        headers = {'Host': '127.0.0.1:8130', 'Origin': 'http://127.0.0.1:8130',
+                   'Content-Type': 'application/json'}
+        body = json.dumps(dict(payload, revision=first['revision'])).encode()
+        handler = self.handler('/api/operations', {**headers, 'Content-Length': str(len(body))}, body)
+        handler.dispatch(post=True)
+        self.assertEqual(handler.status, 409)
+        answer = json.loads(handler.wfile.getvalue())
+        # The sentence still names the night for the operator, and the identity travels beside it.
+        self.assertEqual(answer['error'],
+                         f'tw-1234567890-452-1690 is already in the timeline as "Night (2)" ({night["id"]}); '
+                         f'open it instead')
+        self.assertEqual(answer['nightId'], night['id'])
+        # A refusal that names no night says so as data, so the console offers no button.
+        stale = json.dumps({'action': 'note_add', 'revision': 0, 'text': 'Stale'}).encode()
+        handler = self.handler('/api/operations', {**headers, 'Content-Length': str(len(stale))}, stale)
+        handler.dispatch(post=True)
+        self.assertEqual(handler.status, 409)
+        self.assertIsNone(json.loads(handler.wfile.getvalue())['nightId'])
+
     def test_http_operations_static_allowlist(self):
         assets = self.root / 'annotator'
         assets.mkdir(exist_ok=True)

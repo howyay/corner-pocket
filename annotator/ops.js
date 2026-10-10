@@ -480,6 +480,11 @@ function saveBfDraft(){if(!bf)return;try{localStorage.setItem(BF_DRAFT,JSON.stri
 function clearBfDraft(){try{localStorage.removeItem(BF_DRAFT)}catch(_){}}
 function bfError(error){const detail=String(error?.message||error||'');if(/Only saved channels/i.test(detail))return t('bfChannel');if(/Not enough free disk space/i.test(detail))return t('bfDiskNo');return validationMessage(detail)}
 function bfConflictId(text){const all=[...String(text||'').matchAll(/\(([^()]+)\)/g)];return all.length?all[all.length-1][1]:''}
+// Round 34 card 11: the service sends the night as data beside the sentence. Read that key when
+// the service sends it. The parse above serves an older service only. Then a rewording of the
+// sentence cannot move the night that this console opens. An absent key and a null key differ: a
+// null key says that this conflict names no night.
+function bfConflictNight(body){const said=body&&Object.prototype.hasOwnProperty.call(body,'nightId');return said?String((body&&body.nightId)||''):bfConflictId((body&&body.error)||'')}
 function bfSeconds(text){const parts=String(text??'').trim().split(':').map(Number);if(!parts.length||parts.some(n=>!Number.isFinite(n)||n<0))return null;return Math.round(parts.reduce((total,part)=>total*60+part,0))}
 function bfPasteId(text){const m=String(text??'').trim().match(/(?:videos\/)?([0-9]{4,12})\/?$/);return m?m[1]:''}
 async function bfOpen(){bf=Object.assign(bfFresh(),{saved:readBfDraft()});render();await bfRecent();render()}
@@ -585,13 +590,13 @@ async function bfCommit(){
   try{
     const r=await fetch('/api/operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({revision:data.revision,action:'event_backfill'},payload))});
     const result=await r.json().catch(()=>({}));
-    if(r.status===409){bf.conflict=String(result.error||'');bf.nightId=bfConflictId(bf.conflict);bf.notice=t('bfSameVod');bf.busy=false;render();return}
+    if(r.status===409){bf.conflict=String(result.error||'');bf.nightId=bfConflictNight(result);bf.notice=bf.nightId?t('bfSameVod'):validationMessage(bf.conflict);bf.busy=false;render();return}
     if(!r.ok){bf.detail=String(result.error||`HTTP ${r.status}`);bf.notice=validationMessage(bf.detail);bf.busy=false;render();return}
     data=result;bf.nightId=((result.history||[]).find(n=>(n.source||{}).datasetId===bf.datasetId)||{}).id||'';bf.step='done';bf.busy=false;clearBfDraft();render();message(t('bfDone'))}
   catch(error){bf.detail=String(error?.message||error);bf.notice=validationMessage(bf.detail);bf.busy=false;render()}}
 function bfOpenTimeline(){const id=bf?.nightId;bf=null;if(id){showHidden=true;openEvents.add(id)}go('records')}
 async function bfOpenNight(){
-  const wanted=bf?.nightId||bfConflictId(bf?.conflict||''),wantedDataset=bf?.datasetId;
+  const wanted=bf?.nightId||'',wantedDataset=bf?.datasetId;
   try{await reload()}catch(_){}
   const night=(data?.history||[]).find(n=>n.id===wanted)||(data?.history||[]).find(n=>(n.source||{}).datasetId===wantedDataset);
   bf=null;if(night){showHidden=true;openEvents.add(night.id)}go('records')}
@@ -675,7 +680,7 @@ function bfReviewStep(){
   <p class="bf-unconfirmed" role="status">${unconfirmed?esc(t('bfUnconfirmed').replace('{n}',unconfirmed)):''}</p>
   ${bfDatalist()}
   <div class="row">${btn(t('bfBackMarking'),'bf-to-marking')}${btn(t('bfCommit'),'bf-commit',unconfirmed||bf.busy?'disabled':'','primary')}</div>
-  ${bf.conflict?`<p class="note err">${esc(t('bfSameVod'))} ${btn(t('bfOpen'),'bf-open-night')}</p>`:''}`}
+  ${bf.nightId?`<p class="note err">${esc(t('bfSameVod'))} ${btn(t('bfOpen'),'bf-open-night')}</p>`:''}`}
 function bfDoneStep(){return `<h2>${esc(t('bfDone'))}</h2><div class="row">${btn(t('bfOpenTimeline'),'bf-open-timeline','','primary')}</div>`}
 function bfFailedStep(){return `<h2>${esc(t(bf.step==='rejected'?'bfRejectedTitle':'bfFailedTitle'))}</h2>
   <div class="row">${btn(t('bfRetry'),'bf-retry','','primary')}${btn(t('bfOther'),'bf-choose-other')}${/Only saved channels/i.test(bf.detail||'')?`<a href="#/backroom">${esc(t('status'))}</a>`:''}</div>`}

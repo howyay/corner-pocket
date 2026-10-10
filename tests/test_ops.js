@@ -2533,11 +2533,73 @@ test('a backfilled night cannot be committed without a person confirming every r
   // the same range cannot be written twice: the server refuses and the console offers the night instead
   (()=>{h.bf=h.bfFresh();h.bf.vod={id:'1234567890',channel:'examplechannel',title:'Monday night',length_s:7200};h.bf.datasetId='tw-1234567890-452-1690';h.bf.datasetTitle='Monday night';h.bf.startS=452;h.bf.endS=1690;
     h.bfStartMarking();h.bf.clock=452;h.bfMarkStart();h.bf.clock=780;h.bfMarkEnd();h.bfToReview();h.bf.draft[0].sides=['Ann','Guest'];h.bf.draft[0].winner='Ann';h.bf.draft[0].score=[3,1];return h.bfConfirm(0)})();
-  h.context.fetch = async () => ({status: 409, ok: false, json: async () => ({error: 'A night already covers this broadcast and range (tw-1234567890-452-1690)'})});
+  // An older server names the night in the sentence only: the body carries no nightId key.
+  h.context.fetch = async () => ({status: 409, ok: false, json: async () => ({error: 'tw-1234567890-452-1690 is already in the timeline as "Monday night" (h9); open it instead'})});
   await h.bfCommit();
   assert.equal(h.bf.notice, h.t('bfSameVod'));
+  assert.equal(h.bf.nightId, 'h9', 'a server that names the night in words only is still read');
   assert.ok(h.bfScreen().includes('data-action="bf-open-night"'), 'a 409 offers the night that already exists instead of overwriting it');
   assert.equal(h.bf.draft.length, 1, 'and it keeps the marks');
+});
+// Round 34 card 11: the 409 carries the night identity as data. The console reads that key and
+// never reads an id out of the sentence, so a reworded sentence cannot misdirect it.
+function bfReview(overrides = {}) {
+  const h = harness();
+  h.render = () => {};
+  h.lang = 'en';
+  h.openEvents.clear();
+  h.bf = h.bfFresh();
+  Object.assign(h.bf, {step: 'review', datasetId: 'tw-1234567890-452-1690', startS: 452, endS: 1690,
+    datasetTitle: 'Monday night', vod: {id: '1234567890', channel: 'examplechannel', title: 'Monday night', length_s: 7200},
+    night: {name: 'Night (2)', format: 'singles', raceTo: 7, tables: 4},
+    draft: [{start: 452, end: 780, sides: ['Ann', 'Rico'], winner: 'Ann', score: [3, 1], confirmed: true}]},
+    overrides);
+  return h;
+}
+function bfRefuse(h, body) {
+  h.context.fetch = async (url, options) => (options && options.method === 'POST')
+    ? {status: 409, ok: false, json: async () => body}
+    : {status: 200, ok: true, json: async () => h.data};
+}
+const bfClick = (h, action) => h.handlers.click({target: {closest: s => s === '#review-root' ? null : {dataset: {action}}}});
+// The action table starts bfOpenNight and returns at once. The click therefore resolves before the
+// night opens. Give the console one macrotask to finish the reload and the open.
+const bfOpened = async (h, id) => {
+  for (let i = 0; i < 50 && !h.openEvents.has(id); i += 1) await new Promise(resolve => setTimeout(resolve, 0));
+  return h.openEvents.has(id);
+};
+test('a 409 names the night as data, and a night called Night (2) opens by that name (round 34 card 11)', async () => {
+  const h = bfReview();
+  h.data.history = [{id: 'h1', name: 'Night (2)', source: {datasetId: 'tw-1234567890-452-1690'}}];
+  bfRefuse(h, {error: 'tw-1234567890-452-1690 is already in the timeline as "Night (2)" (h1); open it instead', nightId: 'h1'});
+  await h.bfCommit();
+  assert.equal(h.bf.nightId, 'h1', 'the identity travels beside the sentence');
+  assert.equal(h.bf.notice, h.t('bfSameVod'));
+  assert.ok(h.bfScreen().includes('data-action="bf-open-night"'));
+  await bfClick(h, 'bf-open-night');
+  assert.ok(await bfOpened(h, 'h1'), 'the notice opens the night the server named');
+});
+test('a reworded sentence cannot misdirect the night the console opens (round 34 card 11)', async () => {
+  const h = bfReview();
+  // The night holds the whole broadcast, so matching on the dataset id cannot find it either:
+  // the id in the body is the only way there.
+  h.data.history = [{id: 'h1', name: 'Night (2)', source: {datasetId: 'tw-1234567890'}}];
+  // A sentence whose last bracket run is the range, not the night: reading words gives 452-1690.
+  bfRefuse(h, {error: '"Night (2)" (h1) already holds tw-1234567890-452-1690 (452-1690); open it instead', nightId: 'h1'});
+  await h.bfCommit();
+  await bfClick(h, 'bf-open-night');
+  assert.ok(await bfOpened(h, 'h1'), 'the console opens the night the body names, whatever the sentence says');
+});
+test('a refusal that names no night offers no button to open one (round 34 card 11)', async () => {
+  const h = bfReview();
+  h.data.history = [{id: 'h1', name: 'Night (2)', source: {datasetId: 'tw-1234567890-452-1690'}}];
+  bfRefuse(h, {error: 'State changed; reload before retrying', nightId: null});
+  await h.bfCommit();
+  assert.equal(h.bf.nightId, '', 'the body says there is no night to open');
+  assert.notEqual(h.bf.notice, h.t('bfSameVod'), 'a stale revision is not the claimed range sitting in the console');
+  const screen = h.bfScreen();
+  assert.ok(!screen.includes('data-action="bf-open-night"'), 'so no button promises to open one');
+  assert.ok(screen.includes(h.esc('State changed; reload before retrying')), 'and the operator reads the server sentence');
 });
 test('a range that is already downloaded is reused, and a typed regular counts towards their standing (7.3/6.1)', async () => {
   const h = harness();

@@ -1252,6 +1252,28 @@ class EventBackfillTests(unittest.TestCase):
         self.assertEqual([item['name'] for item in state['history']],
                          ['8-Ball Open · 周一 9/1', '8-Ball Open · 周二 9/2'])
 
+    def test_a_conflict_carries_the_night_as_data_beside_the_sentence(self):
+        """Round 34 card 11: the console opens the night from data, not from the words."""
+        first = self.backfill(event=dict(name='Night (2)'))
+        night = first['history'][0]
+        self.assertEqual(night['name'], 'Night (2)')
+        with self.assertRaises(ConflictError) as caught:
+            self.backfill()
+        error = caught.exception
+        self.assertEqual(error.night_id, night['id'], 'the identity travels beside the sentence')
+        self.assertEqual(
+            str(error),
+            f'tw-1234567890-452-1690 is already in the timeline as "Night (2)" ({night["id"]}); open it instead')
+        self.assertTrue(str(error).endswith(f'({night["id"]}); open it instead'),
+                        'the id stays the last bracketed run, so the older console still reads it')
+
+    def test_a_stale_revision_conflict_names_no_night(self):
+        self.call('note_add', text='First')
+        with self.assertRaises(ConflictError) as caught:
+            self.ops.post({'action': 'note_add', 'revision': 0, 'text': 'Stale'})
+        self.assertIsNone(caught.exception.night_id, 'a refusal that names no night says so as data')
+        self.assertNotIn('(', str(caught.exception))
+
     def test_two_consoles_backfilling_at_once_write_one_night(self):
         """One job at a time, no queue (12.5): the loser is refused, it does not wait."""
         written, refused = [], []
