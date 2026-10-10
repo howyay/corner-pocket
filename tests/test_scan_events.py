@@ -1,4 +1,5 @@
 """Coarse scan geometry and downstream consumers; no model or VOD scan."""
+import ast
 import json
 import tempfile
 import unittest
@@ -101,6 +102,52 @@ class ScanEventsTests(unittest.TestCase):
              patch('sys.argv', ['scan_events.py', '--out', tmp]):
             scan_events.main()
         scan.assert_called_once_with('data/vod_30min_260815.mp4', 1.0)
+
+    def shot_pair(self, move_mm, gap_s=1.0):
+        """Two SAM3 samples, one ball, `move_mm` apart along the table x axis."""
+        return {0.0: [{'table_mm': [400.0, 400.0]}],
+                gap_s: [{'table_mm': [400.0 + move_mm, 400.0]}]}
+
+    def test_shot_refinement_reads_its_displacement_floor(self):
+        sam3 = self.shot_pair(200.0)
+        low = scan_events.shot_refinement(sam3, shot_disp=150.0)
+        high = scan_events.shot_refinement(sam3, shot_disp=300.0)
+        self.assertEqual(len(low), 1, 'a 200 mm move is a shot at a 150 mm floor')
+        self.assertEqual(high, [], 'and no shot at a 300 mm floor')
+        self.assertEqual(low[0]['disp_mm'], 200)
+        self.assertEqual(low[0]['t'], 0.5)
+        self.assertAlmostEqual(low[0]['speed_m_s'], 0.2, places=6)
+
+    def test_the_default_floor_is_the_module_constant(self):
+        self.assertEqual(scan_events.SHOT_DISP_MM, 300.0)
+        self.assertEqual(scan_events.shot_refinement(self.shot_pair(200.0)), [],
+                         'the default floor refuses a 200 mm move')
+        self.assertEqual(len(scan_events.shot_refinement(self.shot_pair(350.0))), 1,
+                         'and accepts a 350 mm move')
+
+    def test_no_function_advertises_a_parameter_it_never_reads(self):
+        """A threshold nothing reads is a knob that does nothing."""
+        source = Path(scan_events.__file__)
+        offenders = []
+        for node in ast.walk(ast.parse(source.read_text())):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            read = {name.id for name in ast.walk(node) if isinstance(name, ast.Name)}
+            for arg in node.args.args:
+                if arg.arg not in read:
+                    offenders.append(f'{source.name}:{arg.lineno} {node.name}({arg.arg})')
+        self.assertEqual(offenders, [])
+
+    def test_main_routes_the_shot_floor_through_one_function(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            records, corners = self.scan_fixture(1280, 720)
+            with patch.object(scan_events, 'classical_scan', return_value=(records, corners)), \
+                 patch.object(scan_events, 'shot_refinement', return_value=[]) as refine, \
+                 patch('sys.argv', ['scan_events.py', '--out', tmp]):
+                scan_events.main()
+        refine.assert_called_once()
+        self.assertEqual(len(refine.call_args.args), 1, 'the floor stays inside the function')
+        self.assertEqual(refine.call_args.kwargs, {})
 
 
 if __name__ == '__main__':

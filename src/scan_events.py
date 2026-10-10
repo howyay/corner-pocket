@@ -43,7 +43,7 @@ from src.ball_gate import (CLASSICAL_BALL_MAX_AREA_960X540_PX, SAM3_BALL_MAX_ARE
 # frame and the pocket table live in table_geometry.py, their only definition
 # site, so this scan writes the same millimetres the gates and the server use.
 
-SHOT_DISP_MM = 300.0    # confirmed shot: fastest ball moves > 300 mm
+SHOT_DISP_MM = 300.0    # shot refinement floor: the fastest ball moves >= 300 mm
 MOTION_THRESH = 4.5     # table-region frame diff for a shot candidate
 MIN_BALL_AREA_720 = 14.0
 MAX_BALL_AREA_720 = CLASSICAL_BALL_MAX_AREA_960X540_PX
@@ -172,7 +172,14 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
     return results
 
 
-def build_events(records, sam3, motion_thr=MOTION_THRESH, shot_disp=SHOT_DISP_MM):
+def build_events(records, sam3, motion_thr=MOTION_THRESH):
+    """Shot candidates from the coarse scan's motion energy, pot candidates from SAM3
+    count drops.
+
+    ``motion_thr`` is the only floor this function reads.  The coarse scan holds no
+    displacement evidence, so this function must not advertise a displacement floor:
+    that floor belongs to :func:`shot_refinement`.
+    """
     events = []
     # shots: motion spikes in the classical scan
     for i, rec in enumerate(records):
@@ -196,6 +203,41 @@ def build_events(records, sam3, motion_thr=MOTION_THRESH, shot_disp=SHOT_DISP_MM
             continue
         deduped.append(e)
     return deduped
+
+
+def shot_refinement(sam3, shot_disp=SHOT_DISP_MM):
+    """Shot events from the largest ball displacement between two SAM3 samples.
+
+    ``shot_disp`` is the displacement floor in millimetres: a pair of samples whose
+    fastest ball travelled less than that is not a shot.  This function is the only
+    reader of :data:`SHOT_DISP_MM`, so a caller can test the floor without a scan.
+    """
+    events = []
+    times = sorted(sam3)
+    for i in range(len(times) - 1):
+        t1, t2 = times[i], times[i + 1]
+        if t2 - t1 > 3.5:
+            continue
+        b1, b2 = sam3[t1], sam3[t2]
+        if not b1 or not b2:
+            continue
+        best = None
+        for a in b1:
+            for c in b2:
+                d = np.hypot(a["table_mm"][0] - c["table_mm"][0],
+                             a["table_mm"][1] - c["table_mm"][1])
+                if best is None or d > best[0]:
+                    best = (d, a, c)
+        if best and best[0] >= shot_disp:
+            events.append({
+                "t": round((t1 + t2) / 2, 1),
+                "type": "shot",
+                "disp_mm": round(best[0]),
+                "speed_m_s": round(best[0] / max(0.01, t2 - t1) / 1000.0, 1),
+                "ball_from": best[1]["table_mm"],
+                "ball_to": best[2]["table_mm"],
+            })
+    return events
 
 
 def main():
@@ -259,37 +301,14 @@ def main():
     print(f"phase 2 done in {time.time()-t0:.0f}s", flush=True)
 
     # refine shot events: displacement of the fastest ball between bracketing SAM3 frames
-    times = sorted(sam3)
-    events = []
-    for i in range(len(times) - 1):
-        t1, t2 = times[i], times[i + 1]
-        if t2 - t1 > 3.5:
-            continue
-        b1, b2 = sam3[t1], sam3[t2]
-        if not b1 or not b2:
-            continue
-        best = None
-        for a in b1:
-            for c in b2:
-                d = np.hypot(a["table_mm"][0] - c["table_mm"][0],
-                             a["table_mm"][1] - c["table_mm"][1])
-                if best is None or d > best[0]:
-                    best = (d, a, c)
-        if best and best[0] >= SHOT_DISP_MM:
-            events.append({
-                "t": round((t1 + t2) / 2, 1),
-                "type": "shot",
-                "disp_mm": round(best[0]),
-                "speed_m_s": round(best[0] / max(0.01, t2 - t1) / 1000.0, 1),
-                "ball_from": best[1]["table_mm"],
-                "ball_to": best[2]["table_mm"],
-            })
+    events = shot_refinement(sam3)
     # pot events: count drops between adjacent SAM3-confirmed samples, with
     # OCCLUSION AWARENESS: a sample is untrustworthy when a person blocks the
     # table (cloth area collapses).  Drops touching an occluded sample are not
     # pots; the running minimum is only updated from trustworthy samples, so a
     # ball hidden for one or more samples does not register as potted.
     counts = {t: len(b) for t, b in sam3.items()}
+    times = sorted(sam3)
     rec_by_t = {r["t"]: r for r in records}
     area_ref = float(np.median([r["cloth_area"] for r in records]))
 
