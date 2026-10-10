@@ -7,6 +7,10 @@
 -- an INSERT, a DELETE, and even an UPDATE that rewrites identical values - while any
 -- number of reads leave it byte-identical. Run it before and after a read-only smoke
 -- and compare with diff: no difference means nothing was written.
+--
+-- The table list below is a hand copy of db/migrations, and SQL cannot read that
+-- directory: run tools/write_fingerprint_coverage.py after a migration, and
+-- tests/test_write_fingerprint.py fails the suite when the two lists differ.
 SELECT 'ops_meta' AS tbl, count(*) AS n, md5(coalesce(string_agg(xmin::text || ':' || x::text, ',' ORDER BY x::text), '')) AS fp FROM ops_meta x
 UNION ALL SELECT 'players', count(*), md5(coalesce(string_agg(xmin::text || ':' || x::text, ',' ORDER BY x::text), '')) FROM players x
 UNION ALL SELECT 'tournaments', count(*), md5(coalesce(string_agg(xmin::text || ':' || x::text, ',' ORDER BY x::text), '')) FROM tournaments x
