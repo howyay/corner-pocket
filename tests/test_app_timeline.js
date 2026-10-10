@@ -276,21 +276,35 @@ const ADAPTER_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'annotator', '
 const ROSTER = [{id:'p1', name:'Ana', rating:78, status:'Active', statusText:'Active'},
                 {id:'p2', name:'Bo', rating:52, status:'Visitor', statusText:'Visitor'}];
 // The panel for one event: the numbers behind a detection gate, as the operator reads them.
-function stageEventPanel(context, item) {
+function stageEventPanel(context, item, options) {
   return stagePanel(context, visionSnapshot({selection:{kind:'event', event:item},
-    events:{items:[item], index:0, reviewed:0}}));
+    events:{items:[item], index:0, reviewed:0}}), options);
 }
 // The identity column for a person track: the link block lives in that panel.
-function stageLinkPanel(context, snap) {
+function stageLinkPanel(context, snap, options) {
   const track = snap.persons.track;
   return stagePanel(context, visionSnapshot({
     selection:{kind:'person', track, person:{track_id:track, cluster_id:null, player_id:null, bound_evidence:null}},
-    persons:{tracks:[], track, windows:[], win:null, status:'', predictions:null, identity:snap.persons.identity}}));
+    persons:{tracks:[], track, windows:[], win:null, status:'', predictions:null, identity:snap.persons.identity}}), options);
 }
 // The rail card for one event at a known confirmation tier.
-function stageTierCard(context, tier) {
+function stageTierCard(context, tier, options) {
   return stageRail(context, visionSnapshot({eventFilter:'all', selection:{}, focus:'events',
-    events:{items:[{id:9, type:'shot', t:9.0, color:'white', tier}], index:0, reviewed:0}}));
+    events:{items:[{id:9, type:'shot', t:9.0, color:'white', tier}], index:0, reviewed:0}}), options);
+}
+// The adapter's COPY table, parsed by the JS engine the way the stage parses it.
+// A translation is proven by the string a render paints, never by a substring of
+// the source: a key can sit in the table and still never reach a reader.
+const ADAPTER_COPY = (() => {
+  const start = ADAPTER_SOURCE.indexOf('const COPY = {');
+  const literal = ADAPTER_SOURCE.slice(ADAPTER_SOURCE.indexOf('{', start), ADAPTER_SOURCE.indexOf('\n};', start) + 2);
+  return vm.runInNewContext(`(${literal})`);
+})();
+// One assertion per group of copy keys: every key's 中 string is on screen in a
+// render this test already made. A key that only lives in the table fails here.
+function assertCopyPainted(painted, keys, label) {
+  const missing = keys.filter(key => !painted.includes(ADAPTER_COPY.zh[key]));
+  assert.deepStrictEqual(missing, [], `${label}: these keys never reached a 中 render`);
 }
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
@@ -975,10 +989,11 @@ test('the adapter localizes engine state, keeps one scrub range and one action f
   const shell = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.js'), 'utf8');
   // 1. the scrub range is driven like the frame field, not left at max=0
   // R24 item 1: the range is a time control, so it publishes the clip's duration in seconds.
-  assertSourceContract('annotator/vision-stage.js', /scrub\.getAttribute\('max'\) !== max/, 'the scrub range must publish the clip duration');
-  assertSourceContract('annotator/vision-stage.js', 'Number(s.frame.duration) || 0', 'the scrub range follows the frame duration');
-  assertSourceContract('annotator/vision-stage.js', "scrub.setAttribute('max', max)", 'the scrub range follows the frame duration');
-  assertSourceContract('annotator/vision-stage.js', "scrub.setAttribute('step', '0.1')", 'the scrub steps in tenths of a second');
+  // Driven, not read: one render answers for the duration, the step and the thumb.
+  const scrub = stageSeam(adapterBox(), visionSnapshot({frame: {duration: 1800, t: 42.4}})).mount.querySelector('#vs-scrub');
+  assert.strictEqual(scrub.attributes.max, '1800', 'the scrub range publishes the clip duration in seconds');
+  assert.strictEqual(scrub.attributes.step, '0.1', 'the scrub steps in tenths of a second');
+  assert.strictEqual(scrub.value, '42.4', 'and the thumb follows the time the frame is at');
   // 2. engine-built strings render in the active language
   assertSourceContract('annotator/vision-stage.js', 'engineText(s.notice.text)', 'notices localize at render');
   // the reserved footer height is measured, never hardcoded
@@ -1012,10 +1027,8 @@ test('every adapter string ships in both languages', () => {
     assert.notStrictEqual(table.zh[key], table.en[key], `${key} is untranslated`);
     assert.ok(/[\u4e00-\u9fff]/.test(table.zh[key]), `${key} has no Chinese copy`);
   }
-  const zhBlock = adapter.slice(adapter.indexOf('zh: {'));
-  assertSourceContract('annotator/vision-stage.js', '线索', 'the zh copy table carries this string', {between:['zh: {']});
-  assertSourceContract('annotator/vision-stage.js', '启动尝试', 'the zh copy table carries this string', {between:['zh: {']});
-  assertSourceContract('annotator/vision-stage.js', '已过期', 'the zh copy table carries this string', {between:['zh: {']});
+  // The three sample strings live in keys the loop above already proved carry
+  // Chinese copy ('cues', 'startFailed' and 'stale'), so no source read is owed.
 });
 
 test('pocket labels are position words in both languages, never rail terms', () => {
@@ -1738,10 +1751,11 @@ test('the cue card and the inspector show the numbers behind a detection gate', 
   const shotFacts = stageEventPanel(context, shot);
   assert.ok(shotFacts.includes('Re-measured move') && shotFacts.includes('777 mm · white'), 'the re-measured move reaches the inspector');
   assert.ok(shotFacts.includes('387 px'), 'so does the claim-vs-measured gap');
-  const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
-  for (const key of ['gateCheck', 'gateConfirmed', 'gateRejected', 'gateCensus', 'gateVanish', 'gateMove'])
-    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
-  assertSourceContract('annotator/vision-stage.js', 'gateEvidence(e)', 'the cue rail renders the gate numbers on the card');
+  // The gate vocabulary reaches a 中 card, not only the copy table. The rail's
+  // own gate numbers are already proven above by the '3→2' the card paints.
+  const zhCard = item => stageRail(context, visionSnapshot({eventFilter:'all', selection:{}, focus:'events', events:{items:[item], index:0, reviewed:0}}), {lang:'zh'});
+  assertCopyPainted(zhCard(pot) + zhCard(shot) + stageEventPanel(context, pot, {lang:'zh'}) + stageEventPanel(context, shot, {lang:'zh'}),
+    ['gateCheck', 'gateConfirmed', 'gateRejected', 'gateCensus', 'gateVanish', 'gateMove'], 'the gate card and inspector');
 });
 
 test('round 28 / owner item: the link block lists this frames other identities, face first in the wording', () => {
@@ -1763,10 +1777,12 @@ test('round 28 / owner item: the link block lists this frames other identities, 
     'with no face on the frame the note says so instead of promising one');
   assert.strictEqual(stageLinkPanel(context, {persons:{track:7, identity:[{track_id:7, cluster_id:11}]}}).includes('data-vs-link="1"'), false,
     'alone on the frame there is nothing to link to, so no dead picker is drawn');
-  const zh = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
-  for (const key of ['linkTitle', 'linkTarget', 'linkAction', 'linkHint', 'linkNoFace', 'thisTrack', 'unnamed', 'hasFace'])
-    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\u4e00-\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
-  const engine = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
+  // Every label the block uses reaches a 中 reader: the three identify rows
+  // cover thisTrack, hasFace and unnamed, and the no-face state covers linkNoFace.
+  const zhPainted = stageLinkPanel(context, snap, {lang:'zh'})
+    + stageLinkPanel(context, {persons:{track:7, identity:[{track_id:7, cluster_id:11}, {track_id:9, cluster_id:13, face_bbox:null}]}}, {lang:'zh'});
+  assertCopyPainted(zhPainted, ['linkTitle', 'linkTarget', 'linkAction', 'linkHint', 'linkNoFace', 'thisTrack', 'unnamed', 'hasFace'],
+    'the link block');
 });
 
 test('the confirmation tier is badged on the card and in the inspector, in both languages', () => {
@@ -1797,9 +1813,12 @@ test('the confirmation tier is badged on the card and in the inspector, in both 
   assert.ok(rail.includes('data-vs-value="geometry"') && rail.includes('data-vs-value="window"'),
     'and offers a filter for each tier');
   assert.ok(rail.match(/vs-card tier-window/), 'the card itself is marked with its tier');
-  const zhTiers = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
-  for (const key of ['tierGeometry', 'tierWindow', 'tierLabel', 'noPotsMeasured'])
-    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
+  // The tier vocabulary reaches a 中 reader: the badge on the card, the tier
+  // filter on the rail, and the verdict block in the inspector.
+  const zhRail = stageRail(context, {eventFilter:'all', selection:{}, focus:'events', events:{items:[shot, served], index:0, reviewed:0},
+                            balls:{items:[], index:0}, persons:{tracks:[], windows:[], win:null}, frame:{}, source:{}, live:{}}, {lang:'zh'});
+  assertCopyPainted(stageTierCard(context, 'geometry', {lang:'zh'}) + stageTierCard(context, 'window', {lang:'zh'}) + zhRail + stageEventPanel(context, shot, {lang:'zh'}),
+    ['tierGeometry', 'tierWindow', 'tierLabel'], 'the confirmation tier');
 });
 
 test('an emptied queue explains itself instead of showing a bare list', () => {
@@ -1828,10 +1847,12 @@ test('an emptied queue explains itself instead of showing a bare list', () => {
   assert.ok(!untiered.includes('data-vs-value="geometry"'), 'without a tiered event they are not offered');
   assert.ok(!untiered.includes('data-vs-tier='), 'and no badge is invented');
 
-  const zhShots = adapterSource.match(/\n  zh: \{[\s\S]*?\n  \}/)[0];
-  for (const key of ['noShotsMeasured', 'noPotsMeasured', 'tierGeometry', 'tierWindow'])
-    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
-  assertSourceContract('annotator/vision-stage.js', /noShotsMeasured:'[^']*遮挡/, 'the 中 reason names the occlusion', {between:['zh: {']});
+  // Both empty reasons reach a 中 reader, and the 中 shot reason names the
+  // occlusion rather than only saying that nothing survived.
+  assertCopyPainted(stageRail(context, emptyQueue, {lang:'zh'}) + stageRail(context, {...emptyQueue, eventFilter:'pot'}, {lang:'zh'})
+    + stageRail(context, {...emptyQueue, events:{items:[shot], index:0, reviewed:0}}, {lang:'zh'}),
+    ['noShotsMeasured', 'noPotsMeasured'], 'the empty queue');
+  assert.ok(ADAPTER_COPY.zh.noShotsMeasured.includes('遮挡'), 'the 中 reason names the occlusion');
 });
 
 test('the pots tab explains its empty state instead of showing a bare list', () => {
@@ -1970,9 +1991,6 @@ test('the source settings open from the Source chip and are no longer the rail e
 });
 
 test('the rail empty state and the labelling copy render in 中 as well', () => {
-  for (const key of ['railEmpty', 'noSelection', 'thisFrame', 'whichRegular', 'guestOption', 'guestName', 'saveBinding', 'clearBinding', 'notAPlayer',
-                     'bindNone', 'bindLegacy', 'bindGuest', 'boundManual', 'boundAuto', 'bindIdentityHint', 'bindGuestHint', 'ignoreHint'])
-    assertSourceContract('annotator/vision-stage.js', new RegExp(`${key}:'[^']*[\\u4e00-\\u9fff]`), `${key} is translated in 中`, {between:['zh: {']});
   const context = adapterSeam('zh', ROSTER);
   const none = context.panel(visionSnapshot());
   assert.ok(none.includes('先选一条线索、球、人物或锚点，再开始标注。'), 'the rail empty state is Chinese');
@@ -1983,8 +2001,24 @@ test('the rail empty state and the labelling copy render in 中 as well', () => 
   const legacy = context.panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
                                                  persons:{tracks:[{id:2, seed:'A'}], track:2, windows:[], win:'68-94', status:'', predictions:null}}));
   assert.ok(legacy.includes('选手 A') && legacy.includes('旧版 A/B 种子'), 'a legacy A seed reads as 选手 A in 中 too');
+  // The other identities on this frame: a manual binding, a face binding and one
+  // that is not a player. Between them they carry every remaining label word.
+  const linked = context.panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7}},
+    persons:{tracks:[{id:2, seed:null}], track:2, windows:[], win:'68-94', status:'', predictions:null,
+             identity:[{track_id:3, cluster_id:8, player_id:'Ana', face_sim:0.9, bound_evidence:{source:'bind_face'}},
+                       {track_id:4, cluster_id:9, player_id:'Bo', bound_evidence:{source:'explicit_assign'}},
+                       {track_id:5, cluster_id:10, player_id:null}]}}));
+  // A bound track states how it was bound, and what Save will do with it: the
+  // two evidence sources are the two words, and a cluster makes the hint real.
+  const manual = context.panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7, player_id:'p1', bound_evidence:{source:'explicit_assign'}}}}));
+  const auto = context.panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:7, player_id:'p2', bound_evidence:{source:'bind_face'}}}}));
   const en = adapterSeam('en', ROSTER).panel(visionSnapshot());
   assert.ok(en.includes('Select a cue, a ball, a person or an anchor to label it.'), 'EN keeps its own copy, not a translation of 中');
+  // Every labelling word is on screen in 中, not only in the copy table.
+  assertCopyPainted(none + person + legacy + linked + manual + auto,
+    ['railEmpty', 'noSelection', 'thisFrame', 'whichRegular', 'guestOption', 'guestName', 'saveBinding', 'clearBinding', 'notAPlayer',
+     'bindNone', 'bindLegacy', 'bindGuest', 'boundManual', 'boundAuto', 'bindIdentityHint', 'bindGuestHint', 'ignoreHint'],
+    'the labelling copy');
 });
 
 test('an inference run says it was not stored, and a stored file is labelled as an earlier run', () => {
@@ -2805,7 +2839,7 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
   assertSourceContract('annotator/vision-stage.js', 'setSelectionRange', 'and a focused field keeps its focus and caret across that rebuild');
 });
 
-test('F2: the Anchors chip reads off until anchors are drawn, and one click loads them', () => {
+test('F2: one click on the anchors layer loads them, and a drawn chip says so to a screen reader', () => {
   const calls = [];
   let s = visionSnapshot({dataset:'vod30', overlay:{cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true},
                           anchors:{loaded:false, pts:[], index:0}, events:{items:[], index:0, reviewed:0}, balls:{items:[], index:0},
@@ -2815,8 +2849,17 @@ test('F2: the Anchors chip reads off until anchors are drawn, and one click load
                   loadAnchors: t => { calls.push('load ' + t); return Promise.resolve(); },
                   selectAnchor() {}, seekTime() {}};
   const context = adapterSeam('en', ROSTER, {review});
-  assertSourceContract('annotator/vision-stage.js', "(key !== 'anchors' || s.anchors.loaded)", 'the chip is on only when anchors are loaded');
-  assertSourceContract('annotator/vision-stage.js', 'aria-pressed="${shown ? \'true\' : \'false\'}"', 'and says so to a screen reader');
+  // Round 21 keeps four layer chips: anchors and events are not toggles any more,
+  // so the pressed state is read off a chip the console really draws.
+  const chip = value => (context.layers(s).match(new RegExp(`<button[^>]*data-vs-value="${value}"[^>]*>`)) || [''])[0];
+  assert.ok(chip('cloth').includes('aria-pressed="true"') && chip('cloth').includes('vs-layer on'),
+    'a switched-on layer says on, in its class and to a screen reader');
+  s.overlay.cloth = false;
+  assert.ok(chip('cloth').includes('aria-pressed="false"') && !chip('cloth').includes('vs-layer on'),
+    'and says off the moment the layer is off');
+  s.overlay.cloth = true;
+  assert.ok(!context.layers(s).includes('data-vs-value="anchors"'),
+    'no anchors chip exists to read off, and the click below still loads them');
   context.press(s, 'layer', 'anchors');
   assert.deepStrictEqual(calls, ['load 70'], 'the first click loads the anchors; it does not switch the layer off');
   assert.strictEqual(s.overlay.anchors, true, 'and the layer stays on');
@@ -3062,19 +3105,48 @@ test('round 31 / owner item 3: the scrub bubble states the same time the strip d
 
 
 test('round 31 / owner item 3: a point chosen while a frame decodes is queued, never dropped', () => {
-  const engine = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
-  // The comments in these functions name the guard they removed, so the checks read code only.
-  const code = text => text.replace(/\/\/[^\n]*/g, '');
-  const seekBody = code(engine.slice(engine.indexOf('function seek(n)'), engine.indexOf('function seekTime(t)')));
-  assertSourceContract('annotator/app.js', "if (state.dirty && !confirm(text('Discard unsaved changes?'))) return false;", 'the unsaved-changes half of the guard still refuses a seek', {comments:true, between:['function seek(n)', 'function seekTime(t)']});
-
-  assertSourceContract('annotator/app.js', 'canLeave()', 'canLeave() refuses while a decode runs, which dropped the point the operator chose', {comments:true, between:['function seek(n)', 'function seekTime(t)'], absent: true});
-
-  assertSourceContract('annotator/app.js', 'if (state.busy) { state.pendingSeek = n; notify(); return true; }', 'a seek during a decode is queued and the running load drains it', {comments:true, between:['function seek(n)', 'function seekTime(t)']});
-
-  const stepBody = code(engine.slice(engine.indexOf('function stepFrame(delta)'), engine.indexOf('function setPlaying(')));
-  assertSourceContract('annotator/app.js', 'canLeave()', 'a step during a decode is queued too, so a held step walks', {comments:true, between:['function stepFrame(delta)', 'function setPlaying('], absent: true});
-  assertSourceContract('annotator/app.js', 'state.pendingSeek ?? state.frame', 'a step counts from the point already queued', {comments:true, between:['function stepFrame(delta)', 'function setPlaying(']});
+  // Driven through the handle: a seek that lands while a frame decodes must be
+  // queued and must be the point that loads next, and a held step must count from
+  // that queued point. No source read: a call answers the question the code did.
+  const realm = engineRealm({
+    '/api/datasets': {json: {datasets: [{id: 'vod30', label: 'VOD 30'}]}},
+    '/api/video': {json: {dataset: 'vod30', fps: 25, frame_count: 45000, duration: 1800, width: 1920, height: 1080}},
+    '/api/frame': {headers: {'X-Frame-Width': '1280', 'X-Frame-Height': '720'}},
+    '/api/frame-result': {json: {correction: null, inference: null}},
+    '/api/identity/frame': {json: {}},
+    '/api/unified': {json: {}},
+    '/api/vod30/anchors': {json: {}},
+    '/api/vod30/seeds': {json: {seeds: {}}},
+    '/api/vod30/tracklets': {json: {windows: [], seeds: {}, predictions: null}},
+  });
+  assert.strictEqual(realm.seam.vmeta().duration, 1800, 'the realm can seek at all');
+  // One turn, so the first decode is still open when the second point arrives.
+  const seen = realm.run(`(() => {
+    const seam = globalThis.seam, api = window.CornerPocketReview;
+    api.seek(10);
+    const busy = seam.busy();
+    const accepted = api.seek(240);
+    const queued = seam.pendingSeek();
+    const stepped = api.stepFrame(1);
+    return [busy, accepted, queued, stepped, seam.pendingSeek()];
+  })()`);
+  assert.deepStrictEqual(Array.from(seen), [true, true, 240, true, 241],
+    'a seek during a decode is accepted and queued, and a held step counts from the queued point');
+  realm.run('0;');
+  assert.ok(realm.paths().includes('/api/frame?dataset=vod30&frame=241'),
+    'the queued point is the one that loads once the decode ends');
+  assert.strictEqual(realm.seam.pendingSeek(), null, 'and the queue is empty again');
+  // The unsaved-changes half of the guard is the only refusal left, and it is
+  // exercised by the call rather than read out of the function body.
+  realm.realm.confirm = () => false;
+  realm.run('globalThis.seam.scene({dirty: true}); window.CornerPocketReview.activate();');
+  assert.strictEqual(realm.review().seek(60), false, 'the unsaved-changes half of the guard still refuses a seek');
+  assert.ok(realm.seam.dirty(), 'and the refused seek changed nothing');
+  assert.strictEqual(realm.review().canLeave(), false, 'an active engine with unsaved edits refuses to leave');
+  realm.realm.confirm = () => true;
+  realm.run('globalThis.seam.scene({dirty: false});');
+  assert.strictEqual(realm.review().seek(60), true, 'a confirmed discard lets the same seek through');
+  assert.ok(!realm.seam.dirty(), 'and the accepted seek clears the edits it discarded');
 });
 
 test('the engine mounts a stub DOM and a stub network through one seam', () => {
@@ -3157,6 +3229,94 @@ test('the stage publishes the shell state through the option it was handed, not 
   assert.deepStrictEqual(last(), {labelOverlay: false, vsPanel: false},
     'with nothing selected the shell is told that neither the overlay nor the column is used');
   assert.strictEqual(context.window.OpsConsole, undefined, 'and the stage never needed the console global to say it');
+});
+
+test('candidate 8: the engine snapshot is composed from named groups, and no key is declared twice', () => {
+  // The snapshot was one 72-line expression, so two duplicate keys hid inside its
+  // corrections literal and no test could see them: an object literal collapses a
+  // repeated key. The groups below are the fix. The runtime half reads the published
+  // key order; the structural half reads the builder bodies, because a duplicate key
+  // is invisible to every runtime reading by construction.
+  const GROUPS = [
+    ['snapshotDataset', ['lang', 'dataset', 'datasets', 'set', 'sets']],
+    ['snapshotFrame', ['frame']],
+    ['snapshotPlayback', ['playback']],
+    ['snapshotSource', ['source']],
+    ['snapshotLive', ['live']],
+    ['snapshotLayers', ['overlay', 'drawn', 'loading']],
+    ['snapshotSelection', ['selection', 'focus', 'eventFilter']],
+    ['snapshotDetectors', ['detectors', 'eventsAnalysed']],
+    ['snapshotEvents', ['events']],
+    ['snapshotVerdict', ['verdictDraft']],
+    ['snapshotBalls', ['balls']],
+    ['snapshotPersons', ['persons']],
+    ['snapshotAnchors', ['anchors']],
+    ['snapshotCorrections', ['corrections']],
+    ['snapshotCloth', ['cloth']],
+    ['snapshotEnroll', ['enroll']],
+    ['snapshotReceipts', ['receipts']],
+    ['snapshotStatus', ['notice', 'busy', 'dirty']],
+  ];
+  // The keys a builder declares at the top level of the object it returns. A key only
+  // counts at nesting depth 1, so the fields inside a group are not mistaken for keys.
+  const topKeys = name => {
+    const start = source.indexOf(`function ${name}() {`);
+    assert.ok(start >= 0, `${name} is one named builder`);
+    const body = source.slice(source.indexOf('return {', start) + 'return '.length);
+    const keys = [];
+    let depth = 0;
+    for (let i = 0; i < body.length; i += 1) {
+      const ch = body[i];
+      if (ch === '{' || ch === '[' || ch === '(') depth += 1;
+      else if (ch === '}' || ch === ']' || ch === ')') {
+        depth -= 1;
+        if (depth === 0) break;
+      } else if (ch === ':' && depth === 1) {
+        const before = body.slice(0, i).match(/([A-Za-z_$][\w$]*)\s*$/);
+        if (before) keys.push(before[1]);
+      }
+    }
+    return keys;
+  };
+  const declared = [];
+  for (const [name, keys] of GROUPS) {
+    const found = topKeys(name);
+    same(found, keys);                       // a renamed or moved key fails here
+    declared.push(...found);
+  }
+  // Every object literal in every builder, and the key names each one declares. Two
+  // keys of the same name in one literal is the defect this refactor removes, so the
+  // scan reports the pairs rather than trusting the runtime, which cannot see them.
+  const duplicates = [];
+  const scan = name => {
+    const start = source.indexOf(`function ${name}() {`);
+    const body = source.slice(source.indexOf('return {', start) + 'return '.length);
+    const stack = [];
+    for (let i = 0; i < body.length; i += 1) {
+      const ch = body[i];
+      if (ch === '{') stack.push(new Set());
+      else if (ch === '}') {
+        stack.pop();
+        if (!stack.length) break;
+      } else if (ch === ':' && stack.length) {
+        const before = body.slice(0, i).match(/([A-Za-z_$][\w$]*)\s*$/);
+        if (!before) continue;
+        const head = body.slice(0, i - before[0].length).replace(/\s+$/, '');
+        if (!/[\{,]/.test(head.slice(-1))) continue;      // a ternary is not a key
+        const open = stack[stack.length - 1];
+        if (open.has(before[1])) duplicates.push(`${name}: ${before[1]}`);
+        open.add(before[1]);
+      }
+    }
+  };
+  for (const [name] of GROUPS) scan(name);
+  same(duplicates, []);                      // a re-introduced duplicate key fails here
+  // The composer spreads exactly these groups, once each, in this order.
+  const composer = source.slice(source.indexOf('function snapshot() {'));
+  const spread = composer.slice(0, composer.indexOf('\n}')).match(/\.\.\.([A-Za-z_$][\w$]*)\(\)/g) || [];
+  same(spread.map(token => token.slice(3, -2)), GROUPS.map(([name]) => name));
+  // And the published snapshot carries exactly those keys, in exactly that order.
+  same(Object.keys(sandbox.window.CornerPocketReview.snapshot()), declared);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

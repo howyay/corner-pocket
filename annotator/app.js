@@ -1810,8 +1810,44 @@ function deactivate() {
   root?.querySelectorAll('video').forEach(video => video.pause());
 }
 // ---- i18n: engine-owned stage strings, EN/中 parity ----------------------
-function snapshot() {
+// One named builder per group. A builder returns its own copy of one slice of
+// the engine state, so every key is declared in exactly one place: a duplicate
+// key cannot hide inside a long literal, and a reader can name the group it
+// draws. The builders compose in snapshot() below, in published key order.
+function snapshotDataset() {
+  return {
+    lang: root?.lang || 'en',
+    dataset: state.dataset, datasets: state.datasets, set: state.set, sets: state.sets
+  };
+}
+function snapshotFrame() {
   const meta = state.vmeta;
+  return {
+    frame: {index: state.frame, t: state.t, fps: meta?.fps ?? 0, count: meta?.frame_count ?? 0, duration: meta?.duration ?? 0, kind: meta?.timestamp_kind || '', has: !!state.shotUrl, decoding: state.decoding, playing: state.playing, rate: playbackRate(), video: !!state.playback.on}
+  };
+}
+function snapshotPlayback() {
+  return {
+    playback: {on: !!state.playback.on, playing: videoPlaying(), loops: state.playback.loops || 0, from: state.playback.from || 0, to: state.playback.to || 0, event: state.playback.event ? state.playback.event.id : null, before: CLIP_BEFORE_S, after: CLIP_AFTER_S}
+  };
+}
+function snapshotSource() {
+  const meta = state.vmeta;
+  return {
+    source: {kind: state.source.kind, label: state.source.kind === 'vod' ? `${state.dataset} · ${meta ? `${Math.round(meta.duration)} s · ${Number(meta.fps).toFixed(3)} fps` : '—'}` : state.source.label, channel: state.source.channel}
+  };
+}
+function snapshotLive() {
+  return {
+    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, last_error: state.live.last_error || null, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null}
+  };
+}
+function snapshotLayers() {
+  return {
+    overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading}
+  };
+}
+function snapshotSelection() {
   const selected = {
     none: state.sel.kind === 'none',
     kind: state.sel.kind,
@@ -1824,15 +1860,16 @@ function snapshot() {
     box: state.sel.kind === 'box' ? state.sel.box : -1
   };
   return {
-    lang: root?.lang || 'en',
-    dataset: state.dataset, datasets: state.datasets, set: state.set, sets: state.sets,
-    frame: {index: state.frame, t: state.t, fps: meta?.fps ?? 0, count: meta?.frame_count ?? 0, duration: meta?.duration ?? 0, kind: meta?.timestamp_kind || '', has: !!state.shotUrl, decoding: state.decoding, playing: state.playing, rate: playbackRate(), video: !!state.playback.on},
-    playback: {on: !!state.playback.on, playing: videoPlaying(), loops: state.playback.loops || 0, from: state.playback.from || 0, to: state.playback.to || 0, event: state.playback.event ? state.playback.event.id : null, before: CLIP_BEFORE_S, after: CLIP_AFTER_S},
-    source: {kind: state.source.kind, label: state.source.kind === 'vod' ? `${state.dataset} · ${meta ? `${Math.round(meta.duration)} s · ${Number(meta.fps).toFixed(3)} fps` : '—'}` : state.source.label, channel: state.source.channel},
-    live: {state: state.live.state, error: state.live.error, frame_age_ms: state.live.frame_age_ms, receive_to_result_ms: state.live.receive_to_result_ms, skipped: state.live.skipped, seq: state.live.seq, stale: state.live.stale, attempt: state.live.attempt, last_error: state.live.last_error || null, detectors: state.live.detectors, stages: state.live.stages || [], source: state.live.source || null, replay: state.live.replay || null},
-    overlay: {...state.overlay}, drawn: {...state.drawn}, loading: {...state.loading},
-    selection: selected, focus: state.focus, eventFilter: state.eventFilter,
-    detectors: {...state.detectors}, eventsAnalysed: state.eventsAnalysed !== false,
+    selection: selected, focus: state.focus, eventFilter: state.eventFilter
+  };
+}
+function snapshotDetectors() {
+  return {
+    detectors: {...state.detectors}, eventsAnalysed: state.eventsAnalysed !== false
+  };
+}
+function snapshotEvents() {
+  return {
     events: {items: state.events.map(e => ({id: e.id, type: e.type, t: e.t, nearest_pocket: e.nearest_pocket ?? null, nearest_pocket_text: e.nearest_pocket ? pocketText(e.nearest_pocket) : null, evidence: e.evidence ?? null, verdict: state.annotations[String(e.id)]?.verdict || '', annotation: state.annotations[String(e.id)] || null,
       // Everything the inspector and the stage need to show what was detected:
       // the scan's own millimetres, and the server's projection of them (absent
@@ -1862,24 +1899,70 @@ function snapshot() {
     // Verdicts count only while their event is still in the queue: a verdict
     // recorded against a cue the detection gates later dropped must not read as
     // "reviewed" next to a queue that no longer holds it.
-    reviewed: state.events.filter(e => state.annotations[String(e.id)]?.verdict).length},
-    verdictDraft: state.verdictDraft ?? null,
-    balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels},
-    persons: {identity: (state.identity?.persons || []).map(p => ({track_id: p.track_id, cluster_id: p.cluster_id, player_id: p.player_id, face_sim: p.face_sim, bound_evidence: p.bound_evidence, face_bbox: p.face_bbox || null})), win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status},
-    anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])},
-    corrections: {inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff, tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, inferRunning: state.inferRunning, inferStatus: state.inferStatus, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
+      reviewed: state.events.filter(e => state.annotations[String(e.id)]?.verdict).length}
+  };
+}
+function snapshotVerdict() {
+  return {
+    verdictDraft: state.verdictDraft ?? null
+  };
+}
+function snapshotBalls() {
+  return {
+    balls: {set: state.set, items: state.balls.items.slice(0, 400).map(i => ({file: i.file, t: i.t, score: i.score ?? null, ctx: i.ctx ?? null, label: state.balls.labels[i.file] ?? null})), index: state.balls.index, labels: state.balls.labels}
+  };
+}
+function snapshotPersons() {
+  return {
+    persons: {identity: (state.identity?.persons || []).map(p => ({track_id: p.track_id, cluster_id: p.cluster_id, player_id: p.player_id, face_sim: p.face_sim, bound_evidence: p.bound_evidence, face_bbox: p.face_bbox || null})), win: state.persons.win, windows: state.persons.windows, tracks: state.persons.tracks.map(t => ({id: t.id, label: t.label ?? null, box: t.box ?? null, seed: Object.values(state.persons.seeds || {}).find(s => s.win === state.persons.win && String(s.track_id) === String(t.id))?.label ?? null})), track: state.persons.track, predictions: state.persons.predictions, status: state.persons.status}
+  };
+}
+function snapshotAnchors() {
+  return {
+    anchors: {...state.anchors, points: state.anchors.pts.map(p => [...p])}
+  };
+}
+function snapshotCorrections() {
+  return {
+    corrections: {inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff, tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
       // Where this frame's inference came from: a stored file from an earlier run
       // (marked by the server, with its own timestamp) or the result of inference
       // run on this frame now, which is never written to disk. A live or replay
       // frame is not the dataset frame, so its stored result is not reported there.
       storedInference: state.source.kind !== 'live' && state.fresult?.inference?.stored_inference === true,
-      inferenceAt: state.source.kind !== 'live' && state.fresult?.inference?.saved_at || null},
-    cloth: {verdict: {...state.cloth.verdict}, quad: state.cloth.quad ? {...state.cloth.quad} : null, polygon: state.cloth.polygon || null, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, pockets: {...(state.cloth.pockets || {source:null, count:0, reference:null})}, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)},
+      inferenceAt: state.source.kind !== 'live' && state.fresult?.inference?.saved_at || null}
+  };
+}
+function snapshotCloth() {
+  return {
+    cloth: {verdict: {...state.cloth.verdict}, quad: state.cloth.quad ? {...state.cloth.quad} : null, polygon: state.cloth.polygon || null, reference: state.cloth.reference ? {source: state.cloth.reference.source, width: state.cloth.reference.width, height: state.cloth.reference.height} : null, pockets: {...(state.cloth.pockets || {source:null, count:0, reference:null})}, refusal: state.cloth.refusal && !state.cloth.refusal.ok ? {...state.cloth.refusal} : null, notice: clothNotice(state.cloth.verdict, state.cloth.refusal)}
+  };
+}
+function snapshotEnroll() {
+  return {
     enroll: {status: state.enroll.status, payload: state.enroll.payload, name: state.enroll.name, error: state.enroll.error,
              // How long the preview has been collecting faces, so the rail can say
              // it is working rather than spinning forever.
-             elapsed_ms: state.enroll.status === 'pending' ? Math.max(0, Date.now() - state.enroll.startedAt) : null},
-    receipts: state.receipts.slice(), notice: {...state.notice}, busy: state.busy, dirty: state.dirty
+             elapsed_ms: state.enroll.status === 'pending' ? Math.max(0, Date.now() - state.enroll.startedAt) : null}
+  };
+}
+function snapshotReceipts() {
+  return {
+    receipts: state.receipts.slice()
+  };
+}
+function snapshotStatus() {
+  return {
+    notice: {...state.notice}, busy: state.busy, dirty: state.dirty
+  };
+}
+function snapshot() {
+  return {
+    ...snapshotDataset(), ...snapshotFrame(), ...snapshotPlayback(), ...snapshotSource(),
+    ...snapshotLive(), ...snapshotLayers(), ...snapshotSelection(), ...snapshotDetectors(),
+    ...snapshotEvents(), ...snapshotVerdict(), ...snapshotBalls(), ...snapshotPersons(),
+    ...snapshotAnchors(), ...snapshotCorrections(), ...snapshotCloth(), ...snapshotEnroll(),
+    ...snapshotReceipts(), ...snapshotStatus()
   };
 }
 // Every state the live processor (live_processing.py: idle / starting / running /
