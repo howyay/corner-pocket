@@ -30,7 +30,7 @@ function domNode(selector = '') {
   const node = {
     selector, innerHTML: '', textContent: '', hidden: false, value: '', title: '', children: [],
     dataset: {tab: '', lang: '', theme: '', action: ''}, style: {setProperty() {}, getPropertyValue: () => ''},
-    classList: {add() {}, remove() {}, toggle() {}}, appended: [], inserted: [], attributes: {},
+    classList: {add() {}, remove() {}, toggle(name, on) { node.toggles.push({name, on}) }}, toggles: [], appended: [], inserted: [], attributes: {},
     setAttribute(key, value) { node.attributes[key] = String(value); },
     getAttribute(key) { return Object.prototype.hasOwnProperty.call(node.attributes, key) ? node.attributes[key] : null; },
     removeAttribute() {}, appendChild(child) { node.appended.push(child); node.children.push(child); return child; },
@@ -42,9 +42,25 @@ function domNode(selector = '') {
 }
 // One stub document with a region per selector, so render() runs as it does in the browser.
 function richDocument(handlers) {
-  const regions = new Map();
+  const regions = new Map(), lists = new Map();
   const body = domNode('body');
   const documentElement = {dataset: {}, lang: '', classList: {toggle() {}, add() {}, remove() {}}};
+  // The two chip rows and the clock's two live nodes: render() runs a loop over each of them, so the
+  // stub answers with nodes that record what the loop wrote.
+  const seeds = {
+    '[data-lang]': [{lang: 'en'}, {lang: 'zh'}],
+    '#ops-shell button[data-theme]': [{theme: 'dark'}, {theme: 'light'}],
+    '[data-clock]': [{}],
+    '[data-progress]': [{}]
+  };
+  const list = selector => {
+    if (!lists.has(selector)) lists.set(selector, (seeds[selector] || []).map(seed => {
+      const node = domNode(selector);
+      Object.assign(node.dataset, seed);
+      return node;
+    }));
+    return lists.get(selector);
+  };
   return {
     addEventListener(event, fn) { handlers[event] = fn; },
     querySelector(selector) {
@@ -52,10 +68,11 @@ function richDocument(handlers) {
       if (!regions.has(selector)) regions.set(selector, domNode(selector));
       return regions.get(selector);
     },
-    querySelectorAll: () => [],
+    querySelectorAll: selector => list(selector),
     createElement: () => domNode(),
     body, documentElement,
-    region: selector => regions.get(selector)
+    region: selector => regions.get(selector),
+    nodes: selector => list(selector)
   };
 }
 function harness(opts = {}) {
@@ -71,7 +88,7 @@ function harness(opts = {}) {
   vm.createContext(context);
   // The console runs as the page loads it. The suite does not rewrite its text. The stub page
   // carries no shell, so the console does not boot itself; the test drives it through the handle.
-  vm.runInContext(source, context, {filename: 'ops.js'});
+  vm.runInContext(opts.source || source, context, {filename: 'ops.js'});
   const h = context.window.OpsConsole.attach({document});
   // The state the page fetches, and the action channel the tests read instead of the network.
   h.data = {revision: 1, settings: {}, tournament: {raceTo: 7, entrants: [], matches: []}, players: [], history: []};
@@ -2815,8 +2832,10 @@ test('the bar is two rows: the shot timer, then the five destinations and the to
   assert.equal(h.ballHTML(1).includes('data-stripe'), false, 'ball 1 is a solid');
   for (const [lang, back] of [['en', 'Back room'], ['zh', '后台']]) {
     h.lang=(lang);
-    assert.ok(h.render.toString().includes('primaryNav()'), `${lang}: render paints the bar from the one list`);
-    assert.ok(h.render.toString().includes("dataset.lang"), `${lang}: render publishes the language it painted in`);
+    assert.ok(h.render.toString().includes('paintNav()') && source.includes("$('#nav').innerHTML=clockNavButton()+primaryNav()"),
+      `${lang}: render paints the bar from the one list`);
+    assert.ok(h.render.toString().includes('paintDocument()') && source.includes('document.documentElement.lang'),
+      `${lang}: render publishes the language it painted in`);
     assert.equal(h.navLabel('status'), back, `${lang}: the fifth destination keeps its name`);
   }
 });
@@ -3671,10 +3690,22 @@ test('round 6: the archive paints its own card, so a late answer never rebuilds 
   assert.ok(!painter.includes('render()'), 'still nothing rebuilds the screen under an operator');
   assert.ok(!/loadArchiveList[\s\S]{0,400}?archiveList\.loading=false;render\(\)/.test(source),
     'and never re-renders the whole screen after the network answers (the search box and the scroll survive)');
-  assert.ok(source.includes("showReview();syncLivePolling();syncOpsPolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}"),
-    'Records asks for the archive - and the download queue beside it - when it becomes the screen, and only then');
+  assert.ok(source.includes("if(tab==='records'&&!bf){loadArchiveList();loadAuto()}"),
+    'Records asks for the archive - and the download queue beside it - when it becomes the screen');
   assert.ok(source.includes("if(a==='archive-reload'){loadArchiveList(true);loadAuto(true);return}"),
     'Refresh is the one deliberate re-read, for both');
+  // Read above, run here: that step is the only caller of the two, so the render that makes Records the
+  // screen asks for both, and a render on any other screen asks for neither.
+  const askedOn = tab => {
+    const probe = harness({richDom: true});
+    const asked = [];
+    probe.context.fetch = async url => { asked.push(String(url).split('?')[0]); return {ok: true, json: async () => ({channels: [], queue: []})}; };
+    probe.tab = tab;
+    probe.render();
+    return asked.sort();
+  };
+  assert.deepEqual(askedOn('records'), ['/api/vods/queue', '/api/vods/recent'], 'and only then');
+  assert.deepEqual(askedOn('tonight'), [], 'while a render on another screen asks for neither');
 });
 test('round 6: Build this night opens the backfill at the broadcast the operator chose', async () => {
   const h = harness({hash: '#/records'});
@@ -4537,7 +4568,7 @@ test('round 21 / owner item 3 + round 29 / owner item 1: the late arrival card o
     'the card opens the dialog, and the dialog closes it');
   assert.ok(SRC.includes("(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'')"), 'the shell mounts it');
   assert.ok(SRC.includes('&&!pendingMatches.size&&registry.mayRepaint()'), 'and the poll asks the registry, not a screen variable (c3)');
-  assert.ok(SRC.includes('{holds:()=>deskOpen!==null||setupOpen||lateOpen}'), 'so the Tonight module owns the three cards that stand the repaint down');
+  assert.ok(SRC.includes('holds:()=>deskOpen!==null||setupOpen||lateOpen}'), 'so the Tonight module owns the three cards that stand the repaint down');
   assert.ok(SRC.includes("${esc(eventParams(T))}</p></div>${lateCard()}${closeCard(drawn)}"), 'round 31: the control is a row of the event settings card');
   assert.ok(!SRC.includes('${entrantsCard()}${lateCard()}'), 'and the tab no longer carries a card of its own');
   // It renders only while the event is running: a finished event takes no late arrivals.
@@ -4691,8 +4722,8 @@ test('the console hands the shell-state writer to the stage it mounts, as an opt
 });
 
 test('one render() composes the console: the nav, the screen, the vision host and the poll', () => {
-  // Round 34, console candidate 1: render() is one line of 2077 characters with 33 statements and
-  // it rebuilds the whole page. The suite replaced it 42 times and never ran it, so every
+  // Round 34, console candidate 1: render() was one line of 2077 characters with 33 statements and
+  // it rebuilt the whole page. The suite replaced it 42 times and never ran it, so every
   // composition bug the source comments record was invisible to the tests.
   const h = harness({richDom: true});
   h.render();
@@ -4712,4 +4743,89 @@ test('one render() composes the console: the nav, the screen, the vision host an
   assert.ok(slot && slot.innerHTML.length > 0, 'the clock bar is painted on every render, whatever the venue state');
   assert.deepStrictEqual({...h.shellState}, {review: '0', vision: '', labelOverlay: '0', vsPanel: '0'},
     'and the one shell writer was told what the page shows');
+});
+test('one render() is a list of named steps, and deleting one call is a visible loss', () => {
+  // Round 34, console candidate 1: render() was one line of 2077 characters holding 33 statements, so
+  // a mutation experiment on it was indistinguishable from a syntax error. It is now a call list of
+  // named steps, and this test is that list: it checks the names and their order, then runs the whole
+  // render once per step and again with that one call deleted. The step's effect has to disappear, and
+  // no other step may stand in for it.
+  const h = harness({richDom: true});
+  const names = ['haltPolling', 'paintDocument', 'paintNav', 'paintTabbar', 'paintShellState', 'paintClockBar',
+    'mountVisionHost', 'paintActiveScreen', 'paintOverlays', 'paintReviewHost', 'armPolling', 'loadRecordsScreen',
+    'paintLanguageChips', 'paintThemeChips', 'tick'];
+  const called = (h.render.toString().match(/^ {2}([A-Za-z_$][\w$]*)\(\);?$/gm) || []).map(line => line.trim().replace(/\(\);?$/, ''));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(called)), names,
+    'render() calls the fifteen named steps, in the order they own the page');
+  for (const name of names) {
+    assert.equal(source.split(`\n  ${name}()`).length - 1, 1, `render() calls ${name}() once, on a line of its own`);
+    assert.equal((source.match(new RegExp(`\\bfunction ${name}\\(`, 'g')) || []).length, 1, `${name}() is defined once`);
+  }
+  // Deleting the call, not the definition: the step stays in the file and nothing calls it.
+  const without = name => {
+    const line = `\n  ${name}()`;
+    const at = source.indexOf(line);
+    assert.ok(at > -1, `${name}() is called on a line of its own`);
+    const end = source[at + line.length] === ';' ? at + line.length + 1 : at + line.length;
+    return source.slice(0, at) + source.slice(end);
+  };
+  const page = (text, tab) => {
+    const probe = harness({richDom: true, source: text});
+    if (tab) probe.tab = tab;
+    return probe;
+  };
+  const painted = (doc, selector, needle) => ((doc.region(selector)?.innerHTML || '').includes(needle) ? 'painted' : 'absent');
+  const stamp = value => JSON.parse(JSON.stringify(value));
+  const steps = [
+    {name: 'haltPolling', want: 8,
+     claim: 'the two pollers are stood down before the guard, so a render with no data still stops them',
+     see: text => { const p = page(text); p.data = null; p.liveGeneration = 7; p.render(); return p.liveGeneration; }},
+    {name: 'paintDocument', want: 'zh-CN/dark',
+     claim: 'the document carries the language and the scheme the console painted in',
+     see: text => { const p = page(text); p.lang = 'zh'; p.render(); const el = p.context.document.documentElement; return `${el.lang}/${el.dataset.theme}`; }},
+    {name: 'paintNav', want: 'painted',
+     claim: 'the nav is rebuilt, and it marks the destination the operator is on',
+     see: text => { const p = page(text); p.render(); return painted(p.context.document, '#nav', 'aria-current="page"'); }},
+    {name: 'paintTabbar', want: 'painted',
+     claim: 'the phone bar follows the same destinations',
+     see: text => { const p = page(text); p.render(); return painted(p.context.document, '#tabbar', 'data-tab="records"'); }},
+    {name: 'paintShellState', want: 'live',
+     claim: 'the one shell writer is told what the page shows',
+     see: text => { const p = page(text, 'vision'); p.render(); return p.shellState.vision; }},
+    {name: 'paintClockBar', want: 'painted',
+     claim: 'the clock bar is painted on every render, whatever the venue state',
+     see: text => { const p = page(text), doc = p.context.document; doc.region('#ops-shell .clockbar').innerHTML = ''; p.render(); return painted(doc, '#ops-shell .clockbar', 'data-action="clock-toggle"'); }},
+    {name: 'mountVisionHost', want: 'painted',
+     claim: 'the vision host is moved to the body, where the stage lives',
+     see: text => { const p = page(text); p.render(); return p.context.document.body.appended.some(node => node.selector === '#vision-host') ? 'painted' : 'absent'; }},
+    {name: 'paintActiveScreen', want: 'painted',
+     claim: 'the screen the registry names is mounted into #main',
+     see: text => { const p = page(text); p.render(); return (p.context.document.region('#main')?.innerHTML || '').length ? 'painted' : 'absent'; }},
+    {name: 'paintOverlays', want: 'painted',
+     claim: 'an open source rail lands over whichever screen is showing',
+     see: text => { const p = page(text); p.data.sources = [{id: 's1', url: 'https://www.twitch.tv/ttpoolfriday'}]; p.sourceOpen = true; p.render(); return (p.context.document.region('#main')?.inserted || []).length ? 'painted' : 'absent'; }},
+    {name: 'paintReviewHost', want: 'painted',
+     claim: 'the review host takes the height of #main before it mounts',
+     see: text => { const p = page(text); p.render(); return (p.context.document.region('#main')?.toggles || []).length ? 'painted' : 'absent'; }},
+    {name: 'armPolling', want: 'armed',
+     claim: 'the clock screen arms the ops beat, after the live poll has its baseline',
+     see: text => { const p = page(text, 'clock'); p.data.tournament.status = 'active'; p.render(); return p.timers.some(timer => timer.ms === 4000) ? 'armed' : 'silent'; }},
+    {name: 'loadRecordsScreen', want: '/api/vods/queue+/api/vods/recent',
+     claim: 'the render that makes Records the screen asks for the archive and the queue',
+     see: text => { const p = page(text, 'records'), asked = []; p.context.fetch = async url => { asked.push(String(url).split('?')[0]); return {ok: true, json: async () => ({channels: [], queue: []})}; }; p.render(); return asked.sort().join('+') || 'none'; }},
+    {name: 'paintLanguageChips', want: 'false/true',
+     claim: 'the chip row says which language is in force, not only which ones exist',
+     see: text => { const p = page(text); p.lang = 'zh'; p.render(); return p.context.document.nodes('[data-lang]').map(node => node.attributes['aria-pressed']).join('/'); }},
+    {name: 'paintThemeChips', want: 'true/false',
+     claim: 'the scheme row says which scheme is in force',
+     see: text => { const p = page(text); p.render(); return p.context.document.nodes('#ops-shell button[data-theme]').map(node => node.attributes['aria-pressed']).join('/'); }},
+    {name: 'tick', want: 'painted',
+     claim: 'the clock the operator reads is written from the one timer state',
+     see: text => { const p = page(text); p.render(); return p.context.document.nodes('[data-clock]').map(node => node.textContent).join('') ? 'painted' : 'absent'; }}
+  ];
+  for (const {name, claim, want, see} of steps) {
+    assert.deepStrictEqual(stamp(see(source)), want, `a render() runs ${name}(): ${claim}`);
+    assert.notDeepStrictEqual(stamp(see(without(name))), want, `and ${name}() is what does it: ${claim}`);
+  }
+  assert.deepStrictEqual(steps.map(step => step.name), names, 'every step of the composition is walked, so a new one has to answer too');
 });

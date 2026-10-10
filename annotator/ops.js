@@ -908,22 +908,37 @@ function clockScreen(){const left=clockLeft(),running=!!timer.deadline;return `<
 // The clock is the one always-available element (owner §13.1): it paints before the first
 // fetch answers and in every venue state, because nothing here reads comp().
 paintClockSlot();function tick(){const left=clockLeft();if(reviewId&&data&&!document.hidden){syncReviewDataset();syncReviewFrames()}document.querySelectorAll('[data-clock]').forEach(e=>{const text=clockText(left);if(e.textContent!==text)e.textContent=text;e.classList.toggle('low',clockLow(left))});document.querySelectorAll('[data-progress]').forEach(e=>e.style.transform=`scaleX(${clockScale(left)})`);if(timer.deadline&&left===0){timer.remaining=0;timer.deadline=null;persistClock();render();message(lang==='zh'?'击球时间到。未自动判罚。':'Shot time expired. No penalty applied.')}}
-// A screen is a module, not a name in a list. The module paints its own
-// markup, mounts once, gives the screen up on a tab switch, and answers the poll for the state it
-// holds open. spec.holds() reports an open card that a repaint would destroy.
-function screenModule(id,build,spec={}){return {id,root:null,mount(root,context){this.root=root;this.update(context)},update(context){if(!this.root)return false;spec.beforePaint?.(context);this.root.innerHTML=build(context);return true},detach(context){if(!this.root)return;spec.beforePaint?.(context);this.root.innerHTML='';this.root=null},mayRepaint(){return !spec.holds||!spec.holds()},paint(){return spec.paint?spec.paint():false}}}
+// A screen is a module, not a name in a list. It answers four questions - the markup it builds, the
+// repaint of a host that lives outside its own root, the card it holds open, and the work that has to
+// run before its root is rewritten - and screenBase answers every one of them by default, so a screen
+// writes only what it has to say. The module owns its root and is the only caller of those four: a
+// screen's painting is a method on the screen itself, never a callback handed to the registry.
+const screenBase={
+  build(){return ''},
+  paint(){return false},
+  holds(){return false},
+  release(){}
+};
+function screenModule(id,screen){
+  const module=Object.assign(Object.create(screenBase),screen,{id,root:null});
+  module.mount=function(root,context){this.root=root;return this.update(context)};
+  module.update=function(context){if(!this.root)return false;this.release(context);this.root.innerHTML=this.build(context);return true};
+  module.detach=function(context){if(!this.root)return;this.release(context);this.root.innerHTML='';this.root=null};
+  module.mayRepaint=function(){return !this.holds()};
+  return module;
+}
 // The registry is the only list of screens. The key order is the tab order.
 const screenModules={
-  clock:screenModule('clock',clockScreen,{paint:paintClockSlot}),
-  tonight:screenModule('tonight',tonightScreen,{holds:()=>deskOpen!==null||setupOpen||lateOpen}),
-  records:screenModule('records',recordsScreen,{paint:paintRecords}),
-  vision:screenModule('vision',liveVisionScreen,{beforePaint:releaseVisionAdapter}),
-  players:screenModule('players',playersScreen,{holds:()=>selected!==null}),
-  status:screenModule('status',statusScreen)
+  clock:screenModule('clock',{build:clockScreen,paint:paintClockSlot}),
+  tonight:screenModule('tonight',{build:tonightScreen,holds:()=>deskOpen!==null||setupOpen||lateOpen}),
+  records:screenModule('records',{build:recordsScreen,paint:paintRecords}),
+  vision:screenModule('vision',{build:liveVisionScreen,release:releaseVisionAdapter}),
+  players:screenModule('players',{build:playersScreen,holds:()=>selected!==null}),
+  status:screenModule('status',{build:statusScreen})
 };
 // The backfill wizard is a mode, not a destination: it has no tab and no route. It owns the whole
 // console while it runs.
-const backfillScreen=screenModule('backfill',bfScreen);
+const backfillScreen=screenModule('backfill',{build:bfScreen});
 // The registry owns the active screen and the poll's one question. render() paints the active
 // screen only. A tab switch mounts the new module and detaches the old one.
 const registry={
@@ -940,7 +955,46 @@ function shellAttr(name,value){const shell=document.querySelector("#ops-shell");
 const shellState={review:"0",vision:"",labelOverlay:"0",vsPanel:"0"};
 function publishShell(){const shell=document.querySelector("#ops-shell");if(!shell||!shell.dataset)return shellState;shell.dataset.review=shellState.review;shell.dataset.tab=bf?'backfill':tab;shell.dataset.vision=shellState.vision;shell.dataset.labelOverlay=shellState.labelOverlay;shell.dataset.vsPanel=shellState.vsPanel;return shellState}
 function setShell(patch={}){if("review" in patch)shellState.review=patch.review?"1":"0";if("vision" in patch)shellState.vision=patch.vision||"";if("labelOverlay" in patch)shellState.labelOverlay=patch.labelOverlay?"1":"0";if("vsPanel" in patch)shellState.vsPanel=patch.vsPanel?"1":"0";return publishShell()}
-function render(){stopLivePolling();stopOpsPolling();if(!data)return;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.documentElement.dataset.theme=theme;$('#nav').innerHTML=clockNavButton()+primaryNav().map((k,i)=>{const cur=!bf&&tab===k,key=String(i+2);return `<button data-tab="${k}" class="${cur?'active':''}" aria-current="${cur?'page':'false'}" aria-keyshortcuts="Digit${key}" title="${esc(t('keyHint').replace('{key}',t('digitKey').replace('{n}',key)))}">${ballHTML(i+2)}${esc(navLabel(k))}<small>${k==='tonight'?(matches().length?matches().filter(m=>m.status!=='complete').length:entrants().length):k==='players'?data.players.length:''}</small></button>`}).join('');const tb=$('#tabbar');if(tb)tb.innerHTML=tabbarHTML();const m=live();shellAttr('lang',lang==='zh'?'zh':'en');setShell({review:!!(reviewId&&!bf),vision:reviewId?'recorded':(tab==='vision'?'live':'')});screenModules.clock.paint();const host=$('#vision-host');if(host&&host.parentElement!==document.body)document.body.appendChild(host);const active=registry.active();if(mountedScreen!==active){mountedScreen?.detach();mountedScreen=active;active.mount($('#main'))}else active.update();const overlays=(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'');if(overlays)$('#main').insertAdjacentHTML('beforeend',overlays);liveWasRunning=liveRunning();$('#main').classList.toggle('short',reviewHosted());showReview();syncLivePolling();syncOpsPolling();if(tab==='records'&&!bf){loadArchiveList();loadAuto()}document.querySelectorAll('[data-lang]').forEach(b=>{b.classList.toggle('active',b.dataset.lang===lang);b.setAttribute('aria-pressed',String(b.dataset.lang===lang))});document.querySelectorAll('#ops-shell button[data-theme]').forEach(b=>{b.classList.toggle('active',b.dataset.theme===theme);b.setAttribute('aria-pressed',String(b.dataset.theme===theme))});document.querySelector('[data-theme-group]')?.setAttribute('aria-label',lang==='zh'?'配色 / Color theme':'Color theme / 配色');document.querySelector('#vision-host')?.setAttribute('aria-label',lang==='zh'?'视觉复核':'Vision review');tick()}
+// render() composes the console out of named steps. Each step below is the only writer of the part it
+// owns, so the call list is the whole composition and no statement here does two things.
+function haltPolling(){stopLivePolling();stopOpsPolling()}
+function paintDocument(){document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.documentElement.dataset.theme=theme}
+function paintNav(){$('#nav').innerHTML=clockNavButton()+primaryNav().map((k,i)=>{const cur=!bf&&tab===k,key=String(i+2);return `<button data-tab="${k}" class="${cur?'active':''}" aria-current="${cur?'page':'false'}" aria-keyshortcuts="Digit${key}" title="${esc(t('keyHint').replace('{key}',t('digitKey').replace('{n}',key)))}">${ballHTML(i+2)}${esc(navLabel(k))}<small>${k==='tonight'?(matches().length?matches().filter(m=>m.status!=='complete').length:entrants().length):k==='players'?data.players.length:''}</small></button>`}).join('')}
+function paintTabbar(){const tb=$('#tabbar');if(tb)tb.innerHTML=tabbarHTML()}
+// The shell's own attributes: the language the stylesheet keys off, and the one shell state writer.
+function paintShellState(){shellAttr('lang',lang==='zh'?'zh':'en');setShell({review:!!(reviewId&&!bf),vision:reviewId?'recorded':(tab==='vision'?'live':'')})}
+// The clock owns a host outside every screen root - the bar in the shell - so its module paints it.
+function paintClockBar(){screenModules.clock.paint()}
+// The vision workbench lives in the body, not in #main: the stage is moved there once and named.
+function mountVisionHost(){const host=$('#vision-host');if(host&&host.parentElement!==document.body)document.body.appendChild(host);document.querySelector('#vision-host')?.setAttribute('aria-label',lang==='zh'?'视觉复核':'Vision review')}
+function paintActiveScreen(){const active=registry.active();if(mountedScreen!==active){mountedScreen?.detach();mountedScreen=active;active.mount($('#main'))}else active.update()}
+// The two cards that open over whichever screen is showing: the source rail and the late-arrival card.
+function paintOverlays(){const overlays=(sourceOpen?sourceModal():'')+(lateOpen?lateModal():'');if(overlays)$('#main').insertAdjacentHTML('beforeend',overlays);}
+// The review host: #main gives up its height, and the workbench mounts itself.
+function paintReviewHost(){$('#main').classList.toggle('short',reviewHosted());showReview()}
+// One owner for the poll schedule: the state the live poll compares against, then both pollers.
+function armPolling(){liveWasRunning=liveRunning();syncLivePolling();syncOpsPolling()}
+function loadRecordsScreen(){if(tab==='records'&&!bf){loadArchiveList();loadAuto()}}
+function paintLanguageChips(){document.querySelectorAll('[data-lang]').forEach(b=>{b.classList.toggle('active',b.dataset.lang===lang);b.setAttribute('aria-pressed',String(b.dataset.lang===lang))})}
+function paintThemeChips(){document.querySelectorAll('#ops-shell button[data-theme]').forEach(b=>{b.classList.toggle('active',b.dataset.theme===theme);b.setAttribute('aria-pressed',String(b.dataset.theme===theme))});document.querySelector('[data-theme-group]')?.setAttribute('aria-label',lang==='zh'?'配色 / Color theme':'Color theme / 配色')}
+function render(){
+  haltPolling();
+  if(!data)return;
+  paintDocument();
+  paintNav();
+  paintTabbar();
+  paintShellState();
+  paintClockBar();
+  mountVisionHost();
+  paintActiveScreen();
+  paintOverlays();
+  paintReviewHost();
+  armPolling();
+  loadRecordsScreen();
+  paintLanguageChips();
+  paintThemeChips();
+  tick()
+}
 // Round 12, owner item 2: the match follows the night onto the timer's own page. The desk sends a
 // match and signs a frame; the tablet at the table only ever reads, so this page re-reads the
 // document the desk writes, four seconds at a time - and never while a hand is mid-sentence: it
