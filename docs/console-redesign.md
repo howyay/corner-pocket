@@ -4094,3 +4094,209 @@ round-45 walk runs after this round's commits, starts with the modules the Ledge
 (`annotator/clock-sync.js`, `src/reid/osnet.py`, the `annotator/public_board.py` and
 `annotator/board.js` seam, `annotator/twitch_vod_source.py`), and its `no Strong candidate` line
 is what ends the loop.
+
+## Round 45 · the walk certifies a Strong candidate, and four deliveries land (2026-10-10)
+
+The round-45 walk ran on a clean tree at `1306bfb` and reported one line: `Strong candidate
+present — 1 Strong, 4 Worth, 2 Note` (report `/tmp/dshsess/walk_round45.md`, 165 lines, no file
+inside the repository written). The loop therefore continues, and the Strong candidate landed as
+`29e7219` before the four Worth items were briefed. Four deliveries landed in this wave:
+
+| Commit | What it holds |
+| --- | --- |
+| `29e7219` | live stages: a playfield check that cannot run is not a pass |
+| `3c9f593` | tls: one owner for the trust anchors every HTTPS call uses |
+| `6fcee26` | console: a sentence for every reason code the gate writes |
+| `18159e9` | refusals: a sentence built from facts carries its identity too |
+
+### Strong 1, the table constraint answered PASS when it could not run
+
+`annotator/pipeline_stages.py:381 def _playfield(self, polygon)` held the import of
+`src.playfield` and the point conversion inside one `try` (`:389` and `:391` at `1306bfb`, `:391`
+and `:393` at `29e7219`), and the handler at `:400` answered `{'ok': True, 'reasons': [], 'error': str(exc)}` at `:401` (`:402` and `:403` after the fix). A fault inside the
+check therefore read as a pass: the frame kept its table, and the reason text was the only trace.
+Two readers grade the stored records — `tools/playfield_vod_audit.py:224 pf = res.get('table_playfield')`,
+which counts `pf.get('ok')` into `counts['ok']` at `:232-236` and can set `row['verdict'] = 'pass'`
+at `:239-243`, and `tools/playfield_quad_evidence.py:93` — and neither reads `error`.
+
+Measured before the fix, by the walk and again here: a null point answered `ok True` with
+`float() argument must be a string or a real number, not 'NoneType'`; a point of three numbers
+answered `ok True` with `too many values to unpack (expected 2, got 3)`; a halted import
+(`sys.modules['src.playfield'] = None`) answered `ok True` with `import of src.playfield halted;
+None in sys.modules`. No document under `out/` carries the key
+(`grep -rl table_playfield out/ | wc -l` answers 0), so no stored verdict is wrong; the only
+stored count is `tests/fixtures/playfield_quads.json` with `{'ok': 24, 'refused': 12,
+'no_quad': 21, 'unreadable': 0}`. `tests/test_live_processing_stages.py:525-531`
+(`test_a_constraint_failure_never_stops_a_frame`) asserted only that the key `ok` was present.
+
+`29e7219` answers `{'ok': False, 'reasons': ['check-unavailable'], 'error': str(exc)}`, states the
+rule in the docstring, and adds `tests/test_live_processing_stages.py:533
+test_a_check_that_cannot_run_is_not_a_pass` for a null point and for a halted import. Measured:
+the module reports `Ran 29 tests in 3.618s`, OK (28 cases before), `tests/test_playfield_quads`
+`Ran 16 tests`, OK, and `tests/test_playfield_harness` `Ran 8 tests`, OK. Bite: the pass line put
+back moved `annotator/pipeline_stages.py` from
+`b94e0897ab5f459594f64333c68c0b9f4a8ca712` to `030797409f36b3c79637bcc8c0cdd7a99e24a29f` and failed
+exactly the new case with `AssertionError: True is not False : ok means the check ran and accepted
+the quad`; the file was restored from a copy. No javascript reads `table_playfield`, so the new
+reason word needs no row in the console table.
+
+### `3c9f593`, one owner for the trust anchors
+
+Four sites built their own TLS context and two of them also searched for a CA bundle by hand. The
+new `src/tls_trust.py` holds one chain: `CA_BUNDLES` names
+`/etc/ssl/certs/ca-certificates.crt`, `/etc/pki/tls/certs/ca-bundle.crt` and `/etc/ssl/cert.pem`
+with the systems each path belongs to; `def bundle_path(paths=CA_BUNDLES)` answers the first path
+that exists; `def trusted_context()` loads that bundle only when the store answers 0 anchors, and
+it never turns verification off. Four sites now call it: `annotator/twitch_source.py:183`,
+`annotator/twitch_vod_source.py:137` and `:164`, and `scripts/fetch_weights.py:56`, which also
+gained the `sys.path` line an entry point needs because `__main__` puts `scripts/` first.
+
+`tests/test_tls_trust.py` holds 8 cases, and its first case scans every shipped `.py` under
+`annotator/`, `src/`, `scripts/` and `tools/` for the three needles `create_default_context`,
+`load_verify_locations` and `ca-certificates`, then names the file and line of any copy: 0 copies
+live outside the owner. Measured on this machine: `bundle_path()` answers
+`/etc/ssl/certs/ca-certificates.crt`, the default store holds 0 anchors, `trusted_context()` holds
+172, and a handshake with `gql.twitch.tv:443` completed TLSv1.3 with peer `commonName twitch.tv`.
+Suites: `test_tls_trust` `Ran 8 tests`, OK, `test_fetch_weights` `Ran 9 tests`, OK,
+`test_twitch_source` `Ran 19 tests`, OK, `test_twitch_vod_source` `Ran 32 tests`, OK. Bite:
+`context.load_verify_locations(cafile=bundle)` replaced by `pass` moved `src/tls_trust.py` from
+`370e8496f4265e38e51681f1dc107cf5bacb8755` to `2de99d739a5ad07353ee9c6b98c2ecab987e9586` and failed
+one case with `AssertionError: 0 not greater than 0 : the default store is empty and bundle_path()
+answers /etc/ssl/certs/ca-certificates.crt, but trusted_context() still holds no anchor`; the file
+was restored from a copy. Limits: the scan covers four directories and three literal needles, so a
+hand-built `SSLContext` or a `certifi` bundle passes it; the Fedora and macOS paths do not exist on
+this machine and were not measured.
+
+### `6fcee26`, the console answers every reason code the gate writes
+
+`annotator/vision-stage.js` held 17 rows in `const REASONS` and answered the raw code when no row
+matched, so the operator read a code in brackets. The delivery adds 32 rows (49 in total) and 2
+rows to `const QUAD_REASON` (9 in total); no row was deleted, and the render rule moved from
+`:509` to `:548`. The new `tests/test_console_reason_table.py` (480 lines, 6 cases) derives the
+vocabulary from the producer sources with one written rule per file — `src/event_gates.py` 24
+values (22 codes and 2 sentences), `src/dense_queue.py` 9 codes, `src/shot_pot_gate.py` 17 codes,
+union 48 values, and `src/table_refine.py` 9 codes for the quad table — and compares both
+directions, naming each missing row and each orphan row with its file and line.
+`ROWS_WITHOUT_A_PRODUCER` holds the three rows no rule can derive, each with its reason:
+`identity_swap_suspected` and `parked_in_jaws_possible` are boolean fields of a pot event and never
+members of a reasons list, and `calibration_weak_at_time` is a legacy code that documents already
+written to `out/` still carry.
+
+Measured over every document under `out/` that parses (344 of 347), counting each value under a
+`reasons` key:
+
+| State | Rows | Code values with a row | Bare codes | Sentence values |
+| --- | --- | --- | --- | --- |
+| Before | 17 | 9 distinct / 252 | 11 distinct / 628 | 5 / 38 |
+| After | 49 | 20 distinct / 880 | 0 / 0 | 5 / 38 |
+
+The eleven bare codes before the change, with their occurrence counts:
+`displacement_not_corroborated` 208, `census_did_not_drop` 174, `census_too_sparse` 52,
+`off_cloth` 50, `displacement_not_stable` 48, `calibration_weak_at_time` 46,
+`vanished_ball_still_on_cloth` 18, `no_matched_ball_measured` 14, `no_vanished_ball_measured` 8,
+`census_source_mismatch` 6, `vanished_ball_not_at_pocket` 4.
+
+Bite: one new code added to a `GateResult` reasons list moved `src/event_gates.py` from
+`326e7e6eebecf860e14923e08d764951ac579cc4` to `13a62be61644ae3249ed01151c6d09c538506b08` and failed
+3 of the 6 cases, one with `AssertionError: 'bite_probe_reason' == 'bite_probe_reason' :
+reasonText('bite_probe_reason') in zh returns the bare code, and const REASONS has no row for it`;
+the file was restored from a copy. Suites: the module `Ran 6 tests`, OK, node
+`tests/test_ops.js` 211 pass and 0 fail, `test_console_audit_labels` `Ran 4 tests`, OK,
+`test_suite_inventory` `Ran 4 tests`, OK (no skip site added). Limits: the rules cover the four
+producer files above, so a pot event's fourth reason (`src/shot_pot_gate.py:1488
+reappeared_after_gap_inside_pocket`) reaches only `provenance.gate_reason` and stays outside them;
+the screen keeps the code in brackets after the sentence by design, because a report refers to the
+code.
+
+### `18159e9`, a sentence built from facts carries its identity too
+
+A refusal assembled at the raise site with an f-string left the service as an English sentence
+alone. Measured on one request through a child on a free port over a temporary root:
+
+```
+before (HEAD 6fcee26)  POST /api/operations player_save rating=5000
+   400 {"error": "rating must be an integer from 0 to 1000"}
+after
+   400 {"code": "operation_integer_range", "error": "rating must be an integer from 0 to 1000",
+        "high": 1000, "low": 0, "name": "rating",
+        "zh": "rating 必须是 0 到 1000 之间的整数。"}
+```
+
+`annotator/refusals.py` now holds six skeletons beside the finished sentences — `INTEGER_RANGE`,
+`TEXT_LENGTH`, `WHOLE_SECONDS`, `INSTANT`, `FFMPEG_FAILED`, `SCAN_CHANNEL` — and `TEMPLATES` maps
+a skeleton to a `FactRefusal` row that carries the code, the Chinese skeleton and the fact names
+in the order the sentence states them. `filled_refusal(skeleton, **facts)` answers a
+`(sentence, identity)` pair, and the identity repeats every named fact, so the console reads the
+values as data and never parses them out of the sentence. `TemplateError(ValueError)` carries that
+identity in `.fields` and stays a `ValueError`, so every existing handler keeps working. Seven
+raise sites moved onto the table with no change to their words: `annotator/operations.py:47`,
+`:59`, `:66`, `:87` and `:91` (the `integer`, `text`, `seconds` and `instant` rules), and
+`annotator/vod_import.py:550` (the ffmpeg failure) and `:854` (the per-channel scan line).
+Measured with one set of facts: all six rows render, byte for byte, a sentence the tree at
+`6fcee26` built with the same facts (6 of 6).
+
+Two routes pass the fields on: `refusal_body` in `annotator/unified_server.py` reads
+`getattr(exc, 'fields', {})` at both refusal sites, and the operations route wrapper no longer
+drops them when it wraps a validator refusal into an `APIError`. `tests/test_refusal_templates.py`
+holds 14 cases in 5 classes, among them the routed sentence against the English the tree printed
+before, the dash of the text-length literal, the route body, and a plain `ValueError` as the
+control that still carries its sentence only.
+
+Measured suites: `test_refusal_templates` `Ran 14 tests in 0.233s`, OK, `test_refusal_identity`
+`Ran 15 tests`, OK, `test_job_refusal_identity` `Ran 14 tests`, OK, `test_operations` `Ran 77
+tests`, OK, `test_vod_import` `Ran 32 tests`, OK. The full discovery run reports `Ran 1765 tests in
+143.699s`, `OK (skipped=53)`. Node: `tests/test_ops.js` 211 pass and 0 fail, `tests/test_board.js`
+23 pass and 0 fail, `tests/test_app_timeline.js` 99 passed and 0 failed. Bite: the operations route
+wrapper put back to `raise APIError(str(error))` moved `annotator/unified_server.py` from
+`9d29af4a50753d2ef7b62f8c107479379653707f` to `e1e93807c4788db5ceb77331809844b399fc5371` and
+reported `ERROR` at `tests/test_refusal_templates.py:200
+test_a_validator_refusal_keeps_its_identity_through_the_operations_route` with `KeyError: 'code'`;
+the file was restored from a copy. Limits: a sentence a raise site still builds with an f-string
+keeps no identity — this tree holds 17 such raise sites in `annotator/operations.py`, 32 in
+`annotator/unified_server.py` and 8 in `annotator/vod_import.py`, and this commit moves seven of
+them. `GET /api/vods/queue` publishes no identity for the scan sentence it joins, because its ten
+keys are pinned at `tests/test_vod_import.py:673-674` and the identity has no key to travel in;
+the table owns that sentence until the contract changes. `Operation.refuse_missing` raises the
+registry's declared literal, so one sentence can arrive with a code through the `text` rule or
+without one.
+
+### Two rows of the round-44 table close here
+
+* The identity-less raise site (`annotator/operations.py:39`): closed by `18159e9`. At that commit
+  the five validator sites are `:47`, `:59`, `:66`, `:87` and `:91`, and each one raises a
+  `TemplateError` that carries a code, a Chinese sentence and its facts.
+* The sentences the job can still hold (`annotator/vod_import.py:547`, `:857`): the ffmpeg
+  sentence closed by `18159e9` at `:550`, and the scan sentence now comes from the table at `:854`
+  as well. Half of the row stays open: the queue body has no key for the identity of the joined
+  scan text.
+
+### What stands open after this round
+
+| Candidate | Rank | Ground in the tree |
+| --- | --- | --- |
+| The duration formatter has three owners | Worth | `annotator/app.js:2035` floors an unguarded value, `annotator/ops.js:104` clamps and floors, `annotator/vision-stage.js:930` clamps and rounds (the rows `6fcee26` added moved this line down from the walk's `:891`); the three disagree at 59.6 (they answer `0:00:59`, `0:00:59` and `0:01:00`), at −1 and at null. No wrong number reaches the operator today, because every stored `length_s`, `at_s`, `start_s` and `end_s` is whole and `annotator/live_processing.py:82-84` and `:101-103` make `at_s` an int. No test names `hms` |
+| The clock key has two spellings | Worth | `CLOCK_KEY = 'cp-ops-clock'` is defined at `annotator/clock-sync.js:44` and exported at `:491`, and nothing reads the export, while `annotator/ops.js:861`, `:881`, `:1415` and `tests/test_ops.js:1120`, `:1124`, `:1157` spell the literal |
+| The reconnect delay has two owners | Worth | `RECONNECT_MS = 2000` at `annotator/clock-sync.js:49` beside `retry: 2000` at `annotator/shot_clock.py:214`; no case compares them |
+| The shot distance has two values | Worth | `SHOT_DISP_MM` is 300.0 at `src/scan_events.py:46` and 150.0 at `src/info_complete_scan.py:43` |
+| Two owners of the pocket name | Worth | Kept from round 44: `src/event_gates.py:183 def _pocket_name(value)` and `annotator/unified_server.py:1590 def _pocket_name(event)` agree over the 179 pot rows of `out/**/*events*.json` (0 differences), so the seam is unproved |
+| A released-at field nothing reads | Note | `annotator/twitch_vod_source.py:508 _released_at` is written and never read |
+| A docstring counts 13 state keys, the answer holds 16 | Note | The example at `annotator/twitch_vod_source.py:406-409` lists 13 keys, and the answer at `:517-523` holds 16: `start_s`, `fps` and `opened` are absent from the example |
+| The fixture anchors moved | Note | `docs/impeccable-ledger.md:576` says the state file anchors its three live matches at `2026-10-03T05:23Z`, and the regenerated file anchors them on 2026-10-10 |
+
+The walk also measured three candidates and refused them, so a later round does not have to
+re-open them: the vendored `src/reid/osnet.py` 128-d against 512-d seam (all 1036 stored vectors
+are 128-d, and `src/person_identity.py:440-444` refuses a mismatch); the `annotator/public_board.py`
+and `annotator/board.js` vocabulary seam (guarded by `tests/test_board.js:379-462`); and the
+`annotator/twitch_vod_source.py:501 set()` pass-through (no live consumer).
+
+The walk read the tree at `1306bfb`, and the Table above states the numbers measured at
+`18159e9`. Citations moved between the two commits: `3c9f593` removed five lines above
+`annotator/twitch_vod_source.py:513`, and `6fcee26` added thirty-nine above
+`annotator/vision-stage.js:891`, so the duration formatter there is now `:930`. `18159e9` moved the
+two job sentences of the round-44 row: the ffmpeg sentence now sits at
+`annotator/vod_import.py:550` and the scan sentence at `:854`.
+
+The stopping rule does not change: a fresh read-only walk decides the loop. The round-45 walk found
+one Strong candidate, so the loop continues; that candidate landed as `29e7219`, and four further
+deliveries landed beside it. The next walk reads this committed tree and starts with the modules
+the Ledger still never cites.
