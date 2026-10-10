@@ -3612,7 +3612,9 @@ The stopping rule of the loop does not change: the loop ends when a fresh read-o
 ## Round 43 · the refusal identity, the machine-speed claims and the entry point (2026-10-10)
 
 This round closes both halves of round 41 Strong 2, the dotted test module path and the round-38
-Worth item about the machine's clock, and it records two corrections to lines of this file.
+Worth item about the machine's clock, and it records two corrections to lines of this file. The
+read-only walk of the round then found one Strong candidate, and the last four commits answer it and
+close two Worth items that were open.
 
 | Commit | What it says |
 | --- | --- |
@@ -3620,6 +3622,10 @@ Worth item about the machine's clock, and it records two corrections to lines of
 | `c9b9a87` | tests: one entry point runs one module, and it says why the dotted name fails |
 | `07c3608` | refusals: the job carries the identity of its refusal too |
 | `acc0f65` | tests: five cases measure the product, not the speed of the machine |
+| `1c304b4` | refusals: every raised sentence has a code and a Chinese sentence |
+| `25602f8` | served files: one rule owns which file a server may read |
+| `51e13f7` | tests: the proof of the refusal rule starts every subject the tree holds |
+| `48a82fb` | tests: the comment says why four element doubles stay four |
 
 ### Strong 2, first half: the console stops reading an English refusal
 
@@ -3797,12 +3803,126 @@ table no longer exists: `bc78341` moved the identity to `annotator/refusals.py` 
 reads the served `code` and `zh` at `annotator/ops.js:865`. The line now names the current
 mechanism and keeps `bc78341` as the date of the change.
 
-What stands open after this round:
+### Every raised sentence has a code and a Chinese sentence
+
+The row above left 121 of the 169 raised sentences without a row in `annotator/refusals.py`, so they
+reached the operator as English text with the console's generic Chinese line under them, and the
+number was pinned in the test module as `RAISED_SENTENCES_WITHOUT_A_ROW = 121`.
+
+`1c304b4` writes all 121 rows. The English key is copied from the raise site byte for byte and does
+not change, so the 48 rows that moved out of the console in `bc78341` keep the digest
+`194fce1ca9d59243f67f9994dc1054ea14dbec8e`; the new rows sit below those 48 in the order of the
+module that raises them. The table now holds 169 rows, all 169 codes are unique, no two rows share a
+Chinese sentence, and none is empty. `tests/test_refusal_identity.py:31 RAISED_SENTENCES_WITHOUT_A_ROW = 0`
+states the goal, `:107 test_the_table_names_every_raised_sentence` proves that the table and the 169
+sentences of the two modules are the same set and names both differences, and two new digests
+(`:61 TABLE_SENTENCES_DIGEST = 'a8df47024779ea26eb90809da710e3dbe51c4733'`, plus its Chinese twin)
+make a rewording of any row a decision that fails a case.
+
+Two cases in other modules graded the exact bytes of a refusal body, and they moved with this
+change:
+
+* `tests/test_http_security.py` pinned `b'{"error": "invalid Content-Length"}'` and
+  `b'{"error": "invalid request size"}'`. Both sentences have a row now, so the body carries two
+  more keys. The cases assert the sentence and the key set (`{'error'}` plus the additive `code` and
+  `zh`), and they refuse a body that holds a `Traceback`. Bite: with the sentence changed to
+  `f"invalid Content-Length: {length!r}"` at `annotator/unified_server.py:2811`, 9 subTests failed
+  with `AssertionError: "invalid Content-Length: 'abc'" != 'invalid Content-Length'`, so the case
+  kept its claim.
+* `tests/test_job_refusal_identity.py` reads every row of the table and looks for the text in
+  `annotator/*.js`. The live panel holds the longer line at `annotator/app.js:2046`
+  (`Frame inference or JPEG encoding failed; check local detector weights and runtime`, code
+  `inference_failed`), which contains the words of the new row `JPEG encoding failed`. Both are
+  display text, and no module reads a sentence to decide anything, so the exception map of the
+  module names the pair with the reason. Bite: with the pair removed, the case failed on the
+  held-versus-allowed map.
+
+Limits. A sentence built at the raise site by an f-string cannot be keyed by a table, and one still
+reaches the operator without a code: `annotator/operations.py:39 raise ValueError(f'{name} must be
+an integer from {low} to {high}')` is how `rating must be an integer from 0 to 1000` is raised. The
+AST rule of the two test modules sees plain string constants only, so the 169 sentences are the
+reachable set by construction and not the whole set of refusals. The 121 Chinese sentences were
+written for this change and reuse the words of the 48 rows and of the console; the ones that can be
+read two ways are named in the evidence file.
+
+### One rule owns which file a server may read
+
+`annotator/server.py`, the 154-line review API behind `annotator/index.html` and
+`annotator/label.html`, applied containment three different ways in three routes: the static
+fallback at `:112` and the `/crops/` route at `:101` checked that the resolved file sat under its
+root, and the `/ctx/` route at `:97` did not check at all. That route answered `200` with the bytes
+of a file above its own root: measured over a temporary root with the server as its own child,
+`/ctx/real.png` answered `200`, and `/ctx/../../../outside.txt` answered `200` with the outside
+marker. `urllib` normalises `..` before a request leaves the process, so the probe sends raw request
+lines through a socket.
+
+`25602f8` gives the rule one owner: `src/served_files.py:34 def bare_name(name)`,
+`:39 def file_under(base, name)` and `:52 def relative_under(base, rel)`. `annotator/server.py:24`
+imports them, and its three file routes call them (`:97` for `/ctx/`, `:101` for `/crops/`, `:112`
+for the static fallback). `annotator/unified_server.py:337 def safe_file(base, name)` becomes a
+wrapper over the same rule at `:345 if not bare_name(name):`, and it keeps the two 404 sentences in
+their order, so nothing an operator or a test sees moves.
+`tests/test_served_files.py` holds 7 cases: the rule itself, the two sentences through the wrapper,
+and the three legacy routes started in a thread over a temporary root, with `200` for the files that
+belong to the route and `404` for five names that leave it.
+
+Bites. Putting the unguarded `/ctx/` route back failed 2 cases, one of them with
+`AssertionError: 200 != 404 : ('/ctx/../../../outside.txt', b'outside-bytes')`. Swapping the two
+404 sentences inside the wrapper failed `test_a_name_with_a_separator_and_a_missing_name_keep_their_own_sentence`
+with `AssertionError: Tuples differ: (404, 'media not found') != (404, 'invalid media path')`. The
+first draft of the suite used a run-time `skipTest` for a file system without symbolic links, which
+made the 27th skip site of the suite and failed `tests/test_suite_inventory.py`; the case now makes
+the link for real and fails loudly, and the census is back at 26.
+
+### The proof of the refusal rule starts every subject the tree holds
+
+This is the round's walk finding, and it is the smallest of the four. `src/store.py:156
+def refuse_file_writes_under_postgres(tool: str) -> None:` owns one rule: a tool that writes
+user-data files directly must refuse to start while `POOL_DATABASE_URL` is set. Four modules call
+it - `src/merge_sets.py:15`, `src/pid_anchor_ui.py:32`, `src/pid_seed_ui.py:32` and, since the
+change above, `annotator/server.py:159` - and the case that proves the rule named three of them in a
+hard-coded tuple, with the same names repeated in its docstring. `src/merge_sets.py` was the missing
+fourth, and that module rewrites `out/meta.json`, `out/ctx.json` and `out/labels.json`.
+
+`51e13f7` derives the subjects from the tree: `tests/test_store.py:40 REFUSAL_SUBJECTS` states the
+set, `:48 def refusal_subjects(root)` reads every `*.py` of `src/` and `annotator/` and collects the
+path of each guard call, and `:103` asserts that the two sets are equal, naming both differences.
+Then it starts every derived subject for real - `sys.executable <module> 0`, with
+`POOL_DATABASE_URL` set, in a temporary directory, timeout 120 s - and asserts a non-zero exit, the
+`Refusing to run` line and the way to use it on a copy (`src.store_export`) on stderr, plus that the
+temporary directory holds the same paths after the four children as before.
+
+Bites. Removing `src/merge_sets.py` from the stated set failed with
+`without a proof here: ['src/merge_sets.py']; stated but absent from the tree: []`; removing
+`src/pid_seed_ui.py` failed the case with a list difference over the same two names.
+
+Limits. The derivation reads `src/*.py` and `annotator/*.py` only, because every guard call of this
+tree is in those two folders; a writer added under a third folder would not be derived, and the
+stated set would not name it either. The four children are started with `argv[1] = "0"`, which is
+enough for a module that refuses before it parses anything else. The case proves the refusal and the
+quiet directory, not the absence of a write outside that directory.
+
+### The reason four element doubles stay four
+
+`9509d14` moved the element doubles of the node suites into `tests/dom_stubs.js`, and left two large
+doubles in place: `tests/test_ops.js:40 richDocument(handlers)` and
+`tests/test_app_timeline.js:46 element()` inside `engineRealm`. The two differ by 13 names each way:
+the engine double answers `checked`, `disabled`, `files`, `hasAttribute`, `load`, `play`, `pause`,
+`blur` and `getBoundingClientRect`, and the shared one answers `title`, `attributes`,
+`insertAdjacentHTML`, `contains`, `toggles`, `appended` and `inserted`. No source module reads both
+surfaces, so a merge would hide the disagreement that matters, and `tests/dom_stubs.js:11
+domNode(selector)` (35 names) plus `tests/test_board.js:209 fakePage({...})` answer two other
+surfaces again. `48a82fb` writes that reason into the header of the module, one paragraph per
+double, so the next reader does not merge them.
+
+### What stands open after this round
 
 | Candidate | Rank | Ground in the tree |
 | --- | --- | --- |
-| Round 38 Worth, the two DOM doubles | Worth | `9509d14` moved `domNode` and `elementStub`; `tests/test_ops.js:28 richDocument` and `tests/test_app_timeline.js:44 engineRealm` stay separate on purpose, and the reason is not yet written down |
-| Round 43, the sentences without an identity | Worth | 121 of the 169 raised sentences have no row in `annotator/refusals.py` and stay English; the ffmpeg-failure sentence and the sentence `scan()` writes into `_auto["error"]` carry no code either |
+| The identity-less raise site | Worth | `annotator/operations.py:39` builds the sentence with an f-string, so no table can key it; `rating must be an integer from 0 to 1000` still reaches the operator without a code |
+| Two statements of one console exception | Worth | the exception maps of `tests/test_refusal_identity.py` and `tests/test_job_refusal_identity.py` both record that `annotator/ops.js:10` holds one refusal row as display text and that `annotator/app.js:2046` holds a longer line that contains a row; both modules say in a comment that a new exception must be made in both places, which is one fact stated twice |
+| The sentences the job can still hold | Worth | the ffmpeg-failure sentence and the sentence `scan()` writes into `_auto["error"]` carry no code |
 
-The loop still needs a fresh read-only walk of the tree. Round 41 found two Strong candidates, both
-are now landed, so that walk decides whether any Strong candidate is left.
+The loop still needs a fresh read-only walk of the tree. The round-43 walk found one Strong
+candidate, and `51e13f7` lands it, so the round-44 walk decides whether any Strong candidate is
+left.
