@@ -88,50 +88,20 @@ class TwitchVodError(RuntimeError):
     """Safe public error: contains no upstream body, playback token, or signed URL."""
 
 
-#: VOD media is *not* served from the live hosts: usher hands out a signed playlist on
-#: Twitch's CloudFront distribution (observed: d2nvs31859zcd8.cloudfront.net, 2026-09-24).
-#: That host is pinned exactly rather than wildcarded - `*.cloudfront.net` would allow
-#: every CloudFront distribution on the internet as a decoder input.  If Twitch rotates
-#: it, playback fails loudly with 'unsafe VOD playback URL' and the new host is added here.
-_VOD_MEDIA_HOSTS = frozenset({'d2nvs31859zcd8.cloudfront.net'})
+#: This module declares no host and keeps no second allowlist.  The VOD media row and the
+#: preview-picture row of the one fetch table are declared in ``annotator/twitch_source.py``
+#: (:func:`live.declare`), each with its own pinned hosts, its own transport rule, and its
+#: own refusal sentence, so a host added for one purpose there cannot widen another.
 
 
 def _validate_media(url):
     """HTTPS media URL on Twitch's own CDN (or the pinned VOD distribution) only."""
-    try:
-        parts = urlsplit(url)
-        host = parts.hostname or ''
-        allowed = (host in _VOD_MEDIA_HOSTS or host.endswith('.ttvnw.net')
-                   or host.endswith('.twitchcdn.net'))
-        valid = (allowed and parts.scheme == 'https' and not parts.username
-                 and not parts.password and parts.port in (None, 443)
-                 and not parts.fragment and not re.search(r'[\s\\]', url))
-    except (ValueError, TypeError):
-        valid = False
-    if not valid:
-        raise TwitchVodError('Twitch returned an unsafe VOD playback URL')
-    return url
-
-
-#: Preview pictures are served from Twitch's static image CDN, not from the media hosts.
-#: Pinned exactly, for the same reason the media distribution is: `*.jtvnw.net` would let
-#: any host under that domain become an image this server fetches and hands to a browser.
-_VOD_THUMB_HOSTS = frozenset({'static-cdn.jtvnw.net'})
+    return live.allow('vod-media', url, error=TwitchVodError)
 
 
 def _validate_thumb(url):
     """HTTPS preview picture on Twitch's own static image CDN only."""
-    try:
-        parts = urlsplit(url)
-        host = parts.hostname or ''
-        valid = (host in _VOD_THUMB_HOSTS and parts.scheme == 'https' and not parts.username
-                 and not parts.password and parts.port in (None, 443)
-                 and not parts.fragment and not re.search(r'[\s\\]', url))
-    except (ValueError, TypeError):
-        valid = False
-    if not valid:
-        raise TwitchVodError('Twitch returned an unsafe thumbnail URL')
-    return url
+    return live.allow('thumb', url, error=TwitchVodError)
 
 
 def vod_id_of(argument):
@@ -152,11 +122,12 @@ def vod_id_of(argument):
 def _raw(url, payload=None, *, timeout=12, limit=_PLAYLIST_BYTES):
     """One request with its **raw** status and body, so a probe can report both.
 
-    Redirects are refused and hosts are validated against the live resolver's own
-    allowlists (``gql.twitch.tv`` / ``usher.ttvnw.net`` for API calls, ``*.ttvnw.net`` /
-    ``*.twitchcdn.net`` for media), so a signed URL can never be redirected off-Twitch.
-    A transport failure is returned, not raised, with the exception *type* only - never
-    the message, which can contain a signed URL.
+    Redirects are refused and the host is validated against the row of the fetch table that
+    names this call's purpose - ``api`` for a payload call (``gql.twitch.tv`` /
+    ``usher.ttvnw.net``), ``vod-media`` for a media call (``*.ttvnw.net`` /
+    ``*.twitchcdn.net``, plus the pinned VOD distribution) - so a signed URL can never be
+    redirected off-Twitch.  A transport failure is returned, not raised, with the exception
+    *type* only - never the message, which can contain a signed URL.
     """
     live._validate_url(url) if payload is not None else _validate_media(url)
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*'}
@@ -186,10 +157,10 @@ def _raw(url, payload=None, *, timeout=12, limit=_PLAYLIST_BYTES):
 def _raw_bytes(url, *, timeout=10, limit=_THUMB_BYTES):
     """One **binary** request, for pictures rather than documents.
 
-    The same discipline as :func:`_raw` - redirects refused, the host validated against an
-    allowlist before anything is fetched, a transport failure reported as its exception
-    type only - except that the body is returned as bytes: ``_raw`` decodes to text, which
-    a JPEG cannot survive.
+    The same discipline as :func:`_raw` - redirects refused, the host validated against the
+    ``thumb`` row of the fetch table before anything is fetched, a transport failure reported
+    as its exception type only - except that the body is returned as bytes: ``_raw`` decodes
+    to text, which a JPEG cannot survive.
     """
     _validate_thumb(url)
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'image/*'}
@@ -210,20 +181,14 @@ def _raw_bytes(url, *, timeout=10, limit=_THUMB_BYTES):
 
 
 #: Resolved preview pictures, so a screen of rows costs one API call per broadcast and a
-#: reloaded page costs none.  Bounded and cleared wholesale: a preview is a small image and
-#: a stale entry is worth less than the bookkeeping of evicting one precisely.
-_THUMB_CACHE = {}
-_THUMB_CACHE_TTL_S = 3600
-_THUMB_CACHE_MAX = 64
+#: reloaded page costs none.  The ``thumb`` row of the fetch table owns the TTL and the
+#: ceiling, and clears wholesale: a preview is a small image and a stale entry is worth less
+#: than the bookkeeping of evicting one precisely.  This name is that row's own store.
+_THUMB_CACHE = live.cache_store('thumb')
 
 
-def vod_thumbnail(vod_id, *, timeout=10):
-    """One broadcast's preview picture as ``(content_type, bytes)``, or a safe error."""
-    vod = vod_id_of(vod_id)
-    now = time.monotonic()
-    cached = _THUMB_CACHE.get(vod)
-    if cached is not None and now - cached[0] < _THUMB_CACHE_TTL_S:
-        return cached[1], cached[2]
+def _fetch_thumbnail(vod, *, timeout):
+    """One gql call and one binary fetch for one broadcast; the cache is the caller's."""
     document = gql(_THUMB_QUERY % (vod, _THUMB_WIDTH, _THUMB_HEIGHT), timeout=timeout)
     video = (document.get('data') or {}).get('video')
     if not isinstance(video, dict):
@@ -237,10 +202,13 @@ def vod_thumbnail(vod_id, *, timeout=10):
     body = result['body']
     if not isinstance(body, (bytes, bytearray)) or len(body) < 128:
         raise TwitchVodError('Twitch returned an empty preview picture')
-    if len(_THUMB_CACHE) >= _THUMB_CACHE_MAX:
-        _THUMB_CACHE.clear()
-    _THUMB_CACHE[vod] = (now, 'image/jpeg', bytes(body))
     return 'image/jpeg', bytes(body)
+
+
+def vod_thumbnail(vod_id, *, timeout=10):
+    """One broadcast's preview picture as ``(content_type, bytes)``, or a safe error."""
+    vod = vod_id_of(vod_id)
+    return live.remember('thumb', vod, lambda: _fetch_thumbnail(vod, timeout=timeout))
 
 
 def gql(query, *, timeout=12):

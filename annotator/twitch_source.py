@@ -10,6 +10,7 @@ import json
 import re
 import ssl
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -31,21 +32,144 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def _validate_url(url, *, media=False):
+@dataclass(frozen=True)
+class _CachePolicy:
+    """How long one purpose's answers are kept, and how many are kept before a clear."""
+
+    ttl_s: int
+    max_entries: int
+
+
+@dataclass(frozen=True)
+class _Purpose:
+    """One row of the fetch table: the whole rule for one reason to open a socket.
+
+    ``hosts`` are exact names.  ``suffixes`` are domain tails and keep the leading dot, so
+    the bare domain is not a tail of itself.  ``ports`` holds ``None`` for the scheme's
+    default port.  Each row carries its own ``message``, so every purpose keeps the refusal
+    sentence it always printed.
+    """
+
+    hosts: frozenset
+    message: str
+    suffixes: tuple = ()
+    scheme: str = 'https'
+    ports: tuple = (None, 443)
+    cache: object = None
+
+
+#: kind -> _Purpose.  The one owner of "which host may we talk to for which purpose".
+_PURPOSES = {}
+
+
+def declare(kind, *, hosts=(), message, suffixes=(), scheme='https', ports=(None, 443),
+            cache=None):
+    """Write one row of :data:`_PURPOSES`; the only way a purpose becomes reachable.
+
+    A duplicate ``kind`` is refused, because two rows for one purpose is the drift this
+    table exists to stop, and so is a row that names no host.
+    """
+    if kind in _PURPOSES:
+        raise ValueError('fetch purpose %r is already declared' % (kind,))
+    if not hosts and not suffixes:
+        raise ValueError('fetch purpose %r names no host' % (kind,))
+    _PURPOSES[kind] = _Purpose(frozenset(hosts), message, tuple(suffixes), scheme,
+                               tuple(ports), cache)
+
+
+#: The web-player API: the persisted-query endpoint and the live resolver.
+declare('api', hosts={'gql.twitch.tv', 'usher.ttvnw.net'},
+        message='Twitch returned an unsafe playback URL')
+#: Live media: the CDN Twitch hands back for a live stream, and nothing else.
+declare('live-media', suffixes=('.ttvnw.net', '.twitchcdn.net'),
+        message='Twitch returned an unsafe playback URL')
+#: VOD media is *not* served from the live hosts: usher hands out a signed playlist on
+#: Twitch's CloudFront distribution (observed: d2nvs31859zcd8.cloudfront.net, 2026-09-24).
+#: That host is pinned exactly rather than wildcarded - `*.cloudfront.net` would allow
+#: every CloudFront distribution on the internet as a decoder input.  If Twitch rotates
+#: it, playback fails loudly with 'unsafe VOD playback URL' and the new host is added here.
+declare('vod-media', hosts={'d2nvs31859zcd8.cloudfront.net'},
+        suffixes=('.ttvnw.net', '.twitchcdn.net'),
+        message='Twitch returned an unsafe VOD playback URL')
+#: Preview pictures are served from Twitch's static image CDN, not from the media hosts.
+#: Pinned exactly, for the same reason the media distribution is: `*.jtvnw.net` would let
+#: any host under that domain become an image this server fetches and hands to a browser.
+#: A resolved picture is small and cheap to keep, so this row is also the one with a cache.
+declare('thumb', hosts={'static-cdn.jtvnw.net'}, cache=_CachePolicy(ttl_s=3600, max_entries=64),
+        message='Twitch returned an unsafe thumbnail URL')
+
+
+def purpose(kind):
+    """The row ``kind`` names, or a ``ValueError`` that lists the kinds that exist."""
+    try:
+        return _PURPOSES[kind]
+    except KeyError:
+        raise ValueError('unknown fetch purpose %r; declared: %s'
+                         % (kind, ', '.join(sorted(_PURPOSES)))) from None
+
+
+def cache_policy(kind):
+    """The cache policy of one purpose, or ``None`` when its answers are never kept."""
+    return purpose(kind).cache
+
+
+_CACHE_STORES = {}
+
+
+def cache_store(kind):
+    """The dict one cached purpose keeps its answers in; an uncached kind has none."""
+    if cache_policy(kind) is None:
+        raise ValueError('fetch purpose %r declares no cache' % (kind,))
+    return _CACHE_STORES.setdefault(kind, {})
+
+
+def allow(kind, url, *, error=TwitchSourceError):
+    """``url``, if this machine may open a socket to it *for this purpose*; else a refusal.
+
+    ``kind`` is the whole caller-side vocabulary, and the row it names is the only place a
+    host may be added, so a host added for one purpose cannot widen another.  The refusal is
+    ``error(row.message)``: the sentence belongs to the row, the exception type to the module
+    that publishes it.
+    """
+    row = purpose(kind)
     try:
         parts = urlsplit(url)
         host = parts.hostname or ''
-        allowed = (host.endswith('.ttvnw.net') or host.endswith('.twitchcdn.net')) if media else host in {
-            'gql.twitch.tv', 'usher.ttvnw.net',
-        }
-        valid = (allowed and parts.scheme == 'https' and not parts.username
-                 and not parts.password and parts.port in (None, 443)
+        allowed = host in row.hosts or any(host.endswith(suffix) for suffix in row.suffixes)
+        valid = (allowed and parts.scheme == row.scheme and not parts.username
+                 and not parts.password and parts.port in row.ports
                  and not parts.fragment and not re.search(r'[\s\\]', url))
     except (ValueError, TypeError):
         valid = False
     if not valid:
-        raise TwitchSourceError('Twitch returned an unsafe playback URL')
+        raise error(row.message)
     return url
+
+
+def remember(kind, key, produce):
+    """``produce()``'s answer for ``key``, kept as long as this purpose's policy says.
+
+    A purpose whose row declares no cache calls ``produce()`` on every call.  Only a returned
+    value is stored: an exception is never remembered, so the next call tries again.
+    """
+    row = purpose(kind)
+    if row.cache is None:
+        return produce()
+    store = cache_store(kind)
+    now = time.monotonic()
+    kept = store.get(key)
+    if kept is not None and now - kept[0] < row.cache.ttl_s:
+        return kept[1]
+    value = produce()
+    if len(store) >= row.cache.max_entries:
+        store.clear()
+    store[key] = (now, value)
+    return value
+
+
+def _validate_url(url, *, media=False):
+    """Refuse any playback URL outside the live-media (or the api) row of the table."""
+    return allow('live-media' if media else 'api', url)
 
 
 def _request(url, payload=None, *, timeout=_TIMEOUT):
