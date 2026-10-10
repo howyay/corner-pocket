@@ -197,7 +197,7 @@ needsBackRoom() =
 | `match_score`：非 live、比分不是抢 N、平局 | `operations.py:426` | `签字确认` 只在 `max(score) === raceTo` 且不平时可用 |
 | `tournament_delete`：有已签赛果 | `operations.py:1`（"An event with a signed result cannot be deleted"） | 收尾卡里 `删除` 按钮对这种情况**不出现**，只出现 `隐藏` |
 
-**为什么这样做而不是自己写一套客户端闸门**：客户端闸门与服务端闸门一旦有偏差，就会出现"按钮亮着但服务端拒"的死路（现有 `validationZh`（`ops.js:79`）就是为这类回退准备的）。这里让服务端当唯一权威，客户端只做**显隐**；被拒时仍走 `message(text, error, detail)`（`ops.js:81`）双语解释。
+**为什么这样做而不是自己写一套客户端闸门**：客户端闸门与服务端闸门一旦有偏差，就会出现"按钮亮着但服务端拒"的死路（这件回退现在由服务端承担：`annotator/refusals.py` 持码表，`annotator/ops.js:865 validationMessage(detail, served)` 读服务端给的 `code` 与 `zh`；提交 `bc78341` 之前是 `validationZh`（`ops.js:79`））。这里让服务端当唯一权威，客户端只做**显隐**；被拒时仍走 `message(text, error, detail)`（`ops.js:81`）双语解释。
 
 ### 2.5 URL hash：可分享、可刷新、可后退
 
@@ -3591,7 +3591,7 @@ The round-41 wave left four worker briefs in flight. They land here, together wi
 
 Two corrections to earlier rows of this file. The round-41 open table said that three workers held the gate keys, the DOM stubs and the deployment renderer with uncommitted diffs; all three landed here (`8cda1b7`, `9509d14`, `5253934`). The round-41 walk row for the class token without a rule is closed as a decision, not as code.
 
-The crop-set duplicate is deleted, not committed: `tests/test_crop_set_vocabulary.py` (116 lines, 5 cases) repeated, case for case, the landed `tests/test_store_files.py` (class `VocabularyParity` at `:93`, class `SourceGuard` at `:126`), and round 37 Strong 2 was already closed by `0c30e5d` with `src/store_files.py:31 BALL_SETS`. A second module that pins one rule is a second place to change.
+The crop-set duplicate is deleted, not committed: `tests/test_crop_set_vocabulary.py` (116 lines, 5 cases) repeated, case for case, the landed `tests/test_store_files.py` (class `VocabularyParity` at `:90`, class `SourceGuard` at `:122`; a first draft of this line said `:93` and `:126`, which are the first cases of those classes and not their class lines), and round 37 Strong 2 was already closed by `0c30e5d` with `src/store_files.py:31 BALL_SETS`. A second module that pins one rule is a second place to change.
 
 The class token without a rule (round 41, Speculative) closes as a decision: `annotator/ops.html` loads `ops.css` and `app.css`; `annotator/ops.js` writes 209 literal class tokens and exactly 21 of them have no rule in either loaded sheet (`archive-card`, `bf-estimate`, `bf-form`, `bf-linked`, `bf-linked-count`, `bf-marked`, `bf-notice`, `card`, `close-why`, `end-night`, `field`, `live-card`, `maint-status`, `player-form`, `race`, `radio`, `revival`, `sheet-round`, `sign-confirm`, `sign-wait`, `tl-month`), and no sheet that the page does not load covers any of them. A token without a rule is not a defect by itself, so no worker is spent on it.
 
@@ -3608,3 +3608,201 @@ What stands open after this round:
 | The dotted test module path | Worth | `PYTHONPATH=. .venv/bin/python -m unittest tests.test_unit_render` fails with `ModuleNotFoundError`, because `.venv/lib/python3.14/site-packages/tests/__init__.py` is a regular package of ultralytics and beats the namespace directory. The working substitute is `(cd tests && PYTHONPATH=.. ../.venv/bin/python -m unittest test_unit_render)` |
 
 The stopping rule of the loop does not change: the loop ends when a fresh read-only walk of this tree finds no Strong candidate. Round 41 found two, and both are briefed here.
+
+## Round 43 · the refusal identity, the machine-speed claims and the entry point (2026-10-10)
+
+This round closes both halves of round 41 Strong 2, the dotted test module path and the round-38
+Worth item about the machine's clock, and it records two corrections to lines of this file.
+
+| Commit | What it says |
+| --- | --- |
+| `bc78341` | refusals: one table owns the code and the Chinese sentence |
+| `c9b9a87` | tests: one entry point runs one module, and it says why the dotted name fails |
+| `07c3608` | refusals: the job carries the identity of its refusal too |
+| `acc0f65` | tests: five cases measure the product, not the speed of the machine |
+
+### Strong 2, first half: the console stops reading an English refusal
+
+The console knew a service refusal by the exact text of an English sentence: `annotator/ops.js:860`
+held 48 Chinese sentences keyed by that text, and `:872` read `result.error` to pick one. The two
+python modules raise 169 sentences between them (rule: the first argument of a `raise` call that is
+a plain string constant - 97 in `annotator/operations.py`, 73 in `annotator/unified_server.py`, one
+shared), so 121 of them fell to the generic sentence, and a rewording of any sentence moved the
+console's answer with no test to catch it.
+
+`bc78341` puts the identity on the wire:
+
+* `annotator/refusals.py` (new, 99 lines) holds `REFUSALS` with 48 `Refusal(code, zh)` rows, plus
+  `def of(sentence)` and `def identity_fields(sentence)`, which answers `{code, zh}` or `{}`.
+* `annotator/unified_server.py:228 def refusal_body(exc, fields=None)` builds the refusal body once:
+  the operator sentence, then the declared extra fields, then the identity. Both refusal sites call
+  it (`:2859` for `APIError`, `:2862` for `ValueError`); the third body builder at `:2866` is
+  untouched.
+* `annotator/ops.js:864 validationZhGeneric` and `:865 function validationMessage(detail,served)`
+  read the served `code` and `zh`. The 48-key table left javascript: that file moved from 226434 to
+  223001 bytes.
+
+Measured. The joined Chinese digest is `169b53c4877a5dd1232c861152e0bb66cae7cd8f` before and after
+the move, so all 48 sentences are byte-identical. The full python suite answers
+`Ran 1701 tests in 128.918s` and `OK (skipped=53)`. Node: `tests/test_ops.js` 210 pass / 0 fail,
+`tests/test_board.js` 23 / 23 / 0, `tests/test_app_timeline.js` 99 passed. Two bites, each restored
+from a copy: a reworded `source_exists` row moved `annotator/refusals.py` from `e03df6f8` to
+`8e048947` and failed exactly `test_the_moved_sentences_are_the_ones_the_console_held` (digest
+`194fce1c` against `ccab556b`); `annotator/ops.js:865` reading `false` instead of the served code
+moved that file from `a0eaae13` to `80fbf53a` and left node at 199 pass of 210. A live server on a
+free port over a temporary root answered a repeated `source_add` with 400
+`{"error": "Source already added", "code": "source_exists", "zh": "这个直播源已经添加过了。"}`, and a
+stale revision with 409 `{"error": "State changed; reload before retrying", "nightId": null,
+"code": "revision_conflict", "zh": "数据已被修改，请刷新后重试。"}`.
+
+Honest limits, from the delivery. 121 sentences have no Chinese row and stay English; the test
+module pins that number as `RAISED_SENTENCES_WITHOUT_A_ROW = 121` and prints the sentences in the
+failure text. `annotator/ops.js:10 words.placeholderName` keeps one Chinese sentence whose English
+differs, and the module names it in `CONSOLE_WORDS_THAT_REPEAT_A_REFUSAL`. Four javascript sites
+still match job text (`annotator/ops.js:481`, `:686`, `:693`, `annotator/vision-stage.js:896-899`);
+that is the second half of this candidate, and a worker holds it. `annotator/operations.py` needed
+no edit.
+
+### The entry point runs one module
+
+`scripts/pool-test.sh` ran the whole python suite or nothing. The obvious per-module command fails,
+and its message contradicts the file system:
+
+    PYTHONPATH=. .venv/bin/python -m unittest tests.test_store_files
+    ModuleNotFoundError: No module named 'tests.test_store_files'
+
+`tests/test_store_files.py` is present. The name `tests` answers
+`.venv/lib/python3.14/site-packages/tests`, a regular package of ultralytics, so that import never
+reaches `tests/` of this repository. The workaround lived only in prose.
+
+`c9b9a87` adds the mode: `scripts/pool-test.sh python <module>` enters `tests/` and runs
+`PYTHONPATH=.. <python> -m unittest <module>`. The script refuses a dotted name and prints why, and
+it refuses a name with no file, naming `tests/<name>.py`. The interpreter now resolves to an
+absolute path, because the relative form `../.venv/bin/python` made site.py print two
+`RuntimeWarning` lines about `sys.prefix`.
+
+Measured: `python test_write_fingerprint` answers `== python: unittest test_write_fingerprint`,
+`Ran 11 tests in 0.028s`, `OK`, exit 0, with `discover -s tests` in neither stream; the three
+refusals all exit 2; the new `tests/test_pool_test_entry.py` holds 5 cases and answers
+`Ran 5 tests in 0.131s`, OK, while `tests/test_suite_inventory.py` (`Ran 4 tests in 3.178s`) and
+`tests/test_assertion_sweep.py` (`Ran 3 tests in 0.756s`) stay green. Bite: removing the
+dotted-name branch moved the script from `bfe7501f` to `35ddb51d` and failed exactly
+`test_a_dotted_name_is_refused_and_the_message_names_the_bare_form`; the file was restored from a
+copy. `README.md` names the mode and the reason, and it no longer offers the discovery pattern
+`-p 'test_operations.py'` as the way to run one module.
+
+### Strong 2, second half: the job carries the identity of its refusal
+
+The four javascript sites that matched job text are gone. Before `07c3608`, `annotator/ops.js:481`
+held two regular expressions (`/Only saved channels/i`, `/Not enough free disk space/i`), `:686` and
+`:693` held the first one again, and `annotator/vision-stage.js:897-898` held a third reader that
+also read the channel name out of the sentence. A rewording in python therefore dropped the Chinese
+answer, and a channel name with a space broke the pattern.
+
+`07c3608` puts the identity on the job surface:
+
+* `annotator/refusals.py` gains `FactRefusal(code, en, zh, fields)`, the templated rows
+  `CHANNEL_REFUSAL` and `DISK_REFUSAL`, the rows `ALREADY_STARTING`, `ALREADY_RUNNING` and
+  `ALREADY_IMPORTED`, the map `JOB_REFUSALS`, and the builders `channel_refusal(channel)`,
+  `disk_refusal(needed_bytes, estimate_bytes, free_bytes)` and `job_identity(name, **facts)`. `gb()`
+  moved here, so the GB text has one definition. The 48 rows of `REFUSALS` are byte for byte
+  unchanged.
+* `annotator/vod_import.py`: `VodImportError(message, status=400, identity=None)` and
+  `failure_identity(exc)`. Six raise sites carry the identity: the thumbnail route (403), `_plan`
+  (400), the three `already_*` refusals (409) and the disk refusal (507). `_disk` publishes
+  `disk["identity"]`, and `job()`, `_finish(identity=...)`, `_job_identity()` and
+  `_auto_finish(..., identity=...)` copy it into the record and into every auto row.
+* `annotator/unified_server.py`: the two `except VodImportError` sites pass the identity through the
+  one existing body rule, `raise APIError(str(exc), exc.status, **exc.identity)`. The `refusal_body`
+  call count is still 2.
+* `annotator/ops.js`: `bfChannel`, `bfDiskNo` and both regular expressions are gone. `bfCode(served)`,
+  `bfError(error, served)` and `bfRefusal(step, error, served)` read the served code and the served
+  Chinese. `annotator/vision-stage.js`: `serverText()` and both `bcOtherChannel` rows are gone;
+  `bcIdentity`, `bcText` and `bcError` read the served identity.
+
+Measured. Every sha1 of the delivery matched the review. The 48 rows of `REFUSALS` are identical to
+the table of `bc78341`. The moved sentences render byte for byte as before, and the check ran the new
+builders against the old literals: `channel_refusal('somebodyelse')` gives
+`This VOD belongs to somebodyelse. Only saved channels can be analysed; add the channel under Source first.`
+and `disk_refusal(3400000000, 1166666666, 900000000)` gives
+`Not enough free disk space: this import needs 3.4 GB (about 1.2 GB estimated x 1.2 + 2 GB reserve) and 0.9 GB is free. Import a shorter range or free some space first.`
+No javascript file holds the two regular expressions, `serverText` or `bcOtherChannel`. The full
+python suite answers `Ran 1720 tests in 175.486s` and `OK (skipped=53)`; the new
+`tests/test_job_refusal_identity.py` alone answers `Ran 14 tests in 0.094s`, OK. Node:
+`tests/test_ops.js` 210 pass / 0 fail, `tests/test_board.js` 23 / 23 / 0, `tests/test_app_timeline.js`
+99 passed, 0 failed. A live server on a free port over a temporary root answered
+`GET /api/vods/thumb?channel=somebodyelse&id=1000000001` with 403
+`{"error": "This VOD belongs to somebodyelse. Only saved channels can be analysed; add the channel under Source first.", "code": "vod_channel_not_saved", "zh": "此回放属于 somebodyelse。只能分析已保存的频道；请先在“来源”中添加该频道。", "channel": "somebodyelse"}`.
+Bite: one code changed in `annotator/refusals.py` (`vod_channel_not_saved` ->
+`vod_channel_missing`) moved that file from `226ba7e0` to `dea91d57` and failed 4 of the 14 cases,
+among them `test_the_console_reads_only_codes_python_can_produce`; the file was restored from a copy.
+
+Limits, from the delivery. A backfill job in practice produces the disk refusal with certainty; the
+channel and `already_*` refusals are reachable but rare. The ffmpeg-failure sentence and the sentence
+`scan()` writes into `_auto["error"]` carry no identity, because no raise site for them names a code.
+No browser run and no live backfill were made, because a download is not allowed here.
+
+### Five test cases stop grading the clock
+
+Five assertions graded the wall clock, and one of them failed on a loaded machine. The recorded
+failure is `Ran 43 tests in 1.041s  FAILED (failures=1)` with
+`FAIL: test_a_second_session_carries_nothing_from_the_first` and
+`AssertionError: 'running' not found in ('starting', 'eos')`, under 40 busy shell loops. The idle
+machine passed 6 of 6 runs, so the case was wrong and the product was right.
+
+`acc0f65` repairs one claim at a time:
+
+* `tests/test_live_processing.py:1020`: the accepted state set of the second session is now
+  `('starting', 'running', 'eos')`. The token races the decoder thread; only `error` would break the
+  claim of the case, which is that no counter, no `latest`, no `last_received_at` and no `error`
+  comes from the first session.
+* `tests/test_live_processing.py:304`: the replay case uses `Capture(count=10, fps=.1)` against the
+  2 s default stop timeout, so the state `stopped` proves by itself that `stop()` interrupted the
+  pacing wait. The bound of 0.3 s is deleted.
+* `tests/test_live_processing.py:328-329`: the blocked-capture case keeps `stopping` and adds
+  `assertFalse(unblock.is_set())` and `assertFalse(capture.released)`. The bound of 0.2 s is deleted.
+* `tests/test_http_security.py`: both timeout cases keep the end of file read (`b''`) and the
+  `assertNotIn(b'200 OK', ...)` check, and drop the bounds of 4 s. A server that never closed the
+  socket raises the client's own 5 s `socket.timeout`, so the case still fails. The lower bound at
+  line 188 stays, because a slow machine cannot break a lower bound.
+* `tests/test_shot_clock.py:193-194`: the case keeps `assertEqual(woke, [True])` and adds
+  `assertFalse(waiter.is_alive())`. The bound of 1 s is deleted.
+
+Measured. The four removed bounds are absent from the three files, and the one lower bound stays. A
+loaded run answered `Ran 43 tests in 1.101s` OK at load 5.72, `Ran 10 tests in 0.948s` OK, and
+`Ran 19 tests in 17.280s` OK at load 16.10. Bite: the narrow tuple `('starting', 'eos')` back moved
+`tests/test_live_processing.py` from `56ce5c22` to `42d665c6`, and 2 of 8 runs failed at load 25.33
+to 30.19, every failure the same case; the file was restored from a copy. The delivery's own ramp, in
+`/tmp/dshsess/machine_speed_evidence.md`, failed 13 of 30 runs with the narrow tuple and passed 30 of
+30 with the widened tuple. A probe of 400 samples found the reachable set `starting` 300, `eos` 92,
+`running` 8, `error` 0, so the widened tuple is the measured set and not a wider excuse.
+
+Limits. 30 of 30 is a measurement and not a proof, and the race is not monotone in load: the narrow
+tuple passed 8 of 8 at a steady load near 46 and failed only while the load ramped. The `stopped` and
+`stopping` claims rest on the state transitions in `annotator/live_processing.py` and must be read
+again if that file changes. The two `tests/test_http_security.py` cases still cost about 1 s each,
+because they wait for a real timeout. The other timing constants of the three modules, the `wait_for`
+deadlines of 1 to 3 s, were not audited. One warning: the `cd tests` form of the entry point must not
+run `tests/test_live_processing.py`, because that form reads `annotator/live_processing.py` against
+the wrong root at line 704.
+
+### Two corrections to lines of this file
+
+The round-42 section said `tests/test_store_files.py` holds `class VocabularyParity` at `:93` and
+`class SourceGuard` at `:126`. Those are the first cases of the two classes; the class lines are
+`:90` and `:122`, and the line is corrected in place.
+
+The design section at `:200` cited `validationZh` at `ops.js:79` as the fallback machinery. That
+table no longer exists: `bc78341` moved the identity to `annotator/refusals.py` and the console
+reads the served `code` and `zh` at `annotator/ops.js:865`. The line now names the current
+mechanism and keeps `bc78341` as the date of the change.
+
+What stands open after this round:
+
+| Candidate | Rank | Ground in the tree |
+| --- | --- | --- |
+| Round 38 Worth, the two DOM doubles | Worth | `9509d14` moved `domNode` and `elementStub`; `tests/test_ops.js:28 richDocument` and `tests/test_app_timeline.js:44 engineRealm` stay separate on purpose, and the reason is not yet written down |
+| Round 43, the sentences without an identity | Worth | 121 of the 169 raised sentences have no row in `annotator/refusals.py` and stay English; the ffmpeg-failure sentence and the sentence `scan()` writes into `_auto["error"]` carry no code either |
+
+The loop still needs a fresh read-only walk of the tree. Round 41 found two Strong candidates, both
+are now landed, so that walk decides whether any Strong candidate is left.
