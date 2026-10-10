@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import dataset_id_cases
 from annotator import live_processing
 from src import datasets, enroll_from_tracklet
 from src.datasets import imported_id, listing, lookup, parse_imported_id, read_index
@@ -178,6 +179,41 @@ class DatasetRegistryTests(unittest.TestCase):
         self.assertEqual(tree_stamp(self.root), before)
         self.assertFalse((self.root / "out" / "vods" / key).exists())
         self.assertFalse((self.root / "data").exists())
+
+
+class DatasetIdGrammarTests(unittest.TestCase):
+    """The rule a dataset column applies, run over the corpus of ``tests/dataset_id_cases``.
+
+    This side of the boundary is Python. The other side is the SQL of
+    ``db/migrations/0004_imported_datasets.sql``; ``tests/test_db.py`` runs the same corpus
+    through ``dataset_id_ok`` when a database is configured.
+    """
+
+    @staticmethod
+    def verdict(text):
+        """What a dataset column accepts: a published name, or one canonical imported id."""
+        return text in dataset_id_cases.BUILT_IN or parse_imported_id(text) is not None
+
+    def test_every_spelling_gets_the_verdict_the_rule_gives(self):
+        for text, expected in dataset_id_cases.CASES:
+            with self.subTest(text=repr(text)):
+                self.assertEqual(self.verdict(text), expected,
+                                 f"the rule gives {expected} for {text!r}")
+
+    def test_the_published_names_are_the_registrys_own(self):
+        self.assertEqual(sorted(dataset_id_cases.BUILT_IN), sorted(datasets.STATIC_OUT))
+
+    def test_the_published_names_are_the_only_spelling_the_two_readings_differ_on(self):
+        """``dataset_id_ok`` guards every dataset column, so it also covers the two names.
+
+        ``parse_imported_id`` parses imported ids only. Every other spelling must get the
+        same verdict from both readings, and this states where they may differ.
+        """
+        for text, _ in dataset_id_cases.CASES:
+            with self.subTest(text=repr(text)):
+                if parse_imported_id(text) is not None:
+                    self.assertFalse(text in dataset_id_cases.BUILT_IN,
+                                     f"{text!r} is both an imported id and a published name")
 
 
 class BuiltInMediaNameTests(unittest.TestCase):

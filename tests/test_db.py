@@ -156,5 +156,67 @@ class Database(unittest.TestCase):
                     "VALUES ('unlabeled_crops', %s, 'f', %s::jsonb)", ("k" + bad, bad))
 
 
+    def test_0004_dataset_id_rule_answers_every_spelling_like_the_corpus_says(self):
+        """The SQL rule and the Python rule are one grammar, told by one corpus.
+
+        ``tests/dataset_id_cases.py`` holds the spellings and the verdict each side gives
+        them. The one difference is by design and the corpus states it: ``dataset_id_ok``
+        also accepts the two published names, because it guards every dataset column, while
+        ``parse_imported_id`` parses imported ids only.
+        """
+        import dataset_id_cases
+        db.migrate(self.conn)
+        run = self.conn.execute
+        for text, expected in dataset_id_cases.CASES:
+            with self.subTest(text=repr(text)):
+                self.assertEqual(run("SELECT dataset_id_ok(%s)", (text,)).fetchone()[0], expected,
+                                 f"{text!r} does not get the verdict the corpus records")
+        # the rule is STRICT, so a NULL argument is NULL and not a verdict: the four columns
+        # below are NOT NULL, and that is what keeps the hole shut
+        self.assertIsNone(run("SELECT dataset_id_ok(NULL)").fetchone()[0])
+
+    def test_every_dataset_column_checks_the_one_rule_and_cannot_be_null(self):
+        """0004 replaces the ``IN ('vod30', 'highlight')`` check of 0002 by the rule.
+
+        0002 declares those two checks without a name, so 0004 drops the names PostgreSQL
+        generated for them. This proves the replacement happened on all four dataset columns.
+        """
+        db.migrate(self.conn)
+        rows = self.conn.execute(
+            """
+            SELECT c.relname,
+                   a.attnotnull,
+                   count(*) AS checks,
+                   count(*) FILTER (WHERE pg_get_constraintdef(k.oid) LIKE '%%dataset_id_ok%%') AS with_rule
+              FROM pg_constraint k
+              JOIN pg_class c ON c.oid = k.conrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY (k.conkey)
+             WHERE k.contype = 'c' AND n.nspname = %s AND a.attname = 'dataset'
+             GROUP BY c.relname, a.attnotnull
+             ORDER BY c.relname
+            """, (self.schema,)).fetchall()
+        self.assertEqual([row[0] for row in rows],
+                         ["event_verdicts", "frame_corrections", "pocket_anchors", "track_seeds"])
+        for table, not_null, checks, with_rule in rows:
+            with self.subTest(table=table):
+                self.assertEqual((checks, with_rule), (1, 1),
+                                 f"{table}.dataset must check the one rule and nothing else")
+                self.assertTrue(not_null, f"{table}.dataset may be NULL, and the rule is STRICT")
+        # 0002 declares those two checks without a name, so PostgreSQL named them
+        # "<table>_dataset_check". 0004 drops them by that generated name and adds the rule,
+        # which takes the same generated name again: read the definition, never the name.
+        for name in ("event_verdicts_dataset_check", "frame_corrections_dataset_check"):
+            with self.subTest(constraint=name):
+                found = self.conn.execute(
+                    "SELECT pg_get_constraintdef(k.oid) FROM pg_constraint k "
+                    "JOIN pg_class c ON c.oid = k.conrelid "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = %s AND k.conname = %s", (self.schema, name)).fetchall()
+                self.assertEqual(len(found), 1, f"{name} must be the one dataset check of its table")
+                self.assertIn("dataset_id_ok", found[0][0], f"{name} does not check the rule")
+                self.assertNotIn("vod30", found[0][0], f"{name} still holds the old list")
+
+
 if __name__ == "__main__":
     unittest.main()
