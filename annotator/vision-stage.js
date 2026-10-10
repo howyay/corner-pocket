@@ -298,11 +298,14 @@ const engineText = value => engine()?.text ? engine().text(String(value ?? '')) 
 // The detector reports machine codes (low_cloth_area, no_boundary_evidence, ...);
 // the operator reads a phrase. Same idea as labelText: the code never reaches the
 // UI, and the default still translates instead of printing snake_case.
+// tests/test_console_reason_table.py derives these codes from src/table_refine.py.
 const QUAD_REASON = {
   low_cloth_area: ['the cloth is hidden - a player or an object is over the bed', '台面被遮挡——有人或物体挡在台面上'],
   no_boundary_evidence: ['no rail edge is visible inside the search band', '搜索带内看不到库边边缘'],
   boundary_outside_band: ['the rail edge sits outside the search band', '库边边缘超出搜索带'],
+  degenerate_prior: ['the saved geometry is degenerate, so it cannot guide the refinement', '已保存几何退化，无法引导细化'],
   prior_disagreement: ['the four sides disagree with the saved centre', '四条边与已保存中心不一致'],
+  side_inherited: ['the side kept the reason of the side it was inherited from', '该边沿用其继承来源边的判定原因'],
   invalid_geometry: ['the four corners are not a valid table quad', '四个角点不构成有效球桌四边形'],
   no_prior: ['no saved geometry exists for this dataset', '该数据集没有已保存几何'],
   no_cloth_area: ['no cloth was found in this frame', '此帧没有找到台呢']
@@ -428,27 +431,63 @@ function gateEvidence(event) {
   if ((event.dup_count || 1) > 1) out.push(`×${event.dup_count}`);
   return out;
 }
-// Gate reason codes in words. A code the table does not know stays verbatim (it is
-// evidence), and a reason that is already a sentence from the scan is kept, in 中
-// replaced by the scan's own Chinese sentence when it wrote one.
+// Gate reason codes in words. Every code the producers write has a row here, so the
+// operator reads a sentence, and the gate's own code stays in brackets beside it: the
+// code is the evidence a report or a bug refers to. A reason that is already a
+// sentence from the scan (the distance sentence, "no cloth census measured") has no
+// row and prints as it is. reasonText turns the distance sentence into Chinese.
+// tests/test_console_reason_table.py derives this vocabulary from src/event_gates.py,
+// src/dense_queue.py and src/shot_pot_gate.py, and holds this table to it.
 const REASONS = {
+  below_confidence_floor: ['the track has too few confident samples to grade', '轨迹可信样本不足，无法判定'],
+  calibration_rail_unverified_at_time: ['a rail side has no boundary evidence on this frame', '本帧有库边缺少边缘证据'],
+  calibration_reference_contradicted_at_time: ['the rail boundary on this frame is somewhere else', '本帧库边边缘不在参考位置'],
+  calibration_weak_at_time: ['the calibration coverage at this time was too weak', '当时标定覆盖太弱'],
+  census_did_not_drop: ['the ball count did not drop', '球数没有下降'],
+  census_displacement_corroborated: ['the fused census re-measured the move and agrees', '融合球数复测位移一致'],
+  census_drop: ['the ball count dropped', '球数下降了'],
+  census_recovered: ['the ball count recovered afterwards', '之后球数恢复了'],
+  census_source_mismatch: ['the two window sides came from different detectors, so the counts do not compare', '窗口两端来自不同检测器，球数不可比'],
+  census_too_sparse: ['the census is too sparse to measure a drop', '球数太稀疏，测不出下降'],
+  claim_not_projectable: ['the claim has no position inside the cloth to project', '声明在台面内没有可投影的位置'],
   cloth_occluded_at_disappearance: ['a person covered the cloth when the ball vanished', '球消失时有人挡住了台呢'],
+  dense_motion_onset: ['motion onset found in the dense track', '密集跟踪中找到了起动'],
+  disappeared_outside_pocket: ['the ball disappeared away from any pocket', '球在远离袋口处消失'],
+  displacement_corroborated: ['the move was re-measured and agrees', '位移已重新测量并一致'],
+  displacement_not_corroborated: ['the re-measured move is shorter than the minimum', '复测位移小于最小位移'],
+  displacement_not_stable: ['the move changes with the window shift, so it is not stable', '位移随窗口移动而改变，判定不稳定'],
+  displacement_unobserved_elsewhere: ['the move start or end was not seen often enough', '位移起点或终点观测次数不足'],
+  empty_track: ['the track holds no samples', '轨迹没有任何样本'],
+  geometry_mismatch: ['the claimed geometry and the measured move differ', '声称的几何与实测位移不一致'],
+  identity_swap_suspected: ['two balls may have swapped identity', '可能有两颗球身份互换'],
+  left_cloth: ['the ball left the cloth away from any pocket', '球在远离袋口处离开台呢'],
+  left_frame_edge: ['the ball left the frame away from any pocket', '球在远离袋口处离开画面'],
+  mm_projection_mismatch: ['the millimetre projection disagrees with the pixels', '毫米投影与像素不一致'],
+  motion_too_short: ['the motion was too short to count', '运动太短，不计入'],
+  no_approach_to_pocket: ['the ball did not approach the pocket', '球没有向袋口靠近'],
+  no_matched_ball_measured: ['no matched sighting of the ball was measured', '没有测量到该球的匹配出现'],
+  no_motion_onset: ['no motion onset was found', '未找到起动'],
+  no_still_stretch: ['the track has no still stretch before the move', '移动前没有静止段'],
+  no_vanished_ball_measured: ['no vanished ball of that colour was measured', '没有测量到该颜色的消失球'],
+  occlusion_channel_silent: ['the occlusion channel said nothing about this stretch', '遮挡通道对该时段没有报告'],
+  off_cloth: ['the claimed position is outside the cloth', '声明位置在台面之外'],
+  oscillation_no_net_travel: ['the ball oscillated without net travel', '球来回抖动，没有净位移'],
+  parked_in_jaws_possible: ['the ball may be parked in the pocket jaws', '球可能停在袋口颚部'],
   pocket_distance_ambiguous_mm: ['the pocket distance is within its error of the pocket edge', '袋口距离落在误差范围内，无法判定'],
   pocket_distance_outside_mm: ['the ball vanished outside the pocket radius', '球在袋口半径之外消失'],
   pocket_distance_within_uncertainty: ['the pocket distance is within its uncertainty', '袋口距离在不确定度之内'],
   pocket_test_agrees: ['pixel and millimetre pocket tests agree', '像素与毫米袋口判定一致'],
   pocket_test_disagrees_px_vs_mm: ['pixel and millimetre pocket tests disagree', '像素与毫米袋口判定不一致'],
-  dense_motion_onset: ['motion onset found in the dense track', '密集跟踪中找到了起动'],
+  pocket_test_flag_mismatch: ['the stored pocket-test flag disagrees with the recomputed test', '存储的袋口标记与重算结果不一致'],
+  reappeared_after_gap: ['the ball reappeared inside a pocket radius after a gap', '球在间隔后于袋口半径内再次出现'],
+  roll_without_pocket: ['the ball rolled on without reaching a pocket', '球继续滚动，没有到达袋口'],
+  track_ends_at_window_end: ['the track ends at the window end, so the vanish time is unknown', '轨迹在窗口末端结束，消失时间未知'],
+  track_too_short: ['the track has fewer than three samples', '轨迹样本少于三个'],
+  vanished_ball_at_pocket: ['the ball vanished at the pocket', '球在袋口处消失'],
+  vanished_ball_not_at_pocket: ['the ball vanished away from the pocket', '球在袋口之外消失'],
+  vanished_ball_not_established: ['the ball was seen too few times before it vanished', '球在消失前出现次数不足'],
+  vanished_ball_still_on_cloth: ['the ball was seen on the cloth after the event', '事件之后仍看到该球在台呢上'],
   window_grade_no_claim_to_check: ['motion-window grade: no separate claim to check the move against', '仅运动窗口：没有可对照的独立声明'],
-  census_recovered: ['the ball count recovered afterwards', '之后球数恢复了'],
-  displacement_corroborated: ['the move was re-measured and agrees', '位移已重新测量并一致'],
-  geometry_mismatch: ['the claimed geometry and the measured move differ', '声称的几何与实测位移不一致'],
-  identity_swap_suspected: ['two balls may have swapped identity', '可能有两颗球身份互换'],
-  parked_in_jaws_possible: ['the ball may be parked in the pocket jaws', '球可能停在袋口颚部'],
-  disappeared_outside_pocket: ['the ball disappeared away from any pocket', '球在远离袋口处消失'],
-  no_motion_onset: ['no motion onset was found', '未找到起动'],
-  motion_too_short: ['the motion was too short to count', '运动太短，不计入'],
-  mm_projection_mismatch: ['the millimetre projection disagrees with the pixels', '毫米投影与像素不一致'],
 };
 // The gate that decided, in words (the code stays when it is new).
 const GATES = {census:['census','球数'], occlusion:['occlusion','遮挡'], displacement:['displacement','位移'], motion:['motion','运动'], geometry:['geometry','几何']};
