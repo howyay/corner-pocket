@@ -1,9 +1,13 @@
 """Fixture-only operations invariants; python -m unittest discover -s tests."""
+import ast
+from dataclasses import replace
+import inspect
 import json
 from pathlib import Path
 import random
 import re
 import tempfile
+import textwrap
 import threading
 import unittest
 from unittest.mock import patch
@@ -1563,19 +1567,256 @@ class WriterCoversItsRowsTest(unittest.TestCase):
         self.assertIsNone(self.ops.get()['tournament'].get('pairing'), 'no pairing is drawn by a foreign name')
 
     def test_every_registry_row_names_a_writer_that_implements_it(self):
-        # The four writers that serve several rows are the risk. Each one must still be reached
-        # by its own rows: a row whose writer refuses its name would fail here.
-        multi = {}
+        """Every row is driven through the store and must be answered by its own action.
+
+        The grouping under test is derived from the registry, never listed: a writer that serves
+        several rows is where a row can be answered by a neighbouring action, so every row of
+        every such writer is posted here with a payload its own declaration accepts. The answer
+        must be that row's documented effect, never a neighbouring action's effect and never the
+        writer's refusal of a name it does not implement. The same request is then posted under a
+        name no row implements: a writer whose own source builds a refusal out of that name (the
+        scope is derived here by reading the writer, not by naming it) must refuse it for every
+        row it serves.
+
+        What this does not prove: that a writer serves its rows only through their names.
+        _do_entrants and _do_revival end in an action instead of in a refusal, so a name no row
+        implements can still be answered by them; measured here, one row of _do_entrants is still
+        reached that way and none of _do_revival, whose probe world does not satisfy its tail
+        action. That residue is bounded at one row per writer and reported, never asserted away.
+        """
+        MISSING = object()
+
+        def store():
+            """A document of its own: every drive and every probe acts on a fresh one."""
+            temp = tempfile.TemporaryDirectory()
+            self.addCleanup(temp.cleanup)
+            return Operations(Path(temp.name))
+
+        def post(ops, action, fields):
+            """(state, refusal): the document a write answered, or the sentence refusing it."""
+            try:
+                return ops.post(dict(action=action, revision=ops.get()['revision'], **fields)), None
+            except ValueError as error:
+                return None, str(error)
+
+        def write(ops, action, **fields):
+            """One accepted step while a world is built; a refusal here is a broken fixture."""
+            state, refusal = post(ops, action, fields)
+            self.assertIsNone(refusal, f'fixture step {action} was refused: {refusal}')
+            return state
+
+        def value(state, path):
+            """What a dotted path names, or MISSING where the document has no such value."""
+            node = state
+            for part in path.split('.'):
+                if isinstance(node, dict) and part in node:
+                    node = node[part]
+                elif isinstance(node, list) and part.isdigit() and int(part) < len(node):
+                    node = node[int(part)]
+                else:
+                    return MISSING
+            return node
+
+        def read(state, path):
+            """A drive's effect: `#path` is the length of what the path names."""
+            return len(value(state, path[1:])) if path.startswith('#') else value(state, path)
+
+        def registration(ops, ids):
+            """A doubles night taking sign-ups: two teams in, two names in the solo pool, and one
+            row of each kind the later drives act on."""
+            state = write(ops, 'tournament_setup', format='doubles', raceTo=3)
+            ids['current'] = state['tournament']['id']
+            state = write(ops, 'entrant_add', members=[{'name': 'Ann'}, {'name': 'Bea'}])
+            ids['entrant'] = state['tournament']['entrants'][0]['id']
+            write(ops, 'entrant_add', members=[{'name': 'Cid'}, {'name': 'Dee'}])
+            write(ops, 'solo_add', member={'name': 'Bo'})
+            write(ops, 'solo_add', member={'name': 'Cy'})
+            ids['player'] = write(ops, 'player_save', name='Pat')['players'][0]['id']
+            state = write(ops, 'source_add', url='https://www.twitch.tv/videos/1234567890')
+            # The blank document already carries the configured channel: take the video added here.
+            ids['source'] = next(source['id'] for source in state['sources']
+                                 if source.get('video') == '1234567890')
+            ids['note'] = write(ops, 'note_add', text='First')['notes'][0]['id']
+            ids['subject'] = ids['entrant']
+            ids['seed'] = 1  # a probe posts pair_accept's payload here; the seed is never read
+
+        def night(ops, ids, count=4):
+            """A singles night under way: its first match is the one the match rows act on."""
+            write(ops, 'tournament_setup', raceTo=2)
+            for n in range(count):
+                write(ops, 'entrant_add', members=[{'name': f'Guest {n}'}])
+            matches = write(ops, 'tournament_start')['tournament']['matches']
+            ids['match'] = matches[0]['id']
+            ids['subject'] = ids['match']
+            ids['played'] = next(m['id'] for m in matches if m['round'] == 1 and all(m['sides']))
+
+        def paired(ops, ids):
+            registration(ops, ids)
+            ids['seed'] = write(ops, 'pair_draw')['tournament']['pairing']['seed']
+
+        def live(ops, ids):
+            night(ops, ids)
+            write(ops, 'match_schedule', id=ids['match'], table=1)
+
+        def scored(ops, ids):
+            live(ops, ids)
+            write(ops, 'match_score', id=ids['match'], score=[2, 0])
+
+        def revival_ready(ops, ids):
+            """Three entrants: one bye, one played round-1 result, its final still to be filled."""
+            night(ops, ids, count=3)
+            write(ops, 'match_schedule', id=ids['played'], table=1)
+            write(ops, 'match_score', id=ids['played'], score=[2, 0])
+            write(ops, 'match_complete', id=ids['played'])
+
+        def revival_drawn(ops, ids):
+            revival_ready(ops, ids)
+            write(ops, 'revival_draw', confirm=True)
+
+        def archived(ops, ids):
+            registration(ops, ids)
+            state = write(ops, 'tournament_new', confirm=True)
+            self.assertEqual(len(state['history']), 1, 'the fixture night was archived')
+            ids['archived'] = ids['current']
+
+        def linked(ops, ids):
+            registration(ops, ids)
+            write(ops, 'vod_link', vodId='9999999999', eventId=ids['current'], title='Camera B')
+
+        WORLDS = {'fresh': None, 'registration': registration, 'paired': paired, 'night': night,
+                  'live': live, 'scored': scored, 'revival_ready': revival_ready,
+                  'revival_drawn': revival_drawn, 'archived': archived, 'linked': linked}
+
+        def build(kind):
+            ops, ids = store(), {}
+            if WORLDS[kind] is not None:
+                WORLDS[kind](ops, ids)
+            return ops, ids
+
+        def resolve(fields, ids):
+            """The payload, with `@name` standing for the id the world built under that name."""
+            return {key: ids[value[1:]] if isinstance(value, str) and value.startswith('@') else value
+                    for key, value in fields.items()}
+
+        # One line per registry row: the world it acts on, a payload its own declaration accepts,
+        # the path into the document it answers, and the effect that row documents.
+        DRIVES = {
+            'entrant_absence': ('registration', {'id': '@entrant', 'absent': True},
+                                'tournament.entrants.0.absent', True),
+            'entrant_add': ('registration', {'members': [{'name': 'Eve'}, {'name': 'Fay'}]},
+                            '#tournament.entrants', 3),
+            'entrant_add_late': ('night', {'name': 'Late Lou', 'opponent': 'none'},
+                                 '#tournament.entrants', 5),
+            'entrant_remove': ('registration', {'id': '@entrant'}, '#tournament.entrants', 1),
+            'event_backfill': ('registration', dict(
+                event=dict(name='Past night', format='singles', raceTo=7, tables=4,
+                           entrants=[dict(name='Wanwan'), dict(name='Su')],
+                           matches=[dict(round=1, sides=['Wanwan', 'Su'], score=[3, 1],
+                                         winner='Wanwan', result='played', clip=[452, 1690])]),
+                source=dict(kind='vod-backfill', vodId='1234567890',
+                            datasetId='tw-1234567890-452-1690', startS=452, endS=1690,
+                            humanReviewed=True)), '#history', 1),
+            'guest_promote': ('registration', {'name': 'Ann'}, '#players', 2),
+            'match_absence': ('live', {'id': '@match', 'side': 0, 'absent': True},
+                              'tournament.matches.0.status', 'delayed'),
+            'match_complete': ('scored', {'id': '@match'}, 'tournament.matches.0.result', 'played'),
+            'match_forfeit': ('live', {'id': '@match', 'side': 0},
+                              'tournament.matches.0.result', 'forfeit'),
+            'match_schedule': ('night', {'id': '@match'}, 'tournament.matches.0.status', 'live'),
+            'match_score': ('live', {'id': '@match', 'score': [2, 1]},
+                            'tournament.matches.0.score', [2, 1]),
+            'match_unschedule': ('live', {'id': '@match'}, 'tournament.matches.0.status', 'scheduled'),
+            'note_add': ('registration', {'text': 'Second'}, '#notes', 2),
+            'note_delete': ('registration', {'id': '@note'}, '#notes', 0),
+            'pair_accept': ('paired', {'seed': '@seed'}, '#tournament.entrants', 3),
+            'pair_clear': ('paired', {}, 'tournament.pairing', None),
+            'pair_draw': ('registration', {}, '#tournament.pairing.teams', 1),
+            'player_delete': ('registration', {'id': '@player'}, '#players', 0),
+            'player_save': ('registration', {'name': 'Zoe'}, '#players', 2),
+            'pool_remove': ('registration', {'name': 'Bo'}, '#tournament.pool', 1),
+            'revival_draw': ('revival_ready', {'confirm': True}, 'tournament.revival.attempt', 1),
+            'revival_undo': ('revival_drawn', {'confirm': True}, 'tournament.revival', MISSING),
+            'settings_update': ('registration', {'clothColor': '#1f4a70'}, 'settings.clothColor',
+                                '#1f4a70'),
+            'solo_add': ('registration', {'member': {'name': 'Sol'}}, '#tournament.pool', 3),
+            'source_add': ('registration', {'url': 'https://www.twitch.tv/otherchannel'},
+                           '#sources', 3),
+            'source_delete': ('registration', {'id': '@source'}, '#sources', 1),
+            'tournament_delete': ('archived', {'id': '@archived', 'confirm': True}, '#history', 0),
+            'tournament_hide': ('archived', {'id': '@archived', 'hidden': True, 'confirm': True},
+                                'history.0.hidden', True),
+            'tournament_new': ('registration', {'confirm': True}, '#history', 1),
+            'tournament_rename': ('registration', {'id': '@current', 'name': 'Renamed'},
+                                  'tournament.name', 'Renamed'),
+            'tournament_setup': ('fresh', {'raceTo': 5}, 'tournament.raceTo', 5),
+            'tournament_start': ('registration', {}, 'tournament.status', 'active'),
+            'vod_link': ('registration', {'vodId': '9999999998', 'eventId': '@current'},
+                         '#links', 1),
+            'vod_unlink': ('linked', {'vodId': '9999999999', 'eventId': '@current'}, '#links', 0),
+        }
+        self.assertEqual(sorted(DRIVES), sorted(OPERATIONS), 'every registry row is driven here')
+
+        groups = {}
         for name, row in OPERATIONS.items():
-            multi.setdefault(row.apply.__name__, []).append(name)
-        self.assertGreater(len(multi), 0)
-        served = {writer: names for writer, names in multi.items() if len(names) > 1}
-        self.assertEqual(sorted(served), ['_do_entrants', '_do_match', '_do_pairing', '_do_revival'],
-                         'the writers that serve several rows are the known four')
-        for writer, names in served.items():
-            with self.subTest(writer=writer):
-                source = OPERATIONS[names[0]].apply.__doc__ or ''
-                self.assertIsInstance(source, str, 'the declaration stays readable')
+            groups.setdefault(row.apply, []).append(name)
+        multi = {writer: sorted(names) for writer, names in groups.items() if len(names) > 1}
+        self.assertGreater(len(multi), 0, 'the derivation found no writer serving several rows')
+
+        for name in sorted(OPERATIONS):
+            kind, fields, path, documented = DRIVES[name]
+            with self.subTest(row=name):
+                ops, ids = build(kind)
+                state, refusal = post(ops, name, resolve(fields, ids))
+                self.assertIsNone(refusal, f'{name} was refused by its own writer: {refusal}')
+                self.assertEqual(read(state, path), documented,
+                                 f'{name} was not answered by its own action')
+
+        def refuses_by_name(writer):
+            """True when the writer itself raises a sentence built from the name it was handed.
+
+            Building the sentence is how a writer says 'I do not implement this'; the probe below
+            is what proves it, this only says which writers to hold to it.
+            """
+            tree = ast.parse(textwrap.dedent(inspect.getsource(writer)))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Raise) and node.exc is not None:
+                    if any(not (isinstance(arg, ast.Constant) and isinstance(arg.value, str))
+                           for arg in getattr(node.exc, 'args', [])):
+                        return True
+            return False
+
+        # The world every action of a writer is reachable in, so that a fall-through shows up as
+        # an answer instead of as a refusal from a precondition: registration is a doubles night
+        # with an even pool and no pairing shown, so _do_pairing's tail draws a pairing there. A
+        # fifth multi-row writer must be given one of these, loudly.
+        PROBE_WORLDS = {Operations._do_match: 'scored', Operations._do_pairing: 'registration',
+                        Operations._do_entrants: 'registration',
+                        Operations._do_revival: 'revival_drawn'}
+        guards = {writer for writer in multi if refuses_by_name(writer)}
+        self.assertTrue(guards, 'no writer refuses a name it does not implement')
+
+        for writer in sorted(multi, key=lambda writer: writer.__name__):
+            names = multi[writer]
+            self.assertIn(writer, PROBE_WORLDS,
+                          f'{writer.__name__} serves several rows: give it a probe world')
+            by_name, reached = [], []
+            for name in names:
+                probe = f'{name}_not_a_row'
+                ops, ids = build(PROBE_WORLDS[writer])
+                with patch.dict(OPERATIONS, {probe: replace(OPERATIONS[name], name=probe)}):
+                    state, refusal = post(ops, probe, resolve(DRIVES[name][1], ids))
+                if refusal is None:
+                    reached.append(name)
+                elif probe in refusal:
+                    by_name.append(name)
+            with self.subTest(writer=writer.__name__):
+                if writer in guards:
+                    self.assertEqual(by_name, names,
+                                     f'{writer.__name__} refuses a name it does not implement for '
+                                     f'{by_name} but not for {sorted(set(names) - set(by_name))}')
+                self.assertLessEqual(len(reached), 1,
+                                     f'{writer.__name__} serves {names}, and {reached} of those '
+                                     f'rows were reached by a name no row implements')
 
 
 class DeclaredAuditTests(unittest.TestCase):
