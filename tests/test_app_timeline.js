@@ -6,12 +6,10 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const {elementStub} = require('./dom_stubs.js');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
 
-function elementStub() {
-  return {setAttribute() {}, insertAdjacentHTML() {}, addEventListener() {}, classList: {add() {}, remove() {}, toggle() {}}};
-}
 const sandbox = {
   document: {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
   window: {addEventListener() {}},
