@@ -84,11 +84,16 @@ PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py    # :8131
 ```sh
 scripts/pool-test.sh          # the python suite and the three javascript suites
 scripts/pool-test.sh python   # PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+scripts/pool-test.sh python test_operations   # one python module, by the bare name of its file
 scripts/pool-test.sh js       # node tests/test_ops.js, tests/test_board.js, tests/test_app_timeline.js
 ```
 
 Name one file directly when you work on it (`node tests/test_board.js`,
-`PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_operations.py'`).
+`scripts/pool-test.sh python test_operations`).  The dotted spelling
+`python -m unittest tests.test_operations` cannot work in this checkout: the name `tests`
+answers `.venv/lib/python3.14/site-packages/tests`, which is another package, so the loader
+reports `ModuleNotFoundError` for a file that is present.  The script runs the module from
+inside `tests/` instead, and it refuses a dotted name and says why.
 A bare `node --test` is not a test command here: no file name matches the node
 default patterns (`*.test.js`, `test-*.js`), so it collects 0 tests and exits 0.
 
