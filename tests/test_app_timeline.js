@@ -9,6 +9,15 @@ const vm = require('vm');
 const {elementStub} = require('./dom_stubs.js');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'app.js'), 'utf8');
+// One owner holds the duration text (annotator/duration.js). The review page loads it before
+// annotator/app.js, and every realm in this file opens with it for that reason.
+const durationSource = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'duration.js'), 'utf8');
+// The page order in one place: the duration owner first, then a page script. Every realm here runs
+// its scripts through this helper, so no realm loads a script that reads the owner without it.
+function runPage(context, options) {
+  vm.runInContext(durationSource, context, {filename: 'duration.js'});
+  return vm.runInContext(source, context, options);
+}
 
 const sandbox = {
   document: {querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => elementStub()},
@@ -21,7 +30,7 @@ const sandbox = {
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 // The engine runs the source it ships: no test rewrites the file to reach inside.
-vm.runInContext(source, sandbox, {filename: 'app.js'});
+runPage(sandbox, {filename: 'app.js'});
 // The engine seam. attach() takes a stub root and a stub network, and it returns
 // one handle. The handle carries the live state and the readings a test observes.
 // setRoot() points the engine at the root of the test that is running.
@@ -79,7 +88,7 @@ function engineRealm(replies = {}, options = {}) {
     return key ? replies[key] : {};
   };
   const box = vm.createContext(realm, {microtaskMode: 'afterEvaluate'});
-  vm.runInContext(source, box, {filename: 'app.js'});
+  runPage(box, {filename: 'app.js'});
   // The stub network lives inside the realm, so its promises settle inside the realm.
   vm.runInContext(`globalThis.REQUESTS = [];
     globalThis.net = (url, init) => {
@@ -269,6 +278,8 @@ function adapterBox(extra) {
   box.globalThis = box;
   box.overlay = document_.overlay;
   vm.createContext(box);
+  // The stage reads the duration owner as well: annotator/vision-stage.js formats a frame time.
+  vm.runInContext(durationSource, box, {filename: 'duration.js'});
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8'), box, {filename: 'vision-stage.js'});
   return box;
 }
@@ -430,7 +441,7 @@ test('mount initializes once and standalone mounts only its own host', () => {
   let documentBindings = 0;
   const context = {document:{querySelector: () => rootPresent ? host : null, addEventListener() { documentBindings++; }}, window:{addEventListener() {}}, fetch() { requests++; return new Promise(() => {}); }, console};
   vm.createContext(context);
-  vm.runInContext(source, context);
+  runPage(context);
   assert.strictEqual(requests, 0);
   const review = context.window.CornerPocketReview;
   const mounting = review.mount(host);
@@ -440,6 +451,8 @@ test('mount initializes once and standalone mounts only its own host', () => {
   assert.strictEqual(documentBindings, 1, 'the vision surface owns one document-level key handler');
   assert.strictEqual(review.mount({...host}), false);
   rootPresent = true;
+  // The page already loaded the duration owner into this realm. A second evaluation of the engine
+  // alone is what a reload of that one file does, so the owner does not load twice here.
   vm.runInContext(source, context);
   assert.strictEqual(requests, 2, 'standalone host automatically initializes');
 });
@@ -2609,7 +2622,7 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     // microtaskMode drains the confirm's awaits before runInContext returns, so the
     // real async write runs to its end without an async test.
     const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
-    vm.runInContext(source, context, {filename:'app.js'});
+    runPage(context, {filename:'app.js'});
     // The stub lives in the context's realm: an outer-realm promise would settle on
     // the outer microtask queue, after runInContext has already returned. The seam
     // takes that stub as its network, so the engine writes through it.
@@ -2851,7 +2864,7 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
                localStorage:{getItem: () => null, setItem() {}}, setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
   box.globalThis = box;
   const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
-  vm.runInContext(source, context, {filename:'app.js'});
+  runPage(context, {filename:'app.js'});
   // Only the enrol write answers; every other request mount() makes stays pending.
   vm.runInContext(`fetch = (url, init) => url === '/api/identity/enroll-confirm'
       ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true, player_id:'p9', player_name:'Nina', revision:8, embeddings:3})})
@@ -2870,7 +2883,7 @@ test('a successful enrol confirm resolves true and re-reads the roster through t
   const bare = {...box, rosterReads:0, confirmed:undefined, confirmError:undefined};
   bare.globalThis = bare;
   const bareContext = vm.createContext(bare, {microtaskMode:'afterEvaluate'});
-  vm.runInContext(source, bareContext, {filename:'app.js'});
+  runPage(bareContext, {filename:'app.js'});
   vm.runInContext(`fetch = (url) => url === '/api/identity/enroll-confirm'
       ? Promise.resolve({ok:true, status:200, json: async () => ({ok:true})}) : new Promise(() => {});
     globalThis.E = window.CornerPocketReview.attach({});`, bareContext);
@@ -2893,7 +2906,7 @@ test('a stage click on a person sends the enrol preview an integer cluster, or n
                setTimeout, clearTimeout, console, Math, Number, Object, JSON, Date};
   box.globalThis = box;
   const context = vm.createContext(box, {microtaskMode:'afterEvaluate'});
-  vm.runInContext(source, context, {filename:'app.js'});
+  runPage(context, {filename:'app.js'});
   // The preview body is recorded; loadPersons() and the preview answer at once.
   vm.runInContext(`globalThis.bodies = [];
     fetch = (url, init) => {
@@ -3485,7 +3498,7 @@ test('the engine mounts a stub DOM and a stub network through one seam', () => {
   realm.globalThis = realm;
   const box = vm.createContext(realm);
   // No source rewrite: the file runs as it ships, and the seam carries the stub DOM and the stub network.
-  vm.runInContext(source, box, {filename: 'app.js'});
+  runPage(box, {filename: 'app.js'});
   vm.runInContext(`globalThis.seam = window.CornerPocketReview.attach({mount: globalThis.host, fetch: globalThis.net});
     window.CornerPocketReview.reloadDatasets();`, box);
 
@@ -3790,6 +3803,35 @@ test('candidate 9 / defect 4: one cloth-verdict shape, from every producer', () 
   assert.strictEqual(typeof measured.tolerance, 'number');
   assert.strictEqual(measured.source, 'saved calibration');
   T.scene({source:{kind:'vod', label:'vod30', channel:null}, 'live.detections':null, 'cloth.verdict':{state:'none', reason:'no detection'}});
+});
+
+// ---- One owner for the duration text: annotator/duration.js ------------------------------------
+test('the review engine reads the duration text from the one owner, and reads it at call time', () => {
+  assert.ok(sandbox.window.Duration && typeof sandbox.window.Duration.hms === 'function',
+    'the realm loads annotator/duration.js, as annotator/app.html loads it before the engine');
+  // The one fractional reading the console formats is a frame time. It names the second the frame
+  // is in: 59.6 belongs to the second that starts at 59. Rounding names the second that starts at
+  // 60 instead, and that second holds no part of the frame.
+  assert.strictEqual(sandbox.window.Duration.hms(59.6), '0:00:59', 'a fractional reading truncates');
+  assert.strictEqual(sandbox.window.Duration.hms(-0.4), '0:00:00', 'a negative reading prints zero');
+  assert.strictEqual(sandbox.window.Duration.hms(null), '0:00:00', 'a missing reading prints zero');
+  // The engine reads the owner when it phrases the sentence, as annotator/clock-sync.js reads
+  // window.OpsClock, so a script that arrives late still reaches the sentence.
+  const held = sandbox.window.Duration;
+  try {
+    sandbox.window.Duration = {hms: () => 'PROBE'};
+    const stalled = 'Replay stalled: no data from Twitch for 20 s at 0:03:12 of 1:02:03; restart with start_s=192 to continue';
+    const probe = T.liveErrorText('replay_stalled', {waited_s: 20, at_s: 192, length_s: 3723, start_s: 192}, stalled, 'zh');
+    assert.ok(probe.includes('PROBE'), 'the sentence read the owner that was there when it phrased: ' + probe);
+  } finally {
+    sandbox.window.Duration = held;
+  }
+  const stalled = 'Replay stalled: no data from Twitch for 20 s at 1:02:03 of 1:02:03; restart with start_s=3723 to continue';
+  const zh = T.liveErrorText('replay_stalled', {waited_s: 20, at_s: 3723.6, length_s: 3723.6, start_s: 3723}, stalled, 'zh');
+  assert.ok(zh.includes('1:02:03'), 'a reading of 3723.6 s is named 1:02:03: ' + zh);
+  assert.ok(!zh.includes('1:02:04'), 'and never 1:02:04, the second that holds no part of it');
+  const realm = engineRealm({}, {mount: false}).realm;
+  assert.strictEqual(typeof realm.window.Duration.hms, 'function', 'and every mounted realm carries the owner');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

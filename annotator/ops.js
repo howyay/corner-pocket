@@ -101,7 +101,7 @@ const WEEKDAYS=[['Sun','周日'],['Mon','周一'],['Tue','周二'],['Wed','周�
 const dateLine=at=>{const d=new Date(at);return Number.isNaN(d.getTime())?String(at??''):d.toLocaleString(lang==='zh'?'zh-CN':'en')};
 const monthLabel=d=>lang==='zh'?MONTHS[d.getMonth()][1]:MONTHS[d.getMonth()][0];
 const dayLabel=d=>`${d.getMonth()+1}/${d.getDate()} ${WEEKDAYS[d.getDay()][lang==='zh'?1:0]}`;
-const hms=value=>{const s=Math.max(0,Math.floor(Number(value)||0));return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`};
+const hms=value=>window.Duration.hms(value);   // one owner: annotator/duration.js
 const sizeText=bytes=>Number(bytes)>=1e9?`${(Number(bytes)/1e9).toFixed(1)} GB`:`${Math.round(Number(bytes)/1e6)} MB`;
 const eventDate=night=>{const d=new Date(night?.archivedAt);return isNaN(d)?null:d};
 const bfValue=(selector,fallback)=>{const value=$(selector)?.value;return value===undefined||value===null?fallback:value};

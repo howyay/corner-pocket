@@ -71,6 +71,9 @@ function richDocument(handlers) {
     nodes: selector => list(selector)
   };
 }
+// One owner holds the duration text (annotator/duration.js). The ops page loads it as its first
+// script, so this page context runs it first as well.
+const durationSource = fs.readFileSync(path.join(__dirname, '../annotator/duration.js'), 'utf8');
 function harness(opts = {}) {
   const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [], timers = [];
   const document = opts.richDom
@@ -84,6 +87,8 @@ function harness(opts = {}) {
   vm.createContext(context);
   // The console runs as the page loads it. The suite does not rewrite its text. The stub page
   // carries no shell, so the console does not boot itself; the test drives it through the handle.
+  // The duration owner loads before the console, as annotator/ops.html loads it.
+  vm.runInContext(durationSource, context, {filename: 'duration.js'});
   vm.runInContext(opts.source || source, context, {filename: 'ops.js'});
   const h = context.window.OpsConsole.attach({document});
   // The state the page fetches, and the action channel the tests read instead of the network.
@@ -5005,7 +5010,7 @@ test('one render() is a list of named steps, and deleting one call is a visible 
 // The console and the stage route a click through one table each, and one registry holds both. These
 // tests read the live table out of the running modules and the emitters out of the page scripts, so
 // a control that renders a name no module handles, or a row no control can reach, is a failing test.
-const PAGE_SCRIPTS = ['ops.js', 'vision-stage.js', 'app.js', 'clock-sync.js'];
+const PAGE_SCRIPTS = ['duration.js', 'ops.js', 'vision-stage.js', 'app.js', 'clock-sync.js'];
 const pageText = Object.fromEntries(PAGE_SCRIPTS.map(f => [f, fs.readFileSync(path.join(__dirname, '../annotator/', f), 'utf8')]));
 // A helper call carries a nested call in its first argument, so the reader splits the arguments by
 // depth instead of by a comma. A literal first argument that is not a string yields nothing.
@@ -5108,4 +5113,89 @@ test('no branch chain is left in either module: the table is the only route', ()
   assert.strictEqual((table.match(/\bcase '/g) || []).length, 0, 'the stage act() has no case chain left');
   assert.strictEqual((source.match(/opsAct\.run\(/g) || []).length, 1, 'one call site reaches the console table');
   assert.strictEqual((table.match(/registry\.run\('vision-stage'/g) || []).length, 1, 'one call site reaches the stage table');
+});
+// ---- One owner for the duration text: annotator/duration.js ------------------------------------
+// Three page scripts held one copy of the H:MM:SS rule each, and the three copies disagreed on
+// seven of the nineteen values the Lead's grid measures. The rule now lives in one file. These
+// tests read that file the way each page loads it, and they fail when a second copy appears.
+const durationFile = require('../annotator/duration.js');
+// The Lead's grid, with the answer the one rule gives. Every value here is a second count: the
+// seven rows that disagreed (59.6, 3599.9, -1, -0.4, undefined, NaN, 'abc') sit among the values
+// the three copies already agreed on, so a new disagreement shows up as a failure either way.
+const DURATION_GRID = [
+  [0, '0:00:00'], [1, '0:00:01'], [59, '0:00:59'], [59.6, '0:00:59'], [60, '0:01:00'], [61, '0:01:01'],
+  [3599.9, '0:59:59'], [3600, '1:00:00'], [3661.4, '1:01:01'], [86399, '23:59:59'], [86400, '24:00:00'],
+  [-1, '0:00:00'], [-0.4, '0:00:00'], [null, '0:00:00'], [undefined, '0:00:00'], [NaN, '0:00:00'],
+  [Infinity, '0:00:00'], ['', '0:00:00'], ['abc', '0:00:00'], ['90', '0:01:30']
+];
+test('one rule answers every value the three old copies answered differently', () => {
+  const h = harness();
+  const D = h.context.window.Duration;
+  assert.ok(D && typeof D.hms === 'function', 'the page context holds the one owner, as annotator/ops.html loads it');
+  for (const [value, want] of DURATION_GRID) {
+    assert.strictEqual(D.hms(value), want, `the rule formats ${String(value)} as ${want}`);
+    // The file answers the same under node and under a page: one rule, two ways to load it.
+    assert.strictEqual(durationFile.hms(value), want, `node agrees on ${String(value)}`);
+  }
+  // The value is truncated, not rounded: the second a reading is in, never the one after it.
+  assert.notStrictEqual(D.hms(59.6), D.hms(60), 'a reading inside a second is not the next second');
+  // The shot clock asks a different question (the time LEFT), and it keeps its own answer.
+  assert.strictEqual(h.clockText(59.6), '1:00', 'the shot clock still rounds the time left up');
+});
+test('no page script holds a second copy of the duration rule', () => {
+  const dir = path.join(__dirname, '../annotator');
+  const copies = [];
+  for (const name of fs.readdirSync(dir).filter(file => file.endsWith('.js') && file !== 'duration.js')) {
+    fs.readFileSync(path.join(dir, name), 'utf8').split('\n').forEach((line, index) => {
+      // A number boundary: annotator/vision-stage.js counts tenths and holds 36000, a different
+      // question. Only a bare 3600 is the seconds-per-hour divisor of this rule.
+      if (/(?<![\d.])3600(?![\d.])/.test(line)) copies.push(`annotator/${name}:${index + 1}: ${line.trim()}`);
+    });
+  }
+  assert.deepStrictEqual(copies, [], 'the seconds-per-hour rule belongs to annotator/duration.js alone:\n' + copies.join('\n'));
+  // Each of the three consumers keeps one seam and no body, and the seam reads the owner at call
+  // time (annotator/clock-sync.js reads window.OpsClock the same way), so a late script still reaches it.
+  for (const name of ['ops.js', 'vision-stage.js', 'app.js']) {
+    assert.strictEqual((pageText[name].match(/window\.Duration\.hms\(/g) || []).length, 1, `${name} reads the owner through one seam`);
+    assert.strictEqual((pageText[name].match(/const hms\s*=/g) || []).length, 1, `${name} declares that seam once`);
+  }
+});
+test('both pages load the duration owner before the scripts that read it', () => {
+  const ops = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
+  const app = fs.readFileSync(path.join(__dirname, '../annotator/app.html'), 'utf8');
+  const owner = ops.indexOf('/duration.js');
+  assert.ok(owner >= 0, 'annotator/ops.html loads the owner');
+  for (const script of ['/app.js', '/vision-stage.js', '/ops.js', '/clock-sync.js']) {
+    assert.ok(ops.indexOf(script) > owner, `annotator/ops.html loads ${script} after the owner`);
+  }
+  assert.ok(app.indexOf('/duration.js') >= 0, 'annotator/app.html loads the owner');
+  assert.ok(app.indexOf('/duration.js') < app.indexOf('/app.js'), 'annotator/app.html loads it before the engine');
+});
+test('the console renders a broadcast length through the one owner', () => {
+  const h = harness();
+  h.lang = 'en';
+  h.bf = h.bfFresh();
+  h.bf.recent = [{channel: 'examplechannel', error: null,
+    vods: [{id: '2890514774', title: '261001', created_at: '2026-10-03T01:30:00Z', length_s: 16455.9, imported: []}]}];
+  const pick = h.bfScreen();
+  assert.ok(pick.includes('4:34:15'), 'a length of 16455.9 s names the second it is in');
+  assert.ok(!pick.includes('4:34:16'), 'and never the second that holds no part of it');
+});
+test('every page script still loads beside the duration owner in one global scope', () => {
+  // A classic script shares one global lexical scope with its neighbours, so a top-level name in
+  // one file can stop another file from loading at all.  Measured in chromium, not guessed: with a
+  // top-level `const api` in annotator/duration.js, annotator/clock-sync.js died on
+  // `Uncaught SyntaxError: Identifier 'api' has already been declared`.  The owner now declares
+  // every name inside its own function, and this test loads the other page scripts beside it.
+  const h = harness();
+  for (const name of ['app.js', 'vision-stage.js', 'clock-sync.js']) {
+    const text = fs.readFileSync(path.join(__dirname, '..', 'annotator', name), 'utf8');
+    assert.doesNotThrow(() => vm.runInContext(text, h.context, { filename: name }),
+      `${name} loads in the same global scope as the duration owner`);
+  }
+  assert.strictEqual(typeof h.context.window.CornerPocketReview, 'object', 'annotator/app.js publishes its engine');
+  assert.strictEqual(typeof h.context.window.VisionStage, 'object', 'annotator/vision-stage.js publishes its stage');
+  assert.strictEqual(typeof h.context.window.OpsConsole, 'object', 'annotator/ops.js publishes its console');
+  assert.strictEqual(typeof h.context.window.ClockSync, 'object', 'annotator/clock-sync.js publishes its api');
+  assert.strictEqual(typeof h.context.window.Duration.hms, 'function', 'and the owner answers beside them all');
 });

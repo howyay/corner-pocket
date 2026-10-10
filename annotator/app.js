@@ -2032,7 +2032,8 @@ function liveStateText(value, lang = root?.lang) {
 // code and numeric params (annotator/live_processing.py _ERROR_CODES); a refused start
 // arrives as the server's English sentence only, matched here by anchored patterns.
 // Anything not matched exactly is shown verbatim - never dropped, never guessed.
-const hms = seconds => `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds % 3600 / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+// The duration text has one owner (annotator/duration.js).  This line is the seam, not a copy.
+const hms = value => window.Duration.hms(value);
 const liveErrorCodes = {
   stream_ended: () => ['Live stream ended or read timed out; restart to reconnect', '直播流已结束或读取超时；请重新开始以重连'],
   replay_stalled: p => [`Replay stalled: no data from Twitch for ${p.waited_s} s at ${hms(p.at_s)} of ${p.length_s == null ? 'an unknown length' : hms(p.length_s)}; restart with start_s=${p.start_s} to continue`,
