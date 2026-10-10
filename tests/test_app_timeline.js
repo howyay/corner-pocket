@@ -3604,6 +3604,160 @@ test('candidate 8: the engine snapshot is composed from named groups, and no key
   same(Object.keys(sandbox.window.CornerPocketReview.snapshot()), declared);
 });
 
+// ---- one owner per vocabulary -------------------------------------------------
+// Four vocabularies were spelled more than once in app.js, and in two of them a
+// reader and a writer disagreed about the same word. Each case below drives the
+// words the console and the shell publish, not the spelling inside the file. The
+// count of source-text assertions grows by the contracts these cases add.
+
+test('candidate 9 / defect 1: a box selection publishes one index, and it has one home', () => {
+  const review = sandbox.window.CornerPocketReview;
+  const snap = () => review.snapshot();
+  T.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+  T.scene({dataset:'vod30', frame:12, frameWidth:1280, frameHeight:720, dirty:false, polygon:null,
+           boxes:[{label:'ball', bbox:[10,10,30,30], origin:'manual'},
+                  {label:'ball', bbox:[40,40,60,60], origin:'auto'}]});
+  review.selectBox(1);
+  assert.strictEqual(snap().selection.kind, 'box', 'the selection is a box selection');
+  assert.strictEqual(snap().selection.box, 1, 'the published selection carries the index');
+  assert.strictEqual(snap().corrections.box, 1, 'and the correction snapshot carries the same index');
+  assert.strictEqual(snap().corrections.boxLabel, 'ball', 'the label the shell shows comes from that index');
+  review.clearSelection();
+  assert.strictEqual(snap().selection.kind, 'none', 'clearing the selection clears the kind');
+  assert.strictEqual(snap().selection.box, -1, 'and the index');
+  assert.strictEqual(snap().corrections.box, -1, 'in both readings, from the one field');
+  assert.strictEqual(snap().corrections.boxLabel, null, 'and no box label survives the clear');
+  // The second home is gone. Two writes and no reader published nothing, and a later
+  // reader of that field would have read an index the engine had already replaced.
+  assertSourceContract('annotator/app.js', 'state.sel_box', 'the box index has one home: state.sel.box', true);
+  T.scene({boxes: [], sel: {kind:'none', crop:null, ball:null, person:null, track:null, anchor:0, event:null, box:-1}});
+});
+
+test('candidate 9 / defect 2: one frame-result vocabulary, and unified is never a fallback', () => {
+  const review = sandbox.window.CornerPocketReview;
+  const snap = () => review.snapshot();
+  const scope = {dataset:'vod30', frame_index:5, width:1280, height:720};
+  T.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+  T.scene({dataset:'vod30', frame:5, frameWidth:1280, frameHeight:720, polygon:null, boxes:[], dirty:false});
+  // A frame whose stored correction belongs to it: the operator's own layer.
+  T.frame({correction:Object.assign({boxes:[{label:'ball', bbox:[10,10,30,30]}]}, scope),
+           inference:{boxes:[], table_polygon:null}});
+  assert.strictEqual(T.drawn().source, 'manual corrections', 'a stored correction reads as the operator\u2019s');
+  assert.strictEqual(snap().corrections.result, 'manual corrections', 'and the snapshot says the same word');
+  // The model alone.
+  T.frame({correction:null, inference:{boxes:[], table_polygon:null}});
+  assert.strictEqual(T.drawn().source, 'inference');
+  assert.strictEqual(snap().corrections.result, 'inference');
+  // Nothing at all: one fallback, and it is the same word in every reader.
+  T.frame({correction:null, inference:null});
+  assert.strictEqual(T.drawn().source, 'none', 'no overlay reads none');
+  assert.strictEqual(snap().corrections.result, 'none', 'in the snapshot too');
+  assert.strictEqual(T.displayBoxes(null).source, 'none', 'and the painter reads the same word');
+  T.frame(null);
+  assert.strictEqual(T.drawn().source, 'none', 'a frame with no result at all reads the same word');
+  assert.strictEqual(snap().corrections.result, 'none');
+  // The unified path used to publish 'unified' here. That word is the real label of a
+  // real overlay source, so no frame may carry it as a fallback. The absence contract
+  // reads the file; the copy-table check reads the runtime vocabulary it must keep.
+  assertSourceContract('annotator/app.js', "'unified'", 'unified names a real source, never a fallback', true);
+  assertSourceContract('annotator/app.js', "result?.inference ? 'inference' : 'none'", 'the frame-result ternary has one site', true);
+  // The copy row fires only in the page's own language, so the next three readings
+  // run against a Chinese page. The next case sets the root it needs.
+  T.setRoot({lang:'zh', querySelector: () => null, querySelectorAll: () => []});
+  // The copy row only fires on the whole facts line, so the table is read the way the
+  // console reads it. unified must keep a label of its own there: it names a real
+  // overlay source, and that is exactly why it can never be the fallback above.
+  const facts = overlays => 'RAW DECODED FRAME · vod30 · frame 100 · nominal 4.000s (nominal_cfr) · OVERLAYS: ' + overlays;
+  const zhFacts = label => '原始解码帧 · vod30 · 帧 100 · 名义时间 4.000s (nominal_cfr) · 叠加层：' + label;
+  assert.strictEqual(T.text(facts('unified')), zhFacts('统一检测'), 'unified keeps its own label in the copy table');
+  assert.strictEqual(T.text(facts('none')), zhFacts('无'), 'and the fallback keeps its own label there');
+  assert.strictEqual(T.text(facts('manual corrections')), zhFacts('人工修正'));
+});
+
+test('candidate 9 / defect 3: a box with no origin is the model\u2019s, and both directions agree', () => {
+  const review = sandbox.window.CornerPocketReview;
+  const snap = () => review.snapshot();
+  const svg = {dataset:{}, innerHTML:'', querySelectorAll: () => []};
+  T.setRoot({lang:'en', querySelector: selector => selector === '#t-overlay' ? svg : null, querySelectorAll: () => []});
+  // A saved correction carries no origin key at all, so a stored box reaches this
+  // engine with no origin. Two readers answered that input in opposite ways: the
+  // stage tag called the box the model's and the save body called it the operator's.
+  // The honesty rule settles it: never claim work the operator did not do.
+  const stored = {label:'ball', bbox:[100,100,120,120]};
+  const ours = {label:'ball', bbox:[300,300,320,320], origin:'manual'};
+  const theirs = {label:'ball', bbox:[500,300,520,320], origin:'auto'};
+  T.scene({dataset:'vod30', frame:7, frameWidth:1280, frameHeight:720, polygon:null, dirty:false,
+           boxes:[ours, stored, theirs]});
+  assert.strictEqual(T.boxTagKind(stored), 'auto', 'a box with no origin reads as the model\u2019s on the stage');
+  assert.strictEqual(T.boxTagKind(ours), 'manual', 'an explicit manual origin still reads as the operator\u2019s');
+  assert.strictEqual(T.boxTagKind(theirs), 'auto', 'and an explicit model origin stays the model\u2019s');
+  assert.strictEqual(T.manualBoxCount(), 1, 'one box is the operator\u2019s');
+  assert.strictEqual(T.modelBoxCount(), 2, 'and two are the model\u2019s');
+  assert.strictEqual(snap().corrections.manualBoxes, 1, 'the published snapshot counts the same way');
+  assert.strictEqual(snap().corrections.modelBoxes, 2);
+  same(T.correctionBody().boxes, [{label:'ball', bbox:[300,300,320,320]}], 'only the operator\u2019s own box is written');
+  // The two directions answer one question about one box, so they must agree on all three.
+  const saved = box => T.correctionBody().boxes.some(entry => entry.bbox[0] === box.bbox[0]);
+  for (const box of [ours, stored, theirs]) {
+    assert.strictEqual(T.boxTagKind(box) === 'manual', saved(box),
+      'the tag and the save body agree about the box at x=' + box.bbox[0]);
+  }
+  // The stage draws the same answer the two readings give.
+  T.frame();
+  assert.strictEqual((svg.innerHTML.match(/data-origin="auto"/g) || []).length, 2, 'both model boxes are tagged MODEL');
+  assert.strictEqual((svg.innerHTML.match(/data-origin="manual"/g) || []).length, 1, 'and one box is tagged YOURS');
+  // The remaining reader of the same word gives a box with no origin the model's treatment.
+  const before = T.boxes().length;
+  T.ghostModelBox(stored);
+  assert.strictEqual(T.boxes().length, before + 1, 'a box with no origin is ghosted like the model\u2019s');
+  assert.strictEqual(T.boxes()[before].frozen, true, 'the ghost is frozen');
+  same(T.boxes()[before].bbox, [100,100,120,120]);
+  T.ghostModelBox(ours);
+  assert.strictEqual(T.boxes().length, before + 1, 'and the operator\u2019s box gets no ghost');
+  // One spelling in the file, for both directions.
+  assertSourceContract('annotator/app.js', "box.origin !== 'auto'", 'no reader spells its own default for an absent origin', true);
+  assertSourceContract('annotator/app.js', "box?.origin === 'manual' ?", 'and the ternary spelling is gone', true);
+  T.scene({boxes: [], fresult: null, polygon: null});
+});
+
+test('candidate 9 / defect 4: one cloth-verdict shape, from every producer', () => {
+  const review = sandbox.window.CornerPocketReview;
+  const reference = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved calibration', width:1280, height:720};
+  const measured = T.validateCloth([[455,308],[800,320],[1024,573],[450,564]], reference, 1280, 720);
+  assert.strictEqual(measured.state, 'ok', 'the measured path still judges a good quad good');
+  // The live path: one frame arrived carrying no table detection at all. This path
+  // used to build its own two-key object, so the shell read undefined where every
+  // other path reads a number or a declared null.
+  T.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+  T.scene({dataset:'vod30', frame:9, frameWidth:1280, frameHeight:720, polygon:null, boxes:[], dirty:false});
+  T.scene({source:{kind:'live', label:'VOD replay 1000000011', channel:null}});
+  review.ingestLiveFrame('blob:live-9', {seq:9, detections:{boxes:[], table_polygon:null}}, {label:'live', channel:null});
+  const live = review.snapshot().cloth.verdict;
+  assert.strictEqual(live.state, 'none', 'no detection is still the none verdict');
+  assert.strictEqual(live.reason, 'no detection');
+  // The state a console starts in, read from a realm that has loaded no frame at all.
+  const initial = engineRealm({}, {mount:false}).seam.cloth().verdict;
+  assert.strictEqual(initial.state, 'none');
+  const keys = Object.keys(measured).sort();
+  same(Object.keys(live).sort(), keys, 'the live path hands the shell the same keys as the measured path');
+  same(Object.keys(initial).sort(), keys, 'and so does the state a console starts in');
+  for (const [name, verdict] of [['measured', measured], ['live', live], ['initial', initial]]) {
+    for (const key of ['state','reason','detail','mean','max','tolerance','source']) {
+      assert.ok(key in verdict, name + ' verdict declares ' + key);
+    }
+  }
+  // An unmeasured verdict declares an empty value; it never leaves a reader undefined.
+  assert.strictEqual(live.mean, null, 'the live verdict declares no mean, not undefined');
+  assert.strictEqual(live.max, null);
+  assert.strictEqual(live.tolerance, null, 'and no tolerance');
+  assert.strictEqual(live.source, null, 'and no source to round');
+  assert.strictEqual(live.detail, '', 'and no detail');
+  assert.strictEqual(typeof measured.mean, 'number', 'the measured path still reports its numbers');
+  assert.strictEqual(typeof measured.tolerance, 'number');
+  assert.strictEqual(measured.source, 'saved calibration');
+  T.scene({source:{kind:'vod', label:'vod30', channel:null}, 'live.detections':null, 'cloth.verdict':{state:'none', reason:'no detection'}});
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 // The source-text assertions that no browser seam can reach, listed in one place.
 for (const contract of sourceContracts) console.log(`SOURCE CONTRACT ${contract.file}: ${contract.snippet} — ${contract.why}`);

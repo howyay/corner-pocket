@@ -21,6 +21,19 @@ const enc = encodeURIComponent;
 // move the adapter's focus to the rail group that owns the capability.
 const modes = {events:'events', balls:'balls', calibration:'calibration', players:'players', timeline:'timeline', stream:'timeline'};
 const raise = frame => frame === null || frame === undefined ? null : Math.round(frame);
+// ---- the vocabularies this console speaks, each with one owner ---------------
+// Every word below is declared once, here, and read everywhere else. A second
+// copy of one of these words is the defect, not a convenience.
+// Where a frame's geometry came from. `unified` is deliberately not a member: it
+// names a real overlay source in the copy table, so it is never a fallback for a
+// frame result that carries neither a correction nor an inference.
+const SOURCE_LABEL = {operator:'manual corrections', model:'inference', none:'none'};
+// Which side of the stage a box belongs to. A box with no origin is the model's:
+// the saved payload carries no origin key at all (it writes the operator's boxes
+// only), so reading an absent origin as the operator's would put the model's boxes
+// into the operator's correction - this console never claims work the operator did
+// not do. Both readers below agree on that, because both ask this pair.
+const BOX_ORIGIN = {operator:'manual', model:'auto'};
 const state = {
   mode:'timeline', dataset:'vod30', datasets:[], sets:[], set:'unlabeled_crops',
   events:[], annotations:{}, eventIndex:0, eventFilter:'all', verdictDraft:null, shooterDraft:null, noteDraft:null,
@@ -31,8 +44,8 @@ const state = {
   boxes:[], polygon:null, sel:-1, tool:'select', drag:null,
   frameWidth:0, frameHeight:0, frameReq:0, shotUrl:null,
   overlay:{cloth:true,balls:true,persons:true,pockets:true,anchors:true,events:true},
-  drawn:{cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0,on:false,source:'none'},
-  cloth:{reference:null,verdict:{state:'none',reason:'no detection'},quad:null,polygon:null,pockets:{source:null,count:0,reference:null},refusal:null},
+  drawn:{cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0,on:false,source:SOURCE_LABEL.none},
+  cloth:{reference:null,verdict:noClothVerdict(),quad:null,polygon:null,pockets:{source:null,count:0,reference:null},refusal:null},
   loading:{overlay:false,since:0},
   live:{state:'idle',error:null,frame_age_ms:null,receive_to_result_ms:null,skipped:0,seq:null,receivedAt:null,stale:false,detections:null,attempt:null,detectors:['table','person']},
   source:{kind:'vod',label:'',channel:null},
@@ -105,6 +118,12 @@ function normalizeBox(value, w, h) {
   const y1 = Math.max(0, Math.min(h, Math.min(value[1], value[3]))), y2 = Math.max(0, Math.min(h, Math.max(value[1], value[3])));
   return x2 - x1 >= 1 && y2 - y1 >= 1 ? [Math.round(x1), Math.round(y1), Math.round(x2), Math.round(y2)] : null;
 }
+// The frame-result provenance vocabulary has one reader. `drawn.source`, the
+// display layer and the shell's correction snapshot all ask the same question
+// here, so one frame result is never reported under two names.
+function frameResultSource(result) {
+  return result?.correction ? SOURCE_LABEL.operator : result?.inference ? SOURCE_LABEL.model : SOURCE_LABEL.none;
+}
 // Box provenance is per box, not per frame. A stored correction is the
 // operator's (`manual`), a stored inference result is the model's (`auto`), and
 // an edit made in this session makes that one box the operator's - the frame-level
@@ -115,21 +134,26 @@ function displayBoxes(result) {
   // stored inference is the model's (auto). A correction used to replace the
   // inference list, so the model's boxes vanished exactly when the operator most
   // needed to see where the two disagreed.
-  const source = result?.correction ? 'manual corrections' : result?.inference ? 'inference' : 'none';
-  const manual = (result?.correction?.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin: 'manual', edited: false}));
-  const model = (result?.inference?.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin: 'auto', edited: false}));
+  const source = frameResultSource(result);
+  const manual = (result?.correction?.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin: BOX_ORIGIN.operator, edited: false}));
+  const model = (result?.inference?.boxes || []).map(b => ({label: b.label, bbox: b.bbox.slice(), score: b.score, origin: BOX_ORIGIN.model, edited: false}));
   const polygon = result?.correction?.table_polygon || result?.inference?.table_polygon || null;
   return {source, boxes: [...manual, ...model], polygon: polygon ? polygon.map(p => [...p]) : null};
 }
+// Box provenance has one reader too, and it is total: every box comes out as one
+// of the two kinds, and a box with no origin comes out as the model's.
+function boxOrigin(box) { return box?.origin === BOX_ORIGIN.operator ? BOX_ORIGIN.operator : BOX_ORIGIN.model; }
+function isOperatorBox(box) { return boxOrigin(box) === BOX_ORIGIN.operator; }
+function isModelBox(box) { return boxOrigin(box) === BOX_ORIGIN.model; }
 // The one place a box's origin changes: an edit by the operator in this session.
-function markBoxEdited(box) { if (box) { box.origin = 'manual'; box.edited = true; } }
-function boxTagKind(box) { return box?.origin === 'manual' ? 'manual' : 'auto'; }
+function markBoxEdited(box) { if (box) { box.origin = BOX_ORIGIN.operator; box.edited = true; } }
+function boxTagKind(box) { return boxOrigin(box); }
 // An edited model box becomes the operator's, but the model's original stays on
 // the stage as a frozen ghost until the frame is reloaded: the operator can see
 // what the model said before they moved it, and the ghost is never saveable.
 function ghostModelBox(box) {
-  if (!box || box.origin !== 'auto' || box.frozen) return;
-  state.boxes.push({label: box.label, bbox: box.bbox.slice(), score: box.score, origin: 'auto', edited: true, frozen: true});
+  if (!box || !isModelBox(box) || box.frozen) return;
+  state.boxes.push({label: box.label, bbox: box.bbox.slice(), score: box.score, origin: BOX_ORIGIN.model, edited: true, frozen: true});
 }
 function boxIou(a, b) {
   const [ax1, ay1, ax2, ay2] = a, [bx1, by1, bx2, by2] = b;
@@ -153,8 +177,8 @@ function boxesMatch(a, b) {
 // A model box that a manual box already describes is drawn as that box's faint
 // counterpart: agreement reads as one clean box, a disagreement as a visible gap.
 function isPairedModel(box, boxes) {
-  if (box?.origin !== 'auto') return false;
-  return boxes.some(other => other !== box && other.origin === 'manual' && boxesMatch(box, other));
+  if (!isModelBox(box)) return false;
+  return boxes.some(other => other !== box && isOperatorBox(other) && boxesMatch(box, other));
 }
 function ballLabelText(value) { return value === undefined || value === null ? 'Unlabeled' : value === -1 || value === 'u' ? 'Unknown' : value === 0 ? 'Cue · 0' : `Ball ${value}`; }
 // ---- pocket vocabulary, overlay provenance, geometry clearance ------------
@@ -230,6 +254,22 @@ function quadSanity(points, width, height) {
   const fraction = area / (w * h);
   return fraction >= 0.02 && fraction <= 0.9 ? null : `implausible area ${(fraction * 100).toFixed(1)}%`;
 }
+// The cloth verdict has one shape and one builder, so all three producers - the
+// measured path, the live path and the initial state - hand the shell the same
+// keys. Every key is always present: a key the builder was given no value for is
+// `null`, never `undefined`, because `clothNotice` rounds `mean` and `tolerance`
+// and a missing key would reach the operator as `undefined` in a sentence.
+// `available` is the pocket-marker count the detector reported for this frame.
+function clothVerdict(value = {}, available = 0) {
+  return {
+    state: value.state || 'none', reason: value.reason || '', detail: value.detail || '',
+    mean: Number.isFinite(value.mean) ? value.mean : null,
+    max: Number.isFinite(value.max) ? value.max : null,
+    tolerance: Number.isFinite(value.tolerance) ? value.tolerance : null,
+    source: value.source ?? null, available: Number(available) || 0
+  };
+}
+function noClothVerdict(reason = 'no detection') { return clothVerdict({state:'none', reason}); }
 // Verdict for one frame's automatic quad: ok (checked and within tolerance),
 // off (checked and refused), unverified (no saved reference for this dataset),
 // none (nothing detected). Only `ok` and `unverified` may be painted.
@@ -247,14 +287,14 @@ function quadSanity(points, width, height) {
 function validateCloth(corners, reference, frameWidth, frameHeight) {
   const points = quadPoints(corners);
   const bad = quadSanity(points, frameWidth, frameHeight);
-  if (bad) return {state:'off', reason:'invalid geometry', detail:bad, mean:null, max:null, tolerance:null, source:null};
+  if (bad) return clothVerdict({state:'off', reason:'invalid geometry', detail:bad});
   const ref = quadPoints(reference?.points);
-  if (!ref) return {state:'unverified', reason:'no saved reference', detail:'', mean:null, max:null, tolerance:null, source:null};
+  if (!ref) return clothVerdict({state:'unverified', reason:'no saved reference'});
   const tolerance = clothTolerance(reference, frameWidth);
   const fit = quadDistance(points, ref);
-  return fit.mean <= tolerance
-    ? {state:'ok', reason:'within tolerance', detail:'', mean:fit.mean, max:fit.max, tolerance, source:reference.source}
-    : {state:'off', reason:'off saved corners', detail:'', mean:fit.mean, max:fit.max, tolerance, source:reference.source};
+  return clothVerdict(fit.mean <= tolerance
+    ? {state:'ok', reason:'within tolerance', mean:fit.mean, max:fit.max, tolerance, source:reference.source}
+    : {state:'off', reason:'off saved corners', mean:fit.mean, max:fit.max, tolerance, source:reference.source});
 }
 // A saved frame correction belongs to exactly one (dataset, frame, source
 // size). The server files it under the dataset and frame it was written for,
@@ -297,7 +337,7 @@ function glyphWidth(value, size) {
   for (const ch of String(value ?? '')) width += /[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? size : size * 0.62;
   return width;
 }
-function sourceTagLabel(kind) { return text(kind === 'manual' ? 'YOURS' : kind === 'calib' ? 'CALIB' : kind === 'event' ? 'EVENT' : 'MODEL'); }
+function sourceTagLabel(kind) { return text(kind === BOX_ORIGIN.operator ? 'YOURS' : kind === 'calib' ? 'CALIB' : kind === 'event' ? 'EVENT' : 'MODEL'); }
 function sourceTagWidth(kind) { return Math.round((glyphWidth(sourceTagLabel(kind), SRC_TAG_FONT) + 14) * tagScale); }
 // Tag placement. During one paintOverlay() every tag row (provenance tag + its label)
 // registers here with the spot its owner asked for; placeTags() then settles them
@@ -505,7 +545,7 @@ async function loadUnified(dataset, frame, epoch, request) {
     const data = await response.json();
     if (epoch !== state.epoch || request !== state.frameReq) return;
     state.unified = data;
-    state.drawn.source = state.fresult?.correction ? 'manual corrections' : state.fresult?.inference ? 'inference' : 'unified';
+    state.drawn.source = frameResultSource(state.fresult);
   } catch {
     if (epoch === state.epoch && request === state.frameReq) state.unified = null;
   } finally {
@@ -523,7 +563,7 @@ async function loadFrame(n) {
     if (state.shotUrl) URL.revokeObjectURL(state.shotUrl);
     state.shotUrl = shot.url; state.lastShotUrl = shot.url; state.frame = shot.frame; state.t = shot.t; state.fresult = result;
     state.frameWidth = shot.w || state.frameWidth; state.frameHeight = shot.h || state.frameHeight;
-    state.dirty = false; state.unified = null; state.drawn.source = 'none';
+    state.dirty = false; state.unified = null; state.drawn.source = SOURCE_LABEL.none;
     applyFrameResult(); renderStage();
     scheduleUnified(shot.frame, epoch, request);
     // Round 17, owner item 3: the identity record is fetched *after* the picture is on the stage, and
@@ -575,7 +615,7 @@ function applyFrameResult() {
   // A frame load replaces the box list, so only a box selection is dropped.
   // Event / ball / person / anchor selections survive the seek that selected them.
   if (state.sel.kind === 'box') state.sel = {kind:'none',crop:null,ball:null,person:null,track:null,anchor:0,event:null,box:-1};
-  state.drawn.source = state.fresult?.correction ? 'manual corrections' : state.fresult?.inference ? 'inference' : 'none';
+  state.drawn.source = frameResultSource(state.fresult);
 }
 // Seek = freeze the stage on one decoded frame. Used by every cue selection.
 // A seek that arrives while a decode is in flight is queued, never dropped:
@@ -873,9 +913,9 @@ function paintOverlay() {
     || (isLive && Array.isArray(livePoly) && livePoly.length ? livePoly : null)
     || (liveFrame ? null : staticQuad());
   const reference = state.source.kind === 'vod' && !liveFrame ? state.cloth.reference : null;
-  const clothVerdict = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : {state:'none',reason:'no detection',detail:'',mean:null,max:null,tolerance:null,source:null};
-  clothVerdict.available = Number(u?.pockets?.length || 0);
-  state.cloth.verdict = clothVerdict;
+  const measured = autoCloth ? validateCloth(autoCloth, reference, state.frameWidth, state.frameHeight) : noClothVerdict();
+  const verdict = clothVerdict(measured, Number(u?.pockets?.length || 0));
+  state.cloth.verdict = verdict;
   // What the detector decided about the quad (additive API field `table_quad`):
   // the refusal reason and the per-side evidence the operator needs when the cloth
   // layer stays empty.
@@ -884,12 +924,12 @@ function paintOverlay() {
   // quad when it passed its clearance check, otherwise the dataset's saved
   // anchors / calibration - the same geometry the anchors layer draws. A refused
   // quad is never borrowed, and with no trusted source at all nothing is drawn.
-  const modelPockets = clothVerdict.state === 'ok' ? (u?.pockets || []) : [];
+  const modelPockets = verdict.state === 'ok' ? (u?.pockets || []) : [];
   const calibPockets = modelPockets.length ? [] : (calibratedPockets(reference) || []);
   const pockets = modelPockets.length ? modelPockets : calibPockets;
   const pocketSource = modelPockets.length ? 'model' : calibPockets.length ? 'calibration' : null;
   state.cloth.pockets = {source: pocketSource, count: pockets.length, reference: pocketSource === 'calibration' ? reference?.source ?? null : null};
-  if (ov.cloth && autoCloth && clothVerdict.state !== 'off') {
+  if (ov.cloth && autoCloth && verdict.state !== 'off') {
     const detected = Array.isArray(u?.table_corners) && u.table_corners.length;
     const [qx, qy] = quadOrigin(quadPoints(autoCloth));
     layers.push(`<polygon class="u-cloth" points="${autoCloth.map(p => p.join(',')).join(' ')}" fill="none"></polygon>`);
@@ -985,16 +1025,16 @@ function paintOverlay() {
   // only the boxes the operator actually made or touched read YOURS/人工.
   const editable = playing || liveFrame ? [] : state.boxes;
   const boxKinds = editable.map(boxTagKind);
-  const boxSource = boxKinds.length && boxKinds.every(kind => kind === boxKinds[0]) ? boxKinds[0] : boxKinds.length ? 'mixed' : 'auto';
+  const boxSource = boxKinds.length && boxKinds.every(kind => kind === boxKinds[0]) ? boxKinds[0] : boxKinds.length ? 'mixed' : BOX_ORIGIN.model;
   // A model person box that already sits on a tracked person is the same human,
   // framed by the persons layer above: it is skipped here so the facts line stops
   // reporting twice the people who are standing there. A model person the track
   // layer missed is a disagreement and still draws -- that is the point of having
   // both -- so only a match is dropped, never an unmatched box.
-  const coveredByPerson = box => boxTagKind(box) === 'auto' && box.label === 'person' && personRects.some(per => boxesMatch({ bbox: box.bbox }, { bbox: per.bbox }));
+  const coveredByPerson = box => boxTagKind(box) === BOX_ORIGIN.model && box.label === 'person' && personRects.some(per => boxesMatch({ bbox: box.bbox }, { bbox: per.bbox }));
   for (const box of editable) {
     if (coveredByPerson(box)) continue;
-    const manual = boxTagKind(box) === 'manual';
+    const manual = boxTagKind(box) === BOX_ORIGIN.operator;
     if (box.label === 'person') { manual ? drawn.persons++ : auto.persons++; }
     else if (ballLabel(box.label)) { manual ? drawn.balls++ : auto.balls++; }
   }
@@ -1017,7 +1057,7 @@ function paintOverlay() {
     const faint = ghost || isPairedModel(box, state.boxes);
     // A paired model box puts its tag under the box so the two tags never sit on
     // top of each other: agreement keeps one clean pair of rectangles.
-    const tagAt = faint && kind === 'auto' ? y2 + 18 : Math.max(2, y1 - 26);
+    const tagAt = faint && kind === BOX_ORIGIN.model ? y2 + 18 : Math.max(2, y1 - 26);
     const handles = selected ? [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(([hx,hy],c) => `<rect class="handle" data-handle="${c}" x="${hx-7}" y="${hy-7}" width="14" height="14"></rect>`).join('') : '';
     return `${tagRow(x1, tagAt, kind, `${box.label}`)}<g data-box="${i}" data-origin="${kind}"${ghost ? ' data-ghost="1"' : ''} class="t-box ${kind}${faint ? ' faint' : ''}${selected ? ' selected' : ''}"><title>${esc(`${box.label}${box.score != null ? ` · ${text('confidence')} ${Number(box.score).toFixed(2)}` : ''} · ${sourceTagLabel(kind)}`)}</title><rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}"></rect>${ballLabel(box.label) ? `<circle class="center-dot" cx="${center[0]}" cy="${center[1]}" r="4"></circle>` : ''}${handles}</g>`;
   }).join('');
@@ -1248,10 +1288,11 @@ function selectAnchor(index) {
 }
 function selectBox(index) {
   state.sel = {kind:'box', box:index, crop:null, ball:null, person:null, track:null, event:null, anchor:0};
-  state.sel_box = index;
   notify(); paintOverlay();
 }
-function clearSelection() { state.sel = {kind:'none',crop:null,ball:null,person:null,track:null,anchor:0,event:null,box:-1}; state.sel_box = -1; notify(); paintPopover(); }
+// The box index lives in `state.sel.box` alone; `snapshotSelection` and
+// `snapshotCorrections` publish it from there.
+function clearSelection() { state.sel = {kind:'none',crop:null,ball:null,person:null,track:null,anchor:0,event:null,box:-1}; notify(); paintPopover(); }
 // ---- writes --------------------------------------------------------------
 function eventForSelection() { return state.sel.kind === 'event' ? state.sel.event : state.events[state.eventIndex] || null; }
 function verdictValue() { const event = eventForSelection(); return event ? (state.annotations[String(event.id)] || {}) : {}; }
@@ -1401,11 +1442,11 @@ async function saveAnchors(button) {
 // session-only reference (and a frozen ghost of an edited model box is never a
 // correction of ours); an edited model box has already flipped its origin, so it is
 // included - which is exactly how the operator turns a model box into theirs.
-function manualBoxCount() { return state.boxes.filter(box => box.origin !== 'auto').length; }
-function modelBoxCount() { return state.boxes.filter(box => box.origin === 'auto').length; }
+function manualBoxCount() { return state.boxes.filter(isOperatorBox).length; }
+function modelBoxCount() { return state.boxes.filter(isModelBox).length; }
 function correctionBody() {
   return {dataset: state.dataset, frame_index: state.frame,
-          boxes: state.boxes.filter(box => box.origin !== 'auto').map(box => ({label: box.label, bbox: box.bbox.slice()})),
+          boxes: state.boxes.filter(isOperatorBox).map(box => ({label: box.label, bbox: box.bbox.slice()})),
           table_polygon: state.polygon ? state.polygon.map(p => [p[0], p[1]]) : null};
 }
 async function saveCorrections(button) {
@@ -1417,7 +1458,7 @@ async function saveCorrections(button) {
     // The stored correction carries its own scope (dataset, frame, source
     // size): keep the server's copy so the next paint checks what was saved.
     state.fresult.correction = data?.correction || {dataset: body.dataset, frame_index: body.frame_index, width: state.frameWidth, height: state.frameHeight, boxes: state.boxes.map(b => ({label: b.label, bbox: b.bbox.slice()})), table_polygon: body.table_polygon};
-    state.cloth.refusal = null; state.drawn.source = 'manual corrections'; paintOverlay();
+    state.cloth.refusal = null; state.drawn.source = SOURCE_LABEL.operator; paintOverlay();
   }, 'corrections', `frame ${state.frame} · ${state.boxes.length} boxes${state.polygon ? ' + polygon' : ''}`);
   return ok;
 }
@@ -1618,7 +1659,7 @@ function ingestLiveFrame(url, meta, source = {}) {
   const img = $('#t-img'); const svg = $('#t-overlay');
   state.live.shown = url;
   if (img) { img.src = url; img.hidden = false; }
-  if (epoch === state.epoch) { state.unified = null; state.cloth.refusal = null; state.cloth.verdict = {state:'none',reason:'no detection'}; paintOverlay(); paintLiveChip(); notify(); }
+  if (epoch === state.epoch) { state.unified = null; state.cloth.refusal = null; state.cloth.verdict = noClothVerdict(); paintOverlay(); paintLiveChip(); notify(); }
 }
 function setLiveAttempt(attempt) { state.live.attempt = attempt; notify(); }
 // A successful start clears the failed-attempt block and its in-surface notice.
@@ -1704,7 +1745,7 @@ function overlayPointerUp() {
   state.drag = null;
   if (drag.kind === 'draw') {
     const bbox = normalizeBox([drag.x1, drag.y1, drag.x2, drag.y2], state.frameWidth, state.frameHeight);
-    if (bbox) { state.boxes.push({label: state.newBoxLabel || 'ball', bbox, origin:'manual', edited:true}); selectBox(state.boxes.length - 1); setTool('select'); markDirty(); }
+    if (bbox) { state.boxes.push({label: state.newBoxLabel || 'ball', bbox, origin: BOX_ORIGIN.operator, edited:true}); selectBox(state.boxes.length - 1); setTool('select'); markDirty(); }
   }
   paintOverlay(); notify();
 }
@@ -1924,7 +1965,7 @@ function snapshotAnchors() {
 }
 function snapshotCorrections() {
   return {
-    corrections: {inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff, tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: state.fresult ? (state.fresult.correction ? 'manual corrections' : state.fresult.inference ? 'inference' : 'none') : 'none', dirty: state.dirty, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
+    corrections: {inferRunning: state.inferRunning, inferStatus: state.inferStatus, autoInfer: !state.autoInferOff, tool: state.tool, newBoxLabel: state.newBoxLabel || 'ball', box: state.sel.kind === 'box' ? state.sel.box : -1, boxes: state.boxes.length, boxLabel: state.sel.kind === 'box' ? state.boxes[state.sel.box]?.label : null, polygon: !!state.polygon, result: frameResultSource(state.fresult), dirty: state.dirty, manualBoxes: manualBoxCount(), modelBoxes: modelBoxCount(),
       // Where this frame's inference came from: a stored file from an earlier run
       // (marked by the server, with its own timestamp) or the result of inference
       // run on this frame now, which is never written to disk. A live or replay
@@ -2100,7 +2141,7 @@ Object.assign(editorCopy, {
 const editorTemplates = [
   [/^(.+) · detector score (.+) \(not accuracy\)$/, (source, score) => `${source} · 检测器分数 ${score}（非准确率）`],
   [/^Ball (\d+)$/, number => `球 ${number}`],
-  [/^RAW DECODED FRAME · (.+) · frame (\d+) · nominal (.+)s \((.+)\) · OVERLAYS: (.+)$/, (dataset, frame, time, kind, overlays) => `原始解码帧 · ${dataset} · 帧 ${frame} · 名义时间 ${time}s (${kind}) · 叠加层：${({'manual corrections':'人工修正',inference:'推理',none:'无',unified:'统一检测'})[overlays] || overlays}`],
+  [/^RAW DECODED FRAME · (.+) · frame (\d+) · nominal (.+)s \((.+)\) · OVERLAYS: (.+)$/, (dataset, frame, time, kind, overlays) => `原始解码帧 · ${dataset} · 帧 ${frame} · 名义时间 ${time}s (${kind}) · 叠加层：${({[SOURCE_LABEL.operator]:'人工修正',[SOURCE_LABEL.model]:'推理',[SOURCE_LABEL.none]:'无',unified:'统一检测'})[overlays] || overlays}`],
   [/^([\d.]+) fps · (\d+) frames · (.+) · nominal CFR timestamps$/, (fps, frames, duration) => `${fps} fps · ${frames} 帧 · ${duration} · 名义 CFR 时间戳`],
   [/^Frame load failed: ([\s\S]*)$/, detail => `帧加载失败：${detail}`],
   [/^Save failed: ([\s\S]*)\. Your changes remain on screen; retry when ready\.$/, detail => `保存失败：${detail}。更改仍保留在屏幕上，可稍后重试。`],
