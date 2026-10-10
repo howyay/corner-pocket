@@ -8,6 +8,7 @@ import argparse
 import base64
 import binascii
 from collections import OrderedDict
+from collections.abc import Mapping
 import functools
 import json
 import math
@@ -432,6 +433,84 @@ def vod_replay_processor_class():
         """LiveProcessor plus the vod-replay source (see the mixin)."""
 
     return VodReplayLiveProcessor
+
+
+class ReadQuery:
+    """One value per read-query key: what the domain reads, not what the URL holds.
+
+    The transport builds one of these from the URL (``from_pairs``), so a route
+    never sees the ``parse_qs`` list shape and never subscripts a value.  The
+    accessors carry the defaults the routes used to write by hand.  ``integer``
+    gives back a value it cannot prove is a whole number, so the route's own
+    ``number`` call keeps its own range and its own refusal sentence.
+    """
+
+    __slots__ = ("_values",)
+
+    def __init__(self, values=None):
+        if values is None:
+            self._values = {}
+            return
+        if not isinstance(values, Mapping):
+            raise APIError("query must be a mapping of name to value")
+        self._values = {}
+        for name, value in values.items():
+            if value is not None and not isinstance(value, (str, int, float, bool)):
+                raise APIError(f"query value for {name} must be one value, not {type(value).__name__}; "
+                               f"use ReadQuery.from_pairs for the URL shape")
+            self._values[name] = value
+
+    @classmethod
+    def from_pairs(cls, pairs=None):
+        """The transport shape (one list of text per key) as a ``ReadQuery``.
+
+        ``urllib.parse.parse_qs`` returns this shape, and a repeated key keeps its
+        first value, as the routes did before.  Any other value is refused: a flat
+        string would be read one character at a time, so ``'68-94'`` would answer
+        ``'6'``.  ``None`` or an empty mapping gives the defaults.
+        """
+        if pairs is None:
+            return cls()
+        if not isinstance(pairs, Mapping):
+            raise APIError("query must be a mapping of name to values")
+        values = {}
+        for name, pair in pairs.items():
+            if isinstance(pair, (str, bytes)) or not isinstance(pair, (list, tuple)):
+                raise APIError(f"query value for {name} must be a list of one value, "
+                               f"not {type(pair).__name__}: {pair!r}")
+            if not pair:
+                raise APIError(f"query value for {name} is empty")
+            if not isinstance(pair[0], str):
+                raise APIError(f"query value for {name} must be text, not {type(pair[0]).__name__}")
+            values[name] = pair[0]
+        return cls(values)
+
+    def text(self, name, default=None):
+        """The value for ``name`` as text; an absent key gives ``default``."""
+        return self._values.get(name, default)
+
+    def integer(self, name, default=None):
+        """The value for ``name`` as an ``int``; an absent key gives ``default``.
+
+        A value this method cannot prove is a whole number goes back unchanged,
+        so the route's own ``number`` call still refuses it in its own words.
+        """
+        value = self._values.get(name, default)
+        if value is None or isinstance(value, bool):
+            return value
+        try:
+            counted = float(value)
+        except (TypeError, ValueError):
+            return value
+        return int(counted) if counted.is_integer() else value
+
+    def window(self):
+        """``(win, t)`` for the window route: the key, and its time in range."""
+        return self.text("win", ""), number(self._values.get("t"), 0, 1800, "t")
+
+    def scalars(self):
+        """Every value as a flat ``{name: value}`` mapping, for a sub-importer."""
+        return dict(self._values)
 
 
 class Backend:
@@ -1355,7 +1434,7 @@ class Backend:
         from annotator.vod_import import VodImportError
         importer = self.vod_importer()
         try:
-            return importer.thumbnail(query.get("channel", [None])[0], query.get("id", [None])[0])
+            return importer.thumbnail(query.text("channel"), query.text("id"))
         except VodImportError as exc:
             raise APIError(str(exc), exc.status) from exc
 
@@ -1694,8 +1773,8 @@ class Backend:
             return {'writes': OPERATOR_ACTIONS.contract(), 'operations': list(TOURNAMENT_ACTIONS)}
         if parts == ['api', 'clock']:
             return self.clock_state()
-        dataset = query.get('dataset', ['vod30'])[0]
-        frame_index = query.get('frame', [None])[0]
+        dataset = query.text('dataset', 'vod30')
+        frame_index = query.text('frame')
         if parts == ['api', 'identity', 'frame']:
             return self.identity_frame(dataset, frame_index)
         if parts == ['api', 'unified']:
@@ -1715,7 +1794,7 @@ class Backend:
                 listed["datasets_error"] = index_error
             return listed
         if len(parts) == 3 and parts[:2] == ["api", "vods"] and parts[2] in ("recent", "job", "estimate", "queue"):
-            return self.vod_request(parts[2], {key: values[0] for key, values in query.items()})
+            return self.vod_request(parts[2], query.scalars())
         if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "meta":
             base = self.crops(parts[2])
             labels = self.store().labels_get(parts[2])
@@ -1747,7 +1826,7 @@ class Backend:
         if dataset != "vod30":
             raise APIError("feature only available for vod30", 404)
         if route == "anchors":
-            return self.anchor_info(query.get("t", [70])[0])
+            return self.anchor_info(query.integer("t", 70))
         if route == "seeds":
             return self.seeds()
         if route == "rebuild":
@@ -1758,8 +1837,7 @@ class Backend:
                     "seeds": self.seeds()["seeds"],
                     "predictions": self.predictions()}
         if route == "tracks":
-            win = query.get("win", [""])[0]
-            t = number(query.get("t", [None])[0], 0, 1800, "t")
+            win, t = query.window()
             windows = self.tracks()
             if win not in windows:
                 raise APIError("unknown window", 404)
@@ -2426,7 +2504,7 @@ def make_handler(backend):
                 parsed = urlsplit(self.path)
                 path = unquote(parsed.path)
                 parts = path.strip("/").split("/")
-                query = parse_qs(parsed.query)
+                query = ReadQuery.from_pairs(parse_qs(parsed.query))
                 if post:
                     # Reject cross-origin browser writes; no permissive CORS headers.
                     origin = self.headers.get("Origin")
@@ -2460,13 +2538,13 @@ def make_handler(backend):
                         'X-Live-Sequence': str(meta['seq']),
                         'X-Live-Metadata': json.dumps(meta, separators=(',', ':'), allow_nan=False)})
                 if path == '/api/clip':
-                    clip = backend.event_clip(query.get('dataset', ['vod30'])[0],
-                                              _number(query.get('t', [None])[0], 't'),
-                                              _number(query.get('before', [1.5])[0], 'before', allow_none=True),
-                                              _number(query.get('after', [2.5])[0], 'after', allow_none=True))
+                    clip = backend.event_clip(query.text('dataset', 'vod30'),
+                                              _number(query.text('t'), 't'),
+                                              _number(query.text('before', 1.5), 'before', allow_none=True),
+                                              _number(query.text('after', 2.5), 'after', allow_none=True))
                     return self.file(clip)
                 if path == '/api/frame':
-                    raw, meta = backend.indexed_jpeg(query.get('dataset', ['vod30'])[0], query.get('frame', [None])[0])
+                    raw, meta = backend.indexed_jpeg(query.text('dataset', 'vod30'), query.text('frame'))
                     return self.send(200, raw, 'image/jpeg', {
                         'X-Frame-Index': str(meta['frame_index']),
                         'X-Timestamp-Seconds': str(meta['timestamp_seconds']),
@@ -2490,7 +2568,7 @@ def make_handler(backend):
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
                     return self.send(200, backend.event_frame(parts[1], parts[3]), "image/jpeg")
                 if len(parts) == 3 and parts[0] == "media" and parts[2] == "frame":
-                    return self.send(200, backend.frame_jpeg(query.get("t", [None])[0], parts[1]), "image/jpeg")
+                    return self.send(200, backend.frame_jpeg(query.text("t"), parts[1]), "image/jpeg")
                 if parts[0] == "api":
                     return self.json(200, backend.get(parts, query))
                 return self.file(backend.media(parts))

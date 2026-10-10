@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from annotator.unified_server import (APIError, Backend, OPERATOR_ACTIONS, OperatorAction,
+from annotator.unified_server import (APIError, Backend, OPERATOR_ACTIONS, OperatorAction, ReadQuery,
                                       atomic_save, load, make_handler, operator_actions)
 from annotator.operations import ACTION_NAMES
 from src.pid_seed_rebuild import explicit_seeds, run
@@ -51,8 +51,8 @@ class BackendTests(unittest.TestCase):
 
     def test_dataset_isolation_and_annotation_merge(self):
         self.backend.post(["api", "vod30", "annotate"], {"event_id": 1, "verdict": "correct"})
-        vod = self.backend.get(["api", "vod30", "events"], {})
-        high = self.backend.get(["api", "highlight", "events"], {})
+        vod = self.backend.get(["api", "vod30", "events"], ReadQuery({}))
+        high = self.backend.get(["api", "highlight", "events"], ReadQuery({}))
         self.assertEqual(vod["annotations"]["1"]["shooter"], "B")
         self.assertEqual(vod["annotations"]["1"]["custom"], 9)
         self.assertEqual(high["annotations"]["1"]["note"], "scan_highlight")
@@ -73,7 +73,7 @@ class BackendTests(unittest.TestCase):
             {"id": 8, "t": 6.0, "type": "shot", "window_s": [5.0, 9.0], "disp_mm": 172,
              "speed_m_s": 2.6, "ball_from": [100.0, 200.0], "ball_to": [300.0, 400.0]},
         ])
-        payload = self.backend.get(["api", "vod30", "events"], {})
+        payload = self.backend.get(["api", "vod30", "events"], ReadQuery({}))
         self.assertEqual(payload["geometry"], {"source": "scan cloth quad", "projected": 2, "total": 2})
         pot, shot = payload["events"]
         # Existing fields keep their names and values.
@@ -98,7 +98,7 @@ class BackendTests(unittest.TestCase):
         atomic_save(self.out / "scan30" / "events.json", [
             {"id": 3, "t": 9.4, "type": "pot", "last_mm": [1287.7, 2526.4], "nearest_pocket": "foot-right (22mm)"},
         ])
-        payload = self.backend.get(["api", "vod30", "events"], {})
+        payload = self.backend.get(["api", "vod30", "events"], ReadQuery({}))
         self.assertIsNone(payload["geometry"])
         event = payload["events"][0]
         self.assertEqual(event["last_mm"], [1287.7, 2526.4])
@@ -112,7 +112,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(load(self.crop / "labels.json"), {self.original: 15, "legacy-other": 8})
         self.backend.post(route, {"file": "crop.jpg", "label": -1})
         self.assertEqual(load(self.crop / "labels.json")[self.original], "u")
-        result = self.backend.get(["api", "balls", "unlabeled_crops", "meta"], {})
+        result = self.backend.get(["api", "balls", "unlabeled_crops", "meta"], ReadQuery({}))
         self.assertEqual(result["items"][0]["ctx"], "context.jpg")
         self.assertEqual(result["labels"]["crop.jpg"], "u")
         self.backend.post(route, {"file": "crop.jpg", "label": None})
@@ -147,9 +147,9 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(saved["anchors"]["70"], [[99, 49]] * 6)
         self.assertEqual(saved["custom"], 3)
         with self.assertRaises(APIError):
-            self.backend.get(["api", "vod30", "anchors"], {"t": ["NaN"]})
+            self.backend.get(["api", "vod30", "anchors"], ReadQuery({"t": "NaN"}))
         with self.assertRaises(APIError):
-            self.backend.get(["api", "highlight", "anchors"], {})
+            self.backend.get(["api", "highlight", "anchors"], ReadQuery({}))
 
     def test_explicit_seeds_and_tracks(self):
         route = ["api", "vod30", "seeds"]
@@ -161,7 +161,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(saved["seeds"]["1:68-94"], self.legacy)
         self.assertTrue(saved["custom"])
         self.assertEqual(explicit_seeds(self.tracklets, saved["seeds"]), {"2:68-94": "B"})
-        tracks = self.backend.get(["api", "vod30", "tracks"], {"win": ["68-94"], "t": ["70"]})
+        tracks = self.backend.get(["api", "vod30", "tracks"], ReadQuery({"win": "68-94", "t": "70"}))
         self.assertEqual(tracks["tracks"][1], {"id": 2, "box": [2, 3, 4, 5], "label": "B"})
         self.backend.post(route, dict(base, label="ignore"))
         self.assertEqual(self.backend.seeds()["seeds"]["2:68-94"]["label"], "ignore")
@@ -169,6 +169,34 @@ class BackendTests(unittest.TestCase):
         self.assertNotIn("2:68-94", self.backend.seeds()["seeds"])
         with self.assertRaises(APIError):
             self.backend.post(route, dict(base, t=71, label="A"))
+
+    def test_read_query_from_pairs_carries_the_same_values_as_a_flat_mapping(self):
+        # The transport holds one list per key, the domain holds one value per key:
+        # both shapes must give the window route the same window and the same tracks.
+        pairs = ReadQuery.from_pairs({"win": ["68-94"], "t": ["70"]})
+        flat = ReadQuery({"win": "68-94", "t": "70"})
+        self.assertEqual(pairs.scalars(), flat.scalars())
+        self.assertEqual(flat.scalars(), {"win": "68-94", "t": "70"})
+        self.assertEqual(pairs.window(), flat.window())
+        self.assertEqual(flat.window(), ("68-94", 70.0))
+        self.assertEqual(ReadQuery({"win": "68-94"}).text("win"), "68-94")
+        self.assertIsNone(ReadQuery({}).text("frame"))
+        self.assertEqual(ReadQuery({}).text("dataset", "vod30"), "vod30")
+        self.assertEqual(ReadQuery({"t": "70"}).integer("t", 70), 70)
+        self.assertEqual(ReadQuery({"t": "NaN"}).integer("t", 70), "NaN")
+        from_pairs_tracks = self.backend.get(["api", "vod30", "tracks"], pairs)
+        self.assertEqual(from_pairs_tracks, self.backend.get(["api", "vod30", "tracks"], flat))
+        self.assertEqual(from_pairs_tracks["win"], "68-94")
+
+    def test_read_query_refuses_a_flat_string_instead_of_reading_one_character(self):
+        # '68-94' read one character at a time answers '6', and the window route
+        # reports that as an unknown window: the adapter refuses the value instead.
+        with self.assertRaises(APIError) as refused:
+            ReadQuery.from_pairs({"win": "68-94", "t": "70"})
+        self.assertIn("must be a list of one value", str(refused.exception))
+        with self.assertRaises(APIError):
+            ReadQuery.from_pairs({"win": []})
+        self.assertEqual(ReadQuery.from_pairs({"win": ["68-94"]}).text("win"), "68-94")
 
     def test_a_guest_name_is_stored_as_the_track_label_and_never_trains_an_identity(self):
         # The rail's second labelling option: the typed name is this track's
@@ -179,7 +207,7 @@ class BackendTests(unittest.TestCase):
         base = {"win": "68-94", "t": 70, "track_id": 2}
         self.backend.post(route, dict(base, label="  Minh  "))
         self.assertEqual(self.backend.seeds()["seeds"]["2:68-94"]["label"], "Minh")
-        tracks = self.backend.get(["api", "vod30", "tracks"], {"win": ["68-94"], "t": ["70"]})
+        tracks = self.backend.get(["api", "vod30", "tracks"], ReadQuery({"win": "68-94", "t": "70"}))
         self.assertEqual(tracks["tracks"][1], {"id": 2, "box": [2, 3, 4, 5], "label": "Minh"})
         self.assertEqual(explicit_seeds(self.tracklets, self.backend.seeds()["seeds"]), {}, "a guest name never enters identity training")
         self.assertTrue(self.backend.predictions()["stale"], "and cannot make the stored prediction look current")
@@ -561,7 +589,7 @@ class BackendTests(unittest.TestCase):
         atomic_save(seed_path, {'seeds': {'A': ['existing-track']}})
         atomic_save(anchor_path, {'anchors': {'existing-track': 'A'}})
         before = {p: p.read_bytes() for p in (seed_path, anchor_path)}
-        state = self.backend.get(['api', 'operations'], {})
+        state = self.backend.get(['api', 'operations'], ReadQuery({}))
         state = self.backend.post(['api', 'operations'], {
             'revision': state['revision'], 'action': 'player_save', 'name': 'Club Regular'})
         self.assertEqual(len(state['players']), 1)
@@ -588,7 +616,7 @@ class BackendTests(unittest.TestCase):
         saved = json.loads(handler.wfile.getvalue())
         self.assertEqual(saved['revision'], 1)
         self.assertEqual(saved['players'][0]['name'], 'HTTP Player')
-        self.assertEqual(Backend(self.root).get(['api', 'operations'], {}), saved)
+        self.assertEqual(Backend(self.root).get(['api', 'operations'], ReadQuery({})), saved)
         before = store.read_bytes()
         cases = [(body, {}, 409), (b'{', {}, 400), (b'[]', {}, 400),
                  (b'{"action":"note_add","revision":1}', {}, 400),
@@ -644,7 +672,7 @@ class BackendTests(unittest.TestCase):
         operations = Mock()
         operations.get.return_value = {"revision": 0, "players": []}
         self.backend._operations = operations
-        self.assertEqual(self.backend.get(['api', 'operations'], {}), {"revision": 0, "players": []})
+        self.assertEqual(self.backend.get(['api', 'operations'], ReadQuery({})), {"revision": 0, "players": []})
         operations.get.assert_called_once_with()
         handler = self.handler('/api/operations')
         handler.do_GET()
@@ -841,7 +869,7 @@ class BackendTests(unittest.TestCase):
                                               "samples": 1 if c == 3 else 0,
                                               "last_seen_frame": 10 * c}
         identity.tracks_of.side_effect = lambda c: [1] if c == 3 else [2]
-        self.assertEqual(self.backend.get(["api", "identity", "status"], {}),
+        self.assertEqual(self.backend.get(["api", "identity", "status"], ReadQuery({})),
                          {"tracks": 2, "clusters": 2, "bound": [{"cluster_id": 3, "player_id": "B"}],
                           "rows": [{"cluster_id": 3, "player_id": "B", "samples": 1,
                                     "last_seen_frame": 30, "tracks": [1]},
@@ -1123,7 +1151,7 @@ class BackendTests(unittest.TestCase):
         def others_write_after_the_read(root, store=None):
             self.assertIsNotNone(store, 'the confirm reads the roster through the store')
             snapshot = store.get()
-            now = self.backend.get(['api', 'operations'], {})['revision']
+            now = self.backend.get(['api', 'operations'], ReadQuery({}))['revision']
             self.backend.post(['api', 'operations'], {'action': 'note_add', 'revision': now,
                                                       'text': 'table 2 cloth replaced'})
             self.backend.post(['api', 'operations'], {'action': 'entrant_add', 'revision': now + 1,
@@ -1135,7 +1163,7 @@ class BackendTests(unittest.TestCase):
         self.assertTrue(result['ok'], result)
         before = {'revision': 3}   # player_save, note_add, entrant_add
         state = json.loads((self.out / 'corner-pocket' / 'state.json').read_text())
-        self.assertEqual(state, self.backend.get(['api', 'operations'], {}))
+        self.assertEqual(state, self.backend.get(['api', 'operations'], ReadQuery({})))
         self.assertEqual([n['text'] for n in state['notes']], ['table 2 cloth replaced'], 'the note survives')
         self.assertEqual([m['name'] for e in state['tournament']['entrants'] for m in e['members']],
                          ['Walk-in'], 'the entrant survives')
@@ -1160,7 +1188,7 @@ class BackendTests(unittest.TestCase):
         selection, _ = self._enrol_selection()
         result = self._confirm('ana', selection)
         self.assertTrue(result['ok'], result)
-        state = self.backend.get(['api', 'operations'], {})
+        state = self.backend.get(['api', 'operations'], ReadQuery({}))
         self.assertEqual([(p['id'], p['name']) for p in state['players']], [(saved['players'][0]['id'], 'Ana')])
         self.assertEqual(result['player_id'], saved['players'][0]['id'])
         self.assertEqual(state['events'][-1]['action'], 'player_enroll_from_tracklet')
@@ -1226,7 +1254,7 @@ class BackendTests(unittest.TestCase):
     def test_forget_removes_one_players_faces_everywhere_and_leaves_the_rest(self):
         from src.face_id import best_match, load_faces
         pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
-        ops_before = self.backend.get(['api', 'operations'], {})
+        ops_before = self.backend.get(['api', 'operations'], ReadQuery({}))
         result = self.backend.post(['api', 'identity', 'forget'], {'player_id': a['player_id']})
         self.assertEqual(result['removed'], {'store_faces': 3, 'scratch_faces': 0, 'clusters_unbound': 1,
                                              'face_samples': 1, 'faces': 1})
@@ -1244,7 +1272,7 @@ class BackendTests(unittest.TestCase):
         # the running pipeline no longer matches Ana, still matches Bo
         self.assertIsNone(best_match(a_face, pipeline._gallery_data()))
         self.assertEqual(best_match(b_face, pipeline._gallery_data())['player_id'], b['player_id'])
-        self.assertEqual(self.backend.get(['api', 'operations'], {}), ops_before, 'the roster is not touched')
+        self.assertEqual(self.backend.get(['api', 'operations'], ReadQuery({})), ops_before, 'the roster is not touched')
 
     def test_a_forgotten_player_is_not_auto_bound_on_the_next_frame(self):
         pipeline, index, a, b, a_face, b_face = self._two_enrolled_with_a_live_pipeline()
@@ -1278,8 +1306,8 @@ class BackendTests(unittest.TestCase):
         paths = [self.out / 'corner-pocket' / 'face_embeddings.json', self.out / 'identity' / 'clusters.json',
                  self.out / 'corner-pocket' / 'state.json']
         before = [file_stamp(p) for p in paths]
-        self.backend.get(['api', 'identity', 'status'], {})
-        self.backend.get(['api', 'operations'], {})
+        self.backend.get(['api', 'identity', 'status'], ReadQuery({}))
+        self.backend.get(['api', 'operations'], ReadQuery({}))
         self.assertEqual([file_stamp(p) for p in paths], before)
 
     def test_identity_frame_read_leaves_the_index_file_untouched(self):
@@ -1386,7 +1414,7 @@ class UnifiedViewTests(unittest.TestCase):
     def payload(self, route=False):
         self.patch_pipeline()
         if route:
-            return self.backend.get(["api", "unified"], {"dataset": ["vod30"], "frame": ["150"]})
+            return self.backend.get(["api", "unified"], ReadQuery({"dataset": "vod30", "frame": "150"}))
         return self.backend.unified("vod30", 150)
 
     def test_unified_read_does_not_write_the_identity_index(self):
@@ -1409,7 +1437,7 @@ class UnifiedViewTests(unittest.TestCase):
             index.update([{'track_id': 2, 'body_embedding': [1.0] * 128, 'frame_index': frame_index}]),
             {'persons': persons, 'events': []})[1]
         self.backend._identity_pipeline = pipeline
-        data = self.backend.get(['api', 'unified'], {'dataset': ['vod30'], 'frame': ['150']})
+        data = self.backend.get(['api', 'unified'], ReadQuery({'dataset': 'vod30', 'frame': '150'}))
         self.assertEqual(data['persons'], persons, 'the overlay read really ran the identity seam')
         self.assertIsNone(data['persons_error'])
         self.assertEqual(file_stamp(path), before, 'reading a frame must not rewrite the identity index')
@@ -1445,11 +1473,11 @@ class UnifiedViewTests(unittest.TestCase):
                                   body_encoder=lambda crops: [np.ones(128, np.float32) / np.sqrt(128)] * len(crops),
                                   face_engine=engine, identity=index)
         self.backend._identity_pipeline = pipeline
-        data = self.backend.get(['api', 'unified'], {'dataset': ['vod30'], 'frame': ['150']})
+        data = self.backend.get(['api', 'unified'], ReadQuery({'dataset': 'vod30', 'frame': '150'}))
         self.assertEqual([p['player_id'] for p in data['persons']], ['playerF'], 'the read shows the bind')
         self.assertEqual(file_stamp(path), before, 'GET /api/unified must not write the bind')
         cluster = data['persons'][0]['cluster_id']
-        frame = self.backend.get(['api', 'identity', 'frame'], {'dataset': ['vod30'], 'frame': ['151']})
+        frame = self.backend.get(['api', 'identity', 'frame'], ReadQuery({'dataset': 'vod30', 'frame': '151'}))
         self.assertEqual([p['player_id'] for p in frame['persons']], ['playerF'], 'the bind holds in memory')
         self.assertEqual(file_stamp(path), before, 'GET /api/identity/frame must not write the bind')
         # the next genuine mutation persists what the reads decided
@@ -1717,7 +1745,7 @@ class WriteRegistryTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), 'integer revision required')
 
     def test_the_registry_is_published_for_a_console_that_checks_itself(self):
-        answer = self.backend.get(['api', 'actions'], {})
+        answer = self.backend.get(['api', 'actions'], ReadQuery({}))
         self.assertEqual([write['name'] for write in answer['writes']], list(OPERATOR_ACTIONS.names()))
         self.assertEqual(answer['operations'], list(ACTION_NAMES))
         rows = {write['name']: write for write in answer['writes']}
