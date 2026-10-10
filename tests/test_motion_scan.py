@@ -8,11 +8,14 @@ recording on disk.  The one video test writes a tiny synthetic clip to a temp di
 and is skipped if this OpenCV build cannot write it.
 """
 import json
+import ast
+import inspect
 import math
 import tempfile
 import unittest
 from dataclasses import asdict
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -23,9 +26,12 @@ from src.motion_scan import (BALL_K_NATIVE, FLOOR_MARGIN, SCAN_H, SCAN_W, WORK_H
                              ClothContext, MotionConfig, OnsetConfig, ScanReport,
                              ball_area, ball_radius, clip_motion, cloth_context,
                              cloth_mask, config_for, decay_shape, detect_onsets,
-                             channel_planes, enforce_gap, freeze, load_quad, load_scan,
-                             moving_ball_instances, noise_floor, onset_signal,
-                             probe_pair, rolling_baseline, sample_window, save_scan,
+                             channel_planes, control_row, enforce_gap, freeze,
+                             judge_window, load_quad, load_scan,
+                             moving_ball_instances, noise_floor, occlusion_reading,
+                             onset_signal,
+                             peak_in_window, probe_pair, rolling_baseline, sample_window,
+                             save_scan,
                              sam3_ball_radius, series_fields, video_for, window_bounds,
                              window_profile)
 
@@ -778,6 +784,66 @@ class DatasetPathTest(unittest.TestCase):
         path.write_text(json.dumps({"1": [{"r": 3.0}]}))
         self.assertEqual(sam3_ball_radius("unit", self.root)["source"], str(path))
         self.assertIsNone(sam3_ball_radius("nowhere", self.root)["source"])
+
+
+class JudgeWindowTest(unittest.TestCase):
+    """The window that judges an event is the window that judges a control.
+
+    `cmd_report` reads the served events with `--before` and `--after` and builds its
+    control rows from the same pair.  A control read over a wider window has more data
+    to find a peak in, so its reading tends higher and the floor built from the
+    controls understates the false-positive rate of the rule.  The control loop used to
+    hard-code 2.5 and 2.5 while the events used 1.5 and 2.5.
+    """
+
+    CALLS = ("window_profile", "occlusion_reading", "peak_in_window", "control_row")
+    T = np.arange(0.0, 20.0, 0.1)
+
+    def series(self, bump_at=None):
+        values = np.zeros_like(self.T)
+        if bump_at is not None:
+            values[int(np.argmin(np.abs(self.T - bump_at)))] = 3.0
+        return {"ball": values, "occ_share": values, "occ_dense": values}
+
+    def test_a_control_reading_follows_the_window_it_is_given(self):
+        # The bump sits 2.0 s before the control time, so the event window of 1.5 s of
+        # lead cannot see it and the wider window can.
+        arrays = self.series(bump_at=8.0)
+        wide = control_row(self.T, arrays, "ball", "set-a", 10.0, 2.5, 2.5)
+        narrow = control_row(self.T, arrays, "ball", "set-a", 10.0, 1.5, 2.5)
+        self.assertEqual(narrow["ball"]["peak"], 0.0)
+        self.assertEqual(wide["ball"]["peak"], 3.0)
+        self.assertEqual(narrow["occlusion"]["occ_dense_peak"], 0.0)
+        self.assertEqual(wide["occlusion"]["occ_dense_peak"], 3.0)
+
+    def test_a_control_row_and_a_reading_must_be_given_their_window(self):
+        for function in (control_row, peak_in_window, occlusion_reading):
+            for name in ("before", "after"):
+                parameter = inspect.signature(function).parameters[name]
+                self.assertIs(parameter.default, inspect.Parameter.empty,
+                              f"{function.__name__} must require {name}")
+
+    def test_one_place_reads_the_window_from_the_arguments(self):
+        self.assertEqual(judge_window(SimpleNamespace(before=1.5, after=2.5)), (1.5, 2.5))
+        self.assertEqual(judge_window(SimpleNamespace(before=2.0, after=3.0)), (2.0, 3.0))
+
+    def test_every_judging_call_in_the_report_states_the_same_pair(self):
+        source = (ROOT / "src" / "motion_scan.py").read_text()
+        calls = []
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                    and node.func.id in self.CALLS:
+                calls.append((node.lineno, node.func.id, [ast.unparse(a) for a in node.args]))
+        self.assertTrue(calls)
+        for line, name, arguments in calls:
+            pairs = [arguments[i:i + 2] for i in range(len(arguments) - 1)]
+            self.assertIn(["before", "after"], pairs,
+                          f"{name} at src/motion_scan.py:{line} does not state the pair "
+                          f"before, after: {arguments}")
+            literals = [a for a in arguments if a.replace(".", "").isdigit()]
+            self.assertEqual(literals, [],
+                             f"{name} at src/motion_scan.py:{line} carries its own window: "
+                             f"{literals}")
 
 
 if __name__ == "__main__":

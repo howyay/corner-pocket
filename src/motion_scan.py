@@ -942,7 +942,9 @@ def window_profile(t, values, t0: float, floor: float, before=1.5, after=2.5,
             "n": int(vals.size), "verdict": verdict, "samples": sampled}
 
 
-def peak_in_window(t, values, t0: float, before=1.5, after=2.5) -> dict:
+def peak_in_window(t, values, t0: float, before, after) -> dict:
+    """The window is required: every caller states the pair it judges with, so an
+    event and the control it is compared against cannot be read over two windows."""
     t = np.asarray(t, np.float64)
     sel = (t >= t0 - before) & (t <= t0 + after)
     if not sel.any():
@@ -1242,7 +1244,8 @@ def _timing_floor(root) -> dict | None:
                     "floor is a maximum over footprint means"}
 
 
-def occlusion_reading(t, arrays, t0: float, before=1.5, after=2.5) -> dict:
+def occlusion_reading(t, arrays, t0: float, before, after) -> dict:
+    """The window is required, as `peak_in_window` requires it."""
     share = peak_in_window(t, arrays["occ_share"], t0, before, after)
     dense = peak_in_window(t, arrays["occ_dense"], t0, before, after)
     return {"occ_share_peak": share["peak"], "occ_share_median": share["median"],
@@ -2055,11 +2058,34 @@ def cmd_scan(args) -> None:
     print("next: python -m src.motion_scan report")
 
 
+def judge_window(args) -> tuple:
+    """The one window every reading in the report uses, for events and for controls.
+
+    `args.before` and `args.after` arrive here once.  A reading that judged an event
+    with one window and a control with another would compare unlike numbers.
+    """
+    return (float(args.before), float(args.after))
+
+
+def control_row(t, arrays, signal, name, t0, before, after) -> dict:
+    """One control time, read with the window the event rows used.
+
+    `before` and `after` are required.  A control that chose its own window would be
+    measured over more data than the event it judges, so its peak and its occlusion
+    reading would tend higher and the floor built from the controls would understate
+    the false-positive rate of the rule.
+    """
+    return {"set": name, "t": round(float(t0), 3),
+            "ball": peak_in_window(t, arrays[signal], t0, before, after),
+            "occlusion": occlusion_reading(t, arrays, t0, before, after)}
+
+
 def cmd_report(args) -> None:
     report, arrays = load_scan(args.out_dir, args.dataset)
     t = arrays["t"]
     cfg = _cfg_from_report(report)
     signal = onset_signal(cfg)
+    before, after = judge_window(args)
 
     sets = control_windows(ROOT, args.dataset)
     cal = calibrate(arrays, sets, signal=signal, half_s=args.control_half_s)
@@ -2103,10 +2129,10 @@ def cmd_report(args) -> None:
     for event in _served_events(ROOT, args.events, args.dataset):
         t0 = float(event["t"])
         ball = window_profile(t, arrays[signal], t0, threshold,
-                              args.before, args.after, args.sample_hz)
-        occ = occlusion_reading(t, arrays, t0, args.before, args.after)
+                              before, after, args.sample_hz)
+        occ = occlusion_reading(t, arrays, t0, before, after)
         explains = explain_by_occlusion(occ, occ_bars)
-        window_peak = peak_in_window(t, arrays[signal], t0, args.before, args.after)
+        window_peak = peak_in_window(t, arrays[signal], t0, before, after)
         # the blob is read at the frame that actually holds the window maximum: the
         # window profile's peak time sits on the sampling grid, not on a frame
         peak_frame = (int(np.argmin(np.abs(t - window_peak["t_peak"])))
@@ -2124,9 +2150,7 @@ def cmd_report(args) -> None:
         if not times:
             continue
         for t0 in times[:: max(1, len(times) // args.controls_per_set)][:args.controls_per_set]:
-            controls.append({"set": name, "t": round(float(t0), 3),
-                             "ball": peak_in_window(t, arrays[signal], t0, 2.5, 2.5),
-                             "occlusion": occlusion_reading(t, arrays, t0, 2.5, 2.5)})
+            controls.append(control_row(t, arrays, signal, name, t0, before, after))
 
     explained = [e for e in events if e["occlusion_explains"]]
     ball_sep = [e for e in events if e["ball"]["verdict"].startswith("ball-scale motion")]
@@ -2422,11 +2446,14 @@ def main(argv=None) -> int:
     p = sub.add_parser("report", help="calibrate the floor, find onsets, answer")
     common(p)
     p.add_argument("--events", default=None)
-    p.add_argument("--before", type=float, default=1.5)
-    p.add_argument("--after", type=float, default=2.5)
+    p.add_argument("--before", type=float, default=1.5,
+                   help="seconds of window before a time, used for an event and for a control")
+    p.add_argument("--after", type=float, default=2.5,
+                   help="seconds of window after a time, used for an event and for a control")
     p.add_argument("--sample-hz", type=float, default=10.0)
     p.add_argument("--top", type=int, default=12)
-    p.add_argument("--control-half-s", type=float, default=2.5)
+    p.add_argument("--control-half-s", type=float, default=2.5,
+                   help="the half-window the calibration reads; not the window a control is judged with")
     p.add_argument("--controls-per-set", type=int, default=20)
     p.add_argument("--merge-s", type=float, default=0.25)
     p.add_argument("--min-gap-s", type=float, default=1.0)
