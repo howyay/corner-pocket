@@ -110,7 +110,9 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(shots, [])
         self.assertEqual([v['color'] for v in vanished], ['solid'])
         self.assertIn('color', vanished[0])
-        self.assertEqual(vanished[0]['mm'][0], vanished[0]['mm'][0])  # mm mapped
+        # The vanished entry carries the ball centre mapped into table millimetres.
+        self.assertEqual(vanished[0]['mm'], to_table_mm(H, 100.0, 100.0))
+        self.assertEqual([vanished[0]['_px'], vanished[0]['_py']], [100.0, 100.0])
         self.assertNotIn('pairs_missing', vanished[0])  # caller owns persistence state
 
     def test_small_drift_yields_no_candidate(self):
