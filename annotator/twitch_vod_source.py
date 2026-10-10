@@ -404,9 +404,14 @@ class VodRealtimeCapture:
     from a live feed for a consumer - while ``state()`` keeps saying exactly what it is:
 
         {'kind': 'vod-replay', 'live': False, 'vod_id': ..., 'pacing': 'wall-clock',
-         'network': 'hls'|'file', 'rate': 1.0, 'wall_s': ..., 'video_s': ...,
-         'expected_video_s': ..., 'drift_s': ..., 'frames_served': ...,
-         'frames_dropped': ..., 'read_failures': ...}
+         'network': 'hls'|'file', 'rate': 1.0, 'start_s': ..., 'fps': ...,
+         'wall_s': ..., 'video_s': ..., 'expected_video_s': ..., 'drift_s': ...,
+         'frames_served': ..., 'frames_dropped': ..., 'read_failures': ...,
+         'opened': ...}
+
+    That example is the complete ``state()`` answer: no key is missing and no key is extra.
+    ``StateKeySetTests`` compares both key sets, so the example and the method cannot drift
+    apart.
 
     The OpenCV-compatible surface (``isOpened``/``read``/``get``/``release``) is what
     ``annotator/live_processing.py`` consumes from an injected ``capture_factory``; this
@@ -502,10 +507,7 @@ class VodRealtimeCapture:
         return self._capture.set(prop, value)
 
     def release(self):
-        try:
-            self._capture.release()
-        finally:
-            self._released_at = self._clock()
+        self._capture.release()
 
     # --- honest self-description --------------------------------------------------
 

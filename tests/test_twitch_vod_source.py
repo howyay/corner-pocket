@@ -6,6 +6,7 @@ raw evidence is recorded in ``docs/twitch-vod-as-live.md``.
 Run: PYTHONPATH=. .venv/bin/python -B tests/test_twitch_vod_source.py
 """
 import json
+import re
 import unittest
 from unittest.mock import patch
 
@@ -411,6 +412,26 @@ class PacingTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 with self.assertRaises(TwitchVodError):
                     vod.VodRealtimeCapture('file.mp4', capture=FakeCapture(), **kwargs)
+
+
+class StateKeySetTests(unittest.TestCase):
+    """The class docstring example is the whole ``state()`` answer, key for key."""
+
+    def example_keys(self):
+        document = vod.VodRealtimeCapture.__doc__
+        start = document.index("{'kind'")
+        block = document[start:document.index('}', start) + 1]
+        return set(re.findall(r"'([a-z_]+)':", block))
+
+    def test_the_docstring_example_is_exactly_the_state_key_set(self):
+        capture = vod.VodRealtimeCapture('file.mp4', capture=FakeCapture(), clock=FakeClock(),
+                                         sleep=lambda seconds: None, fps=30.0)
+        self.assertEqual(self.example_keys(), set(capture.state()))
+
+    def test_the_parse_reads_the_example_and_not_the_whole_docstring(self):
+        listed = self.example_keys()
+        self.assertIn('drift_s', listed)                  # the block is found and read
+        self.assertNotIn('max_catchup_s', listed)
 
 
 class ThumbnailTests(unittest.TestCase):
