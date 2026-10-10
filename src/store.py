@@ -48,20 +48,29 @@ class StoreConstraintError(ValueError):
                          f"nothing was written. {detail}")
 
 
-# The built-in recordings: dataset -> the scan folder under out/ that holds its queue,
-# verdicts and frame results. JsonStore resolves every dataset, imported VODs included
-# (out/vods/<id>/), through src/datasets.py; PostgresStore still accepts these two only.
-from src.datasets import STATIC_OUT as DATASETS, lookup as dataset_lookup  # noqa: E402
+# Where one dataset lives has one owner: src/datasets.py.  JsonStore resolves every
+# dataset through it, imported VODs included (out/vods/<id>/).  The map this module
+# exported as DATASETS had no reader once artifact() stopped using it, so it is gone;
+# src/store_files.py:20 still spells its own copy of the built-in two (out of scope here).
+from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
 from src.store_files import BALL_SETS  # noqa: E402
-# precomputed artifacts the server reads whole: kind -> file under out/ ({ds} = dataset)
+# precomputed artifacts the server reads whole: kind -> file under out/.  A row here
+# names a dataset, so artifact() resolves the dataset through src/datasets.py and reads
+# the folder queue() reads (out/vods/<id>/ for an imported VOD, out/scan30/ for a
+# built-in).  {scan} is that folder, relative to out/; {ds} is the dataset id, which
+# names the calibration files at the out/ root (src/calib_segments.py:49 owns that name).
 ARTIFACTS = {
     "queue_report": "{scan}/dense_queue_report.json",
     "queue_retired": "{scan}/dense_queue_retired.json",
     "calibration_segments": "calib_{ds}_segments.json",
     "calibration": "calib_{ds}.json",
+}
+# Artifacts that belong to no dataset: one file at the out/ root.  They take no dataset
+# argument, so a caller cannot pass one and believe it selected something.
+SHARED_ARTIFACTS = {
     "seed_propagation": "pid_seed_tracks.json",
     "seed_prototypes": "pid_seed_protos.json",
     "event_actors": "events_actors.json",
@@ -345,11 +354,24 @@ class JsonStore:
             _write(path, saved)
 
     # -- precomputed (read-only) ---------------------------------------------
-    def artifact(self, kind: str, dataset: str) -> Any:
+    def artifact(self, kind: str, dataset: str | None = None) -> Any:
+        """A precomputed file this store reads whole, or None when it is absent.
+
+        A kind in ``SHARED_ARTIFACTS`` belongs to no dataset and refuses a dataset
+        argument.  Any other kind requires one and resolves it through
+        :func:`src.datasets.lookup`, so the report sits in the folder ``queue()``
+        reads: ``out/vods/<id>/`` for an imported VOD, ``out/scan30/`` for a built-in.
+        """
+        if kind in SHARED_ARTIFACTS:
+            if dataset is not None:
+                raise ValueError(f"{kind} belongs to no dataset; drop the dataset argument")
+            return _read(self.out / SHARED_ARTIFACTS[kind], None)
         if kind not in ARTIFACTS:
             raise ValueError(f"unknown artifact kind: {kind}")
-        relative = ARTIFACTS[kind].format(ds=dataset, scan=DATASETS.get(dataset, dataset))
-        return _read(self.out / relative, None)
+        if dataset is None:
+            raise ValueError(f"{kind} names a dataset; pass one")
+        scan = self._scan(dataset).relative_to(self.out)
+        return _read(self.out / ARTIFACTS[kind].format(ds=dataset, scan=scan), None)
 
     def queue(self, dataset: str) -> list:
         return _read(self._scan(dataset) / "events.json", [])

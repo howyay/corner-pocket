@@ -203,6 +203,49 @@ class PrecomputedReads(StoreTestCase):
             self.store.artifact("unknown-kind", "vod30")
 
 
+class ImportedVodArtifact(StoreTestCase):
+    """A report of an imported VOD sits in the folder queue() reads.
+
+    The folder is out/vods/<id>/ while the dataset id alone is 'tw-...', so a report
+    resolved from the id would sit one level above the queue it describes.
+    """
+
+    ID = "tw-2252489073"
+
+    def register(self):
+        (self.out / "vods").mkdir(parents=True)
+        (self.out / "vods" / "index.json").write_text(
+            json.dumps({"vods": {self.ID: {"vod_id": "2252489073", "frames": 1499}}}))
+        scan = self.out / "vods" / self.ID
+        scan.mkdir(parents=True)
+        (scan / "events.json").write_text(json.dumps([{"id": 1, "t": 5.0}]))
+        (scan / "dense_queue_report.json").write_text(json.dumps({"rows": 1}))
+        return scan
+
+    def test_the_report_and_the_queue_come_from_one_folder(self):
+        scan = self.register()
+        self.assertEqual(self.store.queue(self.ID), [{"id": 1, "t": 5.0}])
+        self.assertEqual(self.store.artifact("queue_report", self.ID), {"rows": 1},
+                         "the report reads the folder queue() reads")
+        self.assertEqual(self.store._scan(self.ID), scan)
+        # The folder the dataset id alone would name holds a different report: it must
+        # never be the one that is read.
+        stray = self.out / self.ID
+        stray.mkdir()
+        (stray / "dense_queue_report.json").write_text(json.dumps({"rows": "wrong folder"}))
+        self.assertEqual(self.store.artifact("queue_report", self.ID), {"rows": 1})
+        self.assertEqual(self.store.artifact("queue_retired", self.ID), None)
+
+    def test_a_shared_artifact_refuses_a_dataset(self):
+        self.out.mkdir(parents=True, exist_ok=True)
+        (self.out / "pid_seed_tracks.json").write_text(json.dumps({"tracks": []}))
+        self.assertEqual(self.store.artifact("seed_propagation"), {"tracks": []})
+        with self.assertRaises(ValueError):
+            self.store.artifact("seed_propagation", "vod30")
+        with self.assertRaises(ValueError):
+            self.store.artifact("queue_report")
+
+
 class ReadOnlyContract(StoreTestCase):
     """A GET never writes: every read method leaves every file's bytes, size and mtime."""
 
