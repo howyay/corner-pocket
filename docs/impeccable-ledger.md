@@ -814,3 +814,40 @@ named. Recording that here because it is the same lesson as the last three round
 declarations, and every question that mattered this round was about *behaviour* — what a tracker does when two
 players cross, what a page does when its stream is off. Those are answered by reading the pipeline and by
 measuring the page.
+
+## Round 46 — the round-3 fixture bullet, re-measured (2026-10-10)
+
+The round-3 section *What stayed open* holds one bullet about `tests/console_fixture_state.json` (line 576
+above). That bullet says the file "is nobody's file this round", and that its three live matches are anchored
+at `2026-10-03T05:23Z`. Both halves are out of date. This section records the fresh measurement. It changes
+nothing else.
+
+**The owner exists.** `a41e99e` added `tests/console_fixture_build.py`. That script rebuilds the state by
+driving the console's own actions over `POST /api/operations`, so every field is what
+`annotator/operations.py` writes. The script holds a `--check` mode (`tests/console_fixture_build.py:15`).
+That mode drives the same build, compares the result with the committed file, writes nothing, and fails a
+stale fixture instead of quietly replacing it. `tests/test_console_fixture_shape.py` pins the shape, and
+`DEFAULT_OUT` sits at `tests/console_fixture_build.py:39`.
+
+**The clock, not a fixed anchor.** The builder stamps each join from the clock:
+`joined = time.time() - days * 86400 - rng.randrange(0, 86400)` at `tests/console_fixture_build.py:241`, then
+`player['joinedAt'] = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(joined)) + '+00:00'` at `:242`.
+`--check` compares no timestamp and no id, because `backdate_joins` and the store stamp those from the clock
+(`tests/console_fixture_build.py:18-20`).
+
+Measured at 2026-10-10T11:30Z:
+
+| fact | value |
+|---|---|
+| sha1 | `d20118d5b59e5cc2f3f05c15c7ae3bb14c978ad7` |
+| size | 57,309 B |
+| timestamp strings | 148, in 18 distinct values |
+| newest stamps | `2026-10-10T09:07:41` to `:43`, the three live matches, 3.4 h old |
+| oldest stamp | `2024-06-01T23:24:55+00:00`, a player join from the club's history |
+| bare `Z` suffix | 0 strings; the file writes `+00:00` |
+
+So the anchor sentence of the round-3 bullet names a build six days older than this one, and its spelling
+(`2026-10-03T05:23Z`) is the old spelling: the current file never writes a bare `Z`. The second half is a
+property of every committed fixture — the committed file is frozen at its last build. A reader who needs
+today's clock rebuilds the fixture, or uses the workaround the round-3 bullet names
+(`out/console-<label>/state-fresh.json`).
