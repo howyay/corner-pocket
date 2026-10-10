@@ -15,6 +15,13 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
+# The rule for the file a route may read has one owner, src/served_files.py. The review
+# API (annotator/unified_server.py) calls the same two functions. Before this module
+# called them, its three file routes held three copies of that rule and the /ctx/ route
+# held none, so a request with ".." in it read any file the user could read.
+from src.served_files import file_under, relative_under  # noqa: E402
 EVENTS_FILE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "events.json"
 STATIC_ROOT = EVENTS_FILE.parent  # evidence images live next to events.json
 ANNOT_FILE = STATIC_ROOT / "annotations.json"
@@ -87,12 +94,12 @@ class Handler(BaseHTTPRequestHandler):
                 row["ctx"] = Path(c).name if c else None
             return self._send(200, json.dumps(meta).encode())
         if self.path.startswith("/ctx/"):
-            p = (CROP_DIR / "ctx" / self.path[len("/ctx/"):]).resolve()
-            if p.is_file():
+            p = file_under(CROP_DIR / "ctx", self.path[len("/ctx/"):])
+            if p:
                 return self._send(200, p.read_bytes(), "image/png")
         if self.path.startswith("/crops/"):
-            p = (CROP_DIR / self.path[len("/crops/"):]).resolve()
-            if p.is_file() and CROP_DIR in p.parents:
+            p = file_under(CROP_DIR, self.path[len("/crops/"):])
+            if p:
                 return self._send(200, p.read_bytes(), "image/jpeg")
         if self.path == "/label.html":
             body = (ROOT / "label.html").read_bytes()
@@ -100,9 +107,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             body = (ROOT / "index.html").read_bytes()
             return self._send(200, body, "text/html; charset=utf-8")
-        # evidence images and other static files (served from the events dir)
-        p = (STATIC_ROOT / self.path.lstrip("/")).resolve()
-        if p.is_file() and STATIC_ROOT in p.parents:
+        # evidence images and other static files (served from the events dir). A static
+        # path may carry subdirectories, so this route uses the wider shape of the rule.
+        p = relative_under(STATIC_ROOT, self.path.lstrip("/"))
+        if p:
             ctype = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
             return self._send(200, p.read_bytes(), ctype)
         return self._send(404, b"not found")
@@ -147,7 +155,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     # legacy single-page annotator: writes annotations.json / labels.json directly
-    sys.path.insert(0, str(ROOT.parent))
     from src.store import refuse_file_writes_under_postgres
     refuse_file_writes_under_postgres("annotator/server.py")
     print(f"annotator: open http://127.0.0.1:{PORT}  (events: {EVENTS_FILE})")

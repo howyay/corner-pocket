@@ -29,6 +29,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 # Datasets (the two recordings and imported VODs) resolve through src/datasets.py.
 from src.atomic_write import write_atomic
+# The rule for the file a request may serve has one owner, src/served_files.py. The
+# legacy review server (annotator/server.py) calls the same two functions, so the two
+# file routes cannot apply two different rules.
+from src.served_files import bare_name, file_under  # noqa: E402
 from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, lookup as dataset_lookup  # noqa: E402
 # The tournament declares the action names it accepts (annotator/operations.py).
 # This module imports it here, so one table joins the route to that declaration.
@@ -331,10 +335,17 @@ def _pockets_mm():
 
 
 def safe_file(base, name):
-    if not name or Path(name).name != name or name in (".", ".."):
+    """The file this server may read, or the refusal for it.
+
+    The rule itself has one owner, src/served_files.py, and the legacy review server
+    (annotator/server.py) calls the same two functions. This wrapper only keeps the
+    two messages an old client can already see: a name that is not one path component
+    and a name that leaves the root give different sentences, and both are 404.
+    """
+    if not bare_name(name):
         raise APIError("invalid media path", 404)
-    path = (base / name).resolve()
-    if not path.is_relative_to(base.resolve()) or not path.is_file():
+    path = file_under(base, name)
+    if path is None:
         raise APIError("media not found", 404)
     return path
 
