@@ -84,16 +84,41 @@ class PaletteContrast(unittest.TestCase):
         '#6d5210 #a07d18 #fdf8ee #d9cdb8 #256a45 #dfeade #a6c2ac #8a5307 #f6e9cf #d6bd8a'
     ).split()
 
+    #: Suffixes that can carry a colour literal, and the directory the walk steps past.
+    SCANNED_SUFFIXES = ('.css', '.js', '.html', '.svg')
+    SKIPPED_DIRS = ('__pycache__',)
+
+    #: A floor, never an equality: a scan that stops reaching files must fail, but a
+    #: new stylesheet must not. The floor sits below today's count on purpose, so it
+    #: is not a second hand-written count in disguise.
+    SCANNED_FLOOR = 10
+
+    def scanned_files(self):
+        """Every source file under annotator/, at any depth, minus the bytecode caches."""
+        return [
+            path for path in sorted(ANNOTATOR.rglob('*'))
+            if path.is_file()
+            and path.suffix in self.SCANNED_SUFFIXES
+            and not set(path.relative_to(ANNOTATOR).parts[:-1]) & set(self.SKIPPED_DIRS)
+        ]
+
     def test_no_zip_derived_colour_remains(self):
         values = self.ZIP_VALUES
-        self.assertEqual(len(values), 40)
-        for path in sorted(ANNOTATOR.glob('*.*')):
-            if path.suffix not in ('.css', '.js', '.html', '.svg'):
-                continue
+        self.assertTrue(values, 'the zip value list is not empty')
+        self.assertEqual(len(values), len(set(values)), 'the zip value list repeats no value')
+        files = self.scanned_files()
+        self.assertGreaterEqual(
+            len(files), self.SCANNED_FLOOR,
+            'the scan reached %d file(s), below the floor of %d: %s'
+            % (len(files), self.SCANNED_FLOOR, [str(p.relative_to(ANNOTATOR)) for p in files]))
+        for path in files:
             text = path.read_text().lower()
             for value in values:
                 with self.subTest(file=path.name, value=value):
-                    self.assertIsNone(re.search(re.escape(value) + r'(?![0-9a-f])', text))
+                    self.assertIsNone(
+                        re.search(re.escape(value) + r'(?![0-9a-f])', text),
+                        '%s carries the zip-derived value %s; the scan reached %d file(s)'
+                        % (path.relative_to(ANNOTATOR), value, len(files)))
 
 
 if __name__ == '__main__':
