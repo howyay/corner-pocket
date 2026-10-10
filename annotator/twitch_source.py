@@ -264,13 +264,6 @@ def playlist_lag(text, *, now=None):
             'newest_segment_end': latest[1].isoformat(), 'segments': segments, 'live': True}
 
 
-def _playlist(text):
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines or lines[0] != '#EXTM3U':
-        raise TwitchSourceError('Twitch returned an invalid playback playlist')
-    return lines
-
-
 def resolve_twitch(canonical_url):
     """Resolve https://www.twitch.tv/<channel> to authorized public HTTPS HLS.
 

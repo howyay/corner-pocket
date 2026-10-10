@@ -1,12 +1,20 @@
+import ast
+import http.server
 import io
 import json
+import threading
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, build_opener
 
 from annotator import twitch_source as source
 
 
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / 'annotator' / 'twitch_source.py'
 CHANNEL = 'https://www.twitch.tv/examplechannel'
 MEDIA = 'https://video-weaver.example.hls.ttvnw.net/live/720.m3u8?private=secret'
 TOKEN = json.dumps({'data': {'streamPlaybackAccessToken': {'signature': 'private-signature', 'value': 'private-token'}}})
@@ -179,6 +187,124 @@ class PublicTwitchIdentifiersTests(unittest.TestCase):
             source.resolve_twitch(CHANNEL)
         self.assertEqual(request.call_args_list[0].args[1]['extensions']['persistedQuery']['sha256Hash'],
                          source._TOKEN_HASH)
+
+
+class OneOwnerTests(unittest.TestCase):
+    """`_playlist` is one rule with one definition; a second copy shadows the first in silence.
+
+    It happened once: 40c47437 added `playlist_lag` and pasted the five lines of `_playlist`
+    instead of reading the definition already in the file.  The paste won the module global
+    and the original became dead code, so a repair applied to the first copy changed nothing
+    at runtime and no test could see the difference.  This case fails when a second
+    definition of any top-level name appears again.
+    """
+
+    def test_the_playlist_rule_has_one_definition_and_it_is_the_bound_one(self):
+        tree = ast.parse(SOURCE.read_text())
+        nodes = [node for node in tree.body
+                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        names = [node.name for node in nodes]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        self.assertEqual(duplicates, [],
+                         'a second definition shadows the first in %s' % (SOURCE,))
+        lines = [node.lineno for node in nodes if node.name == '_playlist']
+        self.assertEqual(len(lines), 1, '_playlist is defined at lines %s' % (lines,))
+        self.assertEqual(source._playlist.__code__.co_firstlineno, lines[0],
+                         'the module binds a definition the file does not show')
+
+
+class LoopbackTwitchPlayback:
+    """A loopback listener that answers the three fetches `resolve_twitch` makes.
+
+    No Twitch host is contacted.  The listener counts every request and every byte it sent,
+    so a case measures the whole resolution: token, master playlist, media playlist.
+    """
+
+    def __init__(self):
+        counter = self
+        self.requests = []
+        bodies = {'/gql': TOKEN.encode('utf-8'),
+                  '/api/channel/hls/examplechannel.m3u8': MASTER.encode('utf-8'),
+                  '/live/720.m3u8': PLAYLIST.encode('utf-8')}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def _answer(self):
+                length = int(self.headers.get('Content-Length') or 0)
+                if length:
+                    self.rfile.read(length)
+                body = bodies.get(urlsplit(self.path).path)
+                if body is None:
+                    self.send_response(404)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
+                counter.requests.append((self.command, urlsplit(self.path).path, len(body)))
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/vnd.apple.mpegurl')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            do_GET = _answer
+            do_POST = _answer
+
+            def log_message(self, *args):
+                pass
+
+        self.httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+    @property
+    def bytes_sent(self):
+        return sum(size for _, _, size in self.requests)
+
+
+class LoopbackTransport:
+    """A real opener whose only change is the destination host of a Twitch URL.
+
+    The module's allowlist still reads the Twitch URL, so no row of the purpose table is
+    relaxed and no check is skipped.  A URL this shim cannot rewrite raises, so a case here
+    can never fall through to the network.
+    """
+
+    HOSTS = ('gql.twitch.tv', 'usher.ttvnw.net')
+
+    def __init__(self, base):
+        self.base = base
+        self.opener = build_opener()
+
+    def open(self, request, timeout=None):
+        parts = urlsplit(request.full_url)
+        host = parts.hostname or ''
+        if host not in self.HOSTS and not host.endswith('.ttvnw.net'):
+            raise AssertionError('the loopback transport refuses to reach %r' % (request.full_url,))
+        target = '%s%s%s' % (self.base, parts.path, ('?' + parts.query) if parts.query else '')
+        return self.opener.open(Request(target, data=request.data, headers=dict(request.headers)),
+                                timeout=timeout)
+
+
+class LoopbackResolveTests(unittest.TestCase):
+    """The whole resolution runs over a real socket, and never over the network."""
+
+    def setUp(self):
+        self.listener = LoopbackTwitchPlayback()
+        self.addCleanup(self.listener.close)
+        self.transport = LoopbackTransport('http://127.0.0.1:%d' % self.listener.port)
+
+    def test_resolution_makes_three_fetches_and_returns_the_signed_media_url(self):
+        with patch.object(source, 'build_opener', side_effect=lambda *handlers: self.transport):
+            self.assertEqual(source.resolve_twitch(CHANNEL), MEDIA)
+        self.assertEqual([(method, path) for method, path, _ in self.listener.requests],
+                         [('POST', '/gql'),
+                          ('GET', '/api/channel/hls/examplechannel.m3u8'),
+                          ('GET', '/live/720.m3u8')])
+        self.assertEqual(self.listener.bytes_sent,
+                         len(TOKEN.encode()) + len(MASTER.encode()) + len(PLAYLIST.encode()))
 
 
 if __name__ == '__main__':
