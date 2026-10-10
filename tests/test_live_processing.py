@@ -1,3 +1,4 @@
+import ast
 import itertools
 import json
 from pathlib import Path
@@ -11,6 +12,7 @@ import cv2
 import numpy as np
 
 from annotator.live_processing import LiveProcessor
+from annotator.pipeline_stages import CallableStage
 
 
 class Capture:
@@ -771,6 +773,204 @@ class UpstreamDelayTests(unittest.TestCase):
         self.assertFalse(fetch.called)
         self.assertIsNone(status['upstream_delay_ms'])
         self.assertIsNone(processor._upstream_probe)
+
+
+class SessionStateOwnershipTests(unittest.TestCase):
+    """One method owns a session's state: ``_reset_session``.
+
+    ``__init__`` and ``start()`` used to name the session fields themselves, in two
+    lists that could drift - a field added to one of them was reset in one session
+    only, and no test failed, because a second ``start()`` already cleared every
+    field the first session touched.  These tests pin the single owner three ways:
+    the reset alone on a dirty session, the public behaviour of a second session,
+    and the class source itself.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / 'data').mkdir()
+        (self.root / 'data/vod_30min_260815.mp4').touch()
+        self.source = dict(kind='dataset', dataset='vod30')
+
+    def processor(self, **kwargs):
+        kwargs.setdefault('capture_factory', lambda _: Capture(count=4, fps=30))
+        kwargs.setdefault('budget_enforcement', False)
+        processor = LiveProcessor(self.root, **kwargs)
+        self.addCleanup(processor.stop)
+        return processor
+
+    def wait_for(self, processor, predicate):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            status = processor.status()
+            if predicate(status):
+                return status
+            time.sleep(.002)
+        self.fail('Timed out: ' + repr(processor.status()))
+
+    def test_the_reset_alone_turns_a_dirty_session_into_a_clean_one(self):
+        """One call clears everything a session owns, without naming one field.
+
+        The session fails for real (a detector that raises on its third frame), so
+        counters, the published frame, the latency window and the failure history all
+        carry a value when the reset runs.  Every assertion below reads ``status()``;
+        only the call under test touches the object.
+        """
+        calls = itertools.count()
+
+        def flaky(frame, detectors, root):
+            if next(calls) >= 2:
+                raise RuntimeError('detector exploded')
+            return {'pixel': int(frame[0, 0, 0])}
+
+        processor = self.processor(infer=flaky)
+        idle = processor.status()
+        processor.start(self.source)
+        failed = self.wait_for(processor, lambda s: status_finished(s))
+        self.assertEqual(failed['state'], 'error', failed)
+        processor.stop()                                   # the failure becomes history
+        dirty = processor.status()
+        self.assertGreater(dirty['frames_received'], 0, dirty)
+        self.assertIsNotNone(dirty['latest'], dirty)
+        self.assertIsNotNone(dirty['last_received_at'], dirty)
+        self.assertIsNotNone(dirty['last_error'], dirty)
+        self.assertIsNotNone(dirty['last_error_code'], dirty)
+        self.assertTrue(dirty['latency_ms'], dirty)
+
+        processor._reset_session(source=self.source, detectors=['table'])
+
+        clean = processor.status()
+        self.assertEqual(clean['state'], 'idle')
+        self.assertEqual(clean['source'], self.source)
+        self.assertEqual(clean['detectors'], ['table'])
+        self.assertEqual(clean['generation'], dirty['generation'])    # the reset never moves it
+        self.assertEqual(clean['frames_received'], 0)
+        self.assertEqual(clean['frames_processed'], 0)
+        self.assertEqual(clean['frames_skipped'], 0)
+        self.assertIsNone(clean['last_received_at'])
+        self.assertEqual(clean['drop_reasons'], dict.fromkeys(dirty['drop_reasons'], 0))
+        self.assertIsNone(clean['last_drop'])
+        self.assertIsNone(clean['latest'])
+        self.assertIsNone(clean['error'])
+        self.assertIsNone(clean['error_code'])
+        self.assertIsNone(clean['last_error'])
+        self.assertIsNone(clean['last_error_code'])
+        self.assertEqual(clean['stages'], [])
+        self.assertEqual(clean['latency_ms'], {})
+        self.assertEqual(clean['latency_window'], dirty['latency_window'])    # the configured window stays
+        self.assertEqual(clean['frame_budget_ms'], idle['frame_budget_ms'])   # the configured budget stays
+        self.assertFalse(clean['decoder_alive'] or clean['worker_alive'])
+
+        processor._reset_session(state='starting')         # a session that is running says so
+        self.assertEqual(processor.status()['state'], 'starting')
+
+    def test_a_second_session_carries_nothing_from_the_first(self):
+        """The public guard the refactor must preserve (it passed before it too)."""
+        calls = itertools.count()
+        sessions = itertools.count()
+
+        def flaky(frame, detectors, root):
+            if next(calls) >= 2:
+                raise RuntimeError('detector exploded')
+            return {'pixel': int(frame[0, 0, 0])}
+
+        def capture_factory(_):
+            # The second session gets a source that ends at once: its state is
+            # observable before any frame could overwrite what the first one left.
+            return Capture(count=4, fps=30) if next(sessions) == 0 else Capture(count=0)
+
+        processor = self.processor(infer=flaky, capture_factory=capture_factory)
+        processor.start(self.source)
+        first = self.wait_for(processor, lambda s: status_finished(s))
+        self.assertEqual(first['state'], 'error', first)
+        self.assertIsNotNone(first['latest'], first)
+        processor.stop()
+        self.assertIsNotNone(processor.status()['last_error'])
+
+        processor.start(self.source)
+        second = processor.status()
+        self.assertIn(second['state'], ('starting', 'eos'), second)   # a 0-frame source may already have ended
+        self.assertEqual((second['frames_received'], second['frames_processed'], second['frames_skipped']),
+                         (0, 0, 0))
+        self.assertIsNone(second['latest'])
+        self.assertIsNone(second['last_received_at'])
+        self.assertIsNone(second['error'])
+        self.assertIsNone(second['last_error'])
+        self.assertIsNone(second['last_error_code'])
+        self.assertEqual(second['generation'], first['generation'] + 1)
+
+    def test_a_refused_stage_leaves_the_session_untouched(self):
+        """A refused start is not a session: no generation, no request, no state."""
+        stage = CallableStage('table', infer, ['table'], self.root)
+        stage.every_n_frames = 0                           # the registry refuses this cadence
+        processor = self.processor(infer=None, stages=[stage], capture_factory=lambda _: Capture(count=1))
+        with self.assertRaises(ValueError):
+            processor.start(self.source)
+        refused = processor.status()
+        self.assertEqual(refused['state'], 'idle')
+        self.assertEqual(refused['detectors'], [])
+        self.assertEqual(refused['generation'], 0)
+        self.assertEqual(refused['stages'], [])
+        self.assertFalse(refused['decoder_alive'] or refused['worker_alive'])
+
+        stage.every_n_frames = 1                           # nothing is left behind: a retry starts
+        processor.start(self.source)
+        self.assertEqual(processor.status()['generation'], 1)
+
+    def test_one_method_owns_every_session_field(self):
+        """A field added to ``__init__`` or ``start()`` must be reset by ``_reset_session``.
+
+        This is the candidate's actual risk: the two lists drifted silently.  The class
+        source is read, so this fails on the next author who adds a session field to
+        either method instead of to the one owner (or who adds configuration without
+        listing it here).
+        """
+        source = Path(__file__).resolve().parent.parent / 'annotator/live_processing.py'
+        module = ast.parse(source.read_text())
+        klass = next(node for node in module.body
+                     if isinstance(node, ast.ClassDef) and node.name == 'LiveProcessor')
+        methods = {node.name: node for node in klass.body if isinstance(node, ast.FunctionDef)}
+        self.assertIn('_reset_session', methods, 'one method must own the session state')
+
+        def targets_of(node):
+            """Every attribute a target node names; ``self._a, self._b = ...`` unpacks."""
+            if isinstance(node, ast.Attribute):
+                yield node
+            elif isinstance(node, (ast.Tuple, ast.List)):
+                for element in node.elts:
+                    yield from targets_of(element)
+
+        def assigned(name):
+            names = set()
+            for node in ast.walk(methods[name]):
+                if isinstance(node, ast.Assign):
+                    targets = node.targets
+                elif isinstance(node, ast.AugAssign):
+                    targets = [node.target]
+                else:
+                    continue
+                for target in targets:
+                    for attribute in targets_of(target):
+                        if isinstance(attribute.value, ast.Name) and attribute.value.id == 'self':
+                            names.add(attribute.attr)
+            return names
+
+        # Configuration, not session state: the server hook, the clocks, the budgets,
+        # the lock and the monotonic counter keep their place in __init__ on purpose.
+        # ``_latency`` is not listed here: the reset rebuilds that window (same size),
+        # so __init__ does not own it alone.
+        configuration = {
+            'root', 'operations_document', '_capture_factory', '_live_read_timeout_ms', '_resolver',
+            '_infer', '_stage_spec', '_table_measure_every_n', '_ball_every_n', '_clock', '_wall_clock',
+            '_stop_timeout', '_upstream_refresh_s', '_configured_budget', '_enforce_budget', '_condition',
+            '_generation',
+        }
+        self.assertEqual(assigned('__init__') - assigned('_reset_session'), configuration)
+        # start() may only pass the reset its session, apply the legacy flag the reset
+        # cannot know, consume a generation, and create the two threads.
+        self.assertEqual(assigned('start') - {'_generation', '_legacy_detector', '_decoder', '_worker'}, set())
 
 
 if __name__ == '__main__':

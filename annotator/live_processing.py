@@ -251,22 +251,40 @@ class LiveProcessor:
         self._resolver = resolver or _resolve_twitch
         self._infer = infer
         self._stage_spec = None if stages is None else list(stages)
-        self._legacy_detector = False
         self._table_measure_every_n = table_measure_every_n
         self._ball_every_n = ball_every_n
         self._clock, self._wall_clock = clock, wall_clock
         self._stop_timeout = stop_timeout
+        self._upstream_refresh_s = upstream_refresh_s
         self._configured_budget = frame_budget_ms
         self._enforce_budget = bool(budget_enforcement)
-        self._frame_budget_ms = frame_budget_ms
         self._latency = LatencyWindow(latency_window)
-        self._registry = StageRegistry((), clock=clock)
         self._condition = threading.Condition(threading.RLock())
-        self._decoder = self._worker = None
         self._generation = 0
-        self._state = 'idle'
-        self._source = None
-        self._detectors = []
+        # One owner for the session state (see _reset_session): a processor that has
+        # never started holds the idle session.
+        self._reset_session()
+
+    def _reset_session(self, stages=(), *, source=None, detectors=(), state='idle'):
+        """Reset every field one session owns - the only owner of that state.
+
+        ``__init__`` calls this for a processor that has never started (the idle
+        session) and ``start()`` calls it for each new session, so a field can no
+        longer be reset in one place and forgotten in the other.  Only the session is
+        touched: the configuration a caller gave ``__init__`` (root, clocks, resolver,
+        budgets, the condition) is set once and stays.  The generation counter is
+        monotonic and belongs to the caller, so it is never reset here.
+
+        ``state`` is 'idle' before any start and 'starting' inside one.  The stage maps
+        are keyed by the stages of the session being started.
+        """
+        # Built before anything is assigned: StageRegistry refuses a bad stage, and a
+        # refused start must not leave a half-reset session behind.
+        registry = StageRegistry(stages, clock=self._clock)
+        self._legacy_detector = False
+        self._state = state
+        self._source = source
+        self._detectors = list(detectors)
         self._error = None
         # A stopped session's failure, kept as history: ``error`` only ever describes the
         # session that is current, so a stop moves it here (with when it failed).
@@ -276,18 +294,21 @@ class LiveProcessor:
         self._received = self._processed = self._skipped = 0
         self._dropped = {reason: 0 for reason in _DROP_REASONS}
         self._last_drop = None
-        self._stage_runs = {}
-        self._stage_skips = {}
-        self._stage_evidence = {}
+        self._stage_runs = {stage.name: 0 for stage in stages}
+        self._stage_skips = {stage.name: 0 for stage in stages}
+        self._stage_evidence = {stage.name: None for stage in stages}
         self._fps = None
         self._last_published = None
         self._upstream_probe = None
         self._upstream_delay_ms = None
         self._upstream_clock = None
-        self._upstream_refresh_s = upstream_refresh_s
         self._probe_thread = None
         self._previous_received = None
         self._last_received = None
+        self._frame_budget_ms = self._configured_budget
+        self._latency = LatencyWindow(self._latency.size)
+        self._registry = registry
+        self._decoder = self._worker = None
         self._done = False
         self._stop = threading.Event()
 
@@ -332,47 +353,27 @@ class LiveProcessor:
                 raise RuntimeError('Previous live processing threads have not exited; stop and retry')
             requested = list(dict.fromkeys(detectors))
             if self._stage_spec is not None:
-                stages, self._legacy_detector = list(self._stage_spec), False
+                stages, legacy_detector = list(self._stage_spec), False
             elif self._infer is not None:
                 stages = [CallableStage('detect', self._infer, requested, self.root)]
-                self._legacy_detector = True
+                legacy_detector = True
             else:
                 stages = default_stages(requested, self.root,
                                         dataset=safe_source.get('dataset') if safe_source.get('kind') == 'dataset' else None,
                                         table_measure_every_n=self._table_measure_every_n,
                                         ball_every_n=self._ball_every_n)
-                self._legacy_detector = False
+                legacy_detector = False
             # Before anything is mutated or started: a requested detector that cannot
             # run is a refused start, never a pipeline that quietly omits it.
             _check_requested_ball(requested, stages)
-            self._detectors = requested
-            registry = StageRegistry(stages, clock=self._clock)
+            # The whole session is reset in one place: start() no longer names its fields
+            # itself, so a field a later author adds is reset here or nowhere.
+            self._reset_session(stages, source=safe_source, detectors=requested, state='starting')
+            self._legacy_detector = legacy_detector
+            # Monotonic across sessions: a thread of an earlier session can never publish
+            # into this one, and a start that is refused consumes no generation.
             self._generation += 1
             generation = self._generation
-            self._source = safe_source
-            self._state, self._error = 'starting', None
-            self._error_at = self._last_error = self._last_error_at = None
-            self._error_code = self._error_params = self._last_error_code = self._last_error_params = None
-            self._pending = self._latest = None
-            self._received = self._processed = self._skipped = 0
-            self._dropped = {reason: 0 for reason in _DROP_REASONS}
-            self._last_drop = None
-            self._stage_runs = {stage.name: 0 for stage in stages}
-            self._stage_skips = {stage.name: 0 for stage in stages}
-            self._stage_evidence = {stage.name: None for stage in stages}
-            self._fps = None
-            self._previous_received = None
-            self._last_published = None
-            self._upstream_probe = None
-            self._upstream_delay_ms = None
-            self._upstream_clock = None
-            self._probe_thread = None
-            self._last_received = None
-            self._frame_budget_ms = self._configured_budget
-            self._latency = LatencyWindow(self._latency.size)
-            self._registry = registry
-            self._done = False
-            self._stop = threading.Event()
             self._decoder = threading.Thread(target=self._decode, args=(generation, media), daemon=True)
             self._worker = threading.Thread(target=self._process, args=(generation,), daemon=True)
             self._decoder.start()
