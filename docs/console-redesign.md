@@ -3416,3 +3416,69 @@ round 34 card 11, the conflict sentence parsed back from the operations text (gr
 same file; and round 36 C8, `def _playlist(text)` defined twice at `annotator/twitch_source.py:80` and
 `:143`, waits for `5e659542`.
 
+## Round 40 · the audit harness, the app and the board (2026-10-10)
+
+Two candidates closed as two commits: a Worth item of the round-37 walk (the audit tools under
+`tools/`) and a Strong item of the round-35 walk (the SAM3 admission gate). A fourth read-only walk
+opened sixteen candidates in `annotator/app.js` and `annotator/board.js`.
+
+| Commit | What it says |
+| --- | --- |
+| `89e2894` | tools: the audit tools measure on the cadence of the served pipeline |
+| `d3be9af` | ball: the radius band of the admission gate lives in one module |
+
+`git push origin main` moved `f4841da..d3be9af`.
+
+| Candidate | The defect | Where it stands |
+| --- | --- | --- |
+| round 37 item 6, the audit harness | `tools/playfield_vod_audit.py:149` and `tools/playfield_quad_evidence.py:77` each built their own `TableStage(root, dataset=None, measure_every_n=30)`, so the cadence 30 was written five times (three pipeline defaults and one literal per tool) and the frame-rate fallback 30.0 twice. A change of the served cadence did not move the audits. An unreadable recording was recorded with `verdict no_quad` and `frames -1` and passed every gate | Landed, commit `89e2894`: `annotator/pipeline_stages.py:323` holds `TABLE_MEASURE_EVERY_N = 30` as the one owner, `TableStage.__init__`, `default_stages` and `annotator/live_processing.py:250` read it, and the new `tools/playfield_harness.py` (83 lines) owns the opener, the frame-rate fallback (`:31`), the frame context and the stage. Measured: cadence spellings in `annotator/`, `src/` and `tools/` 5 before and 0 after; the fallback 30.0 2 before and 1 after; the new `tests/test_playfield_harness.py` holds 8 cases and the modules this change can touch pass (`Ran 8 OK`, `Ran 14 OK`, `Ran 43 OK`, `Ran 28 OK`, `Ran 33 OK`). The same scratch run of an unreadable file gave, before, `verdict=no_quad frames=-1 counts={'ok': 0, 'refused': 0, 'no_quad': 0, 'unreadable': 3} gates=[]` and, after, `verdict=unreadable frames=None` with the new `readable` gate naming `['tw-2251161439.mp4']`, a name in `KNOWN_REFUSED`. Two biting perturbations each failed exactly 1 of 8 cases and were restored from a copy. Live check on `data/vods/tw-2252489073.mp4` (38048483 bytes, read only): 1499 frames, fps 29.980, frame 149 at 1920x1080, quad `[[751.0, 374.0], [1217.0, 352.0], [1594.0, 853.0], [483.0, 840.0]]`, `ok=False reasons=['no-parallel-pair']`, the reason the tool records for that name. Node suites: 205 pass, 16 pass, 94 passed |
+| round 35 Strong 3, the SAM3 radius band | The gate has three bars, and only the score cut and the area window had a home. Four sites still spelled the radius band `4.0, 60.0` for the same measurement (`src/pipeline.py:177`, `src/scan_events.py:147`, `src/sam3_ball_cache.py:52`, `src/ball_fp_audit.py:103`). The guard did not see them, because its value list holds no 4.0 and its word list holds no radius word | Landed, commit `d3be9af`: `src/ball_gate.py` owns `SAM3_BALL_MIN_RADIUS_PX` and `SAM3_BALL_MAX_RADIUS_PX` and its `__all__` grows from five names to seven; the docstring states the third bar, names the four sites, and states that the radius 60 is not the area 60. No number changed. `tests/test_ball_gate.py` 7 to 11 cases, with a sweep that reads radius positions and needs no exemption map; the four old spellings each give `[4.0, 60.0]` and the crop padding `pad_l, pad_r, pad_t, pad_b = 60, 20, 16, 34` gives `[]`. Measured: perturbation of the owner value fails exactly `test_the_owner_holds_the_documented_numbers` with `AssertionError: 5.0 != 4.0`; a bare `4.0` again at `src/scan_events.py:148` fails with `['src/scan_events.py:148: 4.0 in r < 4.0']`; both restored from a copy. Live check on the frozen fixture (read only): `cases.json` sha1 `93c078d6ac993a5a70392c18179318f49c6df333` matches `PROVENANCE.txt`, 22 false-negative rows measure r 6.5 to 12.6 px, the four call sites read 4.0 and 60.0, `admit()` gives `{'admitted': 22}`, and the boundary probe gives r=3.9 `radius_too_small`, r=4.0 admitted, r=60.0 admitted, r=60.1 `radius_too_large`. The area disagreement (6000 against 9000 for the same measurement) is recorded in the owner and not touched. The import lines moved four modules down by one; the 44 line citations in the owner were measured again and three pointers that were already wrong are correct |
+
+### The round-40 walk
+
+A read-only walk of `annotator/app.js` (2311 lines, 154274 bytes) and `annotator/board.js` (326 lines,
+18342 bytes), delivered as `/tmp/dshsess/walk_appjs_round40.md` with 16 candidates: 8 Strong, 7 Worth
+exploring and 1 Speculative. Reachability was measured, not assumed: `annotator/ops.html` loads
+`/app.js?v=vision-stage-64` through the whitelist at `annotator/unified_server.py:2599`, `annotator/board.html`
+loads `board.js`, and `tests/test_app_timeline.js` is the only test that executes `app.js` (147 cases,
+45 `assertSourceContract(` sites of which 14 name `app.js` and 0 name `board.js`).
+
+| Candidate | The defect | Where it stands |
+| --- | --- | --- |
+| Strong 1, the dead selection box | `state.sel_box` is written at `annotator/app.js:1251` and `:1254` and read nowhere: a repository-wide grep gives exactly those two writes, no test mentions it, and it is absent from `readings` (`:2222-2253`) and from `snapshotSelection` (`:1850-1861`) | Worker `a86d2cf2`, with C2, C3 and C5 |
+| Strong 2, the source ternary | The same source ternary is written four times (`annotator/app.js:118`, `:508`, `:578`, `:1927`), and `:508` alone writes the fallback `'unified'` while the other three write `'none'`, although `editorTemplates` really holds `unified: '统一检测'` at `:2103` and `:1035` republishes it | Worker `a86d2cf2` |
+| Strong 3, two opposite defaults | An unknown `origin` has two answers in one file: `annotator/app.js:126` `box?.origin === 'manual' ? 'manual' : 'auto'` gives MODEL, and `:1404` `box.origin !== 'auto'` with `:1408` gives YOURS. Six spellings exist, and `tests/test_app_timeline.js:2661` asserts that a saved payload has `box.origin === undefined` | Worker `a86d2cf2` |
+| Strong 4, the unnamed rule | `quadSanity` at `annotator/app.js:223` is called once (`:249`), is named as the same rule by `src/eval_table_detect.py:208`, `src/check_app_quad.py:5-6` and `docs/table-detect-verification.md:16` and `:249`, yet has no direct test and is not on the test handle `attach()` | Workers `a86d2cf2` and `b0fdd9e4` |
+| Strong 5, three arities | The cloth verdict object has three arities: 7 keys at `annotator/app.js:250` and `:876`, and 2 keys on the live path at `:1621`, which is published at `:1938` and read by `clothNotice` at `:1099-1110` | Worker `a86d2cf2` |
+| Strong 6, the clip window | The clip window exists three times (`annotator/app.js:662`, `src/timing_verify.py:45`, and `1.5`/`2.5` hard-coded inside the `/api/clip` route at `annotator/unified_server.py:2779-2780`), and only the app and python pair is compared (`tests/test_timing_verify.py:145-146` and `:151`) | Open: it needs `annotator/unified_server.py`, which worker `16e50f45` holds |
+| Strong 7, the missing constant | 40 px and 1.9 mm/px exist only as prose (`annotator/app.js:194`, `src/check_app_quad.py:5-6`, `src/eval_table_detect.py:9`); a grep for the two names `CLOTH_TOLERANCE_PX` and `PIXEL_MM` over `*.py` returns 0, the only numeric assertion is `tests/test_app_timeline.js:1254` `assert.strictEqual(T.CLOTH_TOLERANCE_PX, 40)`, and the app's own threshold at 1920 wide is 60 (`:1250`) | Worker `b0fdd9e4` |
+| Strong 8, the polling interval | `annotator/board.js:15` exports `POLL_MS` and `:325` publishes it, but `tests/test_board.js:214` writes `3000` again | Worker `677eece5` |
+
+The seven Worth items are the two spellings of one label table (`annotator/app.js:159` against `:1270`),
+`POCKET_ANCHOR_ORDER` in three places (`annotator/app.js:368`, `tests/test_app_timeline.js:1491` and two
+python comments), the anchor count 6 as a literal at `annotator/app.js:426`, `'invalid geometry'` against
+`invalid_geometry`, the count bucket that can never publish 7 in `annotator/board.js:268` with no
+`[data-count="7"]` rule in `annotator/board.css:138-145`, the python status vocabulary re-spelled in
+`annotator/board.js` with `annotator/board.css` as a fourth consumer, and the one site that bypasses the
+`{n}` helper at `annotator/board.js:104`. The Speculative item is the two `esc()` functions: the one at
+`annotator/app.js:17` has a `?? ''` guard and the one at `annotator/board.js:56` has none.
+
+### The workers
+
+Six workers held disjoint scopes after this walk, and none of them commits:
+
+| Worker | Candidate | Write scope |
+| --- | --- | --- |
+| `a86d2cf2` | round 40 Strong 1, 2, 3 and 5 | `annotator/app.js`, `tests/test_app_timeline.js` |
+| `b0fdd9e4` | round 40 Strong 4 and 7, the python side | `src/check_app_quad.py`, `src/eval_table_detect.py`, one new test file under `tests/` |
+| `677eece5` | round 40 Strong 8, Worth 5, 7 and the Speculative item | `annotator/board.js`, `annotator/board.css`, `tests/test_board.js` |
+| `16e50f45` | round 36 C2, the five `Backend` caches | `annotator/unified_server.py`, `tests/test_unified_server.py` |
+| `5e83894e` | round 36 C3, the remainder | `annotator/public_board.py`, `tests/test_board_api.py` |
+| `5e659542` | round 36 C7, the Twitch fetch seam | `annotator/twitch_source.py`, `annotator/twitch_vod_source.py`, `annotator/vod_import.py`, `tests/test_vod_import.py` |
+
+Worker `36c9a695` delivered the round-35 radius band and is done. Worker `18f6f913` delivered the
+round-40 walk and is done. A worker started by `subagent` cannot be steered: `send_message` answers
+`Error: active teammate "<id>" not found`, so a worker whose brief goes stale keeps its brief and its
+diff needs a line-by-line review before a commit. Every dispatch now carries its own measured grounds
+for that reason.
+
