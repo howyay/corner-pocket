@@ -80,8 +80,13 @@ import math
 from typing import Any, Iterable
 
 # src/table_geometry.py is the single definition site of the canonical frame and
-# of the pocket table, so the gates judge on the same frame as the scan.
+# of the pocket table, so the gates judge on the same frame as the scan. The three
+# names stay a re-export: tests/test_table_geometry.py binds every importer of the
+# frame to the one table object, and src/calib_mapping_audit.py reads them here.
 from src.table_geometry import CANON_H, CANON_W, POCKETS_MM, nearest_pocket
+# The pocket name a text states has one owner, src/pocket_names.py. This gate and
+# the console backend answered the bare spelling in two different ways.
+from src.pocket_names import pocket_from_text
 
 
 @dataclass
@@ -175,22 +180,9 @@ def normalize(raw: Any) -> dict:
         "to_frame": event.get("to_frame"),
         "last_frame": event.get("last_frame"),
         "window_s": window,
-        "pocket": _pocket_name(event.get("nearest_pocket")),
+        "pocket": pocket_from_text(event.get("nearest_pocket")),
         "raw": event,
     }
-
-
-def _pocket_name(value: Any):
-    text = str(value or "").strip()
-    if not text:
-        return None
-    name = text.split("(")[0].strip()
-    if name in POCKETS_MM:
-        return name
-    tail = text.rsplit(" from ", 1)
-    if len(tail) == 2 and tail[1].strip() in POCKETS_MM:
-        return tail[1].strip()
-    return None
 
 
 # --------------------------------------------------------------------- dedup

@@ -34,6 +34,9 @@ from src.atomic_write import write_atomic
 # file routes cannot apply two different rules.
 from src.served_files import bare_name, file_under  # noqa: E402
 from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, lookup as dataset_lookup  # noqa: E402
+# The pocket name a text states has one owner, src/pocket_names.py. This backend and
+# the gate of src/event_gates.py answered the bare spelling in two different ways.
+from src.pocket_names import pocket_from_text  # noqa: E402
 # The tournament declares the action names it accepts (annotator/operations.py).
 # This module imports it here, so one table joins the route to that declaration.
 from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E402
@@ -1610,11 +1613,10 @@ class Backend:
     @staticmethod
     def _pocket_name(event):
         """The pocket a pot names, from the scan's own field or its millimetres."""
+        named = pocket_from_text(event.get('nearest_pocket'))
+        if named:
+            return named
         pockets = _pockets_mm()
-        raw = str(event.get('nearest_pocket') or '').strip()
-        named = re.match(r'^([\w-]+)\s*\(', raw) or re.match(r'^[\d.]+\s*mm from ([\w-]+)$', raw)
-        if named and named.group(1) in pockets:
-            return named.group(1)
         point = _point(event.get('last_mm'))
         if point is None:
             return None
