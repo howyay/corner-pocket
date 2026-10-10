@@ -10,14 +10,14 @@ test drives both surfaces of one fixture without touching the console's routes.
 schema (tests/console_fixture_state.json; docs/console-shots.md), so a screenshot or
 a UI check starts from a realistic club instead of an empty one.
 
-seed_state, FixtureServer and attach_public_board are the parts the review fixture
+seed_state and attach_public_board are the parts the review fixture
 (tests/serve_workbench_fixture.py) shares: one process, one root, both surfaces, and
-one place that knows where the store reads its document from.
+one place that knows where the store reads its document from. The listener is the
+product's own BoundedHTTPServer, never a copy of it.
 """
 import argparse
 import faulthandler
 import json
-from http.server import ThreadingHTTPServer
 import signal
 from pathlib import Path
 import sys
@@ -26,22 +26,19 @@ import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from annotator.unified_server import (Backend, PublicBoardServer, board_prefix, make_handler,
-                                      make_public_handler)
+from annotator.unified_server import (Backend, BoundedHTTPServer, PublicBoardServer, board_prefix,
+                                      make_handler, make_public_handler)
 
 
-class FixtureServer(ThreadingHTTPServer):
-    """The console listener with production's accept backlog (BoundedHTTPServer: no ceiling here).
-
-    A bare ThreadingHTTPServer keeps the stdlib's listen(5). A browser opens six connections per
-    host, so a page with ten webfonts overflows that queue: measured against this fixture, the
-    slowest request of a 24-way burst took 2.06 s while every smaller burst stayed at 0.01 s, and
-    in a screenshot run the stalled request is the one holding up the render. Production serves
-    console traffic through BoundedHTTPServer, whose request_queue_size is 64; the fixture matches
-    it so a browser sees the same listener it would see in the hall.
-    """
-    daemon_threads = True
-    request_queue_size = 64
+# The listener is the product's listener, so the fixture needs no class of its own.
+#
+# A bare ThreadingHTTPServer keeps the stdlib's listen(5). A browser opens six connections per
+# host, so a page with ten webfonts overflows that queue: measured against this fixture, the
+# slowest request of a 24-way burst took 2.06 s while every smaller burst stayed at 0.01 s, and
+# in a screenshot run the stalled request is the one holding up the render. The product serves
+# console traffic through BoundedHTTPServer, whose accept backlog is 64, and its own ceiling
+# (max_handlers) is the behaviour a load test must meet. A copy of the number here would stay
+# green after the product moved it.
 
 
 def seed_state(root, source):
@@ -90,7 +87,7 @@ def main():
         if args.state:
             seed_state(root, args.state)
         backend = Backend(root)
-        server = FixtureServer(('127.0.0.1', args.port), make_handler(backend))
+        server = BoundedHTTPServer(('127.0.0.1', args.port), make_handler(backend))
         public = attach_public_board(backend, args.public_port, args.public_prefix) if args.public_port else None
         print(f'Isolated operations fixture: http://127.0.0.1:{args.port}/ops.html', flush=True)
         if public:

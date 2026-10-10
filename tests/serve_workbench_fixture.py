@@ -25,10 +25,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from annotator.unified_server import Backend, board_prefix, make_handler
+from annotator.unified_server import Backend, BoundedHTTPServer, board_prefix, make_handler
 # The shared fixture parts: the listener with production's accept backlog, the store-path
 # seeding and the board listener. One place knows each of them.
-from serve_operations_fixture import FixtureServer, attach_public_board, seed_state
+from serve_operations_fixture import attach_public_board, seed_state
 
 
 def build_root(fixture):
@@ -131,7 +131,7 @@ def main():
     if args.state:
         seed_state(fixture, args.state)
     backend = build_backend(fixture)
-    server = FixtureServer(('127.0.0.1', args.port), make_handler(backend))
+    server = BoundedHTTPServer(('127.0.0.1', args.port), make_handler(backend))
     public = attach_public_board(backend, args.public_port, args.public_prefix) if args.public_port else None
     print(f'Isolated review fixture: http://127.0.0.1:{args.port}/', flush=True)
     if public:

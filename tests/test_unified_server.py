@@ -1765,5 +1765,31 @@ class WriteRegistryTests(unittest.TestCase):
         self.assertEqual(rows['vod_import']['parts'], ['api', 'vods', 'import'])
 
 
+class BrowserFixtureListenerTests(unittest.TestCase):
+    """A browser fixture must serve the listener the product serves, never a copy of it.
+
+    ``BoundedHTTPServer`` owns two facts a load test depends on: the accept backlog it
+    listens with, and the connection ceilings (``max_handlers`` and ``max_streams``). A
+    fixture that copies one number stays green after the product moves it, and the hall
+    then meets a listener the fixture never had.
+    """
+
+    def test_no_module_of_the_suite_spells_the_accept_backlog(self):
+        root = Path(__file__).resolve().parents[1]
+        needle = "request_queue" + "_size"        # spelled apart so this file is not a hit
+        offenders = [path.name for path in sorted((root / "tests").glob("*.py"))
+                     if needle in path.read_text(encoding="utf-8")]
+        self.assertEqual(offenders, [], "the accept backlog belongs to BoundedHTTPServer")
+
+    def test_every_browser_fixture_serves_the_production_listener(self):
+        import importlib
+        from annotator import unified_server
+        for name in ("serve_operations_fixture", "serve_workbench_fixture", "serve_vod_fixture"):
+            with self.subTest(module=name):
+                module = importlib.import_module(name)
+                self.assertIs(module.BoundedHTTPServer, unified_server.BoundedHTTPServer,
+                              f"{name} does not serve the product listener")
+
+
 if __name__ == "__main__":
     unittest.main()
