@@ -129,6 +129,7 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
     """
     from PIL import Image
 
+    from src import calib_segments
     from src.pipeline import ball_center, homography_to_canonical
 
     cap = cv2.VideoCapture(str(video))
@@ -137,7 +138,8 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
     cap.release()
     if not ok:
         raise RuntimeError(f"no frame at t={time_s}")
-    fixed = np.array(json.loads(Path(corners_path).read_text())["corners"], dtype=np.float32)
+    fixed = np.asarray(calib_segments.read(corners_path, "corners", strict=True).quad,
+                       np.float32)
     H = homography_to_canonical(fixed)
     cloth, filter_used = cloth_mask(bgr, reference=reference, corners_path=corners_path)
     state = model_proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
@@ -179,29 +181,19 @@ def reference_quad(corners_path="out/scan30/corners.json", dataset="vod30"):
 
     The per-frame ``detect_table`` mask is estimated from the frame and collapses
     (or balloons onto the wall panels) under occlusion; the reference quad is
-    human-clicked geometry and is stable.  Preference: the calibration segment,
-    then the hand anchors, then the scan's own naive corners as a last resort.
+    human-clicked geometry and is stable.  Preference: the human calibration
+    segment, then the hand anchors, then the scan's own naive corners as a last
+    resort.  ``src.calib_segments`` names every one of those entries.
     """
-    try:
-        from src.calib_segments import load as load_segments
-        segments = load_segments(dataset)
-        if segments is not None:
-            for segment in segments.segments:
-                if segment.source == "human_anchors":
-                    return np.array(segment.quad, np.float32)
-    except Exception:
-        pass
+    from src import calib_segments
+
+    segment = calib_segments.resolve(dataset, prefer_human=True, kinds=("segment",))
+    if segment.found:
+        return np.array(segment.quad, np.float32)
     for path, key in ((f"out/pid_anchors_{dataset}.json", "anchors"), (corners_path, "corners")):
-        try:
-            data = json.loads(Path(path).read_text())
-        except (OSError, ValueError):
-            continue
-        if key == "anchors":
-            first = next(iter(data.get("anchors", {}).values()), None)
-            if first:
-                return np.array(first[:4], np.float32)
-        elif data.get("corners"):
-            return np.array(data["corners"], np.float32)
+        reference = calib_segments.read(path, key)
+        if reference.found:
+            return np.array(reference.quad, np.float32)
     return None
 
 

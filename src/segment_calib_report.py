@@ -194,10 +194,13 @@ def build(args):
     from src.event_gates import GateConfig
 
     cfg = GateConfig()
-    payload = json.loads(Path(args.artifact).read_text())
-    segment_model = calib_segments.load(path=args.artifact, use_cache=False)
-    anchors = np.asarray(payload["segments"][0]["quad_px"], np.float32)
-    alt = payload.get("late_window_alternative") or {}
+    # One seam call answers which reference the artifact carries, and names the
+    # segment it came from.  The raw payload is the model's own load, so the file
+    # is read once and `late_window_alternative` stays the counterfactual it is.
+    reference = calib_segments.resolve(artifact=args.artifact, use_cache=False)
+    segment_model = reference.model
+    anchors = reference.quad
+    alt = segment_model.alternative if segment_model is not None else {}
     derived = alt.get("quad_px")
     split_t = (alt.get("fit_from") or {}).get("t_start")
     references = ReferenceSet(anchors, segment_model, derived, split_t)
@@ -274,10 +277,12 @@ def build(args):
         "references": {
             "anchors": {"quad_px": np.round(anchors, 2).tolist(),
                         "detail": "hand anchors at t=70, the single-H reference the queue uses today"},
-            "segment": {"verdict": payload.get("segmentation_verdict"),
-                        "segments": [{"id": s["id"], "t_start": s["t_start"], "t_end": s["t_end"],
-                                      "source": s["source"], "quad_px": s["quad_px"]}
-                                     for s in payload["segments"]]},
+            "segment": {"verdict": None if segment_model is None else segment_model.verdict,
+                        "segments": [{"id": s.id, "t_start": s.t_start, "t_end": s.t_end,
+                                      "source": s.source,
+                                      "quad_px": np.round(s.quad, 2).tolist()}
+                                     for s in ([] if segment_model is None
+                                               else segment_model.segments)]},
             "derived_late": {"quad_px": derived, "split_t": split_t,
                              "detail": "counterfactual: split at the first below-gate sample, late "
                                        "window on the derived refined quad (not used)"},

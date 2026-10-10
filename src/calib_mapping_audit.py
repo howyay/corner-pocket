@@ -67,19 +67,20 @@ GRID = 5                       # 5x5 = 25 grid points, plus the six pockets
 REGION_BANDS_MM = (("head", 0.0, 400.0), ("middle", 400.0, 2140.0), ("foot", 2140.0, CANON_H + 1))
 
 
-def _load_anchors(path=ANCHORS):
-    data = json.loads(Path(path).read_text())
-    anchors = data["anchors"]
-    first = next(iter(anchors.values()))
-    from src.table_detect import _order_corners
-    quad = _order_corners(np.asarray(first[:4], np.float32))
-    return quad, [np.asarray(p, np.float64) for p in first[4:]], data
-
-
 def load_mappings(anchors_path=ANCHORS, scan_path=SCAN_QUAD):
-    """``(HA, HB, anchors_quad, scan_quad, side_pockets)`` - both px -> mm maps."""
-    quad_a, pockets, _ = _load_anchors(anchors_path)
-    quad_b = np.asarray(json.loads(Path(scan_path).read_text())["corners"], np.float32)
+    """``(HA, HB, anchors_quad, scan_quad, side_pockets)`` - both px -> mm maps.
+
+    ``src.calib_segments.read`` names the entry inside each file, so this audit
+    holds no copy of the artifact layout.  The hand anchors are clicked clockwise
+    only by luck, so they are ordered here.
+    """
+    from src import calib_segments
+
+    anchors = calib_segments.read(anchors_path, "anchors", order=True)
+    scan = calib_segments.read(scan_path, "corners")
+    quad_a, quad_b = anchors.quad, scan.quad
+    pockets = ([] if anchors.points is None
+               else [np.asarray(p, np.float64) for p in anchors.points[4:]])
     return (homography_to_canonical(quad_a), homography_to_canonical(quad_b),
             quad_a, quad_b, pockets)
 
@@ -393,13 +394,14 @@ def highlight_reference_check(video, quad_path=None, times=None, columns=(600, 9
     """
     from src.calib_segment_measure import profile_sides
     from src.table_detect import detect_cloth_mask
-    from src.table_refine import _order, refine_quad_edges
+    from src.table_refine import refine_quad_edges
 
     path = Path(quad_path) if quad_path is not None else ROOT / "out" / "fixed_corners.json"
-    try:
-        quad = _order(np.asarray(json.loads(path.read_text())["corners"], np.float32))
-    except (OSError, ValueError, KeyError):
+    from src import calib_segments
+    reference = calib_segments.read(path, "corners", order=True)
+    if not reference.found:
         return {"error": f"cannot read {path}"}
+    quad = reference.quad
     if not Path(video).is_file():
         return {"error": f"cannot open {video}", "quad_px": np.round(quad, 1).tolist()}
     times = list(times) if times is not None else list(np.arange(2.0, 377.0, 15.0))

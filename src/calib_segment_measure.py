@@ -65,15 +65,20 @@ CANDIDATE_TIMES = (450.0, 450.3, 483.4, 483.7, 941.5, 1119.9, 1120.2, 1120.6, 12
 
 def anchors_quad():
     """The human reference quad: the first four of the six hand anchors at t=70."""
-    from src.table_detect import _order_corners
-    data = json.loads(ANCHORS.read_text())
-    first = next(iter(data["anchors"].values()))
-    return _order_corners(np.asarray(first[:4], np.float32))
+    from src import calib_segments
+    return calib_segments.read(ANCHORS, "anchors", order=True).quad
 
 
 def scan_quad():
-    data = json.loads(SCAN_QUAD.read_text())
-    return np.asarray(data["corners"], np.float32)
+    """The refused reference, read only as the comparison baseline of this report.
+
+    ``docs/app-path-refusal.md`` refuses this file as a calibration reference: its
+    left rail is about 70 px off the cloth.  This measurement compares the human
+    reference against it, so the file is named here on purpose.  No reader falls
+    back to it.
+    """
+    from src import calib_segments
+    return calib_segments.read(SCAN_QUAD, "corners").quad
 
 
 def coverage(frame, quad):

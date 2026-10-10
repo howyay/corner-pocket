@@ -107,23 +107,20 @@ def load_events(queue_path, limit=None):
 
 
 def load_quad(quad_path, anchors_path=None):
-    """The cloth quad in 1280x720 scan pixels, or None."""
+    """The cloth quad in 1280x720 scan pixels, or None.
+
+    The first file that carries a quad wins: the scan's own corners, then the hand
+    anchors.  ``src.calib_segments.read`` names the entry inside the file, so this
+    tool does not hold the artifact layout.
+    """
+    from src import calib_segments
+
     for path, key in ((quad_path, "corners"), (anchors_path, "anchors")):
         if not path:
             continue
-        try:
-            data = json.loads(Path(path).read_text())
-        except (OSError, ValueError):
-            continue
-        if key == "anchors":
-            anchors = data.get("anchors") or {}
-            first = next(iter(anchors.values()), None)
-            if first:
-                return np.array(first[:4], np.float32)
-            continue
-        corners = data.get(key)
-        if corners:
-            return np.array(corners, np.float32)
+        reference = calib_segments.read(path, key)
+        if reference.found:
+            return np.asarray(reference.quad, np.float32)
     return None
 
 

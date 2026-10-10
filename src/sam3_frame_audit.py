@@ -125,23 +125,20 @@ def cloth_report(video, time_s, reference_quad=None):
 
 
 def reference_quad(dataset="vod30", anchors_path="out/pid_anchors_vod30.json"):
-    """The verified cloth quad: the calibration segment, else the hand anchors."""
-    try:
-        from src.calib_segments import load as load_segments
-        segments = load_segments(dataset)
-        if segments is not None:
-            for segment in segments.segments:
-                if segment.source == "human_anchors":
-                    return segment.quad, f"segment {segment.id} ({segment.source})"
-    except Exception:
-        pass
-    try:
-        data = json.loads(Path(anchors_path).read_text())
-        first = next(iter(data.get("anchors", {}).values()), None)
-        if first:
-            return np.array(first[:4], np.float32), "hand anchors"
-    except (OSError, ValueError):
-        pass
+    """The verified cloth quad: the human calibration segment, else the hand anchors.
+
+    ``prefer_human`` asks the seam for the artifact's own human segment, not for
+    the segment that owns a time: this audit weighs every frame against one
+    geometry, and a derived or refined segment must not replace a human one.
+    """
+    from src import calib_segments
+
+    reference = calib_segments.resolve(dataset, prefer_human=True, kinds=("segment",))
+    if reference.found:
+        return reference.quad, f"segment {reference.entry} ({reference.source})"
+    anchors = calib_segments.read(anchors_path, "anchors")
+    if anchors.found:
+        return np.asarray(anchors.quad, np.float32), "hand anchors"
     return None, "none"
 
 

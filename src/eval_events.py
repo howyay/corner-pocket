@@ -76,32 +76,8 @@ HUMAN_VERDICT_FILES = ("out/scan30/annotations.json",
 
 
 # ------------------------------------------------------------------- geometry
-
-def load_segments(dataset="vod30"):
-    """The per-segment reference quads, or None when the artifact is absent.
-
-    Read-only: the segmentation is produced elsewhere (`src.calib_segments`); a
-    missing or broken artifact leaves the tool on the single reference quad it
-    has always used, and says so in the report.
-    """
-    try:
-        from src.calib_segments import load
-        return load(dataset)
-    except Exception:
-        return None
-
-
-def load_quad(path, key="corners"):
-    try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return None
-    if key == "anchors":
-        anchors = data.get("anchors") or {}
-        first = next(iter(anchors.values()), None)
-        return np.array(first[:4], np.float32) if first else None
-    corners = data.get(key)
-    return np.array(corners, np.float32) if corners else None
+# Both readers below call ``src.calib_segments``: the seam names the artifact and
+# the entry inside it, so this tool holds no copy of the calibration layout.
 
 
 def reference_calibration(anchors_path, quad_path):
@@ -119,12 +95,13 @@ def reference_calibration(anchors_path, quad_path):
     70, 483.4, 1120.2).  This mapping is the physical one.  The scan quad is not
     a rival reference: it is the *claim* frame -- see :func:`claim_calibration`.
     """
+    from src import calib_segments
     from src.pipeline import homography_to_canonical
 
-    quad = load_quad(anchors_path, "anchors")
+    quad = calib_segments.read(anchors_path, "anchors").quad
     label = "hand anchors on the cloth"
     if quad is None:
-        quad = load_quad(quad_path)
+        quad = calib_segments.read(quad_path, "corners").quad
         label = "scan quad (fallback, known biased)"
     if quad is None:
         return None, None, "none: no calibration available"
@@ -155,9 +132,10 @@ def claim_calibration(quad_path):
     ``None`` when there is no scan quad: the claims then stay in whatever frame
     the caller already has.
     """
+    from src import calib_segments
     from src.pipeline import homography_to_canonical
 
-    quad = load_quad(quad_path)
+    quad = calib_segments.read(quad_path, "corners").quad
     if quad is None:
         return None, "none: no scan quad, claims kept in their stored frame"
     try:
@@ -1075,13 +1053,15 @@ def main():
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
+    from src import calib_segments
+
     cfg = GateConfig()
     forward, inverse, label = reference_calibration(args.anchors, args.scan_quad)
     claim_inverse, claim_label = claim_calibration(args.scan_quad)
-    quad = load_quad(args.anchors, "anchors") if inverse is not None else None
+    quad = calib_segments.read(args.anchors, "anchors").quad if inverse is not None else None
     if quad is None:
-        quad = load_quad(args.scan_quad)
-    segments = load_segments(args.dataset)
+        quad = calib_segments.read(args.scan_quad, "corners").quad
+    segments = calib_segments.resolve(args.dataset).model
     if segments is not None:
         label = f"{label}; per segment: {segments.verdict} ({len(segments.segments)} segment(s))"
     probe = None

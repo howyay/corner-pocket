@@ -13,6 +13,7 @@ The artifact's shape is pinned too: the consumers (``src/table_refine.prior_for`
 the server's event geometry) read named fields, so a producer that renames or
 drops one must fail here rather than silently disable per-segment projection.
 """
+import ast
 import json
 import sys
 import unittest
@@ -320,6 +321,316 @@ class EventProjectionWiringTest(unittest.TestCase):
             x, y, w = inverse @ np.array([100.0, 200.0, 1.0])
             self.assertAlmostEqual(late_event[4][0], round(float(x / w), 1), places=1)
             self.assertAlmostEqual(late_event[4][1], round(float(y / w), 1), places=1)
+
+
+class ReferenceSeamTest(unittest.TestCase):
+    """The seam answers with the quad *and* the file and entry it came from.
+
+    A reader must be able to log where its reference came from without opening a
+    file again, so the provenance is checked as a value, not as a file read.
+    """
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        write_artifact(self.root / "out", [seg("a", 0.0, 600.0),
+                                          seg("b", 600.001, 1800.0, x=80.0, source="derived")])
+        (self.root / "out" / "pid_anchors_vod30.json").write_text(json.dumps(
+            {"anchors": {"70.0": [[10, 10], [20, 10], [20, 20], [10, 20], [1, 1], [2, 2]]}}))
+        (self.root / "out" / "fixed_corners.json").write_text(json.dumps(
+            {"corners": [[100, 100], [900, 100], [900, 500], [100, 500]]}))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def reference(self, dataset="vod30", **kwargs):
+        return cs.resolve(dataset, root=self.root, use_cache=False, **kwargs)
+
+    def test_the_seam_returns_the_quad_and_the_entry_that_owns_the_time(self):
+        reference = self.reference(t=1500.0)
+        self.assertTrue(reference.found)
+        self.assertEqual(reference.kind, "segment")
+        self.assertTrue(reference.per_time, "a segment artifact is a per-time reference")
+        self.assertTrue(reference.artifact.endswith("calib_vod30_segments.json"))
+        self.assertEqual(reference.entry, "b")
+        self.assertEqual(reference.source, "derived")
+        self.assertEqual((reference.t_start, reference.t_end), (600.001, 1800.0))
+        self.assertFalse(reference.clamped)
+        self.assertEqual(reference.quad.tolist(), seg("b", 600.001, 1800.0, x=80.0)["quad_px"])
+        logged = reference.as_dict()
+        self.assertEqual((logged["artifact"], logged["entry"], logged["per_time"]),
+                         (reference.artifact, "b", True))
+        self.assertEqual(logged["quad_px"], reference.quad.tolist())
+        json.dumps(logged)                      # a reader can log it as it stands
+
+    def test_an_unknown_time_takes_the_entry_the_per_time_rule_names(self):
+        reference = self.reference()
+        self.assertEqual(reference.entry, "a", "no time takes the first segment")
+        self.assertTrue(reference.clamped)
+        self.assertEqual(reference.clamp_reason, "no_time")
+        self.assertIn("using the first", reference.note)
+        self.assertIn("2 segments", reference.note)
+
+    def test_a_saved_reference_file_is_one_static_reference(self):
+        reference = self.reference("highlight")
+        self.assertTrue(reference.found)
+        self.assertEqual(reference.kind, "static")
+        self.assertFalse(reference.per_time)
+        self.assertTrue(reference.artifact.endswith("fixed_corners.json"))
+        self.assertEqual(reference.entry, "corners")
+        self.assertEqual(reference.quad.tolist(), [[100.0, 100.0], [900.0, 100.0],
+                                                   [900.0, 500.0], [100.0, 500.0]])
+
+    def test_the_hand_anchors_are_named_by_their_own_time_key(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out").mkdir(parents=True)
+            (root / "out" / "pid_anchors_vod30.json").write_text(json.dumps(
+                {"anchors": {"70.0": [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]}}))
+            reference = cs.resolve("vod30", 1500.0, root=root, use_cache=False)
+            self.assertEqual(reference.kind, "static")
+            self.assertEqual(reference.entry, "70.0", "the anchor key is the entry")
+            self.assertEqual(reference.evidence, "hand anchors")
+            self.assertEqual(reference.origin,
+                             str(root / "out" / "pid_anchors_vod30.json"))
+
+    def test_the_provenance_survives_the_artifact(self):
+        reference = self.reference(t=10.0)
+        (self.root / "out" / "calib_vod30_segments.json").unlink()
+        logged = json.dumps(reference.as_dict())
+        self.assertIn("calib_vod30_segments.json", logged)
+        self.assertIn('"entry": "a"', logged)
+
+    def test_the_refused_reference_is_never_selected(self):
+        refused = self.root / "out" / "corners_30min_v2.json"
+        refused.write_text(json.dumps({"corners": [[1, 1], [2, 1], [2, 2], [1, 2]]}))
+        reference = self.reference(t=10.0, quad_file=refused)
+        self.assertTrue(reference.found)
+        self.assertNotIn(cs.REFUSED, reference.artifact or "")
+        self.assertEqual(reference.artifact,
+                         str(self.root / "out" / "calib_vod30_segments.json"))
+        self.assertTrue(any("app-path-refusal.md" in line for line in reference.rejected),
+                        "the refusal must be visible to the caller")
+        for kind in cs.KINDS:
+            self.assertNotIn(cs.REFUSED,
+                             self.reference(t=10.0, kinds=(kind,)).artifact or "",
+                             f"the {kind} step selected the refused reference")
+
+
+class OldPathEquivalenceTest(unittest.TestCase):
+    """The seam returns the array the old private loaders returned.
+
+    The old rule is rebuilt here from the artifacts themselves: a test may read a
+    file, and that is the point -- the readers no longer do.
+    """
+
+    @staticmethod
+    def old_motion_scan_quad(artifact):
+        """What ``motion_scan.load_quad`` returned for a segment artifact."""
+        payload = json.loads(Path(artifact).read_text())
+        quad = np.asarray(payload["segments"][0]["quad_px"], np.float64)
+        return quad[:4].round(3).tolist()
+
+    def test_the_real_artifact_answers_the_same_quad(self):
+        if not ARTIFACT.is_file():
+            self.skipTest("out/calib_vod30_segments.json not built")
+        from src.motion_scan import load_quad
+        quad = load_quad("vod30")
+        self.assertEqual(quad["quad_px"], self.old_motion_scan_quad(ARTIFACT))
+        self.assertEqual(quad["source"], str(ARTIFACT))
+        self.assertTrue(quad["verified"])
+        self.assertEqual(quad["rejected"], [])
+
+    def test_a_missing_artifact_keeps_the_saved_reference(self):
+        from src.motion_scan import load_quad
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out").mkdir()
+            anchors = root / "out" / "pid_anchors_vod30.json"
+            anchors.write_text(json.dumps(
+                {"anchors": {"70.0": [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]}}))
+            quad = load_quad("vod30", root=root)
+            self.assertEqual(quad["quad_px"], [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+            self.assertEqual(quad["source"], str(anchors))
+            self.assertEqual(quad["evidence"], "hand anchors")
+
+    def test_a_quad_from_the_wrong_frame_size_is_still_refused(self):
+        from src.motion_scan import load_quad
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out").mkdir()
+            (root / "out" / "fixed_corners.json").write_text(json.dumps(
+                {"corners": [[722, 452], [1177, 449], [1433, 844], [467, 849]]}))
+            self.assertIsNotNone(load_quad("highlight", root=root,
+                                           frame_size=(1920, 1080))["quad_px"])
+            wrong = load_quad("highlight", root=root, frame_size=(1280, 720))
+            self.assertIsNone(wrong["quad_px"])
+            self.assertTrue(any("does not fit" in line for line in wrong["rejected"]))
+
+    def test_timing_verify_reads_the_same_scan_quad(self):
+        from src.timing_verify import load_quad as timing_load_quad
+        path = ROOT / "out" / "scan30" / "corners.json"
+        if not path.is_file():
+            self.skipTest("out/scan30/corners.json is not present")
+        old = np.asarray(json.loads(path.read_text())["corners"], np.float32)
+        np.testing.assert_array_equal(timing_load_quad(str(path)), old)
+        self.assertIsNone(timing_load_quad(None, str(path)),
+                          "a corners file carries no anchors entry")
+
+    def test_claim_calibration_projects_the_same_scan_frame(self):
+        from src.eval_events import claim_calibration
+        from src.pipeline import homography_to_canonical
+        path = ROOT / "out" / "scan30" / "corners.json"
+        if not path.is_file():
+            self.skipTest("out/scan30/corners.json is not present")
+        old = np.asarray(json.loads(path.read_text())["corners"], np.float32)
+        inverse, label = claim_calibration(str(path))
+        np.testing.assert_allclose(inverse, np.linalg.inv(homography_to_canonical(old)))
+        self.assertEqual(label, f"scan claim frame ({path})")
+
+    def test_reference_calibration_keeps_the_hand_anchor_mapping(self):
+        from src.eval_events import reference_calibration
+        from src.pipeline import homography_to_canonical
+        anchors = ROOT / "out" / "pid_anchors_vod30.json"
+        scan = ROOT / "out" / "scan30" / "corners.json"
+        if not (anchors.is_file() and scan.is_file()):
+            self.skipTest("the vod30 anchors or the scan quad are not present")
+        first = next(iter(json.loads(anchors.read_text())["anchors"].values()))
+        old = np.asarray(first[:4], np.float32)
+        forward, inverse, label = reference_calibration(str(anchors), str(scan))
+        np.testing.assert_allclose(forward, homography_to_canonical(old))
+        self.assertEqual(label, "hand anchors on the cloth")
+
+    def test_the_mapping_audit_keeps_its_old_quad_pair(self):
+        from src.calib_mapping_audit import load_mappings
+        from src.table_detect import _order_corners
+        anchors = ROOT / "out" / "pid_anchors_vod30.json"
+        scan = ROOT / "out" / "scan30" / "corners.json"
+        if not (anchors.is_file() and scan.is_file()):
+            self.skipTest("the vod30 anchors or the scan quad are not present")
+        first = next(iter(json.loads(anchors.read_text())["anchors"].values()))
+        old_a = _order_corners(np.asarray(first[:4], np.float32))
+        old_b = np.asarray(json.loads(scan.read_text())["corners"], np.float32)
+        _ha, _hb, quad_a, quad_b, pockets = load_mappings()
+        np.testing.assert_array_equal(quad_a, old_a)
+        np.testing.assert_array_equal(quad_b, old_b)
+        self.assertEqual(len(pockets), 2, "the six anchors carry two pocket points")
+
+
+class ReaderUsesTheSeamTest(unittest.TestCase):
+    """Every reader gets its quad from the seam, not from a loader of its own."""
+
+    QUAD = np.array([[100.0, 100.0], [900.0, 110.0], [910.0, 500.0], [90.0, 490.0]],
+                    np.float32)
+
+    def test_motion_scan_takes_its_quad_from_the_seam(self):
+        from src import calib_segments, motion_scan
+        sentinel = calib_segments.Reference(quad=self.QUAD, kind="segment",
+                                            origin="sentinel", artifact="sentinel.json",
+                                            entry="s1", per_time=True,
+                                            note="from the seam", evidence="test")
+        seen = {}
+        original = calib_segments.resolve
+
+        def fake_resolve(dataset="vod30", t=None, **kwargs):
+            seen.update({"dataset": dataset, "t": t}, **kwargs)
+            return sentinel
+
+        calib_segments.resolve = fake_resolve
+        try:
+            quad = motion_scan.load_quad("vod30", root=Path("."), frame_size=(1280, 720), t=5.0)
+        finally:
+            calib_segments.resolve = original
+        self.assertEqual(quad["quad_px"], self.QUAD.tolist())
+        self.assertEqual(quad["source"], "sentinel")
+        self.assertEqual(quad["note"], "from the seam")
+        self.assertTrue(quad["verified"])
+        self.assertEqual(seen["dataset"], "vod30")
+        self.assertEqual(seen["t"], 5.0)
+        self.assertEqual(seen["frame_size"], (1280, 720))
+
+    def test_claim_calibration_takes_its_quad_from_the_seam(self):
+        from src import calib_segments
+        from src.eval_events import claim_calibration
+        from src.pipeline import homography_to_canonical
+        seen = {}
+        original = calib_segments.read
+
+        def fake_read(path, key=None, **kwargs):
+            seen.update({"path": path, "key": key}, **kwargs)
+            return calib_segments.Reference(quad=self.QUAD, kind="static", artifact=str(path),
+                                            entry=key, origin=str(path))
+
+        calib_segments.read = fake_read
+        try:
+            inverse, label = claim_calibration("out/scan30/corners.json")
+        finally:
+            calib_segments.read = original
+        self.assertEqual((seen["path"], seen["key"]), ("out/scan30/corners.json", "corners"))
+        np.testing.assert_allclose(inverse, np.linalg.inv(homography_to_canonical(self.QUAD)))
+        self.assertEqual(label, "scan claim frame (out/scan30/corners.json)")
+
+
+class NoPrivateLoaderTest(unittest.TestCase):
+    """No reader parses a calibration artifact; the source text says so.
+
+    The AST check is the durable half of the seam: a later edit that puts a
+    ``json.loads`` back into one of these functions fails here, whatever the
+    artifacts on disk happen to hold.
+    """
+
+    #: (module, functions that answer "which quad") -- each must call the seam.
+    READERS = {
+        "src/motion_scan.py": ("load_quad",),
+        "src/timing_verify.py": ("load_quad",),
+        "src/eval_events.py": ("reference_calibration", "claim_calibration"),
+        "src/calib_mapping_audit.py": ("load_mappings", "highlight_reference_check"),
+        "src/calib_segment_measure.py": ("anchors_quad", "scan_quad"),
+        "src/sam3_frame_audit.py": ("reference_quad",),
+        "src/sam3_ball_cache.py": ("reference_quad",),
+    }
+    #: loaders that rebuilt the chain and must stay deleted.
+    GONE = {
+        "src/eval_events.py": ("load_quad", "load_segments"),
+        "src/calib_mapping_audit.py": ("_load_anchors",),
+    }
+
+    @staticmethod
+    def functions(path):
+        tree = ast.parse((ROOT / path).read_text())
+        return {node.name: node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef)}
+
+    def test_every_reader_asks_the_seam_and_reads_no_file(self):
+        for path, names in self.READERS.items():
+            defined = self.functions(path)
+            for name in names:
+                self.assertIn(name, defined, f"{path}: {name} must stay")
+                calls = [ast.unparse(node.func) for node in ast.walk(defined[name])
+                         if isinstance(node, ast.Call)]
+                self.assertTrue([call for call in calls
+                                 if call.startswith("calib_segments.")],
+                                f"{path}.{name} no longer calls the seam")
+                for banned in ("json.loads", "read_text"):
+                    self.assertFalse([call for call in calls if call.endswith(banned)],
+                                     f"{path}.{name} parses a file itself: {banned}")
+
+    def test_the_private_loaders_stay_deleted(self):
+        for path, names in self.GONE.items():
+            defined = self.functions(path)
+            for name in names:
+                self.assertNotIn(name, defined, f"{path}.{name} must not come back")
+
+    def test_the_report_build_names_the_artifact_once(self):
+        build = self.functions("src/segment_calib_report.py")["build"]
+        text = ast.unparse(build)
+        self.assertIn("calib_segments.resolve", text)
+        self.assertNotIn('["segments"]', text, "the payload layout stays in the seam")
+        loads = [node for node in ast.walk(build) if isinstance(node, ast.Call)
+                 and ast.unparse(node.func).endswith("json.loads")]
+        for node in loads:
+            self.assertNotIn("args.artifact", ast.unparse(node),
+                             "the artifact is read once, by the seam")
 
 
 if __name__ == "__main__":

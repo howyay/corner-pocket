@@ -252,93 +252,35 @@ class ScanReport:
 
 # ------------------------------------------------------------- the quad ------
 
-def load_quad(dataset: str = "vod30", root=None, quad_file=None, frame_size=None) -> dict:
+def load_quad(dataset: str = "vod30", root=None, quad_file=None, frame_size=None,
+              t=None) -> dict:
     """The verified cloth quad for ``dataset``, in that dataset's native pixels.
 
-    Order of evidence: an explicit ``quad_file``, the per-segment calibration
-    artifact, a dataset-specific reference file, the vod30 hand anchors (only for
-    vod30), then the ``table_refine`` prior table.  Never a per-frame
-    ``detect_table`` mask -- that was shown to collapse under occlusion.
+    The reference and its provenance come from ``src.calib_segments.resolve``: an
+    explicit ``quad_file``, the per-segment calibration artifact for ``t``, a
+    dataset-specific reference file, the vod30 hand anchors (only for vod30), then
+    the ``table_refine`` prior table.  Never a per-frame ``detect_table`` mask --
+    that was shown to collapse under occlusion.
 
     Every candidate is checked against ``frame_size`` when it is given: this repo
     holds quads recorded at 1280x720 for a 1920x1080 video, and a quad from the
     wrong frame size silently measures the carpet.
+
+    ``t`` names the frame time the quad belongs to.  Without it the calibration
+    takes the first segment and says so in ``note``.
     """
-    root = Path(root or ROOT)
-    rejected: list = []
+    from src import calib_segments
 
-    def usable(candidate, source, note, evidence=None):
-        if candidate is None:
-            return None
-        if frame_size:
-            w, h = float(frame_size[0]), float(frame_size[1])
-            xs = [p[0] for p in candidate]
-            ys = [p[1] for p in candidate]
-            if max(xs) > w or max(ys) > h or min(xs) < 0 or min(ys) < 0:
-                rejected.append(f"{source}: quad {candidate} does not fit {w:g}x{h:g}")
-                return None
-        return {"quad_px": candidate, "source": source, "verified": bool(evidence),
-                "note": note, "evidence": evidence, "rejected": list(rejected)}
-
-    if quad_file:
-        payload = json.loads(Path(quad_file).read_text())
-        pts = payload.get("quad_px") or payload.get("corners") or payload.get("anchors")
-        out = usable(_as_quad(pts), str(quad_file),
-                     payload.get("note", "caller-supplied quad"),
-                     "caller-supplied" if payload.get("verified") else None)
-        if out:
-            return out
-
-    seg_file = root / "out" / f"calib_{dataset}_segments.json"
-    if seg_file.exists():
-        payload = json.loads(seg_file.read_text())
-        segments = payload.get("segments") or []
-        if segments:
-            seg = segments[0]
-            note = seg.get("source_detail") or seg.get("source")
-            if len(segments) > 1:
-                note = (f"{len(segments)} segments; using the first -- per-time segment "
-                        f"lookup belongs to the calibration, not to this measurement")
-            evidence = seg.get("evidence") or {}
-            out = usable(_as_quad(seg["quad_px"]), str(seg_file), note,
-                         evidence.get("trust_reason")
-                         if evidence.get("trusted_for_mm") else None)
-            if out:
-                return out
-
-    reference = root / "out" / "fixed_corners.json"
-    if reference.exists() and dataset != "vod30":
-        payload = json.loads(reference.read_text())
-        out = usable(_as_quad(payload.get("corners")), str(reference),
-                     "dataset reference corners",
-                     "src/table_refine.py _DATASET_PRIOR documents this file at 2.0 px "
-                     "median against the cloth quad" if dataset == "highlight" else None)
-        if out:
-            return out
-
-    anchors = root / "out" / "pid_anchors_vod30.json"
-    if anchors.exists() and dataset == "vod30":
-        payload = json.loads(anchors.read_text())
-        rows = payload.get("anchors") or {}
-        if rows:
-            key = sorted(rows, key=lambda k: abs(float(k) - 70.0))[0]
-            out = usable(_as_quad(rows[key][:4]), str(anchors),
-                         f"hand pocket anchors at t={key} (first four)", "hand anchors")
-            if out:
-                return out
-
-    try:
-        from src.table_refine import prior_for
-        prior = prior_for(dataset, root=root)
-        out = usable(_as_quad(prior) if prior is not None else None,
-                     "src.table_refine.prior_for",
-                     "search-centre prior, not a verified quad", None)
-        if out:
-            return out
-    except Exception as exc:  # pragma: no cover - environment dependent
-        rejected.append(f"table_refine prior: {exc}")
-    return {"quad_px": None, "source": "none", "verified": False,
-            "note": "no quad found", "evidence": None, "rejected": list(rejected)}
+    reference = calib_segments.resolve(dataset, t, root=root, quad_file=quad_file,
+                                       frame_size=frame_size)
+    if not reference.found:
+        return {"quad_px": None, "source": "none", "verified": False,
+                "note": "no quad found", "evidence": None,
+                "rejected": list(reference.rejected)}
+    return {"quad_px": np.round(np.asarray(reference.quad, np.float64), 3).tolist(),
+            "source": reference.origin, "verified": reference.verified,
+            "note": reference.note, "evidence": reference.evidence,
+            "rejected": list(reference.rejected)}
 
 
 def sam3_ball_radius(dataset: str, root=None) -> dict:
