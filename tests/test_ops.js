@@ -3235,7 +3235,18 @@ const boardCss = fs.readFileSync(path.join(__dirname, '../annotator/board.css'),
 
 test('round 2: the audit log says what happened in words, in both languages (B-01)', () => {
   const h = harness();
-  const actions = ['event_backfill', 'match_complete', 'match_unschedule', 'note_delete'];
+  // The names come from the server's own registry, not from a list kept here. This case
+  // named four actions, and the console table drifted from annotator/operations.py in the
+  // other thirty rows: entrant_add_late, vod_link and vod_unlink read as their enum.
+  // tests/test_console_audit_labels.py compares the table with the served GET /api/actions
+  // contract; this case holds the rendering of every declared name.
+  const registry = fs.readFileSync(path.join(__dirname, '../annotator/operations.py'), 'utf8');
+  const actions = [...new Set([...registry.matchAll(/^\s*Operation\('([a-z_]+)'/gm)].map(found => found[1]))];
+  // A scan that reads nothing would pass this case for the wrong reason, so the four names
+  // it used to hold are its floor - and they are still checked, with the other thirty.
+  for (const name of ['event_backfill', 'match_complete', 'match_unschedule', 'note_delete']) {
+    assert.ok(actions.includes(name), `${name} is missing from the registry this case read`);
+  }
   for (const action of actions) {
     for (const lang of ['en', 'zh']) {
       const label = (()=>{h.lang=(lang);return h.auditActions[JSON.parse(JSON.stringify(action))]?.[h.lang==='zh'?1:0]})();
@@ -3246,6 +3257,24 @@ test('round 2: the audit log says what happened in words, in both languages (B-0
   assert.ok(line.includes('Backfilled from a VOD'), 'a backfilled night reads as that, not as event_backfill');
   assert.ok(!/event_backfill/.test(line), 'and the raw enum never reaches the operator');
   assert.ok(line.includes('v75'), 'the revision still rides along');
+});
+
+test('the three operations this console sends itself read as sentences, not as their enum (B-01 drift)', () => {
+  const h = harness();
+  // annotator/ops.js sends these three itself - the late card (:1410) and the link chips
+  // (:1260, :1261) - and annotator/operations.py has always declared them. The table carried
+  // no row for them, so auditLine fell back to the enum and the operator read "vod_link"
+  // where the night said a broadcast was linked.
+  for (const action of ['entrant_add_late', 'vod_link', 'vod_unlink']) {
+    const row = h.auditActions[action];
+    assert.ok(row, `${action} has a row in the console audit-label table`);
+    for (const lang of ['en', 'zh']) {
+      const index = lang === 'zh' ? 1 : 0;
+      const line = (()=>{h.lang=(lang);return h.auditLine({action,createdAt:'2026-10-03T05:23:40.400503+00:00',revision:75})})();
+      assert.ok(line.includes(row[index]), `${action} reads as "${row[index]}" in ${lang}`);
+      assert.ok(!line.includes(action), `and the raw enum ${action} never reaches the operator`);
+    }
+  }
 });
 
 test('round 2: every instant on Records is formatted the one way (B-02)', () => {

@@ -2053,7 +2053,7 @@ class Backend:
             return self.operations().get()
         if parts == ['api', 'actions']:
             # The write registry itself: what the console may send, and what each write
-            # needs. A console reads this instead of repeating the route list.
+            # needs. tests/test_console_audit_labels.py reads this list, not a copy.
             return {'writes': OPERATOR_ACTIONS.contract(), 'operations': list(TOURNAMENT_ACTIONS)}
         if parts == ['api', 'clock']:
             return self.clock_state()
