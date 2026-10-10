@@ -180,7 +180,6 @@ function isPairedModel(box, boxes) {
   if (!isModelBox(box)) return false;
   return boxes.some(other => other !== box && isOperatorBox(other) && boxesMatch(box, other));
 }
-function ballLabelText(value) { return value === undefined || value === null ? 'Unlabeled' : value === -1 || value === 'u' ? 'Unknown' : value === 0 ? 'Cue · 0' : `Ball ${value}`; }
 // ---- pocket vocabulary, overlay provenance, geometry clearance ------------
 // Stored pocket keys are pool-table rail terms (head rail / foot rail). On the
 // imagery they read as body parts - a marker labelled `head-left` beside a
@@ -222,6 +221,10 @@ function clothTolerance(reference, frameWidth) {
   const base = Number(reference?.width), width = Number(frameWidth);
   return Number.isFinite(base) && base > 0 && Number.isFinite(width) && width > 0 ? CLOTH_TOLERANCE_PX * (width / base) : CLOTH_TOLERANCE_PX;
 }
+// A cloth quad is four corners, and the saved anchor set is longer than that:
+// POCKET_ANCHOR_ORDER puts the corners first and the side pockets after them.
+// This is the one reader that takes a quad out of a longer set, so no caller
+// slices its own four.
 function quadPoints(value) {
   if (!Array.isArray(value) || value.length < 4) return null;
   const points = value.slice(0, 4).map(p => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : null);
@@ -287,7 +290,7 @@ function noClothVerdict(reason = 'no detection') { return clothVerdict({state:'n
 function validateCloth(corners, reference, frameWidth, frameHeight) {
   const points = quadPoints(corners);
   const bad = quadSanity(points, frameWidth, frameHeight);
-  if (bad) return clothVerdict({state:'off', reason:'invalid geometry', detail:bad});
+  if (bad) return clothVerdict({state:'off', reason:QUAD_INVALID_GEOMETRY, detail:bad});
   const ref = quadPoints(reference?.points);
   if (!ref) return clothVerdict({state:'unverified', reason:'no saved reference'});
   const tolerance = clothTolerance(reference, frameWidth);
@@ -406,6 +409,10 @@ function personChip(per, track) {
 // pocket geometry when this frame's model quad cannot be trusted, so the pockets
 // layer keeps working instead of going dark behind a refused quad.
 const POCKET_ANCHOR_ORDER = ['head-left', 'head-right', 'foot-right', 'foot-left', 'left-side', 'right-side'];
+// The fallback layout a dataset without saved anchors starts from: one
+// fractional position per slot of POCKET_ANCHOR_ORDER, so the two tables cannot
+// disagree about how many anchors there are.
+const FALLBACK_ANCHOR_LAYOUT = [[.3,.2],[.7,.2],[.7,.8],[.3,.8],[.3,.5],[.7,.5]];
 function calibratedPockets(reference) {
   const points = Array.isArray(reference?.points) ? reference.points : null;
   if (!points || points.length < POCKET_ANCHOR_ORDER.length) return null;
@@ -419,11 +426,7 @@ function calibratedPockets(reference) {
 // placed, or the saved calibration. While the video runs this is the only cloth
 // the stage may draw: a per-frame detected quad describes a frame, not a moving
 // picture, and the tag says which of the two is on screen (MODEL vs CALIB).
-function staticQuad() {
-  const points = state.cloth.reference?.points;
-  const quad = Array.isArray(points) && points.length >= 4 ? points.slice(0, 4).map(p => [Number(p[0]), Number(p[1])]) : null;
-  return quad && quad.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1])) ? quad : null;
-}
+function staticQuad() { return quadPoints(state.cloth.reference?.points); }
 // The pockets the stage actually draws, so an event's target pocket highlight is
 // the marker the operator can see rather than a second, differently-calibrated
 // point a few pixels away. Falls back to the event's own projected pocket.
@@ -463,7 +466,7 @@ async function loadAnchors(t = state.anchors.t) {
   const data = await api(`/api/vod30/anchors?t=${enc(t)}`);
   const w = data.width || 1920, h = data.height || 1080;
   let pts = (data.pts || data.suggested_pts || []).map(p => Array.isArray(p) ? [...p] : [p.x, p.y]);
-  if (pts.length !== 6) pts = [[.3,.2],[.7,.2],[.7,.8],[.3,.8],[.3,.5],[.7,.5]].map(([x,y]) => [Math.round(x*w),Math.round(y*h)]);
+  if (pts.length !== POCKET_ANCHOR_ORDER.length) pts = FALLBACK_ANCHOR_LAYOUT.map(([x,y]) => [Math.round(x*w),Math.round(y*h)]);
   state.anchors = {pts, index:0, w, h, saved: !!data.pts, loaded: true, t: data.t ?? t};
   notify();
 }
@@ -1080,6 +1083,11 @@ function paintOverlay() {
 // machine codes (low_cloth_area, no_boundary_evidence, ...) and the operator reads
 // a sentence: the codes are a detector contract, not UI copy. Same map shape as
 // POCKET_WORDS; "${code}" is the only composed slot and it stays translated.
+// The one code the console produces itself: validateCloth refuses a quad whose
+// corners fail quadSanity, and the operator reads that refusal through this same
+// table. Both the producer and the table name this symbol, so the reason a
+// verdict carries and the key the table is read by cannot drift apart.
+const QUAD_INVALID_GEOMETRY = 'invalid_geometry';
 const QUAD_REFUSAL_COPY = {
   low_cloth_area: ['the cloth is hidden - a player or an object is over the bed',
                    '台面被遮挡——有人或物体挡在台面上'],
@@ -1089,8 +1097,8 @@ const QUAD_REFUSAL_COPY = {
                           '库边边缘超出搜索带'],
   prior_disagreement: ['the four sides disagree with the saved centre',
                        '四条边与已保存中心不一致'],
-  invalid_geometry: ['the four corners are not a valid table quad',
-                     '四个角点不构成有效球桌四边形'],
+  [QUAD_INVALID_GEOMETRY]: ['the four corners are not a valid table quad',
+                            '四个角点不构成有效球桌四边形'],
   no_prior: ['no saved geometry exists for this dataset',
              '该数据集没有已保存几何'],
   no_cloth_area: ['no cloth was found in this frame', '此帧没有找到台呢'],
@@ -1139,7 +1147,7 @@ function polygonSource() {
 function clothNotice(verdict, refusal, quad) {
   const lines = [];
   if (refusal && !refusal.ok) lines.push(text(`Saved correction belongs to ${refusal.owner}, not this frame (${refusal.expected}) — not drawn.`));
-  if (verdict?.state === 'off') lines.push(verdict.reason === 'invalid geometry'
+  if (verdict?.state === 'off') lines.push(verdict.reason === QUAD_INVALID_GEOMETRY
     ? text(`The model table quad is not a valid table quad for this frame (${verdict.detail}) — not drawn.`)
     : text(`The model table quad is ${Math.round(verdict.mean)} px off this dataset's saved corners (${text(verdict.source || 'unknown')}, tolerance ${Math.round(verdict.tolerance)} px) — not drawn.`));
   else if (verdict?.state === 'unverified') lines.push(text('No saved corner set exists for this dataset: the model quad is drawn unverified and pocket markers stay hidden.'));
@@ -2115,7 +2123,7 @@ Object.assign(editorCopy, {
   'Frame unavailable. Choose another time or retry loading.':'帧不可用。请选择其他时间或重新加载。',
   'CANDIDATE · NOT VALIDATED':'候选 · 未验证',
   'Choose a verdict before saving.':'请先选择判定再保存。', 'Freeze a frame first.':'请先冻结一帧。',
-  'Unlabeled':'未标注', 'Unknown':'未知', 'Cue · 0':'母球 · 0',
+  'Unknown':'未知',
   'Event review':'事件复核', 'Ball labels':'球号标注', 'Table calibration':'球桌标定', 'Player identities':'选手身份', 'Video timeline':'视频时间轴',
   'Frame inference':'帧推理', 'Correction editor':'修正编辑器', 'Save corrections for this frame':'保存此帧修正',
   'Balls · SAM3 on CPU (slow)':'球 · CPU 上的 SAM3（较慢）', 'LOCAL INGESTED VOD ONLY · NO LIVE SOURCES':'仅限本地导入录像 · 无直播源',
@@ -2314,7 +2322,8 @@ function attach(options = {}) {
     displayBoxes, applyFrameResult, text, tagRow, pocketText, validateCloth, correctionScope,
     exitPlayback, onKeydown, translateEditor, CLOTH_TOLERANCE_PX, calibratedPockets, polygonSource,
     stageHTML, clothTolerance, markBoxEdited, personChip, eventWindow, placeTags, boxTagKind,
-    POCKET_ANCHOR_ORDER, quadReasonText, paintCueGeometry, paintLiveChip, correctionBody,
+    POCKET_ANCHOR_ORDER, FALLBACK_ANCHOR_LAYOUT, QUAD_INVALID_GEOMETRY,
+    quadReasonText, paintCueGeometry, paintLiveChip, correctionBody,
     ghostModelBox, updateOverlayFacts, POCKET_LABELS, CLIP_BEFORE_S, CLIP_AFTER_S, bindVideo,
     stageVideo, playEvent, dropPerFrame, drawnPocket, cueGeometryVisible, manualBoxCount,
     modelBoxCount, paintOverlay, liveErrorCodes, liveRefusals, liveErrorText, liveErrorDetail,

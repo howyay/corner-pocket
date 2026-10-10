@@ -920,6 +920,14 @@ test('engine copy localizes notices, statuses and save receipts', () => {
   assert.strictEqual(T.text('Select a ball or a crop first.'), 'Select a ball or a crop first.', 'source text is language-neutral');
   assert.strictEqual(T.text('win 68-94 · track 1 = A'), 'win 68-94 · track 1 = A');
   host.lang = 'zh';
+  // Round 40: one spelling per question. 'Cue · 0' and 'Unlabeled' were a second,
+  // unreachable spelling of a ball label - a dead function no caller ever named -
+  // and this module no longer carries their copy. The words are driven here so a
+  // returning key fails instead of quietly taking over the receipt vocabulary.
+  same(T.text('Cue · 0'), 'Cue · 0');
+  same(T.text('Unlabeled'), 'Unlabeled');
+  assertSourceContract('annotator/app.js', 'function ballLabelText', 'the second spelling of a ball label is gone', true);
+  assertSourceContract('annotator/app.js', 'Cue · 0', 'and the console keeps one spelling of a ball label', true);
 });
 
 test('app.html is one stage host with no sub-tab navigation', () => {
@@ -1231,6 +1239,11 @@ test('the automatic cloth quad is validated against the dataset reference', () =
   assert.ok(ok.mean < 2 && ok.tolerance === T.CLOTH_TOLERANCE_PX);
   // A quad that starts at another vertex is the same quadrilateral.
   assert.strictEqual(T.validateCloth([[800,320],[1024,573],[450,564],[455,308]], reference, 1280, 720).state, 'ok');
+  // A saved anchor set is longer than a quad: the cloth quad is its first four
+  // slots and the two side-pocket anchors after them never reach the clearance
+  // check, so a wild pocket anchor cannot refuse a quad that still fits.
+  const withPockets = {...reference, points: reference.points.concat([[9999,9999],[-9999,-9999]])};
+  assert.strictEqual(T.validateCloth(saved, withPockets, 1280, 720).state, 'ok');
   // A mirrored quad is a different projection and never aligns.
   assert.notStrictEqual(T.validateCloth([[307.8,454.9],[319.4,799.5],[573.1,1023.8],[563.5,449.6]], reference, 1280, 720).state, 'ok');
   // The measured per-frame detector quads (59.9-145 px) are refused.
@@ -1239,11 +1252,13 @@ test('the automatic cloth quad is validated against the dataset reference', () =
     assert.strictEqual(verdict.state, 'off', `quad ${JSON.stringify(quad)} must be refused`);
     assert.ok(verdict.mean > verdict.tolerance);
   }
-  // Geometry that is not a table quad is refused before any distance check.
-  assert.strictEqual(T.validateCloth([[10,10],[20,10],[20,20],[10,20]], reference, 1280, 720).reason, 'invalid geometry');
-  assert.strictEqual(T.validateCloth([[NaN,0],[1,1],[2,2],[3,3]], reference, 1280, 720).reason, 'invalid geometry');
+  // Geometry that is not a table quad is refused before any distance check. The
+  // reason is the refusal code the copy table is keyed by, not a sentence of its
+  // own; the console-refusal test below drives the words it resolves to.
+  assert.strictEqual(T.validateCloth([[10,10],[20,10],[20,20],[10,20]], reference, 1280, 720).reason, T.QUAD_INVALID_GEOMETRY);
+  assert.strictEqual(T.validateCloth([[NaN,0],[1,1],[2,2],[3,3]], reference, 1280, 720).reason, T.QUAD_INVALID_GEOMETRY);
   assert.strictEqual(T.validateCloth([[0,0],[2000,0],[2000,2000],[0,2000]], reference, 1280, 720).detail, 'outside frame');
-  assert.strictEqual(T.validateCloth([[100,100],[110,100],[110,105],[100,100]], reference, 1280, 720).reason, 'invalid geometry');
+  assert.strictEqual(T.validateCloth([[100,100],[110,100],[110,105],[100,100]], reference, 1280, 720).reason, T.QUAD_INVALID_GEOMETRY);
   // No reference for this dataset: drawn, but never silently trusted.
   assert.strictEqual(T.validateCloth(saved, null, 1280, 720).state, 'unverified');
   // The tolerance follows the source size the reference was measured at.
@@ -1252,6 +1267,24 @@ test('the automatic cloth quad is validated against the dataset reference', () =
   assert.strictEqual(T.clothTolerance(reference, 0), T.CLOTH_TOLERANCE_PX);
   // The clearance bar must not move without this suite moving with it.
   assert.strictEqual(T.CLOTH_TOLERANCE_PX, 40);
+});
+
+// Round 40: the console produces one refusal code, and the refusal table is keyed
+// by it, so what the console writes reads as the operator's sentence in both
+// languages. A hand-written sentence instead of the code falls through to the
+// raw-code fallback ('the detector reported "invalid geometry"'); this test fails
+// on that spelling.
+test('a quad the console refuses prints the refusal sentence, not its raw code', () => {
+  const refused = quad => T.validateCloth(quad, null, 1280, 720);
+  T.setRoot({lang:'en', querySelector: () => null, querySelectorAll: () => []});
+  assert.strictEqual(refused([[10,10],[20,10],[20,20],[10,20]]).state, 'off');
+  assert.strictEqual(T.quadReasonText(refused([[10,10],[20,10],[20,20],[10,20]]).reason), 'the four corners are not a valid table quad');
+  assert.strictEqual(T.quadReasonText(refused([[NaN,0],[1,1],[2,2],[3,3]]).reason), 'the four corners are not a valid table quad');
+  assert.strictEqual(T.quadReasonText(refused([[0,0],[2000,0],[2000,2000],[0,2000]]).reason), 'the four corners are not a valid table quad');
+  // A code the table does not carry still reads as a sentence, never as the token.
+  assert.strictEqual(T.quadReasonText('brand_new_code'), 'the detector reported "brand new code"');
+  T.setRoot({lang:'zh', querySelector: () => null, querySelectorAll: () => []});
+  assert.strictEqual(T.quadReasonText(refused([[10,10],[20,10],[20,20],[10,20]]).reason), '四个角点不构成有效球桌四边形');
 });
 
 test('a saved correction is drawn only for the frame it belongs to', () => {
@@ -1489,6 +1522,9 @@ test('every layer chip states its count as the chip text (owner round 26 item 1)
 test('a refused model quad falls back to the saved calibration for the pockets', () => {
   const anchors = {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720};
   same(T.POCKET_ANCHOR_ORDER, ['head-left','head-right','foot-right','foot-left','left-side','right-side']);
+  // One table owns how many anchors there are: the fallback layout carries a
+  // position per slot, and the quad readers take the corner slots at its head.
+  assert.strictEqual(T.FALLBACK_ANCHOR_LAYOUT.length, T.POCKET_ANCHOR_ORDER.length);
   same(T.calibratedPockets(anchors).map(p => p.name), T.POCKET_ANCHOR_ORDER);
   same(T.calibratedPockets(anchors).map(p => p.cx), [454.9, 799.5, 1023.8, 449.6, 448.4, 883.9]);
   assert.strictEqual(T.calibratedPockets({points:[[1,2],[3,4],[5,6],[7,8]], source:'saved anchors'}), null, 'a partial anchor set is not pocket geometry');
