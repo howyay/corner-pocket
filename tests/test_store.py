@@ -8,6 +8,7 @@ A Postgres implementation arrives later and must pass the same contract.
 import hashlib
 import json
 import os
+import re
 import tempfile
 import threading
 import unittest
@@ -30,6 +31,27 @@ def unit(seed, dim=512):
     rng = np.random.RandomState(seed)
     v = rng.standard_normal(dim).astype(np.float32)
     return v / np.linalg.norm(v)
+
+
+# src/store.py:156 owns the rule; a module that writes user-data files directly must
+# announce itself with the path it writes through. The case below starts every module
+# that calls the guard, and refuses to pass while the tree and this set disagree.
+REFUSAL_CALL = re.compile(r"refuse_file_writes_under_postgres\(\s*[\"']([^\"']+)[\"']\s*\)")
+REFUSAL_SUBJECTS = {
+    "annotator/server.py",
+    "src/merge_sets.py",
+    "src/pid_anchor_ui.py",
+    "src/pid_seed_ui.py",
+}
+
+
+def refusal_subjects(root):
+    """The path string of every guard call in src/*.py and annotator/*.py, read from the tree."""
+    found = set()
+    for folder in ("src", "annotator"):
+        for module in sorted((root / folder).glob("*.py")):
+            found.update(REFUSAL_CALL.findall(module.read_text(encoding="utf-8")))
+    return found
 
 
 class StoreTestCase(unittest.TestCase):
@@ -79,19 +101,27 @@ class Selection(StoreTestCase):
         self.assertFalse(self.out.exists())
 
     def test_legacy_file_writers_refuse_to_start_when_the_database_is_the_store(self):
-        """annotator/server.py, src/pid_seed_ui.py and src/pid_anchor_ui.py write user-data
-        files directly; with POOL_DATABASE_URL set they must exit with a clear reason
-        before serving anything (checked by actually starting each as a script)."""
+        """Every module that writes user-data files directly must exit with a clear reason
+        while POOL_DATABASE_URL is set, before it serves anything. The subjects are read
+        from the tree, so a new file writer cannot be added without its proof here
+        (checked by actually starting each one as a script)."""
         import subprocess
         import sys
         repo = Path(__file__).resolve().parents[1]
+        subjects = refusal_subjects(repo)
+        self.assertEqual(sorted(subjects), sorted(REFUSAL_SUBJECTS),
+                         f"without a proof here: {sorted(subjects - REFUSAL_SUBJECTS)}; "
+                         f"stated but absent from the tree: {sorted(REFUSAL_SUBJECTS - subjects)}")
         env = dict(os.environ, POOL_DATABASE_URL="postgresql://u@127.0.0.1:1/x", PYTHONPATH=str(repo))
-        for script in ("annotator/server.py", "src/pid_seed_ui.py", "src/pid_anchor_ui.py"):
+        before = sorted(p for p in self.root.rglob("*"))
+        for script in sorted(subjects):
             run = subprocess.run([sys.executable, str(repo / script), "0"], env=env, capture_output=True,
                                  text=True, timeout=120, cwd=self.root)
             self.assertNotEqual(run.returncode, 0, script)
             self.assertIn("Refusing to run", run.stderr, script)
             self.assertIn("src.store_export", run.stderr, f"{script} says how to use it on a copy")
+        self.assertEqual(sorted(p for p in self.root.rglob("*")), before,
+                         "a refused writer made a file in the directory it was started in")
         from src.store import refuse_file_writes_under_postgres
         with mock.patch.dict(os.environ):
             os.environ.pop("POOL_DATABASE_URL", None)
