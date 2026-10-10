@@ -60,8 +60,6 @@ OTHER_DOCUMENT_FILES = {
 #: `events_document.write`, with the file it writes and why that is not the
 #: document.  A function that writes through the owner needs no entry.
 WRITES_OUTSIDE_THE_DOCUMENT = {
-    ("src/scan_events.py", "sam3_confirm"):
-        "sam3_results.json: the confirmed ball lists, keyed by timestamp",
     ("src/dense_queue.py", "write_ledger"):
         "the retired-id ledger, a map keyed by ball_id",
     ("src/eval_events.py", "measure"):

@@ -8,6 +8,12 @@ Phase 2 (accurate): run SAM3 on single frames bracketing each candidate event
 to confirm it and to measure real ball displacement (shots) or the vanished
 ball + nearest pocket (pots).  Outputs the served events document
 (src/events_document.py, which stamps it) + annotated evidence JPEGs.
+
+The ball artifact of phase 2 (`sam3_results.json`) belongs to
+`src/sam3_artifact.py`.  This module reads it through that owner and writes it
+through that owner.  It stamps the rows it measures with the producer
+`CAMERA_MODEL`, and it keeps the stamp of every row it copies from an earlier
+run: this scan does not recompute a copied `table_mm`, so it must not claim it.
 """
 from __future__ import annotations
 
@@ -25,7 +31,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* imports
 
 from ball_detect import detect_ball_candidates
-from src import events_document
+from src import events_document, sam3_artifact
 from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_canonical,
                                 nearest_pocket)
 from table_detect import detect_table
@@ -107,10 +113,10 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
     fixed = np.array(json.load(open(out_dir / "corners.json"))["corners"], dtype=np.float32)
     H = homography_to_canonical(fixed)
 
-    results_path = out_dir / "sam3_results.json"
+    results_path = sam3_artifact.artifact_in(out_dir)
     results = {}
     if results_path.exists():
-        results = {float(k): v for k, v in json.loads(results_path.read_text()).items()}
+        results = {float(k): v for k, v in sam3_artifact.read(results_path).frames.items()}
     cap = cv2.VideoCapture(video)
     for t in times:
         if round(t, 1) in results:
@@ -148,6 +154,7 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
                 "table_mm": [round(p[0] / p[2], 1), round(p[1] / p[2], 1)],
             })
         balls.sort(key=lambda b: b["table_mm"])
+        balls = sam3_artifact.stamp(balls, sam3_artifact.CAMERA_MODEL)
         results[round(t, 1)] = balls
         # annotated evidence frame
         ev = bgr.copy()
@@ -158,7 +165,8 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
                     cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 255), 3)
         cv2.imwrite(str(out_dir / f"evidence_t{int(t):05d}.jpg"), ev)
         results[round(t, 1)] = balls
-        results_path.write_text(json.dumps(results))
+        sam3_artifact.write(results_path, results, producer=sam3_artifact.CAMERA_MODEL,
+                            keep_stamps=True, indent=None)
     cap.release()
     return results
 

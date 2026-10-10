@@ -7,7 +7,9 @@ cloth where the classical colour census holds 1-3), but on this machine it costs
 the bracketing frames of the candidates that matter -- appends the results to
 ``out/scan30/sam3_census.json`` (gitignored, written after every frame so an
 interrupted run is still usable) and reuses anything already cached there or in
-the app's own ``out/scan30/sam3_results.json``.
+the app's own ``out/scan30/sam3_results.json``.  That artifact belongs to
+``src/sam3_artifact.py``: this tool reads it through that owner and never writes
+it.
 
 The stored row keeps the app's schema (``score``/``img``/``r``/``table_mm``) and
 adds the colour sampled at the detection, so the fused census does not have to
@@ -33,13 +35,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src import sam3_artifact  # noqa: E402
 from src.ball_census import classify_ball_color  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,  # noqa: E402
                            SAM3_BALL_MIN_SCORE)
 
-APP_CACHE = "out/scan30/sam3_results.json"      # the app's own 56 frames: read-only
+#: The app's own 56 frames, named by `src/sam3_artifact.py`.  This tool reads it
+#: through that owner and never writes it, so the string stays the relative form
+#: this tool has always used.
+APP_CACHE = str(sam3_artifact.artifact_path().relative_to(sam3_artifact.ROOT))
 OWN_CACHE = "out/scan30/sam3_census.json"       # added by this tool: written
 MIN_SCORE = SAM3_BALL_MIN_SCORE
 MIN_AREA, MAX_AREA = SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MAX_AREA_PX
@@ -47,12 +53,20 @@ MIN_R, MAX_R = 4.0, 60.0
 
 
 def load_cache(path) -> dict:
-    """Frames already measured, keyed by rounded time (both cache files)."""
+    """Frames already measured, keyed by rounded time (both cache files).
+
+    The app's ``sam3_results.json`` is read through its owner,
+    `src/sam3_artifact.py`, which names the file, its rows and its version; the
+    census file of this tool is read here.  A missing file, a damaged file and a
+    file of the wrong shape give no frames, so a run continues on the frames it
+    can read.  A file newer than the owner is not damaged: it stops the read.
+    """
     path = Path(path)
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text())
+        data = (sam3_artifact.read(path).frames if sam3_artifact.owns(path)
+                else json.loads(path.read_text()))
     except ValueError:
         return {}
     frames = data.get("frames") if isinstance(data, dict) and "frames" in data else data

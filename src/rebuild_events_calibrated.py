@@ -4,6 +4,11 @@ The SAM3 confirmation results store image coordinates; table_mm were computed
 with the older median-quad homography.  This rebuilds table_mm with the
 calibrated rectangle-constrained H (out/calib_final.json) and regenerates the
 shot/pot events and causality links.
+
+The ball artifact belongs to `src/sam3_artifact.py`.  This module reads it
+through that owner and writes it through that owner, with the producer
+`REBUILD_CALIBRATED`: every table_mm value of the file is the work of this
+module after the call, so the stamp of every ball row becomes that producer.
 """
 from __future__ import annotations
 
@@ -18,9 +23,9 @@ import sys
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 from scan_events import nearest_pocket  # reuse pocket geometry
-from src import events_document
+from src import events_document, sam3_artifact
 
-SAM3 = ROOT.parent / "out" / "scan30" / "sam3_results.json"
+SAM3 = sam3_artifact.artifact_path()
 EVENTS = events_document.document_path()
 CAL = ROOT.parent / "out" / "calib_final.json"
 
@@ -29,13 +34,13 @@ def main():
     cal = json.load(open(CAL))
     H = np.array(cal["H_mm_to_px"])          # mm -> px
     Hinv = np.linalg.inv(H)                  # px -> mm
-    sam3 = {float(k): v for k, v in json.load(open(SAM3)).items()}
+    sam3 = {float(k): v for k, v in sam3_artifact.read(SAM3).frames.items()}
 
     for t, balls in sam3.items():
         for b in balls:
             p = Hinv @ np.array([b["img"][0], b["img"][1], 1.0])
             b["table_mm"] = [round(p[0] / p[2], 1), round(p[1] / p[2], 1)]
-    json.dump(sam3, open(SAM3, "w"), indent=1)
+    sam3_artifact.write(SAM3, sam3, producer=sam3_artifact.REBUILD_CALIBRATED, indent=1)
 
     times = sorted(sam3)
     counts = {t: len(b) for t, b in sam3.items()}

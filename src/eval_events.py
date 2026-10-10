@@ -52,7 +52,7 @@ from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
-from src import events_document  # noqa: E402
+from src import events_document, sam3_artifact  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540
 FULL_W, FULL_H = 1280, 720            # the reference quad's own resolution
@@ -148,7 +148,11 @@ def claim_calibration(quad_path):
 class SAM3Store:
     """Ball positions SAM3 measured on named frames (app cache + this round's).
 
-    Both files are read; the app's ``sam3_results.json`` is never written.
+    Both files are read through the owner that names them, and this tool writes
+    neither.  The app's ``sam3_results.json`` belongs to `src/sam3_artifact.py`:
+    that owner also says who wrote the table millimetres of every ball row, so
+    ``artifact`` holds the status and the producer of the app cache after the
+    read.  It is None when the file is absent or damaged.
     Positions are full-frame pixels and are scaled to the census frame when they
     are turned into observations.
     """
@@ -156,7 +160,15 @@ class SAM3Store:
     def __init__(self, paths=(APP_CACHE, OWN_CACHE)):
         self.frames = {}
         self.paths = []
+        #: The app cache as `src/sam3_artifact.py` read it, for a report that must
+        #: name the producer of the table millimetres it measures against.
+        self.artifact = None
         for path in paths:
+            if sam3_artifact.owns(path) and Path(path).exists():
+                try:
+                    self.artifact = sam3_artifact.read(path)
+                except ValueError:
+                    self.artifact = None
             loaded = load_cache(path)
             if loaded:
                 self.paths.append(str(path))
