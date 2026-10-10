@@ -131,14 +131,28 @@ function assertSourceContract(file, snippet, why, options) {
   sourceContracts.push({file, snippet: String(snippet), why});
   assert.ok(opts.absent ? !found : found, `${file} must ${opts.absent ? 'not ' : ''}keep "${snippet}" (${why})`);
 }
+// A claim no render can show: the names a module calls are the names it publishes.
+// Only the source text witnesses that, so the check stays a source assertion and
+// it stays counted.
+function assertSourceNames(why, declared, found) {
+  assert.deepStrictEqual(declared.slice().sort(), found.slice().sort(), why);
+  sourceContracts.push({file: 'annotator/vision-stage.js', snippet: `${declared.length} published names`, why});
+}
 
 // ---- the Vision adapter seam: one mount in, one handle out ------------------
 // window.VisionStage publishes attach() alone. A test mounts a stub root, drives
 // the real events, and reads the region the operator sees.
+// A style object that keeps what it was told: the adapter publishes its
+// measurements as custom properties (--vs-footer-h, --vs-strip-h,
+// --vs-stage-bottom), so the var it wrote is the proof that it measured.
+function stageStyle() {
+  const vars = {};
+  return {left: '', vars, getPropertyValue: key => (key in vars ? vars[key] : ''), setProperty(key, value) { vars[key] = String(value); }};
+}
 function stageNode() {
   const node = {
     innerHTML: '', textContent: '', value: '', title: '', hidden: false, disabled: false,
-    offsetHeight: 0, dataset: {}, attributes: {}, style: {left: '', getPropertyValue: () => '', setProperty() {}},
+    offsetHeight: 0, dataset: {}, attributes: {}, style: stageStyle(),
     classList: {toggle() {}, add() {}, remove() {}},
     getAttribute(key) { return Object.prototype.hasOwnProperty.call(node.attributes, key) ? node.attributes[key] : null; },
     setAttribute(key, value) { node.attributes[key] = String(value); },
@@ -158,7 +172,7 @@ function stageMount() {
     addEventListener(type, fn) { handlers[type] = fn; },
     removeEventListener(type) { delete handlers[type]; },
     contains: () => true,
-    style: {getPropertyValue: () => '', setProperty() {}},
+    style: stageStyle(),
     region: selector => nodes.get(selector),
     html(selector) { const node = nodes.get(selector); return node ? node.innerHTML : ''; },
     text(selector) { const node = nodes.get(selector); return node ? node.textContent : ''; },
@@ -242,11 +256,12 @@ function stageDocument() {
   };
 }
 // A standalone adapter realm: no network, no DOM, and no receipt ticker.
-function adapterBox() {
+// `extra` adds the browser globals a test wants to watch (ResizeObserver).
+function adapterBox(extra) {
   const document_ = stageDocument();
   const box = {window: {}, document: document_, location: {hostname: '127.0.0.1'},
     URL: {}, fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {},
-    console, Math, Number, Object, JSON, Date};
+    console, Math, Number, Object, JSON, Date, ...(extra || {})};
   box.globalThis = box;
   box.overlay = document_.overlay;
   vm.createContext(box);
@@ -306,6 +321,86 @@ function assertCopyPainted(painted, keys, label) {
   const missing = keys.filter(key => !painted.includes(ADAPTER_COPY.zh[key]));
   assert.deepStrictEqual(missing, [], `${label}: these keys never reached a 中 render`);
 }
+
+// ---- the published surface: what attach() hands back ------------------------
+// The stage's interface is wider than its one-key namespace: the console hands it
+// options, it drives the engine by verb, and it reads the snapshot by field.
+// attach() publishes all three by name, and these three lists are the test's own
+// copy of that interface: renaming or dropping a published member fails here.
+const PUBLISHED_OPTIONS = ('channels chat fixedClip forgetChannel frameHost lang liveDetectors liveOnly notice openSources '
+  + 'pickLive pickReplay regulars replayChoice setLiveDetectors setShell startLive stopLive toggleChat vods').split(' ');
+const PUBLISHED_VERBS = ('addPolygon cancelEnroll clearIdentity clearPolygon clearSelection colourWord deleteBox '
+  + 'enrollConfirm enrollPreview freeze labelBall linkTrack liveStateText loadAnchors nudgeAnchor playEvent pocketText '
+  + 'rebuild refreshRebuild reloadDatasets saveAnchors saveCorrections saveVerdict seedIdentity seek seekTime '
+  + 'selectAnchor selectCrop selectEvent selectTrackAndSeek setBoxLabel setDataset setDetector setEnrollName '
+  + 'setEventFilter setNewBoxLabel setNote setPlaying setSeed setShooter setTool setVerdictDraft setWindow snapshot '
+  + 'stepFrame subscribe text toggleOverlay').split(' ');
+const PUBLISHED_READINGS = ('anchors balls busy cloth corrections dataset datasets detectors dirty drawn enroll '
+  + 'eventFilter events eventsAnalysed focus frame live loading notice overlay persons playback receipts selection '
+  + 'set source verdictDraft').split(' ');
+// The two keys attach() is wired with. They are not console options, and the
+// console passes three more (clock, setAutoInference, reloadRoster) that this
+// module never reads.
+const PUBLISHED_WIRING = ['mount', 'review'];
+const PUBLISHED_HANDLE = ['render', 'detach', 'options', 'verbs', 'readings', 'accepts', 'option'];
+
+test('attach() publishes the stage interface: every option, verb and reading, by name', () => {
+  const calls = [];
+  const engineStub = {subscribe: () => () => {}};
+  for (const name of PUBLISHED_VERBS) engineStub[name] = (...args) => { calls.push([name, args]); return undefined; };
+  let live = visionSnapshot();
+  engineStub.snapshot = (...args) => { calls.push(['snapshot', args]); return live; };
+  const seam = stageSeam(adapterBox(), visionSnapshot(), {review: engineStub});
+  const handle = seam.handle;
+  // 1. the three lists the handle carries are the interface, name for name, in order
+  // (spread first: the lists are built in the adapter's realm, not in this one)
+  assert.deepStrictEqual([...handle.options()], PUBLISHED_OPTIONS, 'the published options are the option keys');
+  assert.deepStrictEqual([...handle.verbs()], PUBLISHED_VERBS, 'the published verbs are the engine entry points');
+  assert.deepStrictEqual([...handle.readings()], PUBLISHED_READINGS, 'the published readings are the snapshot fields');
+  assert.deepStrictEqual(Object.keys(handle).sort(), [...PUBLISHED_HANDLE, ...PUBLISHED_VERBS, ...PUBLISHED_READINGS].sort(),
+    'the handle carries those names and no others, so renaming or dropping one is a failing test');
+  assert.deepStrictEqual(PUBLISHED_OPTIONS.filter(key => handle.accepts(key)), PUBLISHED_OPTIONS, 'and each named option is accepted');
+  assert.deepStrictEqual(PUBLISHED_WIRING.filter(key => handle.accepts(key)), PUBLISHED_WIRING, 'the mount and the engine are accepted keys too');
+  assert.deepStrictEqual(['clock', 'setAutoInference', 'reloadRoster'].map(key => handle.accepts(key)), [false, false, false],
+    'a key the module never reads is not published as accepted');
+  // 2. every published verb is a door that reaches the engine
+  for (const name of PUBLISHED_VERBS) {
+    const before = calls.length;
+    handle[name]('probe');
+    const hit = calls.slice(before).find(([called]) => called === name);
+    assert.ok(hit, `${name} is published but never reached the engine`);
+    if (name !== 'snapshot') {
+      assert.strictEqual(hit[1].length, 1, `${name} forwards one argument`);
+      assert.strictEqual(hit[1][0], 'probe', `${name} forwards the argument it was given`);
+    }
+  }
+  // 3. every published reading reads that field of the snapshot, and nothing else
+  live = {...visionSnapshot()};
+  for (const name of PUBLISHED_READINGS) live[name] = `·${name}·`;
+  for (const name of PUBLISHED_READINGS) assert.strictEqual(handle[name](), `·${name}·`, `the ${name} reading reads the snapshot's ${name}`);
+  // 4. an option is readable by name; a key the module does not read is not
+  assert.strictEqual(handle.option('lang'), 'en', 'the language option reads back');
+  assert.strictEqual(handle.option('mount'), seam.mount, 'so does the mount it was wired with');
+  assert.strictEqual(handle.option('clock'), undefined, 'and a key the module never reads reads back as nothing');
+  // 5. no published name stands for two things
+  assert.deepStrictEqual(PUBLISHED_HANDLE.filter(name => [...PUBLISHED_VERBS, ...PUBLISHED_READINGS].includes(name)), [],
+    'no published name collides with the handle itself');
+  assert.deepStrictEqual(PUBLISHED_VERBS.filter(name => PUBLISHED_READINGS.includes(name)), [],
+    'no name is published as a verb and as a reading');
+  // 6. the lists are not a wish: the source calls and reads exactly these names
+  const src = ADAPTER_SOURCE;
+  const at = src.indexOf('function act(action, value, node) {');
+  const act = src.slice(at, src.indexOf('\nfunction ', at));
+  const grab = (text, re) => [...new Set([...text.matchAll(re)].map(match => match[1]))];
+  assertSourceNames('every published verb is called by the adapter and no other engine member is: the verb list is the interface, not a wish',
+    PUBLISHED_VERBS, [...new Set([...grab(act, /\btarget\.([A-Za-z_$][\w$]*)/g),
+                                   ...grab(src, /\bengine\(\)\??\.([A-Za-z_$][\w$]*)/g),
+                                   ...grab(src, /\bapi\.([A-Za-z_$][\w$]*)/g)])]);
+  assertSourceNames('every published reading is a snapshot field the renderers read and no other field is',
+    PUBLISHED_READINGS, grab(src, /\bs\.([A-Za-z_$][\w$]*)/g));
+  assertSourceNames('every published option is read by attach() and no other option key is',
+    PUBLISHED_OPTIONS, grab(src, /\bopts\??\.([A-Za-z_$][\w$]*)/g).filter(key => !PUBLISHED_WIRING.includes(key)));
+});
 
 test('lifecycle is the only public namespace and absent host does not mount', () => {
   const api = Object.keys(sandbox.window.CornerPocketReview);
@@ -679,8 +774,18 @@ test('every processor state translates and never leaks raw English', () => {
   assert.strictEqual(review.liveStateText('stopped'), 'stopped');
   assert.strictEqual(review.liveStateText('brand-new-state'), 'brand-new-state', 'unknown values stay verbatim');
   const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assertSourceContract('annotator/vision-stage.js', 'liveStateText', 'the adapter must not print the raw state');
-  assertSourceContract('annotator/vision-stage.js', /esc\(live\.state\)/, 'the adapter must not print the raw state', true);
+  // The adapter's own live row: it asks the engine for the word for the state it is
+  // in, prints that word, and never prints the raw state beside it.
+  const asked = [];
+  const rowOf = state => stageSource(adapterBox(), visionSnapshot({source: {kind: 'live'}, live: {state}}),
+    {review: {liveStateText: value => { asked.push(value); return `«${value}»`; }}});
+  const unknown = rowOf('brand-new-state');
+  assert.ok(asked.includes('brand-new-state'), 'the live row asks the engine for the word for an unknown state too');
+  assert.ok(unknown.includes('«brand-new-state»'), 'and prints the engine\'s word for it');
+  assert.strictEqual(unknown.split('brand-new-state').length - 1, 1, 'the raw state never reaches the row beside that word');
+  const translated = stageSource(adapterBox(), visionSnapshot({source: {kind: 'live'}, live: {state: 'running'}}),
+    {review: {liveStateText: value => (value === 'running' ? '进行中' : value)}});
+  assert.ok(translated.includes('进行中'), 'and it prints whatever word the engine gives back, in that language');
 });
 
 test('form and video targets never double-consume the stage keys', () => {
@@ -835,9 +940,19 @@ test('app.css styles the one stage surface, ops.css styles the rails and strip',
   // On a phone the sheet stops where the 16:9 stage ends (measured), so it never covers the picture.
   assertSourceContract('annotator/ops.css', 'var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))', 'the sheet height gives way to the measured stage bottom, not a fixed 240 px');
   assertSourceContract('annotator/ops.css', 'var(--vs-strip-h,150px) - 240px)', 'the sheet height gives way to the measured stage bottom, not a fixed 240 px', true);
-  const adapterCode = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assertSourceContract('annotator/vision-stage.js', "root.style.setProperty('--vs-stage-bottom'", 'the stage bottom is measured and re-measured when the frame resizes');
-  assertSourceContract('annotator/vision-stage.js', 'footerObserver.observe(frame)', 'the stage bottom is measured and re-measured when the frame resizes');
+  // The var ops.css reads above is written from the frame's own measurement, and
+  // re-written when that frame resizes: the stylesheet is only half of the contract.
+  const watches = [];
+  const box = adapterBox({ResizeObserver: class { constructor(fn) { this.fn = fn; this.nodes = []; watches.push(this); } observe(node) { this.nodes.push(node); } disconnect() {} }});
+  const sheet = stageSeam(box, visionSnapshot());
+  const frame = sheet.mount.querySelector('.vs-frame');
+  frame.getBoundingClientRect = () => ({top: 0, bottom: 321.6, left: 0, width: 0, height: 0});
+  sheet.render();
+  assert.strictEqual(sheet.mount.style.getPropertyValue('--vs-stage-bottom'), '322px', 'the stage bottom the sheet clears is the frame\'s own measurement');
+  assert.ok(watches[0].nodes.includes(frame), 'and the frame is watched, so a resize re-measures it');
+  frame.getBoundingClientRect = () => ({top: 0, bottom: 410.2, left: 0, width: 0, height: 0});
+  watches[0].fn();
+  assert.strictEqual(sheet.mount.style.getPropertyValue('--vs-stage-bottom'), '410px', 'a taller frame moves the sheet down with it');
 });
 
 test('editor translation preserves dirty values, focus, selection and pending save state', () => {
@@ -959,8 +1074,14 @@ test('the facts line uses one word for one live state', () => {
   assert.ok(stale.startsWith('stale · seq 12'), stale);
   assert.ok(!stale.includes('live'), 'the stale state is not described as live');
   assert.ok(stale.includes('frame age 10.2 s') && stale.includes('receive-to-result 33 ms'), stale);
-  assertSourceContract('annotator/vision-stage.js', 'not glass-to-glass', 'the latency caveat string is untouched');
-  assertSourceContract('annotator/vision-stage.js', 'latency', 'the latency caveat string is untouched');
+  // The caveat ships with the state: the panel says what the numbers are not, in
+  // both languages, and it is never shortened to a bare "latency" line.
+  const en = stageSource(adapterBox(), visionSnapshot({source: {kind: 'live'}}));
+  assert.ok(en.includes('not glass-to-glass'), 'the source panel keeps the receive-to-result caveat (EN)');
+  assert.ok(en.includes('Twitch upstream delay: UNKNOWN'), 'and says which delay it cannot know (EN)');
+  const zh = stageSource(adapterBox(), visionSnapshot({source: {kind: 'live'}}), {lang: 'zh'});
+  assert.ok(zh.includes('不是端到端延迟'), 'the same caveat ships in 中');
+  assert.ok(zh.includes('上游延迟：未知'), 'with the delay it cannot know named in 中');
 });
 
 test('the verdict keys act on the selected cue only', () => {
@@ -994,24 +1115,58 @@ test('the adapter localizes engine state, keeps one scrub range and one action f
   assert.strictEqual(scrub.attributes.max, '1800', 'the scrub range publishes the clip duration in seconds');
   assert.strictEqual(scrub.attributes.step, '0.1', 'the scrub steps in tenths of a second');
   assert.strictEqual(scrub.value, '42.4', 'and the thumb follows the time the frame is at');
-  // 2. engine-built strings render in the active language
-  assertSourceContract('annotator/vision-stage.js', 'engineText(s.notice.text)', 'notices localize at render');
-  // the reserved footer height is measured, never hardcoded
-  assertSourceContract('annotator/vision-stage.js', 'footer.offsetHeight', 'the footer height must be derived');
-  assertSourceContract('annotator/vision-stage.js', "setProperty('--vs-footer-h'", 'the footer height must be derived');
-  assertSourceContract('annotator/vision-stage.js', 'new ResizeObserver(syncFooterHeight)', 'footer height changes must re-derive the padding');
-  assertSourceContract('annotator/vision-stage.js', "data-vs-action=\"verdict-draft\"", 'the verdict verbs live in the always-visible footer');
-  assertSourceContract('annotator/vision-stage.js', 'engineText(row.text)', 'receipts localize at render');
-  assertSourceContract('annotator/vision-stage.js', 'engineText(s.corrections.inferStatus', 'the inference status localizes at render');
-  assertSourceContract('annotator/vision-stage.js', 'engineText(s.persons.status', 'the roster status localizes at render');
-  // 3. a failed start is a failed state in the status row
-  assertSourceContract('annotator/vision-stage.js', 'liveRowState', 'the live row must not read idle after a failed start');
+  // 2. engine-built strings render in the active language: the engine names the
+  // thing, the stage paints that name, and the raw token never reaches the surface.
+  const engineWord = value => `«${value}»`;
+  const painted = (word, token, what) => {
+    assert.ok(word.includes(`«${token}»`), `${what} is painted in the engine's own words`);
+    assert.strictEqual(word.split(token).length - 1, 1, `the raw ${what} never reaches the surface beside it`);
+  };
+  painted(stagePanel(adapterBox(), visionSnapshot({selection: {kind: 'box', box: 0}, notice: {text: 'engine-notice-token'}}), {review: {text: engineWord}}), 'engine-notice-token', 'notice');
+  painted(stagePanel(adapterBox(), visionSnapshot({selection: {kind: 'box', box: 0}, receipts: [{key: 'corrections', text: 'engine-receipt-token', at: Date.now()}]}), {review: {text: engineWord}}), 'engine-receipt-token', 'write receipt');
+  painted(stagePanel(adapterBox(), visionSnapshot({selection: {kind: 'box', box: 0}, corrections: {inferStatus: 'engine-infer-token'}}), {review: {text: engineWord}}), 'engine-infer-token', 'inference status');
+  painted(stagePanel(adapterBox(), visionSnapshot({selection: {kind: 'person', track: 'p1'}, persons: {status: 'engine-roster-token'}}), {review: {text: engineWord}}), 'engine-roster-token', 'roster status');
+  // 3. the live row asks the engine for the word for the state it is in; a failed
+  // start is not left reading idle, and the raw state never reaches the row.
+  const liveRow = live => stageSource(adapterBox(), visionSnapshot({source: {kind: 'live'}, live}), {review: {liveStateText: engineWord}});
+  const idleRow = liveRow({state: 'idle'});
+  assert.ok(idleRow.includes('«idle»'), 'the live row prints the engine\'s word for the state it is in');
+  assert.strictEqual(idleRow.split('idle').length - 1, 1, 'and never prints the raw state beside it');
+  const failedRow = liveRow({state: 'idle', error: 'decoder stopped'});
+  assert.ok(failedRow.includes('«error»'), 'a failed start must not leave the live row reading the idle word');
+  assert.ok(!failedRow.includes('«idle»'), 'it states the failure instead');
   // 4. the primary action of each block lives in an always-visible footer
+  const verbs = stageActions(adapterBox(), visionSnapshot({selection: {kind: 'event'}, events: {items: [{id: 'e1'}], index: 0}}));
+  assert.ok(verbs.includes('data-vs-action="verdict-draft"'), 'the verdict verbs live in the always-visible footer');
+  assert.ok(verbs.includes('data-vs-action="save-verdict"'), 'beside the write that saves them');
+  // The footer comes from one helper and the sticky row it replaced is gone: both are
+  // structure, and no rendered state can prove a helper exists or a class does not.
   assertSourceContract('annotator/vision-stage.js', 'function actionsHTML', 'the action footer comes from one helper');
-  // The inspector's two regions are the stage's own markup now; tests/test_ops.js builds that shell
-  // and proves them there, on the markup the browser gets.
   assertSourceContract('annotator/vision-stage.js', 'vs-sticky', 'the footer replaced the sticky row', true);
-  // 5. a dataset switch re-loads the stage even while a decode owns it
+  // 5. the reserved height and the sheet's floor are measured, never hardcoded
+  const watches = [];
+  const box = adapterBox({ResizeObserver: class { constructor(fn) { this.fn = fn; this.nodes = []; watches.push(this); } observe(node) { this.nodes.push(node); } disconnect() {} }});
+  const measured = stageSeam(box, visionSnapshot());
+  const footer = measured.mount.querySelector('#vs-inspector-actions');
+  const inspector = measured.mount.querySelector('#vs-inspector');
+  assert.strictEqual(watches.length, 1, 'one observer watches the footer, not one per node');
+  assert.deepStrictEqual(watches[0].nodes, [footer, measured.mount.querySelector('#vs-strip'), measured.mount.querySelector('.vs-frame')],
+    'and the three nodes it watches are the footer, the strip above it and the stage frame');
+  footer.offsetHeight = 137;
+  measured.render();
+  assert.strictEqual(inspector.style.getPropertyValue('--vs-footer-h'), '137px', 'the height the scroll region reserves is the height the footer reports');
+  footer.offsetHeight = 211;
+  watches[0].fn();                       // the observer fires when the footer resizes
+  assert.strictEqual(inspector.style.getPropertyValue('--vs-footer-h'), '211px', 'and a resize of the footer re-derives the padding');
+  // The sheet's floor is measured the same way: the strip it must sit above, and
+  // the place the 16:9 stage ends on screen.
+  const framed = stageSeam(adapterBox(), visionSnapshot());
+  framed.mount.querySelector('#vs-strip').offsetHeight = 58;
+  framed.mount.querySelector('.vs-frame').getBoundingClientRect = () => ({top: 0, bottom: 321.6, left: 0, width: 0, height: 0});
+  framed.render();
+  assert.strictEqual(framed.mount.style.getPropertyValue('--vs-strip-h'), '58px', 'the sheet sits above the strip it measured');
+  assert.strictEqual(framed.mount.style.getPropertyValue('--vs-stage-bottom'), '322px', 'and stops where the 16:9 stage ends on screen');
+  // 6. a dataset switch re-loads the stage even while a decode owns it
 });
 
 test('every adapter string ships in both languages', () => {
@@ -1221,10 +1376,26 @@ test('rail-corner keys are display-only and zhCopy is keyed by the slot it label
   assertSourceContract('annotator/app.js', "'footer-right':'复核结论在核验前不是真值。'", 'the zh copy table carries this string', {between:['const zhCopy', 'const editorCopy']});
   assertSourceContract('annotator/app.js', 'pocketText(pk.name)', 'stage pocket labels go through the display map');
   assertSourceContract('annotator/app.js', 'esc(pk.name)', 'the raw pocket key is never printed', true);
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assertSourceContract('annotator/vision-stage.js', 'nearest_pocket_text', 'the rail card shows the mapped name');
-  assertSourceContract('annotator/vision-stage.js', 'esc(e.nearest_pocket)', 'the rail never prints the raw pocket key', true);
-  assertSourceContract('annotator/vision-stage.js', 'esc(item.nearest_pocket)', 'the inspector never prints the raw pocket key', true);
+  // Both surfaces name the pocket the way the engine mapped it. An event that only
+  // carries the raw key still gets the mapped name, and the raw key never reaches a
+  // reader on its own.
+  const asRail = (context, item, options) => stageRail(context, visionSnapshot({eventFilter: 'all', selection: {}, focus: 'events',
+    events: {items: [item], index: 0, reviewed: 0}}), options);
+  const mapped = {id: 7, type: 'pot', t: 5.6, nearest_pocket: 'foot-right (124mm)', nearest_pocket_text: 'bottom-right (124mm)'};
+  // The mapped name is what the engine hands over; the raw key is only ever the
+  // argument it was asked about. Strip the mapped names and no raw key is left.
+  const withoutMapped = text => text.replace(/mapped\([^)]*\)/g, '');
+  for (const [item, options, mappedName, why] of [
+    [mapped, {}, 'bottom-right (124mm)', 'an event that carries the mapped name'],
+    [{...mapped, nearest_pocket_text: undefined}, {review: {pocketText: value => `mapped(${value})`}}, 'mapped(foot-right (124mm))', 'an event that carries only the raw key']
+  ]) {
+    const rail = asRail(adapterBox(), item, options);
+    const panel = stageEventPanel(adapterBox(), item, options);
+    assert.ok(rail.includes(mappedName), `the rail card shows the mapped name for ${why}`);
+    assert.ok(panel.includes(mappedName), `the inspector shows the mapped name for ${why}`);
+    assert.ok(!withoutMapped(rail).includes('foot-right'), `the rail never prints the raw pocket key for ${why}`);
+    assert.ok(!withoutMapped(panel).includes('foot-right'), `the inspector never prints the raw pocket key for ${why}`);
+  }
 });
 
 test('a foreign correction and a rejected quad are both stated on the stage', () => {
@@ -1387,12 +1558,39 @@ test('a cold frame can start a correction without a devtools call', () => {
   const person = stage({...base, selection:{kind:'person', track:3, person:{cluster_id:null}}});
   assert.ok(person.includes('Identity') && !person.includes('data-vs-action="add-polygon"'), 'the person block stays the identity block');
   assert.ok(!person.includes('data-vs-value="A"') && !person.includes('data-vs-value="B"'), 'the person block no longer offers the removed A/B seeds');
-  assertSourceContract('annotator/vision-stage.js', "case 'identity-save'", 'the surface must act on both identity actions');
-  assertSourceContract('annotator/vision-stage.js', "case 'identity-clear'", 'the surface must act on both identity actions');
-  // Every one of these buttons reaches a real engine entry point.
-  for (const action of ['tool','add-polygon','clear-polygon','save-corrections']) {
-    assertSourceContract('annotator/vision-stage.js', `case '${action}'`, `the surface must act on ${action}`);
-  }
+  // Every one of these buttons is a door: pressing it reaches an engine entry
+  // point, by name. A control that renders but acts on nothing fails here.
+  const doors = (snapshot, options = {}) => {
+    const calls = [];
+    const seam = stageSeam(adapterBox(), snapshot, {...options, review: {
+      seedIdentity: (...args) => calls.push(['seedIdentity', ...args]),
+      setSeed: (...args) => calls.push(['setSeed', ...args]),
+      clearIdentity: (...args) => calls.push(['clearIdentity', ...args]),
+      setTool: (...args) => calls.push(['setTool', ...args]),
+      addPolygon: (...args) => calls.push(['addPolygon', ...args]),
+      clearPolygon: (...args) => calls.push(['clearPolygon', ...args]),
+      saveCorrections: (...args) => calls.push(['saveCorrections', ...args])
+    }});
+    return {seam, calls};
+  };
+  const track = {...base, selection:{kind:'person', track:3, person:{cluster_id:null}}};
+  const typed = doors(track);
+  typed.seam.press('identity-save');
+  assert.deepStrictEqual(typed.calls[0] && typed.calls[0].slice(0, 1), ['setSeed'], 'Save with no regular picked reaches the engine');
+  const picked = doors(track);
+  picked.seam.mount.querySelector('[data-vs-action="regular"]').value = 'p1';
+  picked.seam.press('identity-save');
+  assert.strictEqual(picked.calls[0] && picked.calls[0][0], 'seedIdentity', 'and a picked regular saves through seedIdentity');
+  assert.strictEqual(picked.calls[0] && picked.calls[0][2], 'p1', 'carrying the regular the picker held at click time');
+  const wiped = doors(track);
+  wiped.seam.press('identity-clear');
+  assert.deepStrictEqual(wiped.calls[0] && wiped.calls[0].slice(0, 1), ['clearIdentity'], 'Clear reaches the engine too');
+  const frame = doors({...base, dirty:true, selection:{kind:'box', box:0}});
+  frame.seam.press('tool', 'draw');
+  for (const action of ['add-polygon', 'clear-polygon', 'save-corrections']) frame.seam.press(action);
+  assert.deepStrictEqual(frame.calls.map(call => call[0]), ['setTool', 'addPolygon', 'clearPolygon', 'saveCorrections'],
+    'and every frame control reaches its engine entry point, in the order the operator presses them');
+  assert.deepStrictEqual(frame.calls[0].slice(0, 2), ['setTool', 'draw'], 'the tool control passes the tool it was told to select');
   for (const api of ['setTool','addPolygon','clearPolygon','runInference','saveCorrections']) {
     assert.ok(typeof sandbox.window.CornerPocketReview[api] === 'function', `the engine must expose ${api}`);
   }
@@ -1532,11 +1730,19 @@ test('the stage is one video with the overlay on top of it', () => {
   }
   // The inspector holds no picture at all: the stage is the one surface for a
   // cue, and it already freezes into the still when the window cannot play.
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
+  // The inspector holds no picture at all: the stage is the one surface for a cue.
+  // No video element, no clip fetch, no second still: that absence is a property of
+  // the source, not of one render, so it stays a source contract.
   assertSourceContract('annotator/vision-stage.js', /<video/, 'the inspector video element is gone', true);
   assertSourceContract('annotator/vision-stage.js', '/api/clip', 'the inspector no longer fetches a raw clip', true);
-  assertSourceContract('annotator/vision-stage.js', 'data-vs-action="play-event"', 'the cue plays in the stage instead');
   assertSourceContract('annotator/vision-stage.js', 'vs-evidence', 'the inspector keeps no second picture surface either', true);
+  // And the cue's own button is the door to that one surface.
+  const played = [];
+  const cue = stageSeam(adapterBox(), visionSnapshot({selection: {kind: 'event'},
+    events: {items: [{id: 9, type: 'shot', t: 9.0}], index: 0, reviewed: 0}}), {review: {playEvent: (...args) => played.push(args)}});
+  assert.ok(cue.panel().includes('data-vs-action="play-event"'), 'the cue offers the stage playback');
+  cue.press('play-event', 0);
+  assert.deepStrictEqual(played, [[0]], 'and pressing it plays that cue in the stage');
 });
 
 test('the Vision tab renders one picture surface for the selected cue', () => {
@@ -1908,10 +2114,23 @@ test('a person track is labelled as one regular or one guest name, and Save hits
   const footer = context.actions(person);
   assert.ok(footer.includes('data-vs-action="identity-save"') && footer.includes('data-vs-action="identity-clear"'), 'Save and Clear are the only writes');
   assert.ok(!footer.includes('data-vs-value="A"') && !footer.includes('data-vs-value="B"') && !footer.includes('data-vs-value="clear"'), 'the footer keeps no legacy seed buttons');
-  // Which path each choice takes, pinned at the call site and in the engine.
-  assertSourceContract('annotator/vision-stage.js', 'if (picked) target.seedIdentity(node, picked);', 'a picked regular calls seedIdentity');
+  // Which path each choice takes, driven: the picker's value at click time decides.
+  const routed = [];
+  const routeContext = adapterSeam('en', ROSTER, {review: {
+    seedIdentity: (...args) => routed.push(['seedIdentity', ...args]),
+    setSeed: (...args) => routed.push(['setSeed', ...args])}});
+  const saveWith = value => {
+    const drive = routeContext.mount(person);
+    if (value) drive.mount.querySelector('[data-vs-action="regular"]').value = value;
+    drive.press('identity-save');
+  };
+  saveWith('p1');
+  assert.strictEqual(routed[0] && routed[0][0], 'seedIdentity', 'a picked regular calls seedIdentity');
+  assert.strictEqual(routed[0] && routed[0][2], 'p1', 'with the regular the picker held at click time');
+  saveWith('');
+  assert.strictEqual(routed[1] && routed[1][0], 'setSeed', 'and a typed name calls setSeed');
+  assert.deepStrictEqual(routed.map(call => call[0]), ['seedIdentity', 'setSeed'], 'the two paths never cross');
   assertSourceContract('annotator/vision-stage.js', /find\(x => String\(x\.id\) === String\(s\.persons\.track\)\)\?\.seed/, 'the inspector signature carries the selected track seed, so a save repaints the block that saved it');
-  assertSourceContract('annotator/vision-stage.js', 'else { guestDraft = null; target.setSeed(node, name); }', 'a typed name calls setSeed');
   // Picking a regular turns the guest box off instead of leaving two competing inputs.
   const driven = context.mount(person);
   driven.pick('regular', 'p1', {value: 'p1'});
@@ -1932,6 +2151,19 @@ test('a person track is labelled as one regular or one guest name, and Save hits
   const autoBlock = context.panel(auto);
   assert.ok(autoBlock.includes('automatic face match') && autoBlock.includes('prediction B'), 'an automatic match says it is one, next to the stored prediction');
   assert.ok(!autoBlock.includes('manual bind'), 'an automatic match is never reported as a manual bind');
+});
+
+// The row attribute names the row's own track. The guard read that field off a name the module
+// never defined, so a row click raised ReferenceError before the action could run at all.
+test('a track row selects its own track before an attribution acts on it', () => {
+  const picked = [];
+  const context = adapterSeam('en', ROSTER, {review: {
+    selectTrackAndSeek: id => { picked.push(String(id)); }}});
+  const state = visionSnapshot({persons:{tracks:[{id:3, seed:null}], track:7, windows:[], win:'68-94', status:'', predictions:null}});
+  context.pick(state, 'regular', 'p1', {value: 'p1', dataset: {vsTrack: '3'}});
+  assert.deepStrictEqual(picked, ['3'], 'the row switches the stage to the track the row names');
+  context.pick(state, 'regular', 'p1', {value: 'p1', dataset: {vsTrack: '7'}});
+  assert.deepStrictEqual(picked, ['3'], 'and a row that is already selected switches nothing');
 });
 
 test('a legacy A/B seed still renders on the rail and in the identity block', () => {
@@ -2252,12 +2484,27 @@ test('the panel column shows a selection and nothing else (owner round 26 item 3
   // The empty state held the third column and told the operator to select something. It is gone: no
   // selection, no column, and the stage keeps the width. A picked track is written in the overlay, so
   // the column does not count as used for it either.
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
-  assertSourceContract('annotator/vision-stage.js', "const selected = s.selection.kind !== 'none';", 'the overlay reads the selection');
-  assertSourceContract('annotator/vision-stage.js', 'const inColumn = selected && !picked;', 'and keeps the column for a selection it does not own');
-  assertSourceContract('annotator/vision-stage.js', 'inspector.hidden = !inColumn;', 'and hides the panel column without one');
-  assertSourceContract('annotator/vision-stage.js', 'tabs.hidden = !inColumn;', 'and the sheet tabs that open it');
-  assertSourceContract('annotator/vision-stage.js', 'opts.setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'and hands the shell state to the writer the console gave it');
+  // Driven, not read: the column shows a selection it does not hand to the overlay,
+  // and the shell the console owns is told on every render so it never has to guess.
+  const shells = [];
+  const box = adapterBox();
+  const inspector = box.document.register('#vs-inspector');
+  const tabs = box.document.register('.vs-sheettabs');
+  const show = state => {
+    const seam = stageSeam(box, state, {setShell: value => shells.push(value)});
+    return {seam, shell: {...shells[shells.length - 1]}, hidden: [inspector.hidden, tabs.hidden]};
+  };
+  const empty = show(visionSnapshot({selection: {kind: 'none'}}));
+  assert.deepStrictEqual(empty.hidden, [true, true], 'no selection: the column and the sheet tabs that open it are hidden');
+  assert.deepStrictEqual(empty.shell, {labelOverlay: false, vsPanel: false}, 'and the shell is told to let the stage keep the width');
+  const drawn = show(visionSnapshot({selection: {kind: 'box', box: 0}}));
+  assert.deepStrictEqual(drawn.hidden, [false, false], 'a drawn selection: the column carries it');
+  assert.deepStrictEqual(drawn.shell, {labelOverlay: false, vsPanel: true}, 'and the shell keeps the third column');
+  const track = show(visionSnapshot({selection: {kind: 'person', track: 2, person: {track_id: 2, cluster_id: null}}}));
+  assert.deepStrictEqual(track.hidden, [true, true], 'a picked track: the column gives way to the overlay');
+  assert.deepStrictEqual(track.shell, {labelOverlay: true, vsPanel: false}, 'and the shell narrows the label column');
+  assert.ok(track.seam.overlay().includes('Identity'), 'the overlay carries that track block');
+  assert.strictEqual(track.seam.html('#vs-inspector-scroll'), '', 'and the column keeps no second copy of it');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
   assertSourceContract('annotator/ops.css', /#ops-shell\[data-vs-panel="0"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\)\}/, 'the third column collapses when there is no panel');
   assertSourceContract('annotator/ops.css', /#ops-shell \[hidden\]/, 'and [hidden] outranks the panel display rules');
@@ -2835,8 +3082,27 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
   // The panel stays open while an id is typed, so the chips re-render the poll triggers keeps it.
   assert.ok(V.chips(visionSnapshot()).includes('value="https://www.twitch.tv/videos/1000000011"'),
     'including a chips re-render, which is what the poll triggers');
-  assertSourceContract('annotator/vision-stage.js', 'document.activeElement', 'and a focused field keeps its focus and caret across that rebuild');
-  assertSourceContract('annotator/vision-stage.js', 'setSelectionRange', 'and a focused field keeps its focus and caret across that rebuild');
+  // (3) The rebuild above keeps the value; it also puts the focus and the caret back on
+  // the field that had them, so a live-status poll never interrupts typing.
+  const box = adapterBox();
+  const stage = stageSeam(box, visionSnapshot({source: {kind: 'live'}, live: {state: 'idle'}}));
+  stage.press('source-panel');
+  const chips = stage.mount.region('#vs-chips');
+  assert.ok(chips.innerHTML.includes('data-vs-field="vod"'), 'the source panel holds the VOD field');
+  const typing = {dataset: {vsField: 'vod'}, selectionStart: 24, focus() { this.focused = true; }, setSelectionRange(from, to) { this.range = [from, to]; }};
+  const restored = {dataset: {vsField: 'vod'}, focus() { this.focused = true; }, setSelectionRange(from, to) { this.range = [from, to]; }};
+  chips.contains = node => node === typing;
+  chips.querySelector = selector => (selector.includes('data-vs-field="vod"') ? restored : null);
+  box.document.activeElement = typing;
+  stage.press('source-panel');
+  assert.strictEqual(restored.focused, true, 'and a focused field keeps its focus across that rebuild');
+  assert.deepStrictEqual(restored.range, [24, 24], 'and its caret, so the next keystroke lands where the last one did');
+  // A focus the chip row does not hold is none of its business.
+  const outside = stageNode();
+  box.document.activeElement = {dataset: {vsField: 'vod'}};
+  chips.querySelector = selector => (selector.includes('data-vs-field="vod"') ? outside : null);
+  stage.press('source-panel');
+  assert.strictEqual(outside.focused, undefined, 'and a field outside the row is left alone');
 });
 
 test('F2: one click on the anchors layer loads them, and a drawn chip says so to a screen reader', () => {
@@ -3200,17 +3466,24 @@ test('the engine mounts a stub DOM and a stub network through one seam', () => {
 
 
 test('round 26 / owner item 3: a picked track has one panel, and it is the overlay', () => {
-  const adapter = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
-  assertSourceContract('annotator/vision-stage.js', '? `${inspectorHTML(s)}<div class="vs-inspector-actions">', 'the overlay carries the whole track block, not just the label form');
-
-  assertSourceContract('annotator/vision-stage.js', "const picked = s.selection.kind === 'person';", 'the overlay knows which selection it owns');
-
-  assertSourceContract('annotator/vision-stage.js', "body.innerHTML = inColumn ? inspectorHTML(s) : '';", 'the column keeps no second copy of the track block');
-
-  assertSourceContract('annotator/vision-stage.js', 'opts.setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'the column collapses while the overlay holds the block');
-
   assertSourceContract('annotator/ops.css', 'max-height:min(56dvh,520px)', 'the overlay is tall enough to hold the whole block');
+  // Driven: the picked track is written once, in the overlay, and the overlay holds the whole
+  // block - the label form and the action footer that belongs to it. The column carries a
+  // selection the overlay does not take, and nothing else.
+  const shells = [];
+  const seamOf = state => stageSeam(adapterBox(), state, {setShell: value => shells.push(value)});
+  const person = seamOf(visionSnapshot({selection: {kind: 'person', track: 2, person: {track_id: 2, cluster_id: null}}}));
+  const overlay = person.overlay();
+  assert.ok(overlay.includes('Identity'), 'the overlay knows which selection it owns and holds that track block');
+  assert.ok(overlay.includes('vs-inspector-actions') && overlay.includes('data-vs-action="identity-save"'),
+    'the whole block, action footer included, not just the label form');
+  assert.strictEqual(person.html('#vs-inspector-scroll'), '', 'and the column keeps no second copy of it');
+  const drawn = seamOf(visionSnapshot({selection: {kind: 'box', box: 0}}));
+  assert.ok(drawn.html('#vs-inspector-scroll').includes('data-vs-action='),
+    'a selection the overlay does not take: the column carries the block instead');
+  assert.deepStrictEqual(shells.map(s => ({...s})), [{labelOverlay: true, vsPanel: false}, {labelOverlay: false, vsPanel: true}],
+    'and the shell is told which surface holds the block, so the column collapses while the overlay does');
 
 });
 

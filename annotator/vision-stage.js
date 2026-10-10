@@ -1366,7 +1366,7 @@ function act(action, value, node) {
   // A control inside a track row belongs to that row's track, not to whichever track happened to
   // be selected, so the row selects its own track before the action is interpreted.
   const rowTrack = node?.dataset?.vsTrack;
-  if (rowTrack && ['regular','guest-name','seed'].includes(action) && String(snapshot().persons?.track ?? '') !== String(rowTrack)) {
+  if (rowTrack && ['regular','guest-name','seed'].includes(action) && String(s?.persons?.track ?? '') !== String(rowTrack)) {
     // selectTrack() inside this call sets the selection synchronously; the loads it starts are
     // awaited by the engine, and the action below reads the selection, so nothing needs to wait here.
     const switching = target.selectTrackAndSeek(rowTrack);
@@ -1731,9 +1731,50 @@ function attach(options) {
   root.addEventListener('keydown', onKey, true);
   const unsubscribe = engine()?.subscribe ? engine().subscribe(render) : null;
   render();
-  return {render, detach() { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput);
+  return publish(() => { if (unsubscribe) unsubscribe(); root.removeEventListener('click', onClick); root.removeEventListener('change', onChange); root.removeEventListener('input', onInput);
     root.removeEventListener('pointerdown', onPointerDown); root.removeEventListener('pointerup', onPointerUp);
-    root.removeEventListener('pointercancel', onPointerUp); root.removeEventListener('keydown', onKey, true); }};
+    root.removeEventListener('pointercancel', onPointerUp); root.removeEventListener('keydown', onKey, true); });
+}
+// ---- the published surface -------------------------------------------------
+// attach() is this module's only door, so this block is the only place that says
+// what walks through it. Three named lists, and no other part of the file names
+// them. A caller reads the interface here and nowhere else:
+//
+//   OPTIONS  - every option key the console may set. attach() reads two further
+//              keys that are wiring, not options: mount (the element to build in)
+//              and review (the engine to drive). The console passes keys that are
+//              in neither list (clock, setAutoInference, reloadRoster); this
+//              module never reads them, so they change nothing.
+//   VERBS    - every engine entry point this module calls, by name. attach()
+//              returns one member per name, so the stage is driven by name
+//              instead of by reading the call sites below.
+//   READINGS - every top-level field of engine().snapshot() this module reads.
+//              attach() returns one member per name, so a caller reads a fact
+//              group by name instead of reaching into the snapshot by hand.
+//
+// The handle carries render, detach, options(), verbs(), readings(), accepts(key)
+// and option(key) beside those names. tests/test_app_timeline.js checks both
+// directions: that each list equals what the code above actually calls and reads,
+// and that the handle carries every name in each list.
+const OPTIONS = ['channels','chat','fixedClip','forgetChannel','frameHost','lang','liveDetectors','liveOnly','notice','openSources','pickLive','pickReplay','regulars','replayChoice','setLiveDetectors','setShell','startLive','stopLive','toggleChat','vods'];
+const WIRING = ['mount','review'];
+const VERBS = ['addPolygon','cancelEnroll','clearIdentity','clearPolygon','clearSelection','colourWord','deleteBox','enrollConfirm','enrollPreview','freeze','labelBall','linkTrack','liveStateText','loadAnchors','nudgeAnchor','playEvent','pocketText','rebuild','refreshRebuild','reloadDatasets','saveAnchors','saveCorrections','saveVerdict','seedIdentity','seek','seekTime','selectAnchor','selectCrop','selectEvent','selectTrackAndSeek','setBoxLabel','setDataset','setDetector','setEnrollName','setEventFilter','setNewBoxLabel','setNote','setPlaying','setSeed','setShooter','setTool','setVerdictDraft','setWindow','snapshot','stepFrame','subscribe','text','toggleOverlay'];
+const READINGS = ['anchors','balls','busy','cloth','corrections','dataset','datasets','detectors','dirty','drawn','enroll','eventFilter','events','eventsAnalysed','focus','frame','live','loading','notice','overlay','persons','playback','receipts','selection','set','source','verdictDraft'];
+function publish(detach) {
+  const handle = {
+    render, detach,
+    options: () => OPTIONS.slice(),
+    verbs: () => VERBS.slice(),
+    readings: () => READINGS.slice(),
+    accepts: key => OPTIONS.includes(key) || WIRING.includes(key),
+    option: key => opts && (OPTIONS.includes(key) || WIRING.includes(key)) ? opts[key] : undefined
+  };
+  // One named member per list entry: a verb forwards to the engine, a reading
+  // reads the snapshot. Both return undefined when the engine is not attached,
+  // so a stale handle never throws where the module itself would not.
+  for (const name of VERBS) handle[name] = (...args) => { const target = engine(); return target && typeof target[name] === 'function' ? target[name](...args) : undefined; };
+  for (const name of READINGS) handle[name] = () => { const s = snap(); return s ? s[name] : undefined; };
+  return handle;
 }
 // The console holds one adapter. attach() binds it to a mount, builds the workbench inside that
 // mount and returns the handle its caller uses. Every renderer stays private to this module, and
