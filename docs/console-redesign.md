@@ -3328,22 +3328,53 @@ reading of the source, and its grep counts include comments.
 
 | Candidate | The defect | Where it stands |
 | --- | --- | --- |
-| Strong 1, the golden fixture | `tools/playfield_vod_audit.py:86-95` writes the tracked fixture `tests/fixtures/playfield_quads.json` before its own gates: `FLOOR = 8` at `:100` and `KNOWN_REFUSED` with the floor at `:117-127`. `tests/test_playfield_quads.py:34-53` then replays that fixture through the same `check_quad` that produced it, so a tolerance regression can be baked into the golden. The fixture holds 36 picks over 12 VODs with counts {ok 24, refused 12, no_quad 21}, it passes exactly 8 = `FLOOR`, `FLOOR` is spelled twice, the producer is named only by a free-text date, the test never asserts `KNOWN_REFUSED` membership, and the tool has no main guard and writes the repository at import | In flight, worker `bca04d44`, scope `tools/playfield_vod_audit.py`, `tests/test_playfield_quads.py` and the fixture |
-| Strong 2, the crop-set vocabulary | One vocabulary is written five times: identical `BALL_SETS` tuples at `src/store.py:55`, `src/store_files.py:21`, `src/store_import.py:45`, `annotator/unified_server.py:40`, plus the `CHECK` at `db/migrations/0002_user_data.sql:174`. Only `src/store_pg.py:33` imports the owner, and no test compares the copies | In flight, worker `69541e4f` |
-| Strong 3, the dataset-id grammar | The grammar is implemented twice: `dataset_id_ok` at `db/migrations/0004_imported_datasets.sql:24-31` against `parse_imported_id` at `src/datasets.py:84`. The SQL function has 0 hits under `tests/`, and its "25 edge cases equal" claim lives only in a note (`.pm/PROJECT.md:2179`). `:33-34` drops constraints by auto-generated names that `0002` never declares | Open |
+| Strong 1, the golden fixture | `tools/playfield_vod_audit.py:86-95` writes the tracked fixture `tests/fixtures/playfield_quads.json` before its own gates: `FLOOR = 8` at `:100` and `KNOWN_REFUSED` with the floor at `:117-127`. `tests/test_playfield_quads.py:34-53` then replays that fixture through the same `check_quad` that produced it, so a tolerance regression can be baked into the golden. The fixture holds 36 picks over 12 VODs with counts {ok 24, refused 12, no_quad 21}, it passes exactly 8 = `FLOOR`, `FLOOR` is spelled twice, the producer is named only by a free-text date, the test never asserts `KNOWN_REFUSED` membership, and the tool has no main guard and writes the repository at import | Landed, commit `e0557df`: the fixture opens with a `provenance` block (producer, plan, the live rule values, floor `8` and the 11 refused names), and the tool writes the fixture only with `--write-fixture` when both gates pass, else `FIXTURE WRITE REFUSED: <path> not written: gate <name> failed`. `tests/test_playfield_quads.py` 4 to 14 tests; `FLOOR = 8` to `7` fails exactly one test that names both the fixture and `tools/playfield_vod_audit.py:54`; `picks`, `counts` and `passing` are byte-identical to the old file |
+| Strong 2, the crop-set vocabulary | One vocabulary is written five times: identical `BALL_SETS` tuples at `src/store.py:55`, `src/store_files.py:21`, `src/store_import.py:45`, `annotator/unified_server.py:40`, plus the `CHECK` at `db/migrations/0002_user_data.sql:174`. Only `src/store_pg.py:33` imports the owner, and no test compares the copies | Landed, commit `0c30e5d`: `src/store_files.py:26 BALL_SETS` is the one Python owner, and `src/store.py`, `src/store_import.py`, `src/store_pg.py` and `annotator/unified_server.py` import it. `tests/test_store_files.py` proves the Python list and the SQL `CHECK` hold the same names in the same order; renaming one name in the owner failed exactly one test in each new test file |
+| Strong 3, the dataset-id grammar | The grammar is implemented twice: `dataset_id_ok` at `db/migrations/0004_imported_datasets.sql:24-31` against `parse_imported_id` at `src/datasets.py:84`. The SQL function has 0 hits under `tests/`, and its "25 edge cases equal" claim lives only in a note (`.pm/PROJECT.md:2179`). `:33-34` drops constraints by auto-generated names that `0002` never declares | Landed, commit `2186f91`: `tests/dataset_id_cases.py` is a corpus of 51 spellings with hand-written verdicts, and both sides were proved to bite: `src/datasets.py:36 _ID_MAX` `64` to `63` fails exactly the 64-character case, and `db/migrations/0004_imported_datasets.sql:27` `length(d) <= 64` to `63` fails the same case through the database test |
 | Worth, the fingerprint script | `scripts/pool-write-fingerprint.sql` holds 18 hand-copied `SELECT` branches against 19 tables under `db/migrations`, with 0 code callers | Open |
 | Worth, the deployment conventions | Deployment has two conventions and no installer: 3 placeholders over 6 occurrences in 2 template services against 2 checked-in drop-ins. `40-public-board.conf:10` hard-codes `%h/projects/pool` and re-spells `--port 8130` although `annotator/unified_server.py:2601` already defaults it, and the `sed` render is copy-pasted at `docs/postgres.md:225` and `:391` | Open |
 | Worth, the audit harness | The two audit tools are a copy-paste harness that re-spells the live configuration: `TableStage(..., dataset=None, measure_every_n=30)` at `:35` and `:77`, identical `StageContext` triples at `:46` and `:87`, `30` spelled at 5 sites, while the live path passes the session dataset at `annotator/live_processing.py:388-390` | Open |
 | Speculative, the unreferenced folders | `viz/` holds 9 unreferenced HTML fragments (928 lines, untracked, ignored by `.gitignore:14`), and `research/player-attribution-research.md` (38 lines) has 0 references | Open |
 
-### In flight
+### The commits so far
 
-Four workers hold disjoint write scopes, and none of them may commit.
-
-| Work | Scope |
+| Commit | What it says |
 | --- | --- |
-| The sam3 artifact (round 35, Strong 2): one owner for `out/scan30/sam3_results.json`, its row shape and its producer stamp, because two modules declare it read-only while two others rewrite it | `src/sam3_ball_cache.py`, `src/eval_events.py`, `src/rebuild_events_calibrated.py`, `src/scan_events.py` and one new test file |
-| The golden playfield fixture (round 37, Strong 1): the producer must not write the fixture its own test judges, and the test must hold the refused list and the floor | `tools/playfield_vod_audit.py`, `tests/test_playfield_quads.py`, `tests/fixtures/playfield_quads.json` |
-| The crop-set vocabulary (round 37, Strong 2): one owner for the five copies, with the SQL `CHECK` expression unchanged | `src/store.py`, `src/store_files.py`, `src/store_import.py`, `src/store_pg.py`, `annotator/unified_server.py`, `db/migrations/0002_user_data.sql` and one test file |
-| A read-only walk of the test suite as a system, which no round has read: `/tmp/dshsess/walk_tests_round38.md` | Read only |
+| `2186f91` | datasets: the id grammar is one corpus that both sides answer |
+| `0c30e5d` | store: one owner names the crop sets, and the database list is proved equal |
+| `e0557df` | tests: the playfield record carries how it was made, and the tool refuses a bad run |
+
+Four workers held disjoint scopes and none of them committed. The sam3 artifact (round 35, Strong 2)
+landed as `eeca97d`, the playfield fixture as `e0557df`, the crop-set vocabulary as `0c30e5d`, and
+the read-only walk of the test suite as `/tmp/dshsess/walk_tests_round38.md`, which round 38 reads.
+
+## Round 38 · the test suite as a system (2026-10-10)
+
+A read-only walk of the test suite as a system, against the tree of `c2e1b951`. It ran the suites,
+read the four harnesses and counted call sites. `docs/console-redesign.md` itself is one of the
+inputs it read: the source-text ledger of `tests/test_app_timeline.js` was built by round 34, so the
+walk checks it with the same suspicion as the product code.
+
+Delivered `/tmp/dshsess/walk_tests_round38.md`: 9 candidates, 4 Strong, 4 Worth exploring and 1
+Speculative. Every count below is a reading of the source, and its grep counts include comments.
+
+| Candidate | The defect | Where it stands |
+| --- | --- | --- |
+| Strong 1, the frozen evidence | `tests/test_ball_fp_audit.py:412` `class FrozenEvidenceTest` holds 5 test methods that read `out/ball-fp-audit/cases.json` (14603 bytes), `out/ball-fp-audit/verdicts.json` (35249 bytes) and `out/tiny_ball_probe/report_960x540.json` (9821 bytes). `:416-417` skips the class when `CASES_OUT` is absent, and `:439`, `:456`, `:467` skip inside methods with `verdicts have not been computed`. `out/` is ignored by `.gitignore:14` and `git ls-files out/ball-fp-audit out/tiny_ball_probe` returns 0 files, so the same commit runs 5 assertions here and reports 5 skips in a fresh clone | In flight, worker `6ef5e0c6` |
+| Strong 2, the absence claim | The ledger `tests/test_app_timeline.js:119-132` computes a `between` window with `text.indexOf`, and `:130` tests the snippet against `scope`. If either anchor is renamed, `scope` is `''`, and the one call site that passes `absent: true` with a window (`:1379`) passes on the empty string. 45 call sites use the helper, and 11 pass the `true` shorthand | Landed, commit `cd69d75`: the helper asserts that both anchors were found before the window is built. Proved by restoring the old helper with a renamed anchor (94 passed, 0 failed) and then the new helper (93 passed, 1 failed) |
+| Strong 3, the fixture listener | `tests/serve_operations_fixture.py:33` holds `class FixtureServer` with `:44 request_queue_size = 64`, a copy of `annotator/unified_server.py:2122` inside `class BoundedHTTPServer`, which `:29` already imports five names from. `tests/serve_vod_fixture.py:131` serves the product class instead. A change of the ceiling leaves the fixture green | Landed, commit `bd90a09`: the fixture serves `annotator.unified_server.BoundedHTTPServer`, and new tests in `tests/test_unified_server.py` (class `BrowserFixtureListenerTests`) scan `tests/*.py` for the backlog and assert the fixture listener is the product class. `tests/test_unified_server.py` 83 to 85 tests |
+| Strong 4, no single runner | No `Makefile`, no `package.json` and no root script exists, so no one command runs the python suite and the three javascript suites. The documented node forms disagree over 47 occurrences, and a bare `node --test` collects 0 tests and exits 0 (node v24.21.0), because no file name matches the node default patterns `*.test.js` and `test-*.js` | Landed, commit `65b4308`: `scripts/pool-test.sh` runs the python suite and the three javascript suites, `pool-test.sh python` and `pool-test.sh js` run one half, and a different argument exits 2. The README names the script and the reason why a bare `node --test` proves nothing. `make` is not installed here, so the runner is a shell script |
+| Worth, two harness families | Three javascript harnesses use two assert modules and two DOM stub families | Open |
+| Worth, one class-level skip | One class-level skip turns off 26 of 94 test methods, and the module writes the same fixture document three times | Open |
+| Worth, wall-clock and threads | The suite measures wall-clock time and thread count, which makes a result depend on the machine that ran it | Open |
+| Worth, skip calls | Skip calls outnumber the checks that could describe what ran | Open |
+| Speculative, the palette list | The palette check holds a hand-written list of 40 values and scans one directory level | Open |
+
+### The commits so far
+
+| Commit | What it says |
+| --- | --- |
+| `bd90a09` | tests: the browser fixtures serve the production listener |
+| `cd69d75` | tests: a source window with a missing anchor fails instead of passing empty |
+| `65b4308` | tests: one entry point runs the four suites, and the README names it |
 
