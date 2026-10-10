@@ -39,7 +39,8 @@ from src import sam3_artifact  # noqa: E402
 from src.ball_census import classify_ball_color  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
-from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,  # noqa: E402
+from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,  # noqa: E402
+                           SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
 
 #: The app's own 56 frames, named by `src/sam3_artifact.py`.  This tool reads it
@@ -49,7 +50,7 @@ APP_CACHE = str(sam3_artifact.artifact_path().relative_to(sam3_artifact.ROOT))
 OWN_CACHE = "out/scan30/sam3_census.json"       # added by this tool: written
 MIN_SCORE = SAM3_BALL_MIN_SCORE
 MIN_AREA, MAX_AREA = SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MAX_AREA_PX
-MIN_R, MAX_R = 4.0, 60.0
+MIN_R, MAX_R = SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MAX_RADIUS_PX
 
 
 def load_cache(path) -> dict:

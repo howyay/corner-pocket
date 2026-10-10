@@ -27,7 +27,8 @@ from ball_detect import BALL_COLORS, detect_ball_candidates
 from sam3_cpu import load_sam3_image_model, make_processor
 from table_detect import detect_table
 from table_geometry import CANON_W, CANON_H, homography_to_canonical
-from src.ball_gate import (POC_PIPELINE_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
+from src.ball_gate import (POC_PIPELINE_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
+                           SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
 
 CANON_BALL_R = 28.6  # mm (57.15 mm ball)
@@ -174,7 +175,7 @@ def filter_instances(state, cloth_mask, bgr) -> list[dict]:
         w, h = x1 - x0, y1 - y0
         if w <= 0 or h <= 0 or not (0.5 < h / w < 1.6):
             continue
-        if r < 4.0 or r > 60.0:
+        if r < SAM3_BALL_MIN_RADIUS_PX or r > SAM3_BALL_MAX_RADIUS_PX:
             continue
         cls = classify_ball(bgr, m > 0.5)
         out.append(

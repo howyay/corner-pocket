@@ -57,7 +57,8 @@ import math
 import time
 from pathlib import Path
 
-from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
+from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
+                           SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,12 +96,12 @@ MATCH_TOL_PX = 6.0
 # FN recovery counts line up with the precision/recall cost already measured.
 FN_THRESHOLDS = tuple(round(0.05 + 0.025 * i, 3) for i in range(38))
 
-# The area window of the admission gate.  The values come from ``src.ball_gate``,
-# their only definition site.  That module imports no cv2 and no table detector,
-# so this module no longer needs a copy of them; a test asserts the identity of
-# both objects.
+# The area window and the radius band of the admission gate.  The values come
+# from ``src.ball_gate``, their only definition site.  That module imports no
+# cv2 and no table detector, so this module no longer needs a copy of them; a
+# test asserts the identity of all four objects.
 BALL_MIN_AREA, BALL_MAX_AREA = SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MAX_AREA_PX
-BALL_MIN_R, BALL_MAX_R = 4.0, 60.0
+BALL_MIN_R, BALL_MAX_R = SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MAX_RADIUS_PX
 BALL_AREA_RANGE = (BALL_MIN_AREA, BALL_MAX_AREA)
 BALL_R_RANGE = (BALL_MIN_R, BALL_MAX_R)
 # Four lines of header on every crop: the verdict, the numbers behind it, and the

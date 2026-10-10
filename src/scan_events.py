@@ -36,7 +36,8 @@ from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_cano
                                 nearest_pocket)
 from table_detect import detect_table
 from src.ball_gate import (CLASSICAL_BALL_MAX_AREA_960X540_PX, SAM3_BALL_MAX_AREA_PX,
-                           SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_SCORE)
+                           SAM3_BALL_MAX_RADIUS_PX, SAM3_BALL_MIN_AREA_PX,
+                           SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MIN_SCORE)
 
 # physical geometry (Rasson Victory III 9ft, 2540 x 1270 mm): the canonical
 # frame and the pocket table live in table_geometry.py, their only definition
@@ -144,7 +145,7 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
                 continue
             if not cloth[int(cy), int(cx)]:
                 continue
-            if r < 4.0 or r > 60.0:
+            if r < SAM3_BALL_MIN_RADIUS_PX or r > SAM3_BALL_MAX_RADIUS_PX:
                 continue
             p = H @ np.array([cx, cy, 1.0])
             balls.append({

@@ -2,10 +2,18 @@
 
 Nine modules used to spell the gate themselves, and src/pipeline.py capped an
 instance mask at 6000 px while five other sites capped it at 9000 px with no
-stated reason.  src/ball_gate.py now owns the five values.  This file fails when
-a second copy of one of those values comes back, when a gate site stops sharing
-the owner's object, or when the owner's numbers stop matching the ones
-documented here.
+stated reason.  The gate has three bars -- a score cut, an area window and a
+radius band -- and the radius band, 4.0..60.0 px, was still written out at four
+sites after the area and score unification.  src/ball_gate.py now owns the seven
+values.  This file fails when a second copy of one of those values comes back,
+when a gate site stops sharing the owner's object, or when the owner's numbers
+stop matching the ones documented here.
+
+Two sweeps guard the second-home rule, because a number has to sit in the right
+*position* to be a gate number: ``gate_literal_hits`` reads area and score
+positions, ``radius_literal_hits`` reads radius positions.  The second sweep is
+also run over the four spellings the sites actually used, so the guard's bite is
+a test and not a claim.
 
 Nothing here imports a detector, and nothing here reads out/ or data/.  Two gate
 sites are straight-line scripts: src/collect2.py:23-24 makes out/ directories at
@@ -31,31 +39,64 @@ OWNER = SRC / "ball_gate.py"
 GATE_VALUES = (0.62, 60, 6000, 9000, 4200)
 #: A literal counts as a gate position only next to one of these words.
 GATE_WORDS = ("area", "score")
+#: The radius band, the gate's third bar.  Checked apart from GATE_VALUES: the
+#: position that makes a 4.0 or a 60.0 a gate number is a radius position, and a
+#: radius position is not an area position.  ``60`` above is the lower *area*
+#: cap; the ``60.0`` here is a length in pixels.
+RADIUS_VALUES = (4.0, 60.0)
+#: A name is a radius name when one of its tokens is one of these words ...
+RADIUS_WORDS = ("r", "radius")
+#: ... and every other token is one of these qualifiers.  The vocabulary is what
+#: keeps ``pad_r`` (src/motion_scan.py:1623, the padding of a crop) out: "pad" is
+#: not a qualifier, so that 60 stays a padding and never a radius.
+RADIUS_QUALIFIERS = ("min", "max", "ball", "sam3")
+#: The four spellings the gate sites used before the radius band moved, written
+#: here so a test can prove the sweep still catches each one.  If the sweep
+#: stops biting, this test fails with the sweep, not with the tree.
+RADIUS_SPELLINGS = (
+    ("src/pipeline.py", "if r < 4.0 or r > 60.0:\n    continue\n"),
+    ("src/scan_events.py", "if r < 4.0 or r > 60.0:\n    continue\n"),
+    ("src/sam3_ball_cache.py", "MIN_R, MAX_R = 4.0, 60.0\n"),
+    ("src/ball_fp_audit.py", "BALL_MIN_R, BALL_MAX_R = 4.0, 60.0\n"),
+)
+#: Sources that carry a 4.0 or a 60.0 in a radius-*shaped* spot but are not the
+#: gate's radius band.  Each must produce no radius hit at all.
+NOT_THE_RADIUS_BAND = (
+    ("src/motion_scan.py", "pad_l, pad_r, pad_t, pad_b = (60, 20, 16, 34)\n"),
+    ("the area window", "if area < 60 or area > 9000:\n    continue\n"),
+)
 #: The numbers this file documents, with the type each site used before the
-#: move: the gate window was an int pair, the score cut and 4200 were floats.
+#: move: the gate window was an int pair, the score cut and 4200 were floats,
+#: and the radius band was a float pair.
 DOCUMENTED = {
     "SAM3_BALL_MIN_SCORE": 0.62,
     "SAM3_BALL_MIN_AREA_PX": 60,
     "SAM3_BALL_MAX_AREA_PX": 9000,
     "POC_PIPELINE_BALL_MAX_AREA_PX": 6000,
     "CLASSICAL_BALL_MAX_AREA_960X540_PX": 4200.0,
+    "SAM3_BALL_MIN_RADIUS_PX": 4.0,
+    "SAM3_BALL_MAX_RADIUS_PX": 60.0,
 }
 #: Which owner names each gate site reads.  A site that drops a usage fails.
 GATE_SITES = {
     "src/ball_census.py": ("SAM3_BALL_MIN_SCORE",),
     "src/ball_fp_audit.py": ("SAM3_BALL_MIN_SCORE", "SAM3_BALL_MIN_AREA_PX",
-                             "SAM3_BALL_MAX_AREA_PX"),
+                             "SAM3_BALL_MAX_AREA_PX", "SAM3_BALL_MIN_RADIUS_PX",
+                             "SAM3_BALL_MAX_RADIUS_PX"),
     "src/collect2.py": ("SAM3_BALL_MIN_SCORE", "SAM3_BALL_MIN_AREA_PX",
                         "SAM3_BALL_MAX_AREA_PX"),
     "src/fast_ball_labels.py": ("SAM3_BALL_MIN_SCORE",),
     "src/pipeline.py": ("SAM3_BALL_MIN_SCORE", "SAM3_BALL_MIN_AREA_PX",
-                        "POC_PIPELINE_BALL_MAX_AREA_PX"),
+                        "POC_PIPELINE_BALL_MAX_AREA_PX", "SAM3_BALL_MIN_RADIUS_PX",
+                        "SAM3_BALL_MAX_RADIUS_PX"),
     "src/recut_crops.py": ("SAM3_BALL_MIN_SCORE", "SAM3_BALL_MIN_AREA_PX",
                            "SAM3_BALL_MAX_AREA_PX"),
     "src/sam3_ball_cache.py": ("SAM3_BALL_MIN_SCORE", "SAM3_BALL_MIN_AREA_PX",
-                               "SAM3_BALL_MAX_AREA_PX"),
+                               "SAM3_BALL_MAX_AREA_PX", "SAM3_BALL_MIN_RADIUS_PX",
+                               "SAM3_BALL_MAX_RADIUS_PX"),
     "src/scan_events.py": ("SAM3_BALL_MIN_SCORE", "SAM3_BALL_MIN_AREA_PX",
-                           "SAM3_BALL_MAX_AREA_PX", "CLASSICAL_BALL_MAX_AREA_960X540_PX"),
+                           "SAM3_BALL_MAX_AREA_PX", "CLASSICAL_BALL_MAX_AREA_960X540_PX",
+                           "SAM3_BALL_MIN_RADIUS_PX", "SAM3_BALL_MAX_RADIUS_PX"),
     "src/tiny_ball_net.py": ("SAM3_BALL_MIN_SCORE",),
 }
 #: Third-party checkouts that ship under src/, by directory name.  They are not
@@ -144,6 +185,62 @@ def gate_literal_hits(path) -> list:
     return sorted(set(hits))
 
 
+def radius_name(text: str) -> bool:
+    """Is this name a word for the gate's radius?
+
+    True when one of its underscore-separated tokens is ``r`` or ``radius`` and
+    every other token is a qualifier (``min``, ``max``, ``ball``, ``sam3``).
+    ``r`` and ``radius`` pass; ``MIN_R``, ``MAX_R``, ``BALL_MIN_R`` and
+    ``BALL_MAX_R`` pass; ``pad_r`` does not, because ``pad`` is a padding and not
+    a qualifier of a radius.
+    """
+    tokens = [token for token in text.lower().split("_") if token]
+    if not tokens:
+        return False
+    if not any(token in RADIUS_WORDS for token in tokens):
+        return False
+    return all(token in RADIUS_WORDS or token in RADIUS_QUALIFIERS for token in tokens)
+
+
+def radius_literal_hits(source: str) -> list:
+    """(lineno, value, text) for each radius-band number that sits in a radius position.
+
+    A radius position is one of three places: an operand of a comparison whose
+    other side is a radius name; the value of a binding whose name is a radius
+    name; the default of an argument whose name is a radius name.
+    """
+    hits = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Compare):
+            operands = [node.left] + list(node.comparators)
+            texts = [ast.unparse(operand) for operand in operands]
+            for index, operand in enumerate(operands):
+                if not (isinstance(operand, ast.Constant)
+                        and operand.value in RADIUS_VALUES):
+                    continue
+                others = [t for i, t in enumerate(texts) if i != index]
+                if any(radius_name(other) for other in others):
+                    hits.append((operand.lineno, operand.value, ast.unparse(node)))
+        elif isinstance(node, ast.Assign):
+            names = {name for name in assigned_names(*node.targets) if radius_name(name)}
+            if not names:
+                continue
+            for leaf in literals(node.value):
+                if leaf.value in RADIUS_VALUES:
+                    hits.append((leaf.lineno, leaf.value, ast.unparse(node)))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            pairs = list(zip(node.args.args[-len(node.args.defaults):], node.args.defaults)) \
+                if node.args.defaults else []
+            pairs += [(a, d) for a, d in zip(node.args.kwonlyargs, node.args.kw_defaults) if d]
+            for argument, default in pairs:
+                if not radius_name(argument.arg):
+                    continue
+                for leaf in literals(default):
+                    if leaf.value in RADIUS_VALUES:
+                        hits.append((leaf.lineno, leaf.value, argument.arg))
+    return sorted(set(hits))
+
+
 def src_modules() -> list:
     """Every .py under src/ except the owner and the vendored checkouts."""
     return sorted(p for p in SRC.rglob("*.py")
@@ -215,6 +312,58 @@ class OneBallGateTests(unittest.TestCase):
                 found.append(f"{relative}:{lineno}: {value!r} in {text}")
         self.assertEqual(found, [], "a module under src/ defines its own "
                                     "gate number:\n" + "\n".join(found))
+
+    def test_no_module_under_src_restates_the_radius_band(self):
+        # The third bar needs no exemption map.  That is not luck: the sweep
+        # reads a radius position, and the four sites that used to spell the band
+        # each spelled it in one.  A module that spells it again fails here.
+        paths = src_modules()
+        self.assertGreater(len(paths), 60)
+        found = []
+        for path in paths:
+            relative = str(path.relative_to(REPO))
+            source = path.read_text(encoding="utf-8")
+            for lineno, value, text in radius_literal_hits(source):
+                found.append(f"{relative}:{lineno}: {value!r} in {text}")
+        self.assertEqual(found, [], "a module under src/ defines its own radius "
+                                    "band:\n" + "\n".join(found))
+
+    def test_the_radius_sweep_catches_the_four_spellings_the_sites_used(self):
+        # The guard's bite, as a test.  A sweep that stops matching the form the
+        # sites used would let the band be written out again and still pass
+        # test_no_module_under_src_restates_the_radius_band.
+        for _origin, source in RADIUS_SPELLINGS:
+            hits = radius_literal_hits(source)
+            self.assertEqual([value for _lineno, value, _text in hits],
+                             [4.0, 60.0], f"the sweep lost {source!r}")
+
+    def test_the_radius_sweep_leaves_the_other_radius_shaped_numbers_alone(self):
+        # A guard that flags a crop padding, or the area window, would be noise.
+        for origin, source in NOT_THE_RADIUS_BAND:
+            self.assertEqual(radius_literal_hits(source), [],
+                             f"{origin}: the sweep is flagging a different quantity")
+
+    def test_the_owner_states_the_radius_band(self):
+        document = owner.__doc__
+        self.assertIn("SAM3_BALL_MIN_RADIUS_PX", document)
+        self.assertIn("SAM3_BALL_MAX_RADIUS_PX", document)
+        # The four sites the band moved out of are named in the owner, so the
+        # next reader can check the claim instead of taking it.
+        for site in ("src/pipeline.py", "src/scan_events.py",
+                     "src/sam3_ball_cache.py", "src/ball_fp_audit.py"):
+            self.assertIn(site, document)
+        self.assertIn("4.0, 60.0", document)
+        # The radius 60 and the area 60 are two quantities, so they keep two
+        # names and two types.  An int area and a float length cannot be passed
+        # one for the other by accident.
+        self.assertIn("the area 60", document)
+        # Prose is wrapped, so compare it with its whitespace flattened.
+        prose = " ".join(document.split())
+        self.assertIn("A length in pixels and a count of pixels are different "
+                      "quantities", prose)
+        self.assertIs(type(owner.SAM3_BALL_MIN_AREA_PX), int)
+        self.assertIs(type(owner.SAM3_BALL_MAX_RADIUS_PX), float)
+        self.assertIs(type(owner.SAM3_BALL_MIN_RADIUS_PX), float)
 
     def test_the_other_area_decisions_are_the_documented_ones(self):
         # The exemption map is the honest part of the guard: it must not grow
