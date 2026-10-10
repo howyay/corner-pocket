@@ -23,6 +23,41 @@ def file_stamp(path):
     return (hashlib.md5(path.read_bytes()).hexdigest(), path.stat().st_size, path.stat().st_mtime_ns)
 
 
+class LockWait:
+    """The seconds a caller waits for a lock - never the time its own work takes.
+
+    `ClockStreamTests.test_a_waiting_stream_holds_no_lock_and_closes_with_the_server`
+    proves that a waiting clock stream holds no lock. Its first probe bounded the whole
+    operations write with one second, which also measures the disk: 600 in-process writes
+    of that call took p50 8.2 ms with no stream and p50 10.4 ms with one, worst 66 ms, and
+    60 writes over HTTP took p50 12.3 ms, worst 35 ms. The one-second bound reported
+    1.07 s in one run of ten and 3.84 s in one full-suite run, with no lock held in
+    either. This wrapper measures the wait itself, so only a lock that another thread
+    holds can fail the case.
+    """
+
+    def __init__(self, guard):
+        self.guard = guard
+        self.waited = 0.0
+
+    def acquire(self, *arguments, **keywords):
+        began = time.monotonic()
+        held = self.guard.acquire(*arguments, **keywords)
+        self.waited += time.monotonic() - began
+        return held
+
+    def release(self):
+        self.guard.release()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *exception):
+        self.release()
+        return False
+
+
 class ClockApiTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -186,7 +221,10 @@ class ClockStreamTests(unittest.TestCase):
                 data = json.loads(line[6:])
 
     def post(self, payload):
-        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=5)
+        # 30 s, not 5: a write answers in about 12 ms (600 samples, max 66 ms), so this
+        # is a give-up bound for a stalled host, not a claim about the server. A 5 s
+        # bound timed out once in thirteen runs of this module.
+        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=30)
         body = json.dumps(payload).encode()
         connection.request('POST', '/api/clock', body, {'Content-Type': 'application/json'})
         response = connection.getresponse()
@@ -236,9 +274,14 @@ class ClockStreamTests(unittest.TestCase):
         time.sleep(0.1)  # the stream is now waiting for a change
         self.assertTrue(self.backend.lock.acquire(timeout=1), 'the backend lock is free')
         self.backend.lock.release()
-        began = time.monotonic()
-        state = self.backend.post(['api', 'operations'], {'revision': 0, 'action': 'settings_update', 'shotClock': 20})
-        self.assertLess(time.monotonic() - began, 1.0, 'an operations write is not held up by an open stream')
+        guard = LockWait(self.backend.lock)
+        self.backend.lock = guard
+        try:
+            state = self.backend.post(['api', 'operations'], {'revision': 0, 'action': 'settings_update', 'shotClock': 20})
+        finally:
+            self.backend.lock = guard.guard
+        self.assertLess(guard.waited, 0.5,
+                        f'the write waited {guard.waited:.3f} s for a lock: an open stream holds none')
         self.assertEqual(state['revision'], 1)
         status, started = self.post({'action': 'start'})
         self.assertEqual((status, started['duration'], started['deadline_ms'] - started['server_now_ms']), (200, 20, 20_000),
