@@ -1566,6 +1566,39 @@ class WriterCoversItsRowsTest(unittest.TestCase):
                 self.call('zzz_not_a_real_action')
         self.assertIsNone(self.ops.get()['tournament'].get('pairing'), 'no pairing is drawn by a foreign name')
 
+    def test_an_unknown_name_cannot_borrow_the_entrants_writer(self):
+        # _do_entrants ended in the add path, so a name no row implements signed an entrant up.
+        self.call('tournament_setup', raceTo=7)
+        for name in ('Ann', 'Bo'):
+            self.call('entrant_add', members=[{'name': name}])
+        before = json.dumps(self.ops.get()['tournament']['entrants'])
+        bogus = replace(OPERATIONS['entrant_add'], name='zzz_not_a_real_action')
+        with patch.dict(OPERATIONS, {'zzz_not_a_real_action': bogus}):
+            with self.assertRaisesRegex(ValueError, 'Unknown entrant action: zzz_not_a_real_action'):
+                self.call('zzz_not_a_real_action', members=[{'name': 'Eve'}])
+        after = json.dumps(self.ops.get()['tournament']['entrants'])
+        self.assertEqual(after, before, 'no entrant is added by a foreign name')
+        self.assertEqual(len(json.loads(after)), 2)
+
+    def test_an_unknown_name_cannot_borrow_the_revival_writer(self):
+        # _do_revival ended in the draw path, so a name no row implements drew a second chance.
+        self.call('tournament_setup', raceTo=2)
+        for name in ('Ann', 'Bo', 'Cy'):
+            self.call('entrant_add', members=[{'name': name}])
+        matches = self.call('tournament_start')['tournament']['matches']
+        played = next(m['id'] for m in matches if m['round'] == 1 and all(m['sides']))
+        self.call('match_schedule', id=played, table=1)
+        self.call('match_score', id=played, score=[2, 0])
+        self.call('match_complete', id=played)
+        before = json.dumps(self.ops.get()['tournament'], sort_keys=True)
+        bogus = replace(OPERATIONS['revival_draw'], name='zzz_not_a_real_action')
+        with patch.dict(OPERATIONS, {'zzz_not_a_real_action': bogus}):
+            with self.assertRaisesRegex(ValueError, 'Unknown revival action: zzz_not_a_real_action'):
+                self.call('zzz_not_a_real_action', confirm=True)
+        after = json.dumps(self.ops.get()['tournament'], sort_keys=True)
+        self.assertEqual(after, before, 'no second chance is drawn by a foreign name')
+        self.assertNotIn('revival', json.loads(after))
+
     def test_every_registry_row_names_a_writer_that_implements_it(self):
         """Every row is driven through the store and must be answered by its own action.
 
@@ -1578,11 +1611,13 @@ class WriterCoversItsRowsTest(unittest.TestCase):
         scope is derived here by reading the writer, not by naming it) must refuse it for every
         row it serves.
 
-        What this does not prove: that a writer serves its rows only through their names.
-        _do_entrants and _do_revival end in an action instead of in a refusal, so a name no row
-        implements can still be answered by them; measured here, one row of _do_entrants is still
-        reached that way and none of _do_revival, whose probe world does not satisfy its tail
-        action. That residue is bounded at one row per writer and reported, never asserted away.
+        What this does not prove: that a writer serves its rows only through their names. A writer
+        whose own source builds a refusal out of the name it was handed is not trusted for that:
+        the probe posts a name no row implements through every row of it, and not one of those rows
+        may be reached that way, so its residue is zero and asserted here. A writer without such a
+        refusal has no such proof, so its residue stays bounded at one row and reported, never
+        asserted away. No writer of this registry is in that second group; the bound is kept for
+        the writer a later registry adds.
         """
         MISSING = object()
 
@@ -1814,7 +1849,11 @@ class WriterCoversItsRowsTest(unittest.TestCase):
                     self.assertEqual(by_name, names,
                                      f'{writer.__name__} refuses a name it does not implement for '
                                      f'{by_name} but not for {sorted(set(names) - set(by_name))}')
-                self.assertLessEqual(len(reached), 1,
+                # A writer that builds its refusal out of the name it was handed answers no row
+                # by a foreign name, so its residue is zero. Only a writer without that refusal
+                # keeps the bound of one row, and the residue it reports is never asserted away.
+                limit = 0 if writer in guards else 1
+                self.assertLessEqual(len(reached), limit,
                                      f'{writer.__name__} serves {names}, and {reached} of those '
                                      f'rows were reached by a name no row implements')
 
