@@ -1291,7 +1291,10 @@ function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.Vis
 liveOnly:()=>!reviewId&&tab==='vision',
 // After a confirmed enrolment the roster must come from a fresh read, not from the
 // shell's copy: reload() re-reads /api/operations and re-renders.
-reloadRoster:()=>reload()})}
+reloadRoster:()=>reload(),
+// The shell state writer travels as an option, so the stage never looks a global up:
+// that is what makes the two modules one seam instead of two.
+setShell})}
 function renderSurface(){attachSurface();visionAdapter?.render()}
 
 // The console seam. attach() points the console at a document and a network, and

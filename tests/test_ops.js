@@ -4641,3 +4641,21 @@ test('round 31 / owner item 3: the scrubber follows the pointer, a held step rep
     stage.includes("root.addEventListener('pointerup', onPointerUp);"), 'the pointer starts and ends it');
   assert.ok(stage.includes("root.removeEventListener('pointerdown', onPointerDown);"), 'and detach removes it');
 });
+
+test('the console hands the shell-state writer to the stage it mounts, as an option', () => {
+  // Round 34, console candidate 3: the stage wrote the shell attributes through
+  // window.OpsConsole, a second and undeclared seam. It now receives the writer in the
+  // option bag the console already hands in, so one seam carries both directions.
+  const h = harness();
+  let bag = null;
+  const mount = {removeAttribute() {}, querySelectorAll: () => [], classList: {toggle() {}, add() {}, remove() {}}};
+  h.context.document.querySelector = selector => (selector === '#ops-shell' ? null : mount);
+  h.context.window.VisionStage = {attach: options => { bag = options; return {render() {}, detach() {}}; }};
+  h.renderSurface();
+  assert.ok(bag, 'the console attaches the stage when the surface repaints');
+  assert.strictEqual(typeof bag.setShell, 'function', 'and the writer for the shell state travels in the bag');
+  bag.setShell({vsPanel: true});
+  assert.strictEqual(h.shellState.vsPanel, '1', 'so a patch from the stage reaches the one shell writer');
+  bag.setShell({vsPanel: false});
+  assert.strictEqual(h.shellState.vsPanel, '0', 'and a patch that clears the column reaches it too');
+});

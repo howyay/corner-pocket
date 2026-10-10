@@ -2223,7 +2223,7 @@ test('the panel column shows a selection and nothing else (owner round 26 item 3
   assertSourceContract('annotator/vision-stage.js', 'const inColumn = selected && !picked;', 'and keeps the column for a selection it does not own');
   assertSourceContract('annotator/vision-stage.js', 'inspector.hidden = !inColumn;', 'and hides the panel column without one');
   assertSourceContract('annotator/vision-stage.js', 'tabs.hidden = !inColumn;', 'and the sheet tabs that open it');
-  assertSourceContract('annotator/vision-stage.js', 'if (setShell) setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'and tells the shell, through the console, whether the column is used');
+  assertSourceContract('annotator/vision-stage.js', 'opts.setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'and hands the shell state to the writer the console gave it');
   const css = fs.readFileSync(path.join(__dirname, '..', 'annotator', 'ops.css'), 'utf8');
   assertSourceContract('annotator/ops.css', /#ops-shell\[data-vs-panel="0"\] \.vs-grid\{grid-template-columns:280px minmax\(0,1fr\)\}/, 'the third column collapses when there is no panel');
   assertSourceContract('annotator/ops.css', /#ops-shell \[hidden\]/, 'and [hidden] outranks the panel display rules');
@@ -3136,10 +3136,27 @@ test('round 26 / owner item 3: a picked track has one panel, and it is the overl
 
   assertSourceContract('annotator/vision-stage.js', "body.innerHTML = inColumn ? inspectorHTML(s) : '';", 'the column keeps no second copy of the track block');
 
-  assertSourceContract('annotator/vision-stage.js', 'if (setShell) setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'the column collapses while the overlay holds the block');
+  assertSourceContract('annotator/vision-stage.js', 'opts.setShell({ labelOverlay: !!html, vsPanel: !!inColumn });', 'the column collapses while the overlay holds the block');
 
   assertSourceContract('annotator/ops.css', 'max-height:min(56dvh,520px)', 'the overlay is tall enough to hold the whole block');
 
+});
+
+test('the stage publishes the shell state through the option it was handed, not a global', () => {
+  const context = adapterBox();
+  const seen = [];
+  const last = () => JSON.parse(JSON.stringify(seen.at(-1)));
+  stageSeam(context, visionSnapshot({selection: {kind: 'person', box: -1}}), {setShell: patch => seen.push(patch)});
+  assert.deepStrictEqual(last(), {labelOverlay: true, vsPanel: false},
+    'a picked track hands the block to the overlay and gives the column up');
+  seen.length = 0;
+  stageSeam(context, visionSnapshot({selection: {kind: 'box', box: 0}}), {setShell: patch => seen.push(patch)});
+  assert.strictEqual(last().vsPanel, true, 'a drawn selection keeps the column, so the shell is told to show it');
+  seen.length = 0;
+  stageSeam(context, visionSnapshot(), {setShell: patch => seen.push(patch)});
+  assert.deepStrictEqual(last(), {labelOverlay: false, vsPanel: false},
+    'with nothing selected the shell is told that neither the overlay nor the column is used');
+  assert.strictEqual(context.window.OpsConsole, undefined, 'and the stage never needed the console global to say it');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
