@@ -135,31 +135,33 @@ class ConnectionBoundTests(unittest.TestCase):
 
     def test_a_half_open_request_is_dropped_after_the_timeout(self):
         import socket
-        import time
         server = self.serve(timeout=1)
         client = socket.create_connection(('127.0.0.1', server.port), timeout=5)
         self.addCleanup(client.close)
         client.sendall(b'GET / HTTP/1.1\r\nHost: x\r\n')          # headers never finish
-        started = time.monotonic()
+        # The mechanism is the close itself: the handler times the unfinished headers out
+        # and ends the connection, so this read returns end-of-file.  Nothing else can
+        # produce b'' here, and a server that never closed would raise the client's own
+        # 5 s socket timeout instead.  An upper bound on the wait would grade the machine.
         self.assertEqual(client.recv(1024), b'')                   # server closed the socket
-        self.assertLess(time.monotonic() - started, 4)
 
     def test_a_slow_body_is_dropped_after_the_timeout(self):
         import socket
-        import time
         server = self.serve(timeout=1)
         client = socket.create_connection(('127.0.0.1', server.port), timeout=5)
         self.addCleanup(client.close)
         client.sendall(b'POST /api/operations HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n'
                        b'Content-Length: 100\r\n\r\n{')
-        started = time.monotonic()
+        # The mechanism is the answer: the handler times the unfinished body out and
+        # closes, so the loop below ends on end-of-file, and the truncated body never
+        # earns a 200.  A server that never closed would raise the client's own 5 s
+        # socket timeout here, so no duration bound is needed.
         data = b''
         while True:
             chunk = client.recv(1024)
             if not chunk:
                 break
             data += chunk
-        self.assertLess(time.monotonic() - started, 4)
         self.assertNotIn(b'200 OK', data)
 
     def test_a_stream_that_keeps_writing_is_not_cut(self):

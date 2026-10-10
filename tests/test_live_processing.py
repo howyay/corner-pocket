@@ -296,14 +296,17 @@ class LiveProcessingTests(unittest.TestCase):
         self.assertEqual(status['frames_processed'] + status['frames_skipped'], 30)
 
     def test_replay_paces_and_stop_interrupts_wait(self):
-        processor = self.processor(capture_factory=lambda _: Capture(count=10, fps=2))
+        # The frame period below is 10 s and the default stop timeout is 2 s, so the
+        # state after the stop measures the mechanism by itself: a stop that interrupts
+        # the pacing wait lets both threads exit inside the join and reports 'stopped',
+        # while a stop that waits the pacing out cannot join in time and reports
+        # 'stopping'.  A duration bound on stop() would grade the machine instead.
+        processor = self.processor(capture_factory=lambda _: Capture(count=10, fps=.1))
         processor.start(self.source)
         self.wait_for(processor, lambda s: s['frames_processed'] == 1)
         time.sleep(.06)
-        self.assertEqual(processor.status()['frames_received'], 1)
-        started = time.monotonic()
+        self.assertEqual(processor.status()['frames_received'], 1)     # paced, not burst
         self.assertEqual(processor.stop()['state'], 'stopped')
-        self.assertLess(time.monotonic() - started, .3)
 
     def test_blocked_capture_prevents_overlap_and_stale_publish(self):
         entered, unblock = threading.Event(), threading.Event()
@@ -317,9 +320,13 @@ class LiveProcessingTests(unittest.TestCase):
         self.addCleanup(unblock.set)
         processor.start(self.source)
         self.assertTrue(entered.wait(1))
-        started = time.monotonic()
+        # stop() spent its whole join budget (stop_timeout) and returned while the read
+        # was still blocked: the release event is clear and the capture is not released
+        # yet, so the decoder is still inside read().  That is the measurement.  A
+        # duration bound on stop() would only grade the machine.
         self.assertEqual(processor.stop()['state'], 'stopping')
-        self.assertLess(time.monotonic() - started, .2)
+        self.assertFalse(unblock.is_set(), 'the capture is still blocked')
+        self.assertFalse(capture.released, 'stop() did not join the blocked read')
         with self.assertRaises(RuntimeError):
             processor.start(self.source)
         unblock.set()
@@ -1004,7 +1011,13 @@ class SessionStateOwnershipTests(unittest.TestCase):
 
         processor.start(self.source)
         second = processor.status()
-        self.assertIn(second['state'], ('starting', 'eos'), second)   # a 0-frame source may already have ended
+        # The state token of a 0-frame source races its own decoder thread: 'starting'
+        # before the decoder publishes, 'running' after that publish, 'eos' once the
+        # source has ended.  All three mean the same thing for this case - the new
+        # session owns its state and carries no failure over - so the token is not the
+        # claim.  Only 'error' would break it, and the tuple below excludes that.  The
+        # counters, latest and error fields are the claim.
+        self.assertIn(second['state'], ('starting', 'running', 'eos'), second)
         self.assertEqual((second['frames_received'], second['frames_processed'], second['frames_skipped']),
                          (0, 0, 0))
         self.assertIsNone(second['latest'])

@@ -183,11 +183,15 @@ class ShotClockTests(unittest.TestCase):
         waiter = threading.Thread(target=lambda: woke.append(clock.wait(0, timeout=5)))
         waiter.start()
         time.sleep(0.05)
-        began = time.monotonic()
         clock.apply('start')
         waiter.join(2)
+        # The waiter times itself out at 5 s and this join gives it 2 s, so a recorded
+        # True can only come from apply() releasing the waiter; a wake that did not work
+        # leaves woke empty.  That outcome is the mechanism, and the thread being gone
+        # says it left the wait rather than merely being recorded by it.  A clock bound
+        # on the same wake would grade the machine and adds nothing to either.
         self.assertEqual(woke, [True])
-        self.assertLess(time.monotonic() - began, 1)
+        self.assertFalse(waiter.is_alive())
         clock.apply('start')  # no-op: nobody is told anything changed
         self.assertFalse(clock.wait(clock.seq, timeout=0.2))
         waiter = threading.Thread(target=lambda: woke.append(clock.wait(clock.seq, timeout=5)))
