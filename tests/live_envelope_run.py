@@ -30,7 +30,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/ owns data_guard.py
 sys.dont_write_bytecode = True
+
+import data_guard  # noqa: E402
 
 FRAME_BUDGET_MS = 1000.0 / 30
 BALL_MS = 15.0
@@ -215,8 +218,9 @@ def twitch_case(channel, frames, warmup):
     try:
         with tempfile.TemporaryDirectory(prefix='.live-envelope-', dir=ROOT) as directory:
             root = Path(directory)
-            (root / 'out/corner-pocket').mkdir(parents=True)
-            (root / 'out/corner-pocket/state.json').write_text(json.dumps({'sources': [
+            document = data_guard.store_document(root)
+            document.parent.mkdir(parents=True)
+            document.write_text(json.dumps({'sources': [
                 dict(id='harness', kind='channel', channel=channel, url=url)]}))
             os.symlink(ROOT / 'yolov8n.pt', root / 'yolov8n.pt')
             from annotator.pipeline_stages import default_stages

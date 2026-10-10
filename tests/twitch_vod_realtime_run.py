@@ -28,8 +28,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/ owns data_guard.py
 sys.dont_write_bytecode = True
 
+import data_guard  # noqa: E402
 from annotator import twitch_vod_source as vod  # noqa: E402
 
 SAVED_CHANNEL_ID = '77777777777777777777777777777777'   # out/corner-pocket/state.json
@@ -100,7 +102,7 @@ def run(args):
         temp_root = tempfile.TemporaryDirectory(prefix='.vod-as-live-', dir=ROOT)
         root = Path(temp_root.name)
         (root / 'out/corner-pocket').mkdir(parents=True)
-        (root / 'out/corner-pocket/state.json').write_text(json.dumps({'sources': [
+        data_guard.store_document(root).write_text(json.dumps({'sources': [
             dict(id=SAVED_CHANNEL_ID, kind='channel', channel=SAVED_CHANNEL_LOGIN,
                  url='https://www.twitch.tv/' + SAVED_CHANNEL_LOGIN)]}))
         os.symlink(ROOT / 'yolov8n.pt', root / 'yolov8n.pt')

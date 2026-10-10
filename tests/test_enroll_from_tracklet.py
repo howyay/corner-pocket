@@ -1,4 +1,11 @@
-"""enroll_from_tracklet tests: synthetic observations only, no models, no network."""
+"""enroll_from_tracklet tests: synthetic observations only, no models, no network.
+
+Every case that needs the vod30 recording says so through :data:`RECORDING` and
+:func:`recording_present`, and ``CleanCheckoutInventoryTest`` at the end of the module
+states which ids a checkout without that file loses - one class-level skip turns off
+whole subclasses at once, and the run reports only a count.
+"""
+import ast
 import json
 import math
 import subprocess
@@ -104,6 +111,38 @@ def series(count=6, *, sims=None, eye=12.0, det=0.8, track_id=1, step=15, seed=7
 def state_with(players=(), revision=4):
     return {"revision": revision, "players": list(players), "events": [],
             "tournament": {"entrants": []}, "settings": {}}
+
+
+#: The one recording this module needs. Its file name is spelled once: a case that
+#: reaches the recording has to name :data:`RECORDING`, and the inventory at the end of
+#: this module reads that name.
+RECORDING_NAME = "vod_30min_260815.mp4"
+RECORDING = Path(__file__).resolve().parents[1] / "data" / RECORDING_NAME
+SKIP_WITHOUT_RECORDING = "the vod30 recording is not present"
+
+
+def recording_present(path=None):
+    """True when this checkout holds the vod30 recording.
+
+    One predicate for every skip that depends on the recording, so a decorator, a
+    ``data_guard.require`` call and the inventory at the end of this module answer the
+    same question about the same file.
+    """
+    return (RECORDING if path is None else Path(path)).is_file()
+
+
+def make_workspace(root):
+    """One workspace root for one case: ``data/`` linked, store document written once.
+
+    The store reads ``<root>/out/corner-pocket/state.json`` and the crops are rendered
+    from the real recording through the linked ``data/``, so the temp root stays a
+    workspace root. Three cases built this layout one line at a time.
+    """
+    data_guard.link_data(root)
+    document = data_guard.store_document(root)
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_text(json.dumps(state_with()), encoding="utf-8")
+    return document
 
 
 class GeometryTest(unittest.TestCase):
@@ -458,8 +497,6 @@ class PersistentTracksTest(unittest.TestCase):
 class ScanFramesTest(unittest.TestCase):
     """The real adapter, with injected detector/engine: decode + tracking only."""
 
-    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
-
     class _Detector:
         def __init__(self):
             self.calls = 0
@@ -476,10 +513,10 @@ class ScanFramesTest(unittest.TestCase):
                     {"bbox": [650.0, 150.0, 690.0, 200.0], "eye_px": 9.0, "det_score": 0.3,
                      "embedding": unit(42)}]
 
-    @unittest.skipUnless(VIDEO.is_file(), "the vod30 recording is not present")
+    @unittest.skipUnless(recording_present(), SKIP_WITHOUT_RECORDING)
     def test_scan_links_tracks_and_stores_embeddings_above_the_gate(self):
         detector, engine = self._Detector(), self._Engine()
-        observations = scan_frames(self.VIDEO.parent, "vod30", 0, 90, stride=30,
+        observations = scan_frames(RECORDING.parent, "vod30", 0, 90, stride=30,
                                    detector=detector, engine=engine, log=lambda *a, **k: None)
         self.assertEqual([row["frame_index"] for row in observations], [0, 30, 60])
         self.assertEqual(detector.calls, 3)
@@ -492,22 +529,20 @@ class ScanFramesTest(unittest.TestCase):
         self.assertIsNone(faces[1]["embedding"], "below the detection gate: no embedding stored")
         self.assertEqual(first["t"], 0.0)
 
-    @unittest.skipUnless(VIDEO.is_file(), "the vod30 recording is not present")
+    @unittest.skipUnless(recording_present(), SKIP_WITHOUT_RECORDING)
     def test_scan_of_an_empty_range_is_empty(self):
-        rows = scan_frames(self.VIDEO.parent, "vod30", 10, 10, stride=30,
+        rows = scan_frames(RECORDING.parent, "vod30", 10, 10, stride=30,
                            detector=self._Detector(), engine=self._Engine(),
                            log=lambda *a, **k: None)
         self.assertEqual(rows, [])
 
 
 class SheetsTest(unittest.TestCase):
-    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
-
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
+        data_guard.link_data(self.root)
         self.a, self.b = unit(81), unit(82)
         self.observations = []
         for index in range(5):
@@ -537,7 +572,7 @@ class SheetsTest(unittest.TestCase):
         self.assertEqual(counts["own"]["bound"], 5)
         self.assertEqual(counts["other"]["clearing"], 0, "no other-identity face clears the bar")
 
-    @unittest.skipUnless(VIDEO.is_file(), "the vod30 recording is not present")
+    @unittest.skipUnless(recording_present(), SKIP_WITHOUT_RECORDING)
     def test_render_sheet_writes_a_labelled_jpeg(self):
         import cv2
         crops = [(_crop_image(self.root, "vod30", candidate), f"f{candidate.frame_index}")
@@ -555,29 +590,21 @@ class SheetsTest(unittest.TestCase):
             render_sheet(self.root / "empty.jpg", ["header"], [])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-@unittest.skipUnless((Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4").is_file(),
-                     "the vod30 recording is not present")
+@unittest.skipUnless(recording_present(), SKIP_WITHOUT_RECORDING)
 class SelectionSeamTest(unittest.TestCase):
     """plan_for_selection -> preview_payload -> confirm_enrollment, with a fake scan.
 
     The crops are rendered from the real recording (a few frame seeks), through a
-    symlinked data/ so the temp root stays a workspace root.
+    symlinked data/ so the temp root stays a workspace root.  This one decorator turns
+    off every method below and every method of the four subclasses that inherit it;
+    ``CLEAN_CHECKOUT_SKIPS`` names the 46 ids.
     """
-
-    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
-        (self.root / "out" / "corner-pocket").mkdir(parents=True)
-        (self.root / "out" / "corner-pocket" / "state.json").write_text(
-            json.dumps(state_with()), encoding="utf-8")
+        make_workspace(self.root)
         self.base = unit(71)
         self.other_base = unit(171)
         self.observations = []
@@ -749,7 +776,7 @@ class ConfirmTest(SelectionSeamTest):
         self.assertEqual(md5(self.root / DEFAULT_STATE), self.source_state_md5())
 
     def source_state_md5(self):
-        return md5(self.root / "out" / "corner-pocket" / "state.json")
+        return md5(data_guard.store_document(self.root))
 
     def test_a_stale_token_is_refused_and_nothing_is_written(self):
         selection = self._plan()
@@ -804,17 +831,12 @@ class ConfirmTest(SelectionSeamTest):
 class ClusterFastPathTest(unittest.TestCase):
     """plan_for_cluster: stored evidence, same gates, evidence level in the payload."""
 
-    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
-
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
+        make_workspace(self.root)
         (self.root / "out" / "identity").mkdir(parents=True)
-        (self.root / "out" / "corner-pocket").mkdir(parents=True)
-        (self.root / "out" / "corner-pocket" / "state.json").write_text(
-            json.dumps(state_with()), encoding="utf-8")
         self.base = unit(91)
         self.face_bbox = [150, 150, 190, 200]
         self.index_path = self.root / "out" / "identity" / "clusters.json"
@@ -839,7 +861,7 @@ class ClusterFastPathTest(unittest.TestCase):
         self.assertEqual(selection.frames_scanned, 0, "no frame was inferred")
 
     def test_payload_reports_the_cluster_face_evidence_level(self):
-        data_guard.require(self.VIDEO)
+        data_guard.require(RECORDING)
         self._index([self._sample()])
         payload = preview_payload(plan_for_cluster(self.root, 7, dataset="vod30"), root=self.root)
         self.assertEqual(payload["evidence"],
@@ -912,7 +934,7 @@ class ClusterFastPathTest(unittest.TestCase):
         self.assertAlmostEqual(candidate.rank, 11.25, places=4)
 
     def test_the_token_covers_whichever_path_produced_the_crops(self):
-        data_guard.require(self.VIDEO)
+        data_guard.require(RECORDING)
         self._index([self._sample()])
         selection = plan_for_cluster(self.root, 7, dataset="vod30")
         payload = preview_payload(selection, root=self.root)
@@ -925,10 +947,8 @@ class ClusterFastPathTest(unittest.TestCase):
 class NearestFirstScanTest(unittest.TestCase):
     """The slow path stops as soon as the answer is settled."""
 
-    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
-
     def setUp(self):
-        data_guard.require(self.VIDEO)
+        data_guard.require(RECORDING)
 
     def test_frames_are_sampled_outward_from_the_click_and_stop_early(self):
         seen = []
@@ -1008,17 +1028,12 @@ class EvidenceLevelTest(SelectionSeamTest):
 class WriterReaderIntegrationTest(unittest.TestCase):
     """The pipeline's recorder and the enrolment reader must agree on the format."""
 
-    VIDEO = Path(__file__).resolve().parents[1] / "data" / "vod_30min_260815.mp4"
-
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        (self.root / "data").symlink_to(Path(__file__).resolve().parents[1] / "data")
+        make_workspace(self.root)
         (self.root / "out" / "identity").mkdir(parents=True)
-        (self.root / "out" / "corner-pocket").mkdir(parents=True)
-        (self.root / "out" / "corner-pocket" / "state.json").write_text(
-            json.dumps(state_with()), encoding="utf-8")
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         from src.person_identity import IdentityIndex
         self.index = IdentityIndex(self.root / "out" / "identity" / "clusters.json")
@@ -1031,7 +1046,7 @@ class WriterReaderIntegrationTest(unittest.TestCase):
             bbox=[150, 150, 190, 200], frame_index=frame_index)
 
     def test_the_writer_and_the_reader_agree(self):
-        data_guard.require(self.VIDEO)
+        data_guard.require(RECORDING)
         self._record(1, 12.0, 0.8, 100)
         self.index.explicit_assign(self.cluster, "playerX")       # the durable transition
         selection = plan_for_cluster(self.root, self.cluster, dataset="vod30")
@@ -1044,7 +1059,7 @@ class WriterReaderIntegrationTest(unittest.TestCase):
         self.assertEqual(payload["evidence"]["frames_scanned"], 0)
 
     def test_two_recorded_faces_are_cross_checked(self):
-        data_guard.require(self.VIDEO)
+        data_guard.require(RECORDING)
         self._record(1, 12.0, 0.8, 100)
         self._record(2, 12.5, 0.85, 250)
         self.index.explicit_assign(self.cluster, "playerX")
@@ -1129,3 +1144,224 @@ class InProcessInterfaceTest(unittest.TestCase):
         self.assertEqual(len(values), 1, "src/enroll_from_tracklet.py must define DATASETS once")
         names = {node.id for node in ast.walk(values[0]) if isinstance(node, ast.Name)}
         self.assertIn("STATIC", names, "DATASETS must be computed from src.datasets.STATIC")
+
+
+class WorkspaceShapeTest(unittest.TestCase):
+    """The facts ``make_workspace`` rests on, pinned to the code that owns them.
+
+    ``data_guard`` spells the store path and the ``data/`` link so five files cannot drift
+    apart, which makes the helper the second spelling - so these cases hold it against the
+    two owners: ``DEFAULT_STATE`` (the path the enrollment code copies a state to and from)
+    and ``Operations.path`` (the path the store reads in a fixture root).
+    """
+
+    def test_the_shared_store_path_is_the_products_path(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            self.assertEqual(data_guard.store_document(root), root / DEFAULT_STATE)
+            from annotator.operations import Operations
+            self.assertEqual(data_guard.store_document(root).resolve(), Operations(root).path)
+
+    def test_the_data_link_is_idempotent_and_points_at_this_checkout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            link = data_guard.link_data(root)
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.resolve(), (data_guard.ROOT / "data").resolve())
+            self.assertEqual(data_guard.link_data(root), link,
+                             "a case that asks twice must not get a replaced link")
+
+
+#: Every id a checkout without the recording loses.  A skip line alone does not say it:
+#: one decorator turns off five whole classes, and the run prints a count.  Measured, not
+#: estimated - a copy of this module in a tree without the recording answers
+#: ``Ran 114 tests ... FAILED (failures=1, skipped=56)``, and the one failure is the
+#: copy's own root (``test_the_repo_root_constant_points_at_this_checkout``), not a skip.
+CLEAN_CHECKOUT_SKIPS = (
+    "ClusterFastPathTest.test_payload_reports_the_cluster_face_evidence_level",
+    "ClusterFastPathTest.test_the_token_covers_whichever_path_produced_the_crops",
+    "ConfirmTest.test_a_click_on_the_other_person_locks_onto_the_other_track",
+    "ConfirmTest.test_a_missing_name_is_refused",
+    "ConfirmTest.test_a_refused_track_keeps_the_selection_evidence",
+    "ConfirmTest.test_a_stale_token_is_refused_and_nothing_is_written",
+    "ConfirmTest.test_a_tampered_token_is_refused",
+    "ConfirmTest.test_clicks_lock_onto_the_best_overlapping_track",
+    "ConfirmTest.test_confirm_needs_a_selection",
+    "ConfirmTest.test_confirm_writes_the_roster_and_the_face_store",
+    "ConfirmTest.test_selection_not_matched_when_nothing_overlaps",
+    "ConfirmTest.test_selection_not_matched_when_the_frame_is_outside_the_scan",
+    "ConfirmTest.test_the_roster_revision_advances_from_the_existing_state",
+    "EvidenceLevelTest.test_a_click_on_the_other_person_locks_onto_the_other_track",
+    "EvidenceLevelTest.test_a_refusal_payload_says_it_is_not_cross_checked",
+    "EvidenceLevelTest.test_a_refused_track_keeps_the_selection_evidence",
+    "EvidenceLevelTest.test_a_window_scan_selection_is_cross_checked",
+    "EvidenceLevelTest.test_clicks_lock_onto_the_best_overlapping_track",
+    "EvidenceLevelTest.test_selection_not_matched_when_nothing_overlaps",
+    "EvidenceLevelTest.test_selection_not_matched_when_the_frame_is_outside_the_scan",
+    "EvidenceLevelTest.test_selection_to_dict_carries_the_evidence_level",
+    "NearestFirstScanTest.test_frames_are_sampled_outward_from_the_click_and_stop_early",
+    "NearestFirstScanTest.test_max_frames_caps_the_work",
+    "NearestFirstScanTest.test_the_window_is_respected",
+    "PreviewPayloadTest.test_a_click_on_the_other_person_locks_onto_the_other_track",
+    "PreviewPayloadTest.test_a_refusal_preview_carries_the_faces_it_saw",
+    "PreviewPayloadTest.test_a_refusal_preview_without_observations_is_still_json",
+    "PreviewPayloadTest.test_a_refused_track_keeps_the_selection_evidence",
+    "PreviewPayloadTest.test_a_selection_preview_payload_is_json_round_trippable",
+    "PreviewPayloadTest.test_clicks_lock_onto_the_best_overlapping_track",
+    "PreviewPayloadTest.test_crops_carry_a_data_url_and_are_small",
+    "PreviewPayloadTest.test_payload_has_no_non_json_types",
+    "PreviewPayloadTest.test_preview_shape_matches_the_contract",
+    "PreviewPayloadTest.test_preview_writes_nothing",
+    "PreviewPayloadTest.test_selection_not_matched_when_nothing_overlaps",
+    "PreviewPayloadTest.test_selection_not_matched_when_the_frame_is_outside_the_scan",
+    "ScanFramesTest.test_scan_links_tracks_and_stores_embeddings_above_the_gate",
+    "ScanFramesTest.test_scan_of_an_empty_range_is_empty",
+    "SelectionSeamTest.test_a_click_on_the_other_person_locks_onto_the_other_track",
+    "SelectionSeamTest.test_a_refused_track_keeps_the_selection_evidence",
+    "SelectionSeamTest.test_clicks_lock_onto_the_best_overlapping_track",
+    "SelectionSeamTest.test_selection_not_matched_when_nothing_overlaps",
+    "SelectionSeamTest.test_selection_not_matched_when_the_frame_is_outside_the_scan",
+    "SheetsTest.test_render_sheet_writes_a_labelled_jpeg",
+    "TokenTest.test_a_click_on_the_other_person_locks_onto_the_other_track",
+    "TokenTest.test_a_crop_without_bytes_is_rejected",
+    "TokenTest.test_a_refused_track_keeps_the_selection_evidence",
+    "TokenTest.test_clicks_lock_onto_the_best_overlapping_track",
+    "TokenTest.test_selection_not_matched_when_nothing_overlaps",
+    "TokenTest.test_selection_not_matched_when_the_frame_is_outside_the_scan",
+    "TokenTest.test_swapping_a_crop_changes_the_token",
+    "TokenTest.test_token_accepts_bytes_or_data_urls",
+    "TokenTest.test_token_is_stable_for_the_same_crops",
+    "TokenTest.test_track_and_dataset_are_part_of_the_token",
+    "WriterReaderIntegrationTest.test_the_writer_and_the_reader_agree",
+    "WriterReaderIntegrationTest.test_two_recorded_faces_are_cross_checked",
+)
+
+
+def _mentions_recording(node):
+    """True when ``node`` asks about *this checkout's* recording.
+
+    The recording is named once, through :data:`RECORDING`; a call with a path of its own
+    (``recording_present(somewhere_else)``) asks about that path, not about this one.
+    """
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id == "RECORDING":
+            return True
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name) \
+                and child.func.id == "recording_present" and not child.args:
+            return True
+    return False
+
+
+def _recording_dependent(source):
+    """The classes, methods and setUps whose skip depends on the recording.
+
+    Read from this module's own source, because that is the only witness left: the
+    decorators were evaluated at import time, and a checkout that holds the recording
+    shows a recording-dependent skip as nothing at all.  The rule is complete because the
+    file name is spelled once, which ``test_the_module_spells_the_recording_name_once``
+    holds: a case that reaches the recording must name :data:`RECORDING`.
+    """
+    classes, methods, setups = set(), set(), set()
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        if any(_mentions_recording(decorator) for decorator in node.decorator_list):
+            classes.add(node.name)
+        for item in node.body:
+            if not isinstance(item, ast.FunctionDef):
+                continue
+            if any(_mentions_recording(decorator) for decorator in item.decorator_list) \
+                    or _mentions_recording(item):
+                if item.name == "setUp":
+                    setups.add(node.name)
+                else:
+                    methods.add((node.name, item.name))
+    return classes, methods, setups
+
+
+def _defining_class_name(cls, method):
+    """The name of the class in ``cls``'s MRO that declares ``method``."""
+    for base in cls.__mro__:
+        if method in vars(base):
+            return base.__name__
+    return cls.__name__
+
+
+def cases_a_clean_checkout_skips():
+    """The ids unittest reports as skipped in a tree without the recording.
+
+    The collection is the live one - unittest's own loader over this module - so the
+    answer covers the inherited methods that each subclass collects a second time.  Only
+    the decision to skip comes from the source.
+    """
+    classes, methods, setups = _recording_dependent(Path(__file__).read_text(encoding="utf-8"))
+    module = sys.modules[__name__]
+    collected = []
+
+    def collect(suite):
+        for case in suite:
+            if isinstance(case, unittest.TestSuite):
+                collect(case)
+            else:
+                collected.append(case.id())
+
+    collect(unittest.defaultTestLoader.loadTestsFromModule(module))
+    skipped = []
+    for identifier in collected:
+        _, class_name, method = identifier.split(".")
+        klass = getattr(module, class_name)
+        chain = {base.__name__ for base in klass.__mro__}
+        if chain & (classes | setups) or (_defining_class_name(klass, method), method) in methods:
+            skipped.append(f"{class_name}.{method}")
+    return tuple(sorted(skipped))
+
+
+class CleanCheckoutInventoryTest(unittest.TestCase):
+    """What a checkout without the recording loses, stated instead of counted.
+
+    The skip line cannot say it.  ``@unittest.skipUnless(recording_present(), ...)`` on
+    SelectionSeamTest is one decorator over five classes and 26 declared methods (46
+    collected ids, because each subclass collects the base's five again); a checkout that
+    holds the recording prints no skip at all.  These cases keep the loss readable.
+    """
+
+    def test_a_clean_checkout_skips_exactly_these_cases(self):
+        self.assertEqual(cases_a_clean_checkout_skips(), CLEAN_CHECKOUT_SKIPS)
+
+    def test_one_class_level_skip_turns_off_26_declared_methods(self):
+        """Name the decorator's cost: five classes, 26 declared methods, 46 ids."""
+        classes, _, _ = _recording_dependent(Path(__file__).read_text(encoding="utf-8"))
+        module = sys.modules[__name__]
+        decorated = {getattr(module, name) for name in classes}
+        declared = {}
+        for value in vars(module).values():
+            if isinstance(value, type) and issubclass(value, unittest.TestCase) \
+                    and decorated & set(value.__mro__):
+                declared[value.__name__] = sorted(
+                    name for name in vars(value) if name.startswith("test"))
+        self.assertEqual(sorted(declared),
+                         ["ConfirmTest", "EvidenceLevelTest", "PreviewPayloadTest",
+                          "SelectionSeamTest", "TokenTest"])
+        self.assertEqual(sum(len(names) for names in declared.values()), 26)
+        self.assertEqual(sum(unittest.defaultTestLoader.loadTestsFromName(
+            f"{module.__name__}.{name}").countTestCases() for name in declared), 46)
+
+    def test_the_module_spells_the_recording_name_once(self):
+        """A dependency can only be seen by name: one spelling keeps the list complete."""
+        source = Path(__file__).read_text(encoding="utf-8")
+        self.assertEqual(source.count(RECORDING_NAME), 1,
+                         f"{RECORDING_NAME} belongs to the RECORDING constant alone")
+
+    def test_the_predicate_says_no_for_a_path_that_is_not_a_file(self):
+        """The whole list rests on this answer, so measure it instead of trusting it."""
+        with tempfile.TemporaryDirectory() as folder:
+            missing = Path(folder) / RECORDING_NAME
+            self.assertFalse(recording_present(missing))
+            missing.write_bytes(b"")
+            self.assertTrue(recording_present(missing))
+            self.assertFalse(recording_present(Path(folder)),
+                             "a directory is not a file")
+
+
+if __name__ == "__main__":
+    unittest.main()

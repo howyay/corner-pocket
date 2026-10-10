@@ -26,8 +26,10 @@ import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/ owns data_guard.py
 from annotator.unified_server import (Backend, BoundedHTTPServer, PublicBoardServer, board_prefix,
                                       make_handler, make_public_handler)
+import data_guard  # noqa: E402
 
 
 # The listener is the product's listener, so the fixture needs no class of its own.
@@ -50,7 +52,7 @@ def seed_state(root, source):
     reads it, and a malformed document fails loudly on the first request.
     """
     document = json.loads(Path(source).read_text())
-    destination = root / 'out' / 'corner-pocket' / 'state.json'
+    destination = data_guard.store_document(root)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(document, indent=2, allow_nan=False) + '\n')
     print(f'Seeded operations state: {Path(source).resolve()} ({len(document.get("players", []))} players, '
