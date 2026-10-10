@@ -41,10 +41,12 @@ from annotator.operations import name_key
 # so this import tool and the store cannot hold two different lists of set names.
 from src.store_files import (BALL_SETS, DOCUMENT_SETS, dataset_dirs, document_paths, get_document,
                              has_documents_table, put_document)
+# The retention bound of the operations event log is imported from its one owner
+# (src.ops_event_log), so this importer and every writer cannot hold two bounds.
+from src.ops_event_log import MAX_EVENTS
 
 REPO = Path(__file__).resolve().parent.parent
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
-MAX_EVENTS = 500                       # annotator/operations.py keeps the last 500 events
 OK = ("imported", "unchanged", "absent", "verified")
 
 
@@ -170,7 +172,8 @@ class OperationsSet(DataSet):
 
     def actual(self, conn):
         counts = super().actual(conn)
-        # the database keeps every event; the document (like the file) shows the last 500
+        # the database keeps every event; the document (like the file) shows the newest
+        # MAX_EVENTS, read from its one owner (src/ops_event_log.py)
         counts["ops_events"] = min(counts["ops_events"], MAX_EVENTS)
         return counts
 

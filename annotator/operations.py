@@ -387,11 +387,15 @@ class Operations:
 
     def _commit(self, state, action, context):
         """Advance the revision, log the event, write the file atomically."""
+        # the retention bound of the event log has one owner (src/ops_event_log.py); the
+        # import is here because this module is standard library only, as is the one in
+        # _backfill_source below
+        from src.ops_event_log import trim
         # a write persists the relation it can derive, so the next reader does not have to
         self._adopt_sources(state)
         state['revision'] += 1
-        state['events'] = (state['events'] + [dict(id=uid(), createdAt=timestamp(),
-            revision=state['revision'], action=action, context=context)])[-500:]
+        state['events'] = trim(state['events'] + [dict(id=uid(), createdAt=timestamp(),
+            revision=state['revision'], action=action, context=context)])
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix='.state-', dir=self.path.parent)
         try:

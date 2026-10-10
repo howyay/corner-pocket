@@ -107,6 +107,7 @@ import numpy as np
 from src.atomic_write import write_atomic
 from src.datasets import STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
+from src.ops_event_log import trim
 
 # The repository root. The value equals src.person_pipeline.REPO, and the same
 # expression is used there, but this module keeps its own copy: an import of
@@ -480,7 +481,7 @@ def _roster_payload(state, player, evidence) -> dict:
              "context": {"player_id": player["id"], "name": player["name"],
                          "track_id": evidence["track_id"], "faces": evidence["kept"],
                          "frames": evidence["kept_frame_indices"]}}
-    payload["events"] = (payload.get("events", []) + [event])[-500:]
+    payload["events"] = trim(payload.get("events", []) + [event])
     return payload
 
 

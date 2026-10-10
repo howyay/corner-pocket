@@ -10,7 +10,8 @@ same cases against both):
     row (SELECT ... FOR UPDATE, design 2.3), checks the revision (ConflictError =
     409 when stale), runs the application's own Operations._apply on the document
     and writes the changed document back.  The tournament rules live in one place.
-    The event log keeps every event; get() returns the last 500, like the file.
+    The event log keeps every event; get() returns the newest MAX_EVENTS rows of the
+    document, like the file (the bound is src.ops_event_log.MAX_EVENTS).
   * every read method runs in a READ ONLY transaction, so a read cannot write
     (design 7.2); PostgreSQL refuses any write inside one.
   * floats are double precision, so every value the files hold round-trips exactly.
@@ -34,8 +35,10 @@ from src.store import JsonStore, StoreConstraintError
 # The crop-set vocabulary is imported from its one owner (src.store_files), not from
 # src.store: the owner names the sets, every other module imports that name.
 from src.store_files import BALL_SETS, dataset_dir, dump, fmt_of, get_document, put_document
+# The document side of the event log is trimmed by its one owner (src.ops_event_log),
+# so this store holds no copy of the retention bound.
+from src.ops_event_log import trim
 
-MAX_EVENTS = 500
 STATE = "out/corner-pocket/state.json"
 # The table that holds the documents of migration 0003 (src/store_files.py). The
 # operations document and the anchor documents live in it; receipts name them so.
@@ -127,14 +130,14 @@ class PostgresStore:
 
     def _save(self, conn, doc, action, context):
         """Operations._commit, in the caller's transaction: advance the revision, append
-        the event (the document keeps the last 500, the table keeps every one), store the
-        document in _commit's exact format, and rewrite the row projection from it
+        the event (src.ops_event_log trims the document, the table keeps every one), store
+        the document in _commit's exact format, and rewrite the row projection from it
         (players are upserted so their identity bindings survive)."""
         from annotator.operations import timestamp, uid
         from src.store_import import OperationsSet
         doc["revision"] += 1
         event = dict(id=uid(), createdAt=timestamp(), revision=doc["revision"], action=action, context=context)
-        doc["events"] = (doc.get("events", []) + [event])[-MAX_EVENTS:]
+        doc["events"] = trim(doc.get("events", []) + [event])
         for table in ("matches", "entrant_members", "entrants", "tournaments", "notes", "sources", "ops_meta"):
             conn.execute(f"DELETE FROM {table}")
         OperationsSet().write(conn, dict(doc, events=[]))  # ops_meta, players, tournaments, notes, sources
