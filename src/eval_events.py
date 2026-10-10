@@ -53,6 +53,7 @@ from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src import events_document, sam3_artifact  # noqa: E402
+from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540
 FULL_W, FULL_H = 1280, 720            # the reference quad's own resolution
@@ -64,7 +65,7 @@ MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 # carries per-side rail evidence.
 CACHE_VERSION = 8
 CENSUS_STEP_S = 0.25          # window sampling
-POT_PRE_S, POT_POST_S = 1.5, 2.5
+POT_PRE_S, POT_POST_S = EVENT_BEFORE_S, EVENT_AFTER_S   # the served window, one owner
 SHOT_INTERVALS_S = (0.3, 0.45, 0.6)   # sharp frames either side of the shot
 SHOT_CENSUS_S = 2.0           # fused-census reach around a shot anchor
 MATCH_PX = 40.0               # same ball between samples, 960x540 pixels

@@ -41,8 +41,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from src.event_window import AT_TOL_S, EVENT_AFTER_S, EVENT_BEFORE_S
+
 SMALL_W, SMALL_H = 960, 540          # the census working size (src/eval_events.py)
-CLIP_BEFORE_S, CLIP_AFTER_S = 1.5, 2.5   # annotator/app.js: CLIP_BEFORE_S/AFTER_S
+# The span the console clips.  The two names stay, because tests/test_timing_verify.py
+# holds annotator/app.js to them; the numbers come from src/event_window.py.
+CLIP_BEFORE_S, CLIP_AFTER_S = EVENT_BEFORE_S, EVENT_AFTER_S
 SAMPLE_FPS = 5.0
 FLOW_WIDTH = 320                     # flow runs on the cloth crop at this width
 
@@ -58,7 +62,7 @@ MOTION_FLOOR_RATIO = 3.0
 MOTION_FLOOR_ABSOLUTE = 3.0          # 8-bit gray levels, cloth-mean
 STILL_QUANTILE = 0.25                # per-window still floor = this quantile of its pairs
 CONTROL_QUANTILE = 0.5               # the VOD's still floor = this quantile of the controls
-MOTION_AT_SERVED_S = 0.5             # |peak offset| <= this is "at the served time"
+MOTION_AT_SERVED_S = AT_TOL_S        # |peak offset| <= this is "at the served time"
 CHANGED_LEVEL = 12                   # a cloth pixel counts as "changed" above this
 
 # Ball-scale vs occlusion.  At 960x540 the cloth spans ~350 px for a 2540 mm

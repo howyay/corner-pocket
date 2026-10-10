@@ -63,6 +63,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.datasets import lookup as dataset_lookup, media_path  # noqa: E402
+from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
+                              EVENT_BEFORE_S)
 
 # --------------------------------------------------------------- geometry ----
 
@@ -905,11 +907,12 @@ def decay_shape(t: np.ndarray, values: np.ndarray, t_onset: float,
 
 
 # --------------------------------------------------- window profiles / verdicts
+# The window numbers live in `src/event_window.py`: AT_TOL_S, CONTROL_HALF_S,
+# EVENT_BEFORE_S and EVENT_AFTER_S arrive from there.
 
-AT_TOL_S = 0.5
 
-
-def sample_window(t, values, t0, before=1.5, after=2.5, sample_hz=10.0) -> dict:
+def sample_window(t, values, t0, before=EVENT_BEFORE_S, after=EVENT_AFTER_S,
+                  sample_hz=10.0) -> dict:
     grid = np.arange(-before, after + 1e-9, 1.0 / sample_hz)
     times = t0 + grid
     picks = np.clip(np.searchsorted(t, times), 0, max(0, t.size - 1))
@@ -918,8 +921,8 @@ def sample_window(t, values, t0, before=1.5, after=2.5, sample_hz=10.0) -> dict:
             "values": [round(float(x), 4) for x in vals]}
 
 
-def window_profile(t, values, t0: float, floor: float, before=1.5, after=2.5,
-                   sample_hz=10.0, at_tol_s=AT_TOL_S) -> dict:
+def window_profile(t, values, t0: float, floor: float, before=EVENT_BEFORE_S,
+                   after=EVENT_AFTER_S, sample_hz=10.0, at_tol_s=AT_TOL_S) -> dict:
     """Peak / median / peak offset / verdict for one event time, versus the floor."""
     sampled = sample_window(t, values, t0, before, after, sample_hz)
     times, vals = np.asarray(sampled["times"], np.float64), np.asarray(sampled["values"], np.float64)
@@ -1031,7 +1034,7 @@ def control_windows(root=None, dataset: str = "vod30", still_count: int = 20) ->
     return sets
 
 
-def window_bounds(times, half_s: float = 2.5) -> list:
+def window_bounds(times, half_s: float = CONTROL_HALF_S) -> list:
     """Merge control times into non-overlapping [t - half, t + half] windows."""
     windows = sorted((float(x) - half_s, float(x) + half_s) for x in times)
     merged: list[list] = []
@@ -1102,7 +1105,7 @@ def limits_block(arrays: dict, threshold: float, floor: float,
     }
 
 
-def noise_floor(t, values, times, half_s: float = 2.5, eligible=None) -> dict:
+def noise_floor(t, values, times, half_s: float = CONTROL_HALF_S, eligible=None) -> dict:
     """The signal's distribution over the control windows, and the quantile bar.
 
     ``floor`` is the :data:`FLOOR_QUANTILE` percentile of the eligible sample and
@@ -1149,7 +1152,7 @@ def noise_floor(t, values, times, half_s: float = 2.5, eligible=None) -> dict:
 
 
 def calibrate(arrays: dict, sets: dict, signal: str = ONSET_SIGNAL,
-              half_s: float = 2.5) -> dict:
+              half_s: float = CONTROL_HALF_S) -> dict:
     """A floor per control set, the combined floor, the bars and the false rates.
 
     The occlusion gate is applied first: control frames whose occlusion channel is
@@ -2446,13 +2449,13 @@ def main(argv=None) -> int:
     p = sub.add_parser("report", help="calibrate the floor, find onsets, answer")
     common(p)
     p.add_argument("--events", default=None)
-    p.add_argument("--before", type=float, default=1.5,
+    p.add_argument("--before", type=float, default=EVENT_BEFORE_S,
                    help="seconds of window before a time, used for an event and for a control")
-    p.add_argument("--after", type=float, default=2.5,
+    p.add_argument("--after", type=float, default=EVENT_AFTER_S,
                    help="seconds of window after a time, used for an event and for a control")
     p.add_argument("--sample-hz", type=float, default=10.0)
     p.add_argument("--top", type=int, default=12)
-    p.add_argument("--control-half-s", type=float, default=2.5,
+    p.add_argument("--control-half-s", type=float, default=CONTROL_HALF_S,
                    help="the half-window the calibration reads; not the window a control is judged with")
     p.add_argument("--controls-per-set", type=int, default=20)
     p.add_argument("--merge-s", type=float, default=0.25)
