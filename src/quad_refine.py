@@ -86,8 +86,8 @@ def refine_quad(bgr, prior, band_px=70, n_steps=25, iters=2):
 
 
 if __name__ == "__main__":
-    import json
-    ref = np.array(json.load(open(ROOT / "out" / "corners_30min.json"))["corners"], np.float32)
+    from src.vod30_corners import load as load_vod30_corners
+    ref = load_vod30_corners()
     TIMES = list(range(60, 1741, 120))
     cap = cv2.VideoCapture(str(ROOT / "data" / "vod_30min_260815.mp4"))
     errs, fails = [], []

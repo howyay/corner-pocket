@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import LANDSCAPE_H, LANDSCAPE_W, canonical_destination
+from vod30_corners import load as load_vod30_corners
 
 # This audit reads the table LANDSCAPE -- length on x -- as it always has; the
 # transposed view comes from the one frame in src/table_geometry.py.
@@ -70,16 +71,23 @@ def audit(video, ref_corners, times, tag):
     return rows
 
 
-HL = str(ROOT / "data" / "vod_highlight.mp4")
-V30 = str(ROOT / "data" / "vod_30min_260815.mp4")
-fixed_hl = json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"]
-fixed_30 = json.load(open(ROOT / "out" / "corners_30min.json"))["corners"]
+def main():
+    # The run stays inside this function.  An import must not open media and
+    # must not write an artifact.
+    HL = str(ROOT / "data" / "vod_highlight.mp4")
+    V30 = str(ROOT / "data" / "vod_30min_260815.mp4")
+    fixed_hl = json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"]
+    fixed_30 = load_vod30_corners()
 
-hl_times = [5, 28, 60, 90, 150, 200]
-v30_times = list(range(60, 1741, 120))
-out = {
-    "highlight_1080p": audit(HL, fixed_hl, hl_times, "HIGHLIGHT 1080p"),
-    "vod30_720p": audit(V30, fixed_30, v30_times, "VOD30 720p"),
-}
-(ROOT / "out" / "audit_homography.json").write_text(json.dumps(out, indent=1))
-print("\nwrote out/audit_homography.json")
+    hl_times = [5, 28, 60, 90, 150, 200]
+    v30_times = list(range(60, 1741, 120))
+    out = {
+        "highlight_1080p": audit(HL, fixed_hl, hl_times, "HIGHLIGHT 1080p"),
+        "vod30_720p": audit(V30, fixed_30, v30_times, "VOD30 720p"),
+    }
+    (ROOT / "out" / "audit_homography.json").write_text(json.dumps(out, indent=1))
+    print("\nwrote out/audit_homography.json")
+
+
+if __name__ == "__main__":
+    main()

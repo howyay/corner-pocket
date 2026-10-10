@@ -167,10 +167,10 @@ class OneCanonicalFrameTests(unittest.TestCase):
     def audit_calib_frame():
         """src/audit_calib.py's TABLE_W, TABLE_H and DST, evaluated from source.
 
-        That module cannot be imported: its module body (src/audit_calib.py:73-85)
-        opens data/*.mp4 and out/*.json and writes out/audit_homography.json. So
-        this runs the file's own frame statements, in order, with the owner's
-        names bound -- the same values an import would produce, and no media.
+        This reads the file's own frame statements, in order, with the owner's
+        names bound: the same values the module holds, and no media.  An import
+        gives the same values now that the audit run sits in ``main()``; the
+        walk stays because it needs no import of the module at all.
         """
         from src.table_geometry import LANDSCAPE_H, LANDSCAPE_W, canonical_destination
         path = REPO / 'src' / 'audit_calib.py'

@@ -126,10 +126,11 @@ if __name__ == "__main__":
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     from src.datasets import media_path
+    from src.vod30_corners import load as load_vod30_corners
     which = sys.argv[1] if len(sys.argv) > 1 else "v30"
     if which == "v30":
         VIDEO = str(media_path(ROOT, "vod30"))
-        REF = np.array(json.load(open(ROOT / "out" / "corners_30min.json"))["corners"], np.float32)
+        REF = load_vod30_corners()
         TIMES = list(range(60, 1741, 120))
     else:
         VIDEO = str(ROOT / "data" / "vod_highlight.mp4")

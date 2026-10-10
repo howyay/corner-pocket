@@ -3,7 +3,7 @@
 Fit the table homography on a subset of frames (PnP over 6 pocket anchors,
 robust median over per-frame fits, outlier frames rejected) and measure the
 generalization residual on HELD-OUT frames, reported in mm per anchor using
-the local mm<->px scale at each anchor.
+the local pixel-per-mm scale at each anchor.
 
 Bar: mean pocket-anchor error <= 15 mm on >= 5 held-out frames.
 """
@@ -19,18 +19,16 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 import calibrate
+import vod30_corners
 from calibrate import (OBJECT_MM, anchors_for_frame, pnp_solve, project)
 from pipeline import homography_to_canonical
 from table_detect import detect_cloth_mask, fit_quadrilateral
 
 
-def collect_frames(video: str, every: float = 45.0):
+def collect_frames(video: str, every: float = 45.0, root=None):
     cap = cv2.VideoCapture(video)
     dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)
-    corners_ref = np.array(
-        json.load(open(ROOT.parent / "out" / "corners_30min.json"))["corners"],
-        dtype=np.float32,
-    )
+    corners_ref = vod30_corners.load(root)
     H_prior = homography_to_canonical(corners_ref)
     frames = []
     t = 30.0
@@ -50,12 +48,12 @@ def collect_frames(video: str, every: float = 45.0):
     return frames, H_prior
 
 
-def local_mm_per_px(Hm, canon_pt):
-    """mm per pixel at a canonical point, from the H Jacobian (approx)."""
+def local_px_per_mm(Hm, canon_pt):
+    """Pixels per millimetre at a canonical point, from the H Jacobian (approx)."""
     d = 1.0  # 1 mm in canonical x
     p0 = project(Hm, np.array([canon_pt]))
     p1 = project(Hm, np.array([[canon_pt[0] + d, canon_pt[1]]]))
-    return float(np.hypot(p1[0][0] - p0[0][0], p1[0][1] - p0[0][1]) / d)  # px per mm
+    return float(np.hypot(p1[0][0] - p0[0][0], p1[0][1] - p0[0][1]) / d)
 
 
 def main():
@@ -105,8 +103,8 @@ def main():
         proj = project(H_final, OBJECT_MM)
         px_err = np.sqrt(((proj - fr["img6"]) ** 2).sum(axis=1))
         for i in range(6):
-            spp = local_mm_per_px(H_final, OBJECT_MM[i])
-            mm_errs.append(px_err[i] / spp)  # px / (px per mm) = mm
+            px_per_mm = local_px_per_mm(H_final, OBJECT_MM[i])
+            mm_errs.append(px_err[i] / px_per_mm)  # px / (px per mm) = mm
     mm_errs = np.array(mm_errs)
     print(f"HOLD-OUT ({len(hold_frames)} frames):")
     print(f"  per-anchor mean mm error: {mm_errs.mean():.1f}")
@@ -116,16 +114,23 @@ def main():
     for fr in hold_frames:
         proj = project(H_final, OBJECT_MM)
         px_err = np.sqrt(((proj - fr["img6"]) ** 2).sum(axis=1))
-        spp = np.array([local_mm_per_px(H_final, OBJECT_MM[i]) for i in range(6)])
-        per_frame_mm.append((px_err / spp).mean())
+        px_per_mm = np.array([local_px_per_mm(H_final, OBJECT_MM[i]) for i in range(6)])
+        per_frame_mm.append((px_err / px_per_mm).mean())
     per_frame_mm = np.array(per_frame_mm)
     print(f"  per-frame mean mm: {per_frame_mm.mean():.1f} (min {per_frame_mm.min():.1f}, "
           f"max {per_frame_mm.max():.1f})")
+    # the bar in the module docstring, compared here rather than nowhere
+    bar_mm = 15.0
+    mean_mm = float(mm_errs.mean())
+    bar_ok = len(hold_frames) >= 5 and mean_mm <= bar_mm
+    print(f"  bar: mean {mean_mm:.1f} mm <= {bar_mm:.0f} mm on "
+          f"{len(hold_frames)} held-out frames: {'PASS' if bar_ok else 'FAIL'}")
     json.dump({
         "f_opt": f_opt, "n_fit": len(good), "n_holdout": len(hold_frames),
-        "mean_mm": round(float(mm_errs.mean()), 1),
+        "mean_mm": round(mean_mm, 1),
         "median_mm": round(float(np.median(mm_errs)), 1),
         "per_frame_mean_mm": round(float(per_frame_mm.mean()), 1),
+        "bar_mm": bar_mm, "bar_met": bar_ok,
         "H": H_final.tolist(),
     }, open(ROOT.parent / "out" / "calib_holdout.json", "w"), indent=1)
     print("saved out/calib_holdout.json", flush=True)
