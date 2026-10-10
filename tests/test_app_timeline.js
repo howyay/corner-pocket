@@ -1,6 +1,8 @@
 'use strict';
 // Frontend logic tests for annotator/app.js (video timeline mode). Node syntax only, zero deps: node tests/test_app_timeline.js
-const assert = require('assert');
+// The strict module: assert.equal() is assert.strictEqual() here, so a value that
+// only coerces to the expected one fails. The two other javascript suites use it.
+const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -3369,12 +3371,13 @@ test('round 31 / owner item 3: the scrub bubble states the same time the strip d
     seam.fire('input', {id: 'vs-scrub', value: String(seconds), dataset: {}, closest: () => null});
     return seam.text('#vs-scrub-bubble');
   };
-  assert.equal(bubble(0), '0:00.0', 'the start of a clip');
-  assert.equal(bubble(59.94), '0:59.9', 'a tenth is kept');
-  assert.equal(bubble(25 * 60 + 53.5), '25:53.5', 'the same m:ss.d the cue cards use');
-  assert.equal(bubble(3600 + 49 * 60 + 42.1), '1:49:42.1', 'over an hour the hour field appears');
-  assert.equal(bubble('17.44'), '0:17.4', 'the value arrives as a string from a range input');
-  assert.equal(bubble(-4), '0:00.0', 'a negative is clamped');
+  // scrubT() returns the concatenated string, so the bubble holds a string primitive.
+  assert.strictEqual(bubble(0), '0:00.0', 'the start of a clip');
+  assert.strictEqual(bubble(59.94), '0:59.9', 'a tenth is kept');
+  assert.strictEqual(bubble(25 * 60 + 53.5), '25:53.5', 'the same m:ss.d the cue cards use');
+  assert.strictEqual(bubble(3600 + 49 * 60 + 42.1), '1:49:42.1', 'over an hour the hour field appears');
+  assert.strictEqual(bubble('17.44'), '0:17.4', 'the value arrives as a string from a range input');
+  assert.strictEqual(bubble(-4), '0:00.0', 'a negative is clamped');
 });
 
 
