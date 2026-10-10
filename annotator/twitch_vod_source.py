@@ -43,15 +43,14 @@ slow loses frames; it never falls behind in time.
 """
 import json
 import math
-from pathlib import Path
 import re
-import ssl
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import Request, build_opener, HTTPSHandler
 
 from annotator import twitch_source as live
+from src.tls_trust import trusted_context
 
 #: The live resolver's host allowlists and anonymous web client id are the single source
 #: of truth for which hosts this machine will talk to; the VOD path adds no new host.
@@ -135,9 +134,7 @@ def _raw(url, payload=None, *, timeout=12, limit=_PLAYLIST_BYTES):
     if payload is not None:
         headers.update({'Client-ID': live._CLIENT_ID, 'Content-Type': 'application/json'})
         data = json.dumps(payload).encode('utf-8')
-    context = ssl.create_default_context()
-    if Path('/etc/ssl/certs/ca-certificates.crt').is_file():
-        context.load_verify_locations('/etc/ssl/certs/ca-certificates.crt')
+    context = trusted_context()
     opener = build_opener(live._NoRedirect(), HTTPSHandler(context=context))
     try:
         with opener.open(Request(url, data=data, headers=headers), timeout=timeout) as response:
@@ -164,9 +161,7 @@ def _raw_bytes(url, *, timeout=10, limit=_THUMB_BYTES):
     """
     _validate_thumb(url)
     headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'image/*'}
-    context = ssl.create_default_context()
-    if Path('/etc/ssl/certs/ca-certificates.crt').is_file():
-        context.load_verify_locations('/etc/ssl/certs/ca-certificates.crt')
+    context = trusted_context()
     opener = build_opener(live._NoRedirect(), HTTPSHandler(context=context))
     try:
         with opener.open(Request(url, headers=headers), timeout=timeout) as response:

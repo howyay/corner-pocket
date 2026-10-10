@@ -12,17 +12,15 @@ script exits with status 1. Standard library only. Licences: see NOTICE.
 """
 import hashlib
 import os
-import ssl
 import sys
 import tempfile
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))  # `__main__` puts scripts/ first, not the repository root
+from src.tls_trust import trusted_context
 CHUNK = 1 << 20
-CA_BUNDLES = ("/etc/ssl/certs/ca-certificates.crt",  # Debian, Ubuntu, Arch, NixOS
-              "/etc/pki/tls/certs/ca-bundle.crt",     # Fedora, RHEL
-              "/etc/ssl/cert.pem")                    # macOS, Alpine, BSDs
 
 # (path under the repository root, URL, SHA-256, size in bytes)
 WEIGHTS = [
@@ -54,20 +52,8 @@ def sha256_of(path):
     return digest.hexdigest()
 
 
-def tls_context():
-    """The default verifying context. Some standalone Python builds (uv's, for
-    one) find no CA certificates on some systems; then load the system bundle.
-    Certificate verification is never turned off."""
-    context = ssl.create_default_context()
-    if not context.cert_store_stats()["x509_ca"]:
-        bundle = next((b for b in CA_BUNDLES if os.path.isfile(b)), None)
-        if bundle:
-            context.load_verify_locations(cafile=bundle)
-    return context
-
-
 def open_url(request, timeout):
-    return urllib.request.urlopen(request, timeout=timeout, context=tls_context())
+    return urllib.request.urlopen(request, timeout=timeout, context=trusted_context())
 
 
 def fetch(dest, url, sha256, size, urlopen=open_url):

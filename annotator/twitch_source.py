@@ -8,13 +8,13 @@ Signed URLs are private, short-lived decoder inputs: never log or persist them.
 import datetime
 import json
 import re
-import ssl
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+
+from src.tls_trust import trusted_context
 
 
 class TwitchSourceError(RuntimeError):
@@ -180,11 +180,7 @@ def _request(url, payload=None, *, timeout=_TIMEOUT):
         headers.update({'Client-ID': _CLIENT_ID, 'Content-Type': 'application/json'})
         data = json.dumps(payload).encode('utf-8')
     try:
-        context = ssl.create_default_context()
-        # Bundled Python installations may not locate the host CA bundle.
-        if Path('/etc/ssl/certs/ca-certificates.crt').is_file():
-            context.load_verify_locations('/etc/ssl/certs/ca-certificates.crt')
-        with build_opener(_NoRedirect(), HTTPSHandler(context=context)).open(Request(url, data=data, headers=headers), timeout=timeout) as response:
+        with build_opener(_NoRedirect(), HTTPSHandler(context=trusted_context())).open(Request(url, data=data, headers=headers), timeout=timeout) as response:
             body = response.read(_MAX_BYTES + 1)
         if len(body) > _MAX_BYTES:
             raise TwitchSourceError('Twitch playback response exceeds the size limit')

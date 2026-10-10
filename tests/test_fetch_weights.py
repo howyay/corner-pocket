@@ -6,11 +6,13 @@ import hashlib
 import io
 import os
 import re
+import ssl
 import tempfile
 import unittest
 from pathlib import Path
 
 from scripts import fetch_weights as fw
+from src.tls_trust import trusted_context
 
 GOOD = b"pinned weights " * 1000
 GOOD_SHA = hashlib.sha256(GOOD).hexdigest()
@@ -104,8 +106,8 @@ class PinTests(unittest.TestCase):
         self.assertIsNone(re.search(r"/resolve/main/", hf_url), "pinned to a commit, not main")
 
     def test_downloads_verify_certificates(self):
-        context = fw.tls_context()
-        self.assertEqual(context.verify_mode, fw.ssl.CERT_REQUIRED)
+        context = trusted_context()
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
 
     def test_local_copies_match_the_pins(self):
