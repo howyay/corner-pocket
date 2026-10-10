@@ -27,6 +27,7 @@ so a later change cannot quietly break them:
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -182,6 +183,33 @@ class RecordsMotionTests(unittest.TestCase):
 
     def test_a_missing_records_file_is_not_an_error(self):
         self.assertIsNone(tv.records_motion_check(ROOT / "out" / "no-such-records.json", []))
+
+
+class RecordsFlagTests(unittest.TestCase):
+    """``--records`` must reach `analyze`: the flag was declared and never read."""
+
+    def records_path(self, argv):
+        """The `records_path` that `main` hands to `analyze`, with `analyze` patched."""
+        seen = {}
+
+        def fake_analyze(*args, **kwargs):
+            seen.update(kwargs)
+            return {}
+
+        with mock.patch.object(tv, "analyze", fake_analyze):
+            tv.main(["--quiet", "--report", "", *argv])
+        return seen["records_path"]
+
+    def test_main_hands_the_records_flag_to_analyze(self):
+        self.assertEqual(self.records_path(["--records", "out/custom/records.json"]),
+                         "out/custom/records.json")
+
+    def test_the_default_records_path_is_still_the_scan_output(self):
+        self.assertEqual(self.records_path([]), "out/scan30/records.json")
+
+    def test_an_empty_records_value_still_means_no_check(self):
+        """`analyze` reads the empty string as "skip the trigger check"."""
+        self.assertEqual(self.records_path(["--records", ""]), "")
 
 
 class LiveVideoTimingTests(unittest.TestCase):

@@ -876,7 +876,7 @@ def face_crop(frame, bbox, pad=0.6):
     return cv2.resize(frame[y0:y1, x0:x1], None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
 
-def demo(directory=DEFAULT_DIR, dataset="vod30", log=print):
+def demo(directory=DEFAULT_DIR, dataset="vod30", log=print, name="scratch"):
     """Enroll one photo per player, then bind held-out faces on a scratch root.
 
     Ground truth here is *positional*: inside the measured continuity window one
@@ -913,7 +913,7 @@ def demo(directory=DEFAULT_DIR, dataset="vod30", log=print):
         raise RuntimeError("no quality face in the enrollment burst")
 
     before = md5_files()
-    root = scratch_root(directory)
+    root = scratch_root(directory, name=name)
     pipeline = PersonPipeline(root)
 
     # 1. enroll through the production function POST /api/identity/enroll calls
@@ -1142,9 +1142,9 @@ def main(argv=None):
         report = analyse(args.dir)
         print(json.dumps(digest(report), indent=1))
     elif args.command == "demo":
-        demo(args.dir)
+        demo(args.dir, name=args.name)
     elif args.command == "serve":
-        serve(args.root or (Path(args.dir) / "scratch"), args.port)
+        serve(args.root or (Path(args.dir) / args.name), args.port)
     elif args.command == "http-demo":
         http_demo(args.port, args.dir)
     elif args.command == "md5":

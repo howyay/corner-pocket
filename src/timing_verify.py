@@ -803,7 +803,7 @@ def main(argv=None):
                      before=args.before, after=args.after, sample_fps=args.sample_fps,
                      controls=parse_times(args.controls), control_count=args.control_count,
                      drift_step=args.drift_step, cross_times=parse_times(args.cross_times),
-                     limit=args.limit, progress=progress)
+                     records_path=args.records, limit=args.limit, progress=progress)
     report["seconds"] = round(time.time() - started, 2)
     if args.report:
         path = Path(args.report)

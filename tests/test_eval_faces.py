@@ -4,6 +4,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -28,6 +29,7 @@ from src.eval_faces import (
     height_bucket,
     iou,
     load_corners,
+    main,
     md5_files,
     pair_stats,
     pick_demo_window,
@@ -556,6 +558,45 @@ class AnalyseRoundTripTest(unittest.TestCase):
             self.assertEqual(report["sampled_frames"], 3)
             self.assertEqual(report["detectability"]["gate_person"]["quality_pass"]["n"], 2)
             self.assertEqual(report["separation"]["within_tracklet"]["n"], 1)
+
+
+class NameFlagTests(unittest.TestCase):
+    """``--name`` must select the scratch root: the flag was declared and never read."""
+
+    def test_demo_receives_the_name_flag(self):
+        seen = {}
+
+        def fake_demo(directory, **kwargs):
+            seen["directory"] = directory
+            seen.update(kwargs)
+            return {}
+
+        with mock.patch("src.eval_faces.demo", fake_demo):
+            main(["demo", "--dir", "out/face-eval", "--name", "scratch-b"])
+        self.assertEqual(seen["directory"], "out/face-eval")
+        self.assertEqual(seen["name"], "scratch-b")
+
+    def test_serve_uses_the_named_scratch_root(self):
+        seen = {}
+
+        def fake_serve(root, port):
+            seen["root"] = Path(root)
+            seen["port"] = port
+
+        with mock.patch("src.eval_faces.serve", fake_serve):
+            main(["serve", "--dir", "out/face-eval", "--name", "scratch-b"])
+        self.assertEqual(seen["root"], Path("out/face-eval") / "scratch-b")
+        self.assertEqual(seen["port"], 8133)
+
+    def test_the_default_name_is_still_scratch(self):
+        seen = {}
+
+        def fake_serve(root, port):
+            seen["root"] = Path(root)
+
+        with mock.patch("src.eval_faces.serve", fake_serve):
+            main(["serve", "--dir", "out/face-eval"])
+        self.assertEqual(seen["root"], Path("out/face-eval") / "scratch")
 
 
 if __name__ == "__main__":
