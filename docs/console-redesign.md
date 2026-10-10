@@ -3926,3 +3926,171 @@ double, so the next reader does not merge them.
 The loop still needs a fresh read-only walk of the tree. The round-43 walk found one Strong
 candidate, and `51e13f7` lands it, so the round-44 walk decides whether any Strong candidate is
 left.
+
+## Round 44 · the walk that certified nothing, and three repairs (2026-10-10)
+
+The round-44 walk read the tree read-only while a writer was editing `tests/`, so its own rule
+stopped it: it printed `git status --porcelain`, saw three changed paths, and refused to certify
+a candidate against a tree that moves. Its verdict line is `Strong candidate present`, with two
+Strong candidates and two Worth rows, and its report says in the same breath that none of them
+is certified against `7a5021a`. The reading is still the input of this round: one Strong
+candidate is the audit label table, the other is the one reader the route listing never had, and
+one Worth row is the fixture builder. The round-45 walk runs on the frozen tree and its `no
+Strong candidate` line is what ends the loop.
+
+| Commit | Subject | What it closes |
+| --- | --- | --- |
+| `0639f0b` | tests: one module owns the two console text exceptions | the round-43 open row "Two statements of one console exception" |
+| `a41e99e` | tests: the fixture builder has the check its docstring promised | the round-44 walk's Worth row (b): a docstring command that did not exist |
+| `83167f2` | console: a label for every action the service publishes, and a reader for the route | the round-44 walk's Strong candidate (three raw enums in the audit feed) and its Strong 2 note (a route whose comment named a reader that did not exist) |
+
+### The audit label table is a second copy of the server action list
+
+At `7a5021a`, `annotator/ops.js:1096` held `const auditActions={...}` with a sentence pair for 31
+of the 34 operations that `annotator/operations.py:1419 ACTION_NAMES = tuple(OPERATIONS)`
+declares, and `annotator/ops.js:1114 function auditLine(e)` falls back to the action name itself:
+
+    const label=auditActions[e.action]?.[lang==='zh'?1:0]||e.action;
+
+The three missing names were `entrant_add_late`, `vod_link` and `vod_unlink`, so the audit feed
+printed `vod_link` where the night said a broadcast was linked. The console sends all three
+itself (`annotator/ops.js:1260 action('vod_link',payload)`, `:1261 action('vod_unlink',…)`,
+`:1410 action('entrant_add_late',body)`), and the round-2 case at `tests/test_ops.js:3238` named
+four actions of its own, so the other thirty rows were never checked against the service.
+
+The second copy gets a reader. `GET /api/actions` at `annotator/unified_server.py:2054`
+published `{'writes': OPERATOR_ACTIONS.contract(), 'operations': list(TOURNAMENT_ACTIONS)}`
+under the comment "A console reads this instead of repeating the route list", and no console read
+it: `api/actions` occurred 0 times in the five javascript modules and the three pages, while
+every one of the 21 write rows had a console URL and every console URL matched a served route,
+so no control was broken. That is why the walk ranked this one Strong: the route promised a
+reader, the console kept its own copy, and the copy had already drifted.
+
+`83167f2` adds the three rows and reuses the words the console already has: the Chinese of
+`vod_link` is `关联直播` (`annotator/ops.js:9 vodLinkOpen[1]`), of `vod_unlink` is `取消关联`
+(`vodUnlink[1]`), and of `entrant_add_late` is `中途加入对阵表` (`lateOpen[1]` at `:65` and
+`lateAdd[1]` at `:64`). The table holds 34 rows now, one per declared operation.
+`tests/test_console_audit_labels.py` reads the served list through the same seam
+`tests/test_unified_server.py` uses (`Backend(Path(self.temp.name))` and
+`self.backend.get(['api', 'actions'], ReadQuery({}))`) and asserts that the served names and the
+console rows are the same set, naming both differences; `annotator/unified_server.py:2056` names
+that file in its comment. The node suite's round-2 case derives its names from
+`annotator/operations.py` (`/^\s*Operation\('([a-z_]+)'/gm`, 34 names) and keeps the four names
+it used to hold as a floor, so a scan that read nothing fails.
+
+Measured. The module `Ran 4 tests in 0.055s` OK, `tests/test_unified_server.py` `Ran 104 tests
+in 19.330s` OK, `node tests/test_ops.js` 211 pass of 211 with 210 cases before (the derived case
+grew and one case was added). The full suite answers 1736 against 1732 before. My own reading of
+the two sides: the table holds 34 rows, the registry holds 34 names, in-the-table-and-not-served
+`[]` and served-and-not-in-the-table `[]`. The rendering case asks the console itself through
+`node -e` and a `vm` context with a small document double, because a python read of the table can
+only restate the table; without `node` on `PATH` the case fails rather than skips
+(`AssertionError: node is required to ask annotator/ops.js how it renders an audit line`, 1 of 4
+cases), so the run-time skip budget of the checkout does not move.
+
+Bites. Removing the `vod_link` row answered
+`AssertionError: Tuples differ: (['vod_link'], []) != ([], [])` and failed 2 cases. Removing
+`note_delete`, a row the old case never checked, made the node suite fail with `note_delete is a
+sentence in en, not the backend enum at tests/test_ops.js:3253`. Both files were restored from
+copies and re-hashed. A rewording does not fail, and that is the honest limit of the pair: with
+the Chinese of `vod_link` changed to `关联直播X` the module stayed OK, because the case checks
+that `auditLine` prints the row of the table and not that the row reads well. The vocabulary rule
+behind the three new rows is a style rule, and nothing measures it.
+
+Limits. `auditSubject` has no `vod_` branch, so a VOD audit line carries its label and its
+revision and no subject; that is pre-existing and outside this change. The live check of the
+delivery used an empty temporary root. A new operation is checked for presence and shape, not for
+the words its row chooses.
+
+### One module owns the two console text exceptions
+
+`tests/test_refusal_identity.py` held `CONSOLE_WORDS_THAT_REPEAT_A_REFUSAL` and
+`CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL`, `tests/test_job_refusal_identity.py` held
+`ALLOWED_CONSOLE_HINTS`, and both modules carried a comment saying that a new exception must be
+made in both places. One fact in three containers can disagree with itself, and the second copy
+had to be edited by hand, which is the round-43 open row this commit closes.
+
+`0639f0b` gives the facts one owner. `tests/console_text.py` holds one row per exception
+(`ConsoleException(file, text, word, refusal)`), a record case with the values the two modules
+held at `7a5021a`, and three derived views the two test modules read beside their use:
+`words_that_repeat_a_refusal()`, `sentences_that_contain_a_refusal()` and
+`allowed_console_hints()`. A row names the refusal sentence it repeats, and the module asserts
+that the sentence is a row of `annotator/refusals.py`. The Chinese pair of `annotator/ops.js:10`
+repeats exactly one row, `A bye is added by the draw; type the guest's real name` (code
+`guest_name_is_bye`), so the English key of the row was measured and not guessed.
+
+A guard case in `tests/test_refusal_identity.py` reads the source of every `tests/test_*.py` and
+fails on a second binding of one of the three names - an import is the wanted form - and on a
+literal of one of the two texts. Measured: the three modules answer `Ran 15 tests`, `Ran 14
+tests` and `Ran 1 test`, all OK, and the full suite answers 1730 tests against 1729 before, so
+the count grew by exactly the guard case. Bite: a binding of
+`CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL` and its literal appended to the job module fails the
+guard with `test_job_refusal_identity.py:397: binds CONSOLE_SENTENCES_THAT_CONTAIN_A_REFUSAL
+again` and `:397: JPEG encoding failed`.
+
+Limits. The guard reads string constants through `ast`, so a fact built by concatenation or by
+an f-string would evade it, and it reads `tests/test_*.py` only. `tests/console_text.py` is not
+named `test_*.py`, in the form `tests/dataset_id_cases.py` uses, so its record case runs through
+`scripts/pool-test.sh python console_text` and not through discovery.
+
+### The fixture builder has the check its docstring promised
+
+`tests/console_fixture_build.py:15` advertised `.venv/bin/python tests/console_fixture_build.py
+--check    # fail if the committed state is stale-shaped`, and `main()` defined `--out`,
+`--port` and `--verbose` only: such a run ended with `console_fixture_build.py: error:
+unrecognized arguments: --check` and exit 2. No file in the tree ran the module, so the promise
+was never kept and never checked, although `docs/console-shots.md` and the two fixture servers
+read the state file it writes.
+
+`a41e99e` makes the mode real. It drives the same build and compares the result with the state
+file: every field path of every row group, the fields each group carries, and the counts and
+names the club itself decides (audit actions, match statuses, players, history nights, sources,
+notes, entrants). It compares no timestamp and no id, because `backdate_joins` and the store
+stamp those from the clock, and it writes nothing. A difference prints `<file> is stale-shaped:
+<n> difference(s) from a fresh build` with one line per difference, and the run ends with `run
+this script without --check to rewrite the state`. A missing file is one difference with the
+same instruction, measured with `--check --out /tmp/dshsess/does_not_exist.json`, exit 1.
+
+The check found the committed file stale. `tests/console_fixture_state.json` had lost `links`
+and `vods`, the two collections the store serves now, so every consumer seeded a club with no
+linked broadcast: 4 differences, the two collections and the field paths that name them. The
+file was regenerated with the builder, which is the job of the script:
+`c7a41a25016119fdfdea7a4b20f6b8177feaaf9b` -> `d20118d5b59e5cc2f3f05c15c7ae3bb14c978ad7`, 605
+insertions and 587 deletions. The club itself did not change: revision 111, 14 players, 3
+archived events, 15 matches and 3 history nights are equal, so `docs/console-shots.md:12` still
+describes it. `links` holds 1 row and `vods` holds 1 row now, and `--check` answers `matches a
+fresh build: 45 field paths, 13 audit actions, nothing written`.
+
+`tests/test_console_fixture_shape.py` holds 2 cases, and each one pays one build (3.2 s for the
+pair). The first asserts that the committed fixture matches a fresh build and that the run
+rewrote nothing. The second copies the committed file, deletes `links` and every `joinedAt`, and
+asserts that the run names the collection and the field it lost and that the copy still holds
+its bytes. Bites: with the field-path comparison replaced by `for line in []:` one case of two
+failed; with the write guard changed from `if not args.check:` to `if True:` both cases failed.
+Both files were restored from copies. The live check starts
+`tests/serve_operations_fixture.py --state tests/console_fixture_state.json` on a free port with
+its own child: `GET /api/operations` answers 200 with 40446 bytes, and the document carries its
+ten top-level names with `links 1` and `vods 1`.
+
+Limits. The check compares structure and club counts, not values, so a fixture whose score
+changed would pass. A field that only some rows of a group carry appears in the field-path lines
+and not in the group's field list. The regenerated file anchors its three live matches on the
+day of the regeneration, so the note at `docs/impeccable-ledger.md:576` describes the file
+before this change. `--check` needs a free loopback port and a build, so it is a slow case by
+design and it stays out of the fast suite.
+
+### What stands open after this round
+
+| Candidate | Rank | Ground in the tree |
+| --- | --- | --- |
+| The identity-less raise site | Worth | `annotator/operations.py:39` builds `f'{name} must be an integer from {low} to {high}'` with an f-string, so no table can key it; `rating must be an integer from 0 to 1000` still reaches the operator without a code |
+| The sentences the job can still hold | Worth | `annotator/vod_import.py:547` writes the ffmpeg-failure sentence and `:857` joins the scan errors into `_auto["error"]`; neither carries a code |
+| Two owners of the pocket name | Worth | `src/event_gates.py:183 def _pocket_name(value)` answers a bare pocket name and `annotator/unified_server.py:1590 def _pocket_name(event)` answers a side name from `last_mm`; over the 179 pot rows of `out/**/*events*.json` the two answers differ 0 times and a row that holds a bare name with `last_mm` numbers 0, so the two owners agree today and their seam is unproved |
+| The fixture anchors moved | Note | `docs/impeccable-ledger.md:576` says the state file anchors its three live matches at `2026-10-03T05:23Z`; the regenerated file anchors them on 2026-10-10, so that row describes the file before this change |
+
+The loop still needs a fresh read-only walk of the tree, and this time on a tree that does not
+move: the round-44 walk certified nothing, because a writer held three paths while it read. The
+round-45 walk runs after this round's commits, starts with the modules the Ledger never cites
+(`annotator/clock-sync.js`, `src/reid/osnet.py`, the `annotator/public_board.py` and
+`annotator/board.js` seam, `annotator/twitch_vod_source.py`), and its `no Strong candidate` line
+is what ends the loop.
