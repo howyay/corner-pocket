@@ -1,11 +1,16 @@
 """The user-data files, their exact on-disk formats, and their byte-exact documents.
 
 Every user-data file is written by one application writer, and each writer has one
-format. `FORMATS` names it per file, and `dump()` reproduces it byte for byte:
+format. `FORMATS` names the format of each row file, `DOCUMENT_FORMAT` names the
+format of every document the writers below produce, and `dump()` reproduces both
+byte for byte:
 
   indent2+nl  json.dump(indent=2) + "\\n"   Operations._commit, unified_server.atomic_save,
                                             enroll_from_tracklet._write_json, src.store._write
   indent1     json.dumps(indent=1)          IdentityIndex.save, face_id.store_faces
+
+`fmt_of` answers the format of one path and refuses a path that is no user-data
+file, so a new file states its format here instead of receiving a silent default.
 
 Operations and operator-record files keep their key order as the application wrote
 it, which no row model can rebuild (docs: db/migrations/0003_json_documents.sql), so
@@ -65,6 +70,17 @@ def dataset_dirs(root: Path) -> dict[str, str]:
 
 INDENT2_NL = "indent2+nl"
 INDENT1 = "indent1"
+# The format of every file `document_paths` names: the document writers of the module
+# docstring append one newline.  These files are many and their dataset folders come
+# and go, so no fixed table can hold them; is_document_path names the shapes instead.
+DOCUMENT_FORMAT = INDENT2_NL
+# The byte format of each user-data file that is not a document, by its relative path.
+# IdentityIndex.save and face_id.store_faces write these two with indent=1 and no
+# trailing newline.  A file that is in neither table is refused by fmt_of.
+FORMATS = {
+    "out/identity/clusters.json": INDENT1,
+    "out/corner-pocket/face_embeddings.json": INDENT1,
+}
 
 
 def dump(value, fmt: str) -> str:
@@ -75,11 +91,40 @@ def dump(value, fmt: str) -> str:
     raise ValueError(f"unknown format {fmt}")
 
 
+def is_document_path(relative: str) -> bool:
+    """True when `relative` is a file name `document_paths` produces.
+
+    The check reads the file name, not the disk: an imported VOD folder appears and
+    disappears, and its documents keep the same names while it exists.
+    """
+    parts = relative.split("/")
+    if relative in ("out/pid_seed.json", "out/corner-pocket/state.json"):
+        return True
+    if len(parts) == 2 and parts[0] == "out" and parts[1].startswith("pid_anchors_") \
+            and parts[1].endswith(".json"):
+        return True
+    if len(parts) == 3 and parts[0] == "out" and parts[2] == "labels.json" and parts[1] in BALL_SETS:
+        return True
+    if parts[-1] == "annotations.json":
+        return dataset_of_dir("/".join(parts[:-1])) is not None
+    if len(parts) >= 4 and parts[-1] == "correction.json" and parts[-2].isdigit() \
+            and parts[-3] == "frame_results":
+        return dataset_of_dir("/".join(parts[:-3])) is not None
+    return False
+
+
 def fmt_of(relative: str) -> str:
-    """The writer format of a user-data file (relative to the workspace root)."""
-    if relative in ("out/identity/clusters.json", "out/corner-pocket/face_embeddings.json"):
-        return INDENT1
-    return INDENT2_NL
+    """The writer format of a user-data file (relative to the workspace root).
+
+    A row file answers from `FORMATS`; a document answers `DOCUMENT_FORMAT`.  A path
+    that is neither is refused, never guessed: a new user-data file must state its
+    format in this module.
+    """
+    if relative in FORMATS:
+        return FORMATS[relative]
+    if is_document_path(relative):
+        return DOCUMENT_FORMAT
+    raise ValueError(f"no user-data file has the path {relative}")
 
 
 def document_paths(set_name: str, root: Path | None = None) -> list[str]:

@@ -10,14 +10,20 @@ The checks read the names from the owner, so a set that the owner gains is cover
 here without a second edit.
 """
 import ast
+import json
 import re
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
-from src.store_files import BALL_SETS, document_paths
+from src.store_files import (BALL_SETS, DOCUMENT_FORMAT, DOCUMENT_SETS, FORMATS, INDENT1,
+                             document_paths, dump, fmt_of, is_document_path)
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = "src/store_files.py"
+# This file must spell the format names to check them, so the scan below skips it.
+CHECKER = "tests/test_store_files.py"
 MIGRATION = ROOT / "db" / "migrations" / "0002_user_data.sql"
 # The modules that import the vocabulary from its owner. They must hold no copy.
 IMPORTERS = ("src/store.py", "src/store_import.py", "src/store_pg.py",
@@ -150,6 +156,70 @@ class SourceGuard(unittest.TestCase):
             self.assertTrue(spelling_lines(path),
                             f"{relative} no longer spells a crop-set name ({reason}); "
                             f"remove it from ALLOWED_SPELLINGS")
+
+
+class FileFormats(unittest.TestCase):
+    """The byte format of a user-data file has one owner: `FORMATS` in src/store_files.py.
+
+    Before this class existed the module docstring named a table named `FORMATS` that
+    the module did not hold, and `fmt_of` answered indent2+nl for every path it did not
+    know, so a new user-data file received a silent default.
+    """
+
+    def test_the_docstring_names_the_tables_the_module_holds(self):
+        doc = ast.get_docstring(ast.parse((ROOT / OWNER).read_text(encoding="utf-8")))
+        self.assertIn("FORMATS", doc, f"the docstring must name the format table of {OWNER}")
+        self.assertIn("DOCUMENT_FORMAT", doc, f"the docstring must name the document format")
+        self.assertIn("out/identity/clusters.json", FORMATS)
+
+    def test_every_document_path_of_every_set_answers_the_document_format(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        vod = root / "out" / "vods" / "tw-2252489073"
+        (vod / "frame_results" / "12").mkdir(parents=True)
+        (vod / "frame_results" / "12" / "correction.json").write_text("{}", encoding="utf-8")
+        paths = [path for name in DOCUMENT_SETS for path in document_paths(name, root)]
+        self.assertGreater(len(paths), 5, "the sweep must cover more than the fixed names")
+        self.assertTrue(any(path.startswith("out/vods/tw-2252489073/") for path in paths),
+                        "an imported VOD's documents belong to the sweep")
+        for path in paths:
+            self.assertTrue(is_document_path(path), f"{path} comes from document_paths")
+            self.assertEqual(fmt_of(path), DOCUMENT_FORMAT, path)
+
+    def test_a_row_file_answers_indent1_and_reproduces_its_bytes(self):
+        for path, fmt in FORMATS.items():
+            self.assertEqual(fmt, INDENT1, path)
+            self.assertFalse(is_document_path(path), path)
+        self.assertEqual(dump({"a": 1}, INDENT1), '{\n "a": 1\n}')
+        self.assertEqual(dump({"a": 1}, DOCUMENT_FORMAT), '{\n  "a": 1\n}\n')
+
+    def test_the_export_rows_are_the_rows_of_the_format_table(self):
+        source = (ROOT / "src" / "store_export.py").read_text(encoding="utf-8")
+        rows = re.search(r"^ROW_FILES = \((.*)\)$", source, re.M).group(1)
+        self.assertEqual(sorted(re.findall(r'"([^"]+)"', rows)), sorted(FORMATS))
+
+    def test_a_path_that_is_no_user_data_file_is_refused(self):
+        for path in ("out/unknown.json",
+                     "out/vods/tw-2252489073/nope.json",
+                     "out/vods/not-a-vod/annotations.json",
+                     "out/scan30/frame_results/12/verdict.json"):
+            with self.assertRaises(ValueError, msg=path) as caught:
+                fmt_of(path)
+            self.assertIn(path, str(caught.exception))
+        for path in ("out/scan30/annotations.json", "out/corner-pocket/state.json",
+                     "out/pid_anchors_vod30.json", "out/pid_seed.json"):
+            self.assertEqual(fmt_of(path), DOCUMENT_FORMAT, path)
+
+    def test_no_other_source_file_spells_a_format_name(self):
+        names = ("INDENT1", "INDENT2_NL", "DOCUMENT_FORMAT", "indent1", "indent2+nl")
+        offenders = []
+        for path in source_files():
+            relative = path.relative_to(ROOT).as_posix()
+            if relative in (OWNER, CHECKER):
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            offenders += [f"{relative}: {name}" for name in names if name in text]
+        self.assertEqual(offenders, [], f"a format name has one owner, {OWNER}")
 
 
 if __name__ == "__main__":

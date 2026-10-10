@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 from src.atomic_write import write_atomic
-from src.store_files import INDENT1, dump, documents, fmt_of
+from src.store_files import dump, documents, fmt_of
 
 TABLES = ("ops_meta", "players", "tournaments", "entrants", "entrant_members", "matches", "notes", "sources",
           "ops_events", "identity_clusters", "identity_face_samples", "face_embeddings", "track_seeds",
@@ -44,7 +44,7 @@ def export_texts(conn) -> dict[str, str]:
     texts = dict(documents(conn))
     clusters = IdentitySet().render(conn)
     if clusters:
-        texts["out/identity/clusters.json"] = dump(clusters, INDENT1)
+        texts["out/identity/clusters.json"] = dump(clusters, fmt_of("out/identity/clusters.json"))
     faces = FacesSet().render(conn)
     if faces:
         texts["out/corner-pocket/face_embeddings.json"] = dump(faces, fmt_of("out/corner-pocket/face_embeddings.json"))
