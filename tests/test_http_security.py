@@ -13,6 +13,8 @@ import unittest.mock
 
 from annotator.unified_server import Backend, make_handler
 
+import pool_probe
+
 
 def fixture_root(temp):
     root = Path(temp)
@@ -38,6 +40,10 @@ class LoopbackServer:
     def close(self):
         self.httpd.shutdown()
         self.httpd.server_close()
+
+    def pool_state(self):
+        """How many connections each of the listener's budgets holds (tests/pool_probe.py)."""
+        return self.httpd.pool_state()
 
     def request(self, method, path, headers=None, body=None):
         connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
@@ -183,32 +189,57 @@ class ConnectionBoundTests(unittest.TestCase):
 
     def test_handler_threads_are_capped_and_the_excess_is_refused(self):
         import socket
-        import threading
         import time
         from annotator import unified_server
         with unittest.mock.patch.object(unified_server.BoundedHTTPServer, 'max_handlers', 4):
             server = self.serve(timeout=30)
-        before = threading.active_count()
+        # The ceiling is copied in __init__ (annotator/unified_server.py:2389), so it
+        # is the construction above that has to happen inside the patch, not this.
+        before = len(pool_probe.handler_threads())
         idle = []
         for _ in range(12):
             sock = socket.create_connection(('127.0.0.1', server.port), timeout=5)
             sock.sendall(b'GET / HTTP/1.1\r\nHost: x\r\n')           # hold a handler
             idle.append(sock)
             self.addCleanup(sock.close)
-        time.sleep(0.5)
-        self.assertLessEqual(threading.active_count() - before, 4 + 1)
+        # Wait for the pool to settle, instead of one sleep of 0.5 s. The claim is
+        # that the excess was refused: a refusal never becomes a handler, so the
+        # pool stops at the ceiling and stays there. A fixed sleep says only that
+        # this host accepted twelve sockets within 0.5 s - on a loaded host the
+        # same correct server is still two handlers short, and the census below
+        # then fails for the wrong reason.
+        self.assertEqual(pool_probe.settled(server, {'requests': 4, 'streams': 0}),
+                         {'requests': 4, 'streams': 0},
+                         'twelve sockets past a ceiling of four leave four handlers, not twelve')
+        # A census by name, not threading.active_count(): that counts every thread
+        # in the interpreter, so unrelated threads moving in and out of the window
+        # mask a limiter that is not capping anything. Counting the handler threads
+        # by name is what tests/test_clock_api.py:252 already does, and the count is
+        # read only once it has stopped moving.
+        self.assertLessEqual(pool_probe.settled_count(lambda: len(pool_probe.handler_threads()) - before), 4,
+                             'the excess is refused, not parked in a thread')
+        # The refusals are writes the accept loop still has to make, so poll for
+        # them under one deadline rather than reading each socket once: a refused
+        # socket answers with 503 and then with end-of-file, an admitted one stays
+        # silent by design and is never waited on alone.
         refused = 0
-        for sock in idle:
-            sock.settimeout(0.2)
-            try:
-                if sock.recv(64).startswith(b'HTTP/1.0 503'):
-                    refused += 1
-            except socket.timeout:
-                pass
+        deadline = time.monotonic() + pool_probe.SETTLE_TIMEOUT
+        pending = list(idle)
+        while pending and refused < 8 and time.monotonic() < deadline:
+            waiting = []
+            for sock in pending:
+                sock.settimeout(0.05)
+                try:
+                    if sock.recv(64).startswith(b'HTTP/1.0 503'):
+                        refused += 1
+                except socket.timeout:
+                    waiting.append(sock)
+            pending = waiting
         self.assertGreaterEqual(refused, 8)
         for sock in idle:
             sock.close()
-        time.sleep(0.5)
+        self.assertEqual(pool_probe.settled(server, {'requests': 0, 'streams': 0}),
+                         {'requests': 0, 'streams': 0}, 'every closed client gave its slot back')
         response, _ = server.request('GET', '/')                     # capacity is released
         self.assertEqual(response.status, 200)
 
