@@ -28,6 +28,9 @@ import time
 
 from src.atomic_write import write_atomic
 
+#: The actions `ShotClock.apply` accepts and refuses every other name with. The write
+#: registry (annotator/unified_server.py, the 'clock' row) imports this tuple, so the
+#: verbs POST /api/actions publishes are the verbs this handler takes.
 ACTIONS = ('start', 'pause', 'reset', 'set')
 MIN_DURATION = 5
 MAX_DURATION = 300

@@ -54,6 +54,11 @@ RECENT_TTL_S = 180
 AUTO_INTERVAL_S = 900
 AUTO_KEEP = 10
 AUTO_MAX_SECONDS = 3600
+#: The actions the automatic download's switch takes in ``VodImporter.auto``, and the
+#: tuple that handler refuses every other name with. The write registry
+#: (annotator/unified_server.py, the 'vod_auto' row) imports it, so the verbs
+#: POST /api/actions publishes are the verbs this handler takes.
+AUTO_ACTIONS = ('on', 'off', 'scan')
 #: Free space an import must leave: the estimate x 1.2, plus 2 GB for everything else.
 HEADROOM = 1.2
 RESERVE_BYTES = 2 * 10**9
@@ -840,7 +845,7 @@ class VodImporter:
         if extra:
             raise VodImportError("unsupported auto option: " + ", ".join(extra))
         action = payload.get("action", "scan")
-        if action not in ("on", "off", "scan"):
+        if action not in AUTO_ACTIONS:
             raise VodImportError('action must be "on", "off" or "scan"')
         if "seconds" in payload:
             seconds = payload["seconds"]

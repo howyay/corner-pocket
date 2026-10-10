@@ -42,6 +42,18 @@ from annotator.pipeline_stages import frame_detectors  # noqa: E402
 # module imports it here, so the console's ball-set route and that owner cannot hold
 # two different lists of accepted names.
 from src.store_files import BALL_SETS  # noqa: E402
+# The shot clock declares the actions it applies (annotator/shot_clock.py ACTIONS).
+# This module imports it here, so the write registry's 'clock' row publishes the very
+# set the handler refuses with.
+from annotator.shot_clock import ACTIONS as CLOCK_ACTIONS  # noqa: E402
+# The automatic download declares the actions its switch takes
+# (annotator/vod_import.py AUTO_ACTIONS). This module imports it here, so the write
+# registry's 'vod_auto' row publishes the very set that handler refuses with.
+from annotator.vod_import import AUTO_ACTIONS as VOD_AUTO_ACTIONS  # noqa: E402
+#: The live route reads its accepted verbs from this one tuple: `live_action` gates on
+#: it and the write registry imports it for its 'live' row, so the gate and the contract
+#: GET /api/actions publishes cannot name two different sets.
+LIVE_ACTIONS = ('start', 'stop')
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
 _MAX_ENROLL_BYTES = 8 * 1024 * 1024
@@ -79,7 +91,10 @@ class OperatorAction:
     payload fields the write needs, as (field, refusal) pairs. `refuse_missing_first`
     says whether this row refuses a missing field before the handler runs; a write
     whose own first refusal is a state precondition sets it False and the handler then
-    names that refusal. `actions` names the operations the route accepts."""
+    names that refusal. `actions` names the operations the route accepts, so the
+    contract GET /api/actions publishes them: a handler that reads an action out of the
+    payload declares the very tuple it refuses with. A handler that reads no action
+    declares none, and `verbs` then names the one write the route's URL spells."""
 
     name: str
     parts: list
@@ -101,6 +116,16 @@ class OperatorAction:
             elif declared != actual:
                 return None
         return captured
+
+    @property
+    def verbs(self):
+        """Every verb name the route accepts, for the published contract.
+
+        The row's own declaration when it has one (`actions`), else the one write its
+        URL spells: the last part. A row that reads no action out of the payload
+        accepts exactly that write, so no row publishes an empty set and the console
+        never reads 'this route takes no verb' where a handler takes one."""
+        return self.actions or (self.parts[-1],)
 
     def refuse_missing(self, payload):
         """Refuse the first declared field the payload does not carry."""
@@ -142,7 +167,7 @@ class Actions:
     def contract(self):
         """The writes and their fields, for a console that checks itself."""
         return [dict(name=row.name, parts=list(row.parts), required=[field for field, _ in row.requires],
-                     actions=list(row.actions)) for row in self.table.values()]
+                     actions=list(row.verbs)) for row in self.table.values()]
 
 
 def operator_actions(backend, rows):
@@ -558,7 +583,7 @@ class Backend:
     def live_action(self, payload):
         from annotator.twitch_vod_source import TwitchVodError
         action = payload.get("action")
-        if action not in ("start", "stop"):
+        if action not in LIVE_ACTIONS:
             raise APIError("action must be start or stop")
         allowed = {"action", "source", "detectors"} if action == "start" else {"action"}
         if set(payload) - allowed:
@@ -2044,15 +2069,19 @@ SECURITY_HEADERS = (
 # GET /api/actions publishes it. A write with no row is not served, so a route cannot
 # exist in the dispatcher alone. The operations row names the tournament's own action
 # declaration (annotator/operations.py ACTION_NAMES), so the two cannot drift apart.
+# Every row declares the verbs its handler accepts: a row whose handler reads an action
+# out of the payload names the handler's own tuple here (the tournament's ACTION_NAMES,
+# the clock's ACTIONS, LIVE_ACTIONS, the automatic download's AUTO_ACTIONS), and every
+# other row accepts the one write its URL spells - OperatorAction.verbs publishes that.
 # A row with refuse_missing_first False keeps its declared fields but lets its handler
 # name the refusal: those writes check a revision or resolve a dataset before a field,
 # and a pre-dispatch check would change the answer the console shows.
 OPERATOR_ACTIONS = operator_actions(Backend, [
     OperatorAction('operations', ['api', 'operations'], '_route_operations',
                    refuse_missing_first=False, actions=TOURNAMENT_ACTIONS),
-    OperatorAction('clock', ['api', 'clock'], 'clock_action'),
+    OperatorAction('clock', ['api', 'clock'], 'clock_action', actions=CLOCK_ACTIONS),
     OperatorAction('live', ['api', 'live'], 'live_action',
-                   requires=(('action', 'action must be start or stop'),)),
+                   requires=(('action', 'action must be start or stop'),), actions=LIVE_ACTIONS),
     OperatorAction('inference', ['api', 'inference'], 'start_inference',
                    refuse_missing_first=False),
     OperatorAction('frame_correction', ['api', 'frame-correction'], 'save_frame_correction',
@@ -2074,7 +2103,8 @@ OPERATOR_ACTIONS = operator_actions(Backend, [
     OperatorAction('vod_import', ['api', 'vods', 'import'], 'vod_request', takes='verb'),
     OperatorAction('vod_cancel', ['api', 'vods', 'cancel'], 'vod_request', takes='verb'),
     OperatorAction('vod_delete', ['api', 'vods', 'delete'], 'vod_request', takes='verb'),
-    OperatorAction('vod_auto', ['api', 'vods', 'auto'], 'vod_request', takes='verb'),
+    OperatorAction('vod_auto', ['api', 'vods', 'auto'], 'vod_request', takes='verb',
+                   actions=VOD_AUTO_ACTIONS),
     OperatorAction('ball_label', ['api', 'balls', ':set', 'label'], '_route_ball_label',
                    takes='parts', locked=True, refuse_missing_first=False,
                    requires=(('file', 'unknown crop'), ('label', 'label required; use null to clear'))),

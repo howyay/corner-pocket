@@ -1,4 +1,5 @@
 """Fixture-only backend tests; never start a server or touch repository labels."""
+import ast
 import hashlib
 import io
 import json
@@ -1763,6 +1764,177 @@ class WriteRegistryTests(unittest.TestCase):
         self.assertEqual(set(rows['live']), {'name', 'parts', 'required', 'actions'})
         self.assertEqual(rows['operations']['actions'], list(ACTION_NAMES))
         self.assertEqual(rows['vod_import']['parts'], ['api', 'vods', 'import'])
+
+
+def gate_verbs(source, class_name, method_name):
+    """The verb names one handler refuses, read from the gate that refuses them.
+
+    The scan reads the gate, not the dispatch below it: a handler that answers two names
+    with one ``else`` (the shot clock's `set` and `reset`) still names every verb it takes
+    in the tuple it refuses with, so the gate is the declaration. A gate that names a
+    module-level constant is resolved through that assignment, so one tuple serves the
+    handler and the contract. Answer (verbs, path, line): the caller reports the file and
+    the line of the gate it read."""
+    path = Path(source)
+    tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+    constants = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            try:
+                constants[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                pass
+    method = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef) and child.name == method_name:
+                    method = child
+    if method is None:
+        raise AssertionError(f'{path} declares no {class_name}.{method_name} to read')
+    verbs, line = set(), 0
+    for node in ast.walk(method):
+        if not isinstance(node, ast.If) or not any(isinstance(inner, ast.Raise) for inner in node.body):
+            continue
+        test = node.test
+        if not (isinstance(test, ast.Compare) and isinstance(test.left, ast.Name)
+                and test.left.id == 'action'
+                and any(isinstance(op, (ast.In, ast.NotIn)) for op in test.ops)):
+            continue
+        for comparator in test.comparators:
+            names = constants.get(comparator.id) if isinstance(comparator, ast.Name) else None
+            if names is None and isinstance(comparator, (ast.Tuple, ast.List, ast.Set)):
+                names = ast.literal_eval(comparator)
+            if not (isinstance(names, (tuple, list, set)) and names
+                    and all(isinstance(name, str) for name in names)):
+                raise AssertionError(
+                    f'{path}:{node.lineno} gates on a name this scan cannot read: the verbs a '
+                    'handler takes must be string literals or a module-level constant of them')
+            verbs.update(names)
+            line = node.lineno
+    if not verbs:
+        raise AssertionError(f'{path} declares no gate that refuses an action, so the verbs '
+                             f'{class_name}.{method_name} takes cannot be read')
+    return verbs, path, line
+
+
+class WriteActionContractTests(unittest.TestCase):
+    """GET /api/actions must publish the verbs each row's handler really takes.
+
+    A row that publishes a verb its handler refuses sends the console into a refusal it
+    could have read in the contract; a handler that grows a verb its row does not publish
+    changes the accepted set with nothing to see. The drives below answer both ways for
+    the routes a fixture may drive, and the source read answers for the verbs that
+    download when they are taken."""
+
+    NOT_A_VERB = 'no-such-verb-the-handler-takes'
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.backend = Backend(Path(self.temp.name))
+
+    def published(self):
+        """The actions GET /api/actions publishes, by row name."""
+        answer = self.backend.get(['api', 'actions'], ReadQuery({}))
+        return {write['name']: write['actions'] for write in answer['writes']}
+
+    def test_every_row_publishes_the_verbs_its_route_takes(self):
+        published = self.published()
+        self.assertEqual(len(published), len(OPERATOR_ACTIONS))
+        for row in OPERATOR_ACTIONS:
+            with self.subTest(row=row.name):
+                verbs = published[row.name]
+                self.assertTrue(verbs, f'{row.name} publishes no verb, yet its handler takes one')
+                self.assertTrue(all(isinstance(verb, str) and verb for verb in verbs))
+                self.assertIsInstance(row.actions, tuple)
+                if row.actions:
+                    self.assertEqual(verbs, list(row.actions))
+                else:
+                    # A row that reads no action out of the payload accepts the one write
+                    # its URL spells, and a capture spells no verb.
+                    self.assertFalse(row.parts[-1].startswith(':'),
+                                     f'{row.name} ends in a capture, so its URL spells no verb')
+                    self.assertEqual(verbs, [row.parts[-1]])
+
+    def test_a_declared_row_names_the_declaration_its_handler_gates_on(self):
+        from annotator import shot_clock, unified_server, vod_import
+        from annotator.operations import OPERATIONS
+        published = self.published()
+        # The tournament dispatches through its registry dict: its keys are the actions,
+        # and ACTION_NAMES is that tuple spelled once for the route.
+        self.assertIs(OPERATOR_ACTIONS.get('operations').actions, ACTION_NAMES)
+        self.assertEqual(list(OPERATIONS), published['operations'])
+        # A row holds the handler's own tuple, never a second copy of the words.
+        self.assertIs(OPERATOR_ACTIONS.get('clock').actions, shot_clock.ACTIONS)
+        self.assertIs(OPERATOR_ACTIONS.get('live').actions, unified_server.LIVE_ACTIONS)
+        self.assertIs(OPERATOR_ACTIONS.get('vod_auto').actions, vod_import.AUTO_ACTIONS)
+
+    def test_the_gate_a_handler_refuses_with_names_the_published_verbs(self):
+        from annotator import shot_clock, unified_server, vod_import
+        published = self.published()
+        for source, class_name, method_name, row_name in (
+                (shot_clock.__file__, 'ShotClock', 'apply', 'clock'),
+                (unified_server.__file__, 'Backend', 'live_action', 'live'),
+                (vod_import.__file__, 'VodImporter', 'auto', 'vod_auto')):
+            with self.subTest(row=row_name):
+                verbs, path, line = gate_verbs(source, class_name, method_name)
+                self.assertEqual(sorted(verbs), sorted(published[row_name]),
+                                 f'{path}:{line} refuses the verbs {sorted(verbs)}, but the '
+                                 f'{row_name} row publishes {sorted(published[row_name])}')
+
+    def test_a_published_verb_is_taken_and_a_verb_outside_the_set_is_refused(self):
+        published = self.published()
+        extras = {'set': {'duration': 30}}
+        for verb in published['clock']:
+            with self.subTest(row='clock', verb=verb):
+                payload = dict(extras.get(verb, {}), action=verb)
+                self.assertIsInstance(self.backend.post(['api', 'clock'], payload), dict)
+
+        class Processor:
+            def start(self, source, detectors):
+                return {'live': 'started', 'source': source}
+
+            def stop(self):
+                return {'live': 'stopped'}
+
+        # The live route takes its verbs with the processor replaced: no pipeline starts.
+        self.backend.live_processor = Processor
+        for verb in published['live']:
+            with self.subTest(row='live', verb=verb):
+                self.assertIn('live', self.backend.post(['api', 'live'], {'action': verb}))
+        # 'off' is the one verb of the switch's set a fixture may drive: 'on' and 'scan'
+        # download, so the source read above answers for those two.
+        self.assertFalse(self.backend.post(['api', 'vods', 'auto'], {'action': 'off'})['enabled'])
+        # The gate's own sentence is what the console reads, so a verb outside the set is
+        # refused by the handler rather than by the dispatcher.
+        for row_name, parts, sentence in (
+                ('clock', ['api', 'clock'], 'action must be one of start, pause, reset, set'),
+                ('live', ['api', 'live'], 'action must be start or stop'),
+                ('vod_auto', ['api', 'vods', 'auto'], 'action must be "on", "off" or "scan"')):
+            with self.subTest(row=row_name, verb=self.NOT_A_VERB):
+                self.assertNotIn(self.NOT_A_VERB, published[row_name])
+                with self.assertRaises(APIError) as caught:
+                    self.backend.post(list(parts), {'action': self.NOT_A_VERB})
+                self.assertEqual((str(caught.exception), caught.exception.status), (sentence, 400))
+
+    def test_a_vod_route_takes_the_verb_its_url_spells(self):
+        published = self.published()
+        sentences = {}
+        for row_name in ('vod_import', 'vod_cancel', 'vod_delete'):
+            row = OPERATOR_ACTIONS.get(row_name)
+            with self.subTest(row=row_name):
+                # The URL spells one verb, and the row publishes exactly that one.
+                self.assertEqual(published[row_name], [row.parts[-1]])
+                # The handler ran and refused the write: only the dispatch says 404.
+                with self.assertRaises(APIError) as caught:
+                    self.backend.post(list(row.parts), {})
+                self.assertEqual(caught.exception.status, 400)
+                self.assertNotEqual(str(caught.exception), 'route not found')
+                sentences[row_name] = str(caught.exception)
+        # Three URLs reach three handler paths, so no row is served by another's fallback.
+        self.assertEqual(len(set(sentences.values())), 3, f'the vod writes answered {sentences}')
 
 
 class BrowserFixtureListenerTests(unittest.TestCase):
