@@ -13,9 +13,11 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+# The words a match may carry, from the module that writes them: the board keeps
+# no list of its own to fall behind (R36/C3).
+from annotator.operations import MATCH_RESULTS, MATCH_STATUSES
+
 OFF = {"board": "off"}
-STATUSES = ("pending", "scheduled", "live", "delayed", "complete")
-RESULTS = ("played", "forfeit", "bye")
 
 
 def build(state):
@@ -45,9 +47,9 @@ def build(state):
     def match(m):
         item = {"slot": slots[m["id"]], "round": m["round"], "sides": [side(m, 0), side(m, 1)],
                 "score": [int(m["score"][0]), int(m["score"][1])],
-                "status": m["status"] if m["status"] in STATUSES else "pending",
+                "status": m["status"] if m["status"] in MATCH_STATUSES else "pending",
                 "winner": m["sides"].index(m["winnerId"]) if m.get("winnerId") in m["sides"] and m.get("winnerId") else None}
-        if m.get("result") in RESULTS:
+        if m.get("result") in MATCH_RESULTS:
             item["result"] = m["result"]
         if m["status"] == "live":
             item.update(table=int(m["table"]), since=since.get(m["id"]))

@@ -9,6 +9,7 @@ The one spelling that is not the mounted page is the bare prefix itself: /board 
 outside the mount (/board.js). Each test runs the real handlers behind loopback sockets
 over a temporary root; no repository data is read or written.
 """
+import ast
 import http.client
 import json
 import os
@@ -21,6 +22,7 @@ import threading
 import time
 import unittest
 
+from annotator import operations, public_board
 from annotator.unified_server import (BOARD_CSP, BOARD_FILES, BOARD_FONTS, Backend, BoundedHTTPServer,
                                       PublicBoardServer, board_prefix, make_handler, make_public_handler)
 
@@ -546,6 +548,114 @@ class TheBoardOffersItsSource(unittest.TestCase):
         self.assertIn("['source-link', 'source']", script)
         self.assertEqual(script.count("source: '"), 2, "English and 中文 both name the source")
         self.assertIn(".source a", (ROOT / "annotator" / "board.css").read_text(encoding="utf-8"))
+
+
+#: The two match fields the public board reads as one of a known set of words.
+MATCH_FIELDS = ("status", "result")
+#: The names annotator/operations.py binds a match row to. A `player` row carries a status
+#: word of its own ('Active'), which is not the board's, so it is not read here.
+MATCH_VARIABLES = ("match", "following")
+#: Keywords only a match row carries, which tell a match row from a player or night row.
+MATCH_ONLY_KEYS = ("winnerId", "sides", "score", "table", "absent")
+
+
+def literal_words(expression):
+    """The words an expression can put in a match field: one literal, or both arms of a choice.
+
+    `status='delayed' if absent else 'scheduled'` is two words; `result=result` is none, because
+    a row written from another row's value is not a new word.
+    """
+    if isinstance(expression, ast.Constant) and isinstance(expression.value, str):
+        return {expression.value}
+    if isinstance(expression, ast.IfExp):
+        return literal_words(expression.body) | literal_words(expression.orelse)
+    return set()
+
+
+def match_field_writes(source):
+    """(field, word, line) for every literal the registry sets a match's status or result to.
+
+    Three shapes write a match in annotator/operations.py: `match['status'] = 'x'`, a call on one
+    of MATCH_VARIABLES (`match.update(status='x')`, including the `_find(...).update(...)` calls
+    that carry a match-only keyword), and a `dict(...)` match row, which always carries winnerId.
+    Everything else written with a status keyword — a player's 'Active', the tournament's
+    'registration'/'active'/'complete', an archived night's 'complete' — is not a match word.
+    """
+    writes = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Subscript):
+            target = node.targets[0]
+            if (getattr(target.value, "id", None) in MATCH_VARIABLES
+                    and getattr(target.slice, "value", None) in MATCH_FIELDS):
+                writes += [(target.slice.value, word, node.lineno) for word in literal_words(node.value)]
+        elif isinstance(node, ast.Call):
+            keywords = {k.arg: k.value for k in node.keywords}
+            receiver = getattr(node.func.value, "id", None) if isinstance(node.func, ast.Attribute) else None
+            called = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+            if not (receiver in MATCH_VARIABLES
+                    or (called == "dict" and "winnerId" in keywords)
+                    or (called == "update" and set(MATCH_ONLY_KEYS) & set(keywords))):
+                continue
+            for field in MATCH_FIELDS:
+                if field in keywords:
+                    writes += [(field, word, node.lineno) for word in literal_words(keywords[field])]
+    return sorted(set(writes))
+
+
+def board_document(match, status="active"):
+    """An operations document holding one match, with the fields the board's build reads."""
+    fields = dict(id="m0", round=1, sides=["e0", "e1"], score=[0, 0], table=1, status="pending",
+                  winnerId=None)
+    fields.update(match)
+    return {"revision": 1, "settings": {"publicBoard": True}, "players": [], "events": [],
+            "tournament": {"id": "t0", "name": "", "format": "singles", "tables": 2, "raceTo": 7,
+                           "status": status,
+                           "entrants": [{"id": "e0", "name": "A", "members": [{"name": "A"}]},
+                                        {"id": "e1", "name": "B", "members": [{"name": "B"}]}],
+                           "matches": [fields]}}
+
+
+class TheMatchVocabularyHasOneOwner(unittest.TestCase):
+    """The words a match may carry belong to annotator/operations.py, the only writer of them.
+
+    The board kept a second tuple and fell back to "pending" for anything outside it, so a status
+    added to the registry would reach the public board as a different word, with no error, no log
+    and no failing test. The first test here is that alarm: it reads the registry's source and
+    fails by file, line and word on a status or result the published tuple does not carry.
+    """
+
+    def test_every_word_a_match_is_given_is_published(self):
+        published = {"status": public_board.MATCH_STATUSES, "result": public_board.MATCH_RESULTS}
+        written = match_field_writes((ROOT / "annotator" / "operations.py").read_text(encoding="utf-8"))
+        self.assertTrue(written, "the scan found no match status or result at all")
+        missing = [f"annotator/operations.py:{line} sets a match's {field} to {word!r}, which "
+                   f"annotator/public_board.py does not publish in "
+                   f"{'MATCH_STATUSES' if field == 'status' else 'MATCH_RESULTS'}"
+                   for field, word, line in written if word not in published[field]]
+        self.assertEqual([], missing, "\n".join(missing))
+
+    def test_the_board_shows_every_published_word_unchanged(self):
+        for status in public_board.MATCH_STATUSES:
+            with self.subTest(status=status):
+                board = public_board.build(board_document({"status": status}))
+                self.assertEqual(board["bracket"][0]["matches"][0]["status"], status)
+        for result in public_board.MATCH_RESULTS:
+            with self.subTest(result=result):
+                board = public_board.build(board_document({"status": "complete", "result": result}))
+                self.assertEqual(board["bracket"][0]["matches"][0]["result"], result)
+
+    def test_a_word_the_registry_does_not_publish_is_shown_as_pending(self):
+        """The fallback this fix is about, pinned: an unknown word is hidden, not shown."""
+        shown = public_board.build(board_document({"status": "abandoned", "result": "walkover"}))
+        shown = shown["bracket"][0]["matches"][0]
+        self.assertEqual(shown["status"], "pending")
+        self.assertNotIn("result", shown)
+
+    def test_the_board_keeps_no_copy_of_its_own(self):
+        self.assertIs(public_board.MATCH_STATUSES, operations.MATCH_STATUSES)
+        self.assertIs(public_board.MATCH_RESULTS, operations.MATCH_RESULTS)
+        for name in ("STATUSES", "RESULTS"):
+            self.assertFalse(hasattr(public_board, name), f"a second copy of the vocabulary is back as {name}")
 
 
 if __name__ == "__main__":

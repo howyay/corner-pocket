@@ -88,6 +88,13 @@ def name_key(name):
 # with one of these names would be a fake person (R5).
 PLACEHOLDER_NAMES = {'na', 'n/a', 'bye', 'tbd', '轮空', '輪空'}
 
+# The words a match may carry, published here because this module is the only
+# writer of them. annotator/public_board.py imports both tuples rather than
+# keeping a copy of its own (R36/C3): with two lists, a status added below and
+# not to the board's list reached the public board as "pending" with no error.
+MATCH_STATUSES = ('pending', 'scheduled', 'live', 'delayed', 'complete')
+MATCH_RESULTS = ('played', 'forfeit', 'bye')
+
 
 def tournament():
     return dict(id=uid(), name='', format='singles', tables=1, raceTo=1,
