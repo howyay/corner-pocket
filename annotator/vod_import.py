@@ -36,7 +36,8 @@ import time
 from urllib.parse import urlencode
 
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
-from annotator.refusals import CHANNEL_REFUSAL, channel_refusal, disk_refusal, gb, job_identity
+from annotator.refusals import (CHANNEL_REFUSAL, FFMPEG_FAILED, SCAN_CHANNEL, channel_refusal,
+                                disk_refusal, filled_refusal, gb, job_identity)
 from src.atomic_write import write_atomic
 from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
 
@@ -544,8 +545,10 @@ class VodImporter:
                 part.unlink(missing_ok=True)
                 last = [line for line in "".join(tail).splitlines() if line.strip()]
                 detail = redact(last[-1].strip())[:300] if last else "no message"
-                return self._finish(state="error", error=f"ffmpeg stopped (exit {code}): {detail}. "
-                                    "The partial file was removed.")
+                # The sentence and its identity come from the table: the job record then names
+                # the code, the Chinese line, the exit code and the detail, not the text alone.
+                sentence, identity = filled_refusal(FFMPEG_FAILED, exit_code=code, detail=detail)
+                return self._finish(identity=identity, state="error", error=sentence)
             meta = self._probe(part)
             final = self._media(plan["id"])
             os.replace(part, final)
@@ -843,7 +846,13 @@ class VodImporter:
             for channel in self.saved_channels():
                 cached, error = self._channel_vods(channel, force=True)
                 if error is not None:
-                    errors.append(f"{channel}: {error}")
+                    # The channel and the reason are facts.  The sentence comes from the table
+                    # (SCAN_CHANNEL in annotator/refusals.py), so the console has a code and a
+                    # Chinese sentence for it.  The body of /api/vods/queue carries exactly the
+                    # ten keys the console reads, so the identity of this joined text has no key
+                    # to travel in; the table owns it until that contract changes.
+                    sentence, _ = filled_refusal(SCAN_CHANNEL, channel=channel, message=error)
+                    errors.append(sentence)
                     continue
                 for vod in cached[1]:
                     self._auto_enqueue(channel, vod, archived)

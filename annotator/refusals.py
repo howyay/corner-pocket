@@ -21,6 +21,13 @@ space an import needs, the id of the import that already runs.  Their sentence c
 key of the table, because the service builds it.  The ``FactRefusal`` rows below hold both
 templates and the field names, and the small functions under them fill both languages from
 one set of facts.  ``tests/test_job_refusal_identity.py`` holds a code to a raise site.
+
+``TEMPLATES`` at the end of this module holds the sentences the service builds from values it
+computed: a validation rule, the exit code of ffmpeg, a channel a scan could not list.  Each of
+those sentences reads differently for every caller, so the table holds a skeleton with
+placeholder names, not a finished sentence.  A raise site passes the skeleton by name and never
+an f-string, so the sentence is built in one place and the tests that count the sentences a
+raise site states keep their count.  ``tests/test_refusal_templates.py`` pins those rows.
 """
 from typing import NamedTuple
 
@@ -313,3 +320,75 @@ def identity_fields(sentence):
     if found is None:
         return {}
     return {CODE_KEY: found.code, ZH_KEY: found.zh}
+
+
+# -- the sentences the service builds from its own facts ----------------------
+
+# A sentence whose shape follows the values cannot be a key of REFUSALS: the same refusal reads
+# differently for every caller.  Each row below holds the skeleton (the English sentence with its
+# facts replaced by placeholder names), the code, the Chinese skeleton with the same placeholder
+# names, and the fact names in the order the sentence states them.  Fill both languages from one
+# set of facts, and never send a skeleton: a placeholder that reaches the operator is a broken
+# line.
+
+#: The rule ``integer(value, low, high, name)`` in annotator/operations.py applies.
+INTEGER_RANGE = '{name} must be an integer from {low} to {high}'
+#: The rule ``text(value, name, maximum)`` in annotator/operations.py applies.
+TEXT_LENGTH = '{name} must contain 1–{maximum} characters'
+#: The rule ``seconds(value, name)`` in annotator/operations.py applies.
+WHOLE_SECONDS = '{name} must be a whole number of seconds, 0 or more'
+#: The rule both raise sites of ``instant(value, name)`` in annotator/operations.py apply.
+INSTANT = '{name} must be an ISO-8601 instant'
+#: ``VodImporter._run`` in annotator/vod_import.py, when ffmpeg stops with a non-zero code.
+FFMPEG_FAILED = 'ffmpeg stopped (exit {exit_code}): {detail}. The partial file was removed.'
+#: ``VodImporter.scan`` in annotator/vod_import.py, for one channel whose listing failed.
+SCAN_CHANNEL = '{channel}: {message}'
+
+# The skeleton -> the row that fills it.  A skeleton is also the key a raise site passes.
+TEMPLATES = {
+    INTEGER_RANGE: FactRefusal(
+        'operation_integer_range', INTEGER_RANGE,
+        '{name} 必须是 {low} 到 {high} 之间的整数。', ('name', 'low', 'high')),
+    TEXT_LENGTH: FactRefusal(
+        'operation_text_length', TEXT_LENGTH,
+        '{name} 必须包含 1–{maximum} 个字符。', ('name', 'maximum')),
+    WHOLE_SECONDS: FactRefusal(
+        'operation_whole_seconds', WHOLE_SECONDS,
+        '{name} 必须是 0 或以上的整数秒。', ('name',)),
+    INSTANT: FactRefusal(
+        'operation_instant', INSTANT,
+        '{name} 必须是 ISO-8601 时间点。', ('name',)),
+    FFMPEG_FAILED: FactRefusal(
+        'vod_ffmpeg_failed', FFMPEG_FAILED,
+        'ffmpeg 已停止（退出码 {exit_code}）：{detail}。未完成的文件已删除。',
+        ('exit_code', 'detail')),
+    SCAN_CHANNEL: FactRefusal(
+        'vod_scan_channel_failed', SCAN_CHANNEL,
+        '{channel}：读取该频道的回放列表失败（{message}）。', ('channel', 'message')),
+}
+
+
+def filled_refusal(skeleton, **facts):
+    """The sentence one skeleton builds, and the identity beside it.
+
+    ``skeleton`` is one of the names above.  The answer is a ``(sentence, identity)`` pair, the
+    same shape ``channel_refusal`` and ``disk_refusal`` answer with.  The identity names every
+    fact, so the console reads the values as data and never parses them out of the sentence.
+    """
+    row = TEMPLATES[skeleton]
+    return (row.en.format(**facts),
+            {CODE_KEY: row.code, ZH_KEY: row.zh.format(**facts), **facts})
+
+
+class TemplateError(ValueError):
+    """A refusal built from facts: the sentence for the operator, and the identity beside it.
+
+    A raise site writes ``raise TemplateError(INTEGER_RANGE, name=name, low=low, high=high)``.
+    The skeleton travels as a name, so the sentence is built here and the raise site states the
+    facts.  ``fields`` is the body the route adds beside ``error``
+    (annotator/unified_server.py ``refusal_body``).
+    """
+
+    def __init__(self, skeleton, **facts):
+        sentence, self.fields = filled_refusal(skeleton, **facts)
+        super().__init__(sentence)

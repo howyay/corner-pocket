@@ -2167,7 +2167,10 @@ class Backend:
         except ConflictError as error:
             raise APIError(str(error), 409, nightId=error.night_id) from error
         except ValueError as error:
-            raise APIError(str(error)) from error
+            # A validator refusal built from facts carries the code, the Chinese sentence and
+            # the facts in its own fields.  They travel with this wrap, or the operator reads
+            # the English sentence alone (round 45).
+            raise APIError(str(error), 400, **getattr(error, 'fields', {})) from error
 
     def _vod30(self, dataset):
         """Resolve the dataset, then refuse everything but vod30. One route guard."""
@@ -2871,8 +2874,11 @@ def make_handler(backend):
             except APIError as exc:
                 self.json(exc.status, refusal_body(exc, getattr(exc, 'fields', {})))
             except ValueError as exc:
-                # Validation sentences written for the operator (and JSON decode positions).
-                self.json(400, refusal_body(exc))
+                # Validation sentences written for the operator (and JSON decode positions).  A
+                # refusal built from facts carries its code, its Chinese sentence and its facts
+                # in its own fields; a plain ValueError carries none, so its sentence arrives
+                # alone (round 45).
+                self.json(400, refusal_body(exc, getattr(exc, 'fields', {})))
             except (TypeError, KeyError) as exc:
                 # A malformed request that reached code expecting another shape: the
                 # message names internals (types, keys), so it is logged, not returned.

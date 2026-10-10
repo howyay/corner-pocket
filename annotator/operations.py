@@ -1,4 +1,9 @@
-"""Persistent, server-authoritative pool operations; standard library only."""
+"""Persistent, server-authoritative pool operations; standard library only.
+
+``annotator/refusals.py`` owns the refusal sentences this module raises, so a refusal reaches the
+operator with its code and its Chinese sentence.  That module imports no module of this
+repository, so the import graph here stays as light as it was.
+"""
 import copy
 import json
 import os
@@ -12,6 +17,9 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from uuid import uuid4
+
+# The rule refusals of this module: each skeleton, the code and the Chinese sentence beside it.
+from annotator.refusals import INSTANT, INTEGER_RANGE, TEXT_LENGTH, WHOLE_SECONDS, TemplateError
 
 
 class ConflictError(ValueError):
@@ -36,7 +44,7 @@ def timestamp():
 
 def integer(value, low, high, name):
     if type(value) is not int or not low <= value <= high:
-        raise ValueError(f'{name} must be an integer from {low} to {high}')
+        raise TemplateError(INTEGER_RANGE, name=name, low=low, high=high)
     return value
 
 
@@ -48,14 +56,14 @@ def optional(payload, key, default):
 
 def text(value, name, maximum=200):
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
-        raise ValueError(f'{name} must contain 1–{maximum} characters')
+        raise TemplateError(TEXT_LENGTH, name=name, maximum=maximum)
     return value.strip()
 
 
 def seconds(value, name):
     """A position in a broadcast: whole seconds, 0 or more (the rule src/datasets.py uses)."""
     if isinstance(value, bool) or type(value) is not int or value < 0:
-        raise ValueError(f'{name} must be a whole number of seconds, 0 or more')
+        raise TemplateError(WHOLE_SECONDS, name=name)
     return value
 
 
@@ -76,11 +84,11 @@ def instant(value, name):
     enforced here is the format, not the value."""
     stamp = value.strip() if isinstance(value, str) else ''
     if not stamp or len(stamp) > 40:
-        raise ValueError(f'{name} must be an ISO-8601 instant')
+        raise TemplateError(INSTANT, name=name)
     try:
         datetime.fromisoformat(stamp.replace('Z', '+00:00'))
     except ValueError as error:
-        raise ValueError(f'{name} must be an ISO-8601 instant') from error
+        raise TemplateError(INSTANT, name=name) from error
     return stamp
 
 
