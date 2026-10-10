@@ -267,7 +267,7 @@ class EventProjectionWiringTest(unittest.TestCase):
     ]
 
     def backend(self, temp, artifact=None):
-        from annotator.unified_server import Backend, atomic_save
+        from annotator.unified_server import Backend, ReadQuery, atomic_save
         out = Path(temp) / "out"
         atomic_save(out / "scan30" / "corners.json", {"corners": self.QUAD})
         atomic_save(out / "scan30" / "events.json", self.EVENTS)
@@ -282,14 +282,15 @@ class EventProjectionWiringTest(unittest.TestCase):
                 for event in payload["events"]}
 
     def test_single_segment_records_the_segment_without_moving_pixels(self):
+        from annotator.unified_server import ReadQuery
         with TemporaryDirectory() as tmp_bare, TemporaryDirectory() as tmp_seg:
             bare = self.backend(tmp_bare)
             write_artifact(Path(tmp_seg) / "out", [seg("s1", 0.0, 1800.0, x=100.0)],
                            verdict="single_segment")
             with_seg = self.backend(tmp_seg, json.loads(
                 (Path(tmp_seg) / "out" / "calib_vod30_segments.json").read_text()))
-            before = bare.get(["api", "vod30", "events"], {})
-            after = with_seg.get(["api", "vod30", "events"], {})
+            before = bare.get(["api", "vod30", "events"], ReadQuery())
+            after = with_seg.get(["api", "vod30", "events"], ReadQuery())
             self.assertEqual(before["geometry"], after["geometry"])
             self.assertEqual(set(self.pixels(before)), set(self.pixels(after)))
             for event_id, cell in self.pixels(before).items():
@@ -302,12 +303,13 @@ class EventProjectionWiringTest(unittest.TestCase):
                                  "the segment that owns the time is still recorded")
 
     def test_split_artifact_projects_a_late_event_with_its_own_segment(self):
+        from annotator.unified_server import ReadQuery
         with TemporaryDirectory() as tmp:
             late = seg("late", 600.001, 1800.0, x=400.0, source="derived")
             write_artifact(Path(tmp) / "out", [seg("early", 0.0, 600.0, x=100.0), late])
             backend = self.backend(tmp, json.loads(
                 (Path(tmp) / "out" / "calib_vod30_segments.json").read_text()))
-            payload = backend.get(["api", "vod30", "events"], {})
+            payload = backend.get(["api", "vod30", "events"], ReadQuery())
             early, late_event = self.pixels(payload)[7], self.pixels(payload)[8]
             self.assertEqual(early[2], "early")
             self.assertEqual(late_event[2], "late")

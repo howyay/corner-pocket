@@ -270,7 +270,7 @@ class RegistryConsumerTests(unittest.TestCase):
         path.write_text(json.dumps({"vods": {self.key: ENTRY}}))
 
     def test_server_resolves_built_in_and_imported_datasets(self):
-        from annotator.unified_server import APIError, Backend
+        from annotator.unified_server import APIError, Backend, ReadQuery
         backend = Backend(self.root)
         self.assertEqual(backend.dataset("vod30"), self.root / "out" / "scan30")
         self.assertEqual(backend.dataset(self.key), self.root / "out" / "vods" / self.key)
@@ -281,11 +281,11 @@ class RegistryConsumerTests(unittest.TestCase):
         with self.assertRaises(APIError) as caught:
             backend.video(self.key)                                  # listed, media not there yet
         self.assertEqual((caught.exception.status, str(caught.exception)), (404, "media not found"))
-        listed = backend.get(["api", "datasets"], {})
+        listed = backend.get(["api", "datasets"], ReadQuery())
         self.assertEqual([row["id"] for row in listed["datasets"]], ["vod30", "highlight", self.key])
         self.assertNotIn("datasets_error", listed)
         (self.root / "out" / "vods" / "index.json").write_text("{")
-        listed = backend.get(["api", "datasets"], {})
+        listed = backend.get(["api", "datasets"], ReadQuery())
         self.assertEqual([row["id"] for row in listed["datasets"]], ["vod30", "highlight"])
         self.assertIn("not valid JSON", listed["datasets_error"])
 

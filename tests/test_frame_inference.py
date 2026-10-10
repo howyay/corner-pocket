@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
-from annotator.unified_server import APIError, Backend, atomic_save, make_handler
+from annotator.unified_server import APIError, Backend, ReadQuery, atomic_save, make_handler
 from src.frame_inference import infer_frame
 
 
@@ -42,7 +42,7 @@ class FrameTests(unittest.TestCase):
         return headers, request.wfile.getvalue()
 
     def test_video_frame_metadata_and_jpeg(self):
-        meta = self.backend.get(['api', 'video'], {'dataset': ['vod30']})
+        meta = self.backend.get(['api', 'video'], ReadQuery({'dataset': 'vod30'}))
         self.assertEqual((meta['fps'], meta['frame_count'], meta['width'], meta['height']), (10, 6, 64, 48))
         self.assertEqual(meta['duration'], .6)
         image, frame = self.backend.decode_frame('vod30', 4)

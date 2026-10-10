@@ -1759,6 +1759,11 @@ class Backend:
         return text
 
     def get(self, parts, query):
+        if not isinstance(query, ReadQuery):
+            # The seam of a read route. A caller that hands over the raw mapping
+            # gets a named refusal here, not an AttributeError far inside a route.
+            raise APIError(f"the query of a read route is a ReadQuery, not {type(query).__name__}; "
+                           f"build it with ReadQuery({{...}}) or ReadQuery.from_pairs({{...}})")
         if parts == ['api', 'operations']:
             return self.operations().get()
         if parts == ['api', 'actions']:

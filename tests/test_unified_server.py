@@ -198,6 +198,16 @@ class BackendTests(unittest.TestCase):
             ReadQuery.from_pairs({"win": []})
         self.assertEqual(ReadQuery.from_pairs({"win": ["68-94"]}).text("win"), "68-94")
 
+    def test_a_read_route_refuses_a_raw_mapping_at_its_own_seam(self):
+        # Six call sites outside this file handed over the transport shape and
+        # failed far inside a route with an AttributeError. The seam names the
+        # type it wants instead.
+        with self.assertRaises(APIError) as refused:
+            self.backend.get(["api", "datasets"], {})
+        self.assertIn("the query of a read route is a ReadQuery, not dict", str(refused.exception))
+        self.assertIn("ReadQuery({...})", str(refused.exception))
+        self.assertIsNotNone(self.backend.get(["api", "datasets"], ReadQuery({})))
+
     def test_a_guest_name_is_stored_as_the_track_label_and_never_trains_an_identity(self):
         # The rail's second labelling option: the typed name is this track's
         # label in the same seeds store, so the card, the rail and the tracks
