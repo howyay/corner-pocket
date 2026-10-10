@@ -14,6 +14,11 @@ bye propagation, audit events, revision.
     .venv/bin/python tests/console_fixture_build.py            # rewrites tests/console_fixture_state.json
     .venv/bin/python tests/console_fixture_build.py --check    # fail if the committed state is stale-shaped
 
+`--check` drives the same build and compares the result with the committed file: the field
+paths every row carries, and the counts and names the club itself decides. It compares no
+timestamp and no id, because backdate_joins and the store stamp those from the clock. A run
+of `--check` writes nothing, so a stale fixture fails a run instead of quietly replacing it.
+
 Standard library only, loopback only, no argument is required.
 """
 import argparse
@@ -251,10 +256,143 @@ def signed_record(state, name):
     return total
 
 
+# Which field of a row tells one variant of that row from another: a live match carries a
+# table and a pending one does not, so the two must be compared apart from each other.
+VARIANTS = ('status', 'state', 'kind', 'action', 'type')
+
+
+def row_groups(document):
+    """Every list of rows in a document, keyed by the prefix that names it.
+
+    A list is split by the field that tells its variants apart -- a live match carries a
+    table and a pending one does not -- so `tournament.matches[status=live]` and
+    `tournament.matches[status=pending]` are compared apart from each other.  A list whose
+    rows share no discriminator stays under one prefix.  Nested lists are walked too, so
+    `tournament.entrants[].members` is a group of its own.
+    """
+    groups = {}
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            for key in sorted(node):
+                walk(node[key], f'{path}.{key}' if path else key)
+        elif isinstance(node, list):
+            rows = [row for row in node if isinstance(row, dict)]
+            for item in node:
+                if not isinstance(item, dict):
+                    walk(item, f'{path}[]')
+            if not rows:
+                return
+            split = False
+            for field in VARIANTS:
+                if all(field in row for row in rows):
+                    values = sorted({str(row[field]) for row in rows})
+                    if len(values) > 1:
+                        for value in values:
+                            members = [row for row in rows if str(row[field]) == value]
+                            groups.setdefault(f'{path}[{field}={value}]', []).extend(members)
+                        split = True
+                    break
+            if not split:
+                groups.setdefault(path, []).extend(rows)
+            for row in rows:
+                for key in row:
+                    walk(row[key], f'{path}[].{key}')
+
+    walk(document, '')
+    return groups
+
+
+def field_paths(document):
+    """The field paths of a state document: which fields each list of rows carries.
+
+    A fresh build can never be compared with the committed file byte for byte:
+    backdate_joins stamps joinedAt from the clock, and every run mints new ids and a new
+    revision.  What a stale fixture gets wrong is the structure -- a collection the store
+    started to serve, a field an operation started to write -- so the check compares this
+    set, the fields of every row group, and the facts below it.
+    """
+    lines = set()
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            lines.add(f'{path or "."}: {" ".join(sorted(node))}')
+            for key in sorted(node):
+                walk(node[key], f'{path}.{key}' if path else key)
+        elif isinstance(node, list):
+            for item in node:
+                if not isinstance(item, dict):
+                    walk(item, f'{path}[]')
+
+    walk(document, '')
+    for prefix, rows in row_groups(document).items():
+        for keys in sorted({tuple(sorted(row)) for row in rows}):
+            lines.add(f'{prefix}[]: {" ".join(keys)}')
+    return lines
+
+
+def fields_of(groups):
+    """Which fields every row group carries, as {prefix: {field}}."""
+    return {prefix: {field for row in rows for field in row} for prefix, rows in groups.items()}
+
+
+def value_facts(document):
+    """The values a stale fixture gets wrong that no clock writes.
+
+    Every count and every name here comes from the club the build drives, not from the
+    moment it runs, so a difference is drift and never a timing artefact.
+    """
+    tournament = document.get('tournament') or {}
+    return {
+        'audit actions': sorted({row.get('action') for row in document.get('events', []) if isinstance(row, dict)}),
+        'match statuses': sorted({match.get('status') for match in tournament.get('matches', [])}),
+        'players': len(document.get('players', [])),
+        'history nights': len(document.get('history', [])),
+        'sources': len(document.get('sources', [])),
+        'notes': len(document.get('notes', [])),
+        'entrants': len(tournament.get('entrants', [])),
+    }
+
+
+def stale_shape_lines(target, fresh):
+    """How the file at `target` differs from a fresh build, in words. [] when it matches.
+
+    Three passes, because an operator reads the report to decide what to do: the collections
+    and field paths that differ, then the fields that one side carries and the other does
+    not -- a field missing from every row of one variant is invisible in a field-path line,
+    because a sibling row still carries it --
+    and finally the counts the club itself decides.
+    """
+    if not target.is_file():
+        return [f'{target} does not exist; run this script without --check to write it']
+    try:
+        committed = json.loads(target.read_text(encoding='utf-8'))
+    except json.JSONDecodeError as exc:
+        return [f'{target} is not JSON: {exc}']
+    differences = []
+    for line in sorted(field_paths(fresh) - field_paths(committed)):
+        differences.append(f'only a fresh build has: {line}')
+    for line in sorted(field_paths(committed) - field_paths(fresh)):
+        differences.append(f'only the committed file has: {line}')
+    old, new = fields_of(row_groups(committed)), fields_of(row_groups(fresh))
+    for prefix in sorted(set(old) | set(new)):
+        for field in sorted(new.get(prefix, set()) - old.get(prefix, set())):
+            differences.append(f'{prefix}[] carries {field} only in a fresh build')
+        for field in sorted(old.get(prefix, set()) - new.get(prefix, set())):
+            differences.append(f'{prefix}[] carries {field} only in the committed file')
+    old_facts, new_facts = value_facts(committed), value_facts(fresh)
+    for name in sorted(old_facts):
+        if old_facts[name] != new_facts[name]:
+            differences.append(f'{name}: committed {old_facts[name]!r}, fresh {new_facts[name]!r}')
+    return differences
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--out', default=str(DEFAULT_OUT), help='where to write the state (default: %(default)s)')
     parser.add_argument('--port', type=int, help='fixture port (default: a free one)')
+    parser.add_argument('--check', action='store_true',
+                        help='compare the state file with a fresh build and write nothing')
     parser.add_argument('--verbose', action='store_true', help='name every action as it is posted')
     args = parser.parse_args()
     Api.VERBOSE = args.verbose
@@ -288,9 +426,11 @@ def main():
         build(api)
         state = api.get()
         backdate_joins(state)
-        Path(args.out).write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+        if not args.check:
+            Path(args.out).write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
         tournament = state['tournament']
-        print(f'wrote {args.out}')
+        if not args.check:
+            print(f'wrote {args.out}')
         print(f'  revision {state["revision"]} · {len(state["players"])} players · '
               f'{len(state["history"])} archived events · {len(state["events"])} audit rows · '
               f'{len(state["sources"])} sources · {len(state["notes"])} notes')
@@ -318,6 +458,15 @@ def main():
     if not port_is_free(port):
         raise SystemExit(f'port {port} was not released')
     print(f'fixture stopped; 127.0.0.1:{port} is free again')
+    if args.check:
+        differences = stale_shape_lines(Path(args.out), state)
+        if differences:
+            print(f'{args.out} is stale-shaped: {len(differences)} difference(s) from a fresh build')
+            for line in differences:
+                print(f'  {line}')
+            raise SystemExit('run this script without --check to rewrite the state')
+        print(f'{args.out} matches a fresh build: {len(field_paths(state))} field paths, '
+              f'{len(value_facts(state)["audit actions"])} audit actions, nothing written')
 
 
 if __name__ == '__main__':
