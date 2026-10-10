@@ -414,3 +414,14 @@ second link, the bound-source refusal, and a merge that survives a reload.
 the link block and asserts its options, its wording in both languages, and the engine
 lines. `tests/test_ops.js` holds the contract that ties the route, the handler, the index
 method and the panel together.
+
+## 10. The shooter, when no face is visible
+
+`research/player-attribution-research.md` holds the plan for the next identification step:
+name the shooter of one shot from the tracklets, with no face and no name on the table. The
+note collects published results and cost estimates. No number in it was measured on this
+footage.
+
+The order of the choices is: the face work in this document while a usable face exists
+(69% of person instances, Section 2), then the body-appearance fallback in Section 5, then
+the plan in that note.
