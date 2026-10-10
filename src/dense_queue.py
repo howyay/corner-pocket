@@ -1,8 +1,9 @@
 """Put the dense-track events into the served queue, with their provenance.
 
 The dense run's gate output is the authority for which candidates are events.
-This tool copies the events the gate shaped as events into
-`out/scan30/events.json` (what the review rail reads) and writes a report beside
+This tool copies the events the gate shaped as events into the served events
+document (src/events_document.py, which stamps them; what the review rail reads)
+and writes a report beside
 it with everything that did *not* go in, including the channels that are neither
 an event nor a rejection (`unresolved`) and the disappearances the gate calls
 `situational`/unknown.
@@ -61,6 +62,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from src import events_document  # noqa: E402
 
 WORK_W, WORK_H = 960, 540
 NATIVE_W, NATIVE_H = 1280, 720
@@ -634,7 +637,7 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
         retired[ball_id] = {"id": old_id, "code": row.get("code"),
                             "numbers": row.get("numbers"), "why": row.get("reason"),
                             "retired_in_queue": queue_before}
-    Path(queue_path).write_text(json.dumps(entries, indent=1))
+    events_document.write(queue_path, entries, producer=events_document.DENSE_QUEUE)
     after = _md5(ANNOTATIONS)
     report = {
         "generated_from": {"artifact": artifact_path, "artifact_md5": _md5(artifact_path),
@@ -713,7 +716,8 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--artifact", default="out/dense-events/segment-1350-1650.gate2.json")
-    ap.add_argument("--queue", default="out/scan30/events.json")
+    ap.add_argument("--queue", default=str(events_document.document_path()),
+                    help="the served events document (src/events_document.py)")
     ap.add_argument("--report", default="out/scan30/dense_queue_report.json")
     ap.add_argument("--previous", default=None,
                     help="queue to take stable ids from (defaults to --queue before the write)")

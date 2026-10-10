@@ -16,10 +16,12 @@ ROOT = Path(__file__).resolve().parent
 import sys
 
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 from scan_events import nearest_pocket  # reuse pocket geometry
+from src import events_document
 
 SAM3 = ROOT.parent / "out" / "scan30" / "sam3_results.json"
-EVENTS = ROOT.parent / "out" / "scan30" / "events.json"
+EVENTS = events_document.document_path()
 CAL = ROOT.parent / "out" / "calib_final.json"
 
 
@@ -139,7 +141,7 @@ def main():
         e["evidence"] = (f"evidence_t{int(round(e['window_s'][1])):05d}.jpg"
                          if e["type"] == "pot"
                          else f"evidence_t{int(round(e['peak_t'])):05d}.jpg")
-    json.dump(events, open(EVENTS, "w"), indent=1)
+    events_document.write(EVENTS, events, producer=events_document.REBUILD_CALIBRATED)
     viol = [p for p in pots if p.get("linked_shot_t") is not None and p["t"] < p["linked_shot_t"]]
     print(f"{len(shots)} shots, {len(pots)} pots, {len(events)} events; "
           f"causality violations: {len(viol)}")

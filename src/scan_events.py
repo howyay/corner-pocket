@@ -6,7 +6,8 @@ and table-region motion energy between samples.
 
 Phase 2 (accurate): run SAM3 on single frames bracketing each candidate event
 to confirm it and to measure real ball displacement (shots) or the vanished
-ball + nearest pocket (pots).  Outputs events.json + annotated evidence JPEGs.
+ball + nearest pocket (pots).  Outputs the served events document
+(src/events_document.py, which stamps it) + annotated evidence JPEGs.
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* imports
 
 from ball_detect import detect_ball_candidates
+from src import events_document
 from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_canonical,
                                 nearest_pocket)
 from table_detect import detect_table
@@ -328,8 +330,9 @@ def main():
     for i, e in enumerate(events):
         e["id"] = i + 1
         e["evidence"] = f"evidence_t{int(round(e['t'])):05d}.jpg"
-    json.dump(events, open(out_dir / "events.json", "w"), indent=1)
-    print(f"{len(events)} events -> {out_dir / 'events.json'}", flush=True)
+    served = events_document.document_in(out_dir)
+    events_document.write(served, events, producer=events_document.SCAN_EVENTS)
+    print(f"{len(events)} events -> {served}", flush=True)
     for e in events:
         print(e, flush=True)
 

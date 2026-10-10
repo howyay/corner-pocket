@@ -42,6 +42,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.datasets import media_relpath  # noqa: E402
+from src import events_document  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import (GateConfig, _on_table, _quad_box_overlap_area,  # noqa: E402
                                     match_balls, to_table_mm)
@@ -596,10 +597,13 @@ def write_plan(scan_path, out_dir="out/scan30", top_pots: int = 12, top_shots: i
         except ValueError:
             cached = {}
     served = []
-    served_path = Path(out_dir) / "events.json"
+    served_path = events_document.document_in(out_dir)
     if served_path.exists():
         try:
-            served = json.loads(served_path.read_text())
+            # A document this module cannot read plans nothing (as before).  A
+            # document newer than the owner knows is not skipped: the owner
+            # raises DocumentVersionError, which is not a ValueError.
+            served = events_document.read(served_path).rows
         except ValueError:
             served = []
     plan = plan_sam3(pruned["kept"], top_pots=top_pots, top_shots=top_shots,

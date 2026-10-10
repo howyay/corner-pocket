@@ -52,6 +52,7 @@ from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
+from src import events_document  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540
 FULL_W, FULL_H = 1280, 720            # the reference quad's own resolution
@@ -783,7 +784,10 @@ def queue_id_map(*queue_paths):
     mapping = {}
     for queue_path in queue_paths:
         try:
-            events = json.loads(Path(queue_path).read_text())
+            # A document this module cannot read is skipped, as before.  A
+            # document with a version newer than the owner knows is not: the
+            # owner raises DocumentVersionError, which is not a ValueError.
+            events = events_document.read(queue_path).rows
         except (OSError, ValueError, TypeError):
             continue
         for event in events:
@@ -1037,7 +1041,8 @@ def print_report(rows, summary, agree, calibration, seconds, probe_seconds, prev
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--queue", default="out/scan30/events.json", help="served queue artifact")
+    ap.add_argument("--queue", default=str(events_document.document_path()),
+                    help="served queue artifact (src/events_document.py)")
     ap.add_argument("--candidates", default="out/scan-ic/events.json",
                     help="scan candidates the queue was built from (default) or the queue itself")
     ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
@@ -1081,7 +1086,7 @@ def main():
 
     target = Path(args.queue)
     backup = target.with_name("events.pre-gate.json")
-    fixture_queue = Path("out/ui-browser-fixture/out/scan30/events.json")
+    fixture_queue = events_document.document_path(root="out/ui-browser-fixture")
     # The ids the owner saw come from the pre-gate backup and the fixture first:
     # the queue itself has already been rewritten by an earlier pass.
     previous_ids = queue_id_map(backup, fixture_queue, target)
@@ -1126,7 +1131,7 @@ def main():
             backup = target.with_name("events.pre-gate.json")
             if not backup.exists():
                 backup.write_text(target.read_text())
-        target.write_text(json.dumps(queue, indent=1))
+        events_document.write(target, queue, producer=events_document.EVAL_EVENTS)
         sidecar = target.parent / "gate_report.json"
         sidecar.write_text(json.dumps({
             "aggregates": summary, "owner_verdicts": agree, "previous_queue_size": previous_count,

@@ -14,7 +14,8 @@ Fixes vs the old out/scan30/events.json build:
    sample are not pots.
 4. Causality kept: pot.t = linked shot t when a shot precedes the pot window
    end (<=60 s), else pot keeps its window midpoint and is flagged unlinked.
-5. Output goes to events_v2.json; events.json is left untouched.
+5. Output goes to the v2 document (src/events_document.py); the served document
+   is not written.
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 
+from src import events_document  # noqa: E402
 from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: E402
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
@@ -165,8 +167,8 @@ def main():
         e["evidence"] = (f"evidence_t{int(round(e['window_s'][1])):05d}.jpg"
                          if e["type"] == "pot"
                          else f"evidence_t{int(round(e['peak_t'])):05d}.jpg")
-    out = SCAN / "events_v2.json"
-    out.write_text(json.dumps(events, indent=1))
+    out = events_document.document_path(events_document.V2)
+    events_document.write(out, events, producer=events_document.REBUILD_V2)
 
     viol = [p for p in pots if p.get("linked_shot_t") is not None and p["t"] < p["linked_shot_t"]]
     unlinked = [p for p in pots if p.get("unlinked")]
