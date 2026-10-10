@@ -25,9 +25,9 @@ import re
 import threading
 import time
 
-from annotator.pipeline_stages import (CallableStage, LatencyWindow, StageRegistry,
-                                       check_ball_weights, default_stages, detector_names,
-                                       merge_detections, resolve_detectors)
+from annotator.pipeline_stages import (TABLE_MEASURE_EVERY_N, CallableStage, LatencyWindow,
+                                       StageRegistry, check_ball_weights, default_stages,
+                                       detector_names, merge_detections, resolve_detectors)
 from src.datasets import STATIC
 
 _DROP_REASONS = ('no_frame_ready', 'stage_overrun', 'stale')
@@ -247,7 +247,8 @@ class LiveProcessor:
     def __init__(self, root, *, capture_factory=None, resolver=None, infer=None, stages=None,
                  clock=time.monotonic, wall_clock=time.time, stop_timeout=2.0,
                  frame_budget_ms=None, budget_enforcement=True, latency_window=120,
-                 table_measure_every_n=30, ball_every_n=1, live_read_timeout_ms=20000,
+                 table_measure_every_n=TABLE_MEASURE_EVERY_N, ball_every_n=1,
+                 live_read_timeout_ms=20000,
                  upstream_refresh_s=5.0):
         if infer is not None and stages is not None:
             raise ValueError('Pass either infer or stages, not both')

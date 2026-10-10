@@ -316,6 +316,13 @@ class PersonStage(Stage):
         return infer_frame(frame, ['person'], self.root)
 
 
+#: How often the table stage measures, in frames: the cadence the live session gives it,
+#: and the value the stage itself defaults to.  One name, because a stage on another
+#: cadence measures a different pipeline - the audit tools read this value instead of
+#: restating it, so a change here moves the audits with the served path.
+TABLE_MEASURE_EVERY_N = 30
+
+
 class TableStage(Stage):
     """Cloth quad for the frame: the saved segment reference first, else measured on a cadence.
 
@@ -338,7 +345,7 @@ class TableStage(Stage):
     name = 'table'
     every_n_frames = 1
 
-    def __init__(self, root, dataset=None, measure_every_n=30, segments=None):
+    def __init__(self, root, dataset=None, measure_every_n=TABLE_MEASURE_EVERY_N, segments=None):
         from pathlib import Path
         self.root = Path(root)
         self.dataset = dataset
@@ -764,7 +771,8 @@ def frame_detectors(names):
     return [resolve_detector(name).frame_name for name in names]
 
 
-def default_stages(detectors, root, dataset=None, table_measure_every_n=30, ball_every_n=1):
+def default_stages(detectors, root, dataset=None, table_measure_every_n=TABLE_MEASURE_EVERY_N,
+                   ball_every_n=1):
     """Registry for the live pipeline's detectors, in inference order (table first).
 
     :data:`DETECTORS` owns the names, and this factory builds one stage per detector

@@ -8,7 +8,9 @@ the frame - so the next step follows from what is on the screen, not from a gues
     .venv/bin/python tools/playfield_quad_evidence.py
 
 It writes ``out/playfield_quad_evidence.json`` and one PNG per pick under
-``out/playfield_evidence/``.
+``out/playfield_evidence/``.  The recording and the stage come from
+``tools/playfield_harness.py``, so this evidence is measured on the same path and the same
+cadence as the served console, not on a copy of it.
 """
 import json
 import math
@@ -18,8 +20,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import cv2
 import numpy as np
-from annotator.pipeline_stages import TableStage, StageContext
 from src.playfield import PARALLEL_TOL_DEG, check_quad, parallelism
+from tools.playfield_harness import Recording, frame_context, new_stage
 
 REFUSED = [
     'tw-2860883221', 'tw-2871819680', 'tw-2885294870', 'tw-2890340436', 'tw-2890514774',
@@ -74,52 +76,52 @@ def main():
             continue
         # One stage per event: a stage carries its measurement, which made every event read the
         # same quad when the tool reused one.
-        stage = TableStage(root, dataset=None, measure_every_n=30)
-        cap = cv2.VideoCapture(str(vp))
-        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0) or 30.0
-        for frac in FRACTIONS:
-            idx = int(n * frac)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ok, frame = cap.read()
-            if not ok:
-                continue
-            ctx = StageContext({}, frame_number=idx, frame_index=idx, time_s=idx / fps)
-            res = stage.process(frame, ctx) or {}
-            poly = res.get('table_polygon')
-            pf = res.get('table_playfield') or {}
-            if not poly:
-                print(f'{name} @{frac:.0%}: no quad measured')
-                continue
-            quad = [(round(float(p[0]), 1), round(float(p[1]), 1)) for p in poly]
-            signs = convexity_signs(quad)
-            angles = interior_angles(quad)
-            par_raw = parallelism(quad)
-            par = round(float(max(v for v in par_raw.values() if isinstance(v, (int, float)))),
-                        2) if isinstance(par_raw, dict) else round(float(par_raw), 2)
-            verdict = classify(signs, angles, par)
-            entry = {
-                'vod': name, 'at': idx, 't_s': round(idx / fps, 1), 'quad': quad,
-                'convexity': signs, 'interior_angles': angles, 'edge_pair_angle_deg': par,
-                'parallel_tol_deg': PARALLEL_TOL_DEG,
-                'check_ok': pf.get('ok'), 'reasons': pf.get('reasons'),
-                'metrics': pf.get('metrics'), 'verdict': verdict,
-            }
-            report.append(entry)
-            print(f'{name} @{frac:.0%} frame {idx}')
-            print(f'   quad       {quad}')
-            print(f'   convexity  {signs}  angles {angles}  edge-pair {par} deg (tol {PARALLEL_TOL_DEG})')
-            print(f'   reasons    {pf.get("reasons")}  metrics {pf.get("metrics")}')
-            print(f'   verdict    {verdict}')
-            drawn = frame.copy()
-            pts = np.array(quad, dtype=np.int32).reshape(-1, 1, 2)
-            cv2.polylines(drawn, [pts], True, (0, 0, 255), 4)
-            for i, (x, y) in enumerate(quad):
-                cv2.circle(drawn, (int(x), int(y)), 9, (0, 255, 255), -1)
-                cv2.putText(drawn, str(i), (int(x) + 12, int(y) - 12),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-            cv2.imwrite(str(out_dir / f'{name}-{int(frac * 100)}.png'), drawn)
-        cap.release()
+        stage = new_stage(root)
+        try:
+            recording = Recording(vp)
+        except OSError as exc:
+            print(f'{name}: {exc}')
+            continue
+        with recording:
+            for frac in FRACTIONS:
+                idx, frame = recording.frame_at(frac)
+                if frame is None:
+                    continue
+                ctx = frame_context(idx, recording.fps)
+                res = stage.process(frame, ctx) or {}
+                poly = res.get('table_polygon')
+                pf = res.get('table_playfield') or {}
+                if not poly:
+                    print(f'{name} @{frac:.0%}: no quad measured')
+                    continue
+                quad = [(round(float(p[0]), 1), round(float(p[1]), 1)) for p in poly]
+                signs = convexity_signs(quad)
+                angles = interior_angles(quad)
+                par_raw = parallelism(quad)
+                par = round(float(max(v for v in par_raw.values() if isinstance(v, (int, float)))),
+                            2) if isinstance(par_raw, dict) else round(float(par_raw), 2)
+                verdict = classify(signs, angles, par)
+                entry = {
+                    'vod': name, 'at': idx, 't_s': round(idx / recording.fps, 1), 'quad': quad,
+                    'convexity': signs, 'interior_angles': angles, 'edge_pair_angle_deg': par,
+                    'parallel_tol_deg': PARALLEL_TOL_DEG,
+                    'check_ok': pf.get('ok'), 'reasons': pf.get('reasons'),
+                    'metrics': pf.get('metrics'), 'verdict': verdict,
+                }
+                report.append(entry)
+                print(f'{name} @{frac:.0%} frame {idx}')
+                print(f'   quad       {quad}')
+                print(f'   convexity  {signs}  angles {angles}  edge-pair {par} deg (tol {PARALLEL_TOL_DEG})')
+                print(f'   reasons    {pf.get("reasons")}  metrics {pf.get("metrics")}')
+                print(f'   verdict    {verdict}')
+                drawn = frame.copy()
+                pts = np.array(quad, dtype=np.int32).reshape(-1, 1, 2)
+                cv2.polylines(drawn, [pts], True, (0, 0, 255), 4)
+                for i, (x, y) in enumerate(quad):
+                    cv2.circle(drawn, (int(x), int(y)), 9, (0, 255, 255), -1)
+                    cv2.putText(drawn, str(i), (int(x) + 12, int(y) - 12),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                cv2.imwrite(str(out_dir / f'{name}-{int(frac * 100)}.png'), drawn)
     (root / 'out/playfield_quad_evidence.json').write_text(json.dumps(report, indent=1))
     verdicts = {}
     for r in report:

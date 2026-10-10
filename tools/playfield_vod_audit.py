@@ -18,7 +18,10 @@ probe on tw-2860883221 fitted a quad with an aspect of 8.345 against the 2.0 tha
 tolerance.  They are named as exceptions instead of being averaged away.
 
 The run reads VODs, so it costs minutes.  It always writes the run log
-``out/playfield_vod_audit.json``.  The golden record ``tests/fixtures/playfield_quads.json``
+``out/playfield_vod_audit.json``.  How a recording is opened, which cadence the stage
+measures on, and the frame's context come from ``tools/playfield_harness.py``, which reads
+them from the served pipeline - this tool restates none of them, so it cannot measure an
+older configuration than the console serves.  The golden record ``tests/fixtures/playfield_quads.json``
 is a tracked file, so this tool rewrites it only when the caller asks for that write AND
 every gate passes:
 
@@ -37,6 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.atomic_write import write_atomic
 from src.playfield import PARALLEL_TOL_DEG, PLAYFIELD_IN, TILT_TOL_DEG
+from tools.playfield_harness import Recording, frame_context, new_stage
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCER = 'tools/playfield_vod_audit.py'
@@ -92,10 +96,15 @@ def gate_failures(report, *, floor=FLOOR, known_refused=KNOWN_REFUSED):
     """Every gate that this measured run does not pass, as (gate name, message) pairs.
 
     The caller must name the gate that failed, because a refusal without a name cannot be
-    acted on.  ``exceptions``: an event that refuses at every sampled frame must be named in
-    KNOWN_REFUSED.  ``floor``: at least `floor` events must pass at every sampled frame.
+    acted on.  ``readable``: every recording was read - a file that cannot be opened is not a
+    detector refusal, and a known-refused name must not become a silent pass.  ``exceptions``:
+    an event that refuses at every sampled frame must be named in KNOWN_REFUSED.  ``floor``:
+    at least `floor` events must pass at every sampled frame.
     """
     failures = []
+    unreadable = sorted(row['vod'] for row in report if row['verdict'] == 'unreadable')
+    if unreadable:
+        failures.append(('readable', 'recordings that could not be read: %s' % (unreadable,)))
     unexpected = sorted(row['vod'] for row in report
                         if row['verdict'] != 'pass' and row['vod'] not in known_refused)
     if unexpected:
@@ -140,51 +149,56 @@ def fixture_payload(report, counts, passing):
 
 def measure_vods():
     """Measure every VOD on the real detector path and return (report, counts)."""
-    import cv2
-    from annotator.pipeline_stages import StageContext, TableStage
-
     vods = sorted((ROOT / 'data/vods').glob('*.mp4'))
     report, counts = [], {'ok': 0, 'refused': 0, 'no_quad': 0, 'unreadable': 0}
     for vp in vods:
-        stage = TableStage(ROOT, dataset=None, measure_every_n=30)
-        cap = cv2.VideoCapture(str(vp))
-        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0) or 30.0
-        row = {'vod': vp.name, 'frames': n, 'fps': round(fps, 3), 'picks': []}
-        for frac in FRAME_FRACTIONS:
-            idx = int(n * frac)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ok, frame = cap.read()
-            if not ok:
-                row['picks'].append({'at': idx, 'read': False}); counts['unreadable'] += 1; continue
-            ctx = StageContext({}, frame_number=idx, frame_index=idx, time_s=idx / fps)
-            try:
-                res = stage.process(frame, ctx) or {}
-            except Exception as exc:
-                row['picks'].append({'at': idx, 'error': str(exc)[:120]}); counts['unreadable'] += 1; continue
-            pf = res.get('table_playfield')
-            entry = {'at': idx, 't_s': round(idx / fps, 1),
-                     'aspect': None if not pf else pf.get('aspect'),
-                     'best_parallel_deg': None if not pf else pf.get('best_parallel_deg'),
-                     'quad': [[round(float(q[0]), 1), round(float(q[1]), 1)]
-                              for q in (res.get('table_polygon') or [])],
-                     'polygon': bool(res.get('table_polygon')),
-                     'ok': None if not pf else bool(pf.get('ok')),
-                     'reasons': (pf or {}).get('reasons')}
-            if pf is None:
-                counts['no_quad'] += 1
-            elif pf.get('ok'):
-                counts['ok'] += 1
-            else:
-                counts['refused'] += 1
-            row['picks'].append(entry)
-        cap.release()
-        ok_flags = [p.get('ok') for p in row['picks']]
-        row['verdict'] = ('pass' if all(f is True for f in ok_flags)
-                          else 'refuse' if all(f is False for f in ok_flags)
-                          # Every pick read but no table came out of any of them: that is not "mixed",
-                          # and calling it that hid seven events behind one word.
-                          else 'no_quad' if all(f is None for f in ok_flags) else 'mixed')
+        # One stage per VOD: this stage carries its measurement, so a stage reused across
+        # events reports the first event's quad for all of them.
+        stage = new_stage(ROOT)
+        try:
+            recording = Recording(vp)
+        except OSError as exc:
+            # A recording that cannot be read is not a refusal by the detector, and it must not
+            # pass as one: it gets its own verdict, and the gate below names it.
+            print('%s: %s' % (vp.name, exc), flush=True)
+            counts['unreadable'] += 1
+            report.append({'vod': vp.name, 'frames': None, 'fps': None, 'picks': [],
+                           'verdict': 'unreadable'})
+            continue
+        with recording:
+            n, fps = recording.frame_count, recording.fps
+            row = {'vod': vp.name, 'frames': n, 'fps': round(fps, 3), 'picks': []}
+            for frac in FRAME_FRACTIONS:
+                idx, frame = recording.frame_at(frac)
+                if frame is None:
+                    row['picks'].append({'at': idx, 'read': False}); counts['unreadable'] += 1; continue
+                ctx = frame_context(idx, fps)
+                try:
+                    res = stage.process(frame, ctx) or {}
+                except Exception as exc:
+                    row['picks'].append({'at': idx, 'error': str(exc)[:120]}); counts['unreadable'] += 1; continue
+                pf = res.get('table_playfield')
+                entry = {'at': idx, 't_s': round(idx / fps, 1),
+                         'aspect': None if not pf else pf.get('aspect'),
+                         'best_parallel_deg': None if not pf else pf.get('best_parallel_deg'),
+                         'quad': [[round(float(q[0]), 1), round(float(q[1]), 1)]
+                                  for q in (res.get('table_polygon') or [])],
+                         'polygon': bool(res.get('table_polygon')),
+                         'ok': None if not pf else bool(pf.get('ok')),
+                         'reasons': (pf or {}).get('reasons')}
+                if pf is None:
+                    counts['no_quad'] += 1
+                elif pf.get('ok'):
+                    counts['ok'] += 1
+                else:
+                    counts['refused'] += 1
+                row['picks'].append(entry)
+            ok_flags = [p.get('ok') for p in row['picks']]
+            row['verdict'] = ('pass' if all(f is True for f in ok_flags)
+                              else 'refuse' if all(f is False for f in ok_flags)
+                              # Every pick read but no table came out of any of them: that is not "mixed",
+                              # and calling it that hid seven events behind one word.
+                              else 'no_quad' if all(f is None for f in ok_flags) else 'mixed')
         report.append(row)
         print('%-24s %-7s %s' % (vp.name, row['verdict'], ' '.join(
             'ok' if p.get('ok') else ('refused' if p.get('ok') is False else 'no-quad')
