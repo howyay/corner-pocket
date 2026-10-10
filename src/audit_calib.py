@@ -17,9 +17,12 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from table_detect import detect_cloth_mask, fit_quadrilateral
+from table_geometry import LANDSCAPE_H, LANDSCAPE_W, canonical_destination
 
-TABLE_W, TABLE_H = 2540.0, 1270.0  # Rasson Victory III playing surface (mm)
-DST = np.array([[0, 0], [TABLE_W, 0], [TABLE_W, TABLE_H], [0, TABLE_H]], np.float32)
+# This audit reads the table LANDSCAPE -- length on x -- as it always has; the
+# transposed view comes from the one frame in src/table_geometry.py.
+TABLE_W, TABLE_H = float(LANDSCAPE_W), float(LANDSCAPE_H)  # 2540.0, 1270.0 (mm)
+DST = canonical_destination(landscape=True)
 
 
 def fit_h(corners):

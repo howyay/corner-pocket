@@ -18,12 +18,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from table_detect import detect_cloth_mask, fit_quadrilateral
+from table_geometry import CANON_H, CANON_W, canonical_pockets
 
-W_MM, H_MM = 1270.0, 2540.0  # playing surface (Rasson Victory III 9 ft)
-CANON_POCKETS = np.array([
-    [0.0, 0.0], [W_MM, 0.0], [W_MM, H_MM], [0.0, H_MM],   # corners TL TR BR BL
-    [0.0, H_MM / 2], [W_MM, H_MM / 2],                     # side pockets (long rails)
-], dtype=np.float32)
+W_MM, H_MM = float(CANON_W), float(CANON_H)  # the canonical frame (table_geometry)
+CANON_POCKETS = canonical_pockets()  # float32 (6, 2): corners TL TR BR BL, side pockets
 
 
 def detect_pocket_blobs(bgr: np.ndarray, quad: np.ndarray) -> list[tuple[float, float, float]]:

@@ -6,8 +6,11 @@ src/pipeline.py beside `import torch`, so the first request after a start paid
 for torch + SAM3 (~1 s, several seconds under load).
 
 The same module is also the single definition site of the canonical frame
-(CANON_W, CANON_H) and of the pocket table (POCKETS_MM). OneCanonicalFrameTests
-fails when a second, disagreeing copy of either comes back.
+(CANON_W, CANON_H), of the pocket table (POCKETS_MM) and of both readings of
+that frame -- portrait (the canonical one) and landscape (the transposed view
+src/audit_calib.py audits in). OneCanonicalFrameTests fails when a second,
+disagreeing copy of the frame comes back: by name, by pocket table, or as a
+literal 1270/2540 anywhere under src/.
 """
 import ast
 import importlib.util
@@ -54,6 +57,20 @@ def run_fresh(test, code):
                           capture_output=True, text=True, timeout=600)
     test.assertEqual(done.returncode, 0, done.stderr[-3000:])
     return json.loads(done.stdout.splitlines()[-1])
+
+
+def assigned_names(*targets):
+    """Every name a target binds: ``a = ...``, ``a, b = ...`` and ``[a, b] = ...``.
+
+    Subscripts and attributes bind no new name, so they are not targets here.
+    """
+    names = set()
+    for target in targets:
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            names |= assigned_names(*target.elts)
+    return names
 
 
 class TableGeometryTests(unittest.TestCase):
@@ -140,22 +157,73 @@ class OneCanonicalFrameTests(unittest.TestCase):
     def src_modules():
         return sorted(p for p in (REPO / 'src').glob('*.py') if p.name != 'table_geometry.py')
 
+    @staticmethod
+    def all_src_modules():
+        """Every .py under src/, vendored checkouts included, minus the one owner."""
+        owner = REPO / 'src' / 'table_geometry.py'
+        return sorted(p for p in (REPO / 'src').rglob('*.py') if p != owner)
+
+    @staticmethod
+    def audit_calib_frame():
+        """src/audit_calib.py's TABLE_W, TABLE_H and DST, evaluated from source.
+
+        That module cannot be imported: its module body (src/audit_calib.py:73-85)
+        opens data/*.mp4 and out/*.json and writes out/audit_homography.json. So
+        this runs the file's own frame statements, in order, with the owner's
+        names bound -- the same values an import would produce, and no media.
+        """
+        from src.table_geometry import LANDSCAPE_H, LANDSCAPE_W, canonical_destination
+        path = REPO / 'src' / 'audit_calib.py'
+        ns = {'np': np, 'float': float, 'LANDSCAPE_H': LANDSCAPE_H,
+              'LANDSCAPE_W': LANDSCAPE_W, 'canonical_destination': canonical_destination}
+        owner_names = {'LANDSCAPE_H', 'LANDSCAPE_W', 'canonical_destination'}
+        wanted = {'TABLE_W', 'TABLE_H', 'DST'}
+        for node in ast.parse(path.read_text()).body:
+            if isinstance(node, ast.ImportFrom) and any(a.name in owner_names for a in node.names):
+                for alias in node.names:
+                    ns[alias.asname or alias.name] = ns[alias.name]
+            elif isinstance(node, ast.Assign) and wanted & assigned_names(*node.targets):
+                exec(compile(ast.Module([node], []), str(path), 'exec'), ns)
+            if wanted <= set(ns):
+                break
+        return ns['TABLE_W'], ns['TABLE_H'], ns['DST']
+
     def test_no_module_restates_the_canonical_frame(self):
+        # Name based, and tuple targets count: ``CANON_W, CANON_H = 1270, 2540``
+        # is a restatement too (test_no_module_under_src_defines_its_own_frame_
+        # numbers catches the literals whatever the names are).
         restated = {}
         for path in self.src_modules():
             names = set()
             for node in ast.walk(ast.parse(path.read_text())):
                 if isinstance(node, ast.Assign):
-                    targets = node.targets
+                    names |= assigned_names(*node.targets)
                 elif isinstance(node, ast.AnnAssign):
-                    targets = [node.target]
+                    names |= assigned_names(node.target)
                 else:
                     continue
-                names.update(t.id for t in targets if isinstance(t, ast.Name))
             hits = names & {'CANON_W', 'CANON_H', 'POCKETS_MM'}
             if hits:
                 restated[path.name] = sorted(hits)
         self.assertEqual(restated, {})
+
+    def test_no_module_under_src_defines_its_own_frame_numbers(self):
+        # The numbers are the guard: a module that writes 1270 or 2540 as a
+        # literal has started a second frame again, whatever it names it. Only
+        # src/table_geometry.py (the owner) is exempt. Docstrings and comments
+        # are text, not ast.Constant, so prose may still quote the surface.
+        from src.table_geometry import CANON_H, CANON_W
+        self.assertEqual((CANON_W, CANON_H), (1270, 2540))
+        paths = self.all_src_modules()
+        self.assertGreater(len(paths), 100)  # the walk really covers src/
+        found = {}
+        for path in paths:
+            lines = sorted({node.lineno for node in ast.walk(ast.parse(path.read_text()))
+                            if isinstance(node, ast.Constant)
+                            and node.value in (CANON_W, CANON_H)})
+            if lines:
+                found[str(path.relative_to(REPO))] = lines
+        self.assertEqual(found, {})
 
     def test_no_module_holds_a_second_pocket_table(self):
         # A millimetre table is a dict literal keyed by >= 4 pocket names whose
@@ -219,6 +287,64 @@ class OneCanonicalFrameTests(unittest.TestCase):
             mm.append(p[:2] / p[2])
         self.assertAlmostEqual(float(mm[1][0] - mm[0][0]), CANON_W - 1, places=3)
         self.assertAlmostEqual(float(mm[3][1] - mm[0][1]), CANON_H - 1, places=3)
+
+    def test_the_two_readings_of_the_frame_pin_to_the_one_owner(self):
+        # Portrait is canonical; landscape is the transposed reading of it, not a
+        # second frame. src/calib_vod30.py reads the table portrait, and
+        # src/audit_calib.py reads it landscape on purpose (2540 on x): both
+        # destination arrays come from src/table_geometry.py.
+        from src import calib_vod30
+        from src.table_geometry import (CANON_H, CANON_W, LANDSCAPE_H, LANDSCAPE_W,
+                                        canonical_destination)
+        self.assertEqual((LANDSCAPE_W, LANDSCAPE_H), (CANON_H, CANON_W))
+        portrait, landscape = canonical_destination(), canonical_destination(landscape=True)
+        for array, extents in ((portrait, [CANON_W, CANON_H]), (landscape, [CANON_H, CANON_W])):
+            self.assertEqual((array.dtype, array.shape), (np.dtype(np.float32), (4, 2)))
+            self.assertTrue(np.array_equal(array.max(axis=0), extents))
+
+        # Portrait: src/calib_vod30.py's px -> mm destination.
+        self.assertEqual((calib_vod30.DST.dtype, calib_vod30.DST.shape),
+                         (np.dtype(np.float32), (4, 2)))
+        self.assertTrue(np.array_equal(
+            calib_vod30.DST, np.array([[0, 0], [1270, 0], [1270, 2540], [0, 2540]], np.float32)))
+        self.assertTrue(np.array_equal(calib_vod30.DST, portrait))
+
+        # Landscape: src/audit_calib.py's TABLE_W x TABLE_H and its DST.
+        table_w, table_h, dst = self.audit_calib_frame()
+        self.assertEqual((table_w, table_h, type(table_w), type(table_h)),
+                         (2540.0, 1270.0, float, float))
+        self.assertEqual((dst.dtype, dst.shape), (np.dtype(np.float32), (4, 2)))
+        self.assertTrue(np.array_equal(
+            dst, np.array([[0, 0], [2540, 0], [2540, 1270], [0, 1270]], np.float32)))
+        self.assertTrue(np.array_equal(dst, landscape))
+
+    def test_the_former_frame_copies_now_read_the_one_owner(self):
+        # src/calibrate.py OBJECT_MM (float64, the solvePnP object points) and
+        # src/pocket_homography.py CANON_POCKETS (float32, the 6-blob fit) were
+        # private copies of the same six points. Both are the owner's POCKETS_MM
+        # now: same values, order, dtype and shape.
+        from src import calibrate, pocket_homography
+        from src.table_geometry import CANON_H, CANON_W, canonical_pockets
+        shared = canonical_pockets()
+        self.assertEqual((shared.dtype, shared.shape), (np.dtype(np.float32), (6, 2)))
+        self.assertEqual((calibrate.WM, calibrate.HM), (float(CANON_W), float(CANON_H)))
+        self.assertEqual((pocket_homography.W_MM, pocket_homography.H_MM),
+                         (float(CANON_W), float(CANON_H)))
+        self.assertEqual((pocket_homography.CANON_POCKETS.dtype,
+                          pocket_homography.CANON_POCKETS.shape),
+                         (np.dtype(np.float32), (6, 2)))
+        self.assertTrue(np.array_equal(
+            pocket_homography.CANON_POCKETS,
+            np.array([[0.0, 0.0], [1270.0, 0.0], [1270.0, 2540.0], [0.0, 2540.0],
+                      [0.0, 1270.0], [1270.0, 1270.0]], np.float32)))
+        self.assertEqual((calibrate.OBJECT_MM.dtype, calibrate.OBJECT_MM.shape),
+                         (np.dtype(np.float64), (6, 2)))
+        self.assertTrue(np.array_equal(
+            calibrate.OBJECT_MM,
+            np.array([[0, 0], [1270, 0], [1270, 2540], [0, 2540], [0, 1270], [1270, 1270]],
+                     dtype=np.float64)))
+        self.assertTrue(np.array_equal(calibrate.OBJECT_MM.astype(np.float32), shared))
+        self.assertTrue(np.array_equal(calibrate.OBJECT_3D[:, :2].astype(np.float32), shared))
 
 
 if __name__ == '__main__':

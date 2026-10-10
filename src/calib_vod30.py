@@ -19,16 +19,17 @@ sys.path.insert(0, str(ROOT))
 from calibrate import (OBJECT_MM, pnp_solve, project, refined_blob,
                        anchors_for_frame, quad_ok)
 from table_detect import detect_cloth_mask, fit_quadrilateral
+from table_geometry import canonical_destination
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 CORNERS = ROOT.parent / "out" / "corners_30min_v2.json"
 N_SAMPLES = 200
+DST = canonical_destination()  # px -> mm, the canonical portrait frame
 
 
 def main():
     corners = np.array(json.load(open(CORNERS))["corners"], np.float32)
-    dst = np.array([[0, 0], [1270, 0], [1270, 2540], [0, 2540]], np.float32)
-    H_prior = cv2.getPerspectiveTransform(corners, dst)  # px -> mm (portrait)
+    H_prior = cv2.getPerspectiveTransform(corners, DST)  # px -> mm (portrait)
 
     cap = cv2.VideoCapture(str(VIDEO))
     dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)

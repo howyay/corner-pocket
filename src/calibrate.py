@@ -28,12 +28,12 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from table_detect import detect_cloth_mask, fit_quadrilateral
+from table_geometry import CANON_H, CANON_W, POCKETS_MM
 
-WM, HM = 1270.0, 2540.0
-# canonical object points (mm): corners TL,TR,BR,BL then side pockets
-OBJECT_MM = np.array([
-    [0, 0], [WM, 0], [WM, HM], [0, HM], [0, HM / 2], [WM, HM / 2],
-], dtype=np.float64)
+WM, HM = float(CANON_W), float(CANON_H)  # mm, the canonical frame (table_geometry)
+# canonical object points (mm): corners TL,TR,BR,BL then side pockets -- the
+# POCKETS_MM order, as float64 for solvePnP
+OBJECT_MM = np.array(list(POCKETS_MM.values()), dtype=np.float64)
 # solvePnP/projectPoints need 3D object points (table plane at z = 0)
 OBJECT_3D = np.hstack([OBJECT_MM, np.zeros((len(OBJECT_MM), 1))])
 
