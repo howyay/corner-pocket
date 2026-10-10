@@ -33,6 +33,10 @@ from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, 
 # The tournament declares the action names it accepts (annotator/operations.py).
 # This module imports it here, so one table joins the route to that declaration.
 from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E402
+# The identity of a refusal the console must know - a stable code and the Chinese
+# sentence for it - has one owner: annotator/refusals.py. This module imports it here,
+# so one rule builds every refusal body and the console holds no copy of a sentence.
+from annotator.refusals import identity_fields  # noqa: E402
 # The detector vocabulary (annotator/pipeline_stages.py) owns what a detector is
 # called.  This module imports it here, so this route and the stage factory that
 # builds the live pipeline cannot hold two different lists of accepted names.
@@ -219,6 +223,23 @@ def operator_message(exc):
     """The sentence an operator is shown, with absolute paths cut to their file
     name: 'weights not found: /home/.../yolov8n.pt' says 'yolov8n.pt'."""
     return _ABSOLUTE_PATH.sub(r"\1", str(exc))
+
+
+def refusal_body(exc, fields=None):
+    """The body of one refused request: the operator sentence plus its identity.
+
+    ``error`` keeps the sentence the operator already sees.  ``annotator/refusals.py``
+    owns the stable ``code`` and the Chinese sentence for each refusal the console must
+    know.  The console reads those two fields, so it holds no copy of a sentence that a
+    rewording in python can break.  A sentence with no row in that module adds nothing,
+    and the console then shows its generic Chinese line.  Both refusal sites build their
+    body here, so one rule carries the identity to every answer (round 41).
+    """
+    sentence = operator_message(exc)
+    body = {"error": sentence}
+    body.update(fields if fields is not None else {})
+    body.update(identity_fields(sentence))
+    return body
 
 
 def public_error(exc):
@@ -2835,10 +2856,10 @@ def make_handler(backend):
                     return self.json(200, backend.get(parts, query))
                 return self.file(backend.media(parts))
             except APIError as exc:
-                self.json(exc.status, {"error": operator_message(exc), **getattr(exc, 'fields', {})})
+                self.json(exc.status, refusal_body(exc, getattr(exc, 'fields', {})))
             except ValueError as exc:
                 # Validation sentences written for the operator (and JSON decode positions).
-                self.json(400, {"error": operator_message(exc)})
+                self.json(400, refusal_body(exc))
             except (TypeError, KeyError) as exc:
                 # A malformed request that reached code expecting another shape: the
                 # message names internals (types, keys), so it is logged, not returned.

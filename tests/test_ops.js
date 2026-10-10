@@ -10,6 +10,18 @@ const source = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf
 const clockSync = require('../annotator/clock-sync.js');
 const clockSyncSource = fs.readFileSync(path.join(__dirname, '../annotator/clock-sync.js'), 'utf8');
 const stageSource = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');
+// Round 41: python owns the identity of a refusal (annotator/refusals.py). The console holds no
+// sentence table at all, so a test that checks the Chinese sentence reads the row from that file
+// and passes it the way the service sends it. One owner means one place to change a sentence: a
+// rewording in python changes what these tests read, and no copy in javascript can go stale.
+function refusalRow(sentence) {
+  const rows = fs.readFileSync(path.join(__dirname, '../annotator/refusals.py'), 'utf8').split('\n');
+  const line = rows.find(row => row.includes('Refusal(') && (row.includes(`'${sentence}'`) || row.includes(`"${sentence}"`)));
+  assert.ok(line, `annotator/refusals.py holds no refusal row for: ${sentence}`);
+  const parsed = line.match(/Refusal\(\s*(['"])([a-z_]+)\1\s*,\s*(['"])(.*)\3\s*\)/);
+  assert.ok(parsed, `the refusal row does not parse: ${line.trim()}`);
+  return {code: parsed[2], zh: parsed[4]};
+}
 // The workbench markup is the stage's own, built into the host the console hands attach(). These
 // tests take the shell the way the console does - attach() on a host stub - so what they read is
 // the markup the browser gets, not a string this file asked for. The clock is the console's part of
@@ -577,12 +589,14 @@ test('instant: 409 rolls back to the exact previous render, reloads, and says wh
   assert.match(h.errors.at(-1).text, /Another operator changed the data/);
 });
 test('instant: 400 rolls back and shows the server\u2019s reason in both languages', async () => {
-  for (const [lang, reason] of [['en', 'Schedule match before scoring'], ['zh', '请先安排比赛上台，再记录比分']]) {
+  // Round 41: the service sends the code and the Chinese sentence in the refusal body together.
+  const row = refusalRow('Schedule match before scoring');
+  for (const [lang, reason] of [['en', 'Schedule match before scoring'], ['zh', row.zh]]) {
     const h = instantHarness(lang);
     const before = JSON.stringify(h.data);
     const done = click(h, {action:'score', id:'m1', side:'0', delta:'1'});
     await flush();
-    h.answer(400,{error:'Schedule match before scoring'}); await done; await flush();
+    h.answer(400,Object.assign({error:'Schedule match before scoring'}, row)); await done; await flush();
     assert.equal(JSON.stringify(h.data), before, `${lang}: exact rollback`);
     assert.equal(h.renders.at(-1).score, '[0,0]', `${lang}: the screen shows the pre-tap score`);
     assert.ok(h.errors.at(-1).text.includes(reason), `${lang}: ${h.errors.at(-1).text}`);
@@ -951,6 +965,28 @@ test('a required text field holding only spaces is stopped at the field, in both
   await h.handlers.submit(form(null, 'player-form', {name: 'Ada', status: 'Active'}));
   assert.deepEqual(JSON.parse(JSON.stringify(h.calls)), [{name: 'player_save', payload: {name: 'Ada', status: 'Active'}}]);
 });
+test('a refusal shows the Chinese sentence the service sends with the code, round 41', () => {
+  // Round 41: the console held its own English/Chinese table, so a rewording in python dropped the
+  // Chinese with no test to catch it. The service sends {code, zh} in the refusal body now, and the
+  // console reads it. An absent or unknown code keeps the generic Chinese answer.
+  const h = harness();
+  const generic = '请求未被接受，请检查输入或展开技术详情。';
+  const row = refusalRow('Source already added');
+  assert.equal(h.validationMessage('Source already added'), 'Source already added');
+  h.lang='zh';
+  assert.equal(h.validationMessage('Source already added', {code: row.code, zh: row.zh}), row.zh,
+    'the served Chinese sentence is what the operator reads');
+  assert.equal(h.validationMessage('Source already added', {code: row.code}), generic,
+    'a code with no sentence keeps the generic answer');
+  assert.equal(h.validationMessage('Source already added', {error: 'Source already added'}), generic,
+    'a body with no code keeps the generic answer');
+  assert.equal(h.validationMessage('Source already added', null), generic, 'a plain string keeps the generic answer');
+  assert.equal(h.validationMessage('A source that was added before', [1, 2]), generic, 'a body of another shape keeps the generic answer');
+  // The bite: python rewords the sentence. The console cannot answer with the old Chinese text,
+  // because it no longer holds one, and it must never guess a sentence for an unknown code.
+  assert.equal(h.validationMessage('A source that was added before', {code: 'source_exists'}), generic,
+    'an unknown sentence is never mapped onto a sentence the console remembers');
+});
 test('a stream link the server refuses is explained before or after the request, in both languages', async () => {
   const h = harness();
   for (const path of ['subscriptions', 'inventory', 'wallet', 'jobs', 'turbo', 'Wallet']) {
@@ -961,8 +997,12 @@ test('a stream link the server refuses is explained before or after the request,
   assert.equal(h.calls.length, 0, 'a reserved Twitch page never reaches the server');
   assert.equal(h.validationMessage('Source already added'), 'Source already added');
   h.lang='zh';
-  assert.equal(h.validationMessage('Source already added'), '这个直播源已经添加过了。');
-  assert.equal(h.validationMessage('Use a Twitch channel or videos/<digits> URL'), '请输入Twitch频道网址或 videos/<数字> 视频网址。');
+  // Round 41: the service sends the code and the Chinese sentence in the refusal body. The console
+  // reads that sentence; it holds no table of its own (see refusalRow above).
+  const sourceRow = refusalRow('Source already added');
+  assert.equal(h.validationMessage('Source already added', sourceRow), sourceRow.zh);
+  const urlRow = refusalRow('Use a Twitch channel or videos/<digits> URL');
+  assert.equal(h.validationMessage('Use a Twitch channel or videos/<digits> URL', urlRow), urlRow.zh);
 });
 test('the console and the service agree on every Twitch source URL of the shared corpus', () => {
   // Both rules read tests/source_url_cases.json, so the console never offers a source that the
@@ -989,7 +1029,9 @@ test('a full floor is explained in plain words in both languages', () => {
   const h = harness();
   assert.equal(h.validationMessage('All tables are in use'), 'All tables are in use');
   h.lang='zh';
-  assert.equal(h.validationMessage('All tables are in use'), '所有球台都在使用中，请先释放一张球台。');
+  // Round 41: the service sends the Chinese sentence with the code.
+  const tableRow = refusalRow('All tables are in use');
+  assert.equal(h.validationMessage('All tables are in use', tableRow), tableRow.zh);
 });
 test('appearance form serializes numbers and unchecked diamonds correctly', async () => {
   const h = harness();
@@ -1030,11 +1072,13 @@ test('adding a regular never sends a rating the form did not collect; editing ke
   assert.deepEqual(JSON.parse(JSON.stringify(h.calls[1])), {name: 'player_save', payload: {id: 'p1', name: 'Ada', rating: 640, status: 'Active', notes: ''}});
 });
 test('failed API response localizes primary copy and preserves exact optional detail', async () => {
+  // Round 41: the console shows the Chinese sentence the service sends, so the stub body carries it.
+  const row = refusalRow('Schedule match before scoring');
   const h = harness();
   (()=>{h.lang='zh'; h.render=()=>{}; h.errors=[]; h.message=(text,error,detail)=>h.errors.push({text,error,detail});return h.action=h.realAction})();
-  h.context.fetch = async () => ({ok: false, status: 400, json: async () => ({error: 'Schedule match before scoring'})});
+  h.context.fetch = async () => ({ok: false, status: 400, json: async () => ({error: 'Schedule match before scoring', code: row.code, zh: row.zh})});
   assert.equal(await h.action('match_score',{id:'match-1',score:[7,4]}), false);
-  assert.match(h.errors[0].text, /请先安排比赛上台，再记录比分/);
+  assert.ok(h.errors[0].text.includes(row.zh), h.errors[0].text);
   assert.equal(h.errors[0].detail, 'Schedule match before scoring');
   assert.ok(!h.errors[0].text.includes('Schedule match'));
   assert.equal(h.busy, false);
@@ -1543,7 +1587,9 @@ test('a face photo that is too large or not an image is explained at the file fi
   photo.files = [{size: 1000, type: 'image/jpeg'}];
   await h.handlers.submit(form);
   assert.equal(read, 1, 'a normal photo is read and sent');
-  assert.equal(h.validationMessage('image_base64 is not a decodable image'), '无法读取这张图片，请换一张 JPEG 或 PNG 照片。');
+  // Round 41: the service sends the Chinese sentence with the code.
+  const imageRow = refusalRow('image_base64 is not a decodable image');
+  assert.equal(h.validationMessage('image_base64 is not a decodable image', imageRow), imageRow.zh);
 });
 test('a VOD replay the server would refuse is explained before Start, in both languages', () => {
   const h = harness();
@@ -1620,7 +1666,9 @@ test('a renamed regular reads by their current name on every screen, archive inc
   assert.ok(/class="tl-pair">Bo — Walk-in Wu</.test(h.recordsScreen()), 'the archive in Records falls back to the snapshot too');
   assert.equal(JSON.stringify(h.resultStats("p1")), '{"wins":2,"losses":0}', 'the rename leaves the record whole; the bye is not a win');
   h.lang='zh';
-  assert.equal(h.validationMessage('Name held by a guest in this event; add the guest to the regulars instead'), '这个名字属于本场赛事的一位访客；请把该访客加入常客，而不是给常客改成同名。');
+  // Round 41: the service sends the Chinese sentence with the code.
+  const guestRow = refusalRow('Name held by a guest in this event; add the guest to the regulars instead');
+  assert.equal(h.validationMessage('Name held by a guest in this event; add the guest to the regulars instead', guestRow), guestRow.zh);
 });
 test('a refusal is readable over an open modal: the message sits above the backdrop', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
@@ -1667,7 +1715,9 @@ test('a placeholder guest name is stopped at the field, in both languages (R5)',
   h.lang='zh';
   await h.handlers.submit(form({pid0: '', guest0: 'bye'}));
   assert.equal(guest.validity, '轮空由抽签自动安排，请输入访客的真实姓名。');
-  assert.equal(h.validationMessage("A bye is added by the draw; type the guest's real name"), '轮空由抽签自动安排，请输入访客的真实姓名。');
+  // Round 41: the service sends the Chinese sentence with the code.
+  const byeRow = refusalRow("A bye is added by the draw; type the guest's real name");
+  assert.equal(h.validationMessage("A bye is added by the draw; type the guest's real name", byeRow), byeRow.zh);
   await h.handlers.submit(form({pid0: '', guest0: 'Nadia'}));
   assert.deepEqual(JSON.parse(JSON.stringify(h.calls.map(c => c.payload))), [{members: [{name: 'Nadia'}]}]);
 });
@@ -1951,7 +2001,9 @@ test('delete only an unsigned event; otherwise hide it from history, which erase
     h.lang='en'; assert.ok(h.auditLine({action:(action),createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'X'}}).includes(en));
     h.lang='zh'; assert.ok(h.auditLine({action:(action),createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'X'}}).includes(zh));
   }
-  assert.equal(h.validationMessage('An event with a signed result cannot be deleted; hide it from history instead'), '有已签赛果的赛事不能删除，请改为从历史中隐藏。');
+  // Round 41: the service sends the Chinese sentence with the code.
+  const deleteRow = refusalRow('An event with a signed result cannot be deleted; hide it from history instead');
+  assert.equal(h.validationMessage('An event with a signed result cannot be deleted; hide it from history instead', deleteRow), deleteRow.zh);
 });
 test('a second chance is a labelled random draw, confirmed, undoable, never a result (R6)', async () => {
   const h = harness();
@@ -2002,7 +2054,9 @@ test('a second chance is a labelled random draw, confirmed, undoable, never a re
     h.lang='en'; assert.ok(h.auditLine({action:(action),createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}}).includes(en));
     h.lang='zh'; assert.ok(h.auditLine({action:(action),createdAt:'2026-09-26T00:00:00Z',revision:1,context:{name:'Fay'}}).includes(zh));
   }
-  assert.equal(h.validationMessage('No round-2 bye slot to fill'), '没有可填补的第二轮轮空位。');
+  // Round 41: the service sends the Chinese sentence with the code.
+  const byeSlotRow = refusalRow('No round-2 bye slot to fill');
+  assert.equal(h.validationMessage('No round-2 bye slot to fill', byeSlotRow), byeSlotRow.zh);
 });
 test('doubles can pair solo sign-ups at random: seed shown, re-roll, accept (R3)', async () => {
   const h = harness();
@@ -2042,7 +2096,9 @@ test('doubles can pair solo sign-ups at random: seed shown, re-roll, accept (R3)
     h.lang='en'; assert.ok(h.auditLine({action:(action),createdAt:'2026-09-26T00:00:00Z',revision:1,context:{seed:1}}).includes(en));
     h.lang='zh'; assert.ok(h.auditLine({action:(action),createdAt:'2026-09-26T00:00:00Z',revision:1,context:{seed:1}}).includes(zh));
   }
-  assert.equal(h.validationMessage('The pairing changed; review the teams again'), '配对已变化，请重新查看组合。');
+  // Round 41: the service sends the Chinese sentence with the code.
+  const pairingRow = refusalRow('The pairing changed; review the teams again');
+  assert.equal(h.validationMessage('The pairing changed; review the teams again', pairingRow), pairingRow.zh);
 });
 test('a redrawn second chance says so on the card, the sheet and the copied text (R6 follow-up)', async () => {
   const h = harness();
