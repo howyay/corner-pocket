@@ -390,7 +390,13 @@ class LiveProcessingTests(unittest.TestCase):
         # A second stop keeps that history; it never invents or loses one.
         self.assertIn('offline', processor.stop()['last_error'])
         processor = self.processor(capture_factory=lambda media: Capture(count=1))
-        processor._last_error, processor._last_error_at = 'earlier', 1.0
+        # The history is made by a real session that failed and then stopped, so no field
+        # is set by hand: a second start() must not carry that history into the new one.
+        with patch('annotator.twitch_source.resolve_twitch',
+                   side_effect=TwitchSourceError('Twitch channel is offline')):
+            processor.start(dict(kind='twitch', source_id='saved'))
+            self.finished(processor)
+        self.assertIn('offline', processor.stop()['last_error'])
         status = processor.start(self.source)
         self.assertEqual((status['error'], status['last_error'], status['last_error_at']), (None, None, None))
         self.finished(processor)
@@ -467,11 +473,14 @@ class LiveProcessingTests(unittest.TestCase):
                 json.dumps(status)  # params are JSON-safe, never an exception object
 
     def test_a_session_that_cannot_name_its_kind_fails_closed(self):
-        """``_live()`` refuses an unknown kind, and that refusal reaches ``status()``."""
-        processor = self.processor()
-        processor._source = dict(kind='future')
-        processor._decode(processor._generation, 'media')
-        status = processor.status()
+        """``_live()`` refuses an unknown kind, and that refusal reaches ``status()``.
+
+        The kind is named through the public start(), not written into the session by
+        hand: an unknown kind is refused where the kind decides, never guessed live.
+        """
+        processor = self.processor(capture_factory=lambda media: Capture(count=1))
+        processor.start(self.source, source_kind='future')
+        status = self.wait_for(processor, lambda s: s['error_code'] == 'unsupported_kind')
         self.assertEqual((status['state'], status['error'], status['error_code']),
                          ('error', 'Unsupported live source kind', 'unsupported_kind'))
 
@@ -515,9 +524,11 @@ class LiveProcessingTests(unittest.TestCase):
         plain.assert_not_called()
         self.assertEqual(len(opened), 1)
         self.assertEqual((status['state'], status['frames_received']), ('eos', 2))
-        processor._source = dict(kind='future')
-        with self.assertRaises(RuntimeError):
-            processor._live()
+        # A kind this file does not know is refused, not treated as live, and it never
+        # reaches the capture factory: the kind is named through the same public start().
+        processor.start(self.source, source_kind='future')
+        refused = self.wait_for(processor, lambda s: s['error_code'] == 'unsupported_kind')
+        self.assertEqual((refused['error'], len(opened)), ('Unsupported live source kind', 1))
 
     def test_live_burst_is_published_without_a_notify_storm(self):
         """The decoder may outrun a live source; the worker must not be woken per frame.
@@ -814,6 +825,58 @@ class UpstreamDelayTests(unittest.TestCase):
         self.assertIsNone(status['upstream_delay_ms'])
         self.assertIsNone(status['upstream_clock'])
 
+    def test_a_given_probe_is_the_live_edge_the_session_reports(self):
+        """``start(probe=)`` runs the given probe, and ``status()`` reports that probe.
+
+        The probe is the live edge of the session: the delay and the clock label in
+        ``status()`` come from it.  A given probe pins the live edge of a test, so no
+        playlist is read and no network call is made.
+        """
+        class StubProbe:
+            """One fixed reading: no playlist, no network, no clock."""
+
+            def __init__(self):
+                self.refreshes = 0
+                self.refresh_s = 30.0
+
+            def refresh(self):
+                self.refreshes += 1
+                return 250.0
+
+            def delay_ms(self):
+                return 250.0
+
+            def label(self):
+                return 'stub'
+
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        class HoldOpen(Capture):
+            """One frame, then hold the stream open until the test says go.
+
+            Without the hold the session ends at once, and the probe thread of the session
+            ends with it: whether the probe is still alive would then be a coin toss.
+            """
+
+            def read(self):
+                if self.index >= self.count:
+                    release.wait(5)
+                    return False, None
+                return super().read()
+
+        probe = StubProbe()
+        processor = self.processor(capture_factory=lambda _: HoldOpen(count=1),
+                                   resolver=lambda url: 'https://media.ttvnw.net/live.m3u8')
+        processor.start(dict(kind='twitch', source_id='saved'), probe=probe)
+        status = self.wait_for(processor, lambda s: s['upstream_clock'] == 'stub')
+        self.assertTrue(status['probe_alive'])
+        self.assertEqual(status['upstream_delay_ms'], 250.0)
+        self.assertGreaterEqual(probe.refreshes, 1)
+        # The probe reads while the session runs, and it stops with the session.
+        release.set()
+        self.assertFalse(processor.stop()['probe_alive'])
+
     def test_dataset_source_never_starts_a_probe(self):
         with patch('annotator.live_processing._fetch_playlist') as fetch:
             processor = self.processor(capture_factory=lambda _: Capture(count=3))
@@ -821,7 +884,8 @@ class UpstreamDelayTests(unittest.TestCase):
             status = self.wait_for(processor, lambda s: status_finished(s))
         self.assertFalse(fetch.called)
         self.assertIsNone(status['upstream_delay_ms'])
-        self.assertIsNone(processor._upstream_probe)
+        self.assertIsNone(status['upstream_clock'])
+        self.assertFalse(status['probe_alive'])
 
 
 class SessionStateOwnershipTests(unittest.TestCase):

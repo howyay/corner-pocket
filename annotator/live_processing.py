@@ -274,7 +274,7 @@ class LiveProcessor:
         # never started holds the idle session.
         self._reset_session()
 
-    def _reset_session(self, stages=(), *, source=None, detectors=(), state='idle'):
+    def _reset_session(self, stages=(), *, source=None, detectors=(), state='idle', probe=None):
         """Reset every field one session owns - the only owner of that state.
 
         ``__init__`` calls this for a processor that has never started (the idle
@@ -285,7 +285,9 @@ class LiveProcessor:
         monotonic and belongs to the caller, so it is never reset here.
 
         ``state`` is 'idle' before any start and 'starting' inside one.  The stage maps
-        are keyed by the stages of the session being started.
+        are keyed by the stages of the session being started.  ``probe`` is the live-edge
+        probe of this session: ``start()`` passes the probe a caller gave it, or None so
+        that the decoder builds one.
         """
         # Built before anything is assigned: StageRegistry refuses a bad stage, and a
         # refused start must not leave a half-reset session behind.
@@ -308,7 +310,7 @@ class LiveProcessor:
         self._stage_evidence = {stage.name: None for stage in stages}
         self._fps = None
         self._last_published = None
-        self._upstream_probe = None
+        self._upstream_probe = probe
         self._upstream_delay_ms = None
         self._upstream_clock = None
         self._probe_thread = None
@@ -351,7 +353,15 @@ class LiveProcessor:
             return {'kind': 'twitch', 'source_id': saved['id'], 'channel': channel}, url
         raise ValueError('Use an allowlisted dataset or saved Twitch source_id, not a URL')
 
-    def start(self, source, detectors=None):
+    def start(self, source, detectors=None, *, source_kind=None, probe=None):
+        """Start one session and return its first status.
+
+        ``source`` is an allowlisted dataset object or a saved Twitch source_id.
+        ``source_kind`` names the kind of that source.  ``_live()`` alone decides whether
+        a kind is live, so a kind outside its vocabulary is refused, never guessed.
+        ``probe`` is the live-edge probe of the session: None lets the decoder build the
+        playlist probe.
+        """
         detectors = ['table', 'person'] if detectors is None else detectors
         if not isinstance(detectors, (list, tuple)) or not detectors:
             raise ValueError('Live detectors must be a non-empty list of %s'
@@ -361,6 +371,10 @@ class LiveProcessor:
         # does not know.
         resolve_detectors(detectors)
         safe_source, media = self._source_media(source)
+        if source_kind is not None:
+            # The caller may name the kind of the session.  This does not bypass _live():
+            # that method still judges the kind, so an unknown kind is refused there.
+            safe_source = dict(safe_source, kind=source_kind)
         with self._condition:
             if any(t and t.is_alive() for t in (self._decoder, self._worker, self._probe_thread)):
                 raise RuntimeError('Previous live processing threads have not exited; stop and retry')
@@ -381,7 +395,8 @@ class LiveProcessor:
             _check_requested_ball(requested, stages)
             # The whole session is reset in one place: start() no longer names its fields
             # itself, so a field a later author adds is reset here or nowhere.
-            self._reset_session(stages, source=safe_source, detectors=requested, state='starting')
+            self._reset_session(stages, source=safe_source, detectors=requested, state='starting',
+                                probe=probe)
             self._legacy_detector = legacy_detector
             # Monotonic across sessions: a thread of an earlier session can never publish
             # into this one, and a start that is refused consumes no generation.
@@ -455,15 +470,22 @@ class LiveProcessor:
         The playlist itself decides: a recording, a playlist without
         ``#EXT-X-PROGRAM-DATE-TIME`` or an unreachable one leaves the delay None, and only
         a live playlist with timing tags ever produces a number.
+
+        A session that was given a probe at ``start()`` uses that probe.  No other probe
+        is built for it.
         """
         if not self._live() or not isinstance(media, str):
             return None
-        # The broadcaster's timestamps are wall-clock instants: the probe reads the same
-        # wall clock the processor was given, so a test can pin the delay exactly.
-        probe = _UpstreamDelayProbe(media, clock=self._wall_clock, refresh_s=self._upstream_refresh_s)
         with self._condition:
             if self._stop.is_set() or generation != self._generation:
                 return None
+            # The broadcaster's timestamps are wall-clock instants: the probe reads the same
+            # wall clock the processor was given, so a test can pin the delay exactly.
+            # A given probe replaces the built one: this is the injection point.
+            probe = self._upstream_probe
+            if probe is None:
+                probe = _UpstreamDelayProbe(media, clock=self._wall_clock,
+                                            refresh_s=self._upstream_refresh_s)
             self._upstream_probe = probe
             self._probe_thread = threading.Thread(target=self._probe_upstream,
                                                   args=(generation, probe), daemon=True)
@@ -702,6 +724,7 @@ class LiveProcessor:
         with self._condition:
             decoder_alive = bool(self._decoder and self._decoder.is_alive())
             worker_alive = bool(self._worker and self._worker.is_alive())
+            probe_alive = bool(self._probe_thread and self._probe_thread.is_alive())
             if self._state == 'stopping' and not decoder_alive and not worker_alive:
                 self._state = 'stopped'
             latest = copy.deepcopy(self._latest[1]) if self._latest else None
@@ -712,6 +735,10 @@ class LiveProcessor:
                         last_error_code=self._last_error_code,
                         last_error_params=copy.deepcopy(self._last_error_params),
                         decoder_alive=decoder_alive, worker_alive=worker_alive,
+                        # Whether the live-edge probe thread runs now.  This answers the
+                        # query that pairs with the probe argument of start(): a consumer
+                        # reads the live edge here instead of reaching into the processor.
+                        probe_alive=probe_alive,
                         frames_received=self._received, frames_processed=self._processed,
                         frames_skipped=self._skipped, last_received_at=self._last_received,
                         latest=latest, frame_age_ms=max(0, self._clock() - self._latest[2]) * 1000 if self._latest else None,
