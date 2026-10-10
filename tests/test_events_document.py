@@ -179,6 +179,18 @@ class OwnerWriteTest(unittest.TestCase):
         self.assertEqual({k: v for k, v in written.items() if k != STAMP}, row,
                          "a write changes no row value")
 
+    def test_a_write_that_fails_leaves_the_old_document_in_place(self):
+        """The bytes reach the file in one step, so a reader never sees half a document."""
+        events_document.write(self.path, [{"t": 1.0, "type": "shot"}], producer=SCAN_EVENTS)
+        before = self.path.read_bytes()
+        with self.assertRaises(TypeError):
+            events_document.write(self.path, [{"t": 2.0, "type": "pot", "bad": object()}],
+                                  producer=SCAN_EVENTS)
+        self.assertEqual(before, self.path.read_bytes(),
+                         "a write that fails must leave the document as it was")
+        self.assertEqual([SERVED], sorted(entry.name for entry in self.tmp.iterdir()),
+                         "a write that fails removes its temporary file")
+
     def test_write_refuses_a_producer_this_module_does_not_know(self):
         with self.assertRaises(ValueError) as caught:
             events_document.write(self.path, [{"t": 1.0, "type": "shot"}],

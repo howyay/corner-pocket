@@ -35,8 +35,9 @@ What this module does not do:
 
   * it does not change a row value, a detection rule or a threshold,
   * it does not decide which rows are events, and it does not delete a row,
-  * it does not serialize a document in one atomic step (`src/atomic_write.py`
-    owns that, and the callers here still write in one `open`),
+  * it does not serialize a document in one atomic step of its own: `write`
+    passes the bytes to `src/atomic_write.py`, which owns that step, so a write
+    that fails leaves the old document in place,
   * it does not make the parent directory of the target,
   * it does not stop a module outside its callers from writing the same path.
     `tests/test_events_document.py` holds the modules in its scope to this
@@ -77,6 +78,11 @@ try:                                   # `from src import events_document`
     from src.datasets import STATIC_OUT
 except ImportError:                    # a script that put src/ itself on the path
     from datasets import STATIC_OUT
+
+try:                                   # `from src import events_document`
+    from src.atomic_write import write_atomic
+except ImportError:                    # a script that put src/ itself on the path
+    from atomic_write import write_atomic
 
 __all__ = [
     "VERSION", "STAMP", "ROW_KEYS", "SERVED", "V2", "DOCUMENTS",
@@ -219,7 +225,9 @@ def write(document, rows: Iterable[Mapping], *, producer: str, indent: int = 1) 
 
     The rows are copied, not changed: every key and every value the caller wrote
     is written back unchanged, and the stamp is added.  The parent directory of
-    `document` must exist.  Returns the path.
+    `document` must exist.  The bytes reach the file in one atomic step, because
+    `src/atomic_write.py` owns that step: a write that fails leaves the old
+    document in place and removes its temporary file.  Returns the path.
     """
     if producer not in PRODUCERS:
         raise ValueError(
@@ -227,8 +235,7 @@ def write(document, rows: Iterable[Mapping], *, producer: str, indent: int = 1) 
             f"{sorted(PRODUCERS)}.  A writer cannot write rows it cannot name.")
     path = Path(document)
     stamped = _stamped_rows(rows, producer)
-    with open(path, "w") as stream:
-        json.dump(stamped, stream, indent=indent)
+    write_atomic(path, lambda stream: json.dump(stamped, stream, indent=indent))
     return path
 
 
