@@ -52,7 +52,10 @@ class StoreConstraintError(ValueError):
 # verdicts and frame results. JsonStore resolves every dataset, imported VODs included
 # (out/vods/<id>/), through src/datasets.py; PostgresStore still accepts these two only.
 from src.datasets import STATIC_OUT as DATASETS, lookup as dataset_lookup  # noqa: E402
-BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
+# The crop-set vocabulary (the sets a crop file can belong to) has one owner:
+# src.store_files.BALL_SETS, the module that also builds those files' paths. This
+# module imports it, so the store and that owner cannot hold two different lists.
+from src.store_files import BALL_SETS  # noqa: E402
 # precomputed artifacts the server reads whole: kind -> file under out/ ({ds} = dataset)
 ARTIFACTS = {
     "queue_report": "{scan}/dense_queue_report.json",

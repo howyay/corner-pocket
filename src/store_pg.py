@@ -30,8 +30,10 @@ from pathlib import Path
 import json
 
 from src import db
-from src.store import BALL_SETS, JsonStore, StoreConstraintError
-from src.store_files import dataset_dir, dump, fmt_of, get_document, put_document
+from src.store import JsonStore, StoreConstraintError
+# The crop-set vocabulary is imported from its one owner (src.store_files), not from
+# src.store: the owner names the sets, every other module imports that name.
+from src.store_files import BALL_SETS, dataset_dir, dump, fmt_of, get_document, put_document
 
 MAX_EVENTS = 500
 STATE = "out/corner-pocket/state.json"

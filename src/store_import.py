@@ -37,12 +37,13 @@ import sys
 from pathlib import Path
 
 from annotator.operations import name_key
-from src.store_files import (DOCUMENT_SETS, dataset_dirs, document_paths, get_document, has_documents_table,
-                             put_document)
+# BALL_SETS (the crop-set vocabulary) is imported from its one owner, src.store_files,
+# so this import tool and the store cannot hold two different lists of set names.
+from src.store_files import (BALL_SETS, DOCUMENT_SETS, dataset_dirs, document_paths, get_document,
+                             has_documents_table, put_document)
 
 REPO = Path(__file__).resolve().parent.parent
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
-BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 MAX_EVENTS = 500                       # annotator/operations.py keeps the last 500 events
 OK = ("imported", "unchanged", "absent", "verified")
 

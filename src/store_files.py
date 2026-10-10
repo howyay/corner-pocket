@@ -18,6 +18,11 @@ import json
 from pathlib import Path
 
 DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
+# BALL_SETS is the one owner of the crop-set vocabulary: the sets a crop file can
+# belong to. Every Python module imports it from here (`document_paths` above needs it
+# too). The database cannot import Python, so `ball_labels.crop_set` repeats the names
+# in its CHECK (db/migrations/0002_user_data.sql); tests/test_store_files.py proves
+# that the two lists are the same, in the same order.
 BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 
 

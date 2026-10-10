@@ -37,7 +37,11 @@ from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E40
 # called.  This module imports it here, so this route and the stage factory that
 # builds the live pipeline cannot hold two different lists of accepted names.
 from annotator.pipeline_stages import frame_detectors  # noqa: E402
-BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
+# The crop-set vocabulary (the sets a crop file can belong to) has one owner:
+# src.store_files.BALL_SETS, the module that also builds those files' paths. This
+# module imports it here, so the console's ball-set route and that owner cannot hold
+# two different lists of accepted names.
+from src.store_files import BALL_SETS  # noqa: E402
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
 _MAX_ENROLL_BYTES = 8 * 1024 * 1024
