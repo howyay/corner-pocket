@@ -82,10 +82,15 @@ PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py    # :8131
 ## Tests
 
 ```sh
-PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-node --test tests/test_ops.js
-node tests/test_app_timeline.js
+scripts/pool-test.sh          # the python suite and the three javascript suites
+scripts/pool-test.sh python   # PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+scripts/pool-test.sh js       # node tests/test_ops.js, tests/test_board.js, tests/test_app_timeline.js
 ```
+
+Name one file directly when you work on it (`node tests/test_board.js`,
+`PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_operations.py'`).
+A bare `node --test` is not a test command here: no file name matches the node
+default patterns (`*.test.js`, `test-*.js`), so it collects 0 tests and exits 0.
 
 Tests that need SAM 3 or a local recording skip themselves when it is missing,
 so a fresh clone runs green: `OK (skipped=147)`, no failures. The skips are the
