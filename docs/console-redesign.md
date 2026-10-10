@@ -3083,12 +3083,13 @@ per frame, so the picture lags the input. `curl` is refused by a host hook, so t
 ## Round 33 · the architecture review, the second pass (2026-10-09)
 
 A second architecture review, `/tmp/architecture-review-20261007-123400.html`, named eight
-candidates. Seven shipped in five commits. One candidate, the time-resolved calibration seam, is
-still open. Each row states what the seam was, what it is now, and the number that proves it.
+candidates. All eight shipped in six commits. Each row states what the seam was, what it is now,
+and the number that proves it.
 
 | # | Candidate | Before | After | Measured |
 | --- | --- | --- | --- | --- |
 | 01 | One canonical frame | `src/table_geometry.py`, `src/event_gates.py`, `src/scan_events.py` and `src/rebuild_events_v2.py` each held `CANON_W`, `CANON_H` and `POCKETS_MM`, and three of them wrote their own `nearest_pocket`. The rebuild held a fifth copy, and that copy was transposed | `src/table_geometry.py` is the only definition site: `CANON_W` :20, `CANON_H` :21, `POCKETS_MM` :25, `nearest_pocket` :35, `homography_to_canonical` :45. The other modules import the names | Definition sites 4 → 1, `nearest_pocket` 3 → 1. The rebuild edge TL → TR measures 2540.0 mm before and 1269.0 mm after. The pocket name changes for 0 of the 10 committed pot rows: row t=81.0 moves from [2126.6, 1206.4], foot-right 418 mm, to [1062.5, 2411.9], foot-right 244 mm |
+| 02 | One time-resolved calibration seam | Fifteen functions in eight modules rebuilt the same chain and picked an entry themselves. `src/motion_scan.py:294` read the artifact itself, `:297` took `segments[0]`, and the note at `:300-301` said that the per-time lookup belongs to the calibration | `src/calib_segments.py` is that seam: `read()` at :317 is the only parser of the artifact layout, and `resolve()` at :493 returns a `Reference` with the quad, the file, the entry inside it and a per-time flag, through the chain `KINDS = ("supplied", "segment", "static", "prior")` at :79. `REFUSED = "corners_30min_v2.json"` at :59 guards the recorded decision | Loader functions that parsed a calibration artifact 15 → 0, and three of them are deleted outright; raw `json.load` / `read_text` / `open` sites over the ten reader files 99 → 69; seam call sites 19; lines that name `calib_segments` 18 → 61; `src/motion_scan.py` 2525 → 2467 lines with its `load_quad` chain 87 → 21; tests 16 → 34; python `Ran 1353 tests`, OK (skipped=51) |
 | 03 | One dataset registry | Thirteen modules built a media path by hand from the repository root and the dataset id, so each one knew the artifact layout | `src/datasets.py:175` `media_path(root, dataset_id)` and `:186` `media_relpath` answer that question | Hand-built media path literals 41 lines in 38 files → 26 lines in 24 files. `src/motion_scan.py` names the sample `vod_30min_260815` 0 times |
 | 04 | The mounted seam the engine got | `annotator/ops.js` published one global, and the suite rewrote the source text in four places to reach the console's own names | `attach(options)` at `annotator/ops.js:1341` returns one handle, and `:1356` publishes `window.OpsConsole = {attach, setShell, publishShell, shellState}` | Source-text rewrites before boot 4 → 0. The suite runs the file as the page loads it and mounts the console with `window.OpsConsole.attach({document})`. The browser reads 4 keys |
 | 05 | One paint owner for the console's own DOM | `paintArchive()` and `paintAuto()` both painted the records region of `#main`, with 7 call sites | `paintRecords()` at `annotator/ops.js:197` owns that screen, and `screenModule()` gained `paint()` at `:900` | Definitions 2 → 0, call sites 7 → 0, and `node tests/test_ops.js` 195 → 197 pass with 0 fail |
@@ -3096,7 +3097,7 @@ still open. Each row states what the seam was, what it is now, and the number th
 | 07 | One vocabulary for the shell state | The stage named the console's element by id, `annotator/vision-stage.js:1128` `document.querySelector('#ops-shell')`, and `render()` at `annotator/ops.js:916` wrote the attributes itself | `shellState` at `annotator/ops.js:926`, one writer `publishShell` at `:927` for all five attributes, and `setShell` at `:928` as the only patch path. The stage calls `OpsConsole.setShell` | Mentions of the shell id in the stage 1 → 0. Attribute write statements 2 → 5, all in one function. `setShell({vsPanel:true})` changes the review grid from 280px 1204px to 280px 872px 320px, and back |
 | 08 | Enrolment uses six names, not fifty-two | `src/enroll_from_tracklet.py` imported `src/person_pipeline` at load time, so an import pulled torch, cv2, argparse and ultralytics | The module names the six objects it uses and keeps `PersonPipeline` inside the two functions that need it, `scan_frames` :518 and `_infer` :1385 | File 1483 → 1520 lines, tests 1068 → 1105, with a fresh interpreter that finds no torch, cv2, argparse or ultralytics |
 
-### The five commits
+### The six commits
 
 | Commit | Candidates | Subject |
 | --- | --- | --- |
@@ -3105,6 +3106,7 @@ still open. Each row states what the seam was, what it is now, and the number th
 | `f2cd950` | 06 | console: the engine handle publishes a scenario, not its state |
 | `3ba5683` | 04, 05, 07 | console: one vocabulary for the shell, one paint owner per screen |
 | `dfc19d6` | 08 | enrol: the enrolment module imports only the six names it uses |
+| `f5010c7` | 02 | calibration: one seam answers which reference belongs to a time |
 
 One commit carries three candidates because they share `annotator/ops.js` and `tests/test_ops.js`.
 The message of each commit names its candidates and holds the measurements for each of them.
@@ -3125,14 +3127,12 @@ after a move to `#/records` the shell review flag reads `0` and `#main` holds 29
 
 ### What still stands open
 
-- Candidate 02, the time-resolved calibration seam, is not started. Nine files name `calib_segments`,
-  18 times in all, and eight call sites load through it: `src/table_refine.py:95` and `:139`,
-  `src/segment_calib_report.py:198`, `src/sam3_ball_cache.py:186`, `src/eval_events.py:88`,
-  `src/sam3_frame_audit.py:130`, `annotator/pipeline_stages.py:331` and
-  `annotator/unified_server.py:1106`. Beside that, the private loader at `src/motion_scan.py:294`
-  reads the artifact itself, `:297` takes `segments[0]`, and the note at `:300-301` says that
-  "per-time segment lookup belongs to the calibration, not to this measurement". The note states the
-  seam that the module does not have.
+- Candidate 02 shipped in `f5010c7` after this record was first written, so the numbers it names moved:
+  `calib_segments` now appears on 61 lines, 19 call sites go through the seam, and three former
+  loaders no longer exist. Five `load` call sites stay outside the card's scope: `src/table_refine.py`
+  twice, `annotator/` twice, and `annotator/pipeline_stages.py:331`.
+- Candidate 02 left `src/table_refine.py`'s own prior table and unknown-dataset gate alone, because its
+  chain differs from the seam's chain and the card does not name the file.
 - Candidate 01 covered the four modules that held the frame, and it left three other frame copies in
   place because they are outside its scope: `src/audit_calib.py:21-22` holds a landscape
   `TABLE_W, TABLE_H = 2540.0, 1270.0` with its own destination, `src/calib_vod30.py:30` holds an
@@ -3149,7 +3149,8 @@ after a move to `#/records` the shell review flag reads `0` and `#main` holds 29
 
 ### The numbers for the round
 
-- Python: `Ran 1335 tests in 134.951 s`, `OK (skipped=51)`.
+- Python: `Ran 1335 tests in 134.951 s`, `OK (skipped=51)`, and `Ran 1353 tests in 108.990 s`, `OK
+  (skipped=51)` after candidate 02 added 18 tests.
 - JavaScript: `tests/test_ops.js` 197 pass and 0 fail (195 before), `tests/test_app_timeline.js` 90
   passed and 0 failed, `tests/test_board.js` 16 pass and 0 fail.
 - The events rebuild prints `57 shots, 10 pot rows, 67 events`, `linked: 10/10  causality violations:
