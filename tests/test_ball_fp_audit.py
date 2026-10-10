@@ -7,6 +7,7 @@ three-way split: an unmeasured frame and a gated-out blob must both come back
 ``unresolved``, never ``student_hallucination``, because "SAM3 had nothing to say
 here" is not the same claim as "SAM3 looked and found no ball".
 """
+import hashlib
 import json
 import math
 import unittest
@@ -15,14 +16,23 @@ from pathlib import Path
 import numpy as np
 
 from src.ball_fp_audit import (AUDIT, BALL_AREA_RANGE, BALL_R_RANGE, BAND_H, CANDIDATE_RADIUS_PX,
-                              CASES_OUT, FN_THRESHOLDS, MATCH_TOL_PX, PRODUCTION_CUT,
-                              SAM3_FLOOR, SWEEP_THRESHOLDS, _sweep_instances, admit,
-                              adjudicate_fp, cache_agreement, case_times, crop_bounds,
+                              CASES_OUT, FN_THRESHOLDS, MATCH_TOL_PX, PRODUCTION_CUT, REPORT,
+                              SAM3_FLOOR, SWEEP_THRESHOLDS, VERDICTS_OUT, _sweep_instances,
+                              admit, adjudicate_fp, cache_agreement, case_times, crop_bounds,
                               headline, instances_near, markdown_table, nearest_label,
                               percentile, recover_fn, recovery_by_threshold, render_case,
                               verdict_counts)
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# The audit writes into out/, which .gitignore:14 keeps out of git, so a fresh
+# clone has none of it.  These three files are byte-for-byte copies of the
+# artifacts a real run produced, and PROVENANCE.txt records their sha1 and size.
+FIXTURES = ROOT / "tests" / "fixtures" / "ball_fp_audit"
+FIXTURE_CASES = FIXTURES / "cases.json"
+FIXTURE_VERDICTS = FIXTURES / "verdicts.json"
+FIXTURE_REPORT = FIXTURES / "report_960x540.json"
+PROVENANCE = FIXTURES / "PROVENANCE.txt"
 
 
 def inst(x, y, score, r=8.0, area=200.0, in_cloth=True):
@@ -53,6 +63,21 @@ class ConstantsTest(unittest.TestCase):
     def test_the_radius_is_the_small_one_the_directive_named(self):
         self.assertEqual(CANDIDATE_RADIUS_PX, 10.0)
         self.assertEqual(MATCH_TOL_PX, 6.0)
+
+
+class ProductionPathsTest(unittest.TestCase):
+    """The audit must keep measuring into out/, whatever the tests read.
+
+    FrozenEvidenceTest reads the fixtures, so this pins the other half of the
+    contract: the module under test still points at the live artifacts.
+    """
+
+    def test_the_audit_module_still_writes_and_reads_the_out_tree(self):
+        self.assertEqual(AUDIT, ROOT / "out" / "ball-fp-audit")
+        self.assertEqual(CASES_OUT, AUDIT / "cases.json")
+        self.assertEqual(VERDICTS_OUT, AUDIT / "verdicts.json")
+        self.assertEqual(REPORT, ROOT / "out" / "tiny_ball_probe"
+                         / "report_960x540.json")
 
 
 class InstancesNearTest(unittest.TestCase):
@@ -410,35 +435,55 @@ class CropTest(unittest.TestCase):
 
 
 class FrozenEvidenceTest(unittest.TestCase):
-    """If the audit has been run, it must be adjudicating the published errors."""
+    """If the audit has been run, it must be adjudicating the published errors.
+
+    The evidence now lives in tests/fixtures/ball_fp_audit/ as byte-for-byte
+    copies of the artifacts a real run wrote under out/, because out/ is ignored
+    (.gitignore:14) and a fresh clone has none of it.  Every assertion below is
+    the one it always made, against the same bytes.
+    """
 
     def setUp(self):
-        if not CASES_OUT.exists():
-            self.skipTest("the audit has not been run in this checkout")
+        for path in (FIXTURE_CASES, FIXTURE_VERDICTS, FIXTURE_REPORT, PROVENANCE):
+            if not path.exists():
+                self.fail(f"the frozen evidence is missing: {path}")
+
+    def test_the_fixtures_are_the_recorded_evidence(self):
+        """PROVENANCE.txt holds one sha1 per fixture, so an edit fails loudly."""
+        recorded = {}
+        for line in PROVENANCE.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            sha1, size, name, source = line.split()
+            recorded[name] = (sha1, int(size), source)
+        self.assertEqual(sorted(recorded), ["cases.json", "report_960x540.json",
+                                            "verdicts.json"])
+        for name, (sha1, size, source) in recorded.items():
+            path = FIXTURES / name
+            data = path.read_bytes()
+            self.assertEqual(hashlib.sha1(data).hexdigest(), sha1,
+                             f"{path} is no longer the evidence copied from {source}")
+            self.assertEqual(len(data), size, f"{path} changed size")
 
     def test_the_reproduced_counts_match_the_frozen_report(self):
-        cases = json.loads(CASES_OUT.read_text())
+        cases = json.loads(FIXTURE_CASES.read_text())
         prov = cases["provenance"]
-        report = json.loads((ROOT / "out" / "tiny_ball_probe"
-                             / "report_960x540.json").read_text())
+        report = json.loads(FIXTURE_REPORT.read_text())
         self.assertEqual(len(cases["fp"]), report["operating"]["fp"])
         self.assertEqual(len(cases["fn"]), report["operating"]["fn"])
         self.assertEqual(prov["threshold"], report["operating"]["threshold"])
         self.assertEqual(prov["held_frames"], report["held_frames"])
 
     def test_every_case_carries_the_geometry_a_crop_needs(self):
-        cases = json.loads(CASES_OUT.read_text())
+        cases = json.loads(FIXTURE_CASES.read_text())
         for row in cases["fp"] + cases["fn"]:
             for key in ("id", "t", "x", "y", "labels_in_frame"):
                 self.assertIn(key, row)
             self.assertIsInstance(row["labels_in_frame"], list)
 
     def test_verdicts_covers_exactly_the_cases(self):
-        path = AUDIT / "verdicts.json"
-        if not path.exists():
-            self.skipTest("verdicts have not been computed")
-        cases = json.loads(CASES_OUT.read_text())
-        verdicts = json.loads(path.read_text())
+        cases = json.loads(FIXTURE_CASES.read_text())
+        verdicts = json.loads(FIXTURE_VERDICTS.read_text())
         self.assertEqual([r["id"] for r in verdicts["fp"]],
                          [r["id"] for r in cases["fp"]])
         self.assertEqual([r["id"] for r in verdicts["fn"]],
@@ -451,10 +496,7 @@ class FrozenEvidenceTest(unittest.TestCase):
         self.assertEqual(counts, {k: verdicts["headline"][k] for k in counts})
 
     def test_every_unresolved_fp_says_which_kind_of_unresolved_it_is(self):
-        path = AUDIT / "verdicts.json"
-        if not path.exists():
-            self.skipTest("verdicts have not been computed")
-        verdicts = json.loads(path.read_text())
+        verdicts = json.loads(FIXTURE_VERDICTS.read_text())
         for row in verdicts["fp"]:
             if row["verdict"] == "unresolved":
                 self.assertIn(row["reason"], ("frame_not_measured",
@@ -462,10 +504,7 @@ class FrozenEvidenceTest(unittest.TestCase):
                                               "only_instances_below_the_lowest_sweep_threshold"))
 
     def test_a_teacher_recall_verdict_carries_the_instance_that_justifies_it(self):
-        path = AUDIT / "verdicts.json"
-        if not path.exists():
-            self.skipTest("verdicts have not been computed")
-        verdicts = json.loads(path.read_text())
+        verdicts = json.loads(FIXTURE_VERDICTS.read_text())
         for row in verdicts["fp"]:
             if row["verdict"] != "teacher_recall":
                 continue

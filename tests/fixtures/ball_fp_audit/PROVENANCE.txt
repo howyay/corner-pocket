@@ -1,0 +1,20 @@
+# Frozen evidence for tests/test_ball_fp_audit.py, class FrozenEvidenceTest.
+#
+# Each data row is: sha1, byte count, fixture name, the artifact it was copied from.
+# The three fixtures are byte-for-byte copies of artifacts under out/.  The file
+# .gitignore:14 ignores out/, so a fresh clone has these fixtures and no out/.
+# test_the_fixtures_are_the_recorded_evidence recomputes every sha1 below.
+#
+# Re-record after a new audit run:
+#   cp -p out/ball-fp-audit/cases.json            tests/fixtures/ball_fp_audit/cases.json
+#   cp -p out/ball-fp-audit/verdicts.json         tests/fixtures/ball_fp_audit/verdicts.json
+#   cp -p out/tiny_ball_probe/report_960x540.json tests/fixtures/ball_fp_audit/report_960x540.json
+#   sha1sum tests/fixtures/ball_fp_audit/cases.json \
+#           tests/fixtures/ball_fp_audit/verdicts.json \
+#           tests/fixtures/ball_fp_audit/report_960x540.json
+# then update the three rows below.
+#
+# sha1                              bytes  fixture               copied from
+93c078d6ac993a5a70392c18179318f49c6df333 14603 cases.json out/ball-fp-audit/cases.json
+be047043b6068d2f86bbb52c32496570ed160e1f 35249 verdicts.json out/ball-fp-audit/verdicts.json
+28a19cf583c934e39fd7143e60e3b21edc8d4d56 9821 report_960x540.json out/tiny_ball_probe/report_960x540.json
