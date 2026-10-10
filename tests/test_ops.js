@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+const {domNode} = require('./dom_stubs.js');
 const source = fs.readFileSync(path.join(__dirname, '../annotator/ops.js'), 'utf8');
 const clockSync = require('../annotator/clock-sync.js');
 const clockSyncSource = fs.readFileSync(path.join(__dirname, '../annotator/clock-sync.js'), 'utf8');
@@ -22,23 +23,6 @@ function stageMarkup(h, {lang = 'en', fixed = false} = {}) {
   h.context.window.VisionStage.attach({mount, lang, clock: consoleClock(h), fixedClip: () => fixed,
     channels: () => [], vods: () => [], regulars: () => [], chat: () => false, notice() {}, review});
   return mount.shellHTML();
-}
-// Round 34, console candidate 1: render() is the console's whole composition path, and the suite
-// never ran it (42 tests replaced it instead). A page-shaped stub lets one test execute it, so the
-// nav, the tabbar, the mounted screen, the vision host move and the poll schedule are observable.
-function domNode(selector = '') {
-  const node = {
-    selector, innerHTML: '', textContent: '', hidden: false, value: '', title: '', children: [],
-    dataset: {tab: '', lang: '', theme: '', action: ''}, style: {setProperty() {}, getPropertyValue: () => ''},
-    classList: {add() {}, remove() {}, toggle(name, on) { node.toggles.push({name, on}) }}, toggles: [], appended: [], inserted: [], attributes: {},
-    setAttribute(key, value) { node.attributes[key] = String(value); },
-    getAttribute(key) { return Object.prototype.hasOwnProperty.call(node.attributes, key) ? node.attributes[key] : null; },
-    removeAttribute() {}, appendChild(child) { node.appended.push(child); node.children.push(child); return child; },
-    insertAdjacentHTML(_where, html) { node.inserted.push(html); node.innerHTML += html; },
-    addEventListener() {}, removeEventListener() {}, querySelector: () => null, querySelectorAll: () => [],
-    closest: () => null, contains: () => false, focus() {}, remove() {}
-  };
-  return node;
 }
 // One stub document with a region per selector, so render() runs as it does in the browser.
 function richDocument(handlers) {
@@ -979,6 +963,20 @@ test('a stream link the server refuses is explained before or after the request,
   h.lang='zh';
   assert.equal(h.validationMessage('Source already added'), '这个直播源已经添加过了。');
   assert.equal(h.validationMessage('Use a Twitch channel or videos/<digits> URL'), '请输入Twitch频道网址或 videos/<数字> 视频网址。');
+});
+test('the console and the service agree on every Twitch source URL of the shared corpus', () => {
+  // Both rules read tests/source_url_cases.json, so the console never offers a source that the
+  // service refuses, and never hides a source that the service accepts. The python test
+  // tests/test_source_url_parity.py drives the same rows through the service rule.
+  const h = harness();
+  const corpus = JSON.parse(fs.readFileSync(path.join(__dirname, 'source_url_cases.json'), 'utf8'));
+  assert.ok(corpus.rows.length >= 30, `the corpus holds at least 30 rows, and it holds ${corpus.rows.length}`);
+  for (const row of corpus.rows) {
+    const parsed = h.parseSource(row.url);
+    assert.equal(parsed ? 'accept' : 'refuse', row.verdict, `${row.url}: the console verdict must equal the corpus verdict. ${row.reason}`);
+    assert.equal(parsed ? parsed.url : null, row.canonical, `${row.url}: the console canonical URL must equal the corpus canonical URL. ${row.reason}`);
+    assert.equal(parsed ? (parsed.channel || parsed.video) : null, row.subject, `${row.url}: the console source name must equal the corpus source name.`);
+  }
 });
 test('choosing a regular after the guest prompt clears it, so the browser lets the form submit', () => {
   const h = harness();

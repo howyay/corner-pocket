@@ -1,0 +1,383 @@
+{
+  "note": "One corpus for the Twitch source URL rule. Both rules read it: parse_twitch_source_url in annotator/operations.py, and parseSource in annotator/ops.js. tests/test_source_url_parity.py drives the service rule. tests/test_ops.js drives the console rule.",
+  "rows": [
+    {
+      "url": "https://www.twitch.tv/examplechannel",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "A channel path with the www host names a source."
+    },
+    {
+      "url": "https://twitch.tv/examplechannel",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "The host without www names the same source."
+    },
+    {
+      "url": "https://www.twitch.tv/ExampleChannel",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "The rule lowercases the channel name."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel/",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "One trailing slash does not change the source."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel//",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "The rule drops every trailing slash, so two slashes name the same source."
+    },
+    {
+      "url": "https://www.twitch.tv/a_b_c_1",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/a_b_c_1",
+      "subject": "a_b_c_1",
+      "reason": "Letters, digits and the underscore are channel characters."
+    },
+    {
+      "url": "https://www.twitch.tv/abcdefghijklmnopqrstuvwxy",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/abcdefghijklmnopqrstuvwxy",
+      "subject": "abcdefghijklmnopqrstuvwxy",
+      "reason": "Twenty five characters is the longest channel name."
+    },
+    {
+      "url": "https://www.twitch.tv/videos/123",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/videos/123",
+      "subject": "123",
+      "reason": "A videos path with digits names a video source."
+    },
+    {
+      "url": "https://twitch.tv/videos/1234567890",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/videos/1234567890",
+      "subject": "1234567890",
+      "reason": "A video URL without www names the same source."
+    },
+    {
+      "url": "https://www.twitch.tv/videos/123//",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/videos/123",
+      "subject": "123",
+      "reason": "The rule drops both trailing slashes of the video path."
+    },
+    {
+      "url": "https://www.twitch.tv/videos/0000123",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/videos/0000123",
+      "subject": "0000123",
+      "reason": "The rule keeps the leading zeros of the video id."
+    },
+    {
+      "url": "HTTPS://www.twitch.tv/examplechannel",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "A URL scheme is not case sensitive, so this is the same source."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel?",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "An empty query does not change the source."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel#",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "An empty fragment does not change the source."
+    },
+    {
+      "url": "  https://www.twitch.tv/examplechannel  ",
+      "verdict": "accept",
+      "canonical": "https://www.twitch.tv/examplechannel",
+      "subject": "examplechannel",
+      "reason": "The rule trims the space around the URL."
+    },
+    {
+      "url": "https://www.twitch.tv/./examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A dot segment is not a channel path."
+    },
+    {
+      "url": "https://www.twitch.tv/a/../examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "The rule refuses a path with a dot segment."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel/../other",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "The rule refuses a path with a dot segment."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel/.",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A dot segment is not a channel path."
+    },
+    {
+      "url": "https://www.twitch.tv/..",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A dot segment is not a channel path."
+    },
+    {
+      "url": "https://www.twitch.tv:443/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "An explicit port makes a different netloc, and the rule refuses it."
+    },
+    {
+      "url": "https://www.twitch.tv:8443/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A port that is not 443 is a different netloc."
+    },
+    {
+      "url": "https://WWW.TWITCH.TV/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "An upper case host is a different netloc."
+    },
+    {
+      "url": "https://WWW.twitch.tv/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "An upper case host is a different netloc."
+    },
+    {
+      "url": "https://www.Twitch.tv/videos/9",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "An upper case host is a different netloc, even on a video URL."
+    },
+    {
+      "url": "https://www.twitch.tv/videos",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "videos is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/directory",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "directory is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/downloads",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "downloads is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/settings",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "settings is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/search",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "search is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/login",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "login is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/signup",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "signup is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/subscriptions",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "subscriptions is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/inventory",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "inventory is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/wallet",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "wallet is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/jobs",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "jobs is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/turbo",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "turbo is a Twitch page, not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/Wallet",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "The rule compares the reserved words in lower case."
+    },
+    {
+      "url": "https://www.twitch.tv/directory/gaming",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A reserved word with a sub path is not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/videos/no",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A videos path without digits is not a video and not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/videos/12_3",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A video id holds digits only."
+    },
+    {
+      "url": "twitch.tv/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "The rule needs the https scheme."
+    },
+    {
+      "url": "http://www.twitch.tv/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "The rule needs https and refuses http."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel?x=y",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A query string is not part of a source URL."
+    },
+    {
+      "url": "https://www.twitch.tv/examplechannel#top",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A fragment is not part of a source URL."
+    },
+    {
+      "url": "https://www.twitch.tv?x=y",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A query string fails the rule, even when the path is empty."
+    },
+    {
+      "url": "https://www.twitch.tv/",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "An empty path is not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A URL with no path is not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv//",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A path of slashes only is not a channel."
+    },
+    {
+      "url": "https://www.twitch.tv/abcdefghijklmnopqrstuvwxyz",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "Twenty six characters is too long for a channel name."
+    },
+    {
+      "url": "https://www.twitch.tv/café",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A channel name holds ASCII letters, digits and the underscore only."
+    },
+    {
+      "url": "https://tωitch.tv/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "A unicode host is not a Twitch host."
+    },
+    {
+      "url": "https://twitch.tv.evil/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "The rule compares the whole netloc, so a suffix is a different host."
+    },
+    {
+      "url": "https://twitch.tv@evil/examplechannel",
+      "verdict": "refuse",
+      "canonical": null,
+      "subject": null,
+      "reason": "User information makes a different netloc."
+    }
+  ]
+}

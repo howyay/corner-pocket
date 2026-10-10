@@ -92,6 +92,39 @@ def name_key(name):
     return name.strip().casefold()
 
 
+# The Twitch source URL rule. This module owns the rule, because this service is the only
+# writer of the source list. The console reads the same rule in annotator/ops.js
+# (parseSource). The two rules read one corpus of URLs: tests/source_url_cases.json.
+TWITCH_SOURCE_HOSTS = ('twitch.tv', 'www.twitch.tv')
+TWITCH_RESERVED_CHANNELS = ('videos', 'directory', 'downloads', 'settings', 'search', 'login',
+                            'signup', 'subscriptions', 'inventory', 'wallet', 'jobs', 'turbo')
+
+
+def parse_twitch_source_url(value):
+    """Read one Twitch source URL and name the source it holds.
+
+    The function returns {'url': canonical, 'kind': 'channel', 'channel': name} for a channel,
+    and {'url': canonical, 'kind': 'video', 'video': id} for a videos/<digits> URL.
+    The rule reads the URL as the operator typed it. The netloc must be exactly one of the two
+    Twitch host spellings, so an upper case host or an explicit port is a different netloc. The
+    path must match one channel or one videos/<digits> path, so a dot segment does not match.
+    The function raises ValueError when the value is not a Twitch source URL.
+    """
+    url = value.strip()
+    parsed = urlsplit(url)
+    if parsed.scheme != 'https' or parsed.netloc not in TWITCH_SOURCE_HOSTS or parsed.query or parsed.fragment:
+        raise ValueError('Use an HTTPS Twitch channel or video URL without query parameters')
+    path = parsed.path.rstrip('/')
+    video = re.fullmatch(r'/videos/([0-9]+)', path)
+    channel = re.fullmatch(r'/([A-Za-z0-9_]{1,25})', path)
+    if not video and (not channel or channel[1].lower() in TWITCH_RESERVED_CHANNELS):
+        raise ValueError('Use a Twitch channel or videos/<digits> URL')
+    canonical = 'https://www.twitch.tv' + path.lower()
+    if video:
+        return {'url': canonical, 'kind': 'video', 'video': video[1]}
+    return {'url': canonical, 'kind': 'channel', 'channel': channel[1].lower()}
+
+
 # Typed stand-ins for "no opponent": the draw records a bye itself, so a guest
 # with one of these names would be a fake person (R5).
 PLACEHOLDER_NAMES = {'na', 'n/a', 'bye', 'tbd', '轮空', '輪空'}
@@ -1134,21 +1167,13 @@ class Operations:
         self._unlink_vod(s, p)
 
     def _do_source_add(self, s, p):
-        url = text(p.get('url'), 'Twitch URL', 500)
-        parsed = urlsplit(url)
-        if parsed.scheme != 'https' or parsed.netloc not in ('twitch.tv', 'www.twitch.tv') or parsed.query or parsed.fragment:
-            raise ValueError('Use an HTTPS Twitch channel or video URL without query parameters')
-        path = parsed.path.rstrip('/')
-        video = re.fullmatch(r'/videos/([0-9]+)', path)
-        channel = re.fullmatch(r'/([A-Za-z0-9_]{1,25})', path)
-        if not video and (not channel or channel[1].lower() in ('videos', 'directory', 'downloads', 'settings', 'search', 'login', 'signup', 'subscriptions', 'inventory', 'wallet', 'jobs', 'turbo')):
-            raise ValueError('Use a Twitch channel or videos/<digits> URL')
-        canonical = 'https://www.twitch.tv' + path.lower()
+        # The rule itself lives in parse_twitch_source_url, above: the parity test drives
+        # that function, so the test never keeps a second copy of the rule.
+        source = parse_twitch_source_url(text(p.get('url'), 'Twitch URL', 500))
         sources = s.setdefault('sources', [])
-        if any(source['url'] == canonical for source in sources):
+        if any(existing['url'] == source['url'] for existing in sources):
             raise ValueError('Source already added')
-        source = dict(id=uid(), url=canonical, kind='video' if video else 'channel')
-        source['video' if video else 'channel'] = video[1] if video else channel[1].lower()
+        source = dict(id=uid(), **source)
         sources.append(source)
         return source
 
