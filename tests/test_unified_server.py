@@ -2238,5 +2238,206 @@ class BrowserFixtureListenerTests(unittest.TestCase):
                               f"{name} does not serve the product listener")
 
 
+def server_source():
+    """The path, the text and the syntax tree of the module under test.
+
+    A rule about one home reads the source. A line number drifts, so no rule below
+    keeps one.
+    """
+    from annotator import unified_server
+    path = Path(unified_server.__file__)
+    text = path.read_text(encoding='utf-8')
+    return path, text, ast.parse(text, filename=str(path))
+
+
+def enclosing_function(tree, node):
+    """The innermost function that holds ``node``, or None at module level."""
+    holder = None
+    for parent in ast.walk(tree):
+        if not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if any(inner is node for inner in ast.walk(parent)) \
+                and (holder is None or parent.lineno > holder.lineno):
+            holder = parent
+    return holder
+
+
+def class_method(tree, class_name, method_name):
+    """The method node for ``class_name.method_name``, wherever the file holds it."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef) and child.name == method_name:
+                    return child
+    raise AssertionError(f'the module declares no {class_name}.{method_name} to read')
+
+
+def number_call(call):
+    """True for a call of the module's own ``number(value, low, high, name)``."""
+    return isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == 'number'
+
+
+def literal_bounds(call):
+    """The two bounds of a ``number`` call when it spells both as literals, else None.
+
+    A bound that comes from a name, or from a tuple the call unpacks, is not a second
+    spelling of the fact.
+    """
+    bounds = call.args[1:3] if number_call(call) else []
+    if len(bounds) != 2 or not all(isinstance(arg, ast.Constant) for arg in bounds):
+        return None
+    return (bounds[0].value, bounds[1].value)
+
+
+def bound_names(call):
+    """The module names one ``number`` call reads a bound from."""
+    bounds = call.args[1:3] if number_call(call) else []
+    names = set()
+    for arg in bounds:
+        target = arg.value if isinstance(arg, ast.Starred) else arg
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
+            names.add(target.value.id)
+    return names
+
+
+class OneHomeTests(unittest.TestCase):
+    """Four facts that had two homes, and the one home each fact has now.
+
+    A second copy that drifts stays invisible in a drive: the route still answers, and
+    only the copy moved. The scans below read the syntax tree, so a comment or a moved
+    line cannot satisfy them by accident.
+    """
+
+    def test_the_vod30_guard_has_one_refusal_sentence(self):
+        """The vod30-only routes reach the one guard; they do not type it again."""
+        path, text, tree = server_source()
+        sentence = 'feature only available for vod30'
+        spelled = [node for node in ast.walk(tree)
+                   if isinstance(node, ast.Constant) and node.value == sentence]
+        self.assertEqual(1, len(spelled),
+                         f'{path} spells the vod30 refusal sentence {len(spelled)} times, at '
+                         f'{[node.lineno for node in spelled]}: Backend._vod30 owns it once')
+        holder = enclosing_function(tree, spelled[0])
+        self.assertIsNotNone(holder, f'{path}: the refusal sentence sits at module level')
+        self.assertEqual('_vod30', holder.name,
+                         f'{path}: {holder.name} spells the refusal, and Backend._vod30 is the guard')
+        callers = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+                   and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                           and call.func.attr == '_vod30' for call in ast.walk(node))}
+        self.assertIn('get', callers,
+                      f'{path}: the API dispatcher must call Backend._vod30, and {sorted(callers)} do')
+        # The route answers today what it answered before the fix: 404, and that sentence.
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            with self.assertRaises(APIError) as caught:
+                backend.get(['api', 'highlight', 'anchors'], ReadQuery({}))
+        self.assertEqual((sentence, 404), (str(caught.exception), caught.exception.status))
+
+    def test_the_four_favicon_names_have_one_home(self):
+        """FAVICON_FILES and BOARD_FILES build from the one tuple of names."""
+        from annotator import unified_server
+        path, text, tree = server_source()
+        names = ('favicon.svg', 'favicon-32.png', 'favicon-16.png', 'favicon.ico')
+        counts = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value in names:
+                counts[node.value] = counts.get(node.value, 0) + 1
+        self.assertEqual({name: 1 for name in names}, counts,
+                         f'{path} must spell each favicon name once, in the tuple the two '
+                         f'readers build from; it spells {counts}')
+        paths = {node.value for node in ast.walk(tree)
+                 if isinstance(node, ast.Constant) and node.value in [f'/{name}' for name in names]}
+        self.assertEqual(set(), paths,
+                         f'{path} spells a favicon request path as a literal: {sorted(paths)}')
+        owners = [node for node in tree.body if isinstance(node, ast.Assign)
+                  and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                  and isinstance(node.value, ast.Tuple)
+                  and [inner.value for inner in node.value.elts
+                       if isinstance(inner, ast.Constant)] == list(names)]
+        self.assertEqual(1, len(owners),
+                         f'{path} must hold the four favicon names in one module-level tuple')
+        self.assertEqual(tuple(f'/{name}' for name in names), unified_server.FAVICON_FILES,
+                         'FAVICON_FILES must be the request paths of the four names')
+        for name in names:
+            with self.subTest(name=name):
+                self.assertEqual(name, unified_server.BOARD_FILES.get(f'/{name}'),
+                                 f'the public board map must serve {name} at /{name}')
+
+    def test_the_pocket_geometry_has_one_read_path(self):
+        """One function imports the pocket geometry, and every reader calls it."""
+        from annotator import unified_server
+        path, text, tree = server_source()
+        imports = [node for node in ast.walk(tree)
+                   if isinstance(node, ast.ImportFrom) and node.module == 'src.scan_events'
+                   and any(alias.name == 'POCKETS_MM' for alias in node.names)]
+        self.assertEqual(1, len(imports),
+                         f'{path} imports POCKETS_MM {len(imports)} times at '
+                         f'{[node.lineno for node in imports]}: the geometry has one read path')
+        holder = enclosing_function(tree, imports[0])
+        self.assertIsNotNone(holder,
+                             f'{path}:{imports[0].lineno} imports the geometry at module level, '
+                             'and src.scan_events pulls cv2')
+        self.assertEqual('_pockets_mm', holder.name,
+                         f'{path}: {holder.name} holds the import, and _pockets_mm is the reader')
+        method = class_method(tree, 'Backend', '_unified_pockets')
+        called = {node.func.id for node in ast.walk(method)
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+        self.assertIn('_pockets_mm', called,
+                      f'{path}: Backend._unified_pockets must read the geometry through the one '
+                      'function, and it calls ' + ', '.join(sorted(called)))
+        # The one path answers the canonical geometry, so the frame reader still gets it.
+        from src.scan_events import POCKETS_MM
+        self.assertIs(unified_server._pockets_mm(), POCKETS_MM)
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            pockets = backend._unified_pockets([[0, 0], [1920, 0], [1920, 1080], [0, 1080]])
+            self.assertEqual(sorted(POCKETS_MM), sorted(pocket['name'] for pocket in pockets))
+            self.assertEqual([], backend._unified_pockets([]))
+
+    def test_the_time_bound_has_one_home(self):
+        """Both ``t`` readers take the bound from the one module constant."""
+        from annotator import unified_server
+        path, text, tree = server_source()
+        calls = [node for node in ast.walk(tree) if number_call(node)]
+        tuples = {node.targets[0].id: tuple(inner.value for inner in node.value.elts)
+                  for node in tree.body
+                  if isinstance(node, ast.Assign) and len(node.targets) == 1
+                  and isinstance(node.targets[0], ast.Name)
+                  and isinstance(node.value, ast.Tuple) and len(node.value.elts) == 2
+                  and all(isinstance(inner, ast.Constant) and type(inner.value) is int
+                          for inner in node.value.elts)}
+        used = {name for name in tuples if any(name in bound_names(call) for call in calls)}
+        self.assertEqual(1, len(used),
+                         f'{path} reads the bound of a number call from {sorted(used)}: the bound '
+                         'has one module constant')
+        owner = used.pop()
+        pair = tuples[owner]
+        low, high = pair
+        self.assertLess(low, high, f'{path}: {owner} must name a low value and a high value')
+        self.assertEqual(pair, getattr(unified_server, owner))
+        repeated = [node.lineno for node in calls if literal_bounds(node) == pair]
+        self.assertEqual([], repeated,
+                         f'{path} spells the {low}..{high} bound as literals at {repeated}: both '
+                         f'readers take it from {owner}')
+        readers = [node.lineno for node in calls if owner in bound_names(node)]
+        self.assertGreaterEqual(len(readers), 2,
+                                f'{path}: {owner} must serve the window route and anchor_info, and '
+                                f'it serves {len(readers)} call(s) at {readers}')
+        # The bound still answers: both ends stand, and one step outside is refused.
+        self.assertEqual(float(low), ReadQuery({'t': str(low)}).window()[1])
+        self.assertEqual(float(high), ReadQuery({'t': str(high)}).window()[1])
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            for outside, reader in ((low - 1, lambda value: ReadQuery({'t': str(value)}).window()),
+                                    (high + 1, backend.anchor_info)):
+                with self.subTest(outside=outside):
+                    with self.assertRaises(APIError) as caught:
+                        reader(str(outside))
+                    self.assertEqual(400, caught.exception.status)
+                    self.assertIn(f'{low}..{high}', str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -72,6 +72,9 @@ LIVE_ACTIONS = ('start', 'stop')
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
 _MAX_ENROLL_BYTES = 8 * 1024 * 1024
+#: Every ``t`` a route reads is a second of the broadcast, inside this range. The
+#: window route and ``anchor_info`` read the one pair, so the two cannot drift.
+T_RANGE = (0, 1800)
 #: The page files this handler serves. The list is closed on purpose: only these files
 #: reach a browser. A closed list drifts, and a page that loads a file this handler
 #: refuses fails in the browser only - no node suite sees the 404.
@@ -92,7 +95,11 @@ LEGACY_PAGE_REDIRECTS = {'/ops.html': '/', '/app.html': '/'}
 #: is the --public-port surface, it answers under a prefix, and its '/' is the board page.
 BOARD_ROUTES = ('/display', '/board.js', '/board.css')
 BOARD_ROUTE_ALIASES = {'/display': 'board.html'}
-FAVICON_FILES = ('/favicon.svg', '/favicon-32.png', '/favicon-16.png', '/favicon.ico')
+#: The four favicon file names have one home, this tuple. FAVICON_FILES is the
+#: request-path spelling of the same names, and the public board's file map
+#: (BOARD_FILES, below) builds its own keys from this tuple as well.
+FAVICON_NAMES = ('favicon.svg', 'favicon-32.png', 'favicon-16.png', 'favicon.ico')
+FAVICON_FILES = tuple(f'/{name}' for name in FAVICON_NAMES)
 
 
 class APIError(Exception):
@@ -601,7 +608,7 @@ class ReadQuery:
 
     def window(self):
         """``(win, t)`` for the window route: the key, and its time in range."""
-        return self.text("win", ""), number(self._values.get("t"), 0, 1800, "t")
+        return self.text("win", ""), number(self._values.get("t"), *T_RANGE, "t")
 
     def scalars(self):
         """Every value as a flat ``{name: value}`` mapping, for a sub-importer."""
@@ -1419,10 +1426,10 @@ class Backend:
         try:
             import numpy as np
             from src.table_geometry import homography_to_canonical
-            from src.scan_events import POCKETS_MM
+            pockets = _pockets_mm()
             inverse = np.linalg.inv(homography_to_canonical(np.array(corners, np.float32)))
             points = []
-            for name, (mm_x, mm_y) in POCKETS_MM.items():
+            for name, (mm_x, mm_y) in pockets.items():
                 x, y, w = inverse @ np.array([float(mm_x), float(mm_y), 1.0])
                 points.append({'name': name, 'cx': round(float(x / w), 1), 'cy': round(float(y / w), 1)})
             return points
@@ -2005,7 +2012,7 @@ class Backend:
             return dict(job)
 
     def anchor_info(self, t):
-        t = number(t, 0, 1800, "t")
+        t = number(t, *T_RANGE, "t")
         frame = self.frame(t)
         height, width = frame.shape[:2]
         saved = self.store().anchors_get("vod30")
@@ -2130,8 +2137,7 @@ class Backend:
                         actors[str(event["id"])] = match
             return {"events": events, "annotations": self.store().verdicts_get(dataset),
                     "actors": actors, "geometry": geometry}
-        if dataset != "vod30":
-            raise APIError("feature only available for vod30", 404)
+        self._vod30(dataset)
         if route == "anchors":
             return self.anchor_info(query.integer("t", 70))
         if route == "seeds":
@@ -2547,7 +2553,7 @@ BOARD_FONTS = ("barlow-500.woff2", "barlow-600.woff2", "barlow-700.woff2",
                "noto-sans-sc-500.woff2", "noto-sans-sc-500-common.woff2")
 #: Public request path -> file under annotator/. With /api/board, the whole public surface.
 BOARD_FILES = {"/": "board.html", "/board.js": "board.js", "/board.css": "board.css",
-               **{f"/{name}": name for name in ("favicon.svg", "favicon-32.png", "favicon-16.png", "favicon.ico")},
+               **{f"/{name}": name for name in FAVICON_NAMES},
                **{f"/fonts/{name}": f"fonts/{name}" for name in BOARD_FONTS}}
 _BOARD_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
