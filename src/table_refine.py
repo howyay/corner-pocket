@@ -957,14 +957,14 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
     # playfield is 100 x 50 inches, and at this venue at least one pair of its edges still reads
     # parallel in the image. A quad that breaks either is not thrown away - the cloth boundary was
     # still measured - but it is reported as such and cannot claim a fully measured confidence.
+    # The two rotations and the answer of a check that cannot run have one home: ``best_verdict``
+    # below. On this path too a check that could not run is not a pass, so a reader cannot meet a
+    # fault as ``ok`` True with no reason.
     try:
-        from src.playfield import check_quad
         ordered = _order_corners(np.asarray(quad, np.float32))
-        candidates = [ordered, [ordered[1], ordered[2], ordered[3], ordered[0]]]
-        verdicts = [check_quad([[float(p[0]), float(p[1])] for p in c]) for c in candidates]
-        playfield = min(verdicts, key=lambda v: (not v["ok"], len(v["reasons"])))
+        playfield = best_verdict(ordered)
     except Exception as exc:                      # a constraint must never break a detection
-        playfield = {"ok": True, "reasons": [], "metrics": {}, "error": str(exc)}
+        playfield = unavailable_verdict(exc)
     if not playfield["ok"]:
         confidence = round(confidence * 0.6, 3)
     info = {"confidence": confidence, "reason": None, "mask": mask_note,
@@ -1090,6 +1090,44 @@ def draw_debug(bgr, result):
     tag = f"{result.get('source')} conf={result.get('confidence')} {result.get('reason') or ''}"
     cv2.putText(debug, tag.strip(), (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     return debug
+
+
+# --------------------------------------------------------- one home for the quad verdict
+# One rule has one home: "a quad check that could not run is not a pass".  The live table stage
+# (``annotator/pipeline_stages.py``) and ``_refine_once`` above read the two functions below, so
+# one fault cannot answer two ways on two callers.  The answers of a check that really ran do not
+# change.  Only a check that could not run changes: on this path it answered ``ok`` True with no
+# reason before, so a reader could not tell it from a measured pass.
+#
+# These definitions stand before the ``__main__`` block, so the line numbers that documents and
+# tests cite above them do not move.
+CHECK_UNAVAILABLE = "check-unavailable"
+
+
+def unavailable_verdict(exc):
+    """The one shape of the answer when a quad check could not run.
+
+    ``ok`` is False, because the check did not accept the quad.  ``reasons`` names the fault, and
+    ``metrics`` is empty, because nobody measured the table.  ``error`` carries the fault text.
+    """
+    return {"ok": False, "reasons": [CHECK_UNAVAILABLE], "metrics": {}, "error": str(exc)}
+
+
+def best_verdict(quad):
+    """The better of the two rotations of one quad, from the check the playfield module owns.
+
+    A published polygon may start at any corner, so both rotations of its corner list are
+    measured and the better answer wins: a pass first, then the answer with the fewest reasons.
+    A check that cannot run answers ``unavailable_verdict``, so it never reads as a measured pass.
+    """
+    try:
+        from src.playfield import check_quad
+        pts = [[float(p[0]), float(p[1])] for p in quad][:4]
+        rotated = [pts[1], pts[2], pts[3], pts[0]]
+        verdicts = [check_quad(pts), check_quad(rotated)]
+        return min(verdicts, key=lambda v: (not v["ok"], len(v["reasons"])))
+    except Exception as exc:
+        return unavailable_verdict(exc)
 
 
 if __name__ == "__main__":

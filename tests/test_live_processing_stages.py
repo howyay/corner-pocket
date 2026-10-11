@@ -532,23 +532,33 @@ class TablePlayfieldVerdict(unittest.TestCase):
 
     def test_a_check_that_cannot_run_is_not_a_pass(self):
         """A fault inside the check must not read as "the table is correct"."""
-        from annotator.pipeline_stages import TableStage
+        from src.table_refine import CHECK_UNAVAILABLE
         stage = TableStage.__new__(TableStage)
         verdict = stage._playfield([[None, 0.0], [0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
         self.assertIs(verdict['ok'], False, 'ok means the check ran and accepted the quad')
-        self.assertEqual(verdict['reasons'], ['check-unavailable'])
+        self.assertEqual(verdict['reasons'], [CHECK_UNAVAILABLE])
+        self.assertEqual(verdict['metrics'], {}, 'a check that could not run measured nothing')
         self.assertIn('float', verdict['error'], 'the fault text rides beside the verdict')
-        saved = sys.modules.get('src.playfield')
-        sys.modules['src.playfield'] = None                # the import itself cannot run
-        try:
+        with patch.dict(sys.modules, {'src.playfield': None}):    # the import itself cannot run
             verdict = stage._playfield([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
-        finally:
-            if saved is None:
-                del sys.modules['src.playfield']
-            else:
-                sys.modules['src.playfield'] = saved
         self.assertIs(verdict['ok'], False, 'a constraint nobody could run is not a pass either')
-        self.assertEqual(verdict['reasons'], ['check-unavailable'])
+        self.assertEqual(verdict['reasons'], [CHECK_UNAVAILABLE])
+        self.assertEqual(verdict['metrics'], {}, 'a check that could not run measured nothing')
+
+    def test_the_same_fault_answers_one_shape_on_both_callers(self):
+        """The rule has one home (``src.table_refine``), so one fault cannot answer two ways."""
+        from src.table_refine import CHECK_UNAVAILABLE, best_verdict, unavailable_verdict
+        quad = [[0.0, 0.0], [1000.0, 0.0], [1000.0, 500.0], [0.0, 500.0]]
+        stage = TableStage.__new__(TableStage)
+        with patch.dict(sys.modules, {'src.playfield': None}):
+            stage_answer = stage._playfield(quad)
+            home_answer = best_verdict(quad)
+        self.assertEqual(stage_answer, home_answer, 'one fault, one answer, on both callers')
+        self.assertIs(stage_answer['ok'], False, 'a check that could not run is not a pass')
+        self.assertEqual(stage_answer['reasons'], [CHECK_UNAVAILABLE])
+        self.assertEqual(stage_answer['metrics'], {}, 'nobody measured the table')
+        self.assertEqual(sorted(stage_answer), sorted(unavailable_verdict(ValueError('x'))),
+                         'the answer carries the four keys of the one shape')
 
     def test_the_evidence_list_carries_the_verdict(self):
         from annotator.pipeline_stages import TableStage

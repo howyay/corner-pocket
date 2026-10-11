@@ -14,6 +14,10 @@ tool reads that owner, and the last cases here scan the other tools for a second
 list or of a reason.  The two tools held the same five ids in two spellings with no shared
 source before, so a move of one copy could not move the other.
 
+The verdict of a quad has one home too.  A check that could not run is not a pass, so the two
+rotations of the polygon and that answer live in ``src/table_refine.py``.  A case below scans the
+source tree for a second body of that rule, and a planted copy must fail it.
+
     PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_playfield_quads.py'
 """
 import ast
@@ -23,6 +27,7 @@ import io
 import json
 import re
 import sys
+import tempfile
 import tokenize
 import types
 import unittest
@@ -30,6 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.playfield import PARALLEL_TOL_DEG, PLAYFIELD_IN, TILT_TOL_DEG, check_quad
+from src.table_refine import CHECK_UNAVAILABLE, best_verdict
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = ROOT / 'tests/fixtures/playfield_quads.json'
@@ -116,14 +122,13 @@ def source(path):
     return (ROOT / path).read_text(encoding='utf-8')
 
 
-def string_literals(path):
-    """Every string of one file that is not a docstring, as a list of its text.
+def literal_strings(text):
+    """Every string of one source text that is not a docstring, as a list of its text.
 
     A reason belongs in the map of the owner.  A sentence of a docstring may name a reason,
     and that is not a copy of it.  Python names the docstrings with its own reads of the
-    file, so this test guesses no rule about quoting.
+    text, so this test guesses no rule about quoting.
     """
-    text = (ROOT / path).read_text(encoding='utf-8')
     docstrings = set()
     for node in ast.walk(ast.parse(text)):
         body = getattr(node, 'body', None)
@@ -142,6 +147,11 @@ def string_literals(path):
         except (SyntaxError, ValueError):
             found.append(token.string)
     return found
+
+
+def string_literals(path):
+    """Every string of one file of the checkout that is not a docstring, as a list of its text."""
+    return literal_strings((ROOT / path).read_text(encoding='utf-8'))
 
 
 def recorded_state():
@@ -172,11 +182,59 @@ def stale(hint):
     return '%s: rebuild the record with .venv/bin/python %s --write-fixture' % (hint, TOOL_NAME)
 
 
-def best_verdict(quad):
-    """The stage tries two rotations of the polygon and keeps the better verdict."""
+#: The one home of the quad verdict: the two rotations of the polygon and the answer of a check
+#: that could not run.  The live table stage and the refine path both read this module.
+VERDICT_HOME = 'src/table_refine.py'
+#: The trees a second body of the rule could hide in.
+VERDICT_TREES = ('src', 'annotator', 'tools', 'tests')
+#: The one measured copy outside the home.  The evidence tool builds evidence records and answers
+#: no caller of the product, so this round leaves that body to its own owner.  Any other copy
+#: fails the cases below.
+KNOWN_VERDICT_COPY = 'tools/playfield_quad_evidence.py'
+#: A planted second body: the same rule under other names, so the scan reads the rule, not text.
+PLANTED_BODY = '''
+def better(quad):
+    """The better of two rotations of the polygon."""
     rotated = quad[1:] + quad[:1]
     return min((check_quad(quad), check_quad(rotated)),
                key=lambda v: (not v['ok'], len(v['reasons'])))
+'''
+
+
+def better_verdict_sites(text):
+    """The lines of one source text that take the better of two verdicts: ok first, then reasons.
+
+    A copy may rename the quad, the variables and the rotation, so this reads no name of the
+    original: it looks for a ``min`` call whose key names both ``ok`` and ``reasons``.
+    """
+    found = []
+    for node in ast.walk(ast.parse(text)):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        if node.func.id != 'min':
+            continue
+        for key in [word.value for word in node.keywords if word.arg == 'key']:
+            words = {name.attr for name in ast.walk(key) if isinstance(name, ast.Attribute)}
+            words |= {name.value for name in ast.walk(key)
+                      if isinstance(name, ast.Constant) and isinstance(name.value, str)}
+            if {'ok', 'reasons'} <= words:
+                found.append(node.lineno)
+    return found
+
+
+def verdict_copies(root=None):
+    """Every file outside the home that holds a second body of the verdict rule, by path."""
+    base = Path(root) if root is not None else ROOT
+    found = []
+    for tree in VERDICT_TREES:
+        for path in sorted((base / tree).rglob('*.py')):
+            relative = str(path.relative_to(base))
+            if relative in (VERDICT_HOME, KNOWN_VERDICT_COPY):
+                continue
+            text = path.read_text(encoding='utf-8')
+            if better_verdict_sites(text) or CHECK_UNAVAILABLE in literal_strings(text):
+                found.append(relative)
+    return found
 
 
 class TheAuditToolImportsWithoutWritingTests(unittest.TestCase):
@@ -437,3 +495,32 @@ class PlayfieldQuadReplayTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TheQuadVerdictHasOneHomeTests(unittest.TestCase):
+    """One rule, one body: a second copy of the two-rotation verdict fails here.
+
+    The rule is "a check that could not run is not a pass", and the answer of a check that ran
+    must not move.  Both live callers read ``src/table_refine.py``, so a copy of the reduction
+    would let the two answers drift apart again.
+    """
+
+    def test_the_home_module_holds_the_rule(self):
+        """The scan must see the rule where it lives, or its silence proves nothing."""
+        self.assertTrue(better_verdict_sites(source(VERDICT_HOME)),
+                        '%s must hold the min-of-two-verdicts rule' % VERDICT_HOME)
+        self.assertIn(CHECK_UNAVAILABLE, string_literals(VERDICT_HOME),
+                      '%s must hold the reason it answers with' % VERDICT_HOME)
+
+    def test_no_other_file_holds_a_second_body_of_the_rule(self):
+        self.assertEqual(verdict_copies(), [],
+                         'give the rule one home: %s' % VERDICT_HOME)
+
+    def test_the_scan_reports_a_planted_copy(self):
+        """A copy under another name is still a copy: the scan reads the rule, not the text."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp) / 'tools'
+            tree.mkdir()
+            (tree / 'second_body.py').write_text(PLANTED_BODY, encoding='utf-8')
+            self.assertEqual(verdict_copies(tmp), ['tools/second_body.py'],
+                             'the planted body must be reported by name')

@@ -6,17 +6,19 @@ when ``out/corners_30min_v2.json`` is absent (it is an artifact, not source).
 """
 import json
 import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 
 from src.table_detect import detect_table
 from src.table_detect import _order_corners
-from src.table_refine import (_DATASET_PRIOR, detect_table_refined, load_priors, prior_for,
-                              prior_provenance, refine_quad_edges)
+from src.table_refine import (_DATASET_PRIOR, CHECK_UNAVAILABLE, detect_table_refined, load_priors,
+                              prior_for, prior_provenance, refine_quad_edges)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -290,3 +292,36 @@ class RecordedReferenceTests(unittest.TestCase):
         self.assertLess(refined_err, 15.0)
         info = refined['debug_info']
         self.assertEqual(info.get('verified_sides', 0) + len(info.get('inherited_sides') or []), 4)
+
+
+class PlayfieldVerdictTests(unittest.TestCase):
+    """The refine path reports the table's own geometry, and a check that could not run is no pass.
+
+    The rule has one home in this module: ``best_verdict`` tries the two rotations of the polygon
+    and ``unavailable_verdict`` answers a check that could not run.  This path held the opposite
+    answer before: the same fault read as ``ok`` True with no reason, so a reader could not tell
+    it from a measured pass.
+    """
+
+    def test_a_quad_that_ran_keeps_its_measured_answer(self):
+        frame, quad = bed_frame()
+        _, info = refine_quad_edges(frame, quad)
+        playfield = info['playfield']
+        self.assertTrue(playfield['ok'], playfield['reasons'])
+        self.assertEqual(playfield['reasons'], [])
+        self.assertIn('best_parallel_deg', playfield['metrics'], 'the field the stage projects')
+        self.assertIn('aspect', playfield['metrics'], 'the field the stage projects')
+        self.assertIsNone(info['reason'], 'a quad that passes reports no refused rule')
+
+    def test_a_check_that_cannot_run_is_not_a_pass(self):
+        """The import of the check fails: nobody measured the table, and the verdict says so."""
+        frame, quad = bed_frame()
+        with patch.dict(sys.modules, {'src.playfield': None}):
+            _, info = refine_quad_edges(frame, quad)
+        playfield = info['playfield']
+        self.assertIs(playfield['ok'], False, 'ok means the check ran and accepted the quad')
+        self.assertEqual(playfield['reasons'], [CHECK_UNAVAILABLE])
+        self.assertEqual(playfield['metrics'], {}, 'nobody measured the table')
+        self.assertIn('src.playfield', playfield['error'], 'the fault text rides beside it')
+        self.assertEqual(info['reason'], 'playfield:' + CHECK_UNAVAILABLE,
+                         'the refused rule and its reason reach the record the consumer reads')

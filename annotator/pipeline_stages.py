@@ -52,6 +52,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import WORKING_FRAME  # noqa: E402
+#: The quad verdict has one home: the two rotations and the answer of a check that could not run.
+#: This stage reads it (``src/table_refine.py``), so one fault cannot answer two ways on two callers.
+from src.table_refine import best_verdict, unavailable_verdict  # noqa: E402
 
 #: The evidence keys the registry owns.  A stage's ``evidence`` hook adds names
 #: beside these two; a hook that returns them is refused and its entry says so.
@@ -394,23 +397,26 @@ class TableStage(Stage):
         Round 17, owner item 5: a 9 ft playfield is 100 x 50 inches and keeps at least one pair of
         edges parallel at this venue. The verdict rides with the quad, so a consumer can say why a
         polygon does not match the table instead of throwing a detection away silently. It never
-        raises: a constraint must not be able to stop a frame. A fault inside the check is not a
-        pass either: the verdict says ``check-unavailable`` and the fault text rides beside it, so
-        a reader can tell "the table is correct" from "nobody measured the table".
+        raises: a constraint must not be able to stop a frame.
+
+        The two rotations and the answer of a check that cannot run have one home,
+        ``src.table_refine.best_verdict``. A check that could not run is not a pass, so this stage
+        hands that answer on unchanged: ``ok`` is False, ``reasons`` names the fault, and
+        ``metrics`` is empty. A reader can then tell "the table is correct" from "nobody measured
+        the table".
         """
         try:
-            from src.playfield import check_quad
             pts = [[float(a), float(b)] for a, b in list(polygon or [])][:4]
             if len(pts) != 4:
                 return None
-            ordered = [[pts[0], pts[1], pts[2], pts[3]], [pts[1], pts[2], pts[3], pts[0]]]
-            verdicts = [check_quad(q) for q in ordered]
-            best = min(verdicts, key=lambda v: (not v['ok'], len(v['reasons'])))
-            return {'ok': bool(best['ok']), 'reasons': list(best['reasons']),
-                    'best_parallel_deg': best['metrics'].get('best_parallel_deg'),
-                    'aspect': best['metrics'].get('aspect')}
+            best = best_verdict(pts)
         except Exception as exc:                    # a constraint never stops a frame
-            return {'ok': False, 'reasons': ['check-unavailable'], 'error': str(exc)}
+            return unavailable_verdict(exc)
+        if 'error' in best:                         # the check did not run: hand its answer on
+            return best
+        return {'ok': bool(best['ok']), 'reasons': list(best['reasons']),
+                'best_parallel_deg': best['metrics'].get('best_parallel_deg'),
+                'aspect': best['metrics'].get('aspect')}
 
     def process(self, frame, context):
         from src.frame_inference import infer_frame
