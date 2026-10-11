@@ -130,13 +130,21 @@ served events are no longer events at all.
 
 | was | ball | now | the number that removed it |
 |---|---|---|---|
-| `#9001` | `t125-white` t=1482.3 | `oscillation_no_net_travel` rejection | 0.20 px of net travel (**0.015** ball diameters of 13.8 px), 80.56 px of path, peak 303.6 px/s, against the 27.6 px / 2.0-diameter bar |
+| `#9001` | `t125-white` t=1482.3 | `oscillation_no_net_travel` rejection | 0.20 px of net travel (**0.015** ball diameters of 13.8 px), 80.56 px of path, peak 303.6 px/s, against the 27.6 px / 2.0-diameter bar (retired - see the round-50 note below) |
 | `#9003` | `t256-blue` t=1621.5 | `oscillation_no_net_travel` rejection | 19.70 px of net travel (**1.43** diameters), 59.92 px of path, peak 301.7 px/s, 7.90 px short of the same bar |
 
 Neither was silently dropped: both ids are **retired** (never handed to another
 ball), both rows sit in `dense_queue_report.json` under
 `channels.departed_entries` with the gate's own sentence, and both are counted in
 `channels.oscillation_rejections.served_before`.
+
+**Note added in round 50 (the record above keeps its numbers).** The bar and the
+diameter quoted in this section are the numbers of the run: a 13.8 px ball and a
+27.6 px bar. Round 50 gave the ball one owner, `src/ball_scale.py`, and re-derived
+the pair from it: `diameter_px(WORKING_FRAME)` is 14.175 px, so the 2.0-diameter bar
+is **28.35 px**. `tests/test_queue_decision.py` reads both numbers from that owner
+today, and the 13.8 px / 27.6 px pair is retired. No measured number of this record
+changed; the numbers belong to the retired bar.
 
 **Ids are stable by identity.** `#9002` (`t193-blue` shot) and `#9004`
 (`t265-blue` unknown) kept their numbers through the rebuild because a verdict may
@@ -158,7 +166,7 @@ cards. The serving rule is now written down in the report
 
 | channel | count | served | why not |
 |---|---|---|---|
-| `oscillation_unresolved` (net travel inside the error of the bar) | 6 | 0 | the gate cannot tell a shot from an oscillation; five sit 0.4–4.0 px under the 27.6 px bar and one (`t242-red`) is 4.03 px *over* it, all inside the 5.12 px error |
+| `oscillation_unresolved` (net travel inside the error of the bar) | 6 | 0 | the gate cannot tell a shot from an oscillation; five sit 0.4–4.0 px under the 27.6 px bar (the retired bar; 28.35 px today) and one (`t242-red`) is 4.03 px *over* it, all inside the 5.12 px error |
 | occluded unknowns (all `cloth_occluded_at_disappearance`) | 8 | **3** — `#9004`, `#9005`, `#9006` | every one is `verdict_mm "ambiguous"`; the three served were still moving when they vanished, the five left out move at ≤ 17.4 px/s |
 | `oscillation_no_net_travel` rejections | 23 | 0 | the gate said no |
 

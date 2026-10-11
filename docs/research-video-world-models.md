@@ -36,17 +36,17 @@ machine: **2.0 min of single-core CPU for the entire 30-minute VOD** (decode + a
 |---|---|---|
 | VOD 1 | 1280×720, 30.0 fps, 54,206 frames, 30.11 min (`data/vod_30min_260815.mp4`) | OpenCV `CAP_PROP_*` probe, 2026-09-23 |
 | VOD 2 | 1920×1080, 29.997 fps, 11,309 frames, 6.28 min (`data/vod_highlight.mp4`) | same |
-| Ball apparent size | median **18.4 px** diameter; p10 13.8 px, p90 24.8 px (1,062 ball instances) | SAM3 radius `r` in `out/scan30/sam3_results.json` + `out/scan30/sam3_census.json` |
+| Ball apparent size | median **18.9 px** diameter at the native 1280×720 frame, which is **14.175 px** at the pipeline's 960×540 working frame; p10 13.8 px, p90 24.8 px | `src/ball_scale.py` owns the size (`DIAMETER_NATIVE_PX`, `diameter_px`); the 270 radii of `out/scan30/sam3_results.json` are its sample. The pooled median of the two local runs is **18.40 px** over 1,062 instances — a second number from a larger sample, and *not* the owner's |
 | SAM3 cache size | **194 frame-times**, not 43 (56 app frames + 138 project frames) | frame keys in the two cache files |
-| Cloth scale | ~2.8 mm/px at the pipeline's 960×540 working frame; a 57 mm ball is ~20 px | comment in `src/ball_census.py:41` |
-| Ball motion between frames | **11.9 px/frame at 1 m/s, 35.7 px/frame at 3 m/s** (960×540); **15.9 / 47.6 px/frame** on the 1280×720 frames | 2.8 mm/px and 2.8/1.333 mm/px, ×30 fps |
+| Cloth scale | **not one number**: **2.58–7.75 mm/px** across the cloth, by region (the reference quad spans 0.129–0.388 px/mm) | `src/shot_pot_gate.py:706` (`VOD30_REFERENCE_QUAD`, 1280×720). The console holds one guarded copy, `CLOTH_TOLERANCE_MM_PER_PX = 1.9` in `src/eval_table_detect.py:201`, read by `tests/test_app_quad_contract.py` |
+| Ball motion between frames | **3.2–9.7 px/frame at 1 m/s, 9.7–29.1 px/frame at 3 m/s** (960×540); **4.3–12.9 / 12.9–38.8 px/frame** on the 1280×720 frames | the cloth's local scale, **2.58–7.75 mm/px** by region (`src/shot_pot_gate.py:706`), ×30 fps, at 1 m/s = 33.3 mm/frame and 3 m/s = 100 mm/frame. A single mid value is the ball's own scale, **3.02 mm/px** native (`src/ball_scale.py`, `millimetres_per_pixel`): 11.0 / 33.1 px/frame native, 8.3 / 24.8 px/frame at 960×540 |
 | SAM3 cost | 47.5 s/frame CPU (documented); **715 h ≈ 29.8 days** for one 30-min VOD | `docs/handoff.md`; arithmetic |
 | CPU frame loop | 591 fps decode; 2,045 fps gray+absdiff; **2.2 ms/frame** → 2.0 min for the full VOD | 400-frame timing run, 2026-09-23 |
 | GPU | AMD RX 9070 XT; ROCm PyTorch 2.9.1 works for YOLO persons (~26 ms warm); **SAM3's presence head returns zero instances on GPU** (ROCm 6.4 gfx1201) | `docs/handoff.md` §5 |
 | Event queue state | 48 candidates → 32 shots + 16 pots (6 duplicates collapsed); 15 confirmed, 26 rejected, 7 unconfirmed; "gate precision estimate 0.13", explicitly **not human-verified** | `out/scan30/eval_regen.json` `aggregates` |
 | Assets to build on | `src/ball_census.py` (fused classical+SAM3 census, temporal identity), `src/table_refine.py` (verified cloth quad, 5.09 px median vs hand anchors on vod30), `src/event_gates.py` (pure gate functions), `src/eval_events.py`, 194-frame SAM3 cache | `docs/state.md` 2026-09-22 entries; source tree |
 
-The decisive local fact: **a ball at pool speed moves 12–48 px between frames — up to 2.6× its own diameter.** Any
+The decisive local fact: **a ball at pool speed moves 3–29 px between frames at the working 960×540 frame — up to 2.1× its own measured diameter (14.175 px, `src/ball_scale.py`).** Any
 method that decides ball state from a single frame, or from frames ~0.5 s apart, is sampling far below the event rate.
 
 ---
@@ -66,7 +66,7 @@ method that decides ball state from a single frame, or from frames ~0.5 s apart,
 | **CogVideoX** | Yes | Yes | 2B / 5B; vendor says 2B on a GTX 1080 Ti, 5B on an RTX 3060 | Text/image → video | **Physics-IQ Verified: CogVideoX-5B 31.8 ± 1.5** ([repo](https://github.com/THUDM/CogVideo), leaderboard) | The only generator here with a plausible consumer-GPU path, but AMD ROCm support is **unverified** | **No** — the benchmark score is the point: 31.8/100 |
 | **Mochi 1** (Genmo) | Yes | Yes | Not verified in this pass | Text → video | None on the Physics-IQ Verified board | Unverified | **No** |
 | **LTX-Video** (Lightricks) | Yes | Yes (HF) | Not verified in this pass | Text/image → video | None on the board | Unverified | **No** |
-| **iVideoGPT** (NeurIPS 2024) | Yes | Yes (HF collection) | Tokenizer 114M/310M + transformer 138M/436M; **64×64 and 256×256** | Action/goal-conditioned future frames, robot data | Reported on manipulation suites at 64×64 — three orders of magnitude coarser than 720p ([repo](https://github.com/thuml/iVideoGPT), [paper](https://arxiv.org/abs/2405.15223)) | Yes in principle | **No** — 64×64/256×256 cannot represent an 18 px ball, let alone localise it |
+| **iVideoGPT** (NeurIPS 2024) | Yes | Yes (HF collection) | Tokenizer 114M/310M + transformer 138M/436M; **64×64 and 256×256** | Action/goal-conditioned future frames, robot data | Reported on manipulation suites at 64×64 — three orders of magnitude coarser than 720p ([repo](https://github.com/thuml/iVideoGPT), [paper](https://arxiv.org/abs/2405.15223)) | Yes in principle | **No** — 64×64/256×256 cannot represent an 18.9 px ball, let alone localise it |
 | **PhysGaussian / PhysDreamer / PhysGen / PhysFlow** | Yes (research code) | Varies | Mesh/Gaussian + MPM or rigid-body solvers | Physically-plausible *appearance and deformation* of 3D assets | No ball/position benchmark; evaluated by rendering and user preference ([PhysGaussian](https://arxiv.org/abs/2311.12198), [PhysDreamer](https://arxiv.org/abs/2404.13026), [PhysGen](https://arxiv.org/abs/2409.18964), [PhysFlow](https://arxiv.org/abs/2411.14423)) | Not applicable | **No** — these need a 3D asset and material parameters; we need a detector |
 
 **Pattern across the table:** the open world-model category is now large, well-licensed, and genuinely open-weight — and
@@ -93,7 +93,8 @@ uniformly aimed at *synthesis*. The only quantitative evidence of physical compe
 perfect prediction.** Even so, the entire open field sits at 27–58 out of 100, and the metric is scene-level IoU/MSE,
 never "the ball is 3 px from where it should be". Meanwhile the 2026 multi-agent benchmark states outright that
 recovering **metric-scale** dynamics from generated video is an unsolved problem, and its own best pipeline reaches only
-sub-metre error — roughly **two orders of magnitude coarser** than what a 2.8 mm/px cloth requires.
+sub-metre error — roughly **one to two orders of magnitude coarser** than the millimetre-class accuracy a
+**2.58–7.75 mm/px** cloth (`src/shot_pot_gate.py:706`) requires.
 
 **Conclusion: no benchmark in this space publishes a positional/velocity error for ball-like objects, because no model
 produces one.** "Effective" in this literature means "physically plausible to a judge", not "numerically correct".

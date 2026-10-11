@@ -514,10 +514,15 @@ was fixed for both, and the fixes are three rules, each with its basis stated.
 ### Rule 1 - a shot must also go somewhere
 
 `min_net_displacement_diameters = 2.0` ball diameters, with the ball resolved **in
-the frame pixels of the track being judged**: `ball_diameter_px = 18.4 px x
-frame_size[0]/1280` (median ball diameter measured on vod30 at native 1280x720), so
-the dense run's 960x540 gives **13.8 px and a 27.6 px bar** with no change to the
-consumer's call site. Basis: a ball is the only honest ruler a track carries;
+the frame pixels of the track being judged**: `src/ball_scale.py` owns the median
+ball diameter, `DIAMETER_NATIVE_PX = 18.9` px at native 1280x720, and
+`diameter_px(frame_size)` scales it, so the dense run's 960x540 gives **14.175 px
+and a 28.35 px bar** with no change to the consumer's call site. The pair this rule
+first stated - `ball_diameter_px = 18.4 px x frame_size[0]/1280`, which gave a
+13.8 px ball and a 27.6 px bar - is **retired**: round 50 gave the ball one owner
+and measured the 18.4 px value in no file of this tree. `tests/test_queue_decision.py`
+reads `BALL_PX = diameter_px(WORKING_FRAME)` and `BAR_PX = 2 * BALL_PX` from that
+owner, and states neither number as a literal. Basis: a ball is the only honest ruler a track carries;
 detector localisation/identity noise is of order one ball (the rest bar's 0.2 px per
 frame sits under it); and the bar is deliberately *looser* than the repo's own
 mm-based shot gate (`src/event_gates.GateConfig.shot_min_disp_mm = 300`, i.e. 5.3
@@ -578,8 +583,11 @@ Rejection codes after: `disappeared_outside_pocket` 165, `motion_too_short` 161,
 `reappeared_after_gap` 154, **`oscillation_no_net_travel` 23**, `left_cloth` 2,
 `track_ends_at_window_end` 2, `roll_without_pocket` 1 (445 of these are on tracks
 other than the four above). The 6 unresolved runs sit at 23.6-31.6 px of net travel
-against the 27.6 px bar; the 8 unknowns are all occluded disappearances whose
-millimetre distance is also inside the error bar (31-54 mm).
+inside the 28.35 px bar's 5.12 px window, so round 50's larger bar leaves all six
+unresolved (`src/ball_scale.py`; this run was judged against the retired 27.6 px
+bar, and a measured px of net travel does not change with a bar); the 8 unknowns
+are all occluded disappearances whose millimetre distance is also inside the error
+bar (31-54 mm).
 
 ### Evidence and state
 

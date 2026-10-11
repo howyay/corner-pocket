@@ -53,7 +53,9 @@ from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
 
 SMALL_W, SMALL_H = 960, 540      # the scan's working frame (src.info_complete_scan)
-BALL_DIAMETER_PX_1080 = 30.8     # stated by the highlight probe (docs/app-path-refusal.md)
+BALL_DIAMETER_PX_1080 = 30.8     # median of the 157 radii of out/scan_highlight/sam3_results.json
+                                 # (the run src/ball_scale.py records; docs/app-path-refusal.md
+                                 # states no ball size)
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 SCAN_QUAD = ROOT / "out" / "scan30" / "corners.json"
 VIDEO = media_path(ROOT, "vod30")
