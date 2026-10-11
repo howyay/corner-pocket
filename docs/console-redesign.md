@@ -5255,3 +5255,156 @@ new `tests/test_box_geometry.py`, 2 in `tests/test_arg_contract.py`, 2 in
 The push is still blocked. Twenty-two commits sit on the local `main`: the six of this round, the
 record of this round, and the fifteen that came before them. `origin/main` stays at `110b0338`. The
 one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 51 · the overlap rule had three more homes, and a document held a stale ball (2026-10-10)
+
+The walk of this round read the repository at `914e7c5`, with an empty work tree at the start and at
+the end. The verdict line is `Strong candidate present - 3 Strong, 8 Worth, 7 Note`, and the report
+holds its lines in `/tmp/dshsess/walk_round51.md`. The walk ran no test module, started no server,
+changed no tracked file, and read no body under `tools/`, `scripts/`, `deploy/`,
+`db/migrations/0003_json_documents.sql`, `db/migrations/0004_imported_datasets.sql`,
+`src/eval_events.py`, `src/segment_calib_report.py`, or 33 of the 41 files of `docs/`. The Lead
+verified every ground line of the three Strong candidates. It also measured the citation load of the
+41 documents before it planned the document rule: 15 documents hold 984 citations, and 58 of those
+citations name a first line that holds no text.
+
+### The commits of this round
+
+| Commit | Subject | What it closes |
+| --- | --- | --- |
+| `7c4a14e` | scale: the ball's owner names no module for a cloth scale | Strong 2 |
+| `ddc16ba` | retention: a sentence that states the bound names the owner | Worth 8 |
+| `311e2e1` | datasets: the inside rule takes the bare-name rule from its owner | Worth 5 |
+| `5d9e4fa` | docs: two live documents state the ball size of their owner | Strong 3 and Worth 6, 7 |
+| `bd60987` | geometry: one module holds the overlap rule for six readers | Strong 1 and Worth 1, 2, 4 |
+| `334b586` | tests: the deleted helpers keep one reader and one citation | the two consequences of `bd60987` outside its scope |
+| this record | docs: round 51 records the overlap rule, the document guard, and the runs | — |
+
+### Strong 1 · the overlap rule had three more homes, and one home hid from the guard
+
+`src/person_pipeline.py:47` held `def _iou(a, b):`, five statements equal to the body of
+`src/box_geometry.py:20 iou`, and the module imported no owner of that rule. The copy was live:
+`_IOU_MATCH = 0.3` stood at `:41`, the call at `:150`, and the read at `:152`. The guard of round 50
+walked the modules of `src/` and matched the name `iou` exactly, so it answered `['box_geometry.py']`
+and never saw `_iou`. The walk measured the two bodies on 8 box pairs and found no disagreement, so
+the defect was a second owner and a blind guard, not a wrong number. The probe of the walk listed
+every module-level name that ends in `iou`: `('box_geometry.py', 12, 'iou')`,
+`('enroll_from_tracklet.py', 153, 'face_area_iou')`, and `('person_pipeline.py', 47, '_iou')`.
+
+`bd60987` routes the copy and hardens the guard in three ways. No module of `src/` may hold a
+module-level body equal to the body of the owner, whatever the name of that function is, and the
+comparison uses `ast.parse`, a docstring strip, `ast.unparse` and a sha1. No module of `src/` may
+bind the name `iou` to a local value. A new module, `tests/test_duplicate_bodies.py`, walks the 783
+module-level `def`s of `src/*.py` (779 bodies) and fails when one body lives in two modules. The one
+pair that stays apart on purpose, `src/enroll_from_tracklet.py:181 stats` and
+`src/eval_faces.py:215 pair_stats`, is recorded with both files, both names and the body sha1
+`df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9`, and a case fails when that record moves.
+
+The same commit removes two more bodies that lived in two modules: the coercion `_num` of
+`src/ball_census.py:132` and `src/event_gates.py:141`, now `src.event_gates.num_or_none`, and the
+JSON wrapper `_jsonb` of `src/store_import.py:67` and `src/store_pg.py:418`, now
+`src.store_import.jsonb`. The inline arithmetic of `src/recut_crops.py:132-133` calls the owner now,
+and the loop target of the association step was renamed `score`, because a local cell named `iou`
+would make the comprehension read a free variable.
+
+The equivalence evidence of the writer: zero difference between `src.box_geometry.iou` and the
+deleted `_iou` over 200,000 random box pairs and on 6 degenerate pairs. Against the inline
+arithmetic the difference is 0.0 for integer pixel boxes and 3.33e-16 for random non-integer widths.
+`src/recut_crops.py:59 old_locations` answers integers only, so the live path is exact.
+
+### Strong 2 · a cloth scale that named two modules, and no code that states it
+
+`src/ball_scale.py:125-128` named `src/ball_census.py` and `src/timing_verify.py` as the places that
+hold a cloth scale of "a rounded 2.8 and 7.26 mm/px". No code file states those numbers.
+`git grep -n "2\.8" -- src` answered that one sentence, `grep -n "mm/px\|cloth scale"
+src/timing_verify.py` answered nothing, and `git grep -n "7\.26"` answered `src/ball_scale.py:128`
+and this file. The owner also contradicted itself at `src/ball_scale.py:53-56`: the cloth runs from
+2.58 to 7.75 mm/px, and the module states the ball's size only. `7c4a14e` states the ball's own
+scale, names the two places that hold a cloth number, and adds
+`test_no_line_states_a_cloth_scale_beside_a_module_name`. That module answers 8 cases now, was 7.
+
+### Strong 3 · a live document cited a line that had moved, and held an older ball
+
+`docs/research-video-world-models.md:41` stated "Cloth scale | ~2.8 mm/px ... a 57 mm ball is ~20 px"
+and cited the comment in `src/ball_census.py:41`. At the HEAD of this round that line is
+`CENSUS_VERSION = 1`, and at `1536cb2` it held the 2.8 mm/px comment. The owner of the ball states
+14.175 px at the working frame at `src/ball_census.py:43-47` and `src/ball_scale.py:102`, so the
+document asked a reader to see a ball 41 % wider than the ball of the code. No guard read a
+document: `tests/test_ball_scale.py` walks the trees `src` and `annotator`, and
+`tests/test_citation_lines.py` holds `'docs'` in `SKIP_PARTS`. Readers follow the document, and
+`docs/handoff.md:139` and `src/motion_scan.py:10` name it.
+
+`5d9e4fa` repairs three documents and adds one guard. `docs/research-video-world-models.md` now
+states the numbers of the owner and names the pooled 18.40 px over 1,062 instances as a second
+number; `docs/state.md` marks the pair 18.4 px / 13.8 px / 27.6 px retired and states
+`diameter_px(WORKING_FRAME)` = 14.175 px with the 28.35 px bar; `docs/tiered-queue-verification.md`
+keeps every measured number and marks the retired bar in the one row that used it.
+`src/calib_mapping_audit.py:56-58` names `out/scan_highlight/sam3_results.json`, 157 radii with a
+30.80 px median, for `BALL_DIAMETER_PX_1080 = 30.8`, and says that
+`docs/app-path-refusal.md` states no ball size. The new guard `tests/test_doc_facts.py` holds 12
+cases and applies three rules to the two live documents: the document names `src/ball_scale.py` and
+holds its native and working-frame numbers, which the guard formats from the owner at run time; a
+retired string may appear only within 3 lines of a word such as `retired` or `superseded`; and every
+citation of the shape `path.ext:NN` resolves to a line that holds a letter or a digit.
+
+### The bites of this round
+
+| Bite | File | sha1 chain | Result |
+| --- | --- | --- | --- |
+| The retired rule back as a live sentence | `docs/research-video-world-models.md` | `4eab2bc9… → b54e8445… → 4eab2bc9…` | failed: `docs/research-video-world-models.md:260 states the retired rule as live: '18.4 px x'`, `FAILED (failures=2)` |
+| One mention of the owner renamed | `docs/research-video-world-models.md` | `4eab2bc9… → … → 4eab2bc9…` | passed: the document names the owner in other rows, a recorded limit |
+| A live bar sentence in the third repaired document | `docs/tiered-queue-verification.md` | `cd8e0605… → … → cd8e0605…` | passed: the guard reads two documents by name, a recorded limit |
+| The bare-name test back inside `_inside` | `src/datasets.py` | `617118a3… → … → 617118a3…` | failed: `AssertionError: PosixPath('/tmp/tmp3css6a8e/media.mp4') is not None : _inside did not ask the owner of the bare-name rule` |
+| The old docstring back | `src/datasets.py` | `617118a3… → … → 617118a3…` | failed: `AssertionError: 'safe_file' unexpectedly found in …` |
+| A second `iou` body in `src/person_pipeline.py` | `src/person_pipeline.py` | `6f574e2e… → b9d366af… → 6f574e2e…` | failed: the body case listed `person_pipeline.py`, and both duplicate-body cases failed |
+
+The two bites that passed are the measurement of two limits, and both limits stand in the table
+below.
+
+### The suites of this round
+
+| Suite | Result |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 1937 tests in 209.636s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | 219 pass, 0 fail |
+| `node tests/test_board.js` | 23 pass, 0 fail |
+| `node tests/test_app_timeline.js` | 100 passed, 0 failed |
+
+Round 50 answered 1912 cases, so this round adds 25: 1 in `tests/test_ball_scale.py`, 1 in
+`tests/test_event_retention.py`, 3 in `tests/test_datasets.py`, 12 in `tests/test_doc_facts.py`, 3 in
+`tests/test_box_geometry.py`, and 5 in `tests/test_duplicate_bodies.py`. The citation scan answers
+1924 discovered cases against the floor 1550, 2 skip sites against the cap 26, and 1 failed holder
+before the repair commit of this round.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| `_num` holds one body in two modules | Worth of the round-50 walk | `bd60987` moves the body to `src.event_gates.num_or_none` |
+| `_jsonb` holds one body in two modules | Worth 1 of this walk | `bd60987` moves the body to `src.store_import.jsonb` |
+| The inline overlap rule of `src/recut_crops.py:132-133` | Worth 4 of this walk | `bd60987` calls the owner, and the writer measured the two answers |
+| The docstring of `_inside` names a wrapper as the owner | Worth 5 of this walk | `311e2e1` names `src/served_files.py` and takes `bare_name` from it |
+| `docs/state.md:517-518` states a retired ball rule | Worth 6 of this walk | `5d9e4fa` marks the rule retired and states the owner's numbers |
+| `BALL_DIAMETER_PX_1080 = 30.8` names no source of the number | Worth 7 of this walk | `5d9e4fa` names the JSON file and the 157 radii behind it |
+| The prose of `src/store_check.py:14` states a bound that has an owner | Worth 8 of this walk | `ddc16ba` names `MAX_EVENTS` of `src/ops_event_log.py` |
+| The three statements of a cloth scale | Note of the round-50 walk | `7c4a14e` and `5d9e4fa` state the owner of the ball, and name the band by region |
+| A local `iou` name in two modules | Note of the round-50 walk | `bd60987` refuses a local binding of that name |
+| A document that cites a line which holds no text | the citation guard skipped `docs/` | `tests/test_doc_facts.py` holds two live documents to the owner |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| `reference_quad` holds two bodies, and a third delegates | Worth 3 | `src/sam3_ball_cache.py:196`, `src/sam3_frame_audit.py:127`, `src/tiny_ball_net.py:710` |
+| The document guard reads two documents by name | limit of this round | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard, and the third repaired document has none |
+| The citation rule proves a cited line holds text | limit of this round | it never proves that the line holds the named fact |
+| The association step has no green behavioural case | limit of this round | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of this round | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of this round | its side of the routing is checked by `ast` only |
+| The duplicate-body walk reads module-level `def`s of `src/*.py` only | limit of this round | no class body, no nested def, no `src/sam3/`, and it detects a copy instead of proving an equivalence |
+| `annotator/server.py:126` writes any label | Note | the module has no importers, so the divergence is dormant |
+| The areas that no walk read | Note | `tools/`, `scripts/`, `deploy/`, `db/migrations/0003` and `0004`, `src/eval_events.py`, `src/segment_calib_report.py`, and 33 files of `docs/` |
+
+The push is still blocked. Twenty-nine commits sit on the local `main`: the six of this round, the
+record of this round, and the twenty-two that came before them. `origin/main` stays at `110b0338`.
+The one user action stays `git -C /home/haoye/projects/pool push origin main`.
