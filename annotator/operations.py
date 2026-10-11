@@ -1,8 +1,9 @@
 """Persistent, server-authoritative pool operations; standard library only.
 
 ``annotator/refusals.py`` owns the refusal sentences this module raises, so a refusal reaches the
-operator with its code and its Chinese sentence.  That module imports no module of this
-repository, so the import graph here stays as light as it was.
+operator with its code and its Chinese sentence.  That module owns the longest guest name too
+(``GUEST_NAME_MAX``), so this layer refuses at the same number as the server.  It imports no
+module of this repository, so the import graph here stays as light as it was.
 """
 import copy
 import json
@@ -19,7 +20,8 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 # The rule refusals of this module: each skeleton, the code and the Chinese sentence beside it.
-from annotator.refusals import INSTANT, INTEGER_RANGE, TEXT_LENGTH, WHOLE_SECONDS, TemplateError
+# The same module owns the longest guest name, so this layer and the server refuse at one number.
+from annotator.refusals import GUEST_NAME_MAX, INSTANT, INTEGER_RANGE, TEXT_LENGTH, WHOLE_SECONDS, TemplateError
 # The shot clock rule has one owner: annotator/shot_clock.py holds the bounds and the
 # default. This module reads them, so the settings guard and the clock refuse the same
 # numbers. annotator/shot_clock.py imports no module of this layer, so this adds no cycle.
@@ -425,9 +427,10 @@ class Operations:
         `player` is the roster record the enrolment planned; it is added only when its
         id is not on the roster yet (an existing regular gains faces, not a row), and
         a name that another player already holds (casefold) is refused, the rule
-        `player_save` enforces."""
+        `player_save` enforces. The name obeys the one guest-name bound
+        (`GUEST_NAME_MAX`, annotator/refusals.py), the bound the enroll route applies."""
         if not any(existing.get('id') == player['id'] for existing in state['players']):
-            name = text(player.get('name'), 'name')
+            name = text(player.get('name'), 'name', GUEST_NAME_MAX)
             if any(existing['name'].casefold() == name.casefold() for existing in state['players']):
                 raise ValueError('Player name already exists')
             # the defaults player_save gives a new regular: the plan carries only

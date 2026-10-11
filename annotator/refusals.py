@@ -43,6 +43,17 @@ class Refusal(NamedTuple):
 CODE_KEY = "code"
 ZH_KEY = "zh"
 
+# The longest guest name the service stores.  One module owns this number.
+# ``annotator/operations.py`` reads it on the guest-name path (``roster_add``).
+# ``annotator/unified_server.py`` reads it in ``enroll_confirm`` and ``seed_label``.
+GUEST_NAME_MAX = 60
+
+# The refusal a seed label earns when it is neither of the two accepted shapes.
+# ``annotator/unified_server.py`` raises this sentence, and the row below keys the Chinese
+# sentence on it.  The sentence states the number GUEST_NAME_MAX owns.
+SEED_LABEL_TEXT_INVALID = ('label must be A, B, ignore, a guest name up to %d characters, or null'
+                           % GUEST_NAME_MAX)
+
 # English sentence -> identity.  Keep the order of the sentences you add.
 REFUSALS = {
     'Player name already exists': Refusal('player_name_exists', '球员姓名已存在。'),
@@ -213,7 +224,9 @@ REFUSALS = {
     'invalid window or track': Refusal('window_or_track_invalid', 'window 或 track_id 无效。'),
     'unknown track': Refusal('track_unknown', '找不到该轨迹。'),
     'explicit A/B/ignore label, a guest name, or null is required': Refusal('seed_label_required', '必须明确给出 A/B/ignore 标签、访客姓名或 null。'),
-    'label must be A, B, ignore, a guest name up to 60 characters, or null': Refusal('seed_label_text_invalid', 'label 只能是 A、B、ignore、60 字符以内的访客姓名或 null。'),
+    SEED_LABEL_TEXT_INVALID: Refusal('seed_label_text_invalid',
+                                     'label 只能是 A、B、ignore、%d 字符以内的访客姓名或 null。'
+                                     % GUEST_NAME_MAX),
     'rebuild already running': Refusal('rebuild_running', '重建已在运行。'),
     'unknown context': Refusal('media_context_unknown', '找不到该上下文图片。'),
     'unknown evidence': Refusal('evidence_unknown', '找不到该证据图片。'),

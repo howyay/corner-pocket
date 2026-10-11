@@ -43,7 +43,10 @@ from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E40
 # The identity of a refusal the console must know - a stable code and the Chinese
 # sentence for it - has one owner: annotator/refusals.py. This module imports it here,
 # so one rule builds every refusal body and the console holds no copy of a sentence.
-from annotator.refusals import identity_fields  # noqa: E402
+# That module owns the longest guest name too (GUEST_NAME_MAX): this module imports the
+# name, so the enroll route and the seed label bound a name exactly as the operations
+# layer does.
+from annotator.refusals import GUEST_NAME_MAX, identity_fields  # noqa: E402
 # The detector vocabulary (annotator/pipeline_stages.py) owns what a detector is
 # called.  This module imports it here, so this route and the stage factory that
 # builds the live pipeline cannot hold two different lists of accepted names.
@@ -1082,8 +1085,8 @@ class Backend:
         if not isinstance(name, str):
             raise APIError("player_name must be a string")
         name = name.strip()          # emptiness is the module's own refusal to make
-        if len(name) > self._SEED_NAME_MAX:
-            raise APIError("player_name must be at most %d characters" % self._SEED_NAME_MAX)
+        if len(name) > GUEST_NAME_MAX:
+            raise APIError("player_name must be at most %d characters" % GUEST_NAME_MAX)
         with self.lock:
             plan = self._enroll_plans.get(token)
         if plan is None:
@@ -2056,9 +2059,9 @@ class Backend:
     # pipeline reads (A / B / ignore), a guest name the operator typed, or null
     # to clear it. Both shapes share the one seeds slot on purpose: the pipeline
     # keeps reading exactly the three role words, so a guest name is stored and
-    # displayed but never trains an identity.
+    # displayed but never trains an identity. The longest guest name has one
+    # owner, GUEST_NAME_MAX in annotator/refusals.py, which this module imports.
     _SEED_ROLES = ("A", "B", "ignore")
-    _SEED_NAME_MAX = 60
 
     @classmethod
     def seed_label(cls, label):
@@ -2069,7 +2072,7 @@ class Backend:
         text = label.strip()
         if text in cls._SEED_ROLES:
             return text
-        if not text or len(text) > cls._SEED_NAME_MAX:
+        if not text or len(text) > GUEST_NAME_MAX:
             return None
         return text
 
@@ -2275,6 +2278,11 @@ class Backend:
             raise APIError("explicit A/B/ignore label, a guest name, or null is required")
         label = self.seed_label(p.get("label"))
         if p.get("label") is not None and label is None:
+            # The sentence states the number GUEST_NAME_MAX owns, and annotator/refusals.py
+            # keys the Chinese line on that sentence.  The sentence stays one literal here:
+            # tests/test_refusal_identity.py reads the sentence of a raise site, so a raise
+            # site cannot read it from a name.  The case in tests/test_guest_name.py holds
+            # this literal to refusals.SEED_LABEL_TEXT_INVALID, the sentence the owner builds.
             raise APIError("label must be A, B, ignore, a guest name up to 60 characters, or null")
         # the same merge (existing keys kept, these four set) or removal, one locked write
         seeds = self.store().seed_put("vod30", f"{tid}:{win}",
