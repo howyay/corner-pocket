@@ -19,7 +19,7 @@ The score cut
 The lower area cap
     :data:`SAM3_BALL_MIN_AREA_PX` is the lower cap of the area window.  The area
     is ``float(mask.sum())``: the number of pixels the instance mask covers
-    (``src/pipeline.py:165``, ``src/scan_events.py:140``).  A mask below this cap
+    (``src/pipeline.py:165``, ``src/scan_events.py:141``).  A mask below this cap
     is noise, not a ball.  The unit is a pixel of the frame that SAM3 saw, not a
     millimetre of the table.
 
@@ -38,18 +38,18 @@ The upper area cap, and the disagreement
       caller passes that same frame to SAM3 (``src/pipeline.py:253``,
       ``src/pipeline.py:267-268``).  The warp to the canonical 1270x2540 mm
       frame happens later and uses a different array (``src/pipeline.py:207``).
-      ``src/scan_events.py:121-126`` and ``src/sam3_ball_cache.py:152-154`` read
+      ``src/scan_events.py:122-127`` and ``src/sam3_ball_cache.py:152-154`` read
       their frames the same way, with no resize.
     * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:57``,
-      ``src/motion_scan.py:71``, ``src/dense_queue.py:71``).  Both caps are
+      ``src/motion_scan.py:72``, ``src/dense_queue.py:71``).  Both caps are
       therefore in 1280x720 pixels.
     * Both caps sit in the same statement family of the same function.  The
       score cut and the area window of one instance are neighbours
       (``src/pipeline.py:162-166``).
     * No comment, docstring or test in the repository explains the 6000.
       ``grep -rn "6000" src/`` returns this one gate line plus two unrelated
-      uses: a pocket-hole window (``src/calibrate.py:41``) and a progress print
-      (``src/motion_scan.py:711``).
+      uses: a pocket-hole window (``src/calibrate.py:42``) and a progress print
+      (``src/motion_scan.py:712``).
 
     Ruling: one stage, two values, no measured reason.  These two values
     contradict each other.  This round does not change behaviour.  No value
@@ -61,8 +61,8 @@ The classical cap, a different decision
     :data:`CLASSICAL_BALL_MAX_AREA_960X540_PX` is 4200.  It is *not* part of the
     SAM3 gate.  It caps the classical colour-blob detector
     (``src/ball_detect.py:28-34``) on a 960x540 resize
-    (``src/scan_events.py:75``, inside ``classical_scan`` at
-    ``src/scan_events.py:61``).  That detector reports a contour area, not a
+    (``src/scan_events.py:76``, inside ``classical_scan`` at
+    ``src/scan_events.py:62``).  That detector reports a contour area, not a
     SAM3 mask area, and its lower cap is 14.0 px, not 60.  It therefore keeps
     its own name here.
 
@@ -73,7 +73,7 @@ The radius band, the third bar
     (``src/pipeline.py:168``, ``src/sam3_ball_cache.py:174``).  Four sites
     spelled the pair ``4.0, 60.0`` themselves; these are the line numbers as
     they were before this round: ``src/pipeline.py:177``,
-    ``src/scan_events.py:147``, ``src/sam3_ball_cache.py:52`` and
+    ``src/scan_events.py:148``, ``src/sam3_ball_cache.py:52`` and
     ``src/ball_fp_audit.py:103``.  All four applied the same pair to the same
     measurement, so this bar has one meaning.  Only its home was missing.
 

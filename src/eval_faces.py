@@ -58,6 +58,7 @@ from src.face_id import (
     best_match,
     quality,
 )
+from src.frame_rate import FPS_FALLBACK
 from src.person_identity import IdentityIndex
 # Round 60 moved the body of the summary of one list to src/stats.py.  This module
 # and src/enroll_from_tracklet.py held the same body twice, and this import is the
@@ -655,7 +656,7 @@ def measure(directory=DEFAULT_DIR, dataset_ids=("vod30", "highlight"), plan=None
         video_rel, scan_dir, _width = DATASETS[dataset_id]
         video = REPO / video_rel
         cap = cv2.VideoCapture(str(video))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         cap.release()
         cfg = dict(plan.get(dataset_id, {}))

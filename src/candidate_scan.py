@@ -42,6 +42,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import WORKING_FRAME  # noqa: E402
+from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src import events_document  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
@@ -88,7 +89,7 @@ def frame_records(video, cfg: ScanConfig = ScanConfig(), limit_s: float | None =
     if persons is None:
         persons = person_boxes_fn()
     cap = cv2.VideoCapture(str(video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     records, corners = [], []
     last_gray, last_t = None, None

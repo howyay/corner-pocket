@@ -66,7 +66,7 @@ The callers, one producer each:
     inherited.
 
 `src/motion_scan.py` names the same documents for the other datasets and does not
-import this module.  Its `events_for` (`src/motion_scan.py:2289-2292`) tries
+import this module.  Its `events_for` (`src/motion_scan.py:2292-2295`) tries
 `out/scan30/events.json` for vod30, then `out/scan_<dataset>/events.json`, then
 `out/scan<dataset>/events.json`, and falls back to `scan_<dataset>`.  `scan_dir`
 follows the same name rule through `src/datasets.py:STATIC_OUT`, so this module

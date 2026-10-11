@@ -28,6 +28,7 @@ import time
 from annotator.pipeline_stages import (TABLE_MEASURE_EVERY_N, CallableStage, LatencyWindow,
                                        StageRegistry, check_ball_weights, default_stages,
                                        detector_names, merge_detections, resolve_detectors)
+from src.frame_rate import FPS_FALLBACK
 from src.datasets import STATIC
 
 _DROP_REASONS = ('no_frame_ready', 'stage_overrun', 'stale')
@@ -536,7 +537,7 @@ class LiveProcessor:
                 # Live-edge age, measured in-process from the playlist's own timing tags.
                 self._start_upstream_probe(generation, media)
             fps = float(capture.get(cv2.CAP_PROP_FPS)) if replay else 0
-            fps = fps if math.isfinite(fps) and fps > 0 else 30.0
+            fps = fps if math.isfinite(fps) and fps > 0 else FPS_FALLBACK
             deadline = self._clock()
             with self._condition:
                 if not self._stop.is_set():

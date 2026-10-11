@@ -25,15 +25,16 @@ from pipeline import homography_to_canonical
 from table_detect import detect_cloth_mask, fit_quadrilateral
 
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
+from src.frame_rate import FPS_FALLBACK  # noqa: E402
 
 
 def collect_frames(video: str, every: float = 45.0, root=None):
     cap = cv2.VideoCapture(video)
-    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)
+    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK)
     corners_ref = vod30_corners.load(root)
     H_prior = homography_to_canonical(corners_ref)
     frames = []
-    t = 30.0
+    t = 30.0                       # a start time in seconds, not a frame rate
     while t < dur:
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
         ok, bgr = cap.read()

@@ -362,7 +362,7 @@ def student_peaks(model, video, indices: list, size: tuple, device: str = "auto"
             for index, plane in zip(chunk, heat):
                 peaks[index] = [(x * scale, y * scale, float(s))
                                 for (x, y, s) in pick_peaks(plane, threshold)]
-                times[index] = round(index / 30.0003, 3)
+                times[index] = round(index / 30.0003, 3)   # the vod30 rate, not the fallback
     return {"peaks": peaks, "times": times}
 
 
@@ -504,7 +504,7 @@ def cmd_prelabel(args) -> int:
     model = model.to(device).eval()
 
     held = frozen_held()
-    fps = 30.0003
+    fps = 30.0003                      # the vod30 clip rate, not the fallback
     _, held_for_train = split_for_rounds(load_labels())
     held = sorted(set(held) | set(held_for_train))
     step = max(1, int(round(args.stride_s * fps)))

@@ -17,6 +17,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+from frame_rate import FPS_FALLBACK
 from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import CANON_H, CANON_W, canonical_pockets
 
@@ -104,7 +105,7 @@ def fit_homography_from_pockets(blobs: list[tuple[float, float, float]],
 def estimate_corners_30min(video: str, n_samples: int = 90) -> np.ndarray:
     """Median pocket-anchored homography over the video -> returns H."""
     cap = cv2.VideoCapture(video)
-    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)
+    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK)
     hs = []
     ts = np.linspace(dur * 0.05, dur * 0.95, n_samples)
     for t in ts:

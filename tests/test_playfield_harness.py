@@ -7,10 +7,12 @@ from the served pipeline they claimed to measure - the cadence was written as a 
 tools, and a recording that could not be opened was reported as "no quad measured", which the
 exceptions gate accepts for a known-refused event.
 
-These cases hold the new shape: one definition of the cadence in the pipeline, ``tools`` spells
-it once (in the harness), both tools drive the stage and the context through the harness, and a
-recording that cannot be read fails the run under its own gate.
+These cases hold the new shape: one definition of the cadence in the pipeline, one definition of
+the frame-rate fallback in ``src/frame_rate.py``, ``tools`` spells neither number, both tools drive
+the stage and the context through the harness, and a recording that cannot be read fails the run
+under its own gate.
 """
+import ast
 import importlib.util
 import inspect
 import re
@@ -40,6 +42,70 @@ def modules_under(*roots):
         found.extend(path.relative_to(ROOT).as_posix()
                      for path in sorted((ROOT / root).rglob('*.py'))
                      if '__pycache__' not in path.parts)
+    return found
+
+
+def is_number(node):
+    """True for the number 30, the fallback rate that a reader must not spell."""
+    return (isinstance(node, ast.Constant) and isinstance(node.value, (int, float))
+            and not isinstance(node.value, bool) and node.value in (30, 30.0))
+
+
+def is_owner_name(node):
+    """True for the one name that holds the fallback rate."""
+    return isinstance(node, ast.Name) and node.id == 'FPS_FALLBACK'
+
+
+def names_frame_rate(node):
+    """True when the subtree names a frame rate: ``fps`` or ``cv2.CAP_PROP_FPS``."""
+    for inner in ast.walk(node):
+        if isinstance(inner, ast.Name) and 'fps' in inner.id.lower():
+            return True
+        if isinstance(inner, ast.Attribute) and ('fps' in inner.attr.lower()
+                                                 or inner.attr == 'CAP_PROP_FPS'):
+            return True
+    return False
+
+
+def is_fps_target(node):
+    """True for the name ``fps`` and for the attribute ``.fps``."""
+    if isinstance(node, ast.Name):
+        return node.id == 'fps'
+    if isinstance(node, ast.Attribute):
+        return node.attr == 'fps'
+    return False
+
+
+def fallback_sites(path, text):
+    """Every site in ``text`` that names the frame-rate fallback.
+
+    Three shapes name it: ``cap.get(cv2.CAP_PROP_FPS) or <rate>``, a ternary that ends in
+    ``else <rate>``, and an assignment of a rate to a name or an attribute ``fps``.  Each site
+    is a tuple ``(path, line, rule, operand)``.  The operand holds the rate: the name
+    ``FPS_FALLBACK`` at a repaired site, and the number 30 at a planted copy.
+    """
+    found = []
+    for node in ast.walk(ast.parse(text, filename=path)):
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+            operand = node.values[-1]
+            if names_frame_rate(node) and (is_number(operand) or is_owner_name(operand)):
+                found.append((path, operand.lineno, 'or', operand))
+        elif isinstance(node, ast.IfExp) and names_frame_rate(node):
+            if is_number(node.orelse) or is_owner_name(node.orelse):
+                found.append((path, node.orelse.lineno, 'else', node.orelse))
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(is_fps_target(target) for target in targets):
+                if is_number(node.value) or is_owner_name(node.value):
+                    found.append((path, node.value.lineno, 'assign', node.value))
+    return found
+
+
+def sites_under(*roots):
+    """Every frame-rate fallback site under the given roots, parsed from the file text."""
+    found = []
+    for path in modules_under(*roots):
+        found.extend(fallback_sites(path, source(path)))
     return found
 
 
@@ -81,7 +147,7 @@ AUDIT_MODULE = load_audit()
 
 
 class TheCadenceHasOneOwnerTests(unittest.TestCase):
-    """The measurement cadence is stated once, and every default that names it agrees."""
+    """The measurement cadence and the frame-rate fallback each have one owner."""
 
     def test_one_module_assigns_the_cadence(self):
         owners = [path for path in modules_under(*SOURCES)
@@ -116,11 +182,53 @@ class TheCadenceHasOneOwnerTests(unittest.TestCase):
         self.assertEqual(named, {name: TABLE_MEASURE_EVERY_N for name in named},
                          'every default must be the one named value')
 
-    def test_the_fallback_rate_is_spelled_once_in_tools(self):
+    def test_tools_spell_the_fallback_rate_nowhere(self):
         spelled = [path for path in modules_under('tools')
                    if re.search(r'\b30\.0\b', source(path))]
-        self.assertEqual(spelled, [HARNESS],
-                         'the frame-rate fallback must be spelled once, in the harness')
+        self.assertEqual(spelled, [],
+                         'a tool must read the fallback rate, not spell it')
+
+    def test_one_module_holds_the_fallback_rate(self):
+        owners = [path for path in modules_under(*SOURCES)
+                  if re.search(r'^FPS_FALLBACK\s*=', source(path), re.M)]
+        self.assertEqual(owners, ['src/frame_rate.py'],
+                         'the fallback rate must have exactly one definition')
+        from src.frame_rate import FPS_FALLBACK
+        self.assertEqual(FPS_FALLBACK, 30.0,
+                         'the fallback rate stays 30.0 frames per second')
+        imports = [node for node in ast.walk(ast.parse(source('src/frame_rate.py')))
+                   if isinstance(node, (ast.Import, ast.ImportFrom))]
+        self.assertEqual(imports, [],
+                         'the owner must import nothing, or a reader can make a cycle')
+
+    def test_every_fallback_site_reads_the_one_owner(self):
+        found = sites_under(*SOURCES)
+        spelled = [(path, line, ast.unparse(operand))
+                   for path, line, _rule, operand in found if is_number(operand)]
+        self.assertEqual(spelled, [],
+                         'a site that names the fallback rate must read FPS_FALLBACK')
+        named = [(path, line) for path, line, _rule, operand in found if is_owner_name(operand)]
+        self.assertGreaterEqual(len(named), 20,
+                                'the walk must find every site it guards, not an empty tree')
+        readers = sorted({path for path, _line in named})
+        missing = [path for path in readers
+                   if not re.search(r'^from (src\.)?frame_rate import .*FPS_FALLBACK',
+                                    source(path), re.M)]
+        self.assertEqual(missing, [], 'every reader must import the owner')
+
+    def test_a_planted_copy_is_reported(self):
+        planted = {
+            'or': 'fps = cap.get(cv2.CAP_PROP_FPS) or 30.0\n',
+            'else': 'fps = fps if math.isfinite(fps) and fps > 0 else 30.0\n',
+            'assign': 'self.fps = 30.0\n',
+        }
+        reported = {}
+        for rule, text in planted.items():
+            found = fallback_sites('planted_copy.py', text)
+            self.assertEqual(len(found), 1, 'the walk must find the planted %s copy' % rule)
+            reported[rule] = (found[0][1], ast.unparse(found[0][3]))
+        self.assertEqual(reported, {rule: (1, '30.0') for rule in planted},
+                         'a planted copy of the fallback rate must be reported')
 
 
 class AnUnreadableRecordingTests(unittest.TestCase):

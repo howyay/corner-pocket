@@ -50,6 +50,7 @@ from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import Request, build_opener, HTTPSHandler
 
 from annotator import twitch_source as live
+from src.frame_rate import FPS_FALLBACK
 from src.tls_trust import trusted_context
 
 #: The live resolver's host allowlists and anonymous web client id are the single source
@@ -458,7 +459,7 @@ class VodRealtimeCapture:
             fps = float(self._capture.get(cv2.CAP_PROP_FPS))
         except Exception:
             fps = 0.0
-        return fps if math.isfinite(fps) and 0 < fps <= 240 else 30.0
+        return fps if math.isfinite(fps) and 0 < fps <= 240 else FPS_FALLBACK
 
     # --- the capture contract annotator/live_processing.py consumes ---------------
 

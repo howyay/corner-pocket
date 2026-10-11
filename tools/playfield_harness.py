@@ -10,9 +10,12 @@ measuring an older configuration while their own notes still said "measure, like
 
 This module owns that reading.  It asks the pipeline for the cadence
 (:data:`annotator.pipeline_stages.TABLE_MEASURE_EVERY_N`) instead of restating it, so a
-change there moves the audits with the served path, and
-``tests/test_playfield_harness.py`` holds both facts: one owner for the cadence, and one
-place in ``tools`` that spells it.
+change there moves the audits with the served path.  It reads the frame-rate fallback
+from :mod:`src.frame_rate` for the same reason.  That module owns the number, because a
+module in ``tools`` is not on the import path of ``src`` or ``annotator``, and a reader
+there must reach the number without a cycle.
+``tests/test_playfield_harness.py`` holds both facts: one owner for each number, and no
+tool that spells either one.
 
 A stage carries its measurement, so one stage per recording is required: a reused stage
 reported the same quad for ten picks, and an earlier run claimed 42 passes where the
@@ -25,10 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from annotator.pipeline_stages import (TABLE_MEASURE_EVERY_N, StageContext,
                                        TableStage)
-
-#: The frame rate a container that does not report one is read at.  Written once: a
-#: second copy is a second answer to "what rate was this measured at".
-FPS_FALLBACK = 30.0
+from src.frame_rate import FPS_FALLBACK  # the one home of the fallback rate
 
 
 class Recording:

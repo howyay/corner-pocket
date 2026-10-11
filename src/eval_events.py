@@ -49,6 +49,7 @@ from src.ball_census import (CENSUS_VERSION, build_census, classify_ball_color, 
                              displacement_measure, observations_from_classical,
                              observations_from_sam3, window_summary)
 from src.ball_detect import detect_ball_candidates  # noqa: E402
+from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 # The homogeneous-division rule has one owner, src/projection.py.  The two
 # readings below hold no threshold of their own.
@@ -204,7 +205,7 @@ class Probe:
         self.segments = segments
         self.sam3 = sam3 if sam3 is not None else SAM3Store()
         self.cap = None
-        self.fps = 30.0
+        self.fps = FPS_FALLBACK
         self.cloth = None
         self.frames = 0
         self.seconds = 0.0
@@ -218,7 +219,7 @@ class Probe:
         if not self.cap.isOpened():
             self.cap = None
             return False
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
         small_quad = (self.quad * SAM3_SCALE).astype(np.float32)
         self.cloth = np.zeros((SMALL_H, SMALL_W), np.uint8)
         cv2.fillPoly(self.cloth, [np.round(small_quad).astype(np.int32)], 1)

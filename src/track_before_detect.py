@@ -44,6 +44,7 @@ import cv2
 import numpy as np
 
 from src import motion_scan as ms
+from src.frame_rate import FPS_FALLBACK
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -115,7 +116,7 @@ def patch_stack(video, frames: list, ctx, cfg: ms.MotionConfig, k=None,
     ``stack`` has shape ``(len(frames)-1, H, W)``.
     """
     cap = cv2.VideoCapture(str(video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     stack, dense, times = [], [], []
     try:
         cap.set(cv2.CAP_PROP_POS_FRAMES, max(1, int(frames[0]) - 1))
@@ -270,7 +271,7 @@ def null_sample(video, ctx, cfg: ms.MotionConfig, windows: list, tbd: TBDConfig,
     for (a, b) in windows:
         for k in range(stacks_per_window):
             mid = a + (b - a) * (k + 0.5) / stacks_per_window
-            frames = list(range(int(mid * 30.0) - longest, int(mid * 30.0) + 1))
+            frames = list(range(int(mid * 30.0) - longest, int(mid * 30.0) + 1))   # the clip rate, not the fallback
             stack, dense, times = patch_stack(video, frames, ctx, cfg, channel=tbd.channel)
             if stack.shape[0] < longest:
                 continue
@@ -322,7 +323,7 @@ def blind_on_known_movers(video, ctx, cfg, specs: dict, bars: dict, quad_px,
     rows = []
     for item in instances:
         t_mid = 0.5 * (item["t_from"] + item["t_to"])
-        centre_frame = int(round(t_mid * 30.0))
+        centre_frame = int(round(t_mid * 30.0))       # the clip rate, not the fallback
         frames = list(range(centre_frame - longest + 1, centre_frame + 1))
         stack, dense, times = patch_stack(video, frames, ctx, cfg,
                                           channel=specs["channel"])
@@ -445,7 +446,7 @@ def render_track_strip(video, row, ctx, cfg, bars: dict, path, offsets=(-4, -2, 
     vx, vy = speed * math.cos(angle), speed * math.sin(angle)
     centre = int(row["frame"])
     cap = cv2.VideoCapture(str(video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     tiles = []
     try:
         for offset in offsets:
@@ -579,7 +580,7 @@ def cmd_eval(args) -> None:
     events = []
     for event in ms._served_events(ROOT, args.events, args.dataset):
         t0 = float(event["t"])
-        centre_frame = int(round(t0 * 30.0))
+        centre_frame = int(round(t0 * 30.0))          # the clip rate, not the fallback
         longest = max(ns)
         frames = list(range(centre_frame - longest + 1, centre_frame + 1))
         stack, dense, times = patch_stack(args.video, frames, ctx, cfg, channel=args.channel)

@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* imports
 
 from ball_detect import detect_ball_candidates
 from src import ball_scale, events_document, sam3_artifact
+from src.frame_rate import FPS_FALLBACK
 from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_canonical,
                                 nearest_pocket)
 from table_detect import detect_table
@@ -61,7 +62,7 @@ def motion_energy(gray_now: np.ndarray, gray_prev: np.ndarray, mask) -> float:
 def classical_scan(video: str, every: float) -> tuple[list, np.ndarray]:
     """Phase 1: coarse scan. Candidate centers and median corners use source pixels."""
     cap = cv2.VideoCapture(video)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
     records = []
     corners_list = []

@@ -65,6 +65,7 @@ from src.ball_scale import (DIAMETER_NATIVE_PX, DIAMETER_P10_NATIVE_PX,  # noqa:
                             DIAMETER_P90_NATIVE_PX, NATIVE_FRAME, RADIUS_NATIVE_PX,
                             WORKING_FRAME)
 from src.datasets import lookup as dataset_lookup, media_path  # noqa: E402
+from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
                               EVENT_BEFORE_S)
 
@@ -532,7 +533,7 @@ def frame_detail(video, frame_index: int, ctx: ClothContext,
                                 minlength=ctx.n_cells)
         motion["cell_counts"] = [int(v) for v in cell_sums]
         motion["frame"] = int(frame_index)
-        motion["t"] = round(frame_index / (cap.get(cv2.CAP_PROP_FPS) or 30.0), 3)
+        motion["t"] = round(frame_index / (cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK), 3)
         if native is not None and prev_native is not None:
             k = resolved_ball_k(cfg)
             peak, (px, py) = _box_argmax(
@@ -633,7 +634,7 @@ def probe_windows(video, windows, ctx: ClothContext, cfg: MotionConfig = MotionC
     if not windows:
         return rows
     cap = cv2.VideoCapture(str(video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     try:
         for t_start, t_end in windows:
             cap.set(cv2.CAP_PROP_POS_FRAMES, max(1, int(round(t_start * fps)) - 1))
@@ -677,7 +678,7 @@ def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = "vod
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         raise OSError(f"cannot open {video}")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     capacity = (total if cfg.stride == 1 else total // max(1, cfg.stride) + 2) + 1
     series = {name: np.zeros(capacity, np.float64) for name in fields}
@@ -1430,6 +1431,7 @@ def render_blob_sheet(video, onsets: list, ctx: ClothContext, path,
             x0, y0 = max(0, x - pad), max(0, y - pad)
             x1, y1 = min(cfg.scan_w, x + w + pad), min(cfg.scan_h, y + h + pad)
             tiles = []
+            # The clips run at 30 fps: these labels use that fixed rate, not the fallback.
             for image, text in ((prev, f"f-1  t={(frame - 1) / 30.0:.2f}s"),
                                 (cur, f"f    t={frame / 30.0:.2f}s")):
                 crop = image[y0:y1, x0:x1].copy()
@@ -1485,7 +1487,7 @@ def person_check(video, onset, quad_px, offsets=(-2, 0, 2)) -> dict:
     from src.info_complete_scan import person_boxes_fn
     detect = person_boxes_fn()
     cap = cv2.VideoCapture(str(video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     frames = []
     try:
         for offset in offsets:
@@ -1546,7 +1548,7 @@ def render_strip(video, onset, ctx: ClothContext, arrays: dict, path,
     if signal not in arrays:
         signal = series_fields(cfg)[4]
     cap = cv2.VideoCapture(str(video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     tiles = []
     try:
         for offset in offsets:
@@ -1847,6 +1849,7 @@ def moving_ball_instances(census: dict, min_move_px: float = 5.0,
                              "p_from": [float(pa[0]), float(pa[1])],
                              "p_to": [float(pb[0]), float(pb[1])],
                              "moved_px": round(d, 2),
+                             # The clips run at 30 fps: that fixed rate, not the fallback.
                              "px_per_frame": round(d / max(1e-6, (tb - ta)) / 30.0, 2),
                              "r_from": left[i].get("r"), "r_to": right[j].get("r"),
                              "ambiguous_same_colour": len(left) > 1 or len(right) > 1})

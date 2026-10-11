@@ -41,6 +41,7 @@ if str(ROOT) not in sys.path:
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
+from src.frame_rate import FPS_FALLBACK  # noqa: E402
 
 BLACK_MEAN = 12.0        # below this the frame is not a picture of anything
 FLAT_STD = 6.0           # below this the frame is a flat colour
@@ -242,7 +243,7 @@ def main():
         result["reference_quad"] = {"source": label,
                                     "quad": None if quad is None else np.round(quad, 1).tolist()}
         cap = cv2.VideoCapture(args.video)
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
         cap.release()
         for row in result["frames"]:
             row["cloth"] = cloth_report(args.video, row["requested_t"], quad)

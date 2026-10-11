@@ -43,6 +43,7 @@ import numpy as np
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME
 from src.event_window import AT_TOL_S, EVENT_AFTER_S, EVENT_BEFORE_S
+from src.frame_rate import FPS_FALLBACK
 
 # The frame this walk measures in.  ``src.ball_scale`` owns it, and the census of
 # ``src/eval_events.py`` takes the same number from the same home.
@@ -157,7 +158,7 @@ def open_video(path):
 
 
 def video_meta(cap):
-    fps = float(cap.get(cv2.CAP_PROP_FPS)) or 30.0
+    fps = float(cap.get(cv2.CAP_PROP_FPS)) or FPS_FALLBACK
     count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     return fps, count, count / fps
 

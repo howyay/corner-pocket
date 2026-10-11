@@ -36,6 +36,7 @@ if str(ROOT) not in sys.path:
 
 from src.ball_scale import WORKING_FRAME  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
+from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
 # The homogeneous-division rule has one owner, src/projection.py.  This module
 # holds no threshold of its own.
@@ -199,7 +200,7 @@ def scan_info_complete(video: str, corners: np.ndarray, cfg: GateConfig = GateCo
     pair_count = 0
 
     cap = cv2.VideoCapture(video)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     t_start = time.time()
     while True:

@@ -27,6 +27,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+from frame_rate import FPS_FALLBACK
 from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import CANON_H, CANON_W, POCKETS_MM
 
@@ -148,7 +149,7 @@ def project(Hm, pts):
 
 def calibrate(video, n_samples=60, f_lo=600, f_hi=2000, f_steps=29):
     cap = cv2.VideoCapture(video)
-    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)
+    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK)
     W, H = int(cap.get(3)), int(cap.get(4))
     frame_data = []
     for t in np.linspace(dur * 0.02, dur * 0.98, n_samples):
@@ -190,7 +191,7 @@ def quad_ok(cloth, quad):
 
 def calibrate_full(video, n_samples=60, f_lo=600, f_hi=2000, f_steps=29, H_prior=None):
     cap = cv2.VideoCapture(video)
-    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)
+    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK)
     W, H = int(cap.get(3)), int(cap.get(4))
     frames = []  # (t, img6 list per assignment)
     ts = np.linspace(dur * 0.02, dur * 0.98, n_samples)

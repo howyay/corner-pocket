@@ -108,6 +108,7 @@ from src.atomic_write import write_atomic
 from src.box_geometry import iou
 from src.datasets import STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
+from src.frame_rate import FPS_FALLBACK
 from src.ops_event_log import trim
 # Round 60 gave the summary of one list one home: src/stats.py.  This name used to
 # hold the body, and it held the same body as src/eval_faces.py pair_stats.
@@ -147,7 +148,6 @@ REFUSAL_REASONS = (
 )
 
 PROTECTED = (str(DEFAULT_STATE), str(DEFAULT_FACE_STORE))
-
 
 # --------------------------------------------------------------------------
 # pure helpers
@@ -513,7 +513,7 @@ def scan_frames(root, dataset, start_frame, end_frame, stride=30, *, detector=No
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         raise RuntimeError(f"cannot open {video}")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     grace = stride * TRACK_MAX_AGE
     observations, tracks, next_id = [], {}, 1
     wanted = list(range(int(start_frame), int(end_frame), max(1, int(stride))))
@@ -1089,7 +1089,7 @@ def _crop_image(root, dataset, candidate, *, scale=CROP_SCALE, pad=CROP_PAD):
     return cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
 
 
-def render_sheets(root=REPO, directory=None, dataset="vod30", *, fps=30.0, log=print) -> dict:
+def render_sheets(root=REPO, directory=None, dataset="vod30", *, fps=30.0, log=print) -> dict:  # the vod30 clip rate, not the fallback
     """Write out/enroll-eval/sheets/track-<id>.jpg and index.md for every enrolment."""
     directory = Path(directory) if directory is not None else Path(root) / "out" / "enroll-eval"
     observations = json.loads((directory / "observations.json").read_text(encoding="utf-8"))
@@ -1404,7 +1404,7 @@ def scan_nearest(root, dataset, frame_index, *, span_frames=150, stride=30,
         offsets += [step * stride, -step * stride]
     wanted = [frame_index + offset for offset in offsets if frame_index + offset >= 0]
     cap, detector, engine = _infer(root, detector, engine, dataset)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     tracker = _IouTracker(stride)
     observations = []
     try:

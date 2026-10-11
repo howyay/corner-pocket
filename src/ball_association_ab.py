@@ -127,7 +127,7 @@ def main():
     from src import shot_pot_gate as gate
     from src.ball_scale import WORKING_FRAME
 
-    fps = 30.0003
+    fps = 30.0003                      # the vod30 clip rate, not the fallback
     # The segment's own cloth quad (work coordinates), from the report the harness
     # wrote for this segment: the camera is static, so both variants measure
     # against exactly the same geometry.

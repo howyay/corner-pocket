@@ -65,7 +65,7 @@ SPLIT_GAP_S = 5.0               # no two frames within this across train/held-ou
 TEACHER_MIN_SCORE = SAM3_BALL_MIN_SCORE   # what the existing caches were filtered at
 LOC_BAR_PX = 4.0                # p90 localisation bar for the production operating point
 F1_BAR = 0.90                   # held-out F1 bar
-FPS_BAR = 30.0                  # near-real-time bar: <= 33.3 ms/frame end to end
+FPS_BAR = 30.0                  # near-real-time bar: <= 33.3 ms/frame, not the fallback rate
 
 RESOLUTIONS = {"640x360": (640, 360), "960x540": (960, 540), "1280x720": (1280, 720)}
 
@@ -216,7 +216,7 @@ def load_frame(video, t: float) -> tuple:
     return bgr, int(cap.get(cv2.CAP_PROP_POS_FRAMES))
 
 
-def frame_index(video, t: float, fps: float = 30.0003) -> int:
+def frame_index(video, t: float, fps: float = 30.0003) -> int:   # the vod30 rate, not the fallback
     return int(round(t * fps))
 
 

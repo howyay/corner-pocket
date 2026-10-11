@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from calibrate import (OBJECT_MM, pnp_solve, project, refined_blob,
                        anchors_for_frame, quad_ok)
+from frame_rate import FPS_FALLBACK
 from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import canonical_destination
 
@@ -32,7 +33,7 @@ def main():
     H_prior = cv2.getPerspectiveTransform(corners, DST)  # px -> mm (portrait)
 
     cap = cv2.VideoCapture(str(VIDEO))
-    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)
+    dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK)
     W, H = int(cap.get(3)), int(cap.get(4))
 
     # focal scan on a subset (fast) then full pass at best f
