@@ -4,7 +4,7 @@
  * annotator/ops.js, annotator/vision-stage.js).  The three copies
  * disagreed on seven of the nineteen values the Lead's grid measures.  This
  * file replaces all three copies (the three seams now read
- * `window.Duration.hms` at annotator/app.js:2059, annotator/ops.js:117 and
+ * `window.Duration.hms` at annotator/app.js:2094, annotator/ops.js:117 and
  * annotator/vision-stage.js:939).
  *
  * THE RULE

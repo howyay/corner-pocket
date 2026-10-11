@@ -1290,7 +1290,7 @@ function anchorBlock(s) {
   <p class="vs-note">${esc(t('anchorNote'))}</p>
   <div class="vs-items">${rows || `<p class="vs-empty">${esc(t('loading2'))}</p>`}</div>
   <div class="vs-nudge"><button data-vs-action="nudge" data-vs-value="0,-1">↑</button><button data-vs-action="nudge" data-vs-value="-1,0">←</button><button data-vs-action="nudge" data-vs-value="1,0">→</button><button data-vs-action="nudge" data-vs-value="0,1">↓</button></div>
-  <div class="vs-row">${[70,200,350].map(x => `<button data-vs-action="anchors-at" data-vs-value="${x}">${esc(t('anchorsAt'))} ${x} s</button>`).join('')}</div>
+  <div class="vs-row">${(s.anchors.times || []).map(x => `<button data-vs-action="anchors-at" data-vs-value="${x}">${esc(t('anchorsAt'))} ${x} s</button>`).join('')}</div>
   <p class="vs-mono">${s.anchors.loaded ? `t ${Number(s.anchors.t).toFixed(1)} s` : esc(t('loading2'))}</p>
   ${receiptLine('anchor')}`;
 }

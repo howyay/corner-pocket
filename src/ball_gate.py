@@ -40,8 +40,11 @@ The upper area cap, and the disagreement
       frame happens later and uses a different array (``src/pipeline.py:207``).
       ``src/scan_events.py:122-127`` and ``src/sam3_ball_cache.py:152-154`` read
       their frames the same way, with no resize.
-    * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:57``,
-      ``src/motion_scan.py:72``, ``src/dense_queue.py:71``).  Both caps are
+    * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:60``,
+      ``src/motion_scan.py:74``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
+      three citations named the training pair, the geometry banner and an
+      unrelated import comment, so they landed one to three lines above the
+      fact.  They name the line that holds the fact now.  Both caps are
       therefore in 1280x720 pixels.
     * Both caps sit in the same statement family of the same function.  The
       score cut and the area window of one instance are neighbours
@@ -49,7 +52,7 @@ The upper area cap, and the disagreement
     * No comment, docstring or test in the repository explains the 6000.
       ``grep -rn "6000" src/`` returns this one gate line plus two unrelated
       uses: a pocket-hole window (``src/calibrate.py:42``) and a progress print
-      (``src/motion_scan.py:712``).
+      (``src/motion_scan.py:716``).
 
     Ruling: one stage, two values, no measured reason.  These two values
     contradict each other.  This round does not change behaviour.  No value

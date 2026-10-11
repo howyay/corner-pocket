@@ -30,9 +30,11 @@ from src.store_files import dump, documents, fmt_of
 #: The created tables of db/migrations that are not operator data, mapped to the reason.
 #: TABLES holds every other created table and no name outside that set, so a migration
 #: that adds a table without a line in one of the two fails the suite.  The one entry is
-#: the migration ledger: one row per applied migration, not operator data, so row_counts
-#: must not count it.  The write-fingerprint proof names the same exclusion in its
-#: LEDGER (tools/write_fingerprint_coverage.py:50).
+#: the migration ledger: one row per applied migration, not operator data, so no count of
+#: operator tables may include it.  This dict is the one home of that exclusion decision
+#: and of its reason sentence.  ``tests/test_store_export.py`` and the write-fingerprint
+#: proof read this name; before round 71 the proof stated a second copy with a reason of
+#: its own.
 NOT_OPERATOR_DATA = {
     "schema_migrations": "the migration ledger (db/migrations/0001_schema_migrations.sql:3): "
                          "one row per applied migration, not operator data",

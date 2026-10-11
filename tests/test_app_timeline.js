@@ -3334,6 +3334,27 @@ test('the VOD fields are reachable and keep what the operator typed', () => {
   assert.strictEqual(outside.focused, undefined, 'and a field outside the row is left alone');
 });
 
+test('round 71: the anchors inspector draws one jump button per published time', () => {
+  // Worth 1 of round 71: the service publishes the three suggested times and the row of
+  // anchorBlock draws them. Before the repair the row held its own [70,200,350], so a
+  // published list reached no button.
+  const context = adapterBox();
+  const loaded = {dataset:'vod30', set:'vod30', overlay:{anchors:true}, selection:{kind:'anchor', anchor:0, box:-1},
+                  anchors:{items:[], pts:[[10,20],[30,40]], points:[[10,20],[30,40]], index:0, t:70, loaded:true, times:[70,200,350]}};
+  const panel = stagePanel(context, visionSnapshot(loaded));
+  for (const t of [70, 200, 350]) {
+    assert.ok(panel.includes(`data-vs-action="anchors-at" data-vs-value="${t}"`),
+      `the row draws one button for the published time ${t} s`);
+  }
+  assert.ok(panel.includes('>Load anchors at 70 s</button>'),
+    'and the button prints the published value beside the label');
+  // A published list of another length reaches the row as it stands: no console value caps it.
+  const shorter = stagePanel(context, visionSnapshot({...loaded,
+    anchors:{...loaded.anchors, times:[70, 200]}}));
+  assert.ok(shorter.includes('data-vs-value="70"') && shorter.includes('data-vs-value="200"') && !shorter.includes('data-vs-value="350"'),
+    'the row follows the published list and holds no fourth time of its own');
+});
+
 test('F2: one click on the anchors layer loads them, and a drawn chip says so to a screen reader', () => {
   const calls = [];
   let s = visionSnapshot({dataset:'vod30', overlay:{cloth:true, balls:true, persons:true, pockets:true, anchors:true, events:true},
@@ -4114,7 +4135,7 @@ test('the three console suites answer one entry point contract', () => {
   // ends, because the running case is the one row the record does not hold yet, and the
   // line names every case the loop ran - this case included.
   assert.strictEqual(summary.line, null, 'the line is still absent while the list runs');
-  assert.strictEqual((summary.ran + 1) + ' passed, ' + summary.failed + ' failed', '113 passed, 0 failed',
+  assert.strictEqual((summary.ran + 1) + ' passed, ' + summary.failed + ' failed', '114 passed, 0 failed',
     'and the line the loop writes states the record');
 });
 

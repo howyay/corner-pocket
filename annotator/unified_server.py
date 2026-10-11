@@ -139,6 +139,16 @@ _MAX_ENROLL_BODY_BYTES = (_MAX_ENROLL_BYTES + 2) // 3 * 4 + 1398100
 #: Every ``t`` a route reads is a second of the broadcast, inside this range. The
 #: window route and ``anchor_info`` read the one pair, so the two cannot drift.
 T_RANGE = (0, 1800)
+#: The three anchor times the console offers as jump buttons, as (seconds).  Round 71,
+#: Worth 1: this list stood as a literal in the ``suggested_times`` line of
+#: ``anchor_info`` below and as a second literal in the button row of
+#: ``annotator/vision-stage.js``, and one of the two had no reader as published data.
+#: This name is the one home.  ``anchor_info`` publishes it, and the row draws one
+#: button per published value, so the two cannot state different times.  The legacy page
+#: ``src/pid_anchor_ui.py`` holds the same three seconds as its own literal, because a
+#: browser page cannot read a python name; the guard of ``tests/test_console_anchor_times.py``
+#: reports a drift between the two lists.
+SUGGESTED_ANCHOR_TIMES = (70, 200, 350)
 #: The page files this handler serves. The list is closed on purpose: only these files
 #: reach a browser. A closed list drifts, and a page that loads a file this handler
 #: refuses fails in the browser only - no node suite sees the 404.
@@ -2098,7 +2108,8 @@ class Backend:
             import numpy as np
             suggested = module.project(np.array(calib["H"]), module.OBJECT_MM).tolist()
         return {"t": t, "pts": points, "suggested_pts": suggested,
-                "width": width, "height": height, "suggested_times": [70, 200, 350]}
+                "width": width, "height": height,
+                "suggested_times": list(SUGGESTED_ANCHOR_TIMES)}
 
     def event_frame(self, dataset, event_id):
         events = load(self.dataset(dataset) / "events.json", [])

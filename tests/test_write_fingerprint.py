@@ -13,8 +13,9 @@ PostgreSQL.  The comparison itself lives in the tool, not here:
 
     .venv/bin/python tools/write_fingerprint_coverage.py
 
-``tools/write_fingerprint_coverage.py`` names the one intended exclusion, the migration
-ledger ``schema_migrations``, with its reason.  The second class below perturbs copies of
+``src/store_export.py`` names the one intended exclusion, the migration
+ledger ``schema_migrations``, with its reason; ``tools/write_fingerprint_coverage.py``
+reads that name and states no reason of its own.  The second class below perturbs copies of
 the two files and proves the checker reports a difference, so the agreement asserted here
 is not vacuous.  Nothing in this file writes to the checkout.
 """
@@ -78,7 +79,8 @@ class TheProofCoversTheSchema(unittest.TestCase):
         self.assertEqual(
             result.unused, (),
             "an exclusion that no longer matches a created table hides the next table of "
-            "that name from the scan: %s. Remove it from LEDGER in %s"
+            "that name from the scan: %s. Remove it from NOT_OPERATOR_DATA in src/store_export.py, "
+            "the one home of that decision, which %s reads"
             % (result.unused, CHECK.label(TOOL)))
 
     def test_the_ledger_is_created_and_deliberately_not_fingerprinted(self):

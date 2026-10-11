@@ -47,7 +47,7 @@ const state = {
   mode:'timeline', dataset:'vod30', datasets:[], sets:[], set:'unlabeled_crops',
   events:[], annotations:{}, eventIndex:0, eventFilter:'all', verdictDraft:null, shooterDraft:null, noteDraft:null,
   balls:{items:[], labels:{}, index:0, file:null},
-  anchors:{pts:[], index:0, w:1920, h:1080, saved:false, loaded:false, t:70},
+  anchors:{pts:[], index:0, w:1920, h:1080, saved:false, loaded:false, t:70, times:[]},
   persons:{windows:[], win:'', tracks:[], seeds:{}, track:null, predictions:null, predictionsStale:false, status:'', rebuild:null},
   vmeta:null, frame:0, fresult:null, unified:null, frameDirty:false,
   boxes:[], polygon:null, sel:-1, tool:'select', drag:null,
@@ -488,7 +488,10 @@ async function loadAnchors(t = state.anchors.t) {
   const w = data.width || 1920, h = data.height || 1080;
   let pts = (data.pts || data.suggested_pts || []).map(p => Array.isArray(p) ? [...p] : [p.x, p.y]);
   if (pts.length !== POCKET_ANCHOR_ORDER.length) pts = FALLBACK_ANCHOR_LAYOUT.map(([x,y]) => [Math.round(x*w),Math.round(y*h)]);
-  state.anchors = {pts, index:0, w, h, saved: !!data.pts, loaded: true, t: data.t ?? t};
+  // Round 71, Worth 1: the service publishes the three suggested anchor times, and the
+  // stage draws one jump button per published time.  The console holds no copy of them.
+  state.anchors = {pts, index:0, w, h, saved: !!data.pts, loaded: true, t: data.t ?? t,
+                   times: (data.suggested_times || []).slice()};
   notify();
 }
 async function loadPersons() {

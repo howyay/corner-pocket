@@ -25,8 +25,10 @@ It reads the two texts, opens no database, and reports every table only one side
 
 Exit status 0 means every created table is covered except the named exclusions.  The one
 exclusion is the migration ledger ``schema_migrations``: one row per applied migration,
-not operator data.  It is named in ``LEDGER`` with its reason, and an entry that stops
-matching a created table is reported, so an exclusion cannot outlive its table.
+not operator data.  One module owns that decision, ``src/store_export.py``, with one
+reason sentence; this tool reads the name ``NOT_OPERATOR_DATA`` and spells no reason of
+its own.  An entry that stops matching a created table is reported, so an exclusion
+cannot outlive its table.
 
 ``tests/test_write_fingerprint.py`` compares the same two files, so the suite fails on any
 difference and this tool and the proof cannot drift apart.
@@ -39,18 +41,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src import db
+from src import db  # noqa: E402
+# Round 71, Worth 2: the exclusion decision stood in this module and in src/store_export.py,
+# with two reason sentences and no case that compared them.  The decision has one home now,
+# ``NOT_OPERATOR_DATA`` of src/store_export.py, because that module reads the created tables
+# of db/migrations and holds the list of the ones that are not operator data.  This tool
+# reads the one name and spells no reason.
+from src.store_export import NOT_OPERATOR_DATA  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PROOF = ROOT / "scripts" / "pool-write-fingerprint.sql"
 MIGRATIONS = ROOT / "db" / "migrations"
-
-#: Tables the proof must not fingerprint, mapped to the reason.  The ledger records which
-#: migrations were applied; every other table under db/migrations is operator data.
-LEDGER = {
-    "schema_migrations": "the migration ledger (db/migrations/0001_schema_migrations.sql): "
-                         "one row per applied migration, not operator data",
-}
 
 #: A branch head: the printed name, then - on the leading branch only - the column alias
 #: the union orders by.
@@ -170,10 +171,11 @@ def coverage(proof=PROOF, directory=MIGRATIONS, excluded=None) -> Coverage:
     """Compare the proof's branch list with the tables the migrations create.
 
     ``excluded`` maps a table name to the reason the proof must not cover it; the default
-    is ``LEDGER``.  A difference is data, not an exception: the caller decides what to
-    print and with which exit status.
+    is ``NOT_OPERATOR_DATA`` of src/store_export.py, the one home of that decision.  A
+    difference is data, not an exception: the caller decides what to print and with which
+    exit status.
     """
-    excluded = dict(LEDGER if excluded is None else excluded)
+    excluded = dict(NOT_OPERATOR_DATA if excluded is None else excluded)
     branches = proof_branches(proof)
     created, files = created_tables(directory)
     problems = []
