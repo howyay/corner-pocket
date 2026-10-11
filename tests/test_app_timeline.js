@@ -3880,6 +3880,32 @@ test('the console fallback pair equals the owner in src/ball_scale.py', () => {
     why: 'the console fallback reads the pipeline owner'});
 });
 
+// One word per concept across the two Chinese copy tables. Each realm keeps its own table: the
+// engine's table (annotator/app.js, editorCopy) is keyed by the English sentence the engine paints,
+// and the adapter's table (annotator/vision-stage.js, COPY) is keyed by slot names. The two key
+// spaces differ, so one merge would make each realm carry the keys the other never paints. The
+// shared part is held here instead: where the engine paints the same English word as the adapter,
+// the two Chinese strings must agree, or this case names the slot and both values.
+test('the two Chinese copy tables agree on every word they share', () => {
+  const host = {lang: 'zh', querySelector: () => null, querySelectorAll: () => []};
+  T.setRoot(host);
+  const slots = Object.keys(ADAPTER_COPY.zh);
+  assert.ok(slots.length > 200, 'the adapter table is the wide one: ' + slots.length + ' slots');
+  assert.deepStrictEqual([...slots].sort(), Object.keys(ADAPTER_COPY.en).sort(),
+    'both languages carry every slot: a missing Chinese key would paint the English one');
+  const compared = [];
+  for (const slot of slots) {
+    const en = ADAPTER_COPY.en[slot];
+    const engine = T.text(en);
+    if (engine === en) continue;      // the engine paints this word in English: nothing to compare
+    assert.strictEqual(engine, ADAPTER_COPY.zh[slot], 'slot ' + slot + ' paints "' + en
+      + '": the engine says "' + engine + '", the adapter says "' + ADAPTER_COPY.zh[slot] + '"');
+    compared.push(slot);
+  }
+  assert.ok(compared.length >= 20, 'the shared words stay under the case: ' + compared.length + ' compared');
+  T.setRoot({lang: 'en', querySelector: () => null, querySelectorAll: () => []});
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 // The source-text assertions that no browser seam can reach, listed in one place.
 for (const contract of sourceContracts) console.log(`SOURCE CONTRACT ${contract.file}: ${contract.snippet} — ${contract.why}`);

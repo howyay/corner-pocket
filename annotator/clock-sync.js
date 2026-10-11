@@ -62,6 +62,23 @@ const RECONNECT_MS = 2000;
 const OFFLINE_AFTER_MS = 10000;      /* no answer this long while polling = offline */
 const ERROR_MS = 6000;               /* how long a failed command stays on screen */
 
+/* The shot clock's default duration has one owner: annotator/ops.js states SHOT_DEFAULT and
+ * publishes it as window.OpsClock.shotDefault. This module reads that seam at call time. The
+ * constant below answers only when no console is present, as in a Node require of this module;
+ * tests/test_ops.js holds it equal to the owner. */
+const CONSOLE_ABSENT_DURATION = 30;
+
+/* The JSON request header has one owner: annotator/app.js states the object and publishes it as
+ * window.ConsoleRules.jsonHeaders. This module reads that seam at call time, as it reads
+ * window.OpsClock. The constant below answers only when no page is present, as in a Node require of
+ * this module; tests/test_ops.js holds it equal to the owner. */
+const NO_PAGE_HEADERS = {'Content-Type': 'application/json'};
+
+function jsonHeaders() {
+  const rules = typeof window !== 'undefined' && window ? window.ConsoleRules : null;
+  return rules && typeof rules.jsonHeaders === 'function' ? rules.jsonHeaders() : NO_PAGE_HEADERS;
+}
+
 const LABELS = Object.freeze({
   en: Object.freeze({
     failed: 'clock command failed — nothing changed',
@@ -107,8 +124,19 @@ function displayMs(state, nowMs, offset) {
  * clockLeft() computes the shared remaining time with no other change. A
  * deadline already in the past is never re-armed: it would make every device
  * replay the expiry message. */
+/* The duration of the local clock: the snapshot states it, and a snapshot that states none takes
+ * the console's own default from the seam, read at call time the way this module reads
+ * window.OpsClock.words(). A page without a console, and a Node caller, take
+ * CONSOLE_ABSENT_DURATION. */
+function statedDuration(state) {
+  if (state && Number.isFinite(state.duration)) return state.duration;
+  const seam = typeof window !== 'undefined' && window ? window.OpsClock : null;
+  const stated = seam && typeof seam.shotDefault === 'function' ? seam.shotDefault() : null;
+  return Number.isFinite(stated) ? stated : CONSOLE_ABSENT_DURATION;
+}
+
 function toLocalClock(state, nowMs, offset) {
-  const duration = Number.isFinite(state.duration) ? state.duration : 30;
+  const duration = statedDuration(state);
   const left = displayMs(state, nowMs, offset);
   if (left !== null && left > 0) return {duration: duration, remaining: left / 1000, deadline: state.deadline_ms - offset};
   if (left !== null) return {duration: duration, remaining: 0, deadline: null};
@@ -244,7 +272,7 @@ function createClockSync(deps) {
     try {
       response = await request(apiUrl, body === undefined
         ? {method: method, cache: 'no-store'}
-        : {method: method, cache: 'no-store', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        : {method: method, cache: 'no-store', headers: jsonHeaders(), body: JSON.stringify(body)});
     } catch (error) {
       return {ok: false, reason: 'network', error: error};
     }
@@ -529,6 +557,9 @@ const api = {
   POLL_MS: POLL_MS,
   HEARTBEAT_TIMEOUT_MS: HEARTBEAT_TIMEOUT_MS,
   OFFLINE_AFTER_MS: OFFLINE_AFTER_MS,
+  CONSOLE_ABSENT_DURATION: CONSOLE_ABSENT_DURATION,
+  ERROR_MS: ERROR_MS,
+  NO_PAGE_HEADERS: NO_PAGE_HEADERS,
   LABELS: LABELS,
   labels: labels,
   statusText: statusText,

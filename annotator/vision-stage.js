@@ -288,7 +288,8 @@ let sourceOpen = false, guestDraft = null;
 // live status changes (every poll), so an input whose value only lives in the DOM
 // loses a half-typed id. Same idea as guestDraft.
 let replayDraft = null;
-const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = value => window.ConsoleRules.esc(value);
+const jsonHeaders = () => window.ConsoleRules.jsonHeaders();
 const t = key => (COPY[opts?.lang] || COPY.en)[key] || COPY.en[key] || key;
 const $ = id => root ? root.querySelector(id) : null;
 const engine = () => opts?.review;
@@ -945,7 +946,7 @@ function bcIdentity(served) { return served && typeof served === 'object' && ser
 function bcText(message, served) { const text = String(message || ''); return opts?.lang === 'zh' ? (bcIdentity(served) || text) : text; }
 function bcError(error) { return bcText(error?.message || error, error?.served); }
 async function bcApi(path, body) {
-  const response = await fetch(path, body === undefined ? {cache: 'no-store'} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const response = await fetch(path, body === undefined ? {cache: 'no-store'} : {method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body)});
   let data = null; try { data = await response.json(); } catch (_) { /* a non-JSON body is reported below */ }
   if (!response.ok || !data || data.error) throw Object.assign(new Error(String(data?.error || `HTTP ${response.status}`)), {served: data || {}});
   return data;

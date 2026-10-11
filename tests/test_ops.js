@@ -74,6 +74,9 @@ function richDocument(handlers) {
 // One owner holds the duration text (annotator/duration.js). The ops page loads it as its first
 // script, so this page context runs it first as well.
 const durationSource = fs.readFileSync(path.join(__dirname, '../annotator/duration.js'), 'utf8');
+// The escape rule of the console realm has one owner (annotator/app.js). The page loads that file
+// before annotator/ops.js and before annotator/vision-stage.js, so this page context loads it too.
+const appSource = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
 function harness(opts = {}) {
   const handlers = {}, storage = {...opts.storage}, windowHandlers = {}, visits = [], timers = [];
   const document = opts.richDom
@@ -87,8 +90,10 @@ function harness(opts = {}) {
   vm.createContext(context);
   // The console runs as the page loads it. The suite does not rewrite its text. The stub page
   // carries no shell, so the console does not boot itself; the test drives it through the handle.
-  // The duration owner loads before the console, as annotator/ops.html loads it.
+  // The duration owner loads before the console, as annotator/ops.html loads it. annotator/app.js
+  // follows it, because the escape rule the console realm shares has its owner there.
   vm.runInContext(durationSource, context, {filename: 'duration.js'});
+  vm.runInContext(appSource, context, {filename: 'app.js'});
   vm.runInContext(opts.source || source, context, {filename: 'ops.js'});
   const h = context.window.OpsConsole.attach({document});
   // The state the page fetches, and the action channel the tests read instead of the network.
@@ -3878,7 +3883,47 @@ test('round 5 / owner item 6: the timer bar never narrates its own sync state', 
   assert.ok(source.includes('<span class="sync-error"' + "${clockSyncError?'':' hidden'}>" + '${esc(clockSyncError)}</span>'),
     'the console emits the line it paints, hidden while the sentence is empty');
   assert.ok(!clockSyncSource.includes("className = 'sync-error'"), 'the sync half no longer writes that node');
-  assert.ok(/ERROR_MS = \d+/.test(clockSyncSource), 'and the sentence still clears itself on a timer');
+});
+
+// Round 58 / candidate 7: that sentence stays on screen for a fixed time and then clears itself.
+// The old guard only proved that some number was written somewhere. This case drives the failure
+// path, takes the owner's number from the module, and fires the timer the module armed.
+test('a failed press reports itself, and the sentence clears after the owner\u2019s time', async () => {
+  const sentences = [], timers = [];
+  const doc = {hidden: false, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, documentElement: {dataset: {}, lang: 'en', getAttribute: () => null}};
+  const win = {
+    document: doc,
+    location: {href: 'http://127.0.0.1:8130/ops.html'},
+    setTimeout(fn, ms) { const id = timers.length + 1; timers.push({id, fn, ms}); return id; },
+    clearTimeout(id) { const i = timers.findIndex(timer => timer.id === id); if (i >= 0) timers.splice(i, 1); },
+    setInterval: () => 0,
+    clearInterval() {},
+    addEventListener() {},
+    dispatchEvent: () => true,
+    localStorage: {getItem: () => null, setItem() {}},
+    OpsClock: {receive() {}, words: () => ({lang: 'en', kicker: 'Shot timer'}), sync(text) { sentences.push(text); }},
+    EventSource: function () { this.addEventListener = () => {}; this.close = () => {}; },
+    fetch: async (url, options) => ((options && options.method) === 'POST'
+      ? {ok: false, status: 500, json: async () => ({error: 'the write was refused'})}
+      : {ok: true, status: 200, json: async () => clockSnapshot({running: true, deadline_ms: Date.now() + 30000, remaining_ms: 30000, server_now_ms: Date.now()})})
+  };
+  clockSync.install(win);
+  await settle();
+  assert.equal(sentences[sentences.length - 1], '', 'a healthy clock hands over an empty sentence');
+  win.OpsClock.onAccepted('clock-set', 45, {duration: 45, remaining: 45, deadline: null});
+  await settle();
+  const spoken = sentences[sentences.length - 1];
+  assert.notEqual(spoken, '', 'the refused press hands its failure sentence to the console');
+  assert.equal(spoken, clockSync.LABELS.en.failed, 'and it is the failure sentence the module states');
+  // The time is not only this module's word. The round-2 note states it (docs/console-redesign.md
+  // §13.3), and this line holds the module and the note together.
+  const notes = fs.readFileSync(path.join(__dirname, '../docs/console-redesign.md'), 'utf8');
+  const documented = Number(/`ERROR_MS = (\d+)`/.exec(notes)[1]);
+  assert.equal(clockSync.ERROR_MS, documented, 'the module holds the time the note documents');
+  const clear = timers.find(timer => timer.ms === documented);
+  assert.ok(clear, `the failure arms a timer of the owner's time (${clockSync.ERROR_MS} ms)`);
+  clear.fn();
+  assert.equal(sentences[sentences.length - 1], '', 'and the sentence clears itself when that timer fires');
 });
 
 test('round 7 / owner item 2 on the phone: the header keeps the clock, the bottom bar all six', () => {
@@ -5361,4 +5406,112 @@ test('every page script still loads beside the duration owner in one global scop
   assert.strictEqual(typeof h.context.window.OpsConsole, 'object', 'annotator/ops.js publishes its console');
   assert.strictEqual(typeof h.context.window.ClockSync, 'object', 'annotator/clock-sync.js publishes its api');
   assert.strictEqual(typeof h.context.window.Duration.hms, 'function', 'and the owner answers beside them all');
+});
+// One escape rule for the console realm. annotator/app.js owns it and publishes it on the console
+// seam. annotator/ops.js and annotator/vision-stage.js read it there, and neither holds a copy.
+// annotator/board.js keeps the only other copy: annotator/board.html loads no shared module, and the
+// board realm stands apart. This case reads the three files and compares the answers.
+const boardSource = fs.readFileSync(path.join(__dirname, '../annotator/board.js'), 'utf8');
+function escapeRuleIn(text, label) {
+  const sites = text.match(/^[ \t]*const esc = (.+);$/gm) || [];
+  assert.equal(sites.length, 1, `${label} holds one escape rule, as text`);
+  return vm.runInNewContext(`(${sites[0].replace(/^[ \t]*const esc = /, '').slice(0, -1)})`);
+}
+test('the console realm holds one escape rule, and the board realm answers it the same way', () => {
+  const h = harness();
+  const owner = h.context.window.ConsoleRules.esc;
+  assert.equal(typeof owner, 'function', 'annotator/app.js publishes the rule on the console seam');
+  // Each former site reads that owner, and no site spells the expression a second time.
+  for (const [label, text] of [['annotator/ops.js', source], ['annotator/vision-stage.js', stageSource]]) {
+    assert.ok(text.includes('window.ConsoleRules.esc('), `${label} reads the owner`);
+    assert.ok(!text.includes('/[&<>"\']/g'), `${label} holds no copy of the rule`);
+  }
+  // The board realm keeps the second copy. A copy that answers differently breaks the board.
+  const boardEsc = escapeRuleIn(boardSource, 'annotator/board.js');
+  for (const value of ['&', '<', '>', '"', "'", '&<>"\'', 'Ray "the Kid" & Co <b>', '', null, undefined, -0, false]) {
+    assert.equal(owner(value), boardEsc(value), `both realms answer one string for ${JSON.stringify(value)}`);
+  }
+  // The rule escapes: a value cannot leave the element that carries it.
+  assert.equal(owner('<img src=x onerror="alert(1)">'), '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+});
+// The results that sign a match have one owner in the console: SIGNED_RESULTS in annotator/ops.js.
+// The service states its own list in annotator/operations.py (MATCH_RESULTS), and that list also
+// carries the bye. This case reads both files as text, the way the refusal helper reads
+// annotator/refusals.py, and it holds the two lists together.
+test('the console signs the results the service states, and the bye stays a bye', () => {
+  const owner = fs.readFileSync(path.join(__dirname, '../annotator/operations.py'), 'utf8')
+    .match(/^MATCH_RESULTS = \(([^)]*)\)$/m);
+  assert.ok(owner, 'annotator/operations.py states MATCH_RESULTS');
+  const stated = owner[1].split(',').map(part => part.trim().replace(/^'|'$/g, ''));
+  const held = source.match(/const SIGNED_RESULTS=\[([^\]]*)\]/);
+  assert.ok(held, 'annotator/ops.js states the signed-result list');
+  const signs = held[1].split(',').map(part => part.trim().replace(/^'|'$/g, ''));
+  assert.deepStrictEqual(signs, stated.filter(result => result !== 'bye'),
+    'the console signs every stated result, and a bye signs nothing');
+  // Every site reads that list, and no site spells the pair a second time.
+  const body = source.replace(/const SIGNED_RESULTS=\[[^\]]*\];/, '');
+  assert.ok(!body.includes("['played','forfeit']"), 'no site holds a second copy of the pair');
+  const readers = body.match(/SIGNED_RESULTS\.includes\(m\.result\)/g) || [];
+  assert.ok(readers.length >= 4, `every site reads the list, not the pair: ${readers.length} sites`);
+});
+// The shot timer has one preset list and one default (SHOT_PRESETS, SHOT_DEFAULT in
+// annotator/ops.js). Both renderers - the clock bar and the timer screen - read that list, the stored
+// timer seeds from that default, and the local clock in annotator/clock-sync.js takes the console's
+// number off the seam instead of spelling its own. This case renders the two renderers, reads the
+// numbers they offer, and drives the seam.
+test('the shot timer offers one preset list and one default, in the bar and on its own screen', () => {
+  const owner = source.match(/const SHOT_PRESETS=\[([^\]]*)\],SHOT_DEFAULT=(\d+);/);
+  assert.ok(owner, 'annotator/ops.js states the preset list and the default');
+  const presets = owner[1].split(',').map(part => Number(part.trim()));
+  const stated = Number(owner[2]);
+  assert.deepStrictEqual(presets, [20, 30, 45, 60], 'the list is the four shot times');
+  assert.ok(/duration:SHOT_DEFAULT,remaining:SHOT_DEFAULT/.test(source), 'the stored timer seeds from the default');
+  const body = source.replace(/const SHOT_PRESETS=\[[^\]]*\],SHOT_DEFAULT=\d+;/, '');
+  assert.ok(!body.includes('[20,30,45,60]'), 'no renderer holds a second copy of the list');
+  assert.ok((body.match(/SHOT_PRESETS\.map\(/g) || []).length >= 2, 'both renderers read the list');
+  const h = harness();
+  const host = {innerHTML: ''};
+  h.screenModules.clock.mount(host);
+  const bar = h.clockHTML(), screen = host.innerHTML;
+  const offered = markup => (markup.match(/data-action="clock-set" data-value="\d+"/g) || []).map(hit => Number(hit.replace(/\D+/g, '')));
+  assert.deepStrictEqual(offered(bar), presets, 'the clock bar offers the four presets');
+  assert.deepStrictEqual(offered(screen), presets, 'and so does the timer screen');
+  const active = markup => Number((markup.match(/class="preset active" data-action="clock-set" data-value="(\d+)"/) || [])[1]);
+  assert.equal(active(bar), stated, 'the bar marks the default preset');
+  assert.equal(active(screen), stated, 'and the timer screen marks the same one');
+  assert.equal(h.context.window.OpsClock.shotDefault(), stated, 'the console publishes its default on the seam');
+  // The local clock reads that seam: a snapshot that states no duration takes the console's number,
+  // and only a page with no console at all falls back to the module's own guard.
+  assert.equal(clockSync.CONSOLE_ABSENT_DURATION, stated, 'the guard equals the owner, so the two cannot drift');
+  assert.equal(clockSync.toLocalClock({running: false, remaining_ms: 0}, 0, 0).duration, stated, 'a console-free caller takes the guard');
+  globalThis.window = {OpsClock: {shotDefault: () => 45}};
+  try {
+    assert.equal(clockSync.toLocalClock({running: false, remaining_ms: 0}, 0, 0).duration, 45, 'and a console hands the live default in');
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+// The JSON request header has one owner for the console realm: annotator/app.js states the object
+// and publishes it on window.ConsoleRules. The page scripts read that seam. The two markup pages
+// cannot read a JavaScript constant, so this case holds the string they spell equal to the owner.
+test('the console sends the JSON header the owner states', () => {
+  const h = harness();
+  const owner = h.context.window.ConsoleRules.jsonHeaders();
+  assert.equal(Object.keys(owner).join(','), 'Content-Type', 'the owner states one header');
+  assert.equal(owner['Content-Type'], 'application/json', 'and it names the JSON type');
+  for (const [label, text] of [['annotator/ops.js', source], ['annotator/vision-stage.js', stageSource]]) {
+    assert.ok(!text.includes("'Content-Type'"), `${label} holds no copy of the header`);
+    assert.ok(text.includes('window.ConsoleRules.jsonHeaders('), `${label} reads the owner`);
+  }
+  // annotator/clock-sync.js is the one page script that a Node test also requires, so its page-less
+  // copy is documented and this line holds that copy equal to the owner.
+  assert.equal((clockSyncSource.match(/'Content-Type'/g) || []).length, 1, 'the clock module holds one copy: its page-less guard');
+  assert.ok(clockSyncSource.includes('window.ConsoleRules.jsonHeaders'), 'the clock module reads the owner too');
+  assert.equal(clockSync.NO_PAGE_HEADERS['Content-Type'], owner['Content-Type'], 'the page-less guard equals the owner, so the two cannot drift');
+  for (const page of ['annotator/index.html', 'annotator/label.html']) {
+    const stated = fs.readFileSync(path.join(__dirname, '..', page), 'utf8').match(/'Content-Type'\s*:\s*'([^']*)'/g) || [];
+    assert.ok(stated.length > 0, `${page} states the header`);
+    for (const header of stated) assert.equal(header.replace(/\s+/g, ''), "'Content-Type':'application/json'", `${page} spells the header the owner states`);
+  }
 });

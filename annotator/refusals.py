@@ -48,6 +48,13 @@ ZH_KEY = "zh"
 # ``annotator/unified_server.py`` reads it in ``enroll_confirm`` and ``seed_label``.
 GUEST_NAME_MAX = 60
 
+# The longest name the service stores for an entrant, a solo player, a tournament or an event.
+# ``annotator/operations.py`` reads it on the six name paths that bound one.  The console's own name
+# fields state the same number as the value of their ``maxlength`` attribute.
+# The name does not end in NAME_MAX: tests/test_guest_name.py reserves that ending for the guest
+# bound alone, so a second bound carries a different word.
+NAME_TEXT_MAX = 120
+
 # The refusal a seed label earns when it is neither of the two accepted shapes.
 # ``annotator/unified_server.py`` raises this sentence, and the row below keys the Chinese
 # sentence on it.  The sentence states the number GUEST_NAME_MAX owns.

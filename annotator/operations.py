@@ -21,7 +21,7 @@ from uuid import uuid4
 
 # The rule refusals of this module: each skeleton, the code and the Chinese sentence beside it.
 # The same module owns the longest guest name, so this layer and the server refuse at one number.
-from annotator.refusals import GUEST_NAME_MAX, INSTANT, INTEGER_RANGE, TEXT_LENGTH, WHOLE_SECONDS, TemplateError
+from annotator.refusals import GUEST_NAME_MAX, INSTANT, INTEGER_RANGE, NAME_TEXT_MAX, TEXT_LENGTH, WHOLE_SECONDS, TemplateError
 # The shot clock rule has one owner: annotator/shot_clock.py holds the bounds and the
 # default. This module reads them, so the settings guard and the clock refuse the same
 # numbers. annotator/shot_clock.py imports no module of this layer, so this adds no cycle.
@@ -546,7 +546,7 @@ class Operations:
             return entrant
         if not name:
             raise ValueError('A new opponent needs a name')
-        name = text(name, 'name', 120)
+        name = text(name, 'name', NAME_TEXT_MAX)
         Operations._late_refuse_member(t, name, None, 'That person is already in this tournament')
         rival = dict(id=uid(), members=[dict(pid=None, name=name)])
         t['entrants'].append(rival)
@@ -562,7 +562,7 @@ class Operations:
             return dict(pid=member.get('pid'), name=member['name'])
         if not name:
             raise ValueError('A new teammate needs a name')
-        name = text(name, 'name', 120)
+        name = text(name, 'name', NAME_TEXT_MAX)
         Operations._late_refuse_member(t, name, None, 'That person is already in this tournament')
         return dict(pid=None, name=name)
 
@@ -667,7 +667,7 @@ class Operations:
                 raise ValueError('Invalid entrant')
             pid = row.get('pid')
             if pid is None:
-                name, guest = text(row.get('name'), 'entrant name', 120), None
+                name, guest = text(row.get('name'), 'entrant name', NAME_TEXT_MAX), None
                 if any(item['name'].casefold() == name.casefold() for item in s['players']):
                     raise ValueError('Player name already exists; send the regular as their player id')
             else:
@@ -762,7 +762,7 @@ class Operations:
         end = seconds(source.get('endS'), 'endS')
         if end <= start:
             raise ValueError('endS must be after startS')
-        name = text(event.get('name'), 'name', 120)
+        name = text(event.get('name'), 'name', NAME_TEXT_MAX)
         fmt = event.get('format', 'singles')
         if fmt not in ('singles', 'doubles'):
             raise ValueError('Invalid format')
@@ -975,7 +975,7 @@ class Operations:
         if t['status'] != 'active':
             raise ValueError('The tournament is not running')
         doubles = t.get('format') == 'doubles'
-        late_name = text(p.get('name'), 'name', 120)
+        late_name = text(p.get('name'), 'name', NAME_TEXT_MAX)
         late_pid = p.get('pid') or None
         self._late_refuse_member(t, late_name, late_pid, 'That person is already in this tournament')
         opponent = p.get('opponent')
@@ -1140,7 +1140,7 @@ class Operations:
 
     def _do_tournament_rename(self, s, p):
         # Name only, current or archived: format, race, tables and results stay locked.
-        self._find([s['tournament']] + s['history'], p.get('id'))['name'] = text(p.get('name'), 'name', 120)
+        self._find([s['tournament']] + s['history'], p.get('id'))['name'] = text(p.get('name'), 'name', NAME_TEXT_MAX)
 
     def _do_tournament_delete(self, s, p):
         # R1: only a mistake with nothing signed may go; a signed result is permanent.

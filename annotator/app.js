@@ -15,6 +15,11 @@ const netFetch = (path, init) => (net || fetch)(path, init);
 let hooks = {};
 const $ = (s, scope = root) => scope ? scope.querySelector(s) : null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// The JSON request header has one owner for the console realm: this object. The page scripts read
+// it from window.ConsoleRules. The two markup pages cannot read a JavaScript constant, so
+// tests/test_ops.js holds the header they spell equal to this object.
+const JSON_HEADERS = Object.freeze({'Content-Type': 'application/json'});
+const jsonHeaders = () => JSON_HEADERS;
 const enc = encodeURIComponent;
 // Historical review-mode names stay valid activation targets so nothing that
 // used to be reachable disappears; they all activate the one stage and only
@@ -76,7 +81,7 @@ function canLeave() { return !state.busy && (!state.dirty || confirm(text('Disca
 function markDirty() { state.dirty = true; notify(); }
 function counts() { return {cloth: state.drawn.cloth, balls: state.drawn.balls, persons: state.drawn.persons, pockets: state.drawn.pockets, anchors: state.drawn.anchors, events: state.drawn.events}; }
 async function api(path, body) {
-  const response = await netFetch(path, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const response = await netFetch(path, body === undefined ? {} : {method:'POST',headers:jsonHeaders(),body:JSON.stringify(body)});
   let data; try { data = await response.json(); } catch { throw new Error(`Server returned non-JSON (${response.status}). Open this workbench through the review server.`); }
   if (!response.ok || data.error) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
@@ -2379,6 +2384,13 @@ window.CornerPocketReview = {
 // stays out of Object.keys(). The key count of the console API is the public surface: the
 // lifecycle, one stage and the mounted seam. Tests/test_app_timeline.js reads that count.
 Object.defineProperty(window.CornerPocketReview, 'vocabulary', {value: VOCABULARY, enumerable: false});
+// The rules the console's page scripts share have one owner here, and one published seam:
+// window.ConsoleRules. The escape rule is the first of them, the JSON request header the second.
+// annotator/ops.js, annotator/vision-stage.js and annotator/clock-sync.js read them from that seam
+// instead of holding a copy. Both console pages load this file before those scripts. A test that
+// stands in for the engine handle replaces window.CornerPocketReview, and that handle is a driver
+// seam, not a rule seam.
+window.ConsoleRules = {esc, jsonHeaders};
 const standaloneRoot = document.querySelector('#review-root');
 if (standaloneRoot) { mount(standaloneRoot); activate(); }
 })();

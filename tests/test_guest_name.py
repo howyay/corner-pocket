@@ -18,6 +18,11 @@ Round 55 added the last two readers of the number: ``_person`` and ``_do_guest_p
 fields repeated the number as well, and one of them accepted 120 characters.  Two more cases
 hold the guest-name path of the operations layer and the guest fields of the console to the
 owner.
+
+Round 58 added the second bound of this shape: ``NAME_TEXT_MAX`` (120 characters) holds the
+entrant, solo, tournament and event names, six readers of ``annotator/operations.py`` import it,
+and the five name fields of the console state it.  The case that holds both layers lives here,
+because the walk is the same walk.
 """
 from __future__ import annotations
 
@@ -57,6 +62,20 @@ GUEST_FIELDS = ('guest${i}', 'late_name', 'solo_name', 'enroll-name', 'guest-nam
 GUEST_FIELD = re.compile(r'(?:"|\')?(guest\$\{i\}|late_name|solo_name|enroll-name|guest-name)'
                          r'(?:"|\')?(?=[^\n]*maxlength)')
 MAXLENGTH = re.compile(r'maxlength=(?:"|\')?(\d+)')
+
+# The name bound the console states as well: the entrant, solo, tournament and event names of a
+# player.  The console cannot import the Python constant, so each field states the number as the
+# value of its ``maxlength`` attribute.  The markers below are content, not line numbers: two
+# event-name fields share one spelling, and the late-entrant field carries a template name.
+NAME_FIELDS = ("input('night-name'", "input('name'", '`${name}_name`', 'id="event-name"')
+# The measured number of console fields that carry a name.  A new field needs a decision, so the
+# case below fails and names the count.
+NAME_FIELD_COUNT = 5
+# The labels the operations layer gives the names NAME_TEXT_MAX bounds.  A call with one of these
+# labels and no third argument takes the 200-character default of text(), and that is another rule.
+NAME_LABELS = ('name', 'entrant name')
+# The measured number of ``text()`` calls that read the name bound.
+NAME_SITE_COUNT = 6
 
 
 def source_files():
@@ -131,6 +150,20 @@ def guest_maxlengths(path):
         field = GUEST_FIELD.search(line)
         if field:
             found.append((number, field.group(1), MAXLENGTH.search(line)))
+    return found
+
+
+def name_maxlengths(path):
+    """Every console field of one module that carries a name marker, with its maximum.
+
+    A field states a maximum.  The search starts at the marker, so a field that follows another
+    bounded field on the same line cannot answer with that field's number.
+    """
+    found = []
+    for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        starts = [line.index(marker) for marker in NAME_FIELDS if marker in line]
+        if starts:
+            found.append((number, MAXLENGTH.search(line, min(starts))))
     return found
 
 
@@ -309,6 +342,57 @@ class GuestNameTest(unittest.TestCase):
         self.assertEqual([], wrong,
                          '%s owns %s, and the value in force is %d.  A guest field of the console '
                          'holds that number:\n%s' % (OWNER, OWNED, value, '\n'.join(wrong)))
+
+    def test_the_name_bound_states_one_owner_in_both_layers(self):
+        """One owner holds the 120-character name bound, and both layers state it.
+
+        This case lives beside the guest-name bound because the walk is the same walk: one module
+        owns a number, the Python readers import the name, and the console fields state the value.
+        A second module would copy this file's parsers.
+        """
+        pattern = re.compile(r'^NAME_TEXT_MAX = (\d+)$', re.MULTILINE)
+        match = pattern.search((ROOT / OWNER).read_text(encoding='utf-8'))
+        self.assertIsNotNone(match, '%s binds NAME_TEXT_MAX on a line of its own' % OWNER)
+        value = int(match.group(1))
+        self.assertEqual(value, refusals.NAME_TEXT_MAX, 'the module and its source agree')
+        self.assertEqual(value, operations.NAME_TEXT_MAX,
+                         'and the operations layer imports that name')
+        # The Python side: every name-labelled text() call that states a bound states the name.
+        stated, bare = [], []
+        for node in ast.walk(parse(ROOT / 'annotator/operations.py')):
+            if not isinstance(node, ast.Call) or getattr(node.func, 'id', None) != 'text':
+                continue
+            label = node.args[1] if len(node.args) > 1 else None
+            if not isinstance(label, ast.Constant) or label.value not in NAME_LABELS:
+                continue
+            maximum = stated_maximum(node)
+            if maximum is None:
+                continue
+            if isinstance(maximum, ast.Name) and maximum.id == 'NAME_TEXT_MAX':
+                stated.append(node.lineno)
+            elif is_number(maximum, value):
+                bare.append((node.lineno, ast.unparse(node)))
+        self.assertEqual(NAME_SITE_COUNT, len(stated),
+                         'annotator/operations.py reads NAME_TEXT_MAX on every name path it bounds.  '
+                         'Found: %r' % (stated,))
+        self.assertEqual([], bare,
+                         'a name path states the owner NAME_TEXT_MAX, never the bare number %d:\n%s'
+                         % (value, '\n'.join('%d: %s' % site for site in bare)))
+        # The console side: every name field states the same number, and no other field does.
+        expected = re.compile(r'maxlength=(?:"|\')%d(?:"|\')' % value)
+        fields, wrong = [], []
+        for path in JS_FILES:
+            for line, found in name_maxlengths(path):
+                fields.append('%s:%d' % (relative(path), line))
+                if found is None or not expected.search(found.string):
+                    wrong.append('%s:%d: the field states maxlength="%s"'
+                                 % (relative(path), line, found.group(1) if found else 'none'))
+        self.assertEqual(NAME_FIELD_COUNT, len(fields),
+                         'the console holds %d name fields, and each one states the bound:\n%s'
+                         % (NAME_FIELD_COUNT, '\n'.join(fields)))
+        self.assertEqual([], wrong,
+                         '%s owns NAME_TEXT_MAX, and the value in force is %d.  A name field of the '
+                         'console holds that number:\n%s' % (OWNER, value, '\n'.join(wrong)))
 
     def test_the_refusal_sentence_carries_the_owner_number(self):
         """One raise site states the sentence, and the sentence states the owner's number."""
