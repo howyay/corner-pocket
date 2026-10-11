@@ -346,6 +346,26 @@ class Probe:
         forward, _, _ = self.homographies(t)
         return to_table_mm(forward, cx * INVERSE_SCALE, cy * INVERSE_SCALE)
 
+    def _to_px(self, inverse, mm):
+        """The one millimetre -> pixel conversion of this class, through ``inverse``.
+
+        The caller picks the frame: the physical reference for *measured*
+        millimetres, or the claim's own frame for its stored ones.  The
+        conversion and its 0.1-pixel rounding stand here once, so the two readers
+        cannot read apart on the same frame.  Round 72 measured the two copies
+        that stood here: they differed in which inverse they chose, and the one
+        holding case built a probe with no claim frame, so it read equality while
+        the served samples moved by 25.5 px at the head and 291.5 px at the foot
+        (measured on 2026-10-11, ``out/calib_mapping_audit.json``).
+        """
+        x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
+        # The rule is src/projection.py's.  This path is in pixels, so it names
+        # the pixel tolerance.
+        point = project_point(x, y, w, tolerance=PIXEL_TOLERANCE)
+        if point is None:
+            return None
+        return [round(point[0], 1), round(point[1], 1)]
+
     def px(self, mm, t=None):
         """Canonical millimetres -> pixels, through the physical reference.
 
@@ -356,13 +376,7 @@ class Probe:
         _, inverse, _ = self.homographies(t)
         if inverse is None or not mm:
             return None
-        x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
-        # The rule is src/projection.py's.  This path is in pixels, so it names
-        # the pixel tolerance.
-        point = project_point(x, y, w, tolerance=PIXEL_TOLERANCE)
-        if point is None:
-            return None
-        return [round(point[0], 1), round(point[1], 1)]
+        return self._to_px(inverse, mm)
 
     def claim_px(self, mm):
         """A *claim's* stored millimetres -> pixels, in the frame that produced them.
@@ -379,13 +393,7 @@ class Probe:
         inverse = self.claim_inverse if self.claim_inverse is not None else self.inverse
         if inverse is None:
             return None
-        x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
-        # The rule is src/projection.py's.  This path is in pixels, so it names
-        # the pixel tolerance.
-        point = project_point(x, y, w, tolerance=PIXEL_TOLERANCE)
-        if point is None:
-            return None
-        return [round(point[0], 1), round(point[1], 1)]
+        return self._to_px(inverse, mm)
 
     def in_cloth(self, px, t=None):
         quad = self.quad_for(t)

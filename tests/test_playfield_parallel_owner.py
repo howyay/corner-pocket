@@ -10,6 +10,10 @@ answered ``ok True, reasons [], best_parallel_deg 0.0`` while the tool read ``8.
 These cases hold the repaired shape: the tool takes the reading and the tolerance from the
 check, its classification agrees with the check's own verdict for the venue quad and for a
 quad that fails the tolerance, and a planted second reduction is reported.
+
+Round 72 gave the cross-product sign of a quad the same treatment.  The rule stood twice, once
+in the check and once in the tool, and ``src/playfield.quad_signs`` is the one owner now.  The
+tool keeps the name ``convexity_signs`` and reads the owner.
 """
 import ast
 import importlib.util
@@ -20,13 +24,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from src.playfield import PARALLEL_TOL_DEG, check_quad, parallelism
+from src.playfield import (PARALLEL_TOL_DEG, check_quad, parallelism,
+                           quad_signs)
 
 EVIDENCE_NAME = 'tools/playfield_quad_evidence.py'
 TEST_NAME = 'tests/test_playfield.py'
 #: The cases the two readers disagreed on: the venue quad, and a quad refused for its pairs.
 VENUE_CASE = 'test_a_view_down_one_axis_keeps_that_pair_parallel'
 REFUSED_CASE = 'test_a_quad_with_no_parallel_pair_is_refused'
+#: The case whose quad the check refuses for its corners and not for its pairs.  Round 72 gave
+#: the cross-product sign one owner, ``src.playfield.quad_signs``, and this quad is the one that
+#: shows the reason ``not-convex`` and the signs of the owner are one answer.
+FOLDED_CASE = 'test_a_folded_quad_is_refused'
 #: The failing case needs a tighter threshold, or its second reason hides the pair refusal.
 REFUSED_TOL = 1.0
 #: The verdict of a quad that the check accepts: the tool has no side to blame.
@@ -84,6 +93,16 @@ def quad_from_case(module_name, case_name):
                 if isinstance(step, ast.Assign) and isinstance(step.value, ast.List) \
                         and len(step.value.elts) == 4:
                     return [tuple(ast.literal_eval(point)) for point in step.value.elts]
+            # A case may state its quad in the call itself, as the folded quad of round 72
+            # does.  The list argument of the first ``check_quad(...)`` call answers then.
+            for step in ast.walk(item):
+                if not isinstance(step, ast.Call) or not step.args:
+                    continue
+                if getattr(step.func, 'id', None) != 'check_quad':
+                    continue
+                first = step.args[0]
+                if isinstance(first, ast.List) and len(first.elts) == 4:
+                    return [tuple(ast.literal_eval(point)) for point in first.elts]
     raise AssertionError('%s: no 4-point quad literal in %s' % (TEST_NAME, case_name))
 
 
@@ -143,6 +162,7 @@ def refused_by(answer):
 TOOL = load_tool()
 VENUE_QUAD = quad_from_case('PlayfieldConstraint', VENUE_CASE)
 REFUSED_QUAD = quad_from_case('PlayfieldConstraint', REFUSED_CASE)
+FOLDED_QUAD = quad_from_case('PlayfieldConstraint', FOLDED_CASE)
 
 
 class TheReductionHasOneOwnerTests(unittest.TestCase):
@@ -190,6 +210,37 @@ class TheReductionHasOneOwnerTests(unittest.TestCase):
                             'the planted reduction must disagree with the check on this quad')
         self.assertEqual(answer, TOLERANCE_AT_FAULT,
                          'the planted reduction must be visible in the tool answer')
+
+    def test_the_sign_of_a_quad_has_one_owner(self):
+        """The check, the tool and the verdict read one sign reader.
+
+        Round 72 measured the tool's copy of this walk on 2026-10-11: it answered
+        the same four signs as the check for the ten recorded picks of
+        ``out/playfield_quad_evidence.json``, for these three quads and for 20000
+        random quads, so one home changes no value.  The folded quad is the one
+        that ties the signs to the reason of the verdict, because it is the only
+        quad of the three that the check refuses for its corners.
+        """
+        self.assertEqual(quad_signs(VENUE_QUAD), TOOL.convexity_signs(VENUE_QUAD),
+                         'the tool must read the sign of the owner')
+        venue = quad_signs(VENUE_QUAD)
+        self.assertEqual(len(set(venue)), 1,
+                         'every corner of a convex quad turns the same way: %r' % (venue,))
+        refused = quad_signs(REFUSED_QUAD)
+        self.assertEqual(len(set(refused)), 1,
+                         'this quad fails its pairs, and its corners keep one sign: %r'
+                         % (refused,))
+        folded = quad_signs(FOLDED_QUAD)
+        self.assertEqual(len(set(folded)), 2,
+                         'a folded quad turns both ways: %r' % (folded,))
+        self.assertIn('not-convex', check_quad(FOLDED_QUAD)['reasons'])
+        for _name, quad in (('venue', VENUE_QUAD), ('refused', REFUSED_QUAD),
+                            ('folded', FOLDED_QUAD)):
+            signs = quad_signs(quad)
+            self.assertEqual('not-convex' in check_quad(quad)['reasons'],
+                             not (set(signs) <= {1} or set(signs) <= {-1}),
+                             'the reason of the verdict and the signs are one answer: %r'
+                             % (signs,))
 
 
 class TheToolAgreesWithTheCheckTests(unittest.TestCase):

@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import cv2
 import numpy as np
-from src.playfield import PARALLEL_TOL_DEG, check_quad
+from src.playfield import PARALLEL_TOL_DEG, check_quad, quad_signs
 from tools.playfield_harness import Recording, frame_context, new_stage
 from tools.playfield_vod_audit import CLOTH_BAND_REASON, KNOWN_REFUSED
 
@@ -36,14 +36,13 @@ FRACTIONS = (0.10, 0.50)
 
 
 def convexity_signs(quad):
-    """Cross product of each consecutive edge pair; a convex polygon keeps one sign."""
-    pts = [(float(x), float(y)) for x, y in quad]
-    signs = []
-    for i in range(4):
-        a, b, c = pts[i], pts[(i + 1) % 4], pts[(i + 2) % 4]
-        cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
-        signs.append(1 if cross > 0 else -1 if cross < 0 else 0)
-    return signs
+    """Cross product of each consecutive edge pair; a convex polygon keeps one sign.
+
+    The rule has one owner, ``src.playfield.quad_signs``, and this name reads it.
+    Round 72 gave the rule that home: the tool and ``check_quad`` held a copy each,
+    and the reason ``not-convex`` of the verdict comes from the owner now.
+    """
+    return quad_signs(quad)
 
 
 def interior_angles(quad):

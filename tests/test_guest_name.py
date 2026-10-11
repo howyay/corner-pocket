@@ -33,6 +33,9 @@ import unittest
 from pathlib import Path
 
 from annotator import operations, refusals, unified_server
+# The bound walk and its four supports have one home, tests/_shipped.py.
+from _shipped import (bare_bounds, is_length, is_number, owner_bindings, parse,
+                     stated_maximum)
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_TREES = (ROOT / 'annotator', ROOT / 'src')
@@ -83,46 +86,8 @@ def source_files():
     return sorted(path for tree in SOURCE_TREES for path in tree.glob('*.py'))
 
 
-def parse(path):
-    """The syntax tree of one module."""
-    return ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
-
-
 def relative(path):
     return path.relative_to(ROOT).as_posix()
-
-
-def owner_bindings(path):
-    """Every site in one module that binds a name, with the target name and the value."""
-    found = []
-    for node in ast.walk(parse(path)):
-        if isinstance(node, ast.Assign):
-            targets, value = node.targets, node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            targets, value = [node.target], node.value
-        else:
-            continue
-        for target in targets:
-            if isinstance(target, ast.Name):
-                found.append((node.lineno, target.id, value))
-    return found
-
-
-def is_number(node, value):
-    """True when one expression is the bare integer ``value``."""
-    return isinstance(node, ast.Constant) and type(node.value) is int and node.value == value
-
-
-def is_length(node):
-    """True when one expression measures a length."""
-    return isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'len'
-
-
-def stated_maximum(call):
-    """The maximum one ``text(...)`` call states, as a node, or None for the default."""
-    stated = list(call.args[2:3]) + [word.value for word in call.keywords
-                                     if word.arg == 'maximum']
-    return stated[0] if stated else None
 
 
 def guest_text_calls(path):
@@ -164,27 +129,6 @@ def name_maxlengths(path):
         starts = [line.index(marker) for marker in NAME_FIELDS if marker in line]
         if starts:
             found.append((number, MAXLENGTH.search(line, min(starts))))
-    return found
-
-
-def bare_bounds(path, limit):
-    """Every site in one module that bounds a value with the bare number ``limit``.
-
-    Two shapes are a bound: a comparison of a ``len(...)`` call with the number, and a
-    ``text(...)`` call whose maximum is the number.  A reader that imports the owner is
-    not such a site: that site holds a name, not a number.
-    """
-    found = []
-    for node in ast.walk(parse(path)):
-        if isinstance(node, ast.Compare):
-            operands = [node.left] + list(node.comparators)
-            if any(is_length(operand) for operand in operands):
-                if any(is_number(operand, limit) for operand in operands):
-                    found.append((node.lineno, ast.unparse(node)))
-        elif isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'text':
-            stated = stated_maximum(node)
-            if stated is not None and is_number(stated, limit):
-                found.append((node.lineno, ast.unparse(node)))
     return found
 
 

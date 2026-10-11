@@ -30,6 +30,8 @@ import unittest
 from pathlib import Path
 
 from src import ball_scale
+# The binding walk and its support have one home, tests/_shipped.py.
+from _shipped import bindings, parse
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_TREES = (ROOT / 'src', ROOT / 'annotator')
@@ -116,29 +118,8 @@ def source_files():
     return sorted(path for tree in SOURCE_TREES for path in tree.glob('*.py'))
 
 
-def parse(path):
-    """The syntax tree of one module."""
-    return ast.parse(Path(path).read_text(encoding='utf-8'), filename=str(path))
-
-
 def relative(path):
     return Path(path).relative_to(ROOT).as_posix()
-
-
-def bindings(path):
-    """Every site in one module that binds a name, with the line, the name and the value."""
-    found = []
-    for node in ast.walk(parse(path)):
-        if isinstance(node, ast.Assign):
-            targets, value = node.targets, node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            targets, value = [node.target], node.value
-        else:
-            continue
-        for target in targets:
-            if isinstance(target, ast.Name):
-                found.append((node.lineno, target.id, value))
-    return found
 
 
 def owner_value(name, owner=OWNER):

@@ -72,6 +72,26 @@ def _perspective_ratio(quad):
     return max(long_ratio, short_ratio)
 
 
+def quad_signs(quad):
+    """The turn sign at each corner of a quad, as ``-1``, ``0`` or ``1``.
+
+    The sign is that of the cross product of the two edges that meet at the
+    corner: ``1`` for a left turn, ``-1`` for a right turn and ``0`` for a
+    straight or folded corner.  A convex quad keeps one sign at all four
+    corners, and ``check_quad`` refuses the others with ``not-convex``.  The
+    evidence tool reads this reader too, so the quad it draws and the reason of
+    the verdict cannot disagree.  Round 72 gave the rule this one home; before
+    that, the tool held a second copy of it.
+    """
+    signs = []
+    for i in range(len(quad)):
+        a, b, c = quad[i], quad[(i + 1) % len(quad)], quad[(i + 2) % len(quad)]
+        u, v = _vec(a, b), _vec(b, c)
+        cross = u[0] * v[1] - u[1] * v[0]
+        signs.append(1 if cross > 0 else -1 if cross < 0 else 0)
+    return signs
+
+
 def check_quad(quad, *, parallel_tol=PARALLEL_TOL_DEG, aspect=PLAYFIELD_IN[0] / PLAYFIELD_IN[1]):
     """Score one detected playfield quad against the table's own geometry.
 
@@ -93,12 +113,9 @@ def check_quad(quad, *, parallel_tol=PARALLEL_TOL_DEG, aspect=PLAYFIELD_IN[0] / 
     ys = [float(p[1]) for p in quad]
     if max(xs) - min(xs) < 8 or max(ys) - min(ys) < 8:
         return {'ok': False, 'reasons': ['degenerate'], 'metrics': metrics}
-    cross = []
-    for i in range(4):
-        a, b, c = quad[i], quad[(i + 1) % 4], quad[(i + 2) % 4]
-        u, v = _vec(a, b), _vec(b, c)
-        cross.append(u[0] * v[1] - u[1] * v[0])
-    if not (all(c > 0 for c in cross) or all(c < 0 for c in cross)):
+    # Convexity: a playfield cannot fold, and a folded quad means the corners were mismatched.
+    signs = quad_signs(quad)
+    if not (all(sign > 0 for sign in signs) or all(sign < 0 for sign in signs)):
         reasons.append('not-convex')
     par = parallelism(quad)
     metrics['parallel_deg'] = {'long': round(par['long'], 2), 'short': round(par['short'], 2)}

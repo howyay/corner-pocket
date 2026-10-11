@@ -29,6 +29,8 @@ import unittest
 from pathlib import Path
 
 from annotator import operations, refusals
+# The bound walk and its four supports have one home, tests/_shipped.py.
+from _shipped import bare_bounds, is_number, parse, stated_maximum
 
 ROOT = Path(__file__).resolve().parents[1]
 # The one home of the number, and the name both Python sites read.
@@ -50,11 +52,6 @@ NOTES_CODE = 'player_notes_too_long'
 SENTENCE_NUMBER = re.compile(r'up to (\d+) characters')
 
 
-def parse(path):
-    """The syntax tree of one module."""
-    return ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
-
-
 def named_bindings(path, name):
     """Every site of one module that binds one name, with its line and its value."""
     found = []
@@ -70,23 +67,6 @@ def named_bindings(path, name):
     return found
 
 
-def is_number(node, value):
-    """True when one node is the integer literal of one value."""
-    return isinstance(node, ast.Constant) and type(node.value) is int and node.value == value
-
-
-def is_length(node):
-    """True when one node is a ``len(...)`` call."""
-    return isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'len'
-
-
-def stated_maximum(call):
-    """The maximum one ``text(...)`` call states, as a node, or None for the default."""
-    stated = list(call.args[2:3]) + [word.value for word in call.keywords
-                                     if word.arg == 'maximum']
-    return stated[0] if stated else None
-
-
 def note_text_calls(path):
     """Every ``text(...)`` call of one module whose label names a note, with its line."""
     found = []
@@ -98,27 +78,6 @@ def note_text_calls(path):
         label = node.args[1]
         if isinstance(label, ast.Constant) and label.value == 'note':
             found.append((node.lineno, node))
-    return found
-
-
-def bare_bounds(path, limit):
-    """Every site of one module that bounds a value with the bare number ``limit``.
-
-    Two shapes are a bound: a comparison of a ``len(...)`` call with the number, and a
-    ``text(...)`` call whose maximum is the number.  A reader that imports the owner is not
-    such a site: that site holds a name, not a number.
-    """
-    found = []
-    for node in ast.walk(parse(path)):
-        if isinstance(node, ast.Compare):
-            operands = [node.left] + list(node.comparators)
-            if any(is_length(operand) for operand in operands):
-                if any(is_number(operand, limit) for operand in operands):
-                    found.append((node.lineno, ast.unparse(node)))
-        elif isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'text':
-            stated = stated_maximum(node)
-            if stated is not None and is_number(stated, limit):
-                found.append((node.lineno, ast.unparse(node)))
     return found
 
 

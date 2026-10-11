@@ -28,7 +28,6 @@ Run: ``./scripts/pool-test.sh python test_stats``
 from __future__ import annotations
 
 import ast
-import hashlib
 import math
 import sys
 import textwrap
@@ -38,6 +37,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# The body fingerprint has one home, tests/_shipped.py.
+from _shipped import body_fingerprint  # noqa: E402
 
 from src import (  # noqa: E402
     ball_association_ab,
@@ -110,20 +112,6 @@ def planted_source(source):
             return textwrap.dedent(text.replace('def %s(' % OWNER_NAME,
                                                 'def %s(' % PLANTED_NAME, 1))
     raise AssertionError('%s holds no function named %s' % (OWNER, OWNER_NAME))
-
-
-def body_fingerprint(node):
-    """The sha1 of one function's statements, with its docstring removed.
-
-    The walk of ``tests/test_duplicate_bodies.py`` reads a body this way, so this
-    module and that one find the same two bodies.
-    """
-    body = list(node.body)
-    if (body and isinstance(body[0], ast.Expr)
-            and isinstance(body[0].value, ast.Constant)
-            and isinstance(body[0].value.value, str)):
-        body = body[1:]
-    return hashlib.sha1(ast.unparse(body).encode('utf-8')).hexdigest()
 
 
 def module_paths():

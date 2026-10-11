@@ -73,6 +73,17 @@ OWN_NUMBERS = {
     ('src/shot_pot_gate.py', '_solve'): 'the Gaussian pivot of the solver',
 }
 
+#: The helper functions a site reads the owner through.  Round 72 gave the two
+#: pixel readers of ``src/eval_events.py`` one conversion tail, ``Probe._to_px``,
+#: and the owner call moved with it.  A site named here must read the owner
+#: inside one of its helpers, and that helper declares the same tolerance as the
+#: site.  A helper with no owner call and no call of the site is a fault, because
+#: a reader may not hold its own answer.
+DELEGATES = {
+    ('src/eval_events.py', 'Probe.px'): ('Probe._to_px',),
+    ('src/eval_events.py', 'Probe.claim_px'): ('Probe._to_px',),
+}
+
 def _functions(module, dotted):
     """The function nodes of one dotted name: ``name`` or ``Class.name``.
 
@@ -180,8 +191,54 @@ def _owner_calls(node):
     return calls
 
 
-def _read_sites(root=ROOT):
-    """The reader calls of the eight sites, or the faults that replace them."""
+def _site_faults(name, module, dotted, allowed, delegates):
+    """The owner calls of one site and the faults of that site alone."""
+    faults = []
+    calls = []
+    for node in _functions(module, dotted):
+        calls.extend(_owner_calls(node))
+    reported = 0
+    for helper in delegates.get((name, dotted), ()):
+        helper_calls = [call for node in _functions(module, helper)
+                        for call in _owner_calls(node)]
+        if not helper_calls:
+            continue
+        reported += len(helper_calls)
+        calls.extend(helper_calls)
+        for call in helper_calls:
+            if call['tolerance'] != allowed:
+                faults.append('%s: %s of %s passes %s, but the site declared %s'
+                              % (name, helper, dotted, call['tolerance'], allowed))
+    if not calls:
+        faults.append('%s: %s reads no owner rule: it holds its own answer' % (name, dotted))
+        return calls, faults
+    if any(call['own_denominator'] for call in calls):
+        faults.append('%s:%d: %s computes its own denominator'
+                      % (name, calls[0]['line'], dotted))
+    if not reported:
+        for call in calls:
+            if not call['stated']:
+                if allowed is not None:
+                    faults.append('%s:%d: %s keeps the default, but the site declared %s'
+                                  % (name, call['line'], dotted, allowed))
+                continue
+            if call['tolerance'] not in NAMED_TOLERANCES:
+                faults.append('%s:%d: %s passes tolerance %s, which is not a named value'
+                              % (name, call['line'], dotted, call['tolerance']))
+            elif call['tolerance'] != allowed:
+                faults.append('%s:%d: %s passes %s, but the site declared %s'
+                              % (name, call['line'], dotted, call['tolerance'], allowed))
+    return calls, faults
+
+
+def _read_sites(root=ROOT, delegates=None):
+    """The reader calls of the eight sites, or the faults that replace them.
+
+    A site reads the owner through its own body or through a helper that
+    ``DELEGATES`` names.  Such a helper must hold an owner call, and that call
+    must name the same tolerance as its site.
+    """
+    delegates = DELEGATES if delegates is None else delegates
     found = {}
     faults = []
     for name in MODULES:
@@ -190,29 +247,10 @@ def _read_sites(root=ROOT):
         for line, source in _bare_threshold_sites(path, module):
             faults.append('%s:%d: a bare threshold stands again: %s' % (name, line, source))
         for _file, dotted, allowed in [site for site in SITES if site[0] == name]:
-            calls = []
-            for node in _functions(module, dotted):
-                calls.extend(_owner_calls(node))
-            if not calls:
-                faults.append('%s: %s reads no owner rule: it holds its own answer'
-                              % (name, dotted))
-                continue
-            if any(call['own_denominator'] for call in calls):
-                faults.append('%s:%d: %s computes its own denominator'
-                              % (name, calls[0]['line'], dotted))
-            for call in calls:
-                if not call['stated']:
-                    if allowed is not None:
-                        faults.append('%s:%d: %s keeps the default, but the site declared %s'
-                                      % (name, call['line'], dotted, allowed))
-                    continue
-                if call['tolerance'] not in NAMED_TOLERANCES:
-                    faults.append('%s:%d: %s passes tolerance %s, which is not a named value'
-                                  % (name, call['line'], dotted, call['tolerance']))
-                elif call['tolerance'] != allowed:
-                    faults.append('%s:%d: %s passes %s, but the site declared %s'
-                                  % (name, call['line'], dotted, call['tolerance'], allowed))
-            found[(name, dotted)] = calls
+            calls, site_faults = _site_faults(name, module, dotted, allowed, delegates)
+            faults.extend(site_faults)
+            if calls:
+                found[(name, dotted)] = calls
     return found, faults
 
 
@@ -231,6 +269,28 @@ class TheWalkSeesEightReaders(unittest.TestCase):
         found, faults = _read_sites()
         self.assertEqual(faults, [], '\n'.join(faults))
         self.assertEqual(sorted(found), sorted((name, dotted) for name, dotted, _t in SITES))
+
+    def test_the_walk_reads_a_delegated_helper_and_its_tolerance(self):
+        """The walk reads the helper a site delegates to, its tolerance included.
+
+        Round 72 gave the two pixel readers of ``src/eval_events.py`` one
+        conversion tail.  The walk finds the owner call in that tail, so the
+        site keeps its record of the tolerance.  A helper whose call names
+        another tolerance than its site is a fault, and the planted file below
+        is that fault.  The real file answers no fault, and the case before
+        this one holds that state.
+        """
+        real = (ROOT / 'src' / 'eval_events.py').read_text(encoding='utf-8')
+        planted = real.replace('tolerance=PIXEL_TOLERANCE', 'tolerance=DEFAULT_TOLERANCE', 1)
+        calls, faults = _site_faults('src/eval_events.py', ast.parse(planted),
+                                     'Probe.px', 'PIXEL_TOLERANCE', DELEGATES)
+        self.assertEqual(len(calls), 1, 'the helper holds the owner call: %r' % (calls,))
+        self.assertEqual(faults, ['src/eval_events.py: Probe._to_px of Probe.px passes '
+                                  'DEFAULT_TOLERANCE, but the site declared PIXEL_TOLERANCE'])
+        calls, faults = _site_faults('src/eval_events.py', ast.parse(real),
+                                     'Probe.px', 'PIXEL_TOLERANCE', DELEGATES)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(faults, [])
 
     def test_the_walk_sees_a_planted_copy_in_a_temporary_module(self):
         planted = textwrap.dedent('''

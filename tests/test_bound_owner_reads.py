@@ -75,7 +75,7 @@ PLANTED = (
 )
 
 
-def bindings(tree):
+def top_level_bindings(tree):
     """The (line, name, value node) of every module-level and class-level binding.
 
     A reader states its bound in one of those two places: a module constant, as
@@ -116,7 +116,7 @@ def read_reports(sources):
     reports = []
     for label, text in sources:
         tree = ast.parse(text, filename=str(label))
-        found = bindings(tree)
+        found = top_level_bindings(tree)
         for path, name, owner in READ_SITES:
             if label != path:
                 continue
@@ -153,7 +153,7 @@ class ReaderSites(unittest.TestCase):
         sources = dict(real_sources())
         missing = []
         for path, name, _owner in READ_SITES:
-            bound = {bound for _lineno, bound, _value in bindings(ast.parse(sources[path],
+            bound = {bound for _lineno, bound, _value in top_level_bindings(ast.parse(sources[path],
                                                                             filename=path))}
             if name not in bound:
                 missing.append("%s: no binding of %s is left, so this walk reads "
@@ -170,7 +170,7 @@ class ReaderSites(unittest.TestCase):
         for path in sorted((ROOT / "src").glob("*.py")):
             relative = path.relative_to(ROOT).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-            for lineno, name, _value in bindings(tree):
+            for lineno, name, _value in top_level_bindings(tree):
                 home = OWNER_FILES.get(name)
                 if home is not None and home != relative:
                     offenders.append("%s:%d: %s is bound again outside %s"

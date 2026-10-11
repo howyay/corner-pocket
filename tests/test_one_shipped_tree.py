@@ -18,7 +18,15 @@ reads the source trees of ``src/`` and ``annotator/`` only.
    two bodies were one body, byte for byte.  ``tests/_shipped.py`` is the one home
    now, and the two guards read ``code_strings`` from it.
 
-The cases below hold the three homes in place:
+4. Eight helper families of the test tree stood in two or three modules each, byte
+   for byte, and none of the copies named an owner.  Round 72 measured them; the
+   bodies are ``parse``, ``is_number``, ``is_length``, ``stated_maximum`` and
+   ``bare_bounds``, with the two names ``bindings`` and ``owner_bindings`` of one
+   body, and ``body_fingerprint``.  ``tests/_shipped.py`` is the one home now, and
+   ``HELPER_NAMES`` below is the list.  ``source_files`` stayed in its two modules,
+   because it reads a module-local ``SOURCE_TREES`` and not its arguments.
+
+The cases below hold the four homes in place:
 
 * the four modules of the tree read the owner name, and none of them declares
   the tree again;
@@ -28,7 +36,9 @@ The cases below hold the three homes in place:
 * the code-string reader drops the docstrings of a tree and keeps every other
   literal, with its line;
 * the expressions the guards read keep their one answer, and the recursive
-  reader and the stack reader agree on every ``Call`` of the test tree.
+  reader and the stack reader agree on every ``Call`` of the test tree;
+* the eight helper families are defined in the one home, and no ``test_*.py``
+  file defines one of them at its top level.
 
 Why this file, and not ``tests/test_suite_inventory.py``: that module counts how
 many cases this checkout skips, and it holds four committed limits for that
@@ -75,8 +85,27 @@ CODE_READERS = (
 )
 
 #: The names with one home.  A ``test_*.py`` file that defines one of these names
-#: holds a second copy of a reader, and the walk reports that file.
-WATCHED = ('shipped_modules', '_dotted', '_code_strings')
+#: holds a second copy of a reader, and the walk reports that file.  The last nine
+#: names are the helper families of round 72: they stood in two or three test
+#: modules each, with no declared owner.  A name of the list may stand in another
+#: module with a different body and a different question -- ``bindings(tree)`` of
+#: ``tests/test_bound_owner_reads.py:78`` reads module-level and class-level
+#: bindings, and ``is_number(node)`` of ``tests/test_playfield_harness.py:48``
+#: reads the fallback rate 30 -- so a later copy of those two is a different
+#: reader and not a second home of this one.
+WATCHED = ('shipped_modules', '_dotted', '_code_strings',
+           'parse', 'is_number', 'is_length', 'stated_maximum', 'bare_bounds',
+           'bindings', 'owner_bindings', 'body_fingerprint')
+
+
+#: The nine helper families of round 72 that now have one home.  They read their
+#: arguments and the standard library only, so the body is the same reader in
+#: every module that needs it.  ``source_files`` of ``tests/test_ball_scale.py``
+#: and ``tests/test_guest_name.py`` is **not** in this list: it reads a
+#: module-local ``SOURCE_TREES``, so its scope belongs to the module that states
+#: it, and the two copies are two answers about two trees.
+HELPER_NAMES = ('parse', 'is_number', 'is_length', 'stated_maximum', 'bare_bounds',
+                'bindings', 'owner_bindings', 'body_fingerprint')
 
 
 def function_defs(path: Path):
@@ -161,6 +190,27 @@ class OneHomeTest(unittest.TestCase):
                           f'{name} must read the code strings from {HELPER}.py')
             self.assertNotIn('\ndef _code_strings(', text,
                              f'{name} must not declare the code-string reader a second time')
+
+    def test_the_shared_helpers_have_one_home(self):
+        """Every helper family of round 72 is defined here, and nowhere else.
+
+        The nine names below stood in two or three test modules at once until
+        round 72, byte for byte in every copy.  The case reads the one home and
+        the walk of the test tree: a name the home does not define, or a name a
+        ``test_*.py`` file defines at its top level, is a fault of this list.
+        """
+        defined = {name for name, _line in function_defs(TESTS / f'{HELPER}.py')}
+        missing = [name for name in HELPER_NAMES if name not in defined]
+        self.assertEqual(missing, [],
+                         f'the one home tests/{HELPER}.py must define: {missing}')
+        unseen = [name for name in HELPER_NAMES if name not in WATCHED]
+        self.assertEqual(unseen, [],
+                         f'the walk WATCHED must read every helper family: {unseen}')
+        found = {name: sites for name, sites in scanned_nodes(TESTS).items()
+                 if name in HELPER_NAMES}
+        self.assertEqual(found, {},
+                         f'the nine helpers have one home, tests/{HELPER}.py; the walk of '
+                         f'tests/*.py found a second definition at: {found}')
 
     def test_no_test_module_holds_a_second_copy(self):
         """The walk of tests/*.py reports no second copy of a watched reader."""

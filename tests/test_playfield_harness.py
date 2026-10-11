@@ -45,7 +45,7 @@ def modules_under(*roots):
     return found
 
 
-def is_number(node):
+def is_fallback_rate(node):
     """True for the number 30, the fallback rate that a reader must not spell."""
     return (isinstance(node, ast.Constant) and isinstance(node.value, (int, float))
             and not isinstance(node.value, bool) and node.value in (30, 30.0))
@@ -88,15 +88,15 @@ def fallback_sites(path, text):
     for node in ast.walk(ast.parse(text, filename=path)):
         if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
             operand = node.values[-1]
-            if names_frame_rate(node) and (is_number(operand) or is_owner_name(operand)):
+            if names_frame_rate(node) and (is_fallback_rate(operand) or is_owner_name(operand)):
                 found.append((path, operand.lineno, 'or', operand))
         elif isinstance(node, ast.IfExp) and names_frame_rate(node):
-            if is_number(node.orelse) or is_owner_name(node.orelse):
+            if is_fallback_rate(node.orelse) or is_owner_name(node.orelse):
                 found.append((path, node.orelse.lineno, 'else', node.orelse))
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             if any(is_fps_target(target) for target in targets):
-                if is_number(node.value) or is_owner_name(node.value):
+                if is_fallback_rate(node.value) or is_owner_name(node.value):
                     found.append((path, node.value.lineno, 'assign', node.value))
     return found
 
@@ -204,7 +204,7 @@ class TheCadenceHasOneOwnerTests(unittest.TestCase):
     def test_every_fallback_site_reads_the_one_owner(self):
         found = sites_under(*SOURCES)
         spelled = [(path, line, ast.unparse(operand))
-                   for path, line, _rule, operand in found if is_number(operand)]
+                   for path, line, _rule, operand in found if is_fallback_rate(operand)]
         self.assertEqual(spelled, [],
                          'a site that names the fallback rate must read FPS_FALLBACK')
         named = [(path, line) for path, line, _rule, operand in found if is_owner_name(operand)]

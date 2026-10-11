@@ -45,7 +45,6 @@ Run: ``./scripts/pool-test.sh python test_box_geometry``
 from __future__ import annotations
 
 import ast
-import hashlib
 import sys
 import unittest
 from pathlib import Path
@@ -53,6 +52,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# The body fingerprint has one home, tests/_shipped.py.
+from _shipped import body_fingerprint  # noqa: E402
 
 from src import box_geometry  # noqa: E402
 
@@ -170,22 +172,6 @@ def owner_binding(path):
         if isinstance(node, ast.ImportFrom) and node.module == OWNER_MODULE:
             names.update(alias.asname or alias.name for alias in node.names)
     return names
-
-
-def body_fingerprint(node):
-    """The sha1 of one function's statements, with its docstring and its layout removed.
-
-    A docstring names the body; it is not the body.  ``ast.unparse`` writes the
-    statements back in one shape, so two copies that differ only in spacing or in
-    a comment hash the same, and two bodies that differ in one name or in one term
-    hash apart.  The walk is by syntax tree and never by text.
-    """
-    body = list(node.body)
-    if (body and isinstance(body[0], ast.Expr)
-            and isinstance(body[0].value, ast.Constant)
-            and isinstance(body[0].value.value, str)):
-        body = body[1:]
-    return hashlib.sha1(ast.unparse(body).encode('utf-8')).hexdigest()
 
 
 def module_level_functions(path):

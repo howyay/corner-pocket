@@ -39,6 +39,7 @@ Run: ``./scripts/pool-test.sh python test_one_shipped_tree``
 from __future__ import annotations
 
 import ast
+import hashlib
 from pathlib import Path
 
 #: Name of this module, as the walk of the guard reads it.
@@ -126,3 +127,117 @@ def dotted_name_by_loop(node: ast.AST) -> str:
         return ''
     parts.append(node.id)
     return '.'.join(reversed(parts))
+
+
+# The nine readers below stood in two or three test modules at once, with no
+# declared owner.  Round 72 measured six such bodies on 2026-10-11.  The former
+# sites are named below by file, because the round removed the definitions and a
+# line number would name a different line today:
+#
+# 1. ``bare_bounds``, at ``tests/test_note_limit.py`` and
+#    ``tests/test_guest_name.py`` (body key a9fcea4d9e9c), with the four
+#    supports ``parse`` (key 539c148d3ed7), ``is_number`` (38a3d55cf629),
+#    ``is_length`` (658d8d8f6b14) and ``stated_maximum`` (b4fba3e5a7e3);
+# 2. ``bindings`` at ``tests/test_ball_scale.py`` and ``owner_bindings`` at
+#    ``tests/test_guest_name.py``, one body under two names (30a0d7325c52);
+# 3. ``body_fingerprint`` three times, at ``tests/test_duplicate_bodies.py``,
+#    ``tests/test_stats.py`` and ``tests/test_box_geometry.py`` (54206cd85fb9),
+#    and each copy named the other two in its docstring.
+#
+# A body belongs here when it reads its arguments and the standard library
+# only.  ``source_files`` of ``tests/test_ball_scale.py:116`` and
+# ``tests/test_guest_name.py:84`` reads a module-local ``SOURCE_TREES``, so the
+# scope of that tree belongs to the module that states it and not to this home.
+# The guard ``tests/test_one_shipped_tree.py`` reads every name below.
+#
+# The walk that measured the keys removes the docstring of a function, unparses
+# the statements that remain and hashes them, as ``body_fingerprint`` does.  The
+# same walk measured 53 bodies in two or more test modules, so the guard watches
+# these names and not every duplicate body: a ``setUp`` or a fake of two modules
+# is a local shape and not a shared reader.
+
+
+def parse(path):
+    """The syntax tree of one module."""
+    return ast.parse(Path(path).read_text(encoding='utf-8'), filename=str(path))
+
+
+def is_number(node, value):
+    """True when one node is the integer literal of one value."""
+    return isinstance(node, ast.Constant) and type(node.value) is int and node.value == value
+
+
+def is_length(node):
+    """True when one node is a ``len(...)`` call."""
+    return isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'len'
+
+
+def stated_maximum(call):
+    """The maximum one ``text(...)`` call states, as a node, or None for the default."""
+    stated = list(call.args[2:3]) + [word.value for word in call.keywords
+                                     if word.arg == 'maximum']
+    return stated[0] if stated else None
+
+
+def bare_bounds(path, limit):
+    """Every site of one module that bounds a value with the bare number ``limit``.
+
+    Two shapes are a bound: a comparison of a ``len(...)`` call with the number,
+    and a ``text(...)`` call whose maximum is the number.  A reader that imports
+    the owner is not such a site: that site holds a name, not a number.
+    """
+    found = []
+    for node in ast.walk(parse(path)):
+        if isinstance(node, ast.Compare):
+            operands = [node.left] + list(node.comparators)
+            if any(is_length(operand) for operand in operands):
+                if any(is_number(operand, limit) for operand in operands):
+                    found.append((node.lineno, ast.unparse(node)))
+        elif isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'text':
+            stated = stated_maximum(node)
+            if stated is not None and is_number(stated, limit):
+                found.append((node.lineno, ast.unparse(node)))
+    return found
+
+
+def bindings(path):
+    """Every site in one module that binds a name, with the line, the name and the value."""
+    found = []
+    for node in ast.walk(parse(path)):
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                found.append((node.lineno, target.id, value))
+    return found
+
+
+def owner_bindings(path):
+    """The binding walk under the name of the second former site.
+
+    ``tests/test_guest_name.py`` held the body of ``bindings`` under this name.
+    One body, so one function, and this name is the alias of it.
+    """
+    return bindings(path)
+
+
+def body_fingerprint(node):
+    """The sha1 of one function's statements, with its docstring and layout removed.
+
+    A docstring names the body; it is not the body.  ``ast.unparse`` writes the
+    statements back in one shape, so two copies that differ only in spacing, in a
+    comment or in the name of a local hash the same, and two bodies that differ
+    in one name or one term hash apart.  Three test modules wrote this walk
+    before round 72: ``tests/test_duplicate_bodies.py``, ``tests/test_stats.py``
+    and ``tests/test_box_geometry.py``.
+    """
+    body = list(node.body)
+    if (body and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)):
+        body = body[1:]
+    return hashlib.sha1(ast.unparse(body).encode('utf-8')).hexdigest()
