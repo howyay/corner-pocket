@@ -34,6 +34,7 @@ import argparse
 import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from annotator.operations import name_key
@@ -402,10 +403,47 @@ class IdentitySet(DataSet):
                 "identity_face_samples": sum(len(rec.get("face_samples") or []) for rec in doc.values())}
 
 
+#: The columns of one face_embeddings row, in the order the INSERT binds them.  The
+#: name is not private: src/store_pg.py imports it (like jsonb above), because that
+#: store appends to the same table and must not hold a second column list.
+FACE_COLUMNS = ("embedding", "eye_px", "det_score", "created_at", "source", "position")
+#: The one INSERT text of that table, written here once.  Both writers execute this
+#: statement, so a column that moves moves once.  The first parameter is the
+#: player_id of the row; the rest are the values of face_row(), in order.  The
+#: embedding is the array column, so its parameter carries the cast - PostgreSQL
+#: cannot tell the element type of a bare array parameter.
+#: tests/test_face_row_owner.py reads this statement, counts its parameters against
+#: FACE_COLUMNS and fails on a second copy of it.
+FACE_INSERT = ("INSERT INTO face_embeddings"
+               " (player_id, embedding, eye_px, det_score, created_at, source, position)"
+               " VALUES (%s, %s::double precision[], %s, %s, %s, %s, %s)")
+
+
+def face_row(row: dict) -> tuple:
+    """The six bound values of one face_embeddings row, in FACE_COLUMNS order.
+
+    One rule for the stored value, read from the writer of the JSON file
+    (src.face_id.store_faces): the embedding is a float32 view, cut to EMBEDDING_DIM
+    and rounded to four decimals; created_at is filled when the entry has none.  The
+    table refuses an embedding that is not EMBEDDING_DIM long, so the cut stores the
+    row the table accepts, never a silent shorter row.  src/store_pg.py calls this
+    function, so the two writers store one value for one input.
+
+    Raises KeyError for an entry without an embedding, as that writer does.
+    """
+    import numpy as np
+    from src.face_id import EMBEDDING_DIM
+
+    embedding = [round(float(v), 4)
+                 for v in np.asarray(row["embedding"], np.float32).ravel()[:EMBEDDING_DIM]]
+    created_at = row.get("created_at") or datetime.now(timezone.utc).isoformat()
+    return (embedding, row.get("eye_px"), row.get("det_score"), created_at, row.get("source"))
+
+
 class FacesSet(DataSet):
     name = "faces"
     tables = ("face_embeddings",)
-    ROW = {"embedding", "eye_px", "det_score", "created_at", "source"}
+    ROW = set(FACE_COLUMNS)
 
     def load(self, snap):
         raw = snap.json("out/corner-pocket/face_embeddings.json")
@@ -421,11 +459,7 @@ class FacesSet(DataSet):
                 unknown = set(row) - self.ROW
                 if unknown:
                     raise Mismatch(f"face row {player_id}[{position}] has fields the table cannot hold: {sorted(unknown)}")
-                conn.execute(
-                    "INSERT INTO face_embeddings (player_id, embedding, eye_px, det_score, created_at, source, position) "
-                    "VALUES (%s, %s::double precision[], %s, %s, %s, %s, %s)",
-                    (player_id, _floats(row.get("embedding")), row.get("eye_px"), row.get("det_score"),
-                     row.get("created_at"), row.get("source"), position))
+                conn.execute(FACE_INSERT, (player_id, *face_row(row), position))
 
     def render(self, conn):
         doc: dict = {}

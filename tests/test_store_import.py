@@ -212,5 +212,122 @@ class Import(unittest.TestCase):
             self.assertIn(report["status"], ("verified", "unchanged", "absent"), report)
 
 
+class FaceRow(unittest.TestCase):
+    """The face_embeddings row and its one owner, with no PostgreSQL.
+
+    Round 74 measured two writers of that table and one disagreement: the import
+    wrote the embedding as the JSON file spells it, and the console wrote a
+    float32 view, cut to EMBEDDING_DIM and rounded to four decimals.  The column
+    list and the seven-parameter statement stood twice, once per writer.
+
+    Both writers call ``src.store_import.face_row`` and execute
+    ``src.store_import.FACE_INSERT`` now.  The cases below run both of them on one
+    input through a recording connection: no server, no schema, no skip.
+    """
+
+    def console(self, additions):
+        """``PostgresStore.faces_add`` over a recording connection."""
+        from src.store_pg import PostgresStore
+        statements, bound = [], []
+
+        class Cursor:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def fetchone(self):
+                return self.rows[0]
+
+            def fetchall(self):
+                return self.rows
+
+        class Connection:
+            def execute(self, statement, params=None):
+                text = " ".join(statement.split())
+                if text.startswith("SELECT coalesce(max(position)"):
+                    return Cursor([[0]])      # the position of the first row of an empty table
+                if text.startswith("SELECT"):
+                    return Cursor([])         # the table is empty, so render reads no row
+                statements.append(text)
+                bound.append(tuple(params or ()))   # the LOCK statement binds nothing
+                return Cursor([])
+
+        class Transaction:
+            def __enter__(self):
+                return Connection()
+
+            def __exit__(self, *exc):
+                return False
+
+        store = object.__new__(PostgresStore)
+        held = PostgresStore._write
+        PostgresStore._write = lambda self: Transaction()
+        self.addCleanup(setattr, PostgresStore, "_write", held)
+        return store.faces_add(additions), statements, bound
+
+    def importer(self, doc):
+        """``FacesSet.write`` over a recording connection."""
+        from src.store_import import FacesSet
+        statements, bound = [], []
+
+        class Connection:
+            def execute(self, statement, params=None):
+                statements.append(" ".join(statement.split()))
+                bound.append(tuple(params))
+
+        FacesSet().write(Connection(), doc)
+        return statements, bound
+
+    def row(self, **changed):
+        import numpy as np
+        from src.face_id import EMBEDDING_DIM
+        entry = {"embedding": [0.0] * EMBEDDING_DIM, "eye_px": [10.0, 20.0],
+                 "det_score": 0.9, "created_at": "2026-01-01T00:00:00+00:00",
+                 "source": "manual"}
+        entry["embedding"][0] = 0.1234567890123456
+        entry.update(changed)
+        return entry
+
+    def test_the_two_writers_bind_one_statement_and_one_value(self):
+        from src.store_import import FACE_INSERT
+        entry = self.row()
+        imported = self.importer({"p1": [entry]})[1][0]
+        _, statements, bound = self.console({"p1": [entry]})
+        self.assertEqual(imported, bound[-1],
+                         "the two writers of face_embeddings bind one input differently")
+        self.assertEqual(statements[-1], " ".join(FACE_INSERT.split()),
+                         "the console writer no longer executes the one statement")
+        self.assertEqual(len(imported), " ".join(FACE_INSERT.split()).count("%s"),
+                         "the bound values and the parameters of the one statement disagree")
+        self.assertEqual(len(imported), 7, "one face_embeddings row binds player_id plus six columns")
+
+    def test_the_statement_is_the_one_statement_of_the_row(self):
+        from src.store_import import FACE_INSERT
+        statements, bound = self.importer({"p1": [self.row()]})
+        self.assertEqual(statements, [" ".join(FACE_INSERT.split())],
+                         "the import no longer executes the one statement of the row")
+        self.assertEqual(len(bound[0]), len(statements[0].split("VALUES")[1].split("%s")) - 1,
+                         "the parameter count and the placeholder count disagree")
+
+    def test_the_written_value_is_the_console_value(self):
+        import numpy as np
+        from src.store_import import face_row
+        entry = self.row()
+        embedding = face_row(entry)[0]
+        self.assertEqual(len(embedding), 512)
+        self.assertNotEqual(embedding[0], entry["embedding"][0],
+                            "the stored value must be the float32 value, not the JSON text")
+        self.assertEqual(embedding[0], 0.1235)
+        self.assertEqual(embedding[1], 0.0)
+        self.assertIsInstance(embedding, list)
+        self.assertIsNotNone(np.asarray(embedding, np.float32))
+
+    def test_the_row_of_the_import_is_a_face_row(self):
+        from src.store_import import FACE_COLUMNS, face_row
+        self.assertEqual(tuple(FACE_COLUMNS[-1:]), ("position",),
+                         "position is the last bound value of a row, and not a value of face_row")
+        self.assertEqual(len(face_row(self.row())), len(FACE_COLUMNS) - 1,
+                         "face_row binds every column except the position of the caller")
+
+
 if __name__ == "__main__":
     unittest.main()

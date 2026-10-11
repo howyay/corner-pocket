@@ -228,23 +228,18 @@ class PostgresStore:
             return FacesSet().render(conn)
 
     def faces_add(self, additions: dict) -> dict:
-        from src.face_id import EMBEDDING_DIM
-        from src.store_import import FacesSet
-        from datetime import datetime, timezone
-        import numpy as np
+        # The column list, the statement and the value rule of one face_embeddings
+        # row have one home: src.store_import (its module docstring names this store).
+        # This method appends to the same table the importer writes, so it calls that
+        # owner.  It holds no copy of either, and its rows match the importer's.
+        from src.store_import import FACE_INSERT, FacesSet, face_row
         with self._write() as conn:
             conn.execute("LOCK TABLE face_embeddings IN SHARE ROW EXCLUSIVE MODE")
             for player_id, entries in additions.items():
                 start = conn.execute("SELECT coalesce(max(position) + 1, 0) FROM face_embeddings WHERE player_id = %s",
                                      (str(player_id),)).fetchone()[0]
                 for offset, entry in enumerate(entries):
-                    embedding = [round(float(v), 4) for v in np.asarray(entry["embedding"], np.float32).ravel()[:EMBEDDING_DIM]]
-                    conn.execute(
-                        "INSERT INTO face_embeddings (player_id, embedding, eye_px, det_score, created_at, source, position) "
-                        "VALUES (%s, %s::double precision[], %s, %s, %s, %s, %s)",
-                        (str(player_id), embedding, entry.get("eye_px"), entry.get("det_score"),
-                         entry.get("created_at") or datetime.now(timezone.utc).isoformat(), entry.get("source"),
-                         start + offset))
+                    conn.execute(FACE_INSERT, (str(player_id), *face_row(entry), start + offset))
             return FacesSet().render(conn)
 
     def faces_remove(self, player_id: str) -> int:
