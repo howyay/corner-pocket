@@ -4897,3 +4897,189 @@ local `main`, and `origin/main` stays at `110b0338`. The credential helper
 exit 124 and no bytes, `git ls-remote origin main` answers `110b0338` because an anonymous read
 works, and SSH answers `git@github.com: Permission denied (publickey)`. The one user action is
 `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 49 · the citation walk, and three facts that had two homes (2026-10-10)
+
+The walk of this round read the repository at `367fcb8`, with an empty work tree at the start and at
+the end. The verdict line is `Strong candidate present - 4 Strong, 5 Worth, 2 Note`, and the report
+holds 123 lines in `/tmp/dshsess/walk_round49.md`. The walk ran no test module, started no server,
+and read no file under `tools/`, `scripts/`, `deploy/`, `db/migrations/`, `docs/`, `src/store*.py`,
+`src/eval_events.py`, `src/segment_calib_report.py` or `src/report*.py`. The Lead verified every
+ground line of the four Strong candidates, and it measured the cost of each repair.
+
+### The commits of this round
+
+| Commit | Subject | What it closes |
+| --- | --- | --- |
+| `8da7a19` | stamp: one module holds the document stamp protocol | Strong 1 |
+| `4365293` | scan: one owner holds the blob band, and the person-share gate | Strong 2, Worth 3, Worth 4 |
+| `835df11` | docs: six citations now name a line that holds text | Strong 3, Strong 4 |
+| `21a9525` | console: one owner holds the clock key, and a note states its own scope | Worth 1, Worth 5 |
+
+### Strong 1 · the document stamp protocol had two owners, and the two readers disagreed
+
+The two readers held one protocol in two copies. One row stamped `{"document": {"version": 1,
+"producer": "src/gone.py"}}` read `mixed` with no producer in `src/sam3_artifact.py:245`, because the
+name was not in `PRODUCERS`. The same row read `stamped` with the producer `src/gone.py` in
+`src/events_document.py:300`, because that reader trusted every name. A stamp with no producer name
+read the same two ways. So the same file gave two answers to one question.
+
+`8da7a19` adds `src/document_stamp.py` as the one owner: `VERSION`, `STAMP`, the three status words,
+the two status words of a row, the producer table of each document, and the rule in one sentence.
+Each reader keeps its own `ROW_KEYS`, because the two documents name a row in different ways.
+The measured table, before and after:
+
+| Row | `src/sam3_artifact.py` | `src/events_document.py` | Agree |
+| --- | --- | --- | --- |
+| a known producer | `stamped, 1, src/scan_events.py` | `stamped, 1, src/scan_events.py` | yes |
+| a foreign name, before | `mixed, None, None` | `stamped, 1, src/gone.py` | no |
+| a missing producer name, before | `mixed, None, None` | `stamped, 1, None` | no |
+| a foreign name, after | `mixed, None, None` | `mixed, None, None` | yes |
+| a missing producer name, after | `mixed, None, None` | `mixed, None, None` | yes |
+| no stamp, and a version of another protocol | `unstamped` or `mixed` | the same | yes |
+
+The new `tests/test_document_stamp.py` holds 16 cases: six on the owner, six that compare the two
+readers on one document, and four on a foreign stamp. The writer's bite put the old reader back and
+failed 7 of the 16 cases. The Lead's own bite appended a second `STAMP = "document"` and a second
+`PRODUCERS` tuple to `src/store_files.py`, and two cases answered
+`test_only_the_owner_defines_a_protocol_name` and `test_only_the_owner_holds_a_producer_name`.
+
+### Strong 2 · one name held three facts, and two of them were dead
+
+`src/motion_scan.py:1341` held `BALL_BLOB_MAX_PX = 532`, and no line read it. The live rule is
+`ball_blob_max` at `:138-140`, `return 2.0 * ball_area(cfg)`, and it answers 561.10 px². The same
+name stood again at `src/timing_verify.py:73` with the value 3000, read at `:273`. The two live
+numbers measure different quantities, so they must not meet; the dead copies are what fail.
+
+`4365293` deletes the dead literals `BALL_BLOB_MAX_PX = 532`, `LIMB_BLOB_MIN_PX = 1600` and
+`BALL_BLOB_MIN_PX = 66`, because each one sat beside its own live function. The timing check names
+its own rule `BALL_SCALE_BLOB_MAX_PX`, and one number `BLOB_BAND_BOUNDARY_PX = 3000` holds the
+boundary. `src/motion_scan.py` read a copy of the person-share number; it reads
+`ScanConfig.person_share` now through `person_share_max()`. The live values did not move: 280.55208,
+561.10416, 70.13802 and 1683.31247. The writer's four bites failed on a dead literal, on a second
+copy of 3000, on a second home for the boundary name, and on a copied gate. The Lead's own bite put
+`BALL_SCALE_BLOB_MAX_PX = 3000` into `src/motion_scan.py`, and
+`test_no_constant_name_holds_two_meanings_across_the_two_scan_modules` failed.
+
+### Strong 3 · the report stated a frame that the code does not hold
+
+`REPORT.md:18` read `maps the cloth quad to a canonical 1000×500 (2:1) table`. The owner
+`src/table_geometry.py:21-22` holds `CANON_W = 1270` and `CANON_H = 2540`, in millimetres and in
+portrait. A reader who follows the report builds the wrong frame. `src/table_detect.py` holds no
+canonical size, so the sentence is stale and not a second live frame.
+
+`835df11` writes the owner into the sentence, and it adds
+`test_the_report_states_the_frame_the_owner_holds` to `tests/test_table_geometry.py`. The case reads
+`REPORT.md`, requires the phrase `canonical frame` one time, takes the first two `mm` numbers after
+it, and compares the pair with the pair of the owner. The Lead's two bites removed the phrase
+(`8e624656 → a530774c`) and changed the numbers (`→ 08b1e131`, `(1000, 500) != (1270, 2540)`).
+
+### Strong 4 · six citations named a line that a reader cannot follow
+
+| Citation | What the target line held | Where the fact stands |
+| --- | --- | --- |
+| `src/ball_gate.py:44` | a separator at `src/motion_scan.py:69` | `src/motion_scan.py:71` |
+| `src/ball_gate.py:44` | nothing at `src/dense_queue.py:69` | `src/dense_queue.py:71` |
+| `annotator/board.js:61` | nothing at `tests/test_app_timeline.js:3252` | `tests/test_app_timeline.js:3299` |
+| `tests/test_board.js:377` | nothing at `tests/test_app_timeline.js:3252` | `tests/test_app_timeline.js:3299` |
+| `tests/test_event_retention.py:13` | a comment at `src/store_import.py:47` | `src/ops_event_log.py:42` |
+| `tests/dom_stubs.js:11` | its own line, and `}` at `:46` | `tests/dom_stubs.js:28`, `tests/test_app_timeline.js:55` |
+
+The Lead's own scan found the last row, and a scan of the store test found one more:
+`tests/test_store.py:36` cited `src/store.py:156` where the rule stands at `:157`. The three scans
+size the job: every tracked file answers 539 citations and 283 bad ones, because old documents cite
+bare names; the comments alone answer 29 citations in 231 files and 2 bad ones; the comments and the
+docstrings together answer 92 citations and 4 bad ones.
+
+### The citation guard
+
+`tests/test_citation_lines.py` holds 7 cases and one rule. A citation `path.ext:NN` must resolve from
+the repository root or from `src/`, `annotator/`, `tests/`, `db/`, `scripts/` or `tools/`, and line
+NN of the target must hold a letter or a digit. The scan reads the comments and the docstrings of the
+`.py`, `.js` and `.css` files, minus the generated directories, `deploy/` and `docs/`. It read 89
+citations in 398 files when the case was written, and the floor case fails a scan that reads nothing.
+
+The rule has three limits. It proves that the reader finds a line, not that the line holds the named
+fact: the Lead typed `does not use corners_30min_v2.json` into the note of `src/table_refine.py`, and
+that case still passed, because the case refuses one phrase pattern and not the meaning. A comment
+that names a symbol rather than a line, such as `src/motion_scan.PERSON_SHARE_MAX`, is outside the
+rule; the Lead repaired one such citation in `tests/ball_dense_events.py` by hand. `deploy/` and
+`docs/` stay out of the scan: a unit file must not cite a Python line at all, and the ledgers record
+older rounds on purpose.
+
+### Worth 1 · the note that lost its own scope
+
+`src/table_refine.py:74` said `corners_30min_v2.json is NOT used`, and the module publishes that
+sentence as provenance at `:151` and at `:163`. Eight modules still name the file:
+`src/calib_segment_measure.py`, `src/calib_segments.py`, `src/calib_vod30.py`,
+`src/eval_table_detect.py`, `src/frame_inference.py`, `src/pid_identity.py`, `src/pid_shooter.py`
+and `src/rebuild_events_v2.py`. The note now speaks about the vod30 seed only, and it says that the
+file stays in use. `test_published_note_states_the_scope_of_its_entry` reads the published copy with
+an empty `root`, requires `vod30` in every clause that names the file, and refuses the old sentence.
+
+### Worth 3 and Worth 4 · the boundary written twice, and the copied gate
+
+The boundary 3000 stood twice at `src/timing_verify.py:73-74`, and `src/motion_scan.py:1334` copied
+`person_share: float = 0.02` from `src/candidate_scan.py:75` with a comment. Both readers now read
+one home. The Lead's extra repair made `tests/ball_dense_events.py` read the same field from
+`ScanConfig`, and a bite on the owner value answered 0.75 in the harness.
+
+### Worth 5 · the clock key had a dead owner and seven spellings
+
+`CLOCK_KEY` was defined at `annotator/clock-sync.js:44` and exported at `:522`, and no module read
+the export, while seven lines spelled the literal. The owner now stands where the store is read and
+written: `annotator/ops.js:864 const CLOCK_KEY='cp-ops-clock'`, with the reader at `:865`, the writer
+at `:885`, the storage listener at `:1425`, and a read-only seam row `["clockKey",()=>CLOCK_KEY]` at
+`:1565`. The owner of a value must be the module that can hand it out first: `annotator/ops.html`
+runs `ops.js` before `clock-sync.js`, so the console cannot read the key from that file. The dead
+constant and the dead export are gone. Two cases in `tests/test_ops.js` hold the behaviour and the
+one spelling. The Lead's own bite put the export back, and the case answered
+`the clock key has one spelling under annotator/` with 218 pass and 1 fail.
+
+### The suites of this round
+
+| Command | Answer |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 1892 tests in 177.576s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | 219 pass, 0 fail |
+| `node tests/test_board.js` | 23 pass, 0 fail |
+| `node tests/test_app_timeline.js` | 100 passed, 0 failed |
+
+Round 48 answered 1859 cases, so this round adds 33. The new files hold 16 cases in
+`tests/test_document_stamp.py` and 7 in `tests/test_citation_lines.py`. The other cases arrive in
+`tests/test_motion_scan.py` (4), `tests/test_timing_verify.py` (2), `tests/test_candidate_scan.py`
+(2), `tests/test_table_refine.py` (1) and `tests/test_table_geometry.py` (1). The node suite of the
+console adds 2 cases.
+
+### Rows of earlier rounds that close here
+
+| Row | Commit | How it closes |
+| --- | --- | --- |
+| round 48 Worth 3, the document stamp protocol had two owners | `8da7a19` | one owner holds the protocol, and the two readers answer one way |
+| round 48 Worth 5, the clock key had two spellings | `21a9525` | one spelling stands, and the dead owner and the dead export are gone |
+| round 47 Note 3 and round 48, four citations named an empty line | `835df11` | six citations name a line that holds text, and one case holds them |
+| round 48 open row, `corners_30min_v2.json` | `21a9525` | the note states its own scope, and one case reads the published copy |
+| round 48 open row, `T_RANGE` and the two readers of `t` | `4365293` | the band boundary has one home, and the ruling names what it covers |
+
+### What stands open after this round
+
+| Candidate | Rank | Ground in the tree |
+| --- | --- | --- |
+| The argument contract is guarded in one direction only | Worth | `tests/test_arg_contract.py:142-150` covers the registered commands, and five `args.func` look-alikes sit outside it |
+| The citation rule proves text, not the fact | Note | a differently phrased contradiction passed the case of `tests/test_citation_lines.py` |
+| A comment that names a symbol is outside the rule | Note | `src/motion_scan.PERSON_SHARE_MAX` was cited in `tests/ball_dense_events.py`; the Lead repaired it by hand |
+| `BALL_AREA_NATIVE = 266.0` has no reader | Note | it stands at `src/motion_scan.py:102`, and its own comment computes 280.55 |
+| `LIMIT 500` stands beside the owner of the retention bound | Note | `src/store_check.py:66` spells the bound that `src/ops_event_log.py:42` owns |
+| The guest-name sentence stays one literal | Note | `annotator/unified_server.py:2286` holds the sentence of the raise, and `annotator/refusals.py:55` builds the same text |
+| `T_RANGE` covers two readers of `t` | Note | `annotator/unified_server.py:614` and `:2018` read the pair, and `_rebuild` holds `timeout=1800` for another purpose |
+| The console label for `Prospect` | Note | `annotator/ops.js:9` answers `Prospect:['Newcomer','新会员']`, and the design file maps it to `Prospect` |
+| The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:814` sets `'Active'`, while the inventory says Prospect |
+| `annotator/server.py:126` writes any label | Note | it writes the label file with no range check, and the module has no importers |
+| `REPORT.md:50` bounds a number that no run measures | Note | the sentence names a bound, and no command answers it |
+| The duration rule is proved over `file://` only | Note | chromium cannot finish an `http://` load in this harness |
+
+The push is still blocked. Fifteen commits sit on the local `main`: the four of this round, the
+record of this round, and the ten that came before them. `origin/main` stays at `110b0338`, and the
+credential helper
+`!gh auth git-credential` does not answer in this session. The one user action is
+`git -C /home/haoye/projects/pool push origin main`.
