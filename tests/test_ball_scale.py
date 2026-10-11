@@ -84,6 +84,11 @@ UNCHANGED = (('src/ball_census.py', 'TRACK_MATCH_PX', 30.0),
              ('src/motion_scan.py', 'BALL_K_WORK', 13))
 
 
+# The unit string of a cloth-scale claim.  A line that holds it must not name a
+# module: no module of this tree states a cloth scale in millimetres per pixel.
+CLOTH_SCALE_UNITS = 'mm/px'
+
+
 def source_files():
     """Every module of this repository that could state a ball size."""
     return sorted(path for tree in SOURCE_TREES for path in tree.glob('*.py'))
@@ -301,6 +306,31 @@ class BallScaleTest(unittest.TestCase):
         self.assertEqual([], loose,
                          'a second name holds a ball size.  %s owns the measurement, and the '
                          'gate reads its names:\n%s' % (OWNER, '\n'.join(loose)))
+
+    def test_no_line_states_a_cloth_scale_beside_a_module_name(self):
+        """A comment that states a scale in mm/px must not vouch for a module.
+
+        Strong 2 of the round-51 walk: the docstring of
+        :func:`millimetres_per_pixel` sent the reader to ``src/ball_census.py``
+        and ``src/timing_verify.py`` for the cloth at "a rounded 2.8 and 7.26
+        mm/px".  No line of either module stated one: round 50 had deleted the 2.8
+        mm/px comment from the census, and ``git grep '2\\.8' -- src`` answered
+        only that sentence.
+
+        This case reads the shape of a line and not the meaning of a sentence.  A
+        line that names a module and no unit passes.  A voucher written on the
+        next line, or with the unit spelled out, passes.  The two modules that do
+        hold a cloth number are named in the owner's docstring, where no line
+        holds both parts.
+        """
+        found = []
+        for number, line in enumerate(source_text(OWNER).splitlines(), start=1):
+            if CLOTH_SCALE_UNITS in line and '.py' in line:
+                found.append('%s:%d: %s' % (OWNER, number, line.strip()))
+        self.assertEqual([], found,
+                         'a line of the owner states a scale in %s and names a module.  A module '
+                         'named this way must state the number, and these did not:\n%s'
+                         % (CLOTH_SCALE_UNITS, '\n'.join(found)))
 
     def test_the_readers_state_the_owner(self):
         """The readers state the measurement, and the census gate keeps its tuned number."""

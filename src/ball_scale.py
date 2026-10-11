@@ -124,8 +124,11 @@ def millimetres_per_pixel(frame: tuple[float, float] = NATIVE_FRAME) -> float:
     """The ball's own image scale: the millimetres one pixel carries.
 
     This is 3.02 mm/px at the native frame, from the measured diameter.  It is
-    the ball's scale and not the cloth's: ``src/ball_census.py`` and
-    ``src/timing_verify.py`` state the cloth at a rounded 2.8 and 7.26 mm/px.
+    the ball's scale and not the cloth's.  No module of this tree states a cloth
+    scale in those units, so this docstring names no module for one.  Two places
+    hold a number of the cloth: the guarded copy in ``src/eval_table_detect.py``
+    repeats one value of the console, and the comment in ``src/timing_verify.py``
+    divides the table length by a span it measured.
     """
     return BALL_WIDTH_MM / diameter_px(frame)
 
