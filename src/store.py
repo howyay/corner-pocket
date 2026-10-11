@@ -57,7 +57,7 @@ from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
-from src.store_files import BALL_SETS  # noqa: E402
+from src.store_files import BALL_SETS, dump_document  # noqa: E402
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -180,12 +180,7 @@ def _read(path: Path, default):
 def _write(path: Path, data) -> None:
     """annotator.unified_server.atomic_save, byte for byte (indent=2, trailing newline)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    def dump(stream) -> None:
-        json.dump(data, stream, indent=2, allow_nan=False)
-        stream.write("\n")
-
-    write_atomic(path, dump, fsync=True)
+    write_atomic(path, lambda stream: stream.write(dump_document(data)), fsync=True)
 
 
 class JsonStore:

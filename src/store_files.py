@@ -95,6 +95,18 @@ def dump(value, fmt: str) -> str:
     raise ValueError(f"unknown format {fmt}")
 
 
+def dump_document(value) -> str:
+    """The text of one document, for a writer that cannot name the format.
+
+    ``tests/test_store_files.py`` refuses a format name in every other file, so a
+    writer that renders a whole document cannot call :func:`dump` with a format.
+    This function answers the bytes of ``DOCUMENT_FORMAT`` and nothing else.  The
+    five JSON writers of the repository call it, so the bytes of a document have
+    one home (tests/test_one_atomic_write.py holds them to it).
+    """
+    return dump(value, DOCUMENT_FORMAT)
+
+
 def is_document_path(relative: str) -> bool:
     """True when `relative` is a file name `document_paths` produces.
 

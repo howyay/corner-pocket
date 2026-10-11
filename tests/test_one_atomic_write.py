@@ -404,23 +404,23 @@ def _ast_case(site, body):
 
 
 def _calls_the_owner_once(self, site, tree, node):
-    """it calls write_atomic one time, and its one body keeps the document options."""
+    """it calls write_atomic one time, and the byte owner builds the text."""
     calls = _calls(node, ("write_atomic", "atomic_write.write_atomic"))
     self.assertEqual(1, len(calls), "the function must call write_atomic one time")
     self.assertEqual([], _stray_tmp_lines(node, calls), "the body names its own temp file")
     self.assertEqual([], _temp_call_lines(node), "the body makes its own temp file")
     self.assertEqual([], _rename_lines(node), "the body renames the file by itself")
-    dumped = _calls(node, ("json.dump",))
-    self.assertEqual(1, len(dumped), "the body must build the text one time with json.dump")
-    options = {keyword.arg: ast.literal_eval(keyword.value) for keyword in dumped[0].keywords}
-    self.assertEqual(2, options.get("indent"), "the indent of the document changed")
-    self.assertEqual(False, options.get("allow_nan"), "allow_nan must stay False")
-    self.assertEqual(site.module in SORTS_KEYS, options.get("sort_keys", False),
-                     "the sort_keys option changed")
-    self.assertEqual(1, _newline_writes(node), "the body must append one newline")
+    # Round 58: the body writes the text of the owner's renderer, and it holds no
+    # text builder of its own.  The bytes are still the bytes of the former body,
+    # and the case that drives the site proves them.
+    self.assertEqual([], _calls(node, ("json.dump",)),
+                     "the body must not build the text with json.dump of its own")
+    owners = _calls(node, ("dump_document", "store_files.dump_document"))
+    self.assertEqual(1, len(owners),
+                     "the body must build the text one time with dump_document")
     nested = [child.name for child in ast.walk(node)
               if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child is not node]
-    self.assertEqual(["dump"], nested, "the body must hold its one text function")
+    self.assertEqual([], nested, "the body must hold no text function of its own")
 
 
 def _writes_owner_bytes(self, site, tree, node):

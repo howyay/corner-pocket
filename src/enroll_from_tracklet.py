@@ -620,15 +620,14 @@ def write_enrollment(scratch_root, enrollment, *, source_root=REPO) -> dict:
 
 def _write_json(path, payload) -> None:
     """json.dump(indent=2) + trailing newline: the format Operations writes."""
+    # The import is local so that the line numbers of this module do not move.
+    from src.store_files import dump_document
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    def dump(stream) -> None:
-        json.dump(payload, stream, indent=2, allow_nan=False)
-        stream.write("\n")
 
     # The temp file is <name>.tmp<pid> beside the target, and a failed write leaves
     # it: the behavior this writer always had (no fsync, no cleanup).
-    write_atomic(path, dump, temp_name="{name}.tmp{pid}", encoding="utf-8",
+    write_atomic(path, lambda stream: stream.write(dump_document(payload)),
+                 temp_name="{name}.tmp{pid}", encoding="utf-8",
                  remove_on_failure=False)
 
 

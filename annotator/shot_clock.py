@@ -252,10 +252,8 @@ class ShotClock:
             self.wait(seq, heartbeat_s)
 
     def _save(self, state):
+        # The import is local so that the line numbers of this module do not move.
+        from src.store_files import dump_document
         self.path.parent.mkdir(parents=True, exist_ok=True)
-
-        def dump(stream):
-            json.dump(state, stream, indent=2, allow_nan=False)
-            stream.write('\n')
-
-        write_atomic(self.path, dump, fsync=True, temp_prefix='.clock-')
+        write_atomic(self.path, lambda stream: stream.write(dump_document(state)),
+                     fsync=True, temp_prefix='.clock-')

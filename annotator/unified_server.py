@@ -55,7 +55,7 @@ from annotator.pipeline_stages import frame_detectors  # noqa: E402
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it here, so the console's ball-set route and that owner cannot hold
 # two different lists of accepted names.
-from src.store_files import BALL_SETS  # noqa: E402
+from src.store_files import BALL_SETS, dump_document  # noqa: E402
 # The shot clock declares the actions it applies (annotator/shot_clock.py ACTIONS).
 # This module imports it here, so the write registry's 'clock' row publishes the very
 # set the handler refuses with.
@@ -314,12 +314,7 @@ def load(path, default=None):
 
 def atomic_save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    def dump(stream):
-        json.dump(data, stream, indent=2, allow_nan=False)
-        stream.write("\n")
-
-    write_atomic(path, dump, fsync=True)
+    write_atomic(path, lambda stream: stream.write(dump_document(data)), fsync=True)
 
 
 def number(value, low, high, name):

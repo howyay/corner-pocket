@@ -195,13 +195,13 @@ def probe_media(path, ffmpeg_command):
 
 
 def _atomic_json(path, document):
+    # The import is local so that the line numbers of this module do not move.
+    from src.store_files import dump_document
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    def dump(stream):
-        json.dump(document, stream, indent=2, sort_keys=True, allow_nan=False)
-        stream.write("\n")
-
-    write_atomic(path, dump, fsync=True)
+    # The index sorts the keys of its value, so two imports of one VOD answer the
+    # same text.  The bytes are the document format of the owner either way.
+    ordered = json.loads(json.dumps(document, sort_keys=True))
+    write_atomic(path, lambda stream: stream.write(dump_document(ordered)), fsync=True)
 
 
 _INDEX_LOCKS = {}
