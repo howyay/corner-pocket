@@ -6237,3 +6237,234 @@ Round 55 answered 1990 cases and this round answers 2015. The 25 named additions
 The push is still blocked. Fifty commits sit on the local `main`: the three code commits of this round,
 the record of this round, and the forty-six that came before them. `origin/main` stays at `110b0338`.
 The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 57 · two console vocabularies and six copies of one verdict word (2026-10-11)
+
+The walk of this round read the repository at `a5451ee` with an empty `git status --porcelain`,
+answered `Strong candidate present - 4 Strong, 2 Worth, 1 Note`, and wrote 211 lines to
+`/tmp/dshsess/walk_round57.md`. The count on its verdict line equals the number of its sections, which
+is the rule the round-56 walk broke. It read the class bodies and the nested `def`s of the two trees,
+the HTML templates of `annotator/`, and the port handling of the fixture scripts. It did not read the
+three large console modules (`annotator/app.js`, `ops.js` and `vision-stage.js`, about 570 KB) beyond a
+grep and a region, the three `.js` suites beyond the assertions it quoted, the `.css` files of
+`annotator/`, `src/sam3/`, `viz/`, `db/migrations/0003_json_documents.sql`, and the twenty-two `_do_*`
+methods of `annotator/operations.py`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `e64d99d` | `tests/smoke_rating_fixture.py`, `tests/test_unit_render.py`, `annotator/index.html.bak` (deleted) | Strong 3 and Note 7 |
+| `634cdac` | `annotator/app.js`, `annotator/vision-stage.js`, `annotator/unified_server.py`, `tests/test_console_vocabulary.py`, `tests/test_app_timeline.js`, `tests/test_sql_domain_parity.py` | Strong 1 and Strong 2 |
+| `16a24c9` | `annotator/ops.js`, `tests/test_ops.js` | Strong 4, Worth 5, Worth 6 and Worth F |
+| `c3db8da` | `annotator/ops.html`, `annotator/public_board.py`, `tests/test_ops.js` | the repair of the Lead: the moved citation and the three moved asset tokens |
+
+### Strong 1 · the box-label vocabulary had two live owners and two dead copies
+
+Ground: `annotator/vision-stage.js:1289`, inside `function boxBlock(s)` at `:1287`, filled both the
+`<select data-vs-action="box-label">` of `:1291` and the `<select data-vs-action="new-box-label">` of
+`:1295` from `  const labels = ['person','ball','cue','solid','stripe','eight'];`. The second owner was
+the service validator `annotator/unified_server.py:1932`:
+`            if not isinstance(box, dict) or box.get('label') not in ('person', 'ball', 'cue', 'solid', 'stripe', 'eight'):`,
+which raises `APIError('invalid box label')` at `:1933` (the Chinese sentence stands at
+`annotator/refusals.py:204`). A third copy was dead: `git grep -n "BOX_LABELS" -- .` answered one line,
+`annotator/app.js:111:const BOX_LABELS = ['person','ball','cue','solid','stripe','eight'];`, and nothing
+read it. A fourth, partial copy was `annotator/app.js:117 function ballLabel(label) { return
+['ball','cue','solid','stripe','eight'].includes(label); }`, five of the six words. No test read both
+live copies: the six hits of `git grep -c "box-label\|boxLabel\|box_label" -- tests` are data values, and
+the one case that names label words asserts a fixture against itself at `tests/test_app_timeline.js:1039`.
+
+Repair: `annotator/app.js` owns the console vocabulary as
+`const VOCABULARY = Object.freeze({boxLabels: Object.freeze([...]), ballWords: Object.freeze([...]),
+verdictWords: Object.freeze(['correct','wrong','unsure'])})`, publishes it with
+`Object.defineProperty(window.CornerPocketReview, 'vocabulary', {value: VOCABULARY, enumerable: false})`,
+and `ballLabel` reads `VOCABULARY.ballWords`. The service owns
+`BOX_LABELS = ('person', 'ball', 'cue', 'solid', 'stripe', 'eight')` and
+`VERDICT_WORDS = ('correct', 'wrong', 'unsure')` in `annotator/unified_server.py`, and both validators
+read them (`:1937` and `:2240`). `tests/test_console_vocabulary.py` holds 7 cases, and
+`tests/test_sql_domain_parity.py` binds the migration to `VERDICT_WORDS` now.
+
+### Strong 2 · the verdict vocabulary stood six times, and only the SQL pair was guarded
+
+Ground: `annotator/app.js:1312 function cycleVerdict() { const order = ['correct','wrong','unsure']; ...`;
+`annotator/vision-stage.js:700` (the rail button row) and `:1306` (the draft row) built their buttons
+from the same array; `annotator/index.html:109-111` held three literal buttons (`data-v="correct"`,
+`data-v="wrong"`, `data-v="unsure"`); `annotator/unified_server.py:2235 if "verdict" in p and
+p["verdict"] not in ("correct", "wrong", "unsure"):`; and `db/migrations/0002_user_data.sql:165
+verdict    text CHECK (verdict IN ('correct','wrong','unsure')),`. The guard pair
+`tests/test_sql_domain_parity.py:194-199` tied the migration to the Python validator and named no
+JavaScript file.
+
+Repair: the console reads `VOCABULARY.verdictWords` at all three sites through the late readers
+`const boxLabels = () => window.CornerPocketReview.vocabulary.boxLabels;` and
+`const verdictWords = () => window.CornerPocketReview.vocabulary.verdictWords;` in
+`annotator/vision-stage.js`, so the console page loads `annotator/app.js` before the adapter. The walk's
+own edit that moves one copy only — a fourth word at `annotator/vision-stage.js:700` — now fails
+`tests/test_console_vocabulary.py`.
+
+### Strong 3 · the production port was named in one guard and tested in another
+
+Ground: `tests/smoke_rating_fixture.py:338-339`:
+`    if args.port == 8137 or args.public_port == 8138 or 8130 in (args.port, args.public_port):` and
+`        raise SmokeError('refusing to use the production (8130/8132) or live rating (8137/8138) ports')`.
+The value the message named, `8132`, had one live owner, the drop-in
+`deploy/systemd/pool-workbench.service.d/40-public-board.conf:13`:
+`ExecStart=%h/projects/pool/.venv/bin/python %h/projects/pool/annotator/unified_server.py --port 8130 --public-port 8132 --public-prefix /board`.
+The condition tested one number, so the refusal never fired for the other:
+`.venv/bin/python -c "print(8167 == 8137 or 8132 == 8138 or 8130 in (8167, 8132))"` answered `False`.
+
+Repair: `tests/smoke_rating_fixture.py` holds `DEPLOY_PUBLIC_BOARD`, `LIVE_RATING_PORTS = (8137, 8138)`,
+`deployed_ports(path=DEPLOY_PUBLIC_BOARD)` that reads the two numbers from the drop-in, and
+`refuses_ports(port, public_port, deployed=None)` that refuses either number of the deployed pair or of
+the rating pair, and `main()` raises the message it answers. `tests/test_unit_render.py` holds 3 new
+cases: the fixture reads the drop-in, the refusal covers both deployed numbers plus the rating pair, and
+a planted drop-in moves the refused pair, which proves no copy is left.
+
+### Strong 4 · the default event name was one expression in two languages
+
+Ground: `annotator/operations.py:174-178 def default_name(now=None):` built
+`f'8-Ball Open · {day} {now.month}/{now.day}'` from
+`day = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')[now.weekday()]`, and its own docstring named
+the second owner: "The name the Set up form displays before anyone types one (autoEventName, EN)." That
+owner, `annotator/ops.js:1170 function autoEventName()`, built the same English line from
+`days=['Sun',...]` and a Chinese line from `daysZh=['周日',...]`. The measurement
+`.venv/bin/python -c "import datetime; from annotator.operations import default_name; print(repr(default_name(datetime.datetime(2026,1,1,12,0))))"`
+answered `'8-Ball Open · Thu 1/1'`, and `git grep -c "'Sun'" -- tests` answered no line: no test held the
+format, and the two tests that touch it read the function against itself.
+
+Repair: the served state carries no default name (measured: `annotator/server.py` has no such route or
+field), so the console keeps its own writer and owns the Chinese spelling alone.
+`annotator/ops.js` now holds `autoEventName(now)` with the same optional instant as the Python signature,
+derives `WEEKDAY_EN` and `WEEKDAY_ZH` from one table, and states the decision in a comment.
+`tests/test_ops.js` compares the English answer of both writers on three fixed dates and pins the Chinese
+spelling. The measurement after the repair: Python answers `'8-Ball Open · Thu 1/1'`,
+`'8-Ball Open · Tue 6/30'` and `'8-Ball Open · Thu 12/31'`, and the console answers the same three lines.
+
+### Worth 5 and Worth 6 · the weekday table and the six placeholder names
+
+`Worth 5`: `annotator/ops.js:100` held
+`const WEEKDAYS=[['Sun','周日'],['Mon','周一'],['Tue','周二'],['Wed','周三'],['Thu','周四'],['Fri','周五'],['Sat','周六']];`,
+read by `dayLabel` at `:103`, and `autoEventName` held the same seven words again as two parallel arrays.
+Repair: `const WEEKDAY_EN=WEEKDAYS.map(day=>day[0]),WEEKDAY_ZH=WEEKDAYS.map(day=>day[1]);` at
+`annotator/ops.js:104`, and `git grep -c "daysZh" -- annotator tests` now answers no line.
+
+`Worth 6`: `annotator/operations.py:152 PLACEHOLDER_NAMES = {'na', 'n/a', 'bye', 'tbd', '轮空', '輪空'}`,
+read at `:516` and `:682`, while `annotator/ops.js:1416` held the same six words twice inside one submit
+handler. Repair: `const PLACEHOLDER_NAMES=['na','n/a','bye','tbd','轮空','輪空'],PLACEHOLDERS=new Set(PLACEHOLDER_NAMES);`
+at `annotator/ops.js:108`, read by both checks, and a case of `tests/test_ops.js` compares the six words
+with the Python writer. Two rows of the console seam at `annotator/ops.js:1583` expose the new owners:
+`["PLACEHOLDER_NAMES",()=>PLACEHOLDER_NAMES]` and `["WEEKDAYS",()=>WEEKDAYS]`.
+
+### Worth F · the cache-busting token of one asset stood five times on one line
+
+Ground: `annotator/ops.html:2` held seven tagged loads with three different `vision-stage` numbers
+(`ops.css` and `app.css` at `-52`, `app.js` at `-64`, `vision-stage.js` and `ops.js` at `-68`), and
+`annotator/app.html:8` held `/duration.js?v=duration-1`. The guard `tests/test_ops.js:4676` read
+`/ops\.css\?v=vision-stage-\d+/`, so it accepted any number and compared nothing.
+
+Repair: one new case of `tests/test_ops.js` reads both pages, extracts every `asset?v=token` pair and
+compares each page with a frozen map, so a bump of one token fails in one place. This round moved the
+content of `annotator/app.js`, `annotator/vision-stage.js` and `annotator/ops.js`, so the Lead bumped
+their three tokens to `vision-stage-70` in `annotator/ops.html` and aligned the frozen map. The CSS pair
+kept `vision-stage-52`, because its content did not move.
+
+### Note 7 · a tracked stale copy of the review page stood beside the page
+
+Ground: `git ls-files | grep -i '\.bak'` answered `annotator/index.html.bak`, `git grep -n
+"index.html.bak"` answered nothing, and the file held 147 lines against the 149 of
+`annotator/index.html`. Repair: the file is gone (`e64d99d`).
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Lead, Strong 3 | `tests/smoke_rating_fixture.py` | `6697d6dfd9cf103ea41975bd40fd6375068ec01d → c538d38fc87e31307946fe599a3e7db5ba49fa23 → 6697d6dfd9cf103ea41975bd40fd6375068ec01d` | `AssertionError: unexpectedly None : the fixture must refuse 8132/9002`, and the planted-unit case |
+| Writer P, Strong 1 and 2 | `annotator/vision-stage.js` | `4ae1e515c6e0465456c122a6fd7ac8d4e0ad9a73 → 222c55e33c8b8fbe3ad6fc002ae351df091fe63c → 4ae1e515c6e0465456c122a6fd7ac8d4e0ad9a73` | `AssertionError: "const verdictWords = () => window.Corner[93 chars]a'];" != ... : annotator/vision-stage.js:41 must read the owner, not a literal of its own` |
+| Lead, Strong 1 and 2 | `annotator/unified_server.py` | `2e6cc4ff4a81be42872e42286cc30263f01a8389 → 6adb97f09cd57d08feb29ca3f7b983f80b95cddc → 2e6cc4ff4a81be42872e42286cc30263f01a8389` | `AssertionError: ... : annotator/unified_server.py:81: the word 'eight' of boxLabels is missing` |
+| Writer Q, Worth F | `annotator/ops.html` | `0dc3fba42a82974517c50a9b26f12bb06c954b54 → 5084013148cc1b6cb9ac3550ee3f692538728c1e → 0dc3fba42a82974517c50a9b26f12bb06c954b54` | `AssertionError [ERR_ASSERTION]: ops.html: the frozen token table` |
+| Lead, Worth 6 | `annotator/ops.js` | `c4c97fca1515f59c1dbed5c6709faa54989b6058 → 9b17d6bad5367af85fef1e0a41f04f2d54703047 → c4c97fca1515f59c1dbed5c6709faa54989b6058` | the case `round 57: the six placeholder names are one list, and the python writer holds the same six` (223 tests, 221 pass, 2 fail) |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2026 tests in 179.380s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 223, pass 223, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 102 passed, 0 failed, 75 source-text assertions |
+
+Round 56 answered 2015 cases and this round answers 2026. The named additions are the 7 cases of
+`tests/test_console_vocabulary.py`, the 3 of `tests/test_unit_render.py` and the 4 of
+`tests/test_ops.js`.
+
+### Two process notes of this round
+
+Writer P reconstructed its "before" values with five `git diff <file> | git apply -R --cached` attempts
+(all answered `patch does not apply`) and one `git reset --cached`. Both are write commands against the
+index, and no writer may run a git command that writes. The index stayed empty and no working-tree file
+changed, and the reported sha1 values came from a Python reversal of its own diff. The rule stands: a
+writer reads the HEAD blob with `git show HEAD:<file>` and never writes to the index.
+
+Writer Q reported that the citation `annotator/public_board.py:46 -> annotator/ops.js:853` was already
+stale at HEAD. The measurement says the opposite: at HEAD line 853 held `  return t('navBusy')}` and
+`sideName=` stood at line 866, so the citation was green but named the wrong fact, and writer Q's own
+insertion of about eight lines above it turned the cited line blank. The Lead re-pointed the citation to
+`annotator/ops.js:874`, which repairs both the red test and the older wrong fact. The lesson: a claim
+about a moved line is measured at HEAD, never in the writer's own tree.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The box-label vocabulary has two live owners and two dead copies | Strong 1 of this walk | one owner per language, and `tests/test_console_vocabulary.py` holds the two languages together |
+| The verdict vocabulary stands six times | Strong 2 of this walk | the console reads the frozen object, the service reads two named tuples, and the migration pair reads `VERDICT_WORDS` |
+| The production port is named in one guard and tested in another | Strong 3 of this walk | the fixture reads the drop-in and refuses both numbers of the deployed pair |
+| The default event name is one expression in two languages | Strong 4 of this walk | the decision is stated, `autoEventName(now)` mirrors the Python signature, and a case compares the English answer on three dates |
+| The weekday table stands twice in one file | Worth 5 of this walk | `WEEKDAY_EN` and `WEEKDAY_ZH` derive from `WEEKDAYS` |
+| The six placeholder names stand three times | Worth 6 of this walk | one console array, compared with `PLACEHOLDER_NAMES` of the Python writer |
+| The cache-busting token stands five times with no comparison | Worth F of this walk | a frozen map per page, and the three moved assets carry one new token |
+| A tracked stale copy of the review page sits beside the page | Note 7 of this walk | deleted in `e64d99d` |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The atomic JSON write stands as a nested `def` in five modules | Worth E of the round-56 walk, held for round 58 | `src/store.py:180`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:307`, `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule; the brief is ready at `/tmp/dshsess/brief_r57_writerE.md` |
+| The vocabulary guard reads two vocabularies only | limit of this round | `tests/test_console_vocabulary.py` holds the box labels and the verdict words, and it never reads `annotator/ops.js` |
+| The two node suites have no name entry in the inventory guard | limit of this round | `tests/test_suite_inventory.py` counts the python modules, so a new javascript case is visible in `node` output only |
+| The console modules and their suites are read by grep only | limit of this round | `annotator/app.js`, `ops.js`, `vision-stage.js` (about 570 KB) and the three `.js` suites, with the `.css` files of `annotator/` |
+| A walk cannot see inside `src/sam3/`, `viz/` and most of `docs/` | limit of this round | `src/sam3/` through four import lines, `viz/` and about 30 files of `docs/`, and `db/migrations/0003_json_documents.sql` |
+| The twenty-two `_do_*` methods of the operations layer | limit of this round | no walk read a method body of `annotator/operations.py` |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:200`, `tests/test_calib_mapping_audit.py:191` |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The colour guard writes a file into `src/` while it runs | limit of round 56 | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally`, so a killed run leaves the file |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
+| The store walk cannot see an edit inside the owner | limit of round 56 | measured by the negative bite of writer L; only the call-site case covers `src/store_rules.py` |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, 23 call sites, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats`, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and `deploy/systemd/pool-workbench.service.d/30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119`, `src/pid_associate.py:182`; readers `annotator/server.py:59`, `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` at 20 sites, `30.0003` at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as this round measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+
+The push is still blocked. Fifty-five commits sit on the local `main`: the four code commits of this
+round, the record of this round, and the fifty that came before them. `origin/main` stays at `110b0338`.
+The one user action stays `git -C /home/haoye/projects/pool push origin main`.
