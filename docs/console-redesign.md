@@ -6468,3 +6468,250 @@ about a moved line is measured at HEAD, never in the writer's own tree.
 The push is still blocked. Fifty-five commits sit on the local `main`: the four code commits of this
 round, the record of this round, and the fifty that came before them. `origin/main` stays at `110b0338`.
 The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 58 · two cosines, two palettes, four escapes, six writers (2026-10-11)
+
+The walk of this round read the repository at `889dce6` with an empty `git status --porcelain`,
+answered `Strong candidate present - 5 Strong, 4 Worth, 2 Note`, and wrote 148 lines to
+`/tmp/dshsess/walk_round58.md`. The count on its verdict line equals the number of its sections. It read
+the class bodies and the nested `def`s the last round left, the two stylesheets, and the case bodies it
+named. It did not read the body of `scripts/pool-render-units.sh`, the four modules of `tools/`, `viz/`,
+the 43 files of `docs/` (17458 lines), `src/sam3/`, the twenty-two `_do_*` methods of
+`annotator/operations.py`, and the case bodies of the three console suites outside the lines it named.
+Its own words: the eleven sections are a floor, not a census.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `26e1a0e` | `src/face_id.py`, `src/eval_faces.py`, `tests/test_face_cosine.py` | Strong 1 |
+| `d72d1e1` | `src/scan_args.py`, `src/motion_scan.py`, `src/track_before_detect.py`, `tests/test_scan_args.py` | Strong 5 |
+| `00eb6d1` | `annotator/ops.css`, `annotator/board.css`, `tests/test_palette_contrast.py` | Strong 2 |
+| `b8a70f8` | `src/atomic_write.py`, `tests/test_one_atomic_write.py` | Worth E, part one: the bytes of a document and the guard |
+| `8e9c6e2` | `src/store_files.py`, the five writers, `tests/test_one_atomic_write.py` | Worth E, part two: the five bodies render with the owner |
+| `9268c86` | `annotator/app.js`, `ops.js`, `vision-stage.js`, `clock-sync.js`, `operations.py`, `refusals.py`, `tests/test_ops.js`, `test_app_timeline.js`, `test_guest_name.py` | Strong 3, Strong 4, Worth 6, 7, 8, 9 and Note 11 |
+| `01a8372` | `src/store.py`, `src/store_files.py`, `annotator/unified_server.py`, `annotator/duration.js`, `src/store_rules.py`, `tests/test_store_merge_rules.py`, `tests/test_atomic_write.py`, `tests/test_one_atomic_write.py` | the repair of the Lead: one document write, and the citations that moved |
+| `c4f5645` | `tests/arg_contract.py`, `tests/test_arg_contract.py` | the repair of the Lead: the rule counts a shared adder |
+
+### Strong 1 · the cosine of two face embeddings stood in two modules
+
+Ground: `src/face_id.py:203 def _cosine(a, b):` and `src/eval_faces.py:229 def _cos(a, b):` held one
+body, and the two bodies differed by the spelling `0.0` against `0` only, so the duplicate-body walk read
+two digests (`8c320387769a` against `5001c90e0ae1`) and reported nothing.
+
+Repair: `src/face_id.py` owns the body, and `src/eval_faces.py:56` reads
+`_cosine as _cos,  # the one home of the face cosine; this module holds no copy`. The import direction
+already stood (`src/eval_faces.py:51 from src.face_id import (...)`), so no new module was needed.
+`tests/test_face_cosine.py` holds 5 cases: a fixed corpus with a zero vector on each side, a zero-length
+list, a negative pair and nested lists; one case per module that it reads the owner; one walk that fails
+on a second body of this shape even under another name; and one planted copy.
+
+### Strong 2 · the operators' colour palette was declared twice
+
+Ground: `annotator/ops.css:7` opened the one token source ("app.css keeps no palette of its own"), and
+`annotator/board.css:19` declared twenty of the same names with the same values. The guard
+`tests/test_palette_contrast.py` read `ops.css` (`:37-40`) and `app.css` (`:70-74`) and never read
+`board.css`.
+
+Repair: the writer measured the deploy first and found that option one is impossible:
+`annotator/unified_server.py:107 BOARD_ROUTES = ('/display', '/board.js', '/board.css')`, `:2571
+BOARD_FILES = {"/": "board.html", "/board.js": "board.js", "/board.css": "board.css", ...}` and `:2608`
+("GET/HEAD of BOARD_FILES and /api/board, nothing else"), so the public port does not serve `ops.css`.
+The two files are a held pair now: both comments name the owner, both files keep their line count (1344
+and 186, because documents cite them by line), and the guard reads both and fails with the name, the two
+values and the two sites. The new case that reads the `<link>` list of `board.html` decides the shape: a
+lost copy must make the page load the owner, and a kept copy must not.
+
+### Strong 3 · the HTML escape rule stood four times
+
+Ground: `annotator/app.js:17`, `annotator/ops.js:8`, `annotator/vision-stage.js:291` and
+`annotator/board.js:73` held the same rule (`/[&<>"']/g` and the five entities), and no case compared
+them.
+
+Repair: one owner per page realm, because the measurement shows the pages do not share a module
+(`annotator/ops.html` loads duration.js, app.js, vision-stage.js, ops.js and clock-sync.js in that order;
+`annotator/app.html:8-9` loads duration.js and app.js; `annotator/board.html:13` loads only
+`./board.js`). `annotator/app.js` publishes `window.ConsoleRules = {esc, jsonHeaders}` (line 2391) and
+the two console readers call it late. `annotator/board.js:73` keeps the board realm's one copy, and a
+case compares the two realm answers on `&<>"'`, a sentence with quotes, empty, `null`, `undefined`, `-0`,
+`false` and an attack string. The measurement after the repair:
+`grep -rn "\[&<>\"'\]" annotator/*.js annotator/*.html` answers two sites, the owner and the board.
+One lesson stands in the round: the first shape published the seam on `window.CornerPocketReview` and
+broke six cases with `TypeError: window.CornerPocketReview.esc is not a function`, because about twenty
+cases replace that handle with their own stub. The engine handle is a driver seam, and a shared rule
+seam must be separate.
+
+### Strong 4 · the Chinese UI vocabulary had two owners
+
+Ground: `annotator/app.js:2114 const editorCopy = {` and `annotator/vision-stage.js:42 const COPY = {`
+held 113 keys, 299 distinct Chinese values and 34 shared values, and the guard
+`tests/test_app_timeline.js:338-341` parsed the adapter's table only.
+
+Repair: the writer measured the two key spaces first (the engine keys are English sentences, the adapter
+keys are camelCase slot names). The measurement: the adapter holds 312 Chinese slots, 23 of them share a
+value with the engine, 289 engine values stay English, and no shared slot disagrees. A merge is unsafe,
+so one table answers per realm and a case holds the two: `tests/test_app_timeline.js:3889` compares every
+shared slot and prints the slot name, the English key and both Chinese values on a failure.
+
+### Strong 5 · the four move-scan argparse options stood twice
+
+Ground: `src/motion_scan.py:2438 def common(p):` and `src/track_before_detect.py:643 def common(p):` held
+one body (`--video`, `--dataset`, `--out-dir`, `--quad`), and the two helpers are nested, so the
+duplicate-body walk never read them.
+
+Repair: `src/scan_args.py` holds `add_scan_options(p)` with the four defaults of the day, and both tools
+call it (five subcommands of `src.motion_scan.py` and two of `src/track_before_detect.py`). The two
+imports are inside `build_parser` on purpose: one more line above line 71 of `src/motion_scan.py` would
+move the comment that `src/ball_gate.py:44` cites. `tests/test_scan_args.py` holds 9 cases: a source walk
+over the three modules, the four options with their defaults, the seven subcommands, a planted copy, a
+missing option, a fifth option, a changed default and the `--out-dir` bytes.
+
+### Worth 6 to Worth 9, and Note 11
+
+`Worth 6`: the pair of results that close a match stood at `annotator/ops.js:138`, `:1136`, `:1167` and
+`:1171`, while `annotator/operations.py:159 MATCH_RESULTS = ('played', 'forfeit', 'bye')` owns it.
+Repair: `const SIGNED_RESULTS=['played','forfeit'];` at `annotator/ops.js:889`, five readers, and a case
+that reads the Python tuple as text.
+
+`Worth 7`: the shot-timer presets stood twice (`annotator/ops.js:917` and `:932`), and the default 30
+stood at `annotator/ops.js:873` and `annotator/clock-sync.js:111`. Repair:
+`const SHOT_PRESETS=[20,30,45,60],SHOT_DEFAULT=30;` at `annotator/ops.js:882`, read by both renderers,
+and one documented page-less fallback in `annotator/clock-sync.js`.
+
+`Worth 8`: the 120-character name bound stood as a literal at six sites of `annotator/operations.py`
+(`:549`, `:565`, `:670`, `:765`, `:978`, `:1143`) and as five `maxlength="120"` fields of
+`annotator/ops.js`, with no owner and no guard. Repair: `annotator/refusals.py:56 NAME_TEXT_MAX = 120`
+(the name does not end in `NAME_MAX`, because `tests/test_guest_name.py` reserves that ending), read by
+the six Python sites, and a new case of that module (10 cases become 11) holds the Python constant and
+the five console fields together.
+
+`Worth 9`: the JSON content-type header stood as a literal at thirteen sites. Repair: `JSON_HEADERS`
+(`Object.freeze`) and `jsonHeaders()` in `annotator/app.js`, published on `window.ConsoleRules`, read by
+the ten javascript sites (with one documented page-less copy in `annotator/clock-sync.js`); the four
+markup sites keep the string and a case compares them with the owner.
+
+`Note 11`: `tests/test_ops.js:3881` guarded `ERROR_MS` with `/ERROR_MS = \d+/`, which accepts any
+number. Repair: the weak case is gone, `annotator/clock-sync.js` exports `ERROR_MS`, and a case drives
+the failure path, reads the number the document states (`ERROR_MS = 6000`), fires the armed timer and
+proves the sentence clears. The bite that changed the number to 5000 still passed the old pattern and
+failed the new case.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer F, Strong 1 | `src/face_id.py` | `50c62322e9efb0f602d9c21d6471d400c3721c34 → 9622ae08c5610de3ac53a42688e58e18a8a3796b → 50c62322e9efb0f602d9c21d6471d400c3721c34` | 6 cases, among them `AssertionError: 1.0 != 0.0 within 6 places (1.0 difference) : a zero-length list on the left: the answer must be 0.0` |
+| Lead, Strong 1 | `src/eval_faces.py` | `174ceec67f7170ee23639970d89a4d697e670ae7 → d2c445187821cceccdc543efef003b33bc798b8f → 174ceec67f7170ee23639970d89a4d697e670ae7` | `AssertionError: 1 != 2 : the body of _cosine stands in 2 sites of src/: src/eval_faces.py:1144 _cos_again, src/face_id.py:203 _cosine` |
+| Writer G, Strong 2 | `annotator/ops.css` | `43a8d51334a69d27a3cfb3b70a6bcf30694fc682 → fbfdf20fb0e15f1c104aa8d44338b6063f872787 → 43a8d51334a69d27a3cfb3b70a6bcf30694fc682` | three cases, among them `the board copy disagrees with annotator/ops.css: brass: the board holds #cca632 at annotator/board.css:19, the owner holds #cca631 at annotator/ops.css:7` |
+| Lead, Strong 2 | `annotator/board.css` | `da9f54afd347b6710558e917a731cd25c8a3d036 → 2ab54edbe7438263848052678dc38a705bb4c751 → da9f54afd347b6710558e917a731cd25c8a3d036` | `the board copy disagrees with annotator/ops.css: brass: the board holds #cca631 at annotator/board.css:19, the owner holds #cca632 at annotator/ops.css:7` |
+| Writer H, Strong 5 | `src/scan_args.py` | `f803c551624a92347675a32ebdf0239ff6065ca9 → 9a09fa2436f2a474973abffe07222c2e745dc569 → f803c551624a92347675a32ebdf0239ff6065ca9` | 8 cases, among them `Lists differ: [] != ["src/scan_args.py:28 add_scan_options adds --dataset with the default 'vod31', and the pinned default is 'vod30'"]` |
+| Lead, Strong 5 | `src/scan_args.py` | `f803c551624a92347675a32ebdf0239ff6065ca9 → 0f0d89e0a511f992addd0ab1003a7944850bfae4 → f803c551624a92347675a32ebdf0239ff6065ca9` | the seven parser cases, each `src.motion_scan scan answers {...}` without `--quad` |
+| Writer I, Note 11 | `annotator/clock-sync.js` | `52550fd92a2faeaeab4aa3d3afeffb417f248807 → e1b1d0592c49383322a402906ee78ced476bfc8f → 52550fd92a2faeaeab4aa3d3afeffb417f248807` | `AssertionError [ERR_ASSERTION]: the module holds the time the note documents`, `5000 !== 6000`; the old pattern still answered true |
+| Lead, Strong 3 and 4 | `annotator/ops.js` | `f7badad0aaaadbdcbe542bde31886ff4d64057c3 → 482f54f80da9eda16417f388eb3a67f8cb07cd63 → f7badad0aaaadbdcbe542bde31886ff4d64057c3` | `✖ the console signs the results the service states, and the bye stays a bye` (228 tests, 227 pass) |
+| Writer J, Worth E | `src/store.py` | `5c0591e4ec2366277c771c93bf920f16e428607c → 3b9d4b548f3dc659e0af15788a0c108345d38f46 → 5c0591e4ec2366277c771c93bf920f16e428607c` | four reds, among them `AssertionError: Lists differ: [] != ['src/store.py:180 _write (temp line 192, rename line 195)']` |
+| Lead, Worth E | `annotator/shot_clock.py` | `8c4db8a903bff23522cbf6995a449809a3d1752a → 683d644cadbacfab24e8ef8a8f5e8dec897c0a0b → 8c4db8a903bff23522cbf6995a449809a3d1752a` | `AssertionError: ... : the body must not build the text with json.dump of its own` |
+| Lead, the document owner | `src/store_files.py` | `6b3b7bb7f1f67e7a79209c12bbd917640773310a → e2971baa96bd9c791417bb4b3acb0d5cebf5baca → 6b3b7bb7f1f67e7a79209c12bbd917640773310a` | `AssertionError: True != False : src.store_files.save_document: fsync called 0 times, and this site is durable` |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2070 tests in 157.581s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 228, pass 228, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 103 passed, 0 failed |
+
+Round 57 answered 2026 cases and this round answers 2070. The named additions are the 25 cases of
+`tests/test_one_atomic_write.py`, the 9 of `tests/test_scan_args.py`, the 5 of
+`tests/test_face_cosine.py`, the 3 of `tests/test_palette_contrast.py`, one new case of
+`tests/test_guest_name.py` and one of `tests/test_arg_contract.py`; the node suite gained 5 cases and the
+timeline suite one.
+
+### Three process notes of this round
+
+Writer J stopped at the right boundary. Its target, one home for the bytes of a document, was blocked by
+an existing guard: `tests/test_store_files.py:262-272` refuses the name of a format in every file except
+the owner, and `store_files.dump(value, fmt)` needs a format name. It delivered the guard and the
+docstring instead of a broken tree. The Lead added `dump_document(value)` to the owner, and then the
+duplicate-body walk reported the two identical wrappers that the first repair left, so the store's five
+call sites moved to `save_document(path, value)` in the owner, and the two guards that pin each site's
+own `write_atomic` call follow that name now.
+
+The brief of writer H did not name `tests/test_arg_contract.py`, so its consolidation of the four
+options broke that guard in the full run only: four flags stood in `src/scan_args.py` and the two tools
+read flags that they do not declare. The rule now knows a shared adder (`SHARED_ADDERS`), skips the
+forward direction for it, counts its declarations in every caller, and holds the new case. The lesson
+stands: a brief that moves a declaration must name the guard of the declaration.
+
+Two of the red modules that writers H and G reported were not their own work. The duplicate pair was the
+repair of the Lead (`01a8372`), and the citations into `src/enroll_from_tracklet.py` moved when writer J
+inserted an import in its in-flight tree; the citations that writer I's shift broke
+(`annotator/duration.js:4` and `:8`) were re-pointed in the same commit, and the citation into
+`src/store.py` that the store's own change moved (`src/store_rules.py:54`, `:79` and
+`tests/test_store_merge_rules.py:8`) with it.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The cosine of two face embeddings stands twice | Strong 1 of this walk | `src/face_id.py` owns the body and the reader imports it |
+| The operators' colour palette is declared twice | Strong 2 of this walk | the two files are a held pair, and the guard reads both |
+| The HTML escape rule stands four times | Strong 3 of this walk | one owner per realm, and a case compares the two realms |
+| The Chinese UI vocabulary has two owners | Strong 4 of this walk | one table per realm, with a case over the 23 shared slots |
+| The four move-scan options stand twice | Strong 5 of this walk | `src/scan_args.py` owns them, and the rule counts a shared adder |
+| The signed-result pair stands four times | Worth 6 of this walk | one console constant, compared with the Python tuple |
+| The shot-timer presets stand twice | Worth 7 of this walk | one preset list and one default |
+| The 120-character name bound has no owner | Worth 8 of this walk | `NAME_TEXT_MAX` in the refusals module, and a case over both layers |
+| The content-type header is a literal at thirteen sites | Worth 9 of this walk | one console owner, and a case over the four markup sites |
+| One comment constant is guarded by any number | Note 11 of this walk | a behavioural case reads the number the document states |
+| The atomic JSON write stands as a nested `def` in five modules | Worth E of the round-56 walk, held for round 58 | the bytes have one owner (`dump_document`) and the write has one home (`save_document`) |
+| `src/store_files.py` refuses a format name elsewhere | the block of writer J | the owner answers the bytes without a name, so a writer needs no name |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The palette stays a held pair | decision of this round | the public port serves `board.html`, `board.js` and `board.css` only (`annotator/unified_server.py:107`, `:2571`, `:2608`), so a deploy change that serves `ops.css` would allow one source |
+| The third console copy table stands beside the two guarded ones | Note 10 of this walk | `annotator/ops.js:9` holds 262 word pairs and four extending statements, and the case of Strong 4 reads the adapter and the engine only |
+| The escape rule keeps one copy per realm | decision of this round | the console realm and the board realm do not share a module, so a case holds the two answers equal |
+| The Chinese tables keep 289 English-only engine values | limit of this round | the merge is unsafe by measurement; the case holds the 23 shared slots and proves no conflict |
+| The four markup content-type sites are held by text only | limit of this round | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of this round | `annotator/unified_server.py:1867 event_clip` writes `tmp = name.with_suffix('.part.mp4')` at `:1891` and renames at `:1893`; an external encoder writes those bytes, so no rule sees it |
+| The tenth writer stays deferred | limit of round 58, recorded in `tests/test_atomic_write.py` | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of this round | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The scan walk reads a literal option name only | limit of this round | a fourth module that copies the four options is found only after `WALKED` grows |
+| The two node suites have no name entry in the inventory guard | limit of round 57 | `tests/test_suite_inventory.py` counts the python modules |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The colour guard writes a file into `src/` while it runs | limit of round 56 | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
+| The store walk cannot see an edit inside the owner | limit of round 56 | measured by the negative bite of writer L; only the call-site case covers `src/store_rules.py` |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, 23 call sites, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats`, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and `deploy/systemd/pool-workbench.service.d/30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119`, `src/pid_associate.py:182`; readers `annotator/server.py:59`, `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` at 20 sites, `30.0003` at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 and 58 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections | limit of round 56 | the round-57 and round-58 walks answer equal counts, and the rule stands in their briefs |
+
+The push is still blocked. Sixty-four commits sit on the local `main`: the seven code commits and the two
+repair commits of this round, the record of this round, and the fifty that came before them. `origin/main`
+stays at `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
