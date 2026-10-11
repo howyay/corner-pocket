@@ -18,7 +18,7 @@ Legend: **Intended** = meaningful product behavior to implement using real state
 - [ ] Persist preferences explicitly. Prototype theme/lang and business state only live in memory; “v{v} saved locally” is not persistence.
 - [ ] Never use hardcoded “Live”, “Table 3”, event names or frame counts as health/status evidence.
 
-Editor-only configuration (713): clothColor default `#1d5c44`, options `#1d5c44/#1f4a70/#6a2130/#2f3a3f`; lampGlow default .22, 0–.5 step .02; showDiamonds true; raceTo default7, range1–11; shotClock default45, range10–120 seconds; startLang en/zh; startTheme dark/light. These were not six extra settings screens.
+Editor-only configuration (713): clothColor default `#1d5c44`, options `#1d5c44/#1f4a70/#6a2130/#2f3a3f`; lampGlow default .22, 0–.5 step .02; showDiamonds true; raceTo default7, range1–11; shotClock default 30, range 5–300 seconds, presets 20/30/45/60 (`annotator/shot_clock.py` owns MIN_DURATION, MAX_DURATION and DEFAULT_DURATION; the prototype's 45 and 10–120 differed); startLang en/zh; startTheme dark/light. These were not six extra settings screens.
 
 ## 2. Floor: scorekeeping, clock, table queue (137–309, 1092–1103, 1132–1158, 1200–1382, 1732–1765, 1903–1983)
 
@@ -44,7 +44,7 @@ Editor-only configuration (713): clothColor default `#1d5c44`, options `#1d5c44/
 - [ ] State survives tab changes. State its scope accurately: device-local persisted deadline, or implement server-synchronized shared timer. Do not imply synchronization unless present.
 - [ ] Cancel timers on teardown; refreshing/backgrounding must not create extra time.
 
-Prototype: start blocks absent focus; running Start pauses; Reset uses `restartClock` and starts full-duration countdown (1357–1371), unlike passive `resetClock`; shot duration change stops/reset/logs. Countdown interval180ms; no auto foul, auto shot detection or per-shot automatic start. Default45 seconds may differ from rendered options.
+Prototype: start blocks absent focus; running Start pauses; Reset uses `restartClock` and starts full-duration countdown (1357–1371), unlike passive `resetClock`; shot duration change stops/reset/logs. Countdown interval180ms; no auto foul, auto shot detection or per-shot automatic start. The prototype default of 45 seconds differed from the rendered options; `annotator/shot_clock.py` owns the three numbers today.
 
 ### Queue / absence / scheduling
 
