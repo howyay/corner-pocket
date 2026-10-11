@@ -1,8 +1,8 @@
-"""One home for the shipped package tree and for the dotted-name reader.
+"""One home for the shipped package tree and for the two test-tree readers.
 
-Round 61 measured two duplications in this tree, and neither one is visible to
-``tests/test_duplicate_bodies.py``: that walk reads the source trees of ``src/``
-and ``annotator/`` only.
+Round 61 measured two duplications in this tree, and round 69 measured a third,
+and none of the three is visible to ``tests/test_duplicate_bodies.py``: that walk
+reads the source trees of ``src/`` and ``annotator/`` only.
 
 1. The package tree this repository ships was declared four times by hand, in
    four orders and two quoting styles, and the scanner over it stood twice.
@@ -13,13 +13,20 @@ and ``annotator/`` only.
    one body.  ``tests/_shipped.py`` is the one home now, and the four guards read
    ``dotted_name`` from it.
 
-The cases below hold the two homes in place:
+3. The reader of the string literals of a tree stood twice, at
+   ``tests/test_events_document.py`` and ``tests/test_sam3_artifact.py``, and the
+   two bodies were one body, byte for byte.  ``tests/_shipped.py`` is the one home
+   now, and the two guards read ``code_strings`` from it.
+
+The cases below hold the three homes in place:
 
 * the four modules of the tree read the owner name, and none of them declares
   the tree again;
-* no ``test_*.py`` file defines ``shipped_modules`` or ``_dotted``, apart from
-  the module the walk excludes;
+* no ``test_*.py`` file defines ``shipped_modules``, ``_dotted`` or
+  ``_code_strings``, apart from the module the walk excludes;
 * a planted copy, in a file named ``test_*.py``, makes the walk report that file;
+* the code-string reader drops the docstrings of a tree and keeps every other
+  literal, with its line;
 * the expressions the guards read keep their one answer, and the recursive
   reader and the stack reader agree on every ``Call`` of the test tree.
 
@@ -60,9 +67,16 @@ DOTTED_READERS = (
     'test_sam3_artifact.py',
 )
 
+#: The two modules that held a copy of the code-string reader until round 69, and
+#: the name the walk of the guard reads.
+CODE_READERS = (
+    'test_events_document.py',
+    'test_sam3_artifact.py',
+)
+
 #: The names with one home.  A ``test_*.py`` file that defines one of these names
 #: holds a second copy of a reader, and the walk reports that file.
-WATCHED = ('shipped_modules', '_dotted')
+WATCHED = ('shipped_modules', '_dotted', '_code_strings')
 
 
 def function_defs(path: Path):
@@ -112,7 +126,7 @@ def chain_root(node: ast.AST) -> ast.AST:
 
 
 class OneHomeTest(unittest.TestCase):
-    """The two readers of tests/_shipped.py have one home each."""
+    """The three readers of tests/_shipped.py have one home each."""
 
     def test_the_four_tree_readers_import_the_tree(self):
         """Each former site names the owner, and none of them spells it again."""
@@ -137,6 +151,17 @@ class OneHomeTest(unittest.TestCase):
             self.assertNotIn('\ndef _dotted(', text,
                              f'{name} must not declare the dotted-name reader a second time')
 
+    def test_the_two_code_readers_import_the_reader(self):
+        """Each former site names the owner, and none of them spells the body again."""
+        for name in CODE_READERS:
+            path = TESTS / name
+            self.assertTrue(path.is_file(), f'the reader of the code strings must exist: {path}')
+            text = path.read_text(encoding='utf-8')
+            self.assertIn(f'from {HELPER} import code_strings', text,
+                          f'{name} must read the code strings from {HELPER}.py')
+            self.assertNotIn('\ndef _code_strings(', text,
+                             f'{name} must not declare the code-string reader a second time')
+
     def test_no_test_module_holds_a_second_copy(self):
         """The walk of tests/*.py reports no second copy of a watched reader."""
         found = scanned_nodes(TESTS)
@@ -154,6 +179,34 @@ class OneHomeTest(unittest.TestCase):
                          f'the walk must report the planted name: {found}')
         self.assertEqual(found['shipped_modules'], ['test_planted_copy.py:4'],
                          f'the walk must report the file and the line of the copy: {found}')
+
+    def test_the_walk_reports_a_planted_code_reader(self):
+        """A planted copy of the code-string reader is reported, with its line."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            planted('_code_strings', root / 'test_planted_code_copy.py')
+            found = scanned_nodes(root)
+        self.assertEqual(list(found), ['_code_strings'],
+                         f'the walk must report the planted name: {found}')
+        self.assertEqual(found['_code_strings'], ['test_planted_code_copy.py:4'],
+                         f'the walk must report the file and the line of the copy: {found}')
+
+    def test_the_code_reader_drops_docstrings_and_keeps_every_other_literal(self):
+        """The one answer of the reader the two code guards depend on.
+
+        The two guards compare each literal with a list of paths they own, so the
+        reader answers the value as written and never the text it would format.
+        """
+        from _shipped import code_strings
+        tree = ast.parse('"""Module docs."""\n'
+                         'def f():\n'
+                         '    """Call docs."""\n'
+                         '    return "kept", "out/scan30/kept.json"\n')
+        self.assertEqual([line for line, _ in code_strings(tree)], [4, 4],
+                         'the answer holds one site for each literal, and no docstring')
+        self.assertEqual([text for _, text in code_strings(tree)],
+                         ['kept', 'out/scan30/kept.json'],
+                         'the two docstrings are dropped, and the values come back as written')
 
     def test_the_readers_keep_the_names_the_guards_read(self):
         """The one answer of each expression the four guards depend on."""

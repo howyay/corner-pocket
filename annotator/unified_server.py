@@ -90,6 +90,15 @@ LIVE_ACTIONS = ('start', 'stop')
 #: the operator draws; the verdict list is the three review words.
 BOX_LABELS = ('person', 'ball', 'cue', 'solid', 'stripe', 'eight')
 VERDICT_WORDS = ('correct', 'wrong', 'unsure')
+#: The longest note one annotation keeps.  This module owns the number, because the
+#: route `_route_annotate` refuses a longer note and the store class reads no bound.
+#: db/migrations/0002_user_data.sql states the same number for the database in the
+#: event_verdicts CHECK (``CHECK (length(note) <= 10000)``), so the two sides of one rule
+#: stand in two languages.  SQL cannot import Python, and the bounds table of
+#: tests/test_sql_domain_parity.py holds the migration text to this name.  The name ends
+#: in MAX and not in NAME_MAX: tests/test_guest_name.py reserves that ending for a guest
+#: name alone, and a note is not one.
+ANNOTATION_NOTE_MAX = 10000
 #: The ball label table, wire side.  ``-1`` is the wire value of the stored word ``"u"``
 #: (unknown), and three wire values clear the row: ``null``, ``"clear"`` and ``-2``.
 #: Every other plain number is a cue number and is stored as itself.  annotator/app.js
@@ -2279,7 +2288,7 @@ class Backend:
             raise APIError("invalid verdict")
         if "shooter" in p and p["shooter"] not in ("A", "B", "?", ""):
             raise APIError("invalid shooter")
-        if "note" in p and (not isinstance(p["note"], str) or len(p["note"]) > 10000):
+        if "note" in p and (not isinstance(p["note"], str) or len(p["note"]) > ANNOTATION_NOTE_MAX):
             raise APIError("invalid note")
         # merge + updated_at, one locked read-modify-write in the store
         record = self.store().verdict_put(parts[1], key, {k: p[k] for k in ("verdict", "note", "shooter") if k in p})

@@ -13,7 +13,8 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from annotator.unified_server import (ABSENT, APIError, BALL_LABEL_CLEARED_WIRE,
+from annotator.unified_server import (ABSENT, ANNOTATION_NOTE_MAX, APIError,
+                                      BALL_LABEL_CLEARED_WIRE,
                                       BALL_LABEL_UNKNOWN_STORED, BALL_LABEL_UNKNOWN_WIRE,
                                       Backend, BOARD_FONTS, Cache, CLIP_FLOOR_S,
                                       _MAX_ENROLL_BODY_BYTES, _MAX_POST_BODY_BYTES,
@@ -86,6 +87,22 @@ class BackendTests(unittest.TestCase):
         for payload in ({"event_id": 9}, {"event_id": 1, "verdict": "bad"}, {"event_id": 1, "shooter": "C"}):
             with self.assertRaises(APIError):
                 self.backend.post(["api", "vod30", "annotate"], payload)
+
+    def test_an_annotation_note_at_the_bound_is_kept_and_a_longer_one_is_refused(self):
+        """The note bound of one annotation holds at the last character and one past it.
+
+        The route refuses a longer note with the service constant ANNOTATION_NOTE_MAX, and
+        db/migrations/0002_user_data.sql holds the same number in its CHECK.  The parity
+        guard binds the two, and this case drives the route at both ends of that rule.
+        """
+        at_bound = "n" * ANNOTATION_NOTE_MAX
+        self.backend.post(["api", "vod30", "annotate"], {"event_id": 1, "note": at_bound})
+        stored = self.backend.get(["api", "vod30", "events"], ReadQuery({}))
+        self.assertEqual(at_bound, stored["annotations"]["1"]["note"],
+                         "the route keeps a note of exactly the bound")
+        with self.assertRaisesRegex(APIError, "invalid note"):
+            self.backend.post(["api", "vod30", "annotate"],
+                              {"event_id": 1, "note": "n" * (ANNOTATION_NOTE_MAX + 1)})
 
     def test_event_geometry_projects_millimetres_into_frame_pixels(self):
         # The stage draws in frame pixels, the scan stores canonical millimetres:

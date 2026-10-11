@@ -1,6 +1,7 @@
-"""The two readers the test tree shares: the shipped package tree, and a dotted name.
+"""The three readers the test tree shares: the shipped package tree, a dotted name,
+and the string literals of a tree.
 
-Round 61 measured two duplications in this tree.
+Round 61 measured two duplications in this tree, and round 69 measured a third.
 
 1. The package tree this repository ships was declared four times by hand, in
    four orders and two quoting styles: ``tests/test_shot_clock.py``,
@@ -15,14 +16,20 @@ Round 61 measured two duplications in this tree.
    ``tests/test_sam3_artifact.py``.  Three of the four bodies were the recursion
    below; the fourth walked the same chain with a stack.
 
-Both readers have one home here.  The four guards of the package tree read
-``SHIPPED`` and ``shipped_modules`` from this module, and the four guards of the
-dotted name read ``dotted_name`` from it.  Each caller keeps its own scope: it
+3. The reader of the string literals of a tree stood twice, and the two bodies were
+   one body: ``tests/test_events_document.py`` and ``tests/test_sam3_artifact.py``.
+   A change to the docstring rule of one copy alone left the other copy reading an
+   old rule.
+
+All three readers have one home here.  The four guards of the package tree read
+``SHIPPED`` and ``shipped_modules`` from this module, the four guards of the
+dotted name read ``dotted_name`` from it, and the two guards of the string
+literals read ``code_strings`` from it.  Each caller keeps its own scope: it
 adds the file kinds and the exclusions its own rule needs.
 
-``tests/test_duplicate_bodies.py`` cannot see either duplication: it reads the
-source trees of ``src/`` and ``annotator/`` only.  The guard of this rule is
-``tests/test_one_shipped_tree.py``, which walks ``tests/*.py``.
+``tests/test_duplicate_bodies.py`` cannot see any of the three duplications: it
+reads the source trees of ``src/`` and ``annotator/`` only.  The guard of this
+rule is ``tests/test_one_shipped_tree.py``, which walks ``tests/*.py``.
 
 The name starts with an underscore on purpose.  Discovery reads ``test_*.py``
 files only, so this module is a helper and not a suite.
@@ -54,6 +61,31 @@ def shipped_modules() -> list[Path]:
     call site: one scope stays one scope."""
     return sorted(path for name in SHIPPED for path in (ROOT / name).rglob('*.py')
                   if '__pycache__' not in path.parts)
+
+
+def code_strings(tree: ast.AST) -> list:
+    """(line, text) for every string literal of a tree that is not a docstring.
+
+    Round 69 found this body twice, byte for byte, at
+    ``tests/test_events_document.py`` and ``tests/test_sam3_artifact.py``.  Both
+    callers read the literals of a source module and compare them with a list of
+    paths they own, so both of them read this answer and nothing else.
+
+    A docstring is the first statement of a module, a class or a function, and it
+    is a constant of type ``str`` like any other literal.  The set below holds the
+    identity of each one, so the answer drops them.
+    """
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(node, 'body', [])
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                docstrings.add(id(body[0].value))
+    return [(node.lineno, node.value) for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            and id(node) not in docstrings]
 
 
 def dotted_name(node: ast.AST) -> str:

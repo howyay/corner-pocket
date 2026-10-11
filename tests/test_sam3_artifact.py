@@ -25,8 +25,10 @@ import data_guard
 # The dotted-name reader has one home, tests/_shipped.py.  The single-module runner
 # starts in tests/, and discovery puts tests/ on sys.path, so the bare module name
 # reaches the helper in both, as the data_guard import above does.  Round 61 found
-# this body four times in the test tree.
-from _shipped import dotted_name as _dotted
+# this body four times in the test tree.  Round 69 put the reader of the code
+# strings in the same home: this suite and tests/test_events_document.py held one
+# body between them, byte for byte.
+from _shipped import code_strings, dotted_name as _dotted
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src import sam3_artifact  # noqa: E402
@@ -65,21 +67,6 @@ PRODUCER_WRITES = {
 }
 
 ROW = {"img": [640.0, 360.0], "r": 7.5, "score": 0.87, "table_mm": [1234.5, 321.0]}
-
-
-def _code_strings(tree) -> list:
-    """(line, text) for every string literal that is not a docstring."""
-    docstrings = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-            body = getattr(node, "body", [])
-            if (body and isinstance(body[0], ast.Expr)
-                    and isinstance(body[0].value, ast.Constant)
-                    and isinstance(body[0].value.value, str)):
-                docstrings.add(id(body[0].value))
-    return [(node.lineno, node.value) for node in ast.walk(tree)
-            if isinstance(node, ast.Constant) and isinstance(node.value, str)
-            and id(node) not in docstrings]
 
 
 def _names_the_artifact(value: str) -> bool:
@@ -385,7 +372,7 @@ class ScopeGuardTest(unittest.TestCase):
         used, found = set(), []
         for relative in SCOPE:
             tree = ast.parse((ROOT / relative).read_text())
-            for line, value in _code_strings(tree):
+            for line, value in code_strings(tree):
                 if _names_the_artifact(value):
                     found.append((relative, line, value))
                     if (relative, value) in OTHER_ARTIFACT_FILES:

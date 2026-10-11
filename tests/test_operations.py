@@ -13,8 +13,8 @@ import types
 import unittest
 from unittest.mock import patch
 
-from annotator.operations import (ACTION_NAMES, ConflictError, Operation, OPERATIONS, Operations,
-                                  RECORD_COLLECTIONS, Record, operations_registry)
+from annotator.operations import (ACTION_NAMES, ConflictError, LONGEST_TITLE, Operation, OPERATIONS,
+                                  Operations, RECORD_COLLECTIONS, Record, operations_registry)
 
 
 class OperationsTests(unittest.TestCase):
@@ -1350,6 +1350,46 @@ class VodLinkTests(unittest.TestCase):
         self.assertEqual(night['source']['humanReviewed'], True)
         # read it again: adopting a line is idempotent and needs no clock
         self.assertEqual(Operations(self.root).get(), state)
+
+    def test_a_vod_title_at_the_bound_is_kept_and_a_longer_one_is_cut(self):
+        """The VOD title bound holds at the last character and cuts the import's line.
+
+        The two sites that read the bound answer in two ways: ``vod_link`` refuses a longer
+        title with the shared sentence of ``text``, and ``_adopt_sources`` cuts the title an
+        import brought.  Both sites read one name, so this case drives both of them.
+        """
+        title = 't' * LONGEST_TITLE
+        self.imported({'tw-1234567890-452-1690': dict(vod_id='1234567890', channel='examplechannel',
+                                                      title=title)})
+        nights = dict(event=dict(name='8-Ball Open · 周一 9/1', format='singles', raceTo=7, tables=4,
+                                 entrants=[dict(name='Wanwan'), dict(name='Su')],
+                                 matches=[dict(round=1, sides=['Wanwan', 'Su'], score=[3, 1],
+                                               winner='Wanwan', result='played', clip=[452, 1690])]),
+                      source=dict(kind='vod-backfill', vodId='1234567890',
+                                  datasetId='tw-1234567890-452-1690', startS=452, endS=1690,
+                                  channel='examplechannel', humanReviewed=True))
+        # the request states no title of its own, so the import's line is the one adopted
+        state = self.call('event_backfill', **nights)
+        self.assertEqual(title, state['vods'][0]['title'],
+                         'the import path keeps a title of exactly the bound')
+        state = self.link('1234567890', state['history'][0]['id'], title=title)
+        self.assertEqual([title], [row['title'] for row in state['vods']],
+                         'the link path accepts a title of exactly the bound')
+        with self.assertRaisesRegex(ValueError, 'title must contain'):
+            self.link('1234567890', state['history'][0]['id'], title=title + 'x')
+        # the import path cuts the same title rather than refusing the night
+        title = 'u' * (LONGEST_TITLE + 1)
+        self.temp.cleanup()
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ops = Operations(self.root)
+        self.imported({'tw-1234567890-452-1690': dict(vod_id='1234567890', channel='examplechannel',
+                                                      title=title)})
+        adopted = self.call('event_backfill', **nights)['vods'][0]['title']
+        self.assertEqual(LONGEST_TITLE, len(adopted), 'the import path cuts the title at the bound')
+        self.assertEqual(title[:LONGEST_TITLE], adopted,
+                         'and it keeps the first bound characters as written')
 
     def test_a_broadcast_covers_many_events_and_an_event_many_broadcasts(self):
         state = self.backfill()

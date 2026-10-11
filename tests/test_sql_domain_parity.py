@@ -43,8 +43,10 @@ from src.store_files import BALL_SETS
 # cannot drift apart.  annotator/app.js owns the same three words in javascript, and
 # tests/test_console_vocabulary.py holds the console and the service together.  The import
 # is also the reason no literal list of the three words stands in this module: a literal
-# here would be a second spelling of the vocabulary.
-from annotator.unified_server import VERDICT_WORDS
+# here would be a second spelling of the vocabulary.  The note bound of the same table
+# reads ANNOTATION_NOTE_MAX for the same reason: the route refuses a longer note, the
+# migration refuses a longer row, and a literal number here would be a third spelling.
+from annotator.unified_server import ANNOTATION_NOTE_MAX, VERDICT_WORDS
 
 # The number rules read the constants of the validator, so the CHECK of the migration and
 # the check of the request cannot drift apart.  A literal number in this module would be a
@@ -107,6 +109,10 @@ NAME_ARGUMENT = re.compile(r'[A-Za-z_]\w*')
 #: because it touches a letter or a bracket.  A site that still spells the bound inline
 #: is found at either side of the pair, and this pattern is the measured reason.
 INLINE_NUMBER = re.compile(r'(?:^|[,\s(])(-?\d+)(?=\s*[,)])')
+#: One ``CHECK (length(column) <= number)`` rule.  Round 69 measured this shape: it is
+#: invisible to ``CHECK_NUMERIC`` and to ``LENGTH_RULE``, because neither text holds
+#: ``BETWEEN``, so the one guard of this module read neither side of the rule.
+CHECK_CEILING = re.compile(r'CHECK \(length\((\w+)\) <= (\d+)\)')
 #: One ``CHECK`` line of the design document, and the column of its rule.
 DOC_CHECK = re.compile(r'^\s*(\w+)\s+\w.*?(CHECK \(.*BETWEEN.*\))', re.MULTILINE)
 
@@ -176,12 +182,53 @@ def between_columns(sql_text):
         yield column, low, high, match.group(0)
 
 
+def ceiling_columns(sql_text):
+    """Yield ``(column, limit, rule)`` for each ``<=`` rule of one SQL text.
+
+    A ceiling rule names one end only: a text column holds at least one character, so
+    the low end of the rule is 1.  The rule text is the one the migration spells, from
+    ``CHECK`` to the closing bracket, so a rule that moves keeps its answer and a rule
+    that changes its number changes the answer.
+    """
+    for match in CHECK_CEILING.finditer(sql_text):
+        yield match.group(1), int(match.group(2)), match.group(0)
+
+
+def agreement(rule, side, other):
+    """The one text that reports two spellings of one rule that disagree, or None.
+
+    ``rule`` names the rule and ``side`` names the text it was read from.  The answer
+    is None when the two spellings hold the same number.
+    """
+    if side[0] != other[0]:
+        return f'{rule}: {side[1]} spells {side[0]}; {other[1]} spells {other[0]}'
+    return None
+
+
 def migration_bounds():
     """Yield ``(table, column, low, high, rule)`` for each ``BETWEEN`` rule of a migration."""
     for path in sorted(MIGRATIONS.glob('*.sql')):
         for table, block in tables_in(path.read_text(encoding='utf-8')):
             for column, low, high, rule in between_columns(block):
                 yield table, column, low, high, rule
+
+
+def migration_ceilings():
+    """Yield ``(table, column, limit, rule)`` for each ``<=`` rule of a migration."""
+    for path in sorted(MIGRATIONS.glob('*.sql')):
+        for table, block in tables_in(path.read_text(encoding='utf-8')):
+            for column, limit, rule in ceiling_columns(block):
+                yield table, column, limit, rule
+
+
+def constant_sites(module, name):
+    """The lines of one module that read the name of a constant, as one sorted list.
+
+    The scan reads the syntax tree, so a comment or a docstring that mentions the name is
+    not a site.  The answer holds line numbers so that a person can read each site.
+    """
+    return sorted(node.lineno for node in ast.walk(tree_of(module))
+                  if isinstance(node, ast.Name) and node.id == name)
 
 
 def named_low(bound, names):
@@ -248,12 +295,61 @@ def bound_default_problems(bound):
     return [f'{bound.column}: {bound.owner} holds no function {bound.validator}']
 
 
+def bound_ceiling_problems(bound, sql_text=None):
+    """The disagreements of one ceiling rule, as one text line each.
+
+    A ceiling rule states one end, ``CHECK (length(column) <= number)``, so the scan of
+    ``BETWEEN`` rules above cannot read it.  This reader holds the migration text, the
+    constant of the owner module and the call sites of that name together.
+    """
+    if sql_text is None:
+        sql_text = source(f'db/migrations/{bound.sql_file}')
+    problems = []
+    found = []
+    for table, block in tables_in(sql_text):
+        for column, limit, rule in ceiling_columns(block):
+            if f'{table}.{column}' == bound.column:
+                found.append((table, column, limit, rule))
+    if not found:
+        return [f'{bound.column}: {bound.sql_file} holds no ceiling rule for this column']
+    _, _, limit, rule = found[0]
+    if rule != bound.sql_constraint:
+        problems.append(f'{bound.column}: {bound.sql_file} spells "{rule}"; the bounds table '
+                        f'pins "{bound.sql_constraint}"')
+    names = dict(bound.python)
+    if not names:
+        problems.append(f'{bound.column}: the bounds table pins no constant for this rule, '
+                        f'so no Python side is compared')
+        return problems
+    owner = source(bound.owner)
+    missing = sorted(name for name in names if name not in owner)
+    if missing:
+        problems.append(f'{bound.column}: {bound.owner} does not hold the name(s) {missing} '
+                        f'the bounds table pins')
+    if not set(names.values()) & {limit}:
+        problems.append(f'{bound.column}: the migration binds at most {limit}; the constants '
+                        f'hold {sorted(set(names.values()))}')
+    for name, number in sorted(names.items()):
+        disagreement = agreement(bound.column, (number, f'{bound.owner} {name}'),
+                                 (limit, bound.sql_file))
+        if disagreement:
+            problems.append(disagreement)
+        sites = constant_sites(bound.owner, name)
+        if len(sites) != bound.sites:
+            problems.append(f'{bound.column}: {bound.owner} reads {name} at {len(sites)} '
+                            f'sites {sites}; the bounds table pins {bound.sites}')
+    return problems
+
+
 def bound_problems(bound, sql_text=None):
     """The disagreements of one number rule, as one text line each.
 
     ``sql_text`` is the migration text the scan reads.  A caller may pass the text of
-    another migration to measure the guard itself.
+    another migration to measure the guard itself.  A bound whose rule is a ceiling
+    states its ``limit_rule``, and the ceiling reader answers for it.
     """
+    if bound.limit_rule:
+        return bound_ceiling_problems(bound, sql_text)
     if sql_text is None:
         sql_text = source(f'db/migrations/{bound.sql_file}')
     problems = []
@@ -388,6 +484,12 @@ class Bound:
     validator: str = None  # "integer", the check whose two arguments are the bound;
                            # None when no validator of the owner module owns this bound
     sites: int = 0         # how many call sites of the check read the two names
+    limit_rule: str = ''   # the exact ``CHECK (length(column) <= number)`` text of the
+                           # migration, when the rule names one end only.  Round 69 bound
+                           # ``event_verdicts.note`` this way: a ``<=`` rule holds no
+                           # ``BETWEEN``, so the two regexes above read neither side of it.
+                           # An empty text means the rule of this bound is a ``BETWEEN``
+                           # rule, and the scan above reads it.
 
 
 #: The number domains this module binds.  Each rule holds the exact migration text and
@@ -437,6 +539,22 @@ BOUNDS = (
           owner='src/person_identity.py',
           sql_low=0,
           python=(('PERSIST_FACES', PERSIST_FACES - 1),)),
+    # The one ceiling rule of the migrations.  Round 69 bound it: the route of
+    # annotator/unified_server.py refused a longer note and the table refused the same
+    # note, and no rule of this module read either side, because the two regexes above read
+    # ``BETWEEN`` only.  The owner is the service module, not the validator module, and the
+    # route spells the comparison inside its own body rather than a check function, so no
+    # ``validator`` stands here.  ``sites`` is the count of the name below in the owner: the
+    # definition at the top of the module and the one read in the route.  A route that
+    # spells the number inline drops the read and fails this count, and the boundary case of
+    # tests/test_unified_server.py drives the route.
+    Bound(column='event_verdicts.note',
+          sql_file='0002_user_data.sql',
+          sql_constraint='CHECK (length(note) <= 10000)',
+          owner='annotator/unified_server.py',
+          python=(('ANNOTATION_NOTE_MAX', ANNOTATION_NOTE_MAX),),
+          sites=2,
+          limit_rule='CHECK (length(note) <= 10000)'),
 )
 
 #: The column of one pair that also carries a length bound.  The pair above holds the
@@ -519,6 +637,19 @@ BOUND_ELSEWHERE = (
                   'BALL_SETS in src/store_files.py, in the same order; this module reads '
                   'that tuple, so the SQL rule text is held to the owner too'),
 )
+
+#: One ceiling rule of the migrations that this module does not bind, and the measured
+#: reason.  The completeness case of the ceilings reads this table, so the rule keeps a
+#: record and a new ceiling rule still fails the case.
+CEILINGS_DEFERRED = {
+    'players.notes': 'the note bound of a saved regular stands four times: the migration '
+                     'at db/migrations/0002_user_data.sql:23 holds '
+                     'CHECK (length(notes) <= 4000), annotator/operations.py holds '
+                     'NOTE_MAX = 4000 at :45 and reads it at :886 and :1316, and '
+                     'docs/console-redesign.md records the row.  Round 69 binds the '
+                     'annotation note, event_verdicts.note, and leaves this rule: the four '
+                     'copies are one rule in two languages and one round cannot unify them',
+}
 
 #: One domain has Python copies of the shape this module reads, and no whole SQL rule
 #: that a pair can hold.  The record names the copies, so the completeness case stays
@@ -715,6 +846,39 @@ class SqlDomainParityTests(unittest.TestCase):
         problems = bound_problems(bound, planted)
         self.assertTrue(any('0 AND 2000' in problem for problem in problems),
                         'the planted rule is reported; the guard answered ' + repr(problems))
+
+    def test_every_ceiling_rule_of_the_migrations_is_bound(self):
+        """Each ``<=`` rule of the migrations must have one bound in this module.
+
+        Round 69 added this rule.  The case above reads ``BETWEEN`` rules only, and the
+        note bound of ``event_verdicts`` stood in the route and in the migration with no
+        reader.  A new ceiling rule fails here until a bound names it.
+        """
+        bound = {entry.column for entry in BOUNDS if entry.limit_rule}
+        unbound = sorted(f'{table}.{column} <= {limit}'
+                         for table, column, limit, _ in migration_ceilings()
+                         if f'{table}.{column}' not in bound | set(CEILINGS_DEFERRED))
+        self.assertEqual([], unbound,
+                         'these SQL ceiling rules hold no bound in '
+                         'tests/test_sql_domain_parity.py. Name the bound beside the other '
+                         'names of its module, add it to the bounds table with its '
+                         'limit_rule, and add a case: ' + repr(unbound))
+
+    def test_the_bound_rule_reports_a_planted_ceiling(self):
+        """The ceiling rule must report a migration copy whose number differs.
+
+        This is the defect the round-69 case exists for: the route keeps one note bound
+        and the table keeps another, and neither side fails.
+        """
+        bound = [entry for entry in BOUNDS if entry.column == 'event_verdicts.note'][0]
+        sql = source(f'db/migrations/{bound.sql_file}')
+        planted = sql.replace('CHECK (length(note) <= 10000)',
+                              'CHECK (length(note) <= 20000)')
+        self.assertNotEqual(sql, planted, 'the case plants the widen of the note rule')
+        problems = bound_ceiling_problems(bound, planted)
+        self.assertTrue(any('20000' in problem for problem in problems),
+                        'the planted ceiling is reported; the guard answered '
+                        + repr(problems))
 
     def test_the_design_document_copy_holds_the_migration_rules(self):
         """The design document must spell each ``BETWEEN`` rule of the migration.
