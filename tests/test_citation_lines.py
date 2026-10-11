@@ -1,4 +1,4 @@
-"""Every citation in a comment or a docstring names a line that holds a fact.
+"""Every citation in a comment or a docstring names a line that holds text.
 
 The round-49 walk found six tracked citations that a reader cannot follow.  Some
 named an empty line, one named a separator, one named a closing bracket, and one
@@ -15,7 +15,14 @@ tests/test_unit_render.py holds that rule) and `docs/` (the ledgers record the
 history of older rounds and cite bare file names on purpose).
 
 A citation to a line that holds other text passes this rule.  The rule proves
-that the reader finds a line, not that the line holds the named fact.
+that the reader finds a line, not that the line holds the named fact.  Two limits
+follow from that sentence, and the round-50 walk measured both:
+
+* a comment that names a symbol and no line number is outside the rule, because
+  the rule reads a line number only.  `tests/ball_dense_events.py` cited the name
+  `src/motion_scan.PERSON_SHARE_MAX`, and the Lead repaired that citation by hand;
+* a line whose text contradicts the comment passes, because the rule reads the
+  target line and not the sentence around the citation.
 """
 
 import ast
