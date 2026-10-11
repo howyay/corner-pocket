@@ -53,6 +53,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.datasets import media_path  # noqa: E402
+# Round 60 gave the summary of one list one home, src/stats.py.  This module held
+# a second body of it, with its own keys and its own precision.
+from src.stats import summary  # noqa: E402
 # Round 59 deleted the local `_order` adapter.  The callers read the one owner of
 # the corner order, and they make an array first, because the owner reshapes an
 # array and a saved reference holds a JSON list.
@@ -366,13 +369,22 @@ def evaluate(detector, dataset, n_frames, refs, video):
     return rows
 
 
+#: The keys this report reads from the one summary of a list, and their
+#: precision.  Round 60 moved the body to src/stats.py.
+ERROR_STATS_KEYS = ('n', 'median', 'p90', 'max', 'min')
+
+
 def _stats(values):
+    """The summary of one list of distances, or None for no measurement.
+
+    An empty list answers ``None``, because this document held that answer
+    before round 60 and every caller tests the answer first.  The body itself is
+    the one body of src/stats.py, and the keys below are the keys this report
+    reads.
+    """
     if not values:
         return None
-    a = np.asarray(values, np.float64)
-    return {"n": int(a.size), "median": round(float(np.median(a)), 2),
-            "p90": round(float(np.percentile(a, 90)), 2),
-            "max": round(float(a.max()), 2), "min": round(float(a.min()), 2)}
+    return summary(values, keys=ERROR_STATS_KEYS, digits=2)
 
 
 def summarise(rows, refs, detector_name, dataset, wall_s):

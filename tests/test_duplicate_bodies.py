@@ -13,10 +13,17 @@ such bodies:
 * the scalar coercion, held by ``src/event_gates.py num_or_none`` and by
   ``src/ball_census.py _num``.  One home: event_gates, and the census imports it;
 * the psycopg JSON wrapper, held by ``src/store_import.py jsonb`` and by
-  ``src/store_pg.py _jsonb``.  One home: store_import, and the store imports it;
-* the six-number summary of one list, held by ``src/enroll_from_tracklet.py
-  stats`` and by ``src/eval_faces.py pair_stats``.  This is the one recorded
-  exception, ``APART_ON_PURPOSE`` below.
+  ``src/store_pg.py _jsonb``.  One home: store_import, and the store imports it.
+
+Round 60 measured a fifth body and gave it one home.  ``src/stats.py summary``
+holds the summary of one list of numbers: ``n``, ``min``, ``p05``, ``p10``,
+``median``, ``p90``, ``p95`` and ``max``.  Four modules held a body of that
+summary before round 60: ``src/enroll_from_tracklet.py stats``,
+``src/eval_faces.py pair_stats``, ``src/calib_mapping_audit.py _stats`` and
+``src/eval_table_detect.py _stats``.  The first two held the same body, and the
+table below recorded that pair.  The two others held fewer keys and a smaller
+precision.  The four readers now name the one owner, so the recorded pair is
+gone from the table.  ``tests/test_stats.py`` holds that rule.
 
 The walk compares syntax trees and not text.  It removes the docstring of each
 function, unparses the statements that remain with ``ast.unparse``, and hashes
@@ -89,13 +96,6 @@ STAMPED_TRIPLE = (('annotator/operations.py', 'timestamp'),
                   ('annotator/vod_import.py', 'now_iso'))
 
 APART_ON_PURPOSE = {
-    'df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9': ApartBody(
-        (('src/enroll_from_tracklet.py', 'stats'), ('src/eval_faces.py', 'pair_stats')),
-        'Both functions answer n/min/p05/median/p95/max of one list of numbers, so the two '
-        'bodies are one body.  Round 51 wrote both files outside its write scope, so the pair '
-        'is recorded here and not changed.  A later change that owns both files gives one of '
-        'them the body and the other the import.',
-    ),
     '7e1173f55016fa90f33df74173559c5f1c53c334': ApartBody(
         STAMPED_TRIPLE,
         'All three functions answer one timestamp in ISO 8601 with the UTC zone, so the three '

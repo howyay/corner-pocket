@@ -56,6 +56,9 @@ from src.pipeline import homography_to_canonical  # noqa: E402
 # The homogeneous-division rule has one owner, src/projection.py.  The two
 # mappings below hold no threshold of their own.
 from src.projection import as_array, project_point  # noqa: E402
+# Round 60 moved the body of the summary of one list to src/stats.py.  This audit
+# read its own body twice: once here and once in src/eval_table_detect.py.
+from src.stats import summary  # noqa: E402
 
 #: The scan's working frame.  ``src.ball_scale`` owns it: the ball's pixel size
 #: scales with the frame, so the two facts cannot move apart.
@@ -385,6 +388,26 @@ def claim_frame_provenance(HA, HB, path=CANDIDATES):
     return out
 
 
+#: The keys this audit reads from the one summary of a list.  The body moved to
+#: src/stats.py in round 60, and the rounding it used before is the argument below.
+OFFSET_STATS_KEYS = ('n', 'min', 'p10', 'median', 'p90', 'max')
+
+#: The precision every number of this audit's summary carries.
+OFFSET_STATS_DIGITS = 2
+
+
+def _stats(values):
+    """The summary of one offset list, in the shape this audit writes.
+
+    An empty list answers ``{"n": 0}`` and no other key, because this document
+    held that answer before round 60.  A named list answers the keys of
+    ``OFFSET_STATS_KEYS`` at ``OFFSET_STATS_DIGITS`` digits.
+    """
+    if not values:
+        return {"n": 0}
+    return summary(values, keys=OFFSET_STATS_KEYS, digits=OFFSET_STATS_DIGITS)
+
+
 def highlight_reference_check(video, quad_path=None, times=None, columns=(600, 900, 1200)):
     """Measure the highlight reference against the *visible* cloth edge.
 
@@ -446,15 +469,6 @@ def highlight_reference_check(video, quad_path=None, times=None, columns=(600, 9
             rail_y = a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0])
             bottom_inset.append(float(ys.max() - rail_y))
     cap.release()
-
-    def _stats(values):
-        if not values:
-            return {"n": 0}
-        values = sorted(values)
-        return {"n": len(values), "median": round(float(np.median(values)), 2),
-                "p10": round(float(np.percentile(values, 10)), 2),
-                "p90": round(float(np.percentile(values, 90)), 2),
-                "min": round(min(values), 2), "max": round(max(values), 2)}
 
     H = homography_to_canonical(quad)
     mid = (np.asarray(quad[2], float) + np.asarray(quad[3], float)) / 2.0

@@ -59,6 +59,10 @@ from src.face_id import (
     quality,
 )
 from src.person_identity import IdentityIndex
+# Round 60 moved the body of the summary of one list to src/stats.py.  This module
+# and src/enroll_from_tracklet.py held the same body twice, and this import is the
+# repair: the owner holds it and both readers bind the owner's name.
+from src.stats import read_pair
 # The operations document path has one owner (src.store_files), so this list cannot
 # name a path that the store no longer writes.
 from src.store_files import STATE_DOCUMENT
@@ -216,18 +220,9 @@ def assign_tracklets(records, iou_min=IOU_LINK, max_gap=None):
 # statistics (pure)
 # --------------------------------------------------------------------------
 
-def pair_stats(values):
-    """n / min / p05 / median / p95 / max of a list of cosines."""
-    values = [float(v) for v in values]
-    if not values:
-        return {"n": 0, "min": None, "p05": None, "median": None, "p95": None, "max": None}
-    arr = np.asarray(values, float)
-    return {"n": len(values),
-            "min": round(float(arr.min()), 4),
-            "p05": round(float(np.percentile(arr, 5)), 4),
-            "median": round(float(np.median(arr)), 4),
-            "p95": round(float(np.percentile(arr, 95)), 4),
-            "max": round(float(arr.max()), 4)}
+#: Round 60 moved the body of the summary to src/stats.py, and the name below is
+#: the owner's reader of the six keys.  The callers keep the name pair_stats.
+pair_stats = read_pair
 
 
 def quality_faces(record):

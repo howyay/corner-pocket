@@ -109,6 +109,9 @@ from src.box_geometry import iou
 from src.datasets import STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
 from src.ops_event_log import trim
+# Round 60 gave the summary of one list one home: src/stats.py.  This name used to
+# hold the body, and it held the same body as src/eval_faces.py pair_stats.
+from src.stats import read_pair as stats
 
 # The repository root. The value equals src.person_pipeline.REPO, and the same
 # expression is used there, but this module keeps its own copy: an import of
@@ -176,18 +179,6 @@ def rank_score(det_score, eye_px) -> float:
     if eye_px is None:
         return 0.0
     return float(det_score) * float(eye_px)
-
-
-def stats(values) -> dict:
-    values = [float(v) for v in values]
-    if not values:
-        return {"n": 0, "min": None, "p05": None, "median": None, "p95": None, "max": None}
-    arr = np.asarray(values, float)
-    return {"n": len(values), "min": round(float(arr.min()), 4),
-            "p05": round(float(np.percentile(arr, 5)), 4),
-            "median": round(float(np.median(arr)), 4),
-            "p95": round(float(np.percentile(arr, 95)), 4),
-            "max": round(float(arr.max()), 4)}
 
 
 def load_state(root=REPO, store=None) -> dict:

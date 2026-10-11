@@ -33,12 +33,10 @@ if str(ROOT) not in sys.path:
 from src import ball_association_audit as audit  # noqa: E402
 from src import ball_census as bc  # noqa: E402
 
-
-def _percentile(values, fraction):
-    if not values:
-        return None
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, max(0, int(round(fraction * (len(ordered) - 1)))))]
+#: Round 60 gave the percentile of one list one home.  The audit already held the
+#: body and eight call sites, so this module reads it and holds no copy.  The name
+#: stays, because the one call site below reads it.
+_percentile = audit._percentile
 
 
 def _shape(tracks) -> dict:
