@@ -9,12 +9,21 @@ exceptions must still be the ones the tool holds, so the golden record stays equ
 that built it.  The record carries the hash of its picks, and this test builds the hashed bytes
 again with its own code, so a hand edit of one pick fails it.
 
+The audit is also the one owner of the refused event ids and of their reasons.  The evidence
+tool reads that owner, and the last cases here scan the other tools for a second copy of an id
+list or of a reason.  The two tools held the same five ids in two spellings with no shared
+source before, so a move of one copy could not move the other.
+
     PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_playfield_quads.py'
 """
+import ast
 import hashlib
 import importlib.util
+import io
 import json
+import re
 import sys
+import tokenize
 import types
 import unittest
 from pathlib import Path
@@ -28,6 +37,13 @@ RECORD = 'tests/fixtures/playfield_quads.json'
 TOOL = ROOT / 'tools/playfield_vod_audit.py'
 TOOL_NAME = 'tools/playfield_vod_audit.py'
 RUN_LOG = ROOT / 'out/playfield_vod_audit.json'
+#: The one owner of the refused event ids and of their reasons.
+OWNER = TOOL_NAME
+EVIDENCE_NAME = 'tools/playfield_quad_evidence.py'
+#: The tools that must not hold a copy of the id list.
+OTHER_TOOLS = (EVIDENCE_NAME, 'tools/playfield_harness.py')
+#: A refused event id, as the tools spell it: a recording name without its suffix.
+VOD_ID = re.compile(r"tw-\d{6,}")
 
 
 def load_audit():
@@ -56,6 +72,76 @@ def load_audit():
         else:
             sys.modules['cv2'] = saved
     return module
+
+
+def load_module(path, name):
+    """A tool loaded by path, with the video decoder blocked for the duration of the import.
+
+    ``tools`` is not a package, so a tool loads by path.  The block makes a guard that goes
+    missing fail in a moment instead of decoding a recording, and the saved module goes back
+    before any other test can see the block.
+    """
+    saved = sys.modules.get('cv2')
+    blocked = types.ModuleType('cv2')
+
+    def no_vod(*args, **kwargs):
+        raise RuntimeError('the import of %s must not open a VOD' % path)
+
+    blocked.VideoCapture = no_vod
+    sys.modules['cv2'] = blocked
+    try:
+        spec = importlib.util.spec_from_file_location(name, ROOT / path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        if saved is None:
+            sys.modules.pop('cv2', None)
+        else:
+            sys.modules['cv2'] = saved
+    return module
+
+
+def load_evidence():
+    """The evidence tool as a module, imported with the video decoder blocked.
+
+    The evidence tool reads the audit tool, which is the one owner of the refused ids and of
+    their reasons.  The guard below compares the two, so it loads its own copy of the owner
+    and holds the facts of that copy.  An import must open no recording.
+    """
+    return load_module(EVIDENCE_NAME, 'playfield_quad_evidence')
+
+
+def source(path):
+    """The text of a checkout-relative file."""
+    return (ROOT / path).read_text(encoding='utf-8')
+
+
+def string_literals(path):
+    """Every string of one file that is not a docstring, as a list of its text.
+
+    A reason belongs in the map of the owner.  A sentence of a docstring may name a reason,
+    and that is not a copy of it.  Python names the docstrings with its own reads of the
+    file, so this test guesses no rule about quoting.
+    """
+    text = (ROOT / path).read_text(encoding='utf-8')
+    docstrings = set()
+    for node in ast.walk(ast.parse(text)):
+        body = getattr(node, 'body', None)
+        first = body[0] if isinstance(body, list) and body else None
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                and isinstance(first.value.value, str):
+            docstrings.add((first.value.lineno, first.value.col_offset))
+    found = []
+    for token in tokenize.generate_tokens(io.StringIO(text).readline):
+        if token.type != tokenize.STRING or (token.start[0], token.start[1]) in docstrings:
+            continue
+        # The token keeps its quotes.  Python reads it back, so the quotes and the escapes
+        # cannot hide a copy of a reason.
+        try:
+            found.append(ast.literal_eval(token.string))
+        except (SyntaxError, ValueError):
+            found.append(token.string)
+    return found
 
 
 def recorded_state():
@@ -106,6 +192,52 @@ class TheAuditToolImportsWithoutWritingTests(unittest.TestCase):
         self.assertEqual(AUDIT.PRODUCER, TOOL_NAME, 'the tool must name itself as the producer')
         self.assertGreater(AUDIT.FLOOR, 0, 'the floor must be a positive count')
         self.assertTrue(AUDIT.KNOWN_REFUSED, 'the tool must name the events that do not pass')
+
+
+class TheRefusedIdsHaveOneOwnerTests(unittest.TestCase):
+    """The refused event ids and their reasons live in one tool.  The other tool reads them."""
+
+    def test_no_other_tool_holds_a_list_of_vod_ids(self):
+        """A second list of ids is the defect this guard exists for.
+
+        The audit tool holds the ids, each one with the reason of its refusal.  The evidence
+        tool held the same five ids as a bare tuple in another spelling, so a move of one list
+        did not move the other.  Every tool of this pair must read the one owner.
+        """
+        copied = {}
+        for path in OTHER_TOOLS:
+            found = sorted(set(VOD_ID.findall(source(path))))
+            if found:
+                copied[path] = found
+        self.assertEqual(copied, {},
+                         'these tools hold a VOD id: %s.  Read %s instead of copying it'
+                         % (copied, OWNER))
+
+    def test_the_evidence_tool_reads_the_owner_and_holds_no_id_of_its_own(self):
+        """The provider must take its ids from the owner, and every id must match."""
+        provider = load_evidence()
+        self.assertIn('KNOWN_REFUSED', source(EVIDENCE_NAME),
+                      '%s must read the exceptions from %s' % (EVIDENCE_NAME, OWNER))
+        self.assertEqual(list(provider.KNOWN_REFUSED), list(AUDIT.KNOWN_REFUSED),
+                         '%s and %s read different exceptions' % (EVIDENCE_NAME, OWNER))
+        owner_ids = sorted(name[:-4] for name, reason in AUDIT.KNOWN_REFUSED.items()
+                           if reason.startswith(provider.CLOTH_REASON))
+        self.assertEqual(list(provider.REFUSED), owner_ids,
+                         'the provided ids must be the owner ids with that one reason')
+        self.assertEqual(len(owner_ids), 5,
+                         '%s must provide one id for each of the five events' % EVIDENCE_NAME)
+
+    def test_no_other_tool_holds_a_copy_of_a_reason(self):
+        """One reason string has one home: the owner's map.
+
+        A copy is the reason as a string of its own.  The scan reads the strings of the code
+        and skips the docstrings, so a sentence that names the same words is not a copy.
+        """
+        reasons = sorted({reason for reason in AUDIT.KNOWN_REFUSED.values() if reason})
+        copied = {path: [reason for reason in reasons if reason in string_literals(path)]
+                  for path in OTHER_TOOLS}
+        self.assertEqual({path: found for path, found in copied.items() if found}, {},
+                         'a tool copies a reason that %s owns' % OWNER)
 
 
 class PlayfieldQuadReplayTests(unittest.TestCase):

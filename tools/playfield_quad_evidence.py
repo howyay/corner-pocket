@@ -10,7 +10,9 @@ the frame - so the next step follows from what is on the screen, not from a gues
 It writes ``out/playfield_quad_evidence.json`` and one PNG per pick under
 ``out/playfield_evidence/``.  The recording and the stage come from
 ``tools/playfield_harness.py``, so this evidence is measured on the same path and the same
-cadence as the served console, not on a copy of it.
+cadence as the served console, not on a copy of it.  The refused event ids come from the
+audit tool, which holds them together with the reason of each refusal.  This tool keeps no
+second list of ids and no second copy of a reason.
 """
 import json
 import math
@@ -22,10 +24,14 @@ import cv2
 import numpy as np
 from src.playfield import PARALLEL_TOL_DEG, check_quad, parallelism
 from tools.playfield_harness import Recording, frame_context, new_stage
+from tools.playfield_vod_audit import KNOWN_REFUSED
 
-REFUSED = [
-    'tw-2860883221', 'tw-2871819680', 'tw-2885294870', 'tw-2890340436', 'tw-2890514774',
-]
+#: The reason the audit records for the five events this tool examines.  The evidence below
+#: explains why that one reason needs to change: the detector, not the tolerance.  The ids
+#: come from the audit, which is the one owner of the exceptions and of their reasons.
+CLOTH_REASON = 'cloth mask is a band'
+REFUSED = tuple(sorted(name[:-4] for name, reason in KNOWN_REFUSED.items()
+                       if name.endswith('.mp4') and reason.startswith(CLOTH_REASON)))
 FRACTIONS = (0.10, 0.50)
 
 
