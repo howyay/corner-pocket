@@ -10,16 +10,21 @@ This module owns four things, and nothing else:
 
   * the names of the two documents (`SERVED`, `V2`) and their paths,
   * the shape of a row: an object with a `t` and a `type`,
-  * the producer stamp that `write` puts on every row it writes,
-  * the version of the document shape.
+  * the producers that write a row of this document,
+  * the rule that reads the stamp of a row.
+
+The stamp protocol of a row — the version, the row key, the status names and the
+producer names — belongs to `src/document_stamp.py`.  The two readers of that
+protocol disagreed before, and they read one definition now.
 
 `write(path, rows, producer=...)` stamps every row with
 `{STAMP: {"version": VERSION, "producer": producer}}` and writes a JSON list,
 because every reader reads a list.  `read(path)` returns the rows, the status and
-the stamp.  A document with no stamp reads as `UNSTAMPED`; a document with more
-than one producer, or with a version this module does not write, reads as `MIXED`.
-In both cases the producer is *unknown*: this module never guesses it.  An empty
-document is `UNSTAMPED`, because a file with no rows has nothing to name.
+the stamp.  A document with no stamp reads as `UNSTAMPED`.  A document with more
+than one producer, with a version this module does not write, or with a stamp
+that names no producer of `PRODUCERS` reads as `MIXED`.  Such a document names no
+producer: this module never guesses one.  An empty document is `UNSTAMPED`,
+because a file with no rows has nothing to name.
 
 This module refuses, with a message that says why:
 
@@ -84,6 +89,11 @@ try:                                   # `from src import events_document`
 except ImportError:                    # a script that put src/ itself on the path
     from atomic_write import write_atomic
 
+try:                                   # `from src import events_document`
+    from src import document_stamp
+except ImportError:                    # a script that put src/ itself on the path
+    import document_stamp
+
 __all__ = [
     "VERSION", "STAMP", "ROW_KEYS", "SERVED", "V2", "DOCUMENTS",
     "SCAN_EVENTS", "REBUILD_CALIBRATED", "REBUILD_V2", "DENSE_QUEUE", "EVAL_EVENTS",
@@ -94,11 +104,12 @@ __all__ = [
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: The version of the document shape.  Raise it when a reader of the old shape
-#: would read the new file wrong, not when a row gains a key.
-VERSION = 1
+#: The stamp protocol of every document of this repository belongs to
+#: `src/document_stamp.py`.  This module reads the names from there, and it holds
+#: them here so that `from src.events_document import VERSION` still works.
+VERSION = document_stamp.VERSION
 #: The row key that names the document.  No row in this repository uses it.
-STAMP = "document"
+STAMP = document_stamp.STAMP
 #: A row is named by its time and by its type.  Every writer in this repository
 #: writes both, so a row without one of them is not an event row.
 ROW_KEYS = ("t", "type")
@@ -110,26 +121,23 @@ SERVED = "events.json"
 V2 = "events_v2.json"
 DOCUMENTS = (SERVED, V2)
 
-#: The producers, one for each module that writes rows.  A writer passes its own
+#: The producers, one for each module that writes rows.  The names and the rule
+#: sets come from `src/document_stamp.py`, which holds the one table of them.  An
+#: events document accepts every producer of that table.  A writer passes its own
 #: constant, and `write` refuses a producer that is not here: a writer cannot
-#: write rows it cannot name.  The value names the rule set that built the rows.
-SCAN_EVENTS = "src/scan_events.py"
-REBUILD_CALIBRATED = "src/rebuild_events_calibrated.py"
-REBUILD_V2 = "src/rebuild_events_v2.py"
-DENSE_QUEUE = "src/dense_queue.py"
-EVAL_EVENTS = "src/eval_events.py"
-PRODUCERS = {
-    SCAN_EVENTS: "phase-1 motion >= 4.5, then SAM3 confirmation of each cluster",
-    REBUILD_CALIBRATED: "motion peaks >= 15.0 merged within 6 s, a shot is verified at >= 300 mm",
-    REBUILD_V2: "the same peaks on the vod30 segment homography, pots against the monotone hull",
-    DENSE_QUEUE: "the dense-track gate output; ids from 9001, stable by provenance.ball_id",
-    EVAL_EVENTS: "post-hoc gating of the scan candidates; a confirmed candidate is served",
-}
+#: write rows it cannot name.
+SCAN_EVENTS = document_stamp.SCAN_EVENTS
+REBUILD_CALIBRATED = document_stamp.REBUILD_CALIBRATED
+REBUILD_V2 = document_stamp.REBUILD_V2
+DENSE_QUEUE = document_stamp.DENSE_QUEUE
+EVAL_EVENTS = document_stamp.EVAL_EVENTS
+PRODUCERS = dict(document_stamp.PRODUCERS)
 
-#: The status of a document this module read.
-STAMPED = "stamped"        # every row names one producer and the current version
-MIXED = "mixed"            # more than one producer, or a version this module does not write
-UNSTAMPED = "unstamped"    # no row names a producer, so the producer is unknown
+#: The status of a document this module read.  `src/document_stamp.py` names
+#: them and holds their rule.
+STAMPED = document_stamp.STAMPED
+MIXED = document_stamp.MIXED
+UNSTAMPED = document_stamp.UNSTAMPED
 
 
 class DocumentShapeError(ValueError):
@@ -148,9 +156,10 @@ class Document:
 
     `status` is `STAMPED`, `MIXED` or `UNSTAMPED`.  `version` and `producer` are
     set only when `status` is `STAMPED`; otherwise the producer is unknown and
-    the caller must not guess it.  `producers` lists every producer named in the
-    file and `unstamped` counts the rows that name none, so a mixed file says
-    what it is mixed of.
+    the caller must not guess it.  `producers` lists every producer that a row
+    names, `unstamped` counts the rows that carry no stamp, and `foreign` counts
+    the rows whose stamp names no producer of `PRODUCERS`.  A mixed file
+    therefore says what it is mixed of.
     """
     path: Path
     rows: list
@@ -159,6 +168,7 @@ class Document:
     producer: str | None = None
     producers: tuple[str, ...] = field(default_factory=tuple)
     unstamped: int = 0
+    foreign: int = 0
 
     @property
     def named(self) -> bool:
@@ -171,9 +181,15 @@ class Document:
             return (f"{self.path}: {len(self.rows)} rows, version {self.version}, "
                     f"producer {self.producer}")
         if self.status == MIXED:
-            return (f"{self.path}: {len(self.rows)} rows, MIXED producers "
-                    f"{list(self.producers)} and {self.unstamped} unstamped row(s); "
-                    f"the producer is unknown")
+            parts = []
+            if self.producers:
+                parts.append(f"producers {list(self.producers)}")
+            if self.unstamped:
+                parts.append(f"{self.unstamped} row(s) with no stamp")
+            if self.foreign:
+                parts.append(f"{self.foreign} row(s) with a foreign stamp")
+            return (f"{self.path}: {len(self.rows)} rows, " + ", ".join(parts) +
+                    "; the producer is unknown")
         return f"{self.path}: {len(self.rows)} rows, no stamp; the producer is unknown"
 
 
@@ -229,7 +245,7 @@ def write(document, rows: Iterable[Mapping], *, producer: str, indent: int = 1) 
     `src/atomic_write.py` owns that step: a write that fails leaves the old
     document in place and removes its temporary file.  Returns the path.
     """
-    if producer not in PRODUCERS:
+    if not document_stamp.is_producer(producer, PRODUCERS):
         raise ValueError(
             f"{producer!r} is not a producer of the events document; this module knows "
             f"{sorted(PRODUCERS)}.  A writer cannot write rows it cannot name.")
@@ -262,7 +278,7 @@ def _stamped_rows(rows: Iterable[Mapping], producer: str) -> list:
                 raise ValueError(f"row {index} is stamped by {writer!r}; {producer!r} cannot "
                                  f"name a row another producer built")
             version = old.get("version")
-            if isinstance(version, int) and version > VERSION:
+            if document_stamp.is_newer(version):
                 raise ValueError(f"row {index} is stamped version {version}, newer than "
                                  f"{VERSION}: this module cannot write it")
         named = dict(row)
@@ -278,6 +294,10 @@ def read(document) -> Document:
     `DocumentVersionError` when a row names a version newer than `VERSION`.  A
     row with no stamp, and a row that is not an object, are returned as they are:
     the status of the document says that they name no producer.
+
+    The status, the version and the producer follow the rule of
+    `src/document_stamp.py`, so this reader and the reader of
+    `src/sam3_artifact.py` answer the same row in the same way.
     """
     path = Path(document)
     data = json.loads(path.read_text())
@@ -285,28 +305,27 @@ def read(document) -> Document:
         raise DocumentShapeError(
             f"{path}: an events document is a JSON list of rows; this file holds a "
             f"{type(data).__name__}")
-    versions, producers, unstamped = set(), set(), 0
+    producers: set[str] = set()
+    unstamped = foreign = 0
     for index, row in enumerate(data):
         stamp = row.get(STAMP) if isinstance(row, Mapping) else None
-        if not isinstance(stamp, Mapping):
-            unstamped += 1
-            continue
-        version = stamp.get("version")
-        if isinstance(version, int) and version > VERSION:
+        version = stamp.get("version") if isinstance(stamp, Mapping) else None
+        if document_stamp.is_newer(version):
             raise DocumentVersionError(
                 f"{path}: row {index} is stamped document version {version}, newer than this "
                 f"module knows ({VERSION}); update src/events_document.py before reading it")
-        versions.add(version)
-        producers.add(stamp.get("producer"))
-    if not producers:
-        status = UNSTAMPED
-    elif unstamped == 0 and len(producers) == 1 and versions == {VERSION}:
-        status = STAMPED
-    else:
-        status = MIXED
-    single = status == STAMPED
+        name = stamp.get("producer") if isinstance(stamp, Mapping) else None
+        verdict = document_stamp.classify(stamp, PRODUCERS)
+        # The set holds a name only when the owner calls it a producer, so a
+        # reader cannot add a foreign name.
+        if verdict == document_stamp.NAMED and document_stamp.is_producer(name, PRODUCERS):
+            producers.add(name)
+        elif verdict == document_stamp.UNSTAMPED:
+            unstamped += 1
+        else:
+            foreign += 1
+    status, producer = document_stamp.status(producers, unstamped=unstamped, foreign=foreign)
     return Document(path=path, rows=data, status=status,
-                    version=VERSION if single else None,
-                    producer=next(iter(producers)) if single else None,
-                    producers=tuple(sorted(str(name) for name in producers)),
-                    unstamped=unstamped)
+                    version=VERSION if status == STAMPED else None,
+                    producer=producer, producers=tuple(sorted(producers)),
+                    unstamped=unstamped, foreign=foreign)

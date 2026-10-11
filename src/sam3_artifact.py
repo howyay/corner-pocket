@@ -20,8 +20,11 @@ calibration recomputed.  Measured on the file of 2026-09-03: all 270 rows equal
 the value that `out/calib_final.json` recomputes, so the camera model did not
 write the millimetres of that file.
 
-This module owns the name, the shape, the version and the producers.  A writer
-calls `write`, which stamps the rows and writes them through
+This module owns the name and the shape of the artifact, and the writers of its
+ball rows.  The stamp protocol of a row — the version, the row key, the status
+names and the producer names — belongs to `src/document_stamp.py`.  The two
+readers of that protocol disagreed before, and they read one definition now.  A
+writer calls `write`, which stamps the rows and writes them through
 `src/atomic_write.py`, and which refuses a row it cannot name.  A reader calls
 `read`, which returns the frames unchanged and reports the producers that the
 rows name.
@@ -55,6 +58,11 @@ try:                                   # `from src import sam3_artifact`
 except ImportError:                    # a script that put src/ itself on the path
     from atomic_write import write_atomic
 
+try:                                   # `from src import sam3_artifact`
+    from src import document_stamp
+except ImportError:                    # a script that put src/ itself on the path
+    import document_stamp
+
 __all__ = [
     "VERSION", "STAMP", "ROW_KEYS", "ARTIFACT",
     "CAMERA_MODEL", "REBUILD_CALIBRATED", "PRODUCERS",
@@ -65,13 +73,14 @@ __all__ = [
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: The version of the artifact shape.  Raise it when a reader of the old shape
-#: would read the new file wrong, not when a ball row gains a key.
-VERSION = 1
+#: The stamp protocol of every document of this repository belongs to
+#: `src/document_stamp.py`.  This module reads the names from there, and it holds
+#: them here so that `from src.sam3_artifact import VERSION` still works.
+VERSION = document_stamp.VERSION
 
 #: The row key that names the producer of the row.  No ball row of this
 #: repository used it before this module.
-STAMP = "document"
+STAMP = document_stamp.STAMP
 
 #: A ball row is named by its pixel position and by its table position.  The
 #: camera model writes both, and the calibrated rebuild recomputes the second,
@@ -81,22 +90,20 @@ ROW_KEYS = ("img", "table_mm")
 #: The artifact file name, inside the output directory of a scan.
 ARTIFACT = "sam3_results.json"
 
-#: The producers, one for each module that writes ball rows.  A writer passes its
-#: own constant, and `write` refuses a producer that is not here: a writer cannot
-#: write rows it cannot name.  The value names the rule set that built the rows.
-CAMERA_MODEL = "src/scan_events.py"
-REBUILD_CALIBRATED = "src/rebuild_events_calibrated.py"
-PRODUCERS = {
-    CAMERA_MODEL: "SAM3 masks under the homography of the scan's own corners.json; "
-                  "table_mm is that homography applied to the mask centre",
-    REBUILD_CALIBRATED: "table_mm recomputed from out/calib_final.json (H_mm_to_px, "
-                        "inverted); the pixels and the scores stay as SAM3 measured them",
-}
+#: The producers of a ball row, one for each module that writes one.  The names
+#: and the rule sets come from `src/document_stamp.py`, which selects the two
+#: producers that write ball rows.  A writer passes its own constant, and `write`
+#: refuses a producer that is not here: a writer cannot write rows it cannot name.
+CAMERA_MODEL = document_stamp.SCAN_EVENTS
+REBUILD_CALIBRATED = document_stamp.REBUILD_CALIBRATED
+PRODUCERS = {name: document_stamp.PRODUCERS[name]
+             for name in document_stamp.BALL_ROW_PRODUCERS}
 
-#: The status of an artifact this module read.
-STAMPED = "stamped"        # every ball row names one producer and the current version
-MIXED = "mixed"            # more than one producer, a foreign stamp, or a stray row
-UNSTAMPED = "unstamped"    # no ball row names a producer, so the producer is unknown
+#: The status of an artifact this module read.  `src/document_stamp.py` names
+#: them and holds their rule.
+STAMPED = document_stamp.STAMPED
+MIXED = document_stamp.MIXED
+UNSTAMPED = document_stamp.UNSTAMPED
 
 
 class ArtifactShapeError(ValueError):
@@ -187,7 +194,7 @@ def owns(path) -> bool:
 
 
 def _check_producer(producer: str) -> None:
-    if producer not in PRODUCERS:
+    if not document_stamp.is_producer(producer, PRODUCERS):
         raise ValueError(
             f"{producer!r} is not a producer of the SAM3 artifact; this module knows "
             f"{sorted(PRODUCERS)}.  A writer cannot write rows it cannot name.")
@@ -237,12 +244,11 @@ def _checked_frames(frames: Mapping, producer: str, keep_stamps: bool) -> dict:
                 rows.append(dict(ball))
                 continue
             version = entry.get("version")
-            if isinstance(version, int) and version > VERSION:
+            if document_stamp.is_newer(version):
                 raise ArtifactVersionError(
                     f"{where} names version {version}, and this module writes version "
                     f"{VERSION}; a newer file needs a newer writer")
-            name = entry.get("producer")
-            if version != VERSION or name not in PRODUCERS:
+            if document_stamp.classify(entry, PRODUCERS) != document_stamp.NAMED:
                 raise ValueError(
                     f"{where} is stamped {dict(entry)!r}, and this module writes version "
                     f"{VERSION} for {sorted(PRODUCERS)}.  A caller that copies a row it "
@@ -327,6 +333,10 @@ def read(document) -> Artifact:
     A frame with no ball row counts in `empty`.  A ball row with no stamp counts
     in `unstamped`.  A ball row whose stamp this module does not know counts in
     `foreign`.  This module never guesses a producer.
+
+    The status, the version and the producer follow the rule of
+    `src/document_stamp.py`, so this reader and the reader of
+    `src/events_document.py` answer the same row in the same way.
     """
     path = Path(document)
     data = json.loads(path.read_text())
@@ -347,25 +357,23 @@ def read(document) -> Artifact:
         for index, ball in enumerate(rows):
             balls += 1
             entry = ball.get(STAMP) if isinstance(ball, Mapping) else None
-            if not isinstance(entry, Mapping):
-                unstamped += 1
-                continue
-            version, name = entry.get("version"), entry.get("producer")
-            if isinstance(version, int) and version > VERSION:
+            version = entry.get("version") if isinstance(entry, Mapping) else None
+            if document_stamp.is_newer(version):
                 raise ArtifactVersionError(
                     f"{path}: row {index} of frame {key!r} names version {version}, and "
                     f"this module reads version {VERSION}; a newer file needs a newer "
                     f"reader")
-            if version == VERSION and name in PRODUCERS:
+            name = entry.get("producer") if isinstance(entry, Mapping) else None
+            verdict = document_stamp.classify(entry, PRODUCERS)
+            # The set holds a name only when the owner calls it a producer, so a
+            # reader cannot add a foreign name.
+            if verdict == document_stamp.NAMED and document_stamp.is_producer(name, PRODUCERS):
                 producers.add(name)
+            elif verdict == document_stamp.UNSTAMPED:
+                unstamped += 1
             else:
                 foreign += 1
-    if producers and not unstamped and not foreign and len(producers) == 1:
-        status, producer = STAMPED, next(iter(producers))
-    elif not producers and not foreign:
-        status, producer = UNSTAMPED, None
-    else:
-        status, producer = MIXED, None
+    status, producer = document_stamp.status(producers, unstamped=unstamped, foreign=foreign)
     return Artifact(path=path, frames=data, status=status, balls=balls,
                     version=VERSION if status == STAMPED else None, producer=producer,
                     producers=tuple(sorted(producers)), empty=empty,
