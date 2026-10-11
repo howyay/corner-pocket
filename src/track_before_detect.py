@@ -636,18 +636,15 @@ def cmd_eval(args) -> None:
     print(f"wrote {path}")
 
 
-def main(argv=None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command line: two subcommands, each with the four shared options."""
+    from src.scan_args import add_scan_options
+
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    def common(p):
-        p.add_argument("--video", default=None)
-        p.add_argument("--dataset", default="vod30")
-        p.add_argument("--out-dir", default=str(ROOT / "out" / "motion_scan"))
-        p.add_argument("--quad", default=None)
-
     p = sub.add_parser("null", help="measure the detector's null distribution")
-    common(p)
+    add_scan_options(p)
     p.add_argument("--channel", default=CHANNEL)
     p.add_argument("--n-frames", type=int, nargs="+", default=[5])
     p.add_argument("--seeds-per-window", type=int, default=120)
@@ -655,7 +652,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_null)
 
     p = sub.add_parser("eval", help="blind movers, whole-VOD sweep, the 15 events")
-    common(p)
+    add_scan_options(p)
     p.add_argument("--channel", default=CHANNEL)
     p.add_argument("--seed-signal", default="ball17")
     p.add_argument("--events", default="out/scan30/events.tiered.json")
@@ -664,7 +661,11 @@ def main(argv=None) -> int:
     p.add_argument("--strips", type=int, default=6)
     p.set_defaults(func=cmd_eval)
 
-    args = ap.parse_args(argv)
+    return ap
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
     if getattr(args, "video", None) is None:
         args.video = str(ms.video_for(args.dataset))
     args.func(args)

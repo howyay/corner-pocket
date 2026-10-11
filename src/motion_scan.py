@@ -2431,18 +2431,18 @@ def _write_summary(payload: dict, report: dict, out_dir, dataset: str) -> str:
     return str(path)
 
 
-def main(argv=None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command line of this tool: five subcommands, each with the four shared options."""
+    # This import is here and not at the module top.  One more line above moves
+    # every later line of this file, and src/ball_gate.py cites line 71, which
+    # would then hold an empty line.
+    from src.scan_args import add_scan_options
+
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    def common(p):
-        p.add_argument("--video", default=None)
-        p.add_argument("--dataset", default="vod30")
-        p.add_argument("--out-dir", default=str(ROOT / "out" / "motion_scan"))
-        p.add_argument("--quad", default=None)
-
     p = sub.add_parser("scan", help="decode the whole VOD and write the series")
-    common(p)
+    add_scan_options(p)
     p.add_argument("--stride", type=int, default=1)
     p.add_argument("--limit-s", type=float, default=None)
     p.add_argument("--no-native", action="store_true")
@@ -2450,7 +2450,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("report", help="calibrate the floor, find onsets, answer")
-    common(p)
+    add_scan_options(p)
     p.add_argument("--events", default=None)
     p.add_argument("--before", type=float, default=EVENT_BEFORE_S,
                    help="seconds of window before a time, used for an event and for a control")
@@ -2466,12 +2466,12 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_report)
 
     p = sub.add_parser("strips", help="evidence strips for the top onsets")
-    common(p)
+    add_scan_options(p)
     p.add_argument("--top", type=int, default=12)
     p.set_defaults(func=cmd_strips)
 
     p = sub.add_parser("channels", help="per-channel floor, moving-ball test, events")
-    common(p)
+    add_scan_options(p)
     p.add_argument("--channels", default="luma,B,R,BR")
     p.add_argument("--block-s", type=float, default=10.0)
     p.add_argument("--blocks", type=int, default=14)
@@ -2485,11 +2485,15 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_channels)
 
     p = sub.add_parser("person", help="YOLO person check on the top onsets")
-    common(p)
+    add_scan_options(p)
     p.add_argument("--top", type=int, default=12)
     p.set_defaults(func=cmd_person)
 
-    args = ap.parse_args(argv)
+    return ap
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
     if getattr(args, "video", None) is None:
         args.video = str(video_for(args.dataset))
     args.func(args)
