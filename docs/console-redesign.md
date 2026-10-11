@@ -4693,3 +4693,207 @@ seconds), so `git push` waits for a username that no terminal can supply. The ne
 both commits and this record together. Three checks name the same cause: `GIT_TERMINAL_PROMPT=0
 git push` still waits, `gh auth status` answers nothing within 20 seconds, and `secret-tool` is
 not installed, so the helper has no keyring to read.
+
+## Round 48 · the server walk, and three facts that had two homes (2026-10-10)
+
+The walk of this round had one instruction that the earlier walks could not obey: read
+`annotator/unified_server.py`. Its report is `/tmp/dshsess/walk_round48.md` (199 lines), and its
+verdict line is `Strong candidate present - 3 Strong, 4 Worth, 3 Note`. It ran read-only. The
+start HEAD was `3a13277f54744f8163f2b4db2d7b8be8b023bd19` and the end HEAD was
+`f4b648b8502298aadaa1043cc3aeb4efa5ef88cf`, because the Lead amended the round-47 record twice
+while the walk ran; `git diff --stat` across the two hashes answers `docs/console-redesign.md`
+only, so every code line the walk cited held. `git status --porcelain` was empty at every check.
+
+The module has 2975 lines and it owns more than one surface. The walk names them: the
+review-console HTTP surface (`make_handler` 2721), the public board (`make_public_handler` 2585),
+the operator action table (`OPERATOR_ACTIONS` 2366), the security headers (2331, 2543), the read
+caches and stamps (1145-1283), the unified overlay (1287-1449), the event-to-pixel projection
+(1560-1686), the clip cache (1849-1899), the enroll preview and promotion (1010-1141) and the
+connection budgets (`BoundedHTTPServer` 2412). The walk read the header and the enroll region in
+full, and the rest as an abstract syntax tree outline.
+
+### The commits of this round
+
+| Commit | Subject |
+| --- | --- |
+| `ebf5140` | config: a deploy comment names the argument, not a Python line number |
+| `fca22d9` | tests: one guard compares the SQL domains with their Python copies |
+| `823edbd` | clock: one owner holds the shot clock rule |
+| `e1e152e` | clock: a case holds the owner docstring to the bounds |
+| `bd3ed41` | server: four facts that had two homes now have one |
+| `45b5ec8` | guest name: one owner holds the longest name |
+
+### Strong 1 · the guest-name maximum had two owners, and they disagreed
+
+Ground. The enroll route refused a long name at `annotator/unified_server.py:1078-1079` with
+`if len(name) > self._SEED_NAME_MAX:` and
+`raise APIError("player_name must be at most %d characters" % self._SEED_NAME_MAX)`, and
+`_SEED_NAME_MAX = 60` stood at `:2054`. The seed-label parse read the same bound at `:2065`. The
+operations layer read another value: `annotator/operations.py:57`
+`def text(value, name, maximum=200):`, used at `:426` `name = text(player.get('name'), 'name')`
+inside `enroll_player`, which the route calls at `annotator/unified_server.py:1124`. A third
+spelling of the number was a sentence at `annotator/unified_server.py:2272`, and
+`annotator/refusals.py:216` keyed a Chinese row on that exact sentence.
+
+Defect. One rule - how long a guest name may be - had two owners with two values, 60 and 200. The
+route refused at 60 and the operations layer accepted until 200, so the layer and the route could
+disagree about one name.
+
+Measurement. For lengths 60 / 61 / 100 / 200 / 201 the walk and the writer measured: the seed
+label accepted / refused / refused / refused / refused, and `operations.text` accepted / accepted
+/ accepted / accepted / refused with `guest name must contain 1–200 characters`.
+`grep -rn "_SEED_NAME_MAX" tests/` answered nothing, so no test held the bound.
+
+Fix. `annotator/refusals.py:49` now owns `GUEST_NAME_MAX = 60`, and `:55` builds
+`SEED_LABEL_TEXT_INVALID` from it, the sentence the refusal table keys on. The reason for that home
+is the import graph: `annotator/operations.py:24` imports `annotator/refusals.py` already, and
+`annotator/refusals.py` imports no module of this repository, so the owner adds no cycle.
+`annotator/unified_server.py` deletes `_SEED_NAME_MAX`, and `:1088` and `:2075` read the owner.
+`annotator/operations.py:433` passes the owner to `text()`, so both layers refuse at 60.
+
+Guard and evidence. `tests/test_guest_name.py` (new, 8 cases) holds one value across the layers:
+one module owns the number and its value is 60, no second `*NAME_MAX` exists, no module bounds a
+name with a bare number, the three readers state the owner, the enroll path passes it, the refusal
+sentence carries the owner's number, and a behaviour case drives the enroll route, the operations
+layer and the seeds route at 60 and at 61. Bites: a second bound of 61 in the enroll route failed
+with `AssertionError: Lists differ: [] != ['annotator/unified_server.py:1088: len(name) > 61']`
+and `AssertionError: APIError not raised`; a changed owner failed with
+`'label must be A, B, ignore, a guest name up to 61 characters, or null' != 'label must be A, B,
+ignore, a guest name up to 60 characters, or null'`.
+
+Limit. The sentence at `annotator/unified_server.py:2286` stays one literal, because
+`tests/test_refusal_identity.py` reads the sentence of a raise site and requires a plain string
+constant. Two guards now hold that literal on both sides, so a change to the owner and a change to
+the sentence each fail a case.
+
+### Strong 2 · the shot clock bounds were typed twice
+
+Ground. `annotator/shot_clock.py:35-36` held `MIN_DURATION = 5` and `MAX_DURATION = 300`,
+enforced at `:63`, and its docstring at `:62` named the other module as the place of the same rule.
+The copy was `annotator/operations.py:1216`
+`s['settings']['shotClock'] = integer(p['shotClock'], 5, 300, 'shotClock')`. The default 30 also
+stood twice: `annotator/shot_clock.py:37 DEFAULT_DURATION = 30` and `annotator/operations.py:277
+settings=dict(shotClock=30, ...)`. `grep -rn "MIN_DURATION\|MAX_DURATION" --include=*.py annotator/
+src/ tests/` answered four lines, all in `annotator/shot_clock.py`.
+
+Fix. `annotator/operations.py:24-27` imports the three names, `:281` writes
+`shotClock=DEFAULT_DURATION`, and `:1221` reads the bounds. The docstring of `valid_duration` now
+states that the module is the one owner. `tests/test_shot_clock.py` gained five cases: a scan that
+refuses a typed copy in any shipped package, a case that proves the scan reads a typed copy, an
+import case, a behaviour case at the owner's minimum and one second below it, and a case that holds
+the owner's docstring to the bounds it states. The measurement of the console side stands in the
+report: `annotator/ops.js:905` and `:920` offer the preset chips 20, 30, 45 and 60,
+`annotator/ops.js:1309` refuses only a non-finite value and a value at or below zero, and the file
+holds no 5..300 rule and no default of its own.
+
+Bites. The guard line typed as `5, 300` failed with
+`AssertionError: Lists differ: ['annotator/operations.py:1221 types [5, 300]'] != []`; the default
+typed as 30 failed with `['annotator/operations.py:280 types [30]'] != []`; a fresh copy inside a
+new function failed with `['annotator/operations.py:1443 types [5, 300]'] != []`; and the docstring
+changed to 301 failed with `Lists differ: [5, 301] != [5, 300]`.
+
+Limit. The scan reads code. A line that names the bounds without the word `shotClock`, for example
+`BOUNDS = (5, 300)`, passes. The writer chose that trade to avoid a large number of false reports.
+
+### Strong 3 · a deploy comment cited a Python line number
+
+Ground. `deploy/systemd/pool-workbench.service.d/40-public-board.conf:10` read
+`# annotator/unified_server.py:2869 holds parser.add_argument("--port", type=int, default=8130).`
+Line 2869 holds another statement; the argument stands at `:2932`.
+`tests/test_unit_render.py:232-254` finds the argument by content, so nothing held the citation
+true.
+
+Fix. `ebf5140` states the argument by name and keeps the number out of the comment.
+`tests/test_unit_render.py` gained `test_no_deploy_config_cites_a_python_line_number`, which scans
+every file under `deploy/systemd` for the shape `.py:<digits>` and requires none. The bite added
+the citation again and failed with
+`AssertionError: Lists differ: [] != ['deploy/systemd/pool-workbench.service.d/[40 chars]ine']`.
+
+### Worth · four facts with two homes in the server
+
+`bd3ed41` gives each of the four one home, and `tests/test_unified_server.py` gained four
+syntax-tree cases, one for each fact.
+
+1. The route dispatcher typed the vod30 guard again beside `Backend._vod30`. The dispatcher now
+   calls the one guard at `:2140`; an unknown dataset still earns its own refusal, because the
+   dispatcher resolves the dataset first.
+2. The four favicon names stood in `FAVICON_FILES` and again in the `BOARD_FILES` comprehension.
+   `FAVICON_NAMES` is the one tuple, and both readers build from it.
+3. The unified corner projection imported `POCKETS_MM` although `_pockets_mm()` reads that name on
+   demand. The projection now reads the one function, and the import stays inside a function,
+   because `src.scan_events` pulls cv2.
+4. The time bound 0..1800 stood in `ReadQuery.window` and in `Backend.anchor_info`. `T_RANGE` is
+   the one pair, and both readers unpack it.
+
+Bites: the typed guard answered `spells the vod30 refusal sentence 2 times, at [2141, 2209]`; a
+typed favicon list answered `{'favicon.svg': 2, 'favicon-32.png': 2, 'favicon-16.png': 2,
+'favicon.ico': 2}`; a second import of `POCKETS_MM` answered `imports POCKETS_MM 2 times at [364,
+1429]`; a typed pair answered `spells the 0..1800 bound as literals at [2015]`. A fresh copy of the
+favicon names inside a new function also failed, with each name counted twice.
+
+### The SQL domains get a guard
+
+The round-47 record listed five SQL domains with a Python copy and no test that compared a pair.
+`fca22d9` answers that row. `tests/test_sql_domain_parity.py` holds a measured pair table of six
+domains, finds every site by content, and asks three questions: both sides of a pair spell the same
+values, every word domain of the migrations has a record, and every Python copy of such a domain
+has a record too. It reads 16 `IN (...)` rules, 15 word-domain rules and 11 distinct word domains,
+and it scans 746 literal collections in `annotator/`, `src/`, `tools/` and `scripts/`. Two domains
+have a parity case in another module, and the file records them instead of repeating the case.
+
+The crop-set record reads the owner tuple `BALL_SETS`, because a literal list there is a second
+spelling of that vocabulary and `tests/test_store_files.py` refuses one. The Lead found that
+failure in the full run of the writer, and the fix went into the same commit.
+
+Bites. A changed value on the SQL side (`'bye'` to `'byes'` in `db/migrations/0002_user_data.sql`)
+failed with `AssertionError: Lists differ: [] != ["matches.result: db/migrations/0002_user_[82
+chars]'))"]`; a changed value in the owner failed with `[] != [('unlabeled_crops',
+'unlabeled_crops2', 'vod30_event_crops')]`.
+
+Limit. The module reads Python only. `annotator/ops.js:798` holds `['singles','doubles']`, and no
+rule of this module sees it.
+
+### The suites of this round
+
+`test_unit_render` 11 OK · `test_shot_clock` 19 OK (was 14) · `test_operations` 77 OK ·
+`test_console_reason_table` 6 OK · `test_unified_server` 108 OK (was 104) · `test_guest_name` 8 OK
+(new) · `test_sql_domain_parity` 4 OK (new) · `test_refusal_identity` 15 OK · `test_player_status`
+6 OK · `test_store_files` 20 OK · `test_store_contract` 54 OK (skipped=29) · `test_suite_inventory`
+4 OK · `test_pages_served` 6 OK · `test_public_board` 34 OK · `test_table_geometry` 13 OK.
+
+The full discovery run on the settled tree at `45b5ec8` answered `Ran 1859 tests in 175.879s` and
+`OK (skipped=53)`. The round-47 run answered 1837 tests, so this round adds 22: one in
+`test_unit_render`, four in `test_sql_domain_parity`, five in `test_shot_clock`, four in
+`test_unified_server` and eight in `test_guest_name`. The three node suites answered 217 pass and
+0 fail, 23 pass and 0 fail, and 100 passed and 0 failed.
+
+### Rows of earlier rounds that close here
+
+| Row | Closed by | What the tree holds now |
+| --- | --- | --- |
+| round 47, the five SQL domains and their Python guards | `fca22d9` | one module compares six pairs, records the two domains another module holds, and fails when a new copy arrives |
+| round 46, `annotator/unified_server.py` was still not read by a walk | this walk | the module was read as an outline plus the cited regions, and the walk names what it owns |
+| round 48 Worth 1 to 4, four cheap duplications in the server | `bd3ed41` | the guard, the favicon names, the pocket geometry and the time bound each have one home |
+
+### What stands open after this round
+
+| Candidate | Rank | Ground in the tree |
+| --- | --- | --- |
+| The clock key has two spellings | Worth | `CLOCK_KEY = 'cp-ops-clock'` is defined at `annotator/clock-sync.js:44` and exported at `:491`, and nothing reads the export, while `annotator/ops.js:861`, `:881`, `:1415` and `tests/test_ops.js:1125`, `:1129`, `:1162` spell the literal |
+| The document stamp protocol has two owners | Worth | `src/sam3_artifact.py:70-99` and `src/events_document.py:99-132` both define `VERSION`, `STAMP`, `REBUILD_CALIBRATED`, `PRODUCERS`, `STAMPED`, `MIXED` and `UNSTAMPED`, and only `ROW_KEYS` differs by design |
+| The guest-name sentence stays one literal | Note | `annotator/unified_server.py:2286` holds the sentence of the raise, and `annotator/refusals.py:55` builds the same text from the owner; two guards hold the two sides together |
+| `T_RANGE` covers two readers of `t` | Note | `annotator/unified_server.py:614` and `:2018` read the pair, and `_rebuild` holds `timeout=1800` for another purpose; the walk names the difference |
+| The console label for `Prospect` | Note | `annotator/ops.js:9` answers `Prospect:['Newcomer','新会员']`, and `design/corner-pocket/Corner Pocket Ops.dc.html:829` maps it to `Prospect` |
+| The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:814` `_do_guest_promote` sets `'Active'`, while `docs/corner-pocket-functional-inventory.md:134` says Prospect; a product decision |
+| Four tracked citations name an empty line | Note | `src/ball_gate.py:44`, `annotator/board.js:61`, `tests/test_event_retention.py:13` and `tests/test_board.js:377` point at lines that hold other text; the deploy citation closed this round, and the guard covers `deploy/` only |
+| `annotator/server.py:126` writes any label | Note | it writes `out/unlabeled_crops/labels.json` with no range check and no `-1` map, while `annotator/unified_server.py:2213` enforces the domain; the module has no importers |
+| `corners_30min_v2.json` has one writer and six readers | Note | `src/make_segment_corners.py:81` writes it, six modules read it, and `src/table_refine.py:66` says it is not used; no walk measured the claim |
+| `REPORT.md:50` bounds a number that no run measures | Note | the sentence names a bound, and no command answers it |
+| The duration rule is proved over `file://` only | Note | the browser proof of round 46 ran over the local file, because chromium cannot finish an `http://` load in this harness |
+
+The push is still blocked. The six commits of this round, and the three of round 47, sit on the
+local `main`, and `origin/main` stays at `110b0338`. The credential helper
+`!gh auth git-credential` does not answer in this session: `timeout 30 gh auth token` ends with
+exit 124 and no bytes, `git ls-remote origin main` answers `110b0338` because an anonymous read
+works, and SSH answers `git@github.com: Permission denied (publickey)`. The one user action is
+`git -C /home/haoye/projects/pool push origin main`.
