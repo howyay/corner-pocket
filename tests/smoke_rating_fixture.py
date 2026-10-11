@@ -54,12 +54,47 @@ sys.path.insert(0, str(ROOT / 'tests'))
 # script launches chromium itself and reuses everything below that.
 from console_shots import CHROMIUM_CANDIDATES, Devtools, free_port, png_size
 
+# The deployed public board unit names the two production ports.  This fixture refuses
+# the ports the service really uses, so it reads them from the unit and holds no second
+# copy of the two numbers.  tests/test_unit_render.py holds the unit and this rule
+# together.
+DEPLOY_PUBLIC_BOARD = ROOT / 'deploy' / 'systemd' / 'pool-workbench.service.d' / '40-public-board.conf'
+# The live rating pair.  The rating service is one unit of its own and it has no drop-in
+# of this workbench, so the pair stands here as one named fact.
+LIVE_RATING_PORTS = (8137, 8138)
+
 SIZES = [('1280x900', 1280, 900), ('390x844', 390, 844)]
 LANGS = ['en', 'zh']
 
 
 class SmokeError(SystemExit):
     pass
+
+
+def deployed_ports(path=DEPLOY_PUBLIC_BOARD):
+    """``(console, public board)`` of the deployed unit.  The unit is the one home.
+
+    The two numbers name the ports of the running service.  A fixture that holds a
+    second copy of them refuses the wrong pair after a deploy change.
+    """
+    text = Path(path).read_text(encoding='utf-8')
+    return (int(re.search(r'--port\s+(\d+)', text).group(1)),
+            int(re.search(r'--public-port\s+(\d+)', text).group(1)))
+
+
+def refuses_ports(port, public_port, deployed=None):
+    """The refusal message for one port pair, or None when the pair is safe.
+
+    The pair is refused when either number is a deployed production port or a live
+    rating port.  ``deployed`` lets a caller answer for another unit, and the test of
+    this rule uses that argument.
+    """
+    console, board = deployed if deployed is not None else deployed_ports()
+    if (port in (console, board) or public_port in (console, board)
+            or port == LIVE_RATING_PORTS[0] or public_port == LIVE_RATING_PORTS[1]):
+        return (f'refusing to use the production ({console}/{board}) or live rating '
+                f'({LIVE_RATING_PORTS[0]}/{LIVE_RATING_PORTS[1]}) ports')
+    return None
 
 
 def port_is_free(port):
@@ -335,8 +370,9 @@ def main():
         sizes.append((spec.strip(), int(match.group(1)), int(match.group(2))))
     console = f'http://127.0.0.1:{args.port}'
     board = f'http://127.0.0.1:{args.public_port}{args.prefix}'
-    if args.port == 8137 or args.public_port == 8138 or 8130 in (args.port, args.public_port):
-        raise SmokeError('refusing to use the production (8130/8132) or live rating (8137/8138) ports')
+    refusal = refuses_ports(args.port, args.public_port)
+    if refusal:
+        raise SmokeError(refusal)
     report = {'label': args.label, 'console': console, 'board': board, 'state': args.state, 'checks': {}}
     print(f'review fixture on {console} + {board}, seeded from {args.state}', flush=True)
 

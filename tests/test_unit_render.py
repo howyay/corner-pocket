@@ -291,5 +291,52 @@ class UnitRenderTest(unittest.TestCase):
         )
 
 
+class SmokePortRefusalTest(unittest.TestCase):
+    """The smoke fixture refuses the ports of the deployed unit.
+
+    The fixture holds one refusal rule for two port pairs: the production pair of the
+    public board drop-in, and the live rating pair.  The production numbers come from
+    the drop-in, so a deploy change moves the refusal with it.
+    """
+
+    def _fixture(self):
+        import smoke_rating_fixture
+        return smoke_rating_fixture
+
+    def test_the_fixture_reads_the_deployed_ports(self):
+        """The two numbers come from the drop-in, not from a copy in the fixture."""
+        fixture = self._fixture()
+        line = next(row for row in PUBLIC_BOARD.read_text(encoding='utf-8').splitlines()
+                    if row.startswith('ExecStart=') and '--port' in row)
+        expected = (int(re.search(r'--port\s+(\d+)', line).group(1)),
+                    int(re.search(r'--public-port\s+(\d+)', line).group(1)))
+        self.assertEqual(expected, fixture.deployed_ports())
+        self.assertEqual(PUBLIC_BOARD, fixture.DEPLOY_PUBLIC_BOARD)
+
+    def test_the_refusal_covers_both_deployed_ports_and_the_rating_pair(self):
+        """Either number of a refused pair raises, and a fixture pair passes."""
+        fixture = self._fixture()
+        console, board = fixture.deployed_ports()
+        for port, public in ((console, 9001), (9001, console), (board, 9002), (9002, board),
+                             (8137, 9003), (9003, 8138)):
+            self.assertIsNotNone(fixture.refuses_ports(port, public),
+                                 f'the fixture must refuse {port}/{public}')
+        self.assertIsNone(fixture.refuses_ports(8167, 8168),
+                          'the fixture defaults 8167/8168 must pass')
+
+    def test_another_unit_moves_the_refusal(self):
+        """A planted unit changes the refused production pair, so no copy remains."""
+        fixture = self._fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            unit = Path(tmp) / '40-public-board.conf'
+            unit.write_text('ExecStart=/x --port 9998 --public-port 9999 --public-prefix /board\n',
+                            encoding='utf-8')
+            planted = fixture.deployed_ports(unit)
+            self.assertEqual((9998, 9999), planted)
+            self.assertIsNotNone(fixture.refuses_ports(9999, 9001, deployed=planted))
+            self.assertIsNone(fixture.refuses_ports(8132, 9001, deployed=planted),
+                              'the refusal must read the unit, so 8132 is free under it')
+
+
 if __name__ == '__main__':
     unittest.main()
