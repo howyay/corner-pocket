@@ -5712,3 +5712,167 @@ Round 52 answered 1945 cases, so this round adds 9: 3 in `tests/test_ball_scale.
 The push is still blocked. Thirty-eight commits sit on the local `main`: the four of this round, the
 record of this round, and the thirty-three that came before them. `origin/main` stays at `110b0338`.
 The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 54 · the cloth quad had two owners, and the weight pin stood in two files (2026-10-11)
+
+The walk of this round read the repository at `eb40ba5` with an empty `git status --porcelain`,
+answered `Strong candidate present - 3 Strong, 3 Worth, 1 Note`, and wrote 255 lines to
+`/tmp/dshsess/walk_round54.md`. It read `deploy/` in full, `db/migrations/0001`, `0002` and `0004`,
+`scripts/fetch_weights.py` and `scripts/pool-render-units.sh`. It did not read `src/sam3/`, the
+JavaScript console, `db/migrations/0003_json_documents.sql`, the bodies of `src/eval_events.py` and
+`src/segment_calib_report.py`, the 391 non-module-level `def`s of `src/*.py`, and about 38 files of
+`docs/`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `71ac1c6` | `src/calib_segments.py`, `src/sam3_frame_audit.py`, `src/sam3_ball_cache.py`, `tests/test_sam3_frame_audit.py`, `tests/test_cloth_quad_owner.py`, `tests/test_suite_inventory.py` | Strong 1 |
+| `dd153f2` | `src/weight_pins.py`, `scripts/fetch_weights.py`, `tests/test_fetch_weights.py` | Strong 2 |
+| `f9f77ac` | `src/pid_identity.py`, `src/pid_shooter.py`, `src/pid_shooter2.py`, `tests/test_pid_identity.py` | Strong 3 |
+
+### Strong 1 · the cloth quad had two owners, and one dataset answered two ways
+
+Ground: `src/sam3_frame_audit.py:128 def reference_quad(dataset="vod30", anchors_path="out/pid_anchors_vod30.json")`
+read its anchors file through `calib_segments.read`, so the dataset argument never named that file.
+`src/sam3_ball_cache.py:196 def reference_quad(corners_path="out/scan30/corners.json", dataset="vod30")`
+built the name from its own argument, `f"out/pid_anchors_{dataset}.json"`. `src/tiny_ball_net.py:710`
+delegated to the cache. One question had two answers, and no test compared them.
+
+The measurement used `.venv/bin/python` and the dataset `tw-1234567`. The audit answered
+`[[532.0, 323.0], [800.0, 324.0], [997.0, 569.0], [384.0, 563.0]]`, which is the vod30 human segment.
+The cache answered `[[459.25762939453125, 268.89312744140625], [803.74755859375, 315.7756652832031],
+[1023.367431640625, 584.2617797851562], [421.8110046386719, 560.5725708007812]]`, which is the scan
+corners. The two answers differ.
+
+Repair: `src/calib_segments.py:613 def verified_cloth_quad(dataset="vod30", t=None, root=None, anchors_path=None, scan_corners_path=None)`
+is now the one owner. It asks three steps in the order of `CLOTH_STEPS` at `:92`: the human segment of
+that dataset, the hand anchors of that dataset, then the scan corners. The first step with a quad wins,
+and the answer carries the step that answered. `anchors_reference_path` at `:569` is the only
+derivation of the anchor file name, and `SCAN_CORNERS` at `:101` is the only scan-corners path.
+`src/sam3_frame_audit.py:147` and `src/sam3_ball_cache.py:215` both call the owner. The audit keeps
+`anchors_path` as an override, and its default is now `None`. The cache takes keyword arguments, and
+`scan_corners_path` has no default of its own. The two callers keep one difference each: the audit
+reports a label, and the cache answers a bare array or `None`.
+
+After the repair both entries answer one float32 array for `tw-1234567` (the scan corners) and for
+`vod30` (the human segment of `vod30-s1`). `tests/test_cloth_quad_owner.py` holds 10 cases: the owner
+answers the rule, a foreign dataset never reads the vod30 anchors, the anchor file name comes from the
+dataset, both callers give one answer, no caller freezes a dataset, and the walk sees a planted copy.
+
+### Strong 2 · the weight pin stood in the script and in `NOTICE`
+
+Ground: `scripts/fetch_weights.py:26-40` held a table of `(path, url, sha256, size)`, and `NOTICE:45-47`
+and `:74-79` stated the same three facts for a reader. No reader compared the two files.
+
+The measurement used no network. Owner rows 2, `NOTICE` entries 2, and for both weights the URL, the
+digest and the size agree: `6549796` equals `6,549,796 bytes`, and `9336983` equals `9,336,983 bytes`.
+No drift existed.
+
+Repair: `src/weight_pins.py` owns the table. It holds the two paths, the URL, the digest and the size of
+each weight, and the OSNet repository, revision and file name. `scripts/fetch_weights.py:23` imports it,
+and `:28 WEIGHTS = WEIGHT_PINS` keeps the old name for the same object. `tests/test_fetch_weights.py`
+grew from 13 cases to 19. It parses both shapes of `NOTICE`, a `Download:` line and a `repository`,
+`revision` and `file` group, and it compares the two files in both directions. A planted drift of the
+URL, of the digest or of the size fails the suite, and a perturbed table fails one case for every entry.
+`NOTICE` is unchanged.
+
+### Strong 3 · the A/B colour rule stood in two shooter scripts
+
+Ground: `src/pid_shooter.py:40 order = np.argsort(centers_bgr.mean(axis=1))` with `:41 B_CLUSTER` and
+`:42 A_CLUSTER`, and its own distance test at `:52-53`. `src/pid_shooter2.py:31` held the same order
+with `:32 B_CLUSTER, A_CLUSTER`, and its own distance test at `:58-61`. Both scripts write
+`out/events_actors.json`. `git grep -ln "pid_shooter"` over `tests/ scripts/ tools/ annotator/ src/`
+answered one file, `src/events_document.py`, so no test named either script.
+
+Repair: `src/pid_identity.py:24 def light_dark(centers_bgr)` answers the pair `(A, B)`, and `:36 def
+classify_ab(rgb, centers_bgr, a_index, b_index)` answers `"A"` or `"B"`. It reverses each BGR prototype
+before the comparison, and a tie answers A. `src/pid_shooter.py:27` and `src/pid_shooter2.py:23` import
+both functions, `:40` and `:32` read the pair, and `:51` and `:59` answer the verdict. Neither script
+holds an order or a distance test. `tests/test_pid_identity.py` holds 4 cases: the walk of `src/*.py`
+finds no second statement of the order, the walk sees a planted copy, both scripts import the rule and
+call it, and the rule answers the light cluster.
+
+### The probes that came back dry
+
+1. The method and nested-`def` blind spot: a body-level comparison of the methods of `src/store.py`,
+   `src/store_pg.py` and the two shooter scripts found no exact-body duplicate beyond the rows above.
+2. The dataset-id rule: `tests/dataset_id_cases.py` is one corpus for the Python rule and the SQL rule,
+   imported by `tests/test_datasets.py:14` and by `tests/test_db.py:172`, and
+   `db/migrations/0004_imported_datasets.sql:12` records 25 equal edge cases.
+3. `docs/ball-association.md:29` states `TRACK_MATCH_PX = 30` in prose, and two guards read that
+   constant.
+4. The two `Environment=` lines at `docs/ffmpeg-pin.md:47-48` are a quotation of the file that the
+   document names at `:43`, so they are not an owner. Only the variable names are reported, as Worth 2.
+
+### The bites of this round
+
+| Commit | Bite | Chain |
+| --- | --- | --- |
+| `f9f77ac` | the old brightness order back in `src/pid_shooter.py` | `4442499d5ffb -> 83928929b6ef -> 4442499d5ffb`, and the walk case failed with the three lines |
+| `f9f77ac` | the pair inverted in `src/pid_identity.py` | `876702ce064a -> 2f83a37430bb -> 876702ce064a`, and the case failed with `Tuples differ: (1, 0) != (0, 1)` |
+| `dd153f2` | one byte of the size in `src/weight_pins.py` | `6230001f88c0 -> f52f535f0ca6 -> 6230001f88c0`, and four cases failed |
+| `dd153f2` | one digit of the yolov8n digest in `NOTICE`, by the writer | `401b21191c5d -> 014228e86fec -> 401b21191c5d`, and four `NOTICE` cases failed |
+| `71ac1c6` | the vod30 anchors passed to the owner at `src/sam3_frame_audit.py:148`, by the writer | the guard file was unchanged, `be909da292e1 -> be909da292e1 -> be909da292e1`, and three cases failed |
+| `71ac1c6` | a fixed `vod30` name in `anchors_reference_path` | `c6a75640cc7e -> 6a0449f56ba4 -> c6a75640cc7e`, and three cases failed |
+
+Two lessons came from these bites. First, a bite of a module that a test imports leaves a
+timestamp-based `.pyc`. After the restore of `src/calib_segments.py` the guard still failed, because
+`src/__pycache__/calib_segments.cpython-314.pyc` (flags `0`) held the bitten code. The removal of that
+file made the guard green again. Second, a bite chain whose middle value equals its end value proves the
+failures and not the restore. A bite on a third file is the check of the restore.
+
+### The suites of this round
+
+| Run | Answer |
+| --- | --- |
+| full python suite at `71ac1c6` | `Ran 1980 tests in 174.124s`, `OK (skipped=53)` |
+| full run of writer I | `Ran 1979 tests in 166.5s`, `OK (skipped=53)` |
+| full run of writer H | `Ran 1980 tests in 182.4s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | 219 pass, 0 fail |
+| `node tests/test_board.js` | 23 pass, 0 fail |
+| `node tests/test_app_timeline.js` | 102 passed, 0 failed, 75 source-text assertions |
+| modules of this round | `test_cloth_quad_owner` 10, `test_sam3_frame_audit` 10, `test_sam3_ball_cache` 9, `test_calib_segments` 34, `test_pid_identity` 4, `test_fetch_weights` 19, `test_events_document` 24, `test_citation_lines` 7, `test_suite_inventory` 4, `test_doc_facts` 12, `test_assertion_sweep` 3 |
+
+Round 53 answered 1954 cases, and this round answered 1980. The four modules of this round carry the
+named additions: 10 cases in `tests/test_cloth_quad_owner.py`, 6 in `tests/test_fetch_weights.py`, 4 in
+`tests/test_pid_identity.py` and 2 in `tests/test_sam3_frame_audit.py`. Four cases of the difference
+have no name in this record, because the discovery of a tree counts the cases that a module builds
+while it loads.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| `reference_quad` holds two bodies, and a third delegates | Worth 3 of the round-51 walk, measured | `src/calib_segments.py:613 verified_cloth_quad` is the one owner, both entries call it, and the measurement above shows one array for one dataset |
+| The areas that no walk read, second half | Note of round 53 | `deploy/` and `db/migrations/0001` and `0002`, `scripts/fetch_weights.py` and most of `scripts/pool-render-units.sh` were read this round |
+| The class bodies and the nested defs of `src/*.py` | limit of round 53 | the walk compared the bodies of the methods of `src/store.py`, `src/store_pg.py` and the two shooter scripts and found no exact-body duplicate; the other 391 non-module-level `def`s still stand open |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The `vod30` seeds rule stands three times | Worth 1 of this walk | `src/store.py:270 raise ValueError("seeds exist for vod30 only")`, `src/store_pg.py:291` and `:298`, and `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of this walk | `annotator/ffmpeg_bin.py:25 FFMPEG_VAR = "POOL_FFMPEG"` and `:26 FFPROBE_VAR = "POOL_FFPROBE"`, and the drop-in `deploy/systemd/pool-workbench.service.d/30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of this walk | `scripts/pool-postgres-backup.sh:50 [ "$age_h" -le 48 ]`, the comment at `deploy/systemd/pool-postgres-verify.service:2`, and the row at `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of this walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111` and `src/pid_shooter2.py:119`, and the writers stand at `src/pid_shooter.py:109` and `src/pid_shooter2.py:119` |
+| `out/events_actors.json` has three writers and two readers | measured this round | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119` and `src/pid_associate.py:182`; readers `annotator/server.py:59` and `annotator/unified_server.py:2136`; `docs/postgres-design.md:573` names two writers |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of this round | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"`, and a mask file is not the rule |
+| The cloth-quad guard is a line scanner | limit of this round | it locks the two known shapes of the defect, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured this round | the paragraph that writer H added to `tests/test_suite_inventory.py` states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files with two spellings, and `30.0003` stands at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites, plus two `out/scan30/sam3_results.json` paths |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message` and `_send`, and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57` and `tests/test_app_quad_contract.py:43` |
+| The duplicate-body walk reads module-level `def`s of `src/*.py` only | limit of round 51 | the walk reaches 780 of the 1171 `def`s, and the dry probe of this round covered four modules only |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| The areas that no walk read | Note | `src/sam3/`, the JavaScript console, `db/migrations/0003_json_documents.sql`, most of `src/eval_events.py` and `src/segment_calib_report.py`, the 391 non-module-level `def`s of `src/*.py`, and about 38 files of `docs/` |
+
+The push is still blocked. Forty-two commits sit on the local `main`: the three of this round, the
+record of this round, and the thirty-eight that came before them. `origin/main` stays at `110b0338`.
+The one user action stays `git -C /home/haoye/projects/pool push origin main`.
