@@ -87,17 +87,16 @@ def occurrences(text: str) -> list[tuple[str, str]]:
 
 
 def scan(files) -> dict[str, list[tuple[str, str]]]:
-    """Source path (from the repository root, when the file is inside it) -> the
-    INSERTs it holds, for every file that holds one."""
+    """File name -> the INSERTs the file holds, for every file that holds one.
+
+    The key is the bare name of the file.  A scratch directory may live under the
+    repository or outside it, so a key from the repository root would not be one
+    shape for every caller."""
     found = {}
     for path in files:
         hits = occurrences(path.read_text(encoding="utf-8"))
         if hits:
-            try:
-                key = path.relative_to(ROOT).as_posix()
-            except ValueError:               # a planted file, outside the repository
-                key = path.name
-            found[key] = hits
+            found[path.name] = hits
     return found
 
 
@@ -119,12 +118,13 @@ class OneOwner(unittest.TestCase):
 
     def test_only_the_owner_spells_an_insert_of_the_table(self):
         found = scan(src_sources())
-        self.assertEqual(list(found), [OWNER],
+        self.assertEqual(list(found), ["store_import.py"],
                          f"more than one module under src/ inserts into face_embeddings: "
                          f"{ {name: [t for t, _ in hits] for name, hits in found.items()} }")
-        self.assertEqual([target for target, _ in found[OWNER]], ["FACE_INSERT"],
+        hits = found["store_import.py"]
+        self.assertEqual([target for target, _ in hits], ["FACE_INSERT"],
                          f"{OWNER} must bind the one statement to FACE_INSERT")
-        self.assertEqual(found[OWNER][0][1], " ".join(FACE_INSERT.split()),
+        self.assertEqual(hits[0][1], " ".join(FACE_INSERT.split()),
                          "the statement in the source text is not the one the module holds")
 
     def test_the_statement_names_every_column_and_binds_one_parameter_each(self):

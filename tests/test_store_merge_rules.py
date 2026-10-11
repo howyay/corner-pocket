@@ -6,13 +6,13 @@ The walk of round 56 measured the statements that `JsonStore` (src/store.py) and
 class were copies of one of five rules:
 
   * the merge of one stored record with one incoming record: `src/store.py:281`
-    with `src/store_pg.py:288` (seed_put), and `src/store.py:294` with
+    with `src/store_pg.py:276` (seed_put), and `src/store.py:298` with
     `src/store_pg.py:322` (verdict_put);
   * the delete of one record: `src/store.py:279` with `src/store_pg.py:286`;
   * the clear of one crop: `src/store.py:318` with `src/store_pg.py:354`;
   * the lookup of a key by basename: `src/store.py:316` with `src/store_pg.py:352`;
   * the float spelling of one anchor time: `src/store.py:345` with
-    `src/store_pg.py:396`.
+    `src/store_pg.py:321`.
 
 A measurement of the raw statement lists of that revision counted 17 shared
 statements over the four mutators.  Only the five rules above are the copy: the
