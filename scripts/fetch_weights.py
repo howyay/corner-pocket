@@ -3,12 +3,12 @@
 
     python scripts/fetch_weights.py
 
-Each file is pinned to a URL, a full SHA-256 and a size. A file that is
-already present with the pinned checksum is skipped, so re-running is safe.
-A download goes to a temporary file next to its destination and is moved into
-place only when its checksum matches. On a mismatch the temporary file is
-deleted, anything already at the destination is left as it was, and the
-script exits with status 1. Standard library only. Licences: see NOTICE.
+Each file is pinned in `src/weight_pins.py` to a URL, a full SHA-256 and a size.
+A file that is already present with the pinned checksum is skipped, so re-running
+is safe.  A download goes to a temporary file next to its destination and is moved
+into place only when its checksum matches.  On a mismatch the temporary file is
+deleted, anything already at the destination is left as it was, and the script
+exits with status 1. Standard library only. Licences: see NOTICE.
 """
 import hashlib
 import os
@@ -20,24 +20,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # `__main__` puts scripts/ first, not the repository root
 from src.tls_trust import trusted_context
+from src.weight_pins import WEIGHT_PINS
 CHUNK = 1 << 20
 
-# (path under the repository root, URL, SHA-256, size in bytes)
-WEIGHTS = [
-    ("yolov8n.pt",
-     "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
-     "f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36",
-     6549796),
-    # Hugging Face kaiyangzhou/osnet, pinned to commit a5c5cc0; trained on
-    # MSMT17, whose terms are academic and non-commercial (see NOTICE).
-    ("src/reid/weights/osnet_x0_25_msmt17.pth",
-     "https://huggingface.co/kaiyangzhou/osnet/resolve/"
-     "a5c5cc037c24235cda3b21085b93ad77c9616224/"
-     "osnet_x0_25_msmt17_combineall_256x128_amsgrad_ep150_stp60_lr0.0015"
-     "_b64_fb10_softmax_labelsmooth_flip_jitter.pth",
-     "cf55163d78fc44c62c82f85ab62d39f10438679b5abe8c698ae08cfa84aa6e18",
-     9336983),
-]
+#: The pin table itself.  `src/weight_pins.py` owns it, so one import serves this
+#: script and the test that compares the table with NOTICE.
+WEIGHTS = WEIGHT_PINS
 
 
 class ChecksumError(ValueError):
