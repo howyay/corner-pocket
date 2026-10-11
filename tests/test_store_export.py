@@ -1,7 +1,7 @@
 """The table tuple of src/store_export.py holds every table the migrations create.
 
 Round 70, Worth 3: ``row_counts`` of ``src/store_export.py`` counts the tables of the
-hand-typed tuple ``TABLES`` (``src/store_export.py:41``).  The migrations create those
+hand-typed tuple ``TABLES`` (``src/store_export.py:43``).  The migrations create those
 tables, so the tuple is a second copy of the created set and the two can drift apart in
 silence: a migration that adds a table leaves ``row_counts`` reporting a shorter list,
 and no case fails.  The neighbour guard ``tests/test_write_fingerprint.py`` holds the SQL
@@ -9,11 +9,11 @@ proof to the same schema, and it does not read this tuple.
 
 One decision stands here and is held: exactly one created table is out of the tuple on
 purpose, the migration ledger ``schema_migrations``.  ``NOT_OPERATOR_DATA`` of
-``src/store_export.py:36`` names it with its reason.  Every other created table must
+``src/store_export.py:38`` names it with its reason.  Every other created table must
 stand in ``TABLES``, and every name of ``TABLES`` must be a created table.
 
 The reader of the created names has one home, ``created_tables`` of
-``tools/write_fingerprint_coverage.py:146``: it reads the ``CREATE TABLE`` lines of
+``tools/write_fingerprint_coverage.py:147``: it reads the ``CREATE TABLE`` lines of
 ``db/migrations/*.sql`` and refuses a form it cannot parse.  ``tests/test_write_fingerprint.py``
 reads the same reader, so the DDL syntax stays in one place and this module holds no
 second copy of it.
