@@ -28,6 +28,7 @@ application.
 
 from __future__ import annotations
 
+import ast
 import re
 import unittest
 from dataclasses import dataclass
@@ -45,12 +46,37 @@ from src.store_files import BALL_SETS
 # here would be a second spelling of the vocabulary.
 from annotator.unified_server import VERDICT_WORDS
 
+# The number rules read the constants of the validator, so the CHECK of the migration and
+# the check of the request cannot drift apart.  A literal number in this module would be a
+# third spelling of the bound: the bounds table below names these constants instead.
+from annotator.operations import (LONGEST_NAME, RACE_TO_MAX, RACE_TO_MIN, RATING_MAX,
+                                  RATING_MIN, TABLES_MAX, TABLES_MIN)
+
+# The rank of a face sample is below the count src/person_identity.py keeps, so the
+# migration's three ranks and PERSIST_FACES hold one number.  This module reads the count
+# and states the relation, so a fourth sample cannot pass the validator and fail the DDL.
+from src.person_identity import PERSIST_FACES
+
 # The shipped package tree has one home, tests/_shipped.py.  A second copy of the tree
 # in this module is a defect, and the guard tests/test_one_shipped_tree.py walks for it.
 from _shipped import SHIPPED
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / 'db' / 'migrations'
+#: The module whose constants the bounds table names, and whose checks refuse a value
+#: outside a bound.  Each bound names the module it reads, so no copy of a module stands
+#: here.
+OWNER = 'annotator/operations.py'
+
+#: The syntax tree of one module, parsed once per run.
+_TREES: dict = {}
+
+
+def tree_of(relative):
+    """The syntax tree of one repository file, parsed once per run."""
+    if relative not in _TREES:
+        _TREES[relative] = ast.parse(source(relative))
+    return _TREES[relative]
 
 #: A bracketed run with no inner bracket: a tuple, a list, a set, or a call.
 COLLECTION = re.compile(r'[\(\[]([^()\[\]]*)[\)\]]')
@@ -65,6 +91,24 @@ TABLE = re.compile(r'^CREATE TABLE (\w+) \(', re.MULTILINE)
 CHECK_IN = re.compile(r'CHECK \((\w+) IN \(([^)]*)\)')
 #: One ``IN (values)`` list, in a CHECK or in a function body.
 IN_LIST = re.compile(r'IN \(([^)]*)\)')
+#: One ``CHECK (column BETWEEN low AND high)`` rule.  A CHECK that ends in BETWEEN
+#: carries the column first; a CHECK that wraps the column in a call, such as
+#: ``CHECK (length(btrim(name)) BETWEEN 1 AND 200)``, carries it after the call.
+CHECK_NUMERIC = re.compile(r'CHECK \((.*?) BETWEEN (-?\d+) AND (-?\d+)\)')
+#: One length rule and its low end: ``length(btrim(name)) BETWEEN 1 AND 200``.
+LENGTH_RULE = re.compile(r'length\(.*?\) BETWEEN (\d+) AND')
+#: The column word of a BETWEEN rule that a call wraps, for example ``btrim(name)``.
+WRAPPED_COLUMN = re.compile(r'\((\w+)\)')
+#: Two or more spaces, which one text may use where the other uses one.
+SPACES = re.compile(r' {2,}')
+#: One argument of a check call that is a name, not a literal number.
+NAME_ARGUMENT = re.compile(r'[A-Za-z_]\w*')
+#: A number in a comment or a limit that never stands as an argument of a check call,
+#: because it touches a letter or a bracket.  A site that still spells the bound inline
+#: is found at either side of the pair, and this pattern is the measured reason.
+INLINE_NUMBER = re.compile(r'(?:^|[,\s(])(-?\d+)(?=\s*[,)])')
+#: One ``CHECK`` line of the design document, and the column of its rule.
+DOC_CHECK = re.compile(r'^\s*(\w+)\s+\w.*?(CHECK \(.*BETWEEN.*\))', re.MULTILINE)
 
 _SOURCES: dict = {}
 
@@ -112,6 +156,170 @@ def checks_in(block):
             yield match.group(1), values
 
 
+def collection_sites(module, values):
+    """The lines of one module that hold a literal collection of exactly ``values``."""
+    return [line for line, found in collections_in(source(module))
+            if set(found) == set(values)]
+
+
+def between_columns(sql_text):
+    """Yield ``(column, low, high, rule)`` for each ``BETWEEN`` rule of one SQL text.
+
+    The rule text is the one the migration spells, from ``CHECK`` to the closing
+    bracket.  The scan reads the text, so a rule that moves keeps its answer, and a
+    rule that changes its numbers changes the answer.
+    """
+    for match in CHECK_NUMERIC.finditer(sql_text):
+        body, low, high = match.group(1), int(match.group(2)), int(match.group(3))
+        wrapped = WRAPPED_COLUMN.findall(body)
+        column = wrapped[-1] if wrapped else body.strip()
+        yield column, low, high, match.group(0)
+
+
+def migration_bounds():
+    """Yield ``(table, column, low, high, rule)`` for each ``BETWEEN`` rule of a migration."""
+    for path in sorted(MIGRATIONS.glob('*.sql')):
+        for table, block in tables_in(path.read_text(encoding='utf-8')):
+            for column, low, high, rule in between_columns(block):
+                yield table, column, low, high, rule
+
+
+def named_low(bound, names):
+    """The low end of one bound: the number the migration states beside the high end.
+
+    A length rule such as ``CHECK (length(btrim(name)) BETWEEN 1 AND 200)`` names only
+    its high end, because a column of text holds at least one character.  A rank starts
+    at zero.  Every other rule names both ends, so the smaller name is its low number.
+    """
+    if bound.sql_low is not None:
+        return bound.sql_low
+    length = LENGTH_RULE.search(bound.sql_constraint)
+    if length is not None:
+        return int(length.group(1))
+    return min(names.values())
+
+
+def bound_sites(bound):
+    """The call sites of the owner module that read the bound of one rule.
+
+    The scan reads the syntax tree, so a site that passes the number inline, or one
+    that passes a name other than the one the bounds table pins, is not a site.  A line
+    number drifts and is not part of the answer.
+
+    ``integer(value, low, high, name)`` states both ends.  ``text(value, name,
+    maximum=...)`` states the longest name, and the default of that parameter carries
+    the bound when a call leaves it out; a call that leaves it out passes no keyword.
+    """
+    sites = []
+    for node in ast.walk(tree_of(bound.owner)):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Name) or node.func.id != bound.validator:
+            continue
+        if bound.validator == 'text':
+            if len(node.args) != 2 or node.keywords:
+                continue
+            sites.append(node)
+            continue
+        if len(node.args) != 4 or node.keywords:
+            continue
+        if not all(isinstance(argument, ast.Name) for argument in node.args[1:3]):
+            continue
+        if bound.python:
+            if [argument.id for argument in node.args[1:3]] != [name for name, _ in bound.python]:
+                continue
+        sites.append(node)
+    return sites
+
+
+def bound_default_problems(bound):
+    """The problems of the signature of a check whose one name is a default."""
+    if len(bound.python) != 1 or bound.validator is None:
+        return []
+    name = bound.python[0][0]
+    for node in ast.walk(tree_of(bound.owner)):
+        if not isinstance(node, ast.FunctionDef) or node.name != bound.validator:
+            continue
+        spelled = ast.dump(node.args)
+        if name not in spelled:
+            return [f'{bound.column}: the signature of {bound.validator} does not hold the '
+                    f'name {name}; the bounds table pins it']
+        return []
+    return [f'{bound.column}: {bound.owner} holds no function {bound.validator}']
+
+
+def bound_problems(bound, sql_text=None):
+    """The disagreements of one number rule, as one text line each.
+
+    ``sql_text`` is the migration text the scan reads.  A caller may pass the text of
+    another migration to measure the guard itself.
+    """
+    if sql_text is None:
+        sql_text = source(f'db/migrations/{bound.sql_file}')
+    problems = []
+    found = []
+    for table, block in tables_in(sql_text):
+        for column, low, high, rule in between_columns(block):
+            if f'{table}.{column}' == bound.column:
+                found.append((low, high, rule))
+    if not found:
+        return [f'{bound.column}: {bound.sql_file} holds no BETWEEN rule for this column']
+    low, high, rule = found[0]
+    if rule != bound.sql_constraint:
+        problems.append(f'{bound.column}: {bound.sql_file} spells "{rule}"; the bounds table '
+                        f'pins "{bound.sql_constraint}"')
+    names = dict(bound.python)
+    owner = source(bound.owner)
+    missing = sorted(name for name in names if not re.search(rf'\b{name}\b', owner))
+    if missing:
+        problems.append(f'{bound.column}: {bound.owner} does not hold the name(s) {missing} '
+                        f'the bounds table pins')
+    wants = set(names.values())
+    bound_low = named_low(bound, names)
+    if low != bound_low or high not in wants:
+        problems.append(f'{bound.column}: the migration binds {low}..{high}; the constants '
+                        f'bind {bound_low}..{sorted(wants)}')
+    if bound.validator is None:
+        return problems
+    sites = bound_sites(bound)
+    if len(sites) != bound.sites:
+        problems.append(f'{bound.column}: {bound.validator} holds {len(sites)} call sites in '
+                        f'{bound.owner} whose two bound arguments are the bound names; the '
+                        f'bounds table pins {bound.sites}')
+    problems += bound_default_problems(bound)
+    return problems
+
+
+def design_doc_problems(sql_text):
+    """The problems of the design document copy of the DDL, as one text line each.
+
+    ``db/migrations/0002_user_data.sql`` owns the DDL the store applies.  The design
+    document repeats that DDL as text, and no guard read the copy before this one.
+    """
+    doc = source('docs/postgres-design.md')
+    born = {normalised(match.group(0)) for match in CHECK_NUMERIC.finditer(sql_text)}
+    seen = 0
+    drifted = []
+    for match in DOC_CHECK.finditer(doc):
+        seen += 1
+        rule = normalised(match.group(2))
+        if rule not in born:
+            drifted.append(f'{match.group(1)}: the document spells "{rule}"; the migration '
+                           f'holds no such rule')
+    if not seen:
+        drifted.append('docs/postgres-design.md holds no CHECK ... BETWEEN line; the document '
+                       'copy of the DDL moved or was deleted')
+    if seen < len(born):
+        drifted.append(f'the document spells {seen} CHECK ... BETWEEN rules and the '
+                       f'migration holds {len(born)}; this guard reads every {len(born)}')
+    return drifted
+
+
+def normalised(rule):
+    """One rule text with every run of spaces reduced to one space."""
+    return SPACES.sub(' ', rule).strip()
+
+
 def sql_domain_values(sql_text):
     """Yield one frozenset of values for each ``IN (...)`` list of strings.
 
@@ -156,6 +364,84 @@ class Pair:
     sql_column: str        # the column of the rule
     sql_constraint: str    # the exact rule text, as the migration writes it
     python: tuple          # ((module, number of sites), ...)
+
+
+@dataclass(frozen=True)
+class Bound:
+    """One number rule of a SQL column and the Python validator that repeats it.
+
+    Round 48 gave a word domain one pair.  A number domain needs the same treatment:
+    the migration states the bound for the database and Python states it for the
+    validator.  ``validator`` names the check of ``annotator/operations.py`` that
+    refuses a value outside the bound, and ``python`` names the constants that hold
+    the bound beside the other names of that module.
+    """
+
+    column: str            # "tournaments.tables": the SQL table and column
+    sql_file: str          # the migration that holds the rule
+    sql_constraint: str    # the exact rule text, as the migration writes it
+    owner: str             # the module that holds the names below
+    python: tuple = ()     # (("RATING_MIN", 0), ("RATING_MAX", 1000)); the first item is
+                           # the name the module holds, the second is the bound it holds
+    sql_low: int = None    # the low end of the rule, when no name of the module holds it
+                           # (a length rule, or a rank that starts at 0)
+    validator: str = None  # "integer", the check whose two arguments are the bound;
+                           # None when no validator of the owner module owns this bound
+    sites: int = 0         # how many call sites of the check read the two names
+
+
+#: The number domains this module binds.  Each rule holds the exact migration text and
+#: the Python names that repeat it.  A sixth rule, ``track_seeds.label``, is both a word
+#: list and a length bound, and the pair of that domain above holds it.
+#:
+#: ``players.name`` is bound here as well: the column refuses a name of 0 or of 201
+#: characters, and ``LONGEST_NAME`` is the default of ``text``.  Three call sites of
+#: ``_do_player_save``, ``_do_tournament_rename`` and ``_do_pool_remove`` read that
+#: default and pass no maximum, so the site scan counts them and tests/test_operations.py
+#: drives a name at the bound and at the next character.
+#:
+#: ``identity_face_samples.rank`` is bound to the count of ``src/person_identity.py``:
+#: the CHECK reads a rank, and PERSIST_FACES holds how many samples one cluster keeps.
+BOUNDS = (
+    Bound(column='players.rating',
+          sql_file='0002_user_data.sql',
+          sql_constraint='CHECK (rating BETWEEN 0 AND 1000)',
+          owner=OWNER,
+          python=(('RATING_MIN', RATING_MIN), ('RATING_MAX', RATING_MAX)),
+          validator='integer',
+          sites=1),
+    Bound(column='tournaments.tables',
+          sql_file='0002_user_data.sql',
+          sql_constraint='CHECK (tables BETWEEN 1 AND 32)',
+          owner=OWNER,
+          python=(('TABLES_MIN', TABLES_MIN), ('TABLES_MAX', TABLES_MAX)),
+          validator='integer',
+          sites=2),
+    Bound(column='tournaments.race_to',
+          sql_file='0002_user_data.sql',
+          sql_constraint='CHECK (race_to BETWEEN 1 AND 99)',
+          owner=OWNER,
+          python=(('RACE_TO_MIN', RACE_TO_MIN), ('RACE_TO_MAX', RACE_TO_MAX)),
+          validator='integer',
+          sites=2),
+    Bound(column='players.name',
+          sql_file='0002_user_data.sql',
+          sql_constraint='CHECK (length(btrim(name)) BETWEEN 1 AND 200)',
+          owner=OWNER,
+          python=(('LONGEST_NAME', LONGEST_NAME),),
+          validator='text',
+          sites=3),
+    Bound(column='identity_face_samples.rank',
+          sql_file='0002_user_data.sql',
+          sql_constraint='CHECK (rank BETWEEN 0 AND 2)',
+          owner='src/person_identity.py',
+          sql_low=0,
+          python=(('PERSIST_FACES', PERSIST_FACES - 1),)),
+)
+
+#: The column of one pair that also carries a length bound.  The pair above holds the
+#: rule text and the word values; the bounds scan below reads the same line again.
+PAIR_LENGTH_BOUND = 'track_seeds.label'
 
 
 @dataclass(frozen=True)
@@ -366,3 +652,80 @@ class SqlDomainParityTests(unittest.TestCase):
         values = [tuple(words) for _, words in checks_in(block)]
         self.assertIn(tuple(VERDICT_WORDS), values,
                       'the migration spells the values of VERDICT_WORDS, in that order')
+
+    def test_each_bound_holds_one_value_list(self):
+        """For each number rule, the migration text and the Python names must hold it.
+
+        The case reads the exact ``CHECK ... BETWEEN`` text of the migration and the two
+        constants of annotator/operations.py.  It also counts the call sites whose two
+        bound arguments are those names, so a site that spells the number inline is a
+        failure and not a pass.
+        """
+        problems = []
+        for bound in BOUNDS:
+            problems += bound_problems(bound)
+        self.assertEqual([], problems,
+                         'a SQL number rule and its Python bound disagree; a value that the '
+                         'database accepts can fail in Python, or the other way round:\n'
+                         + '\n'.join(problems))
+
+    def test_every_between_rule_of_the_migrations_is_bound(self):
+        """Each ``BETWEEN`` rule of the migrations must have one bound in this module.
+
+        The case fails with the list of the rules that no record names, so a new
+        constraint cannot be added without a Python home and a case.
+        """
+        bound = {entry.column for entry in BOUNDS}
+        pairs = {pair.domain for pair in PAIRS if pair.domain == PAIR_LENGTH_BOUND}
+        unbound = sorted(f'{table}.{column} BETWEEN {low} AND {high}'
+                         for table, column, low, high, _ in migration_bounds()
+                         if f'{table}.{column}' not in bound | pairs)
+        self.assertEqual([], unbound,
+                         'these SQL number rules hold no bound in '
+                         'tests/test_sql_domain_parity.py. Name the bound beside the other '
+                         'names of its module, add it to the bounds table, and add a case: '
+                         + repr(unbound))
+
+    def test_the_unbound_rule_report_names_the_rule(self):
+        """The completeness rule must report an unbound rule, and must not stay quiet.
+
+        The case drops the rating bound from the table and measures the report the
+        completeness case above would print for it.
+        """
+        kept = [entry for entry in BOUNDS if entry.column != 'players.rating']
+        bound = {entry.column for entry in kept}
+        pairs = {pair.domain for pair in PAIRS if pair.domain == PAIR_LENGTH_BOUND}
+        reported = sorted(f'{table}.{column} BETWEEN {low} AND {high}'
+                          for table, column, low, high, _ in migration_bounds()
+                          if f'{table}.{column}' not in bound | pairs)
+        self.assertEqual(['players.rating BETWEEN 0 AND 1000'], reported,
+                         'a bound that the table drops is named, with its rule')
+
+    def test_the_bound_rule_reports_a_planted_bound(self):
+        """The bound rule must report a migration copy whose number differs.
+
+        This is the defect the module exists for: one side states the rule, the other
+        side keeps the old number, and nothing fails.  The case plants the widen.
+        """
+        bound = [entry for entry in BOUNDS if entry.column == 'players.rating'][0]
+        sql = source(f'db/migrations/{bound.sql_file}')
+        planted = sql.replace('CHECK (rating BETWEEN 0 AND 1000)',
+                              'CHECK (rating BETWEEN 0 AND 2000)')
+        self.assertNotEqual(sql, planted, 'the case plants the widen of the rating rule')
+        problems = bound_problems(bound, planted)
+        self.assertTrue(any('0 AND 2000' in problem for problem in problems),
+                        'the planted rule is reported; the guard answered ' + repr(problems))
+
+    def test_the_design_document_copy_holds_the_migration_rules(self):
+        """The design document must spell each ``BETWEEN`` rule of the migration.
+
+        ``docs/postgres-design.md`` repeats the DDL of db/migrations/0002_user_data.sql
+        as document text, and the guard read the migration only.  A change of one
+        ``CHECK`` in the migration left the document stating the old rule.  This case
+        reads both texts, and the migration stays the owner of the rule.
+        """
+        sql = source('db/migrations/0002_user_data.sql')
+        problems = design_doc_problems(sql)
+        self.assertEqual([], problems,
+                         'the design document and the migration disagree on a CHECK ... '
+                         'BETWEEN rule:\n' + '\n'.join(problems))

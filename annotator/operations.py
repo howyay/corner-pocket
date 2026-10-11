@@ -55,6 +55,28 @@ CLOTH_COLORS = ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f')
 LAMP_GLOW_MIN = 0.0
 LAMP_GLOW_MAX = 0.5
 
+# This module owns the bounds of three numeric columns of the operations document, and
+# `text` below owns the longest name the players table holds.  The migration states each
+# rule as a CHECK for the database:
+#   db/migrations/0002_user_data.sql  players.rating    BETWEEN RATING_MIN AND RATING_MAX
+#   db/migrations/0002_user_data.sql  tournaments.tables  BETWEEN TABLES_MIN AND TABLES_MAX
+#   db/migrations/0002_user_data.sql  tournaments.race_to BETWEEN RACE_TO_MIN AND RACE_TO_MAX
+#   db/migrations/0002_user_data.sql  players.name      BETWEEN 1 AND LONGEST_NAME
+# SQL cannot import Python, so the two spellings are two copies of one rule.  A validator
+# reads each name below, and the bounds table of tests/test_sql_domain_parity.py holds the
+# migration text to the same name, so a widened bound fails there instead of drifting.
+RATING_MIN = 0
+RATING_MAX = 1000
+TABLES_MIN = 1
+TABLES_MAX = 32
+RACE_TO_MIN = 1
+RACE_TO_MAX = 99
+#: The longest name the players table holds.  The default of `text` reads this name, so
+#: `player_save` and `tournament_rename` refuse a name at the bound of the column.  The
+#: name does not end in NAME_MAX: tests/test_guest_name.py reserves that ending for the
+#: guest bound alone, so a second bound of a name carries a different word.
+LONGEST_NAME = 200
+
 
 class ConflictError(ValueError):
     """The caller must reload before retrying a stale mutation.
@@ -88,7 +110,7 @@ def optional(payload, key, default):
     return default if value is None or value == '' else value
 
 
-def text(value, name, maximum=200):
+def text(value, name, maximum=LONGEST_NAME):
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
         raise TemplateError(TEXT_LENGTH, name=name, maximum=maximum)
     return value.strip()
@@ -786,8 +808,8 @@ class Operations:
         fmt = event.get('format', 'singles')
         if fmt not in ('singles', 'doubles'):
             raise ValueError('Invalid format')
-        tables = integer(event.get('tables', 1), 1, 32, 'tables')
-        race_to = integer(event.get('raceTo', 1), 1, 99, 'raceTo')
+        tables = integer(event.get('tables', 1), TABLES_MIN, TABLES_MAX, 'tables')
+        race_to = integer(event.get('raceTo', 1), RACE_TO_MIN, RACE_TO_MAX, 'raceTo')
         # Nothing below writes to the store before every field has been accepted.
         line = self._backfill_source(s, source, vod, start, end)
         entrants, side = self._backfill_entrants(s, event.get('entrants'))
@@ -830,7 +852,7 @@ class Operations:
         status = optional(p, 'status', player['status'])
         if status not in PLAYER_STATUSES:
             raise ValueError('Invalid player status')
-        player.update(name=name, rating=integer(optional(p, 'rating', player['rating']), 0, 1000, 'rating'), status=status)
+        player.update(name=name, rating=integer(optional(p, 'rating', player['rating']), RATING_MIN, RATING_MAX, 'rating'), status=status)
         if p.get('notes') is not None:
             if not isinstance(p['notes'], str) or len(p['notes']) > NOTE_MAX:
                 raise ValueError('Player notes must be text up to 4000 characters')
@@ -872,8 +894,8 @@ class Operations:
             raise ValueError('Remove entrants before changing format')
         if fmt != t['format'] and t.get('pool'):
             raise ValueError('Remove solo players before changing format')
-        t.update(format=fmt, tables=integer(p.get('tables', t['tables']), 1, 32, 'tables'),
-                 raceTo=integer(p.get('raceTo', t['raceTo']), 1, 99, 'raceTo'))
+        t.update(format=fmt, tables=integer(p.get('tables', t['tables']), TABLES_MIN, TABLES_MAX, 'tables'),
+                 raceTo=integer(p.get('raceTo', t['raceTo']), RACE_TO_MIN, RACE_TO_MAX, 'raceTo'))
         if 'name' in p:
             t['name'] = text(p['name'], 'name')
 

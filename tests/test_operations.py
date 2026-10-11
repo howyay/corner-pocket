@@ -1541,6 +1541,77 @@ class OperationRegistryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '^Random pairing is for doubles$'):
                 ops.post({'revision': 0, 'action': 'solo_add'})
 
+    def test_the_rating_bound_holds_the_players_column_rule(self):
+        """The validator accepts each edge of the rating rule and refuses each side.
+
+        db/migrations/0002_user_data.sql holds CHECK (rating BETWEEN 0 AND 1000), and
+        tests/test_sql_domain_parity.py holds that text to RATING_MIN and RATING_MAX.
+        This case holds the behaviour to the same two numbers, on both call sites.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Operations(Path(tmp))
+            for rating in (0, 1000):
+                state = self.call(ops, 'player_save', name=f'Edge {rating}', rating=rating)
+                self.assertEqual(rating, state['players'][-1]['rating'])
+            ada = self.call(ops, 'player_save', name='Ada', rating=500)['players'][-1]
+            for rating in (-1, 1001):
+                with self.assertRaisesRegex(
+                        ValueError, '^rating must be an integer from 0 to 1000$'):
+                    self.call(ops, 'player_save', name=f'New {rating}', rating=rating)
+                with self.assertRaisesRegex(
+                        ValueError, '^rating must be an integer from 0 to 1000$'):
+                    self.call(ops, 'player_save', id=ada['id'], name='Ada', rating=rating)
+            state = ops.get()
+            self.assertEqual([0, 500, 1000],
+                             sorted(player['rating'] for player in state['players']),
+                             'each refused write left the store as it was')
+
+    def test_the_tables_bound_holds_the_tournaments_column_rule(self):
+        """The validator accepts each edge of the tables rule and refuses each side."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Operations(Path(tmp))
+            state = self.call(ops, 'tournament_setup', tables=1)
+            self.assertEqual(1, state['tournament']['tables'])
+            state = self.call(ops, 'tournament_setup', tables=32)
+            self.assertEqual(32, state['tournament']['tables'])
+            for tables in (0, 33):
+                with self.assertRaisesRegex(
+                        ValueError, '^tables must be an integer from 1 to 32$'):
+                    self.call(ops, 'tournament_setup', tables=tables)
+            self.assertEqual(32, ops.get()['tournament']['tables'])
+
+    def test_the_race_to_bound_holds_the_tournaments_column_rule(self):
+        """The validator accepts each edge of the race_to rule and refuses each side."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Operations(Path(tmp))
+            state = self.call(ops, 'tournament_setup', raceTo=1)
+            self.assertEqual(1, state['tournament']['raceTo'])
+            state = self.call(ops, 'tournament_setup', raceTo=99)
+            self.assertEqual(99, state['tournament']['raceTo'])
+            for race_to in (0, 100):
+                with self.assertRaisesRegex(
+                        ValueError, '^raceTo must be an integer from 1 to 99$'):
+                    self.call(ops, 'tournament_setup', raceTo=race_to)
+            self.assertEqual(99, ops.get()['tournament']['raceTo'])
+
+    def test_the_name_bound_holds_the_players_column_rule(self):
+        """The players column holds 200 characters, and the validator refuses 201."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Operations(Path(tmp))
+            name = 'N' * 200
+            state = self.call(ops, 'player_save', name=name)
+            self.assertEqual(name, state['players'][-1]['name'])
+            before = ops.path.read_bytes()
+            with self.assertRaisesRegex(
+                    ValueError, '^name must contain 1\u2013200 characters$'):
+                self.call(ops, 'player_save', name='N' * 201)
+            self.assertEqual(before, ops.path.read_bytes())
+
+    @staticmethod
+    def call(ops, action, **fields):
+        """One action on one store, at the revision the store reports."""
+        return ops.post(dict(action=action, revision=ops.get()['revision'], **fields))
+
 
 if __name__ == '__main__':
     unittest.main()
