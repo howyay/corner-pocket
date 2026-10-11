@@ -28,6 +28,12 @@ Contract, deliberately small:
   out-of-range frame has a defined reference instead of an exception.
 * :func:`quad_for` / :func:`homographies` - the pixels and the
   pixels<->canonical-millimetre pair for that time.
+* :func:`verified_cloth_quad` - **the verified cloth quad of one dataset**, as a
+  :class:`Reference`.  This is the only owner of that rule.  It reads the human
+  calibration segment of the dataset, then the hand anchors of that dataset, then
+  the scan corners.  It derives the anchors path from the dataset, so no caller
+  can freeze one dataset into a signature default.  :func:`anchors_reference_path`
+  names that file; no other module names it.
 
 The lookup is a pure function of the artifact, so a later measured split is a data
 change, not a code change.
@@ -77,6 +83,28 @@ EVIDENCE_HIGHLIGHT = ("src/table_refine.py _DATASET_PRIOR documents this file at
 
 # The steps of the chain, in order.  ``resolve`` walks them in this order.
 KINDS = ("supplied", "segment", "static", "prior")
+
+# The steps of :func:`verified_cloth_quad`, in order.  The first step with a quad
+# wins.  "human segment" is the human calibration segment of one dataset, "hand
+# anchors" is the anchor file of that dataset, and "scan corners" is the scan's
+# own naive corners.  This tuple IS the resolution order; a reader that states
+# the order again holds a second copy of the rule.
+CLOTH_STEPS = ("human_segment", "hand_anchors", "scan_corners")
+
+# The anchor file name of a dataset, as a format for that dataset.  The one
+# derivation.  A caller may override the name, but the dataset it names must
+# still come from the dataset argument, never from a default of that caller.
+ANCHORS_REFERENCE = "out/pid_anchors_{dataset}.json"
+
+# The scan's own corners file.  It is one path for the checkout, so it carries no
+# dataset name.  The loader takes the root from ``verified_cloth_quad``.
+SCAN_CORNERS = "out/scan30/corners.json"
+
+# Prose strings for one owner only.  Both readers write one of these next to the
+# quad, so a reader may report the rule without stating it again.
+CLOTH_LABELS = {"human_segment": "human calibration segment",
+                "hand_anchors": "hand anchors",
+                "scan_corners": "scan corners"}
 
 
 @dataclass
@@ -536,3 +564,111 @@ def resolve(dataset: str = "vod30", t=None, root=None, artifact=None, quad_file=
             return candidate
     return Reference(dataset=dataset, kind="none", origin="none", note="no quad found",
                      rejected=list(rejected))
+
+
+def anchors_reference_path(dataset: str = "vod30", path=None) -> str:
+    """The anchor file of one dataset.  The only derivation of that name.
+
+    The dataset argument names the file.  A caller may give a different name in
+    ``path``, which is an override for a test or for a comparison.  A caller with
+    a default of its own can freeze one dataset into that default; this function
+    cannot, because the dataset argument is always a value the caller passes.
+    """
+    if path is not None and str(path) != "":
+        try:
+            return str(path).format(dataset=dataset)
+        except (IndexError, KeyError, ValueError):
+            return str(path)
+    return ANCHORS_REFERENCE.format(dataset=dataset)
+
+
+def _resolve_input(where, base: Path) -> Path:
+    """``where`` as a path.  A relative path resolves against ``base``."""
+    where = Path(where)
+    return where if where.is_absolute() else base / where
+
+
+def _anchors_reference(path, dataset: str, t) -> Reference:
+    """The hand anchors of ``dataset``, read as one file of that dataset."""
+    reference = read(path, "anchors", t=t)
+    reference.dataset = dataset
+    reference.kind = "hand_anchors"
+    if reference.found:
+        reference.note = f"saved hand anchors of {dataset} at t={reference.entry} (first four)"
+        reference.evidence = CLOTH_LABELS["hand_anchors"]
+    return reference
+
+
+def _scan_corners_reference(path, dataset: str) -> Reference:
+    """The scan's own naive corners, the last step of the rule."""
+    reference = read(path, "corners")
+    reference.dataset = dataset
+    reference.kind = "scan_corners"
+    if reference.found:
+        reference.note = "scan corners, the last step of the rule"
+        reference.evidence = CLOTH_LABELS["scan_corners"]
+    return reference
+
+
+def verified_cloth_quad(dataset: str = "vod30", t=None, root=None, anchors_path=None,
+                        scan_corners_path=None) -> Reference:
+    """The verified cloth quad of one dataset: the one owner of that rule.
+
+    The order, in the steps of :data:`CLOTH_STEPS`:
+
+    1. the human calibration segment of that dataset - the artifact's own human
+       segment, not the segment that owns a time.  One quad weighs every frame
+       against one geometry.  A derived or refined segment must not replace a
+       human one, so this step asks for the human segment only;
+    2. the hand anchors of that dataset - a table keyed by time, and the entry
+       nearest ``t`` wins;
+    3. the scan corners - the scan's own geometry, the last resort.
+
+    The first step with a quad wins.  Every step that did not answer is listed in
+    ``rejected``.
+
+    The return shape is a :class:`Reference`.  ``kind`` is the step that won:
+    ``"human_segment"``, ``"hand_anchors"``, ``"scan_corners"``, or ``"none"``.
+    ``quad`` is the 4x2 float32 array, and it is ``None`` when no step answered.
+    ``origin`` is the file the quad came from and ``entry`` is the segment or the
+    key inside it.  ``evidence`` is the :data:`CLOTH_LABELS` string of the step.
+
+    ``dataset`` always names the anchor file, through
+    :func:`anchors_reference_path`.  ``anchors_path`` and ``scan_corners_path``
+    are overrides for a test or for a comparison; neither one is needed for the
+    rule, and a default of a caller cannot freeze a dataset here.  A relative
+    ``root`` resolves against this checkout; a relative override path resolves
+    against ``root``.
+
+    The two callers keep two differences, and neither difference is the rule.
+    ``src.sam3_frame_audit.reference_quad`` reports a label, so it takes
+    ``origin``, ``kind``, ``entry`` and ``source`` from the answer.
+    ``src.sam3_ball_cache.reference_quad`` answers a bare array or ``None``, so
+    it takes ``quad`` from the same answer.
+    """
+    base = Path(root) if root is not None else ROOT
+    rejected: list = []
+    step = None
+    for step in CLOTH_STEPS:
+        if step == "human_segment":
+            reference = _segment_reference(dataset, t, base, None, True, True)
+        elif step == "hand_anchors":
+            path = _resolve_input(anchors_reference_path(dataset, anchors_path), base)
+            reference = _anchors_reference(path, dataset, t)
+        else:
+            path = _resolve_input(scan_corners_path or SCAN_CORNERS, base)
+            reference = _scan_corners_reference(path, dataset)
+        if reference is not None and reference.found:
+            reference.dataset = dataset
+            # The step name of ``CLOTH_STEPS`` is the kind of the answer.  The
+            # reader that produced the quad names it in ``source`` and ``entry``,
+            # so the provenance is still there.
+            reference.source = reference.source or reference.kind
+            reference.kind = step
+            reference.per_time = step == "human_segment"
+            reference.rejected = list(rejected)
+            return reference
+        rejected.append(f"{step}: no quad in {reference.origin if reference else 'none'}")
+    return Reference(dataset=dataset, kind="none", origin="none", rejected=rejected,
+                     note=f"no verified cloth quad for {dataset}; the steps asked in the "
+                          f"order {', '.join(CLOTH_STEPS)} answered nothing")

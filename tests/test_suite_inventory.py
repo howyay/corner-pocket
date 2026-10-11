@@ -28,6 +28,9 @@ committed limits so none of them can drift silently:
 
 Measured 2026-10-09 on Python 3.14.6 in a checkout that has `data/` and `out/`:
 1550 cases in 63 modules, discovery 1.5 s, 52 static skip cases in 7 modules.
+Rounds since then added modules and cases: a walk after the round-54 changes
+counts 1979 cases in 99 modules, still 52 static skip cases, so every limit below
+still holds and the floor and the ceiling both stay where they were.
 
 The static count is checkout-dependent, and this is the part a recorded
 `skipped=` number hides.  With `Path.is_file` and `Path.exists` made to report

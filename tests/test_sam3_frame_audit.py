@@ -13,7 +13,9 @@ import unittest
 import cv2
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from src import calib_segments as cs  # noqa: E402
 from src.sam3_frame_audit import (BLACK_MEAN, FLAT_STD, audit, cloth_report,  # noqa: E402
                                   decode, decode_by_index, reference_quad)
 
@@ -96,11 +98,44 @@ class ReferenceQuadTests(unittest.TestCase):
             self.assertEqual(quad.shape, (4, 2))
             self.assertEqual(quad[0].tolist(), [1.0, 2.0])
 
+    def test_the_dataset_names_the_anchor_file_without_a_signature_default(self):
+        """A foreign dataset must never read the vod30 anchors of this checkout."""
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out").mkdir(parents=True)
+            dataset_quad = [[11, 21], [31, 41], [51, 61], [71, 81]]
+            vod30_quad = [[1, 1], [2, 2], [3, 3], [4, 4]]
+            (root / "out" / "pid_anchors_tw-1234567.json").write_text(json.dumps(
+                {"anchors": {"70.0": dataset_quad}}))
+            (root / "out" / "pid_anchors_vod30.json").write_text(json.dumps(
+                {"anchors": {"70.0": vod30_quad}}))
+            quad, label = reference_quad(dataset="tw-1234567", anchors_path=str(
+                root / "out" / "pid_anchors_{dataset}.json"))
+            self.assertEqual(label, "hand anchors")
+            self.assertEqual(quad.tolist(), [[float(x), float(y)] for x, y in dataset_quad])
+            # The path of the file that answered names the dataset, and it is not
+            # the vod30 file that the old signature default froze.
+            reference = cs.verified_cloth_quad(
+                "tw-1234567", anchors_path=str(root / "out" / "pid_anchors_{dataset}.json"))
+            self.assertTrue(reference.origin.endswith("pid_anchors_tw-1234567.json"))
+            self.assertNotIn("pid_anchors_vod30.json", reference.origin)
+
+    def test_a_foreign_dataset_reads_no_vod30_anchors(self):
+        """In this checkout the tw dataset has no anchors, so the scan corners win."""
+        quad, label = reference_quad(dataset="tw-1234567")
+        vod30 = json.loads((ROOT / "out" / "pid_anchors_vod30.json").read_text())
+        vod30_quad = np.asarray(next(iter(vod30["anchors"].values()))[:4], np.float32)
+        if quad is None:
+            self.assertEqual(label, "none")
+        else:
+            self.assertFalse(np.allclose(quad, vod30_quad),
+                             "a foreign dataset answered with the vod30 hand anchors")
+
     def test_no_calibration_returns_none(self):
-        quad, label = reference_quad(dataset="nothing-here",
-                                     anchors_path="/nonexistent/anchors.json")
-        self.assertIsNone(quad)
-        self.assertEqual(label, "none")
+        with TemporaryDirectory() as tmp:
+            quad, label = reference_quad(dataset="nothing-here", root=tmp)
+            self.assertIsNone(quad)
+            self.assertEqual(label, "none")
 
     def test_the_cloth_report_names_the_mask_geometry(self):
         with TemporaryDirectory() as tmp:
@@ -108,7 +143,7 @@ class ReferenceQuadTests(unittest.TestCase):
             rng = np.random.default_rng(2)
             carry = [rng.integers(0, 255, (360, 640, 3), dtype=np.uint8) for _ in range(2)]
             write_video(path, carry)
-            quad, _ = reference_quad(dataset="nothing-here", anchors_path="/nonexistent.json")
+            quad, _ = reference_quad(dataset="nothing-here", root=tmp)
             row = cloth_report(path, 0.0, quad)
             self.assertIn("cloth_area", row)
             self.assertIn("largest_centroid", row)

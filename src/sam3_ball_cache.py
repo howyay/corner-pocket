@@ -129,7 +129,7 @@ def cloth_mask(bgr, reference=None, corners_path="out/scan30/corners.json"):
     used when no reference geometry exists at all, and the caller is told so.
     """
     if reference is None:
-        reference = reference_quad(corners_path)
+        reference = reference_quad(scan_corners_path=corners_path)
     if reference is not None:
         mask = np.zeros(bgr.shape[:2], np.uint8)
         cv2.fillPoly(mask, [np.round(np.asarray(reference, np.float32)).astype(np.int32)], 1)
@@ -193,25 +193,30 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
     return balls, filter_used
 
 
-def reference_quad(corners_path="out/scan30/corners.json", dataset="vod30"):
+def reference_quad(*, dataset="vod30", t=None, root=None, scan_corners_path=None):
     """The verified cloth quad SAM3's balls are allowed to sit on.
 
     The per-frame ``detect_table`` mask is estimated from the frame and collapses
     (or balloons onto the wall panels) under occlusion; the reference quad is
-    human-clicked geometry and is stable.  Preference: the human calibration
-    segment, then the hand anchors, then the scan's own naive corners as a last
-    resort.  ``src.calib_segments`` names every one of those entries.
+    human-clicked geometry and is stable.  The rule lives in
+    ``src.calib_segments.verified_cloth_quad``: the human calibration segment of
+    the dataset, then the hand anchors of that dataset, then the scan's own naive
+    corners as a last resort.  That owner derives every file name from the
+    dataset, so one dataset never reads the artifacts of another.
+
+    ``dataset`` names the artifacts; it is the first argument for that reason.
+    ``t`` selects the anchor entry, ``root`` selects the tree, and
+    ``scan_corners_path`` overrides the scan corners file.  This function has no
+    default of its own for that file, because a default here freezes one dataset.
+    The answer is a bare array, or ``None`` when no step answered.
     """
     from src import calib_segments
 
-    segment = calib_segments.resolve(dataset, prefer_human=True, kinds=("segment",))
-    if segment.found:
-        return np.array(segment.quad, np.float32)
-    for path, key in ((f"out/pid_anchors_{dataset}.json", "anchors"), (corners_path, "corners")):
-        reference = calib_segments.read(path, key)
-        if reference.found:
-            return np.array(reference.quad, np.float32)
-    return None
+    reference = calib_segments.verified_cloth_quad(dataset, t=t, root=root,
+                                                   scan_corners_path=scan_corners_path)
+    if not reference.found:
+        return None
+    return np.array(reference.quad, np.float32)
 
 
 def diagnose_frame(video, time_s, model_proc, corners_path, reference=None,
@@ -229,7 +234,7 @@ def diagnose_frame(video, time_s, model_proc, corners_path, reference=None,
     from src.pipeline import ball_center
 
     if reference is None:
-        reference = reference_quad(corners_path)
+        reference = reference_quad(scan_corners_path=corners_path)
     cap = cv2.VideoCapture(str(video))
     cap.set(cv2.CAP_PROP_POS_MSEC, float(time_s) * 1000.0)
     ok, bgr = cap.read()
@@ -327,7 +332,7 @@ def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/
 
     import torch
     torch.set_num_threads(8)
-    reference = reference_quad(corners_path)
+    reference = reference_quad(scan_corners_path=corners_path)
     if reference is None:
         progress("no reference geometry found: falling back to the per-frame cloth mask, "
                  "which is known to zero frames under occlusion")

@@ -125,22 +125,32 @@ def cloth_report(video, time_s, reference_quad=None):
     return row
 
 
-def reference_quad(dataset="vod30", anchors_path="out/pid_anchors_vod30.json"):
+def reference_quad(dataset="vod30", anchors_path=None, root=None):
     """The verified cloth quad: the human calibration segment, else the hand anchors.
 
-    ``prefer_human`` asks the seam for the artifact's own human segment, not for
-    the segment that owns a time: this audit weighs every frame against one
-    geometry, and a derived or refined segment must not replace a human one.
+    The rule lives in ``src.calib_segments.verified_cloth_quad``: the human
+    calibration segment of the dataset, then the hand anchors of that dataset,
+    then the scan corners.  ``prefer_human`` asks the owner for the artifact's own
+    human segment, not for the segment that owns a time: this audit weighs every
+    frame against one geometry, and a derived or refined segment must not replace
+    a human one.
+
+    ``anchors_path`` is an override of the anchor file name, for a comparison
+    against another file.  It is not needed for the rule, and the dataset always
+    names the file when this argument is ``None``.  ``root`` is the tree that
+    holds ``out/``; the audit uses the tree of this checkout when it is ``None``.
+    The label is the step that answered: ``segment <entry> (<source>)``,
+    ``hand anchors``, or ``none``.
     """
     from src import calib_segments
 
-    reference = calib_segments.resolve(dataset, prefer_human=True, kinds=("segment",))
-    if reference.found:
-        return reference.quad, f"segment {reference.entry} ({reference.source})"
-    anchors = calib_segments.read(anchors_path, "anchors")
-    if anchors.found:
-        return np.asarray(anchors.quad, np.float32), "hand anchors"
-    return None, "none"
+    reference = calib_segments.verified_cloth_quad(dataset, anchors_path=anchors_path, root=root)
+    if not reference.found:
+        return None, "none"
+    if reference.kind == "human_segment":
+        return np.asarray(reference.quad, np.float32), f"segment {reference.entry} ({reference.source})"
+    return (np.asarray(reference.quad, np.float32),
+            calib_segments.CLOTH_LABELS.get(reference.kind, reference.kind))
 
 
 def audit(video, times, out_dir="out/scan30/zeroball", dumps=True) -> dict:
