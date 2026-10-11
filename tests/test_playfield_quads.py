@@ -25,6 +25,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import math
 import re
 import sys
 import tempfile
@@ -34,7 +35,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.playfield import PARALLEL_TOL_DEG, PLAYFIELD_IN, TILT_TOL_DEG, check_quad
+from src.playfield import PARALLEL_TOL_DEG, PLAYFIELD_IN, TILT_TOL_DEG, check_quad, parallelism
 from src.table_refine import CHECK_UNAVAILABLE, best_verdict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -337,7 +338,14 @@ class PlayfieldQuadReplayTests(unittest.TestCase):
         self.assertEqual(repeated, [], 'the fit let a degenerate quad through: %s' % (repeated,))
 
     def test_a_refused_pick_records_the_metric_that_refused_it(self):
-        """A refusal the operator cannot diagnose stops the work, so the run records its numbers."""
+        """A refusal the operator cannot diagnose stops the work, so the run records its numbers.
+
+        The metric is checked twice.  First it must equal the smaller angle of the quad, computed
+        here from ``parallelism``: a ``max`` in place of the owner's ``min``, or a recorded number
+        that is not the one the decision read, fails here.  Then the refusal must be the one that
+        number forces, with the tolerance the record itself states: a pick the owner refused for
+        another reason must not carry more parallelism than that tolerance (round 66).
+        """
         refused = 0
         for vod, pick in self.picks:
             if pick['ok'] is not False:
@@ -347,10 +355,66 @@ class PlayfieldQuadReplayTests(unittest.TestCase):
             self.assertTrue(pick.get('reasons'), 'refused without a reason: ' + where)
             self.assertTrue(pick.get('aspect') is not None and pick.get('best_parallel_deg') is not None,
                             'refused without the metrics that refused it: ' + where)
+            quad = pick.get('quad') or []
+            if len(quad) != 4:
+                continue
+            reduced = round(min(parallelism(quad).values()), 2)
+            self.assertEqual(pick['best_parallel_deg'], reduced,
+                             stale('%s records best_parallel_deg %r, but the smaller angle of its quad '
+                                   'is %r' % (where, pick['best_parallel_deg'], reduced)))
+            tol = (self.provenance('rules') or {}).get('parallel_tol_deg')
+            self.assertIsNotNone(tol, '%s records no parallel_tol_deg, so the metric states no rule'
+                                 % RECORD)
             if 'no-parallel-pair' in (pick.get('reasons') or []):
-                self.assertGreater(pick['best_parallel_deg'], PARALLEL_TOL_DEG,
-                                   'refused for parallelism inside the tolerance: ' + where)
+                self.assertGreater(pick['best_parallel_deg'], tol,
+                                   'refused for parallelism inside its own tolerance: ' + where)
+            else:
+                self.assertLessEqual(pick['best_parallel_deg'], tol,
+                                     'a pick refused for another reason must still hold a parallel '
+                                     'pair: ' + where)
         self.assertGreater(refused, 0, 'the recorded run carries refusals: keep the metrics')
+
+    def test_the_refusal_follows_the_tolerance_it_records(self):
+        """The refusal is the owner's comparison, and the recorded metric must obey it.
+
+        A pick carries ``no-parallel-pair`` exactly when its reduced angle stands over the
+        tolerance the same record states, so the two directions of the rule hold together at
+        the precision the record keeps: the refused picks lie above it, and the other picks at
+        or below it.  A swap of ``min`` for ``max`` therefore fails, because that pick then
+        reads below the tolerance and obeys the wrong branch.
+        """
+        refused = [pick for _, pick in self.picks if pick['ok'] is False]
+        self.assertGreater(len(refused), 0, 'the recorded run carries refusals')
+        self.assertGreater(sum(1 for p in refused if 'no-parallel-pair' in (p.get('reasons') or [])), 0,
+                           'the recorded run carries a refusal for parallelism')
+        tol = (self.provenance('rules') or {}).get('parallel_tol_deg')
+        self.assertIsNotNone(tol, '%s records no parallel_tol_deg' % RECORD)
+        for _, pick in self.picks:
+            quad = pick.get('quad') or []
+            if len(quad) != 4:
+                continue
+            reduced = round(min(parallelism(quad).values()), 2)
+            where = 'the pick at %s' % (pick.get('at'),)
+            if 'no-parallel-pair' in (pick.get('reasons') or []):
+                self.assertGreater(reduced, tol, 'refused for parallelism inside the tolerance: ' + where)
+            else:
+                self.assertLessEqual(reduced, tol,
+                                     'not refused for parallelism, over the tolerance: ' + where)
+        # The walked quad: its long pair is exactly the tolerance apart, square on the rule.
+        # The bottom-left corner slides along one ray, and the walked angle meets the tolerance
+        # for every value that tolerance can take.
+        walked = 1.0 / (1.0 / 9.1886331227 + math.tan(math.radians(tol)) / 100.0)
+        quad = [(0.0, 0.0), (200.0, 0.0), (200.0, 100.0), (walked, 110.0)]
+        measured = check_quad(quad, parallel_tol=1.0)['metrics']['best_parallel_deg']
+        self.assertEqual(measured, tol, 'the walked quad must sit on the tolerance of today')
+        got = check_quad(quad, parallel_tol=tol)
+        self.assertNotIn('no-parallel-pair', got['reasons'],
+                         'a measured angle at the tolerance is a parallel pair: the rule is min > tol')
+        self.assertTrue(got['ok'], 'the rule refuses this quad on the tolerance alone: %s'
+                                   % (got['reasons'],))
+        over = check_quad(quad, parallel_tol=tol - 0.01)
+        self.assertIn('no-parallel-pair', over['reasons'],
+                      'a measured angle over the tolerance is no parallel pair')
 
     def test_the_record_names_the_producer_that_built_it(self):
         """A record that cannot name its producer cannot be rebuilt or judged."""

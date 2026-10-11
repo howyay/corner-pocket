@@ -86,8 +86,10 @@ LIVE_ACTIONS = ('start', 'stop')
 #: the operator draws; the verdict list is the three review words.
 BOX_LABELS = ('person', 'ball', 'cue', 'solid', 'stripe', 'eight')
 VERDICT_WORDS = ('correct', 'wrong', 'unsure')
-# Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
-# is also callable directly (tests, larger transports), so bound the decoded image.
+#: The dispatch body cap of every route that does not state a cap of its own: 64 KiB.
+_MAX_POST_BODY_BYTES = 65536
+# Enroll image guard: dispatch caps POST bodies at _MAX_POST_BODY_BYTES, but the backend
+# method is also callable directly (tests, larger transports), so bound the decoded image.
 _MAX_ENROLL_BYTES = 8 * 1024 * 1024
 #: The dispatch cap of the enroll route, and of no other route.  Base64 costs 4 bytes for
 #: every 3, so the decoded cap above arrives as 11184812 bytes; a margin of 1398100 bytes
@@ -2871,7 +2873,8 @@ def make_handler(backend):
                     if not (length.isascii() and length.isdigit()):
                         raise APIError("invalid Content-Length", 400)
                     size = int(length)
-                    limit = _MAX_ENROLL_BODY_BYTES if parts[:3] == ["api", "identity", "enroll"] else 65536
+                    limit = (_MAX_ENROLL_BODY_BYTES if parts[:3] == ["api", "identity", "enroll"]
+                             else _MAX_POST_BODY_BYTES)
                     if not 0 < size <= limit:
                         raise APIError("invalid request size", 413)
                     payload = json.loads(self.rfile.read(size))

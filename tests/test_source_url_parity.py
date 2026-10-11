@@ -1,11 +1,16 @@
 """Parity test for the Twitch source URL rule; python -m unittest discover -s tests."""
 import json
+import re
 from pathlib import Path
 import unittest
 
 from annotator.operations import TWITCH_RESERVED_CHANNELS, parse_twitch_source_url
 
 CORPUS = Path(__file__).with_name('source_url_cases.json')
+CONSOLE = Path(__file__).resolve().parents[1] / 'annotator' / 'ops.js'
+# The console's copy of the reserved-channel list, as annotator/ops.js writes it.
+CONSOLE_TUPLE = re.compile(r'^const TWITCH_RESERVED_CHANNELS=\[([^\]]*)\];$', re.MULTILINE)
+CONSOLE_WORD = re.compile(r"'([^']*)'")
 # The six URL shapes that the console and the service read in different ways before the repair.
 # Four shapes show a console that was too free: the dot segments, the port 443 and the upper case
 # host. Two shapes show a console that was too strict: the double trailing slash on a channel and
@@ -72,6 +77,30 @@ class SourceUrlParityTests(unittest.TestCase):
                 else:
                     self.assertEqual(source['channel'], row['subject'])
                     self.assertEqual(source['url'], 'https://www.twitch.tv/' + row['subject'])
+
+
+    def test_the_console_holds_the_same_reserved_words(self):
+        source = CONSOLE.read_text(encoding='utf-8')
+        match = CONSOLE_TUPLE.search(source)
+        self.assertIsNotNone(match, 'annotator/ops.js holds no TWITCH_RESERVED_CHANNELS array')
+        words = CONSOLE_WORD.findall(match.group(1))
+        self.assertEqual(words, list(TWITCH_RESERVED_CHANNELS),
+                         'annotator/ops.js holds a different reserved-channel list from '
+                         'annotator/operations.py: the service refuses a channel that the '
+                         'console accepts when a word is missing, and the console refuses a '
+                         'real channel when a word is extra')
+        self.assertEqual(len(set(words)), len(words), 'the console list holds a word twice')
+
+    def test_the_console_spells_the_reserved_words_once(self):
+        source = CONSOLE.read_text(encoding='utf-8')
+        wanted = set(TWITCH_RESERVED_CHANNELS)
+        sites = [number for number, line in enumerate(source.splitlines(), 1)
+                 if len(wanted & set(CONSOLE_WORD.findall(line))) > 1]
+        self.assertEqual(1, len(sites),
+                         'annotator/ops.js must spell the reserved words once, in one array; '
+                         'found these lines with two or more of them: %s' % (sites,))
+        self.assertIn("!TWITCH_RESERVED_CHANNELS.includes(", source,
+                      'parseSource must read the one array; a typed list would drift again')
 
 
 if __name__ == '__main__':

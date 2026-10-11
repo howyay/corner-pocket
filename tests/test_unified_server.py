@@ -13,9 +13,10 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from annotator.unified_server import (ABSENT, APIError, Backend, BOARD_FONTS, Cache, OPERATOR_ACTIONS,
-                                      OperatorAction, ReadQuery, atomic_save, load, make_handler,
-                                      operator_actions)
+from annotator.unified_server import (ABSENT, APIError, Backend, BOARD_FONTS, Cache,
+                                      _MAX_ENROLL_BODY_BYTES, _MAX_POST_BODY_BYTES,
+                                      OPERATOR_ACTIONS, OperatorAction, ReadQuery, atomic_save,
+                                      load, make_handler, operator_actions)
 from annotator.operations import ACTION_NAMES
 from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S
 from src.pid_seed_rebuild import explicit_seeds, run
@@ -665,6 +666,34 @@ class BackendTests(unittest.TestCase):
         handler = self.handler('/api/operations')
         handler.dispatch()
         self.assertEqual(json.loads(handler.wfile.getvalue()), saved)
+
+    def test_the_default_dispatch_cap_refuses_a_larger_body_and_reads_the_boundary_one(self):
+        """Note 1: the dispatch body cap of the default route has one name, and it holds."""
+        self.assertEqual(_MAX_POST_BODY_BYTES, 65536,
+                         'the default dispatch cap is 64 KiB: raise this number only with the '
+                         'routes that read it')
+        self.assertGreater(_MAX_ENROLL_BODY_BYTES, _MAX_POST_BODY_BYTES,
+                           'the enroll route states its own larger cap')
+        headers = {'Host': '127.0.0.1:8130', 'Origin': 'http://127.0.0.1:8130',
+                   'Content-Type': 'application/json'}
+        read = []
+        handler = self.handler('/api/operations', {**headers,
+                                                   'Content-Length': str(_MAX_POST_BODY_BYTES + 1)},
+                               b'{}')
+        handler.rfile = type('Reader', (), {
+            'read': lambda self, size: read.append(size) or b'{}'})()
+        handler.dispatch(post=True)
+        self.assertEqual(handler.status, 413, 'one byte over the cap leaves the route')
+        self.assertEqual(json.loads(handler.wfile.getvalue())['error'], 'invalid request size')
+        self.assertEqual(read, [], 'a refused body is never read')
+        handler = self.handler('/api/operations', {**headers,
+                                                   'Content-Length': str(_MAX_POST_BODY_BYTES)},
+                               b'{}')
+        handler.rfile = type('Reader', (), {
+            'read': lambda self, size: read.append(size) or b'{}'})()
+        handler.dispatch(post=True)
+        self.assertEqual(handler.status, 400, 'a body at the cap reaches the route and fails there')
+        self.assertEqual(read, [_MAX_POST_BODY_BYTES], 'the boundary body is read once')
 
     def test_a_conflict_body_carries_the_night_identity_beside_the_sentence(self):
         """Round 34 card 11: the console reads nightId, so the 409 body names the night as data."""
