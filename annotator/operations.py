@@ -20,6 +20,10 @@ from uuid import uuid4
 
 # The rule refusals of this module: each skeleton, the code and the Chinese sentence beside it.
 from annotator.refusals import INSTANT, INTEGER_RANGE, TEXT_LENGTH, WHOLE_SECONDS, TemplateError
+# The shot clock rule has one owner: annotator/shot_clock.py holds the bounds and the
+# default. This module reads them, so the settings guard and the clock refuse the same
+# numbers. annotator/shot_clock.py imports no module of this layer, so this adds no cycle.
+from annotator.shot_clock import DEFAULT_DURATION, MAX_DURATION, MIN_DURATION
 
 
 class ConflictError(ValueError):
@@ -274,7 +278,7 @@ class Operations:
         if self.path.exists():
             return normalise(json.loads(self.path.read_text()))
         return dict(revision=0, players=[], tournament=tournament(), history=[], vods=[], links=[],
-                    settings=dict(shotClock=30, autoFrame=False, clothColor='#1d5c44', lampGlow=0.22,
+                    settings=dict(shotClock=DEFAULT_DURATION, autoFrame=False, clothColor='#1d5c44', lampGlow=0.22,
                                   showDiamonds=True, publicBoard=True), notes=[], sources=[dict(id=uid(), url='https://www.twitch.tv/examplechannel', kind='channel', channel='examplechannel')], events=[])
 
     # -- Broadcasts and the events they cover (round 11) ----------------------------------
@@ -1213,7 +1217,8 @@ class Operations:
                 raise ValueError('showDiamonds must be boolean')
             s['settings']['showDiamonds'] = p['showDiamonds']
         if 'shotClock' in p:
-            s['settings']['shotClock'] = integer(p['shotClock'], 5, 300, 'shotClock')
+            # The bounds belong to annotator/shot_clock.py (MIN_DURATION, MAX_DURATION).
+            s['settings']['shotClock'] = integer(p['shotClock'], MIN_DURATION, MAX_DURATION, 'shotClock')
         if 'autoFrame' in p:
             if type(p['autoFrame']) is not bool:
                 raise ValueError('autoFrame must be boolean')

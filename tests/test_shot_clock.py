@@ -8,7 +8,13 @@ annotator/shot_clock.py owns the number as RETRY_MS, the stream preamble carries
 it, the snapshot publishes it as retry_ms, a command answers the same shape a
 read does, and the client keeps a first-connection default that one case reads
 out of the client file to prove the default still equals the owner.
+
+The class below holds the duration rule at its one owner too: the bounds 5 and
+300 and the default 30 live in annotator/shot_clock.py, the settings guard of
+annotator/operations.py reads them from there, and no shipped module types them
+a second time.
 """
+import ast
 import hashlib
 import io
 import json
@@ -21,6 +27,7 @@ import unittest
 from unittest.mock import patch
 
 from annotator import shot_clock
+from annotator.operations import Operations
 from annotator.shot_clock import ShotClock, epoch_ms
 
 #: The repository root, from this file's own path. The binding case reads the
@@ -50,6 +57,64 @@ def preamble_from_stream(clock, heartbeat_s=0.05):
     serving.join(5)
     assert not serving.is_alive(), 'close() releases the stream the test started'
     return stream.getvalue().split(b'\n\n', 1)[0]
+
+
+#: The one owner of the duration rule: the bounds, the default and the docstring live here.
+OWNER = ROOT / 'annotator' / 'shot_clock.py'
+#: The reader that must take the rule from the owner. Its settings guard wrote `5, 300`
+#: and its document default wrote `30` until round 48.
+READER = ROOT / 'annotator' / 'operations.py'
+#: The shipped packages the copy scan reads. A test states an expectation; it is not
+#: application code, so the scan leaves tests/ out.
+SHIPPED = ('src', 'annotator', 'tools', 'scripts')
+
+
+def shipped_modules():
+    """Every .py file of the shipped packages, generated trees left out."""
+    return sorted(path for name in SHIPPED for path in (ROOT / name).rglob('*.py')
+                  if '__pycache__' not in path.parts)
+
+
+def own_nodes(node):
+    """Every node of `node` that no nested statement holds.
+
+    The walk stops at a nested statement, because that statement is read on its own
+    turn. So one literal is never counted for two statements."""
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.stmt):
+            continue
+        yield child
+        yield from own_nodes(child)
+
+
+def names_the_clock(statement):
+    """True when `statement` itself names the shot clock."""
+    for child in own_nodes(statement):
+        if isinstance(child, ast.keyword) and child.arg == 'shotClock':
+            return True
+        if isinstance(child, ast.Attribute) and child.attr == 'shotClock':
+            return True
+        if isinstance(child, ast.Name) and child.id == 'shotClock':
+            return True
+        if (isinstance(child, ast.Constant) and isinstance(child.value, str)
+                and child.value == 'shotClock'):
+            return True
+    return False
+
+
+def typed_clock_numbers(path):
+    """(line number, whole numbers) for every statement of `path` that names the clock.
+
+    A whole number inside such a statement IS the duration rule when the statement is
+    the settings guard or the document default. A statement that reads the owner holds
+    no such number: it holds the name."""
+    found = []
+    for node in ast.walk(ast.parse(path.read_text(encoding='utf-8', errors='replace'))):
+        if isinstance(node, ast.stmt) and names_the_clock(node):
+            numbers = sorted({child.value for child in own_nodes(node)
+                              if isinstance(child, ast.Constant) and type(child.value) is int})
+            found.append((node.lineno, numbers))
+    return found
 
 
 class ShotClockTests(unittest.TestCase):
@@ -277,6 +342,69 @@ class ShotClockTests(unittest.TestCase):
                          'the client default and shot_clock.RETRY_MS are the same number')
         self.assertIn('payload.retry_ms', source,
                       'the client reads the key the snapshot publishes')
+
+
+class ShotClockRuleOwnerTests(unittest.TestCase):
+    """The duration rule - an integer from 5 to 300 seconds - has one owner.
+
+    The round-48 walk found the numbers typed twice: the settings guard of
+    annotator/operations.py wrote `5, 300, 'shotClock'` and its document default wrote
+    `shotClock=30`. An equal copy is correct today and silent tomorrow: the owner can
+    move a bound and the copy stays old. These cases hold the reader at the owner's
+    names, and they prove that the guard accepts the owner's minimum and refuses one
+    second below it.
+    """
+
+    def test_no_shipped_module_types_the_clock_rule_again(self):
+        owner = {shot_clock.MIN_DURATION, shot_clock.MAX_DURATION, shot_clock.DEFAULT_DURATION}
+        offenders = [f'{path.relative_to(ROOT).as_posix()}:{line} types {sorted(set(numbers) & owner)}'
+                     for path in shipped_modules() if path != OWNER
+                     for line, numbers in typed_clock_numbers(path)
+                     if set(numbers) & owner]
+        self.assertEqual(offenders, [],
+                         'the duration rule has one owner, annotator/shot_clock.py: import '
+                         'MIN_DURATION, MAX_DURATION and DEFAULT_DURATION from it; offenders: '
+                         + '; '.join(offenders))
+
+    def test_the_scan_reads_a_typed_copy(self):
+        """The scan must catch the two lines this change removed."""
+        with tempfile.TemporaryDirectory() as folder:
+            typed = Path(folder) / 'typed.py'
+            typed.write_text('def load():\n'
+                             '    return dict(shotClock=30, autoFrame=False)\n'
+                             '\n'
+                             'def settings_update(s, p):\n'
+                             "    s['settings']['shotClock'] = integer(p['shotClock'], 5, 300, 'shotClock')\n",
+                             encoding='utf-8')
+            self.assertEqual(typed_clock_numbers(typed), [(2, [30]), (5, [5, 300])],
+                             'the scan must read a typed copy of the bounds and of the default')
+
+    def test_the_settings_module_imports_the_rule_from_the_owner(self):
+        imported = {alias.name for node in ast.walk(ast.parse(READER.read_text(encoding='utf-8')))
+                    if isinstance(node, ast.ImportFrom) and node.module == 'annotator.shot_clock'
+                    for alias in node.names}
+        for name in ('MIN_DURATION', 'MAX_DURATION', 'DEFAULT_DURATION'):
+            self.assertIn(name, imported,
+                          f"{READER.relative_to(ROOT).as_posix()} must import {name} from the owner")
+
+    def test_the_settings_guard_takes_its_bounds_from_the_owner(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ops = Operations(folder)
+            self.assertEqual(ops.get()['settings']['shotClock'], shot_clock.DEFAULT_DURATION,
+                             "the document default is the owner's default")
+            posted = ops.post(dict(action='settings_update', revision=ops.get()['revision'],
+                                   shotClock=shot_clock.MIN_DURATION))
+            self.assertEqual(posted['settings']['shotClock'], shot_clock.MIN_DURATION,
+                             "the guard accepts the owner's minimum")
+            ops.post(dict(action='settings_update', revision=ops.get()['revision'],
+                          shotClock=shot_clock.MAX_DURATION))
+            before = ops.path.read_bytes()
+            with self.assertRaisesRegex(
+                    ValueError, f"shotClock must be an integer from {shot_clock.MIN_DURATION} "
+                                f"to {shot_clock.MAX_DURATION}"):
+                ops.post(dict(action='settings_update', revision=ops.get()['revision'],
+                              shotClock=shot_clock.MIN_DURATION - 1))
+            self.assertEqual(ops.path.read_bytes(), before, 'a refused update writes nothing')
 
 
 if __name__ == '__main__':

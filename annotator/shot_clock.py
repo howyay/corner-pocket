@@ -59,7 +59,11 @@ def epoch_ms():
 
 
 def valid_duration(value):
-    """The same rule as settings.shotClock: an integer from 5 to 300 seconds."""
+    """The one owner of the settings.shotClock rule: an integer from 5 to 300 seconds.
+
+    The settings guard in annotator/operations.py reads MIN_DURATION and MAX_DURATION
+    from this module, and the document default reads DEFAULT_DURATION. One owner, one
+    rule. Never type the three numbers again."""
     if type(value) is not int or not MIN_DURATION <= value <= MAX_DURATION:
         raise ValueError(f'duration must be an integer from {MIN_DURATION} to {MAX_DURATION}')
     return value
