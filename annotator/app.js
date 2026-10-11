@@ -724,6 +724,10 @@ function toggleOverlay(kind) { const next = !state.overlay[kind]; setOverlay(kin
 // static-per-dataset layers (cloth quad, pockets, anchors) and the selected
 // event's own geometry are drawn over moving video, and the stage says so.
 const CLIP_BEFORE_S = 1.5, CLIP_AFTER_S = 2.5;
+// The shortest window the console clips and plays. The service refuses a window shorter
+// than this at the end of the video (CLIP_FLOOR_S of annotator/unified_server.py), so the
+// console widens the window to the floor instead of asking for one that is refused.
+const CLIP_FLOOR_S = 0.2;
 function videoSrc() { return state.source.kind === 'live' ? null : `/media/${enc(state.dataset)}/video`; }
 // Per-frame detections describe one frame. Dropping them is not a cache flush:
 // it is the only way a stale ball marker can never survive into playback.
@@ -737,7 +741,7 @@ function eventWindow(event) {
   const meta = state.vmeta;
   const from = Math.max(0, at - CLIP_BEFORE_S);
   const to = Math.min(Number(meta?.duration) || at + CLIP_AFTER_S, at + CLIP_AFTER_S);
-  return {from, to: Math.max(from + 0.2, to), before: CLIP_BEFORE_S, after: CLIP_AFTER_S};
+  return {from, to: Math.max(from + CLIP_FLOOR_S, to), before: CLIP_BEFORE_S, after: CLIP_AFTER_S};
 }
 function exitPlayback() {
   const video = stageVideo();
@@ -1346,16 +1350,37 @@ async function saveVerdict(button, verdict) {
     state.annotations[String(event.id)] = body; state.verdictDraft = body.verdict;
   }, 'event', `${event.type === 'pot' ? 'cue' : 'shot'} #${event.id} ${event.type} @ frame ${frame} · ${body.verdict}`);
 }
-function labelValueText(value) { return value === null || value === undefined ? 'cleared' : value === -1 || value === 'u' ? 'Unknown' : value === 0 ? 'Cue 0' : `Ball ${value}`; }
+// The ball label table, console side. -1 is the wire value of the stored word "u"
+// (unknown); the clear verb and -2 clear the row; every other pick is a cue number. The
+// service holds the same table for the store (annotator/unified_server.py), and
+// tests/test_console_service_agreement.py holds the two statements equal.
+const BALL_LABEL_UNKNOWN_WIRE = -1, BALL_LABEL_UNKNOWN_STORED = 'u';
+const BALL_LABEL_CLEAR_PICKS = ['clear', -2];
+const BALL_LABEL_CLEARED_WIRE = null;
+// The wire value the route is asked for: -1 for the unknown word, the clearing value for a
+// clearing pick, and the number itself otherwise.
+function ballLabelWire(value) {
+  if (BALL_LABEL_CLEAR_PICKS.includes(value)) return BALL_LABEL_CLEARED_WIRE;
+  return value === BALL_LABEL_UNKNOWN_WIRE || value === BALL_LABEL_UNKNOWN_STORED ? BALL_LABEL_UNKNOWN_WIRE : Number(value);
+}
+// What the store holds after that write, and the echo the panel reads: the word "u" where
+// the wire value is -1, no row at all where the wire value clears.
+function ballLabelStored(value) {
+  const wire = ballLabelWire(value);
+  if (wire === BALL_LABEL_CLEARED_WIRE) return null;
+  return wire === BALL_LABEL_UNKNOWN_WIRE ? BALL_LABEL_UNKNOWN_STORED : wire;
+}
+function labelValueText(value) { return value === null || value === undefined ? 'cleared' : value === BALL_LABEL_UNKNOWN_WIRE || value === BALL_LABEL_UNKNOWN_STORED ? 'Unknown' : value === 0 ? 'Cue 0' : `Ball ${value}`; }
 async function labelBall(button, value) {
   const crop = state.sel.kind === 'ball' ? state.sel.crop : null;
   if (!crop) { notice('Select a ball or a crop first.', true); return false; }
   const file = crop.file.split('/').pop();
-  const label = value === 'clear' ? null : Number(value);
+  const label = ballLabelWire(value);
+  const stored = ballLabelStored(value);
   return save(button, `/api/balls/${enc(state.set)}/label`, {file, label}, () => {
     state.balls.labels ||= {};
-    if (label === null) delete state.balls.labels[file]; else state.balls.labels[file] = label === -1 ? 'u' : label;
-  }, 'ball', `crop ${file} = ${text(labelValueText(label === -1 ? 'u' : label))}`);
+    if (stored === null) delete state.balls.labels[file]; else state.balls.labels[file] = stored;
+  }, 'ball', `crop ${file} = ${text(labelValueText(stored))}`);
 }
 // The seeds contract types track_id as an integer; rail dataset attributes are strings.
 function trackId(value) { return typeof value === 'string' && /^-?\d+$/.test(value) ? Number(value) : value; }
@@ -2374,7 +2399,7 @@ function attach(options = {}) {
     stageHTML, clothTolerance, markBoxEdited, personChip, eventWindow, placeTags, boxTagKind,
     POCKET_ANCHOR_ORDER, FALLBACK_ANCHOR_LAYOUT, QUAD_INVALID_GEOMETRY,
     quadReasonText, paintCueGeometry, paintLiveChip, correctionBody,
-    ghostModelBox, updateOverlayFacts, POCKET_LABELS, CLIP_BEFORE_S, CLIP_AFTER_S, bindVideo,
+    ghostModelBox, updateOverlayFacts, POCKET_LABELS, CLIP_BEFORE_S, CLIP_AFTER_S, CLIP_FLOOR_S, bindVideo,
     stageVideo, playEvent, dropPerFrame, drawnPocket, cueGeometryVisible, manualBoxCount,
     modelBoxCount, paintOverlay, liveErrorCodes, liveRefusals, liveErrorText, liveErrorDetail,
     snapshot, enrollPreview, enrollConfirm, selectStagePerson,

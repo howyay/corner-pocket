@@ -90,6 +90,14 @@ LIVE_ACTIONS = ('start', 'stop')
 #: the operator draws; the verdict list is the three review words.
 BOX_LABELS = ('person', 'ball', 'cue', 'solid', 'stripe', 'eight')
 VERDICT_WORDS = ('correct', 'wrong', 'unsure')
+#: The ball label table, wire side.  ``-1`` is the wire value of the stored word ``"u"``
+#: (unknown), and three wire values clear the row: ``null``, ``"clear"`` and ``-2``.
+#: Every other plain number is a cue number and is stored as itself.  annotator/app.js
+#: echoes the same table before this route answers, and it held the pair as a literal of
+#: its own until round 68; tests/test_console_service_agreement.py holds the two equal.
+BALL_LABEL_UNKNOWN_WIRE = -1
+BALL_LABEL_UNKNOWN_STORED = 'u'
+BALL_LABEL_CLEARED_WIRE = (None, 'clear', -2)
 #: The dispatch body cap of every route that does not state a cap of its own: 64 KiB.
 _MAX_POST_BODY_BYTES = 65536
 # Enroll image guard: dispatch caps POST bodies at _MAX_POST_BODY_BYTES, but the backend
@@ -426,6 +434,12 @@ ENROLL_PLAN_CACHE_MAX = 4
 #: a request, and the span is a decision about what is judged - two different things.
 CLIP_MIN_S = 0.25
 CLIP_MAX_S = 5.0
+#: The shortest window the encoder is asked for.  A window shorter than this at the end
+#: of a video is not a clip, it is one frame, so the route refuses instead of encoding
+#: it.  annotator/app.js holds the same floor for the window the console clips and plays
+#: (``CLIP_FLOOR_S`` there, read by ``eventWindow``), and
+#: tests/test_console_service_agreement.py holds the two names equal.
+CLIP_FLOOR_S = 0.2
 
 
 def replay_request(source):
@@ -1892,7 +1906,7 @@ class Backend:
         after = min(max(EVENT_AFTER_S if after is None else float(after), CLIP_MIN_S), CLIP_MAX_S)
         t0 = max(0.0, t - before)
         duration = min(before + after, meta['duration'] - t0)
-        if duration < 0.2:
+        if duration < CLIP_FLOOR_S:
             raise APIError('clip window is empty at the end of the video')
         cache = self.out / 'clip-cache'
         cache.mkdir(parents=True, exist_ok=True)
@@ -2245,11 +2259,14 @@ class Backend:
         if "label" not in p:
             raise APIError("label required; use null to clear")
         label = p["label"]
-        if isinstance(label, bool) or not (label in (None, "u", "clear", -1, -2) or type(label) is int and 0 <= label <= 15):
+        if isinstance(label, bool) or not (label in BALL_LABEL_CLEARED_WIRE
+                                           or label in (BALL_LABEL_UNKNOWN_WIRE, BALL_LABEL_UNKNOWN_STORED)
+                                           or type(label) is int and 0 <= label <= 15):
             raise APIError("invalid ball label")
-        # None / "clear" / -2 clear the label; -1 is "u" (unknown). A crop labelled for
-        # the first time is keyed by its meta.json path, as before.
-        stored = None if label in (None, "clear", -2) else ("u" if label == -1 else label)
+        # The table above owns the two values: -1 is the wire value of the word "u", and
+        # the three clearing values delete the row. A crop labelled for the first time is
+        # keyed by its meta.json path, as before.
+        stored = None if label in BALL_LABEL_CLEARED_WIRE else (BALL_LABEL_UNKNOWN_STORED if label == BALL_LABEL_UNKNOWN_WIRE else label)
         self.store().label_put(parts[2], p["file"], stored, new_key=row["file"])
         return {"ok": True}
 

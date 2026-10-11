@@ -13,7 +13,9 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from annotator.unified_server import (ABSENT, APIError, Backend, BOARD_FONTS, Cache,
+from annotator.unified_server import (ABSENT, APIError, BALL_LABEL_CLEARED_WIRE,
+                                      BALL_LABEL_UNKNOWN_STORED, BALL_LABEL_UNKNOWN_WIRE,
+                                      Backend, BOARD_FONTS, Cache, CLIP_FLOOR_S,
                                       _MAX_ENROLL_BODY_BYTES, _MAX_POST_BODY_BYTES,
                                       OPERATOR_ACTIONS, OperatorAction, ReadQuery, atomic_save,
                                       load, make_handler, operator_actions)
@@ -144,6 +146,29 @@ class BackendTests(unittest.TestCase):
             self.backend.post(route, {"file": "other.jpg", "label": 1})
         with self.assertRaises(APIError):
             self.backend.post(route, {"file": "crop.jpg", "label": True})
+
+    def test_every_wire_value_of_the_ball_label_table_lands_in_the_store(self):
+        """The route reads the one table: -1 stores "u", three values clear, numbers stay."""
+        route = ["api", "balls", "unlabeled_crops", "label"]
+        table = [(wire, None) for wire in BALL_LABEL_CLEARED_WIRE]
+        table += [(BALL_LABEL_UNKNOWN_WIRE, BALL_LABEL_UNKNOWN_STORED),
+                  (BALL_LABEL_UNKNOWN_STORED, BALL_LABEL_UNKNOWN_STORED), (0, 0), (7, 7), (15, 15)]
+        for wire, stored in table:
+            with self.subTest(wire=wire):
+                atomic_save(self.crop / "labels.json", {self.original: 4})
+                self.backend.post(route, {"file": "crop.jpg", "label": wire})
+                labels = load(self.crop / "labels.json")
+                if stored is None:
+                    self.assertEqual(labels, {}, f"the wire value {wire!r} must clear the row")
+                else:
+                    self.assertEqual(labels[self.original], stored)
+        # A value outside the table writes nothing: the row keeps the label it had.
+        atomic_save(self.crop / "labels.json", {self.original: 4})
+        for refused in (16, -3, 1.5, True, "unknown", "16"):
+            with self.subTest(refused=refused):
+                with self.assertRaisesRegex(APIError, "^invalid ball label$"):
+                    self.backend.post(route, {"file": "crop.jpg", "label": refused})
+        self.assertEqual(load(self.crop / "labels.json"), {self.original: 4})
 
     def test_media_allowlist_and_symlinks(self):
         self.assertEqual(self.backend.media(["media", "vod30", "evidence", "frame.jpg"]).read_bytes(), b"jpeg")
@@ -900,6 +925,27 @@ class BackendTests(unittest.TestCase):
             self.backend.event_clip('vod30', 10 ** 6, 1.5, 2.5)
         self.backend.event_clip('vod30', 30.0, 99.0, 2.5)  # clamped, not rejected
         self.assertIn((25.0, 7.5), encoded)
+
+    def test_the_clip_floor_is_the_shortest_window_the_route_encodes(self):
+        """A window at the floor is encoded; a window under it is refused, not shortened."""
+        encoded = []
+
+        def fake_encode(ffmpeg, source, destination, t0, duration):
+            encoded.append(round(duration, 6))
+            destination.write_bytes(b"fake-mp4")
+
+        self.backend._encode_clip = fake_encode
+        self.backend.video = lambda dataset: self.root / 'data' / 'short.mp4'
+        frame = dict(fps=30.0, frame_count=6, width=1280, height=720, timestamp_kind='nominal_cfr')
+        # The video ends at the floor, so the end of the video and the floor are one length.
+        self.backend.video_metadata = lambda dataset: dict(dataset=dataset, duration=CLIP_FLOOR_S, **frame)
+        clip = self.backend.event_clip('vod30', 0.0, 1.5, 2.5)
+        self.assertEqual([CLIP_FLOOR_S], encoded, 'the floor itself is a clip, and it is encoded')
+        self.assertEqual(clip.read_bytes(), b"fake-mp4")
+        self.backend.video_metadata = lambda dataset: dict(dataset=dataset, duration=CLIP_FLOOR_S - 0.01, **frame)
+        with self.assertRaisesRegex(APIError, '^clip window is empty at the end of the video$'):
+            self.backend.event_clip('vod30', 0.0, 1.5, 2.5)
+        self.assertEqual([CLIP_FLOOR_S], encoded, 'the refused window encodes nothing')
 
     def test_the_clip_window_a_caller_does_not_name_is_the_owner_window(self):
         """The served window has one owner: src/event_window.py, not this route."""

@@ -1912,6 +1912,71 @@ test('the Vision tab renders one picture surface for the selected cue', () => {
   assertSourceContract('annotator/app.js', 'const showStill = !!still && !videoShown;', 'the still is the same one surface, shown when the video cannot play');
 });
 
+// ---- the ball label table, console side -------------------------------------
+// The service stores -1 as the word "u" and clears the row on null, "clear" and -2
+// (annotator/unified_server.py). The console echoes the same table before the service
+// answers, so one case per row: the wire value it sent, and the echo the panel reads.
+function labelWrite(value) {
+  const realm = engineRealm({
+    '/api/datasets': {json: {datasets: [{id: 'vod30', label: 'VOD 30'}], ball_sets: [{id: 'unlabeled_crops'}]}},
+    '/api/video?dataset=vod30': {json: META},
+    '/api/vod30/events': {json: {analysed: true, events: [], annotations: {}}},
+    '/api/balls/unlabeled_crops/meta': {json: {items: [{file: 'a.jpg', t: 0}], labels: {}}},
+    '/api/balls/unlabeled_crops/label': {json: {ok: true}},
+    '/api/vod30/anchors?t=70': {json: {pts: null, width: 1920, height: 1080}},
+  });
+  realm.run("window.CornerPocketReview.selectCrop('a.jpg');");
+  realm.clear();
+  realm.run(`window.CornerPocketReview.labelBall(null, ${value});`);
+  const posted = realm.calls.filter(entry => entry.url === '/api/balls/unlabeled_crops/label');
+  assert.strictEqual(posted.length, 1, 'one label write posts once: ' + posted.length);
+  return {body: JSON.parse(posted[0].init.body), labels: realm.review().snapshot().balls.labels};
+}
+
+test('the ball label -1 is sent as the wire value -1 and echoed as the word u', () => {
+  const wrote = labelWrite(-1);
+  same(wrote.body, {file: 'a.jpg', label: -1}, 'the wire value the service stores as "u"');
+  same(wrote.labels, {'a.jpg': 'u'}, 'and the echo holds the word, not the number');
+});
+
+test('the stored word u is sent back as the wire value -1', () => {
+  const wrote = labelWrite("'u'");
+  same(wrote.body, {file: 'a.jpg', label: -1}, 'the word the panel reads is the wire value -1, not a clear');
+  same(wrote.labels, {'a.jpg': 'u'});
+});
+
+test('the ball label -2 is sent as the clearing value and echoed as a cleared row', () => {
+  const wrote = labelWrite(-2);
+  same(wrote.body, {file: 'a.jpg', label: null}, 'the service clears the row for -2 as it does for null');
+  same(wrote.labels, {}, 'and the echo holds no row');
+});
+
+test('the clear verb is sent as null and echoed as a cleared row', () => {
+  const wrote = labelWrite("'clear'");
+  same(wrote.body, {file: 'a.jpg', label: null});
+  same(wrote.labels, {});
+});
+
+test('ball label 0 is sent as 0 and echoed as 0', () => {
+  const wrote = labelWrite(0);
+  same(wrote.body, {file: 'a.jpg', label: 0});
+  same(wrote.labels, {'a.jpg': 0});
+});
+
+test('ball label 15 is sent as 15 and echoed as 15', () => {
+  const wrote = labelWrite(15);
+  same(wrote.body, {file: 'a.jpg', label: 15});
+  same(wrote.labels, {'a.jpg': 15});
+});
+
+test('every cue number from 1 to 14 is sent as itself and echoed as itself', () => {
+  for (let number = 1; number <= 14; number++) {
+    const wrote = labelWrite(number);
+    same(wrote.body, {file: 'a.jpg', label: number}, `cue ${number} is its own wire value`);
+    same(wrote.labels, {'a.jpg': number}, `and cue ${number} echoes itself`);
+  }
+});
+
 test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {
   assert.strictEqual(T.CLIP_BEFORE_S, 1.5, 'the same before the /api/clip endpoint defaults to');
   assert.strictEqual(T.CLIP_AFTER_S, 2.5, 'the same after the /api/clip endpoint defaults to');
@@ -1919,6 +1984,20 @@ test('an event window is t - 1.5s to t + 2.5s, clamped to the video', () => {
   same(T.eventWindow({t: 100}), {from: 98.5, to: 102.5, before: 1.5, after: 2.5});
   same(T.eventWindow({t: 0.5}), {from: 0, to: 3, before: 1.5, after: 2.5}, 'never before the start of the video');
   assert.strictEqual(T.eventWindow({t: 1806}).to, 1806.8, 'never past the end of the video');
+});
+
+test('the clip window is never shorter than the floor the service refuses under', () => {
+  assert.strictEqual(T.CLIP_FLOOR_S, 0.2, 'the floor annotator/unified_server.py refuses a clip under');
+  // A video that ends before the window does: the end of the video clamps the window, and
+  // the floor is the longer of the two ends. The service refuses a window under the floor,
+  // so the console asks for the floor instead of a window that would be refused.
+  T.scene({vmeta: {dataset: 'vod30', fps: 30, frame_count: 3, duration: 0.1, width: 1280, height: 720}});
+  same(T.eventWindow({t: 0}), {from: 0, to: 0.2, before: 1.5, after: 2.5}, 'the floor is the window');
+  // With 0.4s of video left the end of the video is the longer end: the floor is a floor,
+  // not a fixed length.
+  T.scene({vmeta: {dataset: 'vod30', fps: 30, frame_count: 12, duration: 0.4, width: 1280, height: 720}});
+  same(T.eventWindow({t: 0}), {from: 0, to: 0.4, before: 1.5, after: 2.5});
+  T.scene({vmeta: null, events: []});
 });
 
 test('the stage video loops inside the event window it was given', () => {
@@ -4035,7 +4114,7 @@ test('the three console suites answer one entry point contract', () => {
   // ends, because the running case is the one row the record does not hold yet, and the
   // line names every case the loop ran - this case included.
   assert.strictEqual(summary.line, null, 'the line is still absent while the list runs');
-  assert.strictEqual((summary.ran + 1) + ' passed, ' + summary.failed + ' failed', '105 passed, 0 failed',
+  assert.strictEqual((summary.ran + 1) + ' passed, ' + summary.failed + ' failed', '113 passed, 0 failed',
     'and the line the loop writes states the record');
 });
 
