@@ -406,6 +406,17 @@ class ShotClockRuleOwnerTests(unittest.TestCase):
                               shotClock=shot_clock.MIN_DURATION - 1))
             self.assertEqual(ops.path.read_bytes(), before, 'a refused update writes nothing')
 
+    def test_the_owner_docstring_states_the_bounds_it_holds(self):
+        """The owner states its rule in a sentence. A sentence can drift from the code.
+
+        The scan above reads the code of the shipped modules. This case reads the
+        sentence of the owner, so a bound that moves in the constants and stays old in
+        the docstring fails here.
+        """
+        typed = [int(text) for text in re.findall(r'\d+', shot_clock.valid_duration.__doc__ or '')]
+        self.assertEqual(typed, [shot_clock.MIN_DURATION, shot_clock.MAX_DURATION],
+                         'the docstring of valid_duration must state the bounds it holds')
+
 
 if __name__ == '__main__':
     unittest.main()
