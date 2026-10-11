@@ -41,8 +41,9 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from src.box_geometry import iou  # noqa: E402
 from src.person_identity import BODY_MATCH_DISABLED, IdentityIndex  # noqa: E402
-from src.person_pipeline import PersonPipeline, _iou  # noqa: E402
+from src.person_pipeline import PersonPipeline  # noqa: E402
 
 VIDEO = REPO / "data" / "vod_30min_260815.mp4"
 FPS = 30.0003
@@ -132,7 +133,7 @@ def pseudo_gt_pairs(samples, iou_link: float = IOU_LINK,
         for emb, bbox in items:
             best_iou, best_t = 0.0, None
             for lf, lb, ti in live:
-                i = _iou(lb, bbox)
+                i = iou(lb, bbox)
                 if i >= iou_link and i > best_iou:
                     best_iou, best_t = i, ti
             if best_t is None:
