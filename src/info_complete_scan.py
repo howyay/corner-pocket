@@ -37,6 +37,9 @@ if str(ROOT) not in sys.path:
 from src.ball_scale import WORKING_FRAME  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
+# The homogeneous-division rule has one owner, src/projection.py.  This module
+# holds no threshold of its own.
+from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 
@@ -167,10 +170,10 @@ def match_balls(prev_cands, cur_cands, radius_px: float) -> tuple[list, list, li
 
 
 def to_table_mm(H, cx, cy):
-    p = H @ np.array([cx, cy, 1.0], np.float64)
-    if abs(p[2]) < 1e-9:
-        return None
-    return [float(p[0] / p[2]), float(p[1] / p[2])]
+    # The rule is src/projection.py's.  This path is in pixels, so it names the
+    # pixel tolerance.  Before, a nan or zero w divided and returned a nan mm.
+    x, y, w = H @ np.array([cx, cy, 1.0], np.float64)
+    return project_point(x, y, w, tolerance=PIXEL_TOLERANCE)
 
 
 def scan_info_complete(video: str, corners: np.ndarray, cfg: GateConfig = GateConfig(),

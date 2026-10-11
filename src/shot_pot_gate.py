@@ -83,7 +83,12 @@ from statistics import median
 from typing import Any, Iterable, NamedTuple, Sequence
 
 from src.ball_scale import BALL_WIDTH_MM, NATIVE_FRAME, diameter_px, formatted_width
+from src.projection import DEFAULT_TOLERANCE, project_point
 from src.table_geometry import CANON_H, CANON_W, POCKETS_MM
+
+#: The homogeneous-division rule is ``src/projection.py``'s.  This module needs a
+#: refusal it can raise, so it asks the owner at this tolerance.
+GATE_TOLERANCE = DEFAULT_TOLERANCE
 
 # ---------------------------------------------------------------------------
 # reference geometry (verified; reused, not re-derived)
@@ -519,11 +524,15 @@ def homography(src: Sequence[Sequence[float]], dst: Sequence[Sequence[float]]) -
 
 
 def project(h: Sequence[float], point: Sequence[float]) -> tuple[float, float]:
+    """The canonical millimetres of one source pixel.  Refuses with ValueError."""
     x, y = float(point[0]), float(point[1])
     w = h[6] * x + h[7] * y + h[8]
-    if abs(w) < 1e-12:
+    answer = project_point(h[0] * x + h[1] * y + h[2],
+                           h[3] * x + h[4] * y + h[5], w,
+                           tolerance=GATE_TOLERANCE)
+    if answer is None:
         raise ValueError("point maps to infinity")
-    return ((h[0] * x + h[1] * y + h[2]) / w, (h[3] * x + h[4] * y + h[5]) / w)
+    return answer
 
 
 def _canonical_dst() -> list[list[float]]:

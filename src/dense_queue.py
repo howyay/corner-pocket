@@ -65,6 +65,9 @@ if str(ROOT) not in sys.path:
 
 from src import events_document  # noqa: E402
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME  # noqa: E402
+# The homogeneous-division rule has one owner, src/projection.py.  This module
+# holds no threshold of its own.
+from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 #: The gate owns the served threshold names.  This tool never spells them again.
 from src.shot_pot_gate import RAIL_THRESHOLD_KEYS, REPORT_THRESHOLD_KEYS  # noqa: E402
 
@@ -125,8 +128,11 @@ def calibration(artifact) -> tuple:
 
 
 def to_mm(H, x, y):
-    p = H @ np.array([x * NATIVE_W / WORK_W, y * NATIVE_H / WORK_H, 1.0])
-    return None if abs(p[2]) < 1e-9 else [round(float(p[0] / p[2]), 1), round(float(p[1] / p[2]), 1)]
+    # The rule is src/projection.py's.  This path is in pixels, so it names the
+    # pixel tolerance.  Before, a nan or zero w divided and returned a nan mm.
+    px, py, w = H @ np.array([x * NATIVE_W / WORK_W, y * NATIVE_H / WORK_H, 1.0])
+    point = project_point(px, py, w, tolerance=PIXEL_TOLERANCE)
+    return None if point is None else [round(point[0], 1), round(point[1], 1)]
 
 
 def _window(onset_t: float, duration_s: float) -> list:

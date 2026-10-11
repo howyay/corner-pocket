@@ -53,6 +53,9 @@ from src.calib_segments import VERIFIED_FRAMES  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
+# The homogeneous-division rule has one owner, src/projection.py.  The two
+# mappings below hold no threshold of their own.
+from src.projection import as_array, project_point  # noqa: E402
 
 #: The scan's working frame.  ``src.ball_scale`` owns it: the ball's pixel size
 #: scales with the frame, so the two facts cannot move apart.
@@ -93,17 +96,17 @@ def load_mappings(anchors_path=ANCHORS, scan_path=SCAN_QUAD):
 
 
 def project(H_inv, mm):
+    # The rule is src/projection.py's.  The default tolerance is the physical
+    # one, in canonical millimetres.
     x, y, w = H_inv @ np.array([float(mm[0]), float(mm[1]), 1.0], np.float64)
-    if not math.isfinite(w) or abs(w) < 1e-12:
-        return None
-    return np.array([x / w, y / w], np.float64)
+    return as_array(project_point(x, y, w))
 
 
 def unproject(H, px):
+    # The rule is src/projection.py's.  The default tolerance is the physical
+    # one, in canonical millimetres.
     x, y, w = H @ np.array([float(px[0]), float(px[1]), 1.0], np.float64)
-    if not math.isfinite(w) or abs(w) < 1e-12:
-        return None
-    return np.array([x / w, y / w], np.float64)
+    return as_array(project_point(x, y, w))
 
 
 def local_mm_per_px(H, px, step=6.0):

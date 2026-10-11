@@ -37,6 +37,9 @@ from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, 
 # The pocket name a text states has one owner, src/pocket_names.py. This backend and
 # the gate of src/event_gates.py answered the bare spelling in two different ways.
 from src.pocket_names import pocket_from_text  # noqa: E402
+# The homogeneous-division rule has one owner, src/projection.py.  The projection
+# below holds no threshold of its own.
+from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 # The tournament declares the action names it accepts (annotator/operations.py).
 # This module imports it here, so one table joins the route to that declaration.
 from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E402
@@ -1613,10 +1616,13 @@ class Backend:
             return None
         try:
             import numpy as np
-            x, y, w = inverse @ np.asarray([point[0], point[1], 1.0])
-            if not math.isfinite(w) or abs(w) < 1e-9:
+            hx, hy, w = inverse @ np.asarray([point[0], point[1], 1.0])
+            # The rule is src/projection.py's.  This path is in pixels, so it
+            # names the pixel tolerance.
+            answer = project_point(hx, hy, w, tolerance=PIXEL_TOLERANCE)
+            if answer is None:
                 return None
-            x, y = float(x) / float(w), float(y) / float(w)
+            x, y = answer
         except Exception:
             return None
         if not (math.isfinite(x) and math.isfinite(y)) or max(abs(x), abs(y)) > 1e6:

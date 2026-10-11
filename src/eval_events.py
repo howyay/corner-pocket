@@ -50,6 +50,9 @@ from src.ball_census import (CENSUS_VERSION, build_census, classify_ball_color, 
                              observations_from_sam3, window_summary)
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
+# The homogeneous-division rule has one owner, src/projection.py.  The two
+# readings below hold no threshold of their own.
+from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src import ball_scale, events_document, sam3_artifact  # noqa: E402
@@ -353,9 +356,12 @@ class Probe:
         if inverse is None or not mm:
             return None
         x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
-        if not math.isfinite(w) or abs(w) < 1e-9:
+        # The rule is src/projection.py's.  This path is in pixels, so it names
+        # the pixel tolerance.
+        point = project_point(x, y, w, tolerance=PIXEL_TOLERANCE)
+        if point is None:
             return None
-        return [round(float(x) / float(w), 1), round(float(y) / float(w), 1)]
+        return [round(point[0], 1), round(point[1], 1)]
 
     def claim_px(self, mm):
         """A *claim's* stored millimetres -> pixels, in the frame that produced them.
@@ -373,9 +379,12 @@ class Probe:
         if inverse is None:
             return None
         x, y, w = inverse @ np.array([float(mm[0]), float(mm[1]), 1.0])
-        if not math.isfinite(w) or abs(w) < 1e-9:
+        # The rule is src/projection.py's.  This path is in pixels, so it names
+        # the pixel tolerance.
+        point = project_point(x, y, w, tolerance=PIXEL_TOLERANCE)
+        if point is None:
             return None
-        return [round(float(x) / float(w), 1), round(float(y) / float(w), 1)]
+        return [round(point[0], 1), round(point[1], 1)]
 
     def in_cloth(self, px, t=None):
         quad = self.quad_for(t)
