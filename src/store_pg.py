@@ -41,6 +41,10 @@ from src.ops_event_log import trim
 # The psycopg JSON wrapper has one home, src/store_import.py: this store writes the
 # document <-> rows mapping that the importer owns, so the wrapper comes from there.
 from src.store_import import jsonb
+# The edit rules of one operator record have one home: src/store_rules.py. This class
+# and JsonStore call that owner, so neither class holds a second copy of a rule
+# (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
+import src.store_rules as store_rules
 
 STATE = "out/corner-pocket/state.json"
 # The table that holds the documents of migration 0003 (src/store_files.py). The
@@ -283,9 +287,9 @@ class PostgresStore:
             saved = self._load_doc(conn, path, {"seeds": {}})
             seeds = saved.setdefault("seeds", {})
             if record is None:
-                seeds.pop(key, None)
+                store_rules.drop_key(seeds, key)
             else:
-                seeds[key] = dict(seeds.get(key, {}), **record)
+                seeds[key] = store_rules.merge_record(seeds.get(key, {}), record)
 
             def project(c):
                 c.execute("DELETE FROM track_seeds WHERE dataset = 'vod30'")
@@ -319,7 +323,7 @@ class PostgresStore:
         with self._write() as conn:
             self._lock_doc(conn, path)
             annotations = self._load_doc(conn, path, {})
-            record = dict(annotations.get(key, {}), **fields)
+            record = store_rules.merge_record(annotations.get(key, {}), fields)
             record["updated_at"] = datetime.now(timezone.utc).isoformat()
             annotations[key] = record
 
@@ -349,10 +353,9 @@ class PostgresStore:
         with self._write() as conn:
             self._lock_doc(conn, path)
             labels = self._load_doc(conn, path, {})
-            keys = [k for k in labels if Path(k).name == crop_file]
+            keys = store_rules.keys_for_basename(labels, crop_file)
             key = keys[0] if keys else (new_key or crop_file)
-            for old in keys:
-                labels.pop(old)
+            store_rules.clear_keys(labels, keys)
             if label is not None:
                 labels[key] = label
 
@@ -393,7 +396,7 @@ class PostgresStore:
         with self._write() as conn:
             self._lock_doc(conn, path)
             saved = self._load_doc(conn, path, {"anchors": {}})
-            key = next((k for k in saved["anchors"] if float(k) == float(t_key)), str(t_key))
+            key = store_rules.spelled_time(saved["anchors"], t_key)
             saved["anchors"][key] = pts
 
             def project(c):
