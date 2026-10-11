@@ -27,6 +27,17 @@ from pathlib import Path
 from src.atomic_write import write_atomic
 from src.store_files import dump, documents, fmt_of
 
+#: The created tables of db/migrations that are not operator data, mapped to the reason.
+#: TABLES holds every other created table and no name outside that set, so a migration
+#: that adds a table without a line in one of the two fails the suite.  The one entry is
+#: the migration ledger: one row per applied migration, not operator data, so row_counts
+#: must not count it.  The write-fingerprint proof names the same exclusion in its
+#: LEDGER (tools/write_fingerprint_coverage.py:50).
+NOT_OPERATOR_DATA = {
+    "schema_migrations": "the migration ledger (db/migrations/0001_schema_migrations.sql:3): "
+                         "one row per applied migration, not operator data",
+}
+
 TABLES = ("ops_meta", "players", "tournaments", "entrants", "entrant_members", "matches", "notes", "sources",
           "ops_events", "identity_clusters", "identity_face_samples", "face_embeddings", "track_seeds",
           "event_verdicts", "ball_labels", "frame_corrections", "pocket_anchors", "json_documents")

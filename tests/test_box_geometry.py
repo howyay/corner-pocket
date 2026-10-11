@@ -29,7 +29,7 @@ Four cases hold that home:
    see a copy under another name: ``src/person_pipeline.py`` held the same five
    statements under ``_iou``, and ``src/recut_crops.py`` wrote them inline in a
    loop with a local name ``iou``.  The walk compares syntax trees and not text.
-   The recorded near miss is ``src/enroll_from_tracklet.py:153 face_area_iou``:
+   The recorded near miss is ``src/enroll_from_tracklet.py:156 face_area_iou``:
    its name ends in ``iou`` and it clips the same two coordinates, but its last
    statement divides the intersection by the face area alone, so it has no union
    term, its body hash differs, and the rule must not flag it.
@@ -293,7 +293,7 @@ class BoxGeometryTest(unittest.TestCase):
     def test_the_recorded_near_miss_is_present_and_its_body_differs(self):
         """The trap of the body rule: a name that ends in ``iou``, a different body.
 
-        ``src/enroll_from_tracklet.py:153 face_area_iou`` clips the same two
+        ``src/enroll_from_tracklet.py:156 face_area_iou`` clips the same two
         coordinates and then divides the intersection by the face area alone, with
         no union term.  It must stay out of the walk above, so this case pins the
         two facts that make it a near miss and not a second owner: the function is
