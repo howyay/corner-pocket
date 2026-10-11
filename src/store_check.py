@@ -11,7 +11,8 @@ the write timestamps). Any difference is printed and the exit code is 1.
 
 The identity index and the face store have no document (their rows are the
 store), so there is nothing to recompute for them. The event log is compared with
-the document's last 500 events, which is what the document keeps.
+the newest rows the document keeps. That count lives in ``MAX_EVENTS`` of
+``src/ops_event_log.py``, and the document keeps exactly that many.
 """
 from __future__ import annotations
 

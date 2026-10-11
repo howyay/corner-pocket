@@ -38,7 +38,11 @@ This file holds the census and the guards:
     literal spelling of the number appears next to a slice, a `LIMIT` or a
     retention-named constant outside the owner;
   * `test_a_trim_keeps_exactly_the_owners_bound` writes the bound plus one row
-    through the two real writers and asserts the newest rows survive.
+    through the two real writers and asserts the newest rows survive;
+  * `test_a_sentence_that_states_the_bound_names_the_owner` refuses a comment or a
+    docstring that states the number next to an event, because prose has no link to
+    the owner.  Two lines of the tree hold the number 500 for other reasons, and
+    the table of that case records them.
 
 The guard compares against the owner's live value, so it keeps working when the
 value changes.  It is exact for the value this repository froze (500): measured on
@@ -76,6 +80,16 @@ OUTSIDE_THE_OWNERS_WRITE_SCOPE = {
         "src/store_check.py:65-66 reads the newest rows of the live ops_events table for its "
         "projection check.  That file is outside the files this change may write, so the "
         "literal stays.  It agrees with the owner today (500).  Recorded, not changed.",
+}
+
+#: A sentence that names the bound and an event, but is not the retention bound.
+#: The key is (path, kind, matched text), the shape of `OUTSIDE_THE_OWNERS_WRITE_SCOPE`,
+#: so an entry that stops matching fails the case below.
+PROSE_THAT_IS_NOT_THE_BOUND = {
+    ("annotator/fonts/build_fonts.py", "PROSE", "500"):
+        "a font weight of 500 in a sentence about a font family, not a count of events",
+    ("annotator/unified_server.py", "PROSE", "500"):
+        "the HTTP status 500 of a message about an enrolment event, not a count of events",
 }
 
 
@@ -297,6 +311,33 @@ class OneOwnerTest(unittest.TestCase):
         self.assertEqual(stale, [],
                          f"a recorded exception no longer matches any site, so it must go: "
                          f"{[key[0] + ' ' + key[2] for key in stale]}")
+
+    def test_a_sentence_that_states_the_bound_names_the_owner(self):
+        """A sentence that states the bound and an event must name the owner.
+
+        The code guard reads syntax.  A comment or a docstring can therefore state
+        the number with no link to its owner, and a reader of that module cannot
+        see the constant of another module.  `census_report` lists those lines;
+        this case refuses them.  Two lines of the tree hold the number 500 and the
+        word "event" for other reasons, and the table above records them.
+
+        The limit: a sentence that words the bound without a digit, for example
+        "the newest five hundred rows", is invisible to this case.
+        """
+        number = owner_number()
+        known = {(site.path, site.line)
+                 for site in scan(ROOT / OWNER, number) + scope_sites(number)}
+        found = prose_sites(number, known)
+        unexplained = [site for site in found if site.key not in PROSE_THAT_IS_NOT_THE_BOUND]
+        self.assertEqual([site.where for site in unexplained], [],
+                         f"a sentence states the retention bound {number} and an event.  Name "
+                         f"the owner ({owner_site()}) instead, or record the line above with "
+                         f"its reason:\n"
+                         + "\n".join(site.describe() for site in unexplained))
+        self.assertEqual(sorted(site.key for site in found), sorted(PROSE_THAT_IS_NOT_THE_BOUND),
+                         f"the recorded sentences must be exactly the lines that hold the number "
+                         f"and an event; found {[site.where for site in found]}, recorded "
+                         f"{sorted(PROSE_THAT_IS_NOT_THE_BOUND)}")
 
 
 class TheTrimTest(unittest.TestCase):
