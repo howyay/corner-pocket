@@ -34,6 +34,8 @@ import torch
 from src.box_geometry import iou
 from src.face_id import DEFAULT_FACE_STORE, add_faces, get_face_engine, load_faces
 from src.person_identity import IdentityIndex
+# src/weight_pins.py owns the weight path, so this file reads the owner.
+from src.weight_pins import OSNET
 
 # YOLO weights load weights-only: ultralytics reads this once, on its first import
 # (lazy, in _get_detector); unset, it unpickles checkpoints freely (audit D-2).
@@ -122,7 +124,7 @@ class PersonPipeline:
         root = Path(__file__).resolve().parents[1]
         from src.reid.osnet import osnet_x0_25
         model = osnet_x0_25(num_classes=4101, pretrained=False)
-        state = torch.load(root / 'src' / 'reid' / 'weights' / 'osnet_x0_25_msmt17.pth',
+        state = torch.load(root / OSNET,
                            map_location='cpu', weights_only=True)
         state = {(k[7:] if k.startswith('module.') else k): v for k, v in state.items()}
         model.load_state_dict(state, strict=True)

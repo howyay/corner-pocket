@@ -20,6 +20,7 @@ os.environ.setdefault("ULTRALYTICS_SAFE_LOAD", "1")  # weights-only YOLO load (a
 from ultralytics import YOLO
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)  # src/weight_pins.py sits under src/
 sys.path.insert(0, os.path.join(REPO, "src", "reid"))
 import osnet as O  # noqa
 
@@ -27,9 +28,12 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 from pid_identity import in_table_zone, torso_color  # noqa
 
+# src/weight_pins.py owns the weight path, so this file reads the owner.
+from src.weight_pins import OSNET  # noqa: E402
+
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO("yolov8n.pt")
-W = os.path.join(REPO, "src", "reid", "weights", "osnet_x0_25_msmt17.pth")
+W = os.path.join(REPO, OSNET)
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 

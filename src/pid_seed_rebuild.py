@@ -22,6 +22,8 @@ def explicit_seeds(tracklets, seeds):
 def run(root=ROOT):
     root = Path(root)
     sys.path.insert(0, str(ROOT))
+    # src/weight_pins.py owns the weight path, so this file reads the owner.
+    from src.weight_pins import OSNET
     from annotator.unified_server import atomic_save
     out = root / "out"
     tracklets = json.loads((out / "pid2_tracklets.json").read_text())
@@ -43,7 +45,7 @@ def run(root=ROOT):
     import torch
     sys.path.insert(0, str(ROOT / "src" / "reid"))
     import osnet
-    weights = root / "src" / "reid" / "weights" / "osnet_x0_25_msmt17.pth"
+    weights = root / OSNET
     if not weights.is_file():
         raise RuntimeError(f"OSNet weights not found: {weights}")
     model = osnet.osnet_x0_25(pretrained=False, num_classes=1000)
