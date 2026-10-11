@@ -13,8 +13,13 @@ import types
 import unittest
 from unittest.mock import patch
 
-from annotator.operations import (ACTION_NAMES, ConflictError, LONGEST_TITLE, Operation, OPERATIONS,
-                                  Operations, RECORD_COLLECTIONS, Record, operations_registry)
+from annotator.operations import (ACTION_NAMES, ConflictError, LONGEST_NAME, LONGEST_TITLE,
+                                  Operation, OPERATIONS, Operations, RECORD_COLLECTIONS, Record,
+                                  operations_registry)
+from annotator.refusals import GUEST_NAME_MAX
+
+#: The module the name-rule cases below read: the source text, not the imported objects.
+OPS_SOURCE = Path(__file__).resolve().parents[1] / 'annotator' / 'operations.py'
 
 
 class OperationsTests(unittest.TestCase):
@@ -2183,3 +2188,88 @@ class DeclaredAuditTests(unittest.TestCase):
             self.ops._do_tournament_new(empty, {'action': 'tournament_new', 'confirm': True})
             self.assertEqual(made.call_count, 0, 'an empty night is dropped, so no name is invented')
             self.assertEqual(empty['history'], [], 'and nothing was archived for it')
+
+
+class NameRuleOneHomeTests(unittest.TestCase):
+    """`name_key` is the one rule of a name; eleven hand-written copies sat beside it.
+
+    Every copy wrote ``a.strip().casefold() == b.strip().casefold()`` or
+    ``a.strip().casefold() == b``, so each copy held the trim and the casefold itself.  The
+    copies agreed only because two writers trim before they store.  This class measures the
+    rule in one place: the module reads `name_key` on both sides of a comparison, and the
+    only ``.casefold()`` in the module is the one inside the rule.  The four boundaries of
+    the numbers this row touches (200, 201, 60 and 61 characters, and the casefold pair)
+    are measured too.
+    """
+
+    def test_the_module_casefolds_a_name_once_and_the_once_is_the_rule(self):
+        folded = [text for line, text in self.fold_sites()]
+        self.assertEqual(folded, ['name.strip()', 'channel', 'listed',
+                                  "str(item.get('channel') or '')", 'channel'],
+                         'a name comparison folds its own operands: %s' % (self.fold_sites(),))
+
+    def test_the_copy_report_names_a_planted_copy_and_holds_its_tongue_otherwise(self):
+        planted = ('def same_name(person, stored):\n'
+                   '    return person["name"].casefold() == stored["name"].casefold()\n')
+        found = self.fold_sites(planted)
+        self.assertEqual([text for line, text in found],
+                         ["person['name']", "stored['name']"],
+                         'the report missed a planted copy')
+        self.assertEqual(self.fold_sites('x = 1\n'), [], 'the report is never silent')
+
+    def test_the_name_rule_reads_both_numbers_and_holds_at_their_boundary(self):
+        self.assertEqual(LONGEST_NAME, 200)
+        self.assertEqual(GUEST_NAME_MAX, 60)
+        first = self.call('player_save', name='N' * LONGEST_NAME)['players'][0]
+        second = self.call('player_save', name='N' * (LONGEST_NAME - 1) + 'M')['players'][1]
+        self.assertEqual(len(first['name']), LONGEST_NAME)
+        self.assertEqual(len(second['name']), LONGEST_NAME)
+        with self.assertRaisesRegex(ValueError, '1–200 characters'):
+            self.call('player_save', name='N' * (LONGEST_NAME + 1))
+        with self.assertRaisesRegex(ValueError, 'guest name must contain'):
+            self.call('entrant_add', members=[{'name': 'G' * (GUEST_NAME_MAX + 1)}])
+        state = self.call('entrant_add', members=[{'name': 'G' * GUEST_NAME_MAX}])
+        self.assertEqual(len(state['tournament']['entrants'][0]['members'][0]['name']),
+                         GUEST_NAME_MAX, 'the one allowed name is stored whole')
+
+    def test_a_name_that_differs_in_white_space_or_case_is_the_same_name(self):
+        self.call('player_save', name='Fresh Name')
+        for argument in ('fresh name', 'FRESH NAME', ' Fresh Name ', '\nFresh Name\n'):
+            with self.subTest(argument=argument):
+                with self.assertRaisesRegex(ValueError, 'already exists'):
+                    self.call('player_save', name=argument)
+        self.call('player_save', name='Straße')
+        for argument in ('straße', 'STRASSE', ' Strasse '):
+            with self.subTest(argument=argument):
+                with self.assertRaisesRegex(ValueError, 'already exists'):
+                    self.call('player_save', name=argument)
+        self.assertEqual([p['name'] for p in self.ops.get()['players']], ['Fresh Name', 'Straße'],
+                         'a refused name changes nothing')
+        kept = self.call('player_save', name='Fresh  Name')['players'][-1]['name']
+        self.assertEqual(kept, 'Fresh  Name',
+                         'the rule trims the ends only; an inner space is another name')
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ops = Operations(self.root)
+
+    def call(self, action, **fields):
+        return self.ops.post(dict(action=action, revision=self.ops.get()['revision'], **fields))
+
+    def fold_sites(self, source=None):
+        """Every ``.casefold()`` site of the module: its line, and the text it folds.
+
+        The list is a permit list with a reason for each entry.  ``name.strip()`` inside
+        ``name_key`` is the rule.  The other four sites fold a **channel login**, a different
+        vocabulary with its own rule (``_backfill_source`` and the source link), and they fold
+        it once on each side of their comparison.  A fifth entry is a name comparison that
+        folds its own operand, so it is a copy of the rule beside the rule.
+        """
+        tree = ast.parse(OPS_SOURCE.read_text() if source is None else source)
+        found = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == 'casefold':
+                found.append((node.lineno, ast.unparse(node.value)))
+        return sorted(found)

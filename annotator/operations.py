@@ -165,7 +165,8 @@ def name_key(name):
     """The key under which two player names are the same name: the rule every name
     check here applies (casefold of the trimmed name). The database stores it in
     players.name_key and enforces uniqueness on it, so both stores accept exactly the
-    same names."""
+    same names. Every name comparison in this module reads this function on both
+    sides, so a comparison cannot answer differently from the rule beside it."""
     return name.strip().casefold()
 
 
@@ -510,7 +511,7 @@ class Operations:
         (`GUEST_NAME_MAX`, annotator/refusals.py), the bound the enroll route applies."""
         if not any(existing.get('id') == player['id'] for existing in state['players']):
             name = text(player.get('name'), 'name', GUEST_NAME_MAX)
-            if any(existing['name'].casefold() == name.casefold() for existing in state['players']):
+            if any(name_key(existing['name']) == name_key(name) for existing in state['players']):
                 raise ValueError('Player name already exists')
             # the defaults player_save gives a new regular: the plan carries only
             # {id, name} when it matched a regular who has since been deleted
@@ -584,12 +585,12 @@ class Operations:
             person = dict(pid=player['id'], name=player['name'])
         else:
             person = dict(pid=None, name=text(member.get('name'), 'guest name', GUEST_NAME_MAX))
-            if person['name'].casefold() in PLACEHOLDER_NAMES:
+            if name_key(person['name']) in PLACEHOLDER_NAMES:
                 raise ValueError("A bye is added by the draw; type the guest's real name")
-            if any(player['name'].casefold() == person['name'].casefold() for player in s['players']):
+            if any(name_key(player['name']) == name_key(person['name']) for player in s['players']):
                 raise ValueError('Player name already exists; select the regular by id')
         taken = [m for e in t['entrants'] for m in e['members']] + t.get('pool', []) + list(team)
-        if any(m['name'].casefold() == person['name'].casefold() or person['pid'] and m['pid'] == person['pid'] for m in taken):
+        if any(name_key(m['name']) == name_key(person['name']) or person['pid'] and m['pid'] == person['pid'] for m in taken):
             raise ValueError('Person already registered')
         return person
 
@@ -605,7 +606,7 @@ class Operations:
         for existing in t['entrants']:
             for member in existing.get('members', []):
                 same_pid = bool(pid) and member.get('pid') == pid
-                same_name = (member.get('name') or '').casefold() == name.casefold()
+                same_name = name_key(member.get('name') or '') == name_key(name)
                 if same_pid or same_name:
                     raise ValueError(sentence)
 
@@ -641,7 +642,7 @@ class Operations:
     def _late_refuse_both_sides(members, rival):
         """One person cannot play on both sides of the same match."""
         def keys(rows):
-            return {(row.get('pid') or str(row.get('name') or '').casefold()) for row in rows}
+            return {(row.get('pid') or name_key(row.get('name') or '')) for row in rows}
         if keys(members) & keys(rival):
             raise ValueError('That person cannot play on both sides of the match')
 
@@ -739,7 +740,7 @@ class Operations:
             pid = row.get('pid')
             if pid is None:
                 name, guest = text(row.get('name'), 'entrant name', NAME_TEXT_MAX), None
-                if any(item['name'].casefold() == name.casefold() for item in s['players']):
+                if any(name_key(item['name']) == name_key(name) for item in s['players']):
                     raise ValueError('Player name already exists; send the regular as their player id')
             else:
                 player = next((item for item in s['players'] if item['id'] == pid), None)
@@ -872,10 +873,10 @@ class Operations:
     def _do_player_save(self, s, p):
         t = s['tournament']
         name = text(p.get('name'), 'name')
-        if any(x['name'].casefold() == name.casefold() and x['id'] != p.get('id') for x in s['players']):
+        if any(name_key(x['name']) == name_key(name) and x['id'] != p.get('id') for x in s['players']):
             raise ValueError('Player name already exists')
         # A guest's name is a claim too: two different people must never read the same.
-        if any(m['name'].casefold() == name.casefold() for e in t['entrants'] for m in e['members'] if not m['pid']):
+        if any(name_key(m['name']) == name_key(name) for e in t['entrants'] for m in e['members'] if not m['pid']):
             raise ValueError('Name held by a guest in this event; add the guest to the regulars instead')
         player = self._find(s['players'], p['id']) if p.get('id') else dict(id=uid(), joinedAt=timestamp(), rating=0, status='Active')
         status = optional(p, 'status', player['status'])
@@ -892,12 +893,12 @@ class Operations:
 
     def _do_guest_promote(self, s, p):
         t = s['tournament']
-        name = text(p.get('name'), 'guest name', GUEST_NAME_MAX).casefold()
+        name = text(p.get('name'), 'guest name', GUEST_NAME_MAX)
         members = [member for entrant in t['entrants'] for member in entrant['members']
-                   if member['name'].casefold() == name]
+                   if name_key(member['name']) == name_key(name)]
         if len(members) != 1 or members[0]['pid'] is not None:
             raise ValueError('Exactly one unregistered current tournament guest is required')
-        if any(player['name'].casefold() == name for player in s['players']):
+        if any(name_key(player['name']) == name_key(name) for player in s['players']):
             raise ValueError('Player name already exists; cannot infer guest identity')
         member = members[0]
         player = dict(id=uid(), name=member['name'], joinedAt=timestamp(), rating=0, status='Active')
@@ -953,8 +954,9 @@ class Operations:
         elif action == 'solo_add':
             pool.append(self._person(s, t, p.get('member')))
         elif action == 'pool_remove':
-            name = text(p.get('name'), 'name').casefold()
-            pool.remove(next((m for m in pool if m['name'].casefold() == name), None) or self._find([], None))
+            name = text(p.get('name'), 'name')
+            pool.remove(next((m for m in pool if name_key(m['name']) == name_key(name)), None)
+                        or self._find([], None))
         elif action == 'pair_draw':
             if len(pool) < 2 or len(pool) % 2:
                 raise ValueError('An even number of solo players is needed to pair')
@@ -1362,7 +1364,7 @@ def _audit_guest_promote(state, payload):
     """The roster row the guest became, read back by the name the payload claims."""
     name = payload.get('name')
     if isinstance(name, str):
-        matches = [p for p in state['players'] if p['name'].casefold() == name.strip().casefold()]
+        matches = [p for p in state['players'] if name_key(p['name']) == name_key(name)]
         if matches:
             return dict(id=matches[0]['id'], name=matches[0]['name'])
     return {}

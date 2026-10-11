@@ -205,11 +205,64 @@ def _request(url, payload=None, *, timeout=_TIMEOUT):
         raise TwitchSourceError('Twitch playback request failed; check network and TLS connectivity') from None
 
 
-def _playlist(text):
+#: The one home of the master-playlist rules the live resolver and the VOD resolver read:
+#: the header tag, the variant tag, the two attribute patterns and the frame-rate pattern.
+#: ``annotator/twitch_vod_source.py`` reads these names and adds no pattern of its own.
+HLS_TAG = '#EXTM3U'
+STREAM_INF = '#EXT-X-STREAM-INF:'
+BANDWIDTH_RE = re.compile(r'(?:[:,])BANDWIDTH=(\d+)(?:,|$)')
+RESOLUTION_RE = re.compile(r'(?:[:,])RESOLUTION=\d+x(\d+)(?:,|$)')
+FRAME_RATE_RE = re.compile(r'(?:[:,])FRAME-RATE=([\d.]+)(?:,|$)')
+
+#: The ceiling of the choice "the best variant at or below this height, else the smallest
+#: one".  ``annotator/twitch_vod_source.resolve_vod`` reads this name as its own default.
+VARIANT_CEILING = 720
+
+
+def hls_lines(text, error=TwitchSourceError):
+    """The lines of an HLS playlist that carry a tag or a URL.
+
+    One rule, two readers: ``annotator/twitch_vod_source.py`` reads this name and passes
+    ``error=TwitchVodError``, so it keeps its own refusal sentence and no second copy of
+    the trimming, the empty-line drop or the ``#EXTM3U`` header check.
+    """
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines or lines[0] != '#EXTM3U':
-        raise TwitchSourceError('Twitch returned an invalid playback playlist')
+    if not lines or lines[0] != HLS_TAG:
+        raise error('Twitch returned an invalid playback playlist')
     return lines
+
+
+def variant_attrs(line):
+    """The ``{'height', 'bandwidth', 'fps'}`` dict of one ``#EXT-X-STREAM-INF`` line, or None.
+
+    ``height`` and ``bandwidth`` are ints; ``fps`` is a float or None, because the live
+    resolver asks the master for the frame rate and reads none of it, and the VOD resolver
+    reads it.  A line without a bandwidth or without a resolution is not a variant.
+    """
+    bandwidth = BANDWIDTH_RE.search(line)
+    resolution = RESOLUTION_RE.search(line)
+    if not bandwidth or not resolution:
+        return None
+    frame_rate = FRAME_RATE_RE.search(line)
+    return {'height': int(resolution[1]), 'bandwidth': int(bandwidth[1]),
+            'fps': float(frame_rate[1]) if frame_rate else None}
+
+
+def chosen_variant(variants, key, *, maximum=VARIANT_CEILING):
+    """The variant the live and the VOD resolver play: the best one at or below ``maximum``.
+
+    ``key`` is the sort key of one variant, a tuple that starts with its height, so the
+    three steps of the rule read one place: the heights at or below the ceiling, the best
+    of them, and - when every variant is above the ceiling - the smallest one.  A reader
+    with its own row shape passes its own key.  The list must not be empty; every caller
+    refuses an empty list before this call.
+    """
+    modest = [variant for variant in variants if key(variant)[0] <= maximum]
+    return max(modest, key=key) if modest else min(variants, key=key)
+
+
+def _playlist(text):
+    return hls_lines(text)
 
 
 def playlist_text(media_url, *, timeout=3):
@@ -306,22 +359,18 @@ def resolve_twitch(canonical_url):
     lines = _playlist(_request(master))
     variants = []
     for index, line in enumerate(lines[:-1]):
-        if line.startswith('#EXT-X-STREAM-INF:'):
-            bandwidth = re.search(r'(?:[:,])BANDWIDTH=(\d+)(?:,|$)', line)
-            if bandwidth and not lines[index + 1].startswith('#'):
-                resolution = re.search(r'(?:[:,])RESOLUTION=\d+x(\d+)(?:,|$)', line)
-                if resolution:
-                    variants.append((int(resolution[1]), int(bandwidth[1]),
-                                     _validate_url(urljoin(master, lines[index + 1]), media=True)))
+        attrs = variant_attrs(line) if line.startswith(STREAM_INF) else None
+        if attrs is not None and not lines[index + 1].startswith('#'):
+            variants.append((attrs['height'], attrs['bandwidth'],
+                             _validate_url(urljoin(master, lines[index + 1]), media=True)))
     if not variants:
         raise TwitchSourceError('Twitch channel is offline or has no public video variants')
-    # Prefer the best <=720p video; fall back to the smallest available video.
-    modest = [variant for variant in variants if variant[0] <= 720]
-    media_url = (max(modest) if modest else min(variants))[2]
+    # Prefer the best video at or below VARIANT_CEILING; fall back to the smallest video.
+    media_url = chosen_variant(variants, lambda variant: (variant[0], variant[1], variant[2]))[2]
     media = _playlist(_request(media_url))
     if '#EXT-X-ENDLIST' in media:
         raise TwitchSourceError('Twitch channel is offline; playback has ended')
-    if not any(line.startswith('#EXTINF:') for line in media) or any(line.startswith('#EXT-X-STREAM-INF:') for line in media):
+    if not any(line.startswith('#EXTINF:') for line in media) or any(line.startswith(STREAM_INF) for line in media):
         raise TwitchSourceError('Twitch returned no playable live media playlist')
     # Validate current segment, key, map and prefetch references before decoding.
     # Subsequent playlist reloads are performed by the decoder, not this resolver.

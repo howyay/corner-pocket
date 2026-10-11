@@ -50,8 +50,22 @@ from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import Request, build_opener, HTTPSHandler
 
 from annotator import twitch_source as live
+from annotator.twitch_source import TwitchSourceError
 from src.frame_rate import FPS_FALLBACK
 from src.tls_trust import trusted_context
+
+#: The two resolvers read one wire format, so the live resolver owns its rules and this
+#: path reads them: ``live.HLS_TAG`` and ``live.hls_lines`` (the line cleaning, the empty
+#: line drop and the header check), ``live.STREAM_INF``, ``live.variant_attrs`` (the
+#: BANDWIDTH and RESOLUTION patterns), ``live.VARIANT_CEILING`` (the default of the
+#: ``max_height`` keyword below) and ``live.chosen_variant`` (the choice rule).
+#:
+#: One rule must differ, and ``tests/test_twitch_vod_source.py`` holds the case that names
+#: both sides: the live resolver asks the master for the frame rate
+#: (``annotator/twitch_source.py`` ``playlist_include_framerate``) and reads none of it, so
+#: it drops the ``FRAME-RATE`` attribute, while this path reads it into ``fps``, because the
+#: VOD panel shows the rate of the chosen variant.  This path adds no pattern of its own:
+#: ``live.variant_attrs`` reads the attribute and returns it beside the two it shares.
 
 #: The live resolver's host allowlists and anonymous web client id are the single source
 #: of truth for which hosts this machine will talk to; the VOD path adds no new host.
@@ -315,29 +329,31 @@ def vod_token(vod_id, *, strict=True, timeout=12):
 
 
 def playlist_lines(text):
-    return [line.strip() for line in text.splitlines() if line.strip()]
+    """The lines of a master playlist: the live resolver's own rule, and its own sentence."""
+    return live.hls_lines(text, error=TwitchVodError)
 
 
 def vod_variants(master_url, master_text):
-    """``[{height, bandwidth, fps, url}]`` from a VOD master playlist, in file order."""
+    """``[{height, bandwidth, fps, url}]`` from a VOD master playlist, in file order.
+
+    The line rule, the header check and the two attribute patterns of every variant line
+    belong to ``annotator/twitch_source.py`` (:data:`live.HLS_TAG`, :func:`live.hls_lines`,
+    :func:`live.variant_attrs`).  Only the frame rate differs: the live resolver asks the
+    master for it and reads none of it, this path reads it and the live path drops it, so
+    ``tests/test_twitch_vod_source.py`` holds one case that names both sides.
+    """
     lines = playlist_lines(master_text)
-    if not lines or lines[0] != '#EXTM3U':
-        raise TwitchVodError('Twitch returned an invalid VOD playlist')
     variants = []
     for index, line in enumerate(lines[:-1]):
-        if not line.startswith('#EXT-X-STREAM-INF:'):
-            continue
-        bandwidth = re.search(r'(?:[:,])BANDWIDTH=(\d+)(?:,|$)', line)
-        resolution = re.search(r'(?:[:,])RESOLUTION=\d+x(\d+)(?:,|$)', line)
-        framerate = re.search(r'(?:[:,])FRAME-RATE=([\d.]+)(?:,|$)', line)
-        if bandwidth and resolution and not lines[index + 1].startswith('#'):
-            variants.append({'height': int(resolution[1]), 'bandwidth': int(bandwidth[1]),
-                             'fps': float(framerate[1]) if framerate else None,
+        attrs = live.variant_attrs(line) if line.startswith(live.STREAM_INF) else None
+        if attrs is not None and not lines[index + 1].startswith('#'):
+            variants.append({'height': attrs['height'], 'bandwidth': attrs['bandwidth'],
+                             'fps': attrs['fps'],
                              'url': _validate_media(urljoin(master_url, lines[index + 1]))})
     return variants
 
 
-def resolve_vod(vod_id, *, max_height=720, timeout=15):
+def resolve_vod(vod_id, *, max_height=live.VARIANT_CEILING, timeout=15):
     """Resolve a VOD id to its playable media playlist, anonymously.
 
     Returns the master's status, every variant (heights/bandwidths only - the variant
@@ -357,16 +373,21 @@ def resolve_vod(vod_id, *, max_height=720, timeout=15):
     variants = vod_variants(master_url, master['body'])
     if not variants:
         raise TwitchVodError('Twitch returned no playable VOD variant')
-    modest = [variant for variant in variants if variant['height'] <= max_height]
-    chosen = max(modest or variants, key=lambda variant: (variant['height'], variant['bandwidth']))
+    # The one choice rule (best at or below the ceiling, else the smallest) lives in the
+    # live resolver; this path passes its own row key and its own ceiling.
+    chosen = live.chosen_variant(
+        variants, lambda variant: (variant['height'], variant['bandwidth']), maximum=max_height)
     head = _raw(chosen['url'], timeout=timeout, limit=_HEAD_BYTES)
     if head['transport'] is not None:
         raise TwitchVodError('Twitch VOD media playlist request failed; check network and TLS connectivity')
     if head['status'] != 200:
         raise TwitchVodError('Twitch VOD media playlist request failed (HTTP %s)' % head['status'])
-    lines = playlist_lines(head['body'])
-    if not lines or lines[0] != '#EXTM3U':
-        raise TwitchVodError('Twitch returned an invalid VOD media playlist')
+    try:
+        lines = playlist_lines(head['body'])
+    except TwitchSourceError as refused:
+        # The line rule and the header check are the live resolver's; the sentence is this
+        # path's own, so an operator reads a VOD refusal and not a live one.
+        raise TwitchVodError('Twitch returned an invalid VOD media playlist') from refused
     playlist_type = next((line.split(':', 1)[1] for line in lines
                           if line.startswith('#EXT-X-PLAYLIST-TYPE:')), None)
     target_duration = next((float(line.split(':', 1)[1]) for line in lines

@@ -59,7 +59,7 @@ Corner Pocket is not an auto-referee and must never read as one. The Back room s
 - **The night.** Set up → Registration desk → *Rack the night* (single elimination, automatic byes, the draw seeded in sign-up order, entrants and rules locked) → send to table → score and clock → *Sign scorecard* → winners advance → *Archive & new event*.
 - **Production vs polish.** `~/projects/pool/` is the live checkout. Production serves its `annotator/`, and its `out/` and `data/` hold the real state and footage. Polish work never edits it.
   - Work happens in the `impeccable-polish` worktree and is checked against two fixture servers: `tests/serve_workbench_fixture.py` (:8131; the real VOD plus copied review data) and `tests/serve_operations_fixture.py` (:8150; an empty club, deliberately off the public board's :8132).
-  - The test suites are `PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'`, `node --test tests/test_ops.js` and `node tests/test_app_timeline.js`.
+  - The test suites are `PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'` and the three javascript suites the runner names (`scripts/pool-test.sh:43`): `tests/test_ops.js`, `tests/test_board.js`, `tests/test_app_timeline.js`. Run them through `scripts/pool-test.sh`; each javascript suite is run by its own name, because a bare `node --test` collects 0 tests here (`scripts/pool-test.sh:9`).
 
 ## Capabilities and Constraints
 

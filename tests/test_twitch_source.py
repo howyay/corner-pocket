@@ -1,5 +1,6 @@
 import ast
 import http.server
+import inspect
 import io
 import json
 import threading
@@ -11,6 +12,8 @@ from urllib.parse import urlsplit
 from urllib.request import Request, build_opener
 
 from annotator import twitch_source as source
+from annotator import twitch_vod_source as vod
+from annotator.twitch_source import TwitchSourceError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +23,8 @@ MEDIA = 'https://video-weaver.example.hls.ttvnw.net/live/720.m3u8?private=secret
 TOKEN = json.dumps({'data': {'streamPlaybackAccessToken': {'signature': 'private-signature', 'value': 'private-token'}}})
 MASTER = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=6000000,RESOLUTION=1920x1080\nhttps://cdn.ttvnw.net/1080.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1280x720\n' + MEDIA
 PLAYLIST = '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n#EXT-X-TWITCH-PREFETCH:next.ts\n'
+#: Text with a header tag that is wrong, so the one header rule refuses it.
+NOT_A_PLAYLIST = '#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n'
 
 
 class TwitchSourceTests(unittest.TestCase):
@@ -211,6 +216,78 @@ class OneOwnerTests(unittest.TestCase):
         self.assertEqual(len(lines), 1, '_playlist is defined at lines %s' % (lines,))
         self.assertEqual(source._playlist.__code__.co_firstlineno, lines[0],
                          'the module binds a definition the file does not show')
+
+
+class LiveRuleOwnerTests(unittest.TestCase):
+    """Each master-playlist rule of this file is one definition, and the VOD path reads it.
+
+    ``annotator/twitch_vod_source.py`` once pasted four of the rules of this file.  The VOD
+    path reads the names now, so the two sides answer the same.  These cases fail when a
+    rule is defined a second time on the live side, when the VOD module defines a name of a
+    live rule itself, and when a writer copies a rule pattern into the VOD module.
+    """
+
+    #: The names of this module that are one rule each, and that the VOD path reads.
+    OWNED_NAMES = ('HLS_TAG', 'STREAM_INF', 'BANDWIDTH_RE', 'RESOLUTION_RE',
+                   'FRAME_RATE_RE', 'VARIANT_CEILING', 'hls_lines', 'variant_attrs',
+                   'chosen_variant')
+
+    def test_every_shared_rule_has_one_definition_and_the_definition_is_here(self):
+        tree = ast.parse(SOURCE.read_text())
+        defined = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)]
+        defined += [target.id for node in tree.body if isinstance(node, ast.Assign)
+                    for target in node.targets if isinstance(target, ast.Name)]
+        absent = [name for name in self.OWNED_NAMES if name not in defined]
+        self.assertEqual(absent, [], 'this module does not define %s' % (absent,))
+        doubles = sorted({name for name in defined if defined.count(name) > 1})
+        self.assertEqual(doubles, [],
+                         'a second definition shadows the first in %s' % (SOURCE,))
+
+    def test_the_vod_module_declares_no_name_of_a_live_rule(self):
+        tree = ast.parse(Path(vod.__file__).read_text())
+        defined = [node.name for node in tree.body
+                   if isinstance(node, (ast.FunctionDef, ast.ClassDef))]
+        defined += [target.id for node in tree.body if isinstance(node, ast.Assign)
+                    for target in node.targets if isinstance(target, ast.Name)]
+        again = sorted(name for name in defined if name in self.OWNED_NAMES)
+        self.assertEqual(again, [],
+                         'the VOD module declares %s beside the live rule' % (again,))
+
+    def test_the_ceiling_of_the_live_rule_holds_at_its_boundary(self):
+        def key(variant):
+            return (variant['height'], variant['bandwidth'])
+
+        self.assertEqual(source.VARIANT_CEILING, 720)
+        self.assertEqual(source.chosen_variant([{'height': 720, 'bandwidth': 1},
+                                                {'height': 1080, 'bandwidth': 2}], key),
+                         {'height': 720, 'bandwidth': 1})
+        self.assertEqual(source.chosen_variant([{'height': 721, 'bandwidth': 3},
+                                                {'height': 1080, 'bandwidth': 4}], key),
+                         {'height': 721, 'bandwidth': 3})
+        self.assertEqual(source.chosen_variant([{'height': 480, 'bandwidth': 5}], key),
+                         {'height': 480, 'bandwidth': 5})
+
+    def test_the_live_resolver_keeps_the_ceiling_and_the_vod_reader_offers_a_number(self):
+        self.assertEqual(sorted(inspect.signature(source.resolve_twitch).parameters),
+                         ['canonical_url'],
+                         'the live resolver is not a second reader with a ceiling of its own')
+        self.assertIn('max_height', inspect.signature(vod.resolve_vod).parameters)
+        self.assertEqual(vod.resolve_vod.__kwdefaults__['max_height'], source.VARIANT_CEILING,
+                         'the VOD default is not the live constant')
+
+    def test_a_copied_rule_pattern_is_reported_and_a_clean_reader_is_not(self):
+        patterns = sorted((source.BANDWIDTH_RE.pattern, source.RESOLUTION_RE.pattern,
+                           source.FRAME_RATE_RE.pattern, source.HLS_TAG, source.STREAM_INF,
+                           format(source.VARIANT_CEILING, 'd')))
+        with self.assertRaises(TwitchSourceError) as refused:
+            source.hls_lines(NOT_A_PLAYLIST, error=TwitchSourceError)
+        self.assertEqual(str(refused.exception), 'Twitch returned an invalid playback playlist')
+        self.assertEqual(source.variant_attrs('#EXT-X-STREAM-INF:BANDWIDTH=1'), None)
+        copied = source.RESOLUTION_RE.pattern + ' = x\n'
+        self.assertEqual(sorted(rule for rule in patterns if rule in copied),
+                         [source.RESOLUTION_RE.pattern], 'the report missed a copied pattern')
+        self.assertEqual(sorted(rule for rule in patterns if rule in 'def reader(text): pass'), [],
+                         'the report is never silent')
 
 
 class LoopbackTwitchPlayback:

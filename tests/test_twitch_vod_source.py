@@ -5,11 +5,16 @@ tests replace with a scripted fake.  The real endpoints were verified once by ha
 raw evidence is recorded in ``docs/twitch-vod-as-live.md``.
 Run: PYTHONPATH=. .venv/bin/python -B tests/test_twitch_vod_source.py
 """
+import ast
+import dis
+import inspect
 import json
 import re
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+from annotator import twitch_source as live
 from annotator import twitch_vod_source as vod
 from annotator.twitch_vod_source import TwitchVodError
 
@@ -507,6 +512,84 @@ class ThumbnailTests(unittest.TestCase):
                     patch('annotator.twitch_vod_source._raw_bytes', lambda url, **kw: case):
                 with self.assertRaises(TwitchVodError):
                     vod.vod_thumbnail('1000000001')
+
+
+class SharedRuleTests(unittest.TestCase):
+    """The master-playlist rules live in ``annotator/twitch_source.py``; this path reads them.
+
+    The VOD resolver once pasted four rules of the live resolver: the line cleaning, the
+    ``#EXTM3U`` header check, the two attribute patterns and the 720 ceiling.  A repair
+    applied to one copy changed nothing at runtime in the other.  These cases name both
+    sides: the live module holds each rule, and this module holds no second copy.
+    """
+
+    #: The names of the live resolver that are one rule each.  A reader of a rule writes
+    #: ``live.chosen_variant(...)``, so the plain name is not a mark; the list records what
+    #: this module must not define again.
+    SHARED_NAMES = ('HLS_TAG', 'STREAM_INF', 'BANDWIDTH_RE', 'RESOLUTION_RE',
+                    'FRAME_RATE_RE', 'VARIANT_CEILING', 'hls_lines', 'variant_attrs',
+                    'chosen_variant')
+
+    def rule_marks(self, module):
+        """The distinctive text of the shared rules: one second copy writes each mark.
+
+        The marks are the pattern of each shared regex and ``.splitlines()``, which only the
+        line reader of the live resolver writes.  A reader of a rule writes
+        ``live.chosen_variant(...)``, so a plain name is not a mark.
+        """
+        marks = set(pattern.pattern for pattern
+                    in (module.BANDWIDTH_RE, module.RESOLUTION_RE, module.FRAME_RATE_RE))
+        marks.add('.splitlines()')
+        return marks
+
+    def test_the_vod_path_holds_no_second_copy_of_a_live_rule(self):
+        marks = self.rule_marks(live)
+        self.assertGreaterEqual(len(marks), 4, 'the marks are too few to measure: %s' % (marks,))
+        text = Path(vod.__file__).read_text()
+        found = sorted(mark for mark in marks if mark in text)
+        self.assertEqual(found, [], 'this module holds a copy of a live rule: %s' % (found,))
+
+    def test_the_vod_playlist_reader_calls_the_live_one_and_raises_its_own_error(self):
+        words = [word.opname for word in dis.get_instructions(vod.playlist_lines)
+                 if not word.opname.startswith('LOAD') and word.opname != 'CACHE']
+        self.assertEqual(words, ['RESUME', 'PUSH_NULL', 'CALL_KW', 'RETURN_VALUE'],
+                         'the reader holds code of its own: %s' % (words,))
+        self.assertIn('TwitchVodError', vod.playlist_lines.__code__.co_names,
+                      'the reader does not name its own refusal class')
+        with self.assertRaises(TwitchVodError) as refused:
+            vod.playlist_lines('')
+        self.assertEqual(str(refused.exception), 'Twitch returned an invalid playback playlist')
+
+    def test_the_copy_report_names_a_planted_copy_and_holds_its_tongue_otherwise(self):
+        marks = self.rule_marks(live)
+        planted = ('def playlist_lines(text):\n'
+                   '    lines = [line.strip() for line in text.splitlines() if line.strip()]\n'
+                   '    return [line for line in lines if RESOLUTION_RE.search(line)]\n')
+        report = sorted(mark for mark in marks if mark in planted)
+        self.assertNotEqual(report, [], 'the report missed a planted copy')
+        self.assertEqual(sorted(mark for mark in marks if mark in 'def other(text): pass'), [])
+
+    def test_the_ceiling_of_the_choice_is_the_live_constant_on_both_sides(self):
+        def height_of(row):
+            return (row['height'],)
+
+        self.assertEqual(live.VARIANT_CEILING, 720)
+        rows = [{'height': 1080}, {'height': 721}, {'height': 720}]
+        self.assertEqual(live.chosen_variant(rows, height_of)['height'], 720)
+        self.assertEqual(live.chosen_variant([{'height': 1080}, {'height': 721}], height_of)['height'], 721)
+        master = '\n'.join([
+            '#EXTM3U',
+            '#EXT-X-STREAM-INF:BANDWIDTH=6000000,RESOLUTION=1920x1080,FRAME-RATE=60.000',
+            'https://d2nvs31859zcd8.cloudfront.net/1080.m3u8',
+            '#EXT-X-STREAM-INF:BANDWIDTH=3161420,RESOLUTION=1280x720,FRAME-RATE=30.000',
+            'https://d2nvs31859zcd8.cloudfront.net/720.m3u8',
+        ]) + '\n'
+        network = Network(master=master)
+        with patch('annotator.twitch_vod_source._raw', network):
+            chosen = vod.resolve_vod('1000000001')
+        self.assertEqual(chosen['media_url'], 'https://d2nvs31859zcd8.cloudfront.net/720.m3u8')
+        self.assertEqual(inspect.signature(vod.resolve_vod).parameters['max_height'].default,
+                         live.VARIANT_CEILING)
 
 
 if __name__ == '__main__':
