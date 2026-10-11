@@ -64,9 +64,9 @@ from src.person_identity import IdentityIndex
 # and src/enroll_from_tracklet.py held the same body twice, and this import is the
 # repair: the owner holds it and both readers bind the owner's name.
 from src.stats import read_pair
-# The operations document path has one owner (src.store_files), so this list cannot
-# name a path that the store no longer writes.
-from src.store_files import STATE_DOCUMENT
+# The operations document path and the seed document path have one owner
+# (src.store_files), so this list cannot name a path that the store no longer writes.
+from src.store_files import SEED_DOCUMENT, STATE_DOCUMENT
 # src/weight_pins.py owns the weight paths, so this list cannot name a path that
 # the pin table no longer owns.
 from src import weight_pins
@@ -89,7 +89,7 @@ HEIGHT_BUCKETS = ((0, 250, "far"), (250, 400, "mid"), (400, 10_000, "near"))
 # Files the demo must never write. Recorded as md5 before/after.
 PROTECTED = (
     STATE_DOCUMENT,
-    "out/pid_seed.json",
+    SEED_DOCUMENT,
     "out/scan30/annotations.json",
     "out/identity/clusters.json",
     "out/corner-pocket/face_embeddings.json",

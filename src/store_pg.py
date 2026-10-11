@@ -34,8 +34,8 @@ from src import db
 from src.store import JsonStore, StoreConstraintError
 from annotator.refusals import (INTEGER_REVISION_REQUIRED, JSON_OBJECT_REQUIRED,
                                 STATE_CHANGED_RELOAD)
-from src.store_files import (BALL_SETS, STATE_DOCUMENT, dataset_dir, dump, fmt_of, get_document,
-                             put_document)
+from src.store_files import (BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, dataset_dir, dump, fmt_of,
+                             get_document, put_document)
 # The document side of the event log is trimmed by its one owner (src.ops_event_log),
 # so this store holds no copy of the retention bound.
 from src.ops_event_log import trim
@@ -55,7 +55,7 @@ DOCUMENTS = "json_documents"
 def _doc_path(kind: str, key: str) -> str:
     """The file a document-backed record set lives in (same names as JsonStore)."""
     if kind == "seeds":
-        return "out/pid_seed.json"
+        return SEED_DOCUMENT
     if kind == "verdicts":
         return f"{dataset_dir(key)}/annotations.json"
     if kind == "labels":

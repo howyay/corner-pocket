@@ -39,6 +39,10 @@ BALL_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 # writer imports it, so the path stands once in the code.  A docstring or a comment
 # may name the path in words, and it must not spell the path again.
 STATE_DOCUMENT = "out/corner-pocket/state.json"
+# The seed document path has one owner: this name.  Every reader and every writer
+# imports it, so the path stands once in the code.  A docstring or a comment may
+# name the path in words, and it must not spell the path again.
+SEED_DOCUMENT = "out/pid_seed.json"
 # The migration files the store layer needs, as (first, last).  db/migrations holds
 # this range today; the case in tests/test_store_files.py holds the two to each other.
 SCHEMA_RANGE = (1, 4)
@@ -136,7 +140,7 @@ def is_document_path(relative: str) -> bool:
     disappears, and its documents keep the same names while it exists.
     """
     parts = relative.split("/")
-    if relative in ("out/pid_seed.json", STATE_DOCUMENT):
+    if relative in (SEED_DOCUMENT, STATE_DOCUMENT):
         return True
     if len(parts) == 2 and parts[0] == "out" and parts[1].startswith("pid_anchors_") \
             and parts[1].endswith(".json"):
@@ -171,7 +175,7 @@ def document_paths(set_name: str, root: Path | None = None) -> list[str]:
     if set_name == "operations":
         return [STATE_DOCUMENT]
     if set_name == "seeds":
-        return ["out/pid_seed.json"]
+        return [SEED_DOCUMENT]
     if set_name == "verdicts":
         dirs = dataset_dirs(root).values() if root is not None else [dataset_dir(ds) for ds in STATIC_OUT]
         return [f"{folder}/annotations.json" for folder in dirs]

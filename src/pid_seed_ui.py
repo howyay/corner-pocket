@@ -33,9 +33,12 @@ if __name__ == "__main__":
 # The rule for one reply body has one owner, src/reply_body.py. The review server
 # and the pocket-anchor UI call the same function.
 from src.reply_body import write_reply  # noqa: E402
+# The seed document path has one owner, src.store_files.SEED_DOCUMENT. This module
+# reads the name, so it holds no second copy of the path.
+from src.store_files import SEED_DOCUMENT  # noqa: E402
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 TR = ROOT.parent / "out" / "pid2_tracklets.json"
-SEED = ROOT.parent / "out" / "pid_seed.json"
+SEED = ROOT.parent / SEED_DOCUMENT
 PROTO = ROOT.parent / "out" / "pid_seed_protos.json"
 TRK = ROOT.parent / "out" / "pid_seed_tracks.json"
 

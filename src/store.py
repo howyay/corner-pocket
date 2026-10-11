@@ -58,7 +58,7 @@ from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
-from src.store_files import BALL_SETS, STATE_DOCUMENT, save_document  # noqa: E402
+from src.store_files import BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, save_document  # noqa: E402
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -261,9 +261,11 @@ class JsonStore:
         return remove_faces(self._faces_path(), player_id)
 
     def _seeds_path(self, dataset: str) -> Path:
+        """The seed document under this store's root: the file name of its owner,
+        src.store_files.SEED_DOCUMENT, so the name stands once in the code."""
         if dataset != "vod30":
             raise ValueError("seeds exist for vod30 only")
-        return self.out / "pid_seed.json"
+        return self.out / Path(SEED_DOCUMENT).name
 
     def seeds_get(self, dataset: str) -> dict:
         return self.seed_file(dataset).get("seeds", {})

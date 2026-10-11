@@ -21,7 +21,7 @@ import sys
 import uuid
 
 from src import db
-from src.store_files import STATE_DOCUMENT, dataset_of_dir, documents
+from src.store_files import SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir, documents
 
 # The rebuild copies each live table's definition (LIKE ... INCLUDING ALL): same
 # columns, defaults, CHECKs and unique indexes; foreign keys are not copied, which
@@ -36,7 +36,7 @@ def projections(docs: dict[str, str]):
     state = docs.get(STATE_DOCUMENT)
     if state is not None:
         yield SETS["operations"], json.loads(state)
-    seeds = docs.get("out/pid_seed.json")
+    seeds = docs.get(SEED_DOCUMENT)
     if seeds is not None:
         yield SETS["seeds"], json.loads(seeds)
     # verdicts and corrections live in a dataset's folder: out/<scan>/ or out/vods/<id>/
