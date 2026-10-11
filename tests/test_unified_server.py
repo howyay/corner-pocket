@@ -18,6 +18,7 @@ from annotator.unified_server import (ABSENT, ANNOTATION_NOTE_MAX, APIError,
                                       BALL_LABEL_UNKNOWN_STORED, BALL_LABEL_UNKNOWN_WIRE,
                                       Backend, BOARD_FONTS, Cache, CLIP_FLOOR_S,
                                       _MAX_ENROLL_BODY_BYTES, _MAX_POST_BODY_BYTES,
+                                      _RANGE_CHUNK_BYTES,
                                       OPERATOR_ACTIONS, OperatorAction, ReadQuery, atomic_save,
                                       load, make_handler, operator_actions)
 from annotator.operations import (ACTION_NAMES, Operation,
@@ -737,6 +738,36 @@ class BackendTests(unittest.TestCase):
         handler.dispatch(post=True)
         self.assertEqual(handler.status, 400, 'a body at the cap reaches the route and fails there')
         self.assertEqual(read, [_MAX_POST_BODY_BYTES], 'the boundary body is read once')
+
+    def test_the_range_reader_names_its_chunk_and_no_bare_65536_stands(self):
+        """Note 1: the byte-range chunk has a name of its own, and no bare 65536 stands.
+
+        The byte-range reader sends a video in 64 KiB chunks.  That count is a
+        stream read size, and ``_MAX_POST_BODY_BYTES`` is a request limit: the two
+        facts are different, so each one has its own name.  A later edit may move
+        one name and not the other.  The reader must read a name, because a bare
+        number in a body hides the fact the reader needs.
+        """
+        source = (Path(__file__).resolve().parents[1] / 'annotator'
+                  / 'unified_server.py').read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        declared = {id(node.value) for node in tree.body
+                    if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)}
+        bare = [node.lineno for node in ast.walk(tree)
+                if isinstance(node, ast.Constant) and node.value == 65536
+                and id(node) not in declared]
+        self.assertEqual(bare, [], 'every 65536 in the module stands in a declaration')
+        reads = [node for node in ast.walk(tree)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                 and node.func.attr == 'read' and len(node.args) == 1
+                 and isinstance(node.args[0], ast.Call)
+                 and isinstance(node.args[0].func, ast.Name)
+                 and node.args[0].func.id == 'min']
+        self.assertEqual(len(reads), 1, 'one stream read takes a minimum')
+        size = reads[0].args[0].args[0]
+        self.assertIsInstance(size, ast.Name, 'the range reader reads a name, not a literal')
+        self.assertEqual(size.id, '_RANGE_CHUNK_BYTES', 'the range chunk has its own name')
+        self.assertEqual(_RANGE_CHUNK_BYTES, 65536, 'the range chunk keeps its size')
 
     def test_a_conflict_body_carries_the_night_identity_beside_the_sentence(self):
         """Round 34 card 11: the console reads nightId, so the 409 body names the night as data."""

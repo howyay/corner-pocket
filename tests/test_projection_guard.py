@@ -6,7 +6,9 @@ every reader calls it.  This module holds that state in five ways:
 
 1. one ``ast`` walk over the site modules, which fails with the site list when
    a bare ``abs(...) < 1e-9`` or ``abs(...) < 1e-12`` stands again in a reader,
-   or when a reader stops calling the owner;
+   when a reader stops calling the owner, when a delegated helper names another
+   tolerance than its site, or when the ``round(...)`` calls of that helper
+   answer other digits or another count than ``ROUNDINGS`` declares;
 2. one case per behaviour of the owner, at both tolerances, including the two
    borders (``abs(w) < t`` is false at ``w == t``, so the point divides);
 3. one case that a refused point reaches no ``nan`` coordinate through the
@@ -78,10 +80,23 @@ OWN_NUMBERS = {
 #: and the owner call moved with it.  A site named here must read the owner
 #: inside one of its helpers, and that helper declares the same tolerance as the
 #: site.  A helper with no owner call and no call of the site is a fault, because
-#: a reader may not hold its own answer.
+#: a reader may not hold its own answer.  The digits of that helper's rounding
+#: stand in ``ROUNDINGS``, and the walk holds them too.
 DELEGATES = {
     ('src/eval_events.py', 'Probe.px'): ('Probe._to_px',),
     ('src/eval_events.py', 'Probe.claim_px'): ('Probe._to_px',),
+}
+
+#: The rounding of a delegated helper's answer, keyed by ``(module, helper)``:
+#: the digits of one ``round(...)`` call, and the number of those calls.  The one
+#: conversion tail of the two pixel readers rounds both coordinates of its answer
+#: to 0.1 pixel, so the tail holds two calls of one digit.  Its rounding is a
+#: fact of the tail: a later edit may move a digit or drop a call, and the readers'
+#: own cases drive whole numbers only, so no other case of this module can see
+#: that edit.  The walk reads every ``round(...)`` call of a helper named here and
+#: holds both answers against this table.
+ROUNDINGS = {
+    ('src/eval_events.py', 'Probe._to_px'): (1, 2),
 }
 
 def _functions(module, dotted):
@@ -191,6 +206,31 @@ def _owner_calls(node):
     return calls
 
 
+def _round_calls(node):
+    """Every ``round(<value>, <digits>)`` call inside one function body.
+
+    ``digits`` is the second argument's value when the call states a constant,
+    its source text when the call states another expression, and ``None`` when
+    the call states no second argument.  The rule of the rounding is not here:
+    the caller compares the answer with the digits that ``ROUNDINGS`` declares
+    for the helper.
+    """
+    calls = []
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        func = child.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, 'id', None)
+        if name != 'round':
+            continue
+        digits = None
+        if len(child.args) > 1:
+            value = child.args[1]
+            digits = value.value if isinstance(value, ast.Constant) else ast.unparse(value)
+        calls.append({'line': child.lineno, 'digits': digits})
+    return calls
+
+
 def _site_faults(name, module, dotted, allowed, delegates):
     """The owner calls of one site and the faults of that site alone."""
     faults = []
@@ -209,6 +249,21 @@ def _site_faults(name, module, dotted, allowed, delegates):
             if call['tolerance'] != allowed:
                 faults.append('%s: %s of %s passes %s, but the site declared %s'
                               % (name, helper, dotted, call['tolerance'], allowed))
+    for helper in delegates.get((name, dotted), ()):
+        declared = ROUNDINGS.get((name, helper))
+        if declared is None:
+            continue
+        digits, count = declared
+        rounds = [round_call for node in _functions(module, helper)
+                  for round_call in _round_calls(node)]
+        if len(rounds) != count:
+            faults.append('%s: %s of %s holds %d round(...) calls, but the site declared %d'
+                          % (name, helper, dotted, len(rounds), count))
+            continue
+        for round_call in rounds:
+            if round_call['digits'] != digits:
+                faults.append('%s: %s of %s rounds to %s digits, but the site declared %d'
+                              % (name, helper, dotted, round_call['digits'], digits))
     if not calls:
         faults.append('%s: %s reads no owner rule: it holds its own answer' % (name, dotted))
         return calls, faults
@@ -271,17 +326,33 @@ class TheWalkSeesEightReaders(unittest.TestCase):
         self.assertEqual(sorted(found), sorted((name, dotted) for name, dotted, _t in SITES))
 
     def test_the_walk_reads_a_delegated_helper_and_its_tolerance(self):
-        """The walk reads the helper a site delegates to, its tolerance included.
+        """The walk reads the helper a site delegates to, its tolerance and its rounding.
 
         Round 72 gave the two pixel readers of ``src/eval_events.py`` one
         conversion tail.  The walk finds the owner call in that tail, so the
-        site keeps its record of the tolerance.  A helper whose call names
-        another tolerance than its site is a fault, and the planted file below
-        is that fault.  The real file answers no fault, and the case before
-        this one holds that state.
+        site keeps its record of the tolerance; it reads the ``round(...)``
+        calls of the same tail, so the site keeps the record of the 0.1-pixel
+        rounding too.  A helper whose call names another tolerance than its
+        site, or whose tail holds other ``round(...)`` calls than ``ROUNDINGS``
+        declares, is a fault, and the two planted texts below are those faults.
+        Each plant must change the text the walk reads: when the tree already
+        holds the planted state, the plant is a no-op, and the case fails at its
+        ``assertNotEqual`` rather than reporting a fault of the tree that stands
+        there.  The real file answers no fault, and the case before this one
+        holds that state.
         """
         real = (ROOT / 'src' / 'eval_events.py').read_text(encoding='utf-8')
+        planted = real.replace('round(point[0], 1)', 'round(point[0], 0)', 1)
+        self.assertTrue(real != planted, 'the rounding plant must change the text the walk '
+                                         'reads, or the assertion below holds the tree')
+        calls, faults = _site_faults('src/eval_events.py', ast.parse(planted),
+                                     'Probe.px', 'PIXEL_TOLERANCE', DELEGATES)
+        self.assertEqual(len(calls), 1, 'the helper holds the owner call: %r' % (calls,))
+        self.assertEqual(faults, ['src/eval_events.py: Probe._to_px of Probe.px rounds to 0 '
+                                  'digits, but the site declared 1'])
         planted = real.replace('tolerance=PIXEL_TOLERANCE', 'tolerance=DEFAULT_TOLERANCE', 1)
+        self.assertTrue(real != planted, 'the tolerance plant must change the text the walk '
+                                         'reads, or the assertion below holds the tree')
         calls, faults = _site_faults('src/eval_events.py', ast.parse(planted),
                                      'Probe.px', 'PIXEL_TOLERANCE', DELEGATES)
         self.assertEqual(len(calls), 1, 'the helper holds the owner call: %r' % (calls,))
