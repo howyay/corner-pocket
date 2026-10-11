@@ -5490,7 +5490,7 @@ compared a quoted literal and stayed green on a real copy.
 | Suite | Result |
 | --- | --- |
 | `./scripts/pool-test.sh python`, the Lead, first run | `Ran 1945 tests in 349.358s`, `FAILED (errors=1, skipped=53)`. The one error is a `tempfile` cleanup race, not a case: `OSError: [Errno 39] Directory not empty: '/tmp/tmpv09zdsh5'` under `test_vod_import.ImporterTests.test_the_seconds_knob_is_the_only_bounded_range_and_it_is_capped`. That module alone answers `Ran 32 tests in 7.363s`, `OK` |
-| `./scripts/pool-test.sh python`, the Lead, second run | SECOND_RUN_LINE |
+| `./scripts/pool-test.sh python`, the Lead, second run | `Ran 1945 tests in 372.926s`, `FAILED (failures=1, skipped=53)`. The one failure is a timing margin under load, not a wrong answer: `tests/test_clock_api.py:256` asserts `latency < 5.0` and measured `5.3150651619998825`, with `AssertionError: 5.3150651619998825 not less than 5.0 : a change reaches an open stream at once, not at the next heartbeat`, while the comment above that line says "typically ~10 ms here". That module alone answers `Ran 11 tests in 7.384s`, `OK (skipped=1)`, and it answered so twice |
 | `./scripts/pool-test.sh python`, the writer of Strong 2 | `Ran 1945 tests in 221.741s`, `OK (skipped=53)` |
 | `node tests/test_ops.js` | 219 pass, 0 fail |
 | `node tests/test_board.js` | 23 pass, 0 fail |
@@ -5529,4 +5529,186 @@ Round 51 answered 1937 cases, so this round adds 8: 2 in `tests/test_fast_ball_l
 
 The push is still blocked. Thirty-three commits sit on the local `main`: the three of this round, the
 record of this round, and the twenty-nine that came before them. `origin/main` stays at `110b0338`.
+The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 53 · the native frame had five homes, and the named rule had two (2026-10-11)
+
+The walk of this round read the repository at `234e68d` with an empty `git status --porcelain`,
+answered `Strong candidate present - 3 Strong, 3 Worth, 1 Note`, and wrote 232 lines to
+`/tmp/dshsess/walk_round53.md`. It measured both frame sizes a second time, and it found the two
+predicate bodies that the duplicate-body walk cannot reach. It read `db/migrations/0003` and `0004`
+for the first time. It did not read `src/sam3/` (625 files), most of `src/eval_events.py` (1160 lines)
+and `src/segment_calib_report.py` (329 lines), 41 of the 43 documents of `docs/`, the migrations
+`0001` and `0002` beyond the lines that this record cites, the class bodies and the nested defs of
+`src/*.py`, `annotator/` beyond `app.js` and the port line of `annotator/unified_server.py`, and no
+file of `out/`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `5547f6a` | 14 files of `src/` and `tests/` | Strong 1 and Strong 3 |
+| `241cd4a` | `src/document_stamp.py`, `src/events_document.py`, `src/sam3_artifact.py`, `tests/test_duplicate_bodies.py` | Strong 2 |
+| `b00ad64` | `annotator/app.js`, `tests/test_app_timeline.js` | Worth 3 |
+| `1988d33` | `tests/test_app_timeline.js` | the cross-language half of Strong 1 |
+| the record of this round | `docs/console-redesign.md` | this section, and the repair of the `SECOND_RUN_LINE` placeholder that round 52 left at line 5493 |
+
+### Strong 1 · the native frame pair had two owners, and the guard saw neither copy
+
+Ground: `src/ball_scale.py:78 NATIVE_FRAME = (1280, 720)` and
+`src/tiny_ball_net.py:58 NATIVE_WH = (1280, 720)`. Five files read the second name:
+`src/ball_fp_audit.py` 3 times, `src/fast_ball_labels.py` 2, `src/tiny_ball_net.py` 5,
+`tests/ball_stack_ab.py` 2 and `tests/test_tiny_ball_net.py` 5. Four more bindings of the same pair
+stood at `src/calib_mapping_audit.py:230 def rail_evidence(video, times, quad_a, quad_b,
+size=(1280, 720)):`, `src/calib_segment_fit.py:263 "frame_size": [1280, 720],`,
+`src/eval_calib.py:66 W, H = 1280, 720` and `src/eval_events.py:60 FULL_W, FULL_H = 1280, 720`. The
+guard of round 52 reads a pair only when it equals the working frame, so it saw neither copy.
+
+Defect: one fact, the native frame, stood under two names, and four further bindings repeated it.
+
+Decision: Strong, because the two names can disagree and five modules divide by one of them.
+
+Repair: `src/ball_scale.py:81` holds the one statement. `src/tiny_ball_net.py:61` reads
+`NATIVE_WH = NATIVE_FRAME`, an alias that states no number, and `:79` of the owner names that alias.
+`src/calib_mapping_audit.py:230` reads `size=NATIVE_FRAME` and `:367` reads
+`scale_between(NATIVE_FRAME, WORKING_FRAME)`. `src/calib_segment_fit.py:264` writes
+`list(NATIVE_FRAME)`. `src/eval_calib.py` binds `W, H = NATIVE_FRAME`. `src/eval_events.py` reads
+`FULL_W` and `FULL_H` from the owner. `tests/ball_stack_ab.py` reads the size that the caller asked
+for, and before this change the command `--size 640x360` gave the wrong factor. The guard of
+`tests/test_ball_scale.py` reads both pairs in `src/` and `annotator/`, and it answers 13 cases.
+
+Measurement: `git grep -n "1280, 720" -- 'src/*.py'` answers two lines, the owner at
+`src/ball_scale.py:81` and the recorded exception at `src/tiny_ball_net.py:70 RESOLUTIONS`.
+`git grep -c "NATIVE_WH" -- 'src/*.py' 'tests/*.py'` answers `src/ball_scale.py:1` (a comment of the
+owner), `src/tiny_ball_net.py:2` and `tests/test_tiny_ball_net.py:9`.
+
+### Strong 2 · the named rule had two owners, and the body walk reached neither
+
+Ground: `src/events_document.py:174 def named(self) -> bool:` and `src/sam3_artifact.py:144` held one
+body, `return self.status == STAMPED`. The body walk at `tests/test_duplicate_bodies.py:102` reads
+`for node in tree.body if isinstance(node, ast.FunctionDef)`, so it reaches no method of a class:
+780 of the 1171 `def`s of `src/*.py`.
+
+Defect: one rule, "a document is named when its status is stamped", stood in two method bodies.
+
+Decision: Strong, because the two readers can answer differently about the same row.
+
+Repair: `src/document_stamp.py:129 def is_named(status: str) -> bool:` holds the one statement, and
+`:56` names it in `__all__`. The readers call it at `src/events_document.py:178`, `:182` and `:331`,
+and at `src/sam3_artifact.py:148`, `:154` and `:380`. `NamedPredicateTest` adds four cases: one
+statement in all of `src/*.py` compares a status with `STAMPED` and it sits in
+`document_stamp.is_named`; a forged class body proves that the walk of that case finds a copy inside
+a class; each `named` body is one `Return` of the owner call; and the three modules hold one function
+object at run time. `imported_names` walks the whole tree now, because a reader imports the owner
+inside a `try` block. The module answers 9 cases, and it answered 5.
+
+Measurement: `git grep -n "is_named" -- 'src/*.py'` answers the owner at
+`src/document_stamp.py:129`, no comparison with `STAMPED` outside it, and the six call sites.
+
+### Strong 3 · the frame conversion had one owner and eleven copies
+
+Ground: `src/ball_scale.py:97 def scale_between(from_frame, to_frame)` is the one conversion, and its
+only caller in `src/` was the owner itself at `:114`. Eleven quotients stood by hand in five modules:
+`src/eval_events.py` held seven of the form `... / 1280.0`, and `src/calib_mapping_audit.py`,
+`src/sam3_frame_audit.py`, `src/segment_calib_report.py` and `src/timing_verify.py` held one each. Two
+of them stated the inverse conversion: `src/segment_calib_report.py:111 small_quad = (np.asarray(quad,
+np.float32) * (SMALL_W / 1280.0)).astype(np.float32)` and `src/sam3_frame_audit.py:116 quad =
+np.array(reference_quad, np.float32) * (960.0 / 1280.0)`. Two more froze a copy into a default or a
+constant: `src/timing_verify.py:140 def cloth_mask(quad, width=SMALL_W, height=SMALL_H,
+scan_width=1280.0):` and `src/eval_events.py:76 SAM3_SCALE = SMALL_W / 1280.0`.
+
+Defect: the one conversion existed, and no reader used it.
+
+Decision: Strong, because a change to the conversion would leave eleven sites computing the old
+factor, and two of them run backwards.
+
+Repair: every site reads `ball_scale.scale_between`. `NATIVE_PER_FRAME_PX` names the one quotient of
+`src/ball_fp_audit.py` and `src/fast_ball_labels.py`. `src/timing_verify.py:140` reads
+`scan_width=NATIVE_FRAME[0]`. `src/eval_events.py:79` reads
+`SAM3_SCALE = ball_scale.scale_between(ball_scale.NATIVE_FRAME, ball_scale.WORKING_FRAME)`.
+
+Measurement: `git grep -c "1280\.0" -- 'src/*.py'` answers nothing.
+
+### Worth 3 · the console wrote the native pair as a fallback five times
+
+Ground: `annotator/app.js` held `state.frameWidth || 1280` and `state.frameHeight || 720` at lines
+808, 855, 888, 1069 and 1768. No guard read them.
+
+Defect: the console fallback restated the pipeline's native frame at five sites.
+
+Decision: Worth, because the five copies agreed with each other, and the reader of this round can hold
+them together with the owner.
+
+Repair: `annotator/app.js:40` states `const NATIVE_FRAME = [1280, 720]` with `NATIVE_W` and
+`NATIVE_H` beside it, and the five sites read the names. `tests/test_app_timeline.js` gains one case
+and two source-text claims. `1988d33` adds one case that reads `src/ball_scale.py` and compares its
+pair with the console pair, because no browser seam can read a Python file.
+
+Measurement: `git grep -c "frameWidth || 1280" -- annotator/app.js` answers nothing, and the module
+answers 102 cases with 75 counted source assertions.
+
+### The two probes that came back dry
+
+The walk spent two probes so that no later round would. The retired ball numbers (`18.4 px`,
+`27.6 px bar`) survive only in `docs/state.md` and `docs/tiered-queue-verification.md`, and every line
+that holds one carries a retired marker. The 18-table list of `scripts/pool-write-fingerprint.sql` is
+guarded two ways: `tools/write_fingerprint_coverage.py` compares the list with the schema, and
+`tests/test_write_fingerprint.py` perturbs a table and expects the tool to report it.
+
+### The bites of this round
+
+| Bite | File | sha1 chain | Result |
+| --- | --- | --- | --- |
+| The native pair back at one reader | `src/calib_segment_fit.py` | `9873062a… → 2d2e7159… → 9873062a…` | failed: `test_no_second_module_binds_a_frame_size`, `Lists differ: [] != ['src/calib_segment_fit.py:261: mapping, payload = frame_size: (1280, 720)']` |
+| The owner pair changed to `1279x720` | `src/ball_scale.py` | `b9091a9a… → 3bdcf6cc… → b9091a9a…` | failed: one case, `the console fallback pair equals the owner: 1279x720`; the module answered 101 passed, 1 failed |
+| One comparison with `STAMPED` back in a reader | `src/sam3_artifact.py` | `cdaad7a2… → 80016951… → cdaad7a2…` | failed: two cases, `Lists differ: ['document_stamp.py'] != ['document_stamp.py', 'sam3_artifact.py']` and `'document_stamp.is_named(self.status)' != 'self.status == STAMPED'` |
+| An inline number back at one fallback site | `annotator/app.js` | `8d487770… → 46fbf304… → 8d487770…` | failed: two cases, the updated `measureTagScale` contract and the new case, which reported `no site writes a fallback number inline: ["|| 1280"]` |
+| A planted copy for the frame walk (the writer of Strong 1 and Strong 3) | `tests/test_ball_scale.py` | `6ae4a773… → 3cdd29ec… → 6ae4a773…` | failed: two cases, the record case and the negative case |
+
+One rule break belongs in this record. The first bite of the cross-language case restored
+`annotator/app.js` with `git checkout --`. That file was already committed in `b00ad64`, so no work
+was lost, and the bite ran again with a `cp` backup and a `sha1sum` chain. The rule stands: bite with
+a copy, and never with `git checkout --`.
+
+### The suites of this round
+
+| Suite | Result |
+| --- | --- |
+| `./scripts/pool-test.sh python`, the Lead, at `1988d33` | `Ran 1954 tests in 173.368s`, `OK (skipped=53)` |
+| `./scripts/pool-test.sh python`, the writer of Strong 1 and Strong 3 | `Ran 1954 tests`, `OK (skipped=53)` |
+| `node tests/test_app_timeline.js` | 102 passed, 0 failed, 75 source-text assertions |
+| `node tests/test_ops.js` | 219 pass, 0 fail |
+| `node tests/test_board.js` | 23 pass, 0 fail |
+
+Round 52 answered 1945 cases, so this round adds 9: 3 in `tests/test_ball_scale.py`, 2 in
+`tests/test_tiny_ball_net.py`, and 4 in `tests/test_duplicate_bodies.py`.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The cloth build bypasses `SAM3_SCALE` | Note 1 of the round-52 walk | `src/eval_events.py:219` reads `small_quad = (self.quad * SAM3_SCALE).astype(np.float32)`, and `:79` derives that scale from the owner's conversion |
+| The working-frame guard proves a binding and not a reader, and it reads one pair | limit of round 52 | the guard of round 53 reads both pairs, it finds a tuple, a list, a default argument, a dict value and a return value, and a negative case proves that the walk sees a planted copy |
+| `annotator/app.js` writes the frame as a fallback | Worth 3 of this walk | `b00ad64` gives the pair one home in the console, and `1988d33` makes that home answer to `src/ball_scale.py` |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| `reference_quad` holds two bodies, and a third delegates | Worth 3 of the round-51 walk, measured | one dataset and one question answer two ways: `src.sam3_ball_cache.reference_quad(corners_path="out/scan30/corners.json", dataset="nothing-here")` answers `[[459.26, 268.89], [803.75, 315.78], [1023.37, 584.26], [421.81, 560.57]]`, and `src.sam3_frame_audit.reference_quad(dataset="nothing-here", anchors_path="/nonexistent.json")` answers `(None, 'none')`; `def reference_quad` stands at `src/sam3_frame_audit.py:128` |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files with two spellings (`or 30` twelve times, `or 30.0` eight), and `30.0003` stands at 8 sites |
+| The default dataset name is written five times | Worth 2 of this walk | `git grep -n 'default="vod30"'` answers `src/ball_association_ab.py:84`, `src/enroll_from_tracklet.py:1175`, `src/eval_events.py:1065`, `src/motion_scan.py:2440` and `src/track_before_detect.py:645`, plus two `out/scan30/sam3_results.json` paths at `src/ball_fp_audit.py:72` and `src/tiny_ball_net.py:50` |
+| Five more bodies stand twice in two modules each | Worth 1 of this walk | `common` of `src/motion_scan.py:2438` and `src/track_before_detect.py:643`, `frame_detections` of `src/store.py:389` and `src/store_pg.py:417`, `log_message` and `_send` of `src/pid_anchor_ui.py:139,142` and `src/pid_seed_ui.py:145,148`, and `seeds_get` of `src/store.py:273` and `src/store_pg.py:268` |
+| Three test literals restate the native pair | Note 1 of this walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57 NATIVE = (1280, 720)` and `tests/test_app_quad_contract.py:43 REF_WIDTH, REF_HEIGHT = 1280, 720` |
+| The duplicate-body walk reads module-level `def`s of `src/*.py` only | limit of round 51, still open | Strong 2 of this round lived inside it: the walk reaches 780 of the 1171 `def`s, and the docstring of `module_bodies` says that a nested `def` and a method do not count there |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, and this round repaired one citation by hand, `tests/test_tiny_ball_net.py:284 -> src/tiny_ball_net.py:625` |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| The areas that no walk read | Note | `deploy/`, `db/migrations/0001` and `0002`, `scripts/fetch_weights.py`, most of `scripts/pool-render-units.sh`, most of `src/eval_events.py` and `src/segment_calib_report.py`, `src/sam3/`, the class bodies and the nested defs, and 41 files of `docs/` |
+
+The push is still blocked. Thirty-eight commits sit on the local `main`: the four of this round, the
+record of this round, and the thirty-three that came before them. `origin/main` stays at `110b0338`.
 The one user action stays `git -C /home/haoye/projects/pool push origin main`.
