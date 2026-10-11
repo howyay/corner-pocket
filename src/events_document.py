@@ -15,7 +15,9 @@ This module owns four things, and nothing else:
 
 The stamp protocol of a row — the version, the row key, the status names and the
 producer names — belongs to `src/document_stamp.py`.  The two readers of that
-protocol disagreed before, and they read one definition now.
+protocol disagreed before, and they read one definition now.  The test "is this
+document named" belongs there too.  This module calls
+`document_stamp.is_named`, and it does not compare a status with `STAMPED`.
 
 `write(path, rows, producer=...)` stamps every row with
 `{STAMP: {"version": VERSION, "producer": producer}}` and writes a JSON list,
@@ -173,11 +175,11 @@ class Document:
     @property
     def named(self) -> bool:
         """True when every row names one producer and the current version."""
-        return self.status == STAMPED
+        return document_stamp.is_named(self.status)
 
     def describe(self) -> str:
         """One line for a log or a report."""
-        if self.status == STAMPED:
+        if document_stamp.is_named(self.status):
             return (f"{self.path}: {len(self.rows)} rows, version {self.version}, "
                     f"producer {self.producer}")
         if self.status == MIXED:
@@ -326,6 +328,6 @@ def read(document) -> Document:
             foreign += 1
     status, producer = document_stamp.status(producers, unstamped=unstamped, foreign=foreign)
     return Document(path=path, rows=data, status=status,
-                    version=VERSION if status == STAMPED else None,
+                    version=VERSION if document_stamp.is_named(status) else None,
                     producer=producer, producers=tuple(sorted(producers)),
                     unstamped=unstamped, foreign=foreign)

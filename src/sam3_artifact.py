@@ -23,7 +23,9 @@ write the millimetres of that file.
 This module owns the name and the shape of the artifact, and the writers of its
 ball rows.  The stamp protocol of a row — the version, the row key, the status
 names and the producer names — belongs to `src/document_stamp.py`.  The two
-readers of that protocol disagreed before, and they read one definition now.  A
+readers of that protocol disagreed before, and they read one definition now.  The
+test "is this artifact named" belongs there too.  This module calls
+`document_stamp.is_named`, and it does not compare a status with `STAMPED`.  A
 writer calls `write`, which stamps the rows and writes them through
 `src/atomic_write.py`, and which refuses a row it cannot name.  A reader calls
 `read`, which returns the frames unchanged and reports the producers that the
@@ -143,13 +145,13 @@ class Artifact:
     @property
     def named(self) -> bool:
         """True when every ball row names one producer at the current version."""
-        return self.status == STAMPED
+        return document_stamp.is_named(self.status)
 
     def describe(self) -> str:
         """One line for a log or a report."""
         head = (f"{self.path}: {self.balls} ball rows in {len(self.frames)} frames "
                 f"({self.empty} empty)")
-        if self.status == STAMPED:
+        if document_stamp.is_named(self.status):
             return f"{head}, version {self.version}, producer {self.producer}"
         if self.status == MIXED:
             parts = []
@@ -375,6 +377,7 @@ def read(document) -> Artifact:
                 foreign += 1
     status, producer = document_stamp.status(producers, unstamped=unstamped, foreign=foreign)
     return Artifact(path=path, frames=data, status=status, balls=balls,
-                    version=VERSION if status == STAMPED else None, producer=producer,
+                    version=VERSION if document_stamp.is_named(status) else None,
+                    producer=producer,
                     producers=tuple(sorted(producers)), empty=empty,
                     unstamped=unstamped, foreign=foreign)

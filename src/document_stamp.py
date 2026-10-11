@@ -27,7 +27,9 @@ or `FOREIGN`.  `status` applies that rule to the counts of a whole document.  A
 document is `STAMPED` only when every row is named and every row names the same
 producer.  A missing name, a name outside the set, and another version are
 `FOREIGN`, so the document reads `MIXED` and its producer stays unknown.  A
-reader never guesses a producer.
+reader never guesses a producer.  `is_named` holds the one statement of the
+test "is this document named".  Both readers call it, and a reader does not
+compare a status with `STAMPED` itself.
 
 This module is a leaf.  It imports nothing from `src/`, so both readers import
 it without a cycle.
@@ -51,7 +53,7 @@ __all__ = [
     "VERSION", "STAMP", "STAMPED", "MIXED", "UNSTAMPED", "NAMED", "FOREIGN",
     "SCAN_EVENTS", "REBUILD_CALIBRATED", "REBUILD_V2", "DENSE_QUEUE", "EVAL_EVENTS",
     "PRODUCERS", "BALL_ROW_PRODUCERS",
-    "is_producer", "is_newer", "classify", "status",
+    "is_producer", "is_newer", "classify", "is_named", "status",
 ]
 
 #: The version of the stamp shape.  Raise it when a reader of the old shape
@@ -122,6 +124,16 @@ def classify(entry, known: Iterable[str] = PRODUCERS) -> str:
     if not is_producer(name, known):
         return FOREIGN
     return NAMED
+
+
+def is_named(status: str) -> bool:
+    """True when `status` is `STAMPED`: every row names one producer.
+
+    This function holds the one statement of the test "is this document named".
+    `src/events_document.py` and `src/sam3_artifact.py` call it, and neither of
+    them compares a status with `STAMPED`.
+    """
+    return status == STAMPED
 
 
 def status(producers: Iterable[str], *, unstamped: int, foreign: int) -> tuple[str, str | None]:

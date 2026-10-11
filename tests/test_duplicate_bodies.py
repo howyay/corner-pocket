@@ -23,6 +23,17 @@ function, unparses the statements that remain with ``ast.unparse``, and hashes
 them.  So a copy is found whatever its name is, the spacing does not matter, and
 one changed name or term makes the two bodies differ.
 
+The walk above reads the top level of a module only, so a method of a class is
+not in it.  Round 53 found the test "is this document named" twice inside two
+class bodies (``events_document.py Document.named`` and ``sam3_artifact.py
+Artifact.named``).  It gave that test one home, ``document_stamp.is_named``, and
+it added ``NamedPredicateTest`` below, which walks the class bodies of every
+module of src/.  Measured on 2026-10-11, four further cross-module pairs of
+method bodies stay in class bodies: ``store.py`` with ``store_pg.py`` hold
+``frame_detections`` and ``seeds_get``, and ``pid_anchor_ui.py`` with
+``pid_seed_ui.py`` hold ``_send`` and ``log_message``.  A later round owns those
+four.
+
 Run: ``./scripts/pool-test.sh python test_duplicate_bodies``
 """
 from __future__ import annotations
@@ -117,11 +128,15 @@ def in_two_modules(entries):
 
 
 def imported_names(module, owner):
-    """{bound name: imported name} for the module-level imports of one owner module."""
+    """{bound name: imported name} for the imports of one owner module.
+
+    The walk reads the whole tree.  A reader of `src/document_stamp.py` imports
+    it inside a ``try`` block, and a walk of the top level misses that import.
+    """
     path = SRC / module
     tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
     found = {}
-    for node in tree.body:
+    for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == owner:
             for alias in node.names:
                 found[alias.asname or alias.name] = alias.name
@@ -131,6 +146,76 @@ def imported_names(module, owner):
 def where(entries):
     """The sites of one body, as ``module:line name``."""
     return ', '.join('%s:%d %s' % (module, line, name) for module, name, line in entries)
+
+
+#: The one module of src/ that owns the document stamp protocol.
+STAMP_MODULE = 'document_stamp'
+
+#: The file of that module.
+STAMP_OWNER = STAMP_MODULE + '.py'
+
+#: The one predicate of that protocol that answers "is this document named".
+NAMED_PREDICATE = 'is_named'
+
+#: The two readers of the protocol, and the class in each one that answers it.
+NAMED_READERS = (('events_document.py', 'Document'), ('sam3_artifact.py', 'Artifact'))
+
+
+def names_stamped(node):
+    """True when one operand of a comparison names the ``STAMPED`` status."""
+    return ((isinstance(node, ast.Name) and node.id == 'STAMPED')
+            or (isinstance(node, ast.Attribute) and node.attr == 'STAMPED'))
+
+
+def stamped_comparisons(module, source=None):
+    """(line, text) of every comparison with ``STAMPED`` in one module of src/.
+
+    The walk goes into a class body on purpose.  The two ``named`` methods sat
+    there, and the walk of ``module_bodies`` above does not reach them.
+    """
+    path = SRC / module
+    text = path.read_text(encoding='utf-8') if source is None else source
+    tree = ast.parse(text, filename=str(path))
+    return [(node.lineno, ast.unparse(node)) for node in ast.walk(tree)
+            if isinstance(node, ast.Compare)
+            and any(names_stamped(operand) for operand in [node.left] + list(node.comparators))]
+
+
+def stamped_comparison_sites():
+    """(module, line, text) of every comparison with ``STAMPED`` under src/*.py."""
+    return [(path.name, line, text) for path in sorted(SRC.glob('*.py'))
+            for line, text in stamped_comparisons(path.name)]
+
+
+def site_listing(sites):
+    """The sites of one comparison, as ``module:line text``."""
+    return ', '.join('%s:%d %s' % site for site in sites) or 'nowhere'
+
+
+def method_statements(module, class_name, method_name):
+    """One method of a class body, with its docstring removed."""
+    path = SRC / module
+    tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+    klass = next(node for node in tree.body
+                 if isinstance(node, ast.ClassDef) and node.name == class_name)
+    method = next(node for node in klass.body
+                  if isinstance(node, ast.FunctionDef) and node.name == method_name)
+    body = list(method.body)
+    if (body and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)):
+        body = body[1:]
+    return method, body
+
+
+def enclosing_function(tree, line):
+    """The innermost function of one module that holds a line, or None."""
+    holders = [node for node in ast.walk(tree)
+               if isinstance(node, ast.FunctionDef)
+               and node.lineno <= line <= (node.end_lineno or node.lineno)]
+    if not holders:
+        return None
+    return max(holders, key=lambda node: node.lineno)
 
 
 class DuplicateBodiesTest(unittest.TestCase):
@@ -192,3 +277,77 @@ class DuplicateBodiesTest(unittest.TestCase):
         self.assertIs(store_import.jsonb, store_pg.jsonb,
                       'the store holds a second JSON wrapper, not the owner name')
         self.assertIsNone(ball_census.num_or_none(True), 'a bool is not a number')
+
+
+class NamedPredicateTest(unittest.TestCase):
+    """One module states the test "a document is named".  The two readers call it.
+
+    The walk of ``DuplicateBodiesTest`` reads the top level of a module only.
+    This class walks into class bodies, where the two copies of the test sat.
+    """
+
+    def test_one_statement_of_src_compares_a_status_with_stamped(self):
+        """The test "a document is named" has one site, in one module, one function."""
+        sites = stamped_comparison_sites()
+        self.assertEqual([STAMP_OWNER], sorted({module for module, _, _ in sites}),
+                         'the test "a document is named" lives in %s, and its one home is src/%s'
+                         % (site_listing(sites), STAMP_OWNER))
+        self.assertEqual(1, len(sites),
+                         'src/%s holds %d comparisons with STAMPED: %s'
+                         % (STAMP_OWNER, len(sites), site_listing(sites)))
+        module, line, _ = sites[0]
+        tree = ast.parse((SRC / module).read_text(encoding='utf-8'), filename=str(SRC / module))
+        holder = enclosing_function(tree, line)
+        self.assertIsNotNone(holder, 'src/%s:%d sits in no function' % (module, line))
+        self.assertEqual(NAMED_PREDICATE, holder.name,
+                         'the one statement of the test sits in %s, and its name must be %s'
+                         % (holder.name, NAMED_PREDICATE))
+
+    def test_the_walk_finds_a_second_copy_inside_a_class_body(self):
+        """A class body proves that the walk of the case above is not empty."""
+        forged = ('class Document:\n'
+                  '    @property\n'
+                  '    def named(self) -> bool:\n'
+                  '        return self.status == STAMPED\n')
+        found = stamped_comparisons(STAMP_OWNER, source=forged)
+        self.assertEqual(1, len(found),
+                         'the walk of a class body found %d statements, and one must appear'
+                         % len(found))
+
+    def test_the_two_named_methods_call_the_one_predicate(self):
+        """Each class keeps its method, and each method holds a call only."""
+        call = '%s.%s(self.status)' % (STAMP_MODULE, NAMED_PREDICATE)
+        for module, class_name in NAMED_READERS:
+            with self.subTest(module=module):
+                method, body = method_statements(module, class_name, 'named')
+                self.assertEqual(1, len(body),
+                                 'src/%s %s.named holds %d statements, so it holds a rule of its own'
+                                 % (module, class_name, len(body)))
+                self.assertIsInstance(body[0], ast.Return,
+                                      'src/%s %s.named must return the answer of the one predicate'
+                                      % (module, class_name))
+                self.assertEqual(call, ast.unparse(body[0].value),
+                                 'src/%s %s.named must read the status through %s'
+                                 % (module, class_name, call))
+                self.assertFalse(any(isinstance(node, ast.Compare) for node in ast.walk(method)),
+                                 'src/%s %s.named compares the status itself, and the test has one home'
+                                 % (module, class_name))
+                self.assertIn(STAMP_MODULE, imported_names(module, 'src'),
+                              'src/%s does not import src/%s' % (module, STAMP_OWNER))
+
+    def test_the_two_readers_answer_from_the_one_predicate_at_run_time(self):
+        """The classes read one function object, and not a second body that agrees today."""
+        from src import document_stamp, events_document, sam3_artifact
+        for module in (events_document, sam3_artifact):
+            with self.subTest(module=module.__name__):
+                self.assertIs(document_stamp.is_named, module.document_stamp.is_named,
+                              '%s holds a second named test, not the owner name' % module.__name__)
+        document = events_document.Document(
+            path=SRC / 'events.json', rows=[], status=document_stamp.STAMPED)
+        artifact = sam3_artifact.Artifact(
+            path=SRC / 'sam3_results.json', frames={}, status=document_stamp.STAMPED)
+        mixed = events_document.Document(
+            path=SRC / 'events.json', rows=[], status=document_stamp.MIXED)
+        self.assertTrue(document.named, 'a stamped document must read named')
+        self.assertTrue(artifact.named, 'a stamped artifact must read named')
+        self.assertFalse(mixed.named, 'a mixed document must not read named')
