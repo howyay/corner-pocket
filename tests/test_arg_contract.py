@@ -3,9 +3,10 @@
 The rule lives in ``tests/arg_contract.py``; that module owns the scan and its
 limits.  This module states the cases only:
 
-* three look-alikes, one for each naming path of the rule;
+* four look-alikes, one for each naming path of the rule;
 * one dead flag, the proof that the forward direction is not vacuous;
-* one undeclared read, the proof that the reverse direction is not vacuous.
+* one undeclared read, the proof that the reverse direction is not vacuous;
+* two repository cases, one for each direction of the rule.
 
 Run: ``./scripts/pool-test.sh python test_arg_contract``
 """
@@ -14,6 +15,7 @@ import unittest
 from arg_contract import (
     ROOT,
     scanned_files,
+    undeclared_reads,
     undeclared_reads_in,
     unread_arguments,
     unread_arguments_in,
@@ -82,6 +84,24 @@ def main(argv=None):
     return plan
 '''
 
+SET_DEFAULTS_LOOK_ALIKE = '''
+import argparse
+
+
+def build(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    sub = ap.add_subparsers(dest="command")
+    p = sub.add_parser("report")
+    p.add_argument("--count", type=int, default=20)
+    p.set_defaults(func=cmd_report)
+    args = ap.parse_args(argv)
+    return args.func(args), args.ghost
+
+
+def cmd_report(args):
+    return args.count
+'''
+
 DEAD_FLAG_SOURCE = '''
 import argparse
 
@@ -107,7 +127,7 @@ def main(argv=None):
 
 
 class LookAlikeTests(unittest.TestCase):
-    """The rule must resolve the three look-alikes the Lead measured."""
+    """The rule must resolve the four look-alikes the Lead measured."""
 
     def test_a_shared_dest_is_read_under_that_dest(self):
         """tiny_ball_net.py: two ``--dir`` flags, both ``dest="overlay_dir"``, read."""
@@ -121,8 +141,18 @@ class LookAlikeTests(unittest.TestCase):
         """eval_faces.py: ``getattr(args, key)`` reads "anchors", "burst", "spacing"."""
         self.assertEqual(unread_arguments_in(EVAL_FACES_LOOK_ALIKE, "look-alike"), [])
 
+    def test_a_set_defaults_dispatch_name_is_declared(self):
+        """tiny_ball_net.py: ``p.set_defaults(func=...)`` declares ``args.func``.
+
+        The same source reads ``args.ghost``, which no call declares: the new
+        declaration path must not hide that read.
+        """
+        self.assertEqual(unread_arguments_in(SET_DEFAULTS_LOOK_ALIKE, "look-alike"), [])
+        self.assertEqual(undeclared_reads_in(SET_DEFAULTS_LOOK_ALIKE, "look-alike"),
+                         ["look-alike:12 args.ghost"])
+
     def test_the_rule_still_reports_a_flag_nobody_reads(self):
-        """The proof that the three cases above are not vacuous."""
+        """The proof that the four cases above are not vacuous."""
         self.assertEqual(unread_arguments_in(DEAD_FLAG_SOURCE, "dead.py"), ["dead.py:8 --frames"])
 
 
@@ -137,7 +167,8 @@ class UndeclaredReadTests(unittest.TestCase):
 
 
 class RepositoryContractTests(unittest.TestCase):
-    """No flag under src/, tools/ and scripts/ may be unread (src/sam3/ excluded)."""
+    """No flag under src/, tools/ and scripts/ may be unread, and no read may name
+    an undeclared argument (src/sam3/ excluded)."""
 
     def test_no_flag_in_the_repository_is_unread(self):
         labels = scanned_files()
@@ -148,6 +179,16 @@ class RepositoryContractTests(unittest.TestCase):
             offenders.extend(unread_arguments(ROOT / label))
         self.assertEqual([], offenders,
                          "these flags are declared and never read:\n  " + "\n  ".join(offenders))
+
+    def test_no_read_in_the_repository_is_undeclared(self):
+        labels = scanned_files()
+        self.assertIn("src/timing_verify.py", labels)
+        self.assertNotIn("src/sam3/model.py", labels)
+        offenders = []
+        for label in labels:
+            offenders.extend(undeclared_reads(ROOT / label))
+        self.assertEqual([], offenders,
+                         "these reads name no declaration:\n  " + "\n  ".join(offenders))
 
 
 if __name__ == "__main__":

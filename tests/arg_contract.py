@@ -8,10 +8,11 @@ The scanner below parses the source with ``ast``: it never imports a scanned
 module, because some of them need SAM3 weights, a VOD or a display at import
 time.
 
-The rule resolves the four ways this repository names an argument: an explicit
-``dest=``, ``args.<name>``, ``getattr(args, key)`` over a literal key tuple, and
-``parse_args().<name>``.  The three look-alikes in the test module
-``test_arg_contract`` are the reason each of those four paths is needed.
+The rule resolves the five ways this repository names an argument: an explicit
+``dest=``, ``args.<name>``, ``getattr(args, key)`` over a literal key tuple,
+``parse_args().<name>``, and ``set_defaults(name=value)`` on a sub-parser.  The
+four look-alikes in the test module ``test_arg_contract`` show why the rule
+needs the four paths other than the plain ``args.<name>`` read.
 
 One scanner serves both directions:
 
@@ -19,7 +20,8 @@ One scanner serves both directions:
 * ``undeclared_reads()`` reports a read of a name that no declaration covers.
 
 The scan has limits.  It reads string literals only, so a flag built from a
-variable, from ``*flags`` or from ``**kwargs`` stays invisible.  It counts every
+variable, from ``*flags`` or from ``**kwargs`` stays invisible; a
+``set_defaults(**flags)`` call is invisible for the same reason.  It counts every
 ``args.<name>`` attribute of the file, so a local name ``args`` that does not
 hold the namespace counts as a read.  It follows the namespace into a helper of
 the same file only.  It skips the vendored ``src/sam3`` clone.
@@ -52,6 +54,14 @@ def _add_argument_calls(tree):
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
                 and node.func.attr == "add_argument":
+            yield node
+
+
+def _set_defaults_calls(tree):
+    """Every ``set_defaults`` call: it declares each named keyword on its parser."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "set_defaults":
             yield node
 
 
@@ -238,13 +248,15 @@ def _positional_destination(call):
 
 
 def _declared_destinations(tree):
-    """Every destination an add_argument call of the file declares."""
+    """Every destination an add_argument or set_defaults call of the file declares."""
     declared = set()
     for call in _add_argument_calls(tree):
         options = _flag_options(call)
         name = _destination(call, options) if options else _positional_destination(call)
         if name:
             declared.add(name)
+    for call in _set_defaults_calls(tree):
+        declared.update(keyword.arg for keyword in call.keywords if keyword.arg)
     return declared
 
 
