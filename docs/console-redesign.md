@@ -4560,3 +4560,136 @@ delay`). The Lead bit the publish helper: `KeyError: 'retry_ms'`, and the file w
 The round-46 walk found two Strong candidates, so the loop continues. Both landed, with ten more
 deliveries beside them. The next walk reads this committed tree, starts with
 `annotator/unified_server.py`, and its `no Strong candidate` line is what ends the loop.
+
+## Round 47 · the status a row holds, and the map behind the folders (2026-10-10)
+
+The round-47 walk ran read-only at `110b033857804d8d53ff30fd9da9ba38171601a4`, with an empty
+`git status --porcelain` at the start and at the end. It answered
+`Strong candidate present - 1 Strong, 3 Worth, 4 Note`, and its report is
+`/tmp/dshsess/walk_round47.md` with 108 lines. The walk read neither `.pm/` nor `src/sam3/`
+(both ignored by this repository), ran no test module, and read `annotator/unified_server.py`
+as an AST outline plus lines 327-374 and 2204-2240 only.
+
+### The commits of this round
+
+| Commit | Subject |
+| --- | --- |
+| `e4d2998` | player: one owner holds the status the form offers |
+| `f857979` | datasets: one owner holds the dataset id to folder map |
+
+### Strong 1 · the console could not hold the status a `Prospect` row has
+
+Two owners accept four status values. The database holds
+`db/migrations/0002_user_data.sql:20` `status text NOT NULL CHECK (status IN
+('Active','Visitor','Prospect','Inactive'))`. The guard holds `annotator/operations.py:789`
+with the same four values. The console held three: `annotator/ops.js:1222` read
+`editing?['Active','Visitor','Inactive']:['Active']` for the edit form, and the roster filter
+row at `:1221` read `['','Active','Visitor','Inactive']`. The helper at `annotator/ops.js:862`
+marks an option `selected` only on an exact string match, so a value outside the list fell back
+to the first option, `Active`.
+
+The walk measured the cost two ways. Its own probe, which slices the renderer out of
+`tests/test_ops.js`, answered three options and `selected attribute present at all? false` for
+a `Prospect` row. A chromium run over `file://` with that rendered form answered
+`SELECT_VALUE=Active|FORM_STATUS=Active|OPTIONS=3`. One save then rewrote the row, because
+`annotator/ops.js:1401` sends the whole form.
+
+`e4d2998` gives the four values one owner per language. `annotator/operations.py` holds
+`PLAYER_STATUSES = ('Active', 'Visitor', 'Prospect', 'Inactive')` beside `MATCH_STATUSES`, and
+its save guard reads the tuple. `annotator/ops.js` holds
+`const PLAYER_STATUSES=['Active','Visitor','Prospect','Inactive'];`, and the edit form and the
+roster filter both read that array. The new `tests/test_player_status.py` compares the SQL
+`CHECK`, the Python tuple and the console array, and proves that the console spells the names
+in one array only. `tests/test_ops.js` holds the round trip: the edit form of a `Prospect` row
+marks the `Prospect` option, the filter row offers all four values, and the save carries
+`status: 'Prospect'`.
+
+Measured after the change: the same probe answers four options with `selected` set, and the
+filter row answers `data-value="" data-value="Active" data-value="Visitor" data-value="Prospect"
+data-value="Inactive"`. Two perturbations failed and were restored from copies. A console array
+without `Prospect` failed the parity module with
+`AssertionError: 1 != 0 : annotator/ops.js must hold the four status values in one array; found
+0 such arrays`, and the file went `a02add02488f5e9da4bfc72248d32eab99c1d188` to
+`53f2ae563b082f49905b0a67d944eecdd512c813` and back. A form that typed the three values again
+failed the node case with `AssertionError: the form offers every status the owners accept, and
+marks the one the row holds`, and the file went from that first sha1 to
+`8df6dec8d854fe3731fd70927e2499555cd3f9ac` and back.
+
+### Worth 2 · the dataset id to folder map had three spellings
+
+`src/datasets.py:30` `STATIC_OUT` owns the map, and it derives from `STATIC` at `:26`. Two
+modules typed the two names again: `src/store_files.py:25` and `src/store_import.py:49`. Inside
+`src/store_files.py` the local table served `dataset_dirs` (`:63`), the verdicts branch (`:138`)
+and the anchors branch (`:143`), while `dataset_dir` (`:34`) and `dataset_of_dir` (`:47`)
+already asked the owner through a function-local import. A rename in the owner therefore left
+three answers old, and `tests/test_store_files.py` compared no pair. The round-37 table row for
+`ce3546f` recorded one copy as an honest limit.
+
+`f857979` removes both copies. `src/store_files.py` and `src/store_import.py` import
+`STATIC_OUT` from `src.datasets`, and the two function-local imports keep `parse_imported_id`
+only. The new `DatasetMapTests` class in `tests/test_store_files.py` holds three rules: the
+owner spells each scan folder name once, no shipped module types the map again (an AST scan of
+`src/`, `annotator/`, `tools/` and `scripts/` that reads whole strings, so `out/scan30/...`
+paths stay quiet), and both readers answer the owner's object through four behaviour probes.
+The comment in `src/store.py` that named the copy as out of scope now states the repair.
+
+Measured: `test_store_files` 20 cases (`15` before), `test_store_import` 7, `test_datasets` 21,
+`test_store` 20, all `OK`, and six neighbouring modules also `OK` (`test_store_contract` 54 with
+29 skips, `test_store_roundtrip` 5 with 5 skips, `test_crop_set_acceptance` 5,
+`test_event_retention` 9, `test_unified_server` 104, `test_suite_inventory` 4). The Lead bit the
+owner: a rename of the owner's folder answered `dataset_dir(vod30) = out/scan30x` and
+`store_import.STATIC_OUT is datasets.STATIC_OUT` `True`, so no copy answered the old name. A
+typed map again at `src/store_import.py:740` failed the guard with
+`AssertionError: Lists differ: ["src/store_import.py:740 types {'vod30': 'scan30', 'highlight':
+'scan_highlight'}"] != []`, and the file went `4012bffbc401118f58c474db3251fdf0712c8116` to
+`ad21cee5727154ec2123145caa9abd1273c1c3ef` and back.
+
+The writer named its limits. The guard reads dictionary literals only, so a map that a module
+types with tuples would pass it. `src/eval_faces.py:64` keeps its own richer table (id to video
+path, scan folder and width), which answers a different question and stays. `tests/` is outside
+the scan, and `tests/test_datasets.py:41` writes the same table as an expected value.
+
+### The suites of this round
+
+`test_player_status` 6 cases, `test_operations` 77, `test_console_reason_table` 6,
+`test_pages_served` 6, `test_suite_inventory` 4, `test_store_files` 20, `test_store_import` 7,
+`test_datasets` 21, `test_store` 20, `test_store_contract` 54, `test_store_roundtrip` 5,
+`test_crop_set_acceptance` 5, `test_event_retention` 9, `test_unified_server` 104, all `OK`.
+Node: `tests/test_ops.js` 217 pass and 0 fail (`216` before), `tests/test_board.js` 23 pass and
+0 fail, `tests/test_app_timeline.js` 100 passed and 0 failed.
+
+The full discovery run on the settled tree answered `Ran 1837 tests in 173.545s` and
+`OK (skipped=53)`. The round-46 run answered 1826 tests, so this round adds 11: six cases for
+the status vocabulary and five for the dataset map.
+
+### A row of the round-37 table that closes here
+
+| Row | Closed by | What the tree holds now |
+| --- | --- | --- |
+| round 35 Strong 6, the store's dataset folder | `f857979` | the two copies are gone, `src/datasets.py:30` answers every reader, and `tests/test_store_files.py` holds the three rules that keep it that way |
+
+### What stands open after this round
+
+| Candidate | Rank | Ground in the tree |
+| --- | --- | --- |
+| The clock key has two spellings | Worth | `CLOCK_KEY = 'cp-ops-clock'` is defined at `annotator/clock-sync.js:44` and exported at `:491`, and nothing reads the export, while `annotator/ops.js:861`, `:881`, `:1415` and `tests/test_ops.js:1125`, `:1129`, `:1162` spell the literal |
+| Five SQL domains and their Python guards | Worth | 13 SQL `CHECK` domains and 108 Python literal domains give 7 matched pairs today (`format`, `label`, `verdict`, `shooter` and others), and no test compares a pair |
+| The document stamp protocol has two owners | Worth | `src/sam3_artifact.py:70-99` and `src/events_document.py:99-132` both define `VERSION`, `STAMP`, `REBUILD_CALIBRATED`, `PRODUCERS`, `STAMPED`, `MIXED` and `UNSTAMPED`, and only `ROW_KEYS` differs by design |
+| The console label for `Prospect` | Note | `annotator/ops.js:9` answers `Prospect:['Newcomer','新会员']`, and `design/corner-pocket/Corner Pocket Ops.dc.html:829` maps it to `Prospect`; the value the form sends is now correct either way |
+| The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:812` `_do_guest_promote` sets `'Active'`, while `docs/corner-pocket-functional-inventory.md:134` says Prospect; a product decision, not a defect |
+| Four citations that name an empty line | Note | `src/ball_gate.py:44` to `src/dense_queue.py:69`, `annotator/board.js:61` and `tests/test_board.js:377` to `tests/test_app_timeline.js:3252`, `tests/test_event_retention.py:13` to `src/store_import.py:47`, and `deploy/systemd/40-public-board.conf` cites `annotator/unified_server.py:2869` where the argument stands at `:2932` |
+| `annotator/server.py:126` writes any label | Note | no range check and no `-1` to `"u"` map, while `annotator/unified_server.py:2213` enforces the domain; the module has no importers, so the divergence is dormant |
+| `corners_30min_v2.json` | Note | one writer at `src/make_segment_corners.py:81` and six readers, while `src/table_refine.py:66` says it is not used; the walk measured nothing, so no claim stands |
+| `REPORT.md:50`, the reverse contract, the browser path, `annotator/unified_server.py` | Note | these four rows of the round-46 table stay open unchanged |
+
+The round-47 walk found one Strong candidate, so the loop continues. The next walk reads this
+committed tree, starts with `annotator/unified_server.py`, and its `no Strong candidate` line is
+what ends the loop.
+
+Both deliveries of this round and this record sit on the local branch `main`, and the branch is
+ahead of `origin/main`. The push did not run: the credential helper
+`gh auth git-credential` does not answer in this session (`gh auth token` timed out after 30
+seconds), so `git push` waits for a username that no terminal can supply. The next push sends
+both commits and this record together. Three checks name the same cause: `GIT_TERMINAL_PROMPT=0
+git push` still waits, `gh auth status` answers nothing within 20 seconds, and `secret-tool` is
+not installed, so the helper has no keyring to read.
