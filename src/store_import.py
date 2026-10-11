@@ -64,7 +64,14 @@ class _DryRun(Exception):
     pass
 
 
-def _jsonb(value):
+def jsonb(value):
+    """The psycopg JSON wrapper of one value.  One home.
+
+    ``src/store_pg.py`` imports this name: that store writes the same document to
+    rows mapping this importer owns, so the wrapper that binds a dict or a list to
+    a jsonb column lives here and nowhere else.  The name is not private, because
+    a second module reads it.
+    """
     from psycopg.types.json import Jsonb
     return Jsonb(value)
 
@@ -187,8 +194,8 @@ class OperationsSet(DataSet):
 
     def write(self, conn, s):
         conn.execute("INSERT INTO ops_meta (id, revision, settings, extra) VALUES (true, %s, %s, %s)",
-                     (s.get("revision"), _jsonb(s.get("settings")),
-                      _jsonb({k: v for k, v in s.items() if k not in self.TOP})))
+                     (s.get("revision"), jsonb(s.get("settings")),
+                      jsonb({k: v for k, v in s.items() if k not in self.TOP})))
         players = s.get("players", [])
         # players are upserted, not recreated: a delete would unbind their identity clusters
         conn.execute("DELETE FROM players WHERE NOT (id = ANY(%s::text[]))", ([p.get("id") for p in players],))
@@ -206,7 +213,7 @@ class OperationsSet(DataSet):
                 "joined_at = EXCLUDED.joined_at, notes = EXCLUDED.notes, position = EXCLUDED.position, "
                 "extra = EXCLUDED.extra, name_key = EXCLUDED.name_key",
                 (p.get("id"), name, p.get("status"), p.get("rating"), p.get("joinedAt"),
-                 p.get("notes"), position, _jsonb({k: v for k, v in p.items() if k not in self.PLAYER}),
+                 p.get("notes"), position, jsonb({k: v for k, v in p.items() if k not in self.PLAYER}),
                  name_key(name) if isinstance(name, str) else name))
         tournaments = [(s.get("tournament"), None)] + [(t, i) for i, t in enumerate(s.get("history", []))]
         for t, position in tournaments:
@@ -223,19 +230,19 @@ class OperationsSet(DataSet):
             conn.execute("INSERT INTO ops_events (revision, id, created_at, action, context) "
                          "VALUES (%s, %s, %s, %s, %s)",
                          (e.get("revision"), e.get("id"), e.get("createdAt"), e.get("action"),
-                          _jsonb(e.get("context"))))
+                          jsonb(e.get("context"))))
 
     def _tournament(self, conn, t, position):
         conn.execute(
             "INSERT INTO tournaments (id, name, format, tables, race_to, status, archived_at, position, extra) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (t.get("id"), t.get("name"), t.get("format"), t.get("tables"), t.get("raceTo"), t.get("status"),
-             t.get("archivedAt"), position, _jsonb({k: v for k, v in t.items() if k not in self.TOURNAMENT})))
+             t.get("archivedAt"), position, jsonb({k: v for k, v in t.items() if k not in self.TOURNAMENT})))
         for index, e in enumerate(t.get("entrants", [])):
             conn.execute("INSERT INTO entrants (id, tournament_id, position, absent, extra) "
                          "VALUES (%s, %s, %s, %s, %s)",
                          (e.get("id"), t.get("id"), index, e.get("absent"),
-                          _jsonb({k: v for k, v in e.items() if k not in self.ENTRANT})))
+                          jsonb({k: v for k, v in e.items() if k not in self.ENTRANT})))
             for member_index, m in enumerate(e.get("members", [])):
                 conn.execute("INSERT INTO entrant_members (entrant_id, position, player_id, name) "
                              "VALUES (%s, %s, %s, %s)", (e.get("id"), member_index, m.get("pid"), m.get("name")))
@@ -250,7 +257,7 @@ class OperationsSet(DataSet):
                 (m.get("id"), t.get("id"), index, m.get("round"), sides[0], sides[1], score[0], score[1],
                  m.get("table"), m.get("status"), m.get("winnerId"), m.get("result"), m.get("completedAt"),
                  sources[0] if sources else None, sources[1] if len(sources) > 1 else None,
-                 m.get("absent", []), _jsonb({k: v for k, v in m.items() if k not in self.MATCH})))
+                 m.get("absent", []), jsonb({k: v for k, v in m.items() if k not in self.MATCH})))
 
     def render(self, conn):
         row = conn.execute("SELECT revision, settings, extra FROM ops_meta").fetchone()
@@ -450,7 +457,7 @@ class SeedsSet(DataSet):
                 "INSERT INTO track_seeds (dataset, win, track_id, t, label, seed_key, extra) "
                 "VALUES ('vod30', %s, %s, %s, %s, %s, %s)",
                 (rec.get("win"), rec.get("track_id"), rec.get("t"), rec.get("label"), key,
-                 _jsonb({k: v for k, v in rec.items() if k not in self.SEED})))
+                 jsonb({k: v for k, v in rec.items() if k not in self.SEED})))
 
     def render(self, conn):
         seeds = {}
@@ -489,7 +496,7 @@ class VerdictsSet(DataSet):
                     "INSERT INTO event_verdicts (dataset, event_id, verdict, shooter, note, updated_at, extra) "
                     "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                     (dataset, str(event_id), rec.get("verdict"), rec.get("shooter"), rec.get("note"),
-                     rec.get("updated_at"), _jsonb({k: v for k, v in rec.items() if k not in self.FIELDS})))
+                     rec.get("updated_at"), jsonb({k: v for k, v in rec.items() if k not in self.FIELDS})))
 
     def render(self, conn):
         doc = {ds: {} for ds in STATIC_OUT}
@@ -516,7 +523,7 @@ class LabelsSet(DataSet):
         for crop_set, labels in doc.items():
             for key, label in labels.items():
                 conn.execute("INSERT INTO ball_labels (crop_set, crop_key, crop_file, label) VALUES (%s, %s, %s, %s)",
-                             (crop_set, key, Path(key).name, _jsonb(label)))
+                             (crop_set, key, Path(key).name, jsonb(label)))
 
     def render(self, conn):
         doc = {crop_set: {} for crop_set in BALL_SETS}
@@ -551,7 +558,7 @@ class CorrectionsSet(DataSet):
             for frame, payload in frames.items():
                 conn.execute("INSERT INTO frame_corrections (dataset, frame_index, payload, saved_at) "
                              "VALUES (%s, %s, %s, %s)",
-                             (dataset, int(frame), _jsonb(payload), (payload or {}).get("saved_at")))
+                             (dataset, int(frame), jsonb(payload), (payload or {}).get("saved_at")))
 
     def render(self, conn):
         doc = {ds: {} for ds in STATIC_OUT}
@@ -578,7 +585,7 @@ class AnchorsSet(DataSet):
                 raise Mismatch(f"pid_anchors_{dataset}.json has top-level keys the table cannot hold: {sorted(unknown)}")
             for t_key, pts in (saved.get("anchors") or {}).items():
                 conn.execute("INSERT INTO pocket_anchors (dataset, t_key, t, pts) VALUES (%s, %s, %s, %s)",
-                             (dataset, t_key, float(t_key), _jsonb(pts)))
+                             (dataset, t_key, float(t_key), jsonb(pts)))
 
     def render(self, conn):
         doc = {ds: {"anchors": {}} for ds in STATIC_OUT}

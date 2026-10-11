@@ -38,6 +38,9 @@ from src.store_files import BALL_SETS, dataset_dir, dump, fmt_of, get_document, 
 # The document side of the event log is trimmed by its one owner (src.ops_event_log),
 # so this store holds no copy of the retention bound.
 from src.ops_event_log import trim
+# The psycopg JSON wrapper has one home, src/store_import.py: this store writes the
+# document <-> rows mapping that the importer owns, so the wrapper comes from there.
+from src.store_import import jsonb
 
 STATE = "out/corner-pocket/state.json"
 # The table that holds the documents of migration 0003 (src/store_files.py). The
@@ -142,7 +145,7 @@ class PostgresStore:
             conn.execute(f"DELETE FROM {table}")
         OperationsSet().write(conn, dict(doc, events=[]))  # ops_meta, players, tournaments, notes, sources
         conn.execute("INSERT INTO ops_events (revision, id, created_at, action, context) VALUES (%s, %s, %s, %s, %s)",
-                     (event["revision"], event["id"], event["createdAt"], action, _jsonb(context)))
+                     (event["revision"], event["id"], event["createdAt"], action, jsonb(context)))
         put_document(conn, STATE, dump(doc, fmt_of(STATE)))
         return doc
 
@@ -371,7 +374,7 @@ class PostgresStore:
                 c.execute("INSERT INTO frame_corrections (dataset, frame_index, payload, saved_at) "
                           "VALUES (%s, %s, %s, %s) ON CONFLICT (dataset, frame_index) DO UPDATE SET "
                           "payload = EXCLUDED.payload, saved_at = EXCLUDED.saved_at",
-                          (dataset, int(frame_index), _jsonb(payload), (payload or {}).get("saved_at")))
+                          (dataset, int(frame_index), jsonb(payload), (payload or {}).get("saved_at")))
             self._store_doc(conn, path, payload, project)
 
     @staticmethod
@@ -413,8 +416,3 @@ class PostgresStore:
 
     def frame_detections(self, dataset: str, frame_index: int):
         return None
-
-
-def _jsonb(value):
-    from psycopg.types.json import Jsonb
-    return Jsonb(value)

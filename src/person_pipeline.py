@@ -29,6 +29,9 @@ import numpy as np
 from pathlib import Path
 import torch
 
+# The box-overlap rule has one home, src/box_geometry.py, which imports nothing
+# from this project, so this module reads it and holds no copy of its body.
+from src.box_geometry import iou
 from src.face_id import DEFAULT_FACE_STORE, add_faces, get_face_engine, load_faces
 from src.person_identity import IdentityIndex
 
@@ -42,14 +45,6 @@ _IOU_MATCH = 0.3
 _MAX_AGE = 30
 REPO = Path(__file__).resolve().parents[1]
 DETECTOR_WEIGHTS_NAME = 'yolov8n.pt'
-
-
-def _iou(a, b):
-    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
-    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
-    inter = ix * iy
-    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / union if union > 0 else 0.0
 
 
 def _center_inside(box, person):
@@ -147,12 +142,12 @@ class PersonPipeline:
 
     def _associate(self, boxes):
         track_ids = list(self._tracks)
-        candidates = [( _iou(self._tracks[t]['bbox'], b['bbox']), t, i)
+        candidates = [(iou(self._tracks[t]['bbox'], b['bbox']), t, i)
                        for t in track_ids for i, b in enumerate(boxes)]
         candidates = [c for c in candidates if c[0] >= _IOU_MATCH]
         candidates.sort(reverse=True)
         assigned, used_boxes = {}, set()
-        for iou, tid, bi in candidates:
+        for score, tid, bi in candidates:
             if tid in assigned or bi in used_boxes:
                 continue
             assigned[tid] = bi

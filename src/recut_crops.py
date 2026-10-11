@@ -26,6 +26,8 @@ from PIL import Image
 from sam3_cpu import load_sam3_image_model, make_processor
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
                            SAM3_BALL_MIN_SCORE)
+# The box-overlap rule has one home, src/box_geometry.py; this module reads it.
+from src.box_geometry import iou
 
 VIDEO = ROOT / 'data' / 'vod_highlight.mp4'
 CROP_DIR = ROOT / 'out' / 'unlabeled_crops'
@@ -120,19 +122,16 @@ for t in TIMES:
             continue
         ox0, oy0 = loc[2], loc[3]
         ow, oh = loc[4], loc[5]
-        # best instance by bbox IoU with old crop rect
+        # best instance by bbox IoU with old crop rect, from the one owner of the
+        # rule (src/box_geometry.py); no local spelling of the arithmetic lives here.
         best_i, best_iou = -1, 0.0
+        crop_box = (ox0, oy0, ox0 + ow, oy0 + oh)
         for i, it in enumerate(insts):
             if i in used:
                 continue
-            bx0, by0, bx1, by1 = it['bb']
-            ix0, iy0 = max(ox0, bx0), max(oy0, by0)
-            ix1, iy1 = min(ox0 + ow, bx1), min(oy0 + oh, by1)
-            inter = max(0, ix1 - ix0) * max(0, iy1 - iy0)
-            union = ow * oh + (bx1 - bx0) * (by1 - by0) - inter
-            iou = inter / union if union > 0 else 0.0
-            if iou > best_iou:
-                best_iou, best_i = iou, i
+            score = iou(crop_box, it['bb'])
+            if score > best_iou:
+                best_iou, best_i = score, i
         if best_i < 0 or best_iou < 0.25:
             warnings.append(f'{Path(of).name}: no instance overlap ({best_iou:.2f}), keeping old')
             new_meta.append(old_rows[of])

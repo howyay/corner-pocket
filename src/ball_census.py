@@ -37,6 +37,10 @@ from typing import Any, Iterable
 
 from src.ball_scale import BALL_WIDTH_MM
 from src.ball_gate import SAM3_BALL_MIN_SCORE
+# The scalar coercion has one home, src/event_gates.py: this census read its own
+# copy of the body until round 51, and a census score and a gate field are the
+# same scalar shape.  tests/test_duplicate_bodies.py holds the one home.
+from src.event_gates import num_or_none
 
 CENSUS_VERSION = 1
 
@@ -129,10 +133,6 @@ def normalize_color(value: Any) -> str:
     return COLOR_ALIASES.get(text, text)
 
 
-def _num(value):
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-
 # --------------------------------------------------------------- observations
 
 @dataclass
@@ -214,7 +214,7 @@ def observations_from_sam3(t: float, balls: Iterable[dict], scale: float = 1.0,
     """
     out = []
     for ball in balls:
-        score = _num(ball.get("score"))
+        score = num_or_none(ball.get("score"))
         if score is not None and score < SAM3_MIN_SCORE:
             continue
         img = ball.get("img") or [ball.get("cx"), ball.get("cy")]

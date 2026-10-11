@@ -138,7 +138,13 @@ class GateResult:
 
 # ---------------------------------------------------------------- normalising
 
-def _num(value: Any):
+def num_or_none(value: Any):
+    """The number of one JSON scalar, or None.  A bool is not a number.
+
+    One home: ``src/ball_census.py`` imports this name, because a census score and
+    a gate field are the same scalar shape.  The two modules hold one body, and
+    ``tests/test_duplicate_bodies.py`` fails if a second body returns.
+    """
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
@@ -170,12 +176,12 @@ def normalize(raw: Any) -> dict:
     return {
         "id": event.get("id"),
         "kind": kind,
-        "t": _num(event.get("t")),
+        "t": num_or_none(event.get("t")),
         "color": event.get("color"),
         "from_mm": event.get("from_mm") or event.get("ball_from"),
         "to_mm": event.get("to_mm") or event.get("ball_to"),
         "last_mm": event.get("last_mm") or event.get("ball_table_mm"),
-        "gap_s": _num(event.get("gap_s")),
+        "gap_s": num_or_none(event.get("gap_s")),
         "from_frame": event.get("from_frame"),
         "to_frame": event.get("to_frame"),
         "last_frame": event.get("last_frame"),
@@ -189,7 +195,7 @@ def normalize(raw: Any) -> dict:
 
 def _position(point):
     if isinstance(point, (list, tuple)) and len(point) == 2:
-        x, y = _num(point[0]), _num(point[1])
+        x, y = num_or_none(point[0]), num_or_none(point[1])
         return None if x is None or y is None else (x, y)
     return None
 

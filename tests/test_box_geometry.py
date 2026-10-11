@@ -6,8 +6,10 @@ one, ``src/pid_osnet_tight.py`` and ``src/yolo_track.py`` wrote the other.  A
 change to one copy changed the behaviour of one tracker only, and nothing told a
 reader that the other three copies existed.
 
-``src/box_geometry.py`` owns the rule now, and the four modules import it.  Three
-cases hold that home:
+``src/box_geometry.py`` owns the rule now, and six modules import it: the four
+readers above, ``src/person_pipeline.py`` (its own ``_iou`` held the same five
+statements) and ``src/recut_crops.py`` (it wrote the arithmetic inline in a loop).
+Four cases hold that home:
 
 1. the owner answers the documented numbers.  Each number below is written as a
    literal and comes from the rule itself: overlap area divided by the sum of the
@@ -18,10 +20,22 @@ cases hold that home:
    spellings, copied here as local functions, over a table of box pairs, and
    requires one answer.  Every number is an exact float of the same arithmetic,
    so equality and not ``assertAlmostEqual`` is the right test.
-3. one owner.  The scan reads the source with ``ast`` and never imports a module,
+3. one name.  The scan reads the source with ``ast`` and never imports a module,
    because two of the four readers open a checkpoint or a model at import time.
    It looks at the module-level function definitions of ``src/*.py`` only, and at
-   the owner import the four readers carry.
+   the owner import the six readers carry.
+4. one body, whatever the name is.  A second module-level function whose body
+   equals the owner's body fails the walk, because the name rule of case 3 cannot
+   see a copy under another name: ``src/person_pipeline.py`` held the same five
+   statements under ``_iou``, and ``src/recut_crops.py`` wrote them inline in a
+   loop with a local name ``iou``.  The walk compares syntax trees and not text.
+   The recorded near miss is ``src/enroll_from_tracklet.py:153 face_area_iou``:
+   its name ends in ``iou`` and it clips the same two coordinates, but its last
+   statement divides the intersection by the face area alone, so it has no union
+   term, its body hash differs, and the rule must not flag it.
+
+Every shared body of ``src/`` is held the same way, for every helper and not only
+for this rule, in ``tests/test_duplicate_bodies.py``.
 
 ``src/sam3/`` is out of scope: it is the vendored upstream checkout, not our
 code, and it carries its own ``iou_tracklets``, ``iou_masklets`` and ``iou_loss``.
@@ -31,6 +45,7 @@ Run: ``./scripts/pool-test.sh python test_box_geometry``
 from __future__ import annotations
 
 import ast
+import hashlib
 import sys
 import unittest
 from pathlib import Path
@@ -44,9 +59,10 @@ from src import box_geometry  # noqa: E402
 SRC = ROOT / 'src'
 VENDORED = SRC / 'sam3'
 RULE_NAME = 'iou'
-# The four modules that used to define the rule, and the import that replaces the
-# local definition in each one.
-READERS = ('enroll_from_tracklet.py', 'eval_faces.py', 'pid_osnet_tight.py', 'yolo_track.py')
+# The modules that used to write the rule themselves, in a local definition or in
+# inline arithmetic, and the import that replaces each one.
+READERS = ('enroll_from_tracklet.py', 'eval_faces.py', 'pid_osnet_tight.py', 'yolo_track.py',
+           'person_pipeline.py', 'recut_crops.py')
 OWNER_MODULE = 'src.box_geometry'
 
 # The two spellings of the rule, copied from HEAD 71adf6e.  The first is the text
@@ -156,6 +172,59 @@ def owner_binding(path):
     return names
 
 
+def body_fingerprint(node):
+    """The sha1 of one function's statements, with its docstring and its layout removed.
+
+    A docstring names the body; it is not the body.  ``ast.unparse`` writes the
+    statements back in one shape, so two copies that differ only in spacing or in
+    a comment hash the same, and two bodies that differ in one name or in one term
+    hash apart.  The walk is by syntax tree and never by text.
+    """
+    body = list(node.body)
+    if (body and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)):
+        body = body[1:]
+    return hashlib.sha1(ast.unparse(body).encode('utf-8')).hexdigest()
+
+
+def module_level_functions(path):
+    """The module-level functions of one module, as (name, line, body fingerprint).
+
+    A nested ``def`` or a method of a class is a local helper and not a second
+    owner of a shared rule, so it does not count here.
+    """
+    tree = ast.parse(Path(path).read_text(encoding='utf-8'), filename=str(path))
+    return [(node.name, node.lineno, body_fingerprint(node))
+            for node in tree.body if isinstance(node, ast.FunctionDef)]
+
+
+def owner_body():
+    """The line and the body fingerprint of the owner function, read from its source."""
+    for name, line, digest in module_level_functions(SRC / 'box_geometry.py'):
+        if name == RULE_NAME:
+            return line, digest
+    raise AssertionError('src/box_geometry.py does not define %s' % RULE_NAME)
+
+
+def bound_rule_names(path):
+    """The lines of one module that bind the bare name ``iou`` to a local value.
+
+    A parameter, an assignment and a loop target all shadow the owner inside the
+    function that holds them.  The owner import binds the name in the module
+    namespace and so is not a local value; it does not count here.
+    """
+    tree = ast.parse(Path(path).read_text(encoding='utf-8'), filename=str(path))
+    lines = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+                and node.id == RULE_NAME):
+            lines.append(node.lineno)
+        elif isinstance(node, ast.arg) and node.arg == RULE_NAME:
+            lines.append(node.lineno)
+    return sorted(lines)
+
+
 def documented_rule(a, b):
     """The documented number of one pair, computed from the two areas and the overlap."""
     inter = (max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
@@ -199,12 +268,59 @@ class BoxGeometryTest(unittest.TestCase):
                 self.assertEqual(owner, second(a, b),
                                  '%s: spelling 2 differs from the owner' % name)
 
-    def test_the_four_readers_import_the_owner_function(self):
+    def test_every_reader_imports_the_owner_function(self):
         """A reader reads the rule from the owner, so the copies cannot come back."""
         for name in READERS:
             with self.subTest(reader=name):
                 self.assertIn(RULE_NAME, owner_binding(SRC / name),
                               'src/%s does not import iou from %s' % (name, OWNER_MODULE))
+
+    def test_no_other_module_under_src_holds_the_owners_body(self):
+        """One body: a copy of the rule cannot hide under another name.
+
+        The walk reads every module of ``src/`` and compares the body fingerprint
+        of each module-level function with the owner's.  Only the owner may hold
+        that body, whatever the name of the function is.  ``_iou`` of
+        ``src/person_pipeline.py`` was found by this rule and by no other.
+        """
+        _, digest = owner_body()
+        holders = [path.name for path in sorted(SRC.glob('*.py'))
+                   if any(other == digest for _, _, other in module_level_functions(path))]
+        self.assertEqual(['box_geometry.py'], holders,
+                         'these modules of src/ hold the body of the owner %s: %s'
+                         % (RULE_NAME, ', '.join(holders)))
+
+    def test_the_recorded_near_miss_is_present_and_its_body_differs(self):
+        """The trap of the body rule: a name that ends in ``iou``, a different body.
+
+        ``src/enroll_from_tracklet.py:153 face_area_iou`` clips the same two
+        coordinates and then divides the intersection by the face area alone, with
+        no union term.  It must stay out of the walk above, so this case pins the
+        two facts that make it a near miss and not a second owner: the function is
+        present, and its body is not the owner's body.
+        """
+        _, digest = owner_body()
+        trap = [item for item in module_level_functions(SRC / 'enroll_from_tracklet.py')
+                if item[0] == 'face_area_iou']
+        self.assertEqual(1, len(trap),
+                         'the recorded near miss face_area_iou is gone from '
+                         'src/enroll_from_tracklet.py; update this case and the module docstring')
+        self.assertNotEqual(digest, trap[0][2],
+                            'src/enroll_from_tracklet.py:%d face_area_iou now holds the body of '
+                            'the owner, so it is a second owner and not a near miss' % trap[0][1])
+
+    def test_no_module_binds_the_rule_name_to_a_local_value(self):
+        """The rule name stays free: a local ``iou`` shadows the owner it reads.
+
+        ``src/recut_crops.py`` wrote the arithmetic inline and bound the name
+        ``iou`` to it, and ``src/person_pipeline.py`` unpacked a score into a loop
+        target ``iou``.  Both sites are gone; this case keeps the name free.
+        """
+        offenders = ['%s:%d' % (path.name, line)
+                     for path in sorted(SRC.glob('*.py')) for line in bound_rule_names(path)]
+        self.assertEqual([], offenders,
+                         'these sites bind a local %s, so they shadow the owner: %s'
+                         % (RULE_NAME, ', '.join(offenders)))
 
     def test_no_other_module_under_src_defines_iou(self):
         """One owner: only src/box_geometry.py defines the module-level rule."""
