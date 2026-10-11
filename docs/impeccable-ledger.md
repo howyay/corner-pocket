@@ -342,31 +342,18 @@ one-row target, and the phone keeps its two-row stack (timer row + tools row) ab
 design.
 
 **The public board's bracket type** (B-06), read with `getComputedStyle` through the private
-browser for the four viewports the finding named; evidence `out/console-after/board-metrics.json`:
-
-| viewport | root | `.rounds` | `.round h3` | `.bm-note` |
-|---|---|---|---|---|
-| 1000x800 | 12.5 px | 11 px | 11 px | 11 px |
-| 1280x900 | 16 px | 12.8 px | **11 px** (was 10.24) | **11 px** (was 9.6) |
-| 1400x900 | 17.5 px | 14 px | 11.2 px | 11 px |
-| 1920x1080 | 24 px | 19.2 px | 15.36 px | 14.4 px |
+browser for the four viewports the finding named; evidence `out/console-after/board-metrics.json`.
+The four-row table of that reading stands in `docs/console-shots.md` §3, with the rest of the shot
+measurements, and it stands there only: this ledger points at it.
 
 The two right-hand columns are the design's own values at and above 1400 px: the floor bites only
 where the density steps would have taken the text below the console's 11 px token, and never
 inflates a size that was already large enough.
 
-**What the shots show** (the pixel half of the findings that the unit tests can also assert):
-
-| finding | what is visible in `out/console-after/` |
-|---|---|
-| B-03 | `1440x900/records-en.png`: `2026`, then `OCTOBER` alone — no `十月` in the English build; the Chinese shot keeps `十月 OCTOBER` |
-| B-15 | the three event titles are set in the display face at a real step above their metadata; the metadata row keeps the mono, uppercase, letterspaced treatment |
-| B-01 | `records-night-open-en.png`: the audit log names the action instead of printing `event_backfill` |
-| B-02 | the night's sign-off prints `10/2/2026, 10:23:40 PM`-shaped text, not an ISO instant with microseconds |
-| B-04 | `tonight-play-*.png`: every collapsible panel header carries the brass `▸`, and `▾` when open |
-| B-07 | `records-night-open-en.png`: `▸ This night's log (24)` and `▸ Other saved changes (not archived yet) (54)` in brass — Chrome's grey triangle is gone from both folds; this is the shot that proved the first attempt was a no-op |
-| B-12 | Tonight's two formerly identical `Queue` headings now read `Waiting to play` and `On a table now` |
-| §13.1 | one timer with controls: the header slot renders one `[data-clock]`, and `scoreboardScreen()`/`floorScreen()` render none (asserted in `tests/test_ops.js`); the only other `[data-clock]` in the product is the Vision stage bar's read-only readout, which has no controls |
+**What the shots show** (the pixel half of the findings that the unit tests can also assert): the
+eight-row table stands in `docs/console-shots.md` §4. Two rows carry one note each that the shots
+table does not: `B-07` proved that the first attempt (a `list-style:none` reset on the wrong
+element) was a no-op, and the `§13.1` reading is asserted in `tests/test_ops.js`.
 
 **Limits of this evidence.** The shots are dark theme, EN + 中, at 1440x900 and 390x844 — the
 brief's two sizes; the light theme and the remaining fixture states were audited by round 2's
