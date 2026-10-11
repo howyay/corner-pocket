@@ -19,13 +19,12 @@ The two channels
 single-pixel maximum (what ``timing_verify`` used) has no footprint constraint at
 all and is therefore set by compression noise; averaging over the ball's own
 footprint suppresses noise by ~sqrt(k^2) while a ball-sized change survives.  The
-footprint is taken from the measured ball: SAM3 ball radii in
-``out/scan30/sam3_results.json`` give radius median 9.45 px, p10 6.9, p90 12.41 at
-native -> **diameter 18.9 px median** (p10 13.8, p90 24.8), i.e. 14.2 px at the
-pipeline's 960x540 working size.  The primary footprint is therefore **k = 17 px
-at native 1280x720** (the equivalent-area square for the median ball is 16.7 px),
-with k = 9 and k = 25 carried as sensitivity checks and k = 13 at 960x540 as the
-same measurement at the pipeline's working resolution.
+footprint is taken from the measured ball: ``src/ball_scale.py`` owns that number,
+and it is **diameter 18.9 px at native 1280x720** (p10 13.8, p90 24.8), i.e.
+14.175 px at the pipeline's 960x540 working size.  The primary footprint is
+therefore **k = 17 px at native 1280x720** (the equivalent-area square for the
+median ball is 16.7 px), with k = 9 and k = 25 carried as sensitivity checks and
+k = 13 at 960x540 as the same measurement at the pipeline's working resolution.
 
 **Occlusion channel** -- a player's body inside the quad is *real* motion that is
 not a ball, and it is what the naive cloth-mean diff actually measures:
@@ -62,14 +61,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.ball_scale import (DIAMETER_NATIVE_PX, DIAMETER_P10_NATIVE_PX,  # noqa: E402
+                            DIAMETER_P90_NATIVE_PX, NATIVE_FRAME, RADIUS_NATIVE_PX,
+                            WORKING_FRAME)
 from src.datasets import lookup as dataset_lookup, media_path  # noqa: E402
 from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
                               EVENT_BEFORE_S)
 
 # --------------------------------------------------------------- geometry ----
 
-SCAN_W, SCAN_H = 1280, 720      # native frame size of the vod30 recording
-WORK_W, WORK_H = 960, 540       # the pipeline's working resolution (0.75x native)
+SCAN_W, SCAN_H = NATIVE_FRAME         # native frame size of the vod30 recording, from ball_scale
+WORK_W, WORK_H = WORKING_FRAME        # the pipeline's working resolution (0.75x native)
 
 # --------------------------------------------------------------- channels ----
 
@@ -83,23 +85,22 @@ CHANGE_PX = 25                  # levels: a cloth pixel changed by this much "ch
 # plane differences, so it takes whichever plane the ball happens to be distinct in.
 CHANNEL_NAMES = ("luma", "B", "R", "BR")
 DEFAULT_CHANNELS = ("luma",)
-BALL_K_NATIVE = 17              # primary ball footprint, px, native (median ball 18.9 px)
+BALL_K_NATIVE = 17              # primary ball footprint, px, native (median ball 18.9 px, ball_scale)
 BALL_K_SMALL = 9                # sensitivity: the ball's core only
-BALL_K_WIDE = 25                # sensitivity: the p90 ball (24.8 px)
+BALL_K_WIDE = 25                # sensitivity: the p90 ball (24.8 px, ball_scale)
 BALL_K_WORK = 13                # the same footprint at 960x540 (0.75 x 17)
 OCC_DENSE_K = 61                # large footprint for the occlusion-density channel, px
 GRID_ROWS, GRID_COLS = 12, 8    # coarse grid over the cloth quad's bounding box
 
-# Measured on vod30 (out/scan30/sam3_results.json, 270 ball radii, see module docstring).
-# Every constant above is stated at this reference resolution; a scan of differently
-# sized frames scales the footprint-carrying ones by :func:`scan_scale` instead of
-# reusing the pixel counts.
+# Measured on vod30 (out/scan30/sam3_results.json, 270 ball radii): src/ball_scale.py
+# owns every ball length, and this module reads the owner.  Every constant above is
+# stated at this reference resolution; a scan of differently sized frames scales the
+# footprint-carrying ones by :func:`scan_scale` instead of reusing the pixel counts.
 REF_W, REF_H = SCAN_W, SCAN_H
-REF_BALL_RADIUS = 9.45
-BALL_DIAMETER_NATIVE = 18.9
-BALL_DIAMETER_P10 = 13.8
-BALL_DIAMETER_P90 = 24.8
-BALL_AREA_NATIVE = 266.0        # pi * (18.9 / 2) ^ 2, the area one ball covers at native
+REF_BALL_RADIUS = RADIUS_NATIVE_PX
+BALL_DIAMETER_NATIVE = DIAMETER_NATIVE_PX
+BALL_DIAMETER_P10 = DIAMETER_P10_NATIVE_PX
+BALL_DIAMETER_P90 = DIAMETER_P90_NATIVE_PX
 
 BALL_K_SMALL_RATIO = BALL_K_SMALL / BALL_K_NATIVE
 BALL_K_WIDE_RATIO = BALL_K_WIDE / BALL_K_NATIVE

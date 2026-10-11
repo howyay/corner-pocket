@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src import ball_scale  # noqa: E402
 from src.ball_census import (CENSUS_VERSION, MIN_CENSUS_BALLS, Observation,  # noqa: E402
                              TRACK_MATCH_PX, UNKNOWN, associate, build_census,
                              color_presence, displacement_measure, normalize_color,
@@ -453,6 +454,24 @@ class SourceHelperTests(unittest.TestCase):
 
     def test_min_census_floor_is_above_one(self):
         self.assertGreaterEqual(MIN_CENSUS_BALLS, 2)
+
+    def test_the_match_gate_is_two_measured_balls(self):
+        """TRACK_MATCH_PX is a tuned 30 px, and src/ball_scale.py says what that is.
+
+        The gate decides whether two sightings are the same ball, and it is stated in
+        the census's own 960x540 pixels.  The measured ball there is 14.175 px across
+        (src/ball_scale.py, from the 18.9 px native diameter), so 30 px is about two
+        balls.  This round left the number alone: it is tuned, and the comment that
+        used to justify it with a 2.8 mm/px cloth scale was the wrong part.
+        """
+        self.assertAlmostEqual(30.0, TRACK_MATCH_PX, delta=1e-9)
+        self.assertAlmostEqual(2.0, TRACK_MATCH_PX / ball_scale.diameter_px(ball_scale.WORKING_FRAME),
+                               delta=0.15,
+                               msg='the census gate must stay at about two measured balls at the '
+                                   'working frame.  %r px over %r px is %r balls.'
+                                   % (TRACK_MATCH_PX,
+                                      ball_scale.diameter_px(ball_scale.WORKING_FRAME),
+                                      TRACK_MATCH_PX / ball_scale.diameter_px(ball_scale.WORKING_FRAME)))
 
 
 if __name__ == "__main__":

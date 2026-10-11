@@ -65,11 +65,12 @@ CONTROL_QUANTILE = 0.5               # the VOD's still floor = this quantile of 
 MOTION_AT_SERVED_S = AT_TOL_S        # |peak offset| <= this is "at the served time"
 CHANGED_LEVEL = 12                   # a cloth pixel counts as "changed" above this
 
-# Ball-scale vs occlusion.  At 960x540 the cloth spans ~350 px for a 2540 mm
-# table, so a 57 mm ball is ~8 px across (~50 px^2, a few hundred with motion
-# blur).  A change blob that big is a ball; a blob of thousands of pixels is a
-# person walking between the camera and the cloth -- measured on this VOD, that
-# is what dominates the naive cloth-mean difference.
+# Ball-scale vs occlusion.  At 960x540 the ball is 14.175 px across, from the
+# 57.15 mm width and the measured 18.9 px native diameter that
+# ``src/ball_scale.py`` owns: one ball covers 157.8 px^2, a few hundred with
+# motion blur.  A change blob that big is a ball; a blob of thousands of pixels
+# is a person walking between the camera and the cloth -- measured on this VOD,
+# that is what dominates the naive cloth-mean difference.
 #
 # The two bands meet at one boundary, so they cannot drift apart.  A blob is one
 # connected component of one difference, not the change between two ball

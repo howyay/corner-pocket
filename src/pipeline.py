@@ -28,10 +28,10 @@ from sam3_cpu import load_sam3_image_model, make_processor
 from table_detect import detect_table
 from table_geometry import CANON_W, CANON_H, homography_to_canonical
 from src.ball_gate import (POC_PIPELINE_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
-                           SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
-                           SAM3_BALL_MIN_SCORE)
+                           SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MIN_SCORE)
+from src.ball_scale import BALL_WIDTH_MM  # ball_gate.py:37 cites this file by line
 
-CANON_BALL_R = 28.6  # mm (57.15 mm ball)
+CANON_BALL_R = BALL_WIDTH_MM / 2  # mm radius (a 57.15 mm pool ball)
 POCKET_R = 24
 MIN_SCORE = SAM3_BALL_MIN_SCORE
 
@@ -270,8 +270,8 @@ def process_frame(video_path, t_sec, model, proc, out_dir, fixed_corners=None) -
     balls = filter_instances(state, tab["mask"], bgr)
     # project ball centers through the homography into canonical table coords.
     # A top-down recreation must use a constant ball radius (perspective makes
-    # near balls look bigger in the image); 57.15mm on a 2540mm-wide table.
-    CANON_BALL_R = 28.6  # mm
+    # near balls look bigger in the image); src/ball_scale.py owns the width.
+    CANON_BALL_R = BALL_WIDTH_MM / 2  # mm, the radius of a 57.15 mm ball
     result_balls = []
     for b in balls:
         p = H @ np.array([b["cx"], b["cy"], 1.0])

@@ -82,6 +82,7 @@ import math
 from statistics import median
 from typing import Any, Iterable, NamedTuple, Sequence
 
+from src.ball_scale import BALL_WIDTH_MM, NATIVE_FRAME, diameter_px, formatted_width
 from src.table_geometry import CANON_H, CANON_W, POCKETS_MM
 
 # ---------------------------------------------------------------------------
@@ -133,15 +134,19 @@ POCKET_R_MM = 100.0
 #: test, not by hope.
 OCC_DENSE_MIN = 0.30
 
-#: Median ball diameter measured on vod30 at the **native 1280x720** frame: 18.4 px.
+#: The ball's median diameter measured on vod30, in the pixels of the **native
+#: 1280x720** frame.  ``src/ball_scale.py`` owns this measurement and the frame it
+#: was made in; this module reads the owner.  The value is 18.9 px.
+#:
 #: This is the only honest length unit a single track carries: the track has no
 #: ruler, but the thing being tracked does.  Every length bar below is stated as a
 #: multiple of it, and the gate resolves it into *the frame pixels of the track it
-#: is given* (the dense run samples at 960x540, so one ball is 13.8 px there and a
+#: is given* (the dense run samples at 960x540, so one ball is 14.175 px there and a
 #: bar left in native pixels would be 1.33x too strict).
-BALL_DIAMETER_NATIVE_PX = 18.4
-#: the frame that measurement was made in; the scale reference for the line above
-NATIVE_FRAME = (1280, 720)
+BALL_DIAMETER_NATIVE_PX = diameter_px()
+#: the frame that measurement was made in; the scale reference for the line above.
+#: It comes from ``src/ball_scale.py``, the module that owns both, so this module
+#: does not state the frame twice.
 
 
 # ---------------------------------------------------------------------------
@@ -694,12 +699,14 @@ class GateThresholds:
 
     The bars are set from geometry and from the detector's own frame period, not
     from the emptied event queue (there is none) and not from the 25 known movers
-    (that set belongs to another worker).  A ball's pixel radius on vod30 is
-    3.7-11.1 px (28.6 mm x the reference quad's 0.129-0.388 px/mm), so the numbers
-    below are all stated in fractions of a ball.
+    (that set belongs to another worker).  ``src/ball_scale.py`` measures the ball
+    at 14.175 px across on vod30 at 960x540, so the numbers below are all stated
+    in fractions of a ball.  A second route agrees: the ball radius is 28.575 mm
+    (BALL_WIDTH_MM / 2), and the reference quad's 0.129-0.388 px/mm puts the cloth
+    scale at 2.58-7.75 mm/px, which is 3.7-11.1 px of radius.
     """
 
-    # --- still and motion (a ball is 57.15 mm wide, i.e. 3.7-11.1 px here) ------
+    # --- still and motion (a ball is 14.175 px across at 960x540, 18.9 px native) ----
     #: a ball is "at rest" if nothing moves faster than this.  6 px/s = 0.2 px per
     #: 30 fps frame: below the detector's own positional noise floor and below 6%
     #: of the smallest ball radius, so a resting ball cannot trip it, while a ball
@@ -741,9 +748,9 @@ class GateThresholds:
     #: candidates for that gate to judge.
     min_net_displacement_diameters: float = 2.0
     #: the ball's diameter in the *frame pixels of the track being judged*.  None
-    #: resolves it from the frame: 18.4 px x the scale below (or 18.4 px x
-    #: frame_size[0]/1280 when frame_size is stated, so the dense run's 960x540
-    #: gives 13.8 px without the caller repeating itself).
+    #: resolves it from the frame: BALL_DIAMETER_NATIVE_PX of ``src/ball_scale.py``
+    #: x the scale below (or x frame_size[0]/1280 when frame_size is stated, so the
+    #: dense run's 960x540 gives 14.175 px without the caller repeating itself).
     ball_diameter_px: float | None = None
     #: linear scale of the track's frame against native 1280x720, used only when
     #: neither ball_diameter_px nor frame_size is given (960x540 => 0.75).

@@ -22,6 +22,7 @@ import numpy as np
 
 import data_guard
 
+from src.ball_scale import RADIUS_NATIVE_PX, WORKING_FRAME, diameter_px
 from src.motion_scan import (BALL_K_NATIVE, FLOOR_MARGIN, SCAN_H, SCAN_W, WORK_H, WORK_W,
                              ClothContext, MotionConfig, OnsetConfig, ScanReport,
                              ball_area, ball_blob_max, ball_blob_min, ball_radius,
@@ -160,7 +161,7 @@ class BallVersusOcclusionTest(unittest.TestCase):
         self.prev_native, self.prev_work = flat_native()
 
     def test_a_ball_sized_change_raises_ball17_without_occlusion(self):
-        side = int(round(math.sqrt(math.pi) * 9.45))      # equivalent-area square
+        side = int(round(math.sqrt(math.pi) * RADIUS_NATIVE_PX))      # equivalent-area square
         native, work = frames(rect=(620, 380, side, side), level=150)
         m = clip_motion(self.prev_native, native, self.prev_work, work, self.ctx, self.cfg)
         self.assertGreater(m["ball17"], 60.0)
@@ -365,7 +366,7 @@ class BlobShapeTest(unittest.TestCase):
             return blob_shape(path, 2, cloth_context(QUAD))
 
     def test_a_ball_sized_change_is_one_ball(self):
-        side = int(round(math.sqrt(math.pi) * 9.45))
+        side = int(round(math.sqrt(math.pi) * RADIUS_NATIVE_PX))
         info = self._blob((620, 380, side, side))
         self.assertLessEqual(info["largest_area"], ball_blob_max(MotionConfig()))
         self.assertIn("can be a single ball", info["verdict"])
@@ -581,7 +582,13 @@ class ResolutionTest(unittest.TestCase):
     def test_the_measured_radius_wins_over_the_scaled_one(self):
         self.assertAlmostEqual(ball_radius(MotionConfig(scan_w=1920, ball_radius_px=15.4)),
                                15.4, places=3)
-        self.assertAlmostEqual(ball_radius(MotionConfig(scan_w=1920)), 9.45 * 1.5, places=2)
+        self.assertAlmostEqual(ball_radius(MotionConfig(scan_w=1920)), RADIUS_NATIVE_PX * 1.5,
+                               places=2)
+        # the scan's own reference radius is the owner's measured radius, and the wide
+        # frame's diameter follows by the same 1.5 x scale
+        self.assertAlmostEqual(RADIUS_NATIVE_PX, ball_radius(MotionConfig()), places=3)
+        self.assertAlmostEqual(diameter_px(WORKING_FRAME),
+                               diameter_px() * WORK_W / SCAN_W, places=6)
 
     def test_the_occlusion_bar_is_resolution_independent(self):
         """OCC_DENSE_MIN is a ratio of a window that scales with the ball, so a ball

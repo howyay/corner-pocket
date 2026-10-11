@@ -35,14 +35,16 @@ from dataclasses import dataclass, field
 import math
 from typing import Any, Iterable
 
+from src.ball_scale import BALL_WIDTH_MM
 from src.ball_gate import SAM3_BALL_MIN_SCORE
 
 CENSUS_VERSION = 1
 
-# Same-ball thresholds between two observations (960x540 frame pixels; the
-# cloth is ~2.8 mm/px, so a ball is ~20 px across and a racked ball ~20 px from
-# its neighbour).  30 px is a ball and a half: enough for a slow roll between
-# samples, small enough that a racked neighbour is never "the same ball".
+# Same-ball thresholds between two observations, in the 960x540 frame pixels of
+# the census.  ``src/ball_scale.py`` owns the ball's size: a pool ball is 57.15 mm
+# wide, which is 14.175 px at 960x540.  30 px is therefore about two balls: enough
+# for a slow roll between samples, small enough that a racked neighbour is never
+# "the same ball".
 TRACK_MATCH_PX = 30.0
 # A colour misread on the same ball (a stripe's band vs its white area) shows up
 # within a few pixels; anything further is another ball.
@@ -70,7 +72,8 @@ MAX_PREDICT_S = 0.5
 # (TRACK_MATCH_PX = 30 is less than one sample of an ordinary shot).  The gate
 # below is on the *residual* around a constant-velocity prediction instead.
 #
-#: A gate never smaller than this: the same 30 px = a ball and a half at 960x540.
+#: A gate never smaller than this: the same 30 px, about two balls at 960x540
+#: (``src/ball_scale.py`` measures one ball there at 14.175 px).
 GATE_BASE_PX = TRACK_MATCH_PX
 #: The widest a ball can be from its last sighting one sample later: the segment's
 #: fastest interval is 809 px/s, which is 54 px at the measured 66.7 ms cadence.

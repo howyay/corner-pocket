@@ -23,6 +23,7 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
+from src import ball_scale
 from src.shot_pot_gate import (BALL_DIAMETER_NATIVE_PX, CANON_H, CANON_W, OCC_DENSE_MIN,
                                POCKETS_MM, POCKET_R_MM, VOD30_POCKETS_PX, VOD30_REFERENCE_QUAD,
                                BreakGroup, GateThresholds, Occlusion, PotEvent, Rejection, Sample,
@@ -424,15 +425,18 @@ class ShotRuleTests(GateTestCase):
         self.assertIsNone(th.frame_size)
         self.assertIsNone(th.cloth_quad)
         self.assertEqual(th.min_confidence, 0.0)
-        # the ball's size is resolved in the frame the track is given in
+        # the ball's size is resolved in the frame the track is given in.  The value is
+        # the measured one of src/ball_scale.py: 18.9 px at the native 1280x720 frame,
+        # which is 14.175 px at 960x540 (0.75 x), so the bar is 28.35 px there.
         self.assertEqual(GateThresholds().ball_diameter(), BALL_DIAMETER_NATIVE_PX)
-        self.assertAlmostEqual(GateThresholds(frame_scale=0.75).ball_diameter(), 13.8, delta=1e-9)
-        self.assertAlmostEqual(GateThresholds(frame_size=(960, 540)).ball_diameter(), 13.8,
+        self.assertAlmostEqual(GateThresholds(frame_scale=0.75).ball_diameter(),
+                               ball_scale.diameter_px(ball_scale.WORKING_FRAME), delta=1e-9)
+        self.assertAlmostEqual(GateThresholds(frame_size=(960, 540)).ball_diameter(), 14.175,
                                delta=1e-9)
         self.assertEqual(GateThresholds(ball_diameter_px=11.0).ball_diameter(), 11.0)
         self.assertEqual(GateThresholds(ball_diameter_px=11.0).min_net_displacement_px(), 22.0)
         self.assertAlmostEqual(GateThresholds(frame_size=(960, 540)).min_net_displacement_px(),
-                               27.6, delta=1e-9)
+                               28.35, delta=1e-9)
         # the localisation error is the detector's own measured p90, and it scales the
         # net-displacement bar's error bar by sqrt(2) (two independent endpoints)
         self.assertEqual(th.localisation_error_px, 3.62)
@@ -500,12 +504,14 @@ class ShotRuleTests(GateTestCase):
         """The two shapes the served queue carried, at the dense run's 960x540 frame.
 
         Both exceed the speed rule on every interval; neither goes anywhere.  The bar
-        is 2 ball diameters and the frame resolves a ball to 18.4 x 960/1280 = 13.8 px,
-        so 27.6 px of net travel is required and neither shape comes close.
+        is 2 ball diameters and src/ball_scale.py resolves a ball to 18.9 x 960/1280 =
+        14.175 px, so 28.35 px of net travel is required and neither shape comes close.
+        This round corrected the diameter from the 18.4 px of this module (13.8 px
+        here), so both numbers moved with it: 27.6 px became 28.35 px.
         """
         thresholds = GateThresholds(frame_size=(960, 540))
-        self.assertAlmostEqual(thresholds.ball_diameter(), 13.8, delta=0.01)
-        self.assertAlmostEqual(thresholds.min_net_displacement_px(), 27.6, delta=0.02)
+        self.assertAlmostEqual(thresholds.ball_diameter(), 14.175, delta=0.01)
+        self.assertAlmostEqual(thresholds.min_net_displacement_px(), 28.35, delta=0.02)
         # shape of the served white id 9001: peak 303.6 px/s, path 80.6 px, net 0.2 px
         jitter = still(*OPEN, 20)
         x = OPEN[0]
