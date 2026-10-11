@@ -25,6 +25,7 @@ from pathlib import Path
 # The built-in datasets and their scan folders have one owner: STATIC_OUT in
 # src/datasets.py.  This module reads that owner.  A map typed here again would stay
 # old when the owner renames a scan folder.
+from src.atomic_write import write_atomic
 from src.datasets import STATIC_OUT
 
 # BALL_SETS is the one owner of the crop-set vocabulary: the sets a crop file can
@@ -105,6 +106,19 @@ def dump_document(value) -> str:
     one home (tests/test_one_atomic_write.py holds them to it).
     """
     return dump(value, DOCUMENT_FORMAT)
+
+
+def save_document(path, value) -> None:
+    """Write one whole document beside its target, or leave the old bytes.
+
+    This function joins the two owners: :func:`dump_document` answers the text and
+    ``src.atomic_write.write_atomic`` writes the whole file or none of it.  Two
+    stores used to hold the same three statements, and the duplicate-body walk of
+    tests/test_duplicate_bodies.py reported the pair.  ``fsync=True`` because a
+    document that a reader must see whole must also survive a crash.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_atomic(path, lambda stream: stream.write(dump_document(value)), fsync=True)
 
 
 def is_document_path(relative: str) -> bool:

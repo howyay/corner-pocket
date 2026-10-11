@@ -51,7 +51,7 @@ def merge_record(stored: dict, incoming: dict) -> dict:
     The function returns a new dict. It does not change either argument.
 
     This function closes the defect of round 56: the merge of one record sat in
-    `src/store.py:288` and in `src/store_pg.py:288`, and one edit had to land in
+    `src/store.py:281` and in `src/store_pg.py:288`, and one edit had to land in
     both sites.
     """
     return dict(stored, **incoming)
@@ -63,7 +63,7 @@ def drop_key(store: dict, key) -> None:
     An absent key is not an error, so a caller can clear a record twice.
 
     This function closes the defect of round 56: the delete of one key sat in
-    `src/store.py:286` and in `src/store_pg.py:286`.
+    `src/store.py:279` and in `src/store_pg.py:286`.
     """
     store.pop(key, None)
 
@@ -76,7 +76,7 @@ def clear_keys(store: dict, keys) -> None:
     can match more than one stored key.
 
     This function closes the defect of round 56: the clear of one crop sat in the
-    `for` loop of `src/store.py:325` and of `src/store_pg.py:354`.
+    `for` loop of `src/store.py:318` and of `src/store_pg.py:354`.
     """
     for key in keys:
         store.pop(key, None)
@@ -89,7 +89,7 @@ def keys_for_basename(store: dict, crop_file: str) -> list:
     of the mapping. A caller uses that key and removes the other matches.
 
     This function closes the defect of round 56: the lookup of a key by basename
-    sat in `src/store.py:323` and in `src/store_pg.py:352`.
+    sat in `src/store.py:316` and in `src/store_pg.py:352`.
     """
     return [key for key in store if Path(key).name == crop_file]
 
@@ -102,6 +102,6 @@ def spelled_time(store: dict, t_key: str) -> str:
     mapping holds no such key.
 
     This function closes the defect of round 56: the float spelling of one anchor
-    time sat in `src/store.py:353` and in `src/store_pg.py:396`.
+    time sat in `src/store.py:345` and in `src/store_pg.py:396`.
     """
     return next((key for key in store if float(key) == float(t_key)), str(t_key))

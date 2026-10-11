@@ -57,7 +57,7 @@ from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
-from src.store_files import BALL_SETS, dump_document  # noqa: E402
+from src.store_files import BALL_SETS, save_document  # noqa: E402
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -177,12 +177,6 @@ def _read(path: Path, default):
     return json.loads(path.read_text()) if path.is_file() else default
 
 
-def _write(path: Path, data) -> None:
-    """annotator.unified_server.atomic_save, byte for byte (indent=2, trailing newline)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_atomic(path, lambda stream: stream.write(dump_document(data)), fsync=True)
-
-
 class JsonStore:
     """Today's files under <root>/out, behind the Store interface."""
 
@@ -285,7 +279,7 @@ class JsonStore:
                 store_rules.drop_key(seeds, key)
             else:
                 seeds[key] = store_rules.merge_record(seeds.get(key, {}), record)
-            _write(path, saved)
+            save_document(path, saved)
             return seeds
 
     # -- operator records ---------------------------------------------------
@@ -300,7 +294,7 @@ class JsonStore:
             record = store_rules.merge_record(annotations.get(key, {}), fields)
             record["updated_at"] = datetime.now(timezone.utc).isoformat()
             annotations[key] = record
-            _write(path, annotations)
+            save_document(path, annotations)
             return record
 
     def _labels_path(self, crop_set: str) -> Path:
@@ -324,7 +318,7 @@ class JsonStore:
             store_rules.clear_keys(labels, keys)
             if label is not None:
                 labels[key] = label
-            _write(path, labels)
+            save_document(path, labels)
 
     def _correction_path(self, dataset: str, frame_index: int) -> Path:
         return self._scan(dataset) / "frame_results" / str(int(frame_index)) / "correction.json"
@@ -335,7 +329,7 @@ class JsonStore:
     def correction_put(self, dataset: str, frame_index: int, payload: dict) -> None:
         path = self._correction_path(dataset, frame_index)
         with self._lock(path):
-            _write(path, payload)
+            save_document(path, payload)
 
     def _anchors_path(self, dataset: str) -> Path:
         self._scan(dataset)
@@ -350,7 +344,7 @@ class JsonStore:
             saved = _read(path, {"anchors": {}})
             key = store_rules.spelled_time(saved["anchors"], t_key)
             saved["anchors"][key] = pts
-            _write(path, saved)
+            save_document(path, saved)
 
     # -- precomputed (read-only) ---------------------------------------------
     def artifact(self, kind: str, dataset: str | None = None) -> Any:

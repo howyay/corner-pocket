@@ -5,13 +5,13 @@ The walk of round 56 measured the statements that `JsonStore` (src/store.py) and
 `seed_put`, `verdict_put`, `label_put` and `anchors_put`.  Six statements of each
 class were copies of one of five rules:
 
-  * the merge of one stored record with one incoming record: `src/store.py:288`
-    with `src/store_pg.py:288` (seed_put), and `src/store.py:301` with
+  * the merge of one stored record with one incoming record: `src/store.py:281`
+    with `src/store_pg.py:288` (seed_put), and `src/store.py:294` with
     `src/store_pg.py:322` (verdict_put);
-  * the delete of one record: `src/store.py:286` with `src/store_pg.py:286`;
-  * the clear of one crop: `src/store.py:325` with `src/store_pg.py:354`;
-  * the lookup of a key by basename: `src/store.py:323` with `src/store_pg.py:352`;
-  * the float spelling of one anchor time: `src/store.py:353` with
+  * the delete of one record: `src/store.py:279` with `src/store_pg.py:286`;
+  * the clear of one crop: `src/store.py:318` with `src/store_pg.py:354`;
+  * the lookup of a key by basename: `src/store.py:316` with `src/store_pg.py:352`;
+  * the float spelling of one anchor time: `src/store.py:345` with
     `src/store_pg.py:396`.
 
 A measurement of the raw statement lists of that revision counted 17 shared

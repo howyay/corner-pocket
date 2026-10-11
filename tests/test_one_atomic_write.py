@@ -88,8 +88,8 @@ VALUE = {
 
 
 def _drive_store(path, value):
-    import src.store as module
-    module._write(Path(path), value)
+    import src.store_files as module
+    module.save_document(Path(path), value)
 
 
 def _drive_enroll(path, value):
@@ -113,7 +113,7 @@ def _drive_vod_import(path, value):
 
 
 SITES = (
-    Site("store", "src/store.py _write", "src.store", "_write",
+    Site("store", "src/store_files.py save_document", "src.store_files", "save_document",
          _drive_store, False),
     Site("enroll", "src/enroll_from_tracklet.py _write_json", "src.enroll_from_tracklet",
          "_write_json", _drive_enroll, True),
@@ -326,7 +326,7 @@ class TestFormerCopies(unittest.TestCase):
              "annotator/unified_server.py atomic_save",
              "annotator/vod_import.py _atomic_json",
              "src/enroll_from_tracklet.py _write_json",
-             "src/store.py _write"],
+             "src/store_files.py save_document"],
             sorted(site.name for site in SITES))
 
     def test_the_byte_owner_builds_the_text_the_five_bodies_build(self):

@@ -28,6 +28,7 @@ import src.face_id as face_id
 import src.person_identity as person_identity
 import src.store as store_module
 import src.store_export as store_export
+import src.store_files as store_files
 
 ROOT = Path(__file__).resolve().parents[1]
 write_atomic = atomic_write.write_atomic
@@ -41,6 +42,7 @@ SITE_MODULES = [
     "src.store_export",
     "src.person_identity",
     "src.store",
+    "src.store_files",
     "src.enroll_from_tracklet",
     "annotator.shot_clock",
     "annotator.vod_import",
@@ -52,7 +54,7 @@ CALL_SITES = [
     ("src.face_id", "store_faces"),
     ("src.store_export", "_atomic_write"),
     ("src.person_identity", "IdentityIndex.save"),
-    ("src.store", "_write"),
+    ("src.store_files", "save_document"),
     ("src.store", "JsonStore.identity_save"),
     ("src.enroll_from_tracklet", "_write_json"),
     ("annotator.shot_clock", "ShotClock._save"),
@@ -329,7 +331,7 @@ class TestCallerFormats(unittest.TestCase):
 
     def test_store_write_uses_indent_2_and_a_newline(self):
         path = self.dir / "state.json"
-        store_module._write(path, {"a": 1})
+        store_files.save_document(path, {"a": 1})
         self.assertEqual((json.dumps({"a": 1}, indent=2, allow_nan=False) + "\n").encode(), path.read_bytes())
 
     def test_vod_import_uses_indent_2_sort_keys_and_a_newline(self):
@@ -407,7 +409,7 @@ class TestCallerDurability(unittest.TestCase):
 
     DURABLE = (
         "src.store_export._atomic_write",
-        "src.store._write",
+        "src.store_files.save_document",
         "annotator.shot_clock.ShotClock._save",
         "annotator.vod_import._atomic_json",
         "annotator.unified_server.atomic_save",
@@ -431,7 +433,8 @@ class TestCallerDurability(unittest.TestCase):
             "src.store_export._atomic_write": lambda: store_export._atomic_write(self.dir / "export.json", "{}"),
             "src.person_identity.IdentityIndex.save":
                 lambda: person_identity.IdentityIndex(self.dir / "identity.json").save(),
-            "src.store._write": lambda: store_module._write(self.dir / "state.json", {}),
+            "src.store_files.save_document":
+                lambda: store_files.save_document(self.dir / "state.json", {}),
             "src.store.JsonStore.identity_save":
                 lambda: store_module.JsonStore(self.dir).identity_save({}),
             "src.enroll_from_tracklet._write_json":

@@ -1,11 +1,11 @@
 /* The one owner of the console duration text: the H:MM:SS form (`0:00:00`).
  *
- * Three page scripts used to hold one copy each (annotator/app.js:2035,
- * annotator/ops.js:104, annotator/vision-stage.js:930).  The three copies
+ * Three page scripts used to hold one copy each (annotator/app.js,
+ * annotator/ops.js, annotator/vision-stage.js).  The three copies
  * disagreed on seven of the nineteen values the Lead's grid measures.  This
  * file replaces all three copies (the three seams now read
- * `window.Duration.hms` at annotator/app.js:2036, annotator/ops.js:104 and
- * annotator/vision-stage.js:930).
+ * `window.Duration.hms` at annotator/app.js:2059, annotator/ops.js:117 and
+ * annotator/vision-stage.js:939).
  *
  * THE RULE
  * Clamp the value at zero.  Truncate it toward zero.  Then format it as H:MM:SS.
