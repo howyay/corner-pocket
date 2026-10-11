@@ -5408,3 +5408,125 @@ before the repair commit of this round.
 The push is still blocked. Twenty-nine commits sit on the local `main`: the six of this round, the
 record of this round, and the twenty-two that came before them. `origin/main` stays at `110b0338`.
 The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 52 · the working frame had twelve homes, and the split gap hid in a copy (2026-10-11)
+
+The walk of this round read the repository at `4519f07` with an empty `git status --porcelain`,
+answered `Strong candidate present - 3 Strong, 3 Worth, 2 Note`, and wrote 276 lines to
+`/tmp/dshsess/walk_round52.md`. It read `tools/` for the first time. It did not read
+`scripts/fetch_weights.py`, most of `scripts/pool-render-units.sh`, `src/sam3/`, the class bodies and
+the nested defs of `src/*.py`, and 42 of the 43 entries of `docs/`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `5122648` | `src/fast_ball_labels.py`, `src/ball_fp_audit.py`, `tests/test_fast_ball_labels.py`, `tests/test_ball_fp_audit.py` | Strong 1 and Strong 3 |
+| `cad4c34` | `tools/playfield_quad_evidence.py`, `tests/test_playfield_quads.py` | Worth 2 |
+| `affa0e0` | twelve frame-size readers, `src/tiny_ball_net.py`, `tests/test_ball_scale.py`, `src/sam3_artifact.py` | Strong 2 and Worth 1 |
+
+### Strong 1 · the split gap stood twice inside one module
+
+`src/fast_ball_labels.py:54` held `SPLIT_GAP_S = 5.0` under the comment "imported from tiny_ball_net's
+contract, stated once here", while the owner is `src/tiny_ball_net.py:60 SPLIT_GAP_S = 5.0`. The split
+at `:257` read the owner through a function-local import, and the two label filters at `:507` and
+`:575` read the module global. One labelling run could therefore keep a new label out of a held-out
+block while the split itself used another number, and no test read the copy.
+
+The module imports the owner at module level now, and the local import inside `frozen_held` keeps
+`split_blocks` only. `import src.tiny_ball_net` costs 657 ms and `src/tiny_ball_net.py` holds no
+import of `src.fast_ball_labels`, so the new edge adds no cycle. `tests/test_fast_ball_labels.py`
+holds the rule in two cases: the name is the object of the owner, and no module of `src/` may state
+the number again.
+
+### Strong 2 · the working frame had twelve homes
+
+`src/ball_scale.py:79 WORKING_FRAME = (960, 540)` owns the working frame of the pipeline. Twelve sites
+in twelve modules stated the pair again, and two comments named a module that is not the owner:
+`src/calib_mapping_audit.py:55` named `src.info_complete_scan`, and `src/timing_verify.py:46` named
+`src/eval_events.py`. The only guard, `tests/test_ball_scale.py:288`, reads ball sizes.
+
+Eleven sites read the owner now, as the pair or as its two integers, and
+`annotator.pipeline_stages.BALL_SIZE is ball_scale.WORKING_FRAME` answers True. The twelfth site,
+`src/tiny_ball_net.py:67 RESOLUTIONS`, is a different fact: a size string to a pair, read by name. The
+guard records it as an exception with its line number, and it fails when that record moves. The dead
+name `NEW_LABEL_MIN_SCORE` is gone from `src/tiny_ball_net.py`; the live name of that fact is
+`src/fast_ball_labels.py:55 RECORD_MIN_SCORE`.
+
+### Strong 3 · the audit restated the report's tolerance
+
+`src/ball_fp_audit.py:94 MATCH_TOL_PX = 6.0` sat under the comment "The match tolerance the held-out
+report itself used". The owner is `src/fast_ball_labels.py:57 MATCH_TOL_PX = 6.0`, read by `match_rows`
+at `:107` and `agreement` at `:128`, while `tests/test_ball_fp_audit.py:65` pinned the copy to the
+literal. The audit exists to reproduce the report's verdict, so a drift on one side moves the audit's
+"recovered" count away from the report's "true positive" count in silence. The audit imports the owner
+now, and the test module holds one identity case and one scan of `src/*.py`.
+
+### Worth 2 · the five refused events stood in two tools
+
+`tools/playfield_vod_audit.py:66 KNOWN_REFUSED` holds eleven entries, each with the reason of its
+refusal, and the gate at `:134` reads that map. `tools/playfield_quad_evidence.py` held the same five
+ids as a bare tuple in another spelling, so a move of one list could not move the other. The evidence
+tool reads the owner now and derives `REFUSED` from the entries whose reason starts with
+"cloth mask is a band". `tests/test_playfield_quads.py` holds the rule in three cases, and the reason
+scan reads each string token back with `ast.literal_eval`, because the first version of that scan
+compared a quoted literal and stayed green on a real copy.
+
+### The bites of this round
+
+| Bite | File | sha1 chain | Result |
+| --- | --- | --- | --- |
+| `SPLIT_GAP_S = 5.0` back in the module | `src/fast_ball_labels.py` | `ef69fd2d… → ab3a07d8… → ef69fd2d…` | failed: `Lists differ: ['fast_ball_labels.py:56'] != []` and `AssertionError: 5.0 is not 5.0` |
+| `MATCH_TOL_PX = 6.0` back in the audit | `src/ball_fp_audit.py` | `907e2f33… → 1b9f5e3b… → 907e2f33…` | failed: `AssertionError: 6.0 is not 6.0` |
+| The literal pair back in one reader | `src/scan_events.py` | guard `5bfac62e…`; the file during the bite `820c8a16…` | failed: `Lists differ: [] != ['src/scan_events.py:75: literal, (960, 540)']` |
+| The literal pair back, and one recorded line moved | `src/calib_mapping_audit.py`, the guard | during `f1057bb3…`, guard `5058a73e…` | failed: two cases, the binding case and the record case |
+| The literal pair back in a third module | `src/dense_queue.py` | `181fcfa8… → d1f70f89… → 181fcfa8…` | failed: `Lists differ: [] != ['src/dense_queue.py:73: assignment, (WORK_W, WORK_H) = (960, 540)']` |
+| An id list in the other tool of the pair | `tools/playfield_harness.py` | `5659df91… → f90bfc7b… → 5659df91…` | failed: `AssertionError: {'tools/playfield_harness.py': ['tw-2860883221', 'tw-2890514774']} != {}` |
+| A bare tuple of the five ids | `tools/playfield_quad_evidence.py` | `2470f476… → 5d93cd74… → 2470f476…` | failed: the id case |
+| One reason string copied | `tools/playfield_quad_evidence.py` | `2470f476… → 270813cd… → 2470f476…` | failed: the reason case, after `ast.literal_eval` replaced the quoted comparison |
+
+### The suites of this round
+
+| Suite | Result |
+| --- | --- |
+| `./scripts/pool-test.sh python`, the Lead, first run | `Ran 1945 tests in 349.358s`, `FAILED (errors=1, skipped=53)`. The one error is a `tempfile` cleanup race, not a case: `OSError: [Errno 39] Directory not empty: '/tmp/tmpv09zdsh5'` under `test_vod_import.ImporterTests.test_the_seconds_knob_is_the_only_bounded_range_and_it_is_capped`. That module alone answers `Ran 32 tests in 7.363s`, `OK` |
+| `./scripts/pool-test.sh python`, the Lead, second run | SECOND_RUN_LINE |
+| `./scripts/pool-test.sh python`, the writer of Strong 2 | `Ran 1945 tests in 221.741s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | 219 pass, 0 fail |
+| `node tests/test_board.js` | 23 pass, 0 fail |
+| `node tests/test_app_timeline.js` | 100 passed, 0 failed |
+
+Round 51 answered 1937 cases, so this round adds 8: 2 in `tests/test_fast_ball_labels.py`, 1 in
+`tests/test_ball_fp_audit.py`, 2 in `tests/test_ball_scale.py`, and 3 in `tests/test_playfield_quads.py`.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| `tools/`, which no walk had read | Note of the round-51 walk | the walk of this round read it, and `cad4c34` gives the two playfield tools one owner of the refused events |
+| `src/calib_mapping_audit.py:56-58` cites a document and a JSON file | Worth 7 of the round-51 walk | the file keeps its citation, and the two comments that named a module for the frame size now name `src.ball_scale` |
+| `NEW_LABEL_MIN_SCORE`, a name with no reader | Worth 1 of this walk | `affa0e0` deletes it from `src/tiny_ball_net.py` |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| `reference_quad` holds two bodies, and a third delegates | Worth 3 of the round-51 walk, now measured | one dataset and one question answer two ways: `src.sam3_ball_cache.reference_quad(corners_path="out/scan30/corners.json", dataset="nothing-here")` answers `[[459.26, 268.89], [803.75, 315.78], [1023.37, 584.26], [421.81, 560.57]]`, and `src.sam3_frame_audit.reference_quad(dataset="nothing-here", anchors_path="/nonexistent.json")` answers `(None, 'none')` |
+| The frame rate is written inline | Worth 3 of this walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files, and `30.0003` stands in `src/fast_ball_labels.py` six times and in `src/tiny_ball_net.py:216` as a default argument |
+| The cloth build bypasses `SAM3_SCALE` | Note of this walk | `src/eval_events.py:214` builds at the working frame, and `:75` holds the scale |
+| The backup unit repeats the retention | Note of this walk | `deploy/systemd/pool-postgres-backup.service:17` and `scripts/pool-postgres-backup.sh:13` |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, and this round needed one repair by hand for that reason |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| The duplicate-body walk reads module-level `def`s of `src/*.py` only | limit of round 51 | no class body, no nested def, no `src/sam3/`, and it detects a copy instead of proving an equivalence |
+| The new guard proves a binding, not a reader | limit of this round | no case proves that a reader uses the size that the owner holds |
+| Five `(960, 540)` literals stand in `tests/` | limit of this round | the guard reads `src/` and `annotator/` only |
+| The moved line numbers of five modules | limit of this round | a citation into `src/calib_mapping_audit.py`, `src/candidate_scan.py`, `src/timing_verify.py`, `src/dense_queue.py` or `annotator/pipeline_stages.py` can point at another line, and the citation rule reads a letter or a digit only |
+| `annotator/server.py:126` writes any label | Note | the module has no importers, so the divergence is dormant |
+| The areas that no walk read | Note | `scripts/`, `deploy/`, `db/migrations/0003` and `0004`, most of `src/eval_events.py` and `src/segment_calib_report.py`, `src/sam3/`, the class bodies and the nested defs, and 42 files of `docs/` |
+
+The push is still blocked. Thirty-three commits sit on the local `main`: the three of this round, the
+record of this round, and the twenty-nine that came before them. `origin/main` stays at `110b0338`.
+The one user action stays `git -C /home/haoye/projects/pool push origin main`.
