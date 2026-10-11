@@ -155,10 +155,22 @@ class EnrollBound(unittest.TestCase):
 
     def test_the_enroll_branch_reads_the_derived_name(self):
         """The route holds no size of its own; it reads the name the owner gives it."""
-        hit = DISPATCH_LIMIT.search(OWNER_TEXT)
-        self.assertIsNotNone(hit, f'the enroll branch of {OWNER} changed shape: '
-                                  f'{DISPATCH_LIMIT.pattern}')
-        self.assertEqual(hit.group(1), '_MAX_ENROLL_BODY_BYTES')
+        # The branch reads the two names, so the tree decides and not the layout:
+        # round 66 split the assignment over two lines when the default arm got its
+        # own name, and a line-shaped check would refuse that.
+        import ast
+        arms = [node for node in ast.walk(ast.parse(OWNER_TEXT))
+                if isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.IfExp)
+                and any(isinstance(target, ast.Name) and target.id == 'limit'
+                        for target in node.targets)]
+        self.assertEqual(len(arms), 1,
+                         f'the enroll branch of {OWNER} changed shape: one limit assignment')
+        branch = arms[0].value
+        self.assertIsInstance(branch.body, ast.Name)
+        self.assertEqual(branch.body.id, '_MAX_ENROLL_BODY_BYTES')
+        self.assertIsInstance(branch.orelse, ast.Name,
+                              'the default arm must read a named constant and no number')
         # A filler is not JSON, so the dispatch answers 400 - and never 413 - when it
         # takes the body, and the payload never reaches a decode.
         filler = b'A' * _MAX_ENROLL_BODY_BYTES
