@@ -1,9 +1,9 @@
-/* Corner Pocket, the public board (docs/public-board.md). It loads no console file:
-   the tokens, faces and lining figures below are copied from ops.css (dark theme only).
-   Phone first: one column that scrolls, tables first. A landscape screen 1000 px or
-   wider is the TV: one screen that never scrolls, sized from the viewport, so
-   1280x720 is 1920x1080 scaled down. */
-
+/* Corner Pocket, the public board (docs/public-board.md). This page loads no console file,
+   and the public port does not serve ops.css, the owner of the palette, so board.css keeps a
+   copy of the ops.css dark block, with the faces. The two files are a held pair;
+   tests/test_palette_contrast.py fails when one copied value disagrees with the owner. Phone
+   first: one column that scrolls, tables first. A landscape screen 1000 px or wider is the
+   TV: one screen that never scrolls, sized from the viewport. */
 /* Faces: only the five files the public port serves (BOARD_FONTS in unified_server.py).
    The -common face is declared before the UI face, as in ops.css: for one family the
    last-declared face is tried first, so the -common file is fetched only for a
