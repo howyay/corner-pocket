@@ -30,6 +30,11 @@ import src.store as store_module
 import src.store_export as store_export
 import src.store_files as store_files
 
+# The dotted-name reader has one home, tests/_shipped.py.  The single-module runner
+# starts in tests/, and discovery puts tests/ on sys.path, so the bare module name
+# reaches the helper in both.  Round 61 found this body four times in the test tree.
+from _shipped import dotted_name as _dotted
+
 ROOT = Path(__file__).resolve().parents[1]
 write_atomic = atomic_write.write_atomic
 
@@ -71,15 +76,6 @@ DIRECT_TEMP_CALLS = {
     "mkdtemp",
 }
 PATH_BUILDERS = {"open", "Path", "pathlib.Path"}
-
-
-def _dotted(node) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        base = _dotted(node.value)
-        return f"{base}.{node.attr}" if base else node.attr
-    return ""
 
 
 def _tmp_strings(node) -> list:

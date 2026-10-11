@@ -14,10 +14,14 @@ from pathlib import Path
 
 from src import tls_trust
 
+# The shipped packages a second copy of the rule could hide in have one home,
+# tests/_shipped.py.  The single-module runner starts in tests/, and discovery puts
+# tests/ on sys.path, so the bare module name reaches the helper in both.  This file
+# held a copy of the tree until round 61.
+from _shipped import SHIPPED
+
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = ROOT / 'src' / 'tls_trust.py'
-#: The shipped python a second copy of the rule could hide in.
-SHIPPED = ('annotator', 'src', 'scripts', 'tools')
 #: The three ways a hand-written copy names the rule: the two ssl calls of the idiom, and
 #: the one bundle path every copy of it spells out.
 NEEDLES = ('create_default_context', 'load_verify_locations', 'ca-certificates')

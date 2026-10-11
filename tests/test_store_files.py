@@ -23,6 +23,12 @@ from src.datasets import STATIC_OUT
 from src.store_files import (BALL_SETS, DOCUMENT_FORMAT, DOCUMENT_SETS, FORMATS, INDENT1,
                              SCHEMA_RANGE, document_paths, dump, fmt_of, is_document_path)
 
+# The scanner has one home, tests/_shipped.py.  The single-module runner starts in
+# tests/, and discovery puts tests/ on sys.path, so the bare module name reaches the
+# helper in both.  The tree the scanner reads sits in that same home.  This file
+# declared the tree and the scanner by hand until round 61.
+from _shipped import shipped_modules
+
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = "src/store_files.py"
 # This file must spell the format names to check them, so the scan below skips it.
@@ -55,9 +61,11 @@ SKIP_DIRS = {".git", ".venv", "out", "data", "__pycache__", "node_modules", ".py
 #: types the map again holds a second copy, and that copy can drift from the owner.
 MAP_OWNER = "src/datasets.py"
 MAP_READERS = (("src/store_files.py", "STATIC_OUT"), ("src/store_import.py", "STATIC_OUT"))
-#: The shipped packages the map scan reads.  The suite is not shipped code: a test that
-#: states an expected map is an expectation, not a second copy inside the application.
-SHIPPED = ("src", "annotator", "tools", "scripts")
+#: The shipped packages the map scan reads, from the one home in tests/_shipped.py.
+#: The suite is not shipped code: a test that states an expected map is an
+#: expectation, not a second copy inside the application.  ``SHIPPED`` keeps the
+#: comment above it there, and the guard of tests/test_one_shipped_tree.py holds
+#: every reader of it to that home.
 
 
 def bare_names(line: str, suffix: str) -> list[str]:
@@ -84,12 +92,6 @@ def source_files() -> list[Path]:
     return sorted(path for path in ROOT.rglob("*")
                   if path.is_file() and path.suffix in (".py", ".sql")
                   and not any(part in SKIP_DIRS for part in path.parts))
-
-
-def shipped_modules() -> list[Path]:
-    """Every .py file of the shipped packages, generated trees left out."""
-    return sorted(path for name in SHIPPED for path in (ROOT / name).rglob("*.py")
-                  if "__pycache__" not in path.parts)
 
 
 def typed_map_pairs(path: Path) -> list[tuple[int, dict[str, str]]]:

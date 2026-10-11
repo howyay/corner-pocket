@@ -22,6 +22,12 @@ import unittest
 
 import data_guard
 
+# The dotted-name reader has one home, tests/_shipped.py.  The single-module runner
+# starts in tests/, and discovery puts tests/ on sys.path, so the bare module name
+# reaches the helper in both, as the data_guard import above does.  Round 61 found
+# this body four times in the test tree.
+from _shipped import dotted_name as _dotted
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src import sam3_artifact  # noqa: E402
 from src.sam3_artifact import (ARTIFACT, CAMERA_MODEL, MIXED, PRODUCERS,  # noqa: E402
@@ -59,16 +65,6 @@ PRODUCER_WRITES = {
 }
 
 ROW = {"img": [640.0, 360.0], "r": 7.5, "score": 0.87, "table_mm": [1234.5, 321.0]}
-
-
-def _dotted(node) -> str:
-    """`json.dump` for the attribute chain of `node`, and "" for anything else."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        base = _dotted(node.value)
-        return f"{base}.{node.attr}" if base else node.attr
-    return ""
 
 
 def _code_strings(tree) -> list:

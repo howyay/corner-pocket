@@ -49,6 +49,13 @@ from pathlib import Path
 from src import store_files
 from src.atomic_write import write_atomic
 
+# The dotted-name reader has one home, tests/_shipped.py.  The single-module runner
+# starts in tests/, and discovery puts tests/ on sys.path, so the bare module name
+# reaches the helper in both.  Round 61 found the body of this rule four times in the
+# test tree; the copy here walked the chain with a stack, and the home keeps a reader
+# of that shape beside the recursive one.
+from _shipped import dotted_name as _dotted
+
 ROOT = Path(__file__).resolve().parents[1]
 
 #: One row for every former copy: the key of its generated cases, the file and the
@@ -158,18 +165,6 @@ def _resolve(tree, qualname):
         if node is None:
             return None
     return node
-
-
-def _dotted(node):
-    """The dotted name of an expression, or "" for any other expression."""
-    parts = []
-    while isinstance(node, ast.Attribute):
-        parts.append(node.attr)
-        node = node.value
-    if not isinstance(node, ast.Name):
-        return ""
-    parts.append(node.id)
-    return ".".join(reversed(parts))
 
 
 def _calls(node, names):

@@ -30,6 +30,11 @@ from annotator import shot_clock
 from annotator.operations import Operations
 from annotator.shot_clock import ShotClock, epoch_ms
 
+#: The shipped packages and the scanner over them have one home, tests/_shipped.py.
+#: The single-module runner starts in tests/, and discovery puts tests/ on sys.path,
+#: so the bare module name reaches the helper in both.
+from _shipped import shipped_modules
+
 #: The repository root, from this file's own path. The binding case reads the
 #: client file from here.
 ROOT = Path(__file__).resolve().parent.parent
@@ -64,15 +69,6 @@ OWNER = ROOT / 'annotator' / 'shot_clock.py'
 #: The reader that must take the rule from the owner. Its settings guard wrote `5, 300`
 #: and its document default wrote `30` until round 48.
 READER = ROOT / 'annotator' / 'operations.py'
-#: The shipped packages the copy scan reads. A test states an expectation; it is not
-#: application code, so the scan leaves tests/ out.
-SHIPPED = ('src', 'annotator', 'tools', 'scripts')
-
-
-def shipped_modules():
-    """Every .py file of the shipped packages, generated trees left out."""
-    return sorted(path for name in SHIPPED for path in (ROOT / name).rglob('*.py')
-                  if '__pycache__' not in path.parts)
 
 
 def own_nodes(node):

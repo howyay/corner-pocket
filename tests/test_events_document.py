@@ -31,6 +31,11 @@ from src.events_document import (DENSE_QUEUE, DOCUMENTS, EVAL_EVENTS, MIXED, PRO
                                  STAMPED, UNSTAMPED, V2, VERSION, DocumentShapeError,
                                  DocumentVersionError)
 
+# The dotted-name reader has one home, tests/_shipped.py.  The single-module runner
+# starts in tests/, and discovery puts tests/ on sys.path, so the bare module name
+# reaches the helper in both.  Round 61 found this body four times in the test tree.
+from _shipped import dotted_name as _dotted
+
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = "src/events_document.py"
 
@@ -76,16 +81,6 @@ WRITES_OUTSIDE_THE_DOCUMENT = {
 SERVED_ROW_KEYS = ("color", "dup_count", "gate", "id", "last_mm", "last_px", "nearest_pocket",
                    "origin", "pocket_name", "provenance", "source", "t", "tier", "type",
                    "verified", "window_s")
-
-
-def _dotted(node) -> str:
-    """`json.dump` for the attribute chain of `node`, and "" for anything else."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        base = _dotted(node.value)
-        return f"{base}.{node.attr}" if base else node.attr
-    return ""
 
 
 def _code_strings(tree) -> list:

@@ -45,11 +45,12 @@ from src.store_files import BALL_SETS
 # here would be a second spelling of the vocabulary.
 from annotator.unified_server import VERDICT_WORDS
 
+# The shipped package tree has one home, tests/_shipped.py.  A second copy of the tree
+# in this module is a defect, and the guard tests/test_one_shipped_tree.py walks for it.
+from _shipped import SHIPPED
+
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / 'db' / 'migrations'
-#: The shipped packages.  A second copy inside the application is a defect.  tests/ is not
-#: here: a test states an expectation.  tools/ and scripts/ ship, so they are here.
-SHIPPED = ('annotator', 'src', 'tools', 'scripts')
 
 #: A bracketed run with no inner bracket: a tuple, a list, a set, or a call.
 COLLECTION = re.compile(r'[\(\[]([^()\[\]]*)[\)\]]')
