@@ -1076,6 +1076,27 @@ test('adding a regular never sends a rating the form did not collect; editing ke
   await h.handlers.submit(playerForm({id: 'p1', name: 'Ada', rating: '640', status: 'Active', notes: ''}));
   assert.deepEqual(JSON.parse(JSON.stringify(h.calls[1])), {name: 'player_save', payload: {id: 'p1', name: 'Ada', rating: 640, status: 'Active', notes: ''}});
 });
+test('a Prospect regular keeps its status in the edit form and in the save, round 47', async () => {
+  // Round 47: the form offered three of the four values that the guard and the database accept.
+  // A Prospect row therefore rendered with Active selected, and one save rewrote the row.
+  const h = harness();
+  h.data.players = [{id: 'p1', name: 'Zoe Kim', rating: 0, status: 'Prospect', joinedAt: '2026-01-01T00:00:00Z'}];
+  h.selected = 'p1';
+  const html = h.playersScreen();
+  const select = /<select name="status">([^]*?)<\/select>/.exec(html);
+  assert.ok(select, 'the profile offers the status select');
+  const options = [...select[1].matchAll(/<option value="([^"]+)"([^>]*)>/g)].map(([, value, rest]) => [value, /selected/.test(rest)]);
+  assert.deepEqual(JSON.parse(JSON.stringify(options)),
+    [['Active', false], ['Visitor', false], ['Prospect', true], ['Inactive', false]],
+    'the form offers every status the owners accept, and marks the one the row holds');
+  for (const status of ['Active', 'Visitor', 'Prospect', 'Inactive'])
+    assert.ok(html.includes(`data-value="${status}"`), `the roster filter offers ${status}`);
+  const playerForm = values => ({preventDefault() {}, target: {getAttribute: () => null, classList: {contains: c => c === 'player-form'}, querySelectorAll: () => [], values}});
+  await h.handlers.submit(playerForm({id: 'p1', name: 'Zoe Kim', rating: '0', status: 'Prospect', notes: ''}));
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls[0])),
+    {name: 'player_save', payload: {id: 'p1', name: 'Zoe Kim', rating: 0, status: 'Prospect', notes: ''}},
+    'the save carries the status the operator did not touch');
+});
 test('failed API response localizes primary copy and preserves exact optional detail', async () => {
   // Round 41: the console shows the Chinese sentence the service sends, so the stub body carries it.
   const row = refusalRow('Schedule match before scoring');

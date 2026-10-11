@@ -144,6 +144,13 @@ PLACEHOLDER_NAMES = {'na', 'n/a', 'bye', 'tbd', '轮空', '輪空'}
 MATCH_STATUSES = ('pending', 'scheduled', 'live', 'delayed', 'complete')
 MATCH_RESULTS = ('played', 'forfeit', 'bye')
 
+# The status values a player row may hold. This module is their only writer, so the
+# list lives here. The database cannot import Python, so
+# db/migrations/0002_user_data.sql repeats the names in a CHECK. The console needs
+# the same values to offer them. tests/test_player_status.py proves that the SQL
+# CHECK, this tuple and the console array hold the same values.
+PLAYER_STATUSES = ('Active', 'Visitor', 'Prospect', 'Inactive')
+
 
 def tournament():
     return dict(id=uid(), name='', format='singles', tables=1, raceTo=1,
@@ -786,7 +793,7 @@ class Operations:
             raise ValueError('Name held by a guest in this event; add the guest to the regulars instead')
         player = self._find(s['players'], p['id']) if p.get('id') else dict(id=uid(), joinedAt=timestamp(), rating=0, status='Active')
         status = optional(p, 'status', player['status'])
-        if status not in ('Active', 'Visitor', 'Prospect', 'Inactive'):
+        if status not in PLAYER_STATUSES:
             raise ValueError('Invalid player status')
         player.update(name=name, rating=integer(optional(p, 'rating', player['rating']), 0, 1000, 'rating'), status=status)
         if p.get('notes') is not None:
