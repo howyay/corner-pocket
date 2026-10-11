@@ -42,6 +42,7 @@ import cv2
 import numpy as np
 
 from src.ball_gate import SAM3_BALL_MIN_SCORE
+from src.tiny_ball_net import SPLIT_GAP_S
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,7 +52,7 @@ CHECKPOINT = ROOT / "data" / "sam3.safetensors"
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
 
 MIN_SCORE = SAM3_BALL_MIN_SCORE  # the production cut the delivered caches were written at
-SPLIT_GAP_S = 5.0                # imported from tiny_ball_net's contract, stated once here
+# SPLIT_GAP_S is imported above from src.tiny_ball_net, the owner of the split rule.
 RECORD_MIN_SCORE = 0.30          # the teacher's raw score is recorded down to here
 RESOLUTION = 1008                # SAM3's own input resolution; not tuned here
 MATCH_TOL_PX = 6.0               # one-to-one gate for "the same instance"
@@ -246,7 +247,7 @@ def frozen_held(root=ROOT) -> list:
     New labels must never land inside it: a labelling run that walked over the
     validation blocks would silently turn a held-out score into a training score.
     """
-    from src.tiny_ball_net import SPLIT_GAP_S, split_blocks
+    from src.tiny_ball_net import split_blocks
 
     path = Path(root) / "out" / "tiny_ball_probe" / "held_frozen.json"
     if path.exists():

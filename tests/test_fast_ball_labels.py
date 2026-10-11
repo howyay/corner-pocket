@@ -8,6 +8,7 @@ throws away.  The measured CPU-vs-hybrid agreement lives in
 ``out/fast_ball_labels/agreement.json``, not in a unit test.
 """
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,8 +16,11 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from src.fast_ball_labels import (MODES, agreement, existing_times, instances_from_state,
-                                  match_rows, persistence_filter, to_device)
+from src.fast_ball_labels import (MODES, SPLIT_GAP_S, agreement, existing_times,
+                                  instances_from_state, match_rows, persistence_filter,
+                                  to_device)
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 class FakeNested:
@@ -162,6 +166,32 @@ class ModeListTest(unittest.TestCase):
     def test_both_documented_modes_exist(self):
         self.assertIn("cpu", MODES)
         self.assertIn("hybrid", MODES)
+
+
+class SplitGapHomeTest(unittest.TestCase):
+    """One home for the gap between a training frame and a held-out frame.
+
+    ``src/tiny_ball_net.py`` states the rule.  This module reads the owner at module
+    level, so the split and the two label filters that keep a new label away from a
+    held block cannot answer with two different numbers.  A local value above the
+    owner's would let a labelling run write a label inside a held-out block, and the
+    held-out score would silently become a training score.
+    """
+
+    def test_the_name_is_the_object_of_the_owner(self):
+        from src.tiny_ball_net import SPLIT_GAP_S as owner
+
+        self.assertIs(SPLIT_GAP_S, owner)
+
+    def test_no_second_statement_of_the_gap(self):
+        found = []
+        for path in sorted((ROOT / "src").glob("*.py")):
+            if path.name == "tiny_ball_net.py":
+                continue
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if re.match(r"\s*SPLIT_GAP_S\s*=", line):
+                    found.append(f"{path.name}:{number}")
+        self.assertEqual(found, [], "a second statement of the split gap: %s" % found)
 
 
 if __name__ == "__main__":

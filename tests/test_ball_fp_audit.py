@@ -10,11 +10,13 @@ here" is not the same claim as "SAM3 looked and found no ball".
 import hashlib
 import json
 import math
+import re
 import unittest
 from pathlib import Path
 
 import numpy as np
 
+from src import fast_ball_labels
 from src.ball_fp_audit import (AUDIT, BALL_AREA_RANGE, BALL_R_RANGE, BAND_H, CANDIDATE_RADIUS_PX,
                               CASES_OUT, FN_THRESHOLDS, MATCH_TOL_PX, PRODUCTION_CUT, REPORT,
                               SAM3_FLOOR, SWEEP_THRESHOLDS, VERDICTS_OUT, _sweep_instances,
@@ -62,7 +64,23 @@ class ConstantsTest(unittest.TestCase):
 
     def test_the_radius_is_the_small_one_the_directive_named(self):
         self.assertEqual(CANDIDATE_RADIUS_PX, 10.0)
-        self.assertEqual(MATCH_TOL_PX, 6.0)
+        self.assertEqual(MATCH_TOL_PX, fast_ball_labels.MATCH_TOL_PX)
+
+    def test_the_match_tolerance_has_one_home(self):
+        """The audit judges the held-out report, so the report owns the tolerance.
+
+        A second copy can drift, and the drift moves the audit's "recovered"
+        count away from the report's "true positive" count in silence.
+        """
+        self.assertIs(MATCH_TOL_PX, fast_ball_labels.MATCH_TOL_PX)
+        found = []
+        for path in sorted((ROOT / "src").glob("*.py")):
+            if path.name == "fast_ball_labels.py":
+                continue
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if re.match(r"\s*MATCH_TOL_PX\s*=", line):
+                    found.append(f"{path.name}:{number}")
+        self.assertEqual(found, [], "a second statement of the match tolerance: %s" % found)
 
 
 class ProductionPathsTest(unittest.TestCase):

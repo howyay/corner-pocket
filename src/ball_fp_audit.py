@@ -60,6 +60,7 @@ from pathlib import Path
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
+from src.fast_ball_labels import MATCH_TOL_PX
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -89,9 +90,9 @@ SAM3_FLOOR = 0.15
 # "within a small radius of the false positive" -- a real ball 10 px away is the
 # same ball; a student peak this far from a teacher miss is the recall story.
 CANDIDATE_RADIUS_PX = 10.0
-# The match tolerance the held-out report itself used, so "recovered" means the
-# same thing here as "true positive" there.
-MATCH_TOL_PX = 6.0
+# The match tolerance of the held-out report itself, imported above from its owner
+# in ``src/fast_ball_labels.py``, so "recovered" means the same thing here as "true
+# positive" there.
 # Sweep thresholds identical to the frozen report's 0.05 + 0.025 i grid, so the
 # FN recovery counts line up with the precision/recall cost already measured.
 FN_THRESHOLDS = tuple(round(0.05 + 0.025 * i, 3) for i in range(38))
