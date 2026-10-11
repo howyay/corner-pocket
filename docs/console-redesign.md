@@ -7182,3 +7182,201 @@ replaced, never counted.
 The push is still blocked. Seventy-four commits sit on the local `main`: the four code commits of this
 round, the record of this round, and the sixty-nine that came before them. `origin/main` stays at
 `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 61 · one shipped tree, one entry contract, one actor join (2026-10-11)
+
+The walk of this round read the repository at `f2081de` with an empty `git status --porcelain`,
+answered `Strong candidate present - 1 Strong, 4 Worth, 2 Note`, and wrote 261 lines to
+`/tmp/dshsess/walk_round61.md` (one line over the 260-line cap, and the report says so). The count on its
+verdict line equals the number of its sections. It did not read about a third of
+`annotator/unified_server.py`, fourteen of the twenty-two `_do_*` bodies of `annotator/operations.py`,
+`scripts/pool-render-units.sh`, `scripts/pool-postgres-backup.sh`, `deploy/`, `viz/`, `src/sam3/`,
+`src/reid/`, the case bodies of the three console suites, and the 43 files of `docs/` (it counted their
+`path:line` citations only).
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `6bddcdf` | `tests/_shipped.py`, `tests/test_one_shipped_tree.py`, `tests/test_shot_clock.py`, `tests/test_sql_domain_parity.py`, `tests/test_store_files.py`, `tests/test_tls_trust.py`, `tests/test_atomic_write.py`, `tests/test_events_document.py`, `tests/test_one_atomic_write.py`, `tests/test_sam3_artifact.py` | Strong 1, Worth 2 and Note 7 |
+| `675a1e6` | `tests/test_app_timeline.js`, `annotator/ops.js`, `tests/test_ops.js`, `annotator/unified_server.py`, `annotator/server.py`, `src/events_actors.py`, `tests/test_unified_server.py` | Worth 3, Worth 4, Worth 5 and Note 6 |
+
+### Strong 1 and Worth 2 · the shipped tree, and the two scanners that read it
+
+Ground: the package tree this repository ships was declared four times by hand, in four orders and two
+quoting styles: `tests/test_shot_clock.py:69 SHIPPED = ('src', 'annotator', 'tools', 'scripts')`,
+`tests/test_sql_domain_parity.py:52 SHIPPED = ('annotator', 'src', 'tools', 'scripts')`,
+`tests/test_store_files.py:60 SHIPPED = ("src", "annotator", "tools", "scripts")` and
+`tests/test_tls_trust.py:20 SHIPPED = ('annotator', 'src', 'scripts', 'tools')`. The scanner
+`shipped_modules()` stood twice as well (`tests/test_shot_clock.py:72`, `tests/test_store_files.py:89`),
+so a fifth module that added one package to one copy changed what one guard scanned.
+
+Repair: `tests/_shipped.py` at `fa15ec6d5a0e9b608135fcc9ca8fc404cb6e93d0` owns `SHIPPED` at `:46` and the
+one `shipped_modules()` at `:49`, and the four modules read them (their own scan scopes stay four packages
+each). `tests/test_one_shipped_tree.py` at `0ae2dee71e263cb872a8e45a4ea082bb25e1c081` holds six cases:
+the four readers import the tree, no test module declares a second copy (an `ast` walk that lists the
+`file:line` sites), a planted copy is reported, and the import shape works in both runners (the
+single-module runner uses CWD = `tests/`, discovery puts `tests/` on `sys.path`, so the bare
+`from _shipped import …` serves both).
+
+### Note 7 · the four dotted-name readers
+
+Ground: four copies of the dotted-name reader stood in the test tree and
+`tests/test_duplicate_bodies.py` never saw them, because it reads `src/` and `annotator/` only:
+`tests/test_atomic_write.py:76`, `tests/test_events_document.py:81`,
+`tests/test_one_atomic_write.py:163` and `tests/test_sam3_artifact.py:64`. Repair:
+`tests/_shipped.py:59 dotted_name(node)` owns the reader and the four modules import it as `_dotted`
+(their fifteen call sites keep their names). The owner drops an unnamed base and keeps an outer
+attribute, because the strict stack spelling would break the scope guard of
+`tests/test_events_document.py`, which reads `Path(out).write_text(...)` as `write_text`; the strict
+variant stays beside it as `dotted_name_by_loop()` at `:77`, and one case pins the single difference
+(`a.b(x).c` answers `c`, `__import__('numpy').linalg.inv` answers `linalg.inv`,
+`TEMPLATES[name].zh.format` answers `zh.format`, where the stack form answers `''` for all three).
+
+### Worth 3 · the three console suites had three entry points
+
+Ground: `tests/test_ops.js` and `tests/test_board.js` are `node:test` suites, while
+`tests/test_app_timeline.js` ended at `:3913 process.exit(failed ? 1 : 0);` and held no
+`require('node:test')` (measured: zero sites), so `node --test tests/test_app_timeline.js` reported one
+passing item for a file that runs 103 assertions. Repair: the file keeps its own entry but now records
+every case in one `results` object (`passed` and `failed` are getters, `ran` is a counter), prints
+`104 passed, 0 failed`, and a new case pins the three suites to one entry contract. The `node:test` shape
+was measured and rejected: the 103 cases share one mutable sandbox, and under the `node:test` scheduler
+three cases really fail (for example
+`assert.strictEqual(sandbox.window.CornerPocketReview.activate('events'), false)` answered
+`true !== false`), so converting the file means rewriting 3927 lines; an in-test `spawnSync` self-run also
+timed out with `status null signal SIGTERM err ETIMEDOUT`.
+
+### Worth 4 · one action name carried two Chinese sentences
+
+Ground: `annotator/ops.js:70 lateOpen:['Join after the draw','中途加入']` beside
+`:1123 entrant_add_late:[…,'中途加入对阵表']`, in one module, for one action. Repair: the late-action row
+reads `['Join after the draw','中途加入']` and matches `lateTitle:66` and `lateOpen:70` (drawn at
+`:1159`, sent at `:1455`), so the button and the audit row state one pair; the Chinese the console shows
+today does not change. `tests/test_ops.js` gained the case `the late card and its audit row name the one
+action with one pair of words`.
+
+### Worth 5 · the events/actors join was computed twice
+
+Ground: the join ran in `annotator/unified_server.py` and again in `annotator/server.py`, with an exact
+0.01 s comparison on one side (`:2151`) and a one-decimal bucket on the other (`:63`), two tolerances for
+one rule. Repair: `src/events_actors.py` at `8f58af126a776c51c419f882ed5ed210f058b5ec` owns the rule
+(`ACTOR_MATCH_TOLERANCE = 0.1` at `:22`, `def join_events_to_actors(events, rows)` at `:25`, matching with
+`abs(row['t'] - event['t']) <= ACTOR_MATCH_TOLERANCE`), and both readers call it. The measurement: for the
+data of today both rules agree (`out/scan30/events.json` holds 4 events and `out/events_actors.json` 57
+rows, and both the old and the new rule answer zero matches, as does
+`Backend.get(['api','vod30','events'])`); the boundary case
+`join_events_to_actors([{id:1,t:70.0},{id:2,t:70.2001}], [{'t':70.1,'actor':'A'}])` answers
+`{'1': {'t': 70.1, 'actor': 'A'}}`, so a row inside 0.1 s joins and a row 0.2 s away does not; the 57
+rows hold whole or half seconds except `104.5, 411.5, 979.5, 1296.5, 1775.5`, and `out/vod30/events.json`
+does not exist. The writer's report printed the earlier sha1 `02801694a22b925e78c280299e8be2c4624ffdfb`
+for this file; the measured after-value is `8f58af126a776c51c419f882ed5ed210f058b5ec`, and that is the
+value this record keeps.
+
+### Note 6 · the validator branch that could not fire
+
+Ground: `annotator/unified_server.py:1961 abs(...)` followed by `:1962 if area <= 0:`, with no case
+driving the sentence. The writer measured the shapes: the sum of `abs()` values cannot be negative, but
+zero is reachable (collinear points, four identical points, a bow-tie, a thin strip and a zero-width line
+all answer 0), while a square answers 200. Repair: the test reads `if area == 0:` now, with a comment
+that says only a degenerate quadrilateral arrives, and `tests/test_unified_server.py` drives both sides
+(`('table_polygon must have nonzero area', 400)` for the degenerate shape, and the same coordinates saved
+for a normal one). The walk's "cannot fire" was half right, and the record keeps the measured half.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer S, Strong 1 | `tests/test_shot_clock.py` | `6c6543c843ca3e01702187351d24681b40b294ce → cc2b7bb62320dd2374d6b4b598762d6659210b94 → 6c6543c843ca3e01702187351d24681b40b294ce` | `AssertionError: {'shipped_modules': ['test_shot_clock.py:435']} != {}` and `'\ndef shipped_modules(' unexpectedly found … : test_shot_clock.py must not declare the scanner a second time` |
+| Lead, Strong 1 | `tests/test_sql_domain_parity.py` | `7655869b9df60153f3ccd6c4260597957e6c06b6 → d22b5f8cfd5c3d3cd131e65272fee4aca58b1d9a → 7655869b9df60153f3ccd6c4260597957e6c06b6` | `'\nSHIPPED = ' unexpectedly found in '…' : test_sql_domain_parity.py must not declare the tree a second time` |
+| Writer T, Worth 4 | `annotator/ops.js` | `fde8318be4ab3d34f5cb4e1022ea5ed0e9cf3381 → f7badad0aaaadbdcbe542bde31886ff4d64057c3 → fde8318be4ab3d34f5cb4e1022ea5ed0e9cf3381` | `the late card and its audit row name the one action with one pair of words`, with `+ 'Entrant added after the draw' - 'Join after the draw'` at `tests/test_ops.js:3467` |
+| Lead, Worth 5 | `src/events_actors.py` | `8f58af126a776c51c419f882ed5ed210f058b5ec → 49a8815ae42f8e7523d843daed3e77f311be03ae → 8f58af126a776c51c419f882ed5ed210f058b5ec` | `FAIL: test_the_events_actors_join_has_one_tolerance`, whose assertion compares the join's answer for a row inside the tolerance |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2141 tests in 170.915s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 229, pass 229, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 104 passed, 0 failed |
+
+Round 60 answered 2133 cases and this round answers 2141. The eight named additions are the 6 cases of
+`tests/test_one_shipped_tree.py` and the 2 new cases of `tests/test_unified_server.py`; the node suites
+gained one case each in `tests/test_ops.js` (228 to 229) and `tests/test_app_timeline.js` (103 to 104).
+
+Writer S also ran the suite twice itself before the second delivery landed (`Ran 2139 tests` through both
+the runner and the raw discovery command), which is why the number in this table is 2141: writer T's two
+cases arrived after S's two runs.
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The shipped package tree stands four times | Strong 1 of this walk | `tests/_shipped.py` owns `SHIPPED` and the one scanner, and four modules read it |
+| Two identical scanners read the tree | Worth 2 of this walk | one `shipped_modules()` serves all four readers |
+| Four copies of the dotted-name reader stand in the test tree | Note 7 of this walk | `tests/_shipped.py:59 dotted_name` owns the reader and the strict variant stands beside it with its one difference pinned |
+| The three console suites have three entry points | Worth 3 of this walk | the timeline suite records every case in one results object and prints `104 passed, 0 failed`, and a case pins the three suites to one contract |
+| One action name carries two Chinese sentences | Worth 4 of this walk | the late-action row reads the button's pair |
+| The events/actors join is computed twice | Worth 5 of this walk | `src/events_actors.py` owns the join and both readers call it |
+| A validator branch cannot fire | Note 6 of this walk | the branch reads `area == 0`, its reachable case is driven, and the record keeps the measured half of the walk's claim |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The citation guard skips the documents | Note 2 of round 60, still open | `tests/test_citation_lines.py`'s `SKIP_PARTS` holds `docs`, so the 1514 document citations have no guard |
+| The timeline suite keeps its own entry | decision of this round | the three suites answer one contract, and they do not share one runner shape; the `node:test` conversion means rewriting 3927 lines |
+| One guard home sat outside the brief's named files | deviation of writer T | `tests/test_unified_server.py` holds the cases of Worth 5 and Note 6, and the brief named six other files |
+| The join's tolerance may be wrong for future data | limit of this round | 0.1 s and the old one-decimal bucket swap strictness for a row at 70.05, and the 57 rows of today cannot decide it |
+| One security case cites a moved ceiling | consequence of round 60 | `tests/test_http_security.py:199` cites `annotator/unified_server.py:2389` while the ceiling stands near `:2473` |
+| Four same-named statistics functions stand outside the home | found by writer Q in round 60 | `tests/test_body_calibration.py:160 stats(xs)`, `tests/live_identity_validation.py:147 _stats(xs)`, `tests/live_pipeline_run.py` and `annotator/pipeline_stages.py:75 _percentile` |
+| Many document citations are stale | found by writer P in round 60 | `docs/console-redesign.md` holds 74 citations into `annotator/unified_server.py` and `docs/postgres-design.md` 28 |
+| The state path stands in two more places | found by round 59 | `annotator/live_processing.py:257` and `:343`, and the segment-built path at `annotator/operations.py:287` |
+| One sentence still stands twice | found by round 59 | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of round 59 | only their digests pin the table |
+| The projection rule keeps two tolerances and a static walk | decisions of round 59 | each site names its own tolerance, and a monkeypatched owner escapes the walk |
+| Two modules have no test module of their own | limit of round 59 | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of round 59 | `:333` and `:363` use `abs(row["threshold"] - …) < 1e-9` |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module |
+| The Chinese tables keep 289 English-only engine values | limit of round 58 | the merge is unsafe by measurement |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The javascript suites' case counts have no guard | limit of round 57 | the suite list is guarded, and the counts inside the three files are not |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The colour guard writes a file into `src/` while it runs | limit of round 56 | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
+| The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and the drop-in `30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119`, `src/pid_associate.py:182`; readers `annotator/server.py:59`, `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` at 20 sites, `30.0003` at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 to 61 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections, and a report can pass its line cap | limits of rounds 56 and 61 | the walks of rounds 57 to 61 answer equal counts, and the round-61 report wrote 261 lines against a cap of 260 |
+
+The push is still blocked. Seventy-seven commits sit on the local `main`: the two code commits of this
+round, the record of this round, and the seventy-four that came before them. `origin/main` stays at
+`110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
