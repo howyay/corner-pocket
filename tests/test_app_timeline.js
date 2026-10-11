@@ -3851,6 +3851,22 @@ assertSourceContract('annotator/app.js', 'const NATIVE_FRAME = [1280, 720]',
 assertSourceContract('annotator/app.js', /\|\|\s*(?:1280|720)\b/,
   'no fallback site writes a frame number inline', true);
 
+// ---- the console fallback agrees with the pipeline owner ---------------------
+// The engine falls back to the pipeline's native frame. src/ball_scale.py owns that
+// frame, so the two statements must agree. A drift draws every overlay in the wrong
+// frame, and no browser seam can read a Python file.
+test('the console fallback pair equals the owner in src/ball_scale.py', () => {
+  const owner = fs.readFileSync(path.join(__dirname, '..', 'src', 'ball_scale.py'), 'utf8');
+  const held = owner.match(/^NATIVE_FRAME = \((\d+), (\d+)\)/m);
+  assert.ok(held, 'src/ball_scale.py must state the native frame pair');
+  const declared = source.match(/const NATIVE_FRAME = \[(\d+), (\d+)\]/);
+  assert.ok(declared, 'annotator/app.js must state the fallback pair');
+  assert.deepStrictEqual([Number(declared[1]), Number(declared[2])], [Number(held[1]), Number(held[2])],
+    'the console fallback pair equals the owner: ' + held[1] + 'x' + held[2]);
+  sourceContracts.push({file: 'annotator/app.js', snippet: 'NATIVE_FRAME agrees with src/ball_scale.py',
+    why: 'the console fallback reads the pipeline owner'});
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 // The source-text assertions that no browser seam can reach, listed in one place.
 for (const contract of sourceContracts) console.log(`SOURCE CONTRACT ${contract.file}: ${contract.snippet} — ${contract.why}`);
