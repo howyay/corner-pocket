@@ -28,7 +28,7 @@ production bar in the demo window (0.60, 0.55 cosine).
 | Enrollment entry point: `enroll_face()` | `src/person_pipeline.py:226-234` |
 | `bind_face()`: unbound only, requires `similarity >= match_threshold + margin`, persists | `src/person_identity.py:199-221` (bar at 211, first-match-wins at 209) |
 | Index defaults (face bar) + body matching disabled | `src/person_identity.py:108-129`, `67-69` |
-| HTTP `POST /api/identity/enroll` (base64 → `cv2.imdecode` → `enroll_face`) | `annotator/unified_server.py:228-252`, route `1102-1103`, 12 MB body cap `1313` |
+| HTTP `POST /api/identity/enroll` (base64 → `cv2.imdecode` → `enroll_face`) | `annotator/unified_server.py:887` the handler, `:88` the 8 MiB decoded cap with its check at `:899`, `:908` the call, `:2399` the route row, `:2862` the dispatch body cap |
 | HTTP `GET /api/identity/frame` (decode → `process_frame`) | `annotator/unified_server.py:205-226`, route `1016-1017` |
 | `GET /api/unified` runs the same seam, degrades to no persons on failure | `annotator/unified_server.py:441-446`, route `1018-1019` |
 | `GET /api/identity/status`, seed / unbind overrides | `annotator/unified_server.py:254-266`, `268-295` |

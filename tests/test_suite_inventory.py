@@ -299,3 +299,20 @@ class SuiteInventory(unittest.TestCase):
                     'a skip at run time, and the runner reports the total only as `skipped=`. Raise '
                     'the limit in tests/test_suite_inventory.py in the same change and say why, or '
                     'remove the site.')
+
+    def test_the_javascript_suites_of_the_runner_are_every_suite_on_disk(self):
+        """The runner names every javascript suite, and every name it holds exists.
+
+        Round 60, Worth 1: ``scripts/pool-test.sh`` names the three suites in its
+        loop, and no guard held that list against the files under ``tests/``.  A
+        new suite file would never run, and a renamed one would fail the run with
+        a message about a missing file.
+        """
+        lines = (ROOT / 'scripts' / 'pool-test.sh').read_text(encoding='utf-8').splitlines()
+        loop = next((line for line in lines if line.strip().startswith('for suite in ')), None)
+        self.assertIsNotNone(loop, 'scripts/pool-test.sh holds no suite loop')
+        named = sorted(loop.split('for suite in ', 1)[1].split(';')[0].split())
+        on_disk = sorted(path.relative_to(ROOT).as_posix()
+                         for path in (ROOT / 'tests').glob('test_*.js'))
+        self.assertEqual(on_disk, named,
+                         'every javascript suite under tests/ must stand in the runner loop')
