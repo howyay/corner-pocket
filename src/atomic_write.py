@@ -27,6 +27,14 @@ The callers that do not set fsync=True are: src/face_id.py store_faces,
 src/person_identity.py IdentityIndex.save, src/store.py JsonStore.identity_save,
 and src/enroll_from_tracklet.py _write_json. Those callers keep the behavior they
 had. Do not add fsync for them without a decision.
+
+The bytes of one document have one owner too: `src/store_files.py`. That module
+holds the name of the format and the renderer `dump`. A writer outside the owner
+cannot name a format, because `tests/test_store_files.py` refuses every format name
+in every other file, and the owner has no renderer that takes only a value. The
+five JSON writers of this repository keep a small text body for that reason, and
+`tests/test_one_atomic_write.py` holds each body to the bytes of `store_files.dump`.
+A change of the format must land in the owner first.
 """
 from __future__ import annotations
 
