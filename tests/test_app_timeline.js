@@ -401,7 +401,8 @@ function assertCopyPainted(painted, keys, label) {
 // attach() publishes all three by name, and these three lists are the test's own
 // copy of that interface: renaming or dropping a published member fails here.
 const PUBLISHED_OPTIONS = ('channels chat fixedClip forgetChannel frameHost lang liveDetectors liveOnly notice openSources '
-  + 'pickLive pickReplay regulars replayChoice setLiveDetectors setShell startLive stopLive toggleChat vods').split(' ');
+  + 'pickLive pickReplay regulars replayChoice replayRate setLiveDetectors setShell startLive stopLive toggleChat '
+  + 'vods').split(' ');
 const PUBLISHED_VERBS = ('addPolygon cancelEnroll clearIdentity clearPolygon clearSelection colourWord deleteBox '
   + 'enrollConfirm enrollPreview freeze labelBall linkTrack liveStateText loadAnchors nudgeAnchor playEvent pocketText '
   + 'rebuild refreshRebuild reloadDatasets saveAnchors saveCorrections saveVerdict seedIdentity seek seekTime '
@@ -2518,6 +2519,25 @@ test('the VOD panel prints the replay\'s own kind, live, rate and drift', () => 
   assert.ok(zhRunning.includes('回放') && zhRunning.includes('漂移'), 'and the panel is bilingual');
 });
 
+test('round 64: the rate field prints the numbers the console hands over, and states no number of its own', () => {
+  const base = {state:'idle', error:null, attempt:null, frame_age_ms:null, receive_to_result_ms:null, skipped:0,
+                detectors:['table','person'], stale:false, seq:null, stages:[], source:null, replay:null};
+  const choice = {replayChoice: () => ({vod_id: '1000000011', start_s: 30, rate: 2})};
+  const rateInput = html => {
+    const text = String(html), at = text.indexOf('data-vs-field="vod-rate"');
+    assert.ok(at >= 0, 'the stage draws the replay rate field');
+    return text.slice(text.lastIndexOf('<input', at), text.indexOf('>', at) + 1);
+  };
+  const owned = rateInput(adapterSeam('en', ROSTER, {...choice, replayRate: {min: 0.25, max: 8, step: 0.25}})
+    .source(visionSnapshot({live: {...base}})));
+  assert.ok(owned.includes('data-vs-field="vod-rate" min="0.25" max="8" step="0.25" value="2"'),
+    'the console hands the three numbers over and the field prints them, in order: ' + owned);
+  assert.ok(!owned.includes('max="4"'), 'and no rate bound of the field\'s own is left');
+  const bare = rateInput(adapterSeam('en', ROSTER, choice).source(visionSnapshot({live: {...base}})));
+  assert.ok(!bare.includes('min=') && !bare.includes('max=') && !bare.includes('step='),
+    'a stage attached with no rate rule prints no bound at all, so this module holds no copy: ' + bare);
+});
+
 test('a VOD replay is never called live on the stage chip, the freshness line, the facts line or the stagebar', () => {
   // The replay's frames arrive through the live path, so the stage chrome used to
   // read "● live" / "直播" while the panel said "live false". The server's own
@@ -4003,7 +4023,7 @@ test('the three console suites answer one entry point contract', () => {
   // ends, because the running case is the one row the record does not hold yet, and the
   // line names every case the loop ran - this case included.
   assert.strictEqual(summary.line, null, 'the line is still absent while the list runs');
-  assert.strictEqual((summary.ran + 1) + ' passed, ' + summary.failed + ' failed', '104 passed, 0 failed',
+  assert.strictEqual((summary.ran + 1) + ' passed, ' + summary.failed + ' failed', '105 passed, 0 failed',
     'and the line the loop writes states the record');
 });
 

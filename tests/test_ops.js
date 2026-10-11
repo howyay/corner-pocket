@@ -1802,6 +1802,45 @@ test('a VOD replay the server would refuse is explained before Start, in both la
   }
 });
 
+test('the console owns the replay rate numbers, hands them to the stage, and stops at 8', () => {
+  const h = harness();
+  let bag = null;
+  const mount = {removeAttribute() {}, querySelectorAll: () => [], classList: {toggle() {}, add() {}, remove() {}}};
+  h.context.document.querySelector = selector => (selector === '#ops-shell' ? null : mount);
+  h.context.window.VisionStage = {attach: options => { bag = options; return {render() {}, detach() {}}; }};
+  h.renderSurface();
+  assert.deepEqual(JSON.parse(JSON.stringify(bag.replayRate)), {min: 0.25, max: 8, step: 0.25},
+    'the console hands the stage the three numbers it owns, and no others');
+  (()=>{h.errors=[];return h.message=(text,error)=>h.errors.push({text,error})})();
+  for (const [rate, kept] of [[8, true], [0.25, true], [8.25, false]]) {
+    h.vodChoice = null;
+    h.pickReplay({vod_id: '1000000011', rate});
+    assert.equal(h.replayChoice() !== null, kept, `rate ${rate} is ${kept ? 'kept' : 'refused'} by the picker`);
+  }
+  assert.deepEqual(JSON.parse(JSON.stringify(h.errors.map(e=>e.text))), ['Rate must be more than 0 and at most 8'],
+    'and the one refusal sentence still names the number the console owns');
+});
+
+test('both race-to forms offer one list of six, and every value stays inside the service range', () => {
+  const h = harness();
+  const valuesIn = (html, marker) => {
+    const text = String(html), at = text.indexOf(marker);
+    assert.ok(at >= 0, `${marker} is on the page`);
+    return [...text.slice(text.indexOf('>', at), text.indexOf('</select>', at)).matchAll(/<option value="([^"]*)"/g)]
+      .map(match => match[1]);
+  };
+  h.data.tournament = {id: 't1', name: 'Friday', format: 'singles', raceTo: 3, status: 'registration', entrants: [], matches: []};
+  const setup = valuesIn(h.setupForm(true, true), '<select name="raceTo">');
+  h.bf = {step: 'dataset', datasetId: 'd1', datasetTitle: '261001', night: {name: 'Friday', format: 'singles', raceTo: 7, tables: 1}};
+  const night = valuesIn(h.bfScreen(), '<select id="bf-night-race"');
+  assert.deepEqual(setup, ['1', '3', '5', '7', '9', '11'], 'the setup form offers the six the console owns');
+  assert.deepEqual(night, setup, 'the backfill night form offers the same six, so the two forms cannot drift apart');
+  const offered = setup.map(Number);
+  assert.equal(Math.min(...offered), 1, 'the smallest value offered is the smallest the service takes');
+  assert.ok(offered.every(n => n >= 1 && n <= 99), 'every offered value is inside the service range of 1 to 99');
+  assert.ok(!offered.includes(2), 'the console stays narrower on purpose: 2 is a value only an API caller posts');
+});
+
 test('the regular profile deletes face data only after a confirm that says what goes, and shows the counts', async () => {
   const click = (h, dataset) => h.handlers.click({target:{closest: selector => selector === '#review-root' ? null : {dataset}}});
   for (const [lang, button, receipt, kept] of [

@@ -2356,7 +2356,7 @@ def bound_names(call):
 
 
 class OneHomeTests(unittest.TestCase):
-    """Four facts that had two homes, and the one home each fact has now.
+    """Facts of the walk that had two homes, and the one home each fact has now.
 
     A second copy that drifts stays invisible in a drive: the route still answers, and
     only the copy moved. The scans below read the syntax tree, so a comment or a moved
@@ -2578,6 +2578,46 @@ class OneHomeTests(unittest.TestCase):
                 self.assertTrue(saved['ok'], 'a quad with area still saves')
                 self.assertEqual(real['table_polygon'], saved['correction']['table_polygon'],
                                  'the stored quad is the quad the caller sent')
+
+    def test_the_replay_rate_bound_has_one_home_and_one_edge(self):
+        """``_REPLAY_RATE_MAX`` is spelled once, at module level, and 8 is its edge.
+
+        Round 64, Strong 1: the replay rate bound stood in three places. The field of
+        annotator/vision-stage.js said ``max="4"``, the picker of annotator/ops.js refused
+        only a rate above 8, and this module held ``_REPLAY_RATE_MAX = 8.0``. The console
+        now prints the numbers it owns (tests/test_console_service_bounds.py holds the two
+        realms equal), and this case proves the edge of the service: a rate of 8 passes,
+        and the smallest float above 8 meets the sentence that names the bound.
+        """
+        from annotator.unified_server import _REPLAY_RATE_MAX, replay_request
+        path, text, tree = server_source()
+        spelled = [node for node in ast.walk(tree)
+                   if isinstance(node, ast.Constant) and isinstance(node.value, float)
+                   and node.value == 8.0]
+        self.assertEqual(1, len(spelled),
+                         f'{path} spells the float 8.0 {len(spelled)} times, at '
+                         f'{[node.lineno for node in spelled]}: _REPLAY_RATE_MAX owns it once')
+        self.assertIsNone(enclosing_function(tree, spelled[0]),
+                          f'{path}: the rate bound must stand at module level')
+        assigned = [target.id for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                    for target in node.targets
+                    if isinstance(target, ast.Name) and target.id == '_REPLAY_RATE_MAX']
+        self.assertEqual(assigned, ['_REPLAY_RATE_MAX'], f'{path} must assign the rate bound once')
+        self.assertIsNotNone(re.search(r'not 0 < rate <= _REPLAY_RATE_MAX', text),
+                             f'{path}: the rate gate must read the name and not the number')
+        # The route answers today what it answered before: 8 passes, and one step above is refused.
+        request = {'kind': 'vod-replay', 'vod_id': '1000000011'}
+        self.assertEqual(replay_request({**request, 'rate': 8.0})['rate'], 8.0,
+                         'the largest rate the console offers is a rate the service takes')
+        above = math.nextafter(8.0, math.inf)
+        with self.assertRaises(ValueError) as caught:
+            replay_request({**request, 'rate': above})
+        self.assertEqual(str(caught.exception),
+                         'rate must be between 0 and 8 VOD seconds per wall second',
+                         'the sentence names the bound the gate reads')
+        for refused in (0, -1, above, True, '8'):
+            with self.assertRaises(ValueError):
+                replay_request({**request, 'rate': refused})
 
 
 if __name__ == "__main__":

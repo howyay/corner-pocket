@@ -890,6 +890,15 @@ function replaySelfDescription(replay) {
   if (replay.pacing) parts.push(`${t('pace')} ${replay.pacing}`);
   return parts.join(' · ');
 }
+// The console owns the replay rate bound: annotator/ops.js holds REPLAY_RATE_MIN, REPLAY_RATE_MAX
+// and REPLAY_RATE_STEP, refuses a larger rate, and hands the three numbers in the option bag
+// (opts.replayRate), as it hands setShell and pickReplay. This module prints them and states no
+// number of its own, so the field cannot show a rate the picker would refuse. A realm with no
+// console (tests/test_app_timeline.js) gets no attributes, and the field states nothing.
+const rateBoundAttrs = () => {
+  const rule = opts && opts.replayRate;
+  return rule ? ` min="${rule.min}" max="${rule.max}" step="${rule.step}"` : '';
+};
 function replayBlock(s) {
   const live = s.live || {};
   const chosen = opts.replayChoice ? opts.replayChoice() : null;
@@ -905,7 +914,7 @@ function replayBlock(s) {
     : '';
   return `<div class="vs-block vs-replay"><h4>${esc(t('vodReplay'))}</h4>
     <label class="vs-field">${esc(t('vodId'))}<input name="vod" type="text" data-vs-field="vod" value="${esc(vodValue)}" placeholder="https://www.twitch.tv/videos/1234567890"></label>
-    <div class="vs-row"><label class="vs-field">${esc(t('vodStart'))}<input name="start" type="number" data-vs-field="vod-start" min="0" step="1" value="${esc(startValue)}"></label><label class="vs-field">${esc(t('vodRate'))}<input name="rate" type="number" data-vs-field="vod-rate" min="0.25" max="4" step="0.25" value="${esc(rateValue)}"></label></div>
+    <div class="vs-row"><label class="vs-field">${esc(t('vodStart'))}<input name="start" type="number" data-vs-field="vod-start" min="0" step="1" value="${esc(startValue)}"></label><label class="vs-field">${esc(t('vodRate'))}<input name="rate" type="number" data-vs-field="vod-rate"${rateBoundAttrs()} value="${esc(rateValue)}"></label></div>
     <div class="vs-row"><button data-vs-action="pick-replay">${esc(t('vodUse'))}</button></div>
     ${state}<p class="vs-note">${esc(t('vodNote'))}</p></div>`;
 }
@@ -1840,7 +1849,7 @@ function attach(options) {
 // and option(key) beside those names. tests/test_app_timeline.js checks both
 // directions: that each list equals what the code above actually calls and reads,
 // and that the handle carries every name in each list.
-const OPTIONS = ['channels','chat','fixedClip','forgetChannel','frameHost','lang','liveDetectors','liveOnly','notice','openSources','pickLive','pickReplay','regulars','replayChoice','setLiveDetectors','setShell','startLive','stopLive','toggleChat','vods'];
+const OPTIONS = ['channels','chat','fixedClip','forgetChannel','frameHost','lang','liveDetectors','liveOnly','notice','openSources','pickLive','pickReplay','regulars','replayChoice','replayRate','setLiveDetectors','setShell','startLive','stopLive','toggleChat','vods'];
 const WIRING = ['mount','review'];
 const VERBS = ['addPolygon','cancelEnroll','clearIdentity','clearPolygon','clearSelection','colourWord','deleteBox','enrollConfirm','enrollPreview','freeze','labelBall','linkTrack','liveStateText','loadAnchors','nudgeAnchor','playEvent','pocketText','rebuild','refreshRebuild','reloadDatasets','saveAnchors','saveCorrections','saveVerdict','seedIdentity','seek','seekTime','selectAnchor','selectCrop','selectEvent','selectTrackAndSeek','setBoxLabel','setDataset','setDetector','setEnrollName','setEventFilter','setNewBoxLabel','setNote','setPlaying','setSeed','setShooter','setTool','setVerdictDraft','setWindow','snapshot','stepFrame','subscribe','text','toggleOverlay'];
 const READINGS = ['anchors','balls','busy','cloth','corrections','dataset','datasets','detectors','dirty','drawn','enroll','eventFilter','events','eventsAnalysed','focus','frame','live','loading','notice','overlay','persons','playback','receipts','selection','set','source','verdictDraft'];
