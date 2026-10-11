@@ -13,6 +13,7 @@ import numpy as np
 
 from annotator.live_processing import LIVE_DETECTORS, LiveProcessor
 from annotator.pipeline_stages import CallableStage, detector_names, resolve_detector
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class Capture:
@@ -708,7 +709,7 @@ class LiveProcessingTests(unittest.TestCase):
         # A new failure cannot be added with the sentence alone: the code is part of the raise,
         # and only the Twitch adapter (an external sentence) may omit it.
         import ast
-        tree = ast.parse(Path('annotator/live_processing.py').read_text())
+        tree = ast.parse((ROOT / 'annotator' / 'live_processing.py').read_text(encoding='utf-8'))
         bare = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
