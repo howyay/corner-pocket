@@ -37,13 +37,26 @@ runPage(sandbox, {filename: 'app.js'});
 const T = sandbox.window.CornerPocketReview.attach({fetch: sandbox.fetch});
 
 const META = {dataset: 'vod30', fps: 25, frame_count: 45000, duration: 1800, width: 1920, height: 1080, timestamp_kind: 'nominal_cfr'};
-let passed = 0, failed = 0;
-// Arrays come from the vm realm, so compare structurally via JSON.
+// The one record of the run: one row for each case the loop ran, with the name of that
+// case and its result. The summary line at the end of the file, the exit code there, and
+// the case at the end of the list all read this one record through one summary, so no two
+// counters can drift apart.
+const results = [];
+const summary = {
+  ran: 0,
+  names: new Set(),
+  line: null,
+  get passed() { return results.filter(row => row.ok).length; },
+  get failed() { return results.filter(row => !row.ok).length; },
+};
 const same = (a, b) => assert.strictEqual(JSON.stringify(a), JSON.stringify(b));
-function test(name, fn) {
-  try { fn(); console.log(`PASS ${name}`); passed++; }
-  catch (error) { console.error(`FAIL ${name}: ${error.message}`); failed++; }
-}
+// The two other suites register each case with node's runner. This file keeps the one
+// registry and the one summary, because its cases share one evolving sandbox and only
+// this file's loop runs them in that order. The case at the end of the file holds the
+// three entry points to one contract, so the runner and this loop read the same cases:
+// each file answers `node <file>` alone and under `node --test <file>`.
+const cases = [];
+function test(name, fn) { cases.push({name, fn}); }
 
 // ---- the engine in a private realm ------------------------------------------
 // One realm runs the source as it ships. A stub network records every request
@@ -3906,7 +3919,74 @@ test('the two Chinese copy tables agree on every word they share', () => {
   T.setRoot({lang: 'en', querySelector: () => null, querySelectorAll: () => []});
 });
 
-console.log(`\n${passed} passed, ${failed} failed`);
+// ---- the three console suites answer one entry point contract ------------------
+// This file ran its whole case list in its own loop, and its two neighbours hand every
+// case to node's runner. Each shape owns its exit code in a different way, and nothing
+// held the three to one contract, so a suite that mixed the two shapes - the runner
+// reporting every case while the local loop ran them a second time - passed unseen. A
+// bare `node --test tests/` collects nothing in this checkout, because no file name
+// matches the node default patterns, so `scripts/pool-test.sh js` names each suite.
+// The contract is: one entry point per suite, all three named, and each one green.
+test('the three console suites answer one entry point contract', () => {
+  const suites = ['test_ops.js', 'test_board.js', 'test_app_timeline.js'];
+  const labelled = suites.map(name => 'tests/' + name);
+  for (const label of labelled) {
+    const text = fs.readFileSync(path.join(__dirname, '..', label), 'utf8');
+    // The local registry states its own name and fills it. The runner read wants the
+    // require call itself, not the word inside a comment or inside this case's text.
+    const runner = /(?:const|let|var)\s+\w+\s*=\s*require\('node:test'\)/.test(text);
+    const own = /^const cases = \[\];$/m.test(text) && /^function test\(name, fn\) \{ cases\.push\(/m.test(text);
+    assert.ok(runner !== own, label + ' carries one of the two entries, and not both');
+    if (runner) assert.ok(!/^process\.exit\(/m.test(text), label + ' leaves the exit code to the node runner');
+    if (own) assert.ok(/^process\.exit\(failed \? 1 : 0\);/m.test(text), label + ' states its own exit code');
+  }
+  const entry = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'pool-test.sh'), 'utf8');
+  assert.ok(entry.includes(labelled.join(' ')), 'scripts/pool-test.sh names all three suites');
+  // This file is the suite that ran no registered case while its own loop ran every case,
+  // so this case reads the loop's own record. A run of this suite cannot start a second
+  // run of itself: the two cases that hold a browser realm start timers, and a nested
+  // child that runs this file does not end. The record answers the same question.
+  // This case is the last case in the list. It is the running case, so its own result is
+  // the one result the record does not hold yet, and its own name is the last name the
+  // loop added.
+  assert.ok(cases.length >= 100, 'the file registers the whole list: ' + cases.length + ' cases');
+  assert.strictEqual(summary.ran + 1, summary.names.size, 'the record holds one row for each case that ended');
+  assert.strictEqual(summary.names.size, cases.length, 'and the running case is the last case');
+  // The record holds every case that ended before this one, and the loop wrote that count
+  // to summary.ran. Passed and failed count the ended rows alone, so the running case is
+  // the one row that appears in neither.
+  assert.strictEqual(summary.passed + summary.failed, summary.ran, 'and the record holds every ended case');
+  assert.strictEqual(summary.passed, summary.ran, 'and not one of them failed');
+  assert.strictEqual(summary.failed, 0, 'no case failed before this one');
+  // The other two suites print no line of their own, because the node runner counts and
+  // reports their cases. This file prints the one line, so this case holds the printed
+  // line to the record the loop fills. The loop writes that line after the last case
+  // ends, because the running case is the one row the record does not hold yet, and the
+  // line names every case the loop ran - this case included.
+  assert.strictEqual(summary.line, null, 'the line is still absent while the list runs');
+  assert.strictEqual((summary.ran + 1) + ' passed, ' + summary.failed + ' failed', '104 passed, 0 failed',
+    'and the line the loop writes states the record');
+});
+
+// ---------------------------------------------------------------------------
+// The one entry point. A case runs in this file's own loop, in the order the file
+// registers it, because the cases share one sandbox and each case reads what the one
+// before it left. The summary line and the exit code stay this file's, so
+// `node tests/test_app_timeline.js` answers the way it always answered, and
+// `scripts/pool-test.sh js` reaches every case in the list.
+for (const {name, fn} of cases) {
+  summary.ran = results.length;
+  summary.names.add(name);
+  try { fn(); results.push({name, ok: true}); console.log(`PASS ${name}`); }
+  catch (error) { results.push({name, ok: false, why: error.message}); console.error(`FAIL ${name}: ${error.message}`); }
+}
+// One read of the record, in one place, so the printed line and the exit code below
+// cannot disagree with each other or with the case that read this record. The two names
+// keep the exit code this file always had, and they hold the numbers the record holds.
+const passed = summary.passed, failed = summary.failed;
+// The case at the end of the list read the summary. The line the screen shows comes from
+// the one record, so both state one result.
+console.log('\n' + passed + ' passed, ' + failed + ' failed');
 // The source-text assertions that no browser seam can reach, listed in one place.
 for (const contract of sourceContracts) console.log(`SOURCE CONTRACT ${contract.file}: ${contract.snippet} — ${contract.why}`);
 console.log(`source-text assertions left: ${sourceContracts.length}`);

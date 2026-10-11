@@ -26,6 +26,12 @@ from src.reply_body import write_reply  # noqa: E402
 # called them, its three file routes held three copies of that rule and the /ctx/ route
 # held none, so a request with ".." in it read any file the user could read.
 from src.served_files import file_under, relative_under  # noqa: E402
+# The rule that joins an event to its actor has one owner, src/events_actors.py. The
+# review API (annotator/unified_server.py) calls the same function. Before this module
+# called it, the two servers held two tolerances for one file: this route rounded both
+# times to a tenth of a second and the API compared them within 0.01 s, so one actor row
+# joined an event here and joined no event there.
+from src.events_actors import join_events_to_actors  # noqa: E402
 EVENTS_FILE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "events.json"
 STATIC_ROOT = EVENTS_FILE.parent  # evidence images live next to events.json
 ANNOT_FILE = STATIC_ROOT / "annotations.json"
@@ -63,14 +69,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 ev = json.loads(EVENTS_FILE.read_bytes())
                 acts = json.loads(f.read_text())
-                by_t = {}
-                for a in acts:
-                    by_t[round(a["t"], 1)] = a
-                out = {}
-                for e in ev:
-                    a = by_t.get(round(e["t"], 1))
-                    if a:
-                        out[str(e["id"])] = a
+                out = join_events_to_actors(ev, acts)
                 return self._send(200, json.dumps(out).encode())
             except Exception:
                 return self._send(200, b"{}")

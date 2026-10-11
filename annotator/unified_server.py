@@ -37,6 +37,9 @@ from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, 
 # The pocket name a text states has one owner, src/pocket_names.py. This backend and
 # the gate of src/event_gates.py answered the bare spelling in two different ways.
 from src.pocket_names import pocket_from_text  # noqa: E402
+# The rule that joins an event to its actor has one owner, src/events_actors.py.
+# The legacy review server (annotator/server.py) calls the same function.
+from src.events_actors import join_events_to_actors  # noqa: E402
 # The homogeneous-division rule has one owner, src/projection.py.  The projection
 # below holds no threshold of its own.
 from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
@@ -1958,8 +1961,12 @@ class Backend:
             if any(not isinstance(p, list) or len(p) != 2 for p in polygon):
                 raise APIError('invalid table point')
             polygon = [[number(p[0], 0, width, 'x'), number(p[1], 0, height, 'y')] for p in polygon]
+            # The shoelace sum is the area of the quad, and abs() makes it non-negative, so
+            # only a degenerate quad reaches the refusal below. The sentence and this test
+            # now state that one case: before, both claimed a negative area that cannot
+            # arrive here (round 61).
             area = abs(sum(polygon[i][0]*polygon[(i+1)%4][1] - polygon[(i+1)%4][0]*polygon[i][1] for i in range(4)))
-            if area <= 0:
+            if area == 0:
                 raise APIError('table_polygon must have nonzero area')
         correction = dict(meta, boxes=cleaned, table_polygon=polygon, source='manual', saved_at=now())
         with self.lock:
@@ -2146,11 +2153,12 @@ class Backend:
             events, geometry = self._event_geometry(dataset, load(base / "events.json", []))
             actors = {}
             if dataset == "vod30":
-                raw = load(self.out / "events_actors.json", [])
-                for event in events:
-                    match = next((a for a in raw if abs(a["t"] - event["t"]) < 0.01), None)
-                    if match:
-                        actors[str(event["id"])] = match
+                # The rule that joins an event to its actor has one owner,
+                # src/events_actors.py.  The legacy review server (annotator/server.py)
+                # calls the same function, so the two routes cannot disagree about
+                # which actor a time belongs to.
+                rows = load(self.out / "events_actors.json", [])
+                actors = join_events_to_actors(events, rows)
             return {"events": events, "annotations": self.store().verdicts_get(dataset),
                     "actors": actors, "geometry": geometry}
         self._vod30(dataset)

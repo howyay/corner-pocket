@@ -2438,6 +2438,94 @@ class OneHomeTests(unittest.TestCase):
                     self.assertEqual(400, caught.exception.status)
                     self.assertIn(f'{low}..{high}', str(caught.exception))
 
+    def test_the_events_actors_join_has_one_tolerance(self):
+        """Two readers of out/events_actors.json take one tolerance from one owner.
+
+        The review API compared an actor time with an event time within 0.01 s. The
+        legacy review server rounded both to a tenth of a second. One row that sits
+        between two times joined an event on one route and joined none on the other.
+        src/events_actors.py holds the rule now, and both routes call it.
+        """
+        path, text, tree = server_source()
+        joins = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == 'join_events_to_actors']
+        self.assertEqual(1, len(joins),
+                         f'{path} joins the two files at {len(joins)} sites: the events route holds the one call')
+        compares = [node for node in ast.walk(tree) if isinstance(node, ast.Compare)
+                    and any(isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name)
+                            and inner.func.id == 'abs' for inner in ast.walk(node))
+                    and any(isinstance(inner, ast.Subscript) and isinstance(inner.slice, ast.Constant)
+                            and inner.slice.value == 't' for inner in ast.walk(node))
+                    # The ±3 s frame window of _unified_events is another rule, and it keeps
+                    # its own constant. The join tolerance is a fraction of a second.
+                    and not any(isinstance(inner, ast.Constant) and isinstance(inner.value, float)
+                                and inner.value >= 1 for inner in ast.walk(node))]
+        self.assertEqual([], [node.lineno for node in compares],
+                         f'{path} compares two times itself at {[node.lineno for node in compares]}: '
+                         'src/events_actors.py holds the one tolerance')
+        # The old 0.01 s literal is gone from the route that joins the two files. Another
+        # route, the ±3 s frame window of _unified_events, keeps its own constant, so this
+        # reads the join route alone.
+        body = ast.get_source_segment(text, enclosing_function(tree, joins[0])) or ''
+        self.assertNotIn('0.01', body,
+                         f'{path} spells the old 0.01 s tolerance in {enclosing_function(tree, joins[0]).name}: '
+                         'the one tolerance is src.events_actors.ACTOR_MATCH_TOLERANCE')
+        legacy = (Path(__file__).resolve().parents[1] / 'annotator' / 'server.py').read_text(encoding='utf-8')
+        self.assertIn('join_events_to_actors', legacy,
+                      'annotator/server.py holds its own join: two tolerances for one file drift')
+        self.assertNotIn('by_t', legacy,
+                         'annotator/server.py keeps the time-bucket map beside the one join rule')
+        from src import events_actors
+        row = {'t': 70.1, 'actor': 'A'}
+        events = [{'id': 1, 't': 70.0}, {'id': 2, 't': 70.2001}]
+        self.assertEqual({'1': row}, events_actors.join_events_to_actors(events, [row]),
+                         'a row inside the tolerance joins its event, and a row outside it joins none')
+        self.assertEqual(0.1, events_actors.ACTOR_MATCH_TOLERANCE,
+                         'the one tolerance is the bucket width the legacy route kept for the records '
+                         'that exist today, and every row of out/events_actors.json is whole or half')
+
+    def test_the_degenerate_table_polygon_has_one_refusal(self):
+        """The area test refuses the degenerate quad, and the sentence names that case.
+
+        The area of the quad is an abs() sum, so it cannot be negative; the refusal
+        read ``area <= 0`` and the sentence claimed a nonzero area. Only the
+        degenerate quad - collinear points, zero area - reaches this branch, and no
+        case drove it. The route answers the same sentence, and this case drives it.
+        """
+        path, text, tree = server_source()
+        owners = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                  and isinstance(node.value, ast.Call)
+                  and isinstance(node.value.func, ast.Name) and node.value.func.id == 'abs'
+                  and any(isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name)
+                          and inner.func.id == 'sum' for inner in ast.walk(node.value))]
+        self.assertEqual(1, len(owners),
+                         f'{path} computes the polygon area {len(owners)} times: one owner')
+        area_name = getattr(owners[0].targets[0], 'id', None)
+        gate = [node for node in ast.walk(tree) if isinstance(node, ast.If)
+                and isinstance(node.test, ast.Compare)
+                and isinstance(node.test.left, ast.Name) and node.test.left.id == area_name]
+        self.assertEqual(1, len(gate), f'{path} tests the polygon area {len(gate)} times: one gate')
+        self.assertEqual('Eq', type(gate[0].test.ops[0]).__name__,
+                         'the gate refuses the zero area. A test for a negative area cannot fire, '
+                         'because abs() answers a non-negative number')
+        meta = {'dataset': 'vod30', 'frame_index': 12345, 'timestamp_seconds': 1.0,
+                'timestamp_kind': 'nominal_cfr', 'width': 1280, 'height': 720}
+        with tempfile.TemporaryDirectory() as temp:
+            backend = Backend(Path(temp))
+            with patch.object(backend, 'frame_metadata', return_value=dict(meta)):
+                flat = {'dataset': 'vod30', 'frame_index': 12345, 'boxes': [],
+                        'table_polygon': [[0, 0], [100, 0], [200, 0], [100, 0]]}
+                with self.assertRaises(APIError) as caught:
+                    backend.save_frame_correction(flat)
+                self.assertEqual(('table_polygon must have nonzero area', 400),
+                                 (str(caught.exception), caught.exception.status))
+                real = {'dataset': 'vod30', 'frame_index': 12345, 'boxes': [],
+                        'table_polygon': [[0, 0], [100, 0], [100, 80], [0, 80]]}
+                saved = backend.save_frame_correction(real)
+                self.assertTrue(saved['ok'], 'a quad with area still saves')
+                self.assertEqual(real['table_polygon'], saved['correction']['table_polygon'],
+                                 'the stored quad is the quad the caller sent')
+
 
 if __name__ == "__main__":
     unittest.main()

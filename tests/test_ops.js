@@ -3450,6 +3450,34 @@ test('the three operations this console sends itself read as sentences, not as t
   }
 });
 
+test('the late card and its audit row name the one action with one pair of words', () => {
+  const h = harness();
+  // annotator/ops.js painted "中途加入" on the late button and wrote "中途加入对阵表" into
+  // the audit line of the one action that click sends, so the operator read two sentences
+  // for one action. The words the operator reads on the button are the words the row holds,
+  // because the click path is the button at annotator/ops.js:1159 and the send at :1455.
+  h.data.tournament = {id: 't1', name: 'Friday', format: 'singles', raceTo: 3, status: 'active',
+    entrants: [{id: 'a', members: [{pid: 'p1', name: 'Ana'}]}], matches: []};
+  for (const lang of ['en', 'zh']) {
+    const index = lang === 'zh' ? 1 : 0;
+    const row = h.auditActions['entrant_add_late'];
+    h.lang = lang;
+    const line = h.auditLine({action: 'entrant_add_late', createdAt: '2026-10-03T05:23:40.400503+00:00', revision: 75});
+    assert.ok(line.includes(row[index]), `the audit line states the row of the action in ${lang}`);
+    // h.t is the console copy table and h.lateCard is the painted card. The two statements
+    // the operator reads - the button and the line - hold one pair of words per language.
+    assert.equal(row[index], h.t('lateOpen'),
+      `the button word and the audit sentence are one word in ${lang}`);
+    assert.ok(h.lateCard().includes(h.t('lateOpen')), `the card paints that word in ${lang}`);
+    assert.ok(!line.includes('entrant_add_late'), `and the raw enum never reaches the operator in ${lang}`);
+  }
+  h.lang = 'zh';
+  const painted = /<button data-action="late-open"[^>]*>([^<]*)<\/button>/.exec(h.lateCard());
+  assert.ok(painted, 'the late card carries the button the operator clicks');
+  assert.equal(painted[1], '中途加入',
+    'and the button the operator clicks states the words the console shows today');
+});
+
 test('round 2: every instant on Records is formatted the one way (B-02)', () => {
   const h = harness();
   recordsNight(h);
