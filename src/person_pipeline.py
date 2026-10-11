@@ -34,7 +34,8 @@ import torch
 from src.box_geometry import iou
 from src.face_id import DEFAULT_FACE_STORE, add_faces, get_face_engine, load_faces
 from src.person_identity import IdentityIndex
-# src/weight_pins.py owns the weight path, so this file reads the owner.
+# src/weight_pins.py owns the two weight paths, so this file reads the owner.
+from src import weight_pins
 from src.weight_pins import OSNET
 
 # YOLO weights load weights-only: ultralytics reads this once, on its first import
@@ -46,7 +47,8 @@ _STD = np.array([0.229, 0.224, 0.225], np.float32)
 _IOU_MATCH = 0.3
 _MAX_AGE = 30
 REPO = Path(__file__).resolve().parents[1]
-DETECTOR_WEIGHTS_NAME = 'yolov8n.pt'
+# The detector path has one home too: src/weight_pins.py owns both names.
+DETECTOR_WEIGHTS_NAME = Path(weight_pins.YOLO).name
 
 
 def _center_inside(box, person):

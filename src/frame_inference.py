@@ -164,6 +164,8 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=Non
     """
     import cv2
     from src.table_detect import detect_table
+    # src/weight_pins.py owns the weight paths, so this file reads the owner.
+    from src import weight_pins
 
     boxes = []
     polygon = None
@@ -175,9 +177,9 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=Non
             polygon = table['corners'].tolist()
     if 'person' in detectors:
         progress('loading local YOLOv8n / detecting persons')
-        weights = Path(root) / 'yolov8n.pt'
+        weights = Path(root) / weight_pins.YOLO
         if not weights.is_file():
-            raise RuntimeError('Local yolov8n.pt is missing; downloads are disabled')
+            raise RuntimeError(f'Local {weight_pins.YOLO} is missing; downloads are disabled')
         from ultralytics import YOLO
         global _person_model, _person_weights
         stamp = (weights.resolve(), weights.stat().st_mtime_ns, weights.stat().st_size)

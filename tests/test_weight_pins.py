@@ -11,11 +11,17 @@ name of the OSNet weight stood in seven of them, one in each of the six loaders
 and one in the pin.  Round 60 gave the path one spelling, in `src/weight_pins.py`,
 and every loader reads that name.
 
-Four rules, one class each:
+Five rules, one class each:
 
 * one string literal under `src/` names the OSNet file, and it is the pin;
+* one string literal under `src/` names the detector file, and it is the pin;
 * each of the six loaders imports `OSNET` from `src.weight_pins`, builds its path
-  from that name, and holds no copy of the text;
+  from that name, and holds no copy of the text.  The eight sites that named the
+  detector file by hand read `weight_pins.YOLO` for the same reason;
+* the environment name `POOL_DATABASE_URL` has one owner, `src/db.py`.  That module
+  and `src/store.py` decide one backend together, so their two copies became one
+  import, and `tests/test_store.py` fails when the refusal message and the variable
+  part;
 * the SHA-256 and the size of the pin describe the file on disk.  Measured in
   this checkout: the file is present with 9336983 bytes and SHA-256
   cf55163d78fc44c62c82f85ab62d39f10438679b5abe8c698ae08cfa84aa6e18, and both
@@ -29,6 +35,7 @@ Run: ``./scripts/pool-test.sh python test_weight_pins``
 import ast
 import hashlib
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -49,6 +56,9 @@ VENDORED = SRC / "sam3"
 
 #: The file name of the OSNet weight, read from the pin itself.
 WEIGHT_NAME = Path(weight_pins.OSNET).name
+#: The file name of the detector weight, read from the pin itself.  The pin
+#: table owns two paths, so both names need one home and one guard.
+DETECTOR_NAME = Path(weight_pins.YOLO).name
 #: The pinned file, as the pin names it under the repository root.
 WEIGHT_FILE = ROOT / weight_pins.OSNET
 #: (path, url, SHA-256, size) of the OSNet weight, read from the pin.
@@ -76,11 +86,23 @@ def _tree(path):
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
-def _literal_sites(path):
-    """The (line, text) of every string literal of `path` that names the weight."""
+def _names_a_file(text, name):
+    """True when `text` is a file path whose file name is `name`.
+
+    The pin holds the path under the repository root and a loader holds the bare file
+    name, so both are read.  The pin's URL is not: a URL names a location on a server,
+    not a file of this tree."""
+    path = Path(text)
+    if path.name != name:
+        return False
+    return all(part.isidentifier() for part in path.parents[0].parts)
+
+
+def _name_sites(path, name):
+    """The (line, text) of every string literal of `path` that names the file `name`."""
     return [(node.lineno, node.value) for node in ast.walk(_tree(path))
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
-            and WEIGHT_NAME in node.value]
+            and _names_a_file(node.value, name)]
 
 
 def _imports_osnet(tree):
@@ -92,8 +114,8 @@ def _imports_osnet(tree):
     return False
 
 
-def _builds_a_path_from_osnet(tree):
-    """True when the name `OSNET` is an operand of a path join or of a `/`."""
+def _builds_a_path_from(tree, identifier):
+    """True when the name `identifier` is an operand of a path join or of a `/`."""
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and ast.unparse(node.func) == "os.path.join":
             holder = node
@@ -101,10 +123,51 @@ def _builds_a_path_from_osnet(tree):
             holder = node
         else:
             continue
-        if any(isinstance(inner, ast.Name) and inner.id == "OSNET"
+        if any(isinstance(inner, ast.Name) and inner.id == identifier
                for inner in ast.walk(holder)):
             return True
     return False
+
+
+def _exact_literal_sites(path, name):
+    """The (line, text) of every string literal of `path` that is exactly `name`."""
+    return [(node.lineno, node.value) for node in ast.walk(_tree(path))
+            if isinstance(node, ast.Constant) and node.value == name]
+
+
+def _text(node):
+    """The text of a string literal, cut for a failure message."""
+    return node[:60] if isinstance(node, str) else str(node)
+
+
+def _reads_the_module(tree):
+    """True when the tree reads the module `src.weight_pins` itself."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name == "src.weight_pins" for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom) and node.module == "src":
+            if any(alias.name == "weight_pins" for alias in node.names):
+                return True
+    return False
+
+
+def _uses_the_module_name(tree, attribute):
+    """True when the tree holds `weight_pins.<attribute>` in an expression.
+
+    The import line alone is not a use: a loader that imports the owner and keeps
+    its own copy of the text is the shape this rule forbids."""
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute) and node.attr == attribute
+                and isinstance(node.value, ast.Name) and node.value.id == "weight_pins"):
+            return True
+    return False
+
+
+def _runs(code):
+    """Run `code` in the environment of this test run, from the repository root."""
+    return subprocess.run([sys.executable, "-c", code], cwd=ROOT,
+                          capture_output=True, text=True, timeout=300)
 
 
 def _sha256(path):
@@ -137,24 +200,83 @@ def _flip_one_byte(path):
 
 
 class OneSpellingTest(unittest.TestCase):
-    def test_the_weight_name_stands_once_under_src(self):
-        """The path has one home, so a second copy of the text fails this case."""
+    def _assert_one_home(self, name, value):
+        """`name` stands in one string literal under src/, and that literal is the pin."""
         sites = [(path.relative_to(ROOT), line, text)
-                 for path in _sources() for line, text in _literal_sites(path)]
-        found = ", ".join(f"{path}:{line}" for path, line, _ in sites) or "none"
+                 for path in _sources() for line, text in _name_sites(path, name)]
+        found = ", ".join(f"{path}:{line} ({_text(text)})" for path, line, text in sites) or "none"
         self.assertEqual(
             len(sites), 1,
-            f"the name {WEIGHT_NAME} stands in {len(sites)} string literals under src/: "
+            f"the name {name} stands in {len(sites)} string literals under src/: "
             f"{found}. {OWNER.relative_to(ROOT)} owns the path, so every other file reads "
-            f"weight_pins.OSNET and holds no copy of the text.")
+            f"weight_pins.OSNET or weight_pins.YOLO and holds no copy of the text.")
         self.assertEqual(
             sites[0][0], OWNER.relative_to(ROOT),
-            f"the one literal that names {WEIGHT_NAME} is in {sites[0][0]}, and "
+            f"the one literal that names {name} is in {sites[0][0]}, and "
             f"{OWNER.relative_to(ROOT)} must own it.")
         self.assertEqual(
-            sites[0][2], weight_pins.OSNET,
+            sites[0][2], value,
             f"the literal in {sites[0][0]} holds {sites[0][2]!r}, and the pin states "
-            f"{weight_pins.OSNET!r}.")
+            f"{value!r}.")
+
+    def test_the_weight_name_stands_once_under_src(self):
+        """The path has one home, so a second copy of the text fails this case."""
+        self._assert_one_home(WEIGHT_NAME, weight_pins.OSNET)
+
+    def test_the_detector_name_stands_once_under_src(self):
+        """The pin table owns two paths, so the detector name has one home too."""
+        self._assert_one_home(DETECTOR_NAME, weight_pins.YOLO)
+
+    def test_the_two_names_have_one_home_each(self):
+        """Each name home is inside the owner, and the two names differ."""
+        self.assertNotEqual(
+            weight_pins.YOLO, weight_pins.OSNET,
+            "the pin table gives the detector and the OSNet weight one path, so one "
+            "file would be loaded as two models.")
+        for name in (WEIGHT_NAME, DETECTOR_NAME):
+            homes = [path.relative_to(ROOT) for path in _sources()
+                     if _name_sites(path, name)]
+            self.assertEqual(
+                homes, [OWNER.relative_to(ROOT)],
+                f"the name {name} has {len(homes)} home(s) under src/: {homes}. The pin "
+                f"table owns each name, and no other file may hold it.")
+
+
+class DetectorLoaderTest(unittest.TestCase):
+    """The eight files that spelled the detector name read the owner, and hold no copy."""
+
+    NAMED = (
+        "person_pipeline.py",
+        "pid_associate.py",
+        "pid_shooter.py",
+        "pid_shooter2.py",
+        "yolo_track.py",
+        "info_complete_scan.py",
+        "frame_inference.py",
+        "eval_faces.py",
+    )
+
+    def _assert_reads_the_pin(self, name):
+        path = SRC / name
+        tree = _tree(path)
+        self.assertTrue(
+            _reads_the_module(tree),
+            f"{name} does not read src.weight_pins, so it can name the detector file of "
+            f"its own. It must import weight_pins from the pin table.")
+        self.assertTrue(
+            _uses_the_module_name(tree, "YOLO"),
+            f"{name} imports the pin table and never reads weight_pins.YOLO, so it can "
+            f"hold its own copy of the detector path.")
+        sites = _name_sites(path, DETECTOR_NAME)
+        self.assertEqual(
+            sites, [],
+            f"{name} spells the weight name {DETECTOR_NAME} on line "
+            f"{sites[0][0] if sites else 0}, so the file and the pin can name two files.")
+
+    def test_the_eight_sites_read_the_owner(self):
+        for name in self.NAMED:
+            with self.subTest(module=name):
+                self._assert_reads_the_pin(name)
 
 
 class LoaderTest(unittest.TestCase):
@@ -168,10 +290,10 @@ class LoaderTest(unittest.TestCase):
             f"{name} does not read OSNET from src.weight_pins, so it can name a file of "
             f"its own. It must import the name from the pin table.")
         self.assertTrue(
-            _builds_a_path_from_osnet(tree),
+            _builds_a_path_from(tree, "OSNET"),
             f"{name} imports OSNET and does not build its weight path from the name. "
             f"The loader must join the repository root with weight_pins.OSNET.")
-        sites = _literal_sites(path)
+        sites = _name_sites(path, WEIGHT_NAME)
         self.assertEqual(
             sites, [],
             f"{name} spells the weight name {WEIGHT_NAME} on line "
@@ -234,6 +356,30 @@ class PinBytesTest(unittest.TestCase):
             self.assertIn(
                 str(planted), report,
                 f"the report does not name the planted copy: {report}")
+
+
+class OneEnvironmentNameTest(unittest.TestCase):
+    """The database variable has one home, and both readers ask that home."""
+
+    def test_the_two_modules_read_one_name(self):
+        from src import db, store
+        self.assertIs(
+            db.ENV, store.ENV,
+            f"src/db.py holds ENV = {db.ENV!r} and src/store.py holds ENV = {store.ENV!r}, "
+            f"so a rename of one leaves the other silent about the live club.")
+        code = ("import os\n"
+                "from src import db, store\n"
+                "os.environ['POOL_DATABASE_URL'] = 'postgresql://u@127.0.0.1:1/x'\n"
+                "print(db.ENV == store.ENV == 'POOL_DATABASE_URL'\n"
+                "      and os.environ.get(db.ENV) == os.environ.get(store.ENV))\n")
+        run = _runs(code)
+        self.assertEqual(
+            run.returncode, 0,
+            f"a fresh interpreter that imports both modules failed: {run.stderr[-1500:]}")
+        self.assertEqual(
+            run.stdout.strip().splitlines()[-1:], ["True"],
+            "the two modules do not read one environment name, so open_store can miss "
+            "the variable that src/db.py connects with.")
 
 
 if __name__ == "__main__":

@@ -66,6 +66,9 @@ from src.stats import read_pair
 # The operations document path has one owner (src.store_files), so this list cannot
 # name a path that the store no longer writes.
 from src.store_files import STATE_DOCUMENT
+# src/weight_pins.py owns the weight paths, so this list cannot name a path that
+# the pin table no longer owns.
+from src import weight_pins
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "out" / "face-eval"
@@ -740,7 +743,7 @@ def scratch_root(directory=DEFAULT_DIR, fresh=True, name="scratch"):
         shutil.rmtree(root)
     (root / "out" / "corner-pocket").mkdir(parents=True, exist_ok=True)
     (root / "out" / "identity").mkdir(parents=True, exist_ok=True)
-    for entry in ("annotator", "data", "src", "yolov8n.pt"):
+    for entry in ("annotator", "data", "src", weight_pins.YOLO):
         link = root / entry
         if not link.exists():
             link.symlink_to(REPO / entry)

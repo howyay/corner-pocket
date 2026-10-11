@@ -42,6 +42,8 @@ from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
 from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
+# src/weight_pins.py owns the weight paths, so this file reads the owner.
+from src import weight_pins  # noqa: E402
 
 SHOT_SPEED_MM_S = 500.0   # candidate: matched ball speed >= 0.5 m/s
 # The displacement floor of a shot candidate, in millimetres.  A candidate needs
@@ -96,7 +98,7 @@ class ICState:
 def person_boxes_fn():
     """Lazy YOLO person detector on the full frame; returns xyxy boxes."""
     from ultralytics import YOLO
-    model = YOLO(str(ROOT / 'yolov8n.pt'))
+    model = YOLO(str(ROOT / weight_pins.YOLO))
 
     def detect(bgr):
         result = model.predict(bgr, classes=[0], device='cuda' if __import__('torch').cuda.is_available() else 'cpu', verbose=False)[0]

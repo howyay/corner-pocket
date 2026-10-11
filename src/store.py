@@ -32,8 +32,8 @@ from typing import Any, Protocol, runtime_checkable
 
 from src.atomic_write import write_atomic
 from src.face_id import add_faces, load_faces, remove_faces
-
-ENV = "POOL_DATABASE_URL"
+# The environment name has one owner, src/db.py, so the two modules cannot drift.
+from src.db import ENV  # noqa: E402
 
 
 class StoreConstraintError(ValueError):

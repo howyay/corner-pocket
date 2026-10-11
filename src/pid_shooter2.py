@@ -14,6 +14,11 @@ import sys
 import cv2
 import numpy as np
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)  # src/weight_pins.py sits under src/
+# src/weight_pins.py owns the weight paths, so this file reads the owner.
+from src import weight_pins  # noqa: E402
+
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
 os.environ.setdefault("ULTRALYTICS_SAFE_LOAD", "1")  # weights-only YOLO load (audit D-2)
 from ultralytics import YOLO
@@ -22,9 +27,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 from pid_identity import torso_color, in_table_zone, light_dark, classify_ab
 
-REPO = os.path.dirname(ROOT)
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
-MODEL = YOLO("yolov8n.pt")
+MODEL = YOLO(weight_pins.YOLO)
 EVENTS = json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))
 ID = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))
 centers = np.array(ID["centers_bgr"])  # BGR
