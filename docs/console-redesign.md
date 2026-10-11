@@ -6715,3 +6715,239 @@ inserted an import in its in-flight tree; the citations that writer I's shift br
 The push is still blocked. Sixty-four commits sit on the local `main`: the seven code commits and the two
 repair commits of this round, the record of this round, and the fifty that came before them. `origin/main`
 stays at `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 59 · one projection rule, one refusal name, and two documents that agreed (2026-10-11)
+
+The walk of this round read the repository at `fbb0a47` with an empty `git status --porcelain`,
+answered `Strong candidate present - 2 Strong, 4 Worth, 2 Note`, and wrote 254 lines to
+`/tmp/dshsess/walk_round59.md`. The count on its verdict line equals the number of its sections. It
+read the two source trees, the `.d` drop-ins, the store modules and the documents it named. It did not
+read the full bodies of `annotator/unified_server.py` (2992 lines) and `annotator/operations.py` (1450
+lines), the 228 case bodies of `tests/test_ops.js`, `tests/test_calib_mapping_audit.py`, `src/sam3/`,
+`src/reid/`, `viz/`, `annotator/fonts/`, and the deployment and document areas it only measured.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `ed8289e` | `docs/impeccable-ledger.md` | Worth 4 |
+| `f4b5e1c` | `src/eval_table_detect.py`, `src/table_refine.py`, `tests/test_table_detect.py`, `tests/test_backup_retention.py` | Worth 5 and Worth 3 |
+| `27cae35` | `src/store_pg.py`, `annotator/refusals.py`, `annotator/operations.py`, `src/store_files.py`, `src/store_check.py`, `src/store_import.py`, `src/eval_faces.py`, `src/store.py`, `tests/test_refusal_identity.py`, `tests/test_store_files.py` | Strong 2, Worth 6, Note 7 and Note 8 |
+| `156c231` | `src/projection.py`, `src/calib_mapping_audit.py`, `src/dense_queue.py`, `src/info_complete_scan.py`, `src/eval_events.py`, `src/shot_pot_gate.py`, `annotator/unified_server.py`, `tests/test_projection_guard.py` | Strong 1, and the repair of the Lead in the new guard |
+
+### Strong 1 · the homogeneous-division guard stood eight times, with two thresholds and two answers
+
+Ground: the rule "a projected point whose third homogeneous coordinate is zero or tiny has no answer"
+stood at eight lines in seven modules.
+
+| site at HEAD | inside | threshold | finite test | answer |
+| --- | --- | --- | --- | --- |
+| `annotator/unified_server.py:1617` | `ServerBackend._project` | `1e-9` | yes | `None` |
+| `src/calib_mapping_audit.py:97` | `project(H_inv, mm)` | `1e-12` | yes | `None` |
+| `src/calib_mapping_audit.py:104` | `unproject(H, px)` | `1e-12` | yes | `None` |
+| `src/dense_queue.py:129` | `to_mm(H, x, y)` | `1e-9` | no | `None` |
+| `src/eval_events.py:356` | `Probe.px` | `1e-9` | yes | `None` |
+| `src/eval_events.py:376` | `Probe.claim_px` | `1e-9` | yes | `None` |
+| `src/info_complete_scan.py:171` | `to_table_mm(H, cx, cy)` | `1e-9` | no | divides, `nan` |
+| `src/shot_pot_gate.py:524` | `project(h, point)` | `1e-12` | no | raises `ValueError("point maps to infinity")` |
+
+The measured disagreement: `.venv/bin/python -c "import math; w=float('nan'); print(abs(w) < 1e-9, not
+math.isfinite(w))"` answered `False True`, so the three bare sites divided and handed back `nan`
+coordinates, and `.venv/bin/python -c "print(abs(1e-10) < 1e-9, abs(1e-10) < 1e-12)"` answered
+`True False`, so the two groups refused different points. `src/info_complete_scan.to_table_mm` is
+imported by `src/eval_events.py:52` and called at `:343` inside `px()`, so one call path ran both
+spellings, and ten more sites applied the rule with no guard at all.
+
+Repair: `src/projection.py` owns the rule as `def project_point(x, y, w, tolerance=DEFAULT_TOLERANCE)`
+at `:41`, with `DEFAULT_TOLERANCE = 1e-12` at `:36` for the physical path and `PIXEL_TOLERANCE = 1e-9`
+at `:38` for the pixel path. The owner answers `None`, never a `nan` coordinate. The eight readers call
+it (`annotator/unified_server.py:1622`, `src/calib_mapping_audit.py:102` and `:109`,
+`src/dense_queue.py:134`, `src/eval_events.py:361` and `:384`, `src/info_complete_scan.py:176`,
+`src/shot_pot_gate.py:530`). The gate is the one site that keeps its own contract: it translates the
+refusal into `raise ValueError("point maps to infinity")` and inherits the owner's decision. The
+boundary stays `abs(w) < tolerance`, so `w == 1e-12` answers `(2.0e12, 4.0e12)` under the default and
+`w == 1e-9` answers `(1999999999.9999998, 3999999999.9999995)` under the pixel tolerance; the cases
+assert a ratio, not a last bit. `GATE_TOLERANCE` stays equal to `DEFAULT_TOLERANCE`, and
+`src/shot_pot_gate.py:499`'s `abs(m[pivot][col]) < 1e-12` is the Gaussian pivot of `_solve`, a
+different rule with its own number.
+
+The Lead found a hole in the new guard and repaired it in the same commit. The walk of
+`tests/test_projection_guard.py` read the declared readers of a site module only
+(`if readers and node.name not in readers: continue`), so a planted helper beside `to_mm` in
+`src/dense_queue.py` kept the guard green (the bite `0074df147be8 → cfe61d83c3b4 → 0074df147be8`
+answered `Ran 13 tests in 0.951s OK`). The walk now reads every function and exempts the one different
+rule by name: `OWN_NUMBERS = {('src/shot_pot_gate.py', '_solve'): 'the Gaussian pivot of the solver'}`.
+The same bite now fails with `src/dense_queue.py:755: a bare threshold stands again: if abs(w) < 1e-9:`,
+and a new case plants a helper inside a site module to hold the hole closed. The guard holds 14 cases
+now, and its file moved from `c334fc2d1c64ce8b0b38ec3f9e69e6d0fc83eddf` to
+`84c2d837b838d136340c6c260bb543c87a5c758f`.
+
+### Strong 2 · the database store raised three refusal sentences that no walk read
+
+Ground: `src/store_pg.py:175 raise ValueError("JSON object required")`, `:181 raise ValueError("integer
+revision required")` and `:183 raise ConflictError("State changed; reload before retrying")` stood
+beside the Chinese rows keyed on them in `annotator/refusals.py:129`, `:130` and `:112`, and the two
+refusal walks read four module paths by name and never opened the store: `tests/test_refusal_identity.py:25
+RAISING_MODULES = ('annotator/operations.py', 'annotator/unified_server.py')`, while
+`tests/test_refusal_templates.py:29-30` names `annotator/operations.py` and `annotator/vod_import.py`.
+`git grep -c "store_pg"` on the two modules answered nothing.
+
+Repair: `annotator/refusals.py:70-72` names the three sentences (`JSON_OBJECT_REQUIRED`,
+`INTEGER_REVISION_REQUIRED`, `STATE_CHANGED_RELOAD`), and `src/store_pg.py:185`, `:191` and `:193` raise
+the names. `tests/test_refusal_identity.py:25` gained `'src/store_pg.py'`, and its `raised_sentences`
+now resolves a name to its sentence: the old reader of string constants would have dropped the three
+sites in silence. `REFUSALS` gained three rows from the store's own sites
+(`identity_clusters_player_id_fkey`, the migration-0003 row, and `seeds exist for vod30 only`), so the
+table went from 169 to 172 rows and the module from 15 to 16 cases. The two table digests were
+recomputed (`9c0666a29c7f92ff60dd8d60eb3bdfe0474fef6c`,
+`8045a111e9d978ea6575ba6682d80f83d0b8b135`), and the three new Chinese sentences wait for a wording
+review.
+
+### Worth 3 · the 14-day retention stood in the script, the unit and the document
+
+Ground: `scripts/pool-postgres-backup.sh:13 KEEP_DAYS="${POOL_BACKUP_KEEP_DAYS:-14}"`,
+`deploy/systemd/pool-postgres-backup.service:17 Environment=POOL_BACKUP_KEEP_DAYS=14`, the unit's own
+description at `:9` and the row at `docs/postgres.md:205`. The script keeps its default, because it must
+run without the variable and the document records that default as the contract, and
+`tests/test_backup_retention.py` (2 cases) compares the four standings and fails with the file, the line
+and the two numbers. The bite that raised the unit to 15 answered
+`deploy/systemd/pool-postgres-backup.service:17: the unit environment says 15 days, the script default
+says 14 days (scripts/pool-postgres-backup.sh:13); the script default is the one home of the number`.
+
+### Worth 4 · the shots summary stood in two documents
+
+Ground: `docs/console-shots.md:64-86` and `docs/impeccable-ledger.md:347-369` held one measurement
+twice: twelve shared lines of 40 or more characters, six byte-equal finding rows, and two rows that had
+already left byte-equality (`B-07` and `§13.1`). Repair: the ledger keeps its reading and its two extra
+notes and points at the shots document, which owns both tables. The measurement after the repair:
+`shared lines of 40+ characters: 1`, and the ledger moved from 853 to 840 lines. This edit moved the
+ledger's line 576 to 563, and three older sections of this record cite `:576`; the record keeps those
+numbers as history.
+
+### Worth 5 · the `_order` adapter stood in two modules
+
+Ground: `src/table_detect.py:35 def _order_corners(pts)` owned the rule, and
+`src/eval_table_detect.py:68-70` and `src/table_refine.py:132-134` held one two-line adapter written
+twice, while five callers went straight to the owner and `src/table_refine.py` bypassed its own wrapper
+at `:746` and `:934`. Repair: both wrappers are gone, both modules import the owner at module level, and
+six call sites read it. `tests/test_table_detect.py` gained `CornerOrderHomeTests` with 2 cases, one of
+which walks the two modules for an adapter body. The bite that put one wrapper back answered
+`an adapter body for the corner order stands here: /home/haoye/projects/pool/src/eval_table_detect.py:518:
+def _order`.
+
+### Worth 6, Note 7 and Note 8 · the store layer
+
+`Worth 6`: the operations document path stood as one constant (`src/store_pg.py:49 STATE =
+"out/corner-pocket/state.json"`) and a second spelling inside the layout owner, plus the whole literal in
+six more modules. Repair: `src/store_files.py:41 STATE_DOCUMENT` is the one name, read by
+`src/store_pg.py`, `src/store_check.py:36`, `src/store_import.py:180`, `src/eval_faces.py:80` and
+`src/store.py:155`; `git grep -c "out/corner-pocket/state.json"` went from eight files and fourteen
+lines to three files and three lines.
+
+`Note 7`: `src/store.py:9` said "Nothing calls this module yet" and `src/store_pg.py:5` said "Nothing
+calls it yet", while `annotator/unified_server.py:787 self._store = open_store(self.root)` and
+`src/pid_seed_rebuild.py:31 seeds = open_store(root).seeds_get("vod30")` call them. Both sentences state
+today's truth now.
+
+`Note 8`: `src/store_pg.py:4` stated the schema range as `0001-0002`, while `:50` and `:133` name
+migration 0003 and `db/migrations/` holds four files (`0004_imported_datasets.sql` only changes the
+dataset CHECK of 0002). Repair: `src/store_files.py:44 SCHEMA_RANGE = (1, 4)` is the one statement,
+`src/store_pg.py:3` names it, and `tests/test_store_files.py::SchemaRange` pins the docstring to the
+constant and checks that `db/migrations/` holds no file outside the range.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer K, Strong 1 | `tests/test_projection_guard.py` | `c334fc2d1c64ce8b0b38ec3f9e69e6d0fc83eddf → 5d1f8dae98a64aa3b30a53ce3d11c1abb9ad4f3d → c334fc2d1c64ce8b0b38ec3f9e69e6d0fc83eddf` | `AssertionError: (2000000000000.0, 4000000000000.0) is not None : w=1e-12 answered (2000000000000.0, 4000000000000.0), not None` |
+| Lead, the same guard | `src/dense_queue.py` | `0074df147be89cdc8e83ebb02baab661349b240f → cfe61d83c3b49db5411ffea17514f6668bf92e9d → 0074df147be89cdc8e83ebb02baab661349b240f` | nothing failed, and that is the finding: the planted helper kept the guard at `Ran 13 tests in 0.951s OK`, because the walk read the declared readers of a site module only |
+| Lead, after the repair | `src/dense_queue.py` | `0074df147be89cdc8e83ebb02baab661349b240f → cfe61d83c3b49db5411ffea17514f6668bf92e9d → 0074df147be89cdc8e83ebb02baab661349b240f` | `AssertionError: Lists differ: ['src/dense_queue.py:755: a bare threshold stands again: if abs(w) < 1e-9:'] != []` |
+| Writer L, Strong 2 | `annotator/operations.py` | `79e6fa5699e687088f10744aec6a57c069e78646 → 753e3fdb8c5b18996b76cecd7619191fc0221863 → 79e6fa5699e687088f10744aec6a57c069e78646` | four cases, among them `172 != 173 : the table holds 172 rows and the raise sites produce 173 distinct sentences` and `a raised sentence lost its row in annotator/refusals.py: a JSON object is required ... It now reaches the operator as English only.` |
+| Lead, Strong 2 | `annotator/refusals.py` | `d546ad128caf8995631164d2f405104f7d5f4dbd → bd0e54ccdc21ace664787bde2f89d0811a59868e → d546ad128caf8995631164d2f405104f7d5f4dbd` | `revision_not_integer names a sentence that no raise site produces: integer revision required` |
+| Writer M, Worth 3 | `deploy/systemd/pool-postgres-backup.service` | `86da9edd24cb1cf5aa9f824b3a026aa2857b8d8a → 9d5e836c47efab340269a905b37b5b54476fc016 → 86da9edd24cb1cf5aa9f824b3a026aa2857b8d8a` | `deploy/systemd/pool-postgres-backup.service:17: the unit environment says 15 days, the script default says 14 days (scripts/pool-postgres-backup.sh:13); the script default is the one home of the number` |
+| Lead, Worth 5 | `src/eval_table_detect.py` | `8dfc2dbc5e483972d48818fcee94da7021db6277 → fcb22f2bb49ce93c0af6f5c971f81d404e1a5991 → 8dfc2dbc5e483972d48818fcee94da7021db6277` | `an adapter body for the corner order stands here: /home/haoye/projects/pool/src/eval_table_detect.py:518: def _order` |
+| Lead, Worth 4 | `docs/impeccable-ledger.md` | the case has no bite: the repair was proven by measurement (`shared lines of 40+ characters: 12 → 1`) and by the three document guards | — |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2090 tests in 179.645s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 228, pass 228, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 103 passed, 0 failed |
+
+Round 58 answered 2070 cases and this round answers 2090. The twenty named additions are the 14 cases of
+`tests/test_projection_guard.py`, the 2 of `tests/test_table_detect.py`, the 2 of
+`tests/test_backup_retention.py`, one of `tests/test_store_files.py` and one of
+`tests/test_refusal_identity.py`.
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The homogeneous-division guard stands eight times | Strong 1 of this walk | `src/projection.py` owns the rule, eight readers call it, and the walk reads every function of the seven modules |
+| The database store raises its own refusal sentences | Strong 2 of this walk | one name per sentence in `annotator/refusals.py`, and both walks read the store |
+| The 14-day retention stands four times | Worth 3 of this walk | the script default is the one home, and a case compares every standing |
+| The shots summary stands in two documents | Worth 4 of this walk | the shots document owns both tables and the ledger points at it |
+| The `_order` adapter stands in two modules | Worth 5 of this walk | both wrappers are gone and the owner answers six call sites |
+| The operations document path stands as one constant and seven literals | Worth 6 of this walk | `STATE_DOCUMENT` in the layout owner, read by five code sites |
+| Two docstrings say nothing calls the store | Note 7 of this walk | both sentences state the two callers |
+| The module states its schema range two ways | Note 8 of this walk | `SCHEMA_RANGE` in one owner, pinned to `db/migrations/` |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The state path stands in two more places | found by Worth 6 of this walk | `annotator/live_processing.py:257` (a comment) and `:343` (production code) hold the literal, and `annotator/operations.py:287` builds the same path from `Path` segments, which no grep sees |
+| One sentence still stands twice | found by writer L | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of this round | writer L wrote them, and only the digests pin the table (`9c0666a29c7f92ff60dd8d60eb3bdfe0474fef6c`, `8045a111e9d978ea6575ba6682d80f83d0b8b135`) |
+| The projection rule keeps two tolerances | decision of this round | each site names its own, and the guard pins the choice; a merged tolerance would change the pixel path |
+| The gate's threshold is untested at large `w` | limit of this round | `GATE_TOLERANCE` equals `DEFAULT_TOLERANCE`, and no case measures a real frame |
+| The projection walk is static | limit of this round | a monkeypatched owner escapes it, and the walk reads the seven modules of `MODULES` only |
+| Two modules of the walk have no test module of their own | limit of this round | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist, so their readers are covered by the new guard and by the modules that import them |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of this round | `:333` and `:363` use `abs(row["threshold"] - ...) < 1e-9`, a different rule outside the walk's `MODULES` |
+| The round ledger cites `docs/impeccable-ledger.md:576` | consequence of Worth 4 | the line moved to 563, and three older sections of this record keep the old number as history |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only (`annotator/unified_server.py:107`, `:2571`, `:2608`) |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module, so a case holds the two answers equal |
+| The Chinese tables keep 289 English-only engine values | limit of round 58 | the merge is unsafe by measurement |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it; an external encoder writes those bytes |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The two node suites have no name entry in the inventory guard | limit of round 57 | `tests/test_suite_inventory.py` counts the python modules |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The colour guard writes a file into `src/` while it runs | limit of round 56 | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
+| The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats`, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and `deploy/systemd/pool-workbench.service.d/30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119`, `src/pid_associate.py:182`; readers `annotator/server.py:59`, `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` at 20 sites, `30.0003` at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57, 58 and 59 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections | limit of round 56 | the round-57, round-58 and round-59 walks answer equal counts, and the rule stands in their briefs |
+
+The push is still blocked. Sixty-nine commits sit on the local `main`: the four code commits of this
+round, the record of this round, and the sixty-four that came before them. `origin/main` stays at
+`110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
