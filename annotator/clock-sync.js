@@ -47,7 +47,10 @@
 const API_URL = '/api/clock';
 const STREAM_URL = '/api/clock/stream';
 const POLL_MS = 1000;                /* fallback poll while the stream is down */
-const HEARTBEAT_TIMEOUT_MS = 30000;  /* two missed 15 s heartbeats: stream dead */
+/* The cadence has one owner: HEARTBEAT_S in annotator/shot_clock.py.  This timeout counts two
+ * missed heartbeats of that cadence.  tests/test_shot_clock.py reads this line as text and
+ * compares the number with the owner, so the two files cannot drift in silence. */
+const HEARTBEAT_TIMEOUT_MS = 30000;
 /* The owner of the reconnect delay is annotator/shot_clock.py: RETRY_MS, written as the
  * `retry:` hint of the stream preamble and published as `retry_ms` in every snapshot.
  * This value is only the first-connection default: the client has no answer from the

@@ -343,6 +343,20 @@ class ShotClockTests(unittest.TestCase):
         self.assertIn('payload.retry_ms', source,
                       'the client reads the key the snapshot publishes')
 
+    def test_the_client_timeout_still_counts_two_server_heartbeats(self):
+        # The live/offline judgement of the client is not a free number. The comment
+        # beside the constant states the rule, and shot_clock.HEARTBEAT_S governs the
+        # cadence of the stream. Two missed heartbeats is the rule, so a change of the
+        # cadence must move the client timeout with it.
+        source = CLIENT.read_text()
+        found = re.findall(r'const\s+HEARTBEAT_TIMEOUT_MS\s*=\s*(\d+)\s*;', source)
+        self.assertEqual(len(found), 1, 'the client holds one named HEARTBEAT_TIMEOUT_MS')
+        self.assertEqual(2 * shot_clock.HEARTBEAT_S * 1000, int(found[0]),
+                         'the client calls the stream dead after two missed heartbeats of '
+                         'shot_clock.HEARTBEAT_S')
+        self.assertIn('HEARTBEAT_S', source,
+                      'the constant names the owner of the cadence it counts')
+
 
 class ShotClockRuleOwnerTests(unittest.TestCase):
     """The duration rule - an integer from 5 to 300 seconds - has one owner.
