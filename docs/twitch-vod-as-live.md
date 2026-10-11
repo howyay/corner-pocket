@@ -56,9 +56,13 @@ the gap the owner's decision closes.
   (counted) while it is behind, bounded by `max_catchup_s` (default 1 s) per call so a stalled
   consumer recovers over the following reads instead of blocking inside one. A slow consumer
   loses frames; it never falls behind in time.
-- **Honest self-description** - never "live": `state()` returns `kind: 'vod-replay'`,
-  `live: False`, `vod_id`, `network: 'hls'|'file'`, `rate`, `pacing: 'wall-clock'`, `wall_s`,
-  `video_s`, `expected_video_s`, `drift_s`, `frames_served`, `frames_dropped`, `read_failures`.
+- **Honest self-description** - never "live": `state()` returns 16 keys, and these are all of
+  them: `kind: 'vod-replay'`, `live: False`, `vod_id`, `network: 'hls'|'file'`, `rate`,
+  `pacing: 'wall-clock'`, `start_s`, `fps`, `wall_s`, `video_s`, `expected_video_s`,
+  `drift_s`, `frames_served`, `frames_dropped`, `read_failures`, `opened`. The class docstring
+  in `annotator/twitch_vod_source.py` repeats this list as an example, and `StateKeySetTests`
+  binds that example to the answer of `state()`. This paragraph is prose, and no test watches
+  it.
 - **The pipeline file was not touched.** `LiveProcessor` already accepts an injected
   `resolver`/`capture_factory`; the runner uses that seam, so `annotator/live_processing.py`
   and `annotator/pipeline_stages.py` are unchanged by this work.

@@ -4300,3 +4300,263 @@ The stopping rule does not change: a fresh read-only walk decides the loop. The 
 one Strong candidate, so the loop continues; that candidate landed as `29e7219`, and four further
 deliveries landed beside it. The next walk reads this committed tree and starts with the modules
 the Ledger still never cites.
+
+## Round 46 · two Strong candidates from the walk, and a wave of deliveries (2026-10-10)
+
+The round-46 walk read the tree at `0e3b76b` with an empty `git status --porcelain`, wrote
+`/tmp/dshsess/walk_round46.md` (404 lines) and answered `Strong candidate present - 2 Strong,
+2 Worth, 0 Note`, so the loop continues.  The two Strong candidates and both Worth rows landed
+in this round, together with deliveries that the Lead measured beside the walk.
+
+### The commits of this round
+
+| Commit | Subject | Size | Where it comes from |
+| --- | --- | --- | --- |
+| `50a4390` | scan: the shot floor has one owner and one reader | 2 files, +93/−27 | Lead, measured beside the walk |
+| `47167e8` | qa: the bounds check reads the frame of its owner | 2 files, +170/−2 | walk Strong 1 |
+| `72ba784` | docs: the round-3 fixture bullet gets its re-measurement | 1 file, +37 | round-45 open note |
+| `e46af4f` | demo: the flag that does nothing is gone | 2 files, +175/−1 | walk Worth 4 |
+| `c74dae9` | verify: every flag a tool declares has a reader | 5 files, +407/−5 | Lead, the dead-flag scan |
+| `7c3305e` | vod capture: the state it describes is the state it answers | 2 files, +30/−7 | round-45 open notes |
+| `a1bbfad` | calib: the vod30 reference quad has one owner | 8 files, +514/−34 | walk Strong 2 and Worth 3 |
+| `a7dcaaa` | tests: the argument-contract rule has one owner | 3 files, +377/−327 | Lead, the second copy of a rule |
+| `1643573` | console: one owner holds the duration text | 8 files, +222/−13 | round-45 Worth row 1 |
+| `5b16320` | server: the served pages and the tags they load have one list | 2 files, +200/−7 | the browser-only 404 of the new module |
+| `90a7bda` | pocket: one owner holds the pocket name a text states | 4 files, +217/−19 | round-44 and round-45 open row |
+| `e237964` | clock: the server owns the reconnect delay | 3 files, +141/−11 | round-45 Worth rows 2 and 3 |
+
+### Strong 1 · the QA tool measured a window that is not the table
+
+`src/qa.py:13` held `H, W = 500, 1000` and asked `if 0 <= tx <= W and 0 <= ty <= H` at `:22`.
+The canonical frame is millimetres, and `src/table_geometry.py:21-22` owns it: `CANON_W = 1270`,
+`CANON_H = 2540`.  The accepted window was 500 000 mm² of the 3 225 800 mm² surface, which is
+15.5 %.  `47167e8` imports the two names and asks the owner's question.  The commit is small
+because the file is 47 lines; the measurement is the point.
+
+A probe with four rows (the centre, the far corner, `x = −1` and `x = 1271`) answers `inside=0`
+and `4 out-of-bounds detections` at `0e3b76b`, and `inside=2` with `2 out-of-bounds detections`
+after the fix.  A bite that put `0 <= tx <= 1000 and 0 <= ty <= 500` back failed
+`test_the_table_centre_and_the_far_corner_are_inside`.  `tests/test_qa.py` is new, holds 4 cases,
+and the module ran 4 tests.
+
+The literal entered `src/qa.py` in `f210087`, the initial commit, before `src/table_geometry.py`
+existed (`987f68c` created the canonical frame and `7ac04a4` moved four leftover copies), so this
+was the fifth copy and the oldest.  `REPORT.md:50` states a bounds number for `out/run2`, and no
+`out/*/results.json` exists in this checkout; the three run logs hold no bounds line either, so
+that number cannot be re-measured here.
+
+### Strong 2 and Worth 3 · the reference quad, and a unit name that states its reciprocal
+
+Five tools read the hand-measured reference quad from the git-ignored `out/corners_30min.json`:
+`src/audit_calib.py:76`, `src/eval_calib.py:31`, `src/quad_fit.py:132`, `src/quad_fit_lines.py:210`
+and `src/quad_refine.py:90` at the walk's reading.  No line wrote that copy, and a clone holds no
+`out/`, so all five readers fail there.  The tracked file `annotator/corners_30min.json` held the
+same four points.
+
+`src/vod30_corners.py` is the owner now: the path resolved from the top of the repository, and
+the parser that answers a `(4, 2)` float32 array.  The five readers call it.  The audit run of
+`src/audit_calib.py` moved into `main()` at `:74` behind a `__main__` guard at `:92`, so an import
+opens no media and writes no artifact; the stale paragraph in `tests/test_table_geometry.py` that
+said the module cannot be imported was corrected in the same commit.
+
+The measured leaf: a copy of `src/*.py` plus `annotator/corners_30min.json` with no `out/` answers
+`shape (4, 2) float32` and the first corner `[459.25762939453125, 268.89312744140625]`.
+`tests/test_vod30_corners.py` is new, holds 17 cases, and one of them walks every python file of
+the repository and reports a file that spells the corner path outside prose.  A bite that put the
+ignored path back at `src/quad_fit.py:133` failed 3 cases and named `src/vod30_corners.py` as the
+owner; the file went `4adfce00` → `64cf4c4b` → `4adfce00`.
+
+Worth 3 is a name, not a number: `local_mm_per_px` answered pixels per millimetre.  The function is
+`local_px_per_mm` now, both call sites use that name, and the body did not change, so the canonical
+centre still answers 0.3448222629535022 px/mm (2.900044769252169 mm/px).  The module docstring's
+15 mm bar was compared nowhere; it is compared at `:123-126` now and prints a verdict.  Over
+`out/calib_holdout.json` of 2026-09-03 it prints `bar: mean 27.8 mm <= 15 mm on 5 held-out
+frames: FAIL`, which is what that artifact always said.
+
+### Worth 4 and the flag family · a knob that no line reads
+
+`src/multiplex_demo.py:162` declared `--frames` with the help `0 = all frames`, and no line read
+it; the effective control was `--max-frames` at `:160`, read at `:220`.  `e46af4f` deletes the
+dead flag and adds `tests/test_multiplex_demo.py` with 3 cases.  A bite that put the flag back
+failed `test_a_declared_argument_that_no_line_reads_is_a_knob_that_does_nothing` with
+`AssertionError: Lists differ: [] != ['src/multiplex_demo.py:162 --frames']`.
+
+The Lead's scan for the whole family found two more sites.  `src/timing_verify.py:788` declared
+`--records` and `main()` dropped it; `src/eval_faces.py:1130` declared `--name` and the call at
+`:747` used the default.  `c74dae9` wires both.  The rule that finds such a flag is now
+`tests/test_arg_contract.py`: it resolves `dest=`, follows a namespace into helper parameters, and
+resolves `getattr(args, key)` over a literal tuple, so the 6 false reports of a naive scan
+(`src/tiny_ball_net.py:775`, `:784`, `src/pid_seed_rebuild.py:135`, `src/eval_faces.py:1126-1128`)
+stay out.  The repository case scans 91 files and reports 0 offenders.
+
+`a7dcaaa` gives that rule one owner: `tests/arg_contract.py` holds the scan and a second direction
+(`undeclared_reads`, a read of `args.<name>` that no `add_argument` declares), the case files hold
+only cases, and the move is verbatim, because an ast compare finds all 20 top-level names and 19
+of 20 bodies byte for byte.
+
+### The vod capture · a field nothing read, and a list that counted 13 of 16
+
+`annotator/twitch_vod_source.py` wrote `_released_at` in the `finally` of `release()` and read it
+nowhere.  `7c3305e` deletes the write: no consumer asks for the moment, `annotator/unified_server.py:487`
+sends `state()` to the operator board, and the release moment belongs to the caller.  The class
+docstring example listed 13 keys while `state()` answers 16: `start_s`, `fps` and `opened` were
+absent.  The example holds all 16 now, and `StateKeySetTests` binds it to a live answer, so the
+example cannot drift in silence.  A bite that renamed `opened` to `reopened` failed with
+`Items in the first set but not the second: 'reopened'`; the module ran 34 tests.
+`docs/twitch-vod-as-live.md:59-61` repeated the 13-key list and holds the 16 keys now.
+
+### The fixture bullet of round 3
+
+`docs/impeccable-ledger.md:576` said `tests/console_fixture_state.json` "is nobody's file this
+round" and anchored its three live matches at `2026-10-03T05:23Z`.  `72ba784` keeps that text as
+history and adds the measurement: the file has an owner since `a41e99e`
+(`tests/console_fixture_build.py`, whose `--check` compares no timestamp and no id), sha1
+`d20118d5b59e5cc2f3f05c15c7ae3bb14c978ad7`, 57 309 bytes, 148 timestamp strings in 18 distinct
+values, the newest three at `2026-10-10T09:07:41` and the oldest `2024-06-01T23:24:55+00:00`.
+The builder stamps a join from the clock at `:241-242`, and 0 strings use a bare `Z`, so the
+round-3 spelling was already wrong when it was written.
+
+### The duration module · one rule for three copies
+
+Three page scripts held one H:MM:SS rule each: `annotator/app.js:2035` floored an unguarded
+value, `annotator/ops.js:104` clamped and floored, and `annotator/vision-stage.js:930` clamped and
+rounded. On a grid of nineteen values the three answered seven of them in two different ways
+(`59.6` gave `0:00:59`, `0:00:59` and `0:01:00`).
+
+`annotator/duration.js` owns the rule now: clamp at zero, truncate toward zero, print `H:MM:SS`,
+and print `0:00:00` for a value that is not finite (the owner line is `:62`). Truncation wins
+because it names the second that contains a reading: the only fractional input in the tree is
+`start_s + frame.t` at `annotator/vision-stage.js:780`, and at 30 frames per second rounding
+names a second that holds no part of the frame (15 of 30 frames differ). The three consumers keep
+one seam each and read `window.Duration.hms` at call time, and both pages load the module first
+(`annotator/ops.html:2`, `annotator/app.html:8`). The shot clock keeps `Math.ceil`
+(`annotator/ops.js:895`), because the time LEFT is a different question.
+
+The browser found a defect that no node suite can see. The first module version declared a top
+level `const api`, and `annotator/clock-sync.js` declares that name too. Classic scripts share one
+global scope, so clock-sync.js died with `Uncaught SyntaxError: Identifier 'api' has already been
+declared` and `window.ClockSync` was undefined. The module is one IIFE now and declares no global
+name, and `tests/test_ops.js:5184` loads every page script in one scope.
+
+Measured: `node tests/test_ops.js` 216 pass and 0 fail (211 before), `node
+tests/test_app_timeline.js` 100 passed and 0 failed (99 before). The scan `no page script holds a
+second copy of the duration rule` uses a number boundary, so the tenths formatter at
+`annotator/vision-stage.js:1591` (which divides by 36 000) stays out of it. A bite that put the old
+copy back at `annotator/ops.js:104` named the file and the line. A bite in a throwaway copy that
+dropped the finite guard answered `AssertionError [ERR_ASSERTION]: the rule formats undefined as
+0:00:00`; the control copy of the same subtree answers 213 pass and 3 fail, and those three read
+files outside the copied subtree.
+
+### The served-page lists · a browser-only 404
+
+The handler answered the console pages and their assets from literal tuples inside the dispatch,
+so a new console module reached a 404 in a browser while every node suite stayed green. The lists
+have names now: `PAGE_FILES` at `:79`, `PAGE_ALIASES` at `:82`, `LEGACY_PAGE_REDIRECTS` at `:87`,
+`BOARD_ROUTES` at `:90`, `BOARD_ROUTE_ALIASES` at `:91` and `FAVICON_FILES` at `:92`; the dispatch
+reads them at `:2842`, `:2876`, `:2882` and `:2886`.
+
+`/duration.js` joins the console list. `/ops.html` and `/app.html` left it: the redirect branch
+answers before the file branch, so the list promised two files it never served. Both names live
+in `LEGACY_PAGE_REDIRECTS` now. The console list must not be called `BOARD_FILES`: that name
+already holds the map of the optional public port at `:2547`, and a later module-level definition
+wins over an earlier one. The first draft of this change used the name and would have broken
+`/display`.
+
+`tests/test_pages_served.py` (172 lines, 6 cases) drives a real `BoundedHTTPServer` over the
+repository's own `annotator/` directory: every asset a page loads answers 200, every served path
+answers the bytes of its file, a legacy URL answers 308, a path outside the lists answers 404, no
+list repeats a path, and every console page on disk is reachable (`app.html` through
+`GET /api/review-template`). A live probe over a real socket answers `/` 200 with ops.html (2606
+bytes), `/display` 200 with board.html (2167 bytes), `/duration.js` 200 with the bytes of
+`annotator/duration.js` (sha1 `8ed9f2447531`), `/clock-sync.js` 200, `/unlisted-console-module.js`
+404 and `/board.html` 404.
+
+Bites: dropping `/duration.js` answered `Lists differ: [] != ['/ loads /duration.js, and the
+handler answers 404']`; a later shadowing `BOARD_ROUTES` dict answered `200 != 404 : / did not
+answer 200`; `/ops.html` back in the list answered `/ops.html is a redirect and must not be in
+PAGE_FILES`.
+
+### The pocket name · one reader for the text
+
+The gate and the console backend read one stored text and answered two different names. The gate
+accepted a bare name. The backend accepted only `name (distance)` or `574mm from foot-right`, and
+for every other spelling it answered the geometrically nearest pocket, or nothing.
+
+Measured over the 774 rows under `out/` that carry a pocket field: 735 state a bare name
+(`right-side` 220, `left-side` 206, `head-right` 147, `head-left` 102, `foot-right` 40,
+`foot-left` 20), 28 add a parenthesis, 4 use the millimetres form, and 7 are empty. For the 735
+bare rows the backend answered None, so the served event carried no `pocket_name` (the field is
+guarded at `annotator/unified_server.py:1671`). On the 32 rows that also carry millimetres the two
+rules agree, so every answer that changes here is the common shape.
+
+`src/pocket_names.py` owns `pocket_from_text`. `src/event_gates.py` (call site `:178`) and the
+backend (`:1670`) ask it, and the backend keeps its nearest-pocket answer for a text that names no
+pocket. `tests/test_pocket_names.py` holds 9 cases: the spellings, the refusals, the one owner (a
+tree scan reports `src/pocket_names.py` as the only file that holds the parse), the seam between
+the two readers, and the fallback.
+
+`POCKETS_MM` stays a re-export of `src/event_gates.py`, because
+`tests/test_table_geometry.py:254` binds every importer of the frame to the one table object and
+`src/calib_mapping_audit.py:52` and `tests/test_shot_pot_gate.py:214` read the name there. The
+first cut dropped the name, and those two modules failed.
+
+Bites: the old backend regex back answered `AssertionError: None != 'right-side' : the console
+reads 'right-side' as 'right-side', and answered the nearest pocket before this rule had one
+owner`; a second parse added to the gate answered `Lists differ: ['src/event_gates.py',
+'src/pocket_names.py'] != ['src/pocket_names.py']`. Measured: `test_pocket_names` 9 tests,
+`test_event_gates` 34, `test_shot_pot_gate` 63 and `test_table_geometry` 13, every module OK.
+
+### The reconnect delay · the server owns the number
+
+The SSE preamble wrote the delay as a literal (`stream.write(b'retry: 2000\n\n')`), and the page
+held its own `const RECONNECT_MS = 2000`. Nothing bound the two.
+
+`annotator/shot_clock.py` owns the number now: `RETRY_MS` at `:45`, published under
+`RETRY_KEY = 'retry_ms'` at `:48` by `_reported(view)` at `:146-152`. The preamble at `:237`
+writes the constant, and `snapshot` plus all four exits of `apply()` report it. `_save` still
+receives only the changed view, so the key never reaches the stored document.
+
+`apply()` had to report it: the POST path of `/api/clock` runs through `clock.apply()`
+(`annotator/unified_server.py:820`), and `tests/test_clock_api.py:119` compares a command answer
+with a later read. A version that changed `snapshot` alone failed there with
+`AssertionError: {'...expired': False, 'retry_ms': 2000} != {'...expired': False}`.
+
+The page keeps `RECONNECT_MS` as the first-connect default and adopts the published number when
+the payload carries a finite positive one: `readRetryMs()` at `annotator/clock-sync.js:134`,
+`retryTimeoutFrom()` at `:142`, and `retryDelayMs(retryAfterMs) = Math.max(RECONNECT_MS,
+publishedRetryMs, retryAfterMs)` at `:148-149`, read by the two timers at `:280` and `:321`.
+`retryAfterMsFrom()` falls back to the published number, so the assertion at
+`tests/test_ops.js:1362` stays true.
+
+Measured: `test_shot_clock` 14 tests, OK; `test_clock_api` 11 tests, OK (skipped=1);
+`test_suite_inventory` 4 tests, OK, so no skip site was added; `node tests/test_ops.js` 216 pass
+and 0 fail. The writer bit five directions and each one failed (a second literal in the preamble,
+a drifted client default, a hidden literal at the publish site, and the key missing from one
+`apply()` exit, which answered `'retry_ms' not found in {...} : a changed command reports the
+delay`). The Lead bit the publish helper: `KeyError: 'retry_ms'`, and the file went
+`19b56f2bf5a4e74a2a2fe817b1a843054bb2b0fe` to `15bef073ce9ec5d1f52deaf6f3aee3632ab311e8` and back.
+
+### Rows of the round-45 table that close here
+
+| Row | Closed by | What the tree holds now |
+| --- | --- | --- |
+| The duration formatter has three owners | `1643573` | one owner, `annotator/duration.js`, and three seams with no body |
+| The shot distance has two values | `50a4390` and a measurement | `SHOT_DISP_MM` of `src/scan_events.py:46` has one reader, `shot_refinement()`; the 150.0 of `src/info_complete_scan.py:43` answers a different question beside its own speed gate and stays |
+| Two owners of the pocket name | `90a7bda` | one parse in `src/pocket_names.py`, two readers, and the nearest-pocket answer only for a text that names no pocket |
+| A released-at field nothing reads | `7c3305e` | the field and its `finally` are gone |
+| A docstring counts 13 state keys, the answer holds 16 | `7c3305e` | the example holds all 16 keys, and `StateKeySetTests` binds it to the answer |
+| The fixture anchors moved | `72ba784` | the round-3 bullet stays as history, and the measurement sits beside it |
+
+### What stands open after this round
+
+| Candidate | Rank | Ground in the tree |
+| --- | --- | --- |
+| The clock key has two spellings | Worth | `CLOCK_KEY = 'cp-ops-clock'` is defined at `annotator/clock-sync.js:44` and exported at `:491`, and nothing reads the export, while `annotator/ops.js:861`, `:881`, `:1415` and `tests/test_ops.js:1125`, `:1129`, `:1162` spell the literal |
+| The bounds number of `REPORT.md:50` | Note | the sentence states a QA number for `out/run2`, and no `out/*/results.json` and no bounds line in the three run logs exist in this checkout, so the number cannot be re-measured here |
+| The reverse direction of the argument contract | Note | `tests/arg_contract.py` holds `undeclared_reads`, and the repository case checks the forward direction only, so the other 16 files that call `add_argument` have no reverse guard |
+| The browser path of the duration rule | Note | chromium cannot finish an `http://` load in this harness, so the page check ran over `file://` and the real-server path rests on the served-file lists and the node suites |
+| `annotator/unified_server.py` | Note | the round-46 walk named it in its own Limits as the large file it did not read; the round-47 walk starts there |
+
+The round-46 walk found two Strong candidates, so the loop continues. Both landed, with ten more
+deliveries beside them. The next walk reads this committed tree, starts with
+`annotator/unified_server.py`, and its `no Strong candidate` line is what ends the loop.
