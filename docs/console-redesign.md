@@ -6951,3 +6951,234 @@ Round 58 answered 2070 cases and this round answers 2090. The twenty named addit
 The push is still blocked. Sixty-nine commits sit on the local `main`: the four code commits of this
 round, the record of this round, and the sixty-four that came before them. `origin/main` stays at
 `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 60 · one photo bound, one summary, one percentile, one weight path (2026-10-11)
+
+The walk of this round read the repository at `7c5ff2b` with an empty `git status --porcelain`,
+answered `Strong candidate present - 4 Strong, 1 Worth, 2 Note`, and wrote 245 lines to
+`/tmp/dshsess/walk_round60.md`. The count on its verdict line equals the number of its sections. It read
+the class bodies and the nested `def`s, the deploy drop-ins and the document rows it named. It did not
+read about a third of `annotator/unified_server.py`, the bodies of the twenty-two `_do_*` methods of
+`annotator/operations.py`, the four modules of `tools/`, `scripts/pool-render-units.sh`,
+`db/migrations/0003` and `0004`, `viz/`, `src/reid/`, `annotator/fonts/` and `src/sam3/` (it listed
+their directories and line counts only).
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `b86675f` | `tests/test_suite_inventory.py`, `docs/face-identification-assessment.md` | Worth 1 and Note 1 |
+| `150f002` | `src/person_pipeline.py`, `src/pid_associate.py`, `src/pid_osnet.py`, `src/pid_osnet_tight.py`, `src/pid_osnet_tracks.py`, `src/pid_seed_rebuild.py`, `tests/test_weight_pins.py` | Strong 4 |
+| `bac7907` | `annotator/unified_server.py`, `tests/test_enroll_bound.py`, `docs/form-contract-audit.md`, `docs/face-identification-assessment.md`, `annotator/duration.js`, `tests/pool_probe.py`, `tests/test_connection_budget.py` | Strong 1 and three citations of the Lead |
+| `404f5ef` | `src/stats.py`, `src/enroll_from_tracklet.py`, `src/eval_faces.py`, `src/calib_mapping_audit.py`, `src/eval_table_detect.py`, `src/ball_association_ab.py`, `tests/test_stats.py`, `tests/test_duplicate_bodies.py` | Strong 2 and Strong 3 |
+
+### Strong 1 · the enrollment size bound stood four times
+
+Ground: `annotator/unified_server.py:88 _MAX_ENROLL_BYTES = 8 * 1024 * 1024` under the comment at
+`:86-87` ("dispatch caps POST bodies at 64KB, but the backend method is also callable directly"), the
+dispatch branch `:2862 limit = 12 * 1024 * 1024 if parts[:3] == ["api", "identity", "enroll"] else 65536`
+with `:2863 if not 0 < size <= limit:`, the decoded guard `:899 if len(raw) > _MAX_ENROLL_BYTES:` with
+its sentence at `:904`, the console guard `annotator/ops.js:1446 photo.size>8*1024*1024?'photoSize':''`
+with its copy row at `:15`, `docs/form-contract-audit.md:47` ("decodable image ≤8 MB") and
+`docs/face-identification-assessment.md:31` ("12 MB body cap"). The two python guards agreed by design
+(base64 costs 4 bytes for every 3, so 8 MiB arrives as about 11.18 MiB, under 12 MiB) and nothing held
+them equal: `tests/test_unified_server.py:637` pinned only the 64 KB default, so a number could move
+alone. The enroll handler is `:887 def identity_enroll(self, payload)`, the `enroll_face` call is `:908`,
+and the route row is `:2399 OperatorAction('identity_enroll', ['api', 'identity', 'enroll'], …)`.
+
+Repair: `annotator/unified_server.py:88` owns the decoded cap and `:92` derives the dispatch cap from it:
+`_MAX_ENROLL_BODY_BYTES = (_MAX_ENROLL_BYTES + 2) // 3 * 4 + 1398100`. The arithmetic stands in the three
+comment lines above it: base64 turns 8388608 bytes into 11184812, and the margin of 1398100 bytes holds
+the JSON envelope, so the sum is 12582912 = 12 MiB. The enroll branch (now `:2866`) reads the derived
+name, the decoded guard (`:903`) reads the owner, and every other route keeps the 64 KB default.
+`tests/test_enroll_bound.py` holds 7 cases: the derived sizes of today, both dispatch boundaries over the
+real handler, the byte-exact decoded boundary, the console number, and one case per document. The reason
+for a new module instead of `tests/test_unified_server.py` (2443 lines of backend behaviour) stands in
+its docstring. The measurement after the repair: `grep -c '12 \* 1024 \* 1024'
+annotator/unified_server.py` answers `0`; the loaded values are `8388608 11184812 12582912` and the body
+cap equals 12 MiB; the dispatch takes a 12582912-byte enroll body and refuses 12582913 with 413, while
+another route refuses 12582912 with 413; a decoded image of exactly 8388608 bytes passes the bound and
+one byte more is refused with the 8 MB sentence.
+
+The Lead repaired three citations that had been stale before this change and that the four-line insert
+shifted again: `annotator/duration.js:21` now cites `annotator/unified_server.py:1834`
+(`timestamp_seconds=value/meta['fps']`) instead of `:1788`, and `tests/pool_probe.py:4` and
+`tests/test_connection_budget.py:17` cite `:2483` (`def pool_state`) instead of `:2396`.
+`tests/test_http_security.py:199` still cites `:2389` for the connection ceiling while the real lines
+stand near `:2473`, and it is an open row.
+
+### Strong 2 and Strong 3 · four summaries and two percentiles
+
+Ground: four local summaries of "the median and a high percentile" —
+`src/enroll_from_tracklet.py:181 def stats(values) -> dict:`, `src/eval_faces.py:219 def
+pair_stats(values):` (one body, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9`, recorded in
+`tests/test_duplicate_bodies.py`'s `APART_ON_PURPOSE` table with the note that a later change owning both
+files gives one the body and the other the import), `src/calib_mapping_audit.py:450 def _stats(values):`
+(answers `{"n": 0}` when empty, holds `p10` and `p90`, rounds to 2) and `src/eval_table_detect.py:369 def
+_stats(values):` (answers `None` when empty, holds `p90`, rounds to 2). And one percentile rule in two
+audit modules: `src/ball_association_audit.py:96 def _percentile(values, fraction):` with eight call
+sites and `src/ball_association_ab.py:37 def _percentile(values, fraction):` with one, while
+`src/ball_association_ab.py:33` already held `from src import ball_association_audit as audit`.
+
+Repair: `src/stats.py` owns the summary as `summary(values, keys=SUMMARY_KEYS, digits=4) -> dict`
+together with `read_pair`. It reads numpy only, so the import graph stays one way. Every difference the
+four bodies held became a named argument or a recorded answer: the key subset (`n min p05 p10 median p90
+p95 max`), the digits (2 or 4), and the empty answer. The readers now read it:
+`src/enroll_from_tracklet.py:114 from src.stats import read_pair as stats` (the local `def stats` is
+gone), `src/eval_faces.py:65` imports `read_pair` and binds `pair_stats = read_pair` (one function
+object), `src/calib_mapping_audit.py` holds `OFFSET_STATS_KEYS` and `OFFSET_STATS_DIGITS = 2` around a
+thin `_stats` that answers `{"n": 0}`, and `src/eval_table_detect.py` holds `ERROR_STATS_KEYS` around a
+thin `_stats` that answers `None`. The percentile keeps its home in
+`src/ball_association_audit.py:96`, and `src/ball_association_ab.py:39` reads
+`_percentile = audit._percentile`, so the two modules hold one function object. The
+`APART_ON_PURPOSE` entry of digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` is gone, which the record
+of round 51 asked for, and the two other entries still hold. `tests/test_stats.py` holds 26 cases: six
+input shapes (empty, one value, an even count, an odd count, a `nan`, a negative) across the four
+readers, the recorded empty answers, four digits cases, the shared function objects, the import lines,
+one percentile body, and a renamed planted copy.
+
+### Strong 4 · the weight pin owned a path that no loader read
+
+Ground: `src/weight_pins.py:18 OSNET = "src/reid/weights/osnet_x0_25_msmt17.pth"` and `:44
+WEIGHTS_BY_PATH = {rel: (rel, url, sha256, size) for rel, url, sha256, size in WEIGHT_PINS}`, in a module
+whose own docstring calls it the one owner of the repository's weight pins, while only
+`scripts/fetch_weights.py:23 from src.weight_pins import WEIGHT_PINS` read it. Six loaders spelled the
+path inline: `src/person_pipeline.py:125`, `src/pid_associate.py:32`, `src/pid_osnet.py:23`,
+`src/pid_osnet_tight.py:24`, `src/pid_osnet_tracks.py:21` and `src/pid_seed_rebuild.py:46`.
+
+Repair: the six loaders read `weight_pins.OSNET`, and `src/weight_pins.py` itself did not change (its
+sha1 `6230001f88c04add4b17366199577123c5af4013` stands before and after). The four `os.path` loaders
+hold `W = os.path.join(REPO, OSNET)` with the import at the top; the two `pathlib` loaders hold
+`root / OSNET`, and `src/pid_seed_rebuild.py` imports the name inside its function. The measurement after
+the repair: `git grep -c "osnet_x0_25_msmt17.pth" -- 'src/*.py'` goes from seven files to one (the
+owner), `git grep -n "from src.weight_pins import"` answers seven sites (the downloader plus the six
+loaders), and the runtime join equals the old text byte for byte
+(`/home/haoye/projects/pool/src/reid/weights/osnet_x0_25_msmt17.pth`). `tests/test_weight_pins.py` holds
+9 cases: one loader case each (an `ast` walk that the module imports `OSNET` and builds no path from the
+text), `test_the_weight_name_stands_once_under_src`, and the runtime equality of the join with the old
+literal.
+
+### Worth 1 and Note 1
+
+`Worth 1`: `scripts/pool-test.sh:43 for suite in tests/test_ops.js tests/test_board.js
+tests/test_app_timeline.js; do` named the three javascript suites (228 + 23 + 103 cases) and no guard
+held that list, so a new suite file would never run and a renamed one would fail the run. Repair:
+`tests/test_suite_inventory.py` gained `test_the_javascript_suites_of_the_runner_are_every_suite_on_disk`
+(5 cases in the module now). It reads the runner's `for suite in …` line, compares the names with
+`tests/test_*.js` on disk in both directions, and fails with both lists.
+
+`Note 1`: `docs/face-identification-assessment.md:31` cited `annotator/unified_server.py:228-252`, route
+`1102-1103` and `1313`, and those lines hold other code now. Repair: the row cites `:887` the handler,
+`:88` the 8 MiB decoded cap with `:899` the check, `:908` the call, `:2399` the route row and `:2862` the
+dispatch body cap. `Note 2` stays open: `tests/test_citation_lines.py`'s `SKIP_PARTS` set excludes
+`docs`, so the 1514 document citations have no guard at all, and the closure is larger than one round.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer P, Strong 1 | `annotator/ops.js` | `f7badad0aaaadbdcbe542bde31886ff4d64057c3 → 118c468e9321f10bda97c727177fbe66e1d646d9 → f7badad0aaaadbdcbe542bde31886ff4d64057c3` | `AssertionError: 9437184 != 8388608 : the console guard and the python owner must hold one number` |
+| Lead, Strong 1 | `annotator/unified_server.py` | `dd013a7e0bb79b5e6a5aa4341cfd1bca0905fae0 → 6de4dc13b185d9a271b867bb4307959c6ab3dcc3 → dd013a7e0bb79b5e6a5aa4341cfd1bca0905fae0` | three cases, among them `8388608 != 9437184 : the console guard and the python owner must hold one number` and the derived-size case |
+| Writer R, Strong 4 | `src/pid_osnet_tracks.py` | `286443cd4404f60a376ebc133c8d63280d9d5e30 → 25d32475855b2b110ff721d23e93cf8f2b2707bf → 286443cd4404f60a376ebc133c8d63280d9d5e30` | `pid_osnet_tracks.py imports OSNET and does not build its weight path from the name …` and `the name osnet_x0_25_msmt17.pth stands in 2 string literals under src/: …` |
+| Lead, Strong 4 | `src/pid_osnet.py` | `148bd1980634e55df7fb1c3e5e752776fbf3b008 → f718b1258f9610d3f17926b6d54b094da4013ef2 → 148bd1980634e55df7fb1c3e5e752776fbf3b008` | `the name osnet_x0_25_msmt17.pth stands in 2 string literals under src/: src/pid_osnet.py:27, src/weight_pins.py:18` |
+| Writer Q, Strong 2 | `src/stats.py` | `58c03d7846589ac4fca284d8b8b643ae6d4b9184 → 4bae890a4c1d43f3604c53a4605946c89ceb71a6 → 58c03d7846589ac4fca284d8b8b643ae6d4b9184` | two cases, among them `-0.208 != -0.2077 : min of […] must be -0.2077 at 4 digits, and it is -0.208` |
+| Lead, Strong 3 | `src/ball_association_ab.py` | `279e4c8b50b93365c15bd53ca56b2428a1bdf950 → efbb554170976071939618c097afcac5c6e381ff → 279e4c8b50b93365c15bd53ca56b2428a1bdf950` | `AssertionError: <function _percentile at 0x…> is not <function _percentile at 0x…> : src/ball_association_ab.py holds a second percentile body` |
+| Lead, Worth 1 | `scripts/pool-test.sh` | `bfe7501f8e1ef033704d95c820c86151791a5032 → a5cfa12ec77b79aaef90cdf0ff2aa94c264fc990 → bfe7501f8e1ef033704d95c820c86151791a5032` | `every javascript suite under tests/ must stand in the runner loop`, with the two lists |
+| Lead, a bite that missed | `src/ball_association_audit.py` | `61bd38bdb4997aa295973292381d596c1543e045 → unchanged → 61bd38bdb4997aa295973292381d596c1543e045` | the edited text did not match the real percentile body (`AssertionError: the percentile body shape changed`), so the bite proved nothing and the percentile alias bite replaced it |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2133 tests in 181.313s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 228, pass 228, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 103 passed, 0 failed |
+
+Round 59 answered 2090 cases and this round answers 2133. The forty-three named additions are the 26
+cases of `tests/test_stats.py`, the 9 of `tests/test_weight_pins.py`, the 7 of
+`tests/test_enroll_bound.py` and one of `tests/test_suite_inventory.py`.
+
+### Two notes of this round
+
+Writer Q found a false gate in its own first guard: a case of the form
+`case.assertEqual(round(value, digits), value)` passes for every number that has fewer digits than
+`digits`, so it could not hold the precision. The sweep of `tests/test_assertion_sweep.py` caught the
+self-comparison beside it, and the writer replaced the case with one that reads the owner's value and
+rounds it by the reader's own digits. That is why the `digits` bite works now.
+
+The Lead's first bite for writer Q did not land: the text it tried to edit did not match the real
+percentile body, so the file never changed and the run proved nothing. The lesson stands beside the older
+ones: a bite is only worth its sha1 chain, and a bite that changes no byte must be reported as a miss and
+replaced, never counted.
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The enrollment size bound stands four times | Strong 1 of this walk | the decoded cap owns the number, the dispatch cap derives from it, and 7 cases hold the four surfaces |
+| Four local summaries answer one question | Strong 2 of this walk | `src/stats.py` owns the summary, and the four readers name their keys, digits and empty answer |
+| The percentile rule stands twice | Strong 3 of this walk | `src/ball_association_ab.py` holds `audit._percentile`, one function object |
+| The weight pin owns a path no loader reads | Strong 4 of this walk | six loaders read `weight_pins.OSNET`, and the path stands once under `src/` |
+| The three javascript suites have no guard | Worth 1 of this walk | `tests/test_suite_inventory.py` compares the runner's list with the files on disk |
+| A document cites lines that hold no cap | Note 1 of this walk | the row cites the handler, the cap, the check, the call, the route and the dispatch cap |
+| The statistic pair is recorded apart on purpose | the `APART_ON_PURPOSE` entry of round 51 | the entry of digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` is gone, because the pair has one home |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The citation guard skips the documents | Note 2 of this walk | `tests/test_citation_lines.py`'s `SKIP_PARTS` holds `docs`, `deploy` and others, so the 1514 document citations have no guard |
+| One line of the security case cites a moved ceiling | consequence of Strong 1 | `tests/test_http_security.py:199` cites `annotator/unified_server.py:2389` while the connection ceiling stands near `:2473` |
+| Four same-named functions stand outside the statistics home | found by writer Q | `tests/test_body_calibration.py:160 stats(xs)`, `tests/live_identity_validation.py:147 _stats(xs)`, `tests/live_pipeline_run.py` and `annotator/pipeline_stages.py:75 _percentile` hold their own bodies |
+| Many document citations are stale | found by writer P | `docs/console-redesign.md` holds 74 citations into `annotator/unified_server.py` and `docs/postgres-design.md` 28, and the four-line insert of this round moved all of them |
+| The state path stands in two more places | found by round 59 | `annotator/live_processing.py:257` and `:343`, and the segment-built path at `annotator/operations.py:287` |
+| One sentence still stands twice | found by round 59 | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of round 59 | only their digests pin the table (`9c0666a29c7f92ff60dd8d60eb3bdfe0474fef6c`, `8045a111e9d978ea6575ba6682d80f83d0b8b135`) |
+| The projection rule keeps two tolerances | decision of round 59 | each site names its own, and `tests/test_projection_guard.py` pins the choice |
+| The projection walk is static | limit of round 59 | a monkeypatched owner escapes it |
+| Two modules have no test module of their own | limit of round 59 | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of round 59 | `:333` and `:363` use `abs(row["threshold"] - …) < 1e-9`, outside the projection walk's `MODULES` |
+| The round ledger cites `docs/impeccable-ledger.md:576` | consequence of round 59 | the line moved to 563, and three older sections keep the old number as history |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module |
+| The Chinese tables keep 289 English-only engine values | limit of round 58 | the merge is unsafe by measurement |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The two node suites have no name entry in the inventory guard | limit of round 57 | the suite list is guarded now, and the case counts of the javascript suites are not |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The colour guard writes a file into `src/` while it runs | limit of round 56 | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
+| The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and the drop-in `30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119`, `src/pid_associate.py:182`; readers `annotator/server.py:59`, `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` at 20 sites, `30.0003` at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 to 60 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections | limit of round 56 | the walks of rounds 57 to 60 answer equal counts, and the rule stands in their briefs |
+
+The push is still blocked. Seventy-four commits sit on the local `main`: the four code commits of this
+round, the record of this round, and the sixty-nine that came before them. `origin/main` stays at
+`110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
