@@ -51,7 +51,7 @@ def merge_record(stored: dict, incoming: dict) -> dict:
     The function returns a new dict. It does not change either argument.
 
     This function closes the defect of round 56: the merge of one record sat in
-    `src/store.py:281` and in `src/store_pg.py:288`, and one edit had to land in
+    `src/store.py:283` and in `src/store_pg.py:292`, and one edit had to land in
     both sites.
     """
     return dict(stored, **incoming)

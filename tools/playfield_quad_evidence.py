@@ -24,12 +24,12 @@ import cv2
 import numpy as np
 from src.playfield import PARALLEL_TOL_DEG, check_quad, parallelism
 from tools.playfield_harness import Recording, frame_context, new_stage
-from tools.playfield_vod_audit import KNOWN_REFUSED
+from tools.playfield_vod_audit import CLOTH_BAND_REASON, KNOWN_REFUSED
 
 #: The reason the audit records for the five events this tool examines.  The evidence below
 #: explains why that one reason needs to change: the detector, not the tolerance.  The ids
 #: come from the audit, which is the one owner of the exceptions and of their reasons.
-CLOTH_REASON = 'cloth mask is a band'
+CLOTH_REASON = CLOTH_BAND_REASON
 REFUSED = tuple(sorted(name[:-4] for name, reason in KNOWN_REFUSED.items()
                        if name.endswith('.mp4') and reason.startswith(CLOTH_REASON)))
 FRACTIONS = (0.10, 0.50)

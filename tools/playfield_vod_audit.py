@@ -63,6 +63,10 @@ GIT_TIMEOUT_S = 10
 # exceptions are the events that do not, each named with what its measurement actually was.  An
 # event that refuses everywhere and is not named is a regression, so the run fails.
 FLOOR = 8
+#: The reason prefix of the five cloth-band rows below.  The evidence tool reads this
+#: name, so the prefix has one home (tools/playfield_quad_evidence.py).
+CLOTH_BAND_REASON = 'cloth mask is a band'
+
 KNOWN_REFUSED = {
     # The cloth mask is a band across a rail, so the fit collapses and no table is reported.
     'tw-2860883221.mp4': 'cloth mask is a band: the ordered fit collapses (aspect 8.345)',
