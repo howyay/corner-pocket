@@ -39,6 +39,13 @@ DEFAULT_DURATION = 30
 # Cloudflare drops an idle proxied connection at ~100 s, and a page that hears
 # nothing for 30 s falls back to polling.
 HEARTBEAT_S = 15
+#: The reconnect delay this module owns. `serve_events` writes it as the `retry:`
+#: hint of the SSE preamble, and `snapshot` publishes it as `retry_ms`. The page
+#: reads the published value, so one number governs the reconnects.
+RETRY_MS = 2000
+#: The published name of that delay. It is not clock state: `apply` and `snapshot`
+#: both report it, and `_save` never persists it.
+RETRY_KEY = 'retry_ms'
 # nosniff and the other policy headers come from the server's end_headers(), once.
 SSE_HEADERS = {'Content-Type': 'text/event-stream',
                'Cache-Control': 'no-cache, no-transform',
@@ -136,12 +143,25 @@ class ShotClock:
             view.update(running=False, remaining_ms=0, expired=True)
         return view
 
+    def _reported(self, view):
+        """The read view of a clock: the state, plus the published retry delay.
+
+        `apply` and `snapshot` answer with this shape, so a POST and a following
+        GET describe the same clock. The key never reaches disk. The caller holds
+        the lock, or owns the state it passes."""
+        return dict(view, **{RETRY_KEY: RETRY_MS})
+
     def snapshot(self, now_ms=None):
-        """The clock as of `now_ms` (server epoch ms). Never writes."""
+        """The clock as of `now_ms` (server epoch ms). Never writes.
+
+        The answer carries `retry_ms`, the reconnect delay `serve_events` writes
+        into the stream preamble. The transient `expired` flag is in the answer
+        too, and `_save` never sees it: only `apply` persists, and only the real
+        state."""
         now_ms = epoch_ms() if now_ms is None else int(now_ms)
         default = self._default_duration() if self._state is None else None
         with self.condition:
-            return self._effective(self._current(default), now_ms)
+            return self._reported(self._effective(self._current(default), now_ms))
 
     def apply(self, action, duration=None, now_ms=None):
         """Apply one explicit intent; persist and notify only on a real change.
@@ -151,6 +171,9 @@ class ShotClock:
         pause  keeps what is left; a no-op while already paused or expired
         reset  paused at the full duration
         set    a new duration (5-300 s), paused at it
+
+        The answer is the same shape `snapshot` reports, so the caller of a
+        command reads one contract. Only the durable state is persisted.
         """
         if action not in ACTIONS:
             raise ValueError('action must be one of start, pause, reset, set')
@@ -162,7 +185,7 @@ class ShotClock:
         default = self._default_duration() if self._state is None else None
         with self.condition:
             current = self._current(default)
-            view = self._effective(current, now_ms)
+            view = self._reported(self._effective(current, now_ms))
             full = current['duration'] * 1000
             if action == 'start':
                 if view['running']:
@@ -187,7 +210,7 @@ class ShotClock:
             self._save(changed)
             self._state = changed
             self.condition.notify_all()
-            return self._effective(changed, now_ms)
+            return self._reported(self._effective(changed, now_ms))
 
     def wait(self, seq, timeout):
         """Block until the seq differs from `seq`, the clock is closed, or
@@ -211,7 +234,7 @@ class ShotClock:
         the page must see that the stream is alive. Waiting is on this clock's
         own Condition only; no other lock is held while it waits."""
         heartbeat_s = HEARTBEAT_S if heartbeat_s is None else heartbeat_s
-        stream.write(b'retry: 2000\n\n')
+        stream.write(b'retry: ' + str(RETRY_MS).encode() + b'\n\n')
         seq = None
         while not self._closed:
             if self.seq != seq:

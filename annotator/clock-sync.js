@@ -46,7 +46,14 @@ const API_URL = '/api/clock';
 const STREAM_URL = '/api/clock/stream';
 const POLL_MS = 1000;                /* fallback poll while the stream is down */
 const HEARTBEAT_TIMEOUT_MS = 30000;  /* two missed 15 s heartbeats: stream dead */
-const RECONNECT_MS = 2000;           /* the retry: the server's stream asks for */
+/* The owner of the reconnect delay is annotator/shot_clock.py: RETRY_MS, written as the
+ * `retry:` hint of the stream preamble and published as `retry_ms` in every snapshot.
+ * This value is only the first-connection default: the client has no answer from the
+ * server yet when it opens the first stream, and it needs a delay before that answer
+ * arrives. `readRetryMs()` reads the published number, so a change of RETRY_MS moves
+ * both halves. The two files cannot drift in silence: tests/test_shot_clock.py reads
+ * this line as text and compares this number with the owner's constant. */
+const RECONNECT_MS = 2000;
 const OFFLINE_AFTER_MS = 10000;      /* no answer this long while polling = offline */
 const ERROR_MS = 6000;               /* how long a failed command stays on screen */
 
@@ -119,6 +126,29 @@ function intentFor(action, value, written) {
   return null;
 }
 
+/* The reconnect delay the server published in its last snapshot. The key is
+ * `retry_ms`, the one annotator/shot_clock.py writes from RETRY_MS. A payload
+ * without that key - an older server, a partial answer - keeps the named default. */
+let publishedRetryMs = RECONNECT_MS;
+
+function readRetryMs(payload) {
+  const ms = payload ? Number(payload.retry_ms) : NaN;
+  return Number.isFinite(ms) && ms > 0 ? ms : RECONNECT_MS;
+}
+
+function retryTimeoutFrom(payload) {
+  /* Every answer the client adopts carries the delay, so the fallbacks below use
+   * the delay the server asks for, not a copy of it. */
+  publishedRetryMs = readRetryMs(payload);
+  return publishedRetryMs;
+}
+
+/* The delay before the next attempt: the server's published number, never less than
+ * the named default, and never less than a `Retry-After` the server sent with a 503. */
+function retryDelayMs(retryAfterMs) {
+  return Math.max(RECONNECT_MS, publishedRetryMs, retryAfterMs);
+}
+
 function retryAfterMsFrom(response) {
   let raw = null;
   try {
@@ -127,7 +157,7 @@ function retryAfterMsFrom(response) {
     raw = null;
   }
   const seconds = Number(raw);
-  if (!Number.isFinite(seconds) || seconds <= 0) return RECONNECT_MS;
+  if (!Number.isFinite(seconds) || seconds <= 0) return publishedRetryMs;
   return Math.min(seconds, 60) * 1000;
 }
 
@@ -192,6 +222,7 @@ function createClockSync(deps) {
 
   function adopt(payload, sentMs, receivedMs) {
     if (!payload || typeof payload !== 'object') return null;
+    retryTimeoutFrom(payload);
     if (Number.isFinite(payload.server_now_ms)) offset = offsetEstimate(payload.server_now_ms, sentMs, receivedMs);
     state = payload;
     answered = true;
@@ -246,7 +277,7 @@ function createClockSync(deps) {
       onError(result.reason === 'busy' ? words.busy : words.failed, result);
       /* The press may already have flipped this device optimistically; pull the
        * truth back rather than leaving a state the server never accepted. */
-      timers.setTimeout(function () { resync('after-failed-command'); }, Math.max(RECONNECT_MS, retryAfterMs));
+      timers.setTimeout(function () { resync('after-failed-command'); }, retryDelayMs(retryAfterMs));
     }
     return result;
   }
@@ -287,7 +318,7 @@ function createClockSync(deps) {
       reconnectTimer = null;
       if (stopped || stream) return;
       openStreamNow();
-    }, delay === undefined ? Math.max(RECONNECT_MS, retryAfterMs) : delay);
+    }, delay === undefined ? retryDelayMs(retryAfterMs) : delay);
   }
 
   function openStreamNow() {

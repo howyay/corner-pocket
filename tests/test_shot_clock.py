@@ -1,23 +1,55 @@
 """The shared shot clock module on its own: intents, idempotence, seq, expiry
 without writes, persistence across instances and duration validation. Every
 clock lives in a temporary directory; nothing under the repository's out/ is
-touched."""
+touched.
+
+The last four cases pin the reconnect delay and the shape of the answer:
+annotator/shot_clock.py owns the number as RETRY_MS, the stream preamble carries
+it, the snapshot publishes it as retry_ms, a command answers the same shape a
+read does, and the client keeps a first-connection default that one case reads
+out of the client file to prove the default still equals the owner.
+"""
 import hashlib
+import io
 import json
 from pathlib import Path
+import re
 import tempfile
 import threading
 import time
 import unittest
 from unittest.mock import patch
 
+from annotator import shot_clock
 from annotator.shot_clock import ShotClock, epoch_ms
+
+#: The repository root, from this file's own path. The binding case reads the
+#: client file from here.
+ROOT = Path(__file__).resolve().parent.parent
+CLIENT = ROOT / 'annotator' / 'clock-sync.js'
 
 
 def file_stamp(path):
     """Bytes + size + mtime: the three things a read must never change."""
     path = Path(path)
     return (hashlib.md5(path.read_bytes()).hexdigest(), path.stat().st_size, path.stat().st_mtime_ns)
+
+
+def preamble_from_stream(clock, heartbeat_s=0.05):
+    """The `retry:` line serve_events writes, plus the rest of the bytes it wrote.
+
+    `serve_events` runs until the clock closes or the client goes away, and a
+    paused clock never wakes it, so this helper closes the clock and the stream
+    stops at the next heartbeat. The preamble is the first write either way.
+    """
+    stream = io.BytesIO()
+    serving = threading.Thread(target=clock.serve_events, args=(clock.snapshot, stream, heartbeat_s),
+                               daemon=True)
+    serving.start()
+    clock.close()
+    serving.join(5)
+    assert not serving.is_alive(), 'close() releases the stream the test started'
+    return stream.getvalue().split(b'\n\n', 1)[0]
 
 
 class ShotClockTests(unittest.TestCase):
@@ -33,7 +65,7 @@ class ShotClockTests(unittest.TestCase):
         clock = ShotClock(self.path, default_duration=45)
         state = clock.snapshot(now_ms=1_000)
         self.assertEqual(state, dict(duration=45, running=False, deadline_ms=None, remaining_ms=45_000,
-                                     seq=0, updated_at=None, expired=False))
+                                     seq=0, updated_at=None, expired=False, retry_ms=shot_clock.RETRY_MS))
         self.assertFalse(self.path.exists(), 'a read never creates the file')
         self.assertFalse(self.path.parent.exists())
         # A callable default is read at use time (settings.shotClock can change);
@@ -201,6 +233,50 @@ class ShotClockTests(unittest.TestCase):
         waiter.join(2)
         self.assertEqual(woke, [True, True], 'close() releases a waiting stream')
         self.assertFalse(waiter.is_alive())
+
+    def test_the_stream_preamble_carries_the_retry_constant(self):
+        clock = ShotClock(self.path)
+        self.assertEqual(preamble_from_stream(clock),
+                         b'retry: ' + str(shot_clock.RETRY_MS).encode(),
+                         'the SSE preamble carries the constant, not a second literal')
+
+    def test_the_snapshot_publishes_the_retry_constant(self):
+        # The value follows the constant, so a second literal cannot hide here. The
+        # snapshot method is the one the clock route calls.
+        clock = ShotClock(self.path)
+        self.assertEqual(clock.snapshot(now_ms=1_000)['retry_ms'], shot_clock.RETRY_MS)
+        with patch.object(shot_clock, 'RETRY_MS', 4321):
+            self.assertEqual(clock.snapshot(now_ms=1_000)['retry_ms'], 4321)
+            self.assertEqual(preamble_from_stream(ShotClock(self.path), 0.01), b'retry: 4321',
+                             'the same patched constant reaches the preamble')
+
+    def test_a_command_answers_the_same_shape_a_read_does(self):
+        # The clock route answers POST /api/clock from `apply` and GET /api/clock
+        # from `snapshot`, and tests/test_clock_api.py compares the two answers
+        # key by key. So both methods report the published delay, and the file on
+        # disk holds clock state alone.
+        clock = ShotClock(self.path, default_duration=30)
+        changed = clock.apply('start', now_ms=1_000)
+        noop = clock.apply('start', now_ms=2_000)
+        read = clock.snapshot(now_ms=3_000)
+        self.assertIn(shot_clock.RETRY_KEY, changed, 'a changed command reports the delay')
+        self.assertIn(shot_clock.RETRY_KEY, noop, 'a no-op command reports it too')
+        self.assertEqual(changed[shot_clock.RETRY_KEY], read[shot_clock.RETRY_KEY])
+        self.assertNotIn(shot_clock.RETRY_KEY, self.persisted(),
+                         'the published delay never reaches the clock file')
+        self.assertEqual(set(changed) - {shot_clock.RETRY_KEY}, set(read) - {shot_clock.RETRY_KEY},
+                         'a command and a read describe the same clock, key for key')
+
+    def test_the_client_default_still_equals_the_server_constant(self):
+        # The two files cannot drift in silence: the client's named default is read as
+        # text and compared with the constant that governs the server.
+        source = CLIENT.read_text()
+        found = re.findall(r'const\s+RECONNECT_MS\s*=\s*(\d+)\s*;', source)
+        self.assertEqual(len(found), 1, 'the client holds one named RECONNECT_MS default')
+        self.assertEqual(int(found[0]), shot_clock.RETRY_MS,
+                         'the client default and shot_clock.RETRY_MS are the same number')
+        self.assertIn('payload.retry_ms', source,
+                      'the client reads the key the snapshot publishes')
 
 
 if __name__ == '__main__':
