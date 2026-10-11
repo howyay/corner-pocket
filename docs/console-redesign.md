@@ -9246,11 +9246,15 @@ gained a folded-quad case (10 cases now).
 | Writer AR, Worth 2 (first attempt) | `tests/_shipped.py` | `d0918c5f162e… → changed → d0918c5f162e…` | nothing: the writer changed `encoding='utf-8'` to `'utf-7'` at `:162`, and the reader ran with CWD = `tests/`, so the decode stayed silent — a missed bite, recorded with its lesson |
 | Writer AR, Worth 2 | `tests/test_one_shipped_tree.py` | `9b377163e40a077b5d4648dcd28e69a91abd6308 → 89a67dd9b28e938e30d4279aa68174d9252c6d84 → 9b377163e40a077b5d4648dcd28e69a91abd6308` | `Lists differ: [] != ['shipped_modules']` and `[] != ['_code_strings']` |
 | Lead, Worth 1 (first attempt) | `src/eval_events.py` | `11577af1761f3d3cb04b2950fa430fad6ef59f2a → 1305564f5cf1a85599cc859d575b76e9e2d67789 → 11577af1761f3d3cb04b2950fa430fad6ef59f2a` | nothing: the rounding of the new helper (`round(point[0], 1)` to `round(point[0], 0)`) left `test_projection_guard` green |
-| Lead, Worth 1 (second attempt) | `src/eval_events.py` | `11577af1761f3d3cb04b2950fa430fad6ef59f2a → a08bef38d753ee3cefba040c97a62a73d6da1366 → 11577af1761f3d3cb04b2950fa430fad6ef59f2a` | nothing: the tolerance keyword of the helper (`PIXEL_TOLERANCE` to `DEFAULT_TOLERANCE`) also left the guard green |
+| Lead, Worth 1 (second attempt) | `src/eval_events.py` | `11577af1761f3d3cb04b2950fa430fad6ef59f2a → a08bef38d753ee3cefba040c97a62a73d6da1366 → 11577af1761f3d3cb04b2950fa430fad6ef59f2a` | `Probe._to_px of Probe.px passes DEFAULT_TOLERANCE, but the site declared PIXEL_TOLERANCE` |
 
-The two Lead misses are the most useful result of this round: the case names of `tests/test_projection_guard.py`
-claim to hold the helper's tolerance and its rounding, and two bites that changed exactly those left the guard
-green. The record keeps the question open for a walk: measure which text the guard really reads.
+The Lead's first reading of that second bite was wrong, and the walk of round 73 corrected it with a
+measurement: the guard reads exactly two texts — an `ast.Compare` shaped `abs(...) < 1e-9` or `< 1e-12`, and a
+`project_point(...)` call whose `tolerance=` keyword name is compared with the `SITES` literal — and the
+tolerance bite does answer one fault. The rounding bite answers none, because the guard reads no `round(...)`
+node at all, so the case names claim a hold the code does not have; and the first assertion of the case at
+`tests/test_projection_guard.py:288` is vacuous under that bite, because `real.replace(...)` returns the real
+text unchanged. Both findings stand as rows of round 73.
 
 ### The suites of this round
 
