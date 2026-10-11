@@ -30,6 +30,11 @@ from annotator.refusals import (GUEST_NAME_MAX, INSTANT, INTEGER_RANGE, INTEGER_
 # default. This module reads them, so the settings guard and the clock refuse the same
 # numbers. annotator/shot_clock.py imports no module of this layer, so this adds no cycle.
 from annotator.shot_clock import DEFAULT_DURATION, MAX_DURATION, MIN_DURATION
+# The Twitch channel login has one home: annotator/twitch_source.py holds TWITCH_LOGIN.
+# This module reads that name at the two sites that read a login, so the source URL rule
+# and every other reader refuse one shape. annotator/twitch_source.py imports no module
+# of this layer, so this adds no cycle.
+from annotator.twitch_source import TWITCH_LOGIN
 
 # This module owns the longest note.  One number bounds the note the operator adds
 # (``note_add``) and the notes of a saved regular (``player_save``).  The console mirrors
@@ -76,6 +81,14 @@ RACE_TO_MAX = 99
 #: name does not end in NAME_MAX: tests/test_guest_name.py reserves that ending for the
 #: guest bound alone, so a second bound of a name carries a different word.
 LONGEST_NAME = 200
+
+#: The longest title the `vods` table keeps.  `vods` holds a broadcast the operator picks
+#: or imports, so the number is not a column of the migration: this module owns it alone.
+#: Two sites read it and they answer in two ways: `vod_link` refuses a longer title with
+#: the shared sentence TEXT_LENGTH (annotator/refusals.py), and `_adopt_sources` cuts the
+#: title an import brought to this number.  The number does not end in NAME_MAX, by the
+#: rule above: the title is a name, and the guest bound reserves that ending.
+LONGEST_TITLE = 200
 
 
 class ConflictError(ValueError):
@@ -180,7 +193,9 @@ def parse_twitch_source_url(value):
         raise ValueError('Use an HTTPS Twitch channel or video URL without query parameters')
     path = parsed.path.rstrip('/')
     video = re.fullmatch(r'/videos/([0-9]+)', path)
-    channel = re.fullmatch(r'/([A-Za-z0-9_]{1,25})', path)
+    channel = re.fullmatch('/(' + TWITCH_LOGIN + ')', path, re.IGNORECASE | re.ASCII)
+    # The name reads a lower case login.  This rule reads the URL as the operator typed it,
+    # so it accepts both cases here and lower-cases the login in the canonical URL below.
     if not video and (not channel or channel[1].lower() in TWITCH_RESERVED_CHANNELS):
         raise ValueError('Use a Twitch channel or videos/<digits> URL')
     canonical = 'https://www.twitch.tv' + path.lower()
@@ -369,10 +384,10 @@ class Operations:
         broadcast's title and length, an import knows its range, and neither may blank
         what the other learned."""
         if 'title' in p:
-            row['title'] = text(p.get('title'), 'title', 200) if str(p.get('title') or '').strip() else ''
+            row['title'] = text(p.get('title'), 'title', LONGEST_TITLE) if str(p.get('title') or '').strip() else ''
         if 'channel' in p:
             channel = str(p.get('channel') or '').strip().lower()
-            if channel and not re.fullmatch(r'[a-z0-9_]{1,25}', channel):
+            if channel and not re.fullmatch(TWITCH_LOGIN, channel):
                 raise ValueError('channel must be a Twitch channel login')
             row['channel'] = channel
         if 'length_s' in p:
@@ -447,7 +462,7 @@ class Operations:
             if not vod:
                 continue                  # no line, or one an older build wrote in its own spelling
             if not any(v['id'] == vod for v in state['vods']):
-                state['vods'].append(dict(id=vod, title=str(source.get('title') or '')[:200],
+                state['vods'].append(dict(id=vod, title=str(source.get('title') or '')[:LONGEST_TITLE],
                                           channel='', length_s=0, created_at=''))
             if any(l['vodId'] == vod and l['eventId'] == night['id'] for l in state['links']):
                 continue

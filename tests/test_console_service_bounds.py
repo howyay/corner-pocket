@@ -1,6 +1,7 @@
-"""One rate bound and one race set, each held to one home in the console and one in the service.
+"""One rate bound, one race set and one login ceiling, each with one home in the console and one in the service.
 
-Round 64, two rows of the walk of this round.
+Round 64, two rows of the walk of that round.  Round 69 adds the third pair.  Each pair holds
+one number in two realms: the console holds a copy of a number the service owns.
 
 * **The replay rate bound.**  ``annotator/unified_server.py`` owns what the service
   accepts: ``_REPLAY_RATE_MAX = 8.0``, and ``replay_request`` refuses a rate above it.
@@ -16,6 +17,12 @@ Round 64, two rows of the walk of this round.
   holds ``RACE_TO_OPTIONS``, the six races both forms offer.  The console offers fewer
   values than the service accepts, on purpose: an operator calls a race to an odd number
   of frames.
+* **The channel login ceiling.**  ``annotator/twitch_source.py`` owns ``TWITCH_LOGIN``,
+  the shape of a canonical Twitch channel login: ``[a-z0-9_]{1,25}``.  Before round 69
+  that shape stood in six python sites of four modules.  The repair gives it one home,
+  and every python site of a login reads the name.  The console cannot import a python
+  name, so ``parseSource`` of ``annotator/ops.js`` holds a copy of the shape: the wide
+  alphabet ``[A-Za-z0-9_]`` of a URL, and the same ceiling of 25.
 
 The shape of the console rule.  The console is one static file.  It reads no schema of the
 server, and it draws its panel before any request returns.  A bound the server must send
@@ -31,15 +38,16 @@ the two write scopes stay apart.
 Five rules, one pass over four files:
 
 1. **home rule** - the three console numbers stand on three lines of ``annotator/ops.js``,
-   the six race values stand on one line of the same file, and no other line of the
-   console states either bound.
+   the six race values stand on one line of the same file, and the channel login class
+   stands once in the same file.  No other line of the console states one of the three
+   bounds.
 2. **rate rule** - the console offers a rate from 0.25 to 8, the service accepts a rate up
    to ``_REPLAY_RATE_MAX``, and the two largest values are equal.
 3. **hand rule** - the console hands the three numbers to the stage in the option bag,
    the stage prints them in the rate field, and the stage states no number of its own.
 4. **race rule** - both forms read the one race list, every value of that list is a race
    the service accepts, and the list is narrower than the service range.
-5. **copy rule** - a planted second statement of either bound is reported, with its line.
+5. **copy rule** - a planted second statement of a bound is reported, with its line.
 
 What this case does not see
 ---------------------------
@@ -55,6 +63,10 @@ What this case does not see
 * The race list is narrower than the service range.  Which six races the console should
   offer is a product decision, and this module holds only that the six it offers are
   legal and that both forms offer the same six.
+* It reads the login class by one regex.  A login class the console builds at run time,
+  or a second class that states no ceiling, is invisible to it.
+* It holds the login ceiling equal in the two realms.  Which alphabet the console reads
+  is a URL rule, and ``tests/test_source_url_parity.py`` holds that rule.
 """
 import ast
 import re
@@ -63,6 +75,7 @@ import unittest
 from pathlib import Path
 
 from annotator.operations import Operations
+from annotator.twitch_source import TWITCH_LOGIN
 from annotator.unified_server import _REPLAY_RATE_MAX, replay_request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,6 +120,15 @@ RACE_READ = re.compile(r'RACE_TO_OPTIONS\.map\(n=>option\(n,n,')
 #: The six values as a bare list.  One statement of them is the home, and no more.
 RACE_LITERAL = '[1,3,5,7,9,11]'
 
+#: The login shape of the one home of the service, read as a class and a ceiling.
+SERVICE_LOGIN = re.compile(r'\[a-z0-9_\]\{1,(\d+)\}')
+
+#: One channel login class of the console: letters, digits, ``_`` and ``-``, then a ceiling.
+LOGIN_CLASS = re.compile(r'\[[A-Za-z0-9_-]*[A-Za-z][A-Za-z0-9_-]*\]\{1,(\d+)\}')
+
+#: The one statement of that class: the channel rule of ``parseSource``.
+LOGIN_HOME = re.compile(r'const channel=/\^\\/\(\[[A-Za-z0-9_-]+\]\{1,\d+\}\)\$')
+
 
 def rate_copies(text):
     """The lines of ``text`` where a rate field states a bound of its own."""
@@ -127,6 +149,18 @@ def race_copies(text):
     return [(number, line.strip())
             for number, line in enumerate(text.splitlines(), 1)
             if RACE_LITERAL in line and not RACE_HOME.match(line)]
+
+
+def login_sites(text):
+    """One ``(line, ceiling)`` entry for each channel login class of ``text``.
+
+    The class of the console is text, so it holds the hyphen of ``a-z``.  This reader
+    accepts a hyphen inside the class, and it asks for one letter.  That keeps an
+    unrelated pattern such as ``[0-9-]{1,3}`` out of the answer.
+    """
+    return [(number, int(match.group(1)))
+            for number, line in enumerate(text.splitlines(), 1)
+            for match in LOGIN_CLASS.finditer(line)]
 
 
 def module_numbers(tree):
@@ -253,6 +287,34 @@ class ConsoleServiceBounds(unittest.TestCase):
         self.assertEqual(len(reads), 2, f'both race selects of {CONSOLE.name} must read the list')
         copies = race_copies(CONSOLE_TEXT)
         self.assertEqual(copies, [], f'{CONSOLE.name} holds a second copy of the race set: {copies}')
+
+    def test_the_login_ceiling_stands_once_in_the_console(self):
+        """The console states the login class once, at the ceiling of the one home."""
+        sites = login_sites(CONSOLE_TEXT)
+        self.assertEqual(1, len(sites),
+                         f'{CONSOLE.name} must state the channel login class once; found: {sites}')
+        line, ceiling = sites[0]
+        self.assertIsNotNone(LOGIN_HOME.search(CONSOLE_TEXT),
+                             f'the login class of {CONSOLE.name}:{line} must stand in the channel '
+                             'rule of parseSource')
+        home = SERVICE_LOGIN.fullmatch(TWITCH_LOGIN)
+        self.assertIsNotNone(home,
+                             f'the one home must hold a class and a ceiling: {TWITCH_LOGIN}')
+        self.assertEqual(int(home.group(1)), ceiling,
+                         f'the ceiling of {CONSOLE.name} must equal the ceiling of TWITCH_LOGIN: a '
+                         'longer login passes the console and the service refuses it')
+
+    def test_a_planted_copy_of_the_login_ceiling_is_reported(self):
+        """The detector reports a second login class, with its line and its ceiling."""
+        planted = 'const channel=/^\\/([A-Za-z0-9_]{1,30})$/.exec(path);\n'
+        self.assertEqual(login_sites(planted), [(1, 30)],
+                         'a console line that ends the login at another ceiling is a copy')
+        doubled = ('const channel=/^\\/([A-Za-z0-9_]{1,25})$/.exec(path);\n'
+                   'const other=/^\\/([a-z0-9_]{1,25})$/.exec(path);\n')
+        self.assertEqual([number for number, _ in login_sites(doubled)], [1, 2],
+                         'the detector reports the line of every second statement')
+        self.assertEqual(len(login_sites(CONSOLE_TEXT)), 1,
+                         f'the live {CONSOLE.name} states the login class once')
 
     def test_a_planted_copy_of_either_bound_is_reported(self):
         """The detectors report a second statement of the bound, with its line."""

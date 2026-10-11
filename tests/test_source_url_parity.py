@@ -11,6 +11,10 @@ CONSOLE = Path(__file__).resolve().parents[1] / 'annotator' / 'ops.js'
 # The console's copy of the reserved-channel list, as annotator/ops.js writes it.
 CONSOLE_TUPLE = re.compile(r'^const TWITCH_RESERVED_CHANNELS=\[([^\]]*)\];$', re.MULTILINE)
 CONSOLE_WORD = re.compile(r"'([^']*)'")
+# The channel login rule of the console, as annotator/ops.js writes it: one alphabet, one ceiling.
+# The console cannot import the python name TWITCH_LOGIN of annotator/twitch_source.py, so it holds
+# a copy of the shape. tests/test_console_service_bounds.py holds the ceiling of that copy.
+CONSOLE_LOGIN = re.compile(r'const channel=/\^\\/\(\[([A-Za-z0-9_-]+)\]\{1,(\d+)\}\)\$')
 # The six URL shapes that the console and the service read in different ways before the repair.
 # Four shapes show a console that was too free: the dot segments, the port 443 and the upper case
 # host. Two shapes show a console that was too strict: the double trailing slash on a channel and
@@ -101,6 +105,29 @@ class SourceUrlParityTests(unittest.TestCase):
                          'found these lines with two or more of them: %s' % (sites,))
         self.assertIn("!TWITCH_RESERVED_CHANNELS.includes(", source,
                       'parseSource must read the one array; a typed list would drift again')
+
+    def test_the_console_reads_the_login_of_a_url(self):
+        """The console states the login once, reads both cases, and lowers it for its URL."""
+        source = CONSOLE.read_text(encoding='utf-8')
+        hits = CONSOLE_LOGIN.findall(source)
+        self.assertEqual(1, len(hits),
+                         'annotator/ops.js must state the channel login once; found: %s' % (hits,))
+        alphabet, ceiling = hits[0]
+        self.assertEqual('A-Za-z0-9_', alphabet,
+                         'parseSource must read the login as the operator typed it: a URL holds both '
+                         'cases, and the service rule reads the same shape with re.IGNORECASE and '
+                         're.ASCII')
+        self.assertTrue(ceiling.isdigit(), 'parseSource must end the login at a fixed ceiling')
+        self.assertIn('channel[1].toLowerCase()', source,
+                      'parseSource must lower the login of the channel it returns and of its '
+                      'canonical URL, the way annotator/operations.py does')
+        # The corpus row for this URL is an accept row: the service lowers the login too.
+        served = parse_twitch_source_url('https://www.twitch.tv/ExampleChannel')
+        self.assertEqual(served['channel'], 'examplechannel',
+                         'the service rule must lower the login of that URL')
+        self.assertEqual(served['url'], 'https://www.twitch.tv/examplechannel',
+                         'the console and the service must agree on the canonical URL of a login '
+                         'that holds an upper case letter')
 
 
 if __name__ == '__main__':

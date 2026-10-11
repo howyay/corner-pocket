@@ -38,6 +38,9 @@ from urllib.parse import urlencode
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
 from annotator.refusals import (CHANNEL_REFUSAL, FFMPEG_FAILED, SCAN_CHANNEL, channel_refusal,
                                 disk_refusal, filled_refusal, gb, job_identity)
+# The Twitch channel login has one home: annotator.twitch_source holds TWITCH_LOGIN. This
+# module reads that name at the thumbnail guard below, so it spells the shape no more.
+from annotator.twitch_source import TWITCH_LOGIN
 from src.atomic_write import write_atomic
 from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
 
@@ -81,7 +84,9 @@ def thumb_path(channel, vod):
     to the image CDN.  A broadcast whose picture Twitch did not send gets ``""``.
     """
     vod_id = vod.get("id") if isinstance(vod, dict) else None
-    if not (isinstance(channel, str) and re.fullmatch(r"[a-z0-9_]{1,25}", channel or "")):
+    # The login shape has one home (TWITCH_LOGIN). This guard keeps its own answer: a
+    # channel that is not a login and a broadcast with no picture both answer "" here.
+    if not (isinstance(channel, str) and re.fullmatch(TWITCH_LOGIN, channel or "")):
         return ""
     if not (isinstance(vod_id, str) and vod_id.isdigit()) or not (vod or {}).get("thumbnail"):
         return ""

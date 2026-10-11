@@ -28,6 +28,9 @@ import time
 from annotator.pipeline_stages import (TABLE_MEASURE_EVERY_N, CallableStage, LatencyWindow,
                                        StageRegistry, check_ball_weights, default_stages,
                                        detector_names, merge_detections, resolve_detectors)
+# The Twitch channel login has one home: annotator.twitch_source holds TWITCH_LOGIN. This
+# module reads that name at the saved-channel check below, so it spells the shape no more.
+from annotator.twitch_source import TWITCH_LOGIN
 from src.frame_rate import FPS_FALLBACK
 from src.datasets import STATIC
 
@@ -347,7 +350,7 @@ class LiveProcessor:
             saved = next((item for item in state.get('sources', [])
                           if item.get('id') == source['source_id'] and item.get('kind') == 'channel'), None)
             channel = saved.get('channel') if saved else None
-            if not isinstance(channel, str) or not re.fullmatch(r'[a-z0-9_]{1,25}', channel):
+            if not isinstance(channel, str) or not re.fullmatch(TWITCH_LOGIN, channel):
                 raise ValueError('Select a saved canonical Twitch channel')
             url = 'https://www.twitch.tv/' + channel
             if saved.get('url') != url:

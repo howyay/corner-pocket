@@ -26,6 +26,14 @@ _MAX_BYTES = 1024 * 1024
 _CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'  # Public web player ID, not a credential.
 _TOKEN_HASH = 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9'  # Public persisted-query hash, not a credential.
 
+# The shape of a canonical Twitch channel login: one home for the rule. This module already
+# owns the canonical channel URL of the live resolver, and it imports no module of the
+# annotation layer, so every reader can read this name without a cycle. The ceiling is
+# Twitch's own 25. A canonical login is lower case, so the four service sites read the name
+# as it is. A rule that reads a URL as the operator typed it accepts both cases and
+# lower-cases the login itself; it adds re.IGNORECASE and re.ASCII to the same name.
+TWITCH_LOGIN = r'[a-z0-9_]{1,25}'
+
 
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -268,7 +276,7 @@ def resolve_twitch(canonical_url):
     Network operations have a five-second socket timeout and 1 MiB body limit.
     No authentication or client-integrity fallback is attempted.
     """
-    match = re.fullmatch(r'https://www\.twitch\.tv/([a-z0-9_]{1,25})', canonical_url) if isinstance(canonical_url, str) else None
+    match = re.fullmatch(r'https://www\.twitch\.tv/(' + TWITCH_LOGIN + ')', canonical_url) if isinstance(canonical_url, str) else None
     if not match:
         raise TwitchSourceError('Expected a canonical public Twitch channel URL')
     channel = match[1]

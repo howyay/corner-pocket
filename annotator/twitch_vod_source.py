@@ -229,7 +229,9 @@ def channel_recent_vods(channel, limit=3):
     serves this channel as a single window - an ``after:`` cursor returns the same page - so
     the window is ``first:`` alone and nothing here paginates.
     """
-    if not isinstance(channel, str) or not re.fullmatch(r'[a-z0-9_]{1,25}', channel):
+    # The login shape has one home: the live resolver's TWITCH_LOGIN, read through the
+    # `live` alias this module already holds. The VOD path adds no shape of its own.
+    if not isinstance(channel, str) or not re.fullmatch(live.TWITCH_LOGIN, channel):
         raise TwitchVodError('Expected a canonical Twitch channel login')
     # 100 is Twitch's own ceiling for one videos page; vod_import.RECENT_LIMIT is the window
     # this box asks for. There is no second page to walk (see that constant's note).
