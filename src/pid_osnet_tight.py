@@ -17,6 +17,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "src", "reid"))
 import osnet as O  # noqa
 
+from src.box_geometry import iou  # noqa: E402
+
 META = json.load(open(os.path.join(REPO, "out", "pid_masks", "meta.json")))
 TR = json.load(open(os.path.join(REPO, "out", "pid2_tracklets.json")))
 W = os.path.join(REPO, "src", "reid", "weights", "osnet_x0_25_msmt17.pth")
@@ -29,14 +31,6 @@ sd = sd.get("state_dict", sd)
 model.load_state_dict({k: v for k, v in sd.items()
                        if not k.startswith("classifier")}, strict=False)
 model.eval()
-
-
-def iou(a, b):
-    ix0, iy0 = max(a[0], b[0]), max(a[1], b[1])
-    ix1, iy1 = min(a[2], b[2]), min(a[3], b[3])
-    inter = max(0, ix1 - ix0) * max(0, iy1 - iy0)
-    ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / ua if ua > 0 else 0.0
 
 
 def embed_file(path):

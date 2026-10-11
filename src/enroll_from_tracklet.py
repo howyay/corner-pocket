@@ -105,6 +105,7 @@ from pathlib import Path
 import numpy as np
 
 from src.atomic_write import write_atomic
+from src.box_geometry import iou
 from src.datasets import STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
 from src.ops_event_log import trim
@@ -148,14 +149,6 @@ PROTECTED = (str(DEFAULT_STATE), str(DEFAULT_FACE_STORE))
 # --------------------------------------------------------------------------
 # pure helpers
 # --------------------------------------------------------------------------
-
-def iou(a, b) -> float:
-    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
-    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
-    inter = ix * iy
-    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / union if union > 0 else 0.0
-
 
 def face_area_iou(face_box, person_box) -> float:
     """face ∩ person / face area: 1.0 when the face is fully inside the person."""

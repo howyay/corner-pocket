@@ -15,6 +15,8 @@ os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
 os.environ.setdefault("ULTRALYTICS_SAFE_LOAD", "1")  # weights-only YOLO load (audit D-2)
 from ultralytics import YOLO
 
+from src.box_geometry import iou  # noqa: E402
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO("yolov8n.pt")
@@ -29,14 +31,6 @@ for p in [os.path.join(REPO, "out", "pid1_persons", "report.json"),
         if r.get("prompt", "person") != "person":
             continue
         SAM3.setdefault(round(r["t"], 1), []).extend(h["bbox"] for h in hits)
-
-
-def iou(a, b):
-    ix0, iy0 = max(a[0], b[0]), max(a[1], b[1])
-    ix1, iy1 = min(a[2], b[2]), min(a[3], b[3])
-    inter = max(0, ix1 - ix0) * max(0, iy1 - iy0)
-    ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / ua if ua > 0 else 0.0
 
 
 def track_window(t0, t1):

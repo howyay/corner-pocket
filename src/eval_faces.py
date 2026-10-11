@@ -47,6 +47,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src.box_geometry import iou
 from src.face_id import (
     DEFAULT_MARGIN,
     DEFAULT_THRESHOLD,
@@ -108,14 +109,6 @@ def burst_frames(frame_count, anchors, burst, spacing, start=0):
             if index < frame_count:
                 plan.append(index)
     return sorted(set(plan))
-
-
-def iou(a, b):
-    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
-    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
-    inter = ix * iy
-    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / union if union > 0 else 0.0
 
 
 def box_center(box):
