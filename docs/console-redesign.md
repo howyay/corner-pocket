@@ -7380,3 +7380,165 @@ cases arrived after S's two runs.
 The push is still blocked. Seventy-seven commits sit on the local `main`: the two code commits of this
 round, the record of this round, and the seventy-four that came before them. `origin/main` stays at
 `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 62 · the pin's second name, and the fonts of the board (2026-10-11)
+
+The walk of this round read the repository at `3be8ee7` with an empty `git status --porcelain`,
+answered `Strong candidate present - 1 Strong, 3 Worth, 1 Note`, and wrote 219 lines to
+`/tmp/dshsess/walk_round62.md`. The count on its verdict line equals the number of its sections. It read
+the public-board part of `annotator/unified_server.py` (`:2570-2592`) and the exception and action
+sections, `annotator/operations.py:63-123`, five files of `docs/`, and it scanned the three console suites
+rather than reading them. It did not read `src/sam3/`, `src/reid/osnet.py`, `viz/*.html`, most of
+`annotator/unified_server.py` and of `annotator/operations.py`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `9398a18` | `tests/test_unified_server.py` | Worth 1, Worth 2 and Note 1 |
+| `316d93c` | `tests/test_weight_pins.py`, the eight detector modules, `src/store.py` | Strong 1 and Worth 3 |
+
+### Strong 1 · the pin table owned two weight paths, and its guard read one
+
+Ground: `src/weight_pins.py` calls itself "The one owner of this repository's weight pins" at `:1`, with
+the reason at `:7-9`, and it holds two paths: `:15 YOLO = "yolov8n.pt"` under the comment
+`#: The path under the repository root of the first pinned weight.`, and
+`:18 OSNET = "src/reid/weights/osnet_x0_25_msmt17.pth"`. The guard that enforces the sentence read one of
+them: `tests/test_weight_pins.py:51 WEIGHT_NAME = Path(weight_pins.OSNET).name`, the predicate
+`and WEIGHT_NAME in node.value` at `:79-83`, and the case `:140 test_the_weight_name_stands_once_under_src`
+whose message says the owner holds the path and every other file reads it. Eight files under `src/` spelled
+the other weight by hand — `src/person_pipeline.py:49 DETECTOR_WEIGHTS_NAME = 'yolov8n.pt'`,
+`src/pid_associate.py:35 MODEL = YOLO("yolov8n.pt")` (with the comment at `:34` admitting the copy),
+`src/frame_inference.py:178`, `src/info_complete_scan.py:99`, `src/pid_shooter.py:31`,
+`src/pid_shooter2.py:27`, `src/yolo_track.py:22` and `src/eval_faces.py:743` — and two of them already
+imported `weight_pins.OSNET` on the line above, which is the shape the guard exists to forbid.
+
+Repair: the guard holds both names now (`tests/test_weight_pins.py` moved from
+`572ecb87d0067d80bbc338f0a463dc39012cd256` to `d32bcc35e43b85f0204893908eff94e1ca8abcb8`, 9 to 13 cases),
+and the eight sites read `weight_pins.YOLO`. `src/weight_pins.py` itself did not change (its sha1
+`6230001f88c04add4b17366199577123c5af4013` stands before and after), because the pin table, its sha256 and
+its size are the record of the artifact. The measurement of the walk's own predicate: `yolov8n.pt` stood at
+eleven sites before the repair, nine of them code sites in the eight files, and it stands at two after it —
+`src/weight_pins.py:15` (the path) and `:34` (the owner's own download URL, which the rule excludes because
+it names a file only inside a URL). The eight modules each import in a fresh interpreter.
+
+### Worth 1, Worth 2 and Note 1 · the fonts of the public board
+
+Ground: the `-common` unicode-range of a face stood in `annotator/board.css` while the guard that reads
+font declarations read `annotator/ops.css` only; the served set stood in `BOARD_FONTS` and again in
+`board.css` with no case reading both; and the two realms spelled one font route two ways. Repair: only
+`tests/test_unified_server.py` changed (`f79f0f285ca1760fdb4d1dbfa0e8bc387c9f0ef1` to
+`bdcb541c599e664a0ac78f84fb4533f71da71fd8`, 110 to 112 methods): the font case now reads both
+stylesheets and holds each `-common` range to the owner `annotator/fonts/common-unicode-range.txt` (the
+file that `annotator/fonts/build_fonts.py` writes), one new case compares `board.css`'s declared faces
+with `BOARD_FONTS` in both directions, and one new case pins `board.css` on the relative spelling and
+`ops.css` on the rooted one. No source byte changed: the public port serves no `ops.css`, `board.html`
+must not load it, and the face copy inside `board.css` is deliberate. The measurement of the served route:
+`annotator/unified_server.py:2711-2712` strips the mount prefix, `:2717-2719` reads `BOARD_FILES`, and
+`:2584-2586` maps `/fonts/<name>` to `fonts/<name>`, so `board.css`'s `url(fonts/…)` resolves to
+`/board/fonts/…` and `node tests/test_board.js` answers
+`/board/fonts/noto-sans-sc-500-common.woff2` as the first request.
+
+### Worth 3 · the environment variable name stood in two modules
+
+Ground: `POOL_DATABASE_URL` was read in two modules. Repair: `src/db.py:34 ENV = "POOL_DATABASE_URL"` is
+the one home (`src/db.py` unchanged at `5971017994344187f3c4115c76b78881211b8e5f`), and `src/store.py`
+reads it (`from src.db import ENV`), so the two modules hold one string object. The measurement:
+`db.ENV 'POOL_DATABASE_URL'`, `store.ENV 'POOL_DATABASE_URL'`, `same object True`.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer U, Strong 1 | `src/pid_associate.py` | `ef71235496248014a041b1a8dfc302687b836f2a → 74fd16011cc23eecb04cb5c1ea6c0aa70deeaaf0 → ef71235496248014a041b1a8dfc302687b836f2a` | three cases, among them `2 != 1 : the name yolov8n.pt stands in 2 string literals under src/: src/pid_associate.py:193 (yolov8n.pt), src/weight_pins.py:15 (yolov8n.pt). src/weight_pins.py owns the path, so every other file reads weight_pins.OSNET or weight_pins.YOLO and holds no copy of the text.` |
+| Lead, Strong 1 | `src/yolo_track.py` | `bcd5cc9a870b6ba6d756fdf3e6908615f771f337 → e52174c57c318b049884c65c098944224b6c4155 → bcd5cc9a870b6ba6d756fdf3e6908615f771f337` | `test_the_eight_sites_read_the_owner (module='yolo_track.py')` with `[(133, 'yolov8n.pt')] != []`, and `test_the_detector_name_stands_once_under_src` |
+| Writer V, Worth 1 | `annotator/board.css` | `da9f54afd347b6710558e917a731cd25c8a3d036 → 0568f5bd6c814133864d0fbf21812bad66eb843b → da9f54afd347b6710558e917a731cd25c8a3d036` | `AssertionError: 'U+3000-303F,U+4E00-9FFF' != 'U+3000-303F,U+4E00-9FFF,U+FF00-FFEF' : board.css: noto-sans-sc-500-common.woff2` |
+| Lead, Worth 1 | `annotator/ops.css` | `43a8d51334a69d27a3cfb3b70a6bcf30694fc682 → 5b0f65b2e3134370ef4b06c6dc241c5e276ad959 → 43a8d51334a69d27a3cfb3b70a6bcf30694fc682` | the same sentence, naming `ops.css`, and the first attempt at this bite changed no byte (the range stands at three sites in that file) and is recorded as a miss |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2147 tests in 179.947s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 229, pass 229, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 104 passed, 0 failed |
+
+Round 61 answered 2141 cases and this round answers 2147. The six named additions are the four new cases
+of `tests/test_weight_pins.py` (9 to 13) and the two of `tests/test_unified_server.py` (110 to 112).
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The pin table owns two paths and its guard reads one | Strong 1 of this walk | the guard holds both names and the eight sites read `weight_pins.YOLO` |
+| The `-common` range stands in `board.css` and the guard reads `ops.css` | Worth 1 of this walk | the font case reads both stylesheets and holds each range to `annotator/fonts/common-unicode-range.txt` |
+| The served font set stands in two places | Worth 2 of this walk | one case compares `board.css` and `BOARD_FONTS` in both directions |
+| The environment variable name stands in two modules | Worth 3 of this walk | `src/db.py:34 ENV` is the one home and `src/store.py` reads it |
+| The two realms spell one font route two ways | Note 1 of this walk | one case pins each spelling to its realm |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The pin's URL still holds the raw weight name | limit of this round | `src/weight_pins.py:34` names `yolov8n.pt` inside the download URL, and the new guard excludes URLs by rule; `tests/test_fetch_weights.py:181` holds the table against `NOTICE` |
+| Two stylesheets keep a copy of the range | decision of this round | the public port serves no `ops.css`, so `board.css` must declare the range itself, and the case holds both copies to the generator's text |
+| Copies of the range may stand in `docs/opendesign/*.html` | limit of this round | those files are outside the write scope and no case reads them |
+| No browser proves the font composition or the served bytes | limit of this round | no browser ran, and no request was sent to the service |
+| The Postgres branch stays unexercised | limit of this round | no `POOL_DATABASE_URL` is set here, so `test_db`, `test_store_contract` and `test_store_import` skip 8, 29 and 5 cases |
+| No detector inference ran with the pinned file | limit of this round | the checks prove the imports and the path expressions, not a YOLO load |
+| The citation guard skips the documents | Note 2 of round 60, still open | `tests/test_citation_lines.py`'s `SKIP_PARTS` holds `docs`, so the 1514 document citations have no guard |
+| The timeline suite keeps its own entry | decision of round 61 | the three suites answer one contract and do not share one runner shape |
+| One guard home sat outside the brief's named files | deviation of writer T in round 61 | `tests/test_unified_server.py` holds the cases of Worth 5 and Note 6 of that round |
+| The join's tolerance may be wrong for future data | limit of round 61 | 0.1 s and the old bucket swap strictness for a row at 70.05 |
+| One security case cites a moved ceiling | consequence of round 60 | `tests/test_http_security.py:199` cites `annotator/unified_server.py:2389` while the ceiling stands near `:2473` |
+| Four same-named statistics functions stand outside the home | found by writer Q in round 60 | `tests/test_body_calibration.py:160 stats(xs)`, `tests/live_identity_validation.py:147 _stats(xs)`, `tests/live_pipeline_run.py` and `annotator/pipeline_stages.py:75 _percentile` |
+| Many document citations are stale | found by writer P in round 60 | `docs/console-redesign.md` holds 74 citations into `annotator/unified_server.py` and `docs/postgres-design.md` 28 |
+| The state path stands in two more places | found by round 59 | `annotator/live_processing.py:257` and `:343`, and the segment-built path at `annotator/operations.py:287` |
+| One sentence still stands twice | found by round 59 | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of round 59 | only their digests pin the table |
+| The projection rule keeps two tolerances and a static walk | decisions of round 59 | each site names its own tolerance, and a monkeypatched owner escapes the walk |
+| Two modules have no test module of their own | limit of round 59 | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of round 59 | `:333` and `:363` use `abs(row["threshold"] - …) < 1e-9` |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module |
+| The Chinese tables keep 289 English-only engine values | limit of round 58 | the merge is unsafe by measurement |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The javascript suites' case counts have no guard | limit of round 57 | the suite list is guarded, and the counts inside the three files are not |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The colour guard writes a file into `src/` while it runs | limit of round 56 | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
+| The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and the drop-in `30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119`, `src/pid_associate.py:182`; readers `annotator/server.py:59`, `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` at 20 sites, `30.0003` at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 to 62 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections, and a report can pass its line cap | limits of rounds 56 and 61 | the walks of rounds 57 to 62 answer equal counts, and the round-61 report wrote 261 lines against a cap of 260 |
+
+The push is still blocked. Eighty commits sit on the local `main`: the two code commits of this round, the
+record of this round, and the seventy-seven that came before them. `origin/main` stays at `110b0338`. The
+one user action stays `git -C /home/haoye/projects/pool push origin main`.
