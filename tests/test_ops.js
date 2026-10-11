@@ -545,6 +545,108 @@ test('round 1 · empty states: no fake names, no blank tiles, no list-item empti
       `${lang}: an unsaved event name is shown, and said to be the default`);
   }
 });
+// ---- Round 57: the default name, the weekday table, the placeholder names, the asset tokens -----
+// Three fixed dates, read by the two writers of the default event name: 2026-01-01 is a Thursday,
+// 2026-06-30 a Tuesday and 2026-12-31 a Thursday. The noon hour keeps the day the same in every
+// timezone the two sides can run in, and each day is passed as its own argument: an array handed to
+// the Date constructor in one argument reads as a text date with a zero-based month (measured).
+const FIXED_DATES = [[2026, 1, 1, 12, 0], [2026, 6, 30, 12, 0], [2026, 12, 31, 12, 0]];
+// The version token of an asset is what stops a browser from serving an old file. The token stood
+// five times on one line for one asset, and no case compared two of them, so a bump could reach one
+// copy and miss another. One scan reads both pages, and the frozen table below is the only place a
+// token value appears twice.
+function assetTokens(file) {
+  const html = fs.readFileSync(path.join(__dirname, '../annotator', file), 'utf8');
+  return new Map([...html.matchAll(/(?:src|href)="\/([^"?]+)\?v=([^"&]+)"/g)].map(found => [found[1], found[2]]));
+}
+test('round 57: the default event name answers the same in both services on three fixed dates', () => {
+  // The two writers that fill this name are python (annotator/operations.py, when a draw or an
+  // archive finds a nameless night) and this console (the Set up form). No test compared them: the
+  // two cases that touched the name read each writer against itself. This case runs the python
+  // owner from its own module, in the interpreter that runs the suite, so a day table that changes
+  // on either side fails here. The three answers: 8-Ball Open · Thu 1/1, 8-Ball Open · Tue 6/30 and
+  // 8-Ball Open · Thu 12/31.
+  const dates = JSON.stringify(FIXED_DATES).slice(1, -1);
+  const opened = `import datetime\nfrom annotator.operations import default_name\nfor d in (${dates}):\n    print(default_name(datetime.datetime(*d)))`;
+  const made = require('node:child_process').spawnSync('.venv/bin/python', ['-c', opened],
+    {cwd: path.join(__dirname, '..'), encoding: 'utf8'});
+  assert.equal(made.status, 0, `the python owner did not answer: ${made.stderr || made.error}`);
+  const server = made.stdout.trim().split('\n');
+  assert.equal(server.length, 3, 'one line per date');
+  const h = harness();
+  h.lang = 'en';
+  // The language is 'en', so this is the English form of the same three dates, through the same
+  // function the form and the scene call.
+  assert.deepEqual(FIXED_DATES.map(day => h.autoEventName(new Date(day[0], day[1] - 1, day[2], day[3], day[4]))), server,
+    'the console shows the English name the server would save');
+});
+test('round 57: the console owns the Chinese name, and its weekday table is the one table', () => {
+  const h = harness();
+  h.lang = 'zh';
+  // The Chinese spelling has no python reader, so this case pins it here: one console place holds
+  // the words, and a change of the word list is a visible failure rather than a silent drift.
+  assert.deepEqual(FIXED_DATES.map(day => h.autoEventName(new Date(day[0], day[1] - 1, day[2], day[3], day[4]))),
+    ['1月1日 周四 8球公开赛', '6月30日 周二 8球公开赛', '12月31日 周四 8球公开赛']);
+  const days = JSON.parse(JSON.stringify(h.WEEKDAYS));   // the one table the file keeps
+  const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  assert.deepEqual(days, names.map((name, index) => [name.slice(0, 3), `周${'日一二三四五六'[index]}`]),
+    'the names of the one table cover the seven days in order');
+  // Both readers of that table answer the same seven words: the Chinese names above are the ones
+  // the console writes, and the English ones are the ones the server would save. The Records date
+  // line (dayLabel) reads the same table, so a table that lost a day fails on both counts.
+  h.lang = 'en';
+  assert.deepEqual(FIXED_DATES.map(day => h.autoEventName(new Date(day[0], day[1] - 1, day[2], day[3], day[4]))),
+    ['8-Ball Open · Thu 1/1', '8-Ball Open · Tue 6/30', '8-Ball Open · Thu 12/31'],
+    'the English reader of the one table keeps its seven words');
+  assert.ok(!/'Sun','Mon'/.test(source.slice(source.indexOf('function autoEventName'))),
+    'the second copy of that table inside autoEventName is gone');
+});
+test('round 57: the six placeholder names are one list, and the python writer holds the same six', () => {
+  const h = harness();
+  const consoleNames = JSON.parse(JSON.stringify(h.PLACEHOLDER_NAMES));
+  assert.deepEqual(consoleNames, ['na', 'n/a', 'bye', 'tbd', '轮空', '輪空']);
+  // The writer that refuses a bye as a person is the owner. This case reads that file as text, the
+  // way the refusal cases read annotator/refusals.py, and names the set the way python writes it.
+  // The pattern is anchored at the line and the value runs to the closing brace of the set.
+  const owner = fs.readFileSync(path.join(__dirname, '../annotator/operations.py'), 'utf8');
+  const row = owner.match(/^PLACEHOLDER_NAMES\s*=\s*\{([^}]*)\}/m);
+  assert.ok(row, 'annotator/operations.py holds no PLACEHOLDER_NAMES set');
+  const made = require('node:child_process').spawnSync('.venv/bin/python',
+    ['-c', 'import ast,sys;print(sorted(ast.literal_eval("{"+sys.argv[1]+"}")))', row[1]],
+    {cwd: path.join(__dirname, '..'), encoding: 'utf8'});
+  assert.equal(made.status, 0, `the python owner did not answer: ${made.stderr || made.error}`);
+  // The set is read the way python writes it, and the answer travels as JSON: a python list prints
+  // its text in single quotes, which is not JSON.
+  const serverNames = JSON.parse(made.stdout.trim().replace(/'/g, '"'));
+  // Six names on both sides, or a scan that read nothing would pass this case for the wrong reason.
+  assert.equal(serverNames.length, 6, 'the set in annotator/operations.py holds the six names');
+  assert.deepEqual(consoleNames.slice().sort(), serverNames,
+    'the console array and the python set hold the same six names');
+});
+test('round 57: one asset carries one token per page, the two pages agree, and the map is frozen', () => {
+  const ops = assetTokens('ops.html'), app = assetTokens('app.html');
+  assert.equal(ops.size, 7, 'the console page tags its seven assets');
+  assert.equal(app.size, 1, 'the workbench page tags its one');
+  // Every tag that names a local asset carries a token: the map below is then a complete inventory,
+  // not a sample of the tagged files. The two untagged tags of the page are the favicon links.
+  const tagged = file => (fs.readFileSync(path.join(__dirname, '../annotator', file), 'utf8')
+    .match(/(?:src|href)="\/[^"?]+\?v=/g) || []).length;
+  assert.equal(tagged('ops.html'), 7, 'the console page tags every local asset it loads');
+  assert.equal(tagged('app.html'), 1, 'the workbench page tags every local asset it loads');
+  const FROZEN = {ops: {'ops.css': 'vision-stage-52', 'app.css': 'vision-stage-52', 'app.js': 'vision-stage-64',
+    'clock-sync.js': 'clock-sync-3', 'duration.js': 'duration-1', 'ops.js': 'vision-stage-68',
+    'vision-stage.js': 'vision-stage-68'},
+    app: {'duration.js': 'duration-1'}};
+  const pairs = page => [...page].map(([asset, token]) => `${asset}?v=${token}`).sort();
+  for (const [name, page, frozen] of [['ops.html', ops, FROZEN.ops], ['app.html', app, FROZEN.app]])
+    // The page's whole token map, not one pattern per file: a bump of any one token fails here, in
+    // the one place the value stands.
+    assert.deepEqual(pairs(page), Object.entries(frozen).map(([a, t]) => `${a}?v=${t}`).sort(), `${name}: the frozen token table`);
+  for (const asset of ops.keys())
+    if (app.has(asset))
+      // The one asset the two pages share travels as one token, so a load order cannot mix versions.
+      assert.equal(app.get(asset), ops.get(asset), `${asset} carries one token on both pages`);
+});
 test('round 1 · numbers: every figure in the shell is lining and tabular, past any font: shorthand', () => {
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   // Zilla Slab's default figures are old-style ("0" reads as "o"); a font: shorthand resets
