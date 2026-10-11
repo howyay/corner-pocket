@@ -48,7 +48,7 @@ OPS_WORD_KEY = 'placeholderName'
 OPS_WORDS_TEXT = '轮空由抽签自动安排，请输入访客的真实姓名。'
 OPS_REFUSAL_SENTENCE = "A bye is added by the draw; type the guest's real name"
 
-# annotator/app.js:2046, the message of the live panel.  That longer line contains the words of
+# annotator/app.js:2077, the message of the live panel.  That longer line contains the words of
 # the refusal row 'JPEG encoding failed'.  The line has its own purpose and its own longer text,
 # so the line stays.  A pair is (file, sentence): the scan in tests/test_refusal_identity.py is a
 # plain substring search, so a new copy of a refusal sentence in javascript still fails it.
