@@ -21,6 +21,30 @@ VIDEO = str(ROOT / "data" / "vod_30min_260815.mp4")
 QUAD = np.array(json.load(open(ROOT / "out" / "corners_30min_v2.json"))["corners"], np.float32)
 
 
+def light_dark(centers_bgr):
+    """The A cluster and the B cluster of one identity document.
+
+    A is the light cluster and B is the dark one.  The k-means labels of this
+    module carry no order, so every reader asks here.  One row of
+    ``centers_bgr`` is one BGR prototype, and the mean of that row is the
+    brightness of the prototype.
+    """
+    order = np.argsort(np.asarray(centers_bgr, float).mean(axis=1))  # dim -> bright
+    return int(order[1]), int(order[0])
+
+
+def classify_ab(rgb, centers_bgr, a_index, b_index):
+    """The A or B answer for one RGB triple, by distance to the two prototypes.
+
+    The prototypes are BGR rows, so this function reverses each one before the
+    comparison.  A tie answers A.
+    """
+    centers = np.asarray(centers_bgr, float)
+    to_a = np.linalg.norm(np.asarray(rgb, float) - centers[a_index][::-1])
+    to_b = np.linalg.norm(np.asarray(rgb, float) - centers[b_index][::-1])
+    return "A" if to_a <= to_b else "B"
+
+
 def torso_color(bgr, bb):
     x0, y0, x1, y1 = bb
     h = y1 - y0

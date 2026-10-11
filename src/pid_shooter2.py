@@ -20,7 +20,7 @@ from ultralytics import YOLO
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
-from pid_identity import torso_color, in_table_zone
+from pid_identity import torso_color, in_table_zone, light_dark, classify_ab
 
 REPO = os.path.dirname(ROOT)
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
@@ -28,8 +28,8 @@ MODEL = YOLO("yolov8n.pt")
 EVENTS = json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))
 ID = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))
 centers = np.array(ID["centers_bgr"])  # BGR
-order = np.argsort(centers.mean(axis=1))
-B_CLUSTER, A_CLUSTER = int(order[0]), int(order[1])
+# The A/B rule lives in src/pid_identity.py: A is the light cluster, B is the dark one.
+A_CLUSTER, B_CLUSTER = light_dark(centers)
 
 
 def white_ball(bgr, cloth_mask):
@@ -56,9 +56,7 @@ def white_ball(bgr, cloth_mask):
 
 
 def classify(rgb):
-    da = np.linalg.norm(np.array(rgb) - centers[A_CLUSTER][::-1])
-    db = np.linalg.norm(np.array(rgb) - centers[B_CLUSTER][::-1])
-    return "A" if da <= db else "B"
+    return classify_ab(rgb, centers, A_CLUSTER, B_CLUSTER)
 
 
 def main():

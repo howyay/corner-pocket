@@ -24,7 +24,7 @@ from ultralytics import YOLO
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
-from pid_identity import torso_color, in_table_zone
+from pid_identity import torso_color, in_table_zone, light_dark, classify_ab
 
 REPO = os.path.dirname(ROOT)
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
@@ -36,10 +36,8 @@ QUAD = np.array(json.load(open(os.path.join(REPO, "out", "corners_30min_v2.json"
 
 ID = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))
 centers_bgr = np.array(ID["centers_bgr"])
-# cluster labels: 0/1 from pid_identity; brightness decides A(light)/B(dark)
-order = np.argsort(centers_bgr.mean(axis=1))  # dim -> bright
-B_CLUSTER = int(order[0])
-A_CLUSTER = int(order[1])
+# The A/B rule lives in src/pid_identity.py: A is the light cluster, B is the dark one.
+A_CLUSTER, B_CLUSTER = light_dark(centers_bgr)
 print(f"clusters: A(light)=c{A_CLUSTER} {centers_bgr[A_CLUSTER].round(0)} "
       f"B(dark)=c{B_CLUSTER} {centers_bgr[B_CLUSTER].round(0)}", flush=True)
 
@@ -50,9 +48,7 @@ def mm_to_px(x, y):
 
 
 def classify(rgb):
-    dA = np.linalg.norm(np.array(rgb) - centers_bgr[A_CLUSTER][::-1])
-    dB = np.linalg.norm(np.array(rgb) - centers_bgr[B_CLUSTER][::-1])
-    return "A" if dA <= dB else "B"
+    return classify_ab(rgb, centers_bgr, A_CLUSTER, B_CLUSTER)
 
 
 def main():
