@@ -102,6 +102,6 @@ def spelled_time(store: dict, t_key: str) -> str:
     mapping holds no such key.
 
     This function closes the defect of round 56: the float spelling of one anchor
-    time sat in `src/store.py:345` and in `src/store_pg.py:396`.
+    time sat in `src/store.py:345` and in `src/store_pg.py:321`.
     """
     return next((key for key in store if float(key) == float(t_key)), str(t_key))
