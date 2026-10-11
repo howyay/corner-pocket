@@ -1,7 +1,7 @@
 """How these tests wait for a server to settle, and what they grade when they do.
 
 ``BoundedHTTPServer`` publishes its own accounting: ``pool_state()``
-(``annotator/unified_server.py:2483``, ``pool_state()``) reports how many connections each of the two
+(``annotator/unified_server.py:2489``, ``pool_state()``) reports how many connections each of the two
 budgets is holding right now.  A test about those budgets can assert that
 directly, and this module is the one place the suite says how it waits for it.
 

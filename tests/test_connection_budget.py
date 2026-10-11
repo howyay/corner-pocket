@@ -14,7 +14,7 @@ Every server here is the production class on an ephemeral loopback port with a
 temporary root; the operator's listener on :8130 is never touched.
 
 What is graded is the funding, and the server publishes it: ``pool_state()``
-reports how many connections each budget holds (``annotator/unified_server.py:2483``, ``pool_state()``).
+reports how many connections each budget holds (``annotator/unified_server.py:2489``, ``pool_state()``).
 No wall clock here grades how fast a call was.  This suite shares its host with
 whatever else is running, and a call that queued behind a budget that never frees
 does not answer slowly - it does not answer, which the client's own timeout turns
