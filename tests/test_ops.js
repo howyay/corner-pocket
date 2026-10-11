@@ -1143,11 +1143,11 @@ test('the clock paints the true remaining time on the first render, in every vie
   const snapshot = {duration: 60, running: true, deadline_ms: serverNow + 30000, remaining_ms: 30000, seq: 9};
   h.timer={duration:60,remaining:12.4,deadline:null};
   // The naive push — the server's raw deadline — is 5 s out on this device.
-  h.handlers['window:storage']({key: 'cp-ops-clock', newValue: JSON.stringify({duration: 60, remaining: 30, deadline: snapshot.deadline_ms})});
+  h.handlers['window:storage']({key: h.clockKey, newValue: JSON.stringify({duration: 60, remaining: 30, deadline: snapshot.deadline_ms})});
   assert.equal(h.clockText(h.clockLeft()), '0:25', 'a raw server deadline on a fast device is 5 s out');
   // What the sync layer actually sends: the same instant in the device's base.
   const adopted = clockSync.toLocalClock(snapshot, Date.now(), -5000);
-  h.handlers['window:storage']({key: 'cp-ops-clock', newValue: JSON.stringify(adopted)});
+  h.handlers['window:storage']({key: h.clockKey, newValue: JSON.stringify(adopted)});
   const shared = h.clockText(h.clockLeft());
   assert.ok(shared === '0:30' || shared === '0:29', 'the shared instant survives the skew: ' + shared);
   assert.equal(h.timer.duration, 60, 'and ops.js kept the server duration');
@@ -1155,6 +1155,46 @@ test('the clock paints the true remaining time on the first render, in every vie
   assert.ok(stageMarkup(h).includes('>' + shared + '<'), 'and the Vision view paints the same instant');
   assert.ok(!clockSyncSource.includes('setInterval(tick'), 'the sync layer adds no second painter');
   assert.equal((source.match(/setInterval\(tick,200\)/g) || []).length, 1, 'ops.js keeps its one 200 ms interval');
+});
+
+// Round 49: the clock storage key had seven spellings and one dead export. It has one owner now:
+// CLOCK_KEY in annotator/ops.js, the file that reads the store and writes the store. A second
+// spelling would be a second contract with the other tab, so this case reads the key from there.
+test('the console keys the clock store through its one owner, and no other key', () => {
+  const h = harness();
+  assert.equal(typeof h.clockKey, 'string', 'the console publishes the owner of the storage key');
+  assert.ok(h.clockKey.length > 0, 'and the owner names a key, not an empty string');
+  // One way in: an event keyed by the owner updates the clock.
+  h.handlers['window:storage']({key: h.clockKey, newValue: JSON.stringify({duration: 45, remaining: 12, deadline: null})});
+  assert.equal(h.clockText(h.clockLeft()), '0:12', 'an event keyed by the owner is adopted');
+  // A second spelling would arrive under another key, and this console ignores it.
+  h.handlers['window:storage']({key: h.clockKey + '-other', newValue: JSON.stringify({duration: 45, remaining: 3, deadline: null})});
+  assert.equal(h.clockText(h.clockLeft()), '0:12', 'an event under another key is not adopted');
+  // The other way in: the store read at start-up uses the same owner, so the timer comes back.
+  const seeded = harness({storage: {[h.clockKey]: JSON.stringify({duration: 45, remaining: 7, deadline: null})}});
+  assert.equal(seeded.clockText(seeded.clockLeft()), '0:07', 'the console reads the store under the owner');
+});
+// One key, one spelling. The scan covers every javascript file under annotator/, as the duration
+// rule case does, so a copy that no module reads still fails this suite.
+test('no annotator module holds a second spelling of the clock key', () => {
+  const dir = path.join(__dirname, '../annotator');
+  const copies = [];
+  for (const name of fs.readdirSync(dir).filter(file => file.endsWith('.js'))) {
+    fs.readFileSync(path.join(dir, name), 'utf8').split('\n').forEach((line, index) => {
+      if (line.includes('cp-ops-clock')) copies.push(`annotator/${name}:${index + 1}: ${line.trim()}`);
+    });
+  }
+  assert.equal(copies.length, 1, 'the clock key has one spelling under annotator/:\n' + copies.join('\n'));
+  assert.ok(copies[0].startsWith('annotator/ops.js:'), 'and the owner sits in the console: ' + copies[0]);
+  assert.ok(/const CLOCK_KEY\s*=/.test(copies[0]), 'and that one spelling declares the owner: ' + copies[0]);
+  // The owner is read at every use, so no use spells the key again.
+  for (const use of ['localStorage.getItem(CLOCK_KEY)', 'localStorage.setItem(CLOCK_KEY', 'e.key===CLOCK_KEY']) {
+    assert.ok(source.includes(use), `ops.js reads its owner here: ${use}`);
+  }
+  // The sync layer holds no copy: the dead constant and its dead export are gone from it.
+  assert.ok(!clockSyncSource.includes('cp-ops-clock'), 'annotator/clock-sync.js spells no storage key');
+  assert.ok(!/^\s*const\s+CLOCK_KEY\b/m.test(clockSyncSource), 'and it declares no key constant');
+  assert.ok(!('CLOCK_KEY' in clockSync), 'and its module surface exports no copy either');
 });
 
 // The console publishes one named seam for the shared clock, so the sync
@@ -1180,7 +1220,7 @@ test('the console hands the clock over one named seam, not a forged StorageEvent
   assert.ok(h.clockHTML().includes('>' + shown + '<'), 'the strip paints it');
   // One parser serves both ways in: a real storage event from another tab still lands in receive().
   assert.equal(typeof h.handlers['window:storage'], 'function', 'a real cross-tab event still lands');
-  h.handlers['window:storage']({key: 'cp-ops-clock', newValue: JSON.stringify({duration: 30, remaining: 9, deadline: null})});
+  h.handlers['window:storage']({key: h.clockKey, newValue: JSON.stringify({duration: 30, remaining: 9, deadline: null})});
   assert.equal(h.clockText(h.clockLeft()), '0:09', 'and adopts through the same parser');
   // A hand-over that cannot be read leaves the clock alone instead of throwing into the sync layer.
   h.context.window.OpsClock.receive('not json');

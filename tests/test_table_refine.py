@@ -5,6 +5,8 @@ a boundary to find without any VOD on disk; the recorded-reference test is skipp
 when ``out/corners_30min_v2.json`` is absent (it is an artifact, not source).
 """
 import json
+import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,7 +15,8 @@ import numpy as np
 
 from src.table_detect import detect_table
 from src.table_detect import _order_corners
-from src.table_refine import (detect_table_refined, load_priors, prior_for, refine_quad_edges)
+from src.table_refine import (_DATASET_PRIOR, detect_table_refined, load_priors, prior_for,
+                              prior_provenance, refine_quad_edges)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -203,6 +206,39 @@ class DetectorContractTests(unittest.TestCase):
             if entry['quad'] is not None:
                 self.assertEqual(np.asarray(entry['quad']).shape, (4, 2))
                 self.assertTrue(entry['source'])
+
+    def test_published_note_states_the_scope_of_its_entry(self):
+        """The note travels as provenance, so it must name the entry it describes.
+
+        ``prior_provenance`` publishes ``spec["note"]`` as its ``detail``, and
+        ``load_priors`` publishes the same string when no segment artifact exists.
+        A reader of that copy must not conclude that ``corners_30min_v2.json`` is
+        dead: modules of ``src/`` still load the file today.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            published = prior_provenance('vod30', root=root)
+        self.assertEqual(published['kind'], 'saved_prior')
+        note = published['detail']
+        self.assertEqual(note, _DATASET_PRIOR['vod30']['note'], 'the published copy is the note of the entry')
+        # The note names the entry it describes.
+        self.assertIn('vod30', note)
+        # No part of the note names the file without naming the entry in the same part.
+        # The split keeps ``corners_30min_v2.json`` whole: its dot has no space after it.
+        for part in re.split(r'[.;]\s+', note):
+            if 'corners_30min_v2.json' in part:
+                self.assertIn('vod30', part, f'the note names the file outside the scope of its entry: {part}')
+        # The note scopes the exclusion.  It never calls the file unused.
+        self.assertNotIn('NOT used', note)
+        self.assertIsNone(re.search(r'corners_30min_v2\.json\s+(?:is\s+)?(?:NOT|not)\s+used', note),
+                          f'the note calls the file unused: {note}')
+        # The scope keeps the measurement that explains it.
+        self.assertIn('70 px', note)
+        # The claim of the note holds in the tree: other modules still name the file.
+        readers = sorted(path.name for path in (ROOT / 'src').glob('*.py')
+                         if path.name != 'table_refine.py' and 'corners_30min_v2.json' in path.read_text())
+        self.assertGreaterEqual(len(readers), 2,
+                                'the note says that the file stays in use, and these modules name it: '
+                                + ', '.join(readers))
 
     def test_naive_detector_is_unchanged(self):
         """The other callers keep the old dict; detect_table must still work."""

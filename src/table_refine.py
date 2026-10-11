@@ -70,9 +70,11 @@ _DATASET_PRIOR = {
     # are the seed.
     "vod30": {"file": "pid_anchors_vod30.json", "key": "anchors", "points": 4,
               "note": "first four of the six hand pocket anchors at t=70 "
-                      "(measured within 6-13 px of the visible cloth edge); "
-                      "corners_30min_v2.json is NOT used - its left rail is ~70 px "
-                      "outside the cloth at the top and ~70 px inside at the bottom"},
+                      "(measured within 6-13 px of the visible cloth edge). "
+                      "This note is about the vod30 seed only: the seed of vod30 is not "
+                      "corners_30min_v2.json, because that file has a left rail ~70 px "
+                      "outside the cloth at the top and ~70 px inside it at the bottom. "
+                      "The file stays in use by other modules."},
     "highlight": {"file": "fixed_corners.json", "key": "corners", "points": 4,
                   "note": "highlight reference (docs/state.md: 2.0 px median vs the cloth quad)"},
 }

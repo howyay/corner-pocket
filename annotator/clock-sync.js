@@ -41,7 +41,9 @@
  * Everything below `install()` is dependency-injected and Node-testable.
  */
 
-const CLOCK_KEY = 'cp-ops-clock';
+/* The storage key of the shared clock has one owner: CLOCK_KEY in annotator/ops.js.  That file
+ * reads the key and writes the key.  This file reads no store and writes no store, so it holds
+ * no copy of the key. */
 const API_URL = '/api/clock';
 const STREAM_URL = '/api/clock/stream';
 const POLL_MS = 1000;                /* fallback poll while the stream is down */
@@ -519,7 +521,6 @@ function install(win) {
 }
 
 const api = {
-  CLOCK_KEY: CLOCK_KEY,
   API_URL: API_URL,
   STREAM_URL: STREAM_URL,
   POLL_MS: POLL_MS,
