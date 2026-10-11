@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import cv2
 import numpy as np
-from src.playfield import PARALLEL_TOL_DEG, check_quad, parallelism
+from src.playfield import PARALLEL_TOL_DEG, check_quad
 from tools.playfield_harness import Recording, frame_context, new_stage
 from tools.playfield_vod_audit import CLOTH_BAND_REASON, KNOWN_REFUSED
 
@@ -57,17 +57,76 @@ def interior_angles(quad):
     return out
 
 
-def classify(signs, angles, parallel):
-    """Name the side the evidence points at: the detector, or the tolerance."""
+def classify(signs, angles, parallel, parallel_tol):
+    """Name the side the evidence points at: the detector, or the tolerance.
+
+    ``parallel`` and ``parallel_tol`` come from the owner of the reading.  The owner answers
+    ``ok`` when one pair of opposite edges reads parallel, so its reduction is the smaller of
+    the two pair angles, and the test is ``best > parallel_tol``.  This function must not
+    reduce the pair again: a second reduction with ``max`` reads the perspective angle as a
+    fault and names the tolerance for a quad that the service accepts.
+    """
     if 0 in signs or len(set(signs)) > 1:
         return 'detector: not a convex quad'
     if min(angles) < 20 or max(angles) > 160:
         return 'detector: corner order or corner pick is wrong'
-    if parallel > 3 * PARALLEL_TOL_DEG:
+    if parallel > 3 * parallel_tol:
         return 'detector: edges are not the table edges'
-    if parallel > PARALLEL_TOL_DEG:
+    if parallel > parallel_tol:
         return 'check: parallel within the detector noise, tolerance may be too tight'
     return 'unclear'
+
+
+def best_check(quad, parallel_tol=PARALLEL_TOL_DEG):
+    """The owner's verdict for the quad, from both rotations of the corner list.
+
+    ``annotator/pipeline_stages.py:403`` checks the polygon as given and once rotated, then
+    keeps the better verdict.  This tool reads a quad from the same stage, so it reads the same
+    pair of verdicts.  The rotated form is tried second, because a quad that passes is uncommon
+    in this evidence and the tool prints one verdict.
+
+    A fault inside a check is not a pass: the caller sees the first verdict with the error.
+    """
+    rotated = list(quad[1:]) + list(quad[:1])
+    try:
+        verdicts = [check_quad(quad, parallel_tol=parallel_tol),
+                    check_quad(rotated, parallel_tol=parallel_tol)]
+    except Exception as exc:
+        verdict = check_quad(quad, parallel_tol=parallel_tol)
+        verdict['error'] = str(exc)
+        return verdict
+    return min(verdicts, key=lambda v: (not v['ok'], len(v['reasons'])))
+
+
+def parallel_pair_reading(verdict):
+    """The owner's pair reading and the owner's tolerance, out of the owner's own record.
+
+    The check reduced the two pair angles to ``best_parallel_deg`` and recorded the tolerance
+    that it used.  The tool reads those two fields and reduces nothing a second time.
+    """
+    metrics = verdict.get('metrics') or {}
+    return metrics.get('best_parallel_deg'), metrics.get('parallel_tol_deg')
+
+
+def pick_entry(name, idx, fps, quad, pf):
+    """One measured pick, as the record keeps it.
+
+    ``pf`` is the payload the served stage published with this quad.  The entry carries it
+    unchanged, so the record's ``check_ok``, ``reasons`` and ``metrics`` are the service's own
+    fields.  The pair reading and the tolerance come from the check's verdict for the same
+    quad, in the two rotations the service tries, and the verdict names a side from them.
+    """
+    owner_verdict = best_check(quad)
+    par, par_tol = parallel_pair_reading(owner_verdict)
+    signs = convexity_signs(quad)
+    angles = interior_angles(quad)
+    return {
+        'vod': name, 'at': idx, 't_s': round(idx / fps, 1), 'quad': quad,
+        'convexity': signs, 'interior_angles': angles, 'edge_pair_angle_deg': par,
+        'parallel_tol_deg': par_tol,
+        'check_ok': pf.get('ok'), 'reasons': pf.get('reasons'),
+        'metrics': pf.get('metrics'), 'verdict': classify(signs, angles, par, par_tol),
+    }
 
 
 def main():
@@ -101,23 +160,18 @@ def main():
                     print(f'{name} @{frac:.0%}: no quad measured')
                     continue
                 quad = [(round(float(p[0]), 1), round(float(p[1]), 1)) for p in poly]
-                signs = convexity_signs(quad)
-                angles = interior_angles(quad)
-                par_raw = parallelism(quad)
-                par = round(float(max(v for v in par_raw.values() if isinstance(v, (int, float)))),
-                            2) if isinstance(par_raw, dict) else round(float(par_raw), 2)
-                verdict = classify(signs, angles, par)
-                entry = {
-                    'vod': name, 'at': idx, 't_s': round(idx / recording.fps, 1), 'quad': quad,
-                    'convexity': signs, 'interior_angles': angles, 'edge_pair_angle_deg': par,
-                    'parallel_tol_deg': PARALLEL_TOL_DEG,
-                    'check_ok': pf.get('ok'), 'reasons': pf.get('reasons'),
-                    'metrics': pf.get('metrics'), 'verdict': verdict,
-                }
+                # One reading, one reduction: the check owns the pair angles, so every number
+                # this tool reports for the pair comes from its verdict. A second reduction
+                # here answered a different question and blamed the tolerance for a quad that
+                # the service accepts.
+                entry = pick_entry(name, idx, recording.fps, quad, pf)
+                par, par_tol = entry['edge_pair_angle_deg'], entry['parallel_tol_deg']
+                verdict = entry['verdict']
                 report.append(entry)
                 print(f'{name} @{frac:.0%} frame {idx}')
                 print(f'   quad       {quad}')
-                print(f'   convexity  {signs}  angles {angles}  edge-pair {par} deg (tol {PARALLEL_TOL_DEG})')
+                print(f'   convexity  {entry["convexity"]}  angles {entry["interior_angles"]}'
+                      f'  edge-pair {par} deg (tol {par_tol})')
                 print(f'   reasons    {pf.get("reasons")}  metrics {pf.get("metrics")}')
                 print(f'   verdict    {verdict}')
                 drawn = frame.copy()

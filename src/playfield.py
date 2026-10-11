@@ -78,6 +78,12 @@ def check_quad(quad, *, parallel_tol=PARALLEL_TOL_DEG, aspect=PLAYFIELD_IN[0] / 
     Returns {'ok': bool, 'reasons': [str], 'metrics': {...}}. `ok` means: a pair of opposite edges
     reads parallel within `parallel_tol`, the quad is convex and non-degenerate, and the shape is
     longer than it is wide (the playfield's 2:1 aspect survives the view, up to the tolerance).
+
+    This function is the one owner of the pair reading. The rule needs *one* parallel pair, so
+    the reduction is the smaller of the two angles and the test is `min(pair) > parallel_tol`.
+    The larger angle carries the perspective of the view and is no failure. The metrics record
+    the tolerance that this call used, next to the reading that the call reduced, so a reader of
+    the verdict can repeat the decision and cannot use a second threshold.
     """
     reasons, metrics = [], {}
     if len(quad) != 4:
@@ -98,6 +104,9 @@ def check_quad(quad, *, parallel_tol=PARALLEL_TOL_DEG, aspect=PLAYFIELD_IN[0] / 
     metrics['parallel_deg'] = {'long': round(par['long'], 2), 'short': round(par['short'], 2)}
     best = min(par.values())
     metrics['best_parallel_deg'] = round(best, 2)
+    # The threshold, with the reading that this call reduced: a reader that repeats the decision
+    # must not read a second tolerance from its own code.
+    metrics['parallel_tol_deg'] = round(float(parallel_tol), 2)
     if best > parallel_tol:
         reasons.append('no-parallel-pair')
     metrics['perspective'] = round(_perspective_ratio(quad), 4)
