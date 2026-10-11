@@ -39,6 +39,22 @@ from annotator.shot_clock import DEFAULT_DURATION, MAX_DURATION, MIN_DURATION
 # number in words, because the console shows it, and the same module holds it.
 NOTE_MAX = 4000
 
+# This module owns the largest number of entrants.  One number bounds the entrant a
+# signed-up team adds (``entrant_add``) and the teams a drawn pairing adds
+# (``pair_accept``), so both checks read this name.  The sentence of the refusal names
+# the number too (annotator/refusals.py), and tests/test_ops_bounds.py holds both sites
+# at the same accepted and refused sizes.
+ENTRANT_MAX = 128
+
+# This module owns the appearance bounds of the table preview.  ``CLOTH_COLORS`` lists
+# the cloth colours a ``settings_update`` accepts, and the lamp glow is a number from
+# ``LAMP_GLOW_MIN`` to ``LAMP_GLOW_MAX``.  The console states both bounds again in
+# ``annotator/ops.js`` (the option list and the range input), and tests/test_ops_bounds.py
+# holds the two realms equal.
+CLOTH_COLORS = ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f')
+LAMP_GLOW_MIN = 0.0
+LAMP_GLOW_MAX = 0.5
+
 
 class ConflictError(ValueError):
     """The caller must reload before retrying a stale mutation.
@@ -877,7 +893,7 @@ class Operations:
                 raise ValueError('No pairing to accept')
             if p.get('seed') != pairing['seed']:
                 raise ValueError('The pairing changed; review the teams again')
-            if len(t['entrants']) + len(pairing['teams']) > 128:
+            if len(t['entrants']) + len(pairing['teams']) > ENTRANT_MAX:
                 raise ValueError('Maximum 128 entrants')
             t['entrants'].extend(dict(id=uid(), members=team) for team in pairing['teams'])
             t.update(pool=[], pairing=None)
@@ -921,7 +937,7 @@ class Operations:
             members = p.get('members')
             if not isinstance(members, list) or len(members) != (2 if t['format'] == 'doubles' else 1):
                 raise ValueError('Wrong number of team members')
-            if len(t['entrants']) >= 128:
+            if len(t['entrants']) >= ENTRANT_MAX:
                 raise ValueError('Maximum 128 entrants')
             result = []
             for member in members:
@@ -1219,12 +1235,12 @@ class Operations:
 
     def _do_settings_update(self, s, p):
         if 'clothColor' in p:
-            if p['clothColor'] not in ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f'):
+            if p['clothColor'] not in CLOTH_COLORS:
                 raise ValueError('Invalid cloth color')
             s['settings']['clothColor'] = p['clothColor']
         if 'lampGlow' in p:
             glow = p['lampGlow']
-            if type(glow) not in (float, int) or not math.isfinite(glow) or not 0 <= glow <= 0.5:
+            if type(glow) not in (float, int) or not math.isfinite(glow) or not LAMP_GLOW_MIN <= glow <= LAMP_GLOW_MAX:
                 raise ValueError('lampGlow must be between 0 and 0.5')
             s['settings']['lampGlow'] = glow
         if 'showDiamonds' in p:

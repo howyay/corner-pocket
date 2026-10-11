@@ -1161,6 +1161,24 @@ test('the appearance panel carries the public board switch, on by default, in EN
   h.lang='zh';
   assert.ok(h.appearancePanel().includes('公网记分板：开/关'), 'the 中 label');
 });
+test('the appearance panel offers the cloth list and the glow range the writer accepts', () => {
+  // Round 63: annotator/operations.py owns both bounds (CLOTH_COLORS and the lamp glow range).
+  // tests/test_ops_bounds.py holds the source text of this markup equal to the owner names, and
+  // this case holds the markup the operator reads, after the writer renders it.
+  const h = harness();
+  h.data.settings={clothColor: '#1d5c44', lampGlow: 0.22};
+  const html = h.appearancePanel();
+  const options = [...html.matchAll(/<option value="(#[0-9a-f]{6})"[^>]*>([^<]*)<\/option>/g)]
+    .map(hit => [hit[1], hit[2]]);
+  assert.deepEqual(options, [['#1d5c44','Green'],['#1f4a70','Blue'],['#6a2130','Burgundy'],['#2f3a3f','Slate']],
+    'the cloth select offers the four owner colours, in the owner order');
+  const range = html.match(/<input name="lampGlow" type="range" value="([^"]*)" min="([^"]*)" max="([^"]*)" step="([^"]*)">/);
+  assert.ok(range, 'the lamp glow field must keep its shape');
+  assert.deepEqual(range.slice(1), ['0.22','0','0.5','0.02'], 'the glow field holds the owner bounds');
+  h.lang='zh';
+  const zh = h.appearancePanel();
+  assert.ok(['绿色','蓝色','酒红色','灰色'].every(label => zh.includes(label)), 'the 中 cloth labels');
+});
 test('the public board switch shows a board that is already off and posts a real boolean', async () => {
   const already = harness();
   already.data.settings={publicBoard:false};
