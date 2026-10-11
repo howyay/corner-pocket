@@ -6029,3 +6029,211 @@ in this record, because the discovery of a tree counts the cases that a module b
 The push is still blocked. Forty-six commits sit on the local `main`: the three code commits of this
 round, the record of this round, and the forty-two that came before them. `origin/main` stays at
 `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 56 · the verified frames stood in four tuples, and two stores copied four rules (2026-10-11)
+
+The walk of this round read the repository at `0ed0193` with an empty `git status --porcelain`, wrote
+229 lines to `/tmp/dshsess/walk_round56.md`, and answered `Strong candidate present - 3 Strong,
+2 Worth, 0 Note`. The line disagrees with the report itself: its sections class candidate A, B, C and D
+as Strong and E and F as Worth, so the sections hold 4 Strong and 2 Worth. The sections are the truth,
+and the disagreement is a limit of this walk. It read the thin areas of its brief: the class bodies and
+the nested `def`s of the two trees, the HTML templates of `annotator/`, and the head and claim sites of
+`src/eval_events.py` and `src/segment_calib_report.py`. It did not read `src/sam3/` beyond the four
+import lines of our own code (`src/sam3_cpu.py:16`, `:29`, `:43` and `src/multiplex_demo.py:26`),
+`annotator/app.js`, `ops.js` and `vision-stage.js` (about 570 KB) beyond a grep and a region, every
+`.js` test except two quoted assertions, every `.css` file except named values, 30 of the 43 files of
+`docs/`, `viz/`, `tools/`, the bodies of `scripts/`, `src/eval_events.py` past line 400,
+`src/segment_calib_report.py` past line 270, and the `_do_*` methods of `annotator/operations.py`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `1bf004e` | `src/calib_segments.py`, `src/calib_mapping_audit.py`, `src/calib_segment_measure.py`, `src/calib_segment_fit.py`, `src/segment_calib_report.py`, `tests/test_verified_frames.py` | Strong A and Strong C |
+| `1a62a02` | `src/color_names.py`, `src/ball_census.py`, `src/event_gates.py`, `tests/test_color_names.py` | Strong B |
+| `58a8ce1` | `src/store_rules.py`, `src/store.py`, `src/store_pg.py`, `tests/test_store_merge_rules.py` | Strong D |
+
+### Strong A · the verified frames stood in four setup tuples
+
+Ground: four modules held a literal tuple of the two frames a person verified against the reference
+quad. `src/calib_mapping_audit.py:69 FRAME_TIMES = (70.0, 0.0, 483.4, 1120.2, 1800.0)` stood under the
+comment "Frames the segment artifact already measured"; `src/calib_segment_measure.py:63 CANDIDATE_TIMES
+= (450.0, 450.3, 483.4, 483.7, 941.5, 1119.9, 1120.2, 1120.6, 1200.0)`; `src/calib_segment_fit.py:251
+| {1120.2, 483.4, 1380.0, 1800.0})`; `src/segment_calib_report.py:266 [0.0, 420.0, 450.0, 483.4, 941.5,
+1080.0, 1120.2, 1200.0, 1800.0]})`. Two comments repeated the times at `src/eval_events.py:102` and
+`src/event_gates.py:30`. No test compared the four tuples, and the measurement
+`git grep -n "483\.4" -- 'src/*.py' 'annotator/*.py' 'scripts/*' 'tools/*'` answered eight lines in six
+files.
+
+Repair: `src/calib_segments.py:106-110` owns the pair as `VERIFIED_FRAME_LOW = 483.4`,
+`VERIFIED_FRAME_HIGH = 1120.2` and `VERIFIED_FRAMES = (VERIFIED_FRAME_LOW, VERIFIED_FRAME_HIGH)`, and its
+comment names `docs/calibration-truth.md` and the four readers. Every reader builds its own collection
+from the owner: `FRAME_TIMES = (70.0, 0.0, *VERIFIED_FRAMES, 1800.0)`, `CANDIDATE_TIMES` holds the two
+names, the holdout set holds `*VERIFIED_FRAMES`, and the sample list of the report holds the two names.
+`tests/test_verified_frames.py` holds 9 cases. It reads the syntax tree of every `src/*.py` module, so a
+comment that states the time is not a site, and it fails with the site list when a module writes one of
+the two times as a number. One case proves that the walk sees a planted copy, one case proves that a
+comment is not a site, four cases prove that each reader names the owner and answers the same pair, and
+one case proves that `FRAME_TIMES` unpacks the owner rather than repeating it.
+
+Measurement after the repair: an `ast` walk of `src/*.py` answers two code sites only,
+`src/calib_segments.py:108 483.4` and `src/calib_segments.py:109 1120.2`.
+
+### Strong B · the detector colour vocabulary stood in two modules
+
+Ground: `src/ball_census.py:111 COLOR_ALIASES = {"red2": "red", "red1": "red"}` and
+`src/event_gates.py:151` held the same table, and each module held its own lookup:
+`src/ball_census.py:127 def normalize_color(value: Any) -> str:` answered `UNKNOWN` for a blank value,
+and `src/event_gates.py:154 def color_key(value: Any) -> str:` answered `''` for the same input, with
+one caller at `src/event_gates.py:387 and color_key(claim["color"]) != color_key(v["color"])]`. An AST
+walk of the literal module constants of `src/` and `annotator/` answered that value at exactly two
+sites. The measured import direction is `src/ball_census.py:43 from src.event_gates import num_or_none`,
+and `src/event_gates.py:141 num_or_none` already set the precedent for a shared rule in that file.
+
+Repair: `src/color_names.py` owns the vocabulary. `COLOR_ALIASES` holds the two spellings and
+`color_key` strips and folds the input. The census keeps its documented step (`''` becomes `UNKNOWN`,
+because a census colour is a name a report prints) and the gate keeps `''` (two blank keys must compare
+equal). `tests/test_color_names.py` holds 7 cases: one walk finds the named literal tables of `src/*.py`
+and fails at a second site, one case proves the walk sees a copy planted in a temporary module under
+`src/`, one case proves that both readers bind the owner function object, and three cases hold the four
+answers of the two callers.
+
+The Lead repaired one thing inside this delivery. The owner table arrived with the keys `RED1` and
+`RED2` beside `red1` and `red2`, and no input can reach them, because `color_key` folds the case before
+the lookup. Those two keys are gone, the docstring says that a reader reaches the rule through
+`color_key`, and `src/ball_census.py` lost the two bindings `COLOR_ALIASES = color_names.COLOR_ALIASES`
+and `color_key = color_names.color_key`, which no module read.
+
+### Strong C · the coverage bar had a second holder
+
+Ground: `src/calib_segment_fit.py:51 GATE_FRACTION = 0.80          # GateConfig.calibration_warn_fraction`
+held the number that `src/event_gates.py:110 calibration_warn_fraction: float = 0.80      # reporting
+only; not a trigger` owns. `git grep -n "GATE_FRACTION" -- 'src/*.py'` answered the binding at `:51`,
+the `>=` boundary at `:110`, the two `<` boundaries at `:211` and `:219`, and a reported number at
+`:274`, while `git grep -n "GATE_FRACTION\|calibration_warn_fraction" -- 'tests/*'` answered nothing. The
+tool's own prose contradicted the owner: it said that the gate "fires on late samples", and the gate
+calls the field a report.
+
+Repair: `GATE_FRACTION = GateConfig.calibration_warn_fraction`, and the report prose now reads the field
+with an f-string, so the report states one bar and repeats the owner's meaning.
+
+### Strong D · the two stores copied four merge rules
+
+Ground: `JsonStore` and `PostgresStore` held the same edit rules for one operator record. `seed_put`
+(`src/store.py:280` and `src/store_pg.py:277`) shared 6 statements, `label_put` 6, `verdict_put` 4 and
+`anchors_put` 2. The committed `src/store.py` held `seeds[key] = dict(seeds.get(key, {}), **record)`,
+`record = dict(annotations.get(key, {}), **fields)`, `keys = [k for k in labels if Path(k).name ==
+crop_file]` and `for old in keys:`. `src/store_pg.py:344` admitted the copy in its own docstring:
+"JsonStore.label_put exactly". The one guard that compares the two backends is
+`tests/test_store_contract.py:391 @unittest.skipUnless(HAVE_DB, ...)`, and this machine answers
+`env:[<unset>]` for `POOL_DATABASE_URL`, so 29 of its cases skip and `JsonContract` runs alone.
+
+Repair: `src/store_rules.py` owns five pure rules and imports `pathlib` only: `merge_record`, `drop_key`,
+`clear_keys`, `keys_for_basename` and `spelled_time`. Both classes call the five rules at six sites each
+(`src/store.py:290`, `:292`, `:305`, `:327`, `:329`, `:356` and `src/store_pg.py:290`, `:292`, `:326`,
+`:356`, `:358`, `:399`). `tests/test_store_merge_rules.py` holds 9 cases in one class: a walk of the two
+class bodies with the docstrings removed, the frozen shape table of the pre-repair statements, a case
+that neither class holds a shared rule again, a case that the owner answers the four rules, a case that
+both backends write one document for one sequence of edits, the call-site case for both classes, a
+planted-copy case, a cosmetic-change case, and a case that holds the pre-repair body of the Postgres
+mutator. The writer's own AST walk answers `0 rule sites` in each class and `SHARED RULE STATEMENTS
+between the two classes: 0`, against 6 rule sites in each class and 6 shared statements before the
+repair.
+
+### Worth E and Worth F · the two rows that stay open
+
+`Worth E` is the atomic JSON document write, which stands in five modules as a nested `def`:
+`src/store.py:180 def _write(path: Path, data) -> None:`, `src/enroll_from_tracklet.py:621 def
+_write_json(path, payload) -> None:`, `annotator/shot_clock.py:254 def _save(self, state):`,
+`annotator/unified_server.py:307 def atomic_save(path, data):` and `annotator/vod_import.py:197 def
+_atomic_json(path, document):`. The owner exists: `src/atomic_write.py` holds `write_atomic` (`:57`) and
+four modules call it already (`src/face_id.py:52`, `src/person_identity.py:68`, `src/store_export.py:27`,
+`src/enroll_from_tracklet.py:107` and `src/events_document.py:90`), and `src/store_files.py:90 def
+dump(value, fmt: str) -> str:` owns the byte format. Round 57 holds this row, because one of its five
+files is a file of this round's Strong D.
+
+`Worth F` is the cache-busting token of one asset, which stands five times on one line of
+`annotator/ops.html:2`: `?v=vision-stage-52` twice (`/ops.css` and `/app.css`), `?v=vision-stage-64`
+once (`/app.js`) and `?v=vision-stage-68` twice (`/vision-stage.js` and `/ops.js`), beside
+`/duration.js?v=duration-1` and `/clock-sync.js?v=clock-sync-3`. `annotator/app.html:8` holds
+`/duration.js?v=duration-1`. The guard `tests/test_ops.js:4676` reads
+`/ops\.css\?v=vision-stage-\d+/`, so it accepts any number and compares nothing.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Lead, Strong A | `src/calib_segment_measure.py` | `464f291fb9fd8add03c68db4feebb33440b76a64 → ff86aa9e3d0ff9e6006ce3d59e39a0198c7d4b84 → 464f291fb9fd8add03c68db4feebb33440b76a64` | `AssertionError: Lists differ: [] != ['calib_segment_measure.py:65']` and `AssertionError: Tuples differ: ('VERIFIED_FRAME_LOW', 'VERIFIED_FRAME_HIGH') != ('VERIFIED_FRAME_HIGH',)` |
+| Lead, Strong C | `src/calib_segment_fit.py` | `ba501041a2830245bba17a4139a7ba40e665983a → 10a95fc042b6921a43eb5403ceb4b711c055149a → ba501041a2830245bba17a4139a7ba40e665983a` | `AssertionError: Constant(value=0.8, kind=None) is not an instance of <class 'ast.Attribute'> : GATE_FRACTION must read the gate field, not a number` |
+| Writer M, Strong B | `src/ball_census.py` | `39b16291f0d4840068d6634009f3b95a9b46795a → caf464a8e6ebaa28d2db3272e1a3742a4e54509a → 39b16291f0d4840068d6634009f3b95a9b46795a` | `AssertionError: 1 != 2 : the colour alias table must stand in one module; the walk found: src/color_names.py:39 COLOR_ALIASES, src/ball_census.py:115 COLOR_ALIASES` |
+| Lead, Strong B (owner value) | `src/color_names.py` | `369a9906d124b34506462967c07eced20b19592d → 5672fec8ba335acc87faec7f615fc08c6d42c059 → 369a9906d124b34506462967c07eced20b19592d` | three failures, each `AssertionError: 'red' != 'crimson'` |
+| Lead, Strong B (planted table) | `src/event_gates.py` | `a5bf9040c1147ee0ebd1d91d299f8ef2c2e8a519 → 0f257d53c40a74efbe5b101f4871b35ea4fc4e0d → a5bf9040c1147ee0ebd1d91d299f8ef2c2e8a519` | `AssertionError: 1 != 2 : the colour alias table must stand in one module; the walk found: src/color_names.py:39 COLOR_ALIASES, src/event_gates.py:553 COLOR_ALIASES` |
+| Writer L, Strong D | `src/store.py` | `5c0591e4ec2366277c771c93bf920f16e428607c → 54fdbbbbeff86f58491d2819c7456e0ae1e5dcdd → 5c0591e4ec2366277c771c93bf920f16e428607c` | `AssertionError: Items in the first set but not the second: 'keys_for_basename store_rules.keys_for_basename' : src/store.py JsonStore calls [...] and it must call the five rules of src.store_rules` |
+| Writer L, Strong D (negative) | `src/store_rules.py` | `b76a178b04977eaf243db53f7069fa9164388e71 → effb1526f536f8eece0249839ecf2c358d68ca1e → b76a178b04977eaf243db53f7069fa9164388e71` | green. The walk reads the class bodies, so it cannot see an edit inside the owner, and that negative result is why the guard holds a call-site case |
+| Lead, Strong D | `src/store_pg.py` | `bafb6b1653ff9dd530bc66b55622d24a3c1d4468 → f249df0a16e0beca4d6b89b4e13d595b55103d12 → bafb6b1653ff9dd530bc66b55622d24a3c1d4468` | `FAIL: test_both_classes_read_the_owner_name (module='src/store_pg.py')`, `AssertionError: Items in the first set but not the second:` |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2015 tests in 159.181s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 219, pass 219, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 102 passed, 0 failed, 75 source-text assertions |
+
+Round 55 answered 1990 cases and this round answers 2015. The 25 named additions are the 9 cases of
+`tests/test_verified_frames.py`, the 7 of `tests/test_color_names.py` and the 9 of
+`tests/test_store_merge_rules.py`.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The verified frames stand in four tuples | Strong A of this walk | one owner, four readers that build from it, and a walk over the number constants of `src/*.py` |
+| The detector colour table stands in two modules | Strong B of this walk | `src/color_names.py` owns the table and the lookup, and each caller keeps its own documented blank answer |
+| The coverage bar has a second holder | Strong C of this walk | `GATE_FRACTION` reads `GateConfig.calibration_warn_fraction`, and the report prose reads the field |
+| The two stores copy four merge rules | Strong D of this walk | `src/store_rules.py` owns five rules, both classes call them, and the guard reads the call sites |
+| The same value answered one blank input two ways | part of Strong B | the owner answers `''`, the census adds `UNKNOWN`, and three cases hold the two answers |
+| `src/store_pg.py:344` called itself "JsonStore.label_put exactly" | the prose of a copy | the claim holds now, because one owner answers both classes |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The atomic JSON write stands as a nested `def` in five modules | Worth E of this walk, held for round 57 | `src/store.py:180`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:307` and `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule |
+| The cache-busting token of one asset stands five times on one line | Worth F of this walk, held for round 57 | `annotator/ops.html:2` holds `?v=vision-stage-52` twice, `-64` once and `-68` twice, and `tests/test_ops.js:4676` accepts any number |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of this walk | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:200` and `tests/test_calib_mapping_audit.py:191` |
+| The verdict line of a walk can disagree with its own sections | limit of this round | the round-56 walk answered `3 Strong` and wrote four Strong sections |
+| The colour walk reads a table by its name | limit of this round | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The colour guard writes a file into `src/` while it runs | limit of this round | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally`, so a killed run leaves the file behind |
+| The store walk is pinned to the wording of one revision | limit of this round | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
+| The store walk cannot see an edit inside the owner | limit of this round | measured by the negative bite of writer L; only the call-site case covers `src/store_rules.py` |
+| The full suite answers a different skip count than one module alone | limit of this round | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit; the one-case difference has no explanation yet |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now` and `annotator/vod_import.py:114 now_iso` hold one body at 23 call sites; the walk records the triple under the digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats` answer the same six numbers, recorded under the digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)`, and no guard reads that copy |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | the walk reaches 780 of the 1171 `def`s, and the bite of writer K in round 55 proves it |
+| The console guards read source text | limit of round 55 | no JavaScript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270 raise ValueError("seeds exist for vod30 only")`, `src/store_pg.py:291` and `:298`, and `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25 FFMPEG_VAR = "POOL_FFMPEG"` and `:26 FFPROBE_VAR = "POOL_FFPROBE"`, and the drop-in `deploy/systemd/pool-workbench.service.d/30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50 [ "$age_h" -le 48 ]`, the comment at `deploy/systemd/pool-postgres-verify.service:2`, and the row at `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `src/pid_shooter.py:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119` and `src/pid_associate.py:182`; readers `annotator/server.py:59` and `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"`, and a mask file is not the rule |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks the two known shapes of the defect, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph that writer H added to `tests/test_suite_inventory.py` states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files with two spellings, and `30.0003` stands at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites, plus two `out/scan30/sam3_results.json` paths |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message` and `_send`, and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57` and `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| The areas that no walk read | Note | `src/sam3/`, the bodies of `src/eval_events.py` and `src/segment_calib_report.py` past their first 400 lines, the `.js` tests, most `.css` files, the class bodies and the nested `def`s of the two trees beyond the four classes of this round, and about 30 files of `docs/` |
+
+The push is still blocked. Fifty commits sit on the local `main`: the three code commits of this round,
+the record of this round, and the forty-six that came before them. `origin/main` stays at `110b0338`.
+The one user action stays `git -C /home/haoye/projects/pool push origin main`.
