@@ -90,6 +90,26 @@ LIVE_ACTIONS = ('start', 'stop')
 #: the operator draws; the verdict list is the three review words.
 BOX_LABELS = ('person', 'ball', 'cue', 'solid', 'stripe', 'eight')
 VERDICT_WORDS = ('correct', 'wrong', 'unsure')
+#: The shooter values one annotation stores, service side.  The route ``_route_annotate``
+#: refuses a value outside this tuple, and db/migrations/0002_user_data.sql states the same
+#: four values in the event_verdicts CHECK.  The empty string is the "not recorded" value
+#: that the console sends for its first option, and '?' is the unknown shooter.  The live
+#: console holds its own copy of the four values, because it is a static file that reads no
+#: schema: annotator/vision-stage.js builds the select, and round 70 put the option values
+#: there in one tuple (SHOOTER_CHOICES).  A guard holds the two realms apart-but-equal:
+#: tests/test_console_service_agreement.py reads the console, and
+#: tests/test_sql_domain_parity.py holds the migration rule to this tuple.
+SHOOTER_WORDS = ('A', 'B', '?', '')
+#: The three legacy role values one track seed stores, service side.  ``seed_label`` keeps
+#: such a value as itself, and every other label is a guest name or a clear.  The words stood
+#: three times in python until round 70 (this tuple, an inline tuple in ``predictions``, and
+#: an inline tuple in src/pid_seed_rebuild.py), so a fourth role would have reached one copy
+#: and missed two.  Every python site reads this tuple now.  The live console holds its own
+#: copy, because it is a static file that reads no schema: annotator/vision-stage.js builds
+#: SEED_ROLE_KEYS from its own line, and the seed button reads that map by name.
+#: db/migrations/0002_user_data.sql states the same three words in the track_seeds CHECK, and
+#: tests/test_sql_domain_parity.py holds the migration rule to this tuple.
+SEED_ROLES = ('A', 'B', 'ignore')
 #: The longest note one annotation keeps.  This module owns the number, because the
 #: route `_route_annotate` refuses a longer note and the store class reads no bound.
 #: db/migrations/0002_user_data.sql states the same number for the database in the
@@ -2090,7 +2110,7 @@ class Backend:
     def predictions(self):
         valid = {f'{tk["id"]}:{win}' for win, window in self.tracks().items() for tk in window["tracklets"]}
         labels = {key: seed["label"] for key, seed in self.seeds()["seeds"].items()
-                  if key in valid and seed.get("label") in ("A", "B", "ignore")}
+                  if key in valid and seed.get("label") in SEED_ROLES}
         prediction = load(self.out / "pid_seed_tracks.json", {})
         if not {"A", "B"}.issubset(set(labels.values())) or prediction.get("seed_labels") != labels:
             return {"map": {}, "detail": {}, "stale": True,
@@ -2103,13 +2123,14 @@ class Backend:
     def seeds(self):
         return self.store().seed_file("vod30")
 
-    # A person track's label is one of the legacy role values the identity
-    # pipeline reads (A / B / ignore), a guest name the operator typed, or null
-    # to clear it. Both shapes share the one seeds slot on purpose: the pipeline
-    # keeps reading exactly the three role words, so a guest name is stored and
+    # A person track's label is one of the legacy role words the identity
+    # pipeline reads, a guest name the operator typed, or null to clear it.
+    # Both shapes share the one seeds slot on purpose: the pipeline keeps
+    # reading exactly the three role words, so a guest name is stored and
     # displayed but never trains an identity. The longest guest name has one
     # owner, GUEST_NAME_MAX in annotator/refusals.py, which this module imports.
-    _SEED_ROLES = ("A", "B", "ignore")
+    # The words stand once, in the module constant SEED_ROLES above.
+    _SEED_ROLES = SEED_ROLES
 
     @classmethod
     def seed_label(cls, label):
@@ -2286,7 +2307,7 @@ class Backend:
             raise APIError("unknown event")
         if "verdict" in p and p["verdict"] not in VERDICT_WORDS:
             raise APIError("invalid verdict")
-        if "shooter" in p and p["shooter"] not in ("A", "B", "?", ""):
+        if "shooter" in p and p["shooter"] not in SHOOTER_WORDS:
             raise APIError("invalid shooter")
         if "note" in p and (not isinstance(p["note"], str) or len(p["note"]) > ANNOTATION_NOTE_MAX):
             raise APIError("invalid note")

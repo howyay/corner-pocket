@@ -46,7 +46,14 @@ from src.store_files import BALL_SETS
 # here would be a second spelling of the vocabulary.  The note bound of the same table
 # reads ANNOTATION_NOTE_MAX for the same reason: the route refuses a longer note, the
 # migration refuses a longer row, and a literal number here would be a third spelling.
-from annotator.unified_server import ANNOTATION_NOTE_MAX, VERDICT_WORDS
+# The track_seeds pair reads the service constant SEED_ROLES for the same reason: round 70
+# made that constant the one python home of the three role words, so a literal list here
+# would be the second python spelling that this module exists to refuse.  The shooter pair
+# is the exception of the three: its value list stands here as a literal, because the
+# migration holds the four values and the module holds no constant for the empty string
+# and the question mark in one place yet.
+from annotator.unified_server import (ANNOTATION_NOTE_MAX, SEED_ROLES, SHOOTER_WORDS,
+                                      VERDICT_WORDS)
 
 # The number rules read the constants of the validator, so the CHECK of the migration and
 # the check of the request cannot drift apart.  A literal number in this module would be a
@@ -597,12 +604,12 @@ PAIRS = (
          sql_constraint="CHECK (result IN ('played','forfeit','bye'))",
          python=(('annotator/operations.py', 1),)),
     Pair(domain='track_seeds.label',
-         values=('A', 'B', 'ignore'),
+         values=tuple(SEED_ROLES),
          sql_file='0002_user_data.sql',
          sql_table='track_seeds',
          sql_column='label',
          sql_constraint="CHECK (label IN ('A','B','ignore') OR length(label) BETWEEN 1 AND 60)",
-         python=(('annotator/unified_server.py', 2), ('src/pid_seed_rebuild.py', 1))),
+         python=(('annotator/unified_server.py', 1),)),
     # The verdict values are the service constant VERDICT_WORDS, imported above.  A second
     # case reads that constant, so a change in the validator shows up as one failure here.
     Pair(domain='event_verdicts.verdict',
@@ -612,6 +619,12 @@ PAIRS = (
          sql_column='verdict',
          sql_constraint="CHECK (verdict IN ('correct','wrong','unsure'))",
          python=(('annotator/unified_server.py', 1),)),
+    # Round 70 gave the shooter four values one python home, SHOOTER_WORDS in
+    # annotator/unified_server.py, and the route reads that constant.  The values stand here
+    # as a literal on purpose: this module reads no schema and the pair is the record of the
+    # migration text.  The case below holds the literal to the constant.  The one python site
+    # is the constant itself, and a second literal list of the four values in the service is
+    # a failure of that case and of this count.
     Pair(domain='event_verdicts.shooter',
          values=('A', 'B', '?', ''),
          sql_file='0002_user_data.sql',
@@ -783,6 +796,35 @@ class SqlDomainParityTests(unittest.TestCase):
         values = [tuple(words) for _, words in checks_in(block)]
         self.assertIn(tuple(VERDICT_WORDS), values,
                       'the migration spells the values of VERDICT_WORDS, in that order')
+
+    def test_the_word_pairs_read_their_service_constant(self):
+        """Each word pair below holds the values of one constant of the service module.
+
+        Round 70 gave the shooter four values one python home, ``SHOOTER_WORDS`` in
+        annotator/unified_server.py, and the route reads that constant.  The pair table holds
+        the four values as a literal, and this case holds that literal to the constant, so a
+        value that the route accepts and the pair table does not name is a failure here.  The
+        pair table reads ``SEED_ROLES`` itself, and this case pins that read as well: a change
+        of the constant must reach the pair table.
+        """
+        cases = (('event_verdicts.shooter', SHOOTER_WORDS),
+                 ('track_seeds.label', SEED_ROLES))
+        for domain, constant in cases:
+            with self.subTest(domain=domain):
+                pairs = [pair for pair in PAIRS if pair.domain == domain]
+                self.assertEqual(1, len(pairs), f'this module binds {domain} once')
+                self.assertEqual(tuple(constant), pairs[0].values,
+                                 f'{domain}: the pair table and the service constant disagree')
+
+    def test_the_migration_spells_the_shooter_constant(self):
+        """The event_verdicts CHECK spells the four values of ``SHOOTER_WORDS``, in order."""
+        pairs = [pair for pair in PAIRS if pair.domain == 'event_verdicts.shooter']
+        self.assertEqual(1, len(pairs), 'this module binds event_verdicts.shooter once')
+        sql = source(f'db/migrations/{pairs[0].sql_file}')
+        block = dict(tables_in(sql))[pairs[0].sql_table]
+        values = [tuple(words) for _, words in checks_in(block)]
+        self.assertIn(tuple(SHOOTER_WORDS), values,
+                      'the migration spells the values of SHOOTER_WORDS, in that order')
 
     def test_each_bound_holds_one_value_list(self):
         """For each number rule, the migration text and the Python names must hold it.

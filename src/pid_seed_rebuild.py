@@ -10,13 +10,19 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# The three legacy role words stand once, in the service module that owns them.  This
+# module reads them: a role word trains an identity, and a guest name does not.  The
+# import is light, because annotator.unified_server holds no heavy dependency at module
+# level.
+from annotator.unified_server import SEED_ROLES
+
 
 def explicit_seeds(tracklets, seeds):
     """Return valid user-labeled track keys, ignoring legacy implicit-A seeds."""
     valid = {f'{track["id"]}:{win}' for win, window in tracklets.items()
              for track in window["tracklets"]}
     return {key: seed["label"] for key, seed in seeds.items()
-            if key in valid and seed.get("label") in ("A", "B", "ignore")}
+            if key in valid and seed.get("label") in SEED_ROLES}
 
 
 def run(root=ROOT):

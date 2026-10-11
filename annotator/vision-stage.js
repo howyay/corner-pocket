@@ -39,6 +39,15 @@ const registry = ensureRegistry();
 // purpose: this module loads once and renders many times.
 const boxLabels = () => window.CornerPocketReview.vocabulary.boxLabels;
 const verdictWords = () => window.CornerPocketReview.vocabulary.verdictWords;
+// The four shooter values the annotation form offers, console side, and the words of the
+// options. The service gate and the event_verdicts CHECK of db/migrations/0002_user_data.sql
+// state the same four values; annotator/unified_server.py holds them once in SHOOTER_WORDS.
+// The console holds its own copy on purpose: this module is a static file that reads no
+// schema, and the panel draws before any request returns. Round 70 put the values here,
+// because the same four stood inline at the select below and at the console test that reads
+// it. The empty string is the "not recorded" value of the first option, and '?' is the
+// unknown shooter. One row is one option: the raw value, then the word the operator reads.
+const SHOOTER_CHOICES = [['', '—'], ['A', 'seedA'], ['B', 'seedB'], ['?', 'unknown']];
 const COPY = {
   en: {
     cues:'Cues', inspector:'Inspector', sources:'Source', visionLoading:'Loading the review workspace…', sourcesBtn:'Sources', events:'Events', balls:'Balls', persons:'Persons',
@@ -340,7 +349,11 @@ function labelText(label) { if (label === 'u' || label === -1) return t('unknown
 // pipeline still reads (A / B / ignore) or a guest name the operator typed.
 // Both live in the same seeds store under the same key, so the reader must tell
 // them apart by the role words alone - never by "looks like a name".
-const SEED_ROLE_KEYS = {A:'seedA', B:'seedB', ignore:'ignore'};
+// The role words stand once, in the array below. The map holds one row per word:
+// the word, then the key of the word the operator reads. The seed button and the
+// reader read the map by name, so a site adds no fourth copy of a word.
+const SEED_ROLES = ['A', 'B', 'ignore'];
+const SEED_ROLE_KEYS = Object.freeze(Object.fromEntries(SEED_ROLES.map(role => [role, role === 'ignore' ? 'ignore' : `seed${role}`])));
 function isSeedRole(value) { return value != null && Object.prototype.hasOwnProperty.call(SEED_ROLE_KEYS, String(value)); }
 function seedText(value) { return value == null || value === '' ? '' : isSeedRole(value) ? t(SEED_ROLE_KEYS[String(value)]) : String(value); }
 // What this person track is labelled with right now, and where the label came
@@ -1083,7 +1096,7 @@ function eventBlock(s) {
   <p class="vs-note">${esc(t('evidenceNote'))}</p>
   <div class="vs-block"><h4>${esc(t('geometry'))}</h4>${eventGeometry(item)}</div>
   <div class="vs-block"><h4>${esc(t('verdict'))}</h4><p class="vs-mono">${esc(verdict ? t(verdict) : t('notReviewed'))}</p></div>
-  <label class="vs-field">${esc(t('shooter'))}<select data-vs-action="shooter">${[['','—'],['A',t('seedA')],['B',t('seedB')],['?',t('unknown')]].map(([v, l]) => `<option value="${v}" ${(annotation.shooter || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+  <label class="vs-field">${esc(t('shooter'))}<select data-vs-action="shooter">${SHOOTER_CHOICES.map(([v, l]) => `<option value="${v}" ${(annotation.shooter || '') === v ? 'selected' : ''}>${esc(l === '—' ? l : t(l))}</option>`).join('')}</select></label>
   <label class="vs-field">${esc(t('notes'))}<textarea rows="3" data-vs-action="note">${esc(annotation.note || '')}</textarea></label>
   ${receiptLine('event')}`;
 }
@@ -1259,7 +1272,7 @@ function personBlock(s) {
   ${labelBoxHTML(s)}
   ${linkBlock(s)}
   ${enrolBlock(s)}
-  <div class="vs-block vs-quiet"><div class="vs-row"><button data-vs-action="seed" data-vs-value="ignore">${esc(t('notAPlayer'))}</button></div>
+  <div class="vs-block vs-quiet"><div class="vs-row"><button data-vs-action="seed" data-vs-value="${SEED_ROLE_KEYS.ignore}">${esc(t('notAPlayer'))}</button></div>
     <p class="vs-note">${esc(t('ignoreHint'))}</p></div>
   <div class="vs-block"><h4>${esc(t('rebuild'))}</h4><div class="vs-row"><button data-vs-action="rebuild">${esc(t('rebuild'))}</button><button data-vs-action="rebuild-refresh">${esc(t('refresh'))}</button></div><p class="vs-note">${esc(t('seedHint'))}</p><p class="vs-mono">${esc(engineText(s.persons.status || ''))}</p></div>
   ${receiptLine('person')}`;
