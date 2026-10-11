@@ -58,9 +58,10 @@ from annotator.operations import check_requires  # noqa: E402
 # layer does.
 from annotator.refusals import GUEST_NAME_MAX, identity_fields  # noqa: E402
 # The detector vocabulary (annotator/pipeline_stages.py) owns what a detector is
-# called.  This module imports it here, so this route and the stage factory that
-# builds the live pipeline cannot hold two different lists of accepted names.
-from annotator.pipeline_stages import frame_detectors  # noqa: E402
+# called, and it owns the set a caller who names none gets.  This module imports
+# both names here, so this route and the stage factory that builds the live
+# pipeline cannot hold two different lists of accepted names.
+from annotator.pipeline_stages import DEFAULT_DETECTORS, frame_detectors  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it here, so the console's ball-set route and that owner cannot hold
@@ -136,6 +137,11 @@ _MAX_ENROLL_BYTES = 8 * 1024 * 1024
 #: every 3, so the decoded cap above arrives as 11184812 bytes; a margin of 1398100 bytes
 #: holds the JSON envelope.  The sum is 12582912 = 12 MiB, the body this route always took.
 _MAX_ENROLL_BODY_BYTES = (_MAX_ENROLL_BYTES + 2) // 3 * 4 + 1398100
+#: The byte count one read of a range response takes.  That count is a stream read
+#: size, and ``_MAX_POST_BODY_BYTES`` is a request limit: the two facts are
+#: different, so each one has its own name and one may move without the other.
+#: tests/test_unified_server.py holds the reader on this name and the value.
+_RANGE_CHUNK_BYTES = 65536
 #: Every ``t`` a route reads is a second of the broadcast, inside this range. The
 #: window route and ``anchor_info`` read the one pair, so the two cannot drift.
 T_RANGE = (0, 1800)
@@ -2038,7 +2044,7 @@ class Backend:
 
     def start_inference(self, data):
         meta = self.frame_metadata(data.get('dataset'), data.get('frame_index'))
-        detectors = data.get('detectors', ['table', 'person'])
+        detectors = data.get('detectors', list(DEFAULT_DETECTORS))
         # The vocabulary (annotator/pipeline_stages.py) decides what a detector is
         # called; this route only translates to the spelling the per-frame
         # implementation speaks, so ``ball`` and ``balls`` reach it as one detector
@@ -2882,7 +2888,7 @@ def make_handler(backend):
                 stream.seek(start)
                 remaining = end - start + 1
                 while remaining > 0:
-                    chunk = stream.read(min(65536, remaining))
+                    chunk = stream.read(min(_RANGE_CHUNK_BYTES, remaining))
                     if not chunk:
                         break
                     self.wfile.write(chunk)

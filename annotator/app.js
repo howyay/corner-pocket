@@ -20,6 +20,14 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 // tests/test_ops.js holds the header they spell equal to this object.
 const JSON_HEADERS = Object.freeze({'Content-Type': 'application/json'});
 const jsonHeaders = () => JSON_HEADERS;
+// The byte count an operator reads has one home for the console realm: this rule. The service
+// states the same rule in annotator/refusals.py (size_text), because a static file cannot import a
+// python name, and tests/test_console_round73_owners.py reads both realms over one table of counts.
+const sizeText = bytes => Number(bytes) >= 1e9 ? `${(Number(bytes) / 1e9).toFixed(1)} GB` : `${Math.round(Number(bytes) / 1e6)} MB`;
+// The detectors a session measures when the caller names none have one home for the console realm:
+// this pair. The service states the same set in annotator/pipeline_stages.py (DEFAULT_DETECTORS).
+// The three-name row the panel draws is the vocabulary, not this default set.
+const DEFAULT_LIVE_DETECTORS = Object.freeze(['table', 'person']);
 const enc = encodeURIComponent;
 // Historical review-mode names stay valid activation targets so nothing that
 // used to be reachable disappears; they all activate the one stage and only
@@ -56,7 +64,7 @@ const state = {
   drawn:{cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0,on:false,source:SOURCE_LABEL.none},
   cloth:{reference:null,verdict:noClothVerdict(),quad:null,polygon:null,pockets:{source:null,count:0,reference:null},refusal:null},
   loading:{overlay:false,since:0},
-  live:{state:'idle',error:null,frame_age_ms:null,receive_to_result_ms:null,skipped:0,seq:null,receivedAt:null,stale:false,detections:null,attempt:null,detectors:['table','person']},
+  live:{state:'idle',error:null,frame_age_ms:null,receive_to_result_ms:null,skipped:0,seq:null,receivedAt:null,stale:false,detections:null,attempt:null,detectors:[...DEFAULT_LIVE_DETECTORS]},
   source:{kind:'vod',label:'',channel:null},
   sel:{kind:'none',crop:null,ball:null,person:null,track:null,anchor:0,event:null,box:-1},
   focus:'events',
@@ -2441,12 +2449,16 @@ Object.defineProperty(window.CornerPocketReview, 'vocabulary', {value: VOCABULAR
 // The rules the console's page scripts share have one owner here, and one published seam:
 // window.ConsoleRules. The escape rule is the first of them, the JSON request header the second.
 // The words of both screens (SHARED_WORDS) and the refusal reasons the detector writes
-// (QUAD_REFUSAL_COPY) are the third and the fourth.
+// (QUAD_REFUSAL_COPY) are the third and the fourth. The byte count the operator reads (sizeText,
+// the same rule as annotator.refusals.size_text) is the fifth, and the detectors a session measures
+// when the caller names none (liveDetectors, the same set as annotator.pipeline_stages
+// .DEFAULT_DETECTORS) is the sixth.
 // annotator/ops.js, annotator/vision-stage.js and annotator/clock-sync.js read them from that seam
 // instead of holding a copy. Both console pages load this file before those scripts. A test that
 // stands in for the engine handle replaces window.CornerPocketReview, and that handle is a driver
 // seam, not a rule seam.
-window.ConsoleRules = {esc, jsonHeaders, words: SHARED_WORDS, quadReasons: QUAD_REFUSAL_COPY};
+window.ConsoleRules = {esc, jsonHeaders, words: SHARED_WORDS, quadReasons: QUAD_REFUSAL_COPY,
+                       sizeText, liveDetectors: DEFAULT_LIVE_DETECTORS};
 const standaloneRoot = document.querySelector('#review-root');
 if (standaloneRoot) { mount(standaloneRoot); activate(); }
 })();

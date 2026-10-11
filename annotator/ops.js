@@ -127,7 +127,9 @@ const dateLine=at=>{const d=new Date(at);return Number.isNaN(d.getTime())?String
 const monthLabel=d=>lang==='zh'?MONTHS[d.getMonth()][1]:MONTHS[d.getMonth()][0];
 const dayLabel=d=>`${d.getMonth()+1}/${d.getDate()} ${WEEKDAYS[d.getDay()][lang==='zh'?1:0]}`;
 const hms=value=>window.Duration.hms(value);   // one owner: annotator/duration.js
-const sizeText=bytes=>Number(bytes)>=1e9?`${(Number(bytes)/1e9).toFixed(1)} GB`:`${Math.round(Number(bytes)/1e6)} MB`;
+// The byte count an operator reads has the same owner and the same seam: annotator/app.js states
+// the rule (one rule for both realms, with annotator/refusals.size_text), and the read is late.
+const sizeText=v=>window.ConsoleRules.sizeText(v);
 const eventDate=night=>{const d=new Date(night?.archivedAt);return isNaN(d)?null:d};
 const bfValue=(selector,fallback)=>{const value=$(selector)?.value;return value===undefined||value===null?fallback:value};
 // ---- Records timeline --------------------------------------------------------------------
@@ -758,7 +760,13 @@ function bfScreen(){
   ${body}
 </section>`}
 document.addEventListener('timeupdate',e=>{if(e.target?.id==='bf-media'&&bf){bf.clock=Math.round(Number(e.target.currentTime)||0);const read=$('#bf-clock-read');if(read)read.textContent=`@ ${hms(bf.clock)}`}},true);
-let liveTimer=null,liveGeneration=0,liveChoice='dataset:vod30',liveDetectors=['table','person'];
+// The default detector set has one owner for the console realm: annotator/app.js, published on
+// window.ConsoleRules.liveDetectors (the same set as annotator/pipeline_stages.DEFAULT_DETECTORS).
+// The ticks below are this page's own selection, so they start as a copy of that default.  The
+// read stays inside liveTicks(): annotator/app.js loads before this file in the page, and a
+// reader that loads this file alone still reaches auditLine.
+let liveTimer=null,liveGeneration=0,liveChoice='dataset:vod30',liveDetectors=null;
+function liveTicks(){if(!liveDetectors)liveDetectors=[...window.ConsoleRules.liveDetectors];return liveDetectors;}
 const liveText=(en,zh)=>lang==='zh'?zh:en;
 let vodChoice=null;
 // Owner round 8 (item 3): the recorded review is Records' business, not the Vision tab's.
@@ -783,7 +791,7 @@ async function pollLive(generation){try{const response=await fetch('/api/live',{
 // The live tab's own panel carries the same numbers under its own id: the workbench's #live-status
 // only exists once frames arrive, and a stale panel beside a live workbench would be a lie.
 const panelNode=$('#live-panel-status');if(panelNode)panelNode.textContent=livePanelStatus();review()?.applyLiveStatus(status);liveSnapshot=status;const running=liveRunning();if(running!==liveWasRunning){liveWasRunning=running;if(tab==='vision'&&!reviewId)render()}if(status.state==='running'&&latest){const frame=await fetch('/api/live/frame',{cache:'no-store'});if(frame.ok){const meta=JSON.parse(frame.headers.get('X-Live-Metadata'));if(String(meta.seq)!==frame.headers.get('X-Live-Sequence'))throw Error('Frame sequence mismatch');const blob=await frame.blob();if(generation!==liveGeneration)return;const source=liveSource(liveChoice);review()?.ingestLiveFrame(URL.createObjectURL(blob),meta,{label:source.kind==='vod-replay'?liveSourceLabel(liveChoice):`● ${liveText('live','直播')} · ${liveSourceLabel(liveChoice)}`,channel:source.kind==='twitch'?channelOf(source.source_id):null})}}}catch(error){if(generation===liveGeneration)message(`${liveText('Live poll failed','直播轮询失败')}: ${error.message}`,true)}finally{if(generation===liveGeneration&&tab==='vision'&&!document.hidden)liveTimer=setTimeout(()=>pollLive(generation),500)}}
-async function liveAction(action){stopLivePolling();const attempted=liveChoice;try{const payload=action==='start'?{action,source:liveSource(liveChoice),detectors:liveDetectors}:{action};const response=await fetch('/api/live',{method:'POST',headers:jsonHeaders(),body:JSON.stringify(payload)}),result=await response.json();if(!response.ok)throw Error(result.error||`HTTP ${response.status}`);visionAttempt=null;review()?.clearLiveError();review()?.applyLiveStatus(result)}catch(error){visionAttempt={source:attempted,error:error.message,at:Date.now()};review()?.setLiveAttempt(visionAttempt);review()?.applyLiveStatus({state:'error',error:error.message});message(error.message,true)}finally{syncLivePolling();renderSurface()}}
+async function liveAction(action){stopLivePolling();const attempted=liveChoice;try{const payload=action==='start'?{action,source:liveSource(liveChoice),detectors:liveTicks()}:{action};const response=await fetch('/api/live',{method:'POST',headers:jsonHeaders(),body:JSON.stringify(payload)}),result=await response.json();if(!response.ok)throw Error(result.error||`HTTP ${response.status}`);visionAttempt=null;review()?.clearLiveError();review()?.applyLiveStatus(result)}catch(error){visionAttempt={source:attempted,error:error.message,at:Date.now()};review()?.setLiveAttempt(visionAttempt);review()?.applyLiveStatus({state:'error',error:error.message});message(error.message,true)}finally{syncLivePolling();renderSurface()}}
 window.addEventListener('pagehide',stopLivePolling);
 window.addEventListener('pageshow',()=>{syncLivePolling();syncOpsPolling()});
 document.addEventListener('visibilitychange',()=>{syncLivePolling();syncOpsPolling()});
@@ -1358,7 +1366,7 @@ const opsAct = (() => {
     'live-start':async()=>{debugWorkbench=false;startLive();return},
     'live-stop':async()=>{stopLive();return},
     'live-pick':async()=>{pickLive(String(b.dataset.value||''));render();return},
-    'live-detector':async()=>{const d=String(b.dataset.value||'');setLiveDetectors(liveDetectors.includes(d)?liveDetectors.filter(x=>x!==d):[...liveDetectors,d]);render();return},
+    'live-detector':async()=>{const d=String(b.dataset.value||''),current=liveTicks();setLiveDetectors(current.includes(d)?current.filter(x=>x!==d):[...current,d]);render();return},
     'clock-toggle':async()=>{clockToggle();clockTook('clock-toggle')},
     'clock-reset':async()=>{timer.remaining=timer.duration;timer.deadline=null;persistClock();clockTook('clock-reset');render()},
     'clock-set':async()=>{const duration=Number(b.dataset.value);if(!Number.isFinite(duration)||duration<=0)return;if(await action('settings_update',{shotClock:duration})){timer={duration,remaining:duration,deadline:null};persistClock();clockTook('clock-set',duration);render()}},
@@ -1557,7 +1565,7 @@ async function forgetChannel(id){await action('source_delete',{id});renderSurfac
 // The workbench adapter binds to the markup that owns it, so it goes when that markup goes. The
 // Vision module calls this before every repaint and again when the operator leaves the screen.
 function releaseVisionAdapter(){visionAdapter?.detach();visionAdapter=null}
-function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;mount.removeAttribute?.('aria-busy');mount.removeAttribute?.('data-loading');mount.querySelectorAll?.('.vs-loading').forEach(n=>n.remove());visionAdapter=window.VisionStage.attach({mount,frameHost:$('#vision-host'),lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveDetectors],forgetChannel,fixedClip:()=>!!reviewId,clock:()=>({title:t('shotTimer'),text:clockText(clockLeft()),low:!!clockLow(clockLeft())}),setAutoInference:on=>review()?.setAutoInference?.(on),openSources:()=>{sourceOpen=true;render()},pickReplay,replayChoice,replayRate:{min:REPLAY_RATE_MIN,max:REPLAY_RATE_MAX,step:REPLAY_RATE_STEP},notice:text=>message(text,true),
+function attachSurface(){const mount=$('#vision-surface');if(!mount||!window.VisionStage)return;mount.removeAttribute?.('aria-busy');mount.removeAttribute?.('data-loading');mount.querySelectorAll?.('.vs-loading').forEach(n=>n.remove());visionAdapter=window.VisionStage.attach({mount,frameHost:$('#vision-host'),lang,review:review(),channels,vods,regulars,chat:()=>chat,toggleChat:()=>{chat=!chat;render()},pickLive,startLive,stopLive,setLiveDetectors,liveDetectors:()=>[...liveTicks()],forgetChannel,fixedClip:()=>!!reviewId,clock:()=>({title:t('shotTimer'),text:clockText(clockLeft()),low:!!clockLow(clockLeft())}),setAutoInference:on=>review()?.setAutoInference?.(on),openSources:()=>{sourceOpen=true;render()},pickReplay,replayChoice,replayRate:{min:REPLAY_RATE_MIN,max:REPLAY_RATE_MAX,step:REPLAY_RATE_STEP},notice:text=>message(text,true),
 // Owner item 3: on the Vision tab the workbench is the live stream - no dataset chip, no replay
 // form, no frame transport. Those belong to a night's recorded review, which is opened from
 // Records and is the only place `liveOnly` answers false while the console is not on Vision.
@@ -1590,7 +1598,7 @@ const SEAM=[["data",()=>data,v=>data=v],["lang",()=>lang,v=>lang=v],["t",()=>t],
 ["statusScreen",()=>statusScreen,v=>statusScreen=v],["deskFilter",()=>deskFilter,v=>deskFilter=v],["tonightState",()=>tonightState,v=>tonightState=v],["startModal",()=>startModal,v=>startModal=v],
 ["replayChoice",()=>replayChoice,v=>replayChoice=v],["review",()=>review],["openEvents",()=>openEvents,v=>openEvents=v],["bfProgressLine",()=>bfProgressLine,v=>bfProgressLine=v],
 ["navLabel",()=>navLabel,v=>navLabel=v],["datasetForVod",()=>datasetForVod,v=>datasetForVod=v],["pollOps",()=>pollOps,v=>pollOps=v],["stopOpsPolling",()=>stopOpsPolling,v=>stopOpsPolling=v],
-["liveSource",()=>liveSource,v=>liveSource=v],["regulars",()=>regulars,v=>regulars=v],["liveDetectors",()=>liveDetectors,v=>liveDetectors=v],["liveAction",()=>liveAction,v=>liveAction=v],
+["liveSource",()=>liveSource,v=>liveSource=v],["regulars",()=>regulars,v=>regulars=v],["liveDetectors",()=>liveTicks(),v=>liveDetectors=v],["liveAction",()=>liveAction,v=>liveAction=v],
 ["attachSurface",()=>attachSurface,v=>attachSurface=v],["visionAdapter",()=>visionAdapter,v=>visionAdapter=v],["visionSurface",()=>visionSurface,v=>visionSurface=v],["reload",()=>reload,v=>reload=v],
 ["vodChoice",()=>vodChoice,v=>vodChoice=v],["resultStats",()=>resultStats,v=>resultStats=v],["setupForm",()=>setupForm,v=>setupForm=v],["record",()=>record,v=>record=v],
 ["ename",()=>ename],["sheetId",()=>sheetId,v=>sheetId=v],["monthLabel",()=>monthLabel],["bfFresh",()=>bfFresh,v=>bfFresh=v],

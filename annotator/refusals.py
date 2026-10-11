@@ -32,6 +32,7 @@ placeholder names, not a finished sentence.  A raise site passes the skeleton by
 an f-string, so the sentence is built in one place and the tests that count the sentences a
 raise site states keep their count.  ``tests/test_refusal_templates.py`` pins those rows.
 """
+from decimal import Decimal, ROUND_HALF_UP
 from typing import NamedTuple
 
 
@@ -329,9 +330,33 @@ JOB_REFUSALS = {'already_starting': ALREADY_STARTING, 'already_running': ALREADY
                 'already_imported': ALREADY_IMPORTED}
 
 
+def rounded(value, places):
+    """``value`` at ``places`` decimals, with a tie rounded up: the console's own rounding.
+
+    The console holds the count as a binary double and rounds it with ``Number.toFixed`` (the GB
+    half) and ``Math.round`` (the MB half), and both round a tie up.  ``Decimal(value)`` is that
+    same double, exactly, so this function answers what the console answers for every count.
+    Python's own ``:.1f`` is not that rule: it rounds a tie to the *even* digit, and
+    1_250_000_000 bytes read ``1.2 GB`` here beside ``1.3 GB`` in ``annotator/ops.js``.
+    """
+    step = Decimal(1).scaleb(-places)
+    return Decimal(value).quantize(step, rounding=ROUND_HALF_UP)
+
+
 def gb(count):
-    """A byte count as both sentences write it (``annotator/vod_import.py`` re-exports this)."""
-    return f"{count / 1e9:.1f} GB"
+    """A byte count in GB: the three counts of the disk sentence, and the GB half of size_text."""
+    return f"{rounded(count / 1e9, 1)} GB"
+
+
+def size_text(count):
+    """A byte count as the operator reads it: ``N.N GB`` at 1 GB and up, ``N MB`` below.
+
+    This rule has one home for the python realm, and it is this one.  ``annotator/vod_import.py``
+    imports the name for its import sentence, and ``annotator/app.js`` states the same rule for
+    the console realm on ``window.ConsoleRules.sizeText``, because a static file cannot import a
+    python name.  ``tests/test_console_round73_owners.py`` reads both realms over one table.
+    """
+    return gb(count) if count >= 1e9 else f"{rounded(count / 1e6, 0)} MB"
 
 
 def channel_refusal(channel):

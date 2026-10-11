@@ -36,8 +36,10 @@ import time
 from urllib.parse import urlencode
 
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
+# The byte count an operator reads has one home: annotator.refusals.size_text owns the rule, so
+# this module imports the name instead of holding a second copy of it.
 from annotator.refusals import (CHANNEL_REFUSAL, FFMPEG_FAILED, SCAN_CHANNEL, channel_refusal,
-                                disk_refusal, filled_refusal, gb, job_identity)
+                                disk_refusal, filled_refusal, job_identity, size_text)
 # The Twitch channel login has one home: annotator.twitch_source holds TWITCH_LOGIN. This
 # module reads that name at the thumbnail guard below, so it spells the shape no more.
 from annotator.twitch_source import TWITCH_LOGIN
@@ -118,10 +120,6 @@ def failure_identity(exc):
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
-
-
-def size_text(count):
-    return gb(count) if count >= 1e9 else f"{count / 1e6:.1f} MB"
 
 
 def redact(text):

@@ -743,6 +743,13 @@ DETECTORS = (
     Detector('ball', ('ball', 'balls'), BallStage, 'balls', _build_ball),
 )
 
+#: The detectors a session measures when the caller names none: one home for both service doors.
+#: ``annotator/live_processing.py`` reads the name for a live session and
+#: ``annotator/unified_server.py`` reads it for a per-frame job, so the two doors cannot answer
+#: two different sets.  ``annotator/app.js`` states the same set for the console realm on
+#: ``window.ConsoleRules.liveDetectors``, because a static file cannot import a python name.
+DEFAULT_DETECTORS = ('table', 'person')
+
 
 def detector_names():
     """Every accepted detector spelling, in table order."""

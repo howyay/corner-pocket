@@ -950,7 +950,9 @@ function liveDetectorList(s) { return opts?.liveDetectors ? opts.liveDetectors()
 // The panel owns this small state; every number shown is the server's.
 let bc = {recent: null, loading: false, error: '', form: null, estimate: null, job: null, poll: null, busy: false};
 const hms = value => window.Duration.hms(value);   // one owner: annotator/duration.js
-const sizeText = bytes => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
+// The byte count an operator reads has one owner for the console realm: annotator/app.js, published
+// on window.ConsoleRules.sizeText (the same rule as annotator/refusals.size_text). The read is late.
+const sizeText = bytes => window.ConsoleRules.sizeText(bytes);
 const minutesText = s => { const v = Math.max(0, Math.round(Number(s) || 0)); return v >= 600 ? `${Math.round(v / 60)} min` : v >= 60 ? `${Math.floor(v / 60)} min ${v % 60} s` : `${v} s`; };
 // Round 41: annotator/refusals.py owns the code and the Chinese sentence of every refusal, and the
 // service sends both beside `error`. The panel reads that identity, so it holds no copy of a

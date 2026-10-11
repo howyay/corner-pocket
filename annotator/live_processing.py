@@ -25,9 +25,10 @@ import re
 import threading
 import time
 
-from annotator.pipeline_stages import (TABLE_MEASURE_EVERY_N, CallableStage, LatencyWindow,
-                                       StageRegistry, check_ball_weights, default_stages,
-                                       detector_names, merge_detections, resolve_detectors)
+from annotator.pipeline_stages import (DEFAULT_DETECTORS, TABLE_MEASURE_EVERY_N, CallableStage,
+                                       LatencyWindow, StageRegistry, check_ball_weights,
+                                       default_stages, detector_names, merge_detections,
+                                       resolve_detectors)
 # The Twitch channel login has one home: annotator.twitch_source holds TWITCH_LOGIN. This
 # module reads that name at the saved-channel check below, so it spells the shape no more.
 from annotator.twitch_source import TWITCH_LOGIN
@@ -367,7 +368,9 @@ class LiveProcessor:
         ``probe`` is the live-edge probe of the session: None lets the decoder build the
         playlist probe.
         """
-        detectors = ['table', 'person'] if detectors is None else detectors
+        # The default detector set has one home: annotator.pipeline_stages.DEFAULT_DETECTORS.
+        # This door and the per-frame door read that name, so they answer one set.
+        detectors = list(DEFAULT_DETECTORS) if detectors is None else detectors
         if not isinstance(detectors, (list, tuple)) or not detectors:
             raise ValueError('Live detectors must be a non-empty list of %s'
                              % ', '.join(LIVE_DETECTORS))
