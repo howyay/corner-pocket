@@ -904,8 +904,11 @@ test('overlay tags never overprint: YOURS keeps its spot, the rest move to free 
     assert.ok(!overlap, `rows ${a.kind}@${a.x},${a.y} and ${b.kind}@${b.x},${b.y} do not overlap`);
   }
   for (const r of rows) assert.ok(r.x >= 0 && r.y >= 0 && r.y + 20 <= 720, `${r.kind} stays inside the frame`);
-  assert.strictEqual(T.tagRow(5, 6, 'model', ''), T.tagRow(5, 6, 'model', ''), 'outside a paint a row is drawn where asked (no queue)');
-  assert.ok(T.tagRow(5, 6, 'model', '').includes('x="5" y="6"'));
+  // No paint is open at this point, so no queue stands and tagRow answers with
+  // the drawn row itself, never with the token placeTags() settles.
+  const outside = T.tagRow(5, 6, 'model', '');
+  assert.ok(!outside.includes('\u0000tag'), 'outside a paint a row is drawn where asked (no queue)');
+  assert.ok(outside.includes('x="5" y="6"'), 'and the row holds the spot it was asked for');
 });
 
 test('round 1 · overlay tags stay legible at the displayed scale and never overprint; nothing they said is lost', () => {
@@ -1533,11 +1536,20 @@ test('a foreign correction and a rejected quad are both stated on the stage', ()
   host.lang = 'en';
   T.scene({"cloth.refusal": null});
   // A quad that is off the dataset's saved corners: refused with the number.
-  T.scene({"cloth.reference": {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]], source:'saved anchors', width:1280, height:720}});
-  T.scene({unified: {table_corners:[[190,176],[806,324],[1024,596],[384,566]], pockets:[{name:'head-left', cx:200, cy:180}], persons:[], balls:[], events:[]}});
+  // The two quads stand below, so the number the sentence must state is fixed by
+  // them: the mean of the best of the four cyclic alignments, rounded. That is
+  // what annotator/app.js quadDistance measures and clothNotice prints, and this
+  // case recomputes it, so the sentence cannot state another number.
+  const savedCorners = [[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5]];
+  const modelQuad = [[190,176],[806,324],[1024,596],[384,566]];
+  T.scene({"cloth.reference": {points:savedCorners, source:'saved anchors', width:1280, height:720}});
+  T.scene({unified: {table_corners:modelQuad, pockets:[{name:'head-left', cx:200, cy:180}], persons:[], balls:[], events:[]}});
   T.frame();
   assert.strictEqual(T.cloth().verdict.state, 'off');
-  assert.match(note.textContent, /^The model table quad is \d+ px off this dataset's saved corners \(saved anchors, tolerance 40 px\) — not drawn\.$/);
+  const offPx = Math.round(Math.min(...[0, 1, 2, 3].map(shift => savedCorners.reduce((sum, p, i) =>
+    sum + Math.hypot(modelQuad[(i + shift) % 4][0] - p[0], modelQuad[(i + shift) % 4][1] - p[1]), 0) / 4)));
+  assert.strictEqual(note.textContent,
+    `The model table quad is ${offPx} px off this dataset's saved corners (saved anchors, tolerance 40 px) — not drawn.`);
   // A quad that is not a table quad at all: refused before any distance check.
   T.scene({"unified.table_corners": [[0,0],[2000,0],[2000,2000],[0,2000]]});
   T.frame();
