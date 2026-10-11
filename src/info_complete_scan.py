@@ -40,7 +40,10 @@ from src.table_detect import detect_table  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 
 SHOT_SPEED_MM_S = 500.0   # candidate: matched ball speed >= 0.5 m/s
-SHOT_DISP_MM = 150.0      # absolute floor against pixel jitter
+# The displacement floor of a shot candidate, in millimetres.  A candidate needs
+# this floor and the speed floor above.  src/scan_events.py holds another floor
+# (SHOT_DISP_MM = 300 mm) because its evidence set is different: SAM3 samples.
+CANDIDATE_DISP_MM = 150.0  # absolute floor against pixel jitter
 MAX_SPEED_MM_S = 11000.0  # above this the 'match' is two different balls
 POT_REFRACT_S = 3.0       # same color near same spot within 3s = one pot
 POT_PERSIST_PAIRS = 3     # vanish must survive this many consecutive pairs
@@ -381,7 +384,7 @@ def _pair_candidates(prev: dict, cur: dict, H, cfg: GateConfig, gap: float) -> t
                     'from_mm': [round(a[0], 1), round(a[1], 1)],
                     'to_mm': [round(b[0], 1), round(b[1], 1)],
                     'from_frame': prev['frame_index'], 'to_frame': cur['frame_index']}
-    if best and best['disp_mm'] >= SHOT_DISP_MM and best['speed_mm_s'] >= SHOT_SPEED_MM_S:
+    if best and best['disp_mm'] >= CANDIDATE_DISP_MM and best['speed_mm_s'] >= SHOT_SPEED_MM_S:
         if _on_table(best['from_mm']) and _on_table(best['to_mm']) and best['speed_mm_s'] <= MAX_SPEED_MM_S:
             out.append(best)
     vanished = []

@@ -1,4 +1,5 @@
 """Info-complete gate and matched-ball diff tests; no model loads."""
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -8,8 +9,11 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.info_complete_scan import (GateConfig, ICState, gate_reason,  # noqa: E402
                                     match_balls, to_table_mm, _pair_candidates,
-                                    _quad_box_overlap_area)
+                                    _quad_box_overlap_area, CANDIDATE_DISP_MM,
+                                    SHOT_SPEED_MM_S)
 from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
 
 CORNERS = np.array([[0, 0], [640, 0], [640, 360], [0, 360]], np.float32)
 H = homography_to_canonical(CORNERS)
@@ -98,8 +102,8 @@ class CandidateTests(unittest.TestCase):
         cur = {'t': 10.5, 'frame_index': 315, 'cands': [{**ball('solid', 460, 100), '_streak': 3}]}
         shots, vanished = _pair_candidates(prev, cur, H, GateConfig(), gap=0.5)
         self.assertEqual(len(shots), 1)
-        self.assertGreaterEqual(shots[0]['disp_mm'], 150)
-        self.assertGreater(shots[0]['speed_mm_s'], 500)
+        self.assertGreaterEqual(shots[0]['disp_mm'], CANDIDATE_DISP_MM)
+        self.assertGreater(shots[0]['speed_mm_s'], SHOT_SPEED_MM_S)
         self.assertLess(shots[0]['speed_mm_s'], 15000)
         self.assertEqual(vanished, [])
 
@@ -121,6 +125,33 @@ class CandidateTests(unittest.TestCase):
         shots, vanished = _pair_candidates(prev, cur, H, GateConfig(), gap=0.5)
         self.assertEqual(shots, [])
         self.assertEqual(vanished, [])
+
+
+class FloorNameTests(unittest.TestCase):
+    """One constant name must not hold two values in the two scan modules."""
+
+    NUMERIC = re.compile(r'^([A-Z][A-Z0-9_]*)\s*=\s*([0-9.]+)\b', re.M)
+
+    def numeric_constants(self, name):
+        """The numeric module constants of src/<name>, read as text."""
+        return dict(self.NUMERIC.findall((ROOT / 'src' / name).read_text(encoding='utf-8')))
+
+    def test_no_constant_name_holds_two_values(self):
+        # The two modules load heavy models, so this case reads the source text.
+        mine = self.numeric_constants('info_complete_scan.py')
+        other = self.numeric_constants('scan_events.py')
+        shared = {name: (mine[name], other[name])
+                  for name in sorted(mine.keys() & other.keys())
+                  if mine[name] != other[name]}
+        self.assertEqual(shared, {})
+
+    def test_the_sam3_floor_keeps_its_own_name(self):
+        # SHOT_DISP_MM belongs to the SAM3 refinement.  The candidate filter reads
+        # CANDIDATE_DISP_MM, because the two floors belong to different evidence sets.
+        self.assertEqual(self.numeric_constants('scan_events.py').get('SHOT_DISP_MM'), '300.0')
+        self.assertNotIn('SHOT_DISP_MM', self.numeric_constants('info_complete_scan.py'))
+        self.assertEqual(self.numeric_constants('info_complete_scan.py').get('CANDIDATE_DISP_MM'),
+                         '150.0')
 
 
 class GeometryTests(unittest.TestCase):
