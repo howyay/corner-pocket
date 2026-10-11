@@ -8066,3 +8066,189 @@ same module's earlier run counted.
 The push is still blocked. Ninety-four commits sit on the local `main`: the three code commits of this
 round, the record of this round, and the ninety that came before them. `origin/main` stays at `110b0338`.
 The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 66 · the fallback frame rate, a case that could not fail, and the post body cap (2026-10-11)
+
+The walk of this round read the repository at `2ba8a6d` with an empty `git status --porcelain`, answered
+`Strong candidate present - 3 Strong, 0 Worth, 1 Note`, and wrote 91 lines to
+`/tmp/dshsess/walk_round66.md`. The count on its verdict line equals the number of its sections. It did not
+read the whole body of `annotator/unified_server.py` or `annotator/operations.py`, the case bodies of the
+three console suites, forty of the 43 files of `docs/`, `viz/`, `src/reid/` and `src/sam3/`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `6635ae9` | `tests/test_playfield_quads.py`, `annotator/ops.js`, `tests/test_source_url_parity.py`, `annotator/unified_server.py`, `tests/test_unified_server.py` | Strong 2, Strong 3 and Note 1 |
+| `915d91b` | `src/frame_rate.py` (new), 17 modules with the import, 7 modules with a named non-fallback rate, `tests/test_playfield_harness.py`, `tools/playfield_harness.py` | Strong 1 |
+| `ce9d6ee` | `tests/test_http_security.py`, `tests/test_live_processing.py` | two reds that were already red at the head of this round |
+| `a1e5f4c` | `tests/test_enroll_bound.py` | the enroll-branch case rewritten as a tree check |
+
+### Strong 1 · the fallback frame rate had a name and no readers
+
+Ground: `tools/playfield_harness.py:31 FPS_FALLBACK = 30.0` was the only named home, while the same fallback
+stood inline in sixteen modules (`annotator/live_processing.py:539`, `annotator/twitch_vod_source.py:461`,
+ten files under `src/` with `or 30.0`), and no test named the constant
+(`tests/test_playfield_harness.py`'s two scans looked for `TABLE_MEASURE_EVERY_N` only). Repair: the new
+`src/frame_rate.py` owns `FPS_FALLBACK = 30.0` and holds no import at all, so no cycle is possible — the
+reason stands in its docstring and in the harness docstring, because `tools/` is not on the import path of
+`src/` and `annotator/`. The measurement: the brief's grep answers 53 lines in 23 files, of which 42 name
+`FPS_FALLBACK` (17 import lines and 25 reader sites) and 11 do not (ten plain container-rate reads and one
+prose line in `annotator/shot_clock.py:40`). A site that means the fixed clip rate (30.0003 or 30.0 for the
+vod30 clips) keeps its own value with an explicit `not the fallback` comment, in
+`src/ball_association_ab.py:130`, `src/enroll_from_tracklet.py:1093`, `src/fast_ball_labels.py:365` and
+`:507`, `src/motion_scan.py:1434` and `:1852`, `src/tiny_ball_net.py:69` and `:220`, and
+`src/track_before_detect.py:274`, `:326` and `:583`. The guard's own helpers report 289 files scanned, one
+owner module, no site that spells a number, 25 sites that read the name, and 24 planted sites at the head of
+the round (21 `or`, 2 `else`, one assignment) — so the case measures what the repair changed and nothing
+else.
+
+### Strong 2 · an assertion that could not fail
+
+Ground: `tests/test_playfield_quads.py:351 assertGreater(pick['best_parallel_deg'], PARALLEL_TOL_DEG)` could
+never fail, because the owner reduces with `min` over 0 to 90 and the tolerance is 3.0. Repair: the case at
+`:340` measures twice — it compares the recorded `best_parallel_deg` with
+`round(min(parallelism(quad).values()), 2)` and judges the direction from the record's own
+`parallel_tol_deg` — and a second-direction case `test_the_refusal_follows_the_tolerance_it_records` sits at
+`:377`, built with `walked = 1.0 / (1.0 / 9.1886331227 + math.tan(math.radians(tol)) / 100.0)`. The record
+answers 36 picks, 24 with empty reasons and 12 with `no-parallel-pair`, so neither branch is dead code. Three
+repair attempts failed and stay recorded: a case that only required some other refusal reason answered
+`0 not greater than 0`; a rounded tolerance answered `'no-parallel-pair' unexpectedly found in
+['no-parallel-pair']`, because the owner compares raw angles (`if best > parallel_tol`); and a trapezoid with
+both bases horizontal answered `0.03 != 3.0`, because both angle pairs read 0 and no tolerance can refuse it.
+
+### Strong 3 and Note 1
+
+Ground: the twelve reserved Twitch words stood in `annotator/operations.py:163 TWITCH_RESERVED_CHANNELS`
+(read at `:184`) and again inline at `annotator/ops.js:1285 parseSource`, while `tests/source_url_cases.json`
+sends every row to the service only. Repair: the service table stays the one owner, `annotator/ops.js:1280`
+holds one top-level `const TWITCH_RESERVED_CHANNELS = [...]` read at `:1289`, and
+`tests/test_source_url_parity.py` locks the two lists in both directions: an order-sensitive equality, no
+duplicate word, one line rule for the whole file, and `parseSource` must read the array.
+`Note 1`: `annotator/unified_server.py:2875` held `else 65536` with only the prose comment at `:89` naming
+"64KB". Repair: `:90 _MAX_POST_BODY_BYTES = 65536` is the name, the comment at `:89` reads it, and the
+dispatch branch stands at `:2876-2877`. The measured boundary: a declared body of 65537 answers 413 and the
+handler reads nothing, and a declared body of 65536 is read once (`reads == [65536]`) and then refused inside
+the route with 400. The round-60 record cites that branch at `:2862`, and the record of a past round stays
+history.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer AD, Strong 2 | `src/playfield.py` | `24eb20a5637129080e141565b7b9f984aa0f3d9f → 7d49ee80a7bbbf014f30449bebb4937b67830fc3 → 24eb20a5637129080e141565b7b9f984aa0f3d9f` | two cases: `4.75 != 3.0 : the walked quad must sit on the tolerance of today` and `False != True : tw-2166669605.mp4@498` |
+| Lead, Note 1 | `annotator/unified_server.py` | `78f1eae74751d5264b26e6f54ad65b7433773618 → 45c7f6e019c63e6f3632558863d9fafaf794b507 → 78f1eae74751d5264b26e6f54ad65b7433773618` | `test_the_default_dispatch_cap_refuses_a_larger_body_and_reads_the_boundary_one` and `409 != 413` |
+| Writer AC, Strong 1 | `src/scan_events.py` | `d9ebc73b79c672728958820eb25059a3cd853b39 → 31cd64318705222477340dc867145fd6300d971f → d9ebc73b79c672728958820eb25059a3cd853b39` | `Lists differ: [('src/scan_events.py', 65, '30.0')] != [] … : a site that names the fallback rate must read FPS_FALLBACK` |
+| Lead, Strong 1 | `src/frame_rate.py` | `ce0b69b573084199299b9ba795ac83e9ebb062d7 → e4eb56edcfce68d7e3cdc7e71bf904848aba1e2f → ce0b69b573084199299b9ba795ac83e9ebb062d7` | `29.0 != 30.0 : the fallback rate stays 30.0 frames per second` |
+
+Two reds were already red at the head of this round, and writer AC proved that on a pristine copy of HEAD
+(`git archive HEAD | tar -x -C /tmp/dshsess/pristine66`): `tests/test_http_security.py:199` cited
+`annotator/unified_server.py:2389`, and that line is empty, so the citation case failed; and
+`tests/test_live_processing.py:711` parsed `Path('annotator/live_processing.py')` while the module runner uses
+CWD = `tests/`, so the case answered `FileNotFoundError`. The Lead repaired both in `ce9d6ee`: the citation
+names `annotator/unified_server.py:2483`, where `__init__` reads the two ceilings, and the scan reads
+`(ROOT / 'annotator' / 'live_processing.py')` with `ROOT = Path(__file__).resolve().parents[1]`.
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2194 tests in 194.337s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 232, pass 232, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 105 passed, 0 failed |
+
+Round 65 answered 2187 cases and this round answers 2194. The additions are the two cases of
+`tests/test_playfield_quads.py` (22 to 23), the two of `tests/test_source_url_parity.py` (3 to 5), the one of
+`tests/test_unified_server.py` (113 to 114), the two of `tests/test_playfield_harness.py` (9 to 11) and the
+one of `tests/test_enroll_bound.py`, less the cases that the merges of `src/frame_rate.py` moved between
+modules.
+
+### A brief of the Lead moved a guard and did not name it
+
+The Note 1 brief of this round sent writer AD to give the dispatch branch's default arm a name. That branch
+was the subject of `tests/test_enroll_bound.py`'s case `test_the_enroll_branch_reads_the_derived_name`, which
+read the line's shape with a regex, and the brief did not name that guard. The case failed in the first full
+run of the round. The Lead rewrote it as a tree check: it finds the one assignment whose value is a
+conditional, requires the enroll arm to be the name `_MAX_ENROLL_BODY_BYTES`, and requires the default arm to
+be a name and no number. This is the third time the lesson holds: a brief that moves a declaration must name
+the guard of that declaration.
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The fallback frame rate had a name and no readers | Strong 1 of this walk | `src/frame_rate.py` owns the number and 25 sites read it |
+| A case in the playfield guard could not fail | Strong 2 of this walk | the case measures the record's number twice and judges direction, with a second-direction case beside it |
+| The reserved Twitch words stood twice | Strong 3 of this walk | the console reads one array and the parity module locks the two lists both ways |
+| The dispatch body default had no name | Note 1 of this walk | `_MAX_POST_BODY_BYTES` owns 65536 and its boundary case holds both sizes |
+| Two reds stood at the head of the round | found by writer AC on a pristine HEAD copy | the ceiling citation names its line and the scan reads the repository root |
+| The enroll-branch case read a line shape | consequence of the Note 1 repair | the case reads the tree, so a layout change cannot break it |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| Two copies of the fallback number stand under `tests/` | limit of writer AC | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176`, outside that writer's scope |
+| The frame-rate guard reads three shapes | limit of writer AC | a copy in another shape passes it |
+| `annotator/duration.js:101` and `tests/test_ball_gate.py:1623` cite moved lines | limit of writer AC | both still land on text, so the citation rule passes |
+| `src/frame_rate.py` was added to the index by the Lead | note of this round | the writer left it untracked and the Lead staged it with the delivery |
+| The `CHECK_UNAVAILABLE` literal has no reader | found by the Lead's missed bite in round 65 | the guard holds the one-home property only |
+| `tools/playfield_quad_evidence.py` still names the rule | limit of writer AA in round 65 | a later walk must re-measure it |
+| The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
+| The console bounds are held by text, not by meaning | limit of round 64 | a third statement of a bound is invisible to its case |
+| `matches.round` has no SQL rule | stated in round 64 | the API bound is 1 to 99 and the migration is silent |
+| The glow default still stands twice | limit of round 63 | `annotator/operations.py:295` and `annotator/ops.js:1274 s.lampGlow??.22` |
+| The citation guard skips the documents | Note 2 of round 60, still open | `tests/test_citation_lines.py`'s `SKIP_PARTS` holds `docs`, so 1514 document citations have no guard |
+| Writer line shifts move citations outside their scope | pattern of rounds 61 to 63 | three rounds in a row needed a Lead repair for a citation in a file the writer does not own |
+| The pin's URL still holds the raw weight name | limit of round 62 | `src/weight_pins.py:34` names `yolov8n.pt` inside the download URL |
+| Two stylesheets keep a copy of the range | decision of round 62 | the public port serves no `ops.css` |
+| The Postgres branch stays unexercised | limit of round 62 | three modules skip 8, 29 and 5 cases |
+| The timeline suite keeps its own entry | decision of round 61 | the three suites answer one contract and do not share one runner shape |
+| The join's tolerance may be wrong for future data | limit of round 61 | 0.1 s and the old bucket swap strictness for a row at 70.05 |
+| Four same-named statistics functions stand outside the home | found by writer Q in round 60 | `tests/test_body_calibration.py:160 stats(xs)`, `tests/live_identity_validation.py:147 _stats(xs)`, `tests/live_pipeline_run.py` and `annotator/pipeline_stages.py:75 _percentile` |
+| Many document citations are stale | found by writer P in round 60 | `docs/console-redesign.md` holds 74 citations into `annotator/unified_server.py` and `docs/postgres-design.md` 28 |
+| The state path stands in two more places | found by round 59 | `annotator/live_processing.py:257` and `:343`, and the segment-built path at `annotator/operations.py:287` |
+| One sentence still stands twice | found by round 59 | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of round 59 | only their digests pin the table |
+| The projection rule keeps two tolerances and a static walk | decisions of round 59 | each site names its own tolerance |
+| Two modules have no test module of their own | limit of round 59 | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of round 59 | `:333` and `:363` use `abs(row["threshold"] - …) < 1e-9` |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The javascript suites' case counts have no guard | limit of round 57 | the suite list is guarded, and the counts inside the three files are not |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and the drop-in `30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | this row is now closed for the fallback family by Strong 1 of this round, and the fixed clip rate keeps its own value by design |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 to 66 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections, and a report can pass its line cap | limits of rounds 56 and 61 | the walks of rounds 57 to 66 answer equal counts, and the round-61 report wrote 261 lines against a cap of 260 |
+
+The push is still blocked. Ninety-eight commits sit on the local `main`: the two code commits of this round,
+the two repairs of the Lead, the record of this round, and the ninety-four that came before them.
+`origin/main` stays at `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
