@@ -17,6 +17,8 @@ The tests here hold four contracts:
    missing value with its flag.
 4. The port in the public board drop-in equals the port default that
    annotator/unified_server.py holds, so a moved default is visible here.
+5. No deploy config cites a Python line number.  A line number drifts, and no
+   test can hold it true, so the config names the argument instead.
 """
 import re
 import shutil
@@ -254,6 +256,18 @@ class UnitRenderTest(unittest.TestCase):
             f'the --port value in {PUBLIC_BOARD.name} differs from the default '
             f'in {SERVER.relative_to(ROOT)}',
         )
+
+    def test_no_deploy_config_cites_a_python_line_number(self):
+        """A line number in a config comment drifts, so no config names one."""
+        citation = re.compile(r'\.py:\d+')
+        found = []
+        for path in sorted(SYSTEMD.rglob('*')):
+            if not path.is_file():
+                continue
+            for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                if citation.search(line):
+                    found.append(f'{path.relative_to(ROOT)}:{number} names a Python line')
+        self.assertEqual([], found)
 
     def test_placeholder_names_match_the_script_supported_names(self):
         """The names in the tree and the names in the script are the same three."""
