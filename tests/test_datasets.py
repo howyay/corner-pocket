@@ -12,6 +12,7 @@ import dataset_id_cases
 from annotator import live_processing
 from src import datasets, enroll_from_tracklet
 from src.datasets import imported_id, listing, lookup, parse_imported_id, read_index
+from src.served_files import bare_name
 
 ENTRY = {"vod_id": "1000000001", "channel": "examplechannel", "title": "Friday 8-ball",
          "created_at": "2026-09-19T01:02:03Z", "length_s": 13400, "fps": 30.0, "frames": 9000,
@@ -337,6 +338,49 @@ class RegistryConsumerTests(unittest.TestCase):
             store.correction_put("tw-9", 1, {})                      # not in the index
         with self.assertRaises(ValueError):
             store.seeds_get(self.key)                               # seeds stay vod30-only
+
+
+class InsideRuleTests(unittest.TestCase):
+    """``src.datasets._inside`` takes its bare-name rule from the owner of that rule.
+
+    ``src/served_files.py`` is the only module in this repository that decides which
+    file a request may serve, and ``bare_name`` is the part of that rule the registry
+    shares.  A second copy of the test here could drift from the owner, so this class
+    reads the call and states the two differences that stay in this module.
+    """
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        (self.root / "media.mp4").write_bytes(b"media")
+
+    def source(self):
+        return (Path(__file__).resolve().parents[1] / "src" / "datasets.py").read_text()
+
+    def test_the_bare_name_rule_comes_from_the_owner(self):
+        self.assertIn("from src.served_files import bare_name", self.source(),
+                      "src/datasets.py must take the bare-name rule from its owner")
+        self.assertEqual(datasets._inside(self.root, "media.mp4", file=True), self.root / "media.mp4")
+        with patch.object(datasets, "bare_name", return_value=False):
+            self.assertIsNone(datasets._inside(self.root, "media.mp4", file=True),
+                              "_inside did not ask the owner of the bare-name rule")
+
+    def test_the_docstring_names_the_owner_and_no_wrapper(self):
+        docstring = datasets._inside.__doc__
+        self.assertIn("src/served_files.py", docstring,
+                      "_inside must name the module that owns the rule")
+        self.assertNotIn("safe_file", docstring,
+                         "_inside must not name a wrapper as the owner of the rule")
+
+    def test_the_two_differences_from_the_owner_are_real(self):
+        self.assertIsNone(datasets._inside(self.root, b"media.mp4", file=True),
+                          "a name that is not a string gives None here")
+        with self.assertRaises(TypeError):
+            bare_name(b"media.mp4")                                  # the owner raises on bytes
+        folder = self.root / "vods" / "tw-5"
+        self.assertEqual(datasets._inside(self.root / "vods", "tw-5"), folder)
+        self.assertFalse(folder.exists(), "file=False must answer a folder before it exists")
 
 
 if __name__ == "__main__":

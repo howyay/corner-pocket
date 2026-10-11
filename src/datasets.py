@@ -23,6 +23,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.served_files import bare_name
+
 #: The built-in recordings: id -> (scan folder under out/, media file under data/).
 STATIC = {"vod30": ("scan30", "vod_30min_260815.mp4"),
           "highlight": ("scan_highlight", "vod_highlight.mp4")}
@@ -107,10 +109,17 @@ def parse_imported_id(dataset_id):
 def _inside(base, name, *, file=False):
     """``base / name`` when ``name`` is a bare name resolving inside ``base``, else None.
 
-    The rule of ``annotator.unified_server.safe_file``; ``file=True`` also requires
-    an existing regular file and returns the resolved path, as safe_file does.
+    The bare-name rule has one owner: ``src/served_files.py``.  This function takes
+    that part from the owner and adds the two things the registry needs.  A name that
+    is not a string gives None here.  With ``file=False`` it answers ``base / name``
+    and does not ask whether that path exists, because ``src/datasets.py`` names the
+    folder of an imported VOD before that folder exists.  ``file=True`` also requires
+    an existing regular file and returns the resolved path.
+
+    This function owns no rule of a served file.  The rule for one request lives in
+    ``src/served_files.py``, and both servers call it there.
     """
-    if not isinstance(name, str) or not name or Path(name).name != name or name in (".", ".."):
+    if not isinstance(name, str) or not bare_name(name):
         return None
     path = (base / name).resolve()
     if not path.is_relative_to(base.resolve()):
