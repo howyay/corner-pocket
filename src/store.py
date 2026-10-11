@@ -50,8 +50,9 @@ class StoreConstraintError(ValueError):
 
 # Where one dataset lives has one owner: src/datasets.py.  JsonStore resolves every
 # dataset through it, imported VODs included (out/vods/<id>/).  The map this module
-# exported as DATASETS had no reader once artifact() stopped using it, so it is gone;
-# src/store_files.py:20 still spells its own copy of the built-in two (out of scope here).
+# exported as DATASETS had no reader once artifact() stopped using it, so it is gone.
+# Round 47 removed the two copies that stayed in src/store_files.py and
+# src/store_import.py, so every reader now asks that one owner.
 from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This

@@ -10,6 +10,7 @@ The checks read the names from the owner, so a set that the owner gains is cover
 here without a second edit.
 """
 import ast
+import importlib
 import json
 import re
 import shutil
@@ -17,6 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from src import datasets
+from src.datasets import STATIC_OUT
 from src.store_files import (BALL_SETS, DOCUMENT_FORMAT, DOCUMENT_SETS, FORMATS, INDENT1,
                              document_paths, dump, fmt_of, is_document_path)
 
@@ -41,6 +44,14 @@ ALLOWED_SPELLINGS = {
 }
 # Directories that hold no source, or generated copies of it.
 SKIP_DIRS = {".git", ".venv", "out", "data", "__pycache__", "node_modules", ".pytest_cache"}
+#: The map "built-in dataset id -> scan folder under out/" has one owner: `STATIC_OUT`
+#: in src/datasets.py.  The readers below take that map from the owner.  A reader that
+#: types the map again holds a second copy, and that copy can drift from the owner.
+MAP_OWNER = "src/datasets.py"
+MAP_READERS = (("src/store_files.py", "STATIC_OUT"), ("src/store_import.py", "STATIC_OUT"))
+#: The shipped packages the map scan reads.  The suite is not shipped code: a test that
+#: states an expected map is an expectation, not a second copy inside the application.
+SHIPPED = ("src", "annotator", "tools", "scripts")
 
 
 def bare_names(line: str, suffix: str) -> list[str]:
@@ -67,6 +78,45 @@ def source_files() -> list[Path]:
     return sorted(path for path in ROOT.rglob("*")
                   if path.is_file() and path.suffix in (".py", ".sql")
                   and not any(part in SKIP_DIRS for part in path.parts))
+
+
+def shipped_modules() -> list[Path]:
+    """Every .py file of the shipped packages, generated trees left out."""
+    return sorted(path for name in SHIPPED for path in (ROOT / name).rglob("*.py")
+                  if "__pycache__" not in path.parts)
+
+
+def typed_map_pairs(path: Path) -> list[tuple[int, dict[str, str]]]:
+    """(line number, pairs) for every dict literal of `path` that types an owner pair.
+
+    A pair is one built-in id written next to its scan folder, as one whole string.  A
+    longer string that holds the folder ("out/scan30/annotations.json") is a use of the
+    dataset, not a second copy of the map.  A table that pairs the id with a richer
+    tuple (src/eval_faces.py holds one) answers another question and is not read here.
+    """
+    found = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8", errors="replace"))):
+        if not isinstance(node, ast.Dict):
+            continue
+        try:
+            value = ast.literal_eval(node)
+        except (ValueError, SyntaxError, TypeError):
+            continue
+        pairs = {key: item for key, item in value.items()
+                 if isinstance(key, str) and key in STATIC_OUT and item == STATIC_OUT[key]}
+        if pairs:
+            found.append((node.lineno, pairs))
+    return found
+
+
+class NoRows:
+    """A connection that answers no row: the shape `render` reads."""
+
+    def execute(self, *_args, **_kwargs):
+        return self
+
+    def fetchall(self):
+        return []
 
 
 def ball_labels_check(sql: str) -> tuple[list[str], int]:
@@ -220,6 +270,62 @@ class FileFormats(unittest.TestCase):
             text = path.read_text(encoding="utf-8", errors="replace")
             offenders += [f"{relative}: {name}" for name in names if name in text]
         self.assertEqual(offenders, [], f"a format name has one owner, {OWNER}")
+
+
+class DatasetMapTests(unittest.TestCase):
+    """One map, "built-in dataset id -> scan folder under out/": `STATIC_OUT` in src/datasets.py.
+
+    The round-47 walk found the map typed three times: at its owner, at
+    src/store_files.py:25 and at src/store_import.py:49.  A typed copy is equal today
+    and silent tomorrow: the owner can rename a scan folder and the copy stays old.
+    These tests hold the shipped code at one spelling, and prove that every reader
+    answers the map the owner holds.
+    """
+
+    def test_the_owner_names_each_scan_folder_once(self):
+        names = [node.value for node in
+                 ast.walk(ast.parse((ROOT / MAP_OWNER).read_text(encoding="utf-8")))
+                 if isinstance(node, ast.Constant)]
+        for dataset, folder in STATIC_OUT.items():
+            self.assertEqual(names.count(folder), 1,
+                             f"{MAP_OWNER} must name {folder!r} once, as one whole string; "
+                             f"found {names.count(folder)}")
+
+    def test_the_map_is_the_first_column_of_the_media_table(self):
+        self.assertEqual(STATIC_OUT, {key: value[0] for key, value in datasets.STATIC.items()},
+                         f"{MAP_OWNER}: STATIC_OUT must derive from STATIC")
+
+    def test_the_scan_reads_the_shape_this_change_removed(self):
+        """The scan must catch the line that typed the map before this change."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "typed.py"
+            path.write_text('DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}\n',
+                            encoding="utf-8")
+            self.assertEqual(typed_map_pairs(path), [(1, dict(STATIC_OUT))],
+                             "the scan must read a typed copy of the map")
+
+    def test_no_other_shipped_module_types_the_map(self):
+        offenders = [f"{path.relative_to(ROOT).as_posix()}:{line} types {pairs}"
+                     for path in shipped_modules() if path != ROOT / MAP_OWNER
+                     for line, pairs in typed_map_pairs(path)]
+        self.assertEqual(offenders, [],
+                         f"the map has one owner, {MAP_OWNER}; import STATIC_OUT from it: "
+                         + "; ".join(offenders))
+
+    def test_every_reader_answers_the_owners_map(self):
+        for relative, constant in MAP_READERS:
+            module = importlib.import_module(relative[:-3].replace("/", "."))
+            self.assertIs(getattr(module, constant, None), STATIC_OUT,
+                          f"{relative} must import {constant} from {MAP_OWNER}")
+        from src import store_files, store_import
+        self.assertEqual(store_files.document_paths("anchors"),
+                         [f"out/pid_anchors_{dataset}.json" for dataset in STATIC_OUT])
+        for dataset, folder in STATIC_OUT.items():
+            self.assertEqual(store_files.dataset_dir(dataset), f"out/{folder}")
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertEqual(sorted(store_files.dataset_dirs(Path(folder))), sorted(STATIC_OUT))
+        self.assertEqual(store_import.AnchorsSet().render(NoRows()),
+                         {dataset: {"anchors": {}} for dataset in STATIC_OUT})
 
 
 if __name__ == "__main__":

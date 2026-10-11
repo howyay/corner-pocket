@@ -37,6 +37,9 @@ import sys
 from pathlib import Path
 
 from annotator.operations import name_key
+# STATIC_OUT (built-in dataset id -> scan folder under out/) is imported from its one
+# owner, src.datasets, so this importer and the store cannot hold two different maps.
+from src.datasets import STATIC_OUT
 # BALL_SETS (the crop-set vocabulary) is imported from its one owner, src.store_files,
 # so this import tool and the store cannot hold two different lists of set names.
 from src.store_files import (BALL_SETS, DOCUMENT_SETS, dataset_dirs, document_paths, get_document,
@@ -46,7 +49,6 @@ from src.store_files import (BALL_SETS, DOCUMENT_SETS, dataset_dirs, document_pa
 from src.ops_event_log import MAX_EVENTS
 
 REPO = Path(__file__).resolve().parent.parent
-DATASETS = {"vod30": "scan30", "highlight": "scan_highlight"}
 OK = ("imported", "unchanged", "absent", "verified")
 
 
@@ -476,7 +478,7 @@ class VerdictsSet(DataSet):
         # has verdicts (out/vods/<id>/annotations.json) - render() lists the same keys
         doc = {}
         for ds, folder in dataset_dirs(snap.root).items():
-            if ds in DATASETS or (snap.root / folder / "annotations.json").is_file():
+            if ds in STATIC_OUT or (snap.root / folder / "annotations.json").is_file():
                 doc[ds] = snap.json(f"{folder}/annotations.json", {})
         return doc, []
 
@@ -490,7 +492,7 @@ class VerdictsSet(DataSet):
                      rec.get("updated_at"), _jsonb({k: v for k, v in rec.items() if k not in self.FIELDS})))
 
     def render(self, conn):
-        doc = {ds: {} for ds in DATASETS}
+        doc = {ds: {} for ds in STATIC_OUT}
         for dataset, event_id, verdict, shooter, note, updated_at, extra in conn.execute(
                 "SELECT dataset, event_id, verdict, shooter, note, updated_at, extra FROM event_verdicts "
                 "ORDER BY dataset, event_id").fetchall():
@@ -540,7 +542,7 @@ class CorrectionsSet(DataSet):
                 if not frame.isdigit():
                     raise Mismatch(f"{path}: the frame directory is not a frame index")
                 found[frame] = snap.json(str(path.relative_to(snap.root)))
-            if dataset in DATASETS or found:        # render() lists the same keys
+            if dataset in STATIC_OUT or found:        # render() lists the same keys
                 doc[dataset] = found
         return doc, []
 
@@ -552,7 +554,7 @@ class CorrectionsSet(DataSet):
                              (dataset, int(frame), _jsonb(payload), (payload or {}).get("saved_at")))
 
     def render(self, conn):
-        doc = {ds: {} for ds in DATASETS}
+        doc = {ds: {} for ds in STATIC_OUT}
         for dataset, frame, payload in conn.execute(
                 "SELECT dataset, frame_index, payload FROM frame_corrections ORDER BY dataset, frame_index").fetchall():
             doc.setdefault(dataset, {})[str(frame)] = payload
@@ -567,7 +569,7 @@ class AnchorsSet(DataSet):
     tables = ("pocket_anchors",)
 
     def load(self, snap):
-        return {ds: snap.json(f"out/pid_anchors_{ds}.json", {"anchors": {}}) for ds in DATASETS}, []
+        return {ds: snap.json(f"out/pid_anchors_{ds}.json", {"anchors": {}}) for ds in STATIC_OUT}, []
 
     def write(self, conn, doc):
         for dataset, saved in doc.items():
@@ -579,7 +581,7 @@ class AnchorsSet(DataSet):
                              (dataset, t_key, float(t_key), _jsonb(pts)))
 
     def render(self, conn):
-        doc = {ds: {"anchors": {}} for ds in DATASETS}
+        doc = {ds: {"anchors": {}} for ds in STATIC_OUT}
         for dataset, t_key, pts in conn.execute(
                 "SELECT dataset, t_key, pts FROM pocket_anchors ORDER BY dataset, t").fetchall():
             doc.setdefault(dataset, {"anchors": {}})["anchors"][t_key] = pts
