@@ -24,10 +24,11 @@ import data_guard
 
 from src.motion_scan import (BALL_K_NATIVE, FLOOR_MARGIN, SCAN_H, SCAN_W, WORK_H, WORK_W,
                              ClothContext, MotionConfig, OnsetConfig, ScanReport,
-                             ball_area, ball_radius, clip_motion, cloth_context,
+                             ball_area, ball_blob_max, ball_blob_min, ball_radius,
+                             clip_motion, cloth_context,
                              cloth_mask, config_for, decay_shape, detect_onsets,
                              channel_planes, control_row, enforce_gap, freeze,
-                             judge_window, load_quad, load_scan,
+                             judge_window, limb_blob_min, load_quad, load_scan,
                              moving_ball_instances, noise_floor, occlusion_reading,
                              onset_signal,
                              peak_in_window, probe_pair, rolling_baseline, sample_window,
@@ -366,12 +367,12 @@ class BlobShapeTest(unittest.TestCase):
     def test_a_ball_sized_change_is_one_ball(self):
         side = int(round(math.sqrt(math.pi) * 9.45))
         info = self._blob((620, 380, side, side))
-        self.assertLessEqual(info["largest_area"], 532)
+        self.assertLessEqual(info["largest_area"], ball_blob_max(MotionConfig()))
         self.assertIn("can be a single ball", info["verdict"])
 
     def test_a_limb_sized_change_is_not_one_ball(self):
         info = self._blob((880, 400, 28, 101))     # the shape measured on this VOD
-        self.assertGreater(info["largest_area"], 532)
+        self.assertGreater(info["largest_area"], ball_blob_max(MotionConfig()))
         self.assertNotIn("can be a single ball", info["verdict"])
         self.assertGreater(info["aspect"], 2.0)
 
@@ -379,6 +380,61 @@ class BlobShapeTest(unittest.TestCase):
         info = self._blob((0, 0, 0, 0))
         self.assertEqual(info["largest_area"], 0)
         self.assertIn("nothing changed", info["verdict"])
+
+
+class BlobBandHomeTests(unittest.TestCase):
+    """One name, one meaning: each change-blob band lives in one place.
+
+    ``src/event_window.AT_TOL_S`` is the model for a bound that two modules share:
+    one home and two importers.  This class refuses a second copy of a bound.  The
+    bands themselves are functions of one ball's area, so no dead pixel literal can
+    contradict them.
+    """
+
+    @staticmethod
+    def constants_of(name):
+        """The module-level constants of one source file, as name -> value."""
+        source = (ROOT / "src" / name).read_text()
+        values = {}
+        for node in ast.parse(source).body:
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    try:
+                        values[target.id] = ast.literal_eval(node.value)
+                    except (ValueError, TypeError, SyntaxError):
+                        values[target.id] = ast.unparse(node.value)
+        return values
+
+    def test_the_change_blob_bands_are_functions_and_not_dead_literals(self):
+        cfg = MotionConfig()
+        area = ball_area(cfg)
+        self.assertAlmostEqual(ball_blob_min(cfg), 0.25 * area, places=9)
+        self.assertAlmostEqual(ball_blob_max(cfg), 2.0 * area, places=9)
+        self.assertAlmostEqual(limb_blob_min(cfg), 6.0 * area, places=9)
+        assigned = self.constants_of("motion_scan.py")
+        for name in ("BALL_BLOB_MIN_PX", "BALL_BLOB_MAX_PX", "LIMB_BLOB_MIN_PX"):
+            self.assertNotIn(name, assigned,
+                             f"{name} is a dead literal beside its own function")
+
+    def test_no_constant_name_holds_two_meanings_across_the_two_scan_modules(self):
+        here = self.constants_of("motion_scan.py")
+        there = self.constants_of("timing_verify.py")
+        shared = sorted(set(here) & set(there))
+        self.assertEqual(shared, [],
+                         f"both modules define these constants: "
+                         f"{[(name, here[name], there[name]) for name in shared]}")
+
+    def test_the_two_live_bounds_measure_different_quantities(self):
+        boundary = self.constants_of("timing_verify.py")["BLOB_BAND_BOUNDARY_PX"]
+        self.assertNotEqual(ball_blob_max(MotionConfig()), boundary,
+                            "one bound is the change between two ball positions, the "
+                            "other is one blob of one difference")
+
+    def test_the_served_person_share_field_reads_its_owner(self):
+        source = (ROOT / "src" / "motion_scan.py").read_text()
+        self.assertIn('"person_share_threshold": person_share_max()', source)
 
 
 class WindowProfileTest(unittest.TestCase):

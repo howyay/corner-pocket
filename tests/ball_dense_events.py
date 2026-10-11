@@ -55,9 +55,17 @@ sys.dont_write_bytecode = True
 
 WORK_SIZE = (960, 540)
 NATIVE = (1280, 720)
-#: src/motion_scan.PERSON_SHARE_MAX - the share of the cloth one person box must
-#: cover to be called "a person on the cloth" rather than a bystander at the edge.
-PERSON_ON_CLOTH = 0.02
+def person_on_cloth():
+    """The share of the cloth one person box must cover, from its one owner.
+
+    A box that covers this share of the cloth is "a person on the cloth" and not
+    a bystander at the edge.  The owner of the number is
+    `ScanConfig.person_share` in src/candidate_scan.py, and src/motion_scan.py
+    reads the same field through `person_share_max()`.  This harness reads the
+    field too, so it holds no copy.
+    """
+    from src.candidate_scan import ScanConfig
+    return ScanConfig.person_share
 
 
 def percentile(values, fraction):
@@ -214,9 +222,9 @@ def segment_report(args):
                       for name, values in timings.items() if values}),
         person=dict(frames=len(person_shares),
                     frames_with_a_box=sum(1 for share in person_shares if share > 0),
-                    frames_on_cloth=sum(1 for share in person_shares if share >= PERSON_ON_CLOTH),
+                    frames_on_cloth=sum(1 for share in person_shares if share >= person_on_cloth()),
                     share_on_cloth=round(sum(1 for share in person_shares
-                                             if share >= PERSON_ON_CLOTH) / max(1, len(person_shares)), 4),
+                                             if share >= person_on_cloth()) / max(1, len(person_shares)), 4),
                     max_cloth_share=round(max(person_shares), 4) if person_shares else None),
         tracks=dict(n=len(tracks), samples_total=len(observations),
                     median_samples=statistics.median(hits) if hits else 0,

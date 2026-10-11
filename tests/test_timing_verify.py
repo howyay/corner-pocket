@@ -137,6 +137,24 @@ class FootprintTests(unittest.TestCase):
         self.assertLessEqual(tv.BALL_FOOTPRINT_MAX, 0.02)
 
 
+class BlobBandTests(unittest.TestCase):
+    """The two change-blob bands meet at one boundary, and that boundary has one home."""
+
+    def test_the_two_blob_bands_tile_at_the_one_boundary(self):
+        self.assertEqual(tv.BALL_SCALE_BLOB_MAX_PX, tv.BLOB_BAND_BOUNDARY_PX)
+        self.assertEqual(tv.OCCLUSION_BLOB_MIN_PX, tv.BLOB_BAND_BOUNDARY_PX)
+        self.assertFalse(hasattr(tv, "BALL_BLOB_MAX_PX"),
+                         "this module measures one blob of one difference, not the "
+                         "change between two ball positions")
+
+    def test_the_module_writes_the_boundary_once_and_both_bands_read_it(self):
+        source = (ROOT / "src" / "timing_verify.py").read_text()
+        self.assertEqual(source.count("3000"), 1,
+                         "the boundary number is written more than once")
+        self.assertIn("if area >= OCCLUSION_BLOB_MIN_PX:", source)
+        self.assertIn("if area <= BALL_SCALE_BLOB_MAX_PX:", source)
+
+
 class ConstantParityTests(unittest.TestCase):
     """The measured window must be the window the stage plays."""
 

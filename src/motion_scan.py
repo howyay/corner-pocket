@@ -141,6 +141,7 @@ def ball_blob_max(cfg: "MotionConfig") -> float:
 
 
 def ball_blob_min(cfg: "MotionConfig") -> float:
+    """The least one ball can vacate or occupy on its worst frame."""
     return 0.25 * ball_area(cfg)
 
 
@@ -1331,22 +1332,22 @@ def person_overlap(boxes, quad_px) -> float:
     return round(best, 4)
 
 
-PERSON_SHARE_MAX = 0.02     # src/candidate_scan.ScanConfig.person_share: the same gate
+def person_share_max() -> float:
+    """The person/cloth overlap that marks a frame occluded, from its owner."""
+    from src.candidate_scan import ScanConfig
+    return ScanConfig.person_share
 
-# Connected-component evidence.  A single ball at native resolution occupies
-# 266 px^2 (radius 9.45 px).  Even the extreme case -- the ball vacates one spot and
-# lands disjointly one diameter away -- changes at most 2 x 266 = 532 px^2.  The
-# largest changed component is therefore the cleanest size test there is: below
-# ~2 ball areas it can be one ball, above it cannot be only one.
-BALL_BLOB_MAX_PX = 532
-# ...but a *motion-blurred* ball at 3 m/s smears over 48 px and would change
+
+# Connected-component evidence.  The size bands are functions of one ball's area
+# (``ball_blob_min``, ``ball_blob_max`` and ``limb_blob_min`` above), so a scan of
+# differently sized frames keeps them consistent.  The largest changed component is
+# the cleanest size test there is: below ``ball_blob_max(cfg)`` it can be one ball,
+# above it cannot be only one.
+#
+# ...but a *motion-blurred* ball at 3 m/s smears over 48 px and changes about
 # (19 + 48) x 19 = 1273 px^2, which is the same size as a forearm at the rail.  Area
 # alone cannot separate those two, so the shape verdict states the ambiguity and the
-# crop is what decides; anything above this is not even ambiguous.
-LIMB_BLOB_MIN_PX = 1600
-# Below this a component is too small to be a ball at all: a quarter of one ball's
-# area is the least a moving ball can vacate or occupy on its worst frame.
-BALL_BLOB_MIN_PX = 66
+# crop is what decides; anything above ``limb_blob_min(cfg)`` is not even ambiguous.
 
 
 def blob_shape(video, frame_index: int, ctx: ClothContext,
@@ -1499,9 +1500,10 @@ def person_check(video, onset, quad_px, offsets=(-2, 0, 2)) -> dict:
     finally:
         cap.release()
     share = max([f["person_share"] for f in frames] or [0.0])
+    gate = person_share_max()
     return {"frames": frames, "person_share_max": share,
-            "explained_by_person": bool(share > PERSON_SHARE_MAX),
-            "threshold": PERSON_SHARE_MAX,
+            "explained_by_person": bool(share > gate),
+            "threshold": gate,
             "basis": "src/candidate_scan.ScanConfig.person_share (the pipeline's own "
                      "occlusion threshold)"}
 
@@ -2302,7 +2304,7 @@ def cmd_person(args) -> None:
                "person_explained_rate": round(explained / len(rows), 3) if rows else None,
                "occlusion_channel_explained": sum(1 for r in rows
                                                   if r["occlusion_explains"]),
-               "person_share_threshold": PERSON_SHARE_MAX}
+               "person_share_threshold": person_share_max()}
     print(json.dumps(payload, indent=1))
     save_report({"person_checks": payload}, args.out_dir, args.dataset)
 

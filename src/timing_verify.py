@@ -70,8 +70,13 @@ CHANGED_LEVEL = 12                   # a cloth pixel counts as "changed" above t
 # blur).  A change blob that big is a ball; a blob of thousands of pixels is a
 # person walking between the camera and the cloth -- measured on this VOD, that
 # is what dominates the naive cloth-mean difference.
-BALL_BLOB_MAX_PX = 3000              # a blob at or below this is ball-scale
-OCCLUSION_BLOB_MIN_PX = 3000         # a blob at or above this is occlusion
+#
+# The two bands meet at one boundary, so they cannot drift apart.  A blob is one
+# connected component of one difference, not the change between two ball
+# positions, so this bound is not the footprint bound of ``src/motion_scan.py``.
+BLOB_BAND_BOUNDARY_PX = 3000     # the one size at which the two bands meet
+BALL_SCALE_BLOB_MAX_PX = BLOB_BAND_BOUNDARY_PX    # at or below this a blob is ball-scale
+OCCLUSION_BLOB_MIN_PX = BLOB_BAND_BOUNDARY_PX     # at or above this a blob is occlusion
 
 # The project's own ball detector was tried here as a third channel and
 # deliberately dropped: at 5 fps its greedy candidate matching paired different
@@ -270,7 +275,7 @@ def motion_pair(a, b, cloth, flow_width=FLOW_WIDTH):
         if area >= OCCLUSION_BLOB_MIN_PX:
             big_area += area
             continue
-        if area <= BALL_BLOB_MAX_PX:
+        if area <= BALL_SCALE_BLOB_MAX_PX:
             x, y = int(stats[label, cv2.CC_STAT_LEFT]), int(stats[label, cv2.CC_STAT_TOP])
             w, h = int(stats[label, cv2.CC_STAT_WIDTH]), int(stats[label, cv2.CC_STAT_HEIGHT])
             patch = labels[y:y + h, x:x + w] == label

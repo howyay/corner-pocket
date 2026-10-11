@@ -7,6 +7,7 @@ synthetic records.
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -167,6 +168,29 @@ class PruneTests(unittest.TestCase):
         self.assertEqual(result["counts"]["after_dedup"], 2)
         self.assertEqual(result["kept"][0]["t"], 2.0)          # strongest first
         self.assertEqual(result["kept"][0].get("duplicates", 1), 2)
+
+
+class PersonShareOwnerTests(unittest.TestCase):
+    """The person-share gate has one home: the ``ScanConfig`` field of this module."""
+
+    def test_motion_scan_reads_the_gate_from_this_owner(self):
+        from src import motion_scan
+        self.assertEqual(motion_scan.person_share_max(), ScanConfig.person_share)
+        with mock.patch.object(ScanConfig, "person_share", 0.75):
+            self.assertEqual(motion_scan.person_share_max(), 0.75,
+                             "motion_scan copied the number instead of reading it")
+
+    def test_the_enforcement_site_reads_the_gate_from_its_config(self):
+        records = [record(index * 0.0667, [ball("white", 60, 100)]) for index in range(60)]
+        shot = {"type": "shot", "source": "motion", "t": 1.0, "color": "white",
+                "disp_mm": 700, "from_mm": [100.0, 100.0], "to_mm": [500.0, 900.0],
+                "motion": 25.0,
+                "record": {"t": 1.0, "n": 10, "cloth_area": 150000, "brightness": 100.0,
+                           "motion": 25.0, "person_share": 0.03}}
+        result = prune([shot], records, ScanConfig(person_share=0.05), dedup_s=0.0)
+        self.assertEqual(result["dropped"], [], "0.03 overlap is under the 0.05 gate")
+        result = prune([shot], records, ScanConfig(person_share=0.01), dedup_s=0.0)
+        self.assertEqual(result["dropped"][0]["drop_reasons"], ["person_on_cloth"])
 
 
 class PlanTests(unittest.TestCase):
