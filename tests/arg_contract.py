@@ -33,6 +33,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCANNED = ("src", "tools", "scripts")
+# The files that declare the flags of another file.  A shared adder holds the
+# declarations of options that its callers read, so the forward direction of the rule
+# cannot see a read inside it, and the reverse direction must count its declarations
+# in every caller.  src/scan_args.py holds the four options of the two move-scan
+# tools (round 58), and src/motion_scan.py plus src/track_before_detect.py read them.
+SHARED_ADDERS = ("src/scan_args.py",)
 VENDORED = "src/sam3"          # the vendored SAM3 clone obeys its own contract
 
 
@@ -214,7 +220,13 @@ def _label(path):
 
 
 def unread_arguments_in(source, label="<string>"):
-    """The flags no line reads in one source text, as ``<label>:<line> <flag>``."""
+    """The flags no line reads in one source text, as ``<label>:<line> <flag>``.
+
+    A shared adder is the exception: it declares the flags that its callers read, so
+    the read lives in another file.  ``SHARED_ADDERS`` names those files.
+    """
+    if label in SHARED_ADDERS:
+        return []
     tree = ast.parse(source)
     read = _read_destinations(tree)
     found = []
@@ -260,6 +272,20 @@ def _declared_destinations(tree):
     return declared
 
 
+def shared_destinations():
+    """Every destination the shared adders declare, in one set.
+
+    A caller of a shared adder reads a flag that stands in another file, so the
+    reverse direction of the rule counts these destinations too.
+    """
+    declared = set()
+    for label in SHARED_ADDERS:
+        path = ROOT / label
+        if path.is_file():
+            declared |= _declared_destinations(ast.parse(path.read_text(encoding="utf-8")))
+    return declared
+
+
 def undeclared_reads_in(source, label="<string>"):
     """The reads of an undeclared name in one source text, as ``<label>:<line> args.<name>``.
 
@@ -267,7 +293,7 @@ def undeclared_reads_in(source, label="<string>"):
     ``AttributeError``: the namespace has no such attribute.
     """
     tree = ast.parse(source)
-    declared = _declared_destinations(tree)
+    declared = _declared_destinations(tree) | shared_destinations()
     found = [(line, f"{label}:{line} args.{name}")
              for line, name in _read_destination_rows(tree) if name not in declared]
     return [text for _line, text in sorted(found)]

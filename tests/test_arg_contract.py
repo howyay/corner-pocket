@@ -14,7 +14,9 @@ import unittest
 
 from arg_contract import (
     ROOT,
+    SHARED_ADDERS,
     scanned_files,
+    shared_destinations,
     undeclared_reads,
     undeclared_reads_in,
     unread_arguments,
@@ -189,6 +191,22 @@ class RepositoryContractTests(unittest.TestCase):
             offenders.extend(undeclared_reads(ROOT / label))
         self.assertEqual([], offenders,
                          "these reads name no declaration:\n  " + "\n  ".join(offenders))
+
+    def test_the_shared_adder_of_the_move_scan_tools_is_covered(self):
+        """One file declares the flags of another, so both directions know it.
+
+        Round 58 moved the four options of the two move-scan tools into
+        src/scan_args.py.  That file declares the flags and reads none of them, and
+        the two tools read flags that they do not declare.  The rule counts a shared
+        adder on both sides.
+        """
+        self.assertIn("src/scan_args.py", SHARED_ADDERS)
+        self.assertEqual([], unread_arguments(ROOT / "src" / "scan_args.py"),
+                         "a shared adder declares the flags that its callers read")
+        self.assertIn("video", shared_destinations())
+        for label in ("src/motion_scan.py", "src/track_before_detect.py"):
+            self.assertEqual([], undeclared_reads(ROOT / label),
+                             f"{label} reads a flag of the shared adder")
 
 
 if __name__ == "__main__":
