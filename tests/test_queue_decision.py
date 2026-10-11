@@ -7,11 +7,10 @@ events, and no code path writes a human verdict.
 """
 import json
 from pathlib import Path
+import re
 import sys
 from tempfile import TemporaryDirectory
 import unittest
-
-import data_guard
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -115,7 +114,7 @@ class DenseQueueHonesty(unittest.TestCase):
                 "duration_s": 0.733326, "path_length_px": 159.86, "net_displacement_px": 159.1,
                 "rest_window_measured_s": 9.73, "ends_in_pocket": False, "end_distance_px": 29.44,
                 "group_id": "onset-1",
-                "thresholds": {"min_net_displacement_px": 27.6,
+                "thresholds": {"min_net_displacement_px": BAR_PX,
                                "min_net_displacement_diameters": 2.0,
                                "net_uncertainty_px": 5.119, "localisation_error_px": 3.62},
                 "samples_used": [{"frame_index": 47404, "t": 1580.117301, "x": 579.03, "y": 298.05,
@@ -153,15 +152,15 @@ class DenseQueueHonesty(unittest.TestCase):
             "kind": "rejection", "code": "oscillation_no_net_travel", "ball_id": ball_id,
             "reason": "a sustained run whose net displacement does not clear the bar",
             "numbers": {"net_displacement_px": net, "net_displacement_diameters": dia,
-                        "net_uncertainty_px": 5.119, "bar_minus_net_px": 27.6 - net,
+                        "net_uncertainty_px": 5.119, "bar_minus_net_px": BAR_PX - net,
                         "path_length_px": 80.557, "peak_speed_px_s": 303.59, "duration_s": 0.267}}
 
         def unresolved(ball_id, net):
             return {"kind": "unresolved", "code": "oscillation_unresolved", "ball_id": ball_id,
                     "reason": "inside the localisation error of the bar", "t": 1351.786284,
                     "frame_index": 40554,
-                    "numbers": {"net_displacement_px": net, "net_displacement_diameters": net / 13.8,
-                                "net_uncertainty_px": 5.119, "bar_minus_net_px": 27.6 - net,
+                    "numbers": {"net_displacement_px": net, "net_displacement_diameters": net / BALL_PX,
+                                "net_uncertainty_px": 5.119, "bar_minus_net_px": BAR_PX - net,
                                 "path_length_px": net, "peak_speed_px_s": 165.6}}
 
         artifact = {"segment": {"start_s": 1350.0, "seconds": 300.0, "frames_decoded": 9000},
@@ -441,16 +440,17 @@ class DenseQueueHonesty(unittest.TestCase):
             for row in departed.values():
                 self.assertEqual(row["code"], "oscillation_no_net_travel")
                 self.assertIsNotNone(row["numbers"]["net_displacement_diameters"])
-                self.assertEqual(row["bar_px"], 27.6)
+                self.assertEqual(row["bar_px"], round(BAR_PX, 2))
             self.assertEqual(departed["t125-white"]["was_id"], 9001)
             self.assertEqual(departed["t256-blue"]["was_id"], 9003)
             self.assertGreater(len(report["channels"]["oscillation_rejections"]["served_before"]), 0)
 
     def test_a_pot_the_gate_confirmed_is_served_without_a_previous_queue(self):
-        from src.dense_queue import build
+        from src import dense_queue
+        from unittest.mock import patch
         # No ledger path is given, so the tool writes its durable id ledger to the
-        # default out/scan30/ location - a directory a fresh clone does not have.
-        data_guard.require(data_guard.ROOT / "out" / "scan30")
+        # default one.  The case points that default at its own directory: the run
+        # writes nothing into the workspace, and it passes from any directory.
         with TemporaryDirectory() as tmp:
             artifact = json.loads(self._artifact(tmp).read_text())
             artifact["gate"]["pots"][0]["verdict"] = "confirmed"      # t265-blue only
@@ -458,7 +458,11 @@ class DenseQueueHonesty(unittest.TestCase):
             path = Path(tmp) / "artifact.json"
             path.write_text(json.dumps(artifact))
             queue = Path(tmp) / "events.json"
-            build(str(path), str(queue), str(Path(tmp) / "report.json"))
+            ledger = Path(tmp) / "default-ledger.json"
+            with patch.object(dense_queue, "LEDGER", str(ledger)):
+                dense_queue.build(str(path), str(queue), str(Path(tmp) / "report.json"))
+            self.assertTrue(ledger.exists(),
+                            "a run without a ledger path writes the default ledger")
             served = [event["provenance"]["ball_id"] for event in json.loads(queue.read_text())]
             self.assertEqual(served, ["t202-blue", "t193-blue", "t265-blue"],
                              "the confirmed pot is served without being carried; the two "
@@ -475,3 +479,27 @@ class DenseQueueHonesty(unittest.TestCase):
 
 
 from src.dense_queue import ANNOTATIONS  # noqa: E402
+from src.ball_scale import WORKING_FRAME, diameter_px  # noqa: E402
+
+#: The ball width at the working frame, from its one owner (src/ball_scale.py).
+BALL_PX = diameter_px(WORKING_FRAME)
+#: The gate's bar: two ball diameters.
+BAR_PX = 2 * BALL_PX
+
+
+class TheFixtureStatesTheOwnersBallSize(unittest.TestCase):
+    """The fixture states the ball size the owner measures, and holds no other."""
+
+    def test_the_fixture_states_the_owner_size(self):
+        self.assertAlmostEqual(BALL_PX, diameter_px(WORKING_FRAME), places=9)
+        self.assertAlmostEqual(BAR_PX, 2 * diameter_px(WORKING_FRAME), places=9)
+
+    def test_this_module_writes_no_ball_size_of_its_own(self):
+        text = Path(__file__).read_text()
+        # The fixtures are the code above this class; the list below holds the sizes
+        # themselves, so the scan stops here.
+        fixtures = text.split("class TheFixtureStatesTheOwnersBallSize")[0]
+        for old in ("27.6", "13.8"):
+            pattern = re.compile(r"(?<![\d.])" + re.escape(old) + r"(?![\d])")
+            self.assertIsNone(pattern.search(fixtures),
+                              f"{old} is the replaced ball size: read src/ball_scale.py")
