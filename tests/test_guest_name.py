@@ -12,10 +12,17 @@ the same number.
 The walk below reads source, so it sees a module the runner has not loaded yet.  It finds
 every site by content and never by line number.  One case measures the two paths at the
 owner's number and at the next one.
+
+Round 55 added the last two readers of the number: ``_person`` and ``_do_guest_promote`` of
+``annotator/operations.py`` took the 200-character default of ``text()``.  The console
+fields repeated the number as well, and one of them accepted 120 characters.  Two more cases
+hold the guest-name path of the operations layer and the guest fields of the console to the
+owner.
 """
 from __future__ import annotations
 
 import ast
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,6 +45,18 @@ READERS = (('annotator/unified_server.py', 'enroll_confirm'),
 LIMIT = 60
 # The words that find the one raise site whose sentence states the number.
 SENTENCE_MARK = 'guest name up to'
+# The label the operations layer gives a guest name.  A call with this label must pass the
+# owner.
+GUEST_LABEL = 'guest name'
+# The console files that hold a guest-name field, and the fields themselves.  The console
+# cannot import Python, so each field states the number as an attribute value.  A field
+# carries its name on the line of its own ``maxlength`` attribute.  A selector such as
+# ``[name=late_name]`` states no maximum, so the pattern below skips it.
+JS_FILES = (ROOT / 'annotator/ops.js', ROOT / 'annotator/vision-stage.js')
+GUEST_FIELDS = ('guest${i}', 'late_name', 'solo_name', 'enroll-name', 'guest-name')
+GUEST_FIELD = re.compile(r'(?:"|\')?(guest\$\{i\}|late_name|solo_name|enroll-name|guest-name)'
+                         r'(?:"|\')?(?=[^\n]*maxlength)')
+MAXLENGTH = re.compile(r'maxlength=(?:"|\')?(\d+)')
 
 
 def source_files():
@@ -80,6 +99,41 @@ def is_length(node):
     return isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'len'
 
 
+def stated_maximum(call):
+    """The maximum one ``text(...)`` call states, as a node, or None for the default."""
+    stated = list(call.args[2:3]) + [word.value for word in call.keywords
+                                     if word.arg == 'maximum']
+    return stated[0] if stated else None
+
+
+def guest_text_calls(path):
+    """Every ``text(...)`` call of one module whose label names a guest, with its line."""
+    found = []
+    for node in ast.walk(parse(path)):
+        if not isinstance(node, ast.Call) or getattr(node.func, 'id', None) != 'text':
+            continue
+        if len(node.args) < 2:
+            continue
+        label = node.args[1]
+        if isinstance(label, ast.Constant) and label.value == GUEST_LABEL:
+            found.append((node.lineno, node))
+    return found
+
+
+def guest_maxlengths(path):
+    """Every guest-name field of one console file, with its name and its maximum.
+
+    A field states a maximum.  A selector such as ``[name=late_name]`` and a read of a
+    field value state no maximum, so they are not fields of this walk.
+    """
+    found = []
+    for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        field = GUEST_FIELD.search(line)
+        if field:
+            found.append((number, field.group(1), MAXLENGTH.search(line)))
+    return found
+
+
 def bare_bounds(path, limit):
     """Every site in one module that bounds a value with the bare number ``limit``.
 
@@ -95,9 +149,8 @@ def bare_bounds(path, limit):
                 if any(is_number(operand, limit) for operand in operands):
                     found.append((node.lineno, ast.unparse(node)))
         elif isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'text':
-            stated = list(node.args[2:3]) + [word.value for word in node.keywords
-                                             if word.arg == 'maximum']
-            if any(is_number(argument, limit) for argument in stated):
+            stated = stated_maximum(node)
+            if stated is not None and is_number(stated, limit):
                 found.append((node.lineno, ast.unparse(node)))
     return found
 
@@ -214,6 +267,48 @@ class GuestNameTest(unittest.TestCase):
             self.assertEqual(OWNED, ast.unparse(stated[0]),
                              'annotator/operations.py:%d must pass %s as the maximum of text()'
                              % (line, OWNED))
+
+    def test_the_guest_label_states_the_owner(self):
+        """Every guest-name reader of the operations layer passes the owner, never the default."""
+        module = ROOT / 'annotator/operations.py'
+        calls = guest_text_calls(module)
+        self.assertEqual(2, len(calls),
+                         'the operations layer reads a guest name at two sites, _person and '
+                         '_do_guest_promote, and this walk found %d' % len(calls))
+        for line, call in calls:
+            stated = stated_maximum(call)
+            self.assertIsNotNone(stated,
+                                 'annotator/operations.py:%d calls text() for a guest name '
+                                 'without a maximum, so the name falls back to the 200-character '
+                                 'default of text()' % line)
+            self.assertEqual(OWNED, ast.unparse(stated),
+                             'annotator/operations.py:%d must pass %s as the maximum of text()'
+                             % (line, OWNED))
+
+    def test_the_console_guest_fields_state_the_owner(self):
+        """Every guest-name field of the console states the owner's number."""
+        pattern = re.compile(r'^GUEST_NAME_MAX = (\d+)$', re.MULTILINE)
+        match = pattern.search((ROOT / OWNER).read_text(encoding='utf-8'))
+        self.assertIsNotNone(match, '%s binds %s on a line of its own' % (OWNER, OWNED))
+        value = int(match.group(1))
+        expected = re.compile(r'maxlength=(?:"|\')%d(?:"|\')' % value)
+        sites, wrong = {}, []
+        for path in JS_FILES:
+            for line, name, found in guest_maxlengths(path):
+                sites.setdefault(name, []).append('%s:%d' % (relative(path), line))
+                if found is None:
+                    wrong.append('%s:%d: the field %s states no maxlength'
+                                 % (relative(path), line, name))
+                elif not expected.search(found.string):
+                    wrong.append('%s:%d: the field %s states maxlength="%s"'
+                                 % (relative(path), line, name, found.group(1)))
+        self.assertEqual(sorted(GUEST_FIELDS), sorted(sites),
+                         '%s owns %s, and the console holds one field per guest-name input.  '
+                         'Each of these fields states the number.  Found: %r'
+                         % (OWNER, OWNED, sites))
+        self.assertEqual([], wrong,
+                         '%s owns %s, and the value in force is %d.  A guest field of the console '
+                         'holds that number:\n%s' % (OWNER, OWNED, value, '\n'.join(wrong)))
 
     def test_the_refusal_sentence_carries_the_owner_number(self):
         """One raise site states the sentence, and the sentence states the owner's number."""

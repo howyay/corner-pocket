@@ -27,6 +27,14 @@ from annotator.refusals import GUEST_NAME_MAX, INSTANT, INTEGER_RANGE, TEXT_LENG
 # numbers. annotator/shot_clock.py imports no module of this layer, so this adds no cycle.
 from annotator.shot_clock import DEFAULT_DURATION, MAX_DURATION, MIN_DURATION
 
+# This module owns the longest note.  One number bounds the note the operator adds
+# (``note_add``) and the notes of a saved regular (``player_save``).  The console mirrors
+# the number in ``annotator/ops.js``, and ``tests/test_note_limit.py`` holds the two equal.
+# The sentence a refused note_add earns states no number of its own, so this name is the
+# only home of that bound.  The sentence of the notes guard of a saved regular names the
+# number in words, because the console shows it, and the same module holds it.
+NOTE_MAX = 4000
+
 
 class ConflictError(ValueError):
     """The caller must reload before retrying a stale mutation.
@@ -504,7 +512,7 @@ class Operations:
                 raise ValueError('Inactive player')
             person = dict(pid=player['id'], name=player['name'])
         else:
-            person = dict(pid=None, name=text(member.get('name'), 'guest name'))
+            person = dict(pid=None, name=text(member.get('name'), 'guest name', GUEST_NAME_MAX))
             if person['name'].casefold() in PLACEHOLDER_NAMES:
                 raise ValueError("A bye is added by the draw; type the guest's real name")
             if any(player['name'].casefold() == person['name'].casefold() for player in s['players']):
@@ -804,7 +812,7 @@ class Operations:
             raise ValueError('Invalid player status')
         player.update(name=name, rating=integer(optional(p, 'rating', player['rating']), 0, 1000, 'rating'), status=status)
         if p.get('notes') is not None:
-            if not isinstance(p['notes'], str) or len(p['notes']) > 4000:
+            if not isinstance(p['notes'], str) or len(p['notes']) > NOTE_MAX:
                 raise ValueError('Player notes must be text up to 4000 characters')
             player['notes'] = p['notes'].strip()
         if not p.get('id'):
@@ -813,7 +821,7 @@ class Operations:
 
     def _do_guest_promote(self, s, p):
         t = s['tournament']
-        name = text(p.get('name'), 'guest name').casefold()
+        name = text(p.get('name'), 'guest name', GUEST_NAME_MAX).casefold()
         members = [member for entrant in t['entrants'] for member in entrant['members']
                    if member['name'].casefold() == name]
         if len(members) != 1 or members[0]['pid'] is not None:
@@ -1234,7 +1242,7 @@ class Operations:
             s['settings']['publicBoard'] = p['publicBoard']
 
     def _do_note_add(self, s, p):
-        note = dict(id=uid(), text=text(p.get('text'), 'note', 4000), createdAt=timestamp())
+        note = dict(id=uid(), text=text(p.get('text'), 'note', NOTE_MAX), createdAt=timestamp())
         s['notes'].append(note)
         return note
 
