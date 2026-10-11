@@ -47,7 +47,7 @@ RADIUS_VALUES = (4.0, 60.0)
 #: A name is a radius name when one of its tokens is one of these words ...
 RADIUS_WORDS = ("r", "radius")
 #: ... and every other token is one of these qualifiers.  The vocabulary is what
-#: keeps ``pad_r`` (src/motion_scan.py:1623, the padding of a crop) out: "pad" is
+#: keeps ``pad_r`` (src/motion_scan.py:1631, the padding of a crop) out: "pad" is
 #: not a qualifier, so that 60 stays a padding and never a radius.
 RADIUS_QUALIFIERS = ("min", "max", "ball", "sam3")
 #: The four spellings the gate sites used before the radius band moved, written
