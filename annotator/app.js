@@ -34,6 +34,10 @@ const SOURCE_LABEL = {operator:'manual corrections', model:'inference', none:'no
 // into the operator's correction - this console never claims work the operator did
 // not do. Both readers below agree on that, because both ask this pair.
 const BOX_ORIGIN = {operator:'manual', model:'auto'};
+// The frame the overlay draws in before the server names one. src/ball_scale.py owns
+// the pipeline's native frame, so the console states the same pair once here and reads
+// it at every fallback. A second copy of these two numbers is the defect.
+const NATIVE_FRAME = [1280, 720], NATIVE_W = NATIVE_FRAME[0], NATIVE_H = NATIVE_FRAME[1];
 const state = {
   mode:'timeline', dataset:'vod30', datasets:[], sets:[], set:'unlabeled_crops',
   events:[], annotations:{}, eventIndex:0, eventFilter:'all', verdictDraft:null, shooterDraft:null, noteDraft:null,
@@ -805,7 +809,7 @@ function playEvent(index) {
 // language switch reaches a stage that was built in the other language (F3).
 const STAGE_EMPTY_COPY = 'Pick a moment on the scrub strip, or select a cue, then freeze it here.';
 function stageHTML() {
-  const w = state.frameWidth || 1280, h = state.frameHeight || 720;
+  const w = state.frameWidth || NATIVE_W, h = state.frameHeight || NATIVE_H;
   return `<figure class="stage" id="stage">
     <video id="t-video" playsinline muted preload="metadata" hidden></video>
     <img id="t-img" alt="${esc(text('Raw decoded frame'))}" ${liveStill() ? `src="${esc(liveStill())}"` : state.shotUrl ? `src="${esc(state.shotUrl)}"` : ''}>
@@ -852,7 +856,7 @@ function renderStage() {
     const sentence = text(STAGE_EMPTY_COPY);
     if (empty.textContent !== sentence) empty.textContent = sentence;
   }
-  const svg = $('#t-overlay'); if (svg) { svg.setAttribute('viewBox', `0 0 ${state.frameWidth || 1280} ${state.frameHeight || 720}`); if (!svg.dataset.bound) { svg.dataset.bound = '1'; svg.onpointerdown = overlayPointerDown; svg.onpointermove = overlayPointerMove; svg.onpointerup = svg.onpointercancel = overlayPointerUp; } }
+  const svg = $('#t-overlay'); if (svg) { svg.setAttribute('viewBox', `0 0 ${state.frameWidth || NATIVE_W} ${state.frameHeight || NATIVE_H}`); if (!svg.dataset.bound) { svg.dataset.bound = '1'; svg.onpointerdown = overlayPointerDown; svg.onpointermove = overlayPointerMove; svg.onpointerup = svg.onpointercancel = overlayPointerUp; } }
   paintOverlay(); paintLiveChip(); paintPlayChip(); paintPopover(); notify();
 }
 // What the stage is doing, next to the picture it is doing it to: whether the
@@ -885,7 +889,7 @@ function paintLiveChip() {
 function paintOverlay() {
   const svg = $('#t-overlay'); if (!svg) return;
   tagQueue = [];
-  tagScale = measureTagScale(svg, state.frameWidth || 1280);
+  tagScale = measureTagScale(svg, state.frameWidth || NATIVE_W);
   const drawn = {cloth:0,balls:0,persons:0,pockets:0,anchors:0,events:0};
   // Provenance: `auto` holds what the model drew (unified detection or the live
   // metadata stream); the manual polygon and correction boxes are counted into
@@ -1066,7 +1070,7 @@ function paintOverlay() {
   }).join('');
   const poly = editPolygon ? (() => { const [px, py] = quadOrigin(quadPoints(state.polygon) || [[0,0]]); return `${sourceTag(px + 8, py + 8, polySource === 'manual' ? 'manual' : 'model')}<polygon class="t-poly" points="${state.polygon.map(p => p.join(',')).join(' ')}"></polygon>${state.polygon.map((p,i) => `<circle class="handle" data-poly="${i}" cx="${p[0]}" cy="${p[1]}" r="9"></circle>`).join('')}`; })() : '';
   const preview = state.drag && state.drag.kind === 'draw' ? `<rect class="draw-preview" x="${Math.min(state.drag.x1,state.drag.x2)}" y="${Math.min(state.drag.y1,state.drag.y2)}" width="${Math.abs(state.drag.x2-state.drag.x1)}" height="${Math.abs(state.drag.y2-state.drag.y1)}"></rect>` : '';
-  svg.innerHTML = placeTags(layers.join('') + poly + boxes + preview, state.frameWidth || 1280, state.frameHeight || 720);
+  svg.innerHTML = placeTags(layers.join('') + poly + boxes + preview, state.frameWidth || NATIVE_W, state.frameHeight || NATIVE_H);
   svg.querySelectorAll('g[data-box]').forEach(g => g.onclick = () => { const index = Number(g.dataset.box); if (state.boxes[index]?.frozen) return; if (state.tool === 'select' && state.sel.box !== index) { selectBox(index); } });
   svg.querySelectorAll('g.u-ball').forEach(g => g.onclick = event => { event.stopPropagation(); selectStageBall(Number(g.dataset.ball), Number(g.dataset.cx), Number(g.dataset.cy), Number(g.dataset.r)); });
   svg.querySelectorAll('g.u-person').forEach(g => g.onclick = event => { event.stopPropagation(); selectStagePerson(g.dataset); });
@@ -1765,7 +1769,7 @@ function nudgeBox(dx, dy) {
 // ---- the ball label popover, attached to the ball on the imagery ---------
 function paintPopover() {
   const pop = $('#stage-popover'); if (!pop || !state.sel.ball) { if (pop) pop.hidden = true; return; }
-  const { cx, cy } = state.sel.ball, w = state.frameWidth || 1280, h = state.frameHeight || 720;
+  const { cx, cy } = state.sel.ball, w = state.frameWidth || NATIVE_W, h = state.frameHeight || NATIVE_H;
   const crop = state.sel.crop;
   pop.hidden = false;
   pop.style.left = `${Math.max(4, Math.min(78, cx / w * 100))}%`;

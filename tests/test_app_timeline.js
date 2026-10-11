@@ -853,7 +853,7 @@ test('round 1 · overlay tags stay legible at the displayed scale and never over
   // A 1280-wide frame shown 372 px wide (the 390 phone): tags scale so the text is >= 11 px on screen.
   const src = fs.readFileSync(path.join(__dirname, '../annotator/app.js'), 'utf8');
   assertSourceContract('annotator/app.js', /const MIN_TAG_PX = 11;/, 'the scale is measured every paint');
-  assertSourceContract('annotator/app.js', /tagScale = measureTagScale\(svg, state\.frameWidth \|\| 1280\);/, 'the scale is measured every paint');
+  assertSourceContract('annotator/app.js', /tagScale = measureTagScale\(svg, state\.frameWidth \|\| NATIVE_W\);/, 'the scale is measured every paint');
   // measureTagScale: 14 px frame text shown at 372/1280 would be 4 px; the tag scales so it is 11 px.
   const measure = new Function(`${src.slice(src.indexOf('const SRC_TAG_HEIGHT'), src.indexOf('function glyphWidth'))}; return measureTagScale;`)();
   const k = measure({getBoundingClientRect: () => ({width: 372})}, 1280);
@@ -3833,6 +3833,23 @@ test('the review engine reads the duration text from the one owner, and reads it
   const realm = engineRealm({}, {mount: false}).realm;
   assert.strictEqual(typeof realm.window.Duration.hms, 'function', 'and every mounted realm carries the owner');
 });
+
+// ---- the fallback frame pair has one home ------------------------------------
+// The engine draws in the frame the server names. Before a reply arrives it draws in the
+// pipeline's native frame, and that pair stands once in annotator/app.js. src/ball_scale.py
+// owns the same pair for the pipeline, so a second statement here is the defect this finds.
+test('the fallback frame pair has one statement and every site reads it', () => {
+  const declared = source.match(/const NATIVE_FRAME = \[1280, 720\]/g) || [];
+  assert.strictEqual(declared.length, 1, 'one statement of the pair, not ' + declared.length);
+  const inline = source.match(/\|\|\s*(?:1280|720)\b/g) || [];
+  assert.deepStrictEqual(inline, [], 'no site writes a fallback number inline: ' + JSON.stringify(inline));
+  const named = source.match(/NATIVE_[WH]\b/g) || [];
+  assert.ok(named.length >= 11, 'the five fallback sites read the two names: ' + named.length);
+});
+assertSourceContract('annotator/app.js', 'const NATIVE_FRAME = [1280, 720]',
+  'the engine states the native frame pair once');
+assertSourceContract('annotator/app.js', /\|\|\s*(?:1280|720)\b/,
+  'no fallback site writes a frame number inline', true);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 // The source-text assertions that no browser seam can reach, listed in one place.
