@@ -94,6 +94,27 @@ class PotGateTests(unittest.TestCase):
         self.assertEqual(result.status, "rejected")
         self.assertEqual(result.reasons, ["vanished_ball_not_at_pocket"])
 
+    def test_the_mouth_radius_decides_both_sides_of_the_bar(self):
+        """Strong 1: one mouth radius, and it is the bar on both of its sides.
+
+        ``src/event_gates.py:387`` refuses a vanished ball past
+        ``cfg.pot_pocket_r_mm``.  ``src/shot_pot_gate.POCKET_R_MM`` places the
+        model's mouth.  This case names both numbers and then measures just
+        inside the bar, at the bar and just outside it.
+        """
+        from src.event_gates import GateConfig as OWNER
+        from src.shot_pot_gate import POCKET_R_MM
+        radius = OWNER().pot_pocket_r_mm
+        self.assertEqual(POCKET_R_MM, radius, "the model's mouth and the gate's bar parted")
+        measurement = {"color": "black", "mm": [1210, 2421], "pocket": "foot-right",
+                       "dist_mm": radius, "pre_hits": 4, "approach_mm": 330.0}
+        inside = dict(measurement, dist_mm=radius - 0.1)
+        outside = dict(measurement, dist_mm=radius + 0.1)
+        self.assertEqual(judge(self.claim, self.evidence(vanish=[inside])).status, "confirmed")
+        self.assertEqual(judge(self.claim, self.evidence(vanish=[measurement])).status, "confirmed")
+        self.assertEqual(judge(self.claim, self.evidence(vanish=[outside])).reasons,
+                         ["vanished_ball_not_at_pocket"])
+
     def test_missing_vanished_ball_is_unconfirmed_not_rejected(self):
         result = judge(self.claim, self.evidence(vanish=[]))
         self.assertEqual(result.status, "unconfirmed")

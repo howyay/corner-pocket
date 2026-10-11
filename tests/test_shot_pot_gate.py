@@ -218,6 +218,24 @@ class PocketGeometryTests(GateTestCase):
             self.assertAlmostEqual(mm[0], OTHER[name][0])
             self.assertAlmostEqual(mm[1], OTHER[name][1])
 
+    def test_the_pot_radius_is_the_event_gates_measurement(self):
+        """Strong 1: the gate's bar and this model's mouth are one number.
+
+        ``src/event_gates.py:387`` calls a vanished ball past
+        ``GateConfig.pot_pocket_r_mm`` a pot.  The pocket model places the same
+        mouth.  This case names both sides and the measured value, so a
+        restated literal fails here and not in silence.
+        """
+        from src.event_gates import GateConfig as OWNER
+        self.assertEqual(POCKET_R_MM, OWNER().pot_pocket_r_mm, "the pocket radius and "
+                                                               "the pot gate's bar parted")
+        self.assertEqual(POCKET_R_MM, 100.0, "the measured mouth radius moved: "
+                                             "docs/state.md:391 and "
+                                             "docs/calibration-truth.md:123 name 100 mm")
+        self.assertEqual(GateThresholds().pocket_r_mm, POCKET_R_MM, "GateThresholds "
+                                                                     "reports a radius "
+                                                                     "the model does not use")
+
     def test_nearest_and_inside_disagree_outside_the_radius(self):
         model = default_pocket_model()
         pocket, dist = model.nearest(*OPEN)

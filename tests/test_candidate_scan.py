@@ -92,6 +92,69 @@ class ShotGenerationTests(unittest.TestCase):
                           if c["source"] == "motion"], [])
 
 
+class ShotSpeedWindowTests(unittest.TestCase):
+    """Strong 2: one home for the window, and each of its two ends decides.
+
+    ``ScanConfig.shot_speed_mm_s`` and ``ScanConfig.max_speed_mm_s`` read the two
+    names ``src/info_complete_scan`` owns, so the two scanners cannot part.  The
+    pair rule of ``src/candidate_scan.py:202-203`` refuses a speed below the floor
+    or above the ceiling.  The longest gap a pair may span is 0.2 s and the
+    displacement floor is 300 mm, so the 500 mm/s floor cannot bind with the
+    default config (300 mm / 0.2 s = 1500 mm/s).  The cases below lower the
+    displacement floor to measure the speed floor on its own.
+    """
+
+    GAP = 0.066                    # two rounded sample times of the 30 fps cadence
+
+    def _pair_at(self, speed_mm_s, **config):
+        """The pair candidates for one matched ball that travels at ``speed_mm_s``.
+
+        ``to_table_mm`` is replaced by a ruler this case owns: 2 mm per pixel in
+        x.  The measured speed is then exact for the gap above.
+        """
+        span_px = speed_mm_s * self.GAP / 2.0
+        records = [record(0.0, [ball("white", 100.0, 100.0), ball("blue", 300.0, 200.0)]),
+                   record(self.GAP, [ball("white", 100.0, 100.0), ball("blue", 300.0, 200.0)]),
+                   record(2 * self.GAP, [ball("white", 100.0 + span_px, 100.0),
+                                         ball("blue", 300.0, 200.0)]),
+                   record(3 * self.GAP, [ball("white", 100.0 + span_px, 100.0),
+                                         ball("blue", 300.0, 200.0)])]
+
+        def ruler(_h, cx, cy):
+            return (cx * 2.0, cy * 7.0)
+
+        with mock.patch("src.candidate_scan.to_table_mm", ruler):
+            return [c for c in raw_candidates(records, H, ScanConfig(**config))
+                    if c["source"] == "pair"]
+
+    def test_the_scan_config_reads_the_info_complete_speed_window(self):
+        from src.info_complete_scan import MAX_SPEED_MM_S as OWNED_CEILING
+        from src.info_complete_scan import SHOT_SPEED_MM_S as OWNED_FLOOR
+        self.assertEqual(ScanConfig().shot_speed_mm_s, OWNED_FLOOR)
+        self.assertEqual(ScanConfig().max_speed_mm_s, OWNED_CEILING)
+
+    def test_the_window_keeps_the_measured_values(self):
+        # 500 mm/s: the matched ball moves, it does not jitter.  11000 mm/s: above
+        # this the match joins two different balls.  No case named the ceiling
+        # before round 71, so a moved ceiling failed nothing.
+        self.assertEqual(ScanConfig().shot_speed_mm_s, 500.0)
+        self.assertEqual(ScanConfig().max_speed_mm_s, 11000.0)
+
+    def test_the_ceiling_refuses_a_pair_just_above_it(self):
+        ceiling = ScanConfig().max_speed_mm_s
+        at_the_bar = self._pair_at(ceiling)
+        self.assertEqual(len(at_the_bar), 1, "a pair at the ceiling must stand")
+        self.assertAlmostEqual(at_the_bar[0]["speed_mm_s"], ceiling, delta=1.0)
+        self.assertEqual(self._pair_at(ceiling + 1.0), [])
+
+    def test_the_floor_refuses_a_pair_just_below_it(self):
+        floor = ScanConfig().shot_speed_mm_s
+        at_the_bar = self._pair_at(floor, shot_min_disp_mm=0.0)
+        self.assertEqual(len(at_the_bar), 1, "a pair at the floor must stand")
+        self.assertAlmostEqual(at_the_bar[0]["speed_mm_s"], floor, delta=1.0)
+        self.assertEqual(self._pair_at(floor - 1.0, shot_min_disp_mm=0.0), [])
+
+
 class PotGenerationTests(unittest.TestCase):
     def test_a_held_census_drop_becomes_a_pot_naming_the_ball_by_a_pocket(self):
         # Foot-right is (1270, 2540) mm -> (640, 360) px.

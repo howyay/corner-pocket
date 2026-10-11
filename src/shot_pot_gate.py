@@ -81,8 +81,8 @@ from dataclasses import dataclass, field
 import math
 from statistics import median
 from typing import Any, Iterable, NamedTuple, Sequence
-
 from src.ball_scale import BALL_WIDTH_MM, NATIVE_FRAME, diameter_px, formatted_width
+from src.event_gates import GateConfig
 from src.projection import DEFAULT_TOLERANCE, project_point
 from src.table_geometry import CANON_H, CANON_W, POCKETS_MM
 
@@ -124,12 +124,12 @@ VOD30_POCKETS_PX: dict[str, dict[str, float | tuple[float, float]]] = {
     "right-side": {"px": (860.1019, 398.3787), "px_per_mm": 0.20075},
 }
 
-#: the repo's measured pot radius, ``src.event_gates.GateConfig.pot_pocket_r_mm``:
-#: re-measured vanished-ball distances cluster at 39-86 mm (pocket mouth) and then
-#: jump to >= 110 mm (ball still on the cloth).  In pixels this is 12.9 px at the
-#: head pockets and 38.8 px at the foot pockets, because the far end of the table
-#: is foreshortened ~3x - a single pixel radius would be wrong at both ends.
-POCKET_R_MM = 100.0
+#: the repo's measured pot radius, owned by ``src.event_gates.GateConfig.pot_pocket_r_mm``
+#: and read here, so one mouth radius decides both.  ``tests/test_shot_pot_gate.py``
+#: holds the pair.  Vanished-ball distances cluster at 39-86 mm (pocket mouth) and
+#: then jump to >= 110 mm (ball still on the cloth).  In pixels: 12.9 px head,
+#: 38.8 px foot, because the far end is foreshortened ~3x - one px radius is wrong.
+POCKET_R_MM = GateConfig().pot_pocket_r_mm
 
 #: ``src.motion_scan.OCC_DENSE_MIN``: share of the 61x61 px occlusion window that
 #: changed, above which a person explains the motion.  Its own justification (from

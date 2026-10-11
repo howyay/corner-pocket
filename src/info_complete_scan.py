@@ -46,12 +46,12 @@ from src.ball_detect import detect_ball_candidates  # noqa: E402
 # src/weight_pins.py owns the weight paths, so this file reads the owner.
 from src import weight_pins  # noqa: E402
 
-SHOT_SPEED_MM_S = 500.0   # candidate: matched ball speed >= 0.5 m/s
+SHOT_SPEED_MM_S = 500.0   # candidate: matched ball speed >= 0.5 m/s; ScanConfig reads it
 # The displacement floor of a shot candidate, in millimetres.  A candidate needs
 # this floor and the speed floor above.  src/scan_events.py holds another floor
 # (SHOT_DISP_MM = 300 mm) because its evidence set is different: SAM3 samples.
 CANDIDATE_DISP_MM = 150.0  # absolute floor against pixel jitter
-MAX_SPEED_MM_S = 11000.0  # above this the 'match' is two different balls
+MAX_SPEED_MM_S = 11000.0  # above this the 'match' is two different balls; ScanConfig reads it
 POT_REFRACT_S = 3.0       # same color near same spot within 3s = one pot
 POT_PERSIST_PAIRS = 3     # vanish must survive this many consecutive pairs
 CLOTH_BAND = (0.85, 1.15)

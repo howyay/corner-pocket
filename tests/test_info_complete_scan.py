@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.info_complete_scan import (GateConfig, ICState, gate_reason,  # noqa: E402
                                     match_balls, to_table_mm, _pair_candidates,
                                     _quad_box_overlap_area, CANDIDATE_DISP_MM,
-                                    SHOT_SPEED_MM_S)
+                                    MAX_SPEED_MM_S, SHOT_SPEED_MM_S)
 from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +152,29 @@ class FloorNameTests(unittest.TestCase):
         self.assertNotIn('SHOT_DISP_MM', self.numeric_constants('info_complete_scan.py'))
         self.assertEqual(self.numeric_constants('info_complete_scan.py').get('CANDIDATE_DISP_MM'),
                          '150.0')
+
+
+class SpeedWindowTests(unittest.TestCase):
+    """Strong 2: the shot-speed window has one home, and its two ends are frozen.
+
+    ``src/candidate_scan.ScanConfig`` reads ``SHOT_SPEED_MM_S`` and
+    ``MAX_SPEED_MM_S`` from this module in place of a second pair of literals.
+    Before round 71 no case named ``MAX_SPEED_MM_S`` at all, so the 11000 mm/s
+    ceiling could move in silence.
+    """
+
+    def test_the_floor_is_the_measured_value(self):
+        # A matched ball at 500 mm/s moves.  Below this bar the pair is a jitter.
+        self.assertEqual(SHOT_SPEED_MM_S, 500.0)
+
+    def test_the_ceiling_is_the_measured_value(self):
+        # Above 11000 mm/s the match joins two different balls.
+        self.assertEqual(MAX_SPEED_MM_S, 11000.0)
+
+    def test_the_candidate_scanner_reads_the_two_names(self):
+        from src.candidate_scan import ScanConfig as READER
+        self.assertEqual(READER().shot_speed_mm_s, SHOT_SPEED_MM_S)
+        self.assertEqual(READER().max_speed_mm_s, MAX_SPEED_MM_S)
 
 
 class GeometryTests(unittest.TestCase):

@@ -46,8 +46,9 @@ from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src import events_document  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
-from src.info_complete_scan import (GateConfig, _on_table, _quad_box_overlap_area,  # noqa: E402
-                                    match_balls, to_table_mm)
+from src.info_complete_scan import (GateConfig, MAX_SPEED_MM_S, SHOT_SPEED_MM_S,  # noqa: E402
+                                    _on_table, _quad_box_overlap_area, match_balls,
+                                    to_table_mm)
 from src.pipeline import homography_to_canonical  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 
@@ -64,8 +65,10 @@ class ScanConfig:
     """Thresholds that decide what becomes a raw candidate (generation only)."""
     stride: int = 2
     shot_min_disp_mm: float = 300.0
-    shot_speed_mm_s: float = 500.0
-    max_speed_mm_s: float = 11000.0
+    # The shot-speed window is a measurement of the ball, not a tuning of this
+    # scanner: both names read src/info_complete_scan, which owns them.
+    shot_speed_mm_s: float = SHOT_SPEED_MM_S
+    max_speed_mm_s: float = MAX_SPEED_MM_S
     match_radius_factor: float = 3.0
     streak_needed: int = 2          # both ends of a shot pair must be established
     census_window: int = 40         # samples the running median is built from
