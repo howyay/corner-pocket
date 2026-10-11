@@ -18,6 +18,8 @@ from ultralytics import YOLO
 from src.box_geometry import iou  # noqa: E402
 # src/weight_pins.py owns the weight paths, so this file reads the owner.
 from src import weight_pins  # noqa: E402
+# src/pid_identity.py owns the person-pass confidence, so this file reads it.
+from src.pid_identity import PERSON_CONF  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
@@ -46,7 +48,7 @@ def track_window(t0, t1):
         ok, bgr = cap.read()
         if not ok:
             break
-        res = MODEL.predict(bgr, conf=0.35, classes=[0], verbose=False)
+        res = MODEL.predict(bgr, conf=PERSON_CONF, classes=[0], verbose=False)
         dets = []
         if res[0].boxes is not None:
             dets = [[int(v) for v in b] for b in res[0].boxes.xyxy.cpu().numpy()]

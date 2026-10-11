@@ -1,4 +1,5 @@
 """Person pipeline tests; everything injected, no model loads."""
+import ast
 import sys
 import tempfile
 import unittest
@@ -370,6 +371,34 @@ class DetectorWeightsTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 PersonPipeline(self.root / 'empty').detector_weights()
         self.assertFalse(loader.called)
+
+
+class DetectorConfidenceTest(unittest.TestCase):
+    """The review-side person detector keeps the model default.
+
+    The four person passes of the pid scripts ask the detector for class 0 at
+    ``PERSON_CONF``, the one number ``src/pid_identity.py`` holds.  This
+    detector answers the operator instead, and it gives the score of every row
+    to its caller, so a row below the pid bar must still arrive.  The
+    difference is a decision, and this case holds it.
+    """
+
+    def test_the_review_detector_keeps_the_model_default(self):
+        path = Path(__file__).resolve().parents[1] / 'src' / 'person_pipeline.py'
+        tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == 'predict'
+        ]
+        self.assertEqual(1, len(calls), 'the module asks the detector once')
+        keywords = sorted(keyword.arg for keyword in calls[0].keywords)
+        self.assertNotIn(
+            'conf', keywords,
+            'the review detector reads the score of every row: %r' % (keywords,),
+        )
+        self.assertIn('classes', keywords, 'the call asks for the person class')
 
 
 if __name__ == '__main__':

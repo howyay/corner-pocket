@@ -1,9 +1,11 @@
-"""The A/B colour rule of the identity document has one home.
+"""Two facts of the identity document have one home.
 
 The k-means labels of ``out/pid_identity_v0.json`` carry no order.  Two shooter
 scripts derive "A is the light cluster and B is the dark one" from the cluster
 centres.  ``src/pid_identity.py`` holds that rule once, and both scripts ask it.
-The walk of this module reads ``src/*.py``.
+The four person passes ask the detector for class 0 at one confidence.
+``src/pid_identity.py`` holds that number once too, and the four call sites read
+the name.  The walk of this module reads ``src/*.py``.
 """
 
 import ast
@@ -11,12 +13,16 @@ import re
 import unittest
 from pathlib import Path
 
-from src.pid_identity import classify_ab, light_dark
+from src.pid_identity import PERSON_CONF, classify_ab, light_dark
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 OWNER = "pid_identity.py"
 SHOOTERS = ("pid_shooter.py", "pid_shooter2.py")
+# The four call sites of the person pass, and the one confidence they share.
+SITES = ("pid_associate.py", "pid_shooter.py", "pid_shooter2.py", "yolo_track.py")
+CONF_KEYWORD = "conf"
+PERSON_CONF_NAME = "PERSON_CONF"
 
 # The two shapes that state the rule: an order of the clusters by brightness,
 # and a cluster index taken from that order.
@@ -34,6 +40,36 @@ def rule_sites(source, name):
         if BRIGHTNESS_ORDER.search(line) or INDEXED_ORDER.search(line):
             found.append("%s:%d: %s" % (name, number, line.strip()))
     return found
+
+
+def confidence_sites(source, name):
+    """Answer the ``conf`` value of every ``predict`` call of one source.
+
+    One answer is the text ``name:line: text``.  A call without the keyword
+    answers the word ``default``, because the detector applies its own value
+    then.
+    """
+    found = []
+    for node in ast.walk(ast.parse(source, filename=name)):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "predict":
+            continue
+        value = "default"
+        for keyword in node.keywords:
+            if keyword.arg == CONF_KEYWORD:
+                value = ast.unparse(keyword.value)
+        found.append("%s:%d: %s" % (name, node.lineno, value))
+    return found
+
+
+def owner_names(source, name):
+    """Answer the names of one source that come from the owner module."""
+    imported = set()
+    for node in ast.walk(ast.parse(source, filename=name)):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("pid_identity"):
+            imported |= {alias.name for alias in node.names}
+    return imported
 
 
 class TheAbRuleHasOneHomeTest(unittest.TestCase):
@@ -84,6 +120,107 @@ class TheAbRuleHasOneHomeTest(unittest.TestCase):
             "A",
             classify_ab((100, 100, 100), clusters, a_index, b_index),
             "a tie answers A",
+        )
+
+
+class ThePersonConfidenceHasOneHomeTest(unittest.TestCase):
+    def test_the_owner_holds_the_confidence(self):
+        source = (SRC / OWNER).read_text(encoding="utf-8")
+        bound = []
+        for node in ast.parse(source, filename=OWNER).body:
+            if not isinstance(node, ast.Assign):
+                continue
+            names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            if PERSON_CONF_NAME in names:
+                bound.append(node.value)
+        self.assertEqual(1, len(bound), "the owner binds %s once" % PERSON_CONF_NAME)
+        self.assertIsInstance(
+            bound[0].value, float, "the owner spells the confidence as one number"
+        )
+        self.assertIsInstance(
+            PERSON_CONF, float, "the owner hands a number to every reader"
+        )
+        self.assertGreater(PERSON_CONF, 0.0, "a confidence is above zero")
+        self.assertLess(PERSON_CONF, 1.0, "a confidence is below one")
+
+    def test_no_module_spells_the_confidence_as_a_number(self):
+        found = []
+        for path in sorted(SRC.glob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            for node in ast.walk(ast.parse(source, filename=path.name)):
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                    continue
+                if node.func.attr != "predict":
+                    continue
+                for keyword in node.keywords:
+                    if keyword.arg == CONF_KEYWORD and isinstance(keyword.value, ast.Constant):
+                        found.append(
+                            "%s:%d: %s"
+                            % (path.name, node.lineno, ast.unparse(keyword.value))
+                        )
+        self.assertEqual(
+            [],
+            found,
+            "these lines spell the person-pass confidence outside the owner: %r" % found,
+        )
+
+    def test_the_four_person_sites_read_the_owner(self):
+        for name in SITES:
+            source = (SRC / name).read_text(encoding="utf-8")
+            self.assertIn(
+                PERSON_CONF_NAME,
+                owner_names(source, name),
+                "%s must import the confidence from the owner" % name,
+            )
+            values = [report.rsplit(": ", 1)[-1] for report in confidence_sites(source, name)]
+            self.assertEqual(
+                1,
+                values.count(PERSON_CONF_NAME),
+                "%s must ask the detector with the owner's name: %r" % (name, values),
+            )
+
+    def test_the_walk_sees_a_planted_confidence(self):
+        planted = "res = MODEL.predict(bgr, conf=0.35, classes=[0], verbose=False)\n"
+        self.assertEqual(
+            ["forged.py:1: 0.35"],
+            confidence_sites(planted, "forged.py"),
+            "the walk of the case above must see a planted copy",
+        )
+        self.assertEqual(
+            ["forged.py:1: 0.25"],
+            confidence_sites(planted.replace("0.35", "0.25"), "forged.py"),
+            "a second number is a second copy",
+        )
+
+    def test_the_bar_keeps_the_box_above_it(self):
+        """The value itself, measured at the function the detector applies.
+
+        ``non_max_suppression`` keeps a row when the row score is greater than
+        ``conf_thres``, and the ultralytics predictor gives the ``conf`` keyword
+        of the caller to that argument.  Therefore one box below the owner's
+        value, one box on it and one box above it measure the number.
+        """
+        import torch
+        from ultralytics.utils.nms import non_max_suppression
+
+        scores = (PERSON_CONF - 0.01, PERSON_CONF, PERSON_CONF + 0.01)
+        prediction = torch.zeros(1, 5, 3)
+        for index, score in enumerate(scores):
+            prediction[0, 0, index] = 200.0 + 20.0 * index  # centre x
+            prediction[0, 1, index] = 20.0  # centre y
+            prediction[0, 2, index] = 10.0  # width
+            prediction[0, 3, index] = 10.0  # height
+            prediction[0, 4, index] = score  # the score of class 0
+        kept = non_max_suppression(prediction, conf_thres=PERSON_CONF, classes=[0])
+        rows = kept[0]
+        self.assertEqual(
+            1, len(rows), "one box is above the owner's bar, and two are not: %r" % (rows,)
+        )
+        self.assertAlmostEqual(
+            scores[2],
+            float(rows[0][4]),
+            places=5,
+            msg="the surviving box is the one above the bar",
         )
 
 

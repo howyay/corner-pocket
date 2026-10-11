@@ -20,6 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 VIDEO = str(ROOT / "data" / "vod_30min_260815.mp4")
 QUAD = np.array(json.load(open(ROOT / "out" / "corners_30min_v2.json"))["corners"], np.float32)
 
+# The person pass of the four pid call sites asks the detector for class 0 at
+# this confidence.  These files read this name: src/pid_associate.py,
+# src/pid_shooter.py, src/pid_shooter2.py and src/yolo_track.py.  The
+# review-side detectors keep the ultralytics default instead, because they give
+# the score of every row to the caller: src/person_pipeline.py:108,
+# src/frame_inference.py:191 and src/info_complete_scan.py:105.
+PERSON_CONF = 0.35
+
 
 def light_dark(centers_bgr):
     """The A cluster and the B cluster of one identity document.

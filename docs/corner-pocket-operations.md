@@ -96,8 +96,9 @@ The existing annotation and local-VOD/frame-inference workbench is being integra
 Use temporary state directories for tests; never save fixtures into production annotations or operations state.
 
 ```sh
+# suites (the same three that scripts/pool-test.sh runs)
 PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-node tests/test_app_timeline.js
+node tests/test_ops.js && node tests/test_board.js && node tests/test_app_timeline.js
 ```
 
 Operations unit tests cover persistence, stale writes, validation, atomic failure, entrants, doubles, table exclusivity, absences, forfeits, history, sources, settings, guest promotion, bounded audit history, and bracket completion for power-of-two and non-power-of-two entrant counts.

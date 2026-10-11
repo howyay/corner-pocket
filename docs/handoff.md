@@ -196,9 +196,9 @@ Quiet host (`loadavg` 4.0–5.8), 90 frames/case, budget 33.33 ms; `ball` is a 1
 # app lifecycle
 systemctl --user restart <workbench-service>         # the workbench service: port 8130, loopback only
 
-# suites
+# suites (the same three that scripts/pool-test.sh runs)
 PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-node --test tests/test_ops.js && node tests/test_app_timeline.js
+node tests/test_ops.js && node tests/test_board.js && node tests/test_app_timeline.js
 
 # browser fixtures (copied data, never production labels)
 PYTHONPATH=. .venv/bin/python tests/serve_workbench_fixture.py     # :8131, real VOD + review data

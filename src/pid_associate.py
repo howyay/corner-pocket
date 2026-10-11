@@ -26,7 +26,7 @@ import osnet as O  # noqa
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
-from pid_identity import in_table_zone, torso_color  # noqa
+from pid_identity import PERSON_CONF, in_table_zone, torso_color  # noqa
 
 # src/weight_pins.py owns the two weight paths, so this file reads the owner.
 from src import weight_pins
@@ -150,7 +150,7 @@ def main():
             if wb is None or a > wb[0]:
                 wb = (a, (x + ww / 2.0, y + hh / 2.0))
         wb = wb[1] if wb else None
-        res = MODEL.predict(bgr, conf=0.35, classes=[0], verbose=False)
+        res = MODEL.predict(bgr, conf=PERSON_CONF, classes=[0], verbose=False)
         persons = []
         if res[0].boxes is not None:
             for b in res[0].boxes.xyxy.cpu().numpy():

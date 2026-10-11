@@ -25,7 +25,7 @@ from ultralytics import YOLO
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
-from pid_identity import torso_color, in_table_zone, light_dark, classify_ab
+from pid_identity import PERSON_CONF, torso_color, in_table_zone, light_dark, classify_ab
 
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO(weight_pins.YOLO)
@@ -80,7 +80,7 @@ def main():
         wb = white_ball(bgr, cloth)
         if wb is not None:
             stats["white_found"] += 1
-        res = MODEL.predict(bgr, conf=0.35, classes=[0], verbose=False)
+        res = MODEL.predict(bgr, conf=PERSON_CONF, classes=[0], verbose=False)
         persons = []
         if res[0].boxes is not None:
             for b in res[0].boxes.xyxy.cpu().numpy():
