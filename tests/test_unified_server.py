@@ -13,8 +13,9 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from annotator.unified_server import (ABSENT, APIError, Backend, Cache, OPERATOR_ACTIONS, OperatorAction,
-                                      ReadQuery, atomic_save, load, make_handler, operator_actions)
+from annotator.unified_server import (ABSENT, APIError, Backend, BOARD_FONTS, Cache, OPERATOR_ACTIONS,
+                                      OperatorAction, ReadQuery, atomic_save, load, make_handler,
+                                      operator_actions)
 from annotator.operations import ACTION_NAMES
 from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S
 from src.pid_seed_rebuild import explicit_seeds, run
@@ -24,6 +25,24 @@ def file_stamp(path):
     """Bytes + size + mtime: the three things a read must never change."""
     path = Path(path)
     return (hashlib.md5(path.read_bytes()).hexdigest(), path.stat().st_size, path.stat().st_mtime_ns)
+
+
+#: One @font-face rule of the two realm stylesheets: family, style, weight, src url and the
+#: optional unicode-range. The url is kept as written, because the realms spell the same
+#: route two ways: ops.css is rooted ("/fonts/…"), board.css is relative ("fonts/…").
+FONT_FACE = re.compile(r"@font-face\{font-family:'([^']+)';font-style:(\w+);font-weight:([0-9 ]+);"
+                       r"font-display:swap;src:url\(([^)]+)\) format\('woff2'\)"
+                       r"(?:;unicode-range:([^}]+))?\}")
+
+
+def font_faces(text):
+    """Every @font-face rule of one stylesheet: (family, style, weight, url, unicode-range)."""
+    return FONT_FACE.findall(text)
+
+
+def font_name(url):
+    """The file name a face url points at, whichever realm spells it."""
+    return url.rsplit('/', 1)[-1]
 
 
 class BackendTests(unittest.TestCase):
@@ -776,7 +795,8 @@ class BackendTests(unittest.TestCase):
             handler = self.handler(path)
             handler.do_GET()
             self.assertEqual(handler.status, 404, path)
-        # The pages reference no font CDN; every @font-face points at /fonts/.
+        # The pages reference no font CDN; the console's faces point at /fonts/, and the
+        # board's at fonts/ (the mount-relative spelling its own page and mount need).
         pages = (assets / 'ops.html').read_text() + (assets / 'app.html').read_text() + (assets / 'ops.css').read_text()
         self.assertNotIn('fonts.googleapis.com', pages)
         self.assertNotIn('fonts.gstatic.com', pages)
@@ -784,17 +804,50 @@ class BackendTests(unittest.TestCase):
             self.assertTrue((assets / url.lstrip('/')).is_file(), url)
         # User-typed hanzi: each common-hanzi face is a unicode-range extension of a UI
         # face with identical family, style and weight (else the browser will not
-        # compose them), and its range is the one build_fonts.py generated.
-        faces = re.findall(r"@font-face\{font-family:'([^']+)';font-style:(\w+);font-weight:([0-9 ]+);"
-                           r"font-display:swap;src:url\(/fonts/([a-z0-9-]+)\.woff2\) format\('woff2'\)"
-                           r"(?:;unicode-range:([^}]+))?\}", (assets / 'ops.css').read_text())
-        plain = {(family, style, weight) for family, style, weight, _, urange in faces if not urange}
-        common = [face for face in faces if face[3].endswith('-common')]
-        self.assertTrue(common)
+        # compose them), and its range is the one build_fonts.py generated. Both realms
+        # declare -common faces, so the generated range is read against both
+        # stylesheets: it has one home, and no copy of it may drift from that home.
         generated = (assets / 'fonts' / 'common-unicode-range.txt').read_text().strip()
-        for family, style, weight, name, urange in common:
-            self.assertIn((family, style, weight), plain, name)
-            self.assertEqual(urange, generated, name)
+        for sheet in ('ops.css', 'board.css'):
+            faces = font_faces((assets / sheet).read_text())
+            plain = {(family, style, weight) for family, style, weight, url, urange in faces if not urange}
+            common = [face for face in faces if font_name(face[3]).endswith('-common.woff2')]
+            self.assertTrue(common, '%s declares no -common face' % sheet)
+            for family, style, weight, url, urange in common:
+                self.assertIn((family, style, weight), plain, '%s: %s' % (sheet, font_name(url)))
+                self.assertEqual(urange, generated, '%s: %s' % (sheet, font_name(url)))
+
+    def test_the_board_stylesheet_declares_the_served_font_set_and_no_other(self):
+        """board.css and BOARD_FONTS name one set of files, in both directions.
+
+        The public listener answers /fonts/<name> for the names in BOARD_FONTS and 404s
+        every other file under fonts/ (BOARD_FILES, tests/test_public_board.py). A face
+        board.css declares and the tuple does not serve falls back to a system font; a
+        name the tuple serves and the stylesheet never declares is a route no page asks
+        for. One assertion covers both directions, and it reports the two lists.
+        """
+        assets = Path(__file__).resolve().parents[1] / 'annotator'
+        declared = sorted(font_name(face[3]) for face in font_faces((assets / 'board.css').read_text()))
+        self.assertEqual(declared, sorted(BOARD_FONTS),
+                         'board.css and BOARD_FONTS must name the same files: the port serves '
+                         'BOARD_FONTS, and board.css decides which of them the page fetches')
+
+    def test_the_two_realms_spell_one_font_route_each(self):
+        """One route, two spellings: board.css is relative, ops.css is rooted.
+
+        The board page, its stylesheet and its fonts are mounted at "/", "/board/" and
+        "/display", so a rooted url in board.css leaves the mount; the console is served
+        from the root, so ops.css is rooted. Each realm keeps one spelling, and every
+        spelling names a file in annotator/fonts/.
+        """
+        assets = Path(__file__).resolve().parents[1] / 'annotator'
+        for sheet, spelling in (('board.css', 'fonts/'), ('ops.css', '/fonts/')):
+            urls = [face[3] for face in font_faces((assets / sheet).read_text())]
+            self.assertTrue(urls, '%s declares no face' % sheet)
+            for url in urls:
+                self.assertTrue(url.startswith(spelling),
+                                '%s: %s is not the %s spelling' % (sheet, url, spelling))
+                self.assertTrue((assets / url.lstrip('/')).is_file(), '%s: %s' % (sheet, url))
 
     def test_event_clip_bounded_and_cached(self):
         encoded = []
