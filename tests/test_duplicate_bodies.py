@@ -23,16 +23,26 @@ function, unparses the statements that remain with ``ast.unparse``, and hashes
 them.  So a copy is found whatever its name is, the spacing does not matter, and
 one changed name or term makes the two bodies differ.
 
-The walk above reads the top level of a module only, so a method of a class is
-not in it.  Round 53 found the test "is this document named" twice inside two
-class bodies (``events_document.py Document.named`` and ``sam3_artifact.py
-Artifact.named``).  It gave that test one home, ``document_stamp.is_named``, and
-it added ``NamedPredicateTest`` below, which walks the class bodies of every
-module of src/.  Measured on 2026-10-11, four further cross-module pairs of
-method bodies stay in class bodies: ``store.py`` with ``store_pg.py`` hold
-``frame_detections`` and ``seeds_get``, and ``pid_anchor_ui.py`` with
-``pid_seed_ui.py`` hold ``_send`` and ``log_message``.  A later round owns those
-four.
+The walk reads the top level of a module, so a method of a class is not in it.
+Round 55 widened the tree: the walk globs the source trees of ``src/`` and
+``annotator/``, named in ``TREES``, so a copy that pairs one module of ``src/``
+with one module of ``annotator/`` is found too.  Measured on 2026-10-11, that
+walk found three module-level bodies of one timestamp function:
+``annotator/operations.py timestamp``, ``annotator/unified_server.py now`` and
+``annotator/vod_import.py now_iso``.  Round 55 wrote none of those three files, so
+the walk records the triple in ``APART_ON_PURPOSE`` and changes no file of it.
+
+Round 53 found the test "is this document named" twice inside two class bodies
+(``events_document.py Document.named`` and ``sam3_artifact.py Artifact.named``).
+It gave that test one home, ``document_stamp.is_named``, and it added
+``NamedPredicateTest`` below, which walks the class bodies of every module of
+src/.  Measured on 2026-10-11, four further cross-module pairs of method bodies
+stay in class bodies: ``store.py`` with ``store_pg.py`` hold ``frame_detections``
+and ``seeds_get``, and ``pid_anchor_ui.py`` with ``pid_seed_ui.py`` hold
+``log_message`` and ``_send``.  Round 55 gave ``_send`` one home,
+``src/reply_body.py write_reply``, so three of the four pairs stay: the class-body
+walk of that body is the case ``test_the_reply_body_has_one_site_in_the_annotator_server``
+in ``tests/test_one_reply_body.py``.  A later round owns the three that stay.
 
 Run: ``./scripts/pool-test.sh python test_duplicate_bodies``
 """
@@ -51,37 +61,70 @@ if str(ROOT) not in sys.path:
 
 SRC = ROOT / 'src'
 VENDORED = SRC / 'sam3'
+#: The source trees whose modules this walk reads.  One rule had one owner in src/
+#: and three readers in three files, so a walk of src/ alone cannot see a copy that
+#: pairs a module of src/ with a module of annotator/.
+TREES = (SRC, ROOT / 'annotator')
 
 # The pairs that stay apart, keyed by the sha1 of the body.  An entry names the
 # two files, the two function names, the body hash and the reason.  An entry must
 # fail when the pair changes: see the two cases below.
+@dataclass(frozen=True)
+class ApartBody:
+    """One body that several sites keep apart on purpose, and why.
+
+    ``sites`` names every site of that body, because a later change that gives the
+    body one home must move all of them.  ``where`` writes them for a message.
+    """
+    sites: tuple             # (module, the name of the function)
+    reason: str              # why the sites stay apart
+
+    def named(self):
+        """The sites, as ``module name``."""
+        return '; '.join('%s %s' % site for site in self.sites)
+
+
+STAMPED_TRIPLE = (('annotator/operations.py', 'timestamp'),
+                  ('annotator/unified_server.py', 'now'),
+                  ('annotator/vod_import.py', 'now_iso'))
+
 APART_ON_PURPOSE = {
-    'df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9': (
-        ('enroll_from_tracklet.py', 'stats'),
-        ('eval_faces.py', 'pair_stats'),
+    'df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9': ApartBody(
+        (('src/enroll_from_tracklet.py', 'stats'), ('src/eval_faces.py', 'pair_stats')),
         'Both functions answer n/min/p05/median/p95/max of one list of numbers, so the two '
         'bodies are one body.  Round 51 wrote both files outside its write scope, so the pair '
         'is recorded here and not changed.  A later change that owns both files gives one of '
         'them the body and the other the import.',
+    ),
+    '7e1173f55016fa90f33df74173559c5f1c53c334': ApartBody(
+        STAMPED_TRIPLE,
+        'All three functions answer one timestamp in ISO 8601 with the UTC zone, so the three '
+        'bodies are one body.  Round 55 widened the walk from src/ to the two source trees, and '
+        'that walk found this triple for the first time.  Round 55 wrote none of the three '
+        'files, so the triple is recorded here and not changed.  A later change that owns the '
+        'three files gives one of them the body and the other two the import.',
     ),
 }
 
 
 @dataclass(frozen=True)
 class SharedBody:
-    """One body that several modules read, and the readers of it."""
-    owner: str               # the module under src/ that holds the body
+    """One body that several modules read, and the readers of it.
+
+    A module is named by its path from the root, because the walk reads two trees.
+    """
+    owner: str               # the module that holds the body
     name: str                # the name of the function in the owner
-    readers: tuple           # (module under src/, the name it binds from the owner)
+    readers: tuple           # (module, the name it binds from the owner)
 
 
 # The pairs of round 51 that got one home.  The owner holds the body, each reader
-# imports the name from the owner, and no other module of src/ holds the body.
+# imports the name from the owner, and no other module of the trees holds the body.
 SHARED = (
-    SharedBody('box_geometry.py', 'iou',
-               (('person_pipeline.py', 'iou'), ('recut_crops.py', 'iou'))),
-    SharedBody('event_gates.py', 'num_or_none', (('ball_census.py', 'num_or_none'),)),
-    SharedBody('store_import.py', 'jsonb', (('store_pg.py', 'jsonb'),)),
+    SharedBody('src/box_geometry.py', 'iou',
+               (('src/person_pipeline.py', 'iou'), ('src/recut_crops.py', 'iou'))),
+    SharedBody('src/event_gates.py', 'num_or_none', (('src/ball_census.py', 'num_or_none'),)),
+    SharedBody('src/store_import.py', 'jsonb', (('src/store_pg.py', 'jsonb'),)),
 )
 
 
@@ -101,24 +144,31 @@ def body_fingerprint(node):
     return hashlib.sha1(ast.unparse(body).encode('utf-8')).hexdigest()
 
 
+def walk_paths():
+    """The module files of ``TREES``, in one stable order: ``src/x.py``, then ``annotator/y.py``."""
+    return tuple(path for tree in TREES for path in sorted(tree.glob('*.py')))
+
+
 def module_bodies(module):
-    """The module-level functions of one module of src/, as (name, line, fingerprint).
+    """The module-level functions of one module of a tree, as (name, line, fingerprint).
 
     A nested ``def`` and a method of a class are local helpers, so they do not
-    count here.
+    count here.  ``module`` is the path of the file and not a name, because the
+    walk reads two trees.
     """
-    path = SRC / module
+    path = ROOT / module
     tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
     return [(node.name, node.lineno, body_fingerprint(node))
             for node in tree.body if isinstance(node, ast.FunctionDef)]
 
 
 def bodies_per_module():
-    """{body fingerprint: [(module, function name, line), ...]} for every module of src/."""
+    """{body fingerprint: [(module, line, function name), ...]} for every module of the trees."""
     found = {}
-    for path in sorted(SRC.glob('*.py')):
-        for name, line, digest in module_bodies(path.name):
-            found.setdefault(digest, []).append((path.name, name, line))
+    for path in walk_paths():
+        module = path.relative_to(ROOT).as_posix()
+        for name, line, digest in module_bodies(module):
+            found.setdefault(digest, []).append((module, line, name))
     return found
 
 
@@ -133,7 +183,7 @@ def imported_names(module, owner):
     The walk reads the whole tree.  A reader of `src/document_stamp.py` imports
     it inside a ``try`` block, and a walk of the top level misses that import.
     """
-    path = SRC / module
+    path = ROOT / module
     tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
     found = {}
     for node in ast.walk(tree):
@@ -145,11 +195,11 @@ def imported_names(module, owner):
 
 def where(entries):
     """The sites of one body, as ``module:line name``."""
-    return ', '.join('%s:%d %s' % (module, line, name) for module, name, line in entries)
+    return ', '.join('%s:%d %s' % (module, line, name) for module, line, name in entries)
 
 
-#: The one module of src/ that owns the document stamp protocol.
-STAMP_MODULE = 'document_stamp'
+#: The one module of the trees that owns the document stamp protocol.
+STAMP_MODULE = 'src/document_stamp'
 
 #: The file of that module.
 STAMP_OWNER = STAMP_MODULE + '.py'
@@ -158,7 +208,7 @@ STAMP_OWNER = STAMP_MODULE + '.py'
 NAMED_PREDICATE = 'is_named'
 
 #: The two readers of the protocol, and the class in each one that answers it.
-NAMED_READERS = (('events_document.py', 'Document'), ('sam3_artifact.py', 'Artifact'))
+NAMED_READERS = (('src/events_document.py', 'Document'), ('src/sam3_artifact.py', 'Artifact'))
 
 
 def names_stamped(node):
@@ -167,24 +217,28 @@ def names_stamped(node):
             or (isinstance(node, ast.Attribute) and node.attr == 'STAMPED'))
 
 
-def stamped_comparisons(module, source=None):
-    """(line, text) of every comparison with ``STAMPED`` in one module of src/.
+def stamped_comparisons_in(source, module):
+    """(line, text) of every comparison with ``STAMPED`` in one body of source text.
 
     The walk goes into a class body on purpose.  The two ``named`` methods sat
     there, and the walk of ``module_bodies`` above does not reach them.
     """
-    path = SRC / module
-    text = path.read_text(encoding='utf-8') if source is None else source
-    tree = ast.parse(text, filename=str(path))
+    tree = ast.parse(source, filename=module)
     return [(node.lineno, ast.unparse(node)) for node in ast.walk(tree)
             if isinstance(node, ast.Compare)
             and any(names_stamped(operand) for operand in [node.left] + list(node.comparators))]
 
 
+def stamped_comparisons(module):
+    """(line, text) of every comparison with ``STAMPED`` in one module of a tree."""
+    path = ROOT / module
+    return stamped_comparisons_in(path.read_text(encoding='utf-8'), str(path))
+
+
 def stamped_comparison_sites():
-    """(module, line, text) of every comparison with ``STAMPED`` under src/*.py."""
-    return [(path.name, line, text) for path in sorted(SRC.glob('*.py'))
-            for line, text in stamped_comparisons(path.name)]
+    """(module, line, text) of every comparison with ``STAMPED`` under the trees."""
+    return [(path.relative_to(ROOT).as_posix(), line, text) for path in walk_paths()
+            for line, text in stamped_comparisons(path.relative_to(ROOT).as_posix())]
 
 
 def site_listing(sites):
@@ -194,7 +248,7 @@ def site_listing(sites):
 
 def method_statements(module, class_name, method_name):
     """One method of a class body, with its docstring removed."""
-    path = SRC / module
+    path = ROOT / module
     tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
     klass = next(node for node in tree.body
                  if isinstance(node, ast.ClassDef) and node.name == class_name)
@@ -223,33 +277,45 @@ class DuplicateBodiesTest(unittest.TestCase):
 
     def test_the_walk_reaches_the_modules_of_src(self):
         """A walk over too few modules proves nothing."""
-        modules = sorted(SRC.glob('*.py'))
+        modules = walk_paths()
         self.assertGreater(len(modules), 60,
-                           'the walk reached %d modules of src/, too few to prove the homes'
+                           'the walk reached %d modules of the trees, too few to prove the homes'
                            % len(modules))
-        self.assertNotIn(VENDORED, modules, 'the vendored tree is not our module')
+        self.assertEqual([SRC, ROOT / 'annotator'], list(TREES),
+                         'the walk reads the trees %s, and it must read both source trees'
+                         % [tree.name for tree in TREES])
+        self.assertNotIn(
+            'sam3', [part for path in modules for part in path.relative_to(ROOT).parts],
+            'the vendored tree is not our module')
 
     def test_no_two_modules_hold_one_body(self):
-        """One body, one module: a copy under another name fails here."""
+        """One body, one module: a copy under another name fails here.
+
+        The walk reads two trees, so the pair that fails here can be ``src/x.py`` with
+        ``annotator/y.py``, as well as two modules of one tree.
+        """
         found = bodies_per_module()
         duplicates = {digest: entries for digest, entries in found.items()
                       if in_two_modules(entries) and digest not in APART_ON_PURPOSE}
         self.assertEqual(
             {}, duplicates,
-            'these bodies of src/ live in two modules, so one of them must read the other: '
+            'these bodies of the trees live in two modules, so one of them must read the other: '
             + '; '.join('%s %s' % (digest[:12], where(entries))
                         for digest, entries in sorted(duplicates.items())))
 
-    def test_every_recorded_exception_is_still_the_same_pair_of_bodies(self):
-        """A recorded pair fails when a file, a name or a body moves."""
+    def test_every_recorded_exception_is_still_the_same_body(self):
+        """A recorded body fails when a file, a name or a body moves."""
         found = bodies_per_module()
-        for digest, (first, second, reason) in APART_ON_PURPOSE.items():
-            with self.subTest(pair='%s %s' % first):
-                self.assertTrue(reason.strip(), 'the exception must state why the pair stays apart')
+        for digest, record in APART_ON_PURPOSE.items():
+            with self.subTest(body=record.named()):
+                self.assertTrue(record.reason.strip(),
+                                'the exception must state why the body stays apart')
+                self.assertGreater(len(record.sites), 1,
+                                   'a body that stays apart has two sites or more')
                 entries = found.get(digest, [])
-                self.assertEqual(sorted([first, second]),
-                                 sorted((module, name) for module, name, _ in entries),
-                                 'the recorded pair of body %s is now %s, so the record is stale'
+                self.assertEqual(sorted(record.sites),
+                                 sorted((module, name) for module, _, name in entries),
+                                 'the recorded body %s is now %s, so the record is stale'
                                  % (digest[:12], where(entries) or 'gone'))
 
     def test_every_shared_helper_has_one_home(self):
@@ -264,9 +330,10 @@ class DuplicateBodiesTest(unittest.TestCase):
                 self.assertEqual([record.owner], holders,
                                  'the body of %s lives in %s, and its one home is %s'
                                  % (record.name, holders, record.owner))
+                owner = record.owner[:-3].replace('/', '.')
                 for module, bound in record.readers:
-                    self.assertIn(bound, imported_names(module, 'src.' + record.owner[:-3]),
-                                  'src/%s does not import %s from the owner src/%s'
+                    self.assertIn(bound, imported_names(module, owner),
+                                  '%s does not import %s from the owner %s'
                                   % (module, bound, record.owner))
 
     def test_the_readers_bind_the_owner_object_at_run_time(self):
@@ -289,16 +356,17 @@ class NamedPredicateTest(unittest.TestCase):
     def test_one_statement_of_src_compares_a_status_with_stamped(self):
         """The test "a document is named" has one site, in one module, one function."""
         sites = stamped_comparison_sites()
-        self.assertEqual([STAMP_OWNER], sorted({module for module, _, _ in sites}),
-                         'the test "a document is named" lives in %s, and its one home is src/%s'
-                         % (site_listing(sites), STAMP_OWNER))
+        self.assertEqual(
+            [STAMP_OWNER], sorted({module for module, _, _ in sites}),
+            'the test "a document is named" lives in %s, and its one home is %s'
+            % (site_listing(sites), STAMP_OWNER))
         self.assertEqual(1, len(sites),
-                         'src/%s holds %d comparisons with STAMPED: %s'
+                         '%s holds %d comparisons with STAMPED: %s'
                          % (STAMP_OWNER, len(sites), site_listing(sites)))
         module, line, _ = sites[0]
-        tree = ast.parse((SRC / module).read_text(encoding='utf-8'), filename=str(SRC / module))
+        tree = ast.parse((ROOT / module).read_text(encoding='utf-8'), filename=str(ROOT / module))
         holder = enclosing_function(tree, line)
-        self.assertIsNotNone(holder, 'src/%s:%d sits in no function' % (module, line))
+        self.assertIsNotNone(holder, '%s:%d sits in no function' % (module, line))
         self.assertEqual(NAMED_PREDICATE, holder.name,
                          'the one statement of the test sits in %s, and its name must be %s'
                          % (holder.name, NAMED_PREDICATE))
@@ -309,31 +377,31 @@ class NamedPredicateTest(unittest.TestCase):
                   '    @property\n'
                   '    def named(self) -> bool:\n'
                   '        return self.status == STAMPED\n')
-        found = stamped_comparisons(STAMP_OWNER, source=forged)
+        found = stamped_comparisons_in(forged, 'a class body written for this case')
         self.assertEqual(1, len(found),
                          'the walk of a class body found %d statements, and one must appear'
                          % len(found))
 
     def test_the_two_named_methods_call_the_one_predicate(self):
         """Each class keeps its method, and each method holds a call only."""
-        call = '%s.%s(self.status)' % (STAMP_MODULE, NAMED_PREDICATE)
+        call = '%s.%s(self.status)' % (STAMP_MODULE.rsplit('/', 1)[-1], NAMED_PREDICATE)
         for module, class_name in NAMED_READERS:
             with self.subTest(module=module):
                 method, body = method_statements(module, class_name, 'named')
                 self.assertEqual(1, len(body),
-                                 'src/%s %s.named holds %d statements, so it holds a rule of its own'
+                                 '%s %s.named holds %d statements, so it holds a rule of its own'
                                  % (module, class_name, len(body)))
                 self.assertIsInstance(body[0], ast.Return,
-                                      'src/%s %s.named must return the answer of the one predicate'
+                                      '%s %s.named must return the answer of the one predicate'
                                       % (module, class_name))
                 self.assertEqual(call, ast.unparse(body[0].value),
-                                 'src/%s %s.named must read the status through %s'
+                                 '%s %s.named must read the status through %s'
                                  % (module, class_name, call))
                 self.assertFalse(any(isinstance(node, ast.Compare) for node in ast.walk(method)),
-                                 'src/%s %s.named compares the status itself, and the test has one home'
+                                 '%s %s.named compares the status itself, and the test has one home'
                                  % (module, class_name))
-                self.assertIn(STAMP_MODULE, imported_names(module, 'src'),
-                              'src/%s does not import src/%s' % (module, STAMP_OWNER))
+                self.assertIn(STAMP_MODULE.rsplit('/', 1)[-1], imported_names(module, 'src'),
+                              '%s does not import %s' % (module, STAMP_OWNER))
 
     def test_the_two_readers_answer_from_the_one_predicate_at_run_time(self):
         """The classes read one function object, and not a second body that agrees today."""

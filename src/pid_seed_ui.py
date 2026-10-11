@@ -30,6 +30,9 @@ if __name__ == "__main__":
     sys.path.insert(0, str(ROOT.parent))
     from src.store import refuse_file_writes_under_postgres
     refuse_file_writes_under_postgres("src/pid_seed_ui.py")
+# The rule for one reply body has one owner, src/reply_body.py. The review server
+# and the pocket-anchor UI call the same function.
+from src.reply_body import write_reply  # noqa: E402
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 TR = ROOT.parent / "out" / "pid2_tracklets.json"
 SEED = ROOT.parent / "out" / "pid_seed.json"
@@ -146,11 +149,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, code, body, ctype="application/json"):
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        # The rule for one reply body has one owner, src/reply_body.py.
+        return write_reply(self, code, body, ctype)
 
     def do_GET(self):
         if self.path == "/" or self.path.startswith("/index"):

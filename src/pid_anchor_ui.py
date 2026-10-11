@@ -31,6 +31,7 @@ if __name__ == "__main__":
     from src.store import refuse_file_writes_under_postgres
     refuse_file_writes_under_postgres("src/pid_anchor_ui.py")
 from calibrate import OBJECT_MM, project  # noqa
+from src.reply_body import write_reply  # noqa
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 OUT = ROOT.parent / "out" / "pid_anchors_vod30.json"
@@ -140,11 +141,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, code, body, ctype="application/json"):
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        # The rule for one reply body has one owner, src/reply_body.py.
+        return write_reply(self, code, body, ctype)
 
     def do_GET(self):
         if self.path == "/" or self.path.startswith("/index"):
