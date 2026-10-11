@@ -53,6 +53,7 @@ from src.face_id import (
     DEFAULT_THRESHOLD,
     MIN_DET_SCORE,
     MIN_EYE_PX,
+    _cosine as _cos,  # the one home of the face cosine; this module holds no copy
     accept_match,
     best_match,
     quality,
@@ -224,15 +225,6 @@ def pair_stats(values):
             "median": round(float(np.median(arr)), 4),
             "p95": round(float(np.percentile(arr, 95)), 4),
             "max": round(float(arr.max()), 4)}
-
-
-def _cos(a, b):
-    a = np.asarray(a, np.float32).ravel()
-    b = np.asarray(b, np.float32).ravel()
-    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
-    if na <= 0 or nb <= 0:
-        return 0.0
-    return float(np.dot(a, b) / (na * nb))
 
 
 def quality_faces(record):

@@ -201,6 +201,13 @@ def quality(face):
 
 
 def _cosine(a, b):
+    """The one home of the face-embedding cosine.
+
+    ``src/eval_faces.py`` reads this function as ``_cos``.  A second body of this
+    rule in a second module lets two answers for one pair of embeddings drift
+    apart.  The walk of ``tests/test_face_cosine.py`` holds every site of the
+    body to one.
+    """
     a = np.asarray(a, np.float32).ravel()
     b = np.asarray(b, np.float32).ravel()
     na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
