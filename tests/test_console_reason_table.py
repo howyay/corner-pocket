@@ -1,10 +1,18 @@
 """Hold the console reason tables to the codes the producer files write.
 
-``annotator/vision-stage.js`` keeps a second copy of the reason vocabulary that the
-python gate owns.  The gate writes a code; the operator screen must answer a sentence
-for it.  This module derives the vocabulary from the producer sources, reads the two
-tables out of the console file, and compares the two directions.  A new producer code
-therefore fails here until the screen can say it in words.
+The console shows two reason tables, and each table has one owner.  ``const REASONS``
+holds the gate reasons in ``annotator/vision-stage.js``.  ``const QUAD_REFUSAL_COPY``
+holds the geometry refusals in ``annotator/app.js``, because annotator/ops.html loads that
+file before the adapter and annotator/app.html loads it alone; the adapter reads the
+owner's table through ``window.ConsoleRules.quadReasons``.  The producer writes a code; the
+operator screen must answer a sentence for it on both screens.  This module derives the
+vocabulary from the producer sources, reads each table out of its owner, and compares the
+two directions.  A new producer code therefore fails here until the screen can say it in
+words.
+
+The adapter must hold no second copy of an owner row.  A row that both files spell is the
+drift this module exists to catch, so one case plants such a copy in the adapter source and
+reads the report, and another case plants an owner source that lost one row.
 
 Every rule below is written against the syntax of one producer file comment by comment,
 and the rule name and the line that carries the code travel into the failure text.  A
@@ -24,6 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONSOLE = ROOT / 'annotator' / 'vision-stage.js'
+OWNER = ROOT / 'annotator' / 'app.js'
 GATE_PRODUCERS = (
     ROOT / 'src' / 'event_gates.py',
     ROOT / 'src' / 'dense_queue.py',
@@ -33,8 +42,9 @@ REFINE_PRODUCER = ROOT / 'src' / 'table_refine.py'
 
 CODE = re.compile(r'^[a-z][a-z0-9_]*$')
 SENTENCE = re.compile(r'\s')
-ROW = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\[([^\]]*)\]")
+ROW = re.compile(r"(?:\[([A-Za-z_][A-Za-z0-9_]*)\]|([A-Za-z_][A-Za-z0-9_]*))\s*:\s*\[([^\]]*)\]")
 LABEL = re.compile(r"'(?:\\.|[^'\\])*'")
+CONSTANT = re.compile(r"const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*'([^']*)'")
 
 # Rows of ``const REASONS`` that no rule below can derive.  The value is the reason the
 # row stays.  The comparison case asserts that this set equals the measured set, so a
@@ -55,30 +65,39 @@ ROWS_WITHOUT_A_PRODUCER = {
     'calibration_weak_at_time': 'a legacy code that old documents in out/ still carry',
 }
 
-# The second table has no such row: every code src/table_refine.py writes is reachable.
-ROWS_WITHOUT_A_PRODUCER_QUAD: dict = {}
+# The quad table has one row that no rule below can derive: the composed row that answers a
+# code that no rule of src/table_refine.py writes.  Its two strings carry the slot ``${code}``
+# and each screen fills that slot with its own reading of the code.  The comparison case
+# asserts that this set equals the measured set.
+ROWS_WITHOUT_A_PRODUCER_QUAD = {
+    'default': 'the composed row that answers a code no rule derives',
+}
 
 
-def console_table(word, source=None):
-    """Return the reason table that starts at `word` in the console module."""
-    text = CONSOLE.read_text(encoding='utf-8') if source is None else source
+def console_table(word, source=None, path=CONSOLE):
+    """Return the reason table that starts at `word` in the module at `path`."""
+    text = path.read_text(encoding='utf-8') if source is None else source
     head = text.find(word)
     if head < 0:
-        raise AssertionError(f'{word!r} is not in {CONSOLE}')
+        raise AssertionError(f'{word!r} is not in {path}')
     start = text.find('{', head)
     if start < 0:
-        raise AssertionError(f'{word!r} in {CONSOLE} has no table body')
+        raise AssertionError(f'{word!r} in {path} has no table body')
     depth, end = 1, start + 1
     while end < len(text) and depth > 0:
         depth += {'{': 1, '}': -1}.get(text[end], 0)
         end += 1
     if depth:
-        raise AssertionError(f'the table at {word!r} in {CONSOLE} never closes')
+        raise AssertionError(f'the table at {word!r} in {path} never closes')
+    # A row key may be a computed one ([QUAD_INVALID_GEOMETRY]:, annotator/app.js:1128), so each
+    # bracketed name is resolved against the string constants of the same module.
+    names = dict(CONSTANT.findall(text))
     rows = {}
     for found in ROW.finditer(text[start + 1:end - 1]):
-        rows[found.group(1)] = [ast.literal_eval(label) for label in LABEL.findall(found.group(2))]
+        key = names.get(found.group(1), found.group(1)) if found.group(1) else found.group(2)
+        rows[key] = [ast.literal_eval(label) for label in LABEL.findall(found.group(3))]
     if not rows:
-        raise AssertionError(f'the table at {word!r} in {CONSOLE} holds no row')
+        raise AssertionError(f'the table at {word!r} in {path} holds no row')
     return rows
 
 
@@ -88,8 +107,30 @@ def console_reasons(source=None):
 
 
 def console_quad_reasons(source=None):
-    """Return the table geometry reason table of annotator/vision-stage.js."""
-    return console_table('const QUAD_REASON', source)
+    """Return the geometry reason table of its owner, annotator/app.js."""
+    return console_table('const QUAD_REFUSAL_COPY', source, OWNER)
+
+
+def quad_copy_report(text, rows):
+    """Return the codes whose row stands again in `text`, so a file holds a second copy.
+
+    A copy shows as the row's own English or Chinese sentence, or as a key spelling for the
+    code.  A bare code name is not a copy on its own: a comment may name a code that the
+    adapter answers, and the adapter's header comment does.
+    """
+    found = []
+    for code, row in sorted(rows.items()):
+        key = re.search(rf"(?:^|[\s,\[])'?{re.escape(code)}'?\s*:", text, re.M)
+        if key or row[0] in text or row[1] in text:
+            found.append(code)
+    return found
+
+
+def quad_rows_missing(source=None):
+    """Return the src/table_refine.py codes that `source` holds no row for."""
+    rows = console_quad_reasons(source)
+    codes, _ = split_codes(derived_quad_values())
+    return sorted(set(codes) - set(rows))
 
 
 def walk(node, scope=None):
@@ -360,6 +401,11 @@ globalThis.setInterval = () => 0;
 globalThis.clearInterval = noop;
 globalThis.setTimeout = () => 0;
 globalThis.clearTimeout = noop;
+// annotator/ops.html loads the engine first and the adapter second, so this driver loads them in
+// that order: the adapter reads the owner's tables from window.ConsoleRules at paint time.
+const engineSource = fs.readFileSync(__OWNER_PATH__, 'utf8');
+vm.runInThisContext(engineSource, {filename: 'app.js'});
+const engine = globalThis.window.CornerPocketReview.attach();
 const source = fs.readFileSync(__MODULE_PATH__, 'utf8');
 const close = source.lastIndexOf('})();');
 if (close < 0) throw new Error('annotator/vision-stage.js has no trailing })(); to open');
@@ -370,23 +416,28 @@ const request = JSON.parse(fs.readFileSync(0, 'utf8'));
 const answers = {en: {}, zh: {}};
 for (const lang of ['en', 'zh']) {
   globalThis.__reasonSeam.setLang(lang);
+  engine.setRoot({lang});
   for (const code of request.gate) answers[lang][code] = globalThis.__reasonSeam.reasonText(code);
-  for (const code of request.quad) answers[lang]['quad:' + code] = globalThis.__reasonSeam.quadReason(code);
+  for (const code of request.quad) {
+    answers[lang]['quad:' + code] = globalThis.__reasonSeam.quadReason(code);
+    answers[lang]['owner:' + code] = engine.quadReasonText(code);
+  }
 }
 process.stdout.write(JSON.stringify(answers));
 """
 
 
 def rendered_reasons(gate, quad):
-    """Ask the real console module how it renders each code, in both languages."""
+    """Ask the real console screens how they render each code, in both languages."""
     node = shutil.which('node')
     if not node:
-        raise AssertionError('node is required to ask annotator/vision-stage.js how it renders a reason')
-    driver = NODE_DRIVER.replace('__MODULE_PATH__', json.dumps(str(CONSOLE)))
+        raise AssertionError('node is required to ask the console screens how they render a reason')
+    driver = (NODE_DRIVER.replace('__MODULE_PATH__', json.dumps(str(CONSOLE)))
+              .replace('__OWNER_PATH__', json.dumps(str(OWNER))))
     done = subprocess.run([node, '-e', driver], input=json.dumps({'gate': gate, 'quad': quad}),
                           capture_output=True, text=True, timeout=60)
     if done.returncode != 0:
-        raise AssertionError(f'node could not load {CONSOLE}:\n{done.stderr.strip()}')
+        raise AssertionError(f'node could not load {OWNER} and {CONSOLE}:\n{done.stderr.strip()}')
     return json.loads(done.stdout)
 
 
@@ -430,15 +481,22 @@ class ConsoleReasonTableTest(unittest.TestCase):
         codes, _ = split_codes(derived_quad_values())
         missing = {code: codes[code] for code in codes if code not in rows}
         self.assertEqual({}, missing,
-                         'const QUAD_REASON in annotator/vision-stage.js has no row for these codes '
-                         'of src/table_refine.py:\n' + describe(missing))
+                         'const QUAD_REFUSAL_COPY in annotator/app.js has no row for these codes '
+                         'of src/table_refine.py, so both screens read the bare code:\n' + describe(missing))
         unexplained = sorted(rows - set(codes) - set(ROWS_WITHOUT_A_PRODUCER_QUAD))
         self.assertEqual([], unexplained,
-                         'this row of const QUAD_REASON in annotator/vision-stage.js has no producer '
+                         'this row of const QUAD_REFUSAL_COPY in annotator/app.js has no producer '
                          'in src/table_refine.py:\n  ' + '\n  '.join(unexplained))
+        measured = sorted(rows - set(codes))
+        self.assertEqual(sorted(ROWS_WITHOUT_A_PRODUCER_QUAD), measured,
+                         'ROWS_WITHOUT_A_PRODUCER_QUAD no longer matches the rows without a producer; '
+                         'update the set and its comment for each row:\n'
+                         f'  rows without a producer: {measured}\n'
+                         f'  pinned: {sorted(ROWS_WITHOUT_A_PRODUCER_QUAD)}')
 
     def test_every_row_of_both_tables_is_two_non_empty_strings(self):
-        for name, rows in (('REASONS', console_reasons()), ('QUAD_REASON', console_quad_reasons())):
+        for name, rows in (('REASONS', console_reasons()),
+                           ('QUAD_REFUSAL_COPY', console_quad_reasons())):
             for code, row in sorted(rows.items()):
                 with self.subTest(table=name, code=code):
                     self.assertEqual(2, len(row), f'{name}[{code}] is not a pair of strings: {row!r}')
@@ -447,18 +505,23 @@ class ConsoleReasonTableTest(unittest.TestCase):
                     self.assertNotEqual(code, row[0], f'{name}[{code}] repeats the code as its English words')
                     self.assertNotEqual(code, row[1], f'{name}[{code}] repeats the code as its Chinese words')
 
-    def test_the_console_answers_a_sentence_for_every_row_and_code(self):
+    def test_both_screens_answer_a_sentence_for_every_row_and_code(self):
         rows, quad = console_reasons(), console_quad_reasons()
         codes, sentences = split_codes(derived_gate_values())
         quad_codes, _ = split_codes(derived_quad_values())
         gate_asked = sorted(set(rows) | set(codes) | set(sentences))
         quad_asked = sorted(set(quad) | set(quad_codes))
         answers = rendered_reasons(gate_asked, quad_asked)
+
+        def want(row, code, index):
+            """The row the screen must show: a row may carry the ``${code}`` slot."""
+            return row[index].replace('${code}', code.replace('_', ' '))
+
         for lang in ('en', 'zh'):
             index = 0 if lang == 'en' else 1
             for code, row in sorted(rows.items()):
                 with self.subTest(lang=lang, code=code):
-                    self.assertEqual(row[index], answers[lang][code],
+                    self.assertEqual(want(row, code, index), answers[lang][code],
                                      f'reasonText({code!r}) in {lang} does not answer the row of '
                                      'const REASONS, so the operator reads something else')
             for code in sorted(codes):
@@ -468,13 +531,54 @@ class ConsoleReasonTableTest(unittest.TestCase):
                     self.assertNotEqual(code, answers[lang][code],
                                         f'reasonText({code!r}) in {lang} returns the bare code, and '
                                         'const REASONS has no row for it')
+            # Both screens answer the same sentence for every row of the owner's table and for
+            # every code the producer writes: the engine reads its own copy, the adapter reads
+            # the same row through window.ConsoleRules.quadReasons.
             for code, row in sorted(quad.items()):
-                with self.subTest(lang=lang, code='quad:' + code):
-                    self.assertEqual(row[index], answers[lang]['quad:' + code],
-                                     f'quadReason({code!r}) in {lang} does not answer the row of '
-                                     'const QUAD_REASON')
+                for screen in ('quad:', 'owner:'):
+                    with self.subTest(lang=lang, code=screen + code):
+                        self.assertEqual(want(row, code, index), answers[lang][screen + code],
+                                         f'{screen}{code!r} in {lang} does not answer the row of '
+                                         'const QUAD_REFUSAL_COPY in annotator/app.js, so the two '
+                                         'screens show different words')
+            for code in sorted(quad_codes):
+                if code in quad:
+                    continue
+                for screen in ('quad:', 'owner:'):
+                    with self.subTest(lang=lang, code=screen + code):
+                        self.assertNotEqual(code, answers[lang][screen + code],
+                                            f'{screen}{code!r} in {lang} returns the bare code, and '
+                                            'the owner holds no row for it')
         for sentence in sentences:
             with self.subTest(lang='en', code=sentence):
                 self.assertEqual(sentence, answers['en'][sentence],
                                  'a reason that is already a sentence from the scan must render as '
                                  'it is in English; it needs no row')
+
+    def test_the_adapter_holds_no_second_copy_of_an_owner_row(self):
+        rows = console_quad_reasons()
+        text = CONSOLE.read_text(encoding='utf-8')
+        self.assertEqual([], quad_copy_report(text, rows),
+                         'annotator/vision-stage.js holds a second copy of a row of '
+                         'const QUAD_REFUSAL_COPY, the table that annotator/app.js owns; the '
+                         'adapter must read the owner through window.ConsoleRules.quadReasons')
+        # The report reads a copy: this row stands in the adapter source and nowhere else.
+        row = rows['low_cloth_area']
+        planted = text.replace(
+            'function quadReason(code) {',
+            'const QUAD_REASON = {\n  low_cloth_area: [%r, %r]\n};\nfunction quadReason(code) {'
+            % (row[0], row[1]))
+        self.assertNotEqual(text, planted, 'the plant changed no byte of the adapter source')
+        self.assertEqual(['low_cloth_area'], quad_copy_report(planted, rows),
+                         'the report did not name the planted copy, so it reads nothing')
+
+    def test_a_derived_reason_with_no_row_in_the_owner_is_reported(self):
+        text = OWNER.read_text(encoding='utf-8')
+        self.assertEqual([], quad_rows_missing(text),
+                         'annotator/app.js holds no sentence for these codes of src/table_refine.py:\n'
+                         + '\n'.join(f'  {code}' for code in quad_rows_missing(text)))
+        # The check reads a missing row: 'degenerate_prior' loses its only sentence.
+        planted, count = re.subn(r'  degenerate_prior: \[[\s\S]*?\],\n', '', text, count=1)
+        self.assertEqual(1, count, 'the plant did not remove the row from the owner source')
+        self.assertEqual(['degenerate_prior'], quad_rows_missing(planted),
+                         'the check did not name the row that the planted owner source lost')

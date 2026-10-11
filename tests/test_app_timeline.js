@@ -348,14 +348,46 @@ function stageTierCard(context, tier, options) {
   return stageRail(context, visionSnapshot({eventFilter:'all', selection:{}, focus:'events',
     events:{items:[{id:9, type:'shot', t:9.0, color:'white', tier}], index:0, reviewed:0}}), options);
 }
-// The adapter's COPY table, parsed by the JS engine the way the stage parses it.
-// A translation is proven by the string a render paints, never by a substring of
-// the source: a key can sit in the table and still never reach a reader.
-const ADAPTER_COPY = (() => {
+// The words both console screens show have one owner: SHARED_WORDS in annotator/app.js,
+// published on window.ConsoleRules.words. annotator/ops.html loads that file before the
+// adapter, so the adapter reads the owner's row at render time and keeps no row of its own.
+// The two parses below hold the tables apart, and ADAPTER_COPY merges them the way the page
+// does: a key the adapter dropped still answers here, and a row the adapter copies fails the
+// one-owner case near the end of this list.
+const OWNER_WORDS = (() => {
+  const start = source.indexOf('const SHARED_WORDS = Object.freeze({');
+  const literal = source.slice(source.indexOf('{', start), source.indexOf('\n});', start) + 2);
+  return vm.runInNewContext(`(${literal})`);
+})();
+// The adapter's own table, parsed by the JS engine the way the stage parses it. A translation
+// is proven by the string a render paints, never by a substring of the source: a key can sit
+// in the table and still never reach a reader.
+const ADAPTER_OWN_COPY = (() => {
   const start = ADAPTER_SOURCE.indexOf('const COPY = {');
   const literal = ADAPTER_SOURCE.slice(ADAPTER_SOURCE.indexOf('{', start), ADAPTER_SOURCE.indexOf('\n};', start) + 2);
   return vm.runInNewContext(`(${literal})`);
 })();
+const ADAPTER_COPY = (() => {
+  const table = {en: {...ADAPTER_OWN_COPY.en}, zh: {...ADAPTER_OWN_COPY.zh}};
+  for (const [key, row] of Object.entries(OWNER_WORDS)) {
+    if (table.en[key] === undefined) table.en[key] = row[0];
+    if (table.zh[key] === undefined) table.zh[key] = row[1];
+  }
+  return table;
+})();
+// The rows of one table that stand in the owner: the same slot key, or the same English and
+// Chinese pair under another key. A second copy fails the one-owner case, and the case plants
+// one row to prove that the detector names it.
+function copiedRows(table) {
+  const pairs = new Map(Object.entries(OWNER_WORDS).map(([key, row]) => [row[0] + '\u0000' + row[1], key]));
+  const rows = [];
+  for (const key of Object.keys(table.en)) {
+    const en = table.en[key], zh = table.zh[key];
+    if (OWNER_WORDS[key]) rows.push('slot ' + key + ' stands twice');
+    else if (zh !== undefined && pairs.has(en + '\u0000' + zh)) rows.push('slot ' + key + ' copies ' + pairs.get(en + '\u0000' + zh));
+  }
+  return rows;
+}
 // One assertion per group of copy keys: every key's 中 string is on screen in a
 // render this test already made. A key that only lives in the table fails here.
 function assertCopyPainted(painted, keys, label) {
@@ -1234,12 +1266,14 @@ test('every adapter string ships in both languages', () => {
   assert.ok(enKeys.length > 60, `adapter copy table looks truncated: ${enKeys.length}`);
   same(zhKeys, enKeys);
   for (const key of enKeys) assert.ok(String(table.zh[key] || '').length, `missing zh copy for ${key}`);
-  for (const key of ['cues','inspector','sources','verdict','freeze','stale','startFailed','saveAnchors','latency']) {
+  for (const key of ['cues','inspector','sources','verdict','freeze','dropped','startFailed','saveAnchors','latency']) {
     assert.notStrictEqual(table.zh[key], table.en[key], `${key} is untranslated`);
     assert.ok(/[\u4e00-\u9fff]/.test(table.zh[key]), `${key} has no Chinese copy`);
   }
   // The three sample strings live in keys the loop above already proved carry
-  // Chinese copy ('cues', 'startFailed' and 'stale'), so no source read is owed.
+  // Chinese copy ('cues', 'startFailed' and 'dropped'), so no source read is owed.
+  // 'stale' left this list with the one-owner change: SHARED_WORDS in app.js holds it now,
+  // and the one-owner case near the end of this list reads that table.
 });
 
 test('pocket labels are position words in both languages, never rail terms', () => {
@@ -3893,30 +3927,35 @@ test('the console fallback pair equals the owner in src/ball_scale.py', () => {
     why: 'the console fallback reads the pipeline owner'});
 });
 
-// One word per concept across the two Chinese copy tables. Each realm keeps its own table: the
-// engine's table (annotator/app.js, editorCopy) is keyed by the English sentence the engine paints,
-// and the adapter's table (annotator/vision-stage.js, COPY) is keyed by slot names. The two key
-// spaces differ, so one merge would make each realm carry the keys the other never paints. The
-// shared part is held here instead: where the engine paints the same English word as the adapter,
-// the two Chinese strings must agree, or this case names the slot and both values.
-test('the two Chinese copy tables agree on every word they share', () => {
-  const host = {lang: 'zh', querySelector: () => null, querySelectorAll: () => []};
-  T.setRoot(host);
-  const slots = Object.keys(ADAPTER_COPY.zh);
-  assert.ok(slots.length > 200, 'the adapter table is the wide one: ' + slots.length + ' slots');
-  assert.deepStrictEqual([...slots].sort(), Object.keys(ADAPTER_COPY.en).sort(),
-    'both languages carry every slot: a missing Chinese key would paint the English one');
-  const compared = [];
-  for (const slot of slots) {
-    const en = ADAPTER_COPY.en[slot];
-    const engine = T.text(en);
-    if (engine === en) continue;      // the engine paints this word in English: nothing to compare
-    assert.strictEqual(engine, ADAPTER_COPY.zh[slot], 'slot ' + slot + ' paints "' + en
-      + '": the engine says "' + engine + '", the adapter says "' + ADAPTER_COPY.zh[slot] + '"');
-    compared.push(slot);
-  }
-  assert.ok(compared.length >= 20, 'the shared words stay under the case: ' + compared.length + ' compared');
-  T.setRoot({lang: 'en', querySelector: () => null, querySelectorAll: () => []});
+// One owner per shared word. The words that both console screens show stand once, in
+// SHARED_WORDS (annotator/app.js), and the engine publishes that table on
+// window.ConsoleRules.words. The engine paints its own editorCopy rows from it, and the adapter
+// reads it at render time, so a reword reaches both screens. Each realm keeps its own remaining
+// table: the engine keys copy by the English sentence it paints, the adapter keys copy by slot
+// name, so one merge would make each realm carry keys the other never paints. Two readings hold
+// the one owner: no row of the adapter's own table stands in the owner's table - a planted row
+// fails here - and a word planted in the owner's table reaches the adapter's render, because the
+// adapter reads that table late, at paint time.
+test('the shared console words have one owner, and the adapter copy holds none of them', () => {
+  const slots = Object.keys(OWNER_WORDS);
+  assert.ok(slots.length >= 20, 'the owner table holds the shared words: ' + slots.length + ' slots');
+  assert.deepStrictEqual(copiedRows(ADAPTER_OWN_COPY), [], 'the adapter copy holds no row of the owner');
+  assert.deepStrictEqual(copiedRows({en: {...ADAPTER_OWN_COPY.en, loopWord: 'loop'},
+    zh: {...ADAPTER_OWN_COPY.zh, loopWord: '循环'}}), ['slot loopWord stands twice'],
+    'a planted copy is reported, so the detector reads the table');
+  assert.ok(ADAPTER_SOURCE.includes('window.ConsoleRules.words[key]'), 'the adapter asks the owner for a shared word');
+  assert.ok(/const t = key => sharedWord\(key, opts\?\.lang\) \|\|/.test(ADAPTER_SOURCE), 'the panel reader names the owner first');
+  assert.ok(/const say = key => sharedWord\(key, options\.lang\) \|\|/.test(ADAPTER_SOURCE), 'and the stage reader names the owner first');
+  // The late read, painted: a word planted in the published table reaches the render, because
+  // the adapter holds no row of its own for this slot.
+  const context = adapterBox();
+  const planted = '占位词甲';
+  context.window.ConsoleRules = {...context.window.ConsoleRules,
+    words: {...context.window.ConsoleRules.words, thisTrack: ['track', planted]}};
+  const snap = {persons:{track:7, identity:[{track_id:7, cluster_id:11},
+    {track_id:8, cluster_id:12, player_id:'Su', face_bbox:[10,20,40,60]}]}};
+  const html = stageLinkPanel(context, snap, {lang: 'zh'});
+  assert.ok(html.includes(planted), 'the planted owner word reaches the adapter render');
 });
 
 // ---- the three console suites answer one entry point contract ------------------

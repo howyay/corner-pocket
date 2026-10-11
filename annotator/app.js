@@ -1104,6 +1104,9 @@ function paintOverlay() {
 // machine codes (low_cloth_area, no_boundary_evidence, ...) and the operator reads
 // a sentence: the codes are a detector contract, not UI copy. Same map shape as
 // POCKET_WORDS; "${code}" is the only composed slot and it stays translated.
+// One owner for both console screens: the review page reads this table here, and the
+// ops adapter (annotator/vision-stage.js) reads it from window.ConsoleRules, so a code
+// the refiner adds reaches both screens instead of one.
 // The one code the console produces itself: validateCloth refuses a quad whose
 // corners fail quadSanity, and the operator reads that refusal through this same
 // table. Both the producer and the table name this symbol, so the reason a
@@ -1118,6 +1121,10 @@ const QUAD_REFUSAL_COPY = {
                           '库边边缘超出搜索带'],
   prior_disagreement: ['the four sides disagree with the saved centre',
                        '四条边与已保存中心不一致'],
+  degenerate_prior: ['the saved geometry is degenerate, so it cannot guide the refinement',
+                     '已保存几何退化，无法引导细化'],
+  side_inherited: ['the side kept the reason of the side it was inherited from',
+                   '该边沿用其继承来源边的判定原因'],
   [QUAD_INVALID_GEOMETRY]: ['the four corners are not a valid table quad',
                             '四个角点不构成有效球桌四边形'],
   no_prior: ['no saved geometry exists for this dataset',
@@ -2115,11 +2122,28 @@ const zhCopy = {
   // slots), and the footer slots are named after themselves.
   'footer-left':'本地数据 · 显式保存', 'footer-right':'复核结论在核验前不是真值。'
 };
+// The words that both console screens show have one owner: this table, keyed by the slot name the
+// ops adapter (annotator/vision-stage.js) reads.  annotator/ops.html loads this file before that
+// one, so the adapter takes the table from window.ConsoleRules and spells no word of its own.  A
+// reword here reaches the review page (through the copy table below) and the ops screen together.
+// Each row is one pair: the English word this page paints, then the Chinese one.
+const SHARED_WORDS = Object.freeze({
+  stale: ['STALE', '已过期'], staleNow: ['STALE', '已过期'],
+  live: ['live', '直播'], liveFlag: ['live', '直播'], liveNow: ['live', '直播'],
+  replayNow: ['VOD replay', '回放'], closePanel: ['Close', '关闭'], bcCancelForm: ['Close', '关闭'],
+  unknown: ['Unknown', '未知'], saveCorrections: ['Save corrections for this frame', '保存此帧修正'],
+  savedOk: ['Saved', '已保存'], trackWord: ['Track', '轨迹'], gateDenseWindow: ['Track window', '轨迹窗口'],
+  deleteBox: ['Delete selected', '删除所选'], drawTool: ['Draw box', '绘制标注框'],
+  selectTool: ['Select / move', '选择 / 移动'], newBoxLabel: ['New box label', '新框标注'],
+  addPolygon: ['Add table polygon', '添加球桌多边形'], clearPolygon: ['Clear polygon', '清除多边形'],
+  thisTrack: ['track', '轨迹'], playingWord: ['playing', '播放中'], pausedWord: ['paused', '已暂停'],
+  loopWord: ['loop', '循环']
+});
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorCopy = {
   'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层', 'Stage':'舞台',
   'Pick a moment on the scrub strip, or select a cue, then freeze it here.':'在拖动条上选择时刻，或选择一条线索，然后在此冻结。',
-  'STALE':'已过期', 'live':'直播', 'VOD replay':'回放', 'Close':'关闭', 'No crop at this frame':'此帧没有裁剪图',
+  'No crop at this frame':'此帧没有裁剪图',
   'The label is written to this crop':'标注将写入此裁剪图', 'Select a crop cue in the rail to label it':'请在左栏选择裁剪图线索以标注',
   'Select a ball or a crop first.':'请先选择球或裁剪图。', 'Select a visible track first.':'请先选择可见的轨迹。',
   'This track has no identity cluster yet.':'此轨迹尚无身份聚类。', 'saving…':'保存中…', 'save failed':'保存失败',
@@ -2147,28 +2171,30 @@ Object.assign(editorCopy, {
   'Frame unavailable. Choose another time or retry loading.':'帧不可用。请选择其他时间或重新加载。',
   'CANDIDATE · NOT VALIDATED':'候选 · 未验证',
   'Choose a verdict before saving.':'请先选择判定再保存。', 'Freeze a frame first.':'请先冻结一帧。',
-  'Unknown':'未知',
   'Event review':'事件复核', 'Ball labels':'球号标注', 'Table calibration':'球桌标定', 'Player identities':'选手身份', 'Video timeline':'视频时间轴',
-  'Frame inference':'帧推理', 'Correction editor':'修正编辑器', 'Save corrections for this frame':'保存此帧修正',
+  'Frame inference':'帧推理', 'Correction editor':'修正编辑器',
   'Balls · SAM3 on CPU (slow)':'球 · CPU 上的 SAM3（较慢）', 'LOCAL INGESTED VOD ONLY · NO LIVE SOURCES':'仅限本地导入录像 · 无直播源',
   'The scrubber and jumps address raw decoded frame indexes (nominal CFR time = frame ÷ fps; not VFR-exact). Step buttons fetch exact decoded frames from the review server.':'拖动条和跳转使用原始解码帧索引（名义固定帧率时间 = 帧 ÷ fps，并非精确可变帧率时间）。步进按钮从复核服务器获取精确解码帧。',
   'Frame inference covers this single decoded frame only. It cannot detect shots or pots — event inference needs time windows and is out of scope here.':'帧推理仅覆盖此单张解码帧，无法检测击球或入袋；事件推理需要时间窗口，不在此功能范围内。',
   'Drag boxes or corner handles; arrow keys nudge the selected box (Shift = 10 px). Ball centers follow their box. Drag table polygon corners. Saving writes manual corrections for this exact frame; saved inference is never overwritten.':'拖动标注框或角点控制柄；方向键微调所选框（Shift = 10 像素）。球心随标注框移动。可拖动球桌多边形角点。保存仅写入此精确帧的人工修正，绝不覆盖已保存的推理结果。',
   'Infer results and manual corrections are saved separately. Inference never overwrites your correction file.':'推理结果和人工修正分别保存。推理不会覆盖修正文件。',
-  'Saved':'已保存', 'cleared':'已清除', 'Cue 0':'母球 0', 'Select a cue first.':'请先选择线索。', 'cue':'母球', 'shot':'击球', 'pot':'入袋', 'correct':'正确', 'wrong':'错误', 'unsure':'不确定', 'Track':'轨迹', 'Track window':'轨迹窗口', 'Delete selected':'删除所选', 'Draw box':'绘制标注框', 'Select / move':'选择 / 移动',
-  'Selected label':'所选标注', 'New box label':'新框标注', 'Add table polygon':'添加球桌多边形', 'Clear polygon':'清除多边形',
+  'cleared':'已清除', 'Cue 0':'母球 0', 'Select a cue first.':'请先选择线索。', 'cue':'母球', 'shot':'击球', 'pot':'入袋', 'correct':'正确', 'wrong':'错误', 'unsure':'不确定',
+  'Selected label':'所选标注',
   'solid':'实色', 'stripe':'花色', 'eight':'黑八', 'person':'人物', 'cue':'母球', 'ball':'球', 'table':'球桌',
   // Source tags the engine paints on the imagery, and the identity chip.
-  'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'EVENT':'事件', 'track':'轨迹', 'unbound':'未绑定', 'confidence':'置信度',
+  'MODEL':'模型', 'YOURS':'人工', 'CALIB':'标定', 'EVENT':'事件', 'unbound':'未绑定', 'confidence':'置信度',
   'saved anchors':'已保存锚点', 'saved calibration':'已保存标定',
   // Stage video state and the honesty rule that goes with it: what is drawn over
   // moving video, and what only comes back on a freeze.
-  'playing':'播放中', 'paused':'已暂停', 'window':'窗口', 'loop':'循环', 'colour unknown':'颜色未知',
+  'window':'窗口', 'colour unknown':'颜色未知',
   'per-frame detections update on freeze':'逐帧检测在冻结后更新',
   'per-frame detections return on freeze':'逐帧检测在冻结后恢复',
   'The stage video failed to load; freeze a frame to inspect it as a still.':'舞台视频加载失败；可冻结一帧以静帧方式检查。',
   'The browser refused to play the stage video; freeze a frame instead.':'浏览器拒绝播放舞台视频；请改为冻结一帧。'
 });
+// The copy table is built from the one owner: a shared word stands once, in SHARED_WORDS, and the
+// English word of a row is the key this page reads its Chinese word by.
+for (const [english, chinese] of Object.values(SHARED_WORDS)) editorCopy[english] = chinese;
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorTemplates = [
   [/^(.+) · detector score (.+) \(not accuracy\)$/, (source, score) => `${source} · 检测器分数 ${score}（非准确率）`],
@@ -2386,11 +2412,13 @@ window.CornerPocketReview = {
 Object.defineProperty(window.CornerPocketReview, 'vocabulary', {value: VOCABULARY, enumerable: false});
 // The rules the console's page scripts share have one owner here, and one published seam:
 // window.ConsoleRules. The escape rule is the first of them, the JSON request header the second.
+// The words of both screens (SHARED_WORDS) and the refusal reasons the detector writes
+// (QUAD_REFUSAL_COPY) are the third and the fourth.
 // annotator/ops.js, annotator/vision-stage.js and annotator/clock-sync.js read them from that seam
 // instead of holding a copy. Both console pages load this file before those scripts. A test that
 // stands in for the engine handle replaces window.CornerPocketReview, and that handle is a driver
 // seam, not a rule seam.
-window.ConsoleRules = {esc, jsonHeaders};
+window.ConsoleRules = {esc, jsonHeaders, words: SHARED_WORDS, quadReasons: QUAD_REFUSAL_COPY};
 const standaloneRoot = document.querySelector('#review-root');
 if (standaloneRoot) { mount(standaloneRoot); activate(); }
 })();

@@ -48,34 +48,34 @@ const COPY = {
     freeze:'Freeze', play:'Play', pause:'Pause', ticks:'Event ticks', dataset:'Dataset',
     start:'Start', stop:'Stop', detectors:'Frame detectors', table:'Table', person:'Person', ball:'Balls',
     latency:'Twitch upstream delay: UNKNOWN. Receive-to-result is local processing latency, not glass-to-glass latency.',
-    freshness:'Freshness', saved:'Saved channels', savedVods:'Saved VODs', useInForm:'Use', savedOk:'Saved', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
+    freshness:'Freshness', saved:'Saved channels', savedVods:'Saved VODs', useInForm:'Use', addChannel:'Save Twitch channel', channelUrl:'Twitch source URL',
     select:'Select', remove:'Remove', chat:'Chat', showChat:'Show chat', hideChat:'Hide chat',
     startFailed:'Start attempt', cause:'Cause', remedy:'Remedy', retry:'Retry',
     lastLiveError:'Last live session ended with an error at {at}',
     remedyText:'Check that the source is a saved canonical Twitch channel, or that the allowlisted dataset media exists.',
     correct:'Correct', wrong:'Wrong', unsure:'Unsure', saveReview:'Save review', nextCue:'Next candidate →',
     notReviewed:'Not reviewed', reviewed:'Reviewed', unlabeled:'Unlabeled',
-    unknown:'Unknown', cue:'Cue', clear:'Clear label', prevCrop:'← Previous crop', nextCrop:'Next crop →',
+    cue:'Cue', clear:'Clear label', prevCrop:'← Previous crop', nextCrop:'Next crop →',
     ignore:'Ignore', rebuild:'Rebuild assignments', refresh:'Refresh status',
     seedHint:'Seeds save immediately. Saving a seed alone does not rebuild predictions.',
     saveAnchors:'Save six anchors', anchorsAt:'Load anchors at', anchorNote:'Anchors belong to the raw source frame; saving stores anchor annotations only, it never fits a calibration.',
-    boxLabel:'Box label', deleteBox:'Delete selected', saveCorrections:'Save corrections for this frame',
+    boxLabel:'Box label',
     layerNote:'MODEL boxes are this session\u2019s reference only: saving a correction writes your boxes (YOURS), never the model\u2019s.',
     modelBoxes:'model boxes', yourBoxes:'your boxes',
-    runInference:'Run inference on frozen frame', addPolygon:'Add table polygon', clearPolygon:'Clear polygon',
-    newBoxLabel:'New box label', tool:'Tool', selectTool:'Select / move', drawTool:'Draw box',
+    runInference:'Run inference on frozen frame',
+    tool:'Tool',
     frameReadout:'frame', overlays:'overlays', loading:'LOADING', none:'none', on:'ON',
-    live:'live', stale:'STALE', age:'frame age', receive:'receive-to-result', dropped:'dropped',
+    age:'frame age', receive:'receive-to-result', dropped:'dropped',
     selectCueHint:'Selecting a cue plays its window on the stage and loops in it; freeze to inspect one frame.',
     noCrops:'No crops in this queue.', noTracks:'No track windows are available for this VOD.',
     noEvents:'No event candidates in this filter.', vodOnlyAnchors:'Anchors are available for the vod30 dataset only.',
-    cropAtFrame:'crop at this frame', selectedBall:'Ball', trackWord:'Track', box:'Box', anchorWord:'Anchor',
+    cropAtFrame:'crop at this frame', selectedBall:'Ball', box:'Box', anchorWord:'Anchor',
     seedA:'Player A', seedB:'Player B',
     // Identity labelling: one regular (the identity pipeline), or a guest name
     // (this track's label). The legacy A/B/ignore values stay readable.
     whichRegular:'Which regular?', guestOption:'— not a regular (guest) —', guestName:'Guest name',
     guestPlaceholder:'Type the guest’s name', saveBinding:'Save', clearBinding:'Clear',
-    linkTitle:'Link to another appearance', linkTarget:'Identity in this frame', linkAction:'Link', thisTrack:'track', unnamed:'unnamed', hasFace:'face',
+    linkTitle:'Link to another appearance', linkTarget:'Identity in this frame', linkAction:'Link', unnamed:'unnamed', hasFace:'face',
     linkHint:'Linking merges the two identities: this track joins the picked one, and one regular then names both.', linkNoFace:'No face on this frame: linking still merges the tracks, and the identity keeps the face it already has.',
     notAPlayer:'Ignore (not a player)',
     ignoreHint:'Marks this track as a spectator: excluded from identity assignment, and never competing with the two labelling options above.',
@@ -94,7 +94,7 @@ const COPY = {
     bcTitle:'Broadcasts', bcNote:'Recent broadcasts of your saved channels. Import one (or a range of it) to browse it frame by frame and run inference on any frozen frame.',
     bcNone:'No recent broadcasts listed.', bcError:'Twitch did not answer for this channel', bcRefresh:'Refresh list', bcLoading:'Asking Twitch…',
     bcImported:'imported', bcImport:'Import…', bcPaste:'VOD link or id', bcPasteGo:'Check',
-    bcEstimate:'Estimate', bcConfirm:'Import', bcCancelForm:'Close', bcWhole:'whole broadcast', bcSize:'about', bcTime:'about', bcTimeUnknown:'time unknown until one import has run',
+    bcEstimate:'Estimate', bcConfirm:'Import', bcWhole:'whole broadcast', bcSize:'about', bcTime:'about', bcTimeUnknown:'time unknown until one import has run',
     bcFree:'free', bcAlready:'already imported', bcJob:'Import', bcCancel:'Cancel import', bcCancelAsk:'Cancel this import? The partial file is deleted and nothing is listed.',
     bcMb:'MB', bcEta:'left', bcDelete:'Delete…', bcDeleteAsk:'Delete this imported broadcast? Its video file and its list entry are removed. Your saved corrections are kept.',
     bcRecorded:'recorded broadcast', bcOf:'of', bcFrom:'from', bcAt:'broadcast time',
@@ -102,7 +102,7 @@ const COPY = {
     bcEventsNone:'Not scanned for events — browse frames and run inference on a frozen frame.',
     vodNote:'The server resolves the VOD with Twitch and replays it in real time. The panel reports what the server and the capture say it is: kind, live, the VOD id, the rate and the drift it is carrying.',
     vodResolving:'resolving the VOD with Twitch…', vodFailed:'the VOD could not be resolved',
-    vodDrift:'drift', vodVideoAt:'video at', vodWall:'wall', liveFlag:'live', pace:'pacing',
+    vodDrift:'drift', vodVideoAt:'video at', vodWall:'wall', pace:'pacing',
     enrolTitle:'Enrol as regular',
     enrolStart:'Enrol as regular', enrolHint:'Reads this person from the footage first; nothing is written until you confirm a name. A window scan can take about a minute.',
     enrolScanning:'collecting faces', enrolWait:'the scan reads the recording around this frame; it stops by itself and reports what it saw',
@@ -122,14 +122,12 @@ const COPY = {
     boundManual:'manual bind', boundAuto:'automatic face match', boundIdentity:'identity binding',
     bindIdentityHint:'Saves through the identity pipeline, so face and body matching keep working.',
     bindGuestHint:'Saves the typed name as this track’s label.',
-    closePanel:'Close',
     noCluster:'No identity cluster on this track yet — pick a person box on the stage that has one.',
     loading2:'loading…', reviewedCount:'reviewed', inQueue:'in queue', crops:'crops', reviewedWord:'reviewed',
     prediction:'prediction', seed:'saved seed', liveState:'Live state', manual:'manual', detectorReason:'The balls detector (SAM3) is CPU-heavy and stays an explicit opt-in.',
     attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector', cuesRegion:'Vision cues', stageRegion:'Vision stage', inspectorRegion:'Vision inspector', sheetTabs:'Vision panels', twitchChat:'Twitch chat', stepBack:'Previous frame', stepForward:'Next frame',
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
     stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
-    liveNow:'live', staleNow:'STALE', replayNow:'VOD replay',
     coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
     quadRefused:'quad refused', quadFallback:'quad from the naive fallback', storedInference:'stored inference',
@@ -147,7 +145,7 @@ const COPY = {
     gateCensus:'Ball census', gateColourCensus:'Claimed colour census', gateVanish:'Vanished ball',
     gateMove:'Re-measured move', gateMotion:'motion', gateGap:'Claim vs measured ball',
     gateDup:'Duplicate detections merged', gateNotes:'Gate notes',
-    gateNetPath:'Net move / path', gatePeakSpeed:'Peak speed', gateDenseWindow:'Track window',
+    gateNetPath:'Net move / path', gatePeakSpeed:'Peak speed',
     provenanceMachine:'suggested by the computer · not yet confirmed by a person', provenanceMachineLegacy:'machine-produced candidate; no human has confirmed it', detectedBy:'detected by', technicalDetails:'Technical details',
     provenanceHuman:'confirmed by a person',
     tierLabel:'Confirmation tier', tierGeometry:'geometry-verified', tierWindow:'motion window only',
@@ -155,7 +153,6 @@ const COPY = {
     tierWindowHint:'A ball really moved in this window, but not the one or where the claim said. Review it as a moment, not as the claimed shot.',
     noPotsMeasured:'No pot candidate in this VOD survived measurement: the ball census refuted every claim (a ball said to be potted was still on the cloth) and 2 stayed unconfirmed, so this list is empty on purpose.',
     noShotsMeasured:'No shot candidate survived measurement: every served event is explained by occlusion — a person crossing the cloth at that moment — and at 720p one ball\'s best possible signal sits on the detection floor (motion measured over the whole VOD: 0 of 55 ball-scale onsets could be a single ball). The events stay in the report artifacts, not in the queue.',
-    loopWord:'loop', playingWord:'playing', pausedWord:'paused',
     inferAutoRunning:'Inferring', freezeRunning:'Inferring…', freezeInferTitle:'Freeze this frame and run inference on it',
     faceOnly:'face seen'
   },
@@ -167,32 +164,32 @@ const COPY = {
     freeze:'冻结', play:'播放', pause:'暂停', ticks:'事件刻度', dataset:'数据集',
     start:'开始', stop:'停止', detectors:'帧检测器', table:'球桌', person:'人物', ball:'球',
     latency:'Twitch 上游延迟：未知。接收到结果仅为本地处理耗时，不是端到端延迟。',
-    freshness:'新鲜度', saved:'已保存频道', savedVods:'已保存回放', useInForm:'填入', savedOk:'已保存', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
+    freshness:'新鲜度', saved:'已保存频道', savedVods:'已保存回放', useInForm:'填入', addChannel:'保存 Twitch 频道', channelUrl:'Twitch 来源地址',
     select:'选择', remove:'移除', chat:'聊天', showChat:'显示聊天', hideChat:'隐藏聊天',
     startFailed:'启动尝试', cause:'原因', remedy:'处理', retry:'重试',
     lastLiveError:'上一次直播会话于 {at} 因错误结束',
     remedyText:'请确认来源是已保存的标准 Twitch 频道，或数据集媒体确实存在。',
     correct:'正确', wrong:'错误', unsure:'不确定', saveReview:'保存复核', nextCue:'下一个候选 →',
     notReviewed:'未复核', reviewed:'已复核', unlabeled:'未标注',
-    unknown:'未知', cue:'母球', clear:'清除标注', prevCrop:'← 上一张裁剪图', nextCrop:'下一张裁剪图 →',
+    cue:'母球', clear:'清除标注', prevCrop:'← 上一张裁剪图', nextCrop:'下一张裁剪图 →',
     ignore:'忽略', rebuild:'重建分配', refresh:'刷新状态',
     seedHint:'种子立即保存。仅保存种子不会重建预测。',
     saveAnchors:'保存六个锚点', anchorsAt:'加载锚点时刻', anchorNote:'锚点属于原始源帧；保存仅存储锚点标注，不会拟合标定。',
-    boxLabel:'标注框标签', deleteBox:'删除所选', saveCorrections:'保存此帧修正',
+    boxLabel:'标注框标签',
     layerNote:'模型框（MODEL）仅为本次会话的参照：保存修正只写入你的框（人工），不会写入模型框。',
     modelBoxes:'模型框', yourBoxes:'你的框',
-    runInference:'对冻结帧运行推理', addPolygon:'添加球桌多边形', clearPolygon:'清除多边形',
-    newBoxLabel:'新框标注', tool:'工具', selectTool:'选择 / 移动', drawTool:'绘制标注框',
+    runInference:'对冻结帧运行推理',
+    tool:'工具',
     frameReadout:'帧', overlays:'叠加层', loading:'加载中', none:'无', on:'开',
-    live:'直播', stale:'已过期', age:'帧龄', receive:'接收到结果', dropped:'丢帧',
+    age:'帧龄', receive:'接收到结果', dropped:'丢帧',
     selectCueHint:'选中线索会在舞台上循环播放它的片段；冻结后可逐帧检查。',
     noCrops:'此队列没有裁剪图。', noTracks:'此录像没有可用的轨迹窗口。',
     noEvents:'此筛选下没有事件候选。', vodOnlyAnchors:'锚点仅适用于 vod30 数据集。',
-    cropAtFrame:'此帧的裁剪图', selectedBall:'球', trackWord:'轨迹', box:'标注框', anchorWord:'锚点',
+    cropAtFrame:'此帧的裁剪图', selectedBall:'球', box:'标注框', anchorWord:'锚点',
     seedA:'选手 A', seedB:'选手 B',
     whichRegular:'选择常客', guestOption:'— 不是常客（访客）—', guestName:'访客姓名',
     guestPlaceholder:'输入访客姓名', saveBinding:'保存', clearBinding:'清除',
-    linkTitle:'关联到另一个出现', linkTarget:'本帧身份', linkAction:'关联', thisTrack:'轨迹', unnamed:'未命名', hasFace:'有人脸',
+    linkTitle:'关联到另一个出现', linkTarget:'本帧身份', linkAction:'关联', unnamed:'未命名', hasFace:'有人脸',
     linkHint:'关联会合并两个身份：该轨迹并入所选身份，之后一次常客指派即可命名两者。', linkNoFace:'本帧没有人脸：关联仍会合并轨迹，身份保留它已有的人脸。',
     notAPlayer:'忽略（不是球员）',
     ignoreHint:'把这条轨迹标为观众：不参与身份分配，也不会和上面两个标注选项混在一起。',
@@ -206,7 +203,7 @@ const COPY = {
     bcTitle:'回放', bcNote:'已保存频道的近期直播回放。导入整场（或其中一段）后，可逐帧浏览，并对任意冻结帧运行推理。',
     bcNone:'没有列出近期回放。', bcError:'Twitch 未回应此频道', bcRefresh:'刷新列表', bcLoading:'正在询问 Twitch…',
     bcImported:'已导入', bcImport:'导入…', bcPaste:'回放链接或 id', bcPasteGo:'检查',
-    bcEstimate:'估算', bcConfirm:'导入', bcCancelForm:'关闭', bcWhole:'整场回放', bcSize:'约', bcTime:'约', bcTimeUnknown:'完成一次导入前无法估计用时',
+    bcEstimate:'估算', bcConfirm:'导入', bcWhole:'整场回放', bcSize:'约', bcTime:'约', bcTimeUnknown:'完成一次导入前无法估计用时',
     bcFree:'可用', bcAlready:'已导入', bcJob:'导入', bcCancel:'取消导入', bcCancelAsk:'取消此次导入？未完成的文件会被删除，不会列出。',
     bcMb:'MB', bcEta:'剩余', bcDelete:'删除…', bcDeleteAsk:'删除这场已导入的回放？视频文件和列表条目会被移除，已保存的修正会保留。',
     bcRecorded:'录制回放', bcOf:'·', bcFrom:'日期', bcAt:'直播时间',
@@ -214,7 +211,7 @@ const COPY = {
     bcEventsNone:'未做事件扫描——可逐帧浏览，并对冻结帧运行推理。',
     vodNote:'由服务端向 Twitch 解析该回放并实时播放。面板只报服务端与采集器的原话：类型、是否直播、回放 id、倍速以及当前漂移。',
     vodResolving:'正在向 Twitch 解析该回放…', vodFailed:'该回放无法解析',
-    vodDrift:'漂移', vodVideoAt:'视频位置', vodWall:'墙钟', liveFlag:'直播', pace:'节拍',
+    vodDrift:'漂移', vodVideoAt:'视频位置', vodWall:'墙钟', pace:'节拍',
     enrolTitle:'登记为常客',
     enrolStart:'登记为常客', enrolHint:'先从录像中读取该人物；在你确认姓名之前不会写入任何内容。窗口扫描约需一分钟。',
     enrolScanning:'正在采集人脸', enrolWait:'扫描正在读取此帧附近的录像；它会自行结束并报告所见',
@@ -232,14 +229,12 @@ const COPY = {
     boundManual:'人工绑定', boundAuto:'自动人脸匹配', boundIdentity:'身份绑定',
     bindIdentityHint:'通过身份流程保存，人脸与体型匹配继续生效。',
     bindGuestHint:'把输入的姓名保存为该轨迹的标注。',
-    closePanel:'关闭',
     noCluster:'此轨迹尚无身份聚类——请在舞台上选择带有聚类的球员框。',
     loading2:'读取中…', reviewedCount:'已复核', inQueue:'队列中', crops:'张裁剪图', reviewedWord:'已复核',
     prediction:'预测', seed:'已保存种子', liveState:'直播状态', manual:'人工', detectorReason:'球检测器（SAM3）为 CPU 密集，需显式开启。',
     attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器', cuesRegion:'视觉线索', stageRegion:'视觉舞台', inspectorRegion:'视觉检查器', sheetTabs:'视觉面板', twitchChat:'Twitch 聊天', stepBack:'上一帧', stepForward:'下一帧',
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
     stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
-    liveNow:'直播', staleNow:'已过期', replayNow:'回放',
     coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
     quadRefused:'四边形已拒绝', quadFallback:'四边形来自朴素回退', storedInference:'已存推理',
@@ -257,7 +252,7 @@ const COPY = {
     gateCensus:'球数', gateColourCensus:'声称颜色球数', gateVanish:'消失球',
     gateMove:'复测位移', gateMotion:'运动量', gateGap:'声称位置与实测球',
     gateDup:'合并的重复检测', gateNotes:'检测门备注',
-    gateNetPath:'净位移 / 路径', gatePeakSpeed:'峰值速度', gateDenseWindow:'轨迹窗口',
+    gateNetPath:'净位移 / 路径', gatePeakSpeed:'峰值速度',
     provenanceMachine:'电脑识别的候选 · 尚未经人工确认', provenanceMachineLegacy:'机器产出，未经人工确认', detectedBy:'识别来源', technicalDetails:'技术细节',
     provenanceHuman:'已由人工确认',
     tierLabel:'确认层级', tierGeometry:'几何已核', tierWindow:'仅运动窗口',
@@ -265,7 +260,6 @@ const COPY = {
     tierWindowHint:'该窗口确有球在动，但不是声称的那颗，或不在声称的位置。请按「时刻」复核，而不是按声称的那次击球。',
     noPotsMeasured:'本场没有经测量存活的入袋候选：球数普查推翻了每一条断言（声称入袋的球仍在台面上），另有 2 条未确认，因此列表为空是刻意的。',
     noShotsMeasured:'没有击球候选通过测量：已服务的每条事件都被遮挡解释——那一刻有人穿过台面——且 720p 下单球的最强信号正好卡在检测底噪上（全片实测：55 个球尺度突变中 0 个可能来自单颗球）。这些事件保留在报告产物里，不在队列中。',
-    loopWord:'循环', playingWord:'播放中', pausedWord:'已暂停',
     inferAutoRunning:'推理中', freezeRunning:'推理中…', freezeInferTitle:'冻结这一帧并对其运行推理',
     faceOnly:'已见人脸'
   }
@@ -290,7 +284,12 @@ let sourceOpen = false, guestDraft = null;
 let replayDraft = null;
 const esc = value => window.ConsoleRules.esc(value);
 const jsonHeaders = () => window.ConsoleRules.jsonHeaders();
-const t = key => (COPY[opts?.lang] || COPY.en)[key] || COPY.en[key] || key;
+// The words that both console screens show have one owner: SHARED_WORDS in annotator/app.js,
+// published on window.ConsoleRules.  The table below holds the slots that the owner does not, and
+// this reader asks the owner first, so a reword there reaches this screen too.  The read is late,
+// on purpose: this module loads once and renders many times.
+const sharedWord = (key, lang) => { const row = window.ConsoleRules.words[key]; return row ? row[lang === 'zh' ? 1 : 0] : null; };
+const t = key => sharedWord(key, opts?.lang) || (COPY[opts?.lang] || COPY.en)[key] || COPY.en[key] || key;
 const $ = id => root ? root.querySelector(id) : null;
 const engine = () => opts?.review;
 const snap = () => engine()?.snapshot ? engine().snapshot() : null;
@@ -307,24 +306,16 @@ const engineText = value => engine()?.text ? engine().text(String(value ?? '')) 
 // The detector reports machine codes (low_cloth_area, no_boundary_evidence, ...);
 // the operator reads a phrase. Same idea as labelText: the code never reaches the
 // UI, and the default still translates instead of printing snake_case.
+// One owner for both console screens: QUAD_REFUSAL_COPY in annotator/app.js, published on
+// window.ConsoleRules.  annotator/ops.html loads that file before this one, so the late read
+// finds it, and a code the refiner adds reaches both screens.  The composed row of the owner
+// holds the slot "${code}", and each screen fills that slot with its own reading of the code.
 // tests/test_console_reason_table.py derives these codes from src/table_refine.py.
-const QUAD_REASON = {
-  low_cloth_area: ['the cloth is hidden - a player or an object is over the bed', '台面被遮挡——有人或物体挡在台面上'],
-  no_boundary_evidence: ['no rail edge is visible inside the search band', '搜索带内看不到库边边缘'],
-  boundary_outside_band: ['the rail edge sits outside the search band', '库边边缘超出搜索带'],
-  degenerate_prior: ['the saved geometry is degenerate, so it cannot guide the refinement', '已保存几何退化，无法引导细化'],
-  prior_disagreement: ['the four sides disagree with the saved centre', '四条边与已保存中心不一致'],
-  side_inherited: ['the side kept the reason of the side it was inherited from', '该边沿用其继承来源边的判定原因'],
-  invalid_geometry: ['the four corners are not a valid table quad', '四个角点不构成有效球桌四边形'],
-  no_prior: ['no saved geometry exists for this dataset', '该数据集没有已保存几何'],
-  no_cloth_area: ['no cloth was found in this frame', '此帧没有找到台呢']
-};
 function quadReason(code) {
+  const table = window.ConsoleRules.quadReasons;
   const raw = String(code || 'unknown');
-  const row = QUAD_REASON[raw];
-  if (row) return opts?.lang === 'zh' ? row[1] : row[0];
-  const words = raw.replace(/_/g, ' ');
-  return opts?.lang === 'zh' ? `检测器报告「${words}」` : `the detector reported "${words}"`;
+  const row = table[raw] || table.default;
+  return row[opts?.lang === 'zh' ? 1 : 0].replace('${code}', raw.replace(/_/g, ' '));
 }
 function quadSideNote(quad) {
   const verified = Number(quad?.verified_sides);
@@ -1755,7 +1746,7 @@ function btnHTML(label, action, attrs = '') {
   return `<button type="button" ${attrs} data-action="${action}">${esc(label)}</button>`;
 }
 function markup(options = opts || {}) {
-  const say = key => { const table = COPY[options.lang] || COPY.en; return table[key] || COPY.en[key] || key; };
+  const say = key => sharedWord(key, options.lang) || (COPY[options.lang] || COPY.en)[key] || COPY.en[key] || key;
   const clock = typeof options.clock === 'function' ? (options.clock() || {}) : (options.clock || {});
   const fixed = typeof options.fixedClip === 'function' ? !!options.fixedClip() : !!options.fixedClip;
   const loading = `<p class="vs-loading" role="status">${say('visionLoading')}</p>`;
