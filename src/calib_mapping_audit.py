@@ -49,6 +49,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
+from src.calib_segments import VERIFIED_FRAMES  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
@@ -65,8 +66,9 @@ VIDEO = media_path(ROOT, "vod30")
 CANDIDATES = ROOT / "out" / "scan30" / "candidates_selected.json"
 OUT = ROOT / "out" / "calib_mapping_audit.json"
 # Frames the segment artifact already measured: early (unoccluded), the two
-# verified low-coverage event frames, and the last sample of the VOD.
-FRAME_TIMES = (70.0, 0.0, 483.4, 1120.2, 1800.0)
+# verified low-coverage event frames, and the last sample of the VOD.  The two
+# verified times come from ``src/calib_segments.py``, the owner of that pair.
+FRAME_TIMES = (70.0, 0.0, *VERIFIED_FRAMES, 1800.0)
 GRID = 5                       # 5x5 = 25 grid points, plus the six pockets
 
 REGION_BANDS_MM = (("head", 0.0, 400.0), ("middle", 400.0, 2140.0), ("foot", 2140.0, CANON_H + 1))

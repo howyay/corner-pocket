@@ -35,6 +35,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
+from src.calib_segments import VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 
 OUT = ROOT / "out" / "segcalib" / "segment_calib_report.json"
@@ -263,7 +264,8 @@ def build(args):
         rows.append(row)
 
     sample_times = sorted({round(float(t), 1) for t in
-                           [0.0, 420.0, 450.0, 483.4, 941.5, 1080.0, 1120.2, 1200.0, 1800.0]})
+                           [0.0, 420.0, 450.0, VERIFIED_FRAME_LOW, 941.5, 1080.0,
+                            VERIFIED_FRAME_HIGH, 1200.0, 1800.0]})
     frames = per_sample_frames(rows, references, args.video, sample_times)
 
     counts = {name: {"confirmed": 0, "rejected": 0, "unconfirmed": 0}

@@ -41,6 +41,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
+from src.calib_segments import VERIFIED_FRAMES  # noqa: E402
+from src.event_gates import GateConfig  # noqa: E402
 from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
 MEASURE = ROOT / "out" / "calib_vod30_segments.measure.json"
@@ -48,7 +50,10 @@ VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 OUT = ROOT / "out" / "calib_vod30_segments.json"
 
-GATE_FRACTION = 0.80          # GateConfig.calibration_warn_fraction
+# The coverage bar this tool applies.  ``src/event_gates.py`` owns the number
+# (``GateConfig.calibration_warn_fraction``), so one edit of the gate field moves
+# this tool too.  A number here was a second copy of that rule.
+GATE_FRACTION = GateConfig.calibration_warn_fraction
 PHASE_MOVE_PX = 2.0           # a camera move this large is not sub-pixel noise
 SIDE_NOISE_PX = 8.0           # refinement's own scatter on a verified side
 
@@ -248,7 +253,7 @@ def build(args):
     if derived is not None:
         holdout_times = sorted({r["t"] for r in rows
                                 if r["t"] >= t_split and len(_signed_offsets(r)) < 4}
-                               | {1120.2, 483.4, 1380.0, 1800.0})
+                               | {*VERIFIED_FRAMES, 1380.0, 1800.0})
         holdout = _holdout_gate(args.video, derived, holdout_times[:12], baseline=reference)
 
     rule = ("no sampled frame shows a camera move (whole-frame phase correlation "
@@ -316,8 +321,9 @@ def build(args):
         },
         "notes": [
             "calibration_frac is a proxy: occlusion and shading lower it exactly like a camera move would.",
-            "The gate's calibration_warn_fraction=0.80 fires on late samples that the per-side rail "
-            "evidence shows are correctly calibrated; use evidence.trusted_for_mm, not coverage alone.",
+            f"The gate's calibration_warn_fraction={GATE_FRACTION:g} reports late samples that the "
+            "per-side rail evidence shows are correctly calibrated; the field is a report, not a "
+            "trigger.  Use evidence.trusted_for_mm, not coverage alone.",
             "Additive artifact: no existing calibration file was rewritten.",
         ],
     }

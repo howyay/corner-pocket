@@ -51,6 +51,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.calib_segments import VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 
 VIDEO = media_path(ROOT, "vod30")
@@ -59,8 +60,10 @@ SCAN_QUAD = ROOT / "out" / "corners_30min_v2.json"
 OUT = ROOT / "out" / "calib_vod30_segments.measure.json"
 
 # The candidate windows the gate report flagged, plus a probe either side of the
-# reported late candidates so the boundary is located, not assumed.
-CANDIDATE_TIMES = (450.0, 450.3, 483.4, 483.7, 941.5, 1119.9, 1120.2, 1120.6, 1200.0)
+# reported late candidates so the boundary is located, not assumed.  The two
+# verified frames come from ``src/calib_segments.py``, the owner of that pair.
+CANDIDATE_TIMES = (450.0, 450.3, VERIFIED_FRAME_LOW, 483.7, 941.5, 1119.9,
+                   VERIFIED_FRAME_HIGH, 1120.6, 1200.0)
 
 
 def anchors_quad():

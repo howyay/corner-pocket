@@ -100,6 +100,15 @@ ANCHORS_REFERENCE = "out/pid_anchors_{dataset}.json"
 # dataset name.  The loader takes the root from ``verified_cloth_quad``.
 SCAN_CORNERS = "out/scan30/corners.json"
 
+# The two frames a person verified against the reference quad, and the coverage
+# each one measured.  ``docs/calibration-truth.md`` states the same pair.  The
+# audit, the measure tool, the fit and the report read these names, so one edit
+# moves all four readers together.  A module that writes one of the two times as a
+# number holds a second copy of this fact.
+VERIFIED_FRAME_LOW = 483.4
+VERIFIED_FRAME_HIGH = 1120.2
+VERIFIED_FRAMES = (VERIFIED_FRAME_LOW, VERIFIED_FRAME_HIGH)
+
 # Prose strings for one owner only.  Both readers write one of these next to the
 # quad, so a reader may report the rule without stating it again.
 CLOTH_LABELS = {"human_segment": "human calibration segment",
