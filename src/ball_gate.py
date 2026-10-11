@@ -41,7 +41,7 @@ The upper area cap, and the disagreement
       ``src/scan_events.py:121-126`` and ``src/sam3_ball_cache.py:152-154`` read
       their frames the same way, with no resize.
     * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:57``,
-      ``src/motion_scan.py:69``, ``src/dense_queue.py:69``).  Both caps are
+      ``src/motion_scan.py:71``, ``src/dense_queue.py:71``).  Both caps are
       therefore in 1280x720 pixels.
     * Both caps sit in the same statement family of the same function.  The
       score cut and the area window of one instance are neighbours

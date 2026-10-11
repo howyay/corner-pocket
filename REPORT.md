@@ -15,8 +15,9 @@ via a homography — recovering ball positions in table coordinates.
 ## Pipeline (`src/`)
 1. **Table detection** (`table_detect.py`) — classical: HSV blue-cloth segmentation →
    largest component → quadrilateral fit → 4 ordered corners. A homography `H`
-   maps the cloth quad to a canonical 1000×500 (2:1) table. The camera is static,
-   so `H` is locked to the median corner positions (MAD ≤ 1 px) from a quick pass.
+   maps the cloth quad to the canonical frame that `src/table_geometry.py` owns:
+   1270 mm wide by 2540 mm long, portrait. The camera is static, so `H` is locked
+   to the median corner positions (MAD ≤ 1 px) from a quick pass.
 2. **Ball segmentation — SAM 3** (`sam3_cpu.py`, `src/sam3/` = `facebookresearch/sam3`):
    `build_sam3_image_model` with the official weights; text prompt **"billiard ball"**
    → open-vocabulary *exhaustive instance segmentation*: every ball gets a precise

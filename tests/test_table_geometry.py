@@ -16,6 +16,7 @@ import ast
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -345,6 +346,28 @@ class OneCanonicalFrameTests(unittest.TestCase):
                      dtype=np.float64)))
         self.assertTrue(np.array_equal(calibrate.OBJECT_MM.astype(np.float32), shared))
         self.assertTrue(np.array_equal(calibrate.OBJECT_3D[:, :2].astype(np.float32), shared))
+
+    def test_the_report_states_the_frame_the_owner_holds(self):
+        """REPORT.md is the entry document.  Its frame claim must match the owner.
+
+        The report held a canon of 1000 x 500 pixels in landscape until round 49,
+        and the owner holds 1270 x 2540 millimetres in portrait.  A reader who
+        follows the report builds the wrong frame, so one case binds the sentence
+        to the same two numbers this module imports.
+        """
+        from src.table_geometry import CANON_H, CANON_W
+
+        text = (REPO / 'REPORT.md').read_text(encoding='utf-8')
+        self.assertEqual(text.count('canonical frame'), 1,
+                         'REPORT.md must state the canonical frame one time')
+        match = re.search(r'canonical frame.{0,200}?(\d+)\s*mm.{0,60}?(\d+)\s*mm',
+                          text, re.S)
+        self.assertIsNotNone(match, 'REPORT.md must state the canonical frame in millimetres')
+        self.assertEqual((int(match.group(1)), int(match.group(2))), (CANON_W, CANON_H),
+                         'REPORT.md and src/table_geometry.py must state one frame')
+        window = text[max(0, match.start() - 120):match.end() + 120]
+        self.assertIn('table_geometry.py', window,
+                      'the sentence must name the module that owns the frame')
 
 
 if __name__ == '__main__':

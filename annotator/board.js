@@ -58,7 +58,7 @@
       cannot import python, and this repository has no build step, so board.js keeps the one copy
       on this side of the wire. Every branch below reads this table; none compares a status or a
       result against a literal. tests/test_board.js reads both tuples back out of that file and
-      fails on a difference, the way tests/test_app_timeline.js:3252 holds the console's live
+      fails on a difference, the way tests/test_app_timeline.js:3299 holds the console's live
       codes to annotator/live_processing.py.
       The board branches on live, delayed and complete, and on played, forfeit and bye. The copy
       carries the whole list anyway: a word added to the registry then shows up here, and in the

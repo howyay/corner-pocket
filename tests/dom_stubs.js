@@ -8,9 +8,9 @@
 // Round 43 recorded why the other two doubles stay where they are. Four element doubles exist, and
 // each one answers the surface of the module its own suite loads. They are measured, not accidental:
 //
-//   tests/dom_stubs.js:11 domNode(selector)        35 names, this file
+//   tests/dom_stubs.js:28 domNode(selector)        35 names, this file
 //   tests/test_ops.js:40 richDocument(handlers)    one region per selector, loads annotator/ops.js
-//   tests/test_app_timeline.js:46 element()        36 names, loads annotator/app.js
+//   tests/test_app_timeline.js:55 element()        36 names, loads annotator/app.js
 //   tests/test_board.js:209 fakePage({...})        a whole page, loads annotator/board.js
 //
 // The two big ones disagree on 13 names each way, because they serve different readers. The engine

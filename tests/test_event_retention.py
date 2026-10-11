@@ -8,14 +8,17 @@ The operations log lives in two places, and they keep different history on purpo
 
 Before this change the number was written at four code sites in four modules:
 
-  * `annotator/operations.py:394` - the slice `[-500:]` of `_commit`;
-  * `src/enroll_from_tracklet.py:483` - the slice `[-500:]` of `_roster_payload`;
-  * `src/store_import.py:47` - `MAX_EVENTS = 500`;
-  * `src/store_pg.py:38` - `MAX_EVENTS = 500`.
+  * `annotator/operations.py` - the slice `[-500:]` of `_commit`;
+  * `src/enroll_from_tracklet.py` - the slice `[-500:]` of `_roster_payload`;
+  * `src/store_import.py` - `MAX_EVENTS = 500`;
+  * `src/store_pg.py` - `MAX_EVENTS = 500`.
 
 Two modules that must agree each held their own constant, so changing one of them
 alone changed the bound of one writer and left the others at the old value.  Nothing
 failed.  A fifth literal, `LIMIT 500`, sits in `src/store_check.py:66`.
+
+`src/ops_event_log.py:42` now holds `MAX_EVENTS = 500`, and `src/store_import.py:49`
+imports it.
 
 `src/ops_event_log.py` is now the only owner of the number.  It is a new module and
 not `src/events_document.py`, because that module owns a different document: its rows
