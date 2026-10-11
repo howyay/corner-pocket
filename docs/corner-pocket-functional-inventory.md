@@ -26,7 +26,7 @@ Editor-only configuration (713): clothColor default `#1d5c44`, options `#1d5c44/
 
 - [ ] Show actual focused match id, assigned table, state, race, both entrant labels, rating/member/guest metadata, score and leading/trailing/level styling. Doubles compact labels use surnames joined `/`; full labels retain both complete names.
 - [ ] Handle no match/open slots without pretending a match is live. Pending participants must not be scoreable.
-- [ ] Race options are 1,3,5,7,9,11. Multi-rack matches have +/- and one pip per target rack. Single-frame mode has an explicit winner action instead of numeric controls.
+- [ ] Race options are 1,3,5,7,9,11 (`annotator/ops.js:30 RACE_TO_OPTIONS` owns the list). Multi-rack matches have +/- and one pip per target rack. Single-frame mode has an explicit winner action instead of numeric controls.
 - [ ] Clamp scores to valid nonnegative integers and race maximum; reject ties as completed results and two simultaneous race winners. Require an actual scheduled/live eligible match and present participants before score mutation.
 - [ ] Explicit result signing persists winner, immutable result/audit entry and bracket advancement atomically. Corrections require a deliberate supported correction/undo policy, not silent overwrites.
 - [ ] Clear-score action resets only an editable match and does not corrupt completed results/downstream participants.
