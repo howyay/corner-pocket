@@ -9716,3 +9716,191 @@ The push is still blocked. One hundred and thirty-three commits sit on the local
 of this round, the two writer corrections, the five citation repairs, the record of this round, and the hundred
 and twenty-seven that came before them. `origin/main` stays at `110b0338`. The one user action stays
 `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 75 · the tool's fault answer, the person confidence and two documents (2026-10-11)
+
+The walk of this round read the repository at `40bb8df` with an empty `git status --porcelain`, answered
+`Strong candidate present - 2 Strong, 1 Worth, 0 Note`, and wrote 156 lines to
+`/tmp/dshsess/walk_round75.md`. The count on its verdict line equals the number of its sections. It read the
+route bodies of `annotator/unified_server.py` to the dispatch depth, 15 of the 22 `_do_*` bodies of
+`annotator/operations.py`, about 19000 lines of `docs/`, and the case bodies of the three console suites not at
+all. Its dry probes answered nothing for `tests/test_calib_mapping_audit.py` (0 same-expression assertions and
+0 `assertTrue(<number>)` in `tests/*.py`), noted that `viz/` is untracked (`git ls-files viz` prints nothing),
+and found no candidate in migrations `0003`/`0004`, `deploy/`, the backup retention pair or the console suites.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `77c3c7e` | `tools/playfield_quad_evidence.py`, `tests/test_playfield_parallel_owner.py`, `tests/test_playfield_quads.py` | Strong 1 |
+| `17a1d78` | `src/pid_identity.py`, `src/pid_associate.py`, `src/pid_shooter.py`, `src/pid_shooter2.py`, `src/yolo_track.py`, `tests/test_pid_identity.py`, `tests/test_person_pipeline.py`, `docs/handoff.md`, `docs/corner-pocket-operations.md`, `tests/test_pool_test_suites.py` | Strong 2 and Worth 1 |
+
+### Strong 1 · the tool answered "passed" for a check that could not run
+
+Ground: `tools/playfield_quad_evidence.py:79 def best_check(quad, parallel_tol=PARALLEL_TOL_DEG)` re-ran the
+unrotated check inside its fault handler (`:91-95`), while the owner `src/table_refine.py:1149 def
+best_verdict(quad)` answers `:1140 unavailable_verdict(exc)` = `{"ok": False, "reasons": ["check-unavailable"],
+"metrics": {}, "error": …}` under the rule stated at `annotator/pipeline_stages.py:403-409`. The tool's own
+docstring at `:85` claimed the opposite of what it returned. Measured with a planted `ValueError` on the rotated
+second call: the owner answered `{'ok': False, 'reasons': ['check-unavailable'], 'metrics': {}, 'error':
+'planted fault'}` while the tool answered `{'ok': True, 'reasons': [], 'metrics': {…}, 'error': 'planted
+fault'}` — so a check that could not run was recorded as a verified quad in the tool's evidence. Repair: the
+handler at `:112-113` answers `unavailable_verdict(exc)` imported from the owner, `:45 CHECK_DID_NOT_RUN =
+'check could not run: ' + CHECK_UNAVAILABLE` names the classify branch so `pick_entry` no longer raises
+`TypeError`, and the docstring at `:102-106` states what the code does. The writer chose the imported fault
+function over a direct `best_verdict` call for two measured reasons: `best_verdict` takes no `parallel_tol` and
+the caller passes `REFUSED_TOL = 1.0`, and the existing case plants `TOOL.check_quad` and must keep seeing the
+tool's own two calls. The measurement: the probe diff holds exactly one changed line (the fault answer), all ten
+recorded picks of `out/playfield_quad_evidence.json` answer the same before and after, and the call count for a
+fault on call N is N for both the owner and the tool where the old code made N+1. `src/table_refine.py` did not
+change. `tests/test_playfield_parallel_owner.py` grew from 10 to 14 cases and `tests/test_playfield_quads.py`
+from 23 to 25.
+
+### Strong 2 · the person-pass confidence stood four times
+
+Ground: the identical line `res = MODEL.predict(bgr, conf=0.35, classes=[0], verbose=False)` stood at
+`src/pid_associate.py:153`, `src/pid_shooter.py:70`, `src/pid_shooter2.py:83` and `src/yolo_track.py:49`, while
+`src/person_pipeline.py:108`, `src/frame_inference.py:191` and `src/info_complete_scan.py:105` asked the same
+question with the model default, and the ledger had recorded neither the number nor the zone rule of
+`src/pid_identity.py:85 in_table_zone`. Repair: `src/pid_identity.py:29 PERSON_CONF = 0.35` owns the value —
+that module and not `src/weight_pins.py`, because the same `MODEL.predict` call feeds the rules it already owns
+(`in_table_zone`, `torso_color`) and every pid script already imports it — and the four sites read the name
+(`src/pid_associate.py:153`, `src/pid_shooter.py:70`, `src/pid_shooter2.py:83`, `src/yolo_track.py:51`). The
+three review-side modules keep the ultralytics default on purpose, because they hand every row's score to the
+caller and the completeness gate must not miss a person; the comment above `PERSON_CONF` states that, and
+`tests/test_person_pipeline.py` holds the case that its own site passes no `conf` keyword.
+`tests/test_pid_identity.py` gained five cases (the owner's value, the four readers, a planted copy, the strict
+bar, and the difference of the review side). The measurements: `git grep -n 'conf=0.35' src/` answers nothing
+now and answered four lines at HEAD; `git grep -n 'PERSON_CONF' src/` answers nine lines in five files; an
+`ast` census finds 11 `predict` calls, of which the four person-pass sites read the name and the other seven
+keep the default; and the boundary run at `non_max_suppression` keeps one box, the one above the bar, so the bar
+is strict. One risk stands recorded: `src/yolo_track.py` gains an import edge into `src/pid_identity`, which
+reads the untracked, gitignored `out/corners_30min_v2.json` at import time, and that script was not run.
+
+### Worth 1 · the suite list of two documents an agent reads
+
+Ground: `scripts/pool-test.sh:43` owns the list, `PRODUCT.md:62` was guarded by
+`tests/test_pool_test_suites.py`, and two documents held unguarded copies — `docs/handoff.md:201` ran
+`node --test tests/test_ops.js && node tests/test_app_timeline.js`, which drops the board suite and whose
+`node --test` collects no test here, and `docs/corner-pocket-operations.md:100` named one suite. Repair: both
+documents name the three suites in the order the runner uses, and
+`tests/test_pool_test_suites.py` now derives its documents from the sources `PRODUCT.md` names (`SOURCES`,
+`DOC`, `named_documents`, `suite_lines`, `behind_reports`), reports a document that misses a suite and fails on a
+planted one; it grew from 3 to 6 cases. Four further sources hold no suite line, and the writer states that
+`docs/public-board.md:304` and `docs/tonight-stage9-proof.md:144-145` stay partial because they record a past
+run and stand outside the write scope.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer AW, Strong 1 | `tools/playfield_quad_evidence.py` | `c84a280c538975bb41174c7e630756a11f1ebf3e → 648bbfad816e461842ba8e3987a86f17b232fc75 → c84a280c538975bb41174c7e630756a11f1ebf3e` | four cases: `3 != 2 : the tool must try the two rotations and stop`, `2 != 1 : the tool stops at the call that raised`, and `Lists differ: [113] != [] : tools/playfield_quad_evidence.py must answer the owner dictionary for a fault` |
+| Writer AX, Strong 2 | `src/pid_associate.py` | `f597c706a40327aa894861e44604a14418db1616 → d5c7a31069386ddd18e79a20296778059678367d → f597c706a40327aa894861e44604a14418db1616` | `Lists differ: [] != ['pid_associate.py:153: 0.35']` and `1 != 0 : pid_associate.py must ask the detector with the owner's name` |
+| Lead, Strong 1 (a miss) | `tools/playfield_quad_evidence.py` | `c84a280c538975bb41174c7e630756a11f1ebf3e → 421be53443feae42d7d6bf7e93f3271be2ceb0bc → c84a280c538975bb41174c7e630756a11f1ebf3e` | nothing: the handler answered `{'ok': True, 'reasons': [], …}` with no extra call, and the case stayed green |
+| Lead, Strong 2 (a miss) | `src/pid_identity.py` | `85158eb7f284fb6aac9248186b89cb80e71e8f18 → af07156c9ae51d02ea4bc79074c167895e23e8b9 → 85158eb7f284fb6aac9248186b89cb80e71e8f18` | nothing: the owner's value moved from 0.35 to 0.30 and every case stayed green |
+
+The two Lead misses are the finding of this round and stand as open rows: the tool's case holds the line that
+must not re-run the check and not the answer's dictionary, and the confidence cases hold that the four sites
+read the owner's name and not the owner's value. A later round can add the two direct holds.
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2329 tests in 301.014s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 232, pass 232, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 114 passed, 0 failed |
+
+Round 74 answered 2314 cases and this round answers 2329. The fifteen additions are the four cases of
+`tests/test_playfield_parallel_owner.py`, the two of `tests/test_playfield_quads.py`, the five of
+`tests/test_pid_identity.py`, the one of `tests/test_person_pipeline.py` and the three of
+`tests/test_pool_test_suites.py`.
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The tool recorded a check that could not run as a verified quad | Strong 1 of this walk | the fault handler answers the owner's dictionary and a case holds it |
+| The person-pass confidence stood four times | Strong 2 of this walk | `PERSON_CONF` owns it and the four sites read it, with the review-side difference pinned |
+| Two documents named a partial suite list | Worth 1 of this walk | both name the three suites and the guard derives its documents from `PRODUCT.md` |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The tool's fault answer is held by a line rule, not by its dictionary | finding of the Lead's miss | a handler that answers the wrong dictionary without an extra call stays green |
+| The confidence value is held by no case | finding of the Lead's miss | `PERSON_CONF = 0.30` passes every case |
+| `src/yolo_track.py` now needs a gitignored artifact | risk measured by writer AX | it imports `src/pid_identity`, which reads `out/corners_30min_v2.json` at import time |
+| Two documents stay partial by scope | limit of writer AX | `docs/public-board.md:304`, `docs/tonight-stage9-proof.md:144-145` |
+| A stub that deletes a method can damage the process | finding of round 74 | `delattr` on `PostgresStore._write` broke a later module |
+| The rounding hold of `tests/test_projection_guard.py` is static | limit of round 73 | no case drives a fractional answer from `Probe.px` or `Probe.claim_px` |
+| One driver loads `annotator/ops.js` alone | finding of round 73 | every console read a driver may see must be lazy |
+| The eight refusal sentences also stand as validator calls | limit of round 72 | `annotator/operations.py:874`, `:895`, `:620`, `:636`, `:836`, `:1049`, `:1214`, `:1111`, `:1123`, `:408`, `:437`, `:1273`, `:1316` |
+| The helper walk reads top-level `def` nodes only | limit of round 72 | a copy inside a class body or a function is invisible |
+| The `source_files` family stays twice by decision | decision of round 72 | it answers from a module-local `SOURCE_TREES` scope |
+| The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
+| `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
+| The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2133` keeps `cls._SEED_ROLES` working |
+| `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2381` exports no `quadDistance` at the seam |
+| The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:344` and `annotator/operations.py:325` |
+| Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
+| The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
+| The console bounds are held by text, not by meaning | limit of round 64 | a third statement of a bound is invisible to its case |
+| `matches.round` has no SQL rule | stated in round 64 | the API bound is 1 to 99 and the migration is silent |
+| The glow default still stands twice | limit of round 63 | `annotator/operations.py:295` and `annotator/ops.js:1274 s.lampGlow??.22` |
+| The citation guard skips the documents | Note 2 of round 60, still open | `tests/test_citation_lines.py`'s `SKIP_PARTS` holds `docs`, so 1514 document citations have no guard |
+| Writer line shifts move citations outside their scope | pattern of rounds 61 to 74 | eight rounds in a row needed a Lead repair |
+| The pin's URL still holds the raw weight name | limit of round 62 | `src/weight_pins.py:34` names `yolov8n.pt` inside the download URL |
+| Two stylesheets keep a copy of the range | decision of round 62 | the public port serves no `ops.css` |
+| The Postgres branch stays unexercised | limit of round 62 | three modules skip 8, 29 and 5 cases |
+| The timeline suite keeps its own entry | decision of round 61 | the three suites answer one contract and do not share one runner shape |
+| The join's tolerance may be wrong for future data | limit of round 61 | 0.1 s and the old bucket swap strictness for a row at 70.05 |
+| Four same-named statistics functions stand outside the home | found by writer Q in round 60 | `tests/test_body_calibration.py:160 stats(xs)`, `tests/live_identity_validation.py:147 _stats(xs)`, `tests/live_pipeline_run.py` and `annotator/pipeline_stages.py:75 _percentile` |
+| Many document citations are stale | found by writer P in round 60 | `docs/console-redesign.md` holds 74 citations into `annotator/unified_server.py` and `docs/postgres-design.md` 28 |
+| One sentence still stands twice | found by round 59 | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of round 59 | only their digests pin the table |
+| The projection rule keeps two tolerances and a static walk | decisions of round 59 | each site names its own tolerance |
+| Two modules have no test module of their own | limit of round 59 | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of round 59 | `:333` and `:363` use `abs(row["threshold"] - …) < 1e-9` |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The javascript suites' case counts have no guard | limit of round 57 | the suite list is guarded, and the counts inside the three files are not |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and the drop-in `30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 to 75 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections, and a report can pass its line cap | limits of rounds 56 and 61 | the walks of rounds 57 to 75 answer equal counts, and the round-61 report wrote 261 lines against a cap of 260 |
+
+The push is still blocked. One hundred and thirty-six commits sit on the local `main`: the two writer commits of
+this round, the record of this round, and the hundred and thirty-three that came before them. `origin/main`
+stays at `110b0338`. The one user action stays
+`git -C /home/haoye/projects/pool push origin main`.
