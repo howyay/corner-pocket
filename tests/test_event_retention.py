@@ -442,7 +442,7 @@ class TheDatabaseTest(unittest.TestCase):
         so the table is unbounded, and `OperationsSet.actual` reports at most the bound
         (src/store_import.py:177) while `OperationsSet.expected` counts the document with
         no cap (src/store_import.py:331).  The value 500 is not asserted here; it is pinned
-        by tests/test_operations.py:313."""
+        by tests/test_operations.py:319."""
         from src.store_import import OperationsSet
         bound = owner_number()
         document = {"revision": 1, "players": [], "settings": {}, "notes": [], "sources": [],
