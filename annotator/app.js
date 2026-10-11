@@ -107,14 +107,26 @@ async function save(button, path, body, after, key, label) {
 }
 function time(t) { t = Number(t) || 0; return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2,'0')}`; }
 function image(src, alt, cls = '') { return `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}">`; }
+// The console vocabulary. One module owns the words of a box label and the words of a
+// cue verdict. The adapter (annotator/vision-stage.js) reads this object, and so does
+// every other console module: annotator/ops.html loads this module before the two other
+// modules for that reason. The object is frozen, so no reader can change a word in place.
+// The service holds the same lists in annotator/unified_server.py, and
+// tests/test_console_vocabulary.py holds the two languages together.
+const VOCABULARY = Object.freeze({
+  boxLabels: Object.freeze(['person','ball','cue','solid','stripe','eight']),
+  ballWords: Object.freeze(['ball','cue','solid','stripe','eight']),
+  verdictWords: Object.freeze(['correct','wrong','unsure'])
+});
 // ---- free functions pinned by tests and reused by the adapter -------------
-const BOX_LABELS = ['person','ball','cue','solid','stripe','eight'];
 function clampFrame(n, meta) { if (!meta || !Number.isFinite(n)) return 0; return Math.max(0, Math.min(meta.frame_count - 1, Math.round(n))); }
 function frameTime(meta, n) { return n / meta.fps; }
 function frameFromTime(meta, t) { return clampFrame(t * meta.fps, meta); }
 function timecode(t) { const value = Number(t); const tenths = Math.round((Number.isFinite(value) ? Math.max(0, value) : 0) * 10); const m = Math.floor(tenths / 600), seconds = ((tenths % 600) / 10).toFixed(1); return `${m}:${seconds.padStart(4, '0')}`; }
 function markerLeft(event, meta) { const pct = (Number(event.t) || 0) / meta.duration * 100; return pct >= 0 && pct <= 100 ? pct : null; }
-function ballLabel(label) { return ['ball','cue','solid','stripe','eight'].includes(label); }
+// A ball label is a ball word, and 'person' is not one. Both lists live in VOCABULARY,
+// so a word that the service accepts and the marker layer does not is one word wide.
+function ballLabel(label) { return VOCABULARY.ballWords.includes(label); }
 function boxCenter(box) { return [(box.bbox[0] + box.bbox[2]) / 2, (box.bbox[1] + box.bbox[3]) / 2]; }
 function normalizeBox(value, w, h) {
   if (!Array.isArray(value) || value.length !== 4 || value.some(v => !Number.isFinite(v))) return null;
@@ -1309,7 +1321,9 @@ function clearSelection() { state.sel = {kind:'none',crop:null,ball:null,person:
 function eventForSelection() { return state.sel.kind === 'event' ? state.sel.event : state.events[state.eventIndex] || null; }
 function verdictValue() { const event = eventForSelection(); return event ? (state.annotations[String(event.id)] || {}) : {}; }
 function setVerdictDraft(verdict) { state.verdictDraft = verdict; notify(); }
-function cycleVerdict() { const order = ['correct','wrong','unsure']; const current = state.verdictDraft ?? verdictValue().verdict ?? ''; const next = order[(order.indexOf(current) + 1) % order.length]; state.verdictDraft = next; notify(); return next; }
+// The V key walks the verdict words in the order of VOCABULARY.verdictWords, so the
+// keyboard, the rail button row and the inspector button row offer one order.
+function cycleVerdict() { const order = VOCABULARY.verdictWords; const current = state.verdictDraft ?? verdictValue().verdict ?? ''; const next = order[(order.indexOf(current) + 1) % order.length]; state.verdictDraft = next; notify(); return next; }
 async function saveVerdict(button, verdict) {
   const event = eventForSelection(); if (!event) return false;
   const saved = state.annotations[String(event.id)] || {};
@@ -2361,6 +2375,10 @@ window.CornerPocketReview = {
   pocketText: value => pocketText(value),
   colourWord: value => colourWord(value)
 };
+// The vocabulary travels on the published object so the adapter reads one owner, and it
+// stays out of Object.keys(). The key count of the console API is the public surface: the
+// lifecycle, one stage and the mounted seam. Tests/test_app_timeline.js reads that count.
+Object.defineProperty(window.CornerPocketReview, 'vocabulary', {value: VOCABULARY, enumerable: false});
 const standaloneRoot = document.querySelector('#review-root');
 if (standaloneRoot) { mount(standaloneRoot); activate(); }
 })();

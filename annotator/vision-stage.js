@@ -31,6 +31,14 @@ function newActionRegistry() {
 }
 const ensureRegistry = () => globalThis.ActionRegistry || (globalThis.ActionRegistry = newActionRegistry());
 const registry = ensureRegistry();
+// The words of a box label and the words of a cue verdict have one owner in this console:
+// the object `vocabulary` of window.CornerPocketReview, built by annotator/app.js. The
+// console page loads annotator/app.js before this module, so both readers below find it.
+// A reader here used to spell its own list, and a word that a reader added and the service
+// did not have reached the operator as a refusal from the service. The read is late, on
+// purpose: this module loads once and renders many times.
+const boxLabels = () => window.CornerPocketReview.vocabulary.boxLabels;
+const verdictWords = () => window.CornerPocketReview.vocabulary.verdictWords;
 const COPY = {
   en: {
     cues:'Cues', inspector:'Inspector', sources:'Source', visionLoading:'Loading the review workspace…', sourcesBtn:'Sources', events:'Events', balls:'Balls', persons:'Persons',
@@ -697,7 +705,7 @@ function railHTML(s) {
       <div class="vs-card-row"><span class="vs-badge ${esc(e.type)}">${esc(e.type === 'pot' ? t('pots') : t('shots'))}</span>${tierBadge(e)}<span class="vs-mono">${esc(timecode(e.t))}</span><span class="vs-mono vs-dim">#${esc(e.id)}</span>${pocketTag(e)}</div>
       ${gateEvidence(e).length ? `<div class="vs-mono vs-dim fv-gate">${esc(gateEvidence(e).join(' · '))}</div>` : ''}
       ${provenanceLine(e)}
-      <div class="vs-verbs">${['correct','wrong','unsure'].map(v => `<button class="${e.verdict === v ? 'active' : ''}" data-vs-action="verdict" data-vs-id="${esc(e.id)}" data-vs-value="${v}" title="${esc(t(v))}" aria-label="${esc(t(v))}">${{correct:'✓',wrong:'✗',unsure:'?'}[v]}</button>`).join('')}<span class="vs-verb-label">${esc(e.verdict ? t(e.verdict) : t('notReviewed'))}</span></div>
+      <div class="vs-verbs">${verdictWords().map(v => `<button class="${e.verdict === v ? 'active' : ''}" data-vs-action="verdict" data-vs-id="${esc(e.id)}" data-vs-value="${v}" title="${esc(t(v))}" aria-label="${esc(t(v))}">${{correct:'✓',wrong:'✗',unsure:'?'}[v]}</button>`).join('')}<span class="vs-verb-label">${esc(e.verdict ? t(e.verdict) : t('notReviewed'))}</span></div>
     </article>`).join('') : s.eventsAnalysed === false ? `<p class="vs-empty" data-vs-empty="not-scanned">${esc(t('bcEventsNone'))}</p>`
     : `<p class="vs-empty" data-vs-empty="${esc(emptyMarker(s.eventFilter))}">${esc(t(emptyReasonKey(s.eventFilter)))}</p>`;
   const crops = s.balls.items;
@@ -1286,7 +1294,7 @@ function inferenceLine(s) {
 function boxLayers(s) { return `${s.corrections?.manualBoxes ?? 0}/${s.corrections?.modelBoxes ?? 0}`; }
 function boxBlock(s) {
   const index = s.selection.box;
-  const labels = ['person','ball','cue','solid','stripe','eight'];
+  const labels = boxLabels();
   return `<h3>${esc(t('box'))} ${index + 1}</h3>
   <label class="vs-field">${esc(t('boxLabel'))}<select data-vs-action="box-label">${labels.map(l => `<option value="${l}" ${s.corrections.boxLabel === l ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
   <div class="vs-row"><button data-vs-action="delete-box">${esc(t('deleteBox'))}</button></div>
@@ -1303,7 +1311,7 @@ function actionsHTML(s) {
   if (kind === 'event') {
     const item = s.selection.event || s.events.items[s.events.index];
     const verdict = s.verdictDraft ?? item?.annotation?.verdict ?? '';
-    return `${['correct','wrong','unsure'].map(v => `<button class="${verdict === v ? 'active' : ''}" data-vs-action="verdict-draft" data-vs-value="${v}">${esc(t(v))}</button>`).join('')}<button class="primary" data-vs-action="save-verdict">${esc(t('saveReview'))}</button><button data-vs-action="next-event">${esc(t('nextCue'))}</button>`;
+    return `${verdictWords().map(v => `<button class="${verdict === v ? 'active' : ''}" data-vs-action="verdict-draft" data-vs-value="${v}">${esc(t(v))}</button>`).join('')}<button class="primary" data-vs-action="save-verdict">${esc(t('saveReview'))}</button><button data-vs-action="next-event">${esc(t('nextCue'))}</button>`;
   }
   if (kind === 'ball') {
     const label = s.selection.crop?.label;

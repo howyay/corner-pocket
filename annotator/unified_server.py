@@ -72,6 +72,14 @@ from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 #: it and the write registry imports it for its 'live' row, so the gate and the contract
 #: GET /api/actions publishes cannot name two different sets.
 LIVE_ACTIONS = ('start', 'stop')
+#: The console vocabulary, service side. annotator/app.js owns the same two lists in
+#: javascript (VOCABULARY, published on window.CornerPocketReview), and
+#: db/migrations/0002_user_data.sql holds the verdict list in the event_verdicts CHECK.
+#: One guard holds the languages together: tests/test_console_vocabulary.py reads every
+#: site and fails on the site and the missing word. The box-label list is the six labels
+#: the operator draws; the verdict list is the three review words.
+BOX_LABELS = ('person', 'ball', 'cue', 'solid', 'stripe', 'eight')
+VERDICT_WORDS = ('correct', 'wrong', 'unsure')
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
 _MAX_ENROLL_BYTES = 8 * 1024 * 1024
@@ -1929,7 +1937,7 @@ class Backend:
             raise APIError('boxes must be a list with at most 200 entries')
         cleaned = []
         for box in boxes:
-            if not isinstance(box, dict) or box.get('label') not in ('person', 'ball', 'cue', 'solid', 'stripe', 'eight'):
+            if not isinstance(box, dict) or box.get('label') not in BOX_LABELS:
                 raise APIError('invalid box label')
             coords = box.get('bbox')
             if not isinstance(coords, list) or len(coords) != 4:
@@ -2232,7 +2240,7 @@ class Backend:
         key = str(p.get("event_id"))
         if not any(str(e["id"]) == key for e in load(base / "events.json", [])):
             raise APIError("unknown event")
-        if "verdict" in p and p["verdict"] not in ("correct", "wrong", "unsure"):
+        if "verdict" in p and p["verdict"] not in VERDICT_WORDS:
             raise APIError("invalid verdict")
         if "shooter" in p and p["shooter"] not in ("A", "B", "?", ""):
             raise APIError("invalid shooter")

@@ -272,14 +272,27 @@ function stageDocument() {
 // `extra` adds the browser globals a test wants to watch (ResizeObserver).
 function adapterBox(extra) {
   const document_ = stageDocument();
-  const box = {window: {}, document: document_, location: {hostname: '127.0.0.1'},
+  // The engine registers its keyboard and resize listeners on window at load, so the stub
+  // window carries the two listener methods, as the browser window does.
+  const box = {document: document_, location: {hostname: '127.0.0.1'},
     URL: {}, fetch: () => Promise.reject(new Error('no network in tests')), setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {},
     console, Math, Number, Object, JSON, Date, ...(extra || {})};
+  // annotator/app.js publishes on window (window.CornerPocketReview). The engine registers
+  // its keyboard and resize listeners on window at load. In a browser window IS the global
+  // object, so this realm answers the name `window` with the realm itself: what app.js
+  // writes to window, the adapter reads from window.
+  Object.defineProperty(box, 'window', {get: () => box, set() {}, enumerable: true});
+  box.addEventListener = () => {};
+  box.removeEventListener = () => {};
   box.globalThis = box;
   box.overlay = document_.overlay;
   vm.createContext(box);
-  // The stage reads the duration owner as well: annotator/vision-stage.js formats a frame time.
+  // The page order in one place, as annotator/ops.html writes it: the duration owner, then
+  // the review engine, then the adapter. The adapter reads the console vocabulary from the
+  // engine (window.CornerPocketReview.vocabulary), so a realm without the engine is a realm
+  // that no page builds.
   vm.runInContext(durationSource, box, {filename: 'duration.js'});
+  vm.runInContext(source, box, {filename: 'app.js'});
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'annotator', 'vision-stage.js'), 'utf8'), box, {filename: 'vision-stage.js'});
   return box;
 }

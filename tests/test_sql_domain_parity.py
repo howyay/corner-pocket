@@ -38,6 +38,13 @@ from pathlib import Path
 # that.  The import also makes this module compare the owner with the SQL text.
 from src.store_files import BALL_SETS
 
+# The event_verdicts pair reads the service constant, so the migration and the validator
+# cannot drift apart.  annotator/app.js owns the same three words in javascript, and
+# tests/test_console_vocabulary.py holds the console and the service together.  The import
+# is also the reason no literal list of the three words stands in this module: a literal
+# here would be a second spelling of the vocabulary.
+from annotator.unified_server import VERDICT_WORDS
+
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / 'db' / 'migrations'
 #: The shipped packages.  A second copy inside the application is a defect.  tests/ is not
@@ -191,8 +198,10 @@ PAIRS = (
          sql_column='label',
          sql_constraint="CHECK (label IN ('A','B','ignore') OR length(label) BETWEEN 1 AND 60)",
          python=(('annotator/unified_server.py', 2), ('src/pid_seed_rebuild.py', 1))),
+    # The verdict values are the service constant VERDICT_WORDS, imported above.  A second
+    # case reads that constant, so a change in the validator shows up as one failure here.
     Pair(domain='event_verdicts.verdict',
-         values=('correct', 'wrong', 'unsure'),
+         values=tuple(VERDICT_WORDS),
          sql_file='0002_user_data.sql',
          sql_table='event_verdicts',
          sql_column='verdict',
@@ -340,3 +349,19 @@ class SqlDomainParityTests(unittest.TestCase):
         recorded = {('annotator/operations.py', domain)}
         self.assertEqual([('src/pid_seed_rebuild.py', ('doubles', 'singles'))],
                          unrecorded_copies(copies, {domain}, recorded))
+
+    def test_the_verdict_pair_reads_the_service_constant(self):
+        """The event_verdicts pair holds the values of the service constant VERDICT_WORDS.
+
+        The pair above is one copy of the three words.  This case holds that copy to the
+        owner in annotator/unified_server.py, and the SQL text of the same pair holds the
+        migration to the same words.
+        """
+        verdict = [pair for pair in PAIRS if pair.domain == 'event_verdicts.verdict']
+        self.assertEqual(1, len(verdict), 'this module binds event_verdicts.verdict once')
+        self.assertEqual(tuple(VERDICT_WORDS), verdict[0].values)
+        sql = source(f'db/migrations/{verdict[0].sql_file}')
+        block = dict(tables_in(sql))[verdict[0].sql_table]
+        values = [tuple(words) for _, words in checks_in(block)]
+        self.assertIn(tuple(VERDICT_WORDS), values,
+                      'the migration spells the values of VERDICT_WORDS, in that order')
