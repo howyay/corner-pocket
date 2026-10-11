@@ -32,6 +32,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# Round 59 deleted the local `_order` adapter.  The callers read the one owner of
+# the corner order, and they make an array first, because the owner reshapes an
+# array and a saved segment file holds a JSON list.
+from src.table_detect import _order_corners
+
 ROOT = Path(__file__).resolve().parent.parent
 
 _BAND_PX = 34.0          # half-width of the perpendicular search around a side
@@ -98,7 +103,7 @@ def prior_for(dataset: str, t: float | None = None, root=None):
     if segments is not None:
         seg = segments.resolve(t)
         if seg is not None:
-            return _order(seg.quad)
+            return _order_corners(np.asarray(seg.quad, np.float32))
 
     spec = _DATASET_PRIOR.get(str(dataset))
     if not spec:
@@ -126,11 +131,6 @@ def prior_for(dataset: str, t: float | None = None, root=None):
         return None
     if pts.shape != (4, 2):
         return None
-    return _order(pts)
-
-
-def _order(pts):
-    from src.table_detect import _order_corners
     return _order_corners(np.asarray(pts, np.float32))
 
 
@@ -959,7 +959,7 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
     # still measured - but it is reported as such and cannot claim a fully measured confidence.
     try:
         from src.playfield import check_quad
-        ordered = _order(quad)
+        ordered = _order_corners(np.asarray(quad, np.float32))
         candidates = [ordered, [ordered[1], ordered[2], ordered[3], ordered[0]]]
         verdicts = [check_quad([[float(p[0]), float(p[1])] for p in c]) for c in candidates]
         playfield = min(verdicts, key=lambda v: (not v["ok"], len(v["reasons"])))

@@ -53,6 +53,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.datasets import media_path  # noqa: E402
+# Round 59 deleted the local `_order` adapter.  The callers read the one owner of
+# the corner order, and they make an array first, because the owner reshapes an
+# array and a saved reference holds a JSON list.
+from src.table_detect import _order_corners  # noqa: E402
 
 OUT_DIR = ROOT / "out" / "table-detect-eval"
 VOD30 = media_path(ROOT, "vod30")
@@ -65,11 +69,6 @@ CLOTH_TOLERANCE_PX = 40.0  # annotator/app.js CLOTH_TOLERANCE_PX - the app's mea
 
 # -- references ---------------------------------------------------------------
 
-def _order(points) -> np.ndarray:
-    from src.table_detect import _order_corners
-    return _order_corners(np.asarray(points, np.float32))
-
-
 def load_references() -> dict:
     """Return {dataset: [{name, corners, width, height, note, source_file, quality}]}.
 
@@ -81,7 +80,7 @@ def load_references() -> dict:
     anchors = json.load(open(ANCHORS))["anchors"]
     refs = {"vod30": [], "highlight": []}
     for key in sorted(anchors, key=float):
-        pts = _order(anchors[key][:4])
+        pts = _order_corners(np.asarray(anchors[key][:4], np.float32))
         refs["vod30"].append({
             "name": f"app-anchors@{key}s", "corners": pts,
             "width": 1280, "height": 720, "anchors_key": key,
@@ -91,7 +90,7 @@ def load_references() -> dict:
         })
     v2 = json.load(open(CORNERS_V2))
     refs["vod30"].append({
-        "name": "corners30-v2", "corners": _order(v2["corners"]),
+        "name": "corners30-v2", "corners": _order_corners(np.asarray(v2["corners"], np.float32)),
         "width": 1280, "height": 720,
         "source_file": str(CORNERS_V2), "quality": "circular",
         "note": (f"{v2.get('method', 'strip-refine')}; "
@@ -102,7 +101,7 @@ def load_references() -> dict:
     })
     fixed = json.load(open(FIXED_CORNERS))["corners"]
     refs["highlight"].append({
-        "name": "fixed-corners", "corners": _order(fixed),
+        "name": "fixed-corners", "corners": _order_corners(np.asarray(fixed, np.float32)),
         "width": 1920, "height": 1080,
         "source_file": str(FIXED_CORNERS), "quality": "authoritative",
         "note": "highlight's saved reference (per docs/state.md 2.0 px median vs the cloth quad); "
