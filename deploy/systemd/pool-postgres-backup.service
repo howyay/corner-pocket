@@ -1,5 +1,5 @@
 # Corner Pocket: daily logical backup of the `pool` database (docs/postgres.md).
-# A TEMPLATE: the runbook's install step renders it with sed into
+# A TEMPLATE: scripts/pool-render-units.sh renders it into
 # ~/.config/systemd/user/pool-postgres-backup.service, replacing
 #   @REPO_DIR@    the repository checkout
 #   @BACKUP_DIR@  the backup directory (must exist, mode 700)

@@ -20,6 +20,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from src.table_geometry import CANON_H, CANON_W
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -30,7 +31,7 @@ SCAN_QUAD = ROOT / "out" / "scan30" / "corners.json"
 AUDIT = ROOT / "out" / "calib_mapping_audit.json"
 HAVE_QUADS = ANCHORS.is_file() and SCAN_QUAD.is_file()
 HAVE_VIDEO = VIDEO.is_file() and HAVE_QUADS
-CANON_W, CANON_H = 1270.0, 2540.0
+CANON_W, CANON_H = float(CANON_W), float(CANON_H)
 
 
 class MappingTruthTests(unittest.TestCase):

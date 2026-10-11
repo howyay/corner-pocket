@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 QA = REPO / 'src' / 'qa.py'
@@ -146,7 +147,7 @@ class QaBoundsTests(unittest.TestCase):
         self.assertEqual(clashes, [],
                          f'src/qa.py assigns a frame name again ({where}); '
                          f'import CANON_W and CANON_H from src.table_geometry instead')
-        self.assertEqual((width, height), (1270, 2540))
+        self.assertEqual((width, height), (CANON_W, CANON_H))
 
     def test_the_private_window_has_not_returned_to_the_source(self):
         # The scan names the file and the line of a literal window, whatever

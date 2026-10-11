@@ -17,11 +17,12 @@ from src.ball_census import (CENSUS_VERSION, MIN_CENSUS_BALLS, Observation,  # n
                              window_summary)
 from src.event_gates import (GateConfig, GateResult, PotEvidence, ShotEvidence,  # noqa: E402
                              census_shot_corroborated, judge)
+from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
 # A tiny canonical-frame projector: 1 px = 10 mm on both axes, so distances in
 # the tests read directly in millimetres.
 MM_FN = lambda cx, cy, t=None: [cx * 10.0, cy * 10.0]  # noqa: E731
-FOOT_RIGHT_MM = (1270.0, 2540.0)               # frame px (127.0, 254.0)
+FOOT_RIGHT_MM = (float(CANON_W), float(CANON_H))               # frame px (127.0, 254.0)
 
 
 def obs(t, color, cx, cy, source="classical", score=None):

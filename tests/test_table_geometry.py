@@ -372,3 +372,37 @@ class OneCanonicalFrameTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FrameSpellingTests(unittest.TestCase):
+    """The canonical frame has one home, and the test tree reads it.
+
+    ``src/table_geometry.py`` owns CANON_W and CANON_H.  Round 65 found two
+    test modules that spelled the frame with their own number pair.  This case
+    walks the test tree, so a third spelling fails here and names its line.
+    """
+
+    #: This module pins the owner's value in one pairing case on purpose, so the
+    #: walk exempts it.  The owner module is not under tests/ and needs no entry.
+    EXEMPT = {'test_table_geometry.py'}
+
+    def test_no_test_module_spells_the_frame_with_its_own_numbers(self):
+        from src.table_geometry import CANON_H, CANON_W
+        pairs = {(CANON_W, CANON_H), (CANON_H, CANON_W),
+                 (float(CANON_W), float(CANON_H)), (float(CANON_H), float(CANON_W))}
+        found = {}
+        for path in sorted((REPO / 'tests').glob('test_*.py')):
+            if path.name in self.EXEMPT:
+                continue
+            lines = []
+            for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
+                if not isinstance(node, (ast.Tuple, ast.List)) or len(node.elts) != 2:
+                    continue
+                values = tuple(elt.value for elt in node.elts
+                               if isinstance(elt, ast.Constant)
+                               and not isinstance(elt.value, bool))
+                if values in pairs:
+                    lines.append(node.lineno)
+            if lines:
+                found[path.name] = sorted(lines)
+        self.assertEqual(found, {}, 'a second frame in the test tree reads src.table_geometry')
