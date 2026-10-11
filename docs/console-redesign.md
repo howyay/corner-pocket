@@ -8252,3 +8252,202 @@ the guard of that declaration.
 The push is still blocked. Ninety-eight commits sit on the local `main`: the two code commits of this round,
 the two repairs of the Lead, the record of this round, and the ninety-four that came before them.
 `origin/main` stays at `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 67 · the seed path, the requires shape rule, the dataset table and the OSNet mean (2026-10-11)
+
+The walk of this round read the repository at `c97f654` with an empty `git status --porcelain`, answered
+`Strong candidate present - 3 Strong, 1 Worth, 0 Note`, and wrote 139 lines to
+`/tmp/dshsess/walk_round67.md`. The count on its verdict line equals the number of its sections. It did not
+read the `Backend` write-handler bodies of `annotator/unified_server.py`, `Operations.__init__`/`apply`/
+`_audit_*` of `annotator/operations.py`, `src/sam3/` (172 vendored modules), `annotator/board.js`,
+`annotator/vision-stage.js`, `annotator/index.html`, and the 43 files of `docs/` in full. It also ruled out
+three leads with evidence: `tests/test_app_timeline.js:907` is not a self-comparison, because
+`annotator/app.js:382 if (!tagQueue) return draw(x, y);` makes `tagRow` stateful; the two ffmpeg builders
+share four flags but do different jobs; and `src/ball_gate.py:11-70`'s 9000/6000 area-cap contradiction is a
+documented ruling.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `cda399c` | `src/store_files.py`, `src/store_check.py`, `src/store_import.py`, `src/store_pg.py`, `src/eval_faces.py`, `src/store.py`, `src/pid_seed_ui.py`, `tests/test_seed_document_owner.py` | Strong 1 |
+| `13fa403` | `annotator/operations.py`, `annotator/unified_server.py`, `src/calib_segments.py`, `src/table_refine.py`, `src/weight_pins.py`, the six loaders, `tests/test_operations.py`, `tests/test_unified_server.py`, `tests/test_calib_segments.py`, `tests/test_table_refine.py`, `tests/test_weight_pins.py` | Strong 2, Strong 3 and Worth 1 |
+| `41ebec4` | `tests/pool_probe.py`, `tests/test_connection_budget.py`, `tests/test_http_security.py`, `tests/test_event_retention.py` | four citations of the Lead |
+
+### Strong 1 · the seed path had no owner name
+
+Ground: `src/store_files.py:37-41` states that the operations document path has one owner and that a reader
+must not spell it again, and the sibling seed path had no name at all — `out/pid_seed.json` stood as a
+literal in eight spellings over seven files, among them the owner module's own
+`:139 if relative in ("out/pid_seed.json", STATE_DOCUMENT):`, while `src/store_import.py:45` already imported
+`STATE_DOCUMENT` and still spelled the seed literal at `:449`. `git grep -n "PID_SEED\|SEED_DOCUMENT"`
+answered nothing. Repair: `src/store_files.py:45 SEED_DOCUMENT = "out/pid_seed.json"` carries the comment
+shape of its sibling, the tuple test at `:143` compares two names, and the seven modules read it
+(`src/store_check.py:24,39`, `src/store_import.py:45,449`, `src/store_pg.py:37,58`,
+`src/eval_faces.py:69,92`, `src/store.py:61,268` through `Path(SEED_DOCUMENT).name`,
+`src/pid_seed_ui.py:38,41`). `tests/test_seed_document_owner.py` holds three cases: the owner's value with
+`document_paths("seeds")`, `store_pg._doc_path` and `JsonStore._seeds_path` agreeing, an `ast` walk over
+`tests/_shipped.py`'s `shipped_modules()` that answers exactly `['src/store_files.py:45']`, and a planted
+copy that reports its own line. After the repair `git grep -c "out/pid_seed.json" -- '*.py'` answers the owner
+line and one comment at `src/pid_seed_ui.py:28`, and `out/pid_seed.json` itself is unchanged. Two test
+modules kept the literal on purpose: `tests/test_store_files.py` and `tests/test_store_merge_rules.py` hold it
+as independent expectations, and a test that imports the owner cannot state the owner's value.
+
+### Strong 2 · the `requires` shape rule had two owners that disagreed
+
+Ground: `annotator/unified_server.py:242 operator_actions` checked the shape of a `requires` entry at
+`:264-265` and accepted an entry whose field name is the empty string, while
+`annotator/operations.py:285 operations_registry` refused it at `:301-303`; nine rules stood twice, and three
+sentences stood twice with two nouns (`' is declared twice'` at `:255`/`:294`, `' needs a tuple of required
+fields'` at `:263`/`:300`, `' declares a bad required field: '` at `:266`/`:304`). The two guards were
+separate (`tests/test_unified_server.py:2017-2019`, `tests/test_operations.py:1465-1480`) and no case read
+both. Repair: `annotator/operations.py:285 check_requires(entry, label)` keeps the stricter reading (each part
+a non-empty `str`), `operations_registry` calls it at `:318`, and the write table imports it at
+`annotator/unified_server.py:52` and calls it at `:269`, so both callers refuse an empty field name with the
+same sentence. The measured check: a probe row of `('', 'a refusal')` answers
+`write probe declares a bad required field: ('', 'a refusal')` and
+`operation probe_action declares a bad required field: ('', 'a refusal')`, `git grep -n "is declared twice"`
+answers one shipped rule, and no shipped `requires` entry uses an empty field name.
+
+### Strong 3 · the per-dataset reference table stood twice
+
+Ground: `src/calib_segments.py:74-78 STATIC_REFERENCES` and `CORNERS_SPEC` and `src/table_refine.py:68
+_DATASET_PRIOR` held the same (file, key) pairs, `src/calib_segments.py:81 EVIDENCE_HIGHLIGHT` even cited
+`_DATASET_PRIOR` by name, both datasets answered equal so a drift was silent, and
+`git grep -n "STATIC_REFERENCES" -- 'tests/*.py' | wc -l` answered 0. The readers also disagreed on an
+unknown dataset: `src/calib_segments.py:427 spec = STATIC_REFERENCES.get(str(dataset)) or CORNERS_SPEC`
+served the highlight file, while `src/table_refine.py:108-110` returned None. Repair: `STATIC_REFERENCES`
+stays the pair owner and gains `reference_spec(dataset)` at `src/calib_segments.py:89`; `src/table_refine.py`
+imports the module, `prior_spec(dataset)` reads the owner at `:92` and adds only its own `points`/`note`,
+`_DATASET_NOTES` holds the two notes, and `_DATASET_PRIOR` at `:122` is a derived view. The unknown-name
+answer is decided once: both readers answer nothing, and the reason stands in the docstrings, because
+`fixed_corners.json` is the reference of `highlight` alone and serving it for an unknown name would silently
+apply another dataset's geometry. The measured check: `git grep -n "STATIC_REFERENCES" -- 'tests/*.py' | wc -l`
+answers 10, and for `no_such` both `reference_spec` and `prior_spec` answer None.
+
+### Worth 1 · the OSNet normalisation mean had no owner
+
+Ground: `git grep -n "0\.485" -- '*.py'` answered six shipped modules (`src/person_pipeline.py:45 _MEAN`,
+`src/pid_associate.py:38 MEAN`, `src/pid_osnet.py:28`, `src/pid_osnet_tight.py:28`,
+`src/pid_osnet_tracks.py:26`, `src/pid_seed_rebuild.py:67 mean`), no test named the number
+(`git grep -n "0\.485" -- 'tests/*.py' | wc -l` answered 0), and `src/reid/osnet.py` held no copy. Repair:
+`src/weight_pins.py:63 OSNET_MEAN = (0.485, 0.456, 0.406)` and `:64 OSNET_STD = (0.229, 0.224, 0.225)` own
+the pair — that module and not a new one, because the mean describes the normalisation of exactly those
+pinned weights and the module already owns the weight facts; tuples keep it standard-library-only, and each
+caller builds its own `np.float32` array with identical bytes. The six sites read it
+(`src/person_pipeline.py:47`, `src/pid_associate.py:41`, `src/pid_osnet.py:31`, `src/pid_osnet_tight.py:31`,
+`src/pid_osnet_tracks.py:29`, `src/pid_seed_rebuild.py:69`), and `tests/test_weight_pins.py:360
+NormalisationTest` holds the mean and the standard deviation as tuples, holds the six loaders to the owner by
+`ast`, and reports a planted copy. After the repair `git grep -n "0\.485" -- '*.py'` answers only the owner
+line and three test sites.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer AE, Strong 1 | `src/pid_seed_rebuild.py` | `dad6b97c281c90593bae36466dd3c612bb2e407a → b2d301d75406d09b8501d344eed1d96eb5512bad → dad6b97c281c90593bae36466dd3c612bb2e407a` | `Lists differ: ['src/store_files.py:45'] != ['src/pid_seed_rebuild.py:139', 'src/store_files.py:45'] … : the seed path has one owner, src/store_files.py; import SEED_DOCUMENT from it` |
+| Lead, Strong 1 | `src/store_check.py` | `94c4aec245bc3e693ba1ded8fce8551236ed1f52 → 30900d481601b01f9e5d2ed63ba60db81d0fa531 → 94c4aec245bc3e693ba1ded8fce8551236ed1f52` | `Lists differ: ['src/store_files.py:45'] != ['src/store_check.py:131', 'src/store_files.py:45']` |
+| Writer AF, Worth 1 | `src/person_pipeline.py` | `c0060a4492a6c20efe57a64036c73b50fd9100d3 → dafd147c225d6ff139a964709350f1ebf769f14b → c0060a4492a6c20efe57a64036c73b50fd9100d3` | `Lists differ: ['person_pipeline.py', 'weight_pins.py'] != ['weight_pins.py'] … : the mean stands in a file other than src/weight_pins.py` |
+| Lead, Worth 1 | `src/weight_pins.py` | `58b54c8737fa0ee41d39193706a0d37011b6ebee → 11467de3443b4cb45b9718a0c6f1058aa2505d31 → 58b54c8737fa0ee41d39193706a0d37011b6ebee` | `Lists differ: [] != [(3, '[0.485, 0.456, 0.406]')]` in `test_a_planted_copy_of_the_mean_is_reported` |
+
+Writer AE's bite fell on `src/pid_seed_rebuild.py`, a file writer AF owned that round, so the bite crossed a
+write boundary. The Lead checked that file after AE restored it and found AF's `from src.weight_pins import
+OSNET_MEAN, OSNET_STD` intact, so no work was lost; the rule for later rounds is that a bite belongs inside
+the writer's own scope. The Lead also removed the stale bytecode of every module it bit before judging a
+green run, because the `.pyc` hazard of round 53 returned in rounds 65 and 66.
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2212 tests in 230.009s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 232, pass 232, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 105 passed, 0 failed |
+
+Round 66 answered 2194 cases and this round answers 2212. The eighteen named additions are the three cases of
+`tests/test_seed_document_owner.py`, the two of `tests/test_operations.py` (81 to 83), the two of
+`tests/test_unified_server.py` (114 to 116), the three of `tests/test_calib_segments.py` (34 to 37), the four
+of `tests/test_table_refine.py` (17 to 21) and the four of `tests/test_weight_pins.py` (13 to 17).
+
+Writer AF's own full run left one failure, `test_citation_lines`, from four stale citations: three into
+`annotator/unified_server.py:2483` that another writer's nine added lines moved, and one
+`tests/test_event_retention.py:445 → tests/test_operations.py:308` that AF's own five added lines moved. The
+Lead re-pointed all four in `41ebec4`: `tests/pool_probe.py:4`, `tests/test_connection_budget.py:17` and
+`tests/test_http_security.py:199` cite `annotator/unified_server.py:2489` (`self._max_handlers =
+self.max_handlers`), and `tests/test_event_retention.py:445` cites `tests/test_operations.py:313`. This is the
+fourth round in a row where a writer's line shift moved a citation outside its own scope.
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The seed path stood as a literal in seven files | Strong 1 of this walk | `SEED_DOCUMENT` owns it and the seven modules read it |
+| The `requires` shape rule had two owners that disagreed | Strong 2 of this walk | `check_requires` owns the stricter reading and both callers call it |
+| The per-dataset reference table stood twice | Strong 3 of this walk | `STATIC_REFERENCES` owns the pairs and `prior_spec` reads them |
+| The OSNet normalisation mean had no owner | Worth 1 of this walk | `OSNET_MEAN` and `OSNET_STD` own the pair in `src/weight_pins.py` |
+| Four citations named moved lines | consequence of the two deliveries | `41ebec4` re-points all four |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The state half of the document-path rule still stands | limit of writer AE | `annotator/live_processing.py:258` and `:344` and `annotator/operations.py:325` still spell the state path; the brief of round 67 named the wrong line numbers (`:257`, `:343`, `:287`) |
+| Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
+| The frame-rate guard reads three shapes | limit of round 66 | a copy in another shape passes it |
+| The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
+| The console bounds are held by text, not by meaning | limit of round 64 | a third statement of a bound is invisible to its case |
+| `matches.round` has no SQL rule | stated in round 64 | the API bound is 1 to 99 and the migration is silent |
+| The glow default still stands twice | limit of round 63 | `annotator/operations.py:295` and `annotator/ops.js:1274 s.lampGlow??.22` |
+| The citation guard skips the documents | Note 2 of round 60, still open | `tests/test_citation_lines.py`'s `SKIP_PARTS` holds `docs`, so 1514 document citations have no guard |
+| Writer line shifts move citations outside their scope | pattern of rounds 61 to 67 | four rounds in a row needed a Lead repair for a citation in a file the writer does not own |
+| The pin's URL still holds the raw weight name | limit of round 62 | `src/weight_pins.py:34` names `yolov8n.pt` inside the download URL |
+| Two stylesheets keep a copy of the range | decision of round 62 | the public port serves no `ops.css` |
+| The Postgres branch stays unexercised | limit of round 62 | three modules skip 8, 29 and 5 cases |
+| The timeline suite keeps its own entry | decision of round 61 | the three suites answer one contract and do not share one runner shape |
+| The join's tolerance may be wrong for future data | limit of round 61 | 0.1 s and the old bucket swap strictness for a row at 70.05 |
+| Four same-named statistics functions stand outside the home | found by writer Q in round 60 | `tests/test_body_calibration.py:160 stats(xs)`, `tests/live_identity_validation.py:147 _stats(xs)`, `tests/live_pipeline_run.py` and `annotator/pipeline_stages.py:75 _percentile` |
+| Many document citations are stale | found by writer P in round 60 | `docs/console-redesign.md` holds 74 citations into `annotator/unified_server.py` and `docs/postgres-design.md` 28 |
+| One sentence still stands twice | found by round 59 | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of round 59 | only their digests pin the table |
+| The projection rule keeps two tolerances and a static walk | decisions of round 59 | each site names its own tolerance |
+| Two modules have no test module of their own | limit of round 59 | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of round 59 | `:333` and `:363` use `abs(row["threshold"] - …) < 1e-9` |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The javascript suites' case counts have no guard | limit of round 57 | the suite list is guarded, and the counts inside the three files are not |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and the drop-in `30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 to 67 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections, and a report can pass its line cap | limits of rounds 56 and 61 | the walks of rounds 57 to 67 answer equal counts, and the round-61 report wrote 261 lines against a cap of 260 |
+
+The push is still blocked. One hundred and three commits sit on the local `main`: the two writer commits of
+this round, the citation repair, the record of this round, and the hundred that came before them.
+`origin/main` stays at `110b0338`. The one user action stays
+`git -C /home/haoye/projects/pool push origin main`.
