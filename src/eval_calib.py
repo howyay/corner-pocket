@@ -24,6 +24,8 @@ from calibrate import (OBJECT_MM, anchors_for_frame, pnp_solve, project)
 from pipeline import homography_to_canonical
 from table_detect import detect_cloth_mask, fit_quadrilateral
 
+from src.ball_scale import NATIVE_FRAME  # noqa: E402
+
 
 def collect_frames(video: str, every: float = 45.0, root=None):
     cap = cv2.VideoCapture(video)
@@ -63,7 +65,7 @@ def main():
     if len(frames) < 10:
         print("not enough frames", flush=True)
         return
-    W, H = 1280, 720
+    W, H = NATIVE_FRAME                 # the reference quad's own resolution, from ball_scale
     # split: odd = fit, even = holdout
     fit_frames = [f for i, f in enumerate(frames) if i % 2 == 0]
     hold_frames = [f for i, f in enumerate(frames) if i % 2 == 1]

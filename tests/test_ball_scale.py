@@ -69,14 +69,25 @@ CENSUS_READER = ('src/ball_census.py', 'TRACK_MATCH_PX')
 # The frame the readers bind, and the two integers they derive from it.  A reader
 # states ``WORKING_FRAME``, or it derives the two integers at module level.
 WORKING_FRAME_NAME = 'WORKING_FRAME'
+# The frames the owner states, in the order the cases name them.  A frame is two
+# integers, and the walk below covers both of them.
+FRAME_PAIRS = (ball_scale.WORKING_FRAME, ball_scale.NATIVE_FRAME)
+FRAME_INTEGERS = frozenset(number for pair in FRAME_PAIRS for number in pair)
+WIDTH_NAMES = frozenset(('W', 'WIDTH', 'W_PX', 'WIDTH_PX'))
+HEIGHT_NAMES = frozenset(('H', 'HEIGHT', 'H_PX', 'HEIGHT_PX'))
 # The one binding outside the owner whose numbers agree by coincidence.  The record
 # holds the line and the exact mapping, so the case below fails when either moves.
 # A lookup entry is not a frame the module binds: no length of this repository
-# scales with it, and the other four entries of that table are not frames at all.
+# scales with it, and the other two entries of that table are not frames at all.
 FRAME_FACTS = (
-    ('src/tiny_ball_net.py', 'RESOLUTIONS', 67,
+    ('src/tiny_ball_net.py', 'RESOLUTIONS', 70,
      (('640x360', (640, 360)), ('960x540', (960, 540)), ('1280x720', (1280, 720)))),
 )
+# The one pair literal that is a guard, not data.  ``tests/test_ball_scale.py``
+# states the native pair as the thing the owner must agree with.  That literal is
+# the expectation of a case, and no length of this repository is computed from it.
+FRAME_EXPECTATIONS = (('tests/test_ball_scale.py', 'test_the_owner_holds_the_measurement',
+                       ball_scale.NATIVE_FRAME),)
 # One ball-size name that is a different measurement, and not a second copy of this
 # one.  ``src/calib_mapping_audit.py`` states the ball at 30.8 px for the highlight
 # clip, whose camera is closer to the table: the same run that
@@ -237,33 +248,66 @@ def bound_names(targets):
 
 
 def frame_pair(tree):
-    """The two numbers of one frame literal, or ``None`` when it is not one."""
+    """The two numbers of one frame literal, or ``None`` when it is not one.
+
+    A frame is two positive integers.  ``(720, 1280)`` is not a frame, and neither
+    is a pair of floats, so a swapped or a fractional pair does not pass the walk.
+    """
+    if not isinstance(tree, (ast.Tuple, ast.List)) or len(tree.elts) != 2:
+        return None
     numbers = []
     for element in tree.elts:
-        if isinstance(element, ast.Constant) and isinstance(element.value, (int, float)):
-            numbers.append(element.value)
-        else:
+        if not isinstance(element, ast.Constant) or not isinstance(element.value, int):
             return None
+        if isinstance(element.value, bool) or element.value <= 0:
+            return None
+        numbers.append(element.value)
     return tuple(numbers)
 
 
 def frame_literals(path):
-    """Every two-number frame literal of one module, with the line it sits on."""
+    """Every frame literal of one module, with the line it sits on.
+
+    Both frames of the owner count: a literal pair is a second statement of the
+    frame, whichever of the two it copies.
+    """
     found = []
     for node in ast.walk(parse(path)):
-        if not isinstance(node, (ast.Tuple, ast.List)) or len(node.elts) != 2:
-            continue
-        if frame_pair(node) == (ball_scale.WORKING_FRAME[0], ball_scale.WORKING_FRAME[1]):
+        pair = frame_pair(node)
+        if pair in FRAME_PAIRS:
             found.append((node.lineno, 'literal', ast.unparse(node)))
     return found
 
 
+def frame_number_sites(path):
+    """Every site of one module that binds one integer of a frame under its own name.
+
+    ``W, H = 1280, 720`` is a second statement of the pair, but it is not one
+    tuple.  This walk reads the names: a name that says width must not hold the
+    width of a frame, and a name that says height must not hold its height.
+    """
+    found = []
+    for line, name, value in bindings(path):
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, int):
+            continue
+        if isinstance(value.value, bool):
+            continue
+        words = name.upper().strip('_').split('_')
+        if value.value in (ball_scale.NATIVE_FRAME[0], ball_scale.WORKING_FRAME[0]):
+            if words[-1] in WIDTH_NAMES:
+                found.append((line, (name,), 'number', '%s = %d' % (name, value.value)))
+        elif value.value in (ball_scale.NATIVE_FRAME[1], ball_scale.WORKING_FRAME[1]):
+            if words[-1] in HEIGHT_NAMES:
+                found.append((line, (name,), 'number', '%s = %d' % (name, value.value)))
+    return found
+
+
 def frame_mappings(path):
-    """Every name of one module bound to a table of constant keys, with the line of the name.
+    """Every name of one module bound to a table of constant keys, with its span.
 
     The exception of ``FRAME_FACTS`` is a row of such a table.  This walk reports
-    the whole table once, and the site walk skips the row itself, so one recorded
-    fact answers one site.
+    the whole table once, and the site walk skips the rows inside it, so one
+    recorded fact answers one site.
     """
     found = []
     for node in ast.walk(parse(path)):
@@ -275,32 +319,48 @@ def frame_mappings(path):
         if any(not isinstance(key, ast.Constant) for key in value.keys):
             continue
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            found.append((node.lineno, node.end_lineno, node.targets[0].id, ast.unparse(value)))
+            found.append((node.lineno, node.end_lineno, node.targets[0].id, value,
+                          ast.unparse(value)))
+    return found
+
+
+def table_pairs(value):
+    """The frame pairs one table holds, with the key that holds each one."""
+    found = []
+    for key, row in zip(value.keys, value.values):
+        pair = frame_pair(row)
+        if pair in FRAME_PAIRS and isinstance(key, ast.Constant):
+            found.append((key.value, pair))
     return found
 
 
 def frame_sites(path):
-    """Every site of one module that binds the working frame a second time."""
+    """Every site of one module that states a frame a second time.
+
+    The owner states both frames, and every other module reads them.  A reader may
+    alias the owner's object, derive an integer from it, or call the owner's
+    conversion: all three read one home.  A literal pair, or a width under a width
+    name, is a second home.
+    """
     found = []
-    imported = bool(owner_imports(path) & {WORKING_FRAME_NAME})
+    spans = []
+    for start, end, name, value, _written in frame_mappings(path):
+        pairs = table_pairs(value)
+        if not pairs:
+            continue
+        spans.append((start, end))
+        found.append((start, (name,), 'mapping',
+                      '%s = %s' % (name, '  '.join('%s: %s' % pair for pair in pairs))))
     for line, targets, value in frame_bindings(path):
-        pair = frame_pair(value)
-        if pair != (ball_scale.WORKING_FRAME[0], ball_scale.WORKING_FRAME[1]):
+        if frame_pair(value) not in FRAME_PAIRS:
+            continue
+        if reads_owner(path, value):
             continue
         written = ast.unparse(targets[0]) if len(targets) == 1 else ', '.join(
             ast.unparse(target) for target in targets)
-        names = {node.id for node in ast.walk(value) if isinstance(node, ast.Name)}
-        if imported and WORKING_FRAME_NAME in names:
-            continue
         found.append((line, tuple(sorted(bound_names(targets))), 'assignment',
                       '%s = %s' % (written, ast.unparse(value))))
-    spans = []
-    for start, end, name, written in frame_mappings(path):
-        if '(' + str(ball_scale.WORKING_FRAME[0]) + ', ' \
-                + str(ball_scale.WORKING_FRAME[1]) + ')' not in written:
-            continue
-        spans.append((start, end))
-        found.append((start, (name,), 'mapping', '%s = %s' % (name, written)))
+    found.extend(frame_number_sites(path))
     for line, kind, term in frame_literals(path):
         if any(start <= line <= end for start, end in spans):
             continue
@@ -422,19 +482,20 @@ class BallScaleTest(unittest.TestCase):
                          'a second name holds a ball size.  %s owns the measurement, and the '
                          'gate reads its names:\n%s' % (OWNER, '\n'.join(loose)))
 
-    def test_no_second_module_binds_the_working_frame(self):
-        """The owner holds the working frame, and no other module binds it again.
+    def test_no_second_module_binds_a_frame_size(self):
+        """The owner holds both frames, and no other module binds either again.
 
-        A reader binds ``WORKING_FRAME`` or derives the two integers from it at
-        module level.  A bare ``(960, 540)`` pair outside the owner is a second
-        home: the ball's pixel size scales with the frame, so the two facts move
-        together and the copy drifts first.
+        A reader binds ``WORKING_FRAME`` or ``NATIVE_FRAME``, or it derives the two
+        integers from one of them, or it calls ``scale_between``.  A bare
+        ``(960, 540)`` or ``(1280, 720)`` pair outside the owner is a second home:
+        the ball's pixel size scales with the frame, so the facts move together and
+        the copy drifts first.
 
-        One binding of this tree holds the same numbers as another fact: the
-        ``"960x540"`` row of ``RESOLUTIONS``.  That row is a lookup entry of a size
-        string table, and the numbers agree by coincidence.  ``FRAME_FACTS``
-        records it with its line and its value, so the case fails when the entry
-        moves, changes or vanishes -- a stale record is not a pass.
+        One binding of this tree holds numbers that agree with a frame and state
+        another fact: the ``"1280x720"`` row of ``RESOLUTIONS``.  That row is a
+        lookup entry of a size-string table.  ``FRAME_FACTS`` records the whole
+        table with its line and its value, so the case fails when the entry moves,
+        changes or vanishes -- a stale record is not a pass.
         """
         recorded = {(module, name) for module, name, _, _ in FRAME_FACTS}
         found = []
@@ -447,23 +508,43 @@ class BallScaleTest(unittest.TestCase):
                     continue
                 found.append('%s:%d: %s, %s' % (module, line, kind, term))
         self.assertEqual([], found,
-                         'a second module binds the working frame size %s.  %s owns it, so '
-                         'import %s or derive its two integers:\n%s'
-                         % (repr(ball_scale.WORKING_FRAME), OWNER, WORKING_FRAME_NAME,
+                         'a second module binds the working frame %s or the native frame %s.  '
+                         '%s owns both, so import a name of the owner or call scale_between:\n%s'
+                         % (repr(ball_scale.WORKING_FRAME), repr(ball_scale.NATIVE_FRAME), OWNER,
                             '\n'.join(found)))
 
     def test_every_recorded_frame_fact_still_matches(self):
-        """The one recorded exception is the row it claims, on the line it claims."""
+        """The one recorded exception is the table it claims, on the line it claims."""
         for module, name, line, value in FRAME_FACTS:
             sites = [(at, tuple(ast.literal_eval(
                          ast.parse(written, mode='eval').body).items()))
-                     for at, _, bound, written in frame_mappings(ROOT / module)
+                     for at, _, bound, _tree, written in frame_mappings(ROOT / module)
                      if bound == name]
             self.assertEqual([(line, value)], sites,
-                             '%s:%s is the recorded exception of the working frame.  The module '
-                             'now binds %r.  A recorded exception that moves, changes or '
-                             'vanishes must not pass this case.'
+                             '%s:%s is the recorded exception of the frames.  The module now '
+                             'binds %r.  A recorded exception that moves, changes or vanishes '
+                             'must not pass this case.'
                              % (module, name, sites or 'nothing'))
+
+    def test_every_recorded_frame_expectation_is_still_in_the_guard(self):
+        """The literal pair the guard compares the owner with is still there.
+
+        ``tests/test_ball_scale.py`` states the native pair, because a guard that
+        reads both sides from the owner proves nothing: it would pass when the owner
+        moves.  This case holds that literal below its case, so the literal cannot
+        vanish or become a name the owner gives.
+        """
+        for module, function, pair in FRAME_EXPECTATIONS:
+            tree = parse(ROOT / module)
+            line = next((node.lineno for node in ast.walk(tree)
+                         if isinstance(node, ast.FunctionDef) and node.name == function), None)
+            self.assertIsNotNone(line, '%s must hold the case %s' % (module, function))
+            below = [term for at, kind, term in frame_literals(ROOT / module) if at > line]
+            expected = ast.unparse(ast.Tuple(elts=[ast.Constant(value=number)
+                                                   for number in pair], ctx=ast.Load()))
+            self.assertIn(expected, ' '.join(below),
+                          '%s must state %s as a literal pair below %s.  Without it the case '
+                          'reads both sides from %s' % (module, expected, function, OWNER))
 
     def test_no_line_states_a_cloth_scale_beside_a_module_name(self):
         """A comment that states a scale in mm/px must not vouch for a module.
@@ -517,6 +598,50 @@ class BallScaleTest(unittest.TestCase):
                              '%s:%s is %r now and was %r before this round.  The measured '
                              'diameter is the only number this round corrects.'
                              % (module, name, found, value))
+
+    def test_the_walk_understands_a_second_copy(self):
+        """One scratch module per form of a second copy, and the walk finds each one.
+
+        The walk reads syntax, not a line number, so this case is the proof that it
+        can see a copy it never saw before.  It writes each scratch module into
+        ``src/`` and removes it in a ``finally`` block.
+        """
+        copies = (
+            ('ALIAS_NATIVE = (1280, 720)\n', 'src/scratch_frames.py', 'assignment'),
+            ('ALIAS_FULL = [960, 540]\n', 'src/scratch_frames.py', 'assignment'),
+            ('ALIAS_W, ALIAS_H = 1280, 720\n', 'src/scratch_frames.py', 'assignment'),
+            ('ALIAS_W = 1280\n', 'src/scratch_frames.py', 'number'),
+            ('ALIAS_H = 720\n', 'src/scratch_frames.py', 'number'),
+            ('ALIAS = {"1280x720": (1280, 720)}\n', 'src/scratch_frames.py', 'mapping'),
+        )
+        for text, module, kind in copies:
+            path = ROOT / module
+            try:
+                path.write_text(text, encoding='utf-8')
+                found = [site for site in frame_sites(path) if site[2] == kind]
+            finally:
+                path.unlink()
+            self.assertEqual(1, len(found),
+                             '%s must read as one %s of a frame: %r'
+                             % (text.strip(), kind, found))
+
+    def test_the_walk_accepts_every_form_that_reads_the_owner(self):
+        """An alias, a derived integer and the owner's call are not second copies."""
+        reads = ('ALIAS_NATIVE = NATIVE_FRAME\n',
+                 'ALIAS_W = NATIVE_FRAME[0]\n',
+                 'ALIAS_H = ball_scale.NATIVE_FRAME[1]\n',
+                 'ALIAS_SMALL = scale_between(NATIVE_FRAME, ball_scale.WORKING_FRAME)\n',
+                 'ALIAS_LIST = list(NATIVE_FRAME)\n')
+        path = ROOT / 'src' / 'scratch_frames.py'
+        header = 'from src.ball_scale import NATIVE_FRAME, scale_between\nfrom src import ball_scale\n'
+        try:
+            path.write_text(header + ''.join(reads), encoding='utf-8')
+            found = frame_sites(path)
+        finally:
+            path.unlink()
+        self.assertEqual([], found,
+                         'every line below reads the owner, so the walk must find no second '
+                         'copy:\n%s' % '\n'.join(reads))
 
 
 if __name__ == '__main__':

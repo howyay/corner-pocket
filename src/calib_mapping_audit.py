@@ -48,7 +48,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.ball_scale import WORKING_FRAME  # noqa: E402
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
@@ -227,7 +227,7 @@ def held_out_anchors(HA, HB, pockets):
     return out
 
 
-def rail_evidence(video, times, quad_a, quad_b, size=(1280, 720)):
+def rail_evidence(video, times, quad_a, quad_b, size=NATIVE_FRAME):
     """Run the trusted per-side rail check with each quad as the prior.
 
     ``refine_quad_edges`` only reports a side as verified when the frame shows
@@ -364,7 +364,7 @@ def claim_frame_provenance(HA, HB, path=CANDIDATES):
             if px is None:
                 continue
             # The quad and both mappings are in 1280x720; the stored pixel is not.
-            px = px * np.array([SMALL_W / 1280.0, SMALL_H / 720.0], np.float64)
+            px = px * scale_between(NATIVE_FRAME, WORKING_FRAME)
             residuals.append(float(np.hypot(px[0] - event["last_cx"], px[1] - event["last_cy"])))
         residuals.sort()
         out[key] = {"n": len(residuals),

@@ -40,6 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.ball_scale import NATIVE_FRAME  # noqa: E402
 from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
 MEASURE = ROOT / "out" / "calib_vod30_segments.measure.json"
@@ -260,7 +261,7 @@ def build(args):
     payload = {
         "dataset": "vod30",
         "video": str(args.video),
-        "frame_size": [1280, 720],
+        "frame_size": list(NATIVE_FRAME),
         "canonical_mm": {"w": CANON_W, "h": CANON_H},
         "measured_by": "src/calib_segment_measure.py",
         "fitted_by": "src/calib_segment_fit.py",

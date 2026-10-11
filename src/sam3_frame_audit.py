@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.ball_scale import WORKING_FRAME  # noqa: E402
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 
 BLACK_MEAN = 12.0        # below this the frame is not a picture of anything
@@ -113,7 +113,7 @@ def cloth_report(video, time_s, reference_quad=None):
            "corners": None if table["corners"] is None
            else np.round(np.array(table["corners"], float), 1).tolist()}
     if reference_quad is not None:
-        quad = np.array(reference_quad, np.float32) * (960.0 / 1280.0)
+        quad = np.array(reference_quad, np.float32) * scale_between(NATIVE_FRAME, WORKING_FRAME)
         inside = np.zeros_like(mask)
         cv2.fillPoly(inside, [np.round(quad).astype(np.int32)], 1)
         row["inside_reference_share"] = round(float((mask & inside).sum())

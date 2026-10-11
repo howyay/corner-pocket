@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.ball_scale import WORKING_FRAME  # noqa: E402
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 
 OUT = ROOT / "out" / "segcalib" / "segment_calib_report.json"
@@ -108,7 +108,8 @@ class PerTimeProbe:
         if self.applied is None or not np.array_equal(quad, self.applied):
             forward, inverse = self._pair(quad)
             self.inner.forward, self.inner.inverse, self.inner.quad = forward, inverse, quad
-            small_quad = (np.asarray(quad, np.float32) * (SMALL_W / 1280.0)).astype(np.float32)
+            small_quad = (np.asarray(quad, np.float32)
+                          * scale_between(NATIVE_FRAME, WORKING_FRAME)).astype(np.float32)
             cloth = np.zeros((SMALL_H, SMALL_W), np.uint8)
             cv2.fillPoly(cloth, [np.round(small_quad).astype(np.int32)], 1)
             self.inner.cloth = cloth

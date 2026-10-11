@@ -60,6 +60,7 @@ from pathlib import Path
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 from src.fast_ball_labels import MATCH_TOL_PX
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,6 +109,11 @@ BALL_R_RANGE = (BALL_MIN_R, BALL_MAX_R)
 # Four lines of header on every crop: the verdict, the numbers behind it, and the
 # legend.  The crop is the checkable artifact, so the text has to be readable.
 BAND_H = 88
+
+# The student predicts in its own frame pixels, and every case of this audit is
+# stated in native pixels.  The one conversion of ``src/ball_scale.py`` answers
+# the quotient; 1280/960 = 1.3333 is the answer, not the statement.
+NATIVE_PER_FRAME_PX = scale_between(WORKING_FRAME, NATIVE_FRAME)
 
 
 def _log(text: str) -> None:
@@ -443,7 +449,7 @@ def cmd_cases(args) -> int:
         args.device if args.device != "auto" else "cpu")
     model = model.to(device)
     heats = T.predict(model, T.VIDEO, held, device=device, size=size, batch=2)
-    scale = T.NATIVE_WH[0] / size[0]
+    scale = NATIVE_PER_FRAME_PX
 
     # the operating threshold is read from the frozen report, not re-chosen here:
     # the audit adjudicates the report's errors, it does not get to move them
@@ -737,7 +743,7 @@ def cmd_verdicts(args) -> int:
     started = time.time()
     T_mod, heats, device = student_pass(size, times, args.device)
     _log(f"student pass {time.time() - started:.1f}s on {device}")
-    scale = T_mod.NATIVE_WH[0] / size[0]
+    scale = NATIVE_PER_FRAME_PX
 
     peaks_by_t = {}
     for thr in FN_THRESHOLDS:
@@ -953,7 +959,7 @@ def cmd_crops(args) -> int:
 
     times = case_times(cases)
     T_mod, heats, device = student_pass(size, times, args.device)
-    scale = T_mod.NATIVE_WH[0] / size[0]
+    scale = NATIVE_PER_FRAME_PX
     _log(f"student pass on {device}; rendering {len(times)} frames")
 
     by_t = {}

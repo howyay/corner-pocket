@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src import ball_scale
 from src.tiny_ball_net import (LOC_BAR_PX, NATIVE_WH, PROD_WH, SIGMA_PX, SPLIT_GAP_S,
                                TRAIN_WH, cloth_edge_distance, count_params, f1,
                                heatmap_target, load_labels, match, match_rows_native,
@@ -90,6 +91,20 @@ class HeatmapTargetTest(unittest.TestCase):
         radius = 9.2 * TRAIN_WH[0] / NATIVE_WH[0]
         self.assertAlmostEqual(radius, 4.6, delta=0.2)
         self.assertLess(SIGMA_PX, radius)
+
+    def test_the_target_uses_the_width_for_both_axes(self):
+        """A non-square target of the native width scales the label by one factor.
+
+        ``heatmap_target`` takes its shape as ``(height, width)``, and every frame
+        of this pipeline keeps the native width ratio.  A walk that reads the shape
+        in the wrong order applies the height ratio instead, and a ball at the
+        native centre lands on the wrong column.
+        """
+        target = heatmap_target((1080, 1920), [{"x": 640.0, "y": 360.0, "r": 9.2}])
+        self.assertEqual(target.shape, (1080, 1920))
+        peak = np.unravel_index(int(np.argmax(target)), target.shape)
+        self.assertAlmostEqual(peak[1], 960.0, delta=1.5)
+        self.assertAlmostEqual(peak[0], 540.0, delta=1.5)
 
     def test_no_balls_gives_an_empty_target(self):
         target = heatmap_target((TRAIN_WH[1], TRAIN_WH[0]), [])
@@ -192,6 +207,16 @@ class ResolutionTest(unittest.TestCase):
     def test_a_size_is_parsed_from_the_conventional_string(self):
         self.assertEqual(parse_size("960x540"), (960, 540))
         self.assertEqual(parse_size("1280x720"), (1280, 720))
+
+    def test_the_native_name_is_the_owner_object(self):
+        """``NATIVE_WH`` is a name of the owner's object, not a second pair.
+
+        ``src/ball_scale.py`` states the native frame, and the five readers of
+        ``NATIVE_WH`` read this module.  The alias keeps them working, and this
+        case fails when the alias becomes a copy: a copy can drift from the owner.
+        """
+        self.assertIs(NATIVE_WH, ball_scale.NATIVE_FRAME)
+        self.assertEqual((1280, 720), NATIVE_WH)
 
     def test_the_production_minimum_is_at_least_960_wide(self):
         self.assertGreaterEqual(PROD_WH[0], 960)

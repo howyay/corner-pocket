@@ -57,7 +57,8 @@ from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 
 # The census works in the pipeline's frame, so both sizes come from the owner.
 SMALL_W, SMALL_H = ball_scale.WORKING_FRAME[0], ball_scale.WORKING_FRAME[1]
-FULL_W, FULL_H = 1280, 720            # the reference quad's own resolution
+FULL_W = ball_scale.NATIVE_FRAME[0]   # the reference quad's own resolution
+FULL_H = ball_scale.NATIVE_FRAME[1]
 MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 # The probe cache is keyed by (kind, t, colour) and carries this version: a
 # measurement change must invalidate old payloads, or a stale cache would
@@ -72,8 +73,11 @@ SHOT_CENSUS_S = 2.0           # fused-census reach around a shot anchor
 MATCH_PX = 40.0               # same ball between samples, 960x540 pixels
 OBS_PX = 60.0                 # a ball re-sighted at the same spot, frame pixels
 GEOMETRY_MARGIN_MM = 20.0     # a measured ball must be on the cloth
-# SAM3 frames are stored in 1280x720 pixels; the census works in 960x540.
-SAM3_SCALE = SMALL_W / 1280.0
+# SAM3 frames are stored in the native frame; the census works in the working
+# frame.  ``src/ball_scale.py`` owns the two frames and their one conversion, so
+# both directions of the ratio come from it.
+SAM3_SCALE = ball_scale.scale_between(ball_scale.NATIVE_FRAME, ball_scale.WORKING_FRAME)
+INVERSE_SCALE = ball_scale.scale_between(ball_scale.WORKING_FRAME, ball_scale.NATIVE_FRAME)
 HUMAN_VERDICT_FILES = ("out/scan30/annotations.json",
                        "out/ui-browser-fixture/out/scan30/annotations.json")
 
@@ -212,7 +216,7 @@ class Probe:
             self.cap = None
             return False
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
-        small_quad = (self.quad * (SMALL_W / 1280.0)).astype(np.float32)
+        small_quad = (self.quad * SAM3_SCALE).astype(np.float32)
         self.cloth = np.zeros((SMALL_H, SMALL_W), np.uint8)
         cv2.fillPoly(self.cloth, [np.round(small_quad).astype(np.int32)], 1)
         return True
@@ -336,7 +340,7 @@ class Probe:
 
     def mm(self, cx, cy, t=None):
         forward, _, _ = self.homographies(t)
-        return to_table_mm(forward, cx * 1280.0 / SMALL_W, cy * 720.0 / SMALL_H)
+        return to_table_mm(forward, cx * INVERSE_SCALE, cy * INVERSE_SCALE)
 
     def px(self, mm, t=None):
         """Canonical millimetres -> pixels, through the physical reference.
@@ -464,7 +468,7 @@ def _sightings(samples, color, px, exclude=()):
         for ball in cands:
             if ball.get("color") != color:
                 continue
-            spot = (ball["cx"] * 1280.0 / SMALL_W, ball["cy"] * 720.0 / SMALL_H)
+            spot = (ball["cx"] * INVERSE_SCALE, ball["cy"] * INVERSE_SCALE)
             if math.hypot(spot[0] - px[0], spot[1] - px[1]) <= OBS_PX:
                 count += 1
                 break
@@ -513,8 +517,8 @@ def probe_shot(claim, probe):
                 a_mm, b_mm = probe.mm(prev["cx"], prev["cy"], a), probe.mm(cur["cx"], cur["cy"], a)
                 if not _on_cloth(a_mm) or not _on_cloth(b_mm):
                     continue
-                start_px = [round(prev["cx"] * 1280.0 / SMALL_W, 1), round(prev["cy"] * 720.0 / SMALL_H, 1)]
-                end_px = [round(cur["cx"] * 1280.0 / SMALL_W, 1), round(cur["cy"] * 720.0 / SMALL_H, 1)]
+                start_px = [round(prev["cx"] * INVERSE_SCALE, 1), round(prev["cy"] * INVERSE_SCALE, 1)]
+                end_px = [round(cur["cx"] * INVERSE_SCALE, 1), round(cur["cy"] * INVERSE_SCALE, 1)]
                 if not _sighted(samples, prev.get("color"), start_px, exclude=(before_t, after_t)):
                     continue
                 if not _sighted(samples, cur.get("color"), end_px, exclude=(before_t, after_t)):
@@ -569,7 +573,7 @@ def probe_shot(claim, probe):
     evidence.census_tracks_moved = move["tracks_moved"]
     claimed_px = probe.claim_px(claim["from_mm"])
     if move["start_px"] is not None and claimed_px is not None:
-        start_px = [move["start_px"][0] * 1280.0 / SMALL_W, move["start_px"][1] * 720.0 / SMALL_H]
+        start_px = [move["start_px"][0] * INVERSE_SCALE, move["start_px"][1] * INVERSE_SCALE]
         evidence.census_geometry_gap_px = round(math.hypot(claimed_px[0] - start_px[0],
                                                            claimed_px[1] - start_px[1]), 1)
     window = probe.sample([t for t in (anchor + off for off in (-1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0))

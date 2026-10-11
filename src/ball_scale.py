@@ -75,6 +75,9 @@ import math
 BALL_WIDTH_MM = 57.15
 
 #: The frame the radii were measured in, and the pipeline's working size.
+#: This is the one statement of the native pair in this tree.  A reader imports
+#: :data:`NATIVE_FRAME`, or it derives a name from it (see ``NATIVE_WH`` in
+#: ``src/tiny_ball_net.py``).  No other module states the two integers.
 NATIVE_FRAME = (1280, 720)
 WORKING_FRAME = (960, 540)
 
@@ -101,6 +104,10 @@ def scale_between(from_frame: tuple[float, float],
     ``scale_between(NATIVE_FRAME, WORKING_FRAME)`` is 0.75.  A frame size is
     ``(width, height)`` in pixels, and the width alone carries the scale: a
     960x540 frame is the native frame at 0.75x on both axes.
+
+    This is the one conversion of the two frames.  Eleven hand-written quotients
+    of the same shape stood in five modules before round 53; every one of them
+    now reads this function.  The number 0.75 is the answer, not the statement.
     """
     return float(to_frame[0]) / float(from_frame[0])
 

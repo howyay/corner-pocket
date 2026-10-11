@@ -32,6 +32,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.dont_write_bytecode = True
 
+#: The frame facts and their one conversion live in src/ball_scale.py, which imports
+#: math alone.  The net module costs cv2 + numpy + torch to import, so this probe
+#: takes the conversion from the leaf and still imports the net lazily.
+from src.ball_scale import NATIVE_FRAME, scale_between  # noqa: E402
+
 SWEEP = [round(0.05 + 0.025 * i, 3) for i in range(38)]
 TOL_PX = 6.0
 #: the gate's own motion bar (src/shot_pot_gate.GateThresholds.motion_speed_px_s)
@@ -373,6 +378,10 @@ def main():
     args = parser.parse_args()
 
     size = tn.parse_size(args.size)
+    #: The student's peaks stay in the frame it ran at, and the labels are native
+    #: pixels.  The one conversion of src/ball_scale.py answers the quotient, and it
+    #: reads ``size``, not the default size, because --size can move the frame.
+    native_per_work_px = scale_between(size, NATIVE_FRAME)
     labels = tn.load_labels()
     _train, held = tn.split_for_rounds(labels, freeze=True)
     held = sorted(held)
@@ -412,7 +421,7 @@ def main():
               'forward_ms_min': round(float(np.min(times)), 2)}
     if not args.no_sweep:
         for name in layouts:
-            rows = sweep(heats[name], labels, tn.NATIVE_WH[0] / size[0])
+            rows = sweep(heats[name], labels, native_per_work_px)
             operating = next(row for row in rows if row['threshold'] == args.threshold)
             result[name] = dict(layout_rows=rows, operating=operating,
                                 best=max(rows, key=lambda row: row['f1']))
@@ -423,7 +432,7 @@ def main():
     result['labelled_balls_with_a_speed'] = sum(1 for rows in speeds.values()
                                                 for speed in rows if speed is not None)
     result['causal_recall_by_speed'] = recall_by_speed(heats['causal'], labels, speeds,
-                                                       tn.NATIVE_WH[0] / size[0],
+                                                       native_per_work_px,
                                                        args.threshold)
     # a short consecutive run of real frames, for the stage's own cost
     anchor = tn.frame_index(tn.VIDEO, held[len(held) // 2])

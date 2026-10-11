@@ -42,6 +42,7 @@ import cv2
 import numpy as np
 
 from src.ball_gate import SAM3_BALL_MIN_SCORE
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 from src.tiny_ball_net import SPLIT_GAP_S
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +57,10 @@ MIN_SCORE = SAM3_BALL_MIN_SCORE  # the production cut the delivered caches were 
 RECORD_MIN_SCORE = 0.30          # the teacher's raw score is recorded down to here
 RESOLUTION = 1008                # SAM3's own input resolution; not tuned here
 MATCH_TOL_PX = 6.0               # one-to-one gate for "the same instance"
+# The student's peaks stay in the frame it ran at, and the labels this tool writes
+# are in native pixels.  The one conversion of ``src/ball_scale.py`` answers the
+# quotient; this name states its direction once.
+NATIVE_PER_FRAME_PX = scale_between(WORKING_FRAME, NATIVE_FRAME)
 
 MODES = ("hybrid", "cpu")
 
@@ -336,13 +341,13 @@ def student_peaks(model, video, indices: list, size: tuple, device: str = "auto"
     """
     import torch
 
-    from src.tiny_ball_net import NATIVE_WH, STACK, pick_peaks, read_frames
+    from src.tiny_ball_net import STACK, pick_peaks, read_frames
 
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     wanted = sorted(set(int(i) for i in indices))
     frames = read_frames(video, [i + k for i in wanted for k in (-1, 0, 1)], size=size)
-    scale = NATIVE_WH[0] / size[0]
+    scale = NATIVE_PER_FRAME_PX
     peaks, times = {}, {}
     model.eval()
     with torch.no_grad():

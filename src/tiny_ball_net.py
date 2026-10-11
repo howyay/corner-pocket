@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.ball_scale import WORKING_FRAME  # noqa: E402
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.ball_gate import SAM3_BALL_MIN_SCORE  # noqa: E402
 
@@ -55,7 +55,10 @@ QUAD_SEGMENTS = ROOT / "out" / "calib_vod30_segments.json"
 _FRAME_CACHE: dict = {}       # (size, index) -> resized frame, so an epoch re-decodes nothing
 TRAIN_WH = (640, 360)           # probe resolution: the ball is 9.4 px across here
 PROD_WH = WORKING_FRAME         # production minimum: the pipeline's working frame
-NATIVE_WH = (1280, 720)
+# The native frame, as a direct alias of the one owner (``src/ball_scale.py``).
+# The name stays because this module's callers and tests read it, and the alias
+# states no number of its own: ``NATIVE_WH is NATIVE_FRAME`` is true.
+NATIVE_WH = NATIVE_FRAME
 SIGMA_PX = 2.5                  # target Gaussian sigma at TRAIN_WH
 STACK = 3                       # frames per sample: (t-1, t, t+1)
 SPLIT_GAP_S = 5.0               # no two frames within this across train/held-out
@@ -299,7 +302,12 @@ def heatmap_target(bgr_hw: tuple, balls: list, sigma: float = SIGMA_PX) -> np.nd
     """A Gaussian per labelled ball, at the training resolution."""
     h, w = bgr_hw
     target = np.zeros((h, w), np.float32)
-    sx, sy = w / NATIVE_WH[0], h / NATIVE_WH[1]
+    # the label's native pixels into this target's pixels.  ``scale_between(from,
+    # to)`` answers ``to / from``, so the native frame comes first and this target's
+    # own frame second.  One call per axis: the width answers ``sx`` and the height
+    # answers ``sy``, and a target of another ratio keeps its own two axes.
+    sx = scale_between(NATIVE_FRAME, (w, h))
+    sy = scale_between((NATIVE_FRAME[1], NATIVE_FRAME[0]), (h, w))
     radius = int(3 * sigma)
     for ball in balls:
         cx, cy = ball["x"] * sx, ball["y"] * sy
@@ -594,7 +602,7 @@ def evaluate_held(model, labels: dict, held: list, size: tuple, device: str,
                   tol_px: float = 6.0, batch: int = 2) -> dict:
     """The held-out sweep, the operating points and the heatmaps behind them."""
     heats = predict(model, VIDEO, held, device=device, size=size, batch=batch)
-    scale = NATIVE_WH[0] / size[0]
+    scale = scale_between(size, NATIVE_FRAME)
     thresholds = [round(0.05 + 0.025 * i, 3) for i in range(38)]
     sweep = []
     for threshold in thresholds:
@@ -639,7 +647,7 @@ def disagreement(heats: dict, labels: dict, held: list, size: tuple, threshold: 
     scored 0.63 is closer to a teacher guess.  A student detection near the rail with
     no label is where the teacher's known recall weakness lives.
     """
-    scale = NATIVE_WH[0] / size[0]
+    scale = scale_between(size, NATIVE_FRAME)
     fn_rows, fp_rows = [], []
     for t in sorted(heats):
         heat = heats[t]
@@ -833,7 +841,7 @@ def render_overlays(model, labels, held, size, device, threshold, count, directo
                     tag: str) -> list:
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    scale = NATIVE_WH[0] / size[0]
+    scale = scale_between(size, NATIVE_FRAME)
     paths = []
     chosen = held[:count]
     heats = predict(model, VIDEO, chosen, device=device, size=size, batch=2)

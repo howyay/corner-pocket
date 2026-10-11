@@ -41,7 +41,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.ball_scale import WORKING_FRAME
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME
 from src.event_window import AT_TOL_S, EVENT_AFTER_S, EVENT_BEFORE_S
 
 # The frame this walk measures in.  ``src.ball_scale`` owns it, and the census of
@@ -137,7 +137,7 @@ def load_quad(quad_path, anchors_path=None):
     return None
 
 
-def cloth_mask(quad, width=SMALL_W, height=SMALL_H, scan_width=1280.0):
+def cloth_mask(quad, width=SMALL_W, height=SMALL_H, scan_width=NATIVE_FRAME[0]):
     """A 0/1 mask of the cloth at the small working size."""
     mask = np.zeros((height, width), np.uint8)
     if quad is None:
