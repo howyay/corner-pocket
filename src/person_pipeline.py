@@ -36,14 +36,16 @@ from src.face_id import DEFAULT_FACE_STORE, add_faces, get_face_engine, load_fac
 from src.person_identity import IdentityIndex
 # src/weight_pins.py owns the two weight paths, so this file reads the owner.
 from src import weight_pins
-from src.weight_pins import OSNET
+from src.weight_pins import OSNET, OSNET_MEAN, OSNET_STD
 
 # YOLO weights load weights-only: ultralytics reads this once, on its first import
 # (lazy, in _get_detector); unset, it unpickles checkpoints freely (audit D-2).
 os.environ.setdefault('ULTRALYTICS_SAFE_LOAD', '1')
 
-_MEAN = np.array([0.485, 0.456, 0.406], np.float32)
-_STD = np.array([0.229, 0.224, 0.225], np.float32)
+# The mean and the standard deviation belong with the pinned weights, so this
+# module reads src/weight_pins.py and holds no copy of the two arrays.
+_MEAN = np.array(weight_pins.OSNET_MEAN, np.float32)
+_STD = np.array(weight_pins.OSNET_STD, np.float32)
 _IOU_MATCH = 0.3
 _MAX_AGE = 30
 REPO = Path(__file__).resolve().parents[1]

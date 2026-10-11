@@ -318,6 +318,130 @@ class LoaderTest(unittest.TestCase):
         self._assert_reads_the_owner("pid_seed_rebuild.py")
 
 
+def _normalisation_literal_sites(path, values):
+    """The (line, text) of every list or tuple literal of `path` with the three `values`."""
+    sites = []
+    for node in ast.walk(_tree(path)):
+        if not isinstance(node, (ast.List, ast.Tuple)) or len(node.elts) != len(values):
+            continue
+        parts = []
+        for element in node.elts:
+            if not (isinstance(element, ast.Constant) and isinstance(element.value, (int, float))):
+                break
+            parts.append(float(element.value))
+        if parts == list(values):
+            sites.append((node.lineno, ast.unparse(node)))
+    return sites
+
+
+def _imports_the_normalisation(tree):
+    """True when the tree reads `OSNET_MEAN` and `OSNET_STD` from `src.weight_pins`."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "src.weight_pins":
+            names = {alias.name for alias in node.names}
+            if {"OSNET_MEAN", "OSNET_STD"} <= names:
+                return True
+    return False
+
+
+def _uses_imported_name(tree, identifier):
+    """True when the name `identifier` is an operand of a `/` or a call in the tree.
+
+    A loader that imports the owner and reads the name is the shape this rule wants;
+    the import line alone is not a use."""
+    for node in ast.walk(tree):
+        holder = None
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            holder = node
+        elif isinstance(node, ast.Call):
+            holder = node
+        if holder is not None and any(isinstance(inner, ast.Name) and inner.id == identifier
+                                      for inner in ast.walk(holder)):
+            return True
+    return False
+
+
+class NormalisationTest(unittest.TestCase):
+    """The mean and the standard deviation have one home, beside the pinned weights.
+
+    The two arrays are part of the definition of the OSNet embedding, not a tunable.
+    Six shipped modules spelled them before round 67, and the copies agreed, so an
+    edit of one copy was silent.  `src/weight_pins.py` now owns both, each of the
+    six loaders reads that owner, and no other file under `src/` holds the numbers.
+    """
+
+    def test_the_owner_holds_the_pair(self):
+        """The two tuples are the ImageNet statistics, in RGB channel order."""
+        self.assertEqual(weight_pins.OSNET_MEAN, (0.485, 0.456, 0.406))
+        self.assertEqual(weight_pins.OSNET_STD, (0.229, 0.224, 0.225))
+        self.assertEqual(len(weight_pins.OSNET_MEAN), 3)
+        self.assertEqual(len(weight_pins.OSNET_STD), 3)
+        # The mean and the standard deviation of one channel are one normalisation.
+        # A pair that disagrees with itself splits the tensor of every loader.
+        for mean, std in zip(weight_pins.OSNET_MEAN, weight_pins.OSNET_STD):
+            self.assertGreater(mean, 0.0, "the mean of a channel is a positive fraction")
+            self.assertGreater(std, 0.0, "the standard deviation of a channel is positive")
+            self.assertLess(mean, 1.0)
+            self.assertLess(std, 1.0)
+
+    def test_the_six_loaders_read_the_owner(self):
+        """Each loader takes the mean and the standard deviation from the pin module."""
+        for name in LOADERS:
+            with self.subTest(module=name):
+                tree = _tree(SRC / name)
+                self.assertTrue(
+                    _imports_the_normalisation(tree),
+                    f"{name} imports no name from src.weight_pins, so it can hold a "
+                    f"copy of the mean and the standard deviation.")
+                for attribute in ("OSNET_MEAN", "OSNET_STD"):
+                    self.assertTrue(
+                        _uses_the_module_name(tree, attribute)
+                        or _uses_imported_name(tree, attribute),
+                        f"{name} never reads {attribute} from the pin table, so it can "
+                        f"normalise with its own numbers.")
+
+    def test_the_pair_stands_in_one_file_under_src(self):
+        """The mean and the standard deviation stand in the owner and nowhere else."""
+        self._assert_one_home(weight_pins.OSNET_MEAN, "the mean")
+        self._assert_one_home(weight_pins.OSNET_STD, "the standard deviation")
+
+    def test_a_planted_copy_of_the_mean_is_reported(self):
+        """A copy of the pair planted in another module is reported, and the owner is not."""
+        source = "from src.weight_pins import OSNET\nimport numpy as np\n" \
+                 "MEAN = np.array([0.485, 0.456, 0.406], np.float32)\n"
+        with tempfile.TemporaryDirectory(prefix="weight_mean_") as tmp:
+            planted = Path(tmp) / "planted.py"
+            planted.write_text(source)
+            self.assertEqual(
+                _normalisation_literal_sites(planted, weight_pins.OSNET_MEAN),
+                [(3, "[0.485, 0.456, 0.406]")],
+                "the reporter does not see the planted copy")
+            # A faithful copy is a copy too: the report names every site but the owner.
+            clean = Path(tmp) / "clean.py"
+            clean.write_text("from src.weight_pins import OSNET_MEAN\nimport numpy as np\n"
+                             "MEAN = np.array(OSNET_MEAN, np.float32)\n")
+            self.assertEqual(
+                _normalisation_literal_sites(clean, weight_pins.OSNET_MEAN), [],
+                "a loader that reads the owner is reported as a copy")
+            # The owner is the one file that may spell the pair.
+            self.assertEqual(
+                [path.name for path in _sources()
+                 if _normalisation_literal_sites(path, weight_pins.OSNET_MEAN)],
+                [OWNER.name],
+                f"the mean stands in a file other than {OWNER.relative_to(ROOT)}")
+
+    def _assert_one_home(self, values, what):
+        """`values` stands in the owner alone, and the report names every other site."""
+        sites = [(path.relative_to(ROOT), line, text)
+                 for path in _sources() for line, text in _normalisation_literal_sites(path, values)]
+        found = ", ".join(f"{path}:{line} ({text})" for path, line, text in sites) or "none"
+        self.assertEqual(
+            [path for path, _, _ in sites], [OWNER.relative_to(ROOT)],
+            f"{what} {values} stands in {len(sites)} literal(s) under src/: {found}. "
+            f"{OWNER.relative_to(ROOT)} owns the pair, and every other file reads "
+            f"weight_pins.OSNET_MEAN or weight_pins.OSNET_STD and holds no copy.")
+
+
 class PinBytesTest(unittest.TestCase):
     def test_the_pin_describes_the_file_on_disk(self):
         """The recorded SHA-256 and size are the bytes that a loader opens."""

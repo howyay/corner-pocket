@@ -36,6 +36,12 @@ import numpy as np
 # the corner order, and they make an array first, because the owner reshapes an
 # array and a saved segment file holds a JSON list.
 from src.table_detect import _order_corners
+# Round 67 gave the (file, key) pair of a dataset one home: src/calib_segments.py
+# STATIC_REFERENCES.  The prior table below reads that home, so the two readers
+# cannot name two files for one dataset.  This module imports the owner at the top
+# and holds no copy of the pairs.  src/calib_segments.py imports this module only
+# inside a function, so the two modules do not import each other at load time.
+from src import calib_segments
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -65,24 +71,55 @@ _SIG_MIN_SEP = 1.5       # px at signature scale (== 6 px full resolution)
 # player or the rail highlight dominates (mad 10-27 px), so it is reported as a
 # diagnostic only and never verifies a side.
 
-_DATASET_PRIOR = {
-    # Each entry names a saved static-camera reference *and* how many of its points
+_DATASET_NOTES = {
+    # Each note names a saved static-camera reference *and* how many of its points
     # are the cloth quad.  The prior is only a search centre, but a wrong centre is
     # not harmless: seeding vod30 from ``corners_30min_v2.json`` puts a vertical
     # left rail at x=450 while the cloth edge slants x=520 (y=330) -> x=381 (y=560),
     # so the refinement searched 70 px of carpet.  The six hand anchors (their first
     # four points are the cloth corners) track the same edge within 6-13 px, so they
     # are the seed.
-    "vod30": {"file": "pid_anchors_vod30.json", "key": "anchors", "points": 4,
-              "note": "first four of the six hand pocket anchors at t=70 "
-                      "(measured within 6-13 px of the visible cloth edge). "
-                      "This note is about the vod30 seed only: the seed of vod30 is not "
-                      "corners_30min_v2.json, because that file has a left rail ~70 px "
-                      "outside the cloth at the top and ~70 px inside it at the bottom. "
-                      "The file stays in use by other modules."},
-    "highlight": {"file": "fixed_corners.json", "key": "corners", "points": 4,
-                  "note": "highlight reference (docs/state.md: 2.0 px median vs the cloth quad)"},
+    "vod30": ("first four of the six hand pocket anchors at t=70 "
+              "(measured within 6-13 px of the visible cloth edge). "
+              "This note is about the vod30 seed only: the seed of vod30 is not "
+              "corners_30min_v2.json, because that file has a left rail ~70 px "
+              "outside the cloth at the top and ~70 px inside it at the bottom. "
+              "The file stays in use by other modules."),
+    "highlight": "highlight reference (docs/state.md: 2.0 px median vs the cloth quad)",
 }
+
+
+def prior_spec(dataset):
+    """The saved reference entry of one dataset, or None for an unknown name.
+
+    The (file, key) pair of a dataset has one home, ``src.calib_segments``
+    ``STATIC_REFERENCES``, which also loads the file, so this function reads it and
+    holds no copy.  The two fields this module adds are its own: ``points`` says how
+    many points of the file are the cloth quad, and ``note`` is the provenance this
+    module publishes.
+
+    An unknown name answers None.  ``src.calib_segments.static_reference`` answers a
+    not-found reference for that name too, so the two readers agree: no unknown
+    dataset takes the reference file of another dataset."""
+    spec = calib_segments.reference_spec(dataset)
+    if spec is None:
+        return None
+    return {"file": spec["file"], "key": spec["key"], "points": 4,
+            "note": _DATASET_NOTES[str(dataset)]}
+
+
+def _dataset_priors():
+    """Every prior, read from the one owner of the (file, key) pairs.
+
+    The pair of a dataset stands in ``src.calib_segments`` ``STATIC_REFERENCES``
+    alone.  This view adds the two fields of this module, so an edit of the pair
+    moves both readers together.  An unknown name is not in this view, and
+    :func:`prior_spec` answers None for it."""
+    return {dataset: prior_spec(dataset) for dataset in calib_segments.STATIC_REFERENCES}
+
+
+#: The prior table this module used to spell itself.  It now reads the one owner.
+_DATASET_PRIOR = _dataset_priors()
 
 
 def prior_for(dataset: str, t: float | None = None, root=None):
@@ -97,15 +134,13 @@ def prior_for(dataset: str, t: float | None = None, root=None):
     segment that covers ``t`` owns the reference for it.  Without the artifact the
     saved prior below is used unchanged, so nothing that runs today changes.
     """
-    from src import calib_segments
-
     segments = calib_segments.load(dataset, root=root)
     if segments is not None:
         seg = segments.resolve(t)
         if seg is not None:
             return _order_corners(np.asarray(seg.quad, np.float32))
 
-    spec = _DATASET_PRIOR.get(str(dataset))
+    spec = prior_spec(dataset)
     if not spec:
         return None
     path = Path(root) / "out" / spec["file"] if root is not None else ROOT / "out" / spec["file"]
@@ -136,8 +171,6 @@ def prior_for(dataset: str, t: float | None = None, root=None):
 
 def prior_provenance(dataset: str, t: float | None = None, root=None) -> dict:
     """Where ``prior_for`` got the reference: the segment, or the saved prior."""
-    from src import calib_segments
-
     segments = calib_segments.load(dataset, root=root)
     if segments is not None:
         seg = segments.resolve(t)
@@ -146,7 +179,7 @@ def prior_provenance(dataset: str, t: float | None = None, root=None) -> dict:
                     "source": seg.source, "t_start": seg.t_start, "t_end": seg.t_end,
                     "clamped": seg.clamped, "clamp_reason": seg.clamp_reason,
                     "detail": seg.source_detail, "artifact": str(segments.path) if segments.path else None}
-    spec = _DATASET_PRIOR.get(str(dataset))
+    spec = prior_spec(dataset)
     if not spec:
         return {"dataset": dataset, "kind": "none", "source": None}
     return {"dataset": dataset, "kind": "saved_prior", "id": None,

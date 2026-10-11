@@ -81,6 +81,22 @@ STATIC_REFERENCES = {
 EVIDENCE_HIGHLIGHT = ("src/table_refine.py _DATASET_PRIOR documents this file at "
                       "2.0 px median against the cloth quad")
 
+
+def reference_spec(dataset):
+    """The saved reference entry of one dataset, or None for a name not in the table.
+
+    This table is the one owner of the (file, key) pair of a dataset.
+    ``src/table_refine.py`` builds its own prior table from this function, so the two
+    readers cannot hold two answers.
+
+    An unknown name answers None.  No unknown name takes a fallback.  The table
+    named an unknown dataset before round 67 and served it ``fixed_corners.json``,
+    the file of the highlight dataset.  That file is the reference of ``highlight``
+    alone, so an unknown name took the geometry of another dataset in silence.
+    ``src/table_refine.py prior_for`` answers None for that name too, and the two
+    readers now agree."""
+    return STATIC_REFERENCES.get(str(dataset))
+
 # The steps of the chain, in order.  ``resolve`` walks them in this order.
 KINDS = ("supplied", "segment", "static", "prior")
 
@@ -424,7 +440,10 @@ def static_reference(dataset: str = "vod30", t=None, root=None,
     which recorded anchor entry is used.
     """
     base = Path(root) if root is not None else ROOT
-    spec = STATIC_REFERENCES.get(str(dataset)) or CORNERS_SPEC
+    spec = reference_spec(dataset)
+    if spec is None:
+        return Reference(kind="none", origin="none", note="no saved reference file",
+                         dataset=dataset, rejected=[f"no static reference for {dataset!r}"])
     reference = read(base / "out" / spec["file"], spec["key"],
                      t=ANCHOR_T if t is None else t, order=order)
     reference.dataset = dataset

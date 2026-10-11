@@ -24,6 +24,8 @@ def run(root=ROOT):
     sys.path.insert(0, str(ROOT))
     # src/weight_pins.py owns the weight path, so this file reads the owner.
     from src.weight_pins import OSNET
+    # The mean and the standard deviation belong with the pinned weights too.
+    from src.weight_pins import OSNET_MEAN, OSNET_STD
     from annotator.unified_server import atomic_save
     out = root / "out"
     tracklets = json.loads((out / "pid2_tracklets.json").read_text())
@@ -64,8 +66,8 @@ def run(root=ROOT):
         cap.release()
         raise RuntimeError("Cannot open vod30 video")
     cache = {}
-    mean = np.array([0.485, 0.456, 0.406], np.float32)
-    std = np.array([0.229, 0.224, 0.225], np.float32)
+    mean = np.array(OSNET_MEAN, np.float32)
+    std = np.array(OSNET_STD, np.float32)
     try:
         def embeddings(win, track):
             key = f'{track["id"]}:{win}'

@@ -18,7 +18,7 @@ import numpy as np
 from src.table_detect import detect_table
 from src.table_detect import _order_corners
 from src.table_refine import (_DATASET_PRIOR, CHECK_UNAVAILABLE, detect_table_refined, load_priors,
-                              prior_for, prior_provenance, refine_quad_edges)
+                              prior_for, prior_provenance, prior_spec, refine_quad_edges)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -248,6 +248,72 @@ class DetectorContractTests(unittest.TestCase):
         plain = detect_table(frame)
         self.assertEqual(set(plain), {'corners', 'mask', 'debug'})
         self.assertIsNotNone(plain['corners'])
+
+
+class PriorTableTest(unittest.TestCase):
+    """This module's prior table reads the one owner of the (file, key) pairs.
+
+    ``src/calib_segments.py`` ``STATIC_REFERENCES`` owns the pair of a dataset, and
+    the prior table of this module reads it.  The pair stood in both modules before
+    round 67, and the two readers disagreed about a name in neither table:
+    ``src/calib_segments.py`` served the highlight corners file for any unknown name
+    while ``prior_for`` answered None.  These cases hold the two tables together and
+    hold the answer for an unknown name.
+    """
+
+    def test_both_datasets_read_one_owner(self):
+        """Each dataset takes its pair from the owner, not from a copy here."""
+        from src import calib_segments as cs
+
+        self.assertEqual(set(_DATASET_PRIOR), set(cs.STATIC_REFERENCES),
+                         'the two tables hold different datasets')
+        for dataset, owned in cs.STATIC_REFERENCES.items():
+            with self.subTest(dataset=dataset):
+                spec = prior_spec(dataset)
+                self.assertEqual((spec['file'], spec['key']), (owned['file'], owned['key']))
+                self.assertEqual(spec['points'], 4, 'each saved reference has four quad points')
+                self.assertEqual(spec['note'], _DATASET_PRIOR[dataset]['note'],
+                                 'the table and the lookup publish one note')
+
+    def test_the_pair_stands_in_no_literal_of_this_module(self):
+        """A copy of the pair here is what this round deleted."""
+        from src import calib_segments as cs
+
+        source = Path(__file__).resolve().parents[1].joinpath('src', 'table_refine.py').read_text()
+        for owned in cs.STATIC_REFERENCES.values():
+            with self.subTest(file=owned['file']):
+                self.assertNotIn(f'"{owned["file"]}"', source)
+
+    def test_an_unknown_dataset_has_no_prior_and_no_fallback(self):
+        """An unknown name answers None here, and the other reader agrees."""
+        from src import calib_segments as cs
+
+        unknown = 'a_dataset_neither_table_names'
+        self.assertIsNone(prior_spec(unknown))
+        self.assertIsNone(prior_for(unknown))
+        self.assertEqual(prior_provenance(unknown), {'dataset': unknown, 'kind': 'none',
+                                                     'source': None})
+        # The other reader answers a not-found reference for the same name, and it
+        # never serves the highlight corners file.
+        self.assertIsNone(cs.reference_spec(unknown))
+        reference = cs.static_reference(unknown)
+        self.assertFalse(reference.found)
+        self.assertIsNone(reference.quad)
+        self.assertNotIn('fixed_corners.json', json.dumps(reference.as_dict()))
+
+    def test_an_unknown_dataset_with_a_root_full_of_references_still_has_none(self):
+        """The fixture holds both reference files, and the unknown name takes neither."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'out').mkdir(parents=True)
+            (root / 'out' / 'fixed_corners.json').write_text(json.dumps(
+                {'corners': [[100, 100], [900, 100], [900, 500], [100, 500]]}))
+            (root / 'out' / 'pid_anchors_vod30.json').write_text(json.dumps(
+                {'anchors': {'70.0': [[10, 10], [20, 10], [20, 20], [10, 20]]}}))
+            self.assertIsNone(prior_for('a_dataset_neither_table_names', root=root))
+            # The control: the same root serves the two known datasets.
+            self.assertIsNotNone(prior_for('highlight', root=root))
+            self.assertIsNotNone(prior_for('vod30', root=root))
 
 
 class RecordedReferenceTests(unittest.TestCase):

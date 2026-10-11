@@ -31,12 +31,15 @@ from pid_identity import in_table_zone, torso_color  # noqa
 # src/weight_pins.py owns the two weight paths, so this file reads the owner.
 from src import weight_pins
 from src.weight_pins import OSNET  # noqa: E402
+# The mean and the standard deviation belong with the pinned weights, so this
+# module reads src/weight_pins.py and holds no copy of the two arrays.
+from src.weight_pins import OSNET_MEAN, OSNET_STD  # noqa: E402
 
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO(weight_pins.YOLO)
 W = os.path.join(REPO, OSNET)
-MEAN = np.array([0.485, 0.456, 0.406], np.float32)
-STD = np.array([0.229, 0.224, 0.225], np.float32)
+MEAN = np.array(OSNET_MEAN, np.float32)
+STD = np.array(OSNET_STD, np.float32)
 
 model = O.osnet_x0_25(pretrained=False, num_classes=1000)
 sd = torch.load(W, map_location="cpu", weights_only=True)

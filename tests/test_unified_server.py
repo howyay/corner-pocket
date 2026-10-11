@@ -17,7 +17,8 @@ from annotator.unified_server import (ABSENT, APIError, Backend, BOARD_FONTS, Ca
                                       _MAX_ENROLL_BODY_BYTES, _MAX_POST_BODY_BYTES,
                                       OPERATOR_ACTIONS, OperatorAction, ReadQuery, atomic_save,
                                       load, make_handler, operator_actions)
-from annotator.operations import ACTION_NAMES
+from annotator.operations import (ACTION_NAMES, Operation,
+                                  operations_registry)
 from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S
 from src.pid_seed_rebuild import explicit_seeds, run
 
@@ -2034,6 +2035,54 @@ class WriteRegistryTests(unittest.TestCase):
                     operator_actions(Backend, rows)
                 # The refusal names the fault; two of them add the offending value after it.
                 self.assertRegex(str(caught.exception), '^' + re.escape(message))
+
+    def test_the_write_table_and_the_registry_refuse_the_same_requires_shape(self):
+        """One shape rule has one owner, so both tables refuse the same entries.
+
+        ``annotator/operations.py check_requires`` holds the rule for the 34
+        operations and for the write rows of this module.  The write table accepted
+        an entry whose field name is the empty string before round 67, while the
+        registry refused it.  This case reads both callers on one row of each bad
+        shape, so no row can be legal in one table and illegal in the other.
+        """
+        def writer(ops, state, payload):
+            return None
+
+        bad = [('', 'a refusal'), ('x',), 'x', (1, 'r'), None, ['x', 'y'], ('x', 'y', 'z')]
+        for entry in bad:
+            with self.subTest(entry=entry):
+                write = OperatorAction('probe', ('api', 'probe'), 'clock_action',
+                                       requires=(entry,))
+                operation = Operation('probe_action', writer, lambda state, payload: {},
+                                      requires=(entry,))
+                with self.assertRaises(ValueError) as caught:
+                    operator_actions(Backend, [write])
+                self.assertRegex(str(caught.exception),
+                                 '^' + re.escape(f'write probe declares a bad required field: {entry!r}'))
+                with self.assertRaises(ValueError) as caught:
+                    operations_registry([operation])
+                self.assertRegex(str(caught.exception),
+                                 '^' + re.escape('operation probe_action declares a bad required field: '
+                                                 f'{entry!r}'))
+
+    def test_an_empty_field_name_is_refused_on_both(self):
+        """An empty field name cannot name a payload key, so neither table takes one."""
+        def writer(ops, state, payload):
+            return None
+
+        empty = (('', 'a refusal'),)
+        write = OperatorAction('probe', ('api', 'probe'), 'clock_action', requires=empty)
+        operation = Operation('probe_action', writer, lambda state, payload: {}, requires=empty)
+        # The control: a non-empty field name is accepted by both callers, so the two
+        # refusals below come from the empty name and not from a tighter rule.
+        operator_actions(Backend, [OperatorAction('probe', ('api', 'probe'), 'clock_action',
+                                                  requires=(('x', 'a refusal'),))])
+        operations_registry([Operation('probe_action', writer, lambda state, payload: {},
+                                       requires=(('x', 'a refusal'),))])
+        with self.assertRaisesRegex(ValueError, "^write probe declares a bad required field"):
+            operator_actions(Backend, [write])
+        with self.assertRaisesRegex(ValueError, "^operation probe_action declares a bad required field"):
+            operations_registry([operation])
 
     def test_the_dispatcher_serves_the_table_and_nothing_else(self):
         calls = []

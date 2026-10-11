@@ -46,6 +46,10 @@ from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 # The tournament declares the action names it accepts (annotator/operations.py).
 # This module imports it here, so one table joins the route to that declaration.
 from annotator.operations import ACTION_NAMES as TOURNAMENT_ACTIONS  # noqa: E402
+# The shape rule of a `requires` entry has one home too: annotator/operations.py
+# owns it, and this module imports it.  The write table below and the operations
+# registry then answer the same refusal for the same bad entry.
+from annotator.operations import check_requires  # noqa: E402
 # The identity of a refusal the console must know - a stable code and the Chinese
 # sentence for it - has one owner: annotator/refusals.py. This module imports it here,
 # so one rule builds every refusal body and the console holds no copy of a sentence.
@@ -262,8 +266,7 @@ def operator_actions(backend, rows):
         if not isinstance(row.requires, tuple):
             raise ValueError(f'write {row.name} needs a tuple of required fields')
         for entry in row.requires:
-            if not (isinstance(entry, tuple) and len(entry) == 2 and all(isinstance(v, str) for v in entry)):
-                raise ValueError(f'write {row.name} declares a bad required field: {entry!r}')
+            check_requires(entry, f'write {row.name}')
         if not isinstance(row.actions, tuple):
             raise ValueError(f'write {row.name} needs a tuple of actions')
         if not callable(getattr(backend, row.handler, None)):

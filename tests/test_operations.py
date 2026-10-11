@@ -9,6 +9,7 @@ import re
 import tempfile
 import textwrap
 import threading
+import types
 import unittest
 from unittest.mock import patch
 
@@ -1485,6 +1486,63 @@ class OperationRegistryTests(unittest.TestCase):
                 # the refusal names the fault; two of them add the offending value after it
                 with self.assertRaisesRegex(ValueError, f'^{re.escape(message)}'):
                     operations_registry(rows)
+
+    def test_the_two_registries_refuse_the_same_requires_shape(self):
+        """One shape rule has one owner, so both registries refuse the same entries.
+
+        The operations registry and the write table of ``annotator/unified_server.py``
+        each check the ``requires`` entry of their own rows.  Before round 67 the two
+        checkers held the rule twice, and the write table accepted an entry whose
+        field name is the empty string while the registry refused it.  This case
+        reads both checkers on one row of each bad shape, so the two answers cannot
+        part again.
+        """
+        from annotator.unified_server import OperatorAction, operator_actions
+
+        def writer(ops, state, payload):
+            return None
+
+        audit = lambda state, payload: {}                    # noqa: E731
+        backend = types.SimpleNamespace(clock_action=lambda self, payload: None)
+        bad = [('', 'a refusal'), ('x',), 'x', (1, 'r'), None, ['x', 'y'], ('x', 'y', 'z')]
+        for entry in bad:
+            with self.subTest(entry=entry):
+                write = OperatorAction('probe', ('api', 'probe'), 'clock_action',
+                                       requires=(entry,))
+                operation = Operation('probe_action', writer, audit, requires=(entry,))
+                for label, call in (('write probe', lambda: operator_actions(backend, [write])),
+                                    ('operation probe_action',
+                                     lambda: operations_registry([operation]))):
+                    with self.assertRaises(ValueError) as caught:
+                        call()
+                    self.assertRegex(
+                        str(caught.exception),
+                        '^' + re.escape(f'{label} declares a bad required field: {entry!r}'),
+                        f'{label} must refuse the entry {entry!r} with its own label')
+
+    def test_an_empty_field_name_is_refused_by_both_callers(self):
+        """An empty field name cannot name a payload key, so neither table takes one."""
+        from annotator.unified_server import OperatorAction, operator_actions
+
+        def writer(ops, state, payload):
+            return None
+
+        audit = lambda state, payload: {}                    # noqa: E731
+        empty = (('', 'a refusal'),)
+        backend = types.SimpleNamespace(clock_action=lambda self, payload: None)
+        write = OperatorAction('probe', ('api', 'probe'), 'clock_action', requires=empty)
+        operation = Operation('probe_action', writer, audit, requires=empty)
+        # A non-empty field is the control: both checkers accept it, so the two
+        # refusals above come from the empty name and not from a stricter reading.
+        accepted = Operation('probe_action', writer, audit, requires=(('text', 'a refusal'),))
+        self.assertEqual(operations_registry([accepted])['probe_action'].requires,
+                         (('text', 'a refusal'),))
+        operator_actions(backend, [OperatorAction('probe', ('api', 'probe'), 'clock_action',
+                                                  requires=(('text', 'a refusal'),))])
+        with self.assertRaisesRegex(ValueError, "^write probe declares a bad required field"):
+            operator_actions(backend, [write])
+        with self.assertRaisesRegex(ValueError, "^operation probe_action declares a bad required field"):
+            operations_registry([operation])
 
     def test_the_writer_and_the_audit_line_come_from_the_one_declaration(self):
         """Replace the declaration and both the dispatch and the audit line change."""

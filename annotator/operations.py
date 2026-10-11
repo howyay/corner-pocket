@@ -282,6 +282,22 @@ class Operation:
                 raise ValueError(refusal)
 
 
+def check_requires(entry, label):
+    """The one shape rule of a ``requires`` entry: a (field name, refusal) pair.
+
+    Two checkers own this rule today: the operations registry below and the write
+    table of ``annotator/unified_server.py``.  The rule stands here once, and the
+    write table imports it.  The reading is the strict one: each part is a
+    non-empty string, because an empty field name cannot name a payload key.
+
+    ``label`` names the row and its type, as ``operation probe_action`` or
+    ``write probe``, so each caller keeps its own sentence.  A good entry answers
+    None, and a bad entry is refused with the label and the entry in the text."""
+    if (not isinstance(entry, tuple) or len(entry) != 2
+            or not all(isinstance(part, str) and part for part in entry)):
+        raise ValueError(f'{label} declares a bad required field: {entry!r}')
+
+
 def operations_registry(rows):
     """Check each declaration, then key them by name. A half-declared action fails here."""
     registry = {}
@@ -299,9 +315,7 @@ def operations_registry(rows):
         if not isinstance(row.requires, tuple):
             raise ValueError(f'operation {row.name} needs a tuple of required fields')
         for entry in row.requires:
-            if (not isinstance(entry, tuple) or len(entry) != 2
-                    or not all(isinstance(part, str) and part for part in entry)):
-                raise ValueError(f'operation {row.name} declares a bad required field: {entry!r}')
+            check_requires(entry, f'operation {row.name}')
         if not isinstance(row.audit_before_write, bool):
             raise ValueError(f'operation {row.name} needs audit_before_write to be a boolean')
         if row.record is not None:

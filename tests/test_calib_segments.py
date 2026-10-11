@@ -419,6 +419,67 @@ class ReferenceSeamTest(unittest.TestCase):
                              f"the {kind} step selected the refused reference")
 
 
+class ReferenceTableTest(unittest.TestCase):
+    """The (file, key) pair of a dataset has one home, and both readers read it.
+
+    ``src/calib_segments.py`` ``STATIC_REFERENCES`` owns the pair.
+    ``src/table_refine.py`` ``_DATASET_PRIOR`` reads that home through
+    ``prior_spec``, so the two tables answer together.  The two datasets agreed
+    before round 67 and the pair stood in both modules, so an edit of one copy was
+    silent.  ``git grep -n "STATIC_REFERENCES" -- 'tests/*.py'`` answered 0 then, and
+    this class is the guard it named.
+    """
+
+    #: The two readers of the pair, and the name each one reports for itself.
+    READERS = ("src/calib_segments.py", "src/table_refine.py")
+
+    def test_each_dataset_has_one_file_and_key_pair(self):
+        """Both tables give a dataset one pair, and the pair is the owner's."""
+        from src import table_refine as tr
+
+        self.assertEqual(set(cs.STATIC_REFERENCES), set(tr._DATASET_PRIOR),
+                         'the two tables hold different datasets')
+        for dataset, owned in cs.STATIC_REFERENCES.items():
+            with self.subTest(dataset=dataset):
+                spec = tr.prior_spec(dataset)
+                self.assertEqual((spec["file"], spec["key"]), (owned["file"], owned["key"]),
+                                 f'{dataset}: the two tables name two reference files')
+                self.assertIs(cs.reference_spec(dataset), owned,
+                              f'{dataset}: the lookup must answer the owner entry itself')
+
+    def test_the_pair_is_spelled_in_one_module_only(self):
+        """src/table_refine.py holds no copy of the pair, so one edit moves both."""
+        source = (ROOT / "src" / "table_refine.py").read_text()
+        for owned in cs.STATIC_REFERENCES.values():
+            with self.subTest(file=owned["file"]):
+                self.assertNotIn(f'"{owned["file"]}"', source,
+                                 'the pair stands in src/table_refine.py as well')
+
+    def test_an_unknown_dataset_gets_no_reference_from_either_reader(self):
+        """An unknown name takes no fallback: both readers answer None for it.
+
+        The table served ``fixed_corners.json`` for any unknown name before round 67,
+        while ``src/table_refine.py`` answered None.  The file belongs to the
+        ``highlight`` entry alone, so the fallback gave an unknown dataset the
+        geometry of another dataset in silence.
+        """
+        from src import table_refine as tr
+
+        unknown = "a_dataset_neither_table_names"
+        self.assertNotIn(unknown, cs.STATIC_REFERENCES)
+        self.assertIsNone(cs.reference_spec(unknown))
+        self.assertIsNone(tr.prior_spec(unknown))
+        # The reader of the table answers a not-found reference, not the highlight file.
+        reference = cs.static_reference(unknown)
+        self.assertFalse(reference.found)
+        self.assertIsNone(reference.quad)
+        self.assertEqual(reference.artifact, None)
+        self.assertNotIn("fixed_corners.json", json.dumps(reference.as_dict()))
+        # The other reader answers nothing at all.
+        self.assertIsNone(tr.prior_for(unknown))
+        self.assertEqual(tr.prior_provenance(unknown)["kind"], "none")
+
+
 class OldPathEquivalenceTest(unittest.TestCase):
     """The seam returns the array the old private loaders returned.
 
