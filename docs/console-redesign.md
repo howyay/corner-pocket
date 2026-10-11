@@ -5876,3 +5876,156 @@ while it loads.
 The push is still blocked. Forty-two commits sit on the local `main`: the three of this round, the
 record of this round, and the thirty-eight that came before them. `origin/main` stays at `110b0338`.
 The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 55 · the guest name had three answers, and one reply body stood in three files (2026-10-11)
+
+The walk of this round read the repository at `3a152ef` with an empty `git status --porcelain`,
+answered `Strong candidate present - 1 Strong, 3 Worth, 1 Note`, and wrote 142 lines to
+`/tmp/dshsess/walk_round55.md`. It read the deploy units, `db/migrations/0002` and part of `0003`, and
+it read the console JavaScript by grep and by region only. It did not read `src/sam3/`, the HTML
+templates under `annotator/`, the bodies of `src/eval_events.py` and `src/segment_calib_report.py`,
+the class bodies and the nested `def`s (an `ast` scan covered those), about 38 files of `docs/`, and
+`viz/` and `out/`.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `23e4345` | `annotator/clock-sync.js`, `tests/test_shot_clock.py` | Note 1 |
+| `406a329` | `src/reply_body.py`, `tests/test_one_reply_body.py`, `annotator/server.py`, `src/pid_anchor_ui.py`, `src/pid_seed_ui.py`, `tests/test_duplicate_bodies.py` | Worth 2 |
+| `11c066b` | `annotator/operations.py`, `annotator/ops.js`, `tests/test_guest_name.py`, `tests/test_note_limit.py` | Strong 1 and Worth 1 |
+
+### Strong 1 · the longest guest name had three answers, and the guard read Python only
+
+Ground: `annotator/refusals.py:49 GUEST_NAME_MAX = 60` was the declared owner, and the comment at
+`:45` said "The longest guest name the service stores.  One module owns this number." Two other
+answers stood in the same repository. The operations layer answered 200 for the guest path, because
+`annotator/operations.py:63 def text(value, name, maximum=200)` holds that default and the two guest
+readers passed no maximum: `annotator/operations.py:507 person = dict(pid=None, name=text(member.get('name'), 'guest name'))`
+and `:816 name = text(p.get('name'), 'guest name').casefold()`. The console answered 120 in its three
+guest fields: `annotator/ops.js:1097`, `:1154` and `:1160` held `maxlength="120"`. The live stage held
+the owner: `annotator/vision-stage.js:1214 data-vs-action="guest-name" maxlength="60"`.
+
+The guard could not see the drift. `tests/test_guest_name.py:26 SOURCE_TREES = (ROOT / 'annotator', ROOT / 'src')`
+with `:45 return sorted(path for tree in SOURCE_TREES for path in tree.glob('*.py'))` reads Python
+files only, and it never named `_person` or `_do_guest_promote`.
+
+The measurement of the defect, before the repair: a guest name of 100 characters passed the desk and
+failed the live stage, because `roster_add` and `enroll_confirm` refuse at 60.
+
+Repair: `annotator/operations.py:515` and `:824` pass `GUEST_NAME_MAX` now. `annotator/ops.js` states
+60 in the three guest fields. `tests/test_guest_name.py` gained
+`test_the_guest_label_states_the_owner` and `test_the_console_guest_fields_state_the_owner`, and it
+reads `annotator/ops.js` as text now. The measurement after the repair: `_person` and
+`_do_guest_promote` refuse 61, 100, 120, 200 and 201 characters with
+`TemplateError: guest name must contain 1–60 characters`, and 60 characters passes `_person`.
+
+### Worth 1 · the note bound 4000 stood four times
+
+Ground: `annotator/operations.py:808` stated the number in the refusal sentence, `:1237` bounded the
+note with the literal `4000`, and `annotator/ops.js:1232` and `:1241` stated `maxlength="4000"`. Four
+places held one rule, and no name held it.
+
+Repair: `annotator/operations.py:36 NOTE_MAX = 4000` is the owner, `:815` and `:1245` read it, and
+`annotator/ops.js` states the same number in the markup of the note field and of the note textarea.
+`tests/test_note_limit.py` holds the owner, the two Python sites and the console source together.
+
+### Worth 2 · one `_send` body stood three times, and the guard read `src/` only
+
+Ground: `annotator/server.py:41`, `src/pid_anchor_ui.py:142` and `src/pid_seed_ui.py:148` held the same
+five statements, `def _send(self, code, body, ctype="application/json"):`. The walk that exists to
+find such copies read one tree: `tests/test_duplicate_bodies.py:52 SRC = ROOT / 'src'`.
+
+Repair: `src/reply_body.py` owns the body, `write_reply(handler, code, body, ctype="application/json")`,
+and it imports no module of this repository. The three call sites are one statement each. The walk
+reads `TREES = (SRC, ROOT / 'annotator')` now, and its record shape names every site of one body
+(`ApartBody`). `tests/test_one_reply_body.py` compares the three source bodies, the three call sites
+and the exact bytes of one reply.
+
+### Worth 3 · the board pace: a decision, not a repair
+
+Ground: `annotator/board.js:15 const POLL_MS = 3000, STALE_MS = 15000, TIMEOUT_MS = 8000;` and
+`annotator/unified_server.py:2714 (("Cache-Control", "no-store"), ("Retry-After", "3"))`. Each side
+has one name, and each side has a test that pins it: `tests/test_board.js:245-246` reads
+`board.POLL_MS`, and `tests/test_board_api.py:484` reads the header. The client's pace answers "how
+soon does the board ask again", and the server's hint answers "how soon may a failed fetch ask
+again". Two questions, two answers, no third copy. The row closes with no code change, because a
+guard would pin a coincidence.
+
+### Note 1 · the 15 s heartbeat cadence stood as words
+
+Ground: `annotator/clock-sync.js:50 const HEARTBEAT_TIMEOUT_MS = 30000;` with the comment
+`two missed 15 s heartbeats: stream dead`, `annotator/shot_clock.py:41 HEARTBEAT_S = 15`, and a
+comment at `annotator/unified_server.py:2809`. No test read the client timeout, while the sibling
+`RECONNECT_MS` at `annotator/clock-sync.js:58` had a reader. Repair: the comment names the owner
+`HEARTBEAT_S in annotator/shot_clock.py`, and
+`test_the_client_timeout_still_counts_two_server_heartbeats` holds the timeout at
+`2 * shot_clock.HEARTBEAT_S * 1000`.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Lead, Note 1 | `annotator/clock-sync.js` | `56073a977ab44a0573dea65f36a3531203d054a2 → af5bc2e135ef7639642875f875bce545f10bd148 → 56073a977ab44a0573dea65f36a3531203d054a2` | `AssertionError: 30000 != 31000 : the client calls the stream dead after two missed heartbeats of shot_clock.HEARTBEAT_S` |
+| Writer K, Worth 2 | `src/pid_anchor_ui.py` | `5ec55a3e08d06cde3babd2fa28914332cf0855f7 → cf215bb1915c7239e4cedbbec8fd9cf8133be1ab → 5ec55a3e08d06cde3babd2fa28914332cf0855f7` | `AssertionError: 1 != 5 : src/pid_anchor_ui.py Handler._send holds 5 statements, so it holds a rule of its own`, and `tests/test_duplicate_bodies.py` stayed green, which proves that the widened walk reads module-level bodies only |
+| Lead, Worth 2 | `src/reply_body.py` | `500eff3be2d4c9daa8a1a37db7d833b1ec772eba → 6e6a6910a3bdb8cf820f6e5e9ed6342eb2aca87b → 500eff3be2d4c9daa8a1a37db7d833b1ec772eba` | `('Content-Length', '11') != ('Content-Length', '12')` |
+| Lead, Worth 1 | `annotator/operations.py` | `20e25724ddb181f3197c0cd3fd8973009c06f7d9 → 7583e286e1d76c71bb02e0509d90b2db712f11b6 → 20e25724ddb181f3197c0cd3fd8973009c06f7d9` | `- NOTE_MAX`, `+ 4000`, and `annotator/operations.py:1245 must pass NOTE_MAX as the maximum of text()` |
+| Lead, Strong 1 | `annotator/operations.py` | `20e25724ddb181f3197c0cd3fd8973009c06f7d9 → cfe20aacaaf7f828d62ebd4f4ba794ff8ed00446 → 20e25724ddb181f3197c0cd3fd8973009c06f7d9` | `AssertionError: unexpectedly None : annotator/operations.py:515 calls text() for a guest name without a maximum, so the name falls back to the 200-character default of text()` |
+| Writer J, Strong 1 | `annotator/ops.js` | `1fc010b697dd1a6a253e1d4755bdb03b5347a5df → 9b36d7b795aa8ae94995aae532de4b0aae8a924a → 1fc010b697dd1a6a253e1d4755bdb03b5347a5df` | `AssertionError: Lists differ: [] != ['annotator/ops.js:1160: the field solo_name states maxlength="120"']`, and `node tests/test_ops.js` stayed at 219 pass, so the JavaScript suite cannot see that drift |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 1990 tests in 146.884s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 219, pass 219, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 102 passed, 0 failed, 75 source-text assertions |
+
+Round 54 answered 1980 cases, and this round answered 1990. The modules of this round carry the named
+additions: 4 cases in `tests/test_one_reply_body.py`, 3 in `tests/test_note_limit.py`, 2 in
+`tests/test_guest_name.py` and 2 in `tests/test_shot_clock.py`. One case of the difference has no name
+in this record, because the discovery of a tree counts the cases that a module builds while it loads.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The longest guest name has three answers | Strong 1 of this walk | one owner, two readers that pass it, three console fields that state it, and a guard that reads Python and JavaScript |
+| The note bound 4000 stands four times | Worth 1 of this walk | `NOTE_MAX` is the owner, and `tests/test_note_limit.py` holds the console and the Python sites to it |
+| One `_send` body stands three times | Worth 2 of this walk | `src/reply_body.py` owns the body, and the walk reads the two source trees now |
+| The board's 3 s pace has a server twin | Worth 3 of this walk | closed by decision: two questions, one name and one test on each side |
+| The 15 s heartbeat cadence stands as words | Note 1 of this walk | the comment names the owner, and a case holds the timeout at two heartbeats |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| The timestamp function body stands three times | found by the widened walk this round | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now` and `annotator/vod_import.py:114 now_iso` hold one body, `return datetime.now(timezone.utc).isoformat()`, at 23 call sites; the walk records the triple under the digest `7e1173f55016fa90f33df74173559c5f1c53c334` and changes no file |
+| Two statistics bodies stay apart on purpose | found by the widened walk this round | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats` answer the same six numbers; round 51 wrote both files outside its scope, so the walk records the pair under the digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
+| The note bound stands a fifth time in the schema | limit of this round | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)`, and no guard reads that copy |
+| The duplicate-body walk reads module-level `def`s only | limit of this round | the bite of writer K proves it: a five-statement method body left the walk green |
+| The console guards read source text | limit of this round | no JavaScript case covers the `maxlength` of `solo_name`, `late_name` or the guest fields; the renderer cases cover the note field and the note textarea |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270 raise ValueError("seeds exist for vod30 only")`, `src/store_pg.py:291` and `:298`, and `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25 FFMPEG_VAR = "POOL_FFMPEG"` and `:26 FFPROBE_VAR = "POOL_FFPROBE"`, and the drop-in `deploy/systemd/pool-workbench.service.d/30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50 [ "$age_h" -le 48 ]`, the comment at `deploy/systemd/pool-postgres-verify.service:2`, and the row at `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `src/pid_shooter.py:109` |
+| `out/events_actors.json` has three writers and two readers | measured in round 54 | writers `src/pid_shooter.py:109`, `src/pid_shooter2.py:119` and `src/pid_associate.py:182`; readers `annotator/server.py:59` and `annotator/unified_server.py:2136` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"`, and a mask file is not the rule |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks the two known shapes of the defect, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph that writer H added to `tests/test_suite_inventory.py` states 1979 cases in 99 modules, and no guard reads that number |
+| The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files with two spellings, and `30.0003` stands at 8 sites |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites, plus two `out/scan30/sam3_results.json` paths |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message` and `_send`, and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57` and `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs 2 cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| The areas that no walk read | Note | `src/sam3/`, the HTML templates of the console, the bodies of `src/eval_events.py` and `src/segment_calib_report.py`, the class bodies and the nested `def`s of `src/*.py`, and about 38 files of `docs/` |
+
+The push is still blocked. Forty-six commits sit on the local `main`: the three code commits of this
+round, the record of this round, and the forty-two that came before them. `origin/main` stays at
+`110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
