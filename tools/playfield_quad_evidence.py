@@ -13,6 +13,10 @@ It writes ``out/playfield_quad_evidence.json`` and one PNG per pick under
 cadence as the served console, not on a copy of it.  The refused event ids come from the
 audit tool, which holds them together with the reason of each refusal.  This tool keeps no
 second list of ids and no second copy of a reason.
+
+The verdict of a quad has one home, ``src.table_refine``.  This tool reads the two rotations of
+the check there and answers the owner's own ``unavailable_verdict`` when a check cannot run, so
+a check that could not run never reads as a measured pass in this evidence.
 """
 import json
 import math
@@ -23,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import cv2
 import numpy as np
 from src.playfield import PARALLEL_TOL_DEG, check_quad, quad_signs
+from src.table_refine import CHECK_UNAVAILABLE, unavailable_verdict
 from tools.playfield_harness import Recording, frame_context, new_stage
 from tools.playfield_vod_audit import CLOTH_BAND_REASON, KNOWN_REFUSED
 
@@ -33,6 +38,11 @@ CLOTH_REASON = CLOTH_BAND_REASON
 REFUSED = tuple(sorted(name[:-4] for name, reason in KNOWN_REFUSED.items()
                        if name.endswith('.mp4') and reason.startswith(CLOTH_REASON)))
 FRACTIONS = (0.10, 0.50)
+
+#: The label of a pick whose check could not run.  The owner ``src.table_refine`` answers
+#: ``unavailable_verdict`` for that pick, so no reading exists and no side is at fault.  The
+#: name of the reason comes from the owner, so this tool holds no second copy of it.
+CHECK_DID_NOT_RUN = 'check could not run: ' + CHECK_UNAVAILABLE
 
 
 def convexity_signs(quad):
@@ -64,7 +74,12 @@ def classify(signs, angles, parallel, parallel_tol):
     the two pair angles, and the test is ``best > parallel_tol``.  This function must not
     reduce the pair again: a second reduction with ``max`` reads the perspective angle as a
     fault and names the tolerance for a quad that the service accepts.
+
+    A verdict without a reading names no side.  The owner answers that shape when a check could
+    not run, and this function reports that state instead of raising on the missing number.
     """
+    if parallel is None or parallel_tol is None:
+        return CHECK_DID_NOT_RUN
     if 0 in signs or len(set(signs)) > 1:
         return 'detector: not a convex quad'
     if min(angles) < 20 or max(angles) > 160:
@@ -84,16 +99,18 @@ def best_check(quad, parallel_tol=PARALLEL_TOL_DEG):
     pair of verdicts.  The rotated form is tried second, because a quad that passes is uncommon
     in this evidence and the tool prints one verdict.
 
-    A fault inside a check is not a pass: the caller sees the first verdict with the error.
+    A fault inside a check is not a pass.  One handler covers the two calls, as the owner
+    ``src.table_refine.best_verdict`` does, and the tool answers the owner's own
+    ``unavailable_verdict`` for that fault: ``ok`` is False, ``reasons`` holds the owner's
+    reason, and ``metrics`` is empty.  The tool does not run the check a third time, because
+    that run answers a measured pass for a check that did not run.
     """
     rotated = list(quad[1:]) + list(quad[:1])
     try:
         verdicts = [check_quad(quad, parallel_tol=parallel_tol),
                     check_quad(rotated, parallel_tol=parallel_tol)]
     except Exception as exc:
-        verdict = check_quad(quad, parallel_tol=parallel_tol)
-        verdict['error'] = str(exc)
-        return verdict
+        return unavailable_verdict(exc)
     return min(verdicts, key=lambda v: (not v['ok'], len(v['reasons'])))
 
 
@@ -113,7 +130,8 @@ def pick_entry(name, idx, fps, quad, pf):
     ``pf`` is the payload the served stage published with this quad.  The entry carries it
     unchanged, so the record's ``check_ok``, ``reasons`` and ``metrics`` are the service's own
     fields.  The pair reading and the tolerance come from the check's verdict for the same
-    quad, in the two rotations the service tries, and the verdict names a side from them.
+    quad, in the two rotations the service tries, and the verdict names a side from them.  A
+    check that could not run carries no reading, so the entry names that state in its place.
     """
     owner_verdict = best_check(quad)
     par, par_tol = parallel_pair_reading(owner_verdict)

@@ -11,6 +11,11 @@ These cases hold the repaired shape: the tool takes the reading and the toleranc
 check, its classification agrees with the check's own verdict for the venue quad and for a
 quad that fails the tolerance, and a planted second reduction is reported.
 
+A check that could not run is not a pass either.  ``src/table_refine`` owns the answer of that
+fault, and the last cases here hold the tool's answer equal to the owner's answer, for a fault
+on either of the two calls of the check.  The tool must also stop after those calls, because a
+third call answers a measured verdict for a check that failed.
+
 Round 72 gave the cross-product sign of a quad the same treatment.  The rule stood twice, once
 in the check and once in the tool, and ``src/playfield.quad_signs`` is the one owner now.  The
 tool keeps the name ``convexity_signs`` and reads the owner.
@@ -24,8 +29,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import src.playfield as playfield
 from src.playfield import (PARALLEL_TOL_DEG, check_quad, parallelism,
                            quad_signs)
+from src.table_refine import CHECK_UNAVAILABLE, best_verdict
 
 EVIDENCE_NAME = 'tools/playfield_quad_evidence.py'
 TEST_NAME = 'tests/test_playfield.py'
@@ -132,6 +139,55 @@ def with_planted_reading(call):
         return call()
     finally:
         TOOL.check_quad = saved
+
+
+#: The text of the fault the planted checks raise, so the two answers compare word for word.
+PLANTED_FAULT = 'planted fault'
+
+
+def with_a_planted_fault(number, call):
+    """Run one call with the tool's check raising a fault on its ``number``-th call.
+
+    The tool calls the check through that module name, so this is the fault the tool meets.
+    The returned list holds the quad of every call, so a call after the fault is visible.  The
+    name goes back before any other test can see it.
+    """
+    saved = TOOL.check_quad
+    calls = []
+
+    def planted(quad, parallel_tol=PARALLEL_TOL_DEG):
+        calls.append(quad)
+        if len(calls) == number:
+            raise ValueError(PLANTED_FAULT)
+        return saved(quad, parallel_tol=parallel_tol)
+
+    TOOL.check_quad = planted
+    try:
+        return call(), calls
+    finally:
+        TOOL.check_quad = saved
+
+
+def owner_answer_for_a_fault(number, quad):
+    """What the owner answers when the ``number``-th call of its check raises the fault.
+
+    ``best_verdict`` reads the check from ``src.playfield`` at call time, so the planted name
+    takes the check's own place.  The returned list holds the quad of every call.
+    """
+    saved = playfield.check_quad
+    calls = []
+
+    def planted(points, parallel_tol=PARALLEL_TOL_DEG):
+        calls.append(points)
+        if len(calls) == number:
+            raise ValueError(PLANTED_FAULT)
+        return saved(points, parallel_tol=parallel_tol)
+
+    playfield.check_quad = planted
+    try:
+        return best_verdict(quad), calls
+    finally:
+        playfield.check_quad = saved
 
 
 def owner_reading(quad, parallel_tol=PARALLEL_TOL_DEG):
@@ -350,6 +406,67 @@ class TheToolAgreesWithTheCheckTests(unittest.TestCase):
                           'interior_angles', 'metrics', 'parallel_tol_deg', 'quad', 'reasons',
                           't_s', 'verdict', 'vod'],
                          'the record must keep the fields it held before the repair')
+
+
+class ACheckThatCouldNotRunTests(unittest.TestCase):
+    """The tool answers the owner's dictionary for a fault, and it stops after the two calls."""
+
+    def test_a_fault_on_the_rotated_check_answers_the_owner_dictionary(self):
+        """One fault must not answer two ways on the two callers.
+
+        The tool once ran the unrotated check again inside its handler and returned that
+        measured verdict with an ``error`` key, so a check that did not run read as a pass in
+        the evidence record.  The owner answered ``unavailable_verdict`` for the same fault.
+        """
+        owner, owner_calls = owner_answer_for_a_fault(2, VENUE_QUAD)
+        answer, calls = with_a_planted_fault(2, lambda: TOOL.best_check(VENUE_QUAD))
+        self.assertEqual(len(owner_calls), 2, 'the owner must try the two rotations and stop')
+        self.assertEqual(len(calls), 2, 'the tool must try the two rotations and stop')
+        self.assertEqual(answer, owner, 'the tool and the owner must answer one dictionary')
+        self.assertEqual(answer['reasons'], [CHECK_UNAVAILABLE],
+                         'the owner names the reason, and the tool reads that name')
+        self.assertEqual(answer['metrics'], {}, 'nobody measured the table')
+        self.assertFalse(answer['ok'], 'a check that could not run is not a pass')
+        self.assertEqual(answer['error'], PLANTED_FAULT)
+
+    def test_a_fault_on_the_first_check_answers_the_owner_dictionary_too(self):
+        """The first call can raise as well, and one handler covers the two calls."""
+        owner, owner_calls = owner_answer_for_a_fault(1, VENUE_QUAD)
+        answer, calls = with_a_planted_fault(1, lambda: TOOL.best_check(VENUE_QUAD))
+        self.assertEqual(len(owner_calls), 1, 'the owner stops at the call that raised')
+        self.assertEqual(len(calls), 1, 'the tool stops at the call that raised')
+        self.assertEqual(answer, owner)
+        self.assertEqual(answer['reasons'], [CHECK_UNAVAILABLE])
+
+    def test_a_quad_without_a_fault_answers_as_today(self):
+        """The two rotations of a quad that runs must not move, and must carry no error key."""
+        venue = TOOL.best_check(VENUE_QUAD)
+        self.assertEqual(sorted(venue), ['metrics', 'ok', 'reasons'],
+                         'a check that ran answers no error key')
+        self.assertTrue(venue['ok'], venue['reasons'])
+        self.assertEqual(venue['reasons'], [])
+        self.assertEqual(venue['metrics']['best_parallel_deg'], 0.0)
+        refused = TOOL.best_check(REFUSED_QUAD)
+        self.assertEqual(refused, check_quad(REFUSED_QUAD),
+                         'the better of the two rotations is the check verdict here')
+        self.assertEqual(refused['reasons'], ['no-parallel-pair'])
+
+    def test_a_pick_whose_check_could_not_run_records_the_refusal(self):
+        """The record of such a pick must name the state and hold no reading.
+
+        ``pick_entry`` reads the pair numbers out of the verdict.  A fault leaves those two
+        fields empty, so the entry names the state; a missing number must not raise inside
+        ``classify``, and the label must not read as an accepted quad.
+        """
+        payload = {'ok': False, 'reasons': [CHECK_UNAVAILABLE]}
+        entry, calls = with_a_planted_fault(2, lambda: TOOL.pick_entry(
+            'fixture.mp4', 30, 30.0, VENUE_QUAD, payload))
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(entry['edge_pair_angle_deg'], None, 'no reading exists')
+        self.assertEqual(entry['parallel_tol_deg'], None, 'no tolerance was used')
+        self.assertEqual(entry['verdict'], TOOL.CHECK_DID_NOT_RUN)
+        self.assertTrue(refused_by(entry['verdict']), 'a fault must not read as accepted')
+        self.assertEqual(entry['check_ok'], payload['ok'])
 
 
 if __name__ == '__main__':

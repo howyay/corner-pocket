@@ -202,6 +202,36 @@ def better(quad):
 '''
 
 
+#: A planted fault handler: it answers the check's own measured verdict for a fault.
+PLANTED_HANDLER = '''
+def best_check(quad, parallel_tol=1.0):
+    try:
+        return check_quad(quad, parallel_tol=parallel_tol)
+    except Exception as exc:
+        verdict = check_quad(quad, parallel_tol=parallel_tol)
+        verdict['error'] = str(exc)
+        return verdict
+'''
+
+
+def check_calls_inside_a_handler(text):
+    """The lines of one source text that call the quad check inside an ``except`` body.
+
+    A fault handler may answer the owner's dictionary for a check that could not run.  It must
+    not run the check again: that call answers a measured verdict for a check that failed, and
+    a measured pass is the one answer the rule below forbids.
+    """
+    found = []
+    for node in ast.walk(ast.parse(text)):
+        if not isinstance(node, ast.ExceptHandler):
+            continue
+        for step in ast.walk(node):
+            if isinstance(step, ast.Call) and isinstance(step.func, ast.Name) \
+                    and step.func.id == 'check_quad':
+                found.append(step.lineno)
+    return found
+
+
 def better_verdict_sites(text):
     """The lines of one source text that take the better of two verdicts: ok first, then reasons.
 
@@ -588,3 +618,21 @@ class TheQuadVerdictHasOneHomeTests(unittest.TestCase):
             (tree / 'second_body.py').write_text(PLANTED_BODY, encoding='utf-8')
             self.assertEqual(verdict_copies(tmp), ['tools/second_body.py'],
                              'the planted body must be reported by name')
+
+    def test_the_exempt_tool_holds_no_second_answer_for_a_fault(self):
+        """The exemption covers a reader of the rule, not a second answer for a fault.
+
+        ``tools/playfield_quad_evidence.py`` is the one measured copy outside the home.  It may
+        read the check in the two rotations the stage tries, but it must answer the owner's
+        ``unavailable_verdict`` for a fault.  The check may not run a third time inside the
+        handler, because that run answers a measured verdict for a check that did not run.
+        """
+        self.assertEqual(check_calls_inside_a_handler(source(KNOWN_VERDICT_COPY)), [],
+                         '%s must answer the owner dictionary for a fault'
+                         % KNOWN_VERDICT_COPY)
+
+    def test_the_scan_reports_a_planted_fault_handler(self):
+        """A handler that runs the check again is reported by line, so the walk reads it."""
+        self.assertEqual(check_calls_inside_a_handler(PLANTED_HANDLER), [6],
+                         'the planted handler must be reported by the line of its second call')
+        self.assertEqual(check_calls_inside_a_handler('def f():\n    return 1\n'), [])
