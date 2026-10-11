@@ -86,6 +86,10 @@ VERDICT_WORDS = ('correct', 'wrong', 'unsure')
 # Enroll image guard: dispatch caps POST bodies at 64KB, but the backend method
 # is also callable directly (tests, larger transports), so bound the decoded image.
 _MAX_ENROLL_BYTES = 8 * 1024 * 1024
+#: The dispatch cap of the enroll route, and of no other route.  Base64 costs 4 bytes for
+#: every 3, so the decoded cap above arrives as 11184812 bytes; a margin of 1398100 bytes
+#: holds the JSON envelope.  The sum is 12582912 = 12 MiB, the body this route always took.
+_MAX_ENROLL_BODY_BYTES = (_MAX_ENROLL_BYTES + 2) // 3 * 4 + 1398100
 #: Every ``t`` a route reads is a second of the broadcast, inside this range. The
 #: window route and ``anchor_info`` read the one pair, so the two cannot drift.
 T_RANGE = (0, 1800)
@@ -2859,7 +2863,7 @@ def make_handler(backend):
                     if not (length.isascii() and length.isdigit()):
                         raise APIError("invalid Content-Length", 400)
                     size = int(length)
-                    limit = 12 * 1024 * 1024 if parts[:3] == ["api", "identity", "enroll"] else 65536
+                    limit = _MAX_ENROLL_BODY_BYTES if parts[:3] == ["api", "identity", "enroll"] else 65536
                     if not 0 < size <= limit:
                         raise APIError("invalid request size", 413)
                     payload = json.loads(self.rfile.read(size))
