@@ -9,12 +9,15 @@ This module owns that copy.  One row per refusal the console must know:
 
     English sentence -> Refusal(code, zh)
 
-The sentence is the exact argument a raise site passes to ``ValueError`` or ``APIError``.
-``zh`` is the Chinese sentence, moved here byte for byte from the console.  A sentence
-with no row here keeps the English sentence, and the console then shows its own generic
-Chinese line.  ``tests/test_refusal_identity.py`` pins how many raised sentences have no
-row, so no one adds a refusal without a decision about this table.  Every raised sentence
-has a row now, so the pinned number is zero and a new refusal cannot arrive without one.
+The sentence is the exact argument a raise site passes to ``ValueError`` or ``APIError``.  It
+is also the second element of a ``requires`` pair in a registry row (``annotator/operations.py``
+``OPERATIONS`` and ``annotator/unified_server.py`` ``OPERATOR_ACTIONS``), because a write whose
+payload misses that field is refused with it.  ``zh`` is the Chinese sentence, moved here byte
+for byte from the console.  A sentence with no row here keeps the English sentence, and the
+console then shows its own generic Chinese line.  ``tests/test_refusal_identity.py`` pins how
+many raised sentences have no row, so no one adds a refusal without a decision about this
+table.  Every raised sentence and every registry sentence has a row now, so the pinned number
+is zero and a new refusal cannot arrive without one.
 
 A few refusals name facts inside the sentence: the channel a VOD belongs to, the free
 space an import needs, the id of the import that already runs.  Their sentence cannot be a
@@ -264,6 +267,20 @@ REFUSALS = {
     '`python -m src.store_import --only operations --replace`':
         Refusal('operations_document_missing', '操作记录存在，但其文档缺失；请重新运行导入。'),
     'seeds exist for vod30 only': Refusal('seeds_only_vod30', '标记种子仅适用于 vod30。'),
+    # The eight sentences the operation registries state as a refusal.  A registry row states
+    # one in its ``requires`` pair, and ``Operation.refuse_missing`` raises it when the payload
+    # misses that field (annotator/operations.py), so the operator reads it.  The rows below
+    # hold each one with its code and its Chinese line.  Six sentences are also what the
+    # skeleton TEXT_LENGTH builds, and one is what INTEGER_RANGE builds.  The Chinese line of
+    # those seven is the line the skeleton builds, so the two owners answer one sentence.
+    'name must contain 1–200 characters': Refusal('name_text_length_200', 'name 必须包含 1–200 个字符。'),
+    'guest name must contain 1–200 characters': Refusal('guest_name_text_length_200', 'guest name 必须包含 1–200 个字符。'),
+    'name must contain 1–120 characters': Refusal('name_text_length_120', 'name 必须包含 1–120 个字符。'),
+    'side must be an integer from 0 to 1': Refusal('side_integer_range', 'side 必须是 0 到 1 之间的整数。'),
+    'Expected a Twitch VOD id or https://www.twitch.tv/videos/<id> URL': Refusal('vod_id_url_invalid', '请给出 Twitch VOD id 或 https://www.twitch.tv/videos/<id> 网址。'),
+    'eventId must contain 1–120 characters': Refusal('event_id_text_length_120', 'eventId 必须包含 1–120 个字符。'),
+    'Twitch URL must contain 1–500 characters': Refusal('source_url_text_length_500', 'Twitch URL 必须包含 1–500 个字符。'),
+    'note must contain 1–4000 characters': Refusal('note_text_length_4000', 'note 必须包含 1–4000 个字符。'),
 }
 
 

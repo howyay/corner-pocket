@@ -5,10 +5,11 @@ own Chinese copy of 48 of those sentences, keyed by the English text.  A rewordi
 then dropped the Chinese, and no test caught it.
 
 ``annotator/refusals.py`` owns that identity now: one stable code and one Chinese sentence for
-each refusal the console must know.  This module walks the modules that raise.  A new refusal
-cannot arrive without a row, and a row cannot name a sentence that no raise site produces.
-Every raised sentence has a row: the 48 that moved out of the console, and the 121 that had no
-Chinese line and were given one.
+each refusal the console must know.  This module walks the modules that raise, and the registry
+rows that refuse a missing payload field.  A new refusal cannot arrive without a row, and a row
+cannot name a sentence that no raise site and no registry row states.  Every raised sentence has
+a row: the 48 that moved out of the console, and the 121 that had no Chinese line and were given
+one.
 """
 import ast
 import hashlib
@@ -27,6 +28,15 @@ ROOT = Path(__file__).resolve().parents[1]
 RAISING_MODULES = ('annotator/operations.py', 'annotator/unified_server.py',
                    'src/store_pg.py')
 CONSOLE = 'annotator/ops.js'
+
+# The two classes that build a registry row, and the argument a row states a refusal in.  A row
+# refuses a missing payload field with the second element of one ``requires`` pair, and that
+# sentence reaches the operator through ``Operation.refuse_missing`` (annotator/operations.py),
+# so it is a sentence this table must name.  ``Operation`` states the argument as its fourth
+# positional argument.  ``OperatorAction`` states it by name, because its fourth positional
+# argument is ``takes``: a pair read from that position would be a mistake.
+REGISTRY_NAMES = ('Operation', 'OperatorAction')
+REQUIRES_POSITION = {'Operation': 3}
 
 # How many raised sentences carry no row in annotator/refusals.py.  The console shows its
 # generic Chinese line for each one, and the English sentence stays.  This number is a
@@ -55,12 +65,14 @@ MOVED_ROWS = 48
 CHINESE_SENTENCES_DIGEST = '194fce1ca9d59243f67f9994dc1054ea14dbec8e'
 SENTENCES_DIGEST = '4c1f5c7e255f55dbcd69b0051b58f9374e47a2c4'
 
-# The whole table, both languages.  The English key is the sentence a raise site passes, and the
-# Chinese is the line the operator reads: a rewording of either one is a decision, not an
-# accident.  Three rows arrived with src/store_pg.py, the database store: it raised three
-# sentences of its own, and a sentence without a row reaches the operator as English only.
-TABLE_SENTENCES_DIGEST = '9c0666a29c7f92ff60dd8d60eb3bdfe0474fef6c'
-TABLE_CHINESE_DIGEST = '8045a111e9d978ea6575ba6682d80f83d0b8b135'
+# The whole table, both languages.  The English key is the sentence a raise site or a registry
+# row states, and the Chinese is the line the operator reads: a rewording of either one is a
+# decision, not an accident.  Three rows arrived with src/store_pg.py, the database store: it
+# raised three sentences of its own, and a sentence without a row reaches the operator as
+# English only.  Eight more arrived with the registry rows of annotator/operations.py, whose
+# ``requires`` pairs refused a missing payload field in English only.
+TABLE_SENTENCES_DIGEST = 'b9854f755c9c00a180e38e1ed7e523c18b296825'
+TABLE_CHINESE_DIGEST = '80940b29804ce66c83b2b94bd2e696521793238d'
 
 _SENTENCES = {}
 
@@ -86,12 +98,65 @@ def raised_sentence(node):
     return None
 
 
-def raised_sentences(relative_path):
-    """Every distinct sentence that an ``ast.Raise`` in this module passes first.
+def requires_argument(node):
+    """The ``requires`` argument of one registry call, or None.
 
-    The sentence is read through ``raised_sentence``: a plain string constant, or a name
-    that the refusal table holds.  A sentence that an f-string builds is not a string
-    this table can name: its pieces are fragments, not sentences.
+    A call is one row of a registry: ``Operation`` (annotator/operations.py) or
+    ``OperatorAction`` (annotator/unified_server.py).  A name that builds neither row stays
+    out.  The argument comes from the keyword when one is present, otherwise from the
+    position of ``REQUIRES_POSITION``.
+    """
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+        return None
+    if node.func.id not in REGISTRY_NAMES:
+        return None
+    for keyword in node.keywords:
+        if keyword.arg == 'requires':
+            return keyword.value
+    position = REQUIRES_POSITION.get(node.func.id)
+    if position is not None and len(node.args) > position:
+        return node.args[position]
+    return None
+
+
+def requires_sentence(node):
+    """The sentence one ``requires`` pair states second, or None.
+
+    A pair is ``(field, refusal)``.  Both elements are plain string constants in the two
+    registries, so a pair whose elements are something else stays out: an f-string builds its
+    pieces, not a sentence.
+    """
+    if not isinstance(node, ast.Tuple) or len(node.elts) != 2:
+        return None
+    field, refusal = node.elts
+    if not (isinstance(field, ast.Constant) and isinstance(field.value, str)):
+        return None
+    if isinstance(refusal, ast.Constant) and isinstance(refusal.value, str):
+        return refusal.value
+    return None
+
+
+def registry_sentences(node):
+    """Every sentence the ``requires`` pairs of one registry call state, else none."""
+    argument = requires_argument(node)
+    if argument is None:
+        return set()
+    found = set()
+    for pair in ast.walk(argument):
+        sentence = requires_sentence(pair)
+        if sentence is not None:
+            found.add(sentence)
+    return found
+
+
+def raised_sentences(relative_path):
+    """Every distinct refusal sentence this module states.
+
+    Two owners state one in these modules: an ``ast.Raise``, and the ``requires`` pair of a
+    registry row.  The sentence is read through the readers above: a plain string constant, a
+    name that the refusal table holds, or the second element of a pair.  A sentence that an
+    f-string builds is not a string this table can name: its pieces are fragments, not
+    sentences.
     """
     if relative_path not in _SENTENCES:
         found = set()
@@ -99,12 +164,13 @@ def raised_sentences(relative_path):
             sentence = raised_sentence(node)
             if sentence is not None:
                 found.add(sentence)
+            found |= registry_sentences(node)
         _SENTENCES[relative_path] = found
     return set(_SENTENCES[relative_path])
 
 
 def all_raised_sentences():
-    """Every distinct refusal sentence the service can raise, from both modules."""
+    """Every distinct refusal sentence the service can raise, from the modules above."""
     found = set()
     for relative_path in RAISING_MODULES:
         found |= raised_sentences(relative_path)
@@ -173,25 +239,26 @@ class RefusalIdentityTest(unittest.TestCase):
                               f'src/store_pg.py no longer raises the same sentence: {sentence}')
 
     def test_every_code_the_console_reads_has_a_raising_site(self):
-        """A code in the table is a promise: some raise site sends that sentence."""
+        """A code in the table is a promise: a raise site or a registry row states that sentence."""
         produced = all_raised_sentences()
         for sentence, refusal in refusals.REFUSALS.items():
             with self.subTest(code=refusal.code):
                 self.assertIn(sentence, produced,
-                              f'{refusal.code} names a sentence that no raise site produces: {sentence}')
+                              f'{refusal.code} names a sentence that nothing states: {sentence}')
 
     def test_the_table_names_every_raised_sentence(self):
         """One row per raised sentence: no sentence reaches the operator as English only.
 
-        Every row names a sentence some raise site produces, so these two sets can only differ
-        by count when a raised sentence has no row.  A row that is deleted fails here at once.
+        Every row names a sentence some raise site or registry row states, so these two sets can
+        only differ by count when a raised sentence has no row.  A row that is deleted fails here
+        at once.
         """
         raised = all_raised_sentences()
         self.assertEqual(len(refusals.REFUSALS), len(raised),
-                         f'the table holds {len(refusals.REFUSALS)} rows and the raise sites '
-                         f'produce {len(raised)} distinct sentences')
+                         f'the table holds {len(refusals.REFUSALS)} rows and the raise sites and '
+                         f'registry rows state {len(raised)} distinct sentences')
         self.assertEqual(set(refusals.REFUSALS), raised,
-                         'a raised sentence has no row, or a row names a sentence nothing raises')
+                         'a raised sentence has no row, or a row names a sentence nothing states')
 
     def test_no_code_is_dead(self):
         """Every row reaches a refusal body, so no code waits for a route that never sends it."""
