@@ -6,8 +6,9 @@ POOL_DATABASE_URL behave exactly as before.  With POOL_DATABASE_URL set,
 `open_store` returns `src.store_pg.PostgresStore`, which passes the same contract
 (tests/test_store_contract.py).
 
-Nothing calls this module yet: the server and the tools still use their own file
-code, and they switch to `open_store(root)` one caller at a time.
+Two callers use this module: the server opens one store per root
+(annotator/unified_server.py `store()`) and the seed rebuild tool reads its seeds
+from the store (src/pid_seed_rebuild.py).
 
 JsonStore reuses the writers the application already has, so the formats and the
 concurrency rules are identical to today's:
@@ -57,7 +58,7 @@ from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
-from src.store_files import BALL_SETS, save_document  # noqa: E402
+from src.store_files import BALL_SETS, STATE_DOCUMENT, save_document  # noqa: E402
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -128,9 +129,10 @@ class Store(Protocol):
 def scratch_root(root) -> bool:
     """True when `root` is a throwaway directory: a fixture test's temporary root.
 
-    The database does not key its document by root (src/store_pg.py `STATE` is one
-    path), so every rooted store with POOL_DATABASE_URL set is the same club.  A
-    temporary root is therefore never the isolation it looks like."""
+    The database does not key its document by root (src.store_pg.py reads the one path
+    of src.store_files.STATE_DOCUMENT), so every rooted store with POOL_DATABASE_URL
+    set is the same club.  A temporary root is therefore never the isolation it looks
+    like."""
     temp = Path(tempfile.gettempdir()).resolve()
     try:
         resolved = Path(root).resolve()
@@ -150,7 +152,7 @@ def open_store(root) -> Store:
             raise SystemExit(
                 f"open_store: POOL_DATABASE_URL is set, so the club's data lives in Postgres and the root "
                 f"does not isolate anything: every rooted store with this database reads the same document "
-                f"(out/corner-pocket/state.json). {root} is a scratch directory, so it would be handed the "
+                f"({STATE_DOCUMENT}). {root} is a scratch directory, so it would be handed the "
                 f"live club. Refusing. Run without POOL_DATABASE_URL, or open a throwaway schema on purpose: "
                 f"PostgresStore(root, search_path='...') (docs/postgres.md).")
         from src.store_pg import PostgresStore

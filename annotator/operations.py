@@ -21,7 +21,11 @@ from uuid import uuid4
 
 # The rule refusals of this module: each skeleton, the code and the Chinese sentence beside it.
 # The same module owns the longest guest name, so this layer and the server refuse at one number.
-from annotator.refusals import GUEST_NAME_MAX, INSTANT, INTEGER_RANGE, NAME_TEXT_MAX, TEXT_LENGTH, WHOLE_SECONDS, TemplateError
+# The three sentences of the operations document are named there too, so this backing and the
+# database backing (src/store_pg.py) raise one name instead of two copies of the text.
+from annotator.refusals import (GUEST_NAME_MAX, INSTANT, INTEGER_RANGE, INTEGER_REVISION_REQUIRED,
+                                JSON_OBJECT_REQUIRED, NAME_TEXT_MAX, STATE_CHANGED_RELOAD,
+                                TEXT_LENGTH, WHOLE_SECONDS, TemplateError)
 # The shot clock rule has one owner: annotator/shot_clock.py holds the bounds and the
 # default. This module reads them, so the settings guard and the clock refuse the same
 # numbers. annotator/shot_clock.py imports no module of this layer, so this adds no cycle.
@@ -408,13 +412,13 @@ class Operations:
     def post(self, payload):
         """Run the operation the payload names. The registry holds its declaration."""
         if not isinstance(payload, dict):
-            raise ValueError('JSON object required')
+            raise ValueError(JSON_OBJECT_REQUIRED)
         with self.lock:
             state = self._load()
             if type(payload.get('revision')) is not int:
-                raise ValueError('integer revision required')
+                raise ValueError(INTEGER_REVISION_REQUIRED)
             if payload['revision'] != state['revision']:
-                raise ConflictError('State changed; reload before retrying')
+                raise ConflictError(STATE_CHANGED_RELOAD)
             action, context = self.run(state, payload)
             return self._commit(state, action, context)
 

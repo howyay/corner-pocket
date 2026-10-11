@@ -21,8 +21,11 @@ from annotator.unified_server import APIError, operator_message, refusal_body
 
 ROOT = Path(__file__).resolve().parents[1]
 # The modules that raise a refusal sentence the operator reads.  The route that answers
-# (annotator/unified_server.py) builds one body for both of them.
-RAISING_MODULES = ('annotator/operations.py', 'annotator/unified_server.py')
+# (annotator/unified_server.py) builds one body for both of them.  The database store
+# (src/store_pg.py) raises the three sentences of the operations document too, so its
+# raise sites are read here as well: a fourth sentence in that module fails this walk.
+RAISING_MODULES = ('annotator/operations.py', 'annotator/unified_server.py',
+                   'src/store_pg.py')
 CONSOLE = 'annotator/ops.js'
 
 # How many raised sentences carry no row in annotator/refusals.py.  The console shows its
@@ -54,27 +57,48 @@ SENTENCES_DIGEST = '4c1f5c7e255f55dbcd69b0051b58f9374e47a2c4'
 
 # The whole table, both languages.  The English key is the sentence a raise site passes, and the
 # Chinese is the line the operator reads: a rewording of either one is a decision, not an
-# accident.
-TABLE_SENTENCES_DIGEST = 'a8df47024779ea26eb90809da710e3dbe51c4733'
-TABLE_CHINESE_DIGEST = '709056e976347dcddc257687fbaa327f8b3f1071'
+# accident.  Three rows arrived with src/store_pg.py, the database store: it raised three
+# sentences of its own, and a sentence without a row reaches the operator as English only.
+TABLE_SENTENCES_DIGEST = '9c0666a29c7f92ff60dd8d60eb3bdfe0474fef6c'
+TABLE_CHINESE_DIGEST = '8045a111e9d978ea6575ba6682d80f83d0b8b135'
 
 _SENTENCES = {}
+
+
+def raised_sentence(node):
+    """The sentence a raise statement passes first, or None.
+
+    A plain string constant counts.  A name counts too when it is bound to a sentence of
+    this table: annotator/operations.py and src/store_pg.py raise the three sentences of
+    the operations document by name (``JSON_OBJECT_REQUIRED`` and its two neighbours), so
+    a walk that read string constants only would lose those sentences.  An f-string
+    builds its pieces, not a sentence, so it stays out.
+    """
+    if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call) or not node.exc.args:
+        return None
+    first = node.exc.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    if isinstance(first, ast.Name):
+        held = getattr(refusals, first.id, None)
+        if isinstance(held, str) and held in refusals.REFUSALS:
+            return held
+    return None
 
 
 def raised_sentences(relative_path):
     """Every distinct sentence that an ``ast.Raise`` in this module passes first.
 
-    Only a plain string constant counts.  A sentence that an f-string builds is not a string
+    The sentence is read through ``raised_sentence``: a plain string constant, or a name
+    that the refusal table holds.  A sentence that an f-string builds is not a string
     this table can name: its pieces are fragments, not sentences.
     """
     if relative_path not in _SENTENCES:
         found = set()
         for node in ast.walk(ast.parse((ROOT / relative_path).read_text())):
-            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call) or not node.exc.args:
-                continue
-            first = node.exc.args[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                found.add(first.value)
+            sentence = raised_sentence(node)
+            if sentence is not None:
+                found.add(sentence)
         _SENTENCES[relative_path] = found
     return set(_SENTENCES[relative_path])
 
@@ -133,6 +157,21 @@ def digest(values):
 
 
 class RefusalIdentityTest(unittest.TestCase):
+    def test_the_two_backings_raise_the_same_sentences(self):
+        """The file backing and the database store refuse a bad request with one sentence.
+
+        Both walk the operations document through the same code, so a rewording in one
+        module alone would answer the operator in two different sentences."""
+        file_backing = raised_sentences('annotator/operations.py')
+        database_store = raised_sentences('src/store_pg.py')
+        for sentence in ('JSON object required', 'integer revision required',
+                         'State changed; reload before retrying'):
+            with self.subTest(sentence=sentence):
+                self.assertIn(sentence, file_backing,
+                              f'annotator/operations.py no longer raises: {sentence}')
+                self.assertIn(sentence, database_store,
+                              f'src/store_pg.py no longer raises the same sentence: {sentence}')
+
     def test_every_code_the_console_reads_has_a_raising_site(self):
         """A code in the table is a promise: some raise site sends that sentence."""
         produced = all_raised_sentences()

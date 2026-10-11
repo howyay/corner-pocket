@@ -61,6 +61,16 @@ NAME_TEXT_MAX = 120
 SEED_LABEL_TEXT_INVALID = ('label must be A, B, ignore, a guest name up to %d characters, or null'
                            % GUEST_NAME_MAX)
 
+# The three sentences a write of the operations document earns when it refuses the call.
+# Each sentence has a name here, so its raise sites read the name and hold no copy of the
+# text.  The two backings of that document raise the same three names:
+# ``annotator/operations.py`` (the file) and ``src/store_pg.py`` (the database).  A
+# rewording changes the name here and the two backings follow, so the table below and the
+# raise sites cannot drift apart.
+JSON_OBJECT_REQUIRED = 'JSON object required'
+INTEGER_REVISION_REQUIRED = 'integer revision required'
+STATE_CHANGED_RELOAD = 'State changed; reload before retrying'
+
 # English sentence -> identity.  Keep the order of the sentences you add.
 REFUSALS = {
     'Player name already exists': Refusal('player_name_exists', '球员姓名已存在。'),
@@ -242,6 +252,18 @@ REFUSALS = {
     'invalid Content-Length': Refusal('content_length_invalid', 'Content-Length 无效。'),
     'invalid request size': Refusal('request_size_invalid', '请求体大小无效。'),
     'no live frame ready': Refusal('live_frame_not_ready', '还没有可用的直播帧。'),
+
+    # The three sentences the database store (src/store_pg.py) can raise while it answers a
+    # request.  The store refuses a document that is not an object, a foreign key that
+    # still points at a deleted person, an import that wrote rows without their document,
+    # and a seed outside vod30; each sentence reaches the operator with its code and its
+    # Chinese line.  The row count of this table and the raise sites of the walk in
+    # tests/test_refusal_identity.py stay equal, so a sentence without a row fails there.
+    'identity_clusters_player_id_fkey': Refusal('cluster_player_missing', '此身份记录指向的球员已不存在。'),
+    'operations rows exist without their document (imported before migration 0003?); re-run '
+    '`python -m src.store_import --only operations --replace`':
+        Refusal('operations_document_missing', '操作记录存在，但其文档缺失；请重新运行导入。'),
+    'seeds exist for vod30 only': Refusal('seeds_only_vod30', '标记种子仅适用于 vod30。'),
 }
 
 

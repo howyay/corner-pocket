@@ -1,8 +1,8 @@
 """PostgresStore: the Store interface (src/store.py) on the pool database.
 
-Selected by open_store() when POOL_DATABASE_URL is set.  Schema: db/migrations
-0001-0002 (docs/postgres-design.md sections 2-4); migrate before use
-(`python -m src.db`).  Nothing calls it yet - the server still reads the files.
+Needs the schema range 0001-0004 (src/store_files.SCHEMA_RANGE).  Migration 0003
+holds the documents; other modules read these files.  open_store() returns this
+store when POOL_DATABASE_URL is set, so both backings are live today.
 
 How it keeps the contracts of JsonStore (tests/test_store_contract.py runs the
 same cases against both):
@@ -32,9 +32,10 @@ import json
 
 from src import db
 from src.store import JsonStore, StoreConstraintError
-# The crop-set vocabulary is imported from its one owner (src.store_files), not from
-# src.store: the owner names the sets, every other module imports that name.
-from src.store_files import BALL_SETS, dataset_dir, dump, fmt_of, get_document, put_document
+from annotator.refusals import (INTEGER_REVISION_REQUIRED, JSON_OBJECT_REQUIRED,
+                                STATE_CHANGED_RELOAD)
+from src.store_files import (BALL_SETS, STATE_DOCUMENT, dataset_dir, dump, fmt_of, get_document,
+                             put_document)
 # The document side of the event log is trimmed by its one owner (src.ops_event_log),
 # so this store holds no copy of the retention bound.
 from src.ops_event_log import trim
@@ -46,7 +47,6 @@ from src.store_import import jsonb
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules
 
-STATE = "out/corner-pocket/state.json"
 # The table that holds the documents of migration 0003 (src/store_files.py). The
 # operations document and the anchor documents live in it; receipts name them so.
 DOCUMENTS = "json_documents"
@@ -125,7 +125,7 @@ class PostgresStore:
         through `normalise`, exactly as Operations._load reads the file, so a document
         written before round 11 gains `vods`/`links` and the links its own import lines
         imply - in memory; the next write persists what the read derived."""
-        text = get_document(conn, STATE)
+        text = get_document(conn, STATE_DOCUMENT)
         if text is not None:
             from annotator.operations import normalise
             return normalise(json.loads(text))
@@ -150,7 +150,7 @@ class PostgresStore:
         OperationsSet().write(conn, dict(doc, events=[]))  # ops_meta, players, tournaments, notes, sources
         conn.execute("INSERT INTO ops_events (revision, id, created_at, action, context) VALUES (%s, %s, %s, %s, %s)",
                      (event["revision"], event["id"], event["createdAt"], action, jsonb(context)))
-        put_document(conn, STATE, dump(doc, fmt_of(STATE)))
+        put_document(conn, STATE_DOCUMENT, dump(doc, fmt_of(STATE_DOCUMENT)))
         return doc
 
     def _locked(self, conn):
@@ -172,15 +172,15 @@ class PostgresStore:
     def post(self, payload: dict) -> dict:
         from annotator.operations import ConflictError, Operations
         if not isinstance(payload, dict):
-            raise ValueError("JSON object required")
+            raise ValueError(JSON_OBJECT_REQUIRED)
         ops = Operations.__new__(Operations)              # the rules only; no file, no lock
         with self._write() as conn:
             self._locked(conn)
             doc = self._document(conn)
             if type(payload.get("revision")) is not int:
-                raise ValueError("integer revision required")
+                raise ValueError(INTEGER_REVISION_REQUIRED)
             if payload["revision"] != doc["revision"]:
-                raise ConflictError("State changed; reload before retrying")
+                raise ConflictError(STATE_CHANGED_RELOAD)
             action, context = ops.run(doc, payload)       # the one dispatcher and the one check
             return self._save(conn, doc, action, context)
 
@@ -196,7 +196,7 @@ class PostgresStore:
     def place(self, kind: str, key: str | None = None):
         """The database name a record set is written under (Store.place)."""
         if kind == "operations":
-            return f"postgres:{DOCUMENTS}/{STATE}"
+            return f"postgres:{DOCUMENTS}/{STATE_DOCUMENT}"
         if kind == "faces":
             return "postgres:face_embeddings"
         if kind == "anchors":

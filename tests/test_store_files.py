@@ -21,13 +21,19 @@ from pathlib import Path
 from src import datasets
 from src.datasets import STATIC_OUT
 from src.store_files import (BALL_SETS, DOCUMENT_FORMAT, DOCUMENT_SETS, FORMATS, INDENT1,
-                             document_paths, dump, fmt_of, is_document_path)
+                             SCHEMA_RANGE, document_paths, dump, fmt_of, is_document_path)
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = "src/store_files.py"
 # This file must spell the format names to check them, so the scan below skips it.
 CHECKER = "tests/test_store_files.py"
 MIGRATION = ROOT / "db" / "migrations" / "0002_user_data.sql"
+MIGRATIONS = ROOT / "db" / "migrations"
+# The one module that states its schema range in its docstring.  The case reads the
+# line and holds it to the files of db/migrations.
+PG_STORE = "src/store_pg.py"
+# The range statement of that docstring: four digits, a hyphen, four digits.
+PG_RANGE = r"(?<!\d)(\d{4})-(\d{4})(?!\d)"
 # The modules that import the vocabulary from its owner. They must hold no copy.
 IMPORTERS = ("src/store.py", "src/store_import.py", "src/store_pg.py",
              "annotator/unified_server.py")
@@ -117,6 +123,57 @@ class NoRows:
 
     def fetchall(self):
         return []
+
+
+def migration_numbers() -> list[int]:
+    """The numbers of every migration file of db/migrations, in order.
+
+    The file name is the rule: four digits, then an underscore, then the label."""
+    numbers = []
+    for path in sorted(MIGRATIONS.glob("*.sql")):
+        match = re.fullmatch(r"(\d{4})_.*", path.name)
+        if match is None:
+            raise AssertionError(f"{path}: the name must start with four digits and an underscore")
+        numbers.append(int(match.group(1)))
+    return numbers
+
+
+def stated_schema_range() -> tuple[int, int]:
+    """The migration range the docstring of the database store states, as two numbers.
+
+    The line must read `NNNN-NNNN` as its own token.  The range is a statement about
+    db/migrations, so the case below holds it to the files on disk."""
+    docstring = ast.get_docstring(ast.parse((ROOT / PG_STORE).read_text(encoding="utf-8")))
+    if docstring is None:
+        raise AssertionError(f"{PG_STORE}: no module docstring")
+    match = re.search(PG_RANGE, docstring)
+    if match is None:
+        raise AssertionError(f"{PG_STORE}: the docstring states no 'NNNN-NNNN' migration range")
+    return int(match.group(1)), int(match.group(2))
+
+
+class SchemaRange(unittest.TestCase):
+    """The database store names the migrations it needs, and the files answer it."""
+
+    def test_the_stated_range_is_the_range_of_the_files_on_disk(self):
+        """One range, three statements: the owner constant, the docstring, and the files.
+
+        ``SCHEMA_RANGE`` names the range the store layer needs, the docstring of
+        src/store_pg.py states it, and db/migrations holds it.  A range that the folder
+        denies fails here, so the module cannot claim a migration that does not exist."""
+        low, high = SCHEMA_RANGE
+        self.assertEqual(
+            (low, high), stated_schema_range(),
+            f"{PG_STORE} must state the range of {OWNER} SCHEMA_RANGE = {SCHEMA_RANGE}")
+        numbers = migration_numbers()
+        self.assertIn(
+            low, numbers,
+            f"{OWNER} SCHEMA_RANGE = {SCHEMA_RANGE}, but db/migrations holds {numbers}")
+        outside = [number for number in numbers if not low <= number <= high]
+        self.assertEqual(
+            outside, [],
+            f"{OWNER} SCHEMA_RANGE = {SCHEMA_RANGE}, but db/migrations also holds {outside}. "
+            f"State the range the store layer needs, or say why it needs no file of it.")
 
 
 def ball_labels_check(sql: str) -> tuple[list[str], int]:

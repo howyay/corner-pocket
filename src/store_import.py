@@ -42,8 +42,8 @@ from annotator.operations import name_key
 from src.datasets import STATIC_OUT
 # BALL_SETS (the crop-set vocabulary) is imported from its one owner, src.store_files,
 # so this import tool and the store cannot hold two different lists of set names.
-from src.store_files import (BALL_SETS, DOCUMENT_SETS, dataset_dirs, document_paths, get_document,
-                             has_documents_table, put_document)
+from src.store_files import (BALL_SETS, DOCUMENT_SETS, STATE_DOCUMENT, dataset_dirs, document_paths,
+                             get_document, has_documents_table, put_document)
 # The retention bound of the operations event log is imported from its one owner
 # (src.ops_event_log), so this importer and every writer cannot hold two bounds.
 from src.ops_event_log import MAX_EVENTS
@@ -177,7 +177,7 @@ class OperationsSet(DataSet):
              "result", "completedAt"}
 
     def load(self, snap):
-        return snap.json("out/corner-pocket/state.json"), []
+        return snap.json(STATE_DOCUMENT), []
 
     def actual(self, conn):
         counts = super().actual(conn)

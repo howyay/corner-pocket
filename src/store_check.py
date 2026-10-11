@@ -21,7 +21,7 @@ import sys
 import uuid
 
 from src import db
-from src.store_files import dataset_of_dir, documents
+from src.store_files import STATE_DOCUMENT, dataset_of_dir, documents
 
 # The rebuild copies each live table's definition (LIKE ... INCLUDING ALL): same
 # columns, defaults, CHECKs and unique indexes; foreign keys are not copied, which
@@ -33,7 +33,7 @@ SKIP_COLUMNS = {"updated_at"}          # set by the database at write time, not 
 def projections(docs: dict[str, str]):
     """(data set spec, parsed document) for every data set that has stored documents."""
     from src.store_import import SETS
-    state = docs.get("out/corner-pocket/state.json")
+    state = docs.get(STATE_DOCUMENT)
     if state is not None:
         yield SETS["operations"], json.loads(state)
     seeds = docs.get("out/pid_seed.json")

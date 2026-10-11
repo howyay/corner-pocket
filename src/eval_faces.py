@@ -59,6 +59,9 @@ from src.face_id import (
     quality,
 )
 from src.person_identity import IdentityIndex
+# The operations document path has one owner (src.store_files), so this list cannot
+# name a path that the store no longer writes.
+from src.store_files import STATE_DOCUMENT
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "out" / "face-eval"
@@ -77,7 +80,7 @@ HEIGHT_BUCKETS = ((0, 250, "far"), (250, 400, "mid"), (400, 10_000, "near"))
 
 # Files the demo must never write. Recorded as md5 before/after.
 PROTECTED = (
-    "out/corner-pocket/state.json",
+    STATE_DOCUMENT,
     "out/pid_seed.json",
     "out/scan30/annotations.json",
     "out/identity/clusters.json",
