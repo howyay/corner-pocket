@@ -87,6 +87,11 @@ from src.table_geometry import CANON_H, CANON_W, POCKETS_MM, nearest_pocket
 # The pocket name a text states has one owner, src/pocket_names.py. This gate and
 # the console backend answered the bare spelling in two different ways.
 from src.pocket_names import pocket_from_text
+# The colour vocabulary has one home, src/color_names.py: this gate held its own
+# copy of the alias table and of the lookup until round 56.  A key compares one
+# claim with one measurement, so two blank values must compare equal and a blank
+# value answers ''.  tests/test_color_names.py holds the one home.
+from src.color_names import color_key
 
 
 @dataclass
@@ -146,20 +151,6 @@ def num_or_none(value: Any):
     ``tests/test_duplicate_bodies.py`` fails if a second body returns.
     """
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-
-COLOR_ALIASES = {"red2": "red", "red1": "red"}
-
-
-def color_key(value: Any) -> str:
-    """Detector colour name -> comparable colour name.
-
-    ``row.src.ball_detect`` reports the hue-wraparound red band under a second
-    name (``red2``); a claim and a measurement of the same physical ball must
-    compare equal, so both sides go through this.
-    """
-    text = str(value or "").strip().lower()
-    return COLOR_ALIASES.get(text, text)
 
 
 def normalize(raw: Any) -> dict:

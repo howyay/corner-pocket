@@ -37,6 +37,7 @@ from typing import Any, Iterable
 
 from src.ball_scale import BALL_WIDTH_MM
 from src.ball_gate import SAM3_BALL_MIN_SCORE
+from src import color_names
 # The scalar coercion has one home, src/event_gates.py: this census read its own
 # copy of the body until round 51, and a census score and a gate field are the
 # same scalar shape.  tests/test_duplicate_bodies.py holds the one home.
@@ -107,8 +108,10 @@ UNKNOWN = "unknown"
 # NOT unique (cue ball + stripe whites share the class) and the solid colours
 # occur four times each.
 UNIQUE_COLORS = frozenset({"black"})
-# The detector reports the hue-wraparound red band as a second colour name.
-COLOR_ALIASES = {"red2": "red", "red1": "red"}
+# The detector reports the hue-wraparound red band as a second colour name.  The
+# vocabulary has one home, src/color_names.py: this census held its own copy of
+# the table and of the lookup until round 56.  tests/test_color_names.py holds
+# the one home.
 
 # SAM3 detections below this score were already dropped upstream (see
 # src/scan_events.sam3_confirm); stated here as well so a caller cannot smuggle
@@ -126,11 +129,13 @@ MAX_CENSUS_SPREAD = 4
 
 
 def normalize_color(value: Any) -> str:
-    """Detector colour name -> census colour name (red/red2 are one colour)."""
-    text = str(value or "").strip().lower()
-    if not text:
-        return UNKNOWN
-    return COLOR_ALIASES.get(text, text)
+    """Detector colour name -> census colour name (red2 and red1 are one colour).
+
+    The alias rule has one home, ``src/color_names.py``.  This function adds the
+    census step: a blank value has no colour name, so it answers ``UNKNOWN``.
+    """
+    text = color_names.color_key(value)
+    return text if text else UNKNOWN
 
 
 # --------------------------------------------------------------- observations
