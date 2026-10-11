@@ -5083,3 +5083,175 @@ record of this round, and the ten that came before them. `origin/main` stays at 
 credential helper
 `!gh auth git-credential` does not answer in this session. The one user action is
 `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 50 · the ball had two widths, and one rule lived in four modules (2026-10-10)
+
+The walk of this round read the repository at `34541c7`, with an empty work tree at the start and at
+the end. The verdict line is `Strong candidate present - 3 Strong, 6 Worth, 4 Note`, and the report
+holds 129 lines in `/tmp/dshsess/walk_round50.md`. The walk ran no test module, started no server,
+and read no body under `tools/`, `scripts/`, `deploy/`, `db/migrations/0003_json_documents.sql`,
+`db/migrations/0004_imported_datasets.sql`, `src/eval_events.py`, `src/segment_calib_report.py`,
+`src/store_import.py`, or the 41 files of `docs/`. The Lead verified every ground line of the three
+Strong candidates, measured the ball itself, and found two more copies of one rule with its own
+scans.
+
+### The commits of this round
+
+| Commit | Subject | What it closes |
+| --- | --- | --- |
+| `151e57c` | scale: one owner holds the measured ball diameter | Strong 1, Strong 2, and part of Strong 3 |
+| `4b75687` | geometry: one module holds the intersection over union rule | a duplicate body that the Lead's own scan found |
+| `71adf6e` | tests: the argument contract also reads the other direction | Worth 1 |
+| `b8bce2e` | tests: the queue decision reads the ball size, and writes no workspace file | the limit that `151e57c` opened |
+| `e52c43e` | scan: one displacement floor name holds one rule | the Lead's own name scan |
+| `9bcbdbd` | docs: the citation rule states the limit it holds | Worth 9 |
+
+### Strong 1 and Strong 2 · two widths of one ball, and an area that named the wrong one
+
+`src/shot_pot_gate.py:142` held `BALL_DIAMETER_NATIVE_PX = 18.4`, and `src/motion_scan.py:99` held
+`BALL_DIAMETER_NATIVE = 18.9`. One fact, two owners, two answers. The area beside the second number
+was worse: `src/motion_scan.py:102 BALL_AREA_NATIVE = 266.0` carried the comment
+`pi * (18.9 / 2) ^ 2` and the value of the other ball, because `pi * (18.4 / 2) ^ 2` is 265.90. No
+line read that area.
+
+The run decides the question:
+
+```
+PYTHONPATH=. .venv/bin/python -c "import json, statistics as st; d=json.load(open('out/scan30/sam3_results.json')); rs=sorted(float(b['r']) for frame in d.values() for b in frame); print(len(d), len(rs), st.median(rs), 2*st.median(rs))"
+56 270 9.45 18.9
+```
+
+The median radius is 9.450 px, so the median diameter is 18.90 px. The plan file
+`out/scan30/sam3_plan.json` holds 146 rows with `r = 0`, and no file in the tree answers 18.4. The
+18.9 is therefore the owner. The second run `out/scan_highlight/sam3_results.json` (157 radii,
+median 30.80 px) is another clip, and `src/calib_mapping_audit.py:56 BALL_DIAMETER_PX_1080 = 30.8`
+already states it.
+
+`151e57c` adds `src/ball_scale.py` (142 lines, `math` only) as the one owner: `BALL_WIDTH_MM = 57.15`,
+`NATIVE_FRAME`, `WORKING_FRAME`, `DIAMETER_NATIVE_PX`, `RADIUS_NATIVE_PX`, `NATIVE_PX_PER_MM`, and the
+five functions `scale_between`, `diameter_px`, `radius_px`, `area_px2`, `millimetres_per_pixel`. The
+p10 and p90 of the run are 13.8 px and 24.8 px, with the nearest-rank rule written in the docstring
+beside the two other rules that answer 25.0 px and 24.82 px. The dead `BALL_AREA_NATIVE` is gone.
+
+| Quantity | Before | After | Reader |
+| --- | --- | --- | --- |
+| native diameter | 18.9 px and 18.4 px | 18.9 px | `src/shot_pot_gate.py`, `src/motion_scan.py` |
+| area at native | 266.0 px2, no reader | `area_px2()` | `src/motion_scan.py` |
+| diameter at 960x540 | 13.8 px | 14.175 px | the dense run, `src/ball_census.py` |
+| gate bar | 27.6 px | 28.35 px | `src/shot_pot_gate.py` |
+| pipeline radius | 28.6 mm | 28.575 mm | `CANON_BALL_R = BALL_WIDTH_MM / 2` |
+
+The gate's bars are multiples of the owner's diameter, so its thresholds move by 2.7 %. Every tuned
+number stayed: `TRACK_MATCH_PX 30.0`, `BLOB_BAND_BOUNDARY_PX 3000`, `BALL_K_NATIVE 17`,
+`BALL_K_SMALL 9`, `BALL_K_WIDE 25`, `BALL_K_WORK 13`, guarded by `test_the_live_numbers_did_not_move`.
+
+The bites of this delivery: a second module that binds the old diameter fails
+`test_no_second_name_holds_a_ball_size` (`src/shot_pot_gate.py` `9ab29d4a… → 07e79b3b… → 9ab29d4a…`,
+`[] != ['src/shot_pot_gate.py:148: BALL_DIAMETER_NATIVE_PX_OLD = 18.4']`); the owner stating a value
+the run does not measure fails with `9.45 != 9.2 within 1e-09 delta`; a reader that stops stating the
+measured width fails with `'14.175 px' not found`; and the Lead's own bite, a literal radius in
+`src/pipeline.py`, fails the same one-owner case. The writer also proved the four readers call the
+owner in the `iou` delivery below.
+
+### Strong 3 · the cloth statements are three quantities, and they stay three
+
+`src/ball_census.py:43` said the cloth is ~2.8 mm/px at 960x540, so a ball is ~20 px across. The
+owner answers 14.175 px there. The repair states the owner's number in that comment. The other two
+statements are different quantities and stay: `src/eval_table_detect.py:201
+CLOTH_TOLERANCE_MM_PER_PX = 1.9` is the copy of an `app.js` literal that
+`tests/test_app_quad_contract.py` guards, and `src/timing_verify.py:69` implies 7.26 mm/px for the
+whole frame. The reference quad of `src/shot_pot_gate.py:113` spans 0.129 to 0.388 px/mm, so the
+cloth's local scale runs 2.58 to 7.75 mm/px by region. The reader who compares those three numbers
+must know which one the question needs.
+
+### Worth 1 · the argument contract read one direction only
+
+The scan asked whether every read of `args` names a declared argument. It never asked whether every
+declared argument is readable, and it did not know the `set_defaults(func=...)` shape. So the reverse
+direction reported five reads with no declaration, and all five were false: `args.func` set by
+`set_defaults` in `src/ball_fp_audit.py`, `src/fast_ball_labels.py`, `src/motion_scan.py`,
+`src/tiny_ball_net.py`, and `src/track_before_detect.py`.
+
+`71adf6e` adds the generator `_set_defaults_calls(tree)` and the destinations of every named keyword
+of every `set_defaults` call. `undeclared_reads` now answers 94 files and 0 undeclared reads. The
+Lead's own bite appended a probe to `src/store_files.py` and the case answered
+`[] != ['src/store_files.py:181 args.__dsh_probe__']`. The limits stay written: `set_defaults(**flags)`
+and a name built from a variable are invisible, and `getattr(args, <computed>)` is invisible.
+
+### The duplicate body that no walk named · `iou` in four modules
+
+An AST scan of the Lead compared every module-level function body under `src/` and `tools/` by the
+sha1 of its source. It found `iou` written four times in two spellings:
+`src/enroll_from_tracklet.py:152` and `src/eval_faces.py:113` held the first, and
+`src/pid_osnet_tight.py:34` and `src/yolo_track.py:34` held the second. Eight call sites read them,
+with three different thresholds. Two test modules existed, and no case compared the two spellings.
+
+`4b75687` adds `src/box_geometry.py` (18 lines) as the one owner, and the four modules import it. The
+new `tests/test_box_geometry.py` holds six cases, among them
+`test_the_two_spellings_agree_with_the_owner` and `test_no_other_module_under_src_defines_iou`. The
+writer's probe bite replaced the owner and made `test_eval_faces` answer 2 errors and
+`test_enroll_from_tracklet` 41 errors, which proves the readers call it. The Lead's own bite added a
+second `def iou` to `src/yolo_track.py` and the case answered
+`['box_geometry.py'] != ['box_geometry.py', 'yolo_track.py']`.
+
+### The limit that the ball repair opened · a test wrote into the workspace
+
+The ball repair changed the working-frame width from 13.8 px to 14.175 px, and
+`tests/test_queue_decision.py` stated the old pair as the literals `27.6` and `13.8`. The same module
+called the tool with no ledger path, so the run wrote the relative default
+`out/scan30/dense_queue_retired.json`. Under the single-module runner the working directory is
+`tests/`, so that write failed:
+
+```
+ERROR: test_a_pot_the_gate_confirmed_is_served_without_a_previous_queue
+FileNotFoundError: [Errno 2] No such file or directory: 'out/scan30/dense_queue_retired.json'
+```
+
+`b8bce2e` makes the fixture read `src/ball_scale.py`, and it points the default ledger at the case's
+own directory. Both runners now answer 24 cases and `OK (skipped=1)`, and the workspace ledger keeps
+its sha1 `9683335e9586ed54fc18eb1d5869e09af17e5df0`. A new case refuses a ball size literal in the
+fixtures of that module: the bite `c0661454… → 9b485dcb… → c0661454…` failed with
+`AssertionError: <re.Match object; span=(5687, 5691), match='27.6'> is not None`, and a second bite
+that removed the ledger path brought the original `FileNotFoundError` back.
+
+### The suites of this round
+
+| Suite | Result |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 1912 tests in 191.464s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | 219 pass, 0 fail |
+| `node tests/test_board.js` | 23 pass, 0 fail |
+| `node tests/test_app_timeline.js` | 100 passed, 0 failed |
+
+Round 49 answered 1892 cases, so this round adds 20: 7 in the new `tests/test_ball_scale.py`, 6 in the
+new `tests/test_box_geometry.py`, 2 in `tests/test_arg_contract.py`, 2 in
+`tests/test_queue_decision.py`, 2 in `tests/test_info_complete_scan.py`, and 1 in
+`tests/test_ball_census.py`. The citation scan answers 398 files, 89 citations, and 0 bad lines.
+
+### Rows of earlier rounds that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The reverse direction of `tests/arg_contract.py` | the round-49 walk named it | `71adf6e` reads both directions, and no read is undeclared |
+| The citation rule's headline | Worth 9 of this walk | `9bcbdbd` states the rule the case applies, and names its two blind spots |
+| `src/store_check.py:66 LIMIT 500` | Worth of this walk | the retention guard records it as an exception, and the guard fails when the owner moves |
+| The guest-name sentence | Worth of this walk | `tests/test_guest_name.py:216-228` holds the sentence to its source |
+| `T_RANGE` covers two readers of `t` | Note of the round-49 walk | the pair is the same purpose, and `_rebuild` holds 1800 for another one: no defect |
+| `REPORT.md:50` bounds a number that no run measures | Note | `src/qa.py:27` measures the bound and `:42` prints the result |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| `_num` holds one body in two modules | Worth | `src/ball_census.py:132` and `src/event_gates.py:141` |
+| `reference_quad` holds two bodies, and a third delegates | Worth | `src/sam3_ball_cache.py:196`, `src/sam3_frame_audit.py:127`, `src/tiny_ball_net.py:710` |
+| `annotator/server.py:126` writes any label | Note | the module has no importers, so the divergence is dormant |
+| The three cloth-scale statements | Note | they are different quantities, and each one answers a different question |
+| A local `iou` in two modules | Note | `src/recut_crops.py:133` is a variable and `src/person_pipeline.py:155` a loop variable |
+| `src/calib_mapping_audit.py:56 BALL_DIAMETER_PX_1080 = 30.8` | Note | it states the highlight clip, and the new guard exempts it by name and module |
+| The citation rule's two blind spots | Note | a bare symbol citation is outside the rule, and a line whose text contradicts the comment passes |
+| The areas that no walk read | Note | `tools/`, `scripts/`, `deploy/`, `db/migrations/0003` and `0004`, `src/eval_events.py`, `src/segment_calib_report.py`, `src/store_import.py`, and 41 files of `docs/` |
+
+The push is still blocked. Twenty-two commits sit on the local `main`: the six of this round, the
+record of this round, and the fifteen that came before them. `origin/main` stays at `110b0338`. The
+one user action stays `git -C /home/haoye/projects/pool push origin main`.
