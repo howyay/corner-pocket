@@ -34,13 +34,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.ball_scale import WORKING_FRAME  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 
 OUT = ROOT / "out" / "segcalib" / "segment_calib_report.json"
 CANDIDATES = ROOT / "out" / "scan-ic" / "events.json"
 SEGMENT_ARTIFACT = ROOT / "out" / "calib_vod30_segments.json"
 VIDEO = media_path(ROOT, "vod30")
-SMALL_W, SMALL_H = 960, 540
+SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
 
 
 class ReferenceSet:

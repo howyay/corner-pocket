@@ -127,12 +127,13 @@ def main():
         return 1
 
     from src import shot_pot_gate as gate
+    from src.ball_scale import WORKING_FRAME
 
     fps = 30.0003
     # The segment's own cloth quad (work coordinates), from the report the harness
     # wrote for this segment: the camera is static, so both variants measure
     # against exactly the same geometry.
-    thresholds = gate.GateThresholds(frame_size=[960, 540], cloth_quad=args.quad)
+    thresholds = gate.GateThresholds(frame_size=list(WORKING_FRAME), cloth_quad=args.quad)
     occlusion = gate.Occlusion.from_shares(captured["times"] or [0.0], captured["shares"] or [0.0],
                                            threshold=gate.OCC_DENSE_MIN,
                                            source="motion_scan.probe_pair occ_dense")

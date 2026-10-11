@@ -41,6 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.ball_scale import WORKING_FRAME  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src import events_document  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
@@ -49,7 +50,9 @@ from src.info_complete_scan import (GateConfig, _on_table, _quad_box_overlap_are
 from src.pipeline import homography_to_canonical  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 
-SMALL_W, SMALL_H = 960, 540
+# The scan's working frame, from its owner.  The resize below and the scale back
+# to source pixels are the only readers.
+SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
 # A pair the frames show no motion for is a chance pairing, not a shot.
 MOTION_MIN_SHOT = 8.0
 MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0

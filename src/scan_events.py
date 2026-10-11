@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* imports
 
 from ball_detect import detect_ball_candidates
-from src import events_document, sam3_artifact
+from src import ball_scale, events_document, sam3_artifact
 from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_canonical,
                                 nearest_pocket)
 from table_detect import detect_table
@@ -72,7 +72,7 @@ def classical_scan(video: str, every: float) -> tuple[list, np.ndarray]:
         ok, frame = cap.read()
         if not ok:
             break
-        small = cv2.resize(frame, (960, 540))
+        small = cv2.resize(frame, ball_scale.WORKING_FRAME)
         scale_x = frame.shape[1] / small.shape[1]
         scale_y = frame.shape[0] / small.shape[0]
         tab = detect_table(small)

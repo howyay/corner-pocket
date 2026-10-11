@@ -39,6 +39,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.ball_scale import WORKING_FRAME  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 
 BLACK_MEAN = 12.0        # below this the frame is not a picture of anything
@@ -98,7 +99,7 @@ def cloth_report(video, time_s, reference_quad=None):
     info, frame = decode(video, time_s)
     if frame is None:
         return {**info, "cloth_area": None, "reason": "no frame"}
-    small = cv2.resize(frame, (960, 540))
+    small = cv2.resize(frame, WORKING_FRAME)
     table = detect_table(small)
     mask = (table["mask"] > 0).astype(np.uint8)
     count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)

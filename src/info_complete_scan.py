@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.ball_scale import WORKING_FRAME  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
@@ -205,7 +206,7 @@ def scan_info_complete(video: str, corners: np.ndarray, cfg: GateConfig = GateCo
             continue
         t = state.frame_index / fps
         total += 1
-        small = cv2.resize(bgr, (960, 540))
+        small = cv2.resize(bgr, WORKING_FRAME)
         tab = detect_table(small)
         cloth_mask = tab['mask']
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)

@@ -64,11 +64,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src import events_document  # noqa: E402
+from src.ball_scale import NATIVE_FRAME, WORKING_FRAME  # noqa: E402
 #: The gate owns the served threshold names.  This tool never spells them again.
 from src.shot_pot_gate import RAIL_THRESHOLD_KEYS, REPORT_THRESHOLD_KEYS  # noqa: E402
 
-WORK_W, WORK_H = 960, 540
-NATIVE_W, NATIVE_H = 1280, 720
+# The work space of this queue and the native frame it came from.  ``src.ball_scale``
+# owns both: the queue scales the cloth quad and the millimetre mapping by them.
+WORK_W, WORK_H = WORKING_FRAME[0], WORKING_FRAME[1]
+NATIVE_W, NATIVE_H = NATIVE_FRAME[0], NATIVE_FRAME[1]
 #: The detector and cadence the events came from, stated once and copied verbatim
 #: into every entry.
 DETECTOR = "dense-track · trained 960×540 net @ ball@2"

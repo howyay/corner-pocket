@@ -40,10 +40,18 @@ the frame and say why.  Every stage that runs keeps running after another stage 
 already overrun, because a half-measured profile of a late frame is useless.
 """
 import math
+import sys
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.ball_scale import WORKING_FRAME  # noqa: E402
 
 #: The evidence keys the registry owns.  A stage's ``evidence`` hook adds names
 #: beside these two; a hook that returns them is refused and its entry says so.
@@ -57,7 +65,9 @@ REGISTRY_KEYS = ('ran', 'age_frames')
 #: are a local artifact and a root without them gets an error naming the path.
 BALL_CHECKPOINT = 'out/tiny_ball_probe/960x540-scratch.pt'
 BALL_THRESHOLD = 0.425
-BALL_SIZE = (960, 540)
+#: The frame the detector runs in.  ``src.ball_scale`` owns the working frame, and
+#: the net's production size is that same frame.
+BALL_SIZE = WORKING_FRAME
 #: Frames per sample the net was trained on: (t-1, t, t+1).
 BALL_STACK = 3
 

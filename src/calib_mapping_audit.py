@@ -48,11 +48,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.ball_scale import WORKING_FRAME  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
 
-SMALL_W, SMALL_H = 960, 540      # the scan's working frame (src.info_complete_scan)
+#: The scan's working frame.  ``src.ball_scale`` owns it: the ball's pixel size
+#: scales with the frame, so the two facts cannot move apart.
+SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
 BALL_DIAMETER_PX_1080 = 30.8     # median of the 157 radii of out/scan_highlight/sam3_results.json
                                  # (the run src/ball_scale.py records; docs/app-path-refusal.md
                                  # states no ball size)

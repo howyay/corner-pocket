@@ -13,7 +13,7 @@ Two modules built the file, and the file named neither of them:
     recomputed every `table_mm` from the calibrated homography in
     `out/calib_final.json`.
 
-`src/sam3_ball_cache.py:40` and `src/eval_events.py:150` therefore declared the
+`src/sam3_ball_cache.py:40` and `src/eval_events.py:151` therefore declared the
 file read-only, while those two modules rewrote it in place.  A reader could not
 tell a millimetre value that the camera model measured from one that a
 calibration recomputed.  Measured on the file of 2026-09-03: all 270 rows equal

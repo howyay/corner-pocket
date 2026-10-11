@@ -41,9 +41,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from src.ball_scale import WORKING_FRAME
 from src.event_window import AT_TOL_S, EVENT_AFTER_S, EVENT_BEFORE_S
 
-SMALL_W, SMALL_H = 960, 540          # the census working size (src/eval_events.py)
+# The frame this walk measures in.  ``src.ball_scale`` owns it, and the census of
+# ``src/eval_events.py`` takes the same number from the same home.
+SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
 # The span the console clips.  The two names stay, because tests/test_timing_verify.py
 # holds annotator/app.js to them; the numbers come from src/event_window.py.
 CLIP_BEFORE_S, CLIP_AFTER_S = EVENT_BEFORE_S, EVENT_AFTER_S

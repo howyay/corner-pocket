@@ -42,6 +42,15 @@ answers 12.41 px (24.82 px).  The difference between the rules is one sample of
 270, and it is not worth a decision: the p90 ball is a sensitivity footprint in
 ``src/motion_scan.py``, never a gate bar.  One rule, stated here, is what matters.
 
+The one owner of the working frame
+-----------------------------------
+Twelve modules bound the working size 960x540 again, under six names, and two
+comments named a module that is not this one.  The frame the pipeline works in
+is this module's fact, because the ball's pixel size scales with it.  A reader
+now binds ``WORKING_FRAME`` or derives its two integers from it.  The scan
+resize, the census, the dense queue, the trained net's production size and the
+annotator's ball stage all read this name.
+
 The second run is a different view
 ----------------------------------
 ``out/scan_highlight/sam3_results.json`` holds 157 radii with a median diameter

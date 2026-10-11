@@ -52,10 +52,11 @@ from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
-from src import events_document, sam3_artifact  # noqa: E402
+from src import ball_scale, events_document, sam3_artifact  # noqa: E402
 from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 
-SMALL_W, SMALL_H = 960, 540
+# The census works in the pipeline's frame, so both sizes come from the owner.
+SMALL_W, SMALL_H = ball_scale.WORKING_FRAME[0], ball_scale.WORKING_FRAME[1]
 FULL_W, FULL_H = 1280, 720            # the reference quad's own resolution
 MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 # The probe cache is keyed by (kind, t, colour) and carries this version: a
