@@ -633,9 +633,9 @@ test('round 57: one asset carries one token per page, the two pages agree, and t
     .match(/(?:src|href)="\/[^"?]+\?v=/g) || []).length;
   assert.equal(tagged('ops.html'), 7, 'the console page tags every local asset it loads');
   assert.equal(tagged('app.html'), 1, 'the workbench page tags every local asset it loads');
-  const FROZEN = {ops: {'ops.css': 'vision-stage-52', 'app.css': 'vision-stage-52', 'app.js': 'vision-stage-64',
-    'clock-sync.js': 'clock-sync-3', 'duration.js': 'duration-1', 'ops.js': 'vision-stage-68',
-    'vision-stage.js': 'vision-stage-68'},
+  const FROZEN = {ops: {'ops.css': 'vision-stage-52', 'app.css': 'vision-stage-52', 'app.js': 'vision-stage-70',
+    'clock-sync.js': 'clock-sync-3', 'duration.js': 'duration-1', 'ops.js': 'vision-stage-70',
+    'vision-stage.js': 'vision-stage-70'},
     app: {'duration.js': 'duration-1'}};
   const pairs = page => [...page].map(([asset, token]) => `${asset}?v=${token}`).sort();
   for (const [name, page, frozen] of [['ops.html', ops, FROZEN.ops], ['app.html', app, FROZEN.app]])
