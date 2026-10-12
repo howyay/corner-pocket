@@ -21,19 +21,48 @@ woff2 writer also needs the `brotli` module (on this host:
 Only the faces the app renders are built (measured with document.fonts across
 every tab in EN and 中). Latin families keep Basic Latin, Latin-1 and the
 punctuation, arrows and symbols the copy uses. The CJK families keep exactly the
-characters of the Chinese copy in ops.js (`words`), vision-stage.js (`COPY.zh`),
-app.js (its zh table) and the two HTML files, plus ASCII and the symbols above.
+characters of the Chinese copy in the six files of COPY_FILES: ops.js (`words`),
+vision-stage.js (`COPY.zh`), app.js (its zh table), clock-sync.js (its zh table),
+ops.html and app.html. The text also keeps ASCII and the symbols above.
 """
 from pathlib import Path
 import sys
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from annotator.unified_server import PAGE_FILES  # noqa: E402
 from fontTools import subset
 from fontTools.ttLib import TTFont
 from fontTools.varLib import instancer
 
 HERE = Path(__file__).resolve().parent
 ANNOTATOR = HERE.parent
-COPY_FILES = ('ops.js', 'vision-stage.js', 'app.js', 'ops.html', 'app.html')
+#: The two files a browser receives as a document. The server serves neither one
+#: under its own name: PAGE_ALIASES answers ops.html for `/`, and the route
+#: /api/review-template hands out app.html. The served copy of app.html does
+#: render Chinese, so this file is part of the copy.
+PAGE_HTML_FILES = ('ops.html', 'app.html')
+
+
+def copy_names():
+    """The files of this directory that hold UI text, read off the served list.
+
+    annotator/unified_server.py holds PAGE_FILES, the closed list of the files a
+    browser receives. This function takes the scripts of that list and adds the
+    two documents. So the copy list cannot drift from the served list: a new
+    console module enters the subset on the day it enters the server.
+
+    A stylesheet stays out. The build reads text of the UI here, and ops.css
+    holds its Chinese as a font family name only.
+    """
+    scripts = tuple(path.lstrip('/') for path in PAGE_FILES if path.endswith('.js'))
+    return scripts + PAGE_HTML_FILES
+
+
+#: The files that hold the CJK text of the UI, in the order of the served list.
+COPY_FILES = copy_names()
 
 LATIN = set(range(0x20, 0x7F)) | set(range(0xA0, 0x100)) | {
     0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2026, 0x2032, 0x2033,
