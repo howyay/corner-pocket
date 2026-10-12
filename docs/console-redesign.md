@@ -8837,7 +8837,7 @@ vocabulary and the gate at `:2310` reads it; `:112 SEED_ROLES = ('A', 'B', 'igno
 the inline tuple at `:2113-2114` reads them. The console is one static file, so it keeps its own copies by
 need — `annotator/vision-stage.js:50 const SHOOTER_CHOICES` (read by the select at `:1099`) and `:355 const
 SEED_ROLES` (with the map at `:356-358` and the seed button at `:1275` reading it) — and the new
-`tests/test_console_round70_vocabulary.py` (10 cases) holds both console copies against the service names.
+`tests/test_console_round70_vocabulary.py` (13 cases) holds both console copies against the service names.
 The parity table of `tests/test_sql_domain_parity.py` binds six pairs now and gained two cases that hold the
 constants, the table and the DDL together (the `track_seeds.label` row can bind one python site only, because
 the parity scan searches a module for a literal list of words; the new cases cover the constant instead).
