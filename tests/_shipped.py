@@ -27,6 +27,12 @@ dotted name read ``dotted_name`` from it, and the two guards of the string
 literals read ``code_strings`` from it.  Each caller keeps its own scope: it
 adds the file kinds and the exclusions its own rule needs.
 
+Two later rounds moved the helper families of this tree into the same home: the
+eight readers of round 72 (``parse``, ``is_number``, ``is_length``,
+``stated_maximum``, ``bare_bounds``, ``bindings``, ``owner_bindings``,
+``body_fingerprint``), and the two loopback-port helpers of round 79
+(``free_port``, ``port_is_free``).
+
 ``tests/test_duplicate_bodies.py`` cannot see any of the three duplications: it
 reads the source trees of ``src/`` and ``annotator/`` only.  The guard of this
 rule is ``tests/test_one_shipped_tree.py``, which walks ``tests/*.py``.
@@ -41,6 +47,7 @@ from __future__ import annotations
 import ast
 import hashlib
 from pathlib import Path
+import socket
 
 #: Name of this module, as the walk of the guard reads it.
 SELF = Path(__file__).stem
@@ -241,3 +248,35 @@ def body_fingerprint(node):
             and isinstance(body[0].value.value, str)):
         body = body[1:]
     return hashlib.sha1(ast.unparse(body).encode('utf-8')).hexdigest()
+
+
+# Round 79 gave the two loopback-port helpers of the console fixtures one home.
+# ``free_port`` stood at ``tests/console_fixture_build.py:77`` and
+# ``tests/console_shots.py:117``.  ``port_is_free`` stood at those two modules and
+# at ``tests/smoke_rating_fixture.py:100``.  Every copy held the same body, so a
+# change to one copy changed one caller and left the others on the old rule.  The
+# three fixture modules read the two names from this module now.
+#
+# ``tests/test_one_shipped_tree.py`` holds the rule with a body walk: it reads
+# every ``tests/*.py`` file and reports a site whose body matches one of the two
+# bodies below.  A definition of the same name with another body is a different
+# reader: ``free_port`` of ``tests/test_public_board.py:285`` binds its socket
+# under the local name ``sock``, so it stays the reader of that module.
+
+
+def free_port():
+    """One free loopback port, as the kernel hands it out."""
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        return probe.getsockname()[1]
+
+
+def port_is_free(port):
+    """True when the loopback port can be bound right now."""
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(('127.0.0.1', port))
+        except OSError:
+            return False
+    return True

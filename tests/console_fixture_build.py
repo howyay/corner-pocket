@@ -26,7 +26,6 @@ import json
 import os
 from pathlib import Path
 import random
-import socket
 import subprocess
 import sys
 import tempfile
@@ -73,21 +72,11 @@ NOTES = [
 ]
 SOURCES = ['https://www.twitch.tv/cornerpocket', 'https://www.twitch.tv/videos/2274501933']
 
-
-def free_port():
-    with socket.socket() as probe:
-        probe.bind(('127.0.0.1', 0))
-        return probe.getsockname()[1]
-
-
-def port_is_free(port):
-    with socket.socket() as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            probe.bind(('127.0.0.1', port))
-        except OSError:
-            return False
-    return True
+# The two loopback-port helpers stood here until round 79, and the copies of
+# tests/console_shots.py and tests/smoke_rating_fixture.py held the same body.  The
+# single-module runner starts in tests/, and discovery puts tests/ on sys.path, so the
+# bare module name reaches the one home in both.
+from _shipped import free_port, port_is_free
 
 
 class Api:

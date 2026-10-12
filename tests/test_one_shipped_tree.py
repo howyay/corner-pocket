@@ -26,19 +26,30 @@ reads the source trees of ``src/`` and ``annotator/`` only.
    ``HELPER_NAMES`` below is the list.  ``source_files`` stayed in its two modules,
    because it reads a module-local ``SOURCE_TREES`` and not its arguments.
 
-The cases below hold the four homes in place:
+5. Two loopback-port helpers of the console fixtures stood in three modules each,
+   byte for byte.  ``free_port`` stood at ``tests/console_fixture_build.py:77`` and
+   ``tests/console_shots.py:117``; ``port_is_free`` stood at those two sites and at
+   ``tests/smoke_rating_fixture.py:100``.  No one of the three files is a
+   ``test_*.py`` file, so the name walk of this guard never read one of them and no
+   record row named them.  Round 79 moved both bodies to ``tests/_shipped.py``, and
+   the walk of this file reads every ``*.py`` file of ``tests/`` now.
+
+The cases below hold the five homes in place:
 
 * the four modules of the tree read the owner name, and none of them declares
   the tree again;
-* no ``test_*.py`` file defines ``shipped_modules``, ``_dotted`` or
+* no other ``*.py`` file of ``tests/`` defines ``shipped_modules``, ``_dotted`` or
   ``_code_strings``, apart from the module the walk excludes;
-* a planted copy, in a file named ``test_*.py``, makes the walk report that file;
+* a planted copy, under a name the walk reads, makes the walk report that file;
 * the code-string reader drops the docstrings of a tree and keeps every other
   literal, with its line;
 * the expressions the guards read keep their one answer, and the recursive
   reader and the stack reader agree on every ``Call`` of the test tree;
-* the eight helper families are defined in the one home, and no ``test_*.py``
-  file defines one of them at its top level.
+* the eight helper families are defined in the one home, and no other ``*.py``
+  file of ``tests/`` defines one of them at its top level;
+* the two loopback-port helpers of the console fixtures are defined in the one
+  home with the body of round 79, no other ``*.py`` file of ``tests/`` holds one of
+  those bodies, and the three fixture modules read both names from the home.
 
 Why this file, and not ``tests/test_suite_inventory.py``: that module counts how
 many cases this checkout skips, and it holds four committed limits for that
@@ -108,6 +119,33 @@ HELPER_NAMES = ('parse', 'is_number', 'is_length', 'stated_maximum', 'bare_bound
                 'bindings', 'owner_bindings', 'body_fingerprint')
 
 
+#: The two loopback-port helpers the three console fixtures shared until round 79.
+#: ``free_port`` and ``port_is_free`` stood byte for byte in
+#: ``tests/console_fixture_build.py``, ``tests/console_shots.py`` and
+#: ``tests/smoke_rating_fixture.py``, and no one of the three files is a
+#: ``test_*.py`` file.  The two names are **not** in ``WATCHED``: a name walk would
+#: report ``free_port`` of ``tests/test_public_board.py:285``, a different reader
+#: whose body binds the socket under the local name ``sock``.  The rule below reads
+#: the body of the function and not its name.
+PORT_HELPERS = ('free_port', 'port_is_free')
+
+#: The body key of each port helper, measured in round 79 with
+#: ``_shipped.body_fingerprint``: the ``ast`` text of the body with the docstring
+#: dropped, so the docstrings of the one home do not move the key.  A later change
+#: to one of the two bodies re-measures this table.
+PORT_KEYS = {
+    'free_port': 'ea2100430737a68737f8c81a18206b045f231511',
+    'port_is_free': 'c2b7012d76d055967ec4f13dfa659b7c439b32ad',
+}
+
+#: The three modules that read the two port helpers from the one home.
+PORT_READERS = (
+    'console_fixture_build.py',
+    'console_shots.py',
+    'smoke_rating_fixture.py',
+)
+
+
 def function_defs(path: Path):
     """(name, line) for every function this file defines at the top level.
 
@@ -123,16 +161,40 @@ def function_defs(path: Path):
 def scanned_nodes(folder: Path):
     """The watched readers a second file of ``folder`` defines.
 
-    The walk reads the ``test_*.py`` files, and it leaves the one helper module
-    out.  The answer is a mapping: one list of ``file:line`` sites for each
-    watched name.  An empty mapping means the two readers have one home only."""
+    The walk reads every ``*.py`` file of the folder, and not the ``test_*.py``
+    files only: the two port helpers of round 79 stood in three fixture modules
+    that no ``test_*.py`` name reaches.  It leaves the one helper module out.  The
+    answer is a mapping: one list of ``file:line`` sites for each watched name.  An
+    empty mapping means the watched readers have one home only."""
     found = {}
-    for path in sorted(folder.glob('test_*.py')):
+    for path in sorted(folder.glob('*.py')):
         if path.stem == HELPER:
             continue
         for name, line in function_defs(path):
             if name in WATCHED:
                 found.setdefault(name, []).append(f'{path.name}:{line}')
+    return found
+
+
+def port_body_sites(folder: Path):
+    """Every site under ``folder`` whose function body is one of the port bodies.
+
+    The walk reads every ``*.py`` file of the folder, and it reads every function of
+    every depth, because a second copy may stand in a class or in another function.
+    The one helper module is read as well: the answer holds the two sites of the one
+    home, and every other site is a second copy of one of the two bodies.  The answer
+    maps ``file:line name`` to the name of the body the site matched."""
+    from _shipped import body_fingerprint
+    keys = {key: name for name, key in PORT_KEYS.items()}
+    found = {}
+    for path in sorted(folder.glob('*.py')):
+        tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            key = body_fingerprint(node)
+            if key in keys:
+                found[f'{path.name}:{node.lineno} {node.name}'] = keys[key]
     return found
 
 
@@ -144,6 +206,19 @@ def planted(name: str, path: Path) -> Path:
                     f'def {name}(node):\n'
                     '    """A copy that answers a wrong text on purpose."""\n'
                     '    return "second copy"\n', encoding='utf-8')
+    return path
+
+
+def planted_port(path: Path) -> Path:
+    """Write one file that holds the body of ``free_port``, under a name the walk reads."""
+    path.write_text('"""A second copy of one port helper, for the case below."""\n'
+                    '\n'
+                    'import socket\n'
+                    '\n'
+                    'def free_port():\n'
+                    '    with socket.socket() as probe:\n'
+                    "        probe.bind(('127.0.0.1', 0))\n"
+                    '        return probe.getsockname()[1]\n', encoding='utf-8')
     return path
 
 
@@ -325,3 +400,64 @@ class OneHomeTest(unittest.TestCase):
                              f'the owner drops the base and keeps the attributes: {text}')
             self.assertEqual(dotted_name_by_loop(chain), '',
                              f'the stack reader stops at the base of the chain: {text}')
+
+    def test_the_two_port_helpers_have_one_home(self):
+        """Both port helpers stand in the one home, with the body of round 79.
+
+        The three fixture modules that held a copy are not ``test_*.py`` files, so
+        the name walk above never read one of them.  This case reads a body instead:
+        the two keys of ``PORT_KEYS`` were measured on those three copies, and a
+        ``*.py`` file of ``tests/`` that holds one of the two bodies again is a
+        second home of the same rule.  A copy inside the one home is a fault too,
+        because a second ``def`` of one name shadows the first.
+        """
+        from _shipped import body_fingerprint
+        home = TESTS / f'{HELPER}.py'
+        tree = ast.parse(home.read_text(encoding='utf-8'), filename=str(home))
+        seen = {}
+        for node in ast.walk(tree):
+            if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name in PORT_HELPERS):
+                seen.setdefault(node.name, []).append((node.lineno, body_fingerprint(node)))
+        counted = {name: len(sites) for name, sites in seen.items()}
+        self.assertEqual(counted, {'free_port': 1, 'port_is_free': 1},
+                         f'the one home tests/{HELPER}.py must define each port helper '
+                         f'once: {counted}')
+        measured = {name: sites[0][1] for name, sites in seen.items()}
+        self.assertEqual(measured, PORT_KEYS,
+                         f'the one home must hold the two bodies of round 79; re-measure '
+                         f'PORT_KEYS against tests/{HELPER}.py: {measured}')
+        found = port_body_sites(TESTS)
+        allowed = {f'{HELPER}.py:{line} {name}'
+                   for name, sites in seen.items() for line, _key in sites}
+        extra = {site: key for site, key in found.items() if site not in allowed}
+        self.assertEqual(extra, {},
+                         f'the two port helpers have one home, tests/{HELPER}.py; the walk '
+                         f'of tests/*.py found a second body at: {extra}')
+
+    def test_the_three_fixture_modules_read_the_port_helpers(self):
+        """Each former site reads both names from the one home."""
+        for name in PORT_READERS:
+            path = TESTS / name
+            self.assertTrue(path.is_file(), f'the fixture module must exist: {path}')
+            tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+            taken = set()
+            for node in tree.body:
+                if isinstance(node, ast.ImportFrom) and node.module == HELPER:
+                    taken |= {alias.name for alias in node.names}
+            missing = [helper for helper in PORT_HELPERS if helper not in taken]
+            self.assertEqual(missing, [],
+                             f'{name} must read {missing} from tests/{HELPER}.py')
+
+    def test_the_body_walk_reports_a_planted_port_copy(self):
+        """A planted copy of one port body is reported, with its file and its line.
+
+        The planted file is not named ``test_*.py``: the walk of this rule reads
+        every ``*.py`` file, and this case holds that.
+        """
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            planted_port(root / 'console_planted_copy.py')
+            found = port_body_sites(root)
+        self.assertEqual(found, {'console_planted_copy.py:5 free_port': 'free_port'},
+                         f'the walk must report the planted body, with its line: {found}')

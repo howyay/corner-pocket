@@ -52,7 +52,10 @@ sys.path.insert(0, str(ROOT / 'tests'))
 # the same PNG check, so a board caption here is measured the way the shots are. Its
 # launcher is pinned to the shot ports (8150/8151) and refuses anything else, so this
 # script launches chromium itself and reuses everything below that.
-from console_shots import CHROMIUM_CANDIDATES, Devtools, free_port, png_size
+from console_shots import CHROMIUM_CANDIDATES, Devtools, png_size
+# The two loopback-port helpers have one home, tests/_shipped.py.  This module, the shot
+# harness and the fixture builder each held the same body until round 79.
+from _shipped import free_port, port_is_free
 
 # The deployed public board unit names the two production ports.  This fixture refuses
 # the ports the service really uses, so it reads them from the unit and holds no second
@@ -95,16 +98,6 @@ def refuses_ports(port, public_port, deployed=None):
         return (f'refusing to use the production ({console}/{board}) or live rating '
                 f'({LIVE_RATING_PORTS[0]}/{LIVE_RATING_PORTS[1]}) ports')
     return None
-
-
-def port_is_free(port):
-    with socket.socket() as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            probe.bind(('127.0.0.1', port))
-        except OSError:
-            return False
-    return True
 
 
 def http_get(url, expect=200, timeout=30):

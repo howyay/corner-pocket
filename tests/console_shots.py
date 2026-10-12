@@ -113,21 +113,11 @@ SIZES = {'small': (1024, 900), 'mid': (1152, 900), 'laptop': (1280, 900),
 # laptop came first in the round-3 set on purpose: 1280x900 is the viewport a blind
 # reviewer actually sat at, and it is where the bar was measured to wrap (SS14.1).
 
-
-def free_port():
-    with socket.socket() as probe:
-        probe.bind(('127.0.0.1', 0))
-        return probe.getsockname()[1]
-
-
-def port_is_free(port):
-    with socket.socket() as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            probe.bind(('127.0.0.1', port))
-        except OSError:
-            return False
-    return True
+# The two loopback-port helpers stood here until round 79, and the copies of
+# tests/console_fixture_build.py and tests/smoke_rating_fixture.py held the same body.
+# This script runs from the repository root, so its own directory is on sys.path and the
+# bare module name reaches the one home.
+from _shipped import free_port, port_is_free
 
 
 def assert_loopback(url, ports, what):
