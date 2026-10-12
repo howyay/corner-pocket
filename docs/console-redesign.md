@@ -11437,4 +11437,7 @@ Lessons of this round:
 4. A citation can name a line whose number stays right and whose text is old.  Writer WE
    listed the doc lines that quote the code its sites replaced.
 
-The full python suite answers `SUITE LINE PENDING`.
+The full python suite answers `Ran 2607 tests in 547.192s` and `OK (skipped=53)`.
+The count moved 2602 -> 2607: one case from writer WE, two from writer WF, and two
+from the console guard of the Lead.
+
