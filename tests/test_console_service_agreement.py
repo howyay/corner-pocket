@@ -20,16 +20,18 @@ Round 68, two rows of the walk of this round.
 The shape of the console rule.  The console is one static file.  It reads no schema of the
 server.  It draws its panel before any request returns.  A table the service publishes costs
 a route and a fetch for a label verb the panel already holds, and the answer arrives after the
-operator clicked.  The console therefore holds its own names, and this module holds the two
+operator clicked.  The console therefore holds its own names, and this module holds the
 statements equal.  It reads the source text of ``annotator/app.js``, the way
 ``tests/test_console_service_bounds.py`` reads ``annotator/ops.js`` for the replay rate bound.
-This module never edits those files.
+Round 85 adds the two served readers of the same table: the stage of ``annotator/vision-stage.js``
+and the review page of ``annotator/label.html``.  This module reads the three files and holds
+them equal.  It never edits those files.
 
 Why a new module, and not ``tests/test_console_service_bounds.py``: that module holds the
 replay rate bound and the race-to set of round 64, and its docstring states that scope.  This
 module holds the two rules of round 68, and the two write scopes stay apart.
 
-Six rules, one pass over two files:
+Seven rules, one pass over three files:
 
 1. **home rule, console** - the pair, the clearing picks and the clearing wire value stand on
    three lines of ``annotator/app.js``, and the write and the window read them by name.
@@ -43,6 +45,8 @@ Six rules, one pass over two files:
 5. **meaning rule** - the floor is the length the service refuses under.  At the console's own
    floor the route encodes a window of that length, and a little under it the route refuses.
 6. **copy rule** - a planted second statement of either rule is reported, with its line.
+7. **reader rule** - each served reader of the table holds the two owner values, and no reader
+   holds a value of its own.
 
 What this case does not see
 ---------------------------
@@ -50,10 +54,12 @@ What this case does not see
   this module does not match - a label built at run time, a second panel - is invisible to it.
 * It reads text and not meaning on the console side.  The rows of the console are driven in
   ``tests/test_app_timeline.js``, which is the case that holds the wire value and the echo.
-* ``annotator/vision-stage.js:338`` holds the pair a second time
-  (``label === 'u' || label === -1``), and ``annotator/label.html`` reads the word ``"u"`` for
-  its own list.  Both are readers of the stored vocabulary.  Both are outside the write scope
-  of this round, and this module does not hold them.
+* It holds the readers to the pattern of today.  A later round that moves a comparison or a
+  button attribute must move the pattern here in the same change.  The three sites are
+  ``annotator/vision-stage.js:347`` (``labelText``), ``annotator/vision-stage.js:1334`` (the
+  number the unknown button posts) and ``annotator/label.html:61`` (the state of a crop).
+  The page compares the stored word a second time at line 101 of the same file, and this
+  module holds that line by the same rule.
 * It pins the numbers of today and not the reason for them.  A later round that raises the
   floor must raise the frozen pair here in the same change.
 * It holds the floor equal in value and in meaning at the end of a video.  Which window the
@@ -71,6 +77,13 @@ CONSOLE = ROOT / 'annotator' / 'app.js'
 SERVICE = ROOT / 'annotator' / 'unified_server.py'
 CONSOLE_TEXT = CONSOLE.read_text(encoding='utf-8')
 SERVICE_TEXT = SERVICE.read_text(encoding='utf-8')
+
+#: The two served readers of the table, outside the console and the service.  The stage draws
+#: the unknown button and names the unknown row.  The review page reads the stored word for
+#: the state of a crop.  Each file is read once, by its own path.
+VISION = ROOT / 'annotator' / 'vision-stage.js'
+LABEL_PAGE = ROOT / 'annotator' / 'label.html'
+READER_PATHS = (VISION, LABEL_PAGE)
 
 #: The table and the floor as they stand today.  The cases freeze them, so a reader can
 #: follow the ground of round 68.
@@ -114,10 +127,25 @@ SERVICE_MAP_READ = re.compile(
     r"\(BALL_LABEL_UNKNOWN_STORED if label == BALL_LABEL_UNKNOWN_WIRE else label\)$", re.MULTILINE)
 SERVICE_FLOOR_READ = re.compile(r"^        if duration < CLIP_FLOOR_S:$", re.MULTILINE)
 
+#: The one route the review page posts a label to.  The route carries the stored word of the
+#: owner, so the page and the stage speak of one vocabulary.
+LABEL_ROUTE_READ = re.compile(r"fetch\('/api/ball_label'")
+
+
+def lines_of(text):
+    """The lines of one file, with the number a reader counts.
+
+    A newline alone does not always end a line: the stage holds template strings with the
+    exotic line separators that ``str.splitlines`` breaks on.  One line then carries two
+    of the numbers a reader counts, and the number of an edit shifts by one.  Every count
+    here uses ``splitlines``, the reader that agrees with the source editor.
+    """
+    return list(enumerate(text.splitlines(), 1))
+
 
 def statements(text):
     """Every line of one source file that is not a whole-line comment, with its number."""
-    return [(number, line) for number, line in enumerate(text.splitlines(), 1)
+    return [(number, line) for number, line in lines_of(text)
             if not line.lstrip().startswith(('//', '#'))]
 
 
@@ -156,6 +184,112 @@ def home(pattern, text, name):
     hit = pattern.search(text)
     assert hit is not None, f'{name} must state this rule on one line'
     return hit
+
+
+def reader_text(path):
+    """The whole source text of one served reader."""
+    return path.read_text(encoding='utf-8')
+
+
+def owner_pair():
+    """The two owner values of the pair: the service states both, and one home line holds both."""
+    wire = int(home(SERVICE_WIRE_HOME, SERVICE_TEXT, SERVICE.name).group(1))
+    stored = home(SERVICE_STORED_HOME, SERVICE_TEXT, SERVICE.name).group(1)
+    pair = home(CONSOLE_PAIR_HOME, CONSOLE_TEXT, CONSOLE.name)
+    return wire, stored, (int(pair.group(1)), pair.group(2))
+
+
+def wire_spelling(wire):
+    """The owner value as a javascript reader spells the number."""
+    return str(wire)
+
+
+def stored_spelling(stored):
+    """The owner value as a javascript reader spells the word between single quotes."""
+    return "'%s'" % stored
+
+
+def line_at(text, number):
+    """The text of one line, by the number this module counts."""
+    found = dict(lines_of(text))
+    return found.get(number, '')
+
+
+def holds(pattern, text):
+    """A pattern and the line number it finds, or ``None``."""
+    for number, line in lines_of(text):
+        if pattern.search(line):
+            return number
+    return None
+
+
+def vision_label_pattern(wire, stored):
+    """The one test of an unknown row, built from the two owner values."""
+    return re.compile(r"label\s*===\s*%s\s*\|\|\s*label\s*===\s*%s"
+                      % (re.escape(stored_spelling(stored)), re.escape(wire_spelling(wire))))
+
+
+def vision_button_pattern(wire):
+    """The markup that posts the wire value of the owner, built from that value.
+
+    The pattern holds the whole attribute of a button value.  A shorter pattern also
+    matches the inside of a template string, where the markup is not a button yet.
+    """
+    return re.compile(r'data-vs-value="%s"' % re.escape(wire_spelling(wire)))
+
+
+def vision_unknown_button_pattern(wire):
+    """The one button of the stage that labels an unknown crop, built from the owner value.
+
+    The action of the unknown button and the wire value both stand on the line.  The
+    pattern holds the two together, so it cannot match another button that posts the
+    same number.  The case builds the pattern from the owner value and not from text.
+    """
+    action = re.escape('label' + '-' + 'ball')
+    return re.compile(r'data-vs-action="%s"\s+data-vs-value="%s"'
+                      % (action, re.escape(wire_spelling(wire))))
+
+
+def vision_label_site():
+    """The action of the unknown button of the stage, as a pattern.
+
+    The line of that action is the site.  The case finds the site by the action instead
+    of a line number, so the guard keeps no second owner of the pair.
+    """
+    return re.compile(r'data-vs-action="%s"' % re.escape('label' + '-' + 'ball'))
+
+
+def vision_button_site():
+    """The piece of markup that carries a button value in the stage, as a pattern."""
+    return re.compile(r'data-vs-value=')
+
+
+def vision_label_lines(text):
+    """Every line of the stage that holds the action of the unknown button."""
+    return [number for number, body in statements(text) if vision_label_site().search(body)]
+
+
+def stored_test_pattern(stored):
+    """The one test of the stored word in a reader, built from the owner stored value."""
+    return re.compile(r"===\s*%s" % re.escape(stored_spelling(stored)))
+
+
+def reader_sites():
+    """Each served reader with the name and the pattern of every site this module holds.
+
+    Every pattern is built from the owner values, so the two owner homes stay the one
+    source of the pair.  The name of a site tells the reader what the site does.
+    """
+    wire, stored, _ = owner_pair()
+    return (
+        (VISION, (
+            ('the row name test of the stage', vision_label_pattern(wire, stored)),
+            ('the unknown button of the stage', vision_unknown_button_pattern(wire)),
+        )),
+        (LABEL_PAGE, (
+            ('a test of the stored word', stored_test_pattern(stored)),
+        )),
+    )
 
 
 class ConsoleServiceAgreement(unittest.TestCase):
@@ -252,6 +386,93 @@ class ConsoleServiceAgreement(unittest.TestCase):
                 else:
                     self.assertEqual(labels[original], stored,
                                      f'the wire value {wire!r} must reach the store as {stored!r}')
+
+    def test_the_served_readers_hold_the_pair_of_the_owner(self):
+        """Each served reader states the two owner values, and both realms name one pair."""
+        wire, stored, console = owner_pair()
+        self.assertEqual(console, (wire, stored),
+                         'the console and the service must name the pair of the owner')
+        for path, sites in reader_sites():
+            text = reader_text(path)
+            for name, pattern in sites:
+                with self.subTest(file=path.name, site=name):
+                    self.assertIsNotNone(pattern.search(text),
+                                         f'{path.name} must hold {name} with the owner values')
+
+    def test_the_stage_names_the_unknown_row_with_the_pair_of_the_owner(self):
+        """The row name test of the stage holds the wire value and the stored word of the owner."""
+        wire, stored, _ = owner_pair()
+        text = reader_text(VISION)
+        pattern = vision_label_pattern(wire, stored)
+        line = holds(pattern, text)
+        self.assertIsNotNone(line,
+                             f'{VISION.name} must name the unknown row with the pair of the owner')
+        lines = [number for number, body in statements(text) if pattern.search(body)]
+        self.assertEqual(lines, [line],
+                         f'{VISION.name} must state the pair of the owner on one line')
+
+    def test_the_stage_posts_the_wire_value_of_the_owner(self):
+        """The label action of the stage posts the wire value of the owner."""
+        wire, _, _ = owner_pair()
+        text = reader_text(VISION)
+        value = vision_button_pattern(wire)
+        lines = [number for number in vision_label_lines(text)
+                 if value.search(line_at(text, number))]
+        self.assertEqual(len(lines), 1,
+                         f'{VISION.name} must post the wire value of the owner as a button value')
+        for number in vision_label_lines(text):
+            body = line_at(text, number)
+            self.assertIsNotNone(vision_button_site().search(body),
+                                 f'{VISION.name}:{number} must post the value as button markup')
+
+    def test_the_review_page_reads_the_stored_word_of_the_owner(self):
+        """The review page compares the stored word of the owner, and posts to the label route."""
+        _, stored, _ = owner_pair()
+        text = reader_text(LABEL_PAGE)
+        pattern = stored_test_pattern(stored)
+        lines = [number for number, body in statements(text) if pattern.search(body)]
+        self.assertGreaterEqual(len(lines), 1,
+                                f'{LABEL_PAGE.name} must read the stored word of the owner')
+        self.assertIsNotNone(LABEL_ROUTE_READ.search(text),
+                             f'{LABEL_PAGE.name} must post a label to the route of the service')
+
+    def test_the_copy_rule_reports_a_second_statement_of_the_pair(self):
+        """The detector reports a second statement of the pair.  A stored word alone is no copy."""
+        wire, stored, _ = owner_pair()
+        planted = "        stored = %s if label === %s else label;\n" % (
+            stored_spelling(stored), wire_spelling(wire))
+        self.assertEqual(pair_copies(planted), [(1, planted.strip())],
+                         'a reader that spells the pair again is a copy')
+        self.assertEqual(pair_copies(stored_spelling(stored)), [],
+                         'the stored word alone is not a copy of the pair')
+
+    def test_the_readers_report_every_statement_of_the_pair_with_its_line(self):
+        """The detector names each line of a reader that spells the pair.  Sight is not a copy."""
+        wire, stored, _ = owner_pair()
+        lines = []
+        for path, sites in reader_sites():
+            text = reader_text(path)
+            for name, pattern in sites:
+                with self.subTest(file=path.name, site=name):
+                    numbers = [number for number, body in statements(text) if pattern.search(body)]
+                    hits = len(numbers)
+                    self.assertGreaterEqual(hits, 1,
+                                            f'{path.name} must hold {name} with the owner values')
+                    lines.extend((path, number) for number in numbers)
+        for path, number in lines:
+            with self.subTest(file=path.name, line=number):
+                self.assertIn(stored_spelling(stored), line_at(reader_text(path), number),
+                              f'{path.name}:{number} must spell the stored word of the owner')
+        found = pair_copies(reader_text(VISION))
+        expected = [(number, body.strip()) for number, body in statements(reader_text(VISION))
+                    for name, pattern in reader_sites()[0][1] if pattern.search(body)]
+        self.assertEqual(found, expected,
+                         f'{VISION.name} must report each statement of the pair with its line')
+        self.assertEqual(pair_copies(reader_text(LABEL_PAGE)), [],
+                         f'{LABEL_PAGE.name} reads the word alone, so it states no pair')
+        self.assertEqual(pair_copies(reader_text(VISION))[0][0],
+                         holds(vision_label_pattern(wire, stored), reader_text(VISION)),
+                      f'{VISION.name} must report the line the pair stands on')
 
     def test_the_clip_floor_stands_once_in_each_realm(self):
         """Two floor names, one number, and both sites read the name."""
