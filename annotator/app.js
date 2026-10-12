@@ -836,17 +836,17 @@ function playEvent(index) {
 // The facts line is derived from what the painter actually drew, so
 // "overlays: none" while nodes are drawn is structurally impossible.
 // ---- stage rendering -----------------------------------------------------
-// What the frame-less stage says. Kept in one place because it is written twice:
-// baked into the markup when the stage is built, and re-read on every paint so a
-// language switch reaches a stage that was built in the other language (F3).
-const STAGE_EMPTY_COPY = 'Pick a moment on the scrub strip, or select a cue, then freeze it here.';
+// What the frame-less stage says. The sentence has one owner: the 'stageEmpty' row of
+// SHARED_WORDS below. This reader spells no word of its own, and it re-reads the row on
+// every paint, so a language switch reaches a stage that was built in the other language.
+const STAGE_EMPTY_COPY = () => SHARED_WORDS.stageEmpty[0];
 function stageHTML() {
   const w = state.frameWidth || NATIVE_W, h = state.frameHeight || NATIVE_H;
   return `<figure class="stage" id="stage">
     <video id="t-video" playsinline muted preload="metadata" hidden></video>
     <img id="t-img" alt="${esc(text('Raw decoded frame'))}" ${liveStill() ? `src="${esc(liveStill())}"` : state.shotUrl ? `src="${esc(state.shotUrl)}"` : ''}>
     <svg id="t-overlay" role="group" aria-label="${esc(text('Frame overlays'))}" viewBox="0 0 ${w} ${h}"></svg>
-    <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text(STAGE_EMPTY_COPY))}</div>
+    <div class="stage-empty" id="stage-empty" ${state.shotUrl || state.liveShift ? 'hidden' : ''}>${esc(text(STAGE_EMPTY_COPY()))}</div>
     <div class="stage-live" id="stage-live" ${state.source.kind === 'live' ? '' : 'hidden'}></div>
     <div class="stage-play" id="stage-play" role="status" hidden></div>
     <div class="stage-note" id="stage-note" role="status" hidden></div>
@@ -885,7 +885,7 @@ function renderStage() {
     // The sentence is generated copy, so it is re-read in the current language on
     // every paint; the copy baked in when the stage was built kept that language
     // next to a banner that had been translated (round-2 F3).
-    const sentence = text(STAGE_EMPTY_COPY);
+    const sentence = text(STAGE_EMPTY_COPY());
     if (empty.textContent !== sentence) empty.textContent = sentence;
   }
   const svg = $('#t-overlay'); if (svg) { svg.setAttribute('viewBox', `0 0 ${state.frameWidth || NATIVE_W} ${state.frameHeight || NATIVE_H}`); if (!svg.dataset.bound) { svg.dataset.bound = '1'; svg.onpointerdown = overlayPointerDown; svg.onpointermove = overlayPointerMove; svg.onpointerup = svg.onpointercancel = overlayPointerUp; } }
@@ -2158,11 +2158,11 @@ const zhCopy = {
   // slots), and the footer slots are named after themselves.
   'footer-left':'本地数据 · 显式保存', 'footer-right':'复核结论在核验前不是真值。'
 };
-// The words that both console screens show have one owner: this table, keyed by the slot name the
-// ops adapter (annotator/vision-stage.js) reads.  annotator/ops.html loads this file before that
-// one, so the adapter takes the table from window.ConsoleRules and spells no word of its own.  A
-// reword here reaches the review page (through the copy table below) and the ops screen together.
-// Each row is one pair: the English word this page paints, then the Chinese one.
+// The words that the console screens and this page show have one owner: this table, keyed by the
+// slot name each reader asks for.  annotator/ops.html loads this file first, so the ops adapter
+// (annotator/vision-stage.js) and annotator/ops.js take a row from window.ConsoleRules and spell
+// no word of their own.  A reword here reaches the review page (through the copy table below),
+// the ops screen and the stage together.  Each row is one pair: the English word, then the Chinese.
 const SHARED_WORDS = Object.freeze({
   stale: ['STALE', '已过期'], staleNow: ['STALE', '已过期'],
   live: ['live', '直播'], liveFlag: ['live', '直播'], liveNow: ['live', '直播'],
@@ -2173,12 +2173,13 @@ const SHARED_WORDS = Object.freeze({
   selectTool: ['Select / move', '选择 / 移动'], newBoxLabel: ['New box label', '新框标注'],
   addPolygon: ['Add table polygon', '添加球桌多边形'], clearPolygon: ['Clear polygon', '清除多边形'],
   thisTrack: ['track', '轨迹'], playingWord: ['playing', '播放中'], pausedWord: ['paused', '已暂停'],
-  loopWord: ['loop', '循环']
+  loopWord: ['loop', '循环'],
+  stageEmpty: ['Pick a moment on the scrub strip, or select a cue, then freeze it here.', '在拖动条上选择时刻，或选择一条线索，然后在此冻结。'],
+  visionLoading: ['Loading the review workspace…', '正在加载复核工作区…']
 });
 // Only UI-owned copy is eligible: never walk notes, source facts, or raw data.
 const editorCopy = {
   'Raw decoded frame':'原始解码帧', 'Frame overlays':'帧叠加层', 'Stage':'舞台',
-  'Pick a moment on the scrub strip, or select a cue, then freeze it here.':'在拖动条上选择时刻，或选择一条线索，然后在此冻结。',
   'No crop at this frame':'此帧没有裁剪图',
   'The label is written to this crop':'标注将写入此裁剪图', 'Select a crop cue in the rail to label it':'请在左栏选择裁剪图线索以标注',
   'Select a ball or a crop first.':'请先选择球或裁剪图。', 'Select a visible track first.':'请先选择可见的轨迹。',

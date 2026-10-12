@@ -50,7 +50,7 @@ const verdictWords = () => window.CornerPocketReview.vocabulary.verdictWords;
 const SHOOTER_CHOICES = [['', '—'], ['A', 'seedA'], ['B', 'seedB'], ['?', 'unknown']];
 const COPY = {
   en: {
-    cues:'Cues', inspector:'Inspector', sources:'Source', visionLoading:'Loading the review workspace…', sourcesBtn:'Sources', events:'Events', balls:'Balls', persons:'Persons',
+    cues:'Cues', inspector:'Inspector', sources:'Source', sourcesBtn:'Sources', events:'Events', balls:'Balls', persons:'Persons',
     anchors:'Anchors', cloth:'Cloth', pockets:'Pockets', verdict:'Verdict', shooter:'Shooter', notes:'Notes',
     all:'All', shots:'Shots', pots:'Pots', pending:'Unreviewed', labels:'Label ball', queue:'Ball queue',
     tracks:'Person tracks', identity:'Identity', calibration:'Calibration', frameIndex:'Frame', step:'Step',
@@ -136,7 +136,7 @@ const COPY = {
     prediction:'prediction', seed:'saved seed', liveState:'Live state', manual:'manual', detectorReason:'The balls detector (SAM3) is CPU-heavy and stays an explicit opt-in.',
     attemptSource:'Attempted source', frameCount:'frames', keyMap:'Key map', showCues:'Cues', showInspector:'Inspector', cuesRegion:'Vision cues', stageRegion:'Vision stage', inspectorRegion:'Vision inspector', sheetTabs:'Vision panels', twitchChat:'Twitch chat', stepBack:'Previous frame', stepForward:'Next frame',
     notGlass:'receive-to-result is local processing latency, not glass-to-glass',
-    stageEmpty:'Pick a moment on the strip, or select a cue, then freeze it here.', noCropHere:'no crop at this frame',
+    noCropHere:'no crop at this frame',
     coldStartHint:'Nothing selected: draw a box on the frame, add the table polygon, or run inference on this frozen frame.',
     quadOff:'model quad off saved corners', quadUnverified:'model quad unverified',
     quadRefused:'quad refused', quadFallback:'quad from the naive fallback', storedInference:'stored inference',
@@ -166,7 +166,7 @@ const COPY = {
     faceOnly:'face seen'
   },
   zh: {
-    cues:'线索', inspector:'检查器', sources:'视频源', visionLoading:'正在加载复核工作区…', sourcesBtn:'来源', events:'事件', balls:'球', persons:'人物',
+    cues:'线索', inspector:'检查器', sources:'视频源', sourcesBtn:'来源', events:'事件', balls:'球', persons:'人物',
     anchors:'锚点', cloth:'台呢', pockets:'袋口', verdict:'判定', shooter:'击球者', notes:'备注',
     all:'全部', shots:'击球', pots:'入袋', pending:'未复核', labels:'球号标注', queue:'裁剪图队列',
     tracks:'人物轨迹', identity:'身份', calibration:'标定', frameIndex:'帧', step:'步进',
@@ -243,7 +243,7 @@ const COPY = {
     prediction:'预测', seed:'已保存种子', liveState:'直播状态', manual:'人工', detectorReason:'球检测器（SAM3）为 CPU 密集，需显式开启。',
     attemptSource:'尝试的来源', frameCount:'帧数', keyMap:'按键', showCues:'线索', showInspector:'检查器', cuesRegion:'视觉线索', stageRegion:'视觉舞台', inspectorRegion:'视觉检查器', sheetTabs:'视觉面板', twitchChat:'Twitch 聊天', stepBack:'上一帧', stepForward:'下一帧',
     notGlass:'接收到结果为本地处理耗时，并非端到端延迟',
-    stageEmpty:'在拖动条上选择时刻，或选择一条线索，然后在此冻结。', noCropHere:'此帧没有裁剪图',
+    noCropHere:'此帧没有裁剪图',
     coldStartHint:'未选择对象：可直接在帧上绘制标注框、添加球桌多边形，或对本冻结帧运行推理。',
     quadOff:'模型四边形偏离已保存角点', quadUnverified:'模型四边形未校验',
     quadRefused:'四边形已拒绝', quadFallback:'四边形来自朴素回退', storedInference:'已存推理',
