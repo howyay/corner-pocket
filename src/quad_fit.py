@@ -53,15 +53,29 @@ def cloth_mask_tight(bgr, hwin=16, smin=105, vmin=55, close=19, open_k=9):
     return comp, hue
 
 
-def fit_quad_v3(bgr):
-    mask, hue = cloth_mask_tight(bgr)
+def cloth_contours(bgr):
+    """The cloth mask, its largest contour and the frame size, or ``None``.
+
+    The one preamble of the two quad fitters: ``fit_quad_v3`` here and
+    ``fit_quad_lines`` in ``src/quad_fit_lines.py`` read this function, so the
+    mask, the contour and the frame size cannot disagree between them.  Answers
+    ``(mask, big, h, w)``.
+    """
+    mask, _hue = cloth_mask_tight(bgr)
     if mask is None:
         return None
     h, w = bgr.shape[:2]
     cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cnts:
         return None
-    big = max(cnts, key=cv2.contourArea)
+    return mask, max(cnts, key=cv2.contourArea), h, w
+
+
+def fit_quad_v3(bgr):
+    found = cloth_contours(bgr)
+    if found is None:
+        return None
+    mask, big, h, w = found
     rect = cv2.minAreaRect(big)
     rw_, rh_ = rect[1]
     lo, hi = sorted((rw_, rh_))

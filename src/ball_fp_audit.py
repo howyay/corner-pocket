@@ -545,15 +545,10 @@ def measure_frame(t, floor: float = SAM3_FLOOR) -> dict:
 
     from src import sam3_cpu
     from src.sam3_ball_cache import cloth_mask, reference_quad
-    from src.pipeline import ball_center
+    from src.pipeline import ball_center, extract_frame
 
     video = ROOT / "data" / "vod_30min_260815.mp4"
-    cap = cv2.VideoCapture(str(video))
-    cap.set(cv2.CAP_PROP_POS_MSEC, float(t) * 1000.0)
-    ok, bgr = cap.read()
-    cap.release()
-    if not ok:
-        raise RuntimeError(f"no frame at t={t}")
+    bgr = extract_frame(video, t)
 
     proc = _processor()
     proc.confidence_threshold = floor
@@ -937,13 +932,9 @@ def render_case(bgr, case: dict, half: int, scale: int, title: str, subtitle: st
 
 def native_frame(t: float):
     """The frame at native resolution: the crop is checked at the size the ball is."""
-    import cv2
+    from src.pipeline import extract_frame_or_none
 
-    cap = cv2.VideoCapture(str(ROOT / "data" / "vod_30min_260815.mp4"))
-    cap.set(cv2.CAP_PROP_POS_MSEC, float(t) * 1000.0)
-    ok, bgr = cap.read()
-    cap.release()
-    return bgr if ok else None
+    return extract_frame_or_none(ROOT / "data" / "vod_30min_260815.mp4", t)
 
 
 def cmd_crops(args) -> int:

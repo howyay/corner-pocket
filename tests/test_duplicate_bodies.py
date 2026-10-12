@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import ast
 import sys
+from tempfile import TemporaryDirectory
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
@@ -405,3 +406,195 @@ class NamedPredicateTest(unittest.TestCase):
         self.assertTrue(document.named, 'a stamped document must read named')
         self.assertTrue(artifact.named, 'a stamped artifact must read named')
         self.assertFalse(mixed.named, 'a mixed document must not read named')
+
+
+# ------------------------------------------------- runs of consecutive statements ----
+# A window is a run of consecutive statements that has one home.  The walk above
+# reads whole bodies, so it cannot see a window: a site that spells a window by
+# hand holds other names and other neighbours, so its body differs from the body
+# of the owner.  Round 76 measured two such windows.  Six sites in five files
+# spelled the seek window of one frame at a time by hand, and the two quad
+# fitters held the cloth-contour preamble as one body twice.
+#
+# These helpers mask the local names of a window and the parameters of the
+# function that holds it.  The walk then compares the shape of the window and not
+# its spelling, so a copy that renames ``cap`` to ``reader`` is still a copy.
+
+#: The trees whose files the whole-window walk reads.  The vendored package
+#: ``src/sam3`` is out of every walk of this module, and the test tree is out of
+#: it too, because one case below holds an old copy of a window as a fixture.
+WINDOW_TREES = (SRC, ROOT / 'annotator', ROOT / 'tools', ROOT / 'scripts')
+
+#: The five files of the round that repaired the seek window: the owner and the
+#: four files whose sites spelled it by hand.
+SEEK_FILES = ('src/pipeline.py', 'src/ball_fp_audit.py', 'src/tiny_ball_net.py',
+              'src/sam3_ball_cache.py', 'src/fast_ball_labels.py')
+
+
+def window_paths():
+    """Every module file of the four trees of the walk, in one stable order."""
+    for tree in WINDOW_TREES:
+        for path in sorted(tree.rglob('*.py')):
+            if VENDORED in path.parents:
+                continue
+            yield path
+
+
+class MaskLocals(ast.NodeTransformer):
+    """Replace every local name of a window with one placeholder."""
+
+    def __init__(self, drop):
+        self.drop = drop
+
+    def visit_Name(self, node):
+        if node.id in self.drop:
+            return ast.copy_location(ast.Name(id='_', ctx=node.ctx), node)
+        return node
+
+
+def arguments_of(node):
+    """Every parameter name of one function."""
+    args = node.args
+    return [arg.arg for arg in list(args.posonlyargs) + list(args.args) + list(args.kwonlyargs)]
+
+
+def body_of(node):
+    """The statements of one function, without its docstring."""
+    statements = list(node.body)
+    if statements and isinstance(statements[0], ast.Expr) \
+            and isinstance(statements[0].value, ast.Constant):
+        statements = statements[1:]
+    return statements
+
+
+def module_functions(tree):
+    """Every function of one parsed module, a nested function included."""
+    return [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+
+
+def window_shape(statements, free):
+    """The statements as text, with every local name and every parameter masked.
+
+    ``free`` holds the parameters of the function: they are the names the window
+    reads from its caller, so they are not part of the shape.  The text of a
+    statement is unparsed before the mask, so spacing never decides the answer.
+    """
+    drop = {node.id for statement in statements for node in ast.walk(statement)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
+    drop |= set(free)
+    shape = []
+    for statement in statements:
+        masked = MaskLocals(drop).visit(ast.parse(ast.unparse(statement)).body[0])
+        shape.append(ast.unparse(masked))
+    return tuple(shape)
+
+
+@dataclass(frozen=True)
+class Window:
+    """One run of consecutive statements that has one home."""
+
+    owner: str
+    name: str
+    length: int
+    rule: str
+    scope: tuple = ()
+
+    def paths(self):
+        """The files the walk reads for this window."""
+        if not self.scope:
+            return tuple(window_paths())
+        return tuple(ROOT / part for part in self.scope)
+
+
+#: The windows of the trees, with the scope each rule needs.
+#:
+#: The opening of the seek window is read in the five files of the round only:
+#: three looser sites outside those files seek by frame index or read the frame
+#: number back, and the rule of one frame at one time does not hold them yet.
+#: The whole window and the cloth preamble are read in the four source trees.
+WINDOWS = (
+    Window('src/pipeline.py', 'read_frame', 3,
+           'the opening of the seek window: open the container, seek by time, read one frame',
+           scope=SEEK_FILES),
+    Window('src/pipeline.py', 'read_frame', 6,
+           'the whole seek window of one frame at one time, with the two container numbers'),
+    Window('src/quad_fit.py', 'cloth_contours', 6,
+           'the cloth-contour preamble of the two quad fitters'),
+)
+
+
+def window_offenders(window, paths=None):
+    """Every run of statements outside the owner that repeats one window of it.
+
+    The answer is one text line per site: ``module:line function``.  ``paths``
+    defaults to the scope of the window; the planted case passes its own file.
+    """
+    owner_path = ROOT / window.owner
+    tree = ast.parse(owner_path.read_text(encoding='utf-8'), filename=str(owner_path))
+    owner_node = None
+    for node in module_functions(tree):
+        if node.name == window.name:
+            owner_node = node
+    if owner_node is None:
+        raise AssertionError('%s does not hold %s' % (window.owner, window.name))
+    shape = window_shape(body_of(owner_node)[:window.length], arguments_of(owner_node))
+    found = []
+    for path in window.paths() if paths is None else paths:
+        if path == owner_path:
+            continue
+        module = path.relative_to(ROOT).as_posix() if ROOT in path.parents else str(path)
+        for node in module_functions(ast.parse(path.read_text(encoding='utf-8'), filename=str(path))):
+            statements = body_of(node)
+            for start in range(0, len(statements) - window.length + 1):
+                run = statements[start:start + window.length]
+                if window_shape(run, arguments_of(node)) == shape:
+                    found.append('%s:%d %s' % (module, run[0].lineno, node.name))
+    return found
+
+
+#: The old spelling of both windows, with other names on purpose: the plant must
+#: show that the scan reads the shape of a window and not its names.
+PLANTED_WINDOW = '''import cv2
+
+
+def planted_seek(video, t):
+    cap = cv2.VideoCapture(str(video))
+    cap.set(cv2.CAP_PROP_POS_MSEC, float(t) * 1000.0)
+    ok, frame = cap.read()
+    cap.release()
+    if not ok:
+        raise RuntimeError("no frame at t=%s" % t)
+    return frame
+
+
+def planted_cloth(bgr):
+    mask, hue = cloth_mask_tight(bgr)
+    if mask is None:
+        return None
+    h, w = bgr.shape[:2]
+    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    return mask, max(cnts, key=cv2.contourArea), h, w
+'''
+
+
+class StatementWindowTest(unittest.TestCase):
+    """A run of statements that a site spelled by hand is a second home."""
+
+    def test_each_window_of_statements_has_one_home(self):
+        for window in WINDOWS:
+            with self.subTest(window=window.rule):
+                found = window_offenders(window)
+                self.assertEqual(found, [], '%s stands in a second place: %s'
+                                 % (window.rule, ', '.join(found)))
+
+    def test_the_window_scan_sees_a_planted_copy(self):
+        with TemporaryDirectory() as tmp:
+            planted = Path(tmp) / 'planted_window.py'
+            planted.write_text(PLANTED_WINDOW, encoding='utf-8')
+            for index, function in ((0, 'planted_seek'), (2, 'planted_cloth')):
+                with self.subTest(function=function):
+                    found = window_offenders(WINDOWS[index], [planted])
+                    self.assertTrue(any(line.endswith(' ' + function) for line in found),
+                                    'the scan did not see %s: %s' % (function, found))

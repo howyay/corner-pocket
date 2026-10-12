@@ -267,11 +267,10 @@ def frozen_held(root=ROOT) -> list:
 
 
 def frame_at(time_s: float, video=VIDEO):
-    cap = cv2.VideoCapture(str(video))
-    cap.set(cv2.CAP_PROP_POS_MSEC, float(time_s) * 1000.0)
-    ok, bgr = cap.read()
-    cap.release()
-    return bgr if ok else None
+    """The frame at one time, or ``None``: a gap is a value for this caller."""
+    from src.pipeline import extract_frame_or_none
+
+    return extract_frame_or_none(video, time_s)
 
 
 def existing_times(root=ROOT) -> set:

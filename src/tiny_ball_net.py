@@ -207,13 +207,13 @@ def split_for_rounds(labels: dict, freeze: bool = True) -> tuple:
 # ------------------------------------------------------------------- frames ----
 
 def load_frame(video, t: float) -> tuple:
-    cap = cv2.VideoCapture(str(video))
-    cap.set(cv2.CAP_PROP_POS_MSEC, float(t) * 1000.0)
-    ok, bgr = cap.read()
-    cap.release()
-    if not ok:
-        raise RuntimeError(f"no frame at t={t}")
-    return bgr, int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+    """One frame at one time and the frame number the container reports."""
+    from src.pipeline import frame_gap_refusal, read_frame
+
+    bgr, _decoded_t, frame_number = read_frame(video, t)
+    if bgr is None:
+        raise frame_gap_refusal(t)
+    return bgr, frame_number
 
 
 def frame_index(video, t: float, fps: float = 30.0003) -> int:   # the vod30 rate, not the fallback

@@ -147,14 +147,14 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
     from PIL import Image
 
     from src import calib_segments
-    from src.pipeline import ball_center, homography_to_canonical
+    from src.pipeline import ball_center, extract_frame, homography_to_canonical
 
-    cap = cv2.VideoCapture(str(video))
-    cap.set(cv2.CAP_PROP_POS_MSEC, float(time_s) * 1000.0)
-    ok, bgr = cap.read()
-    cap.release()
-    if not ok:
-        raise RuntimeError(f"no frame at t={time_s}")
+    # One frame at one time: the seek window and the refusal stand in
+    # src/pipeline.py.  A gap must refuse here: a zero census would read as a
+    # table with no balls.  The frame keeps its native size, so the mask
+    # geometry below is stated in native pixels.
+    bgr = extract_frame(video, time_s)
+
     fixed = np.asarray(calib_segments.read(corners_path, "corners", strict=True).quad,
                        np.float32)
     H = homography_to_canonical(fixed)
@@ -231,16 +231,14 @@ def diagnose_frame(video, time_s, model_proc, corners_path, reference=None,
     """
     from PIL import Image
 
-    from src.pipeline import ball_center
+    from src.pipeline import ball_center, read_frame
 
     if reference is None:
         reference = reference_quad(scan_corners_path=corners_path)
-    cap = cv2.VideoCapture(str(video))
-    cap.set(cv2.CAP_PROP_POS_MSEC, float(time_s) * 1000.0)
-    ok, bgr = cap.read()
-    decoded_t = round(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0, 3)
-    cap.release()
-    if not ok:
+    # One frame at one time, with the time the container reports for it.  A gap
+    # is a value here: this report names the gap and must not raise.
+    bgr, decoded_t, _frame_number = read_frame(video, time_s)
+    if bgr is None:
         return {"t": time_s, "ok": False}
     table = detect_table(bgr)
     cloth = table["mask"] > 0

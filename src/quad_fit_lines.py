@@ -16,7 +16,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from quad_fit import _anchor_hue, cloth_mask_tight
+from quad_fit import cloth_contours
 
 
 def _line_yx(points, ang_tol_deg=18.0):
@@ -161,14 +161,10 @@ def _fit_at_angle(flat, cen, theta_deg, min_frac=0.05):
 
 
 def fit_quad_lines(bgr):
-    mask, hue = cloth_mask_tight(bgr)
-    if mask is None:
+    found = cloth_contours(bgr)
+    if found is None:
         return None
-    h, w = bgr.shape[:2]
-    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts:
-        return None
-    big = max(cnts, key=cv2.contourArea)
+    _mask, big, h, w = found
     if cv2.contourArea(big) < 40000:
         return None
     flat = big.reshape(-1, 2).astype(np.float64)

@@ -53,12 +53,12 @@ SOLID_MAP = ["white", "yellow", "blue", "red", "purple", "orange", "green", "mar
 
 
 def extract_frame(video_path: str, t_sec: float) -> np.ndarray:
-    cap = cv2.VideoCapture(video_path)
-    cap.set(cv2.CAP_PROP_POS_MSEC, t_sec * 1000)
-    ok, frame = cap.read()
-    cap.release()
-    if not ok:
-        raise RuntimeError(f"could not read frame at t={t_sec}")
+    """The frame at one time; a container that holds no frame refuses here."""
+    # The one seek window stands in read_frame below, with the two container
+    # numbers.  read_frame answers None for a gap; this caller must refuse.
+    frame, _decoded_t, _frame_number = read_frame(video_path, t_sec)
+    if frame is None:
+        raise frame_gap_refusal(t_sec)
     return frame
 
 
@@ -298,6 +298,40 @@ def process_frame(video_path, t_sec, model, proc, out_dir, fixed_corners=None) -
         ],
         "panel": str(panel_path),
     }
+
+
+# The three frame readers stand below the cited lines of this file on purpose:
+# the argument of ``src/ball_gate.py`` cites ``src/pipeline.py:55-58``, ``:253``
+# and ``:267-268``, so a new function above them would move every citation.
+def read_frame(video_path, t_sec: float) -> tuple:
+    """One frame at one time, with the time and the frame number of the container.
+
+    This is the one seek window: every site that means "one frame at one time"
+    reads this function, ``extract_frame`` or ``extract_frame_or_none``.
+    Answers ``(frame, decoded_t, frame_number)``.  ``frame`` is ``None`` when the
+    container holds no frame at ``t_sec``.  ``decoded_t`` is the container time
+    of that frame in seconds, rounded to 3 places.  ``frame_number`` is the
+    answer of ``CAP_PROP_POS_FRAMES``, so it counts the frames the container
+    delivered and the frame that follows ``frame`` reads one more.
+    """
+    cap = cv2.VideoCapture(str(video_path))
+    cap.set(cv2.CAP_PROP_POS_MSEC, float(t_sec) * 1000.0)
+    ok, frame = cap.read()
+    decoded_t = round(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0, 3)
+    frame_number = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+    cap.release()
+    return (frame if ok else None), decoded_t, frame_number
+
+
+def frame_gap_refusal(t_sec: float) -> RuntimeError:
+    """The one refusal: the answer of a caller that cannot work without a frame."""
+    return RuntimeError(f"could not read frame at t={t_sec}")
+
+
+def extract_frame_or_none(video_path, t_sec: float):
+    """The frame at one time, or ``None``: a gap is an answer for this caller."""
+    frame, _decoded_t, _frame_number = read_frame(video_path, t_sec)
+    return frame
 
 
 def main():
