@@ -8,7 +8,7 @@ held-out frames, same preprocessing code path as the stage, two stack layouts.
 
 The centred column is also the stage's correctness check.  It is the layout the
 published operating point was measured on (F1 0.927 / P 0.940 / R 0.914 at
-threshold 0.425), so if it does not reproduce those numbers the stage's resize,
+threshold {cut}), so if it does not reproduce those numbers the stage's resize,
 stack and decode differ from the probe's and the causal column is meaningless.
 
 The second question is why dense tracks can still contain no sustained motion: a
@@ -31,6 +31,12 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.dont_write_bytecode = True
+
+#: The ball stage's peak-search cut has one home, ``annotator.pipeline_stages``.
+#: Five sites in this probe decide a ball label with it, so it reads the name.
+from annotator.pipeline_stages import BALL_THRESHOLD  # noqa: E402
+
+__doc__ = __doc__.format(cut=BALL_THRESHOLD)
 
 #: The frame facts and their one conversion live in src/ball_scale.py, which imports
 #: math alone.  The net module costs cv2 + numpy + torch to import, so this probe
@@ -196,7 +202,7 @@ def recall_by_speed(heats, labels, speeds, scale, threshold):
     return bins
 
 
-def stage_cost(frames, size, threshold=0.425, repeats=40):
+def stage_cost(frames, size, threshold=BALL_THRESHOLD, repeats=40):
     """What ``BallStage.process`` costs *besides* the forward pass.
 
     The real stage is used, with its ``heatmap`` replaced by zeros so no torch call
@@ -247,7 +253,7 @@ def sha256(array):
     return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
 
 
-def bit_identity(frames, order, size, threshold=0.425, device='cpu'):
+def bit_identity(frames, order, size, threshold=BALL_THRESHOLD, device='cpu'):
     """Element by element: does the new input path produce the *same* tensor?
 
     Real frames, the real ``BallStage`` fill, the real reference expression, compared
@@ -295,7 +301,7 @@ def input_path_cost(frames, order, size, device, repeats=40):
     import torch
     from annotator.pipeline_stages import BallStage, StageContext
 
-    stage = BallStage(ROOT, threshold=0.425, size=size, device=device, model=object())
+    stage = BallStage(ROOT, threshold=BALL_THRESHOLD, size=size, device=device, model=object())
     stage.heatmap = lambda tensor: np.zeros((size[1], size[0]), np.float32)
     trio = [frames[index] for index in order[-stage.stack:]]
     while len(trio) < stage.stack:
@@ -323,7 +329,7 @@ def input_path_cost(frames, order, size, device, repeats=40):
     return dict(device=resolved, old=timed(old, repeats), new=timed(new, repeats))
 
 
-def whole_process_cost(video, size, device, frame_index, threshold=0.425, repeats=25,
+def whole_process_cost(video, size, device, frame_index, threshold=BALL_THRESHOLD, repeats=25,
                        samples=6):
     """``BallStage.process`` end to end with the **real** model - the figure §7 said was missing.
 
@@ -369,7 +375,7 @@ def main():
     parser.add_argument('--size', default='960x540')
     parser.add_argument('--checkpoint', default=str(ROOT / 'out/tiny_ball_probe/960x540-scratch.pt'))
     parser.add_argument('--device', default='auto')
-    parser.add_argument('--threshold', type=float, default=0.425)
+    parser.add_argument('--threshold', type=float, default=BALL_THRESHOLD)
     parser.add_argument('--output', default=str(ROOT / 'out/tiny_ball_probe/stack_ab.json'))
     parser.add_argument('--no-sweep', action='store_true', help='skip the 38-point F1 sweep')
     parser.add_argument('--identity-frames', type=int, default=12,

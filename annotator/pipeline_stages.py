@@ -70,6 +70,11 @@ REGISTRY_KEYS = ('ran', 'age_frames')
 #: path is relative to the pipeline root; ``out/`` is gitignored, so the weights
 #: are a local artifact and a root without them gets an error naming the path.
 BALL_CHECKPOINT = 'out/tiny_ball_probe/960x540-scratch.pt'
+#: The one home of the student detector's peak-search cut: ``BallStage`` reads it
+#: below, and a harness that decides a ball label reads this name and copies no
+#: number.  The SAM3 teacher's score floor is a different number with a different
+#: owner (``src.ball_gate.SAM3_BALL_MIN_SCORE``, 0.62); a reader that wants the
+#: student's operating point wants this name.
 BALL_THRESHOLD = 0.425
 #: The frame the detector runs in.  ``src.ball_scale`` owns the working frame, and
 #: the net's production size is that same frame.

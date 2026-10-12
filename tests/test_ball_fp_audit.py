@@ -17,11 +17,11 @@ from pathlib import Path
 import numpy as np
 
 from src import fast_ball_labels
-from src.ball_fp_audit import (AUDIT, BALL_AREA_RANGE, BALL_R_RANGE, BAND_H, CANDIDATE_RADIUS_PX,
-                              CASES_OUT, FN_THRESHOLDS, MATCH_TOL_PX, PRODUCTION_CUT, REPORT,
-                              SAM3_FLOOR, SWEEP_THRESHOLDS, VERDICTS_OUT, _sweep_instances,
-                              admit, adjudicate_fp, cache_agreement, case_times, crop_bounds,
-                              headline, instances_near, markdown_table, nearest_label,
+from src.ball_fp_audit import (AUDIT, BALL_AREA_RANGE, BALL_OPERATING_CUT, BALL_R_RANGE, BAND_H,
+                              CANDIDATE_RADIUS_PX, CASES_OUT, FN_THRESHOLDS, MATCH_TOL_PX,
+                              PRODUCTION_CUT, REPORT, SAM3_FLOOR, SWEEP_THRESHOLDS, VERDICTS_OUT,
+                              _sweep_instances, admit, adjudicate_fp, cache_agreement, case_times,
+                              crop_bounds, headline, instances_near, markdown_table, nearest_label,
                               percentile, recover_fn, recovery_by_threshold, render_case,
                               verdict_counts)
 
@@ -60,7 +60,8 @@ class ConstantsTest(unittest.TestCase):
         self.assertLess(SAM3_FLOOR, min(SWEEP_THRESHOLDS))
 
     def test_the_fn_sweep_contains_the_operating_threshold(self):
-        self.assertIn(0.425, FN_THRESHOLDS)
+        """The row the headline reports at the operating point must be measured."""
+        self.assertIn(BALL_OPERATING_CUT, FN_THRESHOLDS)
 
     def test_the_radius_is_the_small_one_the_directive_named(self):
         self.assertEqual(CANDIDATE_RADIUS_PX, 10.0)
@@ -302,7 +303,7 @@ class CountingTest(unittest.TestCase):
         self.assertEqual(head["unresolved"], 0)
 
     def test_headline_reads_both_operating_and_best_recovery(self):
-        recovery = [{"threshold": 0.425, "recovered": 7, "of": 22},
+        recovery = [{"threshold": BALL_OPERATING_CUT, "recovered": 7, "of": 22},
                     {"threshold": 0.3, "recovered": 15, "of": 22}]
         head = headline([], [], recovery)
         self.assertEqual(head["fn_recovered_at_operating_threshold"], 7)
@@ -312,10 +313,10 @@ class CountingTest(unittest.TestCase):
     def test_headline_separates_recovery_that_costs_nothing_from_recovery_that_costs(self):
         """The best recovery is at the bottom of the sweep and wrecks precision, so
         the actionable number is the one whose F1 is still within epsilon."""
-        recovery = [{"threshold": 0.425, "recovered": 0, "of": 22},
+        recovery = [{"threshold": BALL_OPERATING_CUT, "recovered": 0, "of": 22},
                     {"threshold": 0.3, "recovered": 5, "of": 22},
                     {"threshold": 0.05, "recovered": 9, "of": 22}]
-        cost = [{"threshold": 0.425, "fn_recovered": 0, "f1": 0.927},
+        cost = [{"threshold": BALL_OPERATING_CUT, "fn_recovered": 0, "f1": 0.927},
                 {"threshold": 0.3, "fn_recovered": 5, "f1": 0.921},
                 {"threshold": 0.05, "fn_recovered": 9, "f1": 0.82}]
         head = headline([], [], recovery, cost)
@@ -326,7 +327,7 @@ class CountingTest(unittest.TestCase):
         self.assertEqual(head["f1_cost_of_that_recovery"], 0.921)
 
     def test_headline_without_a_cost_table_reports_no_cheap_recovery(self):
-        head = headline([], [], [{"threshold": 0.425, "recovered": 0, "of": 22}], [])
+        head = headline([], [], [{"threshold": BALL_OPERATING_CUT, "recovered": 0, "of": 22}], [])
         self.assertIsNone(head["fn_recovered_within_f1_epsilon"])
 
     def test_percentile_is_nearest_rank(self):

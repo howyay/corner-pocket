@@ -32,6 +32,13 @@ if str(ROOT) not in sys.path:
 
 from src import ball_association_audit as audit  # noqa: E402
 from src import ball_census as bc  # noqa: E402
+from annotator.pipeline_stages import BALL_THRESHOLD  # noqa: E402
+
+#: The ball stage's peak-search cut has one home, ``BALL_THRESHOLD`` above.  This
+#: harness decides ball labels for the A/B, and it also copies its own default into
+#: ``sys.argv`` for ``tests/ball_dense_events.py``: both numbers were the same
+#: literal, so the pair could drift apart with nothing to report it.
+#: The SAM3 teacher's score floor (0.62) is a different number and stays separate.
 
 #: Round 60 gave the percentile of one list one home.  The audit already held the
 #: body and eight call sites, so this module reads it and holds no copy.  The name
@@ -78,7 +85,7 @@ def main():
     parser.add_argument("--start", type=float, default=1350.0)
     parser.add_argument("--seconds", type=float, default=300.0)
     parser.add_argument("--cadence", type=int, default=2)
-    parser.add_argument("--threshold", type=float, default=0.425)
+    parser.add_argument("--threshold", type=float, default=BALL_THRESHOLD)
     parser.add_argument("--dataset", default="vod30")
     parser.add_argument("--budget-ms", type=float, default=1000.0 / 30)
     parser.add_argument("--output", default="")

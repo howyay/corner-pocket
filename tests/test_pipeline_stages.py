@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import numpy as np
 
-from annotator.pipeline_stages import (BallStage, CallableStage, LatencyWindow, Stage,
-                                       StageRegistry, TableStage, default_stages,
+from annotator.pipeline_stages import (BALL_THRESHOLD, BallStage, CallableStage, LatencyWindow,
+                                       Stage, StageRegistry, TableStage, default_stages,
                                        merge_detections)
 from src.frame_inference import EVENT_NOTE_SINGLE_FRAME
 
@@ -403,7 +403,7 @@ class BallStageTests(unittest.TestCase):
 
     def test_operating_point_is_the_trained_rounds_checkpoint(self):
         self.assertEqual(BallStage.checkpoint, 'out/tiny_ball_probe/960x540-scratch.pt')
-        self.assertEqual(BallStage.threshold, 0.425)
+        self.assertEqual(BallStage.threshold, BALL_THRESHOLD)
         self.assertEqual(BallStage.size, (960, 540))
 
     def test_positions_are_reported_in_the_working_frame(self):

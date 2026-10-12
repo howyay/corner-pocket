@@ -6,7 +6,7 @@ discarded (it pays YOLO's one-time model load, which is a module-level cache), t
 a fresh processor for the reported run, so the reported window is warm.
 
 The `ball` stage is the trained detector (`annotator.pipeline_stages.BallStage`,
-`out/tiny_ball_probe/960x540-scratch.pt`, 960x540, threshold 0.425).  `--ball
+`out/tiny_ball_probe/960x540-scratch.pt`, 960x540, threshold {cut}).  `--ball
 standin` swaps the 15 ms `BallStandIn` back in, which is how the previous matrix
 was measured and how the two are compared.  `table` is the shipped table stage
 serving the saved per-segment reference for vod30; `person` is the real GPU
@@ -34,6 +34,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/ owns data_gu
 sys.dont_write_bytecode = True
 
 import data_guard  # noqa: E402
+
+#: The ball stage's peak-search cut has one home, ``annotator.pipeline_stages``.
+#: This harness runs that stage, so its note on the operating point reads the name
+#: too.  ``replace`` and not ``format``: the docstring above holds literal braces.
+from annotator.pipeline_stages import BALL_THRESHOLD  # noqa: E402
+
+__doc__ = __doc__.replace('{cut}', str(BALL_THRESHOLD))
 
 FRAME_BUDGET_MS = 1000.0 / 30
 BALL_MS = 15.0

@@ -53,6 +53,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.dont_write_bytecode = True
 
+#: The ball stage's peak-search cut has one home, ``BALL_THRESHOLD`` in
+#: ``annotator/pipeline_stages.py``.  ``src/ball_association_ab.py`` copies its own
+#: value into this harness's argv, so a second literal here could answer a
+#: different question than the A/B that ran it.
+from annotator.pipeline_stages import BALL_THRESHOLD  # noqa: E402
+
 WORK_SIZE = (960, 540)
 NATIVE = (1280, 720)
 def person_on_cloth():
@@ -294,7 +300,7 @@ def main():
     parser.add_argument('--start', type=float, default=1350.0)
     parser.add_argument('--seconds', type=float, default=300.0)
     parser.add_argument('--cadence', type=int, default=2)
-    parser.add_argument('--threshold', type=float, default=0.425)
+    parser.add_argument('--threshold', type=float, default=BALL_THRESHOLD)
     parser.add_argument('--device', default='auto')
     parser.add_argument('--dataset', default='vod30')
     parser.add_argument('--person', dest='person', action='store_true', default=True)

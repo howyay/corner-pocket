@@ -62,6 +62,11 @@ from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 from src.fast_ball_labels import MATCH_TOL_PX
+#: The student detector's peak-search cut.  It has one home,
+#: ``annotator.pipeline_stages.BALL_THRESHOLD``, whose value the student pass over
+#: the case frames uses (``--threshold`` below).  ``PRODUCTION_CUT`` below is the
+#: SAM3 teacher's score floor: a different number with a different owner.
+from annotator.pipeline_stages import BALL_THRESHOLD as BALL_OPERATING_CUT  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -330,7 +335,7 @@ def headline(fp_rows: list, fn_rows: list, recovery: list, cost: list = (),
                 and row.get("reason") == "instance_below_production_cut")
     at_or_above = counts["teacher_recall"] - below
     operational = next((row for row in recovery
-                        if abs(row["threshold"] - 0.425) < 1e-9), None)
+                        if abs(row["threshold"] - BALL_OPERATING_CUT) < 1e-9), None)
     best = max(recovery, key=lambda row: row["recovered"]) if recovery else None
     near_free = []
     op_f1 = _f1_at(cost, operational["threshold"]) if operational else None
@@ -367,7 +372,8 @@ def _f1_at(cost: list, threshold: float):
 
 # -------------------------------------------------------------------- report ---
 
-def markdown_table(fp_rows: list, fn_rows: list, entry: dict) -> str:
+def markdown_table(fp_rows: list, fn_rows: list, entry: dict,
+                   threshold: float = BALL_OPERATING_CUT) -> str:
     """The verdict table, generated from the JSON so it cannot drift from it.
 
     "Nearest instance" and "the instance that justified the verdict" are two
@@ -390,8 +396,12 @@ def markdown_table(fp_rows: list, fn_rows: list, entry: dict) -> str:
                                    f"{row['found_score']:.2f}"
                                    if row.get("found_score") is not None else "-"),
                              v=row["verdict"], why=row["reason"]))
+    # The heading names the threshold the table was measured at.  It was the
+    # literal 0.425, which is ``BALL_OPERATING_CUT``'s value and not always the
+    # ``--threshold`` this run used.  ``threshold`` is that argument, and its own
+    # default is the owner's name, so the heading can no longer disagree.
     lines += ["", "## Per-case mirror test: the 22 false negatives", "",
-              "| case | t (s) | teacher score | offset to nearest student peak at 0.425 "
+              f"| case | t (s) | teacher score | offset to nearest student peak at {threshold} "
               "| student threshold that recovers it | localisation at recovery |",
               "|---|---|---|---|---|---|"]
     for row in fn_rows:
@@ -796,7 +806,7 @@ def cmd_verdicts(args) -> int:
                "fp": fp_rows, "fn": fn_rows, "recovery": recovery}
     AUDIT.mkdir(parents=True, exist_ok=True)
     VERDICTS_OUT.write_text(json.dumps(payload, indent=1))
-    table = markdown_table(fp_rows, fn_rows, entry)
+    table = markdown_table(fp_rows, fn_rows, entry, threshold)
     TABLE_OUT.write_text(table)
     _log(json.dumps(head, indent=1))
     _log(table)
@@ -1026,8 +1036,8 @@ def main(argv=None) -> int:
     p.add_argument("--bitmap", default=str(BITMAP))
     p.add_argument("--size", default="960x540")
     p.add_argument("--device", default="auto")
-    p.add_argument("--threshold", type=float, default=0.425,
-                   help="only used when the frozen report is absent")
+    p.add_argument("--threshold", type=float, default=BALL_OPERATING_CUT,
+                   help="the student's operating cut; only used when the frozen report is absent")
     p.add_argument("--tol-px", type=float, default=MATCH_TOL_PX)
     p.set_defaults(func=cmd_cases)
 
