@@ -16,6 +16,16 @@ docs/postgres.md documents the default, so the unit may not become the only home
 fails with the file, the line and the two numbers when one standing moves.
 
     ./scripts/pool-test.sh python test_backup_retention
+
+Round 93 added a second number of this module: the staleness window, 48 h.
+
+    scripts/pool-postgres-backup.sh:50   [ "$age_h" -le 48 ]   the one runtime read
+    deploy/systemd/pool-postgres-verify.service:2   "... older than 48 h ..."
+    docs/postgres.md:206                 "... older than 48 h ..."
+
+Only the script enforces the window, and the unit calls the script.  The other
+two texts are prose, so three copies of one number can drift in silence.  The
+case below holds the three numbers equal to one frozen value.
 """
 import re
 import unittest
@@ -25,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "pool-postgres-backup.sh"
 SERVICE = ROOT / "deploy" / "systemd" / "pool-postgres-backup.service"
 DOC = ROOT / "docs" / "postgres.md"
+VERIFY_SERVICE = ROOT / "deploy" / "systemd" / "pool-postgres-verify.service"
 
 # (standing name, file, pattern that captures the number)
 STANDS = (
@@ -32,6 +43,13 @@ STANDS = (
     ("the unit environment", SERVICE, r'^Environment=POOL_BACKUP_KEEP_DAYS=(\d+)\s*$'),
     ("the unit description", SERVICE, r"\(pg_dump -Fc, (\d+)-day retention\)"),
     ("the document sentence", DOC, r"dumps older than (\d+) days are deleted"),
+)
+
+# (standing name, file, pattern that captures the number) of the staleness window
+STALE_STANDS = (
+    ("the script limit", SCRIPT, r'\[\s*"\$age_h"\s+-le\s+(\d+)\s*\]'),
+    ("the unit comment", VERIFY_SERVICE, r"older than (\d+) h"),
+    ("the document row", DOC, r"older than (\d+) h"),
 )
 
 
@@ -76,6 +94,26 @@ class BackupRetentionTests(unittest.TestCase):
             1, len(prune),
             f'{SCRIPT}: {len(prune)} lines prune by $KEEP_DAYS, and the number has one runtime '
             f'home; the deletion must read the variable, so a second number cannot stand here')
+
+    def test_every_standing_of_the_staleness_window_holds_one_number(self):
+        """The script limit, the unit comment and the document row hold one number."""
+        found = []
+        for name, path, pattern in STALE_STANDS:
+            captured = _capture(path, pattern)
+            if captured is None:
+                self.fail(
+                    f'{path}: no line matches {pattern!r}, so {name} lost the staleness '
+                    f'window; the three texts must hold the window')
+            found.append((name, path, *captured))
+
+        numbers = {number for _name, _path, number, _line in found}
+        if len(numbers) == 1:
+            return
+        script, script_path, script_number, script_line = found[0]
+        self.fail('\n'.join(
+            f'{path}:{line}: {name} says {number} h, and the one runtime read '
+            f'({script_path.relative_to(ROOT)}:{script_line}, {script}) says {script_number} h'
+            for name, path, number, line in found[1:]))
 
 
 if __name__ == '__main__':

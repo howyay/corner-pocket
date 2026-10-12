@@ -19,6 +19,8 @@ The tests here hold four contracts:
    annotator/unified_server.py holds, so a moved default is visible here.
 5. No deploy config cites a Python line number.  A line number drifts, and no
    test can hold it true, so the config names the argument instead.
+6. The two `Environment=` names of the ffmpeg drop-in equal `FFMPEG_VAR` and
+   `FFPROBE_VAR` of annotator/ffmpeg_bin.py, so a renamed pin stays visible.
 """
 import re
 import shutil
@@ -27,11 +29,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from annotator import ffmpeg_bin
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts' / 'pool-render-units.sh'
 SYSTEMD = ROOT / 'deploy' / 'systemd'
 SERVER = ROOT / 'annotator' / 'unified_server.py'
 PUBLIC_BOARD = SYSTEMD / 'pool-workbench.service.d' / '40-public-board.conf'
+FFMPEG_DROP_IN = SYSTEMD / 'pool-workbench.service.d' / '30-ffmpeg.conf'
 
 # The three names the renderer supports.  The test reads the same three names
 # from the script and compares both sets with the names in the tree.
@@ -255,6 +260,23 @@ class UnitRenderTest(unittest.TestCase):
             owner_match.group(1), unit_match.group(1),
             f'the --port value in {PUBLIC_BOARD.name} differs from the default '
             f'in {SERVER.relative_to(ROOT)}',
+        )
+
+    def test_the_ffmpeg_drop_in_names_the_module_variables(self):
+        """The two Environment names of the drop-in equal the two module names."""
+        unit_names = [
+            found.group(1)
+            for found in (re.match(r'^Environment=([A-Za-z_][A-Za-z0-9_]*)=', line)
+                          for line in FFMPEG_DROP_IN.read_text(encoding='utf-8').splitlines())
+            if found
+        ]
+        module_names = [ffmpeg_bin.FFMPEG_VAR, ffmpeg_bin.FFPROBE_VAR]
+
+        self.assertEqual(
+            module_names, unit_names,
+            f'{FFMPEG_DROP_IN.relative_to(ROOT)} sets {unit_names}, and '
+            f'annotator/ffmpeg_bin.py holds {module_names}: the drop-in name and the '
+            f'module name must be one name, or the pin does not reach the resolver',
         )
 
     def test_no_deploy_config_cites_a_python_line_number(self):
