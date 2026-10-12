@@ -5,8 +5,7 @@ The walk of round 56 measured the statements that `JsonStore` (src/store.py) and
 `seed_put`, `verdict_put`, `label_put` and `anchors_put`.  Six statements of each
 class were copies of one of five rules:
 
-  * the merge of one stored record with one incoming record: `src/store.py:122
-289`
+  * the merge of one stored record with one incoming record: `src/store.py:289`
     with `src/store_pg.py:276` (seed_put), and `src/store.py:298` with
     `src/store_pg.py:322` (verdict_put);
   * the delete of one record: `src/store.py:279` with `src/store_pg.py:286`;
