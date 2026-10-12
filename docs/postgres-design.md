@@ -349,11 +349,11 @@ restart.  The store operation `enroll_player(...)` (§2.4) appends rows and bump
 * Shape: `{"seeds": {"<track_id>:<window>": {win, t, track_id, label}}}`; label is `A`,
   `B`, `ignore` or a guest name ≤ 60 chars (`unified_server.py:1245-1265`).
 * Writer: `POST /api/vod30/seeds` `unified_server.py:1430-1453` (refused while a rebuild
-  runs `:1431`).  Also `src/pid_seed_ui.py:192-194` (standalone legacy UI, plain
+  runs `:1431`).  Also `src/pid_seed_ui.py:193-194` (standalone legacy UI, plain
   `write_text`).
 * Readers: `unified_server.py:1242-1243` `seeds()` (used by `/tracklets`, `/tracks`,
   `predictions()` `:1229-1237`), `src/pid_seed_rebuild.py:28-29` (subprocess),
-  `src/pid_seed_ui.py:165-192`, `src/eval_faces.py:79`, `tests/live_identity_validation.py`.
+  `src/pid_seed_ui.py:166-192`, `src/eval_faces.py:79`, `tests/live_identity_validation.py`.
 
 ```sql
 CREATE TABLE track_seeds (
@@ -380,7 +380,7 @@ propagation result to `seed_propagation` (§5.5).  The "stale" rule
   `correct|wrong|unsure`, shooter ∈ `A|B|?|""`, note ≤ 10 000 chars.
 * Writer: `POST /api/<dataset>/annotate` `unified_server.py:1395-1411` (event must exist in
   that dataset's `events.json` `:1397`; merge-update of the record).  Legacy
-  `annotator/server.py:136-144` (old single-page annotator, plain `write_text`; it writes
+  `annotator/server.py:140-148` (old single-page annotator, plain `write_text`; it writes
   `annotations.json` next to whatever `events.json` its first argument names, `:18-20`).
 * Readers: `GET /api/<dataset>/events` `:1309`, `src/dense_queue.py:71` (only its md5;
   "never opened for writing" `:45-46`), `src/eval_events.py:73-74`, `src/eval_faces.py:80`.
@@ -407,9 +407,9 @@ retired-id ledger exists precisely so a verdict keeps pointing at the ball it wa
 * Shape: `{"<absolute crop path>": 0..15 | "u"}`; sets `unlabeled_crops` (76 labels, keys are
   absolute paths), `unlabeled_crops2`, `vod30_event_crops` (no label file yet).
 * Writer: `POST /api/balls/<set>/label` `unified_server.py:1371-1390`; legacy
-  `annotator/server.py:123`; `src/merge_sets.py:44` (offline).
+  `annotator/server.py:127`; `src/merge_sets.py:44` (offline).
 * Readers: `GET /api/balls/<set>/meta` `:1286-1295`, training/offline tools
-  (`src/train_ball_id.py:61-64`, `src/confusion.py:18`, `src/merge_sets.py:21`).
+  (`src/train_ball_id.py:61-64`, `src/confusion.py:22`, `src/merge_sets.py:21`).
 
 ```sql
 CREATE TABLE ball_labels (

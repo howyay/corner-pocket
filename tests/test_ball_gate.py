@@ -17,7 +17,7 @@ a test and not a claim.
 
 Nothing here imports a detector, and nothing here reads out/ or data/.  Two gate
 sites are straight-line scripts: src/collect2.py:25-26 makes out/ directories at
-import, and src/recut_crops.py:45 reads out/unlabeled_crops/meta.json at import.
+import, and src/recut_crops.py:47 reads out/unlabeled_crops/meta.json at import.
 Their binding is therefore checked by running the file's own import statement --
 the technique tests/test_table_geometry.py:271 uses for src/audit_calib.py.
 """
