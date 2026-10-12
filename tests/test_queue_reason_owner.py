@@ -232,7 +232,7 @@ class TheServedCodeIsTheGatesReason(unittest.TestCase):
 
     def test_a_non_cloth_reason_is_served_as_itself(self):
         if not GATE_ARTIFACT.exists():
-            self.skipTest("no dense gate artifact in this tree")
+            self.fail("no dense gate artifact in this tree; build it before this guard")
         for reason in ("occlusion_channel_silent", "pocket_distance_within_uncertainty"):
             with self.subTest(reason=reason), TemporaryDirectory() as tmp:
                 events = self._serve(tmp, reason)
@@ -249,7 +249,7 @@ class TheServedCodeIsTheGatesReason(unittest.TestCase):
     def test_a_pot_without_a_gate_reason_is_refused(self):
         """The queue has no answer of its own to fall back on: it says so."""
         if not GATE_ARTIFACT.exists():
-            self.skipTest("no dense gate artifact in this tree")
+            self.fail("no dense gate artifact in this tree; build it before this guard")
         artifact = json.loads(GATE_ARTIFACT.read_text())
         for row in artifact["gate"]["pots"]:
             row.pop("reason", None)
