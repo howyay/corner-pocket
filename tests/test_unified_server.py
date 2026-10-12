@@ -2064,6 +2064,156 @@ class CacheProvenanceTests(unittest.TestCase):
         self.assertEqual(self.backend.invalidate(), 0)
 
 
+#: The two console files that spell the video-on-demand URLs a second time.
+CONSOLE_SOURCES = ('ops.js', 'vision-stage.js')
+
+#: The two shapes the console writes a video-on-demand URL with. `fetch` names its method
+#: as POST; `bcApi` sends the fields of the write as a second argument. A read carries
+#: neither, so the two shapes skip every read of the console.
+CONSOLE_WRITE_CALLS = (
+    re.compile(r"fetch\(\s*(['\"`])(/api/vods/[A-Za-z0-9_-]+)\1\s*,\s*\{[^}]*method:\s*'POST'"),
+    re.compile(r"bcApi\(\s*(['\"`])(/api/vods/[A-Za-z0-9_-]+)\1\s*,\s*\{"),
+)
+
+
+def registry_urls(tree):
+    """Every URL the write registry declares, from the parts list of each row.
+
+    The URL takes a leading slash, because that is how the console calls it.
+    """
+    urls = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        if node.func.id != 'OperatorAction' or len(node.args) < 2:
+            continue
+        parts = node.args[1]
+        if not isinstance(parts, (ast.List, ast.Tuple)):
+            continue
+        if not all(isinstance(word, ast.Constant) and isinstance(word.value, str)
+                   for word in parts.elts):
+            continue
+        words = [word.value for word in parts.elts]
+        if words and words[0] == 'api':
+            urls.add('/' + '/'.join(words))
+    return urls
+
+
+def console_source(name):
+    """The text of one console file that sits beside the server module."""
+    return (Path(__file__).resolve().parents[1] / 'annotator' / name).read_text(encoding='utf-8')
+
+
+def console_write_urls(name, text):
+    """Every video-on-demand write one console file calls, as (file, line, url).
+
+    One line that holds two calls reports two rows.
+    """
+    found = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for pattern in CONSOLE_WRITE_CALLS:
+            found.extend((name, number, match.group(2)) for match in pattern.finditer(line))
+    return found
+
+
+def undeclared_console_urls(calls, declared):
+    """The console calls that no registry row declares, as 'file:line url' text."""
+    return [f'{name}:{line} {url}' for name, line, url in calls if url not in declared]
+
+
+#: The shape of one video-on-demand read URL: the route and the verb of the read.
+VOD_READ_URL = re.compile(r"/api/vods/[A-Za-z0-9_-]+")
+
+
+def literal_words(node):
+    """The string words of a literal list or tuple, or an empty list."""
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        return []
+    if not all(isinstance(word, ast.Constant) and isinstance(word.value, str) for word in node.elts):
+        return []
+    return [word.value for word in node.elts]
+
+
+def parts_index(node):
+    """The index a `parts[...]` read names: an int, the slice `parts[:2]`, or None.
+
+    None means the node is not a read of the parts list.
+    """
+    if not (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+            and node.value.id == 'parts'):
+        return None
+    index = node.slice
+    if isinstance(index, ast.Constant) and isinstance(index.value, int):
+        return index.value
+    if (isinstance(index, ast.Slice) and index.lower is None and index.step is None
+            and isinstance(index.upper, ast.Constant) and isinstance(index.upper.value, int)):
+        return slice(index.upper.value)
+    return None
+
+
+def branch_read_urls(test):
+    """The video-on-demand read URLs one `if` test of the read dispatch spells out.
+
+    One test names a URL in one of two ways. It compares the whole `parts` list
+    with a literal list, or it fixes the length of that list, its `api/vods`
+    prefix and the verb of the read.
+    """
+    urls, prefix, verbs, length = set(), [], [], 0
+    for node in ast.walk(test):
+        if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+            continue
+        left, right = node.left, node.comparators[0]
+        words = literal_words(right)
+        index = parts_index(left)
+        if isinstance(left, ast.Name) and left.id == 'parts' and words[:2] == ['api', 'vods']:
+            urls.add('/' + '/'.join(words))
+        elif index == slice(2) and words == ['api', 'vods']:
+            prefix = words
+        elif index is not None and isinstance(node.ops[0], ast.In) and words:
+            verbs += [(index, word) for word in words]
+        elif index is not None and isinstance(right, ast.Constant) and isinstance(right.value, str):
+            verbs.append((index, right.value))
+        elif (isinstance(left, ast.Call) and isinstance(left.func, ast.Name)
+                and left.func.id == 'len' and isinstance(right, ast.Constant)
+                and isinstance(right.value, int)):
+            length = right.value
+    if prefix and length == len(prefix) + 1:
+        urls |= {'/' + '/'.join(prefix + [verb]) for index, verb in verbs if index == len(prefix)}
+    return urls
+
+
+def dispatched_read_urls(tree):
+    """Every video-on-demand read URL the server dispatch spells out, as a set.
+
+    The read dispatch has two layers. The HTTP handler compares a whole path
+    literal, so that literal is the URL. The backend dispatch compares the
+    segments of the `parts` list, so the words of one branch are the URL.
+    """
+    urls = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and VOD_READ_URL.fullmatch(node.value):
+            urls.add(node.value)
+        elif isinstance(node, ast.If):
+            urls |= branch_read_urls(node.test)
+    return urls
+
+
+def console_read_urls(name, text):
+    """Every video-on-demand read one console file calls, as (file, line, url).
+
+    A read is a video-on-demand URL that matches neither write pattern of
+    `CONSOLE_WRITE_CALLS`. One line that holds two reads reports two rows.
+    """
+    found = []
+    for number, line in enumerate(text.splitlines(), 1):
+        written = [match.span() for pattern in CONSOLE_WRITE_CALLS for match in pattern.finditer(line)]
+        for match in VOD_READ_URL.finditer(line):
+            if not any(start <= match.start() and match.end() <= end for start, end in written):
+                found.append((name, number, match.group(0)))
+    return found
+
+
 class WriteRegistryTests(unittest.TestCase):
     """One registry declares every write: the dispatcher and the check read it.
 
@@ -2105,6 +2255,28 @@ class WriteRegistryTests(unittest.TestCase):
                       ('api', ':dataset', 'annotate'), ('api', ':dataset', 'anchors'),
                       ('api', ':dataset', 'seeds'), ('api', ':dataset', 'rebuild')):
             self.assertIn(parts, declared)
+
+    def test_every_vod_write_the_console_calls_is_declared(self):
+        """The console calls the same video-on-demand write URLs that the registry declares."""
+        _, _, tree = server_source()
+        declared = registry_urls(tree)
+        # The scan must rebuild the live table, or the case below reads nothing.
+        self.assertEqual(declared, {'/' + '/'.join(row.parts) for row in OPERATOR_ACTIONS})
+        calls = []
+        for name in CONSOLE_SOURCES:
+            calls += console_write_urls(name, console_source(name))
+        self.assertTrue(calls, 'the console scan found no video-on-demand write')
+        self.assertEqual(undeclared_console_urls(calls, declared), [],
+                         'the console calls a video-on-demand write that no row declares')
+
+    def test_a_dead_vod_write_url_is_reported_with_its_file_and_line(self):
+        """A planted console line reports its dead URL with the file name and the line."""
+        _, _, tree = server_source()
+        planted = "await fetch('/api/vods/teleport',{method:'POST',body:JSON.stringify({})});"
+        calls = console_write_urls('ops.js', planted)
+        self.assertEqual(calls, [('ops.js', 1, '/api/vods/teleport')])
+        self.assertEqual(undeclared_console_urls(calls, registry_urls(tree)),
+                         ['ops.js:1 /api/vods/teleport'])
 
     def test_a_mis_declared_write_cannot_half_register(self):
         good = OperatorAction('probe', ('api', 'probe'), 'clock_action')
@@ -2264,6 +2436,40 @@ class WriteRegistryTests(unittest.TestCase):
         self.assertEqual(set(rows['live']), {'name', 'parts', 'required', 'actions'})
         self.assertEqual(rows['operations']['actions'], list(ACTION_NAMES))
         self.assertEqual(rows['vod_import']['parts'], ['api', 'vods', 'import'])
+
+
+class ReadDispatchTests(unittest.TestCase):
+    """The console reads only the video-on-demand read URLs the server serves.
+
+    The write registry is one table. The read dispatch is not: the HTTP handler
+    compares a whole path literal and the backend dispatch compares the segments
+    of the parts list. A dead read URL passes every node suite today, because
+    those suites stand a stub in for `fetch`."""
+
+    def test_every_vod_read_the_console_calls_is_served(self):
+        """The console reads the video-on-demand read URLs that the dispatch serves."""
+        _, _, tree = server_source()
+        served = dispatched_read_urls(tree)
+        # The scan must read the live dispatch, or the case below reads nothing: the
+        # handler layer spells the thumbnail, the parts layer spells the four verbs.
+        self.assertTrue({'/api/vods/thumb', '/api/vods/recent', '/api/vods/job',
+                         '/api/vods/estimate', '/api/vods/queue'} <= served,
+                        'the scan read no live video-on-demand read route from the dispatch')
+        calls = []
+        for name in CONSOLE_SOURCES:
+            calls += console_read_urls(name, console_source(name))
+        self.assertTrue(calls, 'the console scan found no video-on-demand read')
+        self.assertEqual(undeclared_console_urls(calls, served), [],
+                         'the console reads a video-on-demand URL that the dispatch does not serve')
+
+    def test_a_dead_vod_read_url_is_reported_with_its_file_and_line(self):
+        """A planted console line reports its dead URL with the file name and the line."""
+        _, _, tree = server_source()
+        planted = "const r=await fetch('/api/vods/teleport',{cache:'no-store'});"
+        calls = console_read_urls('ops.js', planted)
+        self.assertEqual(calls, [('ops.js', 1, '/api/vods/teleport')])
+        self.assertEqual(undeclared_console_urls(calls, dispatched_read_urls(tree)),
+                         ['ops.js:1 /api/vods/teleport'])
 
 
 def gate_verbs(source, class_name, method_name):
