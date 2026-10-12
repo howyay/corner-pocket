@@ -11,11 +11,20 @@ nobody writes.  No case held the three sites together.
 
 `FACE_STORE` is the one home of the path now.  Every reader imports the name.
 
+A later round measured the hole in the first walk.  It compared one whole string,
+so a module that built the same path from parts -- `ROOT / "out" / "corner-pocket" \
+"face_embeddings.json"` in src/face_id.py, `self.out / "corner-pocket" \
+"face_embeddings.json"` in src/store.py, two lines of src/eval_faces.py -- held a
+copy and the walk stayed silent.  The file name is the part no build can hide, so
+the walk reports it too.  src/face_id.py, src/store.py and src/enroll_from_tracklet.py
+joined the reader list, and the three modules read the owner name now.
+
 The checks here read four different things on purpose:
 
 1. the source text of the shipped packages (tests/_shipped.py), through an `ast`
-   walk that names every code site that holds the literal again.  The walk
-   leaves docstrings out, so a module may name the path in words;
+   walk that names every code site that holds the whole literal again, and every
+   code site that holds the file name.  The walk leaves docstrings out, so a
+   module may name the path in words;
 2. the value of the owner constant and the two tables that read it;
 3. the import or the use of the name at every reader, so a reader that stops
    reading the owner fails this module;
@@ -52,24 +61,47 @@ NAME = "FACE_STORE"
 #: check cannot agree with a wrong owner by reading that owner.
 LITERAL = "out/corner-pocket/face_embeddings.json"
 
+#: The last part of the path: the file name.  A build from parts holds this
+#: string, and the whole-string walk above cannot see it.  The name must stand
+#: in no code string outside the owner, so a module that builds the path again
+#: fails this check.  The walk below adds one part at a time onto the text.
+NAME_PART = "face_embeddings" + ".json"
+
 #: The shipped modules that read the face store path.  Each one must take the
 #: name from the owner.  A new reader belongs in this tuple.
 READERS = ("src/store_files.py", "src/store_export.py", "src/store_import.py",
-           "src/eval_faces.py")
+           "src/eval_faces.py", "src/face_id.py", "src/store.py",
+           "src/enroll_from_tracklet.py")
 
 
-def literal_sites(paths) -> list[str]:
-    """One `path:line` entry for every code site of `paths` that holds the literal.
+def walk_sites(paths, holds) -> list[str]:
+    """One `path:line` entry for every code site of `paths` that `holds` accepts.
 
     ``code_strings`` of tests/_shipped.py answers the strings of one tree, and it
     drops the docstrings.  A docstring names the path in words; the rule of the
-    owner module allows that.  The paths report under the repository root.
+    owner module allows that.  The paths report under the repository root.  The
+    two walks below read this one body, so their site text cannot drift apart.
     """
     return sorted(f"{str(path).replace(str(ROOT) + '/', '')}:{number}"
                   for path in paths
                   for number, value in code_strings(ast.parse(path.read_text(encoding="utf-8"),
                                                                filename=str(path)))
-                  if value == LITERAL)
+                  if holds(value))
+
+
+def literal_sites(paths) -> list[str]:
+    """One `path:line` entry for every code site of `paths` that holds the literal."""
+    return walk_sites(paths, lambda value: value == LITERAL)
+
+
+def name_sites(paths) -> list[str]:
+    """One `path:line` entry for every code site of `paths` that holds the file name.
+
+    A module that builds the path from parts holds the file name and not the
+    whole literal, so ``literal_sites`` stays silent on it and this walk reports
+    it.  The owner assignment holds the name too, and it is the one allowed site.
+    """
+    return walk_sites(paths, lambda value: NAME_PART in value)
 
 
 def assignment_lines(path: Path) -> list[int]:
@@ -136,6 +168,16 @@ class FaceStorePathOwnerTest(unittest.TestCase):
                          "so import FACE_STORE from the owner: "
                          + "; ".join(site for site in sites if site != expected))
 
+    def test_no_shipped_module_holds_the_file_name_again(self):
+        """A path built from parts holds the file name, and this walk reports it."""
+        expected = f"{OWNER}:{assignment_line(ROOT / OWNER)}"
+        sites = name_sites(shipped_modules())
+        self.assertIn(expected, sites, f"the walk must see the owner site, {expected}")
+        self.assertEqual([expected], sites,
+                         f"the face store file name has one owner, {OWNER}; the sites below hold it, "
+                         "so build the path from FACE_STORE of the owner: "
+                         + "; ".join(site for site in sites if site != expected))
+
     def test_every_reader_takes_the_name_from_the_owner(self):
         for relative in READERS:
             path = ROOT / relative
@@ -161,6 +203,13 @@ class FaceStorePathOwnerTest(unittest.TestCase):
             owner_site = f"{OWNER}:{assignment_line(ROOT / OWNER)}"
             self.assertNotIn(owner_site, literal_sites([planted]),
                              "the planted tree holds no site of the owner")
+            built = Path(folder) / "face_store_build.py"
+            built.write_text("PATH = ROOT / 'out' / 'corner-pocket' / " + repr(NAME_PART) + "\n",
+                             encoding="utf-8")
+            self.assertEqual([], literal_sites([built]),
+                             "a path built from parts holds no whole literal")
+            self.assertEqual([f"{built}:1"], name_sites([built]),
+                             "the file-name walk must name the line of a built path")
 
 
 if __name__ == "__main__":

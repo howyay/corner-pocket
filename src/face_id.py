@@ -50,9 +50,13 @@ from pathlib import Path
 import numpy as np
 
 from src.atomic_write import write_atomic
+# The face store path has one owner: src.store_files.FACE_STORE.  This module
+# reads that name, and the person pipeline and the store layer read this binding.
+# src.store_files imports no module of this file, so the import meets no cycle.
+from src.store_files import FACE_STORE
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_FACE_STORE = ROOT / "out" / "corner-pocket" / "face_embeddings.json"
+DEFAULT_FACE_STORE = ROOT / Path(FACE_STORE)
 
 MIN_EYE_PX = 8.0
 MIN_DET_SCORE = 0.4

@@ -979,7 +979,7 @@ def demo(directory=DEFAULT_DIR, dataset="vod30", log=print, name="scratch"):
                             if row["role"] == enroll_role and row["bursts"][0] in window["bursts"]],
         "enrollment": {"rows": enroll_rows, "gallery_players": sorted(gallery),
                        "gallery_entries": {pid: len(entries) for pid, entries in gallery.items()},
-                       "store": str((root / "out" / "corner-pocket" / "face_embeddings.json").relative_to(REPO))},
+                       "store": str((root / Path(FACE_STORE)).relative_to(REPO))},
         "offline_binding": offline,
         "replay_binding": replay,
         "md5_before": before, "md5_after": after,
@@ -1001,7 +1001,7 @@ def _quality_index(record):
 
 def _gallery_from_scratch(root):
     from src.face_id import load_faces
-    return load_faces(Path(root) / "out" / "corner-pocket" / "face_embeddings.json")
+    return load_faces(Path(root) / FACE_STORE)
 
 
 # --------------------------------------------------------------------------

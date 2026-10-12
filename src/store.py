@@ -58,7 +58,8 @@ from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
-from src.store_files import BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, save_document  # noqa: E402
+from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT,  # noqa: E402
+                             save_document)
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -261,7 +262,10 @@ class JsonStore:
                          temp_name="{stem}.json.tmp", encoding="utf-8", remove_on_failure=False)
 
     def _faces_path(self) -> Path:
-        return self.out / "corner-pocket" / "face_embeddings.json"
+        """The face store under this store's root: the path of its owner,
+        src.store_files.FACE_STORE, with the leading repository folder "out"
+        removed, because the root of this store already holds that folder."""
+        return self.out / Path(FACE_STORE).relative_to(self.out.name)
 
     def faces_load(self) -> dict:
         return load_faces(self._faces_path())
