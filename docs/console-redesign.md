@@ -10638,3 +10638,70 @@ it down, and a strange red is a property of the case before it is a property of 
 must use a resolvable value, or a `NameError` masks the case.  The ledger at `:10108`, `:10187` and
 `:9092` describes the two copies of the anchor times in words; round 85 removed one, so those
 sentences are history and not a description of the tree.
+
+## Round 86 - the review page holds the shooter values, and the cloth default finds a name
+
+Walk `/tmp/dshsess/walk_round86.md` at HEAD `258299c`:
+`Strong candidate present - 2 Strong, 0 Worth, 0 Note`.
+
+**Strong 1 - the shooter four of the review page.**  Ground: the owner
+`annotator/unified_server.py:107 SHOOTER_WORDS = ('A', 'B', '?', '')`, read by the annotate gate at
+`:2345`.  `annotator/index.html:112-117` stated the same four values for the review form, served at
+`annotator/server.py:106-107`, and written without a check at `annotator/server.py:148` into
+`annotator/server.py:37 ANNOT_FILE`.  The console copy (`annotator/vision-stage.js:50
+SHOOTER_CHOICES`) and the migration copy (`db/migrations/0002_user_data.sql:166`) were held by
+`tests/test_console_round70_vocabulary.py`, which read three files (`:58-60`) and said in its own
+docstring at `:36-39` that the guard of the list page "belongs to a later round".  A value the page
+adds lands in `out/.../annotations.json` unchecked and fails the CHECK of the migration at the store
+import (`src/store_import.py:534-536`), so the whole import of the folder stops.
+Repair (writer WG, commit `0d9c434`): the module reads `annotator/index.html` as a fourth file
+(`:63 LIST`, `:68 LIST_TEXT`, `:90 LIST_SELECT`, `:142 page_shooter_values`) and holds the option set
+of the shooter select equal to the owner tuple in both directions.  The module rose from 10 cases to
+13.  The writer bit the page (`annotator/index.html:114`, value `A` -> `C`:
+`789389b269b19966 -> e88f4577dd258c05 -> 789389b269b19966`) and three cases went red.  The Lead bit
+the owner tuple (`SHOOTER_WORDS = ('A', 'B', '')`):
+`AssertionError: Items in the second set but not the first:` on the new page case, and
+`AssertionError: Tuples differ: ('A', 'B') != ('A', 'B', '?')`; the restore gave
+`221c8c16fc6e4d36` green.
+
+**Strong 2 - the default cloth colour.**  Ground: `annotator/operations.py:378` stated
+`clothColor='#1d5c44'` for a fresh document, and `annotator/ops.js:1298` stated the same colour twice
+as a `||` fallback (`grep -o "clothColor||'#[0-9a-f]*'" annotator/ops.js | wc -l` answers 2).  The
+list owner is `annotator/operations.py:64 CLOTH_COLORS`, read by the writer gate at `:1305-1307`.
+The guard read only the option list (`tests/test_ops_bounds.py:197`), so both fallbacks were
+invisible.  Round 85 named the sibling fact on the same two lines, and the cloth half stayed behind.
+Repair (writer WH, commit `743509b`): `annotator/operations.py:69 CLOTH_DEFAULT = CLOTH_COLORS[0]`
+under a four-line comment block, the settings block at `:383` reads the name, and
+`tests/test_ops_bounds.py` gains `test_the_console_cloth_default_is_the_owner_default` with the
+detector `cloth_copies`.  The writer bit the owner name (`CLOTH_DEFAULT = '#1f4a70'`) and the case
+named both console fallbacks.  The Lead bit the console copy (`annotator/ops.js:1298`, one fallback
+`'#1d5c44'` -> `'#1f4a70'`): `AssertionError: Lists differ: ['#1f4a70', '#1d5c44'] != ['#1d5c44',
+'#1d5c44']`; the restore gave `491482e9f54aa78e` green.
+
+**The writer corrected the Lead.**  The brief of writer WH asked for a one-line insertion and a shift
+of +1.  The writer kept the comment block of the house style, measured the shift, and reported +5.
+The Lead shifted every citation of `annotator/operations.py` at or above line 65: 153 sites
+(`docs/console-redesign.md` 143, `.pm/PROJECT.md` 4, `.pm/pre-rewrite/security-audit.md` 4,
+`.pm/directives/form-nits.md` 1 and `shot-clock-sync.md` 1).  The `.pm/` notes are outside the index.
+The file rose from 1538 lines to 1543.
+
+**The record counted 10 cases.**  `docs/console-redesign.md:8840` said the round-70 guard held 10
+cases.  Writer WG reported the drift and could not repair it, because the line is outside its scope.
+The Lead made it 13 (commit `a57478a`).  The first attempt failed: the assertion used the path
+without its backticks, so the search found no match and the count stayed 10 while the commit that
+carried the guard went in alone.
+
+**A reported failure did not reproduce.**  Writer WG reported a baseline full-suite run of
+`Ran 2489 tests in 281.636s - FAILED (errors=1, skipped=53)` with the text
+`Explicit usable A and B seeds are required; no identities inferred.`.  The Lead ran the same suite on
+the same tree and read `Ran 2493 tests in 271.882s`, `OK (skipped=53)`; the seed text is a normal
+message of `src/pid_seed_rebuild.py` in the output, and not a failing case.  Lesson: a suite answer
+that does not reproduce is a property of that run.
+
+**Suites (round 86).**  `./scripts/pool-test.sh python`: `Ran 2493 tests in 271.882s`,
+`OK (skipped=53)`.  Node suites: 232 pass, 23 pass, 114 passed, 0 failures.  The count rose from 2489
+to 2493 with the four new cases (three from WG, one from WH).
+
+**Open rows.**  The console copies of `annotator/ops.js:1298` stay by decision: a browser cannot read
+a python name.  The `.pm/` notes hold their own citation shift and stay local.  The shift of this
+round moved full citations only; the shorthand `:N` forms of the ledger keep their old numbers.
