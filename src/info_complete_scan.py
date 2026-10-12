@@ -45,8 +45,8 @@ from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
 from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 from src.ball_detect import detect_ball_candidates  # noqa: E402
-# src/weight_pins.py owns the weight paths, so this file reads the owner.
-from src import weight_pins  # noqa: E402
+# src/events_document.py owns the document name. src/weight_pins.py owns the weight paths.
+from src import events_document, weight_pins  # noqa: E402
 
 SHOT_SPEED_MM_S = 500.0   # candidate: matched ball speed >= 0.5 m/s; ScanConfig reads it
 # The displacement floor of a shot candidate, in millimetres.  A candidate needs
@@ -428,7 +428,8 @@ def main():
                                 progress=lambda step, detail: print(f'{step}: {detail}', flush=True))
     shots = [c for c in result['candidates'] if c['type'] == 'shot']
     pots = [c for c in result['candidates'] if c['type'] == 'pot']
-    (out_dir / 'events.json').write_text(json.dumps(result['candidates'], indent=1))
+    events_document.document_in(out_dir, events_document.SERVED).write_text(
+        json.dumps(result['candidates'], indent=1))
     (out_dir / 'stats.json').write_text(json.dumps(result['stats'], indent=1))
     print(json.dumps(result['stats'], indent=1))
     print(f'candidates: {len(shots)} shots, {len(pots)} pots -> {out_dir}')

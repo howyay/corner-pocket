@@ -65,8 +65,8 @@ The callers, one producer each:
     candidates; only a confirmed candidate is served, and an id the owner saw is
     inherited.
 
-`src/motion_scan.py` names the same documents for the other datasets and does not
-import this module.  Its `events_for` (`src/motion_scan.py:2292-2295`) tries
+`src/motion_scan.py` names the same documents for the other datasets and reads the
+name from this module.  Its `events_for` (`src/motion_scan.py:2327-2339`) tries
 `out/scan30/events.json` for vod30, then `out/scan_<dataset>/events.json`, then
 `out/scan<dataset>/events.json`, and falls back to `scan_<dataset>`.  `scan_dir`
 follows the same name rule through `src/datasets.py:STATIC_OUT`, so this module

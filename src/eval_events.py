@@ -1081,6 +1081,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--queue", default=str(events_document.document_path()),
                     help="served queue artifact (src/events_document.py)")
+    # This default stays a frozen literal: argparse prints a default string in --help,
+    # and a recorded command line holds it.  The name has one owner,
+    # src/events_document.SERVED; tests/test_events_document_owner.py holds this
+    # literal equal to that owner, so the two cannot drift apart.
     ap.add_argument("--candidates", default="out/scan-ic/events.json",
                     help="scan candidates the queue was built from (default) or the queue itself")
     ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))

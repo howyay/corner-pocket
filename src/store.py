@@ -396,7 +396,10 @@ class JsonStore:
         return _read(self.out / name.format(dataset=dataset, scan=scan), None)
 
     def queue(self, dataset: str) -> list:
-        return _read(self._scan(dataset) / "events.json", [])
+        # src/events_document.py owns the document name, so this method reads it.
+        from src import events_document
+
+        return _read(events_document.document_in(self._scan(dataset), events_document.SERVED), [])
 
     def queue_window(self, dataset: str, t0: float, t1: float) -> list:
         return [e for e in self.queue(dataset)

@@ -787,7 +787,14 @@ def print_report(report):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--video", default="data/vod_30min_260815.mp4")
-    ap.add_argument("--queue", default="out/scan30/events.json", help="served queue artifact")
+    # The served document name has one owner, src/events_document.SERVED.  This
+    # default reads the name from the owner and stays relative, like the others.
+    from src import events_document
+
+    ap.add_argument("--queue",
+                    default=str(events_document.document_path(events_document.SERVED,
+                                                              root=Path("."))),
+                    help="served queue artifact")
     ap.add_argument("--quad", default=SCAN_CORNERS)
     # This default stays a frozen literal: argparse prints a default string in --help,
     # and a recorded command line holds it.  The name has one owner,

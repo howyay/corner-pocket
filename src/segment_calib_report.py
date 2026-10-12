@@ -38,9 +38,13 @@ from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E
 from src.calib_segments import (VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW,  # noqa: E402
                                 segment_artifact_path)
 from src.datasets import media_path  # noqa: E402
+from src import events_document  # noqa: E402
 
 OUT = ROOT / "out" / "segcalib" / "segment_calib_report.json"
-CANDIDATES = ROOT / "out" / "scan-ic" / "events.json"
+# The served document name has one owner, ``src/events_document.py``.  The
+# info-complete folder is not a row of ``src/datasets.py:STATIC_OUT``, so the
+# folder stays here and the name comes from the owner.
+CANDIDATES = events_document.document_in(ROOT / "out" / "scan-ic", events_document.SERVED)
 # The segment artifact name has one owner, ``src/calib_segments.py``.  The
 # ``--artifact`` flag of this tool defaults to the artifact of the vod30 dataset,
 # and the flag reads the path from the owner, so the file name stands once.

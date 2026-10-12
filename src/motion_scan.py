@@ -2325,15 +2325,18 @@ def cmd_person(args) -> None:
 
 
 def events_for(dataset: str, root=None) -> Path:
-    """The event list this dataset's own scan wrote."""
+    """The event list this dataset's own scan wrote; src/events_document.py owns the name."""
+    from src import events_document
+
     root = Path(root or ROOT)
     names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
                                                           f"scan{dataset}"]
     for name in names:
-        path = root / "out" / name / "events.json"
+        path = events_document.document_in(root / "out" / name, events_document.SERVED)
         if path.exists():
             return path
-    return root / "out" / f"scan_{dataset}" / "events.json"
+    return events_document.document_in(root / "out" / f"scan_{dataset}",
+                                       events_document.SERVED)
 
 
 def _served_events(root, events_file, dataset: str = "vod30") -> list:
