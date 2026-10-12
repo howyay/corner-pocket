@@ -11183,3 +11183,89 @@ The full python suite answers `Ran 2577 tests in 384.387s` and `OK (skipped=53)`
 The count moved from 2566 to 2577: the eleven cases of the new guard
 `tests/test_pocket_words_owner.py`.  The three node suites answer 232, 23 and
 114 pass with 0 failures.
+
+## Round 93
+
+### The walk
+
+The walk `/tmp/dshsess/walk_round93.md` (233 lines) answered
+`Strong candidate present - 3 Strong, 1 Worth, 1 Note` at HEAD `4c79e28`.
+
+Strong 1: the guard of round 89 filtered its findings to the `spells` kind, so two
+hand-built copies of the scan-corner path stayed hidden.  Writer WZ made `problems()`
+report every kind.  The two readers read the name of the owner:
+`src/calib_mapping_audit.py:73 SCAN_QUAD = ROOT / SCAN_CORNERS` and
+`src/tiny_ball_net.py:61`.  The owner holds `src/calib_segments.py:179
+SCAN_CORNERS = "out/scan30/corners.json"`.  The built path is byte for byte the same
+as before, and `tests/test_scan_corners_owner.py` holds 13 cases.  The delivery sha1:
+`tests/test_scan_corners_owner.py 970d92fe5bf5b9c80e695360a6204ef649465e83`,
+`src/calib_mapping_audit.py fc1b9dd80595bef30b454cefe36482ea1da42244` and
+`src/tiny_ball_net.py c35be73367480afe043e18ad1c8176d0be489043`.  Its bite put the
+hand-built path back at `src/tiny_ball_net.py:61`:
+`c35be73367480afe043e18ad1c8176d0be489043 -> 5c239ab8bac61241cbe60763fe99192db234587a -> c35be73367480afe043e18ad1c8176d0be489043`,
+red with `Lists differ: [] != ["src/tiny_ball_net.py:61 builds 'corners.json'", ...]`.
+The Lead bit `src/calib_mapping_audit.py:73`, which no writer bit:
+`fc1b9dd80595bef30b454cefe36482ea1da42244 -> ec1d2ae3bc5f746b6e3ecdf767199f28cb2b4905 -> fc1b9dd80595bef30b454cefe36482ea1da42244`,
+red with the same case and the site `src/calib_mapping_audit.py:74`.
+
+Strong 2: the name `calib_vod30.json` stood in five modules.  Writer XA gave it one
+home: `src/calib_segments.py:71 CALIBRATION = "calib_{dataset}.json"` and
+`:82 return CALIBRATION.format(dataset=dataset)`.  The store declares the kind at
+`src/store.py:84`.  The delivery sha1: `src/calib_segments.py
+83453ab776c65187e7a57be5e2af4c2701899af6`, `src/store.py
+a413560e75e8fb1404b1d758e860bea09fb77754`, `src/calib_vod30.py
+842f05ae7e1aeb326b92fe22c499d36bd0ba7960`, `src/pid_anchor_ui.py
+163e1067903eac5fd10fc61518c44f0f2dd37b97`, `src/pid_shooter.py
+f5da2e9b34923209be393fd3c3ec5d1cdbb14e86` and `tests/test_calib_segments.py
+59286b39567f38ba0c867968a5cc23b7c6813406`.  The three scripts answer the same bytes:
+`out/calib_vod30.json` keeps `885b1377b95b6f63d2ef7570d0dd8cf947701244`.  Its bite
+read a literal at `src/calib_vod30.py:163`:
+`842f05ae7e1aeb326b92fe22c499d36bd0ba7960 -> 0345a5fe976f9d507050da83fa59ddabd91dbbdd -> 842f05ae7e1aeb326b92fe22c499d36bd0ba7960`,
+red with `Lists differ: [(163, 'calib_vod30.json')] != []`.
+The Lead bit the owner line `src/calib_segments.py:71`, which no writer bit:
+`83453ab776c65187e7a57be5e2af4c2701899af6 -> 9e3369cd144dbff6791a6e06d7ca08a9f3a0e889 -> 83453ab776c65187e7a57be5e2af4c2701899af6`,
+red with `AssertionError: 'custom_vod30.json' != 'calib_vod30.json'`.
+
+Strong 3 and Worth: writer XB published two guards.  The case
+`tests/test_unit_render.py` reads the two pin names of the drop-in
+`deploy/systemd/pool-workbench.service.d/30-ffmpeg.conf:8` against
+`annotator/ffmpeg_bin.py:25` and `:26`, and the case `tests/test_backup_retention.py`
+holds the 48 hour window of three sites equal.  The delivery sha1:
+`tests/test_unit_render.py d2d61180648b79b42f490c3150206259526b7fea` and
+`tests/test_backup_retention.py c3d3ed08d82af749d006044b8c3828a57bfa586b`.
+The Lead bit `annotator/ffmpeg_bin.py:25`, which the writer did not bite:
+`6cf6dd38a21c764f76c36711d77e7875452e5d7b -> 3f3bafff2e59d7b4045e942a7f9a2d010926091d -> 6cf6dd38a21c764f76c36711d77e7875452e5d7b`,
+red with `Lists differ: ['POOL_FFMPEG', 'POOL_FFPROBE'] != [...]`.
+
+### The Note and the citations
+
+The Lead repaired the note of `src/pid_identity.py:37`: the citation
+`src/frame_inference.py:191` names the progress line, and the statement stands at
+`:203`.
+
+The insert of one line in `src/store.py` moved every line below it by one.  The Lead
+repaired four citations in `src/store_rules.py:54` and `:66`, and in
+`tests/test_store_merge_rules.py:8`, `:9`, `:11`, `:12` and `:13`.  The Lead also
+repaired the planted text of `tests/test_console_anchor_times.py:385`, because the
+line of `src/pid_anchor_ui.py:41` now reads the owner.
+`tests/test_citation_lines.py` answers OK again.
+
+The old names that stay: `annotator/unified_server.py:2134`,
+`tests/serve_workbench_fixture.py:65`, `tests/serve_vod_fixture.py:40` and the
+untracked `out/ia/serve_ia.py:41`.  The documents of `docs/` name the artifact path,
+and a later round holds them.
+
+### The commits
+
+`a96307d test: the ffmpeg pin names and the staleness window have guards`
+`6f5f7a5 docs: the person confidence note names line 203`
+`82555d8 feat: the calibration document name has one home in src/calib_segments.py`
+`1fd2aee docs: the citations and the planted text follow the new lines`
+`494b3dc fix: the corner path has one home and the guard reports every kind`
+
+### Suites
+
+The full python suite answers `Ran 2586 tests in 630.734s` and `OK (skipped=53)`.
+The node suite `tests/test_app_timeline.js` answers `114 passed, 0 failed`.  The
+node suites `tests/test_board.js` and `tests/test_ops.js` report `todo 0` and no
+failure.
