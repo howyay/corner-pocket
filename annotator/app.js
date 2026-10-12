@@ -218,7 +218,7 @@ function isPairedModel(box, boxes) {
 // Stored pocket keys are pool-table rail terms (head rail / foot rail). On the
 // imagery they read as body parts - a marker labelled `head-left` beside a
 // player is read as that player's head - so every DISPLAYED label goes through
-// this map at render time. Stored keys and APIs never change.
+// this map at render time. Stored keys and APIs never change. tests/test_pocket_words_owner.py holds this copy equal.
 const POCKET_LABELS = {
   'head-left':'top-left', 'head-right':'top-right',
   'foot-left':'bottom-left', 'foot-right':'bottom-right',
