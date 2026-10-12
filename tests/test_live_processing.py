@@ -13,29 +13,8 @@ import numpy as np
 
 from annotator.live_processing import LIVE_DETECTORS, LiveProcessor
 from annotator.pipeline_stages import CallableStage, detector_names, resolve_detector
+from _fixtures import Capture, LiveHarness
 ROOT = Path(__file__).resolve().parents[1]
-
-
-class Capture:
-    def __init__(self, count=5, fps=200, opened=True):
-        self.count, self.fps, self.opened = count, fps, opened
-        self.index = 0
-        self.released = False
-
-    def isOpened(self):
-        return self.opened
-
-    def get(self, prop):
-        return self.fps
-
-    def read(self):
-        if self.index >= self.count:
-            return False, None
-        self.index += 1
-        return True, np.full((16, 16, 3), self.index, dtype=np.uint8)
-
-    def release(self):
-        self.released = True
 
 
 def infer(frame, detectors, root):
@@ -186,7 +165,7 @@ class LiveDetectorRequestTests(unittest.TestCase):
             self.assertEqual(processor.status()['state'], 'idle', detectors)
 
 
-class LiveProcessingTests(unittest.TestCase):
+class LiveProcessingTests(LiveHarness, unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -209,15 +188,6 @@ class LiveProcessingTests(unittest.TestCase):
         processor = LiveProcessor(self.root, **kwargs)
         self.addCleanup(processor.stop)
         return processor
-
-    def wait_for(self, processor, predicate):
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            status = processor.status()
-            if predicate(status):
-                return status
-            time.sleep(.002)
-        self.fail('Timed out: ' + repr(processor.status()))
 
     def finished(self, processor):
         return self.wait_for(processor, lambda s: not s['decoder_alive'] and not s['worker_alive'])
@@ -725,7 +695,7 @@ class LiveProcessingTests(unittest.TestCase):
         self.assertEqual(bare, [], f'raise sites without a code: {bare}')
 
 
-class UpstreamDelayTests(unittest.TestCase):
+class UpstreamDelayTests(LiveHarness, unittest.TestCase):
     """upstream_delay_ms is computed in-process from the live playlist, or stays None."""
 
     def setUp(self):
@@ -758,15 +728,6 @@ class UpstreamDelayTests(unittest.TestCase):
         processor = LiveProcessor(self.root, **kwargs)
         self.addCleanup(processor.stop)
         return processor
-
-    def wait_for(self, processor, predicate, timeout=5):
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            status = processor.status()
-            if predicate(status):
-                return status
-            time.sleep(.002)
-        self.fail('Timed out: ' + repr(processor.status()))
 
     def test_live_playlist_gives_a_labelled_delay_per_frame(self):
         """Ordered by events and read off a fixed wall clock - no timing assumption.
@@ -896,7 +857,7 @@ class UpstreamDelayTests(unittest.TestCase):
         self.assertFalse(status['probe_alive'])
 
 
-class SessionStateOwnershipTests(unittest.TestCase):
+class SessionStateOwnershipTests(LiveHarness, unittest.TestCase):
     """One method owns a session's state: ``_reset_session``.
 
     ``__init__`` and ``start()`` used to name the session fields themselves, in two
@@ -921,15 +882,6 @@ class SessionStateOwnershipTests(unittest.TestCase):
         processor = LiveProcessor(self.root, **kwargs)
         self.addCleanup(processor.stop)
         return processor
-
-    def wait_for(self, processor, predicate):
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            status = processor.status()
-            if predicate(status):
-                return status
-            time.sleep(.002)
-        self.fail('Timed out: ' + repr(processor.status()))
 
     def test_the_reset_alone_turns_a_dirty_session_into_a_clean_one(self):
         """One call clears everything a session owns, without naming one field.

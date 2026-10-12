@@ -20,48 +20,19 @@ import numpy as np
 from annotator.live_processing import LiveProcessor
 from annotator.pipeline_stages import (DETECTORS, BallStage, Stage, TableStage, default_stages,
                                        detector_names, frame_detectors, resolve_detector)
+from _fixtures import Capture, LiveHarness, PositionCapture
 
 
-class Capture:
-    def __init__(self, count=5, fps=30, opened=True):
-        self.count, self.fps, self.opened = count, fps, opened
-        self.index = 0
-        self.released = False
-
-    def isOpened(self):
-        return self.opened
-
-    def get(self, prop):
-        return self.fps if prop == cv2.CAP_PROP_FPS else self.index
-
-    def read(self):
-        if self.index >= self.count:
-            return False, None
-        self.index += 1
-        return True, np.full((32, 32, 3), self.index, dtype=np.uint8)
-
-    def release(self):
-        self.released = True
-
-
-class PositionCapture(Capture):
-    """Capture that reports a real media position, like a decoder over a file."""
-
-    def __init__(self, count=3, fps=30, start=0, shape=(32, 32, 3)):
-        super().__init__(count=count, fps=fps)
-        self.start = start
-        self.shape = shape
-
-    def read(self):
-        if self.index >= self.count:
-            return False, None
-        self.index += 1
-        return True, np.full(self.shape, self.index, dtype=np.uint8)
-
-    def get(self, prop):
-        if prop == cv2.CAP_PROP_POS_FRAMES:
-            return self.start + self.index          # position of the *next* frame
-        return super().get(prop)
+#: The working frame of this module.  The three ``Capture`` classes of the tree
+#: share one body now, and this size is the one value of this module that the
+#: shared class cannot state: the two modules of round 90 work on 32x32 here and
+#: on 16x16 in ``tests/test_live_processing.py``, because this module asserts
+#: the coordinates of a 32-pixel working frame.  The frame rate stays at the call
+#: sites: this module reads 30, 60 and 200 frames per second in one file.
+class Frame32(Capture):
+    def __init__(self, **kwargs):
+        kwargs.setdefault('shape', (32, 32, 3))
+        super().__init__(**kwargs)
 
 
 class Sleepy(Stage):
@@ -111,7 +82,7 @@ class StubBallStage(BallStage):
         return heat
 
 
-class LiveStageHarnessTests(unittest.TestCase):
+class LiveStageHarnessTests(LiveHarness, unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -124,19 +95,10 @@ class LiveStageHarnessTests(unittest.TestCase):
         self.source = dict(kind='dataset', dataset='vod30')
 
     def processor(self, **kwargs):
-        kwargs.setdefault('capture_factory', lambda _: Capture())
+        kwargs.setdefault('capture_factory', lambda _: Frame32())
         processor = LiveProcessor(self.root, **kwargs)
         self.addCleanup(processor.stop)
         return processor
-
-    def wait_for(self, processor, predicate, timeout=5):
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            status = processor.status()
-            if predicate(status):
-                return status
-            time.sleep(.002)
-        self.fail('Timed out: ' + repr(processor.status()))
 
     def finished(self, processor):
         return self.wait_for(processor, lambda s: not s['decoder_alive'] and not s['worker_alive'])
@@ -153,7 +115,7 @@ class LiveStageHarnessTests(unittest.TestCase):
         # available to the pipeline is the stage overrun itself.
         calls = []
         stage = Sleepy('ball', delay=.06, calls=calls)
-        processor = self.processor(capture_factory=lambda _: Capture(count=3, fps=4), stages=[stage],
+        processor = self.processor(capture_factory=lambda _: Frame32(count=3, fps=4), stages=[stage],
                                    frame_budget_ms=33.333)
         status = processor.start(self.source)
         self.assertTrue(status['budget_enforcement'])
@@ -173,7 +135,7 @@ class LiveStageHarnessTests(unittest.TestCase):
     def test_derived_frame_budget_follows_the_source_fps(self):
         # The decoder learns the source rate when the capture opens; until then the
         # processor reports the configured value (None here) rather than guessing.
-        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=60),
+        processor = self.processor(capture_factory=lambda _: Frame32(count=1, fps=60),
                                    stages=[Sleepy('ball', delay=0)])
         processor.start(self.source)
         status = self.finished(processor)
@@ -182,7 +144,7 @@ class LiveStageHarnessTests(unittest.TestCase):
     def test_fast_stage_publishes_every_frame_with_its_own_timing(self):
         calls = []
         stage = Sleepy('ball', delay=0, calls=calls, result={'boxes': [{'label': 'ball'}]})
-        processor = self.processor(capture_factory=lambda _: Capture(count=4, fps=30), stages=[stage],
+        processor = self.processor(capture_factory=lambda _: Frame32(count=4, fps=30), stages=[stage],
                                    frame_budget_ms=1000)
         processor.start(self.source)
         status = self.finished(processor)
@@ -201,7 +163,7 @@ class LiveStageHarnessTests(unittest.TestCase):
         seen = []
         first = Sleepy('first', delay=0, calls=[], result={'boxes': [{'label': 'table'}],
                                                           'table_polygon': [[0, 0], [1, 0], [1, 1], [0, 1]]})
-        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=200),
+        processor = self.processor(capture_factory=lambda _: Frame32(count=1, fps=200),
                                    stages=[first, Reader(seen)], frame_budget_ms=1000)
         status = processor.start(self.source)
         self.assertEqual([stage['name'] for stage in status['stages']], ['first', 'reader'])
@@ -215,7 +177,7 @@ class LiveStageHarnessTests(unittest.TestCase):
 
     def test_superseded_frames_are_counted_as_no_frame_ready(self):
         stage = Sleepy('ball', delay=.05)
-        processor = self.processor(capture_factory=lambda _: Capture(count=30, fps=200), stages=[stage],
+        processor = self.processor(capture_factory=lambda _: Frame32(count=30, fps=200), stages=[stage],
                                    budget_enforcement=False)
         processor.start(self.source)
         self.wait_for(processor, lambda s: not s['decoder_alive'])
@@ -233,7 +195,7 @@ class LiveStageHarnessTests(unittest.TestCase):
     def test_frames_older_than_the_budget_are_stale_and_never_reach_a_stage(self):
         calls = []
         stage = Sleepy('ball', delay=0, calls=calls)
-        processor = self.processor(capture_factory=lambda _: Capture(count=4, fps=30), stages=[stage],
+        processor = self.processor(capture_factory=lambda _: Frame32(count=4, fps=30), stages=[stage],
                                    frame_budget_ms=0.0)
         processor.start(self.source)
         status = self.finished(processor)
@@ -256,7 +218,7 @@ class LiveStageHarnessTests(unittest.TestCase):
                 unblock.wait(2)
                 return {}
 
-        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=200),
+        processor = self.processor(capture_factory=lambda _: Frame32(count=1, fps=200),
                                    stages=[Blocked()], stop_timeout=.02, budget_enforcement=False)
         processor.start(self.source)
         self.assertTrue(entered.wait(1))
@@ -269,7 +231,7 @@ class LiveStageHarnessTests(unittest.TestCase):
         self.assert_partition(status)
 
     def test_status_exposes_the_rolling_latency_window(self):
-        processor = self.processor(capture_factory=lambda _: Capture(count=5, fps=200),
+        processor = self.processor(capture_factory=lambda _: Frame32(count=5, fps=200),
                                    stages=[Sleepy('ball', delay=0)], frame_budget_ms=1000, latency_window=3)
         status = processor.start(self.source)
         self.assertEqual(status['latency_window'], 3)
@@ -292,7 +254,7 @@ class LiveStageHarnessTests(unittest.TestCase):
             LiveProcessor(self.root, infer=lambda *args: {}, stages=[Sleepy()])
 
     def test_configured_budget_overrides_the_source_fps(self):
-        processor = self.processor(capture_factory=lambda _: Capture(count=2, fps=200),
+        processor = self.processor(capture_factory=lambda _: Frame32(count=2, fps=200),
                                    stages=[Sleepy('ball', delay=.06)], frame_budget_ms=500)
         status = processor.start(self.source)
         self.assertEqual(status['frame_budget_ms'], 500)
@@ -301,7 +263,7 @@ class LiveStageHarnessTests(unittest.TestCase):
         self.assertEqual(sum(status['drop_reasons'].values()), 0)
 
     def test_real_jpeg_is_published_with_the_stage_timings(self):
-        processor = self.processor(capture_factory=lambda _: Capture(count=1, fps=200),
+        processor = self.processor(capture_factory=lambda _: Frame32(count=1, fps=200),
                                    stages=[Sleepy('ball', delay=0)], frame_budget_ms=1000)
         processor.start(self.source)
         self.finished(processor)
@@ -331,7 +293,7 @@ class LiveStageHarnessTests(unittest.TestCase):
     def test_partitioned_stage_is_absent_not_stale_on_skipped_frames(self):
         stage = Sleepy('ball', delay=0, result={'boxes': [{'label': 'ball'}]})
         stage.every_n_frames = 2
-        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30), stages=[stage],
+        processor = self.processor(capture_factory=lambda _: Frame32(count=6, fps=30), stages=[stage],
                                    frame_budget_ms=1000)
         processor.start(self.source)
         seen = self.published(processor, 6)
@@ -361,7 +323,7 @@ class LiveStageHarnessTests(unittest.TestCase):
         the working frame's pixels.
         """
         stage = StubBallStage(self.root, peak=(480, 270))
-        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30),
+        processor = self.processor(capture_factory=lambda _: Frame32(count=6, fps=30),
                                    stages=[stage], frame_budget_ms=1000)
         processor.start(self.source)
         seen = self.published(processor, 3)
@@ -441,7 +403,7 @@ class LiveStageHarnessTests(unittest.TestCase):
     def test_status_reports_cadence_runs_skips_and_evidence(self):
         stage = Sleepy('ball', delay=0, result={'boxes': [{'label': 'ball'}]})
         stage.every_n_frames = 3
-        processor = self.processor(capture_factory=lambda _: Capture(count=6, fps=30), stages=[stage],
+        processor = self.processor(capture_factory=lambda _: Frame32(count=6, fps=30), stages=[stage],
                                    frame_budget_ms=1000)
         processor.start(self.source)
         status = self.finished(processor)
@@ -455,7 +417,7 @@ class LiveStageHarnessTests(unittest.TestCase):
     def test_invalid_cadence_is_refused_at_start(self):
         stage = Sleepy('ball', delay=0)
         stage.every_n_frames = 0
-        processor = self.processor(capture_factory=lambda _: Capture(count=1), stages=[stage])
+        processor = self.processor(capture_factory=lambda _: Frame32(count=1), stages=[stage])
         with self.assertRaises(ValueError):
             processor.start(self.source)
 

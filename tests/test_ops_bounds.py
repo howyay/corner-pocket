@@ -55,12 +55,12 @@ What this case does not see
 * The cap cases count entrants.  The identity of an entrant is another rule.
 """
 import re
-import tempfile
 import unittest
 from pathlib import Path
 
 from annotator.operations import (CLOTH_COLORS, CLOTH_DEFAULT, ENTRANT_MAX, LAMP_GLOW_DEFAULT,
-                                  LAMP_GLOW_MAX, LAMP_GLOW_MIN, Operations)
+                                  LAMP_GLOW_MAX, LAMP_GLOW_MIN)
+from _fixtures import OpsLayerFixture
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = ROOT / 'annotator' / 'operations.py'
@@ -141,22 +141,12 @@ def cloth_copies(text):
             if CLOTH_COLOR_COPY.search(CLOTH_COMMENT.sub('', line))]
 
 
-class OpsBounds(unittest.TestCase):
-    """The entrant cap and the appearance bounds of the operations layer."""
-
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        self.ops = None
-
-    def layer(self, name):
-        """Open one operations layer over its own directory and keep it for the case."""
-        self.ops = Operations(self.root / name)
-        return self.ops
-
-    def call(self, action, **fields):
-        return self.ops.post(dict(action=action, revision=self.ops.get()['revision'], **fields))
+#: The entrant cap and the appearance bounds of the operations layer.  ``setUp``,
+#: ``layer`` and ``call`` are the three methods this module held in common with
+#: ``tests/test_console_service_bounds.py``; ``_fixtures.OpsLayerFixture`` is
+#: their one home since round 90, and that module's guard fails if either module
+#: spells one of the three bodies again.
+class OpsBounds(OpsLayerFixture, unittest.TestCase):
 
     def teams(self, count):
         """Sign up ``count`` teams of two guests and return the state."""

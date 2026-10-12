@@ -70,13 +70,14 @@ What this case does not see
 """
 import ast
 import re
-import tempfile
+from tempfile import TemporaryDirectory
 import unittest
 from pathlib import Path
 
-from annotator.operations import Operations
 from annotator.twitch_source import TWITCH_LOGIN
 from annotator.unified_server import _REPLAY_RATE_MAX, replay_request
+from _fixtures import OpsLayerFixture
+from _shipped import body_fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 CONSOLE = ROOT / 'annotator' / 'ops.js'
@@ -206,22 +207,91 @@ def resolve(node, named):
     raise AssertionError(f'a race bound is neither a literal nor a module name: {ast.unparse(node)}')
 
 
-class ConsoleServiceBounds(unittest.TestCase):
-    """The replay rate bound and the race-to set, across the console and the service."""
+#: The body keys of the three fixture families ``_fixtures.py`` owns, and the
+#: names of the statements each key covers.  A key names the bodies by what they
+#: do, so the guard finds a copy whatever a module calls it: the triple is the
+#: ``setUp``, ``layer`` and ``call`` this module held in common with
+#: ``tests/test_ops_bounds.py``; the single key is the shared body of the four
+#: ``wait_for`` methods; the second single key is the shared body of the two
+#: ``Capture`` classes, whose ``read`` is the body the module-level copies of the
+#: case below repeat.
+#: Measured on 2026-10-12 with ``_shipped.body_fingerprint``, which drops the
+#: docstring of a function and hashes the statements that remain.
+FIXTURE_KEYS = {
+    ('setUp', 'layer', 'call'): 'c701e96a088c7133adec10f11ed58188d8c4bba3',
+    ('wait_for',): '996981afafef8ab381d86cfba33aa59a99b38966',
+    ('isOpened', 'get', 'read', 'release'): '13a1aa0439f9ad268ae10830f193dbf0f2f420bc',
+}
+FIXTURE_MODULES = ('test_console_service_bounds', 'test_ops_bounds',
+                   'test_live_processing', 'test_live_processing_stages')
+FIXTURE_HOME = '_fixtures'
 
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        self.ops = None
+def fixture_modules():
+    """The four modules that held a fixture body twice before round 90, by path."""
+    return tuple(ROOT / 'tests' / f'{name}.py' for name in FIXTURE_MODULES)
 
-    def layer(self, name):
-        """Open one operations layer over its own directory and keep it for the case."""
-        self.ops = Operations(self.root / name)
-        return self.ops
 
-    def call(self, action, **fields):
-        return self.ops.post(dict(action=action, revision=self.ops.get()['revision'], **fields))
+#: The names of this module that the walk must read although they take a parameter
+#: that is not ``self``.  ``planted_read`` is the copy the case below plants in a
+#: temporary module: byte for byte the body of ``Capture.read``, and called
+#: nowhere, so it carries no name for the reader to know it by.  The name that is
+#: not planted is held for the same reason, so the tuple names the shape of the
+#: exception and not the one case of it.
+INLINE_FIXTURES = ('planted_read', 'planted_release')
+
+#: The name of the one body the walk must not read.  The ``call`` of the
+#: operations fixture is a request: its body stands in eight places of this tree,
+#: and round 90 owns none of them.  That body explains its request in a docstring
+#: of its own, so the reader tells it from a fixture body by the docstring and by
+#: the keyword rest of its signature together.  The rule below states the last
+#: one of those two as a rule: a keyword-rest function that answers with a call
+#: is a call site.
+CALL_SITE_NAMES = ('call',)
+
+
+def is_fixture_shaped(node):
+    """True for a function whose body the walk must read - that is, whose body may be a fixture.
+
+    Four of the nine reads of round 90 are methods of one class, two are methods of
+    one fixture of a different module, and the rest are the fixtures themselves.
+    A method takes ``self`` and no more, so a function whose signature demands a
+    parameter that is not ``self`` is a call site - except for the two planted
+    copies named above, and except for a name that states the body and a docstring
+    that explains it at the same time.  A fixture body explains itself in the
+    members of its class, and a helper of this walk explains itself in the
+    docstring of the helper.  The ``call`` of the operations fixture is the one
+    body of both shapes at once.
+    """
+    if node.name in INLINE_FIXTURES:
+        return True
+    scoped = [arg.arg for arg in node.args.args if arg.arg != 'self']
+    if node.args.vararg or node.args.kwonlyargs or scoped:
+        documented = bool(node.body) and isinstance(node.body[0], ast.Expr) \
+            and isinstance(node.body[0].value, ast.Constant)
+        return not (documented and node.name in CALL_SITE_NAMES and node.args.kwarg is not None)
+    return True
+
+
+def fixture_body_sites(paths):
+    """Every read of a fixture-shaped body under ``paths``, as (key, file, line, name).
+
+    The key is ``_shipped.body_fingerprint``: the ``ast`` text of the statements
+    of one function, its docstring removed.  A copy under another name is
+    reported too, because the walk reads the body and not the name.
+    """
+    rows = []
+    for path in paths:
+        path = Path(path)
+        tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef) or not is_fixture_shaped(node):
+                continue
+            rows.append((body_fingerprint(node), path.name, node.lineno, node.name))
+    return rows
+
+
+
+class ConsoleServiceBounds(OpsLayerFixture, unittest.TestCase):
 
     def test_the_rate_bound_stands_once_in_the_console(self):
         """Three console numbers, three lines, and no other statement of the bound."""
@@ -330,3 +400,67 @@ class ConsoleServiceBounds(unittest.TestCase):
         planted_list = "  ${[1,3,5,7,9,11].map(n=>option(n,n,1)).join('')}\n"
         self.assertEqual(race_copies(planted_list), [(1, planted_list.strip())])
         self.assertEqual(race_copies(CONSOLE_TEXT), [], 'the live console states the set once')
+
+
+
+    def test_each_fixture_body_that_two_modules_held_has_one_home(self):
+        """The three fixture families of round 90 live in ``_fixtures.py`` alone.
+
+        Read with the walk of this module over every ``tests`` file, so a copy in
+        a module that nobody named here fails the case too.
+        """
+        # This module holds two planted copies of ``_fixtures.Capture`` on purpose,
+        # in the text of the case below.  The walk reads a file, so it reads them.
+        # The acceptance walk of the live tree skips this one file and names that
+        # exemption here, instead of hiding the copies from the walk by name.
+        rows = [row for row in fixture_body_sites(sorted(ROOT.glob('tests/*.py')))
+                if row[1] != Path(__file__).name]
+        for names, key in FIXTURE_KEYS.items():
+            homes = sorted({(row[1], row[2], row[3]) for row in rows if row[0] == key})
+            self.assertEqual(len(homes), 1,
+                             f'{"/".join(names)} must stand in one home; found: {homes}')
+            self.assertEqual(homes[0][0], FIXTURE_HOME + '.py',
+                             f'{"/".join(names)} must stand in {FIXTURE_HOME}.py, not in {homes[0]}')
+
+    def test_a_planted_copy_of_a_fixture_body_is_reported(self):
+        """A second module that spells one fixture body is reported, with its line.
+
+        The planted module is written under the system temporary directory, never
+        inside ``tests``, so the walk of other cases of this tree is undisturbed.
+        Both bodies are copied from ``_fixtures`` byte for byte.  The reader
+        reports both: the method carries the key of ``OpsLayerFixture.setUp``, and
+        the module-level function carries the key of ``Capture.read`` although it
+        takes a parameter that is not ``self``, because ``INLINE_FIXTURES`` names
+        that shape.
+        """
+        planted = '''
+def planted_read(self):
+    if self.index >= self.count:
+        return False, None
+    self.index += 1
+    return True, np.full(self.shape, self.index, dtype=np.uint8)
+
+
+class Planted(OpsLayerFixture, unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ops = None
+'''
+        with TemporaryDirectory() as directory:
+            copy = Path(directory) / 'test_planted_copy.py'
+            copy.write_text(planted, encoding='utf-8')
+            sites = fixture_body_sites([copy])
+            self.assertEqual([(line, name) for _, _, line, name in sites],
+                             [(2, 'planted_read'), (10, 'setUp')],
+                             'the detector must report every planted body with its file and line')
+            for key, _, line, name in sites:
+                self.assertIn(key, set(FIXTURE_KEYS.values()),
+                              f'{name} at {line} must carry the key of the fixture it copies')
+        rows = fixture_body_sites(fixture_modules())
+        for key in FIXTURE_KEYS.values():
+            homes = sorted({(row[1], row[2], row[3]) for row in rows if row[0] == key})
+            self.assertEqual(homes, [],
+                             'the four modules that held a fixture twice must spell no fixture body now;'
+                             f' the key {key} stands in {homes}')
