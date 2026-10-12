@@ -38,7 +38,7 @@ The upper area cap, and the disagreement
       caller passes that same frame to SAM3 (``src/pipeline.py:255``,
       ``src/pipeline.py:269-270``).  The warp to the canonical 1270x2540 mm
       frame happens later and uses a different array (``src/pipeline.py:209``).
-      ``src/scan_events.py:122-127`` and ``src/sam3_ball_cache.py:152-154`` read
+      ``src/scan_events.py:122-127`` and ``src/sam3_ball_cache.py:154-156`` read
       their frames the same way, with no resize.
     * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:60``,
       ``src/motion_scan.py:80``, ``src/dense_queue.py:74``).  Round 71, Note 1: the

@@ -3264,9 +3264,9 @@ repaired and pushed; the others run in parallel under disjoint write scopes.
 
 | The SAM3 admission gate | The bar that admits a ball instance was written in nine modules. The score cut 0.62 had nine code homes (`src/ball_census.py:107`, `src/ball_fp_audit.py:77`, `src/collect2.py:47`, `src/fast_ball_labels.py:51`, `src/pipeline.py:32`, `src/recut_crops.py:92`, `src/sam3_ball_cache.py:42`, `src/scan_events.py:126`, `src/tiny_ball_net.py:60`), the area band was 60 to 9000 in eight sites, and `src/pipeline.py:162` alone used 6000. Nothing could say which bar admitted an instance | One module holds the five numbers: `SAM3_BALL_MIN_SCORE = 0.62` at `src/ball_gate.py:84`, `SAM3_BALL_MIN_AREA_PX = 60` at `:87`, `SAM3_BALL_MAX_AREA_PX = 9000` at `:93`, `POC_PIPELINE_BALL_MAX_AREA_PX = 6000` at `:99`, `CLASSICAL_BALL_MAX_AREA_960X540_PX = 4200.0` at `:103`. Each site reads the owner and keeps its own local name, so every existing import still works. The 6000 px and the 9000 px bounds serve the same stage - both measure the sum of a SAM3 mask on the same unscaled 1280x720 source frame, in adjacent lines of one function - so the owner docstring states the disagreement and the behaviour does not change | `tests/test_ball_gate.py` 0 -> 7 tests OK; the guard reads every `.py` file under `src/` and fails when a gate-shaped number appears outside the owner; its exemption map is keyed by module and value, each entry names the different decision it belongs to, a stale exemption fails, and an exemption cannot become a wildcard. `tests/test_scan_events.py` 4 OK, `tests/test_sam3_ball_cache.py` 9 OK, `tests/test_ball_fp_audit.py` 54 OK, `tests/test_pipeline_stages.py` 29 OK, `tests/test_ball_census.py` 48 OK, `tests/test_tiny_ball_net.py` 37 OK. An AST scan of the nine modules removed {0.62 x 10, 60 x 6, 9000 x 5, 6000 x 1, 4200.0 x 1} and added only three `0` and one `1` from three new `sys.path` lines. Perturbations: the owner held 0.61 and exactly `test_the_owner_holds_the_documented_numbers` failed (sha1 `ea32c657…` → `4daf52d2…` → restored); `src/scan_events.py` stated 0.62 again and the guard named `src/scan_events.py:128` (sha1 `c89c4a2d…` → `f045f560…` → restored) |
 
-| The events document | Five modules wrote `out/scan30/events.json` (`src/scan_events.py:333`, `src/rebuild_events_calibrated.py:144`, `src/dense_queue.py:640`, `src/eval_events.py:1134`, `src/candidate_scan.py:606`) and the file carried no producer and no version. Four of its sixteen keys are spelled by one writer only (`dup_count`, `last_px`, `pocket_name` and `provenance` at `src/dense_queue.py:302-312` and `src/eval_events.py:822-823`), so no reader could tell which rule set built the rows it read | `src/events_document.py` owns the two document names, the row shape, the version and one sentence per producer. `write` stamps every row with `{STAMP: {"version": VERSION, "producer": producer}}`; `read` returns the rows with the status STAMPED, MIXED or UNSTAMPED and never guesses a producer. The stamp is a row key, so the file stays a JSON list and its list readers keep working. `DocumentVersionError` is not a `ValueError`, so the permissive `except ValueError` at `src/eval_events.py:790` and `src/candidate_scan.py:606` cannot swallow a newer document | The served file is untouched: `out/scan30/events.json`, 12696 bytes, sha1 `3ffb1fe6…`, reads `4 rows, no stamp; the producer is unknown`. `tests/test_events_document.py` 0 → 24 tests OK, with four source guards holding the six callers to the owner. A rogue `Path(queue_path).write_text(json.dumps(entries, indent=1))` at `src/dense_queue.py:748` fails exactly the JSON guard with a message that names the file, the line and the function; sha1 `dce4d4ba…` → `f7c925bb…` → restored. The write is one atomic step through `src/atomic_write.py` since `1ab737e`: a row that JSON cannot serialize leaves the old document in place and removes its temporary file, and a perturbation back to one `open` fails exactly the new test. One measured difference: a new document has mode 0600 where `open` gave the umask default (0644 in this repository). Not proved: the path is not unique across the repository (`src/info_complete_scan.py:419`, `src/motion_scan.py:2313`, `:2316` and `src/store.py:352` still name the file), and no builder ran end to end, because those builders rewrite products under `out/` |
+| The events document | Five modules wrote `out/scan30/events.json` (`src/scan_events.py:333`, `src/rebuild_events_calibrated.py:144`, `src/dense_queue.py:640`, `src/eval_events.py:1134`, `src/candidate_scan.py:606`) and the file carried no producer and no version. Four of its sixteen keys are spelled by one writer only (`dup_count`, `last_px`, `pocket_name` and `provenance` at `src/dense_queue.py:302-312` and `src/eval_events.py:822-823`), so no reader could tell which rule set built the rows it read | `src/events_document.py` owns the two document names, the row shape, the version and one sentence per producer. `write` stamps every row with `{STAMP: {"version": VERSION, "producer": producer}}`; `read` returns the rows with the status STAMPED, MIXED or UNSTAMPED and never guesses a producer. The stamp is a row key, so the file stays a JSON list and its list readers keep working. `DocumentVersionError` is not a `ValueError`, so the permissive `except ValueError` at `src/eval_events.py:790` and `src/candidate_scan.py:606` cannot swallow a newer document | The served file is untouched: `out/scan30/events.json`, 12696 bytes, sha1 `3ffb1fe6…`, reads `4 rows, no stamp; the producer is unknown`. `tests/test_events_document.py` 0 → 24 tests OK, with four source guards holding the six callers to the owner. A rogue `Path(queue_path).write_text(json.dumps(entries, indent=1))` at `src/dense_queue.py:748` fails exactly the JSON guard with a message that names the file, the line and the function; sha1 `dce4d4ba…` → `f7c925bb…` → restored. The write is one atomic step through `src/atomic_write.py` since `1ab737e`: a row that JSON cannot serialize leaves the old document in place and removes its temporary file, and a perturbation back to one `open` fails exactly the new test. One measured difference: a new document has mode 0600 where `open` gave the umask default (0644 in this repository). Not proved: the path is not unique across the repository (`src/info_complete_scan.py:419`, `src/motion_scan.py:2313`, `:2316` and `src/store.py:356` still name the file), and no builder ran end to end, because those builders rewrite products under `out/` |
 
-| The sam3 artifact | `out/scan30/sam3_results.json` is declared read-only by two modules that read it (`src/sam3_ball_cache.py:40`, `src/eval_events.py:150`) and rewritten in place by two others: `src/rebuild_events_calibrated.py:36` writes it with `json.dump(sam3, open(SAM3, "w"), indent=1)` after it recomputes every row's `table_mm` from `out/calib_final.json`, and `src/scan_events.py:157` writes it too. The file is 37909 bytes with 8 readers and 2 writers, so a reader cannot tell whether the numbers it trusts came from the detector or from a later calibration | In flight, with one owner for the artifact, its row shape and its producer stamp, on the pattern of `src/events_document.py` | In flight. The worker is `4153ba7f`, and its scope is the four modules plus one new test file |
+| The sam3 artifact | `out/scan30/sam3_results.json` is declared read-only by two modules that read it (`src/sam3_ball_cache.py:40`, `src/eval_events.py:152`) and rewritten in place by two others: `src/rebuild_events_calibrated.py:36` writes it with `json.dump(sam3, open(SAM3, "w"), indent=1)` after it recomputes every row's `table_mm` from `out/calib_final.json`, and `src/scan_events.py:157` writes it too. The file is 37909 bytes with 8 readers and 2 writers, so a reader cannot tell whether the numbers it trusts came from the detector or from a later calibration | In flight, with one owner for the artifact, its row shape and its producer stamp, on the pattern of `src/events_document.py` | In flight. The worker is `4153ba7f`, and its scope is the four modules plus one new test file |
 
 ### The commits so far
 
@@ -4948,7 +4948,7 @@ failed 7 of the 16 cases. The Lead's own bite appended a second `STAMP = "docume
 
 `src/motion_scan.py:1344` held `BALL_BLOB_MAX_PX = 532`, and no line read it. The live rule is
 `ball_blob_max` at `:138-140`, `return 2.0 * ball_area(cfg)`, and it answers 561.10 px². The same
-name stood again at `src/timing_verify.py:73` with the value 3000, read at `:273`. The two live
+name stood again at `src/timing_verify.py:75` with the value 3000, read at `:273`. The two live
 numbers measure different quantities, so they must not meet; the dead copies are what fail.
 
 `4365293` deletes the dead literals `BALL_BLOB_MAX_PX = 532`, `LIMB_BLOB_MIN_PX = 1600` and
@@ -5019,7 +5019,7 @@ an empty `root`, requires `vod30` in every clause that names the file, and refus
 
 ### Worth 3 and Worth 4 · the boundary written twice, and the copied gate
 
-The boundary 3000 stood twice at `src/timing_verify.py:73-74`, and `src/motion_scan.py:1334` copied
+The boundary 3000 stood twice at `src/timing_verify.py:75-76`, and `src/motion_scan.py:1334` copied
 `person_share: float = 0.02` from `src/candidate_scan.py:75` with a comment. Both readers now read
 one home. The Lead's extra repair made `tests/ball_dense_events.py` read the same field from
 `ScanConfig`, and a bite on the owner value answered 0.75 in the harness.
@@ -5698,7 +5698,7 @@ Round 52 answered 1945 cases, so this round adds 9: 3 in `tests/test_ball_scale.
 | `reference_quad` holds two bodies, and a third delegates | Worth 3 of the round-51 walk, measured | one dataset and one question answer two ways: `src.sam3_ball_cache.reference_quad(corners_path="out/scan30/corners.json", dataset="nothing-here")` answers `[[459.26, 268.89], [803.75, 315.78], [1023.37, 584.26], [421.81, 560.57]]`, and `src.sam3_frame_audit.reference_quad(dataset="nothing-here", anchors_path="/nonexistent.json")` answers `(None, 'none')`; `def reference_quad` stands at `src/sam3_frame_audit.py:128` |
 | The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files with two spellings (`or 30` twelve times, `or 30.0` eight), and `30.0003` stands at 8 sites |
 | The default dataset name is written five times | Worth 2 of this walk | `git grep -n 'default="vod30"'` answers `src/ball_association_ab.py:84`, `src/enroll_from_tracklet.py:1175`, `src/eval_events.py:1065`, `src/motion_scan.py:2440` and `src/track_before_detect.py:645`, plus two `out/scan30/sam3_results.json` paths at `src/ball_fp_audit.py:72` and `src/tiny_ball_net.py:53` |
-| Five more bodies stand twice in two modules each | Worth 1 of this walk | `common` of `src/motion_scan.py:2441` and `src/track_before_detect.py:643`, `frame_detections` of `src/store.py:393` and `src/store_pg.py:417`, `log_message` and `_send` of `src/pid_anchor_ui.py:139,142` and `src/pid_seed_ui.py:145,148`, and `seeds_get` of `src/store.py:273` and `src/store_pg.py:268` |
+| Five more bodies stand twice in two modules each | Worth 1 of this walk | `common` of `src/motion_scan.py:2441` and `src/track_before_detect.py:643`, `frame_detections` of `src/store.py:393` and `src/store_pg.py:417`, `log_message` and `_send` of `src/pid_anchor_ui.py:139,142` and `src/pid_seed_ui.py:145,148`, and `seeds_get` of `src/store.py:277` and `src/store_pg.py:268` |
 | Three test literals restate the native pair | Note 1 of this walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57 NATIVE = (1280, 720)` and `tests/test_app_quad_contract.py:43 REF_WIDTH, REF_HEIGHT = 1280, 720` |
 | The duplicate-body walk reads module-level `def`s of `src/*.py` only | limit of round 51, still open | Strong 2 of this round lived inside it: the walk reaches 780 of the 1171 `def`s, and the docstring of `module_bodies` says that a nested `def` and a method do not count there |
 | The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, and this round repaired one citation by hand, `tests/test_tiny_ball_net.py:284 -> src/tiny_ball_net.py:625` |
@@ -5749,8 +5749,9 @@ Repair: `src/calib_segments.py:613 def verified_cloth_quad(dataset="vod30", t=No
 is now the one owner. It asks three steps in the order of `CLOTH_STEPS` at `:92`: the human segment of
 that dataset, the hand anchors of that dataset, then the scan corners. The first step with a quad wins,
 and the answer carries the step that answered. `anchors_reference_path` at `:569` is the only
-derivation of the anchor file name, and `SCAN_CORNERS` at `:101` is the only scan-corners path.
-`src/sam3_frame_audit.py:147` and `src/sam3_ball_cache.py:215` both call the owner. The audit keeps
+derivation of the anchor file name, and `SCAN_CORNERS` at `:101` is the single owner of the scan-corners path. [Round 89: the claim of
+this record was wrong. Six modules spelled the path, and all six now read the owner name.]
+`src/sam3_frame_audit.py:147` and `src/sam3_ball_cache.py:217` both call the owner. The audit keeps
 `anchors_path` as an override, and its default is now `None`. The cache takes keyword arguments, and
 `scan_corners_path` has no default of its own. The two callers keep one difference each: the audit
 reports a label, and the cache answers a bare array or `None`.
@@ -6762,7 +6763,7 @@ Repair: `src/projection.py` owns the rule as `def project_point(x, y, w, toleran
 at `:41`, with `DEFAULT_TOLERANCE = 1e-12` at `:36` for the physical path and `PIXEL_TOLERANCE = 1e-9`
 at `:38` for the pixel path. The owner answers `None`, never a `nan` coordinate. The eight readers call
 it (`annotator/unified_server.py:1622`, `src/calib_mapping_audit.py:102` and `:109`,
-`src/dense_queue.py:134`, `src/eval_events.py:361` and `:384`, `src/info_complete_scan.py:176`,
+`src/dense_queue.py:134`, `src/eval_events.py:361` and `:384`, `src/info_complete_scan.py:178`,
 `src/shot_pot_gate.py:530`). The gate is the one site that keeps its own contract: it translates the
 refusal into `raise ValueError("point maps to infinity")` and inherits the owner's decision. The
 boundary stays `abs(w) < tolerance`, so `w == 1e-12` answers `(2.0e12, 4.0e12)` under the default and
@@ -7409,7 +7410,7 @@ them: `tests/test_weight_pins.py:51 WEIGHT_NAME = Path(weight_pins.OSNET).name`,
 whose message says the owner holds the path and every other file reads it. Eight files under `src/` spelled
 the other weight by hand — `src/person_pipeline.py:49 DETECTOR_WEIGHTS_NAME = 'yolov8n.pt'`,
 `src/pid_associate.py:35 MODEL = YOLO("yolov8n.pt")` (with the comment at `:34` admitting the copy),
-`src/frame_inference.py:178`, `src/info_complete_scan.py:99`, `src/pid_shooter.py:31`,
+`src/frame_inference.py:178`, `src/info_complete_scan.py:101`, `src/pid_shooter.py:31`,
 `src/pid_shooter2.py:27`, `src/yolo_track.py:22` and `src/eval_faces.py:743` — and two of them already
 imported `weight_pins.OSNET` on the line above, which is the shape the guard exists to forbid.
 
@@ -9760,7 +9761,7 @@ from 23 to 25.
 
 Ground: the identical line `res = MODEL.predict(bgr, conf=0.35, classes=[0], verbose=False)` stood at
 `src/pid_associate.py:153`, `src/pid_shooter.py:70`, `src/pid_shooter2.py:83` and `src/yolo_track.py:49`, while
-`src/person_pipeline.py:108`, `src/frame_inference.py:191` and `src/info_complete_scan.py:105` asked the same
+`src/person_pipeline.py:108`, `src/frame_inference.py:191` and `src/info_complete_scan.py:107` asked the same
 question with the model default, and the ledger had recorded neither the number nor the zone rule of
 `src/pid_identity.py:85 in_table_zone`. Repair: `src/pid_identity.py:29 PERSON_CONF = 0.35` owns the value —
 that module and not `src/weight_pins.py`, because the same `MODEL.predict` call feeds the rules it already owns
@@ -10554,7 +10555,7 @@ The Lead measured.  The failing guard is `test_citation_lines`; the module
 `def seed_put` from `:281` to `:289`.  The Lead re-points a cited line when the file is outside
 the writer's scope.  The first attempt took the line number from
 `grep -n "def seed_put" src/store.py`, which answered two lines (122 and 289).  The citing text
-became a citation split over two lines.  The second attempt joined it to `` `src/store.py:289` ``
+became a citation split over two lines.  The second attempt joined it to `` `src/store.py:293` ``
 (commit `317aea8`).  Lesson: take a line number from a command that can answer one line, and read
 the citing line again after the edit.
 
