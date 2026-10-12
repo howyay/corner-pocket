@@ -8,7 +8,7 @@ such bodies:
 * the box-overlap rule, held by ``src/box_geometry.py iou`` and by
   ``src/person_pipeline.py _iou``.  The rule has its own guard in
   ``tests/test_box_geometry.py``, which also records the near miss
-  ``src/enroll_from_tracklet.py:156 face_area_iou`` (a name that ends in ``iou``
+  ``src/enroll_from_tracklet.py:158 face_area_iou`` (a name that ends in ``iou``
   and a body that differs);
 * the scalar coercion, held by ``src/event_gates.py num_or_none`` and by
   ``src/ball_census.py _num``.  One home: event_gates, and the census imports it;

@@ -147,7 +147,9 @@ REFUSAL_REASONS = (
     "no_stored_evidence",   # the identity index holds no usable face for that cluster
 )
 
-PROTECTED = (str(DEFAULT_STATE), str(DEFAULT_FACE_STORE))
+# Round 80 deleted `PROTECTED` here: no reader read it, so the promise was empty.
+# The owner of the list is src/eval_faces.py, and tests/test_protected_paths_owner.py
+# fails on a second binding of the name; tests/test_enroll_from_tracklet.py reads it.
 
 # --------------------------------------------------------------------------
 # pure helpers

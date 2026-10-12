@@ -86,7 +86,9 @@ DEFAULT_PLAN = {"vod30": {"anchors": 16, "burst": 10, "spacing": 15, "start": 30
 IOU_LINK = 0.5           # same person inside a burst (0.5s apart at 30fps)
 HEIGHT_BUCKETS = ((0, 250, "far"), (250, 400, "mid"), (400, 10_000, "near"))
 
-# Files the demo must never write. Recorded as md5 before/after.
+# Files the demo must never write. Recorded as md5 before/after. This tuple is the
+# one live list of protected paths: the enrol flow holds no second copy, and its
+# test reads this owner. tests/test_protected_paths_owner.py fails on a copy.
 PROTECTED = (
     STATE_DOCUMENT,
     SEED_DOCUMENT,

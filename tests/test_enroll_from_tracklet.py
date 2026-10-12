@@ -59,6 +59,10 @@ from src.enroll_from_tracklet import (  # noqa: E402
     scan_track,
     write_enrollment,
 )
+# The demo must never write the two enrolment files.  That list has one owner,
+# `PROTECTED` in src/eval_faces.py, so the protection cases below read the owner and
+# do not state the paths again.
+from src.eval_faces import PROTECTED  # noqa: E402
 
 DIM = 512
 PERSON = [100.0, 100.0, 300.0, 600.0]          # box the faces live in
@@ -432,12 +436,26 @@ class PlanTest(unittest.TestCase):
 
 
 class WriteTest(unittest.TestCase):
+    """The one write path: it copies into the scratch root and touches no production file.
+
+    The protected paths are not stated here.  The list has one owner, `PROTECTED` in
+    src/eval_faces.py, and this class reads the two enrolment paths from it.
+    """
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.scratch = self.root / "scratch"
         self.source = self.root / "production"
+        # The paths the production root must keep byte-identical, taken from the owner
+        # of the protected list.  A path the owner does not hold raises right here.
+        self.state = str(DEFAULT_STATE)
+        self.store = str(DEFAULT_FACE_STORE)
+        self.assertIn(self.state, PROTECTED,
+                      "src/eval_faces.py PROTECTED must hold the roster path")
+        self.assertIn(self.store, PROTECTED,
+                      "src/eval_faces.py PROTECTED must hold the face store path")
         (self.source / DEFAULT_STATE).parent.mkdir(parents=True)
         (self.source / DEFAULT_STATE).write_text(json.dumps(state_with()), encoding="utf-8")
         self.production_state = md5(self.source / DEFAULT_STATE)
@@ -450,9 +468,9 @@ class WriteTest(unittest.TestCase):
         self.assertTrue(Path(written["store"]).is_relative_to(self.scratch))
         self.assertEqual(json.loads(Path(written["store"]).read_text()), enrollment.store_json)
         self.assertEqual(json.loads(Path(written["state"]).read_text()), enrollment.roster_json)
-        self.assertEqual(md5(self.source / DEFAULT_STATE), self.production_state,
+        self.assertEqual(md5(self.source / self.state), self.production_state,
                          "production roster is byte-identical")
-        self.assertIsNone(md5(self.source / DEFAULT_FACE_STORE))
+        self.assertIsNone(md5(self.source / self.store))
 
     def test_copies_the_source_state_when_no_roster_payload_is_given(self):
         enrollment = plan_enrollment(collect_face_candidates(series(4), 1), track_id=1,
@@ -460,7 +478,7 @@ class WriteTest(unittest.TestCase):
         written = write_enrollment(self.scratch, enrollment, source_root=self.source)
         self.assertEqual(json.loads(Path(written["state"]).read_text()),
                          json.loads((self.source / DEFAULT_STATE).read_text()))
-        self.assertEqual(md5(self.source / DEFAULT_STATE), self.production_state)
+        self.assertEqual(md5(self.source / self.state), self.production_state)
 
     def test_refuses_a_scratch_root_that_contains_production(self):
         enrollment = plan_enrollment(collect_face_candidates(series(4), 1), track_id=1,
