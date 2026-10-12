@@ -10976,3 +10976,10 @@ A new number points a reader at a line that says something else.
 `c233599 refactor: the dead names of table_refine leave the tree`,
 `bd43fe9 docs: three citations follow the fixtures that round 90 moved`, and
 the citation commit of this record.
+
+### Suites
+
+The full python suite answers `Ran 2556 tests in 399.222s` and
+`OK (skipped=53)`.  The count moved from 2552 to 2556: one case from the guard
+of WR and three cases from the guard of WS.  The three node suites answer 232,
+23 and 114 pass with 0 failures.
