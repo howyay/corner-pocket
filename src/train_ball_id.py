@@ -24,6 +24,15 @@ from torchvision import transforms
 N_CLASSES = 16
 IMG = 96
 
+# The pretrained weights each backbone starts from.  This mapping is the one home
+# of the three weight names: ``src/confusion.py`` reads it instead of naming
+# resnet18's weights a second time.
+WEIGHTS = {
+    "mobilenetv3_small": "MobileNet_V3_Small_Weights.IMAGENET1K_V1",
+    "squeezenet1_0": "SqueezeNet1_0_Weights.IMAGENET1K_V1",
+    "resnet18": "ResNet18_Weights.IMAGENET1K_V1",
+}
+
 
 class BallCrops(Dataset):
     def __init__(self, items, tf):
@@ -96,10 +105,7 @@ def main():
             if len(set(c for _, c in test_items)) < 2:
                 continue
             torch.manual_seed(0)
-            model = make_model(name, torchvision.models.get_weight(
-                {"mobilenetv3_small": "MobileNet_V3_Small_Weights.IMAGENET1K_V1",
-                 "squeezenet1_0": "SqueezeNet1_0_Weights.IMAGENET1K_V1",
-                 "resnet18": "ResNet18_Weights.IMAGENET1K_V1"}[name]))
+            model = make_model(name, torchvision.models.get_weight(WEIGHTS[name]))
             opt = torch.optim.Adam(model.parameters(), lr=1e-3)
             lossf = nn.CrossEntropyLoss()
             train_ds = BallCrops(train_items, tf_train)

@@ -57,7 +57,9 @@ from src.datasets import media_path  # noqa: E402
 VIDEO = media_path(ROOT, "vod30")
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 SCAN_QUAD = ROOT / "out" / "corners_30min_v2.json"
-OUT = ROOT / "out" / "calib_vod30_segments.measure.json"
+# The measurement artifact this tool writes.  This constant is the one home of the
+# path: ``src/calib_segment_fit.py`` reads the artifact and imports this name.
+MEASURE_ARTIFACT = ROOT / "out" / "calib_vod30_segments.measure.json"
 
 # The candidate windows the gate report flagged, plus a probe either side of the
 # reported late candidates so the boundary is located, not assumed.  The two
@@ -347,7 +349,7 @@ def main(argv=None):
     ap.add_argument("--every", type=float, default=60.0)
     ap.add_argument("--until", type=float, default=1800.0)
     ap.add_argument("--at", type=float, nargs="*", default=list(CANDIDATE_TIMES))
-    ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--out", default=str(MEASURE_ARTIFACT))
     return run(ap.parse_args(argv))
 
 

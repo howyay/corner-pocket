@@ -12,7 +12,7 @@ from torchvision import transforms
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
-from train_ball_id import BallCrops, make_model, N_CLASSES, IMG  # noqa
+from train_ball_id import BallCrops, WEIGHTS, make_model, N_CLASSES, IMG  # noqa
 
 NAME = 'resnet18'
 labels_dir = ROOT / 'out' / 'unlabeled_crops'
@@ -35,7 +35,7 @@ for held in frames:
     train_items = [it for f in frames if f != held for it in by_frame[f]]
     test_items = by_frame[held]
     torch.manual_seed(0)
-    model = make_model(NAME, torchvision.models.get_weight('ResNet18_Weights.IMAGENET1K_V1'))
+    model = make_model(NAME, torchvision.models.get_weight(WEIGHTS[NAME]))
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     lossf = nn.CrossEntropyLoss()
     dl = DataLoader(BallCrops(train_items, tf_train), batch_size=16, shuffle=True)

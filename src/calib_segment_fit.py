@@ -40,12 +40,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.calib_segment_measure import MEASURE_ARTIFACT  # noqa: E402
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
 from src.calib_segments import VERIFIED_FRAMES  # noqa: E402
 from src.event_gates import GateConfig  # noqa: E402
 from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
-MEASURE = ROOT / "out" / "calib_vod30_segments.measure.json"
+# The measurement this tool reads: ``src/calib_segment_measure.py`` owns the
+# artifact path (``MEASURE_ARTIFACT``) and writes the file.
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
 ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
 OUT = ROOT / "out" / "calib_vod30_segments.json"
@@ -341,7 +343,7 @@ def build(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--measure", default=str(MEASURE))
+    ap.add_argument("--measure", default=str(MEASURE_ARTIFACT))
     ap.add_argument("--video", default=str(VIDEO))
     ap.add_argument("--out", default=str(OUT))
     return build(ap.parse_args(argv))

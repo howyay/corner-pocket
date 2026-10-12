@@ -21,7 +21,8 @@ import sys
 import uuid
 
 from src import db
-from src.store_files import SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir, documents
+from src.store_files import (SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir, documents,
+                             has_documents_table)
 
 # The rebuild copies each live table's definition (LIKE ... INCLUDING ALL): same
 # columns, defaults, CHECKs and unique indexes; foreign keys are not copied, which
@@ -110,7 +111,8 @@ def check(conn) -> list[str]:
 def main(argv=None) -> int:
     try:
         with db.connect() as conn:
-            if conn.execute("SELECT to_regclass('json_documents')").fetchone()[0] is None:
+            # ``src/store_files.py`` owns the json_documents probe; read the owner.
+            if not has_documents_table(conn):
                 print("json_documents does not exist: apply the migrations first (python -m src.db)", file=sys.stderr)
                 return 2
             problems = check(conn)
