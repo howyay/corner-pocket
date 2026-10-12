@@ -43,7 +43,7 @@ def build(state):
     def side(m, index):
         """A side as the console names it, a bye, or the board's own word-free marker.
 
-        ops.js sideName (annotator/ops.js:884) hands a side no entrant holds to ename,
+        ops.js sideName (annotator/ops.js:904) hands a side no entrant holds to ename,
         which answers with a word from the console's table in the console's language
         (t('pending')). This payload carries no words - annotator/board.js owns the
         board's, and its tbd is "To be decided"/"待定" - so a side the board cannot name
