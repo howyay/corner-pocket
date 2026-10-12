@@ -25,7 +25,7 @@ had owners, and no case named the extra sites.
 
 What this module reads, and what it does not
 --------------------------------------------
-* It reads the source text of three files of this checkout, with one regex per console line.
+* It reads the source text of four files of this checkout, with one regex per console line.
   A copy of a rule in a form this module does not match - a value built at run time, a second
   panel - is invisible to it.
 * It reads no meaning on the console side.  The rendered option list and the rendered seed
@@ -34,9 +34,11 @@ What this module reads, and what it does not
   and ``tests/test_console_vocabulary.py`` holds the box labels and the verdict words.  This
   module holds the two vocabularies of round 70, and the three write scopes stay apart.
 * ``annotator/index.html`` states the four shooter values a third time, for the review form
-  of the list page.  That page is not the console of this module, and the round-70 write
-  scope does not hold it.  This module reads the annotate route of the service instead, and
-  the guard of the list page belongs to a later round.
+  of the list page.  That page is not the console of this module.  This module reads the
+  annotate route of the service instead.  Round 86 holds the page as well: round 70 read
+  the console copy, and round 86 reads the page copy.  The two cases are
+  ``test_the_four_shooter_values_of_the_review_page_are_the_owner_set`` and
+  ``test_the_review_page_states_the_four_values_of_the_owner_tuple``.
 * The service realm owns the words.  The console is a static file that reads no schema of
   the server, so it holds its own copy on purpose, and this module holds the two copies
   equal in value and in order.
@@ -58,10 +60,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CONSOLE = 'annotator/vision-stage.js'
 SERVICE = 'annotator/unified_server.py'
 MIGRATION = 'db/migrations/0002_user_data.sql'
+LIST = 'annotator/index.html'
 
 CONSOLE_TEXT = (ROOT / CONSOLE).read_text(encoding='utf-8')
 SERVICE_TEXT = (ROOT / SERVICE).read_text(encoding='utf-8')
 MIGRATION_TEXT = (ROOT / MIGRATION).read_text(encoding='utf-8')
+LIST_TEXT = (ROOT / LIST).read_text(encoding='utf-8')
 
 #: The one line of the console that states the four shooter rows.
 SHOOTER_HOME = re.compile(r"^const SHOOTER_CHOICES = (\[.*\]);$", re.MULTILINE)
@@ -82,6 +86,8 @@ DATA_VALUE = re.compile(r'data-vs-value="([^"$]*)"')
 #: The select of the annotation form.
 SELECT_HOME = re.compile(
     r'<select data-vs-action="shooter">\$\{SHOOTER_CHOICES\.map\(\(\[v, l\]\) =>')
+#: The whole select block of the review form of the list page, from the tag to its close.
+LIST_SELECT = re.compile(r'<select class="shooter">.*?</select>', re.DOTALL)
 
 
 def line_of(text, index):
@@ -131,6 +137,19 @@ def console_shooter_value_sites(text=CONSOLE_TEXT):
             if found.group(1) in ('A', 'B', '?'):
                 sites.append((number, found.group(1)))
     return sites
+
+
+def page_shooter_values(text=LIST_TEXT):
+    """The option values of the shooter select of the review page, in the order of the page.
+
+    Each option value stands as a quoted literal on its own line.  A value that is built at
+    run time, and a second shooter select of the page, are invisible to this reader.
+    """
+    block = line(LIST_SELECT, text, LIST).group(0)
+    found = tuple(OPTION_VALUE.findall(block))
+    if not found:
+        raise AssertionError(f'{LIST}: no option value in the shooter select')
+    return found
 
 
 def console_seed_value_sites(text=CONSOLE_TEXT):
@@ -209,6 +228,66 @@ class Round70Vocabulary(unittest.TestCase):
         self.assertNotIn('not in ("A", "B", "?", "")', route,
                          f'{SERVICE}: the annotate route holds a second literal list of the '
                          'four values')
+
+    # ---- the review page of the list server, round 86 --------------------------------------
+
+    def test_the_four_shooter_values_of_the_review_page_are_the_owner_set(self):
+        """The review page offers one value of the owner tuple and no other value.
+
+        The page lists the empty value first, and the tuple lists it last.  A reader of the
+        page and a reader of the tuple test one value for membership, so the order is not the
+        fact.  The case compares the two sets, and not the two sequences.
+        """
+        service = words_of(SERVICE_SHOOTER_HOME, SERVICE_TEXT, SERVICE)
+        self.assertEqual(set(service), set(page_shooter_values()),
+                         f'{LIST}: the shooter select and SHOOTER_WORDS disagree')
+
+    def test_the_review_page_states_the_four_values_of_the_owner_tuple(self):
+        """The review page holds the four values of the owner tuple, and no fifth value.
+
+        The page lists the empty value first, and the tuple lists it last.  A shipper of a
+        page reads one value and tests it for membership, so the order of that value is not
+        the fact.  The case compares the three named values in order.  It holds the empty
+        value apart, because only its presence is the fact.  The case fails on a value the
+        page offers and the tuple does not hold, and on a value the tuple holds and the page
+        does not offer.
+        """
+        service = words_of(SERVICE_SHOOTER_HOME, SERVICE_TEXT, SERVICE)
+        page = page_shooter_values()
+        self.assertEqual(('',), tuple(value for value in page if value == ''),
+                         f'{LIST}: the shooter select must offer the not-recorded value once')
+        self.assertEqual(tuple(value for value in service if value != ''),
+                         tuple(value for value in page if value != ''),
+                         f'{LIST}: the shooter select must state the three named values of '
+                         'SHOOTER_WORDS, in the order of that tuple')
+
+    def test_a_planted_fifth_option_of_the_review_page_is_reported(self):
+        """A fifth option value of the review page is reported, on the text in memory.
+
+        The plant adds one option to a copy of the page text.  The plant works on the text in
+        memory, and it never touches a file of the checkout.  The case plants a value the
+        owner tuple does not hold.  The reader reports it, and the two guards of the page
+        fail on it.
+        """
+        service = words_of(SERVICE_SHOOTER_HOME, SERVICE_TEXT, SERVICE)
+        planted = LIST_TEXT.replace(
+            "<option value=\"?\" ${shooter(e)==='?'?'selected':''}>",
+            "<option value=\"C\">x</option><option value=\"?\" "
+            "${shooter(e)==='?'?'selected':''}>", 1)
+        self.assertNotEqual(LIST_TEXT, planted, 'the plant found the unknown option to change')
+        self.assertIn('<option value="C">', planted,
+                      'the plant must leave an option value the reader can read')
+        self.assertEqual(('', 'A', 'B', 'C', '?'), page_shooter_values(planted),
+                         'the plant must add one option value the reader reports')
+        self.assertNotEqual(set(service), set(page_shooter_values(planted)),
+                            'the guard of the set must fail on a value the page offers and the '
+                            'tuple does not hold')
+        self.assertNotEqual(
+            tuple(value for value in service if value != ''),
+            tuple(value for value in page_shooter_values(planted) if value != ''),
+            'the guard of the named values must fail on the planted value too')
+        self.assertEqual(('', 'A', 'B', '?'), page_shooter_values(),
+                         'the checkout holds the four values, and no fifth value')
 
     # ---- the seed role words, console side -------------------------------------------------
 
