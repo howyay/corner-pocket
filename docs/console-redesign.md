@@ -11545,3 +11545,136 @@ stylesheet, because a theme block re-decides colours on purpose.  A citation gua
 that only asks whether the target line holds text cannot see a wrong number, so a
 repair of that class is proved by a grep of the old and the new line, not by a red
 run.
+
+## Round 97 - the suite names, the envelope word, the twitch headers and the font list
+
+Round 97 held two read-only walks and six writers.  The first walk measured at `45fdb71`
+and the second at `f4ff7d8`.  The second replaced the report file of the first, so the
+rows of the first walk stand in its briefs and in this record.
+
+### The rows of the first walk
+
+**Strong 1 - the three javascript suite names stand twice.**  The runner owns them at
+`scripts/pool-test.sh:43` (`  for suite in tests/test_ops.js tests/test_board.js tests/test_app_timeline.js; do`),
+and `README.md:88` names them again in a comment.  The gate at
+`tests/test_pool_test_suites.py:73` (`        if not line.lstrip().startswith('node'):`)
+dropped that line, so the copy had no reader: measured, `named_documents()` answered six
+names including `README.md`, and `suite_lines('README.md')` answered `[]`.  Writer X4
+added `copy_line` and `copy_reports` and two cases.  The case that lists the documents
+which run a suite keeps its answer, because `suite_lines` still wants a line that starts
+with the word `node`.  `tests/test_pool_test_suites.py` rose 136 to 203 lines and 6 to 8
+cases; `README.md` did not change, because the defect was the missing reader.
+
+**Strong 2 - the envelope word of the public board.**  The service owns it at
+`annotator/public_board.py:20 OFF = {"board": "off"}` and `:90         "board": "on",`;
+the console judges it at `annotator/board.js:227         if (!board || (board.board !== 'on' && board.board !== 'off')) return 'failed';`;
+a third copy stands in the loader at `tests/load_public_board.py:474`.  No case read both
+realms.  Writer X5 added two cases to `tests/test_board_api.py` (24 to 26 cases) with the
+measured shapes: the service states each word once, the console states the pair three times
+(`(227,'on')`, `(227,'off')`, `(279,'off')`).  It kept the cited line 484 still, because
+`docs/console-redesign.md:5951` cites it.
+
+**Note - four citations that named the wrong line.**  The sentence at
+`docs/vision-audit.md:138` cited `annotator/unified_server.py:928-929` and `:957-958`,
+`annotator/app.html:17` and `annotator/ops.js:6`.  Writer X6 re-pointed two of them to
+`annotator/unified_server.py:198 LEGACY_PAGE_REDIRECTS = {'/ops.html': '/', '/app.html': '/'}`
+and `annotator/unified_server.py:193 PAGE_ALIASES = {'/': 'ops.html'}`, and struck the
+other two: no brand anchor stands in the tree, and `ops.js` holds no `tab='floor'`.  It
+repaired two more sites of the same class, line 306 and line 27.
+
+### The rows of the second walk
+
+**Strong 1 - the twitch request header table stands twice.**  The user agent stood at
+`annotator/twitch_source.py:185`, `annotator/twitch_vod_source.py:149` and `:180`, and the
+header names at `annotator/twitch_source.py:188` and `annotator/twitch_vod_source.py:152`.
+`grep -rn "User-Agent\|Mozilla" tests/` answered no match.  Writer X7 gave the table one
+home: `annotator/twitch_source.py:49 USER_AGENT = 'Mozilla/5.0'`, `:50 ACCEPT = 'Accept'`
+and `:53 def request_headers(accept)`, with readers at `annotator/twitch_source.py:205`,
+`annotator/twitch_vod_source.py:151` and `:182`.  Its guard
+`tests/test_twitch_headers_owner.py` builds one real request through `_raw` and reads the
+headers back, so the table is live and not only declared.
+
+**Strong 2 - the backup mode stands in nine live places.**  The script owns the rule at
+`scripts/pool-postgres-backup.sh:11 umask 077` and checks it at `:23`; the units hold
+`UMask=0077` at `deploy/systemd/pool-postgres-backup.service:19` and
+`deploy/systemd/pool-postgres-verify.service:15`; `docs/postgres.md:205` promises the
+directory mode 700 and the file mode 600.  Writer X8 added two cases to
+`tests/test_backup_retention.py` (6 to 8 cases); the guard derives both modes from the umask
+and names the offender.
+
+**Strong 3 - the font build copy list had drifted.**  `annotator/fonts/build_fonts.py:36`
+held the hand copy `COPY_FILES = ('ops.js', 'vision-stage.js', 'app.js', 'ops.html', 'app.html')`
+of the served list `annotator/unified_server.py:190-191 PAGE_FILES`, which also serves
+`/clock-sync.js` and `/duration.js`.  The drift was live: `令`, `忙` and `繁` at
+`annotator/clock-sync.js:88-89` stood in no copied file, so the UI subset could not carry
+them.  Writer X9 made the copy list read the served list (`copy_names` at
+`annotator/fonts/build_fonts.py:49`, `COPY_FILES = copy_names()` at `:65`) and added
+`tests/test_font_coverage_owner.py` with eight cases, one per claim.
+
+### The Lead bites
+
+- `scripts/pool-test.sh:43` (X4): the runner lost a suite name.  Four cases went red, one
+  naming `README.md:88: names [...], the runner runs [...]`.
+  `bfe7501f8e1ef033704d95c820c86151791a5032 -> fc11dc32b8cb2d06938818567a216d4c066be728 -> bfe7501f8e1ef033704d95c820c86151791a5032`.
+- `annotator/public_board.py:90` (X5): `"board": "on"` became `"board": "oan"`.  Five cases
+  went red.  `f8508f9a8fceaca53ca1088d0d15d511f6ffb059 -> 95a26a881c95b0fbf680125592f4a81717d585d7 -> f8508f9a8fceaca53ca1088d0d15d511f6ffb059`.
+- `scripts/pool-postgres-backup.sh:11` (X8): `umask 077` became `umask 022`.  The red named
+  the script and derived both modes from the new umask.
+  `c5a9bfbf0af3501dc594a8467e96f32f1a2a9699 -> 11f302142893401abee1c68f505f27902009236f -> c5a9bfbf0af3501dc594a8467e96f32f1a2a9699`.
+- `annotator/twitch_vod_source.py:182` (X7): the reader lost the home and wrote the literal
+  table again.  Three cases went red and named that line.
+  `8d95e6b89b3a8fa8f75366a545ef1e6957785d2c -> e9b506865a1bee4fc42fe3602bbcc67f4e872b5d -> 8d95e6b89b3a8fa8f75366a545ef1e6957785d2c`.
+- `annotator/unified_server.py:191` (X9): the served list lost `'/clock-sync.js'`.  The copy
+  list followed it, and three cases went red, one for each character: `令` 20196, `忙` 24537,
+  `繁` 32321.
+  `3eea5a485da784ce9634b3d238ad991c18848896 -> 7f08d5d23dd428d37280962d722bf0f9cae34925 -> 3eea5a485da784ce9634b3d238ad991c18848896`.
+
+### The citations
+
+The twitch insert moved 20 lines of `annotator/twitch_source.py` after line 40 and 2 lines
+of `annotator/twitch_vod_source.py` after line 145.  The Lead paid 31 citation sites: 23
+moved, each one checked by the text of the old line against the text of the new line, and 8
+stayed because their number sits below the cut or because the target line held no text
+before the edit.  `./scripts/pool-test.sh python test_citation_lines` answers OK.
+
+### Commits
+
+`0ee4b38 test: the readme copy names every suite the runner runs`,
+`c80c83a docs: the vision audit citations name the line that holds their text`,
+`26f08b8 test: the public board envelope words answer each other`,
+`082177e test: the backup mode words answer the script umask`,
+`0591645 refactor: the twitch request headers read one home`,
+`49ee877 docs: the citations follow the twitch shifts of round 97`,
+`2884dfe refactor: the font copy list reads the served list`.
+
+### Lessons
+
+1. A walk must not run while a writer holds the tree.  This round ran the second walk
+   beside three writers; the walk saw ` M docs/vision-audit.md` and
+   ` M tests/test_pool_test_suites.py` appear under it and reported the fact itself.  The
+   rule stands: no writer is active while a walk runs.
+2. Measure the sha1 before and after every bite.  The first bite of
+   `annotator/twitch_vod_source.py` used a `sed` whose pattern matched no line, so the sha1
+   answered the same value before and during and the bite proved nothing.  The second
+   attempt found the line with `grep -n` and turned three cases red.
+3. A `sed` on a value that already holds the same bytes changes nothing.  Writer X9 and the
+   Lead both met this shape this round.
+4. A walk that writes to one report path replaces the earlier report.  The first walk of
+   this round wrote `/tmp/dshsess/walk_round97.md` and the second replaced it.  A round with
+   two walks must give each its own path.
+
+### Open rows
+
+- `docs/vision-audit.md` sections 1, 2.2, 2.3, 3.3, 6 and 7 describe the review client that
+  the tree no longer holds: `renderEvents()`, `visionScreenUnified()`, `twitchEmbed()` and
+  `reviewModes` answer no line, and `app.html:42-46` sits past the end of that twenty line
+  file.  Writer X6 repaired the citations it could prove and reported the rest.  The
+  sections need a rewrite, not a number.
+- `tests/load_public_board.py:474` holds a third copy of the envelope pair
+  (`not in ("on", "off")`) that no case reads.  Writer X5 reported it: a rename that touches
+  both realms passes `tests/test_board_api.py` and breaks that loader.
+- The committed subsets `noto-sans-sc-400.woff2`, `noto-sans-sc-500.woff2` and
+  `noto-serif-sc-500.woff2` hold none of `令`, `忙` and `繁`.  The next font build must add
+  them.
+- The documents hold 582 citations that name a blank line, measured by the walk of round 94.
+  They stand as debt.
