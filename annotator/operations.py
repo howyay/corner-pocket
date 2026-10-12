@@ -35,6 +35,11 @@ from annotator.shot_clock import DEFAULT_DURATION, MAX_DURATION, MIN_DURATION
 # and every other reader refuse one shape. annotator/twitch_source.py imports no module
 # of this layer, so this adds no cycle.
 from annotator.twitch_source import TWITCH_LOGIN
+# The whole-seconds rule has one owner: src/datasets.py holds ``whole_seconds``.  This module
+# reads it, so the action layer and the import layer judge one number the same way, and the
+# refusal keeps this layer's voice (the WHOLE_SECONDS skeleton imported above).
+# src/datasets.py reads only annotator/refusals.py, so this adds no cycle.
+from src.datasets import whole_seconds
 
 # This module owns the longest note.  One number bounds the note the operator adds
 # (``note_add``) and the notes of a saved regular (``player_save``).  The console mirrors
@@ -130,10 +135,15 @@ def text(value, name, maximum=LONGEST_NAME):
 
 
 def seconds(value, name):
-    """A position in a broadcast: whole seconds, 0 or more (the rule src/datasets.py uses)."""
-    if isinstance(value, bool) or type(value) is not int or value < 0:
-        raise TemplateError(WHOLE_SECONDS, name=name)
-    return value
+    """A position in a broadcast: whole seconds, 0 or more.
+
+    The rule has one owner (``src/datasets.whole_seconds``): this function adds the refusal
+    voice of this layer, so one number is judged once and refused by one skeleton.
+    """
+    try:
+        return whole_seconds(value, name)
+    except ValueError:
+        raise TemplateError(WHOLE_SECONDS, name=name) from None
 
 
 def vod_id(value):

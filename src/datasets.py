@@ -25,6 +25,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.served_files import bare_name
+# The whole-seconds rule's sentence has one home: annotator/refusals.py states WHOLE_SECONDS as a
+# row of TEMPLATES.  This module owns the rule itself (:func:`whole_seconds` below) and reads the
+# sentence, so the two spellings cannot drift apart.  annotator/refusals.py imports no module of
+# this repository, so this adds no cycle.
+from annotator.refusals import WHOLE_SECONDS
 
 #: The built-in recordings: id -> (scan folder under out/, media file under data/).
 STATIC = {"vod30": ("scan30", "vod_30min_260815.mp4"),
@@ -68,10 +73,18 @@ class Dataset:
         return _inside(self.media_dir, self.media_name, file=True)
 
 
-def _seconds(value, name):
+def whole_seconds(value, name):
+    """A position in a broadcast: whole seconds, 0 or more.
+
+    This is the rule's one implementation; ``annotator/operations.seconds`` and
+    ``annotator/vod_import._whole`` read it.  A whole-valued float counts (``12.0``): JSON
+    states a whole number as a number, and the import form states it in a query string.  The
+    sentence is the table's row (``annotator.refusals.WHOLE_SECONDS``); this module spells no
+    copy of it.
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)) \
             or not math.isfinite(value) or value < 0 or int(value) != value:
-        raise ValueError(f"{name} must be a whole number of seconds, 0 or more")
+        raise ValueError(WHOLE_SECONDS.format(name=name))
     return int(value)
 
 
@@ -88,7 +101,7 @@ def imported_id(vod_id, start_s=None, end_s=None):
         return f"tw-{vod}"
     if start_s is None or end_s is None:
         raise ValueError("a range needs both start_s and end_s")
-    start, end = _seconds(start_s, "start_s"), _seconds(end_s, "end_s")
+    start, end = whole_seconds(start_s, "start_s"), whole_seconds(end_s, "end_s")
     if end <= start:
         raise ValueError("end_s must be after start_s")
     return f"tw-{vod}-{start}-{end}"

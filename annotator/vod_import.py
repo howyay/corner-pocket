@@ -38,13 +38,14 @@ from urllib.parse import urlencode
 from annotator.ffmpeg_bin import MediaBinaryMissing, resolve_ffmpeg, resolve_ffprobe
 # The byte count an operator reads has one home: annotator.refusals.size_text owns the rule, so
 # this module imports the name instead of holding a second copy of it.
-from annotator.refusals import (CHANNEL_REFUSAL, FFMPEG_FAILED, SCAN_CHANNEL, channel_refusal,
-                                disk_refusal, filled_refusal, job_identity, size_text)
+from annotator.refusals import (CHANNEL_REFUSAL, FFMPEG_FAILED, SCAN_CHANNEL, WHOLE_SECONDS,
+                                channel_refusal, disk_refusal, filled_refusal, job_identity,
+                                size_text)
 # The Twitch channel login has one home: annotator.twitch_source holds TWITCH_LOGIN. This
 # module reads that name at the thumbnail guard below, so it spells the shape no more.
 from annotator.twitch_source import TWITCH_LOGIN
 from src.atomic_write import write_atomic
-from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index
+from src.datasets import INDEX, clock, imported_id, parse_imported_id, read_index, whole_seconds
 
 # How many broadcasts one channel contributes to the archive. The Twitch GraphQL `videos`
 # connection exposes no working cursor - measured 2026-10-03 on a channel with hundreds of
@@ -128,18 +129,24 @@ def redact(text):
 
 
 def _whole(value, name, default):
-    """A whole number of seconds, 0 or more (JSON number or query string), or ``default``."""
+    """A whole number of seconds, 0 or more (JSON number or query string), or ``default``.
+
+    The rule has one owner (``src.datasets.whole_seconds``): this reader keeps the import route's
+    own voice and its own two not-collected spellings (None and the blank string), and it is the
+    only reader that parses the query-string spelling.  The sentence is the table's row
+    (``annotator.refusals.WHOLE_SECONDS``); this module spells no copy of it.
+    """
     if value is None or value == "":
         return default
     if isinstance(value, str):
         try:
             value = float(value)
         except ValueError:
-            raise VodImportError(f"{name} must be a whole number of seconds") from None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) \
-            or value < 0 or int(value) != value:
-        raise VodImportError(f"{name} must be a whole number of seconds, 0 or more")
-    return int(value)
+            raise VodImportError(WHOLE_SECONDS.format(name=name)) from None
+    try:
+        return whole_seconds(value, name)
+    except ValueError:
+        raise VodImportError(WHOLE_SECONDS.format(name=name)) from None
 
 
 def seconds_done(values):
