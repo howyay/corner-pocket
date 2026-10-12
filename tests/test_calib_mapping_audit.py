@@ -250,7 +250,14 @@ class ClaimFrameProjectionTests(unittest.TestCase):
         ha, _hb, quad_a, _qb, _pockets = load_mappings()
         probe = Probe("no-such-video.mp4", ha, np.linalg.inv(ha), quad_a)
         mm = [635.0, 1270.0]
+        # The fallback must answer from the physical mapping.  Say that fact twice:
+        # the probe carries no claim inverse, and a probe that carries ANOTHER
+        # claim inverse must answer with that other mapping, not with the physical one.
+        self.assertIsNone(probe.claim_inverse)
         self.assertEqual(probe.claim_px(mm), probe.px(mm))
+        other = Probe("no-such-video.mp4", ha, np.linalg.inv(ha), quad_a,
+                      claim_inverse=np.linalg.inv(_hb))
+        self.assertNotEqual(other.claim_px(mm), other.px(mm))
 
     def test_claim_calibration_is_none_without_the_artifact(self):
         import tempfile
