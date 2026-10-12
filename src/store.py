@@ -85,6 +85,14 @@ SHARED_ARTIFACTS = {
     "seed_prototypes": "pid_seed_protos.json",
     "event_actors": "events_actors.json",
 }
+# The fourth sibling file at the out/ root: the track map of the seed pass.  It is a
+# shared artifact too, so it takes no dataset argument.  `tracklets()` holds the vod30
+# rule: the file belongs to vod30 alone, as SEED_DATASET does for the seed document.
+TRACKLETS_NAME = "pid2_tracklets.json"
+# The four file names of the out/ root, in one order.  A served reader takes a name
+# from here, so no reader spells one of them again.  The guard of this rule is
+# tests/test_shared_artifact_names.py.
+SHARED_ARTIFACT_NAMES = (*SHARED_ARTIFACTS.values(), TRACKLETS_NAME)
 
 
 @runtime_checkable
@@ -123,7 +131,7 @@ class Store(Protocol):
     def anchors_get(self, dataset: str) -> dict: ...
     def anchors_put(self, dataset: str, t_key: str, pts: list) -> None: ...
     # precomputed, read-only for the server (sections 5 and 6)
-    def artifact(self, kind: str, dataset: str) -> Any: ...
+    def artifact(self, kind: str, dataset: str | None = None) -> Any: ...
     def queue(self, dataset: str) -> list: ...
     def queue_window(self, dataset: str, t0: float, t1: float) -> list: ...
     def tracklets(self, dataset: str) -> dict: ...
@@ -363,10 +371,11 @@ class JsonStore:
         :func:`src.datasets.lookup`, so the report sits in the folder ``queue()``
         reads: ``out/vods/<id>/`` for an imported VOD, ``out/scan30/`` for a built-in.
         """
-        if kind in SHARED_ARTIFACTS:
+        if kind in SHARED_ARTIFACTS or kind == "tracklets":
             if dataset is not None:
                 raise ValueError(f"{kind} belongs to no dataset; drop the dataset argument")
-            return _read(self.out / SHARED_ARTIFACTS[kind], None)
+            name = TRACKLETS_NAME if kind == "tracklets" else SHARED_ARTIFACTS[kind]
+            return _read(self.out / name, None)
         if kind not in ARTIFACTS:
             raise ValueError(f"unknown artifact kind: {kind}")
         if dataset is None:
@@ -384,7 +393,7 @@ class JsonStore:
     def tracklets(self, dataset: str) -> dict:
         if dataset != "vod30":
             return {}
-        return _read(self.out / "pid2_tracklets.json", {})
+        return _read(self.out / TRACKLETS_NAME, {})
 
     def frame_detections(self, dataset: str, frame_index: int) -> dict | None:
         """The JSON store has no precomputed overlays: callers compute them live."""

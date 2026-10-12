@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PID-6 player seed UI (port 8127): person clicks the player for one track
 per frame; then embedding prototypes are rebuilt from the clicked person and
-propagated through all tracklets (out/pid_seed_protos.json + track map).
+propagated through all tracklets (SEED_PROTOTYPES of src.store.py + track map).
 
 Serves:
   GET  /                     -> UI (click a person circle in the preview)
@@ -36,11 +36,14 @@ from src.reply_body import write_reply  # noqa: E402
 # The seed document path has one owner, src.store_files.SEED_DOCUMENT. This module
 # reads the name, so it holds no second copy of the path.
 from src.store_files import SEED_DOCUMENT  # noqa: E402
+# The three artifact names of the out/ root have one owner, src.store.py.  This
+# module reads them, so it spells none of the three again.
+from src.store import SHARED_ARTIFACTS, TRACKLETS_NAME  # noqa: E402
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
-TR = ROOT.parent / "out" / "pid2_tracklets.json"
+TR = ROOT.parent / "out" / TRACKLETS_NAME
 SEED = ROOT.parent / SEED_DOCUMENT
-PROTO = ROOT.parent / "out" / "pid_seed_protos.json"
-TRK = ROOT.parent / "out" / "pid_seed_tracks.json"
+PROTO = ROOT.parent / "out" / SHARED_ARTIFACTS["seed_prototypes"]
+TRK = ROOT.parent / "out" / SHARED_ARTIFACTS["seed_propagation"]
 
 tr = json.load(open(TR))
 cap = cv2.VideoCapture(str(VIDEO))

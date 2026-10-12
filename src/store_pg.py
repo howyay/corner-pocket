@@ -404,7 +404,10 @@ class PostgresStore:
             self._store_doc(conn, path, saved, project)
 
     # -- precomputed (design 5, 6): still the JSON files, see the module doc --
-    def artifact(self, kind: str, dataset: str):
+    def artifact(self, kind: str, dataset: str | None = None):
+        # The names of the out/ root have one owner, src/store.py.  This layer reads
+        # that owner through the file store, so the two layers cannot answer two
+        # files for one kind, and neither of them spells a name here.
         return self._files.artifact(kind, dataset)
 
     def queue(self, dataset: str) -> list:

@@ -2141,14 +2141,18 @@ class Backend:
         valid = {f'{tk["id"]}:{win}' for win, window in self.tracks().items() for tk in window["tracklets"]}
         labels = {key: seed["label"] for key, seed in self.seeds()["seeds"].items()
                   if key in valid and seed.get("label") in SEED_ROLES}
-        prediction = load(self.out / "pid_seed_tracks.json", {})
+        # The store owns the four names of the out/ root, so this reader spells none
+        # of them.  One kind answers the same file on both backings, which read the
+        # same JSON today.
+        prediction = self.store().artifact("seed_propagation") or {}
         if not {"A", "B"}.issubset(set(labels.values())) or prediction.get("seed_labels") != labels:
             return {"map": {}, "detail": {}, "stale": True,
                     "reason": "Rebuild required with current explicit A and B seeds"}
         return dict(prediction, stale=False)
 
     def tracks(self):
-        return load(self.out / "pid2_tracklets.json", {})
+        # One name, one owner: see the note in predictions() above.
+        return self.store().artifact("tracklets") or {}
 
     def seeds(self):
         return self.store().seed_file("vod30")
@@ -2235,8 +2239,9 @@ class Backend:
                 # The rule that joins an event to its actor has one owner,
                 # src/events_actors.py.  The legacy review server (annotator/server.py)
                 # calls the same function, so the two routes cannot disagree about
-                # which actor a time belongs to.
-                rows = load(self.out / "events_actors.json", [])
+                # which actor a time belongs to.  The file name comes from the same
+                # owner, so a moved file moves for the two backings together.
+                rows = self.store().artifact("event_actors") or []
                 actors = join_events_to_actors(events, rows)
             return {"events": events, "annotations": self.store().verdicts_get(dataset),
                     "actors": actors, "geometry": geometry}
