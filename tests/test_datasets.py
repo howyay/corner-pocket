@@ -218,19 +218,52 @@ class DatasetIdGrammarTests(unittest.TestCase):
                                      f"{text!r} is both an imported id and a published name")
 
 
+def docstring_nodes(tree):
+    """The string nodes that hold a docstring."""
+    holders = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, holders) or not node.body:
+            continue
+        first = node.body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                and isinstance(first.value.value, str):
+            found.add(id(first.value))
+    return found
+
+
+def spelled_media_names(text):
+    """Return ``[(line, name)]`` for each media file name of ``STATIC`` that ``text`` spells.
+
+    The AST decides.  A name inside a docstring or a comment is not a finding.
+    """
+    names = [media for scan, media in datasets.STATIC.values()]
+    tree = ast.parse(text)
+    prose = docstring_nodes(tree)
+    found = [(node.lineno, name) for node in ast.walk(tree)
+             if isinstance(node, ast.Constant) and isinstance(node.value, str)
+             and id(node) not in prose
+             for name in names if name in node.value]
+    return sorted(found)
+
+
 class BuiltInMediaNameTests(unittest.TestCase):
     """A built-in media file name is spelled once: in ``src.datasets.STATIC``.
 
     The live source (``annotator/live_processing.py``) and the enrollment tool
     (``src/enroll_from_tracklet.py``) both replay those two files, and both read their
     file names from that one registry.  A name typed again in either module could drift
-    from the file the registry resolves.  The offline scan and calibration tools that
-    also name these files are outside this refactor and are not asserted here.
+    from the file the registry resolves.  Every other module reads the media file of a
+    built-in recording from the same registry, and the AST scan below walks each module
+    under ``src/``.  The offline scan and calibration tools are therefore asserted here
+    too.  The owner spells each name once, and the case above states that.
     """
 
     #: module -> the one constant there that maps a built-in id to its media file.
-    consumers = (("annotator/live_processing.py", "_DATASETS"),
-                 ("src/enroll_from_tracklet.py", "DATASETS"))
+    #: These two modules replay a built-in recording at run time.  The scan of every
+    #: ``src/*.py`` module covers the offline tools as well.
+    live_consumers = (("annotator/live_processing.py", "_DATASETS"),
+                      ("src/enroll_from_tracklet.py", "DATASETS"))
 
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -250,15 +283,35 @@ class BuiltInMediaNameTests(unittest.TestCase):
             self.assertEqual(source.count(media), 1,
                              "src/datasets.py spells %s %d times" % (media, source.count(media)))
 
-    def test_no_consumer_spells_a_media_file_name(self):
-        for dataset_id, (scan, media) in datasets.STATIC.items():
-            for relative, constant in self.consumers:
-                self.assertTrue(media not in self.source(relative),
-                                "%s names %s instead of reading it from STATIC"
-                                % (relative, media))
+    def test_no_module_under_src_spells_a_media_file_name(self):
+        """A media file name of STATIC in code outside the owner is a finding."""
+        root = Path(__file__).resolve().parents[1]
+        relatives = ["src/" + path.name for path in sorted((root / "src").glob("*.py"))
+                     if "src/" + path.name != "src/datasets.py"]
+        for relative in ("src/audit_calib.py", "src/scan_events.py",
+                         "src/timing_verify.py", "src/recut_crops.py"):
+            self.assertIn(relative, relatives, "%s must be in the scan" % relative)
+        self.assertGreaterEqual(len(relatives), 20, "the scan must cover the modules under src/")
+        for relative in relatives:
+            findings = spelled_media_names(self.source(relative))
+            report = ", ".join("%s at line %d" % (name, line) for line, name in findings)
+            with self.subTest(module=relative):
+                self.assertEqual(report, "",
+                                 "%s spells a media file name of STATIC by hand: %s"
+                                 " (read it from STATIC through media_path)" % (relative, report))
+
+    def test_the_scan_reports_a_planted_media_file_name_at_its_line(self):
+        """The scan must report a hand-written name, and must ignore prose."""
+        planted = 'import cv2\n\ncap = cv2.VideoCapture(ROOT / "data" / "vod_30min_260815.mp4")\n'
+        self.assertEqual(spelled_media_names(planted), [(3, "vod_30min_260815.mp4")],
+                         "the scan must report the line of a hand-written name")
+        prose = ('"""The run reads data/vod_highlight.mp4."""\n'
+                 '# data/vod_highlight.mp4\n\nNAME = "vod_highlight.mp4"\n')
+        self.assertEqual(spelled_media_names(prose), [(4, "vod_highlight.mp4")],
+                         "a name in a docstring or a comment is not a finding")
 
     def test_each_consumer_computes_its_mapping_from_the_registry(self):
-        for relative, constant in self.consumers:
+        for relative, constant in self.live_consumers:
             values = [node.value for node in ast.walk(ast.parse(self.source(relative)))
                       if isinstance(node, ast.Assign) and len(node.targets) == 1
                       and isinstance(node.targets[0], ast.Name)

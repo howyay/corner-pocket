@@ -30,8 +30,8 @@ sys.path.insert(0, ROOT)
 # reader takes the path from the owner.
 from pid_identity import (IDENTITY_REFERENCE, PERSON_CONF, classify_ab, in_table_zone,
                           light_dark, torso_color)
-
-VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
+from src.datasets import media_path  # noqa: E402
+VIDEO = str(media_path(REPO, "vod30"))
 MODEL = YOLO(weight_pins.YOLO)
 # src/events_document.py owns the name of the vod30 rebuild document, so this
 # reader takes the path from the owner and keeps its own root.

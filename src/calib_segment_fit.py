@@ -39,7 +39,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
+from src.datasets import media_path  # noqa: E402
 from src.calib_segment_measure import MEASURE_ARTIFACT  # noqa: E402
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
 from src.calib_segments import (VERIFIED_FRAMES, anchors_reference_path,  # noqa: E402
@@ -49,7 +49,7 @@ from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
 # The measurement this tool reads: ``src/calib_segment_measure.py`` owns the
 # artifact path (``MEASURE_ARTIFACT``) and writes the file.
-VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
+VIDEO = media_path(ROOT, "vod30")
 ANCHORS = ROOT / anchors_reference_path("vod30")
 # The segment artifact name has one owner, ``src/calib_segments.py``, so this
 # writer joins the out/ root to the path the owner builds.  The ``--out`` default

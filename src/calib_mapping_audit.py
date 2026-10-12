@@ -602,7 +602,7 @@ def main(argv=None):
     ap.add_argument("--scan-quad", default=str(SCAN_QUAD))
     ap.add_argument("--video", default=str(VIDEO))
     ap.add_argument("--candidates", default=str(CANDIDATES))
-    ap.add_argument("--highlight", default=str(ROOT / "data" / "vod_highlight.mp4"))
+    ap.add_argument("--highlight", default=str(media_path(ROOT, "highlight")))
     ap.add_argument("--highlight-quad", default=str(ROOT / "out" / "fixed_corners.json"))
     ap.add_argument("--highlight-times", type=float, nargs="*", default=None)
     ap.add_argument("--times", type=float, nargs="*", default=list(FRAME_TIMES))

@@ -29,7 +29,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
-
+from src.datasets import media_path  # noqa: E402
 from src import events_document  # noqa: E402
 # The corners v2 file has one home, src/calib_segments.py, so this reader takes the
 # path from that home and keeps its own root.
@@ -39,7 +39,7 @@ from src.calib_segments import corners_v2_path  # noqa: E402
 from src.sam3_artifact import artifact_in  # noqa: E402
 from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: E402
 
-VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
+VIDEO = media_path(ROOT.parent, "vod30")
 SCAN = ROOT.parent / "out" / "scan30"
 CORNERS = corners_v2_path(root=ROOT.parent)
 

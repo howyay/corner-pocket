@@ -21,7 +21,7 @@ from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import LANDSCAPE_H, LANDSCAPE_W, canonical_destination
 from vod30_corners import load as load_vod30_corners
 # The highlight recording's sample instants have one home, src/datasets.py.
-from src.datasets import HIGHLIGHT_SAMPLE_TIMES
+from src.datasets import HIGHLIGHT_SAMPLE_TIMES, media_path
 
 # This audit reads the table LANDSCAPE -- length on x -- as it always has; the
 # transposed view comes from the one frame in src/table_geometry.py.
@@ -77,8 +77,8 @@ def audit(video, ref_corners, times, tag):
 def main():
     # The run stays inside this function.  An import must not open media and
     # must not write an artifact.
-    HL = str(ROOT / "data" / "vod_highlight.mp4")
-    V30 = str(ROOT / "data" / "vod_30min_260815.mp4")
+    HL = str(media_path(ROOT, "highlight"))
+    V30 = str(media_path(ROOT, "vod30"))
     fixed_hl = json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"]
     fixed_30 = load_vod30_corners()
 

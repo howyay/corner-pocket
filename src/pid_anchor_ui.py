@@ -33,8 +33,8 @@ if __name__ == "__main__":
 from calibrate import OBJECT_MM, project  # noqa
 from src.calib_segments import anchors_reference_path, calibration_name  # noqa
 from src.reply_body import write_reply  # noqa
-
-VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
+from src.datasets import media_path  # noqa
+VIDEO = media_path(ROOT.parent, "vod30")
 OUT = ROOT.parent / anchors_reference_path("vod30")
 # src/calib_segments.py owns the name of the calibration document, so this reader
 # takes the file name from the owner and keeps its own root.

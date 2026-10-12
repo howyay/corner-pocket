@@ -56,7 +56,7 @@ import json
 import math
 import time
 from pathlib import Path
-
+from src.datasets import media_path
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
@@ -565,7 +565,7 @@ def measure_frame(t, floor: float = SAM3_FLOOR) -> dict:
     from src.sam3_ball_cache import cloth_mask, reference_quad
     from src.pipeline import ball_center, extract_frame
 
-    video = ROOT / "data" / "vod_30min_260815.mp4"
+    video = media_path(ROOT, "vod30")
     bgr = extract_frame(video, t)
 
     proc = _processor()
@@ -952,7 +952,7 @@ def native_frame(t: float):
     """The frame at native resolution: the crop is checked at the size the ball is."""
     from src.pipeline import extract_frame_or_none
 
-    return extract_frame_or_none(ROOT / "data" / "vod_30min_260815.mp4", t)
+    return extract_frame_or_none(media_path(ROOT, "vod30"), t)
 
 
 def cmd_crops(args) -> int:

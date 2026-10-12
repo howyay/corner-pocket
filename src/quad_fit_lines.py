@@ -207,7 +207,7 @@ if __name__ == "__main__":
         REF = load_vod30_corners()
         TIMES = list(range(60, 1741, 120))
     else:
-        VIDEO = str(ROOT / "data" / "vod_highlight.mp4")
+        VIDEO = str(media_path(ROOT, "highlight"))
         REF = np.array(json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"], np.float32)
         TIMES = list(HIGHLIGHT_SAMPLE_TIMES)
     cap = cv2.VideoCapture(VIDEO)

@@ -14,7 +14,7 @@ import cv2
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
 os.environ.setdefault("ULTRALYTICS_SAFE_LOAD", "1")  # weights-only YOLO load (audit D-2)
 from ultralytics import YOLO
-
+from src.datasets import media_path  # noqa: E402
 from src.box_geometry import iou  # noqa: E402
 # src/weight_pins.py owns the weight paths, so this file reads the owner.
 from src import weight_pins  # noqa: E402
@@ -25,7 +25,7 @@ from src.pid_identity import PERSON_CONF  # noqa: E402
 from src.store import TRACKLETS_NAME  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
+VIDEO = str(media_path(REPO, "vod30"))
 MODEL = YOLO(weight_pins.YOLO)
 
 SAM3 = {}

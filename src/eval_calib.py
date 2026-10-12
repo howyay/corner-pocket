@@ -23,7 +23,7 @@ import vod30_corners
 from calibrate import (OBJECT_MM, anchors_for_frame, pnp_solve, project)
 from pipeline import homography_to_canonical
 from table_detect import detect_cloth_mask, fit_quadrilateral
-
+from src.datasets import media_relpath  # noqa: E402
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 
@@ -60,7 +60,7 @@ def local_px_per_mm(Hm, canon_pt):
 
 
 def main():
-    video = sys.argv[1] if len(sys.argv) > 1 else "data/vod_30min_260815.mp4"
+    video = sys.argv[1] if len(sys.argv) > 1 else media_relpath(ROOT.parent, "vod30")
     frames, _ = collect_frames(video)
     print(f"{len(frames)} usable frames", flush=True)
     if len(frames) < 10:

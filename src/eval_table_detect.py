@@ -67,7 +67,7 @@ from src.calib_segments import anchors_reference_path, corners_v2_path  # noqa: 
 
 OUT_DIR = ROOT / "out" / "table-detect-eval"
 VOD30 = media_path(ROOT, "vod30")
-HIGHLIGHT = ROOT / "data" / "vod_highlight.mp4"
+HIGHLIGHT = media_path(ROOT, "highlight")
 ANCHORS = ROOT / anchors_reference_path("vod30")
 CORNERS_V2 = ROOT / corners_v2_path()
 FIXED_CORNERS = ROOT / "out" / "fixed_corners.json"

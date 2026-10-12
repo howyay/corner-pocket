@@ -28,8 +28,8 @@ from table_geometry import canonical_destination
 # path of the corners v2 file too.  This writer takes both names from that home
 # and keeps its own root.
 from src.calib_segments import calibration_name, corners_v2_path  # noqa: E402
-
-VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
+from src.datasets import media_path  # noqa: E402
+VIDEO = media_path(ROOT.parent, "vod30")
 CORNERS = corners_v2_path(root=ROOT.parent)
 N_SAMPLES = 200
 DST = canonical_destination()  # px -> mm, the canonical portrait frame

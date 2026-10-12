@@ -22,8 +22,8 @@ sys.path.insert(0, str(ROOT))                 # the repo root, for the src.* imp
 # The corners v2 file has one home, src/calib_segments.py, so this reader takes the
 # path from that home and keeps its own root.
 from src.calib_segments import corners_v2_path  # noqa: E402
-
-VIDEO = str(ROOT / "data" / "vod_30min_260815.mp4")
+from src.datasets import media_path  # noqa: E402
+VIDEO = str(media_path(ROOT, "vod30"))
 QUAD = np.array(json.load(open(corners_v2_path(root=ROOT)))["corners"], np.float32)
 
 # The identity document: this module writes it, and three readers load it at
