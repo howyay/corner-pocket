@@ -10705,3 +10705,49 @@ to 2493 with the four new cases (three from WG, one from WH).
 **Open rows.**  The console copies of `annotator/ops.js:1298` stay by decision: a browser cannot read
 a python name.  The `.pm/` notes hold their own citation shift and stay local.  The shift of this
 round moved full citations only; the shorthand `:N` forms of the ledger keep their old numbers.
+
+## Round 87 - three repeated paths answer to one owner each
+
+**Verdict.**  The round-87 walk answered `Strong candidate present - 3 Strong, 0 Worth, 0 Note` at
+HEAD `5d67ed0`, on a clean tree.  The three rows are the face store path, the operations document
+path and the sam3 artifact name.
+
+**Row 1, the face store path.**  `src/store_files.py:57 FACE_STORE` owns
+`out/corner-pocket/face_embeddings.json`.  Writer WI made `src/face_id.py`, `src/store.py` and
+`src/eval_faces.py` read the owner, and widened `tests/test_face_store_path_owner.py` to seven reader
+files and five cases.  Its first shape `self.out / Path(FACE_STORE)` built `<root>/out/out/...`;
+`tests/test_store_contract.py:333` failed it.  The guard reads a part-built name
+(`"face_embeddings" + ".json"`) so the guard cannot match itself.  The site count fell from four to
+one.
+
+**Row 2, the operations document path.**  `src/store_files.py:45 STATE_DOCUMENT` owns
+`out/corner-pocket/state.json`.  Writer WJ changed three readers and added
+`tests/test_state_document_owner.py`.  Each new import took the blank line after the last repository
+import, so every line number stayed.  `git diff --stat` read 7 insertions and 7 deletions, and the
+site count fell from four to one.  This is the shape to copy: a repair that moves no line pays no
+citation cost.
+
+**Row 3, the sam3 artifact name.**  `src/sam3_artifact.py ARTIFACT` owns `sam3_results.json`.  Writer
+WK moved six readers to the owner helpers.  Its guard walks the whole shipped tree now, and not a
+fixed list of four files.  The guard holds 37 cases, from 34.  A rename of the owner value gives no
+red case, because no reader holds the old name.  That is the repair, not a hole.
+
+**The citation cost of round 87.**  Ten files changed their line count, so two code citations and 47
+document citations named a line with no text.  `src/ball_gate.py:44` named `src/motion_scan.py:74`;
+the statement moved to 77.  `tests/test_console_service_agreement.py:16` named
+`annotator/unified_server.py:1952`; `def event_clip` moved to 1962.  The Lead measured each true
+target against `git show HEAD:<file>`, and re-pointed only the document citations whose target line
+held no text (commit `5fb46df`).
+
+**A bite on a file no writer bit.**  The Lead appended `_STATE_PROBE = "out/corner-pocket/state.json"`
+to the untouched owner `src/store_files.py`.  `tests/test_state_document_owner.py` failed with
+`Lists differ: ['src/store_files.py:45'] != ['src/store_files.py:225', 'src/store_files.py:45']`.
+The restore returned `01ef15a4ad8474` and the module answered OK.  The rule counts sites, not files.
+
+**Commits.**  `b7c6e5d` (face store), `0cf886e` (document path), `9fb1ddc` (sam3 readers), `5fb46df`
+(citations).
+
+**Open rows.**  The shorthand `:N` forms of the ledger keep their old numbers, by the decision of
+round 85.  `test_suite_inventory` prints an unrelated `ResourceWarning` from `src/pid_identity.py:21`.
+`scripts/pool-test.sh python` takes one module name only; it ignores a second name.  A writer `cp`
+backup can be overwritten by another writer that uses the same file name; give each writer its own.
