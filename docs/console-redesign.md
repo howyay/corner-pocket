@@ -10921,3 +10921,58 @@ correction.
 `./scripts/pool-test.sh js` answered `ℹ pass 232` with `ℹ fail 0`, `ℹ pass 23` with `ℹ fail 0`, and
 `114 passed, 0 failed`.  The count went 2535 to 2552: one case from writer WO, eleven cases from
 writer WP, and five cases from writer WQ.
+
+## Round 90 - the face cosine, two test fixtures and two dead names
+
+Walk round 90 read the tree at `170dfeb` and answered
+`Strong candidate present - 1 Strong, 2 Worth, 1 Note`.
+The report is `/tmp/dshsess/walk_round90.md`.
+
+### Strong 1 - the face cosine had three bodies
+
+`src/face_id.py:207` held the body and called itself the one home.
+`src/enroll_from_tracklet.py:172` and `tests/live_identity_validation.py:138`
+held two more bodies.  The ternary body answered `0.0` for a pair that carries
+NaN, where the owner answers `nan`.  The guard walked `src/*.py` only, so the
+copy under `tests/` stayed invisible.
+
+Writer WR closed the row.  `src/enroll_from_tracklet.py:117` and
+`tests/live_identity_validation.py:62` import `_cosine as cosine`.  The guard
+`tests/test_face_cosine.py` walks `src`, `tests` and `annotator`, holds four
+body shapes, and pins the NaN answer.  The module answers 7 cases.
+
+### Worth 1 and Worth 2 - two test fixtures
+
+`tests/test_console_service_bounds.py` and `tests/test_ops_bounds.py` held one
+fixture three times.  `tests/test_live_processing.py` and
+`tests/test_live_processing_stages.py` held `wait_for` and `Capture` twice.
+
+Writer WS closed both rows.  `tests/_fixtures.py` holds `OpsLayerFixture` and
+`Capture`.  The four modules read it.  Three new cases report a second home of
+a fixture body.  The stages module keeps its 32 by 32 frame as
+`Frame32(Capture)`.
+
+### Note 1 - two dead names
+
+`src/table_refine.py:51` and `:52` held `_MIN_SAMPLES` and `_MAX_SIDE_MAD`
+with no reader, while `:478` and `:544` spelled the value `2.5`.
+
+The Lead removed the two names.  The values stay.
+
+### Citations
+
+`tests/test_face_cosine.py:15` cited `src/enroll_from_tracklet.py:172`, the
+copy that this round removed.  The sentence now names no line.  Three citations
+of `docs/console-redesign.md` and two of `docs/calibration-truth.md` followed
+the lines that the round moved.
+
+LESSON: a sentence about a line that a round deletes must lose its line number.
+A new number points a reader at a line that says something else.
+
+### Commits
+
+`8236def refactor: the face cosine reads one owner`,
+`fd1e896 test: two test fixtures read one helper`,
+`c233599 refactor: the dead names of table_refine leave the tree`,
+`bd43fe9 docs: three citations follow the fixtures that round 90 moved`, and
+the citation commit of this record.
