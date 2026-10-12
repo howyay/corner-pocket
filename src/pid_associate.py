@@ -28,8 +28,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 from pid_identity import PERSON_CONF, in_table_zone, torso_color  # noqa
 
-# src/weight_pins.py owns the two weight paths, so this file reads the owner.
-from src import weight_pins
+# src/weight_pins.py owns the two weight paths and src/events_document.py owns
+# the name of the vod30 rebuild document, so this file reads the two owners.
+from src import events_document, weight_pins
 from src.weight_pins import OSNET  # noqa: E402
 # The mean and the standard deviation belong with the pinned weights, so this
 # module reads src/weight_pins.py and holds no copy of the two arrays.
@@ -120,7 +121,9 @@ def main():
     from table_detect import detect_cloth_mask
     proto = build_prototypes()
     print("prototypes:", {k: round(float(v.mean()), 3) for k, v in proto.items()}, flush=True)
-    ev = json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))
+    # src/events_document.py owns the name of the vod30 rebuild document, so
+    # this reader takes the path from the owner and keeps its own root.
+    ev = json.load(open(events_document.document_path(events_document.V2, root=REPO)))
     shots = [e for e in ev if e["type"] == "shot"]
     cap = cv2.VideoCapture(VIDEO)
     out = []
