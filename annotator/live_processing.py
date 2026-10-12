@@ -34,7 +34,7 @@ from annotator.pipeline_stages import (DEFAULT_DETECTORS, TABLE_MEASURE_EVERY_N,
 from annotator.twitch_source import TWITCH_LOGIN
 from src.frame_rate import FPS_FALLBACK
 from src.datasets import STATIC
-
+from src.store_files import STATE_DOCUMENT  # the owner of the operations document path
 _DROP_REASONS = ('no_frame_ready', 'stage_overrun', 'stale')
 
 #: Every detector spelling a caller may ask for, from the one vocabulary.  ``ball`` is
@@ -345,7 +345,7 @@ class LiveProcessor:
                 # the saved channel is in the operations document: the server's store
                 # when one was given, else the state.json file under root
                 state = (self.operations_document() if self.operations_document is not None
-                         else json.loads((self.root / 'out/corner-pocket/state.json').read_text()))
+                         else json.loads((self.root / STATE_DOCUMENT).read_text()))
             except (OSError, ValueError):
                 raise ValueError('Saved Twitch channel is unavailable') from None
             saved = next((item for item in state.get('sources', [])

@@ -113,7 +113,7 @@ from src.ops_event_log import trim
 # Round 60 gave the summary of one list one home: src/stats.py.  This name used to
 # hold the body, and it held the same body as src/eval_faces.py pair_stats.
 from src.stats import read_pair as stats
-
+from src.store_files import FACE_STORE, STATE_DOCUMENT  # the owner of the two user-data paths below
 # The repository root. The value equals src.person_pipeline.REPO, and the same
 # expression is used there, but this module keeps its own copy: an import of
 # src.person_pipeline loads torch and cv2 at its top level.
@@ -123,8 +123,8 @@ REPO = Path(__file__).resolve().parents[1]
 #: the repository root.  ``src.datasets.STATIC`` owns the file names and this module
 #: only prefixes the folder its call sites join onto a root.
 DATASETS = {key: str(Path("data") / value[1]) for key, value in STATIC.items()}
-DEFAULT_STATE = Path("out") / "corner-pocket" / "state.json"
-DEFAULT_FACE_STORE = Path("out") / "corner-pocket" / "face_embeddings.json"
+DEFAULT_STATE = Path(STATE_DOCUMENT)
+DEFAULT_FACE_STORE = Path(FACE_STORE)
 
 K_DEFAULT = 5
 CONSISTENCY_COSINE = 0.5

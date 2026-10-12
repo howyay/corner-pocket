@@ -40,7 +40,7 @@ from annotator.twitch_source import TWITCH_LOGIN
 # refusal keeps this layer's voice (the WHOLE_SECONDS skeleton imported above).
 # src/datasets.py reads only annotator/refusals.py, so this adds no cycle.
 from src.datasets import whole_seconds
-
+from src.store_files import STATE_DOCUMENT  # the owner of the operations document path
 # This module owns the longest note.  One number bounds the note the operator adds
 # (``note_add``) and the notes of a saved regular (``player_save``).  The console mirrors
 # the number in ``annotator/ops.js``, and ``tests/test_note_limit.py`` holds the two equal.
@@ -372,7 +372,7 @@ class Operations:
 
     def __init__(self, root):
         self.root = Path(root).resolve()
-        self.path = self.root / 'out' / 'corner-pocket' / 'state.json'
+        self.path = self.root / STATE_DOCUMENT
         with self._locks_guard:
             self.lock = self._locks.setdefault(self.path, threading.RLock())
 
