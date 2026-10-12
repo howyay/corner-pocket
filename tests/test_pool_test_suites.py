@@ -7,6 +7,11 @@ document that `PRODUCT.md` names as a source and that runs a suite must name eve
 it.  A fourth suite on disk needs one edit in the runner; the report below then names the
 document that fell behind.
 
+`README.md` states the command `scripts/pool-test.sh js` and names the three suites in a
+comment beside it.  That line runs the runner, not one suite, so the walk above passes it.
+The copy has its own reader: the line that names the runner must name the suites of the
+runner in order, and no line of the copy may name another suite.
+
 The walk reads the markdown sources of the status sentence of `PRODUCT.md`.  It does not
 read the documents of one past run, such as `docs/tonight-stage9-proof.md` and
 `docs/public-board.md`.  Those lines are a record of the suites that ran, not a command for
@@ -19,6 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / 'scripts' / 'pool-test.sh'
 PRODUCT = ROOT / 'PRODUCT.md'
+README = ROOT / 'README.md'
 
 #: The loop of the runner that names the javascript suites it runs.  The suite list is
 #: every non-blank character before the ``; do``, which is one unambiguous run.
@@ -87,6 +93,38 @@ def behind_reports(name, text, named):
     return found
 
 
+def copy_line(text):
+    """The number of the line of one copy that names the suites of the runner.
+
+    The line also names the runner file.  A prose line that names one suite as an example
+    answers nothing.
+    """
+    for number, line in enumerate(text.splitlines(), start=1):
+        if RUNNER.name in line and PATH.search(line):
+            return number
+    raise AssertionError('the copy holds no line that names the suites of %s' % (RUNNER.name,))
+
+
+def copy_reports(name, text, named):
+    """The report of every name of one copy that disagrees with the runner.
+
+    A copy states the runner and names its suites, but it runs none of them.  The line of
+    the copy that names the runner must name the suites of the runner in order, exactly as
+    a run line does.  Every other line of the copy may name a suite of the runner only.
+    """
+    found = []
+    lines = text.splitlines()
+    number = copy_line(text)
+    if PATH.findall(lines[number - 1]) != named:
+        found.append('%s:%d: names %r, the runner runs %r'
+                     % (name, number, PATH.findall(lines[number - 1]), named))
+    for other, line in enumerate(lines, start=1):
+        strangers = [suite for suite in PATH.findall(line) if suite not in named]
+        if strangers and other != number:
+            found.append('%s:%d: names %r, the runner runs %r' % (name, other, strangers, named))
+    return found
+
+
 class PoolTestSuiteInventoryTests(unittest.TestCase):
     def test_the_runner_runs_the_three_javascript_suites_of_the_repository(self):
         self.assertEqual(runner_suites(),
@@ -130,6 +168,35 @@ class PoolTestSuiteInventoryTests(unittest.TestCase):
         whole = planted.replace('node tests/test_ops.js', 'node ' + ' && node '.join(named))
         self.assertEqual([], behind_reports('planted.md', whole, named),
                          'a document that names every suite answers nothing')
+
+    def test_the_readme_copy_names_every_suite_the_runner_runs(self):
+        named = runner_suites()
+        self.assertEqual([], copy_reports('README.md', README.read_text(encoding='utf-8'), named),
+                         'README.md names a suite the runner does not run, or misses a suite of the '
+                         'runner; the report above names the line')
+
+    def test_the_copy_reader_sees_a_dropped_name_and_a_planted_one(self):
+        named = runner_suites()
+        text = README.read_text(encoding='utf-8')
+        number = copy_line(text)
+        line = text.splitlines()[number - 1]
+
+        dropped = text.splitlines()
+        dropped[number - 1] = line.replace('tests/test_board.js', '')
+        self.assertEqual(
+            ["README.md:%d: names %r, the runner runs %r"
+             % (number, [suite for suite in PATH.findall(line) if suite != 'tests/test_board.js'],
+                named)],
+            copy_reports('README.md', '\n'.join(dropped) + '\n', named),
+            'a copy that drops a suite of the runner must report the line of the copy')
+
+        planted = text.splitlines()
+        planted[number - 1] = line + ', tests/test_extra.js'
+        self.assertEqual(
+            ["README.md:%d: names %r, the runner runs %r"
+             % (number, PATH.findall(line) + ['tests/test_extra.js'], named)],
+            copy_reports('README.md', '\n'.join(planted) + '\n', named),
+            'a copy that names a suite the runner does not run must report its line')
 
 
 if __name__ == '__main__':
