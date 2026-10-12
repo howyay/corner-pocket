@@ -11441,3 +11441,105 @@ The full python suite answers `Ran 2607 tests in 547.192s` and `OK (skipped=53)`
 The count moved 2602 -> 2607: one case from writer WE, two from writer WF, and two
 from the console guard of the Lead.
 
+
+## Round 96 - the stylesheet copies, the timer schedule and four citations
+
+Walk `/tmp/dshsess/walk_round96.md` at HEAD `d0edf93` answered
+`Strong candidate present - 3 Strong, 0 Worth, 4 Note`.  It read about 70 files.
+The Lead verified every ground read only before a writer started.
+
+### Strong 1 - the shell width system stands again in the page stylesheet
+
+The owner is `annotator/ops.css:51 :root{--page-max:1560px;--measure:70ch}`, with
+the space group at `annotator/ops.css:39 :root{--sp-1:4px;--sp-1h:6px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px}`.
+The review page states the same numbers as fallback literals:
+`annotator/app.css:18 &:not([data-embedded]) { box-sizing: border-box; max-width: var(--page-max, 1560px); margin-inline: auto; padding: var(--sp-3, 12px) clamp(var(--sp-3, 12px), 2.4vw, var(--sp-6, 32px)); }`
+and `annotator/app.css:22 &:not([data-embedded]) :is(p, .empty):not(.stage *, .stage-popover *) { max-width: var(--measure, 70ch); }`.
+No case read either side: `grep -rn "page-max\|70ch\|1560\|--sp-6" tests/` answered
+nothing, and the token pattern of `tests/test_palette_contrast.py:17` matches
+colour values only.
+
+### Strong 2 - the body face stands again in the board stylesheet
+
+The owner is `annotator/ops.css:7 :root{color-scheme:dark;--display:...;--body:'Barlow','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif;...}`.
+The public board repeats the stack byte for byte at `annotator/board.css:19`, and it
+is live at `annotator/board.css:23 html{background:var(--bg);color:var(--ink);font-family:var(--body);...}`.
+
+Both copies must stay: `annotator/app.html:7` links `/app.css` alone, and
+`annotator/board.html:12` links `./board.css` alone, so a standalone page inherits
+nothing.  Writer X1 added `tests/test_stylesheet_owner.py` (234 lines, 7 cases,
+sha1 `4f32b50ed73ee50ec8d02e41390ad1c969b8cd05`) and changed no stylesheet.  Its
+measured shapes: only 5 of the 123 `var(` sites of `annotator/app.css` carry a
+literal fallback, and they name four tokens; `annotator/ops.css` holds five `:root`
+blocks (lines 7, 8, 35, 39 and 51) and the only repeated names across the blocks
+are 34 colour names that the light theme re-decides at `annotator/ops.css:8`, so
+the guard reads the base block only.  Writer X1 bit the app copy (`1560px` to
+`1561px`): `8d4f793cb8ed0b05766119e18c1619a5be5bcfde -> 42c4412b4bad6175be91954f12e836448db92a9d -> 8d4f793cb8ed0b05766119e18c1619a5be5bcfde`,
+red `FAIL: test_every_app_fallback_answers_the_owner` with
+`('page-max', '1561px', '1560px', 'annotator/app.css:18', 'annotator/ops.css:51')`.
+The Lead bit the other copy, `annotator/board.css:19` `'Barlow'` to `'BarlowX'`:
+`da9f54afd347b6710558e917a731cd25c8a3d036 -> 5c5a96b4892d017db122cb465ef838f3dfdfc207 -> da9f54afd347b6710558e917a731cd25c8a3d036`,
+red `FAIL: test_the_board_body_face_answers_the_owner`.
+
+### Strong 3 - the backup schedule stands in the units and in the document
+
+The units hold the schedule:
+`deploy/systemd/pool-postgres-backup.timer:6 OnCalendar=*-*-* 05:30:00` and
+`deploy/systemd/pool-postgres-verify.timer:6 OnCalendar=Mon *-*-* 06:00:00`.  The
+operations document repeats it: `docs/postgres.md:205` says
+`daily 05:30 (+-10 min, catches up after downtime)` and `docs/postgres.md:206` says
+`Mondays 06:00`.  No case read `OnCalendar`: `grep -rn "OnCalendar" tests/`
+answered nothing, and the unit copy check of `tests/test_unit_render.py:55-61`
+only requires the units to be copied byte for byte.  Writer X2 added three cases
+to `tests/test_backup_retention.py` (sha1
+`8901b339060b7bd4a97639d41dc0c82ed10bf0e9`, 240 lines added): the day and the time
+of every document row against the unit that the row names, a planted wrong time
+that names the file and the line of the row, and a unit without an `OnCalendar=`
+line.  It bit the unit (`05:30:00` to `05:31:00`):
+`da73641e2a7a836fb5bcc2dc38cacefb60dc1e4b -> 710c107495c098a8e66bc88ac988280337bd4e06 -> da73641e2a7a836fb5bcc2dc38cacefb60dc1e4b`,
+red `FAILED (failures=2)` with the document row `docs/postgres.md:205` named first.
+The Lead bit the other side, the document row (`daily 05:30` to `daily 05:31`):
+`ef4f16f4ab836292ca21189d3aace8f3a333850f -> 33618feaaf284fbd4981dcb9a2b95b8a9b407a35 -> ef4f16f4ab836292ca21189d3aace8f3a333850f`,
+red `FAIL: test_the_document_rows_hold_the_oncalendar_time_of_their_unit`.
+
+### The Note row - four citations that named the wrong line
+
+Writer X3 repaired four citing sentences and found a fifth.  The old number holds
+no part of the quoted text and the new number holds it:
+
+1. `src/ops_event_log.py:28` cited `src/events_document.py:37` (`    newer version,`)
+   for the sentence that stands at `src/events_document.py:44`.
+2. `annotator/ops.css:905` cited `annotator/ops.css:85` for the 26 pixel button
+   width that stands at `annotator/ops.css:96`.
+3. `annotator/ops.css:955` cited `annotator/ops.js:98` while the rows stand at
+   `annotator/ops.js:155` and `:160`.
+4. `annotator/ops.css:989` cited `annotator/ops.js:88` while the button is built at
+   `annotator/ops.js:163`.
+5. `src/ops_event_log.py:31` cited `src/store_import.py:220-224` while the insert
+   loop stands at `src/store_import.py:234-238`.
+
+The writer's report named a sixth site outside its scope,
+`tests/test_event_retention.py:26`, with the same wrong number; the Lead repaired
+it.  Every file kept its line count (1344 and 47).  The citation guard cannot see
+this class: `tests/test_citation_lines.py:17-18` states that a citation to a line
+that holds other text passes its rule.
+
+### Delivery and payment
+
+Commits `4d33690 test: the stylesheet copies answer the shell tokens`,
+`e98724f test: the backup rows answer the timer units` and
+`77fe3b3 docs: the citations name the line that holds their text`.  The modules
+answer `test_stylesheet_owner` `Ran 7 tests` OK, `test_palette_contrast`
+`Ran 8 tests` OK, `test_backup_retention` `Ran 6 tests` OK, `test_unit_render`
+`Ran 15 tests` OK, `test_citation_lines` `Ran 10 tests` OK, `test_suite_inventory`
+`Ran 5 tests` OK and `node tests/test_ops.js` 232 pass, 0 fail.  No writer moved a
+line outside its scope and no citation needed a shift.
+
+The full python suite answers SUITE LINE PENDING.
+
+LESSONS.  A guard that holds a pair of files must state which side owns the fact
+and which side is a copy, and it must read only the base token block of a
+stylesheet, because a theme block re-decides colours on purpose.  A citation guard
+that only asks whether the target line holds text cannot see a wrong number, so a
+repair of that class is proved by a grep of the old and the new line, not by a red
+run.
