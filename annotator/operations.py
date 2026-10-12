@@ -62,6 +62,11 @@ ENTRANT_MAX = 128
 # ``annotator/ops.js`` (the option list and the range input), and tests/test_ops_bounds.py
 # holds the two realms equal.
 CLOTH_COLORS = ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f')
+# This name owns the default cloth colour.  The settings block of a fresh operations
+# document reads it, and the appearance panel of ``annotator/ops.js`` paints it before any
+# request returns.  The guard is ``test_the_console_cloth_default_is_the_owner_default`` in
+# tests/test_ops_bounds.py.  That case fails when a console fallback and this name differ.
+CLOTH_DEFAULT = CLOTH_COLORS[0]
 LAMP_GLOW_MIN = 0.0
 LAMP_GLOW_MAX = 0.5
 # This name owns the default lamp glow.  The settings block of a fresh operations document
@@ -375,7 +380,7 @@ class Operations:
         if self.path.exists():
             return normalise(json.loads(self.path.read_text()))
         return dict(revision=0, players=[], tournament=tournament(), history=[], vods=[], links=[],
-                    settings=dict(shotClock=DEFAULT_DURATION, autoFrame=False, clothColor='#1d5c44', lampGlow=LAMP_GLOW_DEFAULT,
+                    settings=dict(shotClock=DEFAULT_DURATION, autoFrame=False, clothColor=CLOTH_DEFAULT, lampGlow=LAMP_GLOW_DEFAULT,
                                   showDiamonds=True, publicBoard=True), notes=[], sources=[dict(id=uid(), url='https://www.twitch.tv/examplechannel', kind='channel', channel='examplechannel')], events=[])
 
     # -- Broadcasts and the events they cover (round 11) ----------------------------------

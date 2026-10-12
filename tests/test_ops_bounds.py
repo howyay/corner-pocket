@@ -46,6 +46,8 @@ What this case does not see
   colour the preview paints outside the select is outside the rule.
 * It reads the glow default by one regex in each realm.  A third statement of the default
   - a second fallback, a second literal in the settings block - is invisible to it.
+* It reads the cloth default by one regex per realm.  The cloth literal of the console
+  fallback and the cloth literal of the settings block are the two statements it holds.
 * It pins the numbers of today and not the reason for them.  A later round that raises
   the cap must raise the frozen sizes here in the same change.
 * The module holds other checks of the entrant count, such as the minimum of two
@@ -57,8 +59,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from annotator.operations import (CLOTH_COLORS, ENTRANT_MAX, LAMP_GLOW_DEFAULT, LAMP_GLOW_MAX,
-                                  LAMP_GLOW_MIN, Operations)
+from annotator.operations import (CLOTH_COLORS, CLOTH_DEFAULT, ENTRANT_MAX, LAMP_GLOW_DEFAULT,
+                                  LAMP_GLOW_MAX, LAMP_GLOW_MIN, Operations)
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = ROOT / 'annotator' / 'operations.py'
@@ -73,6 +75,9 @@ COLORS_TODAY = ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f')
 GLOW_TODAY = (0.0, 0.5)
 #: The glow default of the two realms today (round 85).
 GLOW_DEFAULT_TODAY = 0.22
+
+#: The cloth default of the two realms today (round 86).
+CLOTH_DEFAULT_TODAY = '#1d5c44'
 
 #: The one line that states the cap number.
 CAP_HOME = re.compile(r'^ENTRANT_MAX = (\d+)$', re.MULTILINE)
@@ -101,6 +106,19 @@ CONSOLE_GLOW_DEFAULT = re.compile(r'\?\?\s*([0-9.]+)')
 #: because the settings line holds a '#' in the cloth colour.
 GLOW_COPY = re.compile(r"lampGlow\s*=\s*[0-9]")
 
+#: The console fallback of the cloth colour: the colour the panel paints before a request
+#: returns.  The panel holds two copies, and both name the owner default.
+CONSOLE_CLOTH_DEFAULT = re.compile(r"clothColor\|\|'(#[0-9a-f]{6})'")
+
+#: The comment of one line of Python source.  A mark that follows a space starts the
+#: comment, so the '#' of a colour literal stays in the code.
+CLOTH_COMMENT = re.compile(r'\s#.*$')
+
+#: One statement of the cloth default as a bare colour literal.  The scan reads the code
+#: of the line and drops the comment, because a comment quotes the literal as a probe.  A
+#: mark that follows a space starts the comment, so the '#' of the colour itself stays.
+CLOTH_COLOR_COPY = re.compile(r"clothColor\s*=\s*'#[0-9a-f]{6}'")
+
 
 def cap_copies(text):
     """The lines of ``text`` that compare the entrant count with the cap number."""
@@ -114,6 +132,13 @@ def glow_copies(text):
     return [(number, line.strip())
             for number, line in enumerate(text.splitlines(), 1)
             if GLOW_COPY.search(line)]
+
+
+def cloth_copies(text):
+    """The lines of ``text`` that state the cloth default as a bare colour literal."""
+    return [(number, line.strip())
+            for number, line in enumerate(text.splitlines(), 1)
+            if CLOTH_COLOR_COPY.search(CLOTH_COMMENT.sub('', line))]
 
 
 class OpsBounds(unittest.TestCase):
@@ -248,4 +273,21 @@ class OpsBounds(unittest.TestCase):
         copies = glow_copies(OWNER_TEXT)
         self.assertEqual(copies, [], f'{OWNER.name} must hold no copy of the default: {copies}')
         self.assertIn('lampGlow=LAMP_GLOW_DEFAULT', OWNER_TEXT,
+                      f'the settings block of {OWNER.name} must read the name')
+
+    def test_the_console_cloth_default_is_the_owner_default(self):
+        """The console paints the owner default, and the owner spells the colour once."""
+        found = CONSOLE_CLOTH_DEFAULT.findall(CONSOLE_TEXT)
+        self.assertEqual(len(found), 2, f'{CONSOLE.name} must hold two cloth fallbacks: {found}')
+        self.assertEqual(found, [CLOTH_DEFAULT, CLOTH_DEFAULT],
+                         'the console fallbacks and the owner default differ')
+        self.assertEqual(CLOTH_DEFAULT, CLOTH_DEFAULT_TODAY, 'the frozen cloth default of today')
+        planted = "settings=dict(clothColor='#1f4a70',"
+        self.assertEqual(cloth_copies(planted), [(1, planted)],
+                         'the detector must read a bare colour literal')
+        named = "settings=dict(clothColor=CLOTH_DEFAULT,"
+        self.assertEqual(cloth_copies(named), [], 'a line that reads the name is no copy')
+        copies = cloth_copies(OWNER_TEXT)
+        self.assertEqual(copies, [], f'{OWNER.name} must hold no copy of the default: {copies}')
+        self.assertIn('clothColor=CLOTH_DEFAULT', OWNER_TEXT,
                       f'the settings block of {OWNER.name} must read the name')
