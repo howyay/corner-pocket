@@ -4126,11 +4126,11 @@ answered `ok True` with `too many values to unpack (expected 2, got 3)`; a halte
 None in sys.modules`. No document under `out/` carries the key
 (`grep -rl table_playfield out/ | wc -l` answers 0), so no stored verdict is wrong; the only
 stored count is `tests/fixtures/playfield_quads.json` with `{'ok': 24, 'refused': 12,
-'no_quad': 21, 'unreadable': 0}`. `tests/test_live_processing_stages.py:525-531`
+'no_quad': 21, 'unreadable': 0}`. `tests/test_live_processing_stages.py:487-493`
 (`test_a_constraint_failure_never_stops_a_frame`) asserted only that the key `ok` was present.
 
 `29e7219` answers `{'ok': False, 'reasons': ['check-unavailable'], 'error': str(exc)}`, states the
-rule in the docstring, and adds `tests/test_live_processing_stages.py:533
+rule in the docstring, and adds `tests/test_live_processing_stages.py:495
 test_a_check_that_cannot_run_is_not_a_pass` for a null point and for a halted import. Measured:
 the module reports `Ran 29 tests in 3.618s`, OK (28 cases before), `tests/test_playfield_quads`
 `Ran 16 tests`, OK, and `tests/test_playfield_harness` `Ran 8 tests`, OK. Bite: the pass line put
@@ -4679,7 +4679,7 @@ the status vocabulary and five for the dataset map.
 | The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:822` `_do_guest_promote` sets `'Active'`, while `docs/corner-pocket-functional-inventory.md:134` says Prospect; a product decision, not a defect |
 | Four citations that name an empty line | Note | `src/ball_gate.py:44` to `src/dense_queue.py:69`, `annotator/board.js:61` and `tests/test_board.js:377` to `tests/test_app_timeline.js:3252`, `tests/test_event_retention.py:13` to `src/store_import.py:47`, and `deploy/systemd/40-public-board.conf` cites `annotator/unified_server.py:2869` where the argument stands at `:2937` |
 | `annotator/server.py:126` writes any label | Note | no range check and no `-1` to `"u"` map, while `annotator/unified_server.py:2213` enforces the domain; the module has no importers, so the divergence is dormant |
-| `corners_30min_v2.json` | Note | one writer at `src/make_segment_corners.py:81` and six readers, while `src/table_refine.py:66` says it is not used; the walk measured nothing, so no claim stands |
+| `corners_30min_v2.json` | Note | one writer at `src/make_segment_corners.py:81` and six readers, while `src/table_refine.py:64` says it is not used; the walk measured nothing, so no claim stands |
 | `REPORT.md:50`, the reverse contract, the browser path, `annotator/unified_server.py` | Note | these four rows of the round-46 table stay open unchanged |
 
 The round-47 walk found one Strong candidate, so the loop continues. The next walk reads this
@@ -4887,7 +4887,7 @@ The full discovery run on the settled tree at `45b5ec8` answered `Ran 1859 tests
 | The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:824` `_do_guest_promote` sets `'Active'`, while `docs/corner-pocket-functional-inventory.md:134` says Prospect; a product decision |
 | Four tracked citations name an empty line | Note | `src/ball_gate.py:44`, `annotator/board.js:61`, `tests/test_event_retention.py:13` and `tests/test_board.js:377` point at lines that hold other text; the deploy citation closed this round, and the guard covers `deploy/` only |
 | `annotator/server.py:126` writes any label | Note | it writes `out/unlabeled_crops/labels.json` with no range check and no `-1` map, while `annotator/unified_server.py:2213` enforces the domain; the module has no importers |
-| `corners_30min_v2.json` has one writer and six readers | Note | `src/make_segment_corners.py:81` writes it, six modules read it, and `src/table_refine.py:66` says it is not used; no walk measured the claim |
+| `corners_30min_v2.json` has one writer and six readers | Note | `src/make_segment_corners.py:81` writes it, six modules read it, and `src/table_refine.py:64` says it is not used; no walk measured the claim |
 | `REPORT.md:50` bounds a number that no run measures | Note | the sentence names a bound, and no command answers it |
 | The duration rule is proved over `file://` only | Note | the browser proof of round 46 ran over the local file, because chromium cannot finish an `http://` load in this harness |
 
@@ -5009,7 +5009,7 @@ older rounds on purpose.
 
 ### Worth 1 · the note that lost its own scope
 
-`src/table_refine.py:74` said `corners_30min_v2.json is NOT used`, and the module publishes that
+`src/table_refine.py:72` said `corners_30min_v2.json is NOT used`, and the module publishes that
 sentence as provenance at `:151` and at `:163`. Eight modules still name the file:
 `src/calib_segment_measure.py`, `src/calib_segments.py`, `src/calib_vod30.py`,
 `src/eval_table_detect.py`, `src/frame_inference.py`, `src/pid_identity.py`, `src/pid_shooter.py`
@@ -6828,7 +6828,7 @@ numbers as history.
 ### Worth 5 · the `_order` adapter stood in two modules
 
 Ground: `src/table_detect.py:35 def _order_corners(pts)` owned the rule, and
-`src/eval_table_detect.py:68-70` and `src/table_refine.py:132-134` held one two-line adapter written
+`src/eval_table_detect.py:68-70` and `src/table_refine.py:130-134` held one two-line adapter written
 twice, while five callers went straight to the owner and `src/table_refine.py` bypassed its own wrapper
 at `:746` and `:934`. Repair: both wrappers are gone, both modules import the owner at module level, and
 six call sites read it. `tests/test_table_detect.py` gained `CornerOrderHomeTests` with 2 cases, one of
@@ -7567,7 +7567,7 @@ it ran no test module, so every guard claim rests on the test source.
 Ground: `annotator/app.js:1112 QUAD_REFUSAL_COPY` and `annotator/vision-stage.js:311 QUAD_REASON` held one
 table, and `annotator/ops.html` serves both files. Only the vision-stage copy was guarded
 (`tests/test_console_reason_table.py:26`), so `degenerate_prior` and `side_inherited`, which
-`src/table_refine.py:786` and `:905` produce, had a sentence on one screen and the raw-code fallback on the
+`src/table_refine.py:784` and `:905` produce, had a sentence on one screen and the raw-code fallback on the
 other. Repair: `annotator/app.js` owns `const QUAD_REFUSAL_COPY` (ten rows), the adapter's literal is gone,
 and `quadReason(code)` reads `window.ConsoleRules.quadReasons`. The owner is `app.js` because
 `annotator/ops.html:2` loads duration.js, app.js, vision-stage.js, ops.js and clock-sync.js in that order
@@ -7912,12 +7912,12 @@ bodies of `annotator/operations.py`, the case bodies of the three console suites
 ### Strong 1 · the same fault answered "refused" and "passed"
 
 Ground: `annotator/pipeline_stages.py:412-413` answered a quad check that could not run with
-`{'ok': False, 'reasons': ['check-unavailable'], 'error': str(exc)}`, while `src/table_refine.py:966-967`
+`{'ok': False, 'reasons': ['check-unavailable'], 'error': str(exc)}`, while `src/table_refine.py:964-967`
 answered the same fault with `playfield = {"ok": True, "reasons": [], "metrics": {}, "error": str(exc)}`.
 Both held their own copy of the two-rotation best-verdict body (`annotator/pipeline_stages.py:406-408`
-against `src/table_refine.py:962-965`), and a third body stood at `tests/test_playfield_quads.py:175-179`.
+against `src/table_refine.py:960-965`), and a third body stood at `tests/test_playfield_quads.py:175-179`.
 The measurement that showed the gap: `git grep -n "check-unavailable"` answered four lines (the stage and
-its two cases at `tests/test_live_processing_stages.py:539` and `:551`), and
+its two cases at `tests/test_live_processing_stages.py:501` and `:551`), and
 `git grep -c "playfield" -- tests/test_table_refine.py` answered nothing, so the refine side had no reader
 at all. Repair: `src/table_refine.py` owns the rule — `:1104 CHECK_UNAVAILABLE`, `:1107
 unavailable_verdict(exc)` and `:1116 best_verdict(quad)` — the stage reads `best_verdict` at `:412` and
@@ -8312,12 +8312,12 @@ answers one shipped rule, and no shipped `requires` entry uses an empty field na
 
 ### Strong 3 · the per-dataset reference table stood twice
 
-Ground: `src/calib_segments.py:89-78 STATIC_REFERENCES` and `CORNERS_SPEC` and `src/table_refine.py:68
+Ground: `src/calib_segments.py:89-78 STATIC_REFERENCES` and `CORNERS_SPEC` and `src/table_refine.py:64
 _DATASET_PRIOR` held the same (file, key) pairs, `src/calib_segments.py:81 EVIDENCE_HIGHLIGHT` even cited
 `_DATASET_PRIOR` by name, both datasets answered equal so a drift was silent, and
 `git grep -n "STATIC_REFERENCES" -- 'tests/*.py' | wc -l` answered 0. The readers also disagreed on an
 unknown dataset: `src/calib_segments.py:427 spec = STATIC_REFERENCES.get(str(dataset)) or CORNERS_SPEC`
-served the highlight file, while `src/table_refine.py:108-110` returned None. Repair: `STATIC_REFERENCES`
+served the highlight file, while `src/table_refine.py:106-110` returned None. Repair: `STATIC_REFERENCES`
 stays the pair owner and gains `reference_spec(dataset)` at `src/calib_segments.py:89`; `src/table_refine.py`
 imports the module, `prior_spec(dataset)` reads the owner at `:92` and adds only its own `points`/`note`,
 `_DATASET_NOTES` holds the two notes, and `_DATASET_PRIOR` at `:122` is a derived view. The unknown-name
@@ -9739,7 +9739,7 @@ and found no candidate in migrations `0003`/`0004`, `deploy/`, the backup retent
 ### Strong 1 · the tool answered "passed" for a check that could not run
 
 Ground: `tools/playfield_quad_evidence.py:79 def best_check(quad, parallel_tol=PARALLEL_TOL_DEG)` re-ran the
-unrotated check inside its fault handler (`:91-95`), while the owner `src/table_refine.py:1149 def
+unrotated check inside its fault handler (`:91-95`), while the owner `src/table_refine.py:1147 def
 best_verdict(quad)` answers `:1140 unavailable_verdict(exc)` = `{"ok": False, "reasons": ["check-unavailable"],
 "metrics": {}, "error": …}` under the rule stated at `annotator/pipeline_stages.py:403-409`. The tool's own
 docstring at `:85` claimed the opposite of what it returned. Measured with a planted `ValueError` on the rotated
@@ -9948,7 +9948,7 @@ Ground: `src/quad_fit.py:57-64` and `src/quad_fit_lines.py:164-171` were identic
 diverged on the quad test, while `src/quad_fit_lines.py:19` already imported two names from `quad_fit`. Repair:
 `src/quad_fit.py:56 cloth_contours(bgr)` answers `(mask, big, h, w)` or `None` and both fitters read it,
 keeping their own gates (`fit_quad_v3` keeps its 3.6 ratio gate, `fit_quad_lines` its 40000 pixel area gate)
-and their own EM fits; `src/quad_refine.py:16` and `src/table_refine.py:222` still import the names they need.
+and their own EM fits; `src/quad_refine.py:16` and `src/table_refine.py:220` still import the names they need.
 `tests/test_cloth_contour_owner.py` holds five cases.
 
 ### Note 1 and Note 2 · the two holds that were weaker than their names
