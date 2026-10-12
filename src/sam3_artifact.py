@@ -37,11 +37,13 @@ top-level object and call `float(key)` on every key, so a top-level stamp key
 would stop them.  A frame with no ball row carries no stamp.  It holds no
 `table_mm`, so it names no producer, and it is not a lie about who measured it.
 
-This module does not make the parent directory of `document`.  It also does not
-stop a module outside the four callers from naming the same path:
-`src/ball_fp_audit.py`, `src/tiny_ball_net.py`, `src/fast_ball_labels.py`,
-`src/motion_scan.py`, `src/rebuild_events_v2.py` and `annotator/unified_server.py`
-still read the file by name.
+This module does not make the parent directory of `document`.  It is also the only
+module that names the artifact.  The name reaches the other readers in two shapes:
+`src/ball_fp_audit.py`, `src/tiny_ball_net.py` and `src/rebuild_events_v2.py` call
+`artifact_path` or `artifact_in`, and `src/fast_ball_labels.py`, `src/motion_scan.py`
+and `annotator/unified_server.py` read `ARTIFACT` itself.  The case
+`test_scope_holds_every_shipped_module_that_names_the_artifact` holds the boundary:
+it walks the shipped tree, so a module outside it that names the file fails.
 """
 from __future__ import annotations
 

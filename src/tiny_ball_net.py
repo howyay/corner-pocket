@@ -44,10 +44,13 @@ if str(ROOT) not in sys.path:
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.ball_gate import SAM3_BALL_MIN_SCORE  # noqa: E402
+# The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
+# path from that owner, so a rename of the file name moves this reader too.
+from src.sam3_artifact import artifact_path  # noqa: E402
 
 OUT = ROOT / "out" / "tiny_ball_probe"
 CENSUS = ROOT / "out" / "scan30" / "sam3_census.json"
-RESULTS = ROOT / "out" / "scan30" / "sam3_results.json"
+RESULTS = artifact_path("vod30", ROOT)     # the app's own scan, through its owner
 VIDEO = media_path(ROOT, "vod30")
 CORNERS = ROOT / "out" / "scan30" / "corners.json"
 QUAD_SEGMENTS = ROOT / "out" / "calib_vod30_segments.json"
@@ -100,7 +103,7 @@ def load_labels(root=None, extra=()) -> dict:
     root = Path(root or ROOT)
     labels: dict[float, list] = {}
     for path, key in ((root / "out" / "scan30" / "sam3_census.json", "frames"),
-                      (root / "out" / "scan30" / "sam3_results.json", None)):
+                      (artifact_path("vod30", root), None)):
         if not path.exists():
             continue
         payload = json.loads(path.read_text())

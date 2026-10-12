@@ -13,7 +13,7 @@ import functools
 import json
 import math
 import mimetypes
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
@@ -66,7 +66,12 @@ from annotator.pipeline_stages import DEFAULT_DETECTORS, frame_detectors  # noqa
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it here, so the console's ball-set route and that owner cannot hold
 # two different lists of accepted names.
-from src.store_files import BALL_SETS, dump_document  # noqa: E402
+from src.store_files import BALL_SETS, FACE_STORE, dump_document  # noqa: E402
+# The face store path has one owner, src/store_files.py.  This module imports that
+# name and builds the enrolment scratch path from it, so a move of the path reaches
+# both readers below.  The scratch copy sits under out/enroll-eval, so the tail
+# alone joins it: the two leading folders of the owner name are the workspace ones.
+from pathlib import PurePosixPath  # noqa: E402
 # The shot clock declares the actions it applies (annotator/shot_clock.py ACTIONS).
 # This module imports it here, so the write registry's 'clock' row publishes the very
 # set the handler refuses with.
@@ -83,6 +88,10 @@ from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 # sources below read that owner for the path they offer and for the name test, so the
 # server cannot hold a second spelling of the name.
 from src.calib_segments import ANCHORS_HEAD, anchors_reference_name  # noqa: E402
+# The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  The three event
+# source sites below read that name from here, so a rename of the file name moves
+# every one of them.
+from src.sam3_artifact import ARTIFACT  # noqa: E402
 #: The live route reads its accepted verbs from this one tuple: `live_action` gates on
 #: it and the write registry imports it for its 'live' row, so the gate and the contract
 #: GET /api/actions publishes cannot name two different sets.
@@ -1084,7 +1093,8 @@ class Backend:
             raise APIError("player_id must be a non-empty string")
         faces = self.store()
         # the enrolment scratch copy is a working file under out/enroll-eval, not a store
-        scratch = self.out / "enroll-eval" / "scratch" / "out" / "corner-pocket" / "face_embeddings.json"
+        scratch = (self.out / "enroll-eval" / "scratch"
+                   / PurePosixPath(FACE_STORE).relative_to("out"))
         with self._identity_lock:
             pipeline = self._identity_pipeline
             index = pipeline.identity if pipeline is not None else IdentityIndex(
@@ -1358,7 +1368,7 @@ class Backend:
         base = self.dataset(dataset)
         sources = [(base / name, label) for name, label in self._EVENT_QUADS]
         sources.append((self.out / anchors_reference_name(dataset), 'saved anchors'))
-        sources.append((base / 'sam3_results.json', 'measured ball correspondences'))
+        sources.append((base / ARTIFACT, 'measured ball correspondences'))
         return sources
 
     def _projection_stamp(self, dataset):
@@ -1662,7 +1672,7 @@ class Backend:
         from src.table_geometry import homography_to_canonical
         pairs = []
         for path, _ in sources:
-            if path.name != 'sam3_results.json':
+            if path.name != ARTIFACT:
                 continue
             for rows in (load(path, {}) or {}).values():
                 for ball in (rows if isinstance(rows, list) else []):
@@ -1681,7 +1691,7 @@ class Backend:
             except Exception:
                 pass
         for path, label in sources:
-            if path.name == 'sam3_results.json':
+            if path.name == ARTIFACT:
                 continue
             quad = _saved_quad(load(path, {}) or {}, 'anchors' if path.name.startswith(ANCHORS_HEAD) else 'corners')
             if quad is None:

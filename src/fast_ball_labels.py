@@ -43,6 +43,9 @@ import numpy as np
 
 from src.ball_gate import SAM3_BALL_MIN_SCORE
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
+# The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  This reader builds
+# the path of each cache name itself, so it takes the plain name.
+from src.sam3_artifact import ARTIFACT
 from src.tiny_ball_net import SPLIT_GAP_S
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -276,7 +279,7 @@ def frame_at(time_s: float, video=VIDEO):
 def existing_times(root=ROOT) -> set:
     """Label times already in the caches, rounded the way the caches round them."""
     times = set()
-    for name, key in (("sam3_census.json", "frames"), ("sam3_results.json", None)):
+    for name, key in (("sam3_census.json", "frames"), (ARTIFACT, None)):
         path = Path(root) / "out" / "scan30" / name
         if not path.exists():
             continue

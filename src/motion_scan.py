@@ -65,6 +65,9 @@ from src.ball_scale import (DIAMETER_NATIVE_PX, DIAMETER_P10_NATIVE_PX,  # noqa:
                             DIAMETER_P90_NATIVE_PX, NATIVE_FRAME, RADIUS_NATIVE_PX,
                             WORKING_FRAME)
 from src.datasets import lookup as dataset_lookup, media_path  # noqa: E402
+# The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  This reader builds
+# the path of each candidate scan folder itself, so it takes the plain name.
+from src.sam3_artifact import ARTIFACT  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
                               EVENT_BEFORE_S)
@@ -304,7 +307,7 @@ def sam3_ball_radius(dataset: str, root=None) -> dict:
         [root / "out" / "scan30"] if dataset == "vod30" else []) + [
         root / "out" / name for name in (f"scan_{dataset}", f"scan{dataset}", dataset)]
     for folder in dict.fromkeys(folders):
-        path = folder / "sam3_results.json"
+        path = folder / ARTIFACT
         if not path.exists():
             continue
         payload = json.loads(path.read_text())

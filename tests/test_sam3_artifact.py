@@ -7,11 +7,11 @@ The file named no producer, so no reader could tell a `table_mm` that the camera
 model measured from one that `out/calib_final.json` recomputed.  For the file of
 2026-09-03 every one of the 270 rows equals the calibrated recompute.
 
-These tests hold the four callers to `src/sam3_artifact.py`.  Two whole-scope
-source guards fail by file and line: one when a scope module names the file
-itself, and one when a scope module rewrites the path the owner named without
-going through `sam3_artifact.write`.  The read tests hold a read to the bytes of
-the file it read.
+These tests hold every module that names the artifact to `src/sam3_artifact.py`.
+Two whole-scope source guards fail by file and line: one when a scope module names
+the file itself, and one when a scope module rewrites the path the owner named
+without going through `sam3_artifact.write`.  The read tests hold a read to the
+bytes of the file it read.
 """
 import ast
 import json
@@ -28,6 +28,7 @@ import data_guard
 # this body four times in the test tree.  Round 69 put the reader of the code
 # strings in the same home: this suite and tests/test_events_document.py held one
 # body between them, byte for byte.
+from _shipped import shipped_modules
 from _shipped import code_strings, dotted_name as _dotted
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -40,17 +41,37 @@ from src.sam3_artifact import (ARTIFACT, CAMERA_MODEL, MIXED, PRODUCERS,  # noqa
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = "src/sam3_artifact.py"
 
-#: The four callers of the owner: the two writers and the two declared readers.
-SCOPE = (
+#: The four callers of the owner: the two writers and the two declared readers.  The
+#: two producers below write the file, so `PRODUCER_WRITES` holds one rule for each.
+CALLERS = (
     "src/scan_events.py",
     "src/rebuild_events_calibrated.py",
     "src/sam3_ball_cache.py",
     "src/eval_events.py",
 )
 
+#: The other readers of the artifact, outside the four callers above.  The owner's own
+#: docstring admitted them before; the guard holds them now.  Each one takes the name or
+#: the path from the owner: `src/tiny_ball_net.py`, `src/ball_fp_audit.py` and
+#: `src/rebuild_events_v2.py` call a path helper, and `src/motion_scan.py`,
+#: `src/fast_ball_labels.py` and `annotator/unified_server.py` bind `ARTIFACT` itself.
+#: Round 87 measured the six sites; the case below fails on any one of them, so the
+#: docstring of the owner no longer states a boundary that no case holds.
+READERS = (
+    "src/tiny_ball_net.py",
+    "src/ball_fp_audit.py",
+    "src/rebuild_events_v2.py",
+    "src/motion_scan.py",
+    "src/fast_ball_labels.py",
+    "annotator/unified_server.py",
+)
+
+#: Every module the two guards below read: the four callers and the six readers.
+SCOPE = CALLERS + READERS
+
 #: A code string that names the artifact but is not this artifact, with the
 #: reason it may stay.  The key is (module, the string).  The guard fails when a
-#: key stops matching a string in that module.  The table is empty: no call in
+#: key stops matching a string in that module.  The table is empty: no module in
 #: scope has a reason to name the file, because the owner names it.
 OTHER_ARTIFACT_FILES = {}
 
@@ -72,6 +93,16 @@ ROW = {"img": [640.0, 360.0], "r": 7.5, "score": 0.87, "table_mm": [1234.5, 321.
 def _names_the_artifact(value: str) -> bool:
     """True when a string literal names the artifact, by its last path component."""
     return Path(value).name == ARTIFACT
+
+
+def _artifact_sites(paths) -> list:
+    """`file:line` is a literal that names the artifact, one entry per site."""
+    sites = []
+    for path in paths:
+        for line, value in code_strings(ast.parse(Path(path).read_text())):
+            if _names_the_artifact(value):
+                sites.append(f"{Path(path).name}:{line}")
+    return sorted(sites)
 
 
 def _walk(node, where: str):
@@ -339,15 +370,20 @@ class NameTest(unittest.TestCase):
 class ScopeGuardTest(unittest.TestCase):
     """No module in scope names the artifact or rewrites it outside the owner."""
 
-    def test_every_module_in_scope_calls_the_owner(self):
+    def test_every_module_in_scope_reads_the_owner(self):
+        """A reader calls one of the owner's helpers, or it imports a name from it."""
         for relative in SCOPE:
-            calls = _calls(ast.parse((ROOT / relative).read_text()))
-            self.assertTrue([name for _, _, name in calls if name.startswith("sam3_artifact.")],
-                            f"{relative} does not go through {OWNER}")
+            text = (ROOT / relative).read_text()
+            calls = [name for _, _, name in _calls(ast.parse(text))
+                     if name.startswith("sam3_artifact.")]
+            imports = [node for node in ast.walk(ast.parse(text)) if isinstance(node, ast.ImportFrom)
+                       and (node.module or "").endswith("sam3_artifact")]
+            self.assertTrue(calls or imports,
+                            f"{relative} neither calls nor imports {OWNER}")
 
     def test_every_producer_names_a_module_that_writes_through_the_owner(self):
         for producer, rule in PRODUCERS.items():
-            self.assertIn(producer, SCOPE, f"{producer} is not a module in scope")
+            self.assertIn(producer, CALLERS, f"{producer} is not a module in scope")
             self.assertTrue(rule.strip(), f"{producer} has no rule-set note")
             text = (ROOT / producer).read_text()
             for fragment in PRODUCER_WRITES[producer]:
@@ -383,6 +419,30 @@ class ScopeGuardTest(unittest.TestCase):
                           f"{OWNER} only (use artifact_path/artifact_in)")
         self.assertEqual(OTHER_ARTIFACT_FILES.keys() - used, set(),
                          "an entry in OTHER_ARTIFACT_FILES outlived its code")
+
+    def test_a_planted_copy_answers_its_own_site(self):
+        """A second spelling must answer its line, so the case above cannot pass in silence."""
+        with TemporaryDirectory() as folder:
+            planted = Path(folder) / "planted_reader.py"
+            planted.write_text(f'NAME = "{ARTIFACT}"\n', encoding="utf-8")
+            self.assertEqual(_artifact_sites([planted]), ["planted_reader.py:1"],
+                             "the walk must name the line of a planted copy")
+
+    def test_scope_holds_every_shipped_module_that_names_the_artifact(self):
+        """One walk of the whole shipped tree: a reader outside SCOPE fails here."""
+        planted = sorted(site for site in _artifact_sites(shipped_modules())
+                         if site.split(":")[0] not in SCOPE
+                         and site.split(":")[0] != Path(OWNER).name)
+        self.assertEqual(planted, [],
+                         f"a module outside SCOPE names {ARTIFACT}: " + "; ".join(planted)
+                         + f" (add it to READERS, or give it a helper of {OWNER})")
+
+    def test_scope_holds_the_four_callers_and_the_six_readers(self):
+        self.assertEqual(len(SCOPE), len(set(SCOPE)),
+                         "one module must stand once in SCOPE")
+        self.assertEqual(sorted(READERS), sorted(set(READERS) - set(CALLERS)),
+                         "a caller must not stand in READERS too")
+        self.assertEqual(len(READERS), 6, "the six readers outside the four callers")
 
     def test_scope_modules_do_not_rewrite_the_artifact_in_place(self):
         """`json.dump(x, open(SAM3, "w"))` is a rewrite of the owner's file."""

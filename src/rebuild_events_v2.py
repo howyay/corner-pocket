@@ -31,6 +31,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 
 from src import events_document  # noqa: E402
+# The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
+# path from that owner, so a rename of the file name moves this reader too.
+from src.sam3_artifact import artifact_in  # noqa: E402
 from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: E402
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
@@ -41,7 +44,7 @@ CORNERS = ROOT.parent / "out" / "corners_30min_v2.json"
 def main():
     corners = np.array(json.load(open(CORNERS))["corners"], np.float32)
     H = homography_to_canonical(corners)                   # 720p px -> canonical mm
-    sam3_raw = json.load(open(SCAN / "sam3_results.json"))
+    sam3_raw = json.load(open(artifact_in(SCAN)))
     records = json.load(open(SCAN / "records.json"))
     rec_by_t = {r["t"]: r for r in records}
 

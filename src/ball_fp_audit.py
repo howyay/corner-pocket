@@ -62,6 +62,9 @@ from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 from src.fast_ball_labels import MATCH_TOL_PX
+# The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
+# path from that owner, so a rename of the file name moves this reader too.
+from src.sam3_artifact import artifact_path  # noqa: E402
 #: The student detector's peak-search cut.  It has one home,
 #: ``annotator.pipeline_stages.BALL_THRESHOLD``, whose value the student pass over
 #: the case frames uses (``--threshold`` below).  ``PRODUCTION_CUT`` below is the
@@ -75,7 +78,7 @@ AUDIT = ROOT / "out" / "ball-fp-audit"
 BITMAP = PROBE / "960x540-scratch.pt"
 REPORT = PROBE / "report_960x540.json"
 CENSUS = ROOT / "out" / "scan30" / "sam3_census.json"
-RESULTS = ROOT / "out" / "scan30" / "sam3_results.json"   # the app's own 56 frames
+RESULTS = artifact_path("vod30", ROOT)       # the app's own 56 frames
 
 CASES_OUT = AUDIT / "cases.json"
 SWEEP_OUT = AUDIT / "sam3_sweep.json"
