@@ -10078,3 +10078,185 @@ Round 75 answered 2329 cases and this round answers 2347. The eighteen additions
 The push is still blocked. One hundred and thirty-nine commits sit on the local `main`: the two writer commits of
 this round, the record of this round, and the hundred and thirty-six that came before them. `origin/main` stays
 at `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 77 · the first anchor second, the ball label domain and the cache readers (2026-10-11)
+
+The walk of this round read the repository at `f866e9f` with an empty `git status --porcelain`, answered
+`Strong candidate present - 1 Strong, 2 Worth, 1 Note`, and wrote 201 lines to
+`/tmp/dshsess/walk_round77.md`. The count on its verdict line equals the number of its sections. It read about a
+third of `annotator/unified_server.py`, not the 14 unread `_do_*` bodies of `annotator/operations.py`, and
+walked `viz/`, `annotator/fonts/`, `src/reid/` and `src/sam3/` by duplicate-body scan only. It also reported
+that the Lead's brief for the round carried a stale round number in its title while the task text named round 77
+and `walk_round77.md`; the walk followed the task text. The Lead's brief chain gains the rule: a brief derived
+by `sed` must be re-read at its head before it is sent.
+
+### The commits of this round
+
+| Commit | Scope | What it does |
+| --- | --- | --- |
+| `00ec0ad` | `tests/test_console_anchor_times.py`, `annotator/unified_server.py` (shared with writer BB) | Strong 1 and Note 1 |
+| `fa87ac6` | `annotator/label.html`, `src/sam3_ball_cache.py`, `tests/test_sql_domain_parity.py`, `tests/test_sam3_ball_cache.py` | Worth 1 and Worth 2 |
+
+### Strong 1 · the first anchor second has three homes and the guard measured none
+
+Ground: the first anchor second stood in more than one place while the guard named for it measured none of
+them. Repair: the owner `annotator/unified_server.py:170 SUGGESTED_ANCHOR_TIMES = (70, 200, 350)` stays, and the
+anchors route default stopped being a home — it read `query.integer("t", 70)` and reads
+`query.integer("t", SUGGESTED_ANCHOR_TIMES[0])` at `:2241` now. The other sites were measured and classified:
+`annotator/app.js` (`loadAnchors` at `:494`, export at `:2435`) copies the published field into its state and
+holds no home; `annotator/vision-stage.js:1490` and `:1546` keep the literal 70 as a deliberate copy, because a
+browser page cannot read a python name, and the guard holds it to the owner; `src/pid_anchor_ui.py`'s
+`const SUG = [70, 200, 350]` is a deliberate second realm, and a case holds the two lists equal in value and in
+order; and the module-level `SUGGESTED` name of that file is a dead name no line reads, which the guard does not
+hold and which stands open. `tests/test_console_anchor_times.py` grew from 9 to 16 cases: the service line, the
+published name, the stage row and its published list, the console's two paths, the realm equality, the route
+default, and one planted case per site. The guard computes the line numbers at run time, so writer BB's nine
+inserted lines above the route did not break it. `Note 1` of this round: the guard's blind-spot list cited
+`annotator/vision-stage.js:1500`, which holds the verdict draft, and it cites `:1490` now; the citation rule
+could not see that, because it proves only that a cited line holds a letter or a digit and never compares it
+with the sentence beside the citation.
+
+### Worth 1 · the ball label domain stands three times
+
+Ground: `git grep -n "<= *15\|1\[0-5\]" -- tests/ annotator/ db/` answered four lines — the console loop of
+`annotator/label.html:143`, the route gate of `annotator/unified_server.py:2311`, the SQL regex of
+`db/migrations/0002_user_data.sql:178`, and one different rule in `tests/test_ops.js:3201` (ball numbers wrap by
+ball count at `:3209`). Repair: the console owns `const BALL_LABEL_MIN = 0;` and `const BALL_LABEL_MAX = 15;` at
+`annotator/label.html:50-51` and its loop reads them; the service owns `BALL_LABEL_MIN = 0` and
+`BALL_LABEL_MAX = 15` at `annotator/unified_server.py:138-139` and its gate reads them; the frozen migration
+stays a text comparison and gained a `TextBound` row with the new `BallLabelDomainTests` (three cases: the three
+realms agree, both edges and both neighbours behave, and a planted widen is reported). `tests/test_sql_domain_parity.py`
+grew from 14 to 17 cases, and every accepted and refused value of today stands. One spelling stays unheld and is
+recorded: the page title reads `Ball labeler — 1-15 + cue`.
+
+### Worth 2 · two readers of one cache file were one body
+
+Ground: `src/sam3_ball_cache.py:79 load_costs` and `:108 load_filters` held the same five statements and differed
+only in the JSON key they read, while `:90 save_cache` writes both keys and `:56 load_cache` has a different
+body. Repair: one private `_json_object(path)` at `:79` holds the four statements, `load_costs :96` answers
+`return _json_object(path).get("cost", {})` and `load_filters :119` answers the same call with `"filter"`. The
+writer measured the walk and stated its structural limit: the duplicate-body walk does reach the file (110 files,
+`src/sam3_ball_cache.py` read as true) but it cannot report a pair inside ONE module, because its
+`in_two_modules` needs two; it answers 936 groups and 12 of them name this module, each holding one function.
+What holds the body instead is the new `CacheReaderBodyTests` in `tests/test_sam3_ball_cache.py` (a structure
+case, a run-time monkeypatch case and a planted second body), which took that module from 9 to 12 cases.
+
+### The bites of this round
+
+| Bite | File | sha1 before → during → after | What failed |
+| --- | --- | --- | --- |
+| Writer BA, Strong 1 | `annotator/unified_server.py` | `3e4a391869bec4fc5cad4205c607f472ccfb2e36 → b0504feb3df93fd50cfffd1c07ee43159c46accc → 3e4a391869bec4fc5cad4205c607f472ccfb2e36` | `annotator/unified_server.py:2241 states the route default as a number: … it must read SUGGESTED_ANCHOR_TIMES[0]`, and the planted-route case refusing a tree that already holds the plant |
+| Lead, Strong 1 | `annotator/vision-stage.js` | `4a058cd87e0177a2d2c6fe47428c097bdc010b41 → 2ae57cabb64e8ea3be3f49c15adfa8e63ddf98fe → 4a058cd87e0177a2d2c6fe47428c097bdc010b41` | `'annotator/unified_server.py:166' not found in 'annotator/vision-stage.js:1490 loads second 71 and seeks second 100; the fallback path states one second'` |
+| Writer BB, Worth 1 | `annotator/label.html` | `4deddd82ccbd9bc375d547cf9e1c56cdd8ddcbb2 → 3dc82eb37afcd2d2e4ba2bb12dee794e670442c7 → 4deddd82ccbd9bc375d547cf9e1c56cdd8ddcbb2` | `ball_labels.label: annotator/label.html states BALL_LABEL_MAX = 16; the owner holds 15` |
+| Lead, Worth 1 | `annotator/unified_server.py` | `3e4a391869bec4fc5cad4205c607f472ccfb2e36 → 317e4a399348141c64c7e18c1b4f322bf31e3b03 → 3e4a391869bec4fc5cad4205c607f472ccfb2e36` | `ball_labels.label: annotator/label.html states BALL_LABEL_MAX = 15; the owner holds 16` |
+
+### The suites of this round
+
+| Suite | Answer at the head of this round |
+| --- | --- |
+| `./scripts/pool-test.sh python` | `Ran 2360 tests in 255.278s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | tests 232, pass 232, fail 0 |
+| `node tests/test_board.js` | tests 23, pass 23, fail 0 |
+| `node tests/test_app_timeline.js` | 114 passed, 0 failed |
+
+Round 76 answered 2347 cases and this round answers 2360. The thirteen additions are the seven cases of
+`tests/test_console_anchor_times.py` (9 to 16), the three of `tests/test_sql_domain_parity.py` (14 to 17) and the
+three of `tests/test_sam3_ball_cache.py` (9 to 12).
+
+### A ledger note
+
+Writer BB measured that nine older round sections still carry the open row
+`| The route gate's ball-label range is a bare literal | limit of round 68 | 0 <= label <= 15 stands unnamed |`,
+which this round closes (`annotator/unified_server.py:138-139` names both bounds now). The past sections stay as
+written, because a round's record is the history of what stood open then; this section states the closure, and
+the brief of each later walk carries the closed list.
+
+### Rows that close here
+
+| Row | Where it stood | How it closes |
+| --- | --- | --- |
+| The first anchor second had more than one home and the guard measured none | Strong 1 of this walk | the route default reads the owner and the guard holds 16 sites |
+| The ball label domain stood three times | Worth 1 of this walk | the console and the service own their bounds and the parity table binds the migration |
+| Two readers of one cache file were one body | Worth 2 of this walk | `_json_object` owns the body and a case holds it |
+| The anchor guard's blind-spot list cited a line without the fact | Note 1 of this walk | the citation names `annotator/vision-stage.js:1490` |
+
+### What stands open after this round
+
+| Row | Kind | Ground |
+| --- | --- | --- |
+| `src/pid_anchor_ui.py`'s module-level `SUGGESTED` is a dead name | finding of writer BA | no line reads it and no case holds it |
+| The stage literals move with the owner | limit of writer BA | a move of the owner and both literals together is not caught |
+| The ball label page title is a fourth spelling | limit of writer BB | `<title>Ball labeler — 1-15 + cue</title>` |
+| The duplicate-body walk cannot report a pair inside one module | structural limit measured by writer BB | its `in_two_modules` needs two modules |
+| No database and no browser run for the two rows | limit of writer BB | the migration regex is compared as text and the console page is driven by no test |
+| Three seek sites stay outside the rule | limit of round 76 | `src/sam3_frame_audit.py:55`, its `decode_by_index`, `src/recut_crops.py:53` |
+| `src/yolo_track.py` needs a gitignored artifact | limit of round 75 | it imports `src/pid_identity`, which reads `out/corners_30min_v2.json` at import time |
+| A stub that deletes a method can damage the process | finding of round 74 | `delattr` on `PostgresStore._write` broke a later module |
+| The rounding hold of `tests/test_projection_guard.py` is static | limit of round 73 | no case drives a fractional answer from `Probe.px` or `Probe.claim_px` |
+| One driver loads `annotator/ops.js` alone | finding of round 73 | every console read a driver may see must be lazy |
+| The eight refusal sentences also stand as validator calls | limit of round 72 | `annotator/operations.py:874`, `:895`, `:620`, `:636`, `:836`, `:1049`, `:1214`, `:1111`, `:1123`, `:408`, `:437`, `:1273`, `:1316` |
+| The helper walk reads top-level `def` nodes only | limit of round 72 | a copy inside a class body or a function is invisible |
+| The `source_files` family stays twice by decision | decision of round 72 | it answers from a module-local `SOURCE_TREES` scope |
+| The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
+| `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
+| The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2133` keeps `cls._SEED_ROLES` working |
+| `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2381` exports no `quadDistance` at the seam |
+| The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:344` and `annotator/operations.py:325` |
+| Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
+| The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
+| The console bounds are held by text, not by meaning | limit of round 64 | a third statement of a bound is invisible to its case |
+| `matches.round` has no SQL rule | stated in round 64 | the API bound is 1 to 99 and the migration is silent |
+| The glow default still stands twice | limit of round 63 | `annotator/operations.py:295` and `annotator/ops.js:1274 s.lampGlow??.22` |
+| The citation guard skips the documents | Note 2 of round 60, still open | `tests/test_citation_lines.py`'s `SKIP_PARTS` holds `docs`, so 1514 document citations have no guard |
+| Writer line shifts move citations outside their scope | pattern of rounds 61 to 74 | eight rounds in a row needed a Lead repair |
+| The pin's URL still holds the raw weight name | limit of round 62 | `src/weight_pins.py:34` names `yolov8n.pt` inside the download URL |
+| Two stylesheets keep a copy of the range | decision of round 62 | the public port serves no `ops.css` |
+| The Postgres branch stays unexercised | limit of round 62 | three modules skip 8, 29 and 5 cases |
+| The timeline suite keeps its own entry | decision of round 61 | the three suites answer one contract and do not share one runner shape |
+| The join's tolerance may be wrong for future data | limit of round 61 | 0.1 s and the old bucket swap strictness for a row at 70.05 |
+| Four same-named statistics functions stand outside the home | found by writer Q in round 60 | `tests/test_body_calibration.py:160 stats(xs)`, `tests/live_identity_validation.py:147 _stats(xs)`, `tests/live_pipeline_run.py` and `annotator/pipeline_stages.py:75 _percentile` |
+| Many document citations are stale | found by writer P in round 60 | `docs/console-redesign.md` holds 74 citations into `annotator/unified_server.py` and `docs/postgres-design.md` 28 |
+| One sentence still stands twice | found by round 59 | `seeds exist for vod30 only` at `src/store.py:265` and `src/store_pg.py:313` |
+| Three Chinese refusal sentences await a wording review | limit of round 59 | only their digests pin the table |
+| The projection rule keeps two tolerances and a static walk | decisions of round 59 | each site names its own tolerance |
+| Two modules have no test module of their own | limit of round 59 | `tests/test_eval_events.py` and `tests/test_dense_queue.py` do not exist |
+| `src/ball_fp_audit.py` holds two float comparisons | Note of round 59 | `:333` and `:363` use `abs(row["threshold"] - …) < 1e-9` |
+| The palette stays a held pair | decision of round 58 | the public port serves `board.html`, `board.js` and `board.css` only |
+| The third console copy table stands beside the two guarded ones | Note 10 of round 58 | `annotator/ops.js:9` holds 262 word pairs and four extending statements |
+| The escape rule keeps one copy per realm | decision of round 58 | the console realm and the board realm do not share a module |
+| The four markup content-type sites are held by text only | limit of round 58 | no case drives the inline `fetch` of `annotator/index.html` or `annotator/label.html` |
+| The event clip writes its own temp file | limit of round 58 | `annotator/unified_server.py:1867 event_clip` writes `.part.mp4` and renames it |
+| The tenth writer stays deferred | limit of round 58 | `annotator/operations.py:459 Operations._commit` keeps its `.state-` temp file, its fsync and its cleanup |
+| The walk reads the top level only | limit of round 58 | `src/reid/`, `src/sam3/` (172 modules) and `annotator/fonts/` hold writers of their own |
+| The javascript suites' case counts have no guard | limit of round 57 | the suite list is guarded, and the counts inside the three files are not |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and three test literals |
+| The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
+| The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
+| The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
+| The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
+| The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
+| The `vod30` seeds rule stands three times | Worth 1 of the round-54 walk | `src/store.py:270`, `src/store_pg.py:291` and `:298`, `db/migrations/0002_user_data.sql:150` |
+| The ffmpeg variable names stand twice | Worth 2 of the round-54 walk | `annotator/ffmpeg_bin.py:25-26` and the drop-in `30-ffmpeg.conf:8-9` |
+| The 48 h staleness window stands three times | Worth 3 of the round-54 walk | `scripts/pool-postgres-backup.sh:50`, `deploy/systemd/pool-postgres-verify.service:2`, `docs/postgres.md:206` |
+| Line citations of the documents have drifted | Note 1 of the round-54 walk | `docs/postgres-design.md:573` names `src/pid_shooter.py:111`, and the writer stands at `:109` |
+| `src/sam3_ball_cache.py` freezes one dataset in two signature defaults | limit of round 54 | `cloth_mask` and `run` keep `corners_path="out/scan30/corners.json"` |
+| The cloth-quad guard is a line scanner | limit of round 54 | it locks two known shapes, and a path built from parts passes it |
+| A case count stands in the prose of the inventory guard | measured in round 54 | the paragraph states 1979 cases in 99 modules, and no guard reads that number |
+| The default dataset name is written five times | Worth 2 of the round-53 walk | `git grep -n 'default="vod30"'` answers five sites |
+| Five more bodies stand twice in two modules each | Worth 1 of the round-53 walk | `common`, `frame_detections`, `log_message`, `_send` and `seeds_get` |
+| Three test literals restate the native pair | Note 1 of the round-53 walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57`, `tests/test_app_quad_contract.py:43` |
+| The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, as rounds 57 to 77 measured again |
+| The document guard reads two documents by name | limit of round 51 | `docs/tiny-ball-probe.md:5,58` states 18.9 px with no guard |
+| The association step has no green behavioural case | limit of round 51 | `tests/test_person_pipeline.py:314` patches every path that could try the association |
+| `jsonb` has no behavioural case | limit of round 51 | `tests/test_store_import.py` runs cases and skips 5, and `tests/test_store_pg.py` does not exist |
+| `src/recut_crops.py` cannot be imported by a test | limit of round 51 | its side of the routing is checked by `ast` only |
+| `tests/test_clock_api.py:256` holds a timing margin of 5.0 seconds | Note of the round-52 run | the module alone answers `OK`, and the full run measured `5.3150651619998825` once under load |
+| A walk's verdict line can disagree with its own sections, and a report can pass its line cap | limits of rounds 56 and 61 | the walks of rounds 57 to 77 answer equal counts, and the round-61 report wrote 261 lines against a cap of 260 |
+
+The push is still blocked. One hundred and forty-two commits sit on the local `main`: the two writer commits of
+this round, the record of this round, and the hundred and thirty-nine that came before them. `origin/main` stays
+at `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
