@@ -34,7 +34,7 @@ IDENTITY_REFERENCE = "out/pid_identity_v0.json"
 # src/pid_shooter.py, src/pid_shooter2.py and src/yolo_track.py.  The
 # review-side detectors keep the ultralytics default instead, because they give
 # the score of every row to the caller: src/person_pipeline.py:108,
-# src/frame_inference.py:191 and src/info_complete_scan.py:107.
+# src/frame_inference.py:203 and src/info_complete_scan.py:107.
 PERSON_CONF = 0.35
 
 
