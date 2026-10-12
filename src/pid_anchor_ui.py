@@ -31,10 +31,11 @@ if __name__ == "__main__":
     from src.store import refuse_file_writes_under_postgres
     refuse_file_writes_under_postgres("src/pid_anchor_ui.py")
 from calibrate import OBJECT_MM, project  # noqa
+from src.calib_segments import anchors_reference_path  # noqa
 from src.reply_body import write_reply  # noqa
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
-OUT = ROOT.parent / "out" / "pid_anchors_vod30.json"
+OUT = ROOT.parent / anchors_reference_path("vod30")
 CALIB = ROOT.parent / "out" / "calib_vod30.json"
 SUGGESTED = [70, 200, 350]
 

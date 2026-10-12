@@ -29,7 +29,7 @@ list before this module existed; a log shorter than the bound is returned whole.
 `context` and no `type`, so `events_document.write` refuses it.
 
 The `ops_events` table is not bounded here: `src/store_import.py:220-224` inserts every
-row of the document.  `src/store_check.py:65-66` still spells the number next to the
+row of the document.  `src/store_check.py:71-72` still spells the number next to the
 live table, inside a `LIMIT`; that file is outside this change, and
 `tests/test_event_retention.py` records the spelling instead of hiding it.
 """

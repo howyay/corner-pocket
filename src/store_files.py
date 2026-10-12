@@ -27,6 +27,10 @@ from pathlib import Path
 # old when the owner renames a scan folder.
 from src.atomic_write import write_atomic
 from src.datasets import STATIC_OUT
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  The two
+# readers below read the head and the suffix of that name, so a document set and a
+# name check cannot keep a second spelling of it.
+from src.calib_segments import ANCHORS_HEAD, ANCHORS_SUFFIX, anchors_reference_path
 
 # BALL_SETS is the one owner of the crop-set vocabulary: the sets a crop file can
 # belong to. Every Python module imports it from here (`document_paths` above needs it
@@ -147,8 +151,8 @@ def is_document_path(relative: str) -> bool:
     parts = relative.split("/")
     if relative in (SEED_DOCUMENT, STATE_DOCUMENT):
         return True
-    if len(parts) == 2 and parts[0] == "out" and parts[1].startswith("pid_anchors_") \
-            and parts[1].endswith(".json"):
+    if len(parts) == 2 and parts[0] == "out" and parts[1].startswith(ANCHORS_HEAD) \
+            and parts[1].endswith(ANCHORS_SUFFIX):
         return True
     if len(parts) == 3 and parts[0] == "out" and parts[2] == "labels.json" and parts[1] in BALL_SETS:
         return True
@@ -187,7 +191,7 @@ def document_paths(set_name: str, root: Path | None = None) -> list[str]:
     if set_name == "labels":
         return [f"out/{crop_set}/labels.json" for crop_set in BALL_SETS]
     if set_name == "anchors":
-        return [f"out/pid_anchors_{ds}.json" for ds in STATIC_OUT]
+        return [anchors_reference_path(ds) for ds in STATIC_OUT]
     if set_name == "corrections":
         if root is None:
             return []

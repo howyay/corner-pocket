@@ -11,7 +11,7 @@ class were copies of one of five rules:
   * the delete of one record: `src/store.py:279` with `src/store_pg.py:286`;
   * the clear of one crop: `src/store.py:318` with `src/store_pg.py:354`;
   * the lookup of a key by basename: `src/store.py:316` with `src/store_pg.py:352`;
-  * the float spelling of one anchor time: `src/store.py:345` with
+  * the float spelling of one anchor time: `src/store.py` with
     `src/store_pg.py:321`.
 
 A measurement of the raw statement lists of that revision counted 17 shared

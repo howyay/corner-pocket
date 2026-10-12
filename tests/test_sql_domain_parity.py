@@ -1,4 +1,4 @@
-"""Hold each SQL word domain to the Python literals that repeat it.
+"""Hold each SQL domain (a word list, a number rule, a width) to the Python owner of it.
 
 A migration spells a word domain in a CHECK constraint, for example
 ``CHECK (format IN ('singles','doubles'))``.  Python code repeats the same values as a
@@ -17,11 +17,16 @@ spell 11 distinct word domains:
 * two other test modules already bind one domain each (``BOUND_ELSEWHERE``);
 * three have no Python copy of this shape (``NO_PYTHON_COPY`` and ``UNBOUND``).
 
-``identity_clusters.body_dim`` holds ``CHECK (body_dim IN (128))``.  That rule holds one
-number, not a word, so this module does not read it.
+A rule can hold one number rather than a word list: ``identity_clusters.body_dim`` holds
+``CHECK (body_dim IN (128))``, and three columns hold ``CHECK (cardinality(column) = 512)``.
+Round 82 read these rules too.  The three 512 sites read ``EMBEDDING_DIM`` of
+``src/face_id.py`` through the ``ONE_NUMBERS`` table below, and the two rules whose number
+has no Python owner stand in ``ONE_NUMBERS_DEFERRED`` with the measured reason each one
+stays unbound.
 
-The completeness case fails when a SQL domain value list appears as a Python literal
-collection that no record of this module names.  The scan reads the shipped packages only
+The completeness cases fail when a SQL rule appears that no record of this module names:
+one case reads the value lists, one the ``BETWEEN`` rules, one the ``<=`` rules, and one
+the one-number rules that round 82 added.  The scan reads the shipped packages only
 (``SHIPPED``).  A test file states an expectation, so it is not a copy inside the
 application.
 """
@@ -31,7 +36,7 @@ from __future__ import annotations
 import ast
 import re
 import unittest
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 # The crop-set record below reads its values from the owner tuple.  A literal list here
@@ -69,6 +74,13 @@ from annotator.operations import (LONGEST_NAME, RACE_TO_MAX, RACE_TO_MIN, RATING
 # migration's three ranks and PERSIST_FACES hold one number.  This module reads the count
 # and states the relation, so a fourth sample cannot pass the validator and fail the DDL.
 from src.person_identity import PERSIST_FACES
+
+# The width of one face embedding has one owner, src/face_id.py: EMBEDDING_DIM.  The
+# migration states that width three times, as ``CHECK (cardinality(column) = 512)``, and
+# the rows of ONE_NUMBERS below write the number as an f-string over this constant.  A
+# width that moves in the owner then fails here until the migration moves too, and a
+# literal 512 in this module would be a fourth spelling of the number.
+from src.face_id import EMBEDDING_DIM
 
 # The shipped package tree has one home, tests/_shipped.py.  A second copy of the tree
 # in this module is a defect, and the guard tests/test_one_shipped_tree.py walks for it.
@@ -124,6 +136,16 @@ INLINE_NUMBER = re.compile(r'(?:^|[,\s(])(-?\d+)(?=\s*[,)])')
 #: invisible to ``CHECK_NUMERIC`` and to ``LENGTH_RULE``, because neither text holds
 #: ``BETWEEN``, so the one guard of this module read neither side of the rule.
 CHECK_CEILING = re.compile(r'CHECK \(length\((\w+)\) <= (\d+)\)')
+#: One ``CHECK (cardinality(column) = number)`` rule: the width of an array column.  The
+#: rule can guard the column first, as ``CHECK (face IS NULL OR cardinality(face) = 512)``
+#: does, so the text before ``cardinality`` may hold no closing bracket, and the column of
+#: the rule is the argument of ``cardinality``.  Round 82 added this reader: the rule holds
+#: one number, so ``CHECK_IN`` reads no value list and the three 512 sites stood unread.
+CHECK_CARDINALITY = re.compile(r'CHECK \([^)]*?cardinality\((\w+)\) = (\d+)\)')
+#: One ``CHECK (column IN (number))`` rule: a rule that holds one number, not a word list.
+#: ``CHECK_IN`` reads the same shape, and the bracket of this pattern holds digits only, so
+#: the two readers cannot both claim one rule.
+CHECK_ONE_NUMBER_IN = re.compile(r'CHECK \((\w+) IN \((\d+)\)\)')
 #: One ``CHECK`` line of the design document, and the column of its rule.
 DOC_CHECK = re.compile(r'^\s*(\w+)\s+\w.*?(CHECK \(.*BETWEEN.*\))', re.MULTILINE)
 
@@ -230,6 +252,83 @@ def migration_ceilings():
         for table, block in tables_in(path.read_text(encoding='utf-8')):
             for column, limit, rule in ceiling_columns(block):
                 yield table, column, limit, rule
+
+
+def owner_number(row):
+    """The number of the constant ``row.python`` of the owner module of one row, or None.
+
+    The scan reads the assignment in the syntax tree of the owner, so a comment that names
+    the number is not a site, and a constant that the owner dropped answers None.
+    """
+    for node in ast.walk(tree_of(row.owner)):
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(target, ast.Name) and target.id == row.python for target in node.targets):
+            try:
+                return ast.literal_eval(node.value)
+            except ValueError:
+                return None
+    return None
+
+
+def cardinality_columns(sql_text):
+    """Yield ``(column, number, rule)`` for each ``cardinality(column) = number`` rule."""
+    for match in CHECK_CARDINALITY.finditer(sql_text):
+        yield match.group(1), int(match.group(2)), match.group(0)
+
+
+def one_number_in_columns(sql_text):
+    """Yield ``(column, number, rule)`` for each ``CHECK (column IN (number))`` rule."""
+    for match in CHECK_ONE_NUMBER_IN.finditer(sql_text):
+        yield match.group(1), int(match.group(2)), match.group(0)
+
+
+def one_numbers_in(sql_text):
+    """Yield ``(table, column, number, rule)`` for each one-number rule of one SQL text.
+
+    The two shapes of the migrations answer one list here, so the completeness case below
+    reads every rule that holds one number, and not one shape of that rule.
+    """
+    for table, block in tables_in(sql_text):
+        for column, number, rule in cardinality_columns(block):
+            yield table, column, number, rule
+        for column, number, rule in one_number_in_columns(block):
+            yield table, column, number, rule
+
+
+def migration_one_numbers():
+    """Yield ``(sql_file, table, column, number, rule)`` for each one-number rule."""
+    for path in sorted(MIGRATIONS.glob('*.sql')):
+        for table, column, number, rule in one_numbers_in(path.read_text(encoding='utf-8')):
+            yield path.name, table, column, number, rule
+
+
+def one_number_problems(row, sql_text=None):
+    """A line per disagreement between one SQL one-number rule and its Python owner.
+
+    ``sql_text`` replaces the text of the migration, so a case can measure a planted drift
+    without a write to the repository.
+    """
+    problems = []
+    number = owner_number(row)
+    if number != row.number:
+        problems.append(f'{row.column}: {row.owner} holds {row.python} = {number!r}, and the '
+                        f'row of this module states {row.number}')
+    text = sql_text if sql_text is not None else source(f'db/migrations/{row.sql_file}')
+    found = [(number, rule) for table, column, number, rule in one_numbers_in(text)
+             if f'{table}.{column}' == row.column]
+    if not found:
+        problems.append(f'{row.column}: {row.sql_file} holds no one-number rule for the '
+                        f'column; the row holds {row.sql_constraint!r}')
+        return problems
+    for number, rule in found:
+        if number != row.number:
+            problems.append(f'{row.column}: {row.sql_file} spells {rule!r}, so it holds '
+                            f'{number}, and the owner holds {row.number}')
+        elif rule != row.sql_constraint:
+            problems.append(f'{row.column}: {row.sql_file} spells {rule!r}, and the row holds '
+                            f'{row.sql_constraint!r}')
+    return problems
 
 
 def constant_sites(module, name):
@@ -503,6 +602,25 @@ class Bound:
                            # rule, and the scan above reads it.
 
 
+@dataclass(frozen=True)
+class OneNumber:
+    """One SQL rule that holds one number, and the Python owner of that number.
+
+    Round 82 added this row kind.  A word domain holds a value list (``Pair``) and a bound
+    holds two ends (``Bound``); a width holds one number, so the two readers of those kinds
+    find neither side of it.  ``sql_constraint`` is written as an f-string over the owner
+    constant, so a number that moves in the owner fails the cases below until the migration
+    moves too.
+    """
+
+    column: str            # "face_embeddings.embedding": the SQL table and column
+    sql_file: str          # the migration that holds the rule
+    sql_constraint: str    # the exact rule text, as the migration writes it
+    owner: str             # the module that owns the number
+    python: str            # the name of the constant that owns the number
+    number: int            # the number the owner holds
+
+
 #: The number domains this module binds.  Each rule holds the exact migration text and
 #: the Python names that repeat it.  A sixth rule, ``track_seeds.label``, is both a word
 #: list and a length bound, and the pair of that domain above holds it.
@@ -567,6 +685,48 @@ BOUNDS = (
           sites=2,
           limit_rule='CHECK (length(note) <= 10000)'),
 )
+
+#: The one-number rules this module binds.  Three columns hold the width of a face
+#: embedding, and ``src/face_id.py`` owns that width as ``EMBEDDING_DIM``.  The rule text of
+#: each row is an f-string over the constant, so a change of the width moves the row with
+#: the owner, and the row then disagrees with the migration text until the migration moves
+#: too.  The two rules of ``identity_clusters`` whose number has no Python owner stand in
+#: ``ONE_NUMBERS_DEFERRED`` below, with the measured reason of each one.
+ONE_NUMBERS = (
+    OneNumber(column='identity_clusters.face',
+              sql_file='0002_user_data.sql',
+              sql_constraint=f'CHECK (face IS NULL OR cardinality(face) = {EMBEDDING_DIM})',
+              owner='src/face_id.py',
+              python='EMBEDDING_DIM',
+              number=EMBEDDING_DIM),
+    OneNumber(column='identity_face_samples.embedding',
+              sql_file='0002_user_data.sql',
+              sql_constraint=f'CHECK (cardinality(embedding) = {EMBEDDING_DIM})',
+              owner='src/face_id.py',
+              python='EMBEDDING_DIM',
+              number=EMBEDDING_DIM),
+    OneNumber(column='face_embeddings.embedding',
+              sql_file='0002_user_data.sql',
+              sql_constraint=f'CHECK (cardinality(embedding) = {EMBEDDING_DIM})',
+              owner='src/face_id.py',
+              python='EMBEDDING_DIM',
+              number=EMBEDDING_DIM),
+)
+
+#: The one-number rules whose number has no Python owner, and the measured reason of each
+#: one.  The completeness case reads this table, so a new one-number rule cannot enter a
+#: migration without a row of ``ONE_NUMBERS`` or a reason here.
+ONE_NUMBERS_DEFERRED = {
+    'identity_clusters.body_dim':
+        'CHECK (body_dim IN (128)) is the width of the vendored OSNet body embedding.  The '
+        'shipped tree holds no constant for that width (measured, round 82: only '
+        'src/face_id.py EMBEDDING_DIM matches a width name), so a row of ONE_NUMBERS would '
+        'name no owner.  The migration stays the owner of the number.',
+    'identity_clusters.body_bank':
+        'CHECK (body_dim IS NOT NULL OR cardinality(body_bank) = 0) refuses a bank that '
+        'holds points while the former face is NULL.  The zero is a structural rule, not a '
+        'width, so no Python constant owns it.',
+}
 
 #: The column of one pair that also carries a length bound.  The pair above holds the
 #: rule text and the word values; the bounds scan below reads the same line again.
@@ -925,6 +1085,81 @@ class SqlDomainParityTests(unittest.TestCase):
         self.assertTrue(any('20000' in problem for problem in problems),
                         'the planted ceiling is reported; the guard answered '
                         + repr(problems))
+
+    def test_each_one_number_rule_holds_its_owner(self):
+        """For each one-number rule, the migration text and the owner constant must agree.
+
+        Round 82 added this case.  ``identity_clusters.face``,
+        ``identity_face_samples.embedding`` and ``face_embeddings.embedding`` hold the width
+        of an embedding, and ``src/face_id.py`` owns that width as ``EMBEDDING_DIM``.  A
+        value that the database accepts can then fail in Python, or the other way round.
+        """
+        problems = []
+        for row in ONE_NUMBERS:
+            problems += one_number_problems(row)
+        self.assertEqual([], problems,
+                         'a SQL one-number rule and its Python owner disagree:\n'
+                         + '\n'.join(problems))
+
+    def test_every_one_number_rule_of_the_migrations_is_bound(self):
+        """Each one-number rule of the migrations must have one row or one reason.
+
+        The case fails with the list of the rules that no record names, so a new width
+        cannot be added without a Python owner and a case.
+        """
+        bound = {row.column for row in ONE_NUMBERS}
+        unbound = sorted(f'{table}.{column} = {number}  ({rule})'
+                         for _, table, column, number, rule in migration_one_numbers()
+                         if f'{table}.{column}' not in bound | set(ONE_NUMBERS_DEFERRED))
+        self.assertEqual([], unbound,
+                         'these SQL one-number rules hold no row in '
+                         'tests/test_sql_domain_parity.py. Name the owner constant, add the '
+                         'rule to ONE_NUMBERS, and add a case; or state the measured reason '
+                         'in ONE_NUMBERS_DEFERRED: ' + repr(unbound))
+
+    def test_the_one_number_report_names_an_unbound_rule(self):
+        """The completeness rule must report an unbound one-number rule, and not stay quiet.
+
+        The case drops the face width from the table and measures the report that the
+        completeness case above would print for it.
+        """
+        kept = [row for row in ONE_NUMBERS if row.column != 'identity_clusters.face']
+        bound = {row.column for row in kept}
+        reported = sorted(f'{table}.{column} = {number}  ({rule})'
+                          for _, table, column, number, rule in migration_one_numbers()
+                          if f'{table}.{column}' not in bound | set(ONE_NUMBERS_DEFERRED))
+        self.assertEqual(['identity_clusters.face = 512  '
+                          '(CHECK (face IS NULL OR cardinality(face) = 512))'], reported,
+                         'a row that the table drops is named, with its rule')
+
+    def test_the_one_number_report_names_a_drifted_owner(self):
+        """The case must report a one-number row whose constant holds another number.
+
+        This is one half of the defect the module exists for: the migration keeps its
+        number, the owner moves to another one, and no other case fails.
+        """
+        row = [entry for entry in ONE_NUMBERS if entry.column == 'identity_clusters.face'][0]
+        drifted = replace(row, number=row.number + 1)
+        problems = one_number_problems(drifted)
+        self.assertTrue(any('EMBEDDING_DIM' in problem for problem in problems),
+                        'the drifted owner is reported through its constant name; the guard '
+                        'answered ' + repr(problems))
+
+    def test_the_one_number_rule_reports_a_planted_drift(self):
+        """The case must report a migration copy whose one number differs.
+
+        Round 82 plants the drift of the face width in the migration text: the number of the
+        owner becomes one more than the number of the migration, so the case holds whatever
+        number the owner states now.
+        """
+        row = [entry for entry in ONE_NUMBERS if entry.column == 'identity_clusters.face'][0]
+        sql = source(f'db/migrations/{row.sql_file}')
+        planted = sql.replace(f'cardinality(face) = {EMBEDDING_DIM}',
+                              f'cardinality(face) = {EMBEDDING_DIM + 1}')
+        self.assertNotEqual(sql, planted, 'the case plants the drift of the face width')
+        problems = one_number_problems(row, planted)
+        self.assertTrue(any(str(EMBEDDING_DIM + 1) in problem for problem in problems),
+                        'the planted number is reported; the guard answered ' + repr(problems))
 
     def test_the_design_document_copy_holds_the_migration_rules(self):
         """The design document must spell each ``BETWEEN`` rule of the migration.

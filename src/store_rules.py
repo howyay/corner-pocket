@@ -51,7 +51,7 @@ def merge_record(stored: dict, incoming: dict) -> dict:
     The function returns a new dict. It does not change either argument.
 
     This function closes the defect of round 56: the merge of one record sat in
-    `src/store.py:283` and in `src/store_pg.py:292`, and one edit had to land in
+    `src/store.py:283` and in `src/store_pg.py:291`, and one edit had to land in
     both sites.
     """
     return dict(stored, **incoming)
@@ -102,6 +102,6 @@ def spelled_time(store: dict, t_key: str) -> str:
     mapping holds no such key.
 
     This function closes the defect of round 56: the float spelling of one anchor
-    time sat in `src/store.py:345` and in `src/store_pg.py:321`.
+    time sat in `src/store.py` and in `src/store_pg.py:321`.
     """
     return next((key for key in store if float(key) == float(t_key)), str(t_key))

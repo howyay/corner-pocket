@@ -1082,6 +1082,10 @@ def main():
     ap.add_argument("--candidates", default="out/scan-ic/events.json",
                     help="scan candidates the queue was built from (default) or the queue itself")
     ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
+    # This default stays a frozen literal: argparse prints a default string in --help,
+    # and a recorded command line holds it.  The name has one owner,
+    # src/calib_segments.anchors_reference_path; tests/test_anchor_name_owner.py holds
+    # this literal equal to that owner, so the two cannot drift apart.
     ap.add_argument("--anchors", default="out/pid_anchors_vod30.json")
     ap.add_argument("--scan-quad", default="out/scan30/corners.json")
     ap.add_argument("--dataset", default="vod30",

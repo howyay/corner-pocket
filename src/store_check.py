@@ -23,6 +23,10 @@ import uuid
 from src import db
 from src.store_files import (SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir, documents,
                              has_documents_table)
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  The
+# document reader below takes the head and the suffix of that name from the owner,
+# so the dataset it reads out of a stored path cannot drift from the name check.
+from src.calib_segments import ANCHORS_PATH_HEAD, ANCHORS_SUFFIX
 
 # The rebuild copies each live table's definition (LIKE ... INCLUDING ALL): same
 # columns, defaults, CHECKs and unique indexes; foreign keys are not copied, which
@@ -54,8 +58,8 @@ def projections(docs: dict[str, str]):
     yield SETS["verdicts"], verdicts
     yield SETS["labels"], {path.split("/")[1]: json.loads(text) for path, text in docs.items()
                            if path.endswith("/labels.json")}
-    yield SETS["anchors"], {path[len("out/pid_anchors_"):-len(".json")]: json.loads(text)
-                            for path, text in docs.items() if path.startswith("out/pid_anchors_")}
+    yield SETS["anchors"], {path[len(ANCHORS_PATH_HEAD):-len(ANCHORS_SUFFIX)]: json.loads(text)
+                            for path, text in docs.items() if path.startswith(ANCHORS_PATH_HEAD)}
     yield SETS["corrections"], corrections
 
 

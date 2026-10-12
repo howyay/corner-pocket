@@ -48,6 +48,10 @@ from src.store_files import (BALL_SETS, DOCUMENT_SETS, FACE_STORE, SEED_DOCUMENT
 # The retention bound of the operations event log is imported from its one owner
 # (src.ops_event_log), so this importer and every writer cannot hold two bounds.
 from src.ops_event_log import MAX_EVENTS
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  The
+# anchors set below reads that owner for the path it loads and for the name it
+# reports, so the importer cannot keep a second spelling of the name.
+from src.calib_segments import anchors_reference_name, anchors_reference_path
 
 REPO = Path(__file__).resolve().parent.parent
 OK = ("imported", "unchanged", "absent", "verified")
@@ -627,13 +631,13 @@ class AnchorsSet(DataSet):
     tables = ("pocket_anchors",)
 
     def load(self, snap):
-        return {ds: snap.json(f"out/pid_anchors_{ds}.json", {"anchors": {}}) for ds in STATIC_OUT}, []
+        return {ds: snap.json(anchors_reference_path(ds), {"anchors": {}}) for ds in STATIC_OUT}, []
 
     def write(self, conn, doc):
         for dataset, saved in doc.items():
             unknown = set(saved) - {"anchors"}
             if unknown:
-                raise Mismatch(f"pid_anchors_{dataset}.json has top-level keys the table cannot hold: {sorted(unknown)}")
+                raise Mismatch(f"{anchors_reference_name(dataset)} has top-level keys the table cannot hold: {sorted(unknown)}")
             for t_key, pts in (saved.get("anchors") or {}).items():
                 conn.execute("INSERT INTO pocket_anchors (dataset, t_key, t, pts) VALUES (%s, %s, %s, %s)",
                              (dataset, t_key, float(t_key), jsonb(pts)))

@@ -42,14 +42,14 @@ if str(ROOT) not in sys.path:
 
 from src.calib_segment_measure import MEASURE_ARTIFACT  # noqa: E402
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
-from src.calib_segments import VERIFIED_FRAMES  # noqa: E402
+from src.calib_segments import VERIFIED_FRAMES, anchors_reference_path  # noqa: E402
 from src.event_gates import GateConfig  # noqa: E402
 from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
 # The measurement this tool reads: ``src/calib_segment_measure.py`` owns the
 # artifact path (``MEASURE_ARTIFACT``) and writes the file.
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
-ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
+ANCHORS = ROOT / anchors_reference_path("vod30")
 OUT = ROOT / "out" / "calib_vod30_segments.json"
 
 # The coverage bar this tool applies.  ``src/event_gates.py`` owns the number
@@ -286,7 +286,7 @@ def build(args):
             "t_end": float(rows[-1]["t"]),
             "quad_px": np.round(reference, 2).tolist(),
             "source": "human_anchors",
-            "source_detail": f"out/pid_anchors_vod30.json anchors['{anchor_key}'][:4] "
+            "source_detail": f"{anchors_reference_path('vod30')} anchors['{anchor_key}'][:4] "
                              f"(the six hand pocket anchors; first four are the cloth quad)",
             "coverage": {
                 "metric": "share of the reference quad that is cloth-hued at that time "

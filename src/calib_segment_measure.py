@@ -51,11 +51,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.calib_segments import VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW  # noqa: E402
+from src.calib_segments import (VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW,  # noqa: E402
+                                anchors_reference_name, anchors_reference_path)
 from src.datasets import media_path  # noqa: E402
 
 VIDEO = media_path(ROOT, "vod30")
-ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
+ANCHORS = ROOT / anchors_reference_path("vod30")
 SCAN_QUAD = ROOT / "out" / "corners_30min_v2.json"
 # The measurement artifact this tool writes.  This constant is the one home of the
 # path: ``src/calib_segment_fit.py`` reads the artifact and imports this name.
@@ -326,7 +327,7 @@ def run(args):
     cap.release()
     payload = {
         "video": str(args.video),
-        "reference": {"source": "hand anchors t=70 (first four of pid_anchors_vod30.json)",
+        "reference": {"source": f"hand anchors t=70 (first four of {anchors_reference_name('vod30')})",
                       "quad": np.round(reference, 2).tolist()},
         "scan_quad_v2_for_comparison": np.round(scan, 2).tolist(),
         "times": times,

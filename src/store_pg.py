@@ -46,6 +46,10 @@ from src.store_import import CORRECTION_INSERT, CORRECTION_UPSERT, OPS_EVENT_INS
 # and JsonStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  This
+# store reads that owner, so the document path here cannot drift from the path
+# JsonStore builds for the same record set.
+from src.calib_segments import anchors_reference_path
 
 # The table that holds the documents of migration 0003 (src/store_files.py). The
 # operations document and the anchor documents live in it; receipts name them so.
@@ -61,7 +65,7 @@ def _doc_path(kind: str, key: str) -> str:
     if kind == "labels":
         return f"out/{key}/labels.json"
     if kind == "anchors":
-        return f"out/pid_anchors_{key}.json"
+        return anchors_reference_path(key)
     raise ValueError(kind)
 
 

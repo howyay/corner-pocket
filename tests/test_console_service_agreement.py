@@ -13,7 +13,7 @@ Round 68, two rows of the walk of this round.
   and plays.  ``annotator/unified_server.py`` holds the shortest window the encoder is asked
   for: a shorter window at the end of a video is one frame, so the route refuses it.  Until
   round 68 both stated the number as a bare literal (``annotator/app.js:740`` and
-  ``annotator/unified_server.py:1954``), and no case named either.  The floor is **not** the
+  ``annotator/unified_server.py:1952``), and no case named either.  The floor is **not** the
   named clamp ``CLIP_MIN_S = 0.25`` / ``CLIP_MAX_S = 5.0``.  That clamp bounds the window a
   caller may *name*, and round 40 closed it.
 

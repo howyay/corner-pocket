@@ -60,11 +60,15 @@ from src.stats import summary  # noqa: E402
 # the corner order, and they make an array first, because the owner reshapes an
 # array and a saved reference holds a JSON list.
 from src.table_detect import _order_corners  # noqa: E402
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  The two
+# readers below (the path constant and the reference note) read that owner, so this
+# tool holds no second spelling of the name.
+from src.calib_segments import anchors_reference_path  # noqa: E402
 
 OUT_DIR = ROOT / "out" / "table-detect-eval"
 VOD30 = media_path(ROOT, "vod30")
 HIGHLIGHT = ROOT / "data" / "vod_highlight.mp4"
-ANCHORS = ROOT / "out" / "pid_anchors_vod30.json"
+ANCHORS = ROOT / anchors_reference_path("vod30")
 CORNERS_V2 = ROOT / "out" / "corners_30min_v2.json"
 FIXED_CORNERS = ROOT / "out" / "fixed_corners.json"
 CLOTH_TOLERANCE_PX = 40.0  # annotator/app.js CLOTH_TOLERANCE_PX - the app's mean-distance bar
@@ -486,7 +490,7 @@ def main():
                   dataset: authoritative_reference(refs[dataset]) for dataset in refs},
               "reference_note": (
                   "Each detector is scored against BOTH vod30 references. The hand anchors "
-                  "(out/pid_anchors_vod30.json) are authoritative: hand-placed ground truth, "
+                  f"({anchors_reference_path('vod30')}) are authoritative: hand-placed ground truth, "
                   "the geometry the viewer clears the quad against and the geometry the app "
                   "path is seeded from, tracking the visible cloth boundary within 6-13 px. "
                   "corners30-v2 (out/corners_30min_v2.json) is circular and measured-bad: it is "

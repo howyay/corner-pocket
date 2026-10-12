@@ -63,6 +63,10 @@ from src.store_files import BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, save_docum
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules  # noqa: E402
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  This
+# module reads that owner, so the path of the anchors document cannot drift from
+# the path the calibration readers use.
+from src.calib_segments import anchors_reference_name  # noqa: E402
 # precomputed artifacts the server reads whole: kind -> file under out/.  A row here
 # names a dataset, so artifact() resolves the dataset through src/datasets.py and reads
 # the folder queue() reads (out/vods/<id>/ for an imported VOD, out/scan30/ for a
@@ -337,7 +341,7 @@ class JsonStore:
 
     def _anchors_path(self, dataset: str) -> Path:
         self._scan(dataset)
-        return self.out / f"pid_anchors_{dataset}.json"
+        return self.out / anchors_reference_name(dataset)
 
     def anchors_get(self, dataset: str) -> dict:
         return _read(self._anchors_path(dataset), {"anchors": {}})

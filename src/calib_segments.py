@@ -33,7 +33,12 @@ Contract, deliberately small:
   calibration segment of the dataset, then the hand anchors of that dataset, then
   the scan corners.  It derives the anchors path from the dataset, so no caller
   can freeze one dataset into a signature default.  :func:`anchors_reference_path`
-  names that file; no other module names it.
+  and :func:`anchors_reference_name` name that file, and no other module of the
+  shipped tree spells the name: every reader reads one of them, or one of the two
+  ends ``ANCHORS_HEAD`` and ``ANCHORS_SUFFIX``.  Two CLI defaults keep the text as a
+  frozen literal, because argparse prints a default in ``--help`` and a recorded
+  command line holds it; tests/test_anchor_name_owner.py holds the two equal to the
+  text below.
 
 The lookup is a pure function of the artifact, so a later measured split is a data
 change, not a code change.
@@ -68,12 +73,37 @@ REFUSED = "corners_30min_v2.json"
 # anchors by time; the first four points are the cloth quad.
 ANCHOR_T = 70.0
 
+# The anchor file name of a dataset, as a format for that dataset.  The one
+# derivation.  A caller may override the name, but the dataset it names must
+# still come from the dataset argument, never from a default of that caller.
+# The two ends of that format and the head of the file name come from this one
+# text: a reader that joins a directory and a file name, or that asks whether a
+# stored name is an anchor file, reads one of these three names, and a change of
+# the text moves every reader at once.  Two CLI defaults keep the text as a frozen
+# literal, because argparse prints a default in ``--help`` and a recorded command
+# line holds it; tests/test_anchor_name_owner.py holds the two equal to this text.
+ANCHORS_REFERENCE = "out/pid_anchors_{dataset}.json"
+ANCHORS_PATH_HEAD, _, ANCHORS_SUFFIX = ANCHORS_REFERENCE.partition("{dataset}")
+ANCHORS_HEAD = ANCHORS_PATH_HEAD.rpartition("/")[2]
+
+
+def anchors_reference_name(dataset: str = "vod30") -> str:
+    """The file name alone of the anchor file of one dataset.
+
+    ``anchors_reference_path`` answers the path from the out/ root.  A reader that
+    joins a directory of its own and a file name, or that matches a stored name,
+    reads this function or the two ends above.  Both answers come from the one text
+    ``ANCHORS_REFERENCE``, so no reader holds a second spelling of the name.
+    """
+    return f"{ANCHORS_HEAD}{dataset}{ANCHORS_SUFFIX}"
+
+
 # The saved reference file of a dataset.  A file marked ``table`` keys its points
 # by time, and the entry nearest the requested time then wins.  A dataset without
 # a table entry uses its reference corners file, as the readers did before.
 CORNERS_SPEC = {"file": "fixed_corners.json", "key": "corners", "table": False}
 STATIC_REFERENCES = {
-    "vod30": {"file": "pid_anchors_vod30.json", "key": "anchors", "table": True},
+    "vod30": {"file": anchors_reference_name("vod30"), "key": "anchors", "table": True},
     "highlight": CORNERS_SPEC,
 }
 
@@ -106,11 +136,6 @@ KINDS = ("supplied", "segment", "static", "prior")
 # own naive corners.  This tuple IS the resolution order; a reader that states
 # the order again holds a second copy of the rule.
 CLOTH_STEPS = ("human_segment", "hand_anchors", "scan_corners")
-
-# The anchor file name of a dataset, as a format for that dataset.  The one
-# derivation.  A caller may override the name, but the dataset it names must
-# still come from the dataset argument, never from a default of that caller.
-ANCHORS_REFERENCE = "out/pid_anchors_{dataset}.json"
 
 # The scan's own corners file.  It is one path for the checkout, so it carries no
 # dataset name.  The loader takes the root from ``verified_cloth_quad``.

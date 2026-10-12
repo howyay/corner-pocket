@@ -3,6 +3,11 @@ import json
 import os
 from pathlib import Path
 
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  This
+# module reads that owner, so the seed path here cannot drift from the path the
+# calibration readers use.
+from src.calib_segments import anchors_reference_path
+
 # YOLO weights load weights-only: ultralytics reads this once, on its first import
 # (lazy, in infer_frame); unset, it unpickles checkpoints freely (audit D-2).
 os.environ.setdefault('ULTRALYTICS_SAFE_LOAD', '1')
@@ -68,7 +73,7 @@ def app_prior_source(dataset, root=None):
     circular - docs/app-path-refusal.md).
     """
     base = Path(root) if root is not None else Path(__file__).resolve().parent.parent
-    path = base / 'out' / f'pid_anchors_{dataset}.json'
+    path = base / anchors_reference_path(dataset)
     return path if _saved_anchor_quad(path) is not None else None
 
 

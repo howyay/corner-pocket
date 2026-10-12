@@ -787,6 +787,10 @@ def main(argv=None):
     ap.add_argument("--video", default="data/vod_30min_260815.mp4")
     ap.add_argument("--queue", default="out/scan30/events.json", help="served queue artifact")
     ap.add_argument("--quad", default="out/scan30/corners.json")
+    # This default stays a frozen literal: argparse prints a default string in --help,
+    # and a recorded command line holds it.  The name has one owner,
+    # src/calib_segments.anchors_reference_path; tests/test_anchor_name_owner.py holds
+    # this literal equal to that owner, so the two cannot drift apart.
     ap.add_argument("--anchors", default="out/pid_anchors_vod30.json")
     ap.add_argument("--before", type=float, default=CLIP_BEFORE_S)
     ap.add_argument("--after", type=float, default=CLIP_AFTER_S)

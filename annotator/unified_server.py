@@ -79,6 +79,10 @@ from annotator.vod_import import AUTO_ACTIONS as VOD_AUTO_ACTIONS  # noqa: E402
 # src/event_window.py. This module imports it here, so the clip route and the tools that
 # judge a reading over that window cannot hold two different spans.
 from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
+# The anchor file name of a dataset has one owner, src/calib_segments.py. The event
+# sources below read that owner for the path they offer and for the name test, so the
+# server cannot hold a second spelling of the name.
+from src.calib_segments import ANCHORS_HEAD, anchors_reference_name  # noqa: E402
 #: The live route reads its accepted verbs from this one tuple: `live_action` gates on
 #: it and the write registry imports it for its 'live' row, so the gate and the contract
 #: GET /api/actions publishes cannot name two different sets.
@@ -1353,7 +1357,7 @@ class Backend:
         """
         base = self.dataset(dataset)
         sources = [(base / name, label) for name, label in self._EVENT_QUADS]
-        sources.append((self.out / f'pid_anchors_{dataset}.json', 'saved anchors'))
+        sources.append((self.out / anchors_reference_name(dataset), 'saved anchors'))
         sources.append((base / 'sam3_results.json', 'measured ball correspondences'))
         return sources
 
@@ -1679,7 +1683,7 @@ class Backend:
         for path, label in sources:
             if path.name == 'sam3_results.json':
                 continue
-            quad = _saved_quad(load(path, {}) or {}, 'anchors' if path.name.startswith('pid_anchors_') else 'corners')
+            quad = _saved_quad(load(path, {}) or {}, 'anchors' if path.name.startswith(ANCHORS_HEAD) else 'corners')
             if quad is None:
                 continue
             try:
