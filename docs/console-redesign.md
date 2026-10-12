@@ -10462,3 +10462,55 @@ moved lines (the Note of round 81, unfixed). The `0.425` guard reads numbers onl
 `1.7 * 0.25` escapes it. The frozen constants of the anchor name stay frozen by decision and a case holds each
 one equal to the owner. `src/calib_segments.py` owns the derivation while `src/store.py` no longer spells the
 float key, so the historical pair citation lost its line number.
+
+## Round 83 - the longest regular name and the usher query vocabulary
+
+**Walk.** `/tmp/dshsess/walk_round83.md` (68 lines) answered `Strong candidate present - 2 Strong, 0 Worth, 0 Note` at
+HEAD `d388f80`. The Lead verified every ground read-only.
+
+**Strong 1 - the longest regular name (writer WA).** One rule, two owners: `annotator/operations.py:88
+LONGEST_NAME = 200` is the bound that `player_save` accepts (`annotator/operations.py:885
+name = text(p.get('name'), 'name')`), and the console field `annotator/ops.js:1287` stated `maxlength="120"`, the
+value of `annotator/refusals.py:60 NAME_TEXT_MAX = 120` that the other name fields hold.
+
+Repair, option (a) of the walk: the player field states the bound of the column. The `input()` helper of
+`annotator/ops.js` takes a fifth parameter that names the field, so the player form asks for 200 and keeps
+`name="name"` for FormData and for `out/ia/measure.js:185`. `tests/test_guest_name.py` pairs each field with the
+bound of its own waiter through `NAME_FIELD_BOUNDS`: four fields stay at `NAME_TEXT_MAX`, the player field reads
+`operations.LONGEST_NAME`, the field count stays five, and no case is weakened.
+
+Measurement: the player field of `annotator/ops.js` states 200, and `operations.LONGEST_NAME` is 200. Modules:
+`test_guest_name` 12 OK, `test_operations` 88 OK, `test_suite_inventory` 5 OK, `js test_ops` 255 pass 0 fail.
+Bite of writer WA: `491482e9f54a -> 3d8adb84fa45 -> 491482e9f54a`, red with the message `player form states 200,
+and waiter`. Bite of the Lead on the pairing table: `65e1ec06335b -> 4a4f3d1bb77c` and a second run with the
+literal 120, `Ran 12 tests in 1.286s` `FAILED (failures=1)`, restore `65e1ec06335b` OK.
+
+**Strong 2 - the usher query vocabulary (writer WB).** One fact in two copies: `annotator/twitch_source.py:354-357`
+and `annotator/twitch_vod_source.py:365-367` each wrote the query keys of the master request, and the copies
+already differed by the key `allow_audio_only`. `annotator/twitch_vod_source.py:57` claimed that this path adds
+no pattern of its own.
+
+Repair: `annotator/twitch_source.py:231 MASTER_QUERY` holds the four shared keys as one mapping. `resolve_twitch`
+reads it at `annotator/twitch_source.py:372`; `resolve_vod` imports it at `annotator/twitch_vod_source.py:368` and
+adds only `nauth` and `nauthsig`. The doctrine comment names `live.MASTER_QUERY` at
+`annotator/twitch_vod_source.py:62-63`. The new case
+`test_both_resolvers_build_the_master_query_from_the_live_mapping` asserts both master URLs against the mapping.
+
+Measurement: the count of the four shared key literals in the two modules fell from 7 to 4, and all four stand
+in `MASTER_QUERY`. Modules: `test_twitch_vod_source` 39 OK, `test_twitch_source` 24 OK, `test_suite_inventory`
+5 OK. Bite of writer WB: `d2347415fa82 -> 00c931d02cff -> d2347415fa82`. Bite of the Lead on the live builder:
+`4f8283fe3a36 -> c4985fd3c650`, red with `supported_codecs: None != 'avc1'`, restore `4f8283fe3a36` OK.
+
+**The work of the Lead.** `docs/postgres-design.md:523-528` held citations that earlier rounds moved. The true
+lines are `src/calib_segment_fit.py:53`, `unified_server.py:1573`, `src/calib_segments.py:362`,
+`src/tiny_ball_net.py:53` and `unified_server.py:2121`; `src/shot_pot_gate.py:15,105` was already right. Commit
+`284cc4d` closed the note of round 81.
+
+**Commits.** `284cc4d` (the doc citations), `b397359` (the usher vocabulary), `9b7c9d3` (the name bound), and this
+record.
+
+**Open rows.** The values inside `MASTER_QUERY` are not pinned by a case, because the mapping is the single owner
+and the case binds the two builders to it. A bite that edits a table entry must use a value that the module can
+resolve: a name that the file does not import gives a `NameError` at import, not a red case. The markers
+`input('regular-name'` and `input('event-name'` name two different fields, so a new name field must enter
+`NAME_FIELDS`, `NAME_FIELD_BOUNDS` and `NAME_FIELD_COUNT` together.
