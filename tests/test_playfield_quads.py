@@ -36,7 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.playfield import PARALLEL_TOL_DEG, PLAYFIELD_IN, TILT_TOL_DEG, check_quad, parallelism
-from src.table_refine import CHECK_UNAVAILABLE, best_verdict
+from src.table_refine import CHECK_UNAVAILABLE, best_verdict, unavailable_verdict
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = ROOT / 'tests/fixtures/playfield_quads.json'
@@ -213,6 +213,11 @@ def best_check(quad, parallel_tol=1.0):
         return verdict
 '''
 
+#: A quad the planted-fault case can read: a square, so the check itself answers when it can.
+FAULT_QUAD = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+#: The text of the planted fault, so the tool answer and the owner answer compare word for word.
+PLANTED_FAULT = 'planted fault'
+
 
 def check_calls_inside_a_handler(text):
     """The lines of one source text that call the quad check inside an ``except`` body.
@@ -266,6 +271,29 @@ def verdict_copies(root=None):
             if better_verdict_sites(text) or CHECK_UNAVAILABLE in literal_strings(text):
                 found.append(relative)
     return found
+
+
+def with_a_planted_fault(tool, number, call):
+    """Run one call of the evidence tool with its check raising a fault on its ``number``-th call.
+
+    The tool reads the check from its own module name, so the planted name takes the check's
+    place there.  The returned list holds the quad of every call, so a call after the fault is
+    visible.  The saved name goes back before any other test can see the plant.
+    """
+    saved = tool.check_quad
+    calls = []
+
+    def planted(quad, parallel_tol=PARALLEL_TOL_DEG):
+        calls.append(quad)
+        if len(calls) == number:
+            raise ValueError(PLANTED_FAULT)
+        return saved(quad, parallel_tol=parallel_tol)
+
+    tool.check_quad = planted
+    try:
+        return call(), calls
+    finally:
+        tool.check_quad = saved
 
 
 class TheAuditToolImportsWithoutWritingTests(unittest.TestCase):
@@ -619,17 +647,37 @@ class TheQuadVerdictHasOneHomeTests(unittest.TestCase):
             self.assertEqual(verdict_copies(tmp), ['tools/second_body.py'],
                              'the planted body must be reported by name')
 
-    def test_the_exempt_tool_holds_no_second_answer_for_a_fault(self):
-        """The exemption covers a reader of the rule, not a second answer for a fault.
+    def test_the_exempt_tool_holds_no_check_call_inside_its_handler(self):
+        """The line rule only: the fault handler holds no call of the check.
 
         ``tools/playfield_quad_evidence.py`` is the one measured copy outside the home.  It may
-        read the check in the two rotations the stage tries, but it must answer the owner's
-        ``unavailable_verdict`` for a fault.  The check may not run a third time inside the
-        handler, because that run answers a measured verdict for a check that did not run.
+        read the check in the two rotations the tool tries, but a call inside its ``except``
+        body answers a measured verdict for a check that did not run, and a measured pass is
+        the one answer the rule forbids.  This case reads the call sites and nothing else: the
+        **text of the answer** is held by
+        ``test_the_exempt_tool_answers_the_owner_dictionary_for_a_fault`` below and by the
+        cases of ``ACheckThatCouldNotRunTests`` in ``tests/test_playfield_parallel_owner.py``.
         """
         self.assertEqual(check_calls_inside_a_handler(source(KNOWN_VERDICT_COPY)), [],
-                         '%s must answer the owner dictionary for a fault'
+                         '%s must not run the check inside its handler'
                          % KNOWN_VERDICT_COPY)
+
+    def test_the_exempt_tool_answers_the_owner_dictionary_for_a_fault(self):
+        """The answer for a fault, not only the call count: the owner's own dictionary.
+
+        The line rule above stays green on a handler that answers a wrong dictionary and adds
+        no third call of the check, and the evidence then reads a check that did not run as a
+        pass.  So this case plants the fault the tool meets on its second call, reads the
+        answer of the tool and compares it with ``src.table_refine.unavailable_verdict``, the
+        owner's own factory for the answer of a check that could not run.
+        """
+        tool = load_evidence()
+        answer, calls = with_a_planted_fault(tool, 2, lambda: tool.best_check(FAULT_QUAD))
+        owner = unavailable_verdict(ValueError(PLANTED_FAULT))
+        self.assertEqual(len(calls), 2, 'the tool must try the two rotations and stop')
+        self.assertEqual(answer, owner,
+                         'a fault must answer the owner dictionary, but the tool answers %r'
+                         % (answer,))
 
     def test_the_scan_reports_a_planted_fault_handler(self):
         """A handler that runs the check again is reported by line, so the walk reads it."""

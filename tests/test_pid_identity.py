@@ -23,6 +23,10 @@ SHOOTERS = ("pid_shooter.py", "pid_shooter2.py")
 SITES = ("pid_associate.py", "pid_shooter.py", "pid_shooter2.py", "yolo_track.py")
 CONF_KEYWORD = "conf"
 PERSON_CONF_NAME = "PERSON_CONF"
+# The bar the four person sites were measured with.  The detector keeps a row when the
+# row score is greater than the bar, so the bar is strict: a box on the value is dropped
+# and the box above it survives.  A case below holds this number against the owner.
+MEASURED_PERSON_CONF = 0.35
 
 # The two shapes that state the rule: an order of the clusters by brightness,
 # and a cluster index taken from that order.
@@ -124,7 +128,17 @@ class TheAbRuleHasOneHomeTest(unittest.TestCase):
 
 
 class ThePersonConfidenceHasOneHomeTest(unittest.TestCase):
-    def test_the_owner_holds_the_confidence(self):
+    """One number, four sites.  The shape, the value and the walk each have their own case.
+
+    The value itself is a person-detection threshold at four production sites, so it must
+    fail a case before a later round tunes it.
+    """
+
+    def test_the_owner_binds_the_confidence_once_as_a_number_in_range(self):
+        """The shape of the binding, not the value: one name, one number, a range.
+
+        The value is held by ``test_the_owner_holds_the_value_the_four_sites_use`` below.
+        """
         source = (SRC / OWNER).read_text(encoding="utf-8")
         bound = []
         for node in ast.parse(source, filename=OWNER).body:
@@ -142,6 +156,28 @@ class ThePersonConfidenceHasOneHomeTest(unittest.TestCase):
         )
         self.assertGreater(PERSON_CONF, 0.0, "a confidence is above zero")
         self.assertLess(PERSON_CONF, 1.0, "a confidence is below one")
+
+    def test_the_owner_holds_the_value_the_four_sites_use(self):
+        """The value itself, at the bar the four person sites were measured with.
+
+        The detector keeps a row when the row score is greater than the bar, and the
+        ultralytics predictor gives the ``conf`` keyword of the caller to that argument.
+        The bar is therefore strict.  The boundary measurement of round 75 showed it: the
+        NMS call drops a box whose score is exactly 0.35 and keeps the box above it.  The
+        four person sites (``pid_associate.py``, ``pid_shooter.py``, ``pid_shooter2.py``
+        and ``yolo_track.py``) need this number, and no lower one holds those people.
+
+        A changed value moves the person pass at four sites, so the case names both
+        numbers in its message.  The case above holds the range, and
+        ``test_the_bar_keeps_the_box_above_it`` holds the boundary.
+        """
+        self.assertEqual(
+            MEASURED_PERSON_CONF,
+            PERSON_CONF,
+            "the four person sites were measured with a confidence of %r, but the owner "
+            "holds %r: keep the measured value, or measure the four sites again"
+            % (MEASURED_PERSON_CONF, PERSON_CONF),
+        )
 
     def test_no_module_spells_the_confidence_as_a_number(self):
         found = []
