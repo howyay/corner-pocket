@@ -10817,3 +10817,100 @@ Walk /tmp/dshsess/walk_round88.md at HEAD 4b51b05 answered
   citation by the text of the statement, not by the number alone.
 - Commits: `6ff527b`, `eef34f4`, `d8e6495`. The suite ran 2535 cases, 2501 of round 87 and 34 new ones.
 - The suite answered `Ran 2535 tests in 325.707s`, `OK (skipped=53)`. The node suites answered 232, 23 and 114 cases, with no failure.
+
+## Round 89 - the segment template, the scan-corners path and the vod30 document name
+
+Walk: `/tmp/dshsess/walk_round89.md`, 157 lines, at HEAD `6af41e3`.  `git status --porcelain`
+answered nothing before the work and after the last commit.  The walk read 22 files.  It did not
+read `src/sam3/`, `src/reid/`, the page JavaScript and HTML, `tools/`, `scripts/`, `db/`,
+`deploy/`, `out/`, `data/`, or the ledger before line 9519.
+
+Verdict: `Strong candidate present - 3 Strong, 0 Worth, 1 Note`.
+
+### Strong 1 - the segment artifact template had two homes
+
+Ground: `src/store.py:79 "calibration_segments": "calib_{ds}_segments.json",` against the owner
+`src/calib_segments.py:60 ARTIFACT = "calib_{dataset}_segments.json"`.  The guard
+`tests/test_calib_segments.py` held `KNOWN_COPIES = ("src/store.py",)` and the note "the row must
+read the owner".  The two spellings in the tree were the only ones.
+
+Decision: one owner.  Writer WO removed `KNOWN_COPIES` and added
+`test_the_kind_map_reads_the_owner`.  The row now reads `ARTIFACT`.  The case count went 43 to 44.
+
+### Strong 2 - the scan-corners path had six spellings
+
+Ground: owner `src/calib_segments.py:157 SCAN_CORNERS = "out/scan30/corners.json"` against six
+sites: `src/info_complete_scan.py:415`, `src/eval_events.py:1090`, `src/timing_verify.py:789`,
+`src/sam3_ball_cache.py:126`, `:313` and `:389`.  `grep -rn "SCAN_CORNERS" tests` answered 0, so
+no case held the name.
+
+Decision: one owner.  Writer WP gave every site an import of the owner and kept every default
+value.  The new guard `tests/test_scan_corners_owner.py` holds eleven cases and walks `src`,
+`annotator`, `tools` and `scripts` through `tests/_shipped.py`.
+
+### Strong 3 - the vod30 document name had three import-time readers
+
+Ground: owner `src/events_document.py:123 V2 = "events_v2.json"` with the helper
+`document_path(name, root=None)`, against the readers `src/pid_shooter.py:39`,
+`src/pid_shooter2.py:35` and `src/pid_associate.py:123`, which built the whole path themselves.
+
+Decision: one owner of the name; every reader keeps its own base rule.  Writer WQ made the three
+readers call `events_document.document_path(events_document.V2, root=REPO)`.  The new guard
+`tests/test_events_document_owner.py` holds five cases.
+
+### Note 1 - a citation named the line of an import
+
+`src/store.py:75` cited `src/calib_segments.py:49`, and line 49 holds `import json`.  The sentence
+stands at `:60`.  The repair is part of the delivery of writer WO.
+
+### The bites
+
+Writer WO planted the template text again in its own file: `c9f94615` to `fcb92de3` to `c9f94615`,
+three red cases.  Writer WP changed one character of the owner value, `scan30` to `scan31`:
+`5d78e04f` to `ef6dcf57` to `5d78e04f`, red
+`the owner answers 'out/scan31/corners.json', which does not name the file`.  Writer WQ planted the
+path literal in one reader: `2d99b3b4` to `9df794fd` to `2d99b3b4`, three red cases.
+
+The Lead bit the third reader, `src/pid_associate.py`, which no writer had bitten.  The probe
+`_PROBE = "events_v2.json"` at the end of the file gave `810a2e6f` to `9d84dfc0` to `810a2e6f`,
+red with two failures and the text
+`src/pid_associate.py:200 spells 'events_v2.json'; the owner of that name is src/events_document.py,
+and it binds it to V2`.
+
+### The citations
+
+Writer WO added four lines above `JsonStore`, so five citations of `src/store.py` moved by four
+lines.  It repaired them in two files outside its brief, `src/store_rules.py` and
+`tests/test_store_merge_rules.py`.  Writer WP added two lines to four files, so two citations
+moved.  Writer WQ added three lines to three readers.
+
+The Lead repaired the two code citations that the citation guard reported:
+`src/sam3_ball_cache.py:152-154` became `154-156` in `src/ball_gate.py:41`, and
+`src/info_complete_scan.py:105` became `107` in `src/pid_identity.py:37`.
+
+Ten citations of `docs/console-redesign.md` pointed at a line with no text.  Each one is a pure
+shift: the text at the old line of HEAD stands at the new line now.  The Lead moved all ten.
+
+The round-54 record said "`SCAN_CORNERS` at `:101` is the only scan-corners path".  That claim was
+wrong when it was written, because six modules spelled the path.  The sentence now carries the
+correction.
+
+### Lessons
+
+1. A new import at the top of a file moves every citation below it by the number of added lines.
+   Count the added lines, and do not read the shift from the first changed line.
+2. A citation whose target line has no text points nowhere.  Test the target line, and compare the
+   text at the old line of HEAD with the text at the new line.
+3. A guard that walks the shipped tree must skip a path that disappeared between the walk and the
+   read.  Another writer can hold a temporary module inside `src/`.
+4. A record sentence can be false when it is written.  The walk of this round found one.
+5. A writer can miss the measurement of the content sha1 before its edit.  The Lead recovers it
+   with `git show HEAD:<file> | sha1sum`.
+
+### Open rows for a later round
+
+1. `src/calib_mapping_audit.py:70 SCAN_QUAD` and `src/tiny_ball_net.py:61 CORNERS` build the
+   scan-corners path from parts.  The guard of round 89 records them as an exception.
+2. `src/store.py:84 "calibration": "calib_{ds}.json"` is the sibling row with no owner.
+3. `src/frame_inference.py:191` is cited for a statement that stands at `:203-205`.  The citation
+   line holds text, so the citation guard cannot see it.
