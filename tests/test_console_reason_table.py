@@ -157,7 +157,7 @@ def target_names(target):
 
     A target may be a plain name, an attribute, a subscript with a string key
     (``r["reason"] = ...``) or a tuple or list of those (``ok, why = _plausible(...)``,
-    src/table_refine.py:933).
+    src/table_refine.py:931).
     """
     if isinstance(target, (ast.Tuple, ast.List)):
         names = []
@@ -215,7 +215,7 @@ class Module:
 
         A value is followed one step at a time: a name to its assignment, a call to the
         values its own function returns.  A dict, a subscript, an f-string and a composed
-        value (``"playfield:" + ...``, src/table_refine.py:979) hold no code, so they stop
+        value (``"playfield:" + ...``, src/table_refine.py:977) hold no code, so they stop
         the walk.
         """
         if isinstance(node, ast.Constant):
