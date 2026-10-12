@@ -547,7 +547,7 @@ The mtime-keyed caches (`calib_segments._CACHE`, `_unified_cache`) key on
 
 ### 5.4 Tracklets — `out/pid2_tracklets.json`
 
-Writer `src/yolo_track.py:128` (batch); readers `unified_server.py:1239-1240` (`tracks()`,
+Writer `src/yolo_track.py:131` (batch); readers `unified_server.py:1239-1240` (`tracks()`,
 used by `/tracklets`, `/tracks`, seed validation `:1436`), `src/pid_seed_rebuild.py:27`,
 `src/pid_seed_ui.py:28`.  Shape: `{window: {n_tracklets, runtime_s, tracklets:[{id, dur, n,
 samples:[[t, [x1,y1,x2,y2]], …]}]}}` — 4 windows, 21 tracklets, 252 samples.
