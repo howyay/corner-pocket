@@ -64,6 +64,11 @@ ENTRANT_MAX = 128
 CLOTH_COLORS = ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f')
 LAMP_GLOW_MIN = 0.0
 LAMP_GLOW_MAX = 0.5
+# This name owns the default lamp glow.  The settings block of a fresh operations document
+# reads it, and the appearance panel of ``annotator/ops.js`` paints it before any request
+# returns.  The guard is ``test_the_console_glow_default_is_the_owner_default`` in
+# tests/test_ops_bounds.py.  That case fails when the console fallback and this name differ.
+LAMP_GLOW_DEFAULT = 0.22
 
 # This module owns the bounds of three numeric columns of the operations document, and
 # `text` below owns the longest name the players table holds.  The migration states each
@@ -370,7 +375,7 @@ class Operations:
         if self.path.exists():
             return normalise(json.loads(self.path.read_text()))
         return dict(revision=0, players=[], tournament=tournament(), history=[], vods=[], links=[],
-                    settings=dict(shotClock=DEFAULT_DURATION, autoFrame=False, clothColor='#1d5c44', lampGlow=0.22,
+                    settings=dict(shotClock=DEFAULT_DURATION, autoFrame=False, clothColor='#1d5c44', lampGlow=LAMP_GLOW_DEFAULT,
                                   showDiamonds=True, publicBoard=True), notes=[], sources=[dict(id=uid(), url='https://www.twitch.tv/examplechannel', kind='channel', channel='examplechannel')], events=[])
 
     # -- Broadcasts and the events they cover (round 11) ----------------------------------

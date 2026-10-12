@@ -1,6 +1,6 @@
-"""Two bounds of the operations layer, each held to one home.
+"""Two bounds and one default of the operations layer, each held to one home.
 
-``annotator/operations.py`` owns both rules.
+``annotator/operations.py`` owns all three rules.
 
 * **The entrant cap.**  ``ENTRANT_MAX`` is the named fact: one tournament signs up at
   most 128 entrants.  Two checks read that name - ``entrant_add``, the entrant a
@@ -9,8 +9,9 @@
   case read either.
 * **The appearance bounds.**  ``CLOTH_COLORS`` lists the cloth colours a
   ``settings_update`` accepts, and the lamp glow is a number from ``LAMP_GLOW_MIN`` to
-  ``LAMP_GLOW_MAX``.  The console states both bounds again in ``annotator/ops.js``: the
-  option list of the cloth select and the range input of the lamp glow.
+  ``LAMP_GLOW_MAX``.  ``LAMP_GLOW_DEFAULT`` is the glow of a fresh document, and the
+  console paints it before any request returns.  The console states all three facts again
+  in ``annotator/ops.js``: the cloth option list, the glow range input and its fallback.
 
 The shape of the console rule.  The console is one static file.  It reads no schema of
 the server, and it draws the appearance panel before any request returns.  A bound the
@@ -20,10 +21,11 @@ compares that markup with the python names, the way ``tests/test_enroll_bound.py
 the photo guard of the same file for the enroll bound.  This module never edits that
 file.
 
-Five rules, one pass over two files:
+Six rules, one pass over two files:
 
 1. **owner rule** - ``ENTRANT_MAX`` is 128, ``CLOTH_COLORS`` is the four colours of
-   today, and the glow runs from 0 to 0.5.  The cases freeze the three values.
+   today, the glow runs from 0 to 0.5, and its default is 0.22.  The cases freeze the four
+   values.
 2. **entrant rule** - 128 teams sign up and the 129th meets the cap, with no write.
 3. **pairing rule** - a drawn pairing of two teams fills the cap when 126 entrants
    stand, and 127 entrants plus two teams is refused at 129, with no write.
@@ -32,6 +34,9 @@ Five rules, one pass over two files:
 5. **console rule** - the option list holds the owner's colours in the owner's order,
    and the range input holds the owner's two bounds.  The writer accepts every colour
    of the list and both ends of the range, and refuses one step past each edge.
+6. **default rule** - the console fallback holds the owner's default, and the settings
+   block of the owner reads the name.  The case reports a second statement of the default
+   in the owner module.
 
 What this case does not see
 ---------------------------
@@ -39,8 +44,8 @@ What this case does not see
   colour option outside the list, a second range input - is invisible to it.
 * It reads text and not meaning.  A label the operator cannot understand passes, and a
   colour the preview paints outside the select is outside the rule.
-* The glow default (0.22) also stands in both realms, and no case here holds it equal.
-  The rule of this round is the bound and the option list.
+* It reads the glow default by one regex in each realm.  A third statement of the default
+  - a second fallback, a second literal in the settings block - is invisible to it.
 * It pins the numbers of today and not the reason for them.  A later round that raises
   the cap must raise the frozen sizes here in the same change.
 * The module holds other checks of the entrant count, such as the minimum of two
@@ -52,8 +57,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from annotator.operations import (CLOTH_COLORS, ENTRANT_MAX, LAMP_GLOW_MAX, LAMP_GLOW_MIN,
-                                  Operations)
+from annotator.operations import (CLOTH_COLORS, ENTRANT_MAX, LAMP_GLOW_DEFAULT, LAMP_GLOW_MAX,
+                                  LAMP_GLOW_MIN, Operations)
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = ROOT / 'annotator' / 'operations.py'
@@ -61,11 +66,13 @@ CONSOLE = ROOT / 'annotator' / 'ops.js'
 OWNER_TEXT = OWNER.read_text(encoding='utf-8')
 CONSOLE_TEXT = CONSOLE.read_text(encoding='utf-8')
 
-#: The three values the bounds hold today.  The cases freeze them, so a reader can
-#: follow the ground of round 63.
+#: The values the facts hold today: the cap, the cloth colours, the glow range and the
+#: glow default.  The cases freeze them, so a reader can follow the ground of round 63.
 CAP_TODAY = 128
 COLORS_TODAY = ('#1d5c44', '#1f4a70', '#6a2130', '#2f3a3f')
 GLOW_TODAY = (0.0, 0.5)
+#: The glow default of the two realms today (round 85).
+GLOW_DEFAULT_TODAY = 0.22
 
 #: The one line that states the cap number.
 CAP_HOME = re.compile(r'^ENTRANT_MAX = (\d+)$', re.MULTILINE)
@@ -86,12 +93,27 @@ CONSOLE_GLOW = re.compile(r"input\('lampGlow',\s*([^,]+),\s*'range',\s*'([^']*)'
 #: One attribute of the range input, in the order the console writes it.
 RANGE_ATTR = re.compile(r'(min|max|step)="([^"]*)"')
 
+#: The console fallback of the lamp glow: the value the panel paints before a request
+#: returns.
+CONSOLE_GLOW_DEFAULT = re.compile(r'\?\?\s*([0-9.]+)')
+
+#: One statement of the glow default as a bare number.  The scan reads the whole line,
+#: because the settings line holds a '#' in the cloth colour.
+GLOW_COPY = re.compile(r"lampGlow\s*=\s*[0-9]")
+
 
 def cap_copies(text):
     """The lines of ``text`` that compare the entrant count with the cap number."""
     return [(number, line.strip())
             for number, line in enumerate(text.splitlines(), 1)
             if CAP_COPY.search(line.split('#', 1)[0])]
+
+
+def glow_copies(text):
+    """The lines of ``text`` that state the glow default as a bare number."""
+    return [(number, line.strip())
+            for number, line in enumerate(text.splitlines(), 1)
+            if GLOW_COPY.search(line)]
 
 
 class OpsBounds(unittest.TestCase):
@@ -210,3 +232,20 @@ class OpsBounds(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '^lampGlow must be between 0 and 0.5$'):
                 self.call('settings_update', lampGlow=bad)
         self.assertEqual(self.ops.path.read_bytes(), before)
+
+    def test_the_console_glow_default_is_the_owner_default(self):
+        """The console paints the owner default, and the owner spells the number once."""
+        hit = CONSOLE_GLOW.search(CONSOLE_TEXT)
+        self.assertIsNotNone(hit, f'the lamp glow field of {CONSOLE.name} changed shape')
+        fallback = CONSOLE_GLOW_DEFAULT.search(hit.group(1))
+        self.assertIsNotNone(fallback, f'the lamp glow field of {CONSOLE.name} holds no fallback')
+        self.assertEqual(float(fallback.group(1)), LAMP_GLOW_DEFAULT,
+                         'the console fallback and the owner default differ')
+        self.assertEqual(LAMP_GLOW_DEFAULT, GLOW_DEFAULT_TODAY, 'the frozen glow default of today')
+        planted = "settings=dict(clothColor='#1d5c44', lampGlow=0.22,"
+        self.assertEqual(glow_copies(planted), [(1, planted)],
+                         'the detector must read a literal after a cloth colour')
+        copies = glow_copies(OWNER_TEXT)
+        self.assertEqual(copies, [], f'{OWNER.name} must hold no copy of the default: {copies}')
+        self.assertIn('lampGlow=LAMP_GLOW_DEFAULT', OWNER_TEXT,
+                      f'the settings block of {OWNER.name} must read the name')
