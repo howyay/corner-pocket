@@ -10514,3 +10514,5 @@ and the case binds the two builders to it. A bite that edits a table entry must 
 resolve: a name that the file does not import gives a `NameError` at import, not a red case. The markers
 `input('regular-name'` and `input('event-name'` name two different fields, so a new name field must enter
 `NAME_FIELDS`, `NAME_FIELD_BOUNDS` and `NAME_FIELD_COUNT` together.
+
+**Suites after the round.** `Ran 2475 tests in 263.730s`, `OK (skipped=53)`. The three node suites answered 232/23, 114 passed, and no failure. Round 82 answered 2473, so round 83 added 2 cases: one for the master query and one for the name field. The skip count stayed at 53.
