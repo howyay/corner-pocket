@@ -70,7 +70,19 @@ MAXLENGTH = re.compile(r'maxlength=(?:"|\')?(\d+)')
 # player.  The console cannot import the Python constant, so each field states the number as the
 # value of its ``maxlength`` attribute.  The markers below are content, not line numbers: two
 # event-name fields share one spelling, and the late-entrant field carries a template name.
-NAME_FIELDS = ("input('night-name'", "input('name'", '`${name}_name`', 'id="event-name"')
+# The marker ``input('name'`` hit two fields of two forms: the event field of the tournament form
+# and the player field of the player form.  Each field carries its own marker now, so this tuple
+# names every field that states a name bound, and one form alone names each field.
+NAME_FIELDS = ("input('night-name'", "input('event-name'", '`${name}_name`', 'id="event-name"',
+               "input('regular-name'")
+# The bound each marker states.  Four fields hold the bound of a ticket-carried name, which the
+# owner holds.  The player field holds the bound of the players column that its waiter,
+# ``player_save``, reads; the case ``test_the_player_form_states_the_bound_of_its_waiter`` below
+# pairs that field with ``operations.LONGEST_NAME``.  ``db/migrations/0002_user_data.sql``
+# states the same column.
+NAME_FIELD_BOUNDS = {"input('night-name'": None, "input('event-name'": None,
+                     '`${name}_name`': None, 'id="event-name"': None,
+                     "input('regular-name'": operations.LONGEST_NAME}
 # The measured number of console fields that carry a name.  A new field needs a decision, so the
 # case below fails and names the count.
 NAME_FIELD_COUNT = 5
@@ -322,12 +334,17 @@ class GuestNameTest(unittest.TestCase):
         self.assertEqual([], bare,
                          'a name path states the owner NAME_TEXT_MAX, never the bare number %d:\n%s'
                          % (value, '\n'.join('%d: %s' % site for site in bare)))
-        # The console side: every name field states the same number, and no other field does.
-        expected = re.compile(r'maxlength=(?:"|\')%d(?:"|\')' % value)
+        # The console side: every name field states the number of its own bound, and the field
+        # that holds the bound of the players column states ``operations.LONGEST_NAME``.
         fields, wrong = [], []
         for path in JS_FILES:
             for line, found in name_maxlengths(path):
                 fields.append('%s:%d' % (relative(path), line))
+                marker = found and next(marker for marker in NAME_FIELDS
+                                        if marker in found.string)
+                bound = NAME_FIELD_BOUNDS[marker]
+                expected = re.compile(r'maxlength=(?:"|\')%d(?:"|\')'
+                                      % (value if bound is None else bound))
                 if found is None or not expected.search(found.string):
                     wrong.append('%s:%d: the field states maxlength="%s"'
                                  % (relative(path), line, found.group(1) if found else 'none'))
@@ -337,6 +354,23 @@ class GuestNameTest(unittest.TestCase):
         self.assertEqual([], wrong,
                          '%s owns NAME_TEXT_MAX, and the value in force is %d.  A name field of the '
                          'console holds that number:\n%s' % (OWNER, value, '\n'.join(wrong)))
+
+    def test_the_player_form_states_the_bound_of_its_waiter(self):
+        """The player field states the bound of the waiter that reads it.
+
+        The column of the players table owns this number.  ``player_save`` reads the name
+        through ``text``, whose default is ``LONGEST_NAME``, and the player form states the
+        same number.  A field that cuts a longer name refuses a name that the service accepts.
+        """
+        stated = None
+        for line, found in name_maxlengths(ROOT / 'annotator/ops.js'):
+            if "input('regular-name'" in found.string:
+                stated = found
+        self.assertIsNotNone(stated, "the player form states the marker input('regular-name'")
+        self.assertIsNotNone(stated.group(1), 'the player field states a maxlength')
+        self.assertEqual(operations.LONGEST_NAME, int(stated.group(1)),
+                         'the player form states %s, and the waiter player_save reads that '
+                         'number through the default of text()' % operations.LONGEST_NAME)
 
     def test_the_refusal_sentence_carries_the_owner_number(self):
         """One raise site states the sentence, and the sentence states the owner's number."""
