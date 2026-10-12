@@ -49,7 +49,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
-from src.calib_segments import VERIFIED_FRAMES, anchors_reference_path  # noqa: E402
+from src.calib_segments import SCAN_CORNERS, VERIFIED_FRAMES, anchors_reference_path  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
@@ -67,7 +67,10 @@ BALL_DIAMETER_PX_1080 = 30.8     # median of the 157 radii of out/scan_highlight
                                  # (the run src/ball_scale.py records; docs/app-path-refusal.md
                                  # states no ball size)
 ANCHORS = ROOT / anchors_reference_path("vod30")
-SCAN_QUAD = ROOT / "out" / "scan30" / "corners.json"
+# The scan quad is the scan corners file of src/calib_segments.py, the owner of the
+# name.  This audit joins the owner's relative path to its own root, so a rename of
+# the file moves this reader too.  Round 93 found the path spelled here by hand.
+SCAN_QUAD = ROOT / SCAN_CORNERS
 VIDEO = media_path(ROOT, "vod30")
 CANDIDATES = ROOT / "out" / "scan30" / "candidates_selected.json"
 OUT = ROOT / "out" / "calib_mapping_audit.json"

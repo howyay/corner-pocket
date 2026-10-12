@@ -15,7 +15,7 @@ left six readers pointed at a path that does not exist.  The six sites read
 :data:`SCAN_CORNERS` now.  Every default keeps its value, because the owner
 answers the same text.
 
-The cases below hold six things:
+The cases below hold eight things:
 
 1. the owner states the name once;
 2. no shipped module outside the owner states the path, in one literal or built
@@ -23,7 +23,15 @@ The cases below hold six things:
 3. a planted copy is reported with its file and its line;
 4. a path built from parts is reported with its file and its line;
 5. a module that imports the owner is quiet;
-6. each of the six sites reads the owner.
+6. each of the six sites reads the owner;
+7. the report of the shipped tree reads every kind, so one kind cannot hide a
+   module that builds the path by hand;
+8. a copy that a module builds from parts is reported with its file and its line.
+
+Round 93 found two more copies of the path, at ``src/calib_mapping_audit.py:70``
+and ``src/tiny_ball_net.py:61``.  Each one joined the parts by hand, and the case
+at point 2 asked for ``'spells'`` findings only, so the guard hid both.  The two
+modules read the owner now, and the case reads every kind.
 
 The scan reads the used strings of the shipped packages (``src``, ``annotator``,
 ``tools``, ``scripts``), through ``tests/_shipped.py``.  A comment is not a
@@ -254,14 +262,20 @@ def copies(paths=None):
 #: Every kind of finding this module reports.
 ALL = ('spells', 'names', 'builds')
 
+#: The kind of the finding that a path built from parts gives, and the one kind
+#: that one ``'spells'`` site can hide.  A guard that reads one kind only reports
+#: nothing for two hand-built copies of the path.
+BUILT = 'builds'
 
-def problems(sites, only=('spells',)):
+
+def problems(sites, only=ALL):
     """One line per site outside the owner that names the path by hand.
 
-    ``only`` selects the kinds in the answer.  The shipped tree must hold no
-    ``'spells'`` finding: a literal that equals the path is a copy, and the owner
-    is its one home.  The planted checks read every kind, so a build from parts
-    is visible too.
+    ``only`` selects the kinds in the answer, and its default is every kind.  One
+    kind is not enough: ``'spells'`` sees a whole path in one literal alone, and
+    the two hand-built copies of round 93 hold no such literal.  The shipped tree
+    must hold no ``'spells'`` finding, because a literal that equals the path is a
+    copy and the owner is its one home.
     """
     return [f'{relative}:{line} {kind} {text!r}'
             for relative, line, text, kind in sites if relative != OWNER and kind in only]
@@ -406,6 +420,37 @@ class ScanCornersOwnerTests(unittest.TestCase):
             with self.subTest(module=name):
                 self.assertIs(value, OWNER_VALUE,
                               f'{name} answers {value!r}, and the owner answers {OWNER_VALUE!r}')
+
+    def test_a_hand_built_copy_of_the_path_is_reported(self):
+        # One module may build the path from parts and hold no literal that equals
+        # it.  A guard that reads the whole path in one literal only hides that
+        # module, so this case plants one and reads the report of the full walk.
+        with tempfile.TemporaryDirectory() as folder:
+            planted = Path(folder) / 'reader.py'
+            planted.write_text('from pathlib import Path\n'
+                               'ROOT = Path(".")\n'
+                               'CORNERS = ROOT / "out" / "scan30" / "corners.json"\n',
+                               encoding='utf-8')
+            found = problems(copies([planted]))
+        self.assertTrue(found, 'the report hides a path that one module builds by hand')
+        self.assertTrue(any(text.startswith(f'{planted}:3 {BUILT} ') for text in found),
+                        f'no report names the hand-built site with its line: {found}')
+
+    def test_the_default_report_reads_every_kind(self):
+        # A guard that reads one kind alone answers nothing here: the planted
+        # module holds two whole paths, so it holds no build.  The filter must
+        # still answer the build of the one path that a module joins from parts.
+        with tempfile.TemporaryDirectory() as folder:
+            planted = Path(folder) / 'reader.py'
+            planted.write_text('from pathlib import Path\n'
+                               'ROOT = Path(".")\n'
+                               'CORNERS = ROOT / "scan30" / "corners.json"\n',
+                               encoding='utf-8')
+            found = [text for text in problems(copies([planted]))
+                     if text.startswith(f'{planted}:3 ')]
+        self.assertTrue(found, 'the default report reads one kind only')
+        self.assertEqual({BUILT}, {text.split()[1] for text in found},
+                         f'the default report answers a kind that hides the build: {found}')
 
     def test_a_planted_local_default_is_reported(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -49,8 +49,8 @@ from src.ball_gate import SAM3_BALL_MIN_SCORE  # noqa: E402
 from src.sam3_artifact import artifact_path  # noqa: E402
 # Two more names have one owner each.  The census is named by
 # src/sam3_ball_cache.py as a path under the repository root, so this reader joins
-# that name to its own base.  The segment artifact is a template in
-# src/calib_segments.py, which fills the dataset in.
+# that name to its own base.  The segment artifact and the scan corners file belong
+# to src/calib_segments.py, which fills the dataset in and names the file.
 from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
 from src import calib_segments  # noqa: E402
 
@@ -58,7 +58,7 @@ OUT = ROOT / "out" / "tiny_ball_probe"
 CENSUS = ROOT / OWN_CACHE                  # the census, through its owner
 RESULTS = artifact_path("vod30", ROOT)     # the app's own scan, through its owner
 VIDEO = media_path(ROOT, "vod30")
-CORNERS = ROOT / "out" / "scan30" / "corners.json"
+CORNERS = ROOT / calib_segments.SCAN_CORNERS   # the scan corners, through its owner
 QUAD_SEGMENTS = ROOT / "out" / calib_segments.ARTIFACT.format(dataset="vod30")
 
 _FRAME_CACHE: dict = {}       # (size, index) -> resized frame, so an epoch re-decodes nothing
