@@ -7,8 +7,8 @@ published field:
   answer of ``anchor_info``;
 * ``annotator/vision-stage.js`` drew the jump row from its own ``[70,200,350]``, so the
   published field had no reader at all;
-* ``src/pid_anchor_ui.py`` held the same three seconds twice more: ``SUGGESTED``, which no
-  line of that file read, and the ``SUG`` array of the legacy page's own script.
+* ``src/pid_anchor_ui.py`` held the same three seconds twice more: a module-level name,
+  which no line of that file read, and the ``SUG`` array of the legacy page's own script.
 
 A reader of the field could see times the console never drew, and a change of one literal
 left the other two behind.  Round 71 gives the list one home in the service realm,
@@ -44,7 +44,10 @@ What this module reads
   stage states the first second twice, as the number it loads and the number it seeks to.
 * ``src/pid_anchor_ui.py``: the ``SUG`` array of the legacy page, which is the second
   realm of these three times.  A browser page cannot read a python name, so that copy is
-  on purpose, and this module holds the two lists equal in value and in order.
+  on purpose, and this module holds the two lists equal in value and in order.  Round 85
+  removed the module-level name ``SUGGESTED``, which stood beside the page and had no
+  reader.  That module cannot be imported by a case (it reads a calibration file and opens
+  the VOD at import time), so the case below reads the module as text.
 
 What this module does not see
 -----------------------------
@@ -57,10 +60,10 @@ What this module does not see
   holds another fact passes that rule.  The bullet below named line 1500 of the stage until
   round 77, and that line holds the verdict draft of ``verdictBlock``; only a reader who
   opened the file found it.
-* ``src/pid_anchor_ui.py`` keeps its module-level list ``SUGGESTED``, which no line reads.
-  That file cannot be imported by a case (it reads a calibration file and opens the VOD at
-  import time), and the round-71 write scope does not hold it.  The guard of that dead name
-  belongs to a later round.
+* ``src/pid_anchor_ui.py`` states the three seconds once, in the ``SUG`` array of the page
+  it serves.  A browser page cannot read a python name, so that copy stays on purpose.  The
+  module-level name ``SUGGESTED`` stood beside that array until round 85, and no line read
+  it; the case below fails when the name returns.
 * ``annotator/vision-stage.js:1490`` loads and seeks 70 s as the first jump of a dataset
   whose anchors are not loaded yet.  That number is the first value of the list, and it
   stays a literal of the fallback path.  A case below holds it to the owner, and reports
@@ -91,7 +94,12 @@ TIMES_TODAY = (70, 200, 350)
 #: The one line of the service that states the three times.
 SERVICE_HOME = re.compile(r'^SUGGESTED_ANCHOR_TIMES = \(([^)]*)\)$', re.MULTILINE)
 #: The one line of ``src/pid_anchor_ui.py`` that states the three times for its page.
+#: Round 85 removed the module-level name that stood beside this line.
 LEGACY_HOME = re.compile(r'^const SUG = \[([^\]]*)\];$', re.MULTILINE)
+#: Round 85: the module-level name of the legacy module, which had no reader.  The name
+#: stands on its own line, so no line of the module reads it.  The case below fails when
+#: the name returns.
+DEAD_NAME = re.compile(r'^SUGGESTED\b', re.MULTILINE)
 #: The answer line of ``anchor_info``: it publishes the name and states no list.
 SERVICE_PUBLISH = re.compile(r'"suggested_times": list\(SUGGESTED_ANCHOR_TIMES\)')
 #: The console copy of the three times inside the anchors-at row, as a bare list.
@@ -129,7 +137,7 @@ def service_times(text):
 
 
 def legacy_times(text):
-    """The three seconds of the legacy page's own array."""
+    """The three seconds of the legacy page's own array, or ``None`` when it is gone."""
     found = LEGACY_HOME.search(text)
     return None if found is None else numbers(found.group(1))
 
@@ -204,6 +212,16 @@ def stage_findings(text, first, owner):
     return []
 
 
+def dead_name_findings(text):
+    """One finding for the module-level name of the legacy module, or an empty list."""
+    found = site(DEAD_NAME, text)
+    if found is None:
+        return []
+    return ['%s:%d holds the module-level name SUGGESTED, which no line reads; the page '
+            'copy in the SUG array is the only copy this module keeps'
+            % (LEGACY, found[0])]
+
+
 class Round71AnchorTimes(unittest.TestCase):
     """The service owns the three times, and the console reads the published list."""
 
@@ -245,7 +263,7 @@ class Round71AnchorTimes(unittest.TestCase):
             'the published list must have exactly one reader, the row of %s, and no other '
             'line of the console may read or hold it; found %d site(s)' % (STAGE, len(reads)))
 
-    def test_both_realms_state_the_same_times(self):
+    def test_the_legacy_page_states_the_three_times(self):
         self.assertEqual(TIMES_TODAY, service_times(SERVICE_TEXT),
                          'the service tuple drifted from the values of round 71')
         self.assertEqual(
@@ -253,7 +271,7 @@ class Round71AnchorTimes(unittest.TestCase):
             'the legacy page of %s states a different list of anchor times than the '
             'service tuple, and a browser page cannot read the python name' % LEGACY)
         self.assertEqual(service_times(SERVICE_TEXT), legacy_times(LEGACY_TEXT),
-                         'the two realms of the three anchor times disagree')
+                         'the page copy of %s and the service tuple disagree' % LEGACY)
 
     def test_a_planted_console_list_is_reported(self):
         planted = STAGE_TEXT.replace(
@@ -343,6 +361,37 @@ class Round77FirstSecond(unittest.TestCase):
                          'a fallback path that loads one second and seeks another must be '
                          'reported')
         self.assertIn(STAGE + ':', found[0], 'the finding must name the site')
+
+
+class Round85DeadName(unittest.TestCase):
+    """The legacy module names the three seconds once, in the page it serves."""
+
+    def test_the_legacy_module_holds_no_dead_name(self):
+        found = dead_name_findings(LEGACY_TEXT)
+        self.assertEqual(
+            [], found,
+            'the module-level name SUGGESTED of %s stood beside the page copy and no line '
+            'read it, so the name left that file in round 85; restore the name only with a '
+            'reader: %s' % (LEGACY, '; '.join(found)))
+
+    def test_the_page_copy_is_the_one_copy_of_the_legacy_module(self):
+        self.assertEqual(
+            TIMES_TODAY, legacy_times(LEGACY_TEXT),
+            'the SUG array of the page that %s serves must state the three anchor times, '
+            'because a browser page cannot read a python name' % LEGACY)
+
+    def test_a_planted_dead_name_is_reported(self):
+        planted = LEGACY_TEXT.replace(
+            'CALIB = ROOT.parent / "out" / "calib_vod30.json"',
+            'CALIB = ROOT.parent / "out" / "calib_vod30.json"\n'
+            'SUGGESTED = [70, 200, 350]')
+        self.assertNotEqual(LEGACY_TEXT, planted, 'the planted text must differ from the file')
+        found = dead_name_findings(planted)
+        self.assertEqual(
+            1, len(found),
+            'a module-level name with no reader must be reported with its line, so the name '
+            'cannot return in silence: %s' % found)
+        self.assertIn(LEGACY + ':', found[0], 'the finding must name the site')
 
 
 if __name__ == '__main__':

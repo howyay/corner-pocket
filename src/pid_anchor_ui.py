@@ -37,7 +37,6 @@ from src.reply_body import write_reply  # noqa
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 OUT = ROOT.parent / anchors_reference_path("vod30")
 CALIB = ROOT.parent / "out" / "calib_vod30.json"
-SUGGESTED = [70, 200, 350]
 
 H = np.array(json.load(open(CALIB))["H"])
 cap = cv2.VideoCapture(str(VIDEO))
