@@ -91,8 +91,8 @@ class Site(NamedTuple):
 #: The six sites of round 89, and the line each one moved to.
 SITES = (
     Site('src/info_complete_scan.py', 415, 417, 'argparse', '--corners'),
-    Site('src/eval_events.py', 1090, 1092, 'argparse', '--scan-quad'),
-    Site('src/timing_verify.py', 789, 791, 'argparse', '--quad'),
+    Site('src/eval_events.py', 1090, 1096, 'argparse', '--scan-quad'),
+    Site('src/timing_verify.py', 789, 798, 'argparse', '--quad'),
     Site('src/sam3_ball_cache.py', 126, 128, 'signature', 'cloth_mask', 'corners_path'),
     Site('src/sam3_ball_cache.py', 313, 315, 'signature', 'run', 'corners_path'),
     Site('src/sam3_ball_cache.py', 389, 391, 'argparse', '--corners'),
