@@ -51,6 +51,9 @@ from src.info_complete_scan import (GateConfig, MAX_SPEED_MM_S, SHOT_SPEED_MM_S,
                                     to_table_mm)
 from src.pipeline import homography_to_canonical  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
+# The SAM3 census has one owner, src/sam3_ball_cache.py.  This reader uses the
+# file name of that owner, so a rename of the file name moves this reader too.
+from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
 
 # The scan's working frame, from its owner.  The resize below and the scale back
 # to source pixels are the only readers.
@@ -597,7 +600,7 @@ def write_plan(scan_path, out_dir="out/scan30", top_pots: int = 12, top_shots: i
         pruned = {"kept": payload["candidates"], "dropped": payload.get("dropped", []),
                   "counts": payload.get("counts", {})}
     cached = {}
-    cache_path = Path(out_dir) / "sam3_census.json"
+    cache_path = Path(out_dir) / Path(OWN_CACHE).name
     if cache_path.exists():
         try:
             cached = json.loads(cache_path.read_text()).get("frames", {})

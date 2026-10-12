@@ -25,6 +25,11 @@ YOLO = "yolov8n.pt"
 #: The path under the repository root of the second pinned weight.
 OSNET = "src/reid/weights/osnet_x0_25_msmt17.pth"
 
+#: The path under the repository root of the third pinned weight.  SAM3 is not in
+#: ``WEIGHT_PINS``: ``scripts/fetch_weights.py`` does not download it, so it has no
+#: URL, no SHA-256 and no size.
+SAM3 = "data/sam3.safetensors"
+
 #: Hugging Face hosts the OSNet weight under a repository and a revision.
 OSNET_REPO = "https://huggingface.co/kaiyangzhou/osnet"
 OSNET_REVISION = "a5c5cc037c24235cda3b21085b93ad77c9616224"

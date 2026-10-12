@@ -68,6 +68,9 @@ from src.datasets import lookup as dataset_lookup, media_path  # noqa: E402
 # The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  This reader builds
 # the path of each candidate scan folder itself, so it takes the plain name.
 from src.sam3_artifact import ARTIFACT  # noqa: E402
+# The census file name has one owner too, src/sam3_ball_cache.py.  This reader
+# builds the path of each candidate scan folder itself, so it takes the plain name.
+from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
                               EVENT_BEFORE_S)
@@ -1864,10 +1867,15 @@ def annotated_balls(census_row) -> list:
 
 
 def load_census(dataset: str = "vod30", root=None) -> dict:
+    """The SAM3 census of one dataset, from the scan folder this module derives.
+
+    The file name comes from the owner of the census, ``src/sam3_ball_cache.py``;
+    ``OWN_CACHE`` holds the whole path, so this reader takes its last component.
+    """
     root = Path(root or ROOT)
     names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}"]
     for name in names:
-        path = root / "out" / name / "sam3_census.json"
+        path = root / "out" / name / Path(OWN_CACHE).name
         if path.exists():
             return json.loads(path.read_text()).get("frames") or {}
     return {}

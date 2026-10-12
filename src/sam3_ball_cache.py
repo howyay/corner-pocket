@@ -42,6 +42,8 @@ from src.table_detect import detect_table  # noqa: E402
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,  # noqa: E402
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3  # noqa: E402
 
 #: The app's own 56 frames, named by `src/sam3_artifact.py`.  This tool reads it
 #: through that owner and never writes it, so the string stays the relative form
@@ -309,7 +311,7 @@ def pending_times(times, cached=(), refetch=()) -> list:
 
 
 def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/scan30/corners.json",
-        budget_s=2400.0, checkpoint="data/sam3.safetensors", progress=print, refetch=()) -> dict:
+        budget_s=2400.0, checkpoint=SAM3, progress=print, refetch=()) -> dict:
     """Run the pending timestamps in order under a wall-clock budget.
 
     ``refetch`` names timestamps to re-measure even though a cache holds them:

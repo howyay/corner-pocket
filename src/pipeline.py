@@ -30,6 +30,8 @@ from table_geometry import CANON_W, CANON_H, homography_to_canonical
 from src.ball_gate import (POC_PIPELINE_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MIN_SCORE)
 from src.ball_scale import BALL_WIDTH_MM  # ball_gate.py:37 cites this file by line
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3
 
 CANON_BALL_R = BALL_WIDTH_MM / 2  # mm radius (a 57.15 mm pool ball)
 POCKET_R = 24
@@ -301,8 +303,8 @@ def process_frame(video_path, t_sec, model, proc, out_dir, fixed_corners=None) -
 
 
 # The three frame readers stand below the cited lines of this file on purpose:
-# the argument of ``src/ball_gate.py`` cites ``src/pipeline.py:55-58``, ``:253``
-# and ``:267-268``, so a new function above them would move every citation.
+# the argument of ``src/ball_gate.py`` cites ``src/pipeline.py:57-60``, ``:255``
+# and ``:269-270``, so a new function above them would move every citation.
 def read_frame(video_path, t_sec: float) -> tuple:
     """One frame at one time, with the time and the frame number of the container.
 
@@ -354,7 +356,7 @@ def main():
         fixed_corners = json.load(open(args.corners))["corners"]
         print("using fixed corners:", fixed_corners, flush=True)
 
-    model = load_sam3_image_model("data/sam3.safetensors")
+    model = load_sam3_image_model(SAM3)
     model.float()
     proc = make_processor(model)
 

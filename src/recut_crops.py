@@ -30,6 +30,8 @@ from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
 from src.box_geometry import iou
 # The highlight recording's sample instants have one home, src/datasets.py.
 from src.datasets import HIGHLIGHT_SAMPLE_TIMES
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3
 
 VIDEO = ROOT / 'data' / 'vod_highlight.mp4'
 CROP_DIR = ROOT / 'out' / 'unlabeled_crops'
@@ -40,7 +42,7 @@ TIMES = list(HIGHLIGHT_SAMPLE_TIMES)
 os.makedirs(CTX_DIR, exist_ok=True)
 
 print('loading SAM3 on cpu...', flush=True)
-model = load_sam3_image_model(str(ROOT / 'data' / 'sam3.safetensors'), device='cpu')
+model = load_sam3_image_model(str(ROOT / SAM3), device='cpu')
 model.float()
 proc = make_processor(model, device='cpu')
 

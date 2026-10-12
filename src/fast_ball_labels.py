@@ -45,14 +45,19 @@ from src.ball_gate import SAM3_BALL_MIN_SCORE
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 # The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  This reader builds
 # the path of each cache name itself, so it takes the plain name.
+# The SAM3 census file has one owner, src/sam3_ball_cache.py.  This reader takes the
+# relative path from that owner, so a rename moves the writer and this reader together.
+from src.sam3_ball_cache import OWN_CACHE
 from src.sam3_artifact import ARTIFACT
 from src.tiny_ball_net import SPLIT_GAP_S
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3
 
 ROOT = Path(__file__).resolve().parents[1]
 
 OUT = ROOT / "out" / "fast_ball_labels"
 LABELS_OUT = ROOT / "out" / "tiny_ball_probe" / "new_labels.json"
-CHECKPOINT = ROOT / "data" / "sam3.safetensors"
+CHECKPOINT = ROOT / SAM3
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
 
 MIN_SCORE = SAM3_BALL_MIN_SCORE  # the production cut the delivered caches were written at
@@ -279,8 +284,9 @@ def frame_at(time_s: float, video=VIDEO):
 def existing_times(root=ROOT) -> set:
     """Label times already in the caches, rounded the way the caches round them."""
     times = set()
-    for name, key in (("sam3_census.json", "frames"), (ARTIFACT, None)):
-        path = Path(root) / "out" / "scan30" / name
+    census = Path(OWN_CACHE)                     # the writer's own relative path
+    for name, key in ((census.name, "frames"), (ARTIFACT, None)):
+        path = Path(root) / census.parent / name
         if not path.exists():
             continue
         payload = json.loads(path.read_text())

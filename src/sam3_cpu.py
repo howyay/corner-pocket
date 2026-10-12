@@ -10,6 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 import types  # noqa: F401
 
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3
+
 
 def _apply_patches() -> None:
     import torch  # noqa: F401  (ensures torch imported first)
@@ -92,7 +95,7 @@ if __name__ == "__main__":
     import time
 
     t0 = time.time()
-    model = load_sam3_image_model("data/sam3.safetensors")
+    model = load_sam3_image_model(SAM3)
     print(f"model loaded in {time.time() - t0:.1f}s", flush=True)
     proc = make_processor(model)
     print("processor ready", flush=True)

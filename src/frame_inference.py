@@ -209,9 +209,9 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=Non
     if 'balls' in detectors:
         progress('loading local SAM3 on CPU; this can take several minutes')
         # Reuse the exact PoC inference, classification and filtering helpers.
-        checkpoint = Path(root) / 'data' / 'sam3.safetensors'
+        checkpoint = Path(root) / weight_pins.SAM3
         if not checkpoint.is_file():
-            raise RuntimeError('Local data/sam3.safetensors is missing; downloads are disabled')
+            raise RuntimeError(f'Local {weight_pins.SAM3} is missing; downloads are disabled')
         from src.pipeline import filter_instances
         from src.sam3_cpu import load_sam3_image_model, make_processor
         from PIL import Image

@@ -39,6 +39,8 @@ from table_detect import detect_table
 from src.ball_gate import (CLASSICAL_BALL_MAX_AREA_960X540_PX, SAM3_BALL_MAX_AREA_PX,
                            SAM3_BALL_MAX_RADIUS_PX, SAM3_BALL_MIN_AREA_PX,
                            SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MIN_SCORE)
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3
 
 # physical geometry (Rasson Victory III 9ft, 2540 x 1270 mm): the canonical
 # frame and the pocket table live in table_geometry.py, their only definition
@@ -108,7 +110,7 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
     from sam3_cpu import load_sam3_image_model, make_processor
 
     torch.set_num_threads(8)
-    model = load_sam3_image_model(str(ROOT.parent / "data" / "sam3.safetensors"))
+    model = load_sam3_image_model(str(ROOT.parent / SAM3))
     model.float()
     proc = make_processor(model)
 

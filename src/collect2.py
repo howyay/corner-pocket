@@ -18,6 +18,8 @@ from PIL import Image
 from sam3_cpu import load_sam3_image_model, make_processor
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
                            SAM3_BALL_MIN_SCORE)
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3
 
 VIDEO = Path(sys.argv[1])
 OUT = Path(sys.argv[2])
@@ -27,7 +29,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 CTX.mkdir(exist_ok=True)
 
 print('loading SAM3...', flush=True)
-model = load_sam3_image_model(str(ROOT / 'data' / 'sam3.safetensors'), device='cpu')
+model = load_sam3_image_model(str(ROOT / SAM3), device='cpu')
 model.float()
 proc = make_processor(model, device='cpu')
 

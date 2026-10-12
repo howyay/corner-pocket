@@ -70,6 +70,11 @@ from src.sam3_artifact import artifact_path  # noqa: E402
 #: the case frames uses (``--threshold`` below).  ``PRODUCTION_CUT`` below is the
 #: SAM3 teacher's score floor: a different number with a different owner.
 from annotator.pipeline_stages import BALL_THRESHOLD as BALL_OPERATING_CUT  # noqa: E402
+# The SAM3 census file has one owner, src/sam3_ball_cache.py.  This reader takes the
+# relative path from that owner, so a rename moves the writer and this reader together.
+from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
+# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
+from src.weight_pins import SAM3  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -77,7 +82,7 @@ PROBE = ROOT / "out" / "tiny_ball_probe"
 AUDIT = ROOT / "out" / "ball-fp-audit"
 BITMAP = PROBE / "960x540-scratch.pt"
 REPORT = PROBE / "report_960x540.json"
-CENSUS = ROOT / "out" / "scan30" / "sam3_census.json"
+CENSUS = ROOT / OWN_CACHE
 RESULTS = artifact_path("vod30", ROOT)       # the app's own 56 frames
 
 CASES_OUT = AUDIT / "cases.json"
@@ -600,7 +605,7 @@ def _processor():
     if _PROCESSOR is None:
         from src import sam3_cpu
         started = time.time()
-        model = sam3_cpu.load_sam3_image_model(str(ROOT / "data" / "sam3.safetensors"))
+        model = sam3_cpu.load_sam3_image_model(str(ROOT / SAM3))
         _PROCESSOR = sam3_cpu.make_processor(model)
         _PROCESSOR._load_seconds = round(time.time() - started, 1)
         _log(f"SAM3 loaded in {_PROCESSOR._load_seconds}s")
@@ -711,7 +716,7 @@ def cmd_measure(args) -> int:
 def _write_sweep(frames: dict, started: float, cached: dict) -> None:
     AUDIT.mkdir(parents=True, exist_ok=True)
     meta = dict(cached.get("meta") or {})
-    meta.update({"model": "data/sam3.safetensors", "device": "cpu", "floor": SAM3_FLOOR,
+    meta.update({"model": SAM3, "device": "cpu", "floor": SAM3_FLOOR,
                  "production_cut": PRODUCTION_CUT, "thresholds": list(SWEEP_THRESHOLDS),
                  "radius_px": CANDIDATE_RADIUS_PX,
                  "note": "scores are raw SAM3 object scores; the production caches keep "
