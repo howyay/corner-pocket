@@ -228,10 +228,10 @@ class OperationsSet(DataSet):
                          (src.get("id"), src.get("url"), src.get("kind"), src.get("channel"),
                           src.get("video"), position))
         for e in s.get("events", []):
-            conn.execute("INSERT INTO ops_events (revision, id, created_at, action, context) "
-                         "VALUES (%s, %s, %s, %s, %s)",
-                         (e.get("revision"), e.get("id"), e.get("createdAt"), e.get("action"),
-                          jsonb(e.get("context"))))
+            conn.execute(
+                OPS_EVENT_INSERT,
+                (e.get("revision"), e.get("id"), e.get("createdAt"), e.get("action"),
+                 jsonb(e.get("context"))))
 
     def _tournament(self, conn, t, position):
         conn.execute(
@@ -590,9 +590,9 @@ class CorrectionsSet(DataSet):
     def write(self, conn, doc):
         for dataset, frames in doc.items():
             for frame, payload in frames.items():
-                conn.execute("INSERT INTO frame_corrections (dataset, frame_index, payload, saved_at) "
-                             "VALUES (%s, %s, %s, %s)",
-                             (dataset, int(frame), jsonb(payload), (payload or {}).get("saved_at")))
+                conn.execute(CORRECTION_INSERT,
+                             (dataset, int(frame), jsonb(payload),
+                              (payload or {}).get("saved_at")))
 
     def render(self, conn):
         doc = {ds: {} for ds in STATIC_OUT}
@@ -603,6 +603,23 @@ class CorrectionsSet(DataSet):
 
     def expected(self, doc):
         return {"frame_corrections": sum(len(frames) for frames in doc.values())}
+
+
+# The row statements a second writer executes.  src.store_pg.PostgresStore writes the
+# same two tables as this module (its docstring names this module as the owner of the
+# document <-> rows mapping), so each statement stands here once and the store reads
+# the name; the names are not private, exactly like FACE_INSERT above.
+OPS_EVENT_INSERT = ("INSERT INTO ops_events (revision, id, created_at, action, context)"
+                    " VALUES (%s, %s, %s, %s, %s)")
+CORRECTION_INSERT = ("INSERT INTO frame_corrections (dataset, frame_index, payload, saved_at)"
+                     " VALUES (%s, %s, %s, %s)")
+# The one difference of the console writer, named beside the row it belongs to.  The
+# import writes each correction file once, so a plain insert is enough.  The console
+# saves one frame again and again while the operator works, so a second save must
+# replace the row of that frame and not append another one: correction_put executes
+# CORRECTION_INSERT + CORRECTION_UPSERT.
+CORRECTION_UPSERT = (" ON CONFLICT (dataset, frame_index) DO UPDATE SET"
+                     " payload = EXCLUDED.payload, saved_at = EXCLUDED.saved_at")
 
 
 class AnchorsSet(DataSet):

@@ -39,9 +39,9 @@ from src.store_files import (BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, dataset_d
 # The document side of the event log is trimmed by its one owner (src.ops_event_log),
 # so this store holds no copy of the retention bound.
 from src.ops_event_log import trim
-# The psycopg JSON wrapper has one home, src/store_import.py: this store writes the
-# document <-> rows mapping that the importer owns, so the wrapper comes from there.
-from src.store_import import jsonb
+# The psycopg JSON wrapper and the two row statements this store executes have one home,
+# src/store_import.py (the mapping above is its OperationsSet; the face row reads it too).
+from src.store_import import CORRECTION_INSERT, CORRECTION_UPSERT, OPS_EVENT_INSERT, jsonb
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and JsonStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -148,7 +148,7 @@ class PostgresStore:
         for table in ("matches", "entrant_members", "entrants", "tournaments", "notes", "sources", "ops_meta"):
             conn.execute(f"DELETE FROM {table}")
         OperationsSet().write(conn, dict(doc, events=[]))  # ops_meta, players, tournaments, notes, sources
-        conn.execute("INSERT INTO ops_events (revision, id, created_at, action, context) VALUES (%s, %s, %s, %s, %s)",
+        conn.execute(OPS_EVENT_INSERT,
                      (event["revision"], event["id"], event["createdAt"], action, jsonb(context)))
         put_document(conn, STATE_DOCUMENT, dump(doc, fmt_of(STATE_DOCUMENT)))
         return doc
@@ -369,10 +369,10 @@ class PostgresStore:
         path = self._correction_path(dataset, frame_index)
         with self._write() as conn:
             def project(c):
-                c.execute("INSERT INTO frame_corrections (dataset, frame_index, payload, saved_at) "
-                          "VALUES (%s, %s, %s, %s) ON CONFLICT (dataset, frame_index) DO UPDATE SET "
-                          "payload = EXCLUDED.payload, saved_at = EXCLUDED.saved_at",
-                          (dataset, int(frame_index), jsonb(payload), (payload or {}).get("saved_at")))
+                # The console re-saves one frame; the tail beside the owner makes it replace.
+                c.execute(CORRECTION_INSERT + CORRECTION_UPSERT,
+                          (dataset, int(frame_index), jsonb(payload),
+                           (payload or {}).get("saved_at")))
             self._store_doc(conn, path, payload, project)
 
     @staticmethod
