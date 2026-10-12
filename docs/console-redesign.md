@@ -10761,3 +10761,58 @@ so the recorded line had to follow (commit `7d2e85f`).  The second run read
 so the error is a property of that run.  Node suites: 232 pass, 23 pass, 114 passed, 0 failures.  The
 count rose from 2493 to 2501: one case from WI, four from WJ, three from WK.  A recorded line number
 is a citation, and a table of recorded lines needs the same repair as a `file:N` citation.
+
+## Round 88 - the sam3 pin, the census names, the segment artifact and the identity reference
+
+Walk /tmp/dshsess/walk_round88.md at HEAD 4b51b05 answered
+`Strong candidate present - 3 Strong, 1 Worth, 0 Note`.
+
+### Strong 1 - the census name of one writer, named again by six readers
+
+- Ground: `src/sam3_ball_cache.py:50 OWN_CACHE = "out/scan30/sam3_census.json"`.
+- Defect: six reader sites built the path themselves. Four of them answered a missing file with no word.
+- Measurement: `grep -rn "sam3_census.json" src annotator tools scripts` answered the owner and six readers.
+- Decision: the readers import `OWN_CACHE` from the writer. Writer WL delivered
+  `tests/test_sam3_census_owner.py`, eight cases. The walk of that guard reads the four shipped packages.
+- Why it matters: a second writer of the census would write a second file, and the readers would read the first.
+
+### Strong 2 - the sam3 checkpoint, eleven spellings and no pin
+
+- Ground: `src/weight_pins.py:23 YOLO` and `:26 OSNET` were the pins of the module. `data/sam3.safetensors` stood nowhere in it.
+- Defect: nine shipped files spelled the checkpoint, under three different base rules.
+- Measurement: `grep -rn "sam3\.safetensors" src annotator tools scripts` answered eleven lines in nine files.
+- Decision: the module holds `SAM3 = "data/sam3.safetensors"` at line 31. Writer WM delivered
+  `tests/test_weight_pins_owner.py`, nine cases. Every reader keeps its own base rule and reads the pin.
+- Why it matters: a moved checkpoint file failed in one reader and passed in another.
+
+### Strong 3 - the segment artifact, one owner and five spellings
+
+- Ground: `src/calib_segments.py:60 ARTIFACT = "calib_{dataset}_segments.json"`.
+- Defect: the loaders and the server built the name again. Two of them built it inside an f-string.
+- Measurement: `grep -rn "calib_.*_segments.json" src annotator tools scripts db` answered the owner and five sites.
+- Decision: the owner answers `segment_artifact_path(dataset, root)`. Writer WN delivered six new cases in
+  `tests/test_calib_segments.py`, 37 cases before and 43 after. The two argparse defaults stay frozen.
+- Why it matters: a rename of the artifact moved one writer and left four readers on the old name.
+
+### Worth 1 - the identity reference of three importers
+
+- Ground: `src/pid_identity.py:30 IDENTITY_REFERENCE = "out/pid_identity_v0.json"`.
+- Defect: three modules spelled the path at import time.
+- Measurement: the readers now import the name. The deliberate bite answered
+  `ImportError: cannot import name 'IDENTITY_REFERENCE'`.
+- Decision: writer WN delivered `tests/test_pid_identity_owner.py`, eleven cases.
+- Why it matters: a rename moved the writer alone, and the three readers failed at import.
+
+### The Lead
+
+- Verified every changed path of the three writers by content sha1, and ran the named modules.
+- Bite on the owner `src/calib_segments.py`: `5d78e04fa55d -> cbfb2a0e6015 -> 5d78e04fa55d`. The red text named the
+  owner line: `Lists differ: ['src/store.py'] != ['src/calib_segments.py', 'src/store.py']`.
+- Paid the citation debt of the round: four code citations and 59 document citations, each one repaired by the text of
+  the target line at HEAD. Five citations stayed: the same text stands on several lines. 146 citations were already
+  blank at HEAD, and the round leaves them.
+- LESSON: a writer kept a comment block at a cited line number, so the citation guard passed, while the three citers
+  described `pool_state()` and the ceiling copy of `__init__`. The guard reads a line, not a symbol. Re-point a
+  citation by the text of the statement, not by the number alone.
+- Commits: `6ff527b`, `eef34f4`, `d8e6495`. The suite ran 2535 cases, 2501 of round 87 and 34 new ones.
+- The suite answered `Ran 2535 tests in 325.707s`, `OK (skipped=53)`. The node suites answered 232, 23 and 114 cases, with no failure.
