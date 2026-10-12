@@ -171,6 +171,175 @@ class SegmentLookupTest(unittest.TestCase):
                              "saved_prior")
 
 
+class CalibrationNameOwnerTest(unittest.TestCase):
+    """The name of the calibration document has one home: ``src/calib_segments.py``.
+
+    ``calib_vod30.json`` stood four times: the template of ``src/store.py``, the
+    tool that writes the document, and two readers.  A rename that moved three of
+    the four left the fourth reading a file that does not exist.  The owner
+    answers the name, and each reader reads that answer.
+
+    The store reads the name as a row of its kind -> file map, as it reads
+    ``ARTIFACT`` for the segments document.  ``test_the_kind_map_reads_the_owner``
+    is the model of the two cases below, and
+    ``test_the_calibration_row_reads_the_owner`` holds the second row to it.
+    """
+    #: The source of the owner, and the declaration that holds the template.
+    OWNER_MODULE = "src/calib_segments.py"
+    OWNER_DECLARATION = "CALIBRATION"
+    OWNER_READER = "calibration_name"
+    #: The tool that writes one document, and the two readers of one document.
+    DOCUMENT_READERS = {
+        "src/calib_vod30.py": "calibration_name",
+        "src/pid_anchor_ui.py": "calibration_name",
+        "src/pid_shooter.py": "calibration_name",
+    }
+    #: The map of ``src/store.py``, and the row this round moved to the owner.
+    MAP_MODULE = "src/store.py"
+    MAP_NAME = "ARTIFACTS"
+    MAP_ROW = "calibration"
+    #: The one dataset this repository builds, and the document name of it.
+    DATASET = "vod30"
+    DOC_NAME = "calib_vod30.json"
+    #: The owner's keyword, and the placeholder of the map's rows.
+    FORMATTING_KEYS = ("ds", "dataset")
+
+    def shipped_files(self):
+        """The shipped modules, as (repository-relative name, tree)."""
+        out = []
+        for path in shipped_modules():
+            name = path.relative_to(ROOT).as_posix()
+            out.append((name, ast.parse(path.read_text(encoding="utf-8"))))
+        return out
+
+    def doc_literals(self, tree):
+        """(line, text) for the literals of one tree that hold the document name.
+
+        Three shapes carry the name: the whole text of one dataset, the template
+        with the owner's keyword, and the map's spelling ``calib_{ds}.json``.
+        """
+        out = []
+        for line, text in code_strings(tree):
+            if "calib_" not in text or not text.endswith(".json"):
+                continue
+            if text == self.DOC_NAME or any(key in text for key in self.FORMATTING_KEYS):
+                out.append((line, text))
+        return out
+
+    def known_reader(self, name, text):
+        """True when one shipped module reads the owner, or is the owner itself."""
+        return name == self.OWNER_MODULE or self.OWNER_READER in text
+
+    def test_the_calibration_row_reads_the_owner(self):
+        """The row of ``src/store.py`` reads the owner, and does not spell the name.
+
+        The row stood as the literal ``"calib_{ds}.json"``.  The segments row of
+        the same map already reads the owner, and this row was the copy the owner
+        could not move.  A row that spells the text again fails here, and the
+        failure names the row and not the file that holds the map.
+        """
+        from src import store
+
+        tree = ast.parse((ROOT / self.MAP_MODULE).read_text(encoding="utf-8"))
+        rows = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            targets = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            if self.MAP_NAME not in targets or not isinstance(node.value, ast.Dict):
+                continue
+            for key, value in zip(node.value.keys, node.value.values):
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    rows[key.value] = value
+        self.assertIn(self.MAP_ROW, rows, f"the map must keep the {self.MAP_ROW} row")
+        row = rows[self.MAP_ROW]
+        self.assertNotIsInstance(row, ast.Constant,
+                                 "the row spells the file name again; it must read the owner")
+        self.assertEqual(ast.unparse(row), self.OWNER_DECLARATION,
+                         "the row must read the owner's CALIBRATION")
+        self.assertEqual(store.ARTIFACTS.get(self.MAP_ROW), cs.CALIBRATION,
+                         "the row must hold the owner's template, not a second text")
+        # The row's own placeholder is the owner's keyword, so the format call of
+        # artifact() fills it.
+        self.assertIn("{dataset}", store.ARTIFACTS[self.MAP_ROW],
+                      "the row must carry the owner's keyword")
+
+    def test_every_known_reader_of_the_document_reads_the_owner(self):
+        """The three sites that name the document read the owner's answer.
+
+        The name stood at ``src/calib_vod30.py:157``, ``src/pid_anchor_ui.py:39``
+        and ``src/pid_shooter.py:43``.  Each site resolves the same path after the
+        move: ``calibration_name`` answers the text the literal held.
+        """
+        files = dict(self.shipped_files())
+        for name in self.DOCUMENT_READERS:
+            found = self.doc_literals(files[name])
+            shapes = [(line, text) for line, text in found if text == self.DOC_NAME]
+            read = any(
+                (isinstance(node, ast.Call) and ast.unparse(node.func) == self.OWNER_READER)
+                for node in ast.walk(files[name]))
+            self.assertEqual(shapes, [],
+                             f"{name} spells the whole file name: {shapes}")
+            self.assertTrue(read,
+                            f"{name} must call {self.OWNER_READER}, and it does not")
+
+    def test_the_document_name_stands_once_in_the_shipped_tree(self):
+        """One shipped reader still holds the whole name, and the owner holds the rest.
+
+        ``annotator/unified_server.py:2134`` reads ``self.out / "calib_vod30.json"``
+        in ``anchor_info``.  That file belongs to another writer this round, so the
+        list holds the owner and that one site.  A third site fails here, and the
+        failure names it.
+        """
+        offenders = {}
+        for name, tree in self.shipped_files():
+            if name == self.OWNER_MODULE:
+                continue
+            text = ast.unparse(tree)
+            found = self.doc_literals(tree)
+            if found and not self.known_reader(name, text):
+                offenders[name] = found
+        self.assertEqual(sorted(offenders), ["annotator/unified_server.py"],
+                         f"the reader that holds the whole name changed: {offenders}")
+        self.assertEqual([text for _, text in offenders["annotator/unified_server.py"]],
+                         [self.DOC_NAME],
+                         "the row must hold the text of one dataset and nothing else")
+
+    def test_the_reader_answers_the_name_of_one_dataset(self):
+        """The owner's reader answers the text, and no known reader holds it."""
+        self.assertEqual(cs.calibration_name(self.DATASET), self.DOC_NAME,
+                         "the reader must answer the document name of the dataset")
+        self.assertIn("{dataset}", cs.CALIBRATION,
+                      "the owner's template must carry the keyword of the format call")
+        files = dict(self.shipped_files())
+        owner = ast.unparse(files[self.OWNER_MODULE])
+        self.assertIn(repr(cs.CALIBRATION), owner,
+                      "the owner holds the one template of the document name")
+        for name in sorted(self.DOCUMENT_READERS):
+            found = [f for f in self.doc_literals(files[name]) if f[1] == self.DOC_NAME]
+            self.assertEqual(found, [], f"{name} spells the whole file name again: {found}")
+
+    def test_the_scan_sees_a_bitten_module(self):
+        """The case above has teeth: a planted literal fails it.
+
+        A guard that reads no literal passes on a tree that spells the name
+        everywhere.  This case plants one module and holds its answer, so a later
+        edit that flattens the scan fails here.
+        """
+        planted = ast.parse(
+            "import json\n"
+            "def dump(out, root):\n"
+            '    path = root / "out" / "calib_vod30.json"\n'
+            "    path.write_text(json.dumps(out))\n")
+        found = self.doc_literals(planted)
+        self.assertEqual([text for _, text in found], [self.DOC_NAME],
+                         "the scan must see the planted name")
+        offender = {"src/planted.py": found}
+        self.assertNotEqual(offender, {}, "the guard must fail on a second home")
+        self.assertFalse(self.known_reader("src/planted.py", ast.unparse(planted)),
+                         "the planted module reads no owner, so it must fail")
+
+
 class ArtifactShapeTest(unittest.TestCase):
     """The shipped artifact must carry every field the consumers read."""
 

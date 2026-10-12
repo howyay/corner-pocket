@@ -31,12 +31,14 @@ if __name__ == "__main__":
     from src.store import refuse_file_writes_under_postgres
     refuse_file_writes_under_postgres("src/pid_anchor_ui.py")
 from calibrate import OBJECT_MM, project  # noqa
-from src.calib_segments import anchors_reference_path  # noqa
+from src.calib_segments import anchors_reference_path, calibration_name  # noqa
 from src.reply_body import write_reply  # noqa
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 OUT = ROOT.parent / anchors_reference_path("vod30")
-CALIB = ROOT.parent / "out" / "calib_vod30.json"
+# src/calib_segments.py owns the name of the calibration document, so this reader
+# takes the file name from the owner and keeps its own root.
+CALIB = ROOT.parent / "out" / calibration_name("vod30")
 
 H = np.array(json.load(open(CALIB))["H"])
 cap = cv2.VideoCapture(str(VIDEO))

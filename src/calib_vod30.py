@@ -16,11 +16,17 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+REPO = ROOT.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 from calibrate import (OBJECT_MM, pnp_solve, project, refined_blob,
                        anchors_for_frame, quad_ok)
 from frame_rate import FPS_FALLBACK
 from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import canonical_destination
+# src/calib_segments.py owns the name of the calibration document, so this writer
+# takes the file name from the owner and keeps its own root.
+from src.calib_segments import calibration_name  # noqa: E402
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 CORNERS = ROOT.parent / "out" / "corners_30min_v2.json"
@@ -154,7 +160,7 @@ def main():
     "holdout": holdout,
     }
     out["H"] = np.round(Hmed, 6).tolist()
-    Path(ROOT.parent / "out" / "calib_vod30.json").write_text(json.dumps(out, indent=1))
+    Path(ROOT.parent / "out" / calibration_name("vod30")).write_text(json.dumps(out, indent=1))
     print(json.dumps(out, indent=1))
     print("bar: mean <= 15 mm ->", "MET" if out["mean_mm"] <= 15 else "NOT MET")
 

@@ -23,6 +23,9 @@ sys.path.insert(0, REPO)  # src/weight_pins.py sits under src/
 # src/weight_pins.py owns the weight paths and src/events_document.py owns the
 # name and the path of the events document, so this file reads the two owners.
 from src import events_document, weight_pins  # noqa: E402
+# src/calib_segments.py owns the name of the calibration document, so this reader
+# takes the file name from the owner and keeps its own root.
+from src.calib_segments import calibration_name  # noqa: E402
 
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
 os.environ.setdefault("ULTRALYTICS_SAFE_LOAD", "1")  # weights-only YOLO load (audit D-2)
@@ -40,7 +43,7 @@ MODEL = YOLO(weight_pins.YOLO)
 # src/events_document.py owns the name of the vod30 rebuild document, so this
 # reader takes the path from the owner and keeps its own root.
 EVENTS = json.load(open(events_document.document_path(events_document.V2, root=REPO)))
-CAL = json.load(open(os.path.join(REPO, "out", "calib_vod30.json")))
+CAL = json.load(open(os.path.join(REPO, "out", calibration_name("vod30"))))
 H = np.array(CAL["H"])  # mm -> px
 QUAD = np.array(json.load(open(os.path.join(REPO, "out", "corners_30min_v2.json")))["corners"], np.float32)
 

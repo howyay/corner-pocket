@@ -64,24 +64,25 @@ from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMEN
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules  # noqa: E402
-# The anchor file name of a dataset, and the file name of the calibration
-# segments, have one owner: src/calib_segments.py.  This module reads that owner,
-# so the path of the anchors document cannot drift from the path the calibration
-# readers use.
-from src.calib_segments import ARTIFACT  # noqa: E402
+# The anchor file name of a dataset, and the two document names of the
+# calibration, have one owner: src/calib_segments.py.  This module reads that
+# owner, so the path of the anchors document and the path of the calibration
+# document cannot drift from the paths the calibration readers use.
+from src.calib_segments import ARTIFACT, CALIBRATION  # noqa: E402
 from src.calib_segments import anchors_reference_name  # noqa: E402
 # precomputed artifacts the server reads whole: kind -> file under out/.  A row here
 # names a dataset, so artifact() resolves the dataset through src/datasets.py and reads
 # the folder queue() reads (out/vods/<id>/ for an imported VOD, out/scan30/ for a
 # built-in).  {scan} is that folder, relative to out/; {ds} is the dataset id, which
-# names the calibration files at the out/ root.  The name of the segments document
-# has one home, src/calib_segments.py:60, and its row below reads that home; the
-# format call of artifact() fills the owner's keyword {dataset}.
+# names the calibration files at the out/ root.  The two document names of the
+# calibration have one home, src/calib_segments.py:65 and :71, and their two rows
+# below read that home; the format call of artifact() fills the owner's keyword
+# {dataset}.
 ARTIFACTS = {
     "queue_report": "{scan}/dense_queue_report.json",
     "queue_retired": "{scan}/dense_queue_retired.json",
     "calibration_segments": ARTIFACT,
-    "calibration": "calib_{ds}.json",
+    "calibration": CALIBRATION,
 }
 # Artifacts that belong to no dataset: one file at the out/ root.  They take no dataset
 # argument, so a caller cannot pass one and believe it selected something.

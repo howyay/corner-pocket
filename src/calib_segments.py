@@ -40,6 +40,11 @@ Contract, deliberately small:
   command line holds it; tests/test_anchor_name_owner.py holds the two equal to the
   text below.
 
+The document name ``CALIBRATION`` has one home here too, and the reader
+:func:`calibration_name` answers the file name of one dataset.  ``docs/console-redesign.md``
+records that name.  A reader that writes the text again makes a later rename read a
+file that does not exist.  tests/test_calib_segments.py tells you.
+
 The lookup is a pure function of the artifact, so a later measured split is a data
 change, not a code change.
 """
@@ -58,6 +63,23 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 ARTIFACT = "calib_{dataset}_segments.json"
+
+# The calibration document of one dataset.  The store reads this text as a row of
+# its kind -> file map, and the three readers of the document read the file name
+# below.  A reader that writes the text again holds a second home, and a rename
+# then moves one home alone.
+CALIBRATION = "calib_{dataset}.json"
+
+
+def calibration_name(dataset: str) -> str:
+    """The file name alone of the calibration document of one dataset.
+
+    The dataset argument names the file, as the argument of
+    :func:`anchors_reference_path` does.  A caller that joins a folder and this
+    name keeps its own root, so the path of the document cannot drift from the
+    path the store resolves.
+    """
+    return CALIBRATION.format(dataset=dataset)
 
 
 def segment_artifact_path(dataset: str, root=None) -> Path:
