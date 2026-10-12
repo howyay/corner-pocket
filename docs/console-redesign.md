@@ -11269,3 +11269,89 @@ The full python suite answers `Ran 2586 tests in 630.734s` and `OK (skipped=53)`
 The node suite `tests/test_app_timeline.js` answers `114 passed, 0 failed`.  The
 node suites `tests/test_board.js` and `tests/test_ops.js` report `todo 0` and no
 failure.
+
+## Round 94
+
+The walk of round 94 read 34 files at HEAD `628f9f1` and held the verdict line
+`Strong candidate present - 3 Strong, 2 Worth, 3 Note`.  It named the name
+`pid2_tracklets.json`, the path `out/corners_30min_v2.json`, the citations of
+`annotator/duration.js`, and the served name `events.json`.  The Lead verified every
+ground read only, and it made the last Note a fourth Strong row: the owner guard of
+`src/events_document.py` bound the sibling name `events_v2.json` only.
+
+Four writers closed the four rows, each one in its own scope.
+
+| Writer | Files, with the first 12 digits of each measured sha1 |
+| --- | --- |
+| WA | `src/pid_associate.py efbc28efdabb`, `src/pid_osnet_tight.py a2e1227429a6`, `src/pid_osnet_tracks.py f689f71c2d23`, `src/pid_seed_rebuild.py 10e811e9dc0e`, `src/yolo_track.py 32117bf95f5e`, `tests/test_shared_artifact_names.py 9367d4bb0367` |
+| WC | `annotator/duration.js 61fde11ca3f4`, `tests/test_citation_lines.py eb6c4af236a0` |
+| WB | `src/calib_segments.py 6ba36d3eb6b2` (36 lines in, 1 line out), `src/eval_table_detect.py a1c58d7ca023`, `src/calib_segment_measure.py c2b1d1d4cf7c`, `src/rebuild_events_v2.py 55b3cb90995e`, `src/calib_vod30.py abaeba6d75e3`, `src/pid_identity.py 9adb79c4098e`, `src/pid_shooter.py d6dc2c35d865`, `src/make_segment_corners.py 577314b4c881`, `tests/test_table_refine.py ad43e2c10946`, `tests/test_vod30_corners.py 782379989d24` |
+| WD | `src/info_complete_scan.py 90649a3840c2`, `src/motion_scan.py 64ab8b308230`, `src/segment_calib_report.py 77c7430e63f3`, `src/store.py f7cf65cee9bc`, `src/eval_events.py b65400959485fdee46c52d9d2ea1d4200ba10aa9`, `src/timing_verify.py dc3f5b8aab3f`, `src/events_document.py 28bd383d9011`, `tests/test_events_document_owner.py 17cddb1e69e3` |
+
+Writer WA gave the name `pid2_tracklets.json` one home.  Six modules spelled it by
+hand, and the guard held two readers only.  Every reader of a name of the `out/` root
+imports `src/store.py` now, the guard holds seven readers, and a spelling outside the
+owner fails.
+
+Writer WB gave the path `out/corners_30min_v2.json` one home in
+`src/calib_segments.py`.  That module holds `CORNERS_V2`, `CORNERS_V2_PATH_HEAD`,
+`CORNERS_V2_SUFFIX`, `CORNERS_V2_HEAD`, `CORNERS_V2_TAG`, `corners_v2_name()`,
+`corners_v2_path()` and `REFUSED`, and seven modules read one of them.  The artifact
+sha1 stays `2c6039f03d57d9a5c80053cc32e9e7b1f842ac63`.  The weak guard of round 93
+counted spellings only; it holds the one home now.
+
+Writer WC added the class `DurationSeamTests` to `tests/test_citation_lines.py`, so a
+citation of `annotator/duration.js` must name a seam of that file.  Six comment
+numbers are correct again.
+
+Writer WD gave the served name `events.json` one home in `src/events_document.py` and
+bound the sibling name in `tests/test_events_document_owner.py`.  Six modules read
+`events_document.SERVED` now.  The line `src/eval_events.py:1088` stays a frozen
+literal: the out of scope case `tests/test_events_document.py` fails without it, and
+the folder `scan-ic` is no row of `STATIC_OUT`.
+
+The Lead measured every delivery, and all 26 sha1 values answered the reports.  Each
+writer wrote one deliberate bite, and the Lead wrote a second bite on a file that the
+writer did not bite.  The first 12 digits of each sha1 follow.
+
+| Bite | before, planted, after |
+| --- | --- |
+| Writer WA, `src/yolo_track.py:131` | `32117bf95f5e → 835c77a24f1c → 32117bf95f5e` |
+| The Lead, `src/pid_seed_rebuild.py:44` | `10e811e9dc0e → 996ce0baa5c1 → 10e811e9dc0e` |
+| Writer WC, `annotator/duration.js` (one cited seam) | `61fde11ca3f4 → b79ec37ea1c2 → 61fde11ca3f4` |
+| The Lead, `annotator/app.js:2107` | `6b7ba01b1069 → cd18f78b6937 → 6b7ba01b1069` |
+| Writer WB, `src/rebuild_events_v2.py:44` | `55b3cb90995e → c9b8c9da1e5b → 55b3cb90995e` |
+| The Lead, `src/pid_identity.py:27` | `9adb79c4098e → a41950de698d → 9adb79c4098e` |
+| Writer WD, `src/store.py:402` | `f7cf65cee9bc → 1fc645d4fbc7 → f7cf65cee9bc` |
+| The Lead, `src/motion_scan.py:2335` | `64ab8b308230 → 26c6ce59cafe → 64ab8b308230` |
+
+Every bite failed the guard of its row and passed again after the restore.
+
+The round moved many line numbers, so the Lead measured each citation that a writer
+reported.  Four citations were correct before the round and stale after it, and the
+Lead paid them: `docs/console-redesign.md:3267` `src/eval_events.py:1134 → 1138`,
+`docs/postgres-design.md:550` `src/yolo_track.py:128 → 131`,
+`docs/console-redesign.md:7454` `src/pid_associate.py:193 → 196-197`, and
+`docs/console-redesign.md:8339` `src/pid_associate.py:41 → 45` with
+`src/pid_osnet_tight.py:31 → 33`.  Every other citation that a shift touched was
+already stale at HEAD, and the walk measured 582 such citations in the documents.
+That debt stays open for a round of its own.
+
+Two site records of the round-89 guard named a line that the round moved, so the Lead
+paid them too: `tests/test_scan_corners_owner.py:94` holds `1096` for `--scan-quad`,
+and `:95` holds `798` for `--quad`.
+
+The full python suite answers `Ran 2602 tests in 417.327s` and `OK (skipped=53)`.  The
+suite held 2586 tests before the round, so the four writers added 16 cases.  The node
+suite `tests/test_app_timeline.js` answers `114 passed, 0 failed`.  The node suites
+`tests/test_ops.js` and `tests/test_board.js` report `skipped 0` and `todo 0`.
+
+Commits: `2ffa043` pays the four citations, `4c7ee53` closes the name
+`pid2_tracklets.json`, `09059fb` adds the duration citation case, `d7e3961` closes the
+corners v2 path, `a5a77c9` closes the served events name, and `4a4fc36` repairs the
+two site records.
+
+LESSON: a writer's own arithmetic for a line shift can be off by one, so locate the
+cited statement by search and read it before any number changes.  LESSON: a guard that
+records a line number of another file must pay that number in the same round that
+moves it, or the guard reports a stale record.
