@@ -37,7 +37,7 @@ The clock follows the **server's** clock, not each device's own. A device measur
 | a command POST failed | `clock command failed — nothing changed` | `计时指令失败 — 未改变` |
 | the server is out of slots (503) | `server busy — retrying` | `服务器繁忙 — 正在重试` |
 
-- Expiry still reads "Shot time expired. No penalty applied." / "击球时间到。未自动判罚。". Each device may show it once; expiry is never a penalty and never a write.
+- At zero the clock shows the one expiry sentence, whose single home is `annotator/ops.js:970`. This document names that owner and does not repeat the sentence. Each device may show the sentence once; expiry is never a penalty and never a write.
 - A command that did not land never looks like it did: a failed POST shows the error, leaves the displayed time alone, then pulls the truth back from the server.
 - Start keeps its existing guard — it refuses while the live match has absent players — and a refused press sends nothing to the server.
 

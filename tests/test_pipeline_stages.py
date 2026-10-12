@@ -11,6 +11,7 @@ import numpy as np
 from annotator.pipeline_stages import (BallStage, CallableStage, LatencyWindow, Stage,
                                        StageRegistry, TableStage, default_stages,
                                        merge_detections)
+from src.frame_inference import EVENT_NOTE_SINGLE_FRAME
 
 
 class Recorder(Stage):
@@ -177,11 +178,13 @@ class PipelineStageTests(unittest.TestCase):
         self.assertEqual(merged['table_polygon'], [[0, 0], [1, 0], [1, 1], [0, 1]])
         self.assertEqual(merged['detectors'], ['table', 'person', 'ball'])
         self.assertFalse(merged['events_supported'])
-        self.assertIn('cannot infer shots', merged['event_note'])
+        # the note reads its owner (src/frame_inference.py) and not a second spelling
+        self.assertEqual(EVENT_NOTE_SINGLE_FRAME, merged['event_note'])
         empty = merge_detections({}, ['table'])
         self.assertEqual(empty['boxes'], [])
         self.assertIsNone(empty['table_polygon'])
         self.assertEqual(empty['detectors'], ['table'])
+        self.assertEqual(EVENT_NOTE_SINGLE_FRAME, empty['event_note'])
 
     def test_cadence_skips_frames_and_reports_absent_evidence(self):
         calls = []

@@ -52,6 +52,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import WORKING_FRAME  # noqa: E402
+#: The single-frame note has one home: ``src/frame_inference.py`` mints it.  The merge
+#: fallback below reads this name, so the sentence cannot drift into two spellings.
+from src.frame_inference import EVENT_NOTE_SINGLE_FRAME  # noqa: E402
 #: The quad verdict has one home: the two rotations and the answer of a check that could not run.
 #: This stage reads it (``src/table_refine.py``), so one fault cannot answer two ways on two callers.
 from src.table_refine import best_verdict, unavailable_verdict  # noqa: E402
@@ -827,7 +830,8 @@ def merge_detections(results, detectors):
 
     Boxes concatenate in stage order; the first non-empty cloth polygon wins (only
     the table stage produces one today); an unknown/absent note falls back to the
-    historical single-frame note so the metadata contract is unchanged.
+    single-frame note of its owner, ``src.frame_inference.EVENT_NOTE_SINGLE_FRAME``,
+    so the metadata contract is unchanged and the words stand once.
 
     ``balls`` is additive and carries the ball stage's positions for *this* frame.
     The key is present only when a stage actually produced a ball result: a frame
@@ -851,7 +855,7 @@ def merge_detections(results, detectors):
         note = result.get('event_note') or note
     payload = {'boxes': boxes, 'table_polygon': polygon, 'detectors': list(detectors),
                'events_supported': False,
-               'event_note': note or 'Single frames cannot infer shots or events; time-window inference is deferred.'}
+               'event_note': note or EVENT_NOTE_SINGLE_FRAME}
     if balls is not None:
         payload['balls'] = balls
     return payload

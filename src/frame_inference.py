@@ -19,6 +19,13 @@ _person_lock = Lock()
 _person_model = None
 _person_weights = None
 
+#: The note a single-frame payload carries.  One frame is not a time window, so the
+#: payload claims no shot and no event.  These words have one home, here, because this
+#: module mints the note: ``annotator/pipeline_stages.py`` reads the name below as its
+#: merge fallback, and ``tests/test_pipeline_note_owner.py`` holds the rule that no
+#: other site of the shipped tree spells the words again.
+EVENT_NOTE_SINGLE_FRAME = 'Single frames cannot infer shots or events; time-window inference is deferred.'
+
 
 def _saved_anchor_quad(path, n=4):
     """First ``n`` saved hand anchors as an ordered quad, or None.
@@ -218,4 +225,4 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=Non
             boxes.append({'label': 'ball', 'bbox': [max(0, x-r), max(0, y-r), min(w, x+r), min(h, y+r)],
                           'center': [x, y], 'score': ball['score'], 'color': ball['color'], 'style': ball['style']})
     return {'boxes': boxes, 'table_polygon': polygon, 'detectors': list(detectors),
-            'events_supported': False, 'event_note': 'Single frames cannot infer shots or events; time-window inference is deferred.'}
+            'events_supported': False, 'event_note': EVENT_NOTE_SINGLE_FRAME}
