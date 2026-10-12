@@ -53,9 +53,36 @@ The cases below hold the two sides together:
 3. `test_a_unit_without_an_oncalendar_line_is_reported` proves a unit that
    loses the line cannot pass in silence.
 
-Cases 2 and 3 run case 1 against a temporary tree.  A Python function reads its
-module names through its own module object, so `_run_case` plants the two paths
-in this module for the run, and restores them after it.
+Round 97 added the mode of the backup directory.  One mode rule stands in nine
+live places, and no case read them together (the last row holds two words):
+
+    scripts/pool-postgres-backup.sh:11   umask 077                            the owner
+    scripts/pool-postgres-backup.sh:23   [ "$(stat -c %a "$DIR")" = 700 ]     the runtime check
+    deploy/systemd/pool-postgres-backup.service:5    "mode 700"               the comment
+    deploy/systemd/pool-postgres-backup.service:19   UMask=0077               the unit
+    deploy/systemd/pool-postgres-verify.service:15   UMask=0077               the unit
+    docs/postgres.md:205                 "(dir mode 700, files 600)"          the document row
+
+The script is the owner, so the case does not move the rule.  The case derives
+the two directory and file modes from the one `umask` word of the script.  The
+umask word sets the mode of every new file and directory, so a second copy of
+the number can drift in silence, and one unit can drop the file mode.
+
+Round 97 added two cases of this module:
+
+1. `test_every_mode_word_matches_the_script_umask` reads the nine places, derives
+   the directory mode and the file mode from the `umask` word of the script, and
+   holds every mode word equal.  It fails with the file, the line, the word and
+   the two modes.
+2. `test_a_planted_wrong_umask_names_the_file_and_the_line` proves case 1 can
+   fail: a copy of one unit holds `UMask=0022`, and case 1 names that file and
+   that line.
+
+Cases 2 and 3 of the schedule group run case 1 of that group against a temporary
+tree.  A Python function reads its module names through its own module object,
+so `_run_case` plants the alternate paths in this module for the run, and
+restores them after it.  `_run_case` plants four paths: the document, the timers
+directory, the script and the two unit files.
 """
 import re
 import shutil
@@ -129,6 +156,33 @@ STALE_STANDS = (
     ("the document row", DOC, r"older than (\d+) h"),
 )
 
+# The mode of the backup directory stands in nine places.  The `umask` word of
+# the script is the owner, and the eight other places must hold the mode word of
+# that umask.  `UMask` and `umask` spell one value in two ways: `0077`, `700` and
+# `600` name one rule, because the umask removes the execute bits of a new
+# directory and of a new file.
+UMASK = re.compile(r'^\s*umask\s+([0-7]{3,4})\s*$')
+MODE_CHECK = re.compile(r'stat\s+-c\s+%a\s+"\$DIR"\)"\s*=\s*([0-7]{3,4})\s*\]')
+MODE_COMMENT = re.compile(r'mode\s+([0-7]{3,4})')
+UMASK_DIRECTIVE = re.compile(r'^\s*UMask=([0-7]{3,4})\s*$')
+MODE_DOC_ROW = re.compile(r'dir mode ([0-7]{3,4}), files ([0-7]{3,4})')
+
+def _mode_places(script=SCRIPT, service=SERVICE, verify=VERIFY_SERVICE, doc=DOC):
+    """The nine places of the mode rule, each with the pattern that reads its mode word.
+
+    The index 0 names the directory mode, and the index 1 names the file mode.  A
+    `umask` kind of line holds the umask itself, and a `directory` or a `file` kind
+    of line holds that mode.
+    """
+    return (
+        ("the script umask", script, UMASK, 0, 'umask'),
+        ("the script check", script, MODE_CHECK, 0, 'directory'),
+        ("the unit comment", service, MODE_COMMENT, 0, 'directory'),
+        ("the unit umask", service, UMASK_DIRECTIVE, 0, 'umask'),
+        ("the verify unit umask", verify, UMASK_DIRECTIVE, 0, 'umask'),
+        ("the document directory mode", doc, MODE_DOC_ROW, 0, 'directory'),
+        ("the document file mode", doc, MODE_DOC_ROW, 1, 'file'),
+    )
 
 def _capture(path, pattern):
     """(number, line number) of the first line of `path` that `pattern` captures, or None."""
@@ -137,6 +191,79 @@ def _capture(path, pattern):
         if found:
             return int(found.group(1)), number
     return None
+
+
+def _capture_mode(path, pattern, index=0):
+    """((mode word, line number)) of the first line of `path` that `pattern` captures, or None."""
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        found = re.search(pattern, line)
+        if found:
+            return found.group(index + 1), number
+    return None
+
+
+def _umask_token(mode):
+    """The one token of a umask word.  `077` and `0077` name one umask.
+
+    The `umask` command of a shell and the `UMask=` directive of a unit spell one
+    value, and the systemd spelling takes a leading zero.  This function reads the
+    three rightmost digits, so the two spellings come to one token.
+    """
+    return mode[-3:].rjust(3, '0')
+
+
+def _mode_token(mode):
+    """The one token of a directory or file mode.  `700`, `0700` and `00700` name one mode.
+
+    A leading zero of a mode removes no permission bit.  The leftmost digit of a
+    mode is the execute bit of the owner, so this function keeps three digits and
+    a leading zero of a longer spelling does not survive.
+    """
+    return f'{int(mode, 8):03o}'
+
+
+def _derived_modes(umask):
+    """The (directory mode, file mode) of one umask word.
+
+    The umask removes permission bits, so the modes are the complement of the
+    umask.  `077` gives the directory mode `700` and the file mode `600`, because
+    a new directory starts at mode `777` and a new file starts at mode `666`.
+    """
+    octal = int(_umask_token(umask), 8)
+    return f'{0o777 & ~octal:03o}', f'{0o666 & ~octal:03o}'
+
+
+def _mode_problems(script=SCRIPT, service=SERVICE, verify=VERIFY_SERVICE, doc=DOC):
+    """The derived (directory mode, file mode) and every place that does not hold them."""
+    problems = []
+    places = _mode_places(script, service, verify, doc)
+    owner = _capture_mode(script, UMASK)
+    if owner is None:
+        return None, [f'{script}: no umask line matches, so the one owner of the mode '
+                      f'rule is gone']
+    umask, owner_line = owner
+    directory, file_mode = _derived_modes(umask)
+
+    for name, path, pattern, index, kind in places:
+        found = _capture_mode(path, pattern, index)
+        if found is None:
+            problems.append(f'{path}: no line matches {pattern.pattern!r}, so {name} lost the '
+                            f'mode word; the umask owner says directory {directory} and files '
+                            f'{file_mode} (scripts/pool-postgres-backup.sh:{owner_line})')
+            continue
+        word, line = found
+        # A `UMask=` line and a `stat -c %a` line spell one value in two ways.  The
+        # `UMask=` line holds the umask, so the case derives the directory mode of
+        # that line.  The `stat` line holds the directory mode itself.
+        held = file_mode if kind == 'file' else directory
+        measured = _derived_modes(word)[0] if kind == 'umask' else _mode_token(word)
+        if measured != held:
+            problems.append(
+                f'{path}:{line}: {name} says {word}, and the umask {umask} of '
+                f'{Path(script).name}:{owner_line} gives the directory mode {directory} and '
+                f'the file mode {file_mode}; the umask of the script is the one owner of '
+                f'the mode rule')
+    return (directory, file_mode), problems
 
 
 def _calendar_rows(path):
@@ -213,16 +340,17 @@ def _schedule_problems():
     return problems or None
 
 
-def _run_case(case_name, doc=None, timers=None):
+def _run_case(case_name, doc=None, timers=None, script=None, service=None, verify=None):
     """Run one case of this module against alternative paths, and return its failure texts.
 
     The case runs from this module, so it is the real case.  A Python function
     reads its module names through its own module object, so this helper plants
-    the two paths in the module and restores them after the run.  The case must
-    therefore read the two paths through this module.
+    the named paths in the module and restores them after the run.  The case must
+    therefore read the paths through this module.
     """
     module = sys.modules[__name__]
-    planted = {'DOC': doc or DOC, 'TIMERS': timers or TIMERS}
+    planted = {'DOC': doc or DOC, 'TIMERS': timers or TIMERS, 'SCRIPT': script or SCRIPT,
+               'SERVICE': service or SERVICE, 'VERIFY_SERVICE': verify or VERIFY_SERVICE}
     kept = {name: module.__dict__[name] for name in planted}
     module.__dict__.update(planted)
     try:
@@ -294,6 +422,41 @@ class BackupRetentionTests(unittest.TestCase):
             f'{DOC}: the table row and the unit must state one schedule; the OnCalendar= '
             f'line of the unit is the one home of the day and the time',
         )
+
+    def test_every_mode_word_matches_the_script_umask(self):
+        """The umask of the script, the units and the document row hold one mode."""
+        modes, problems = _mode_problems()
+        self.assertIsNotNone(modes, f'{SCRIPT}: the case did not read the umask of the owner')
+        self.assertIsNone(
+            problems or None,
+            f'the mode of the backup directory must stand in one place; the umask of '
+            f'scripts/pool-postgres-backup.sh:11 gives the directory mode {modes[0]} and the '
+            f'file mode {modes[1]}, and every other place must hold those two modes',
+        )
+
+    def test_a_planted_wrong_umask_names_the_file_and_the_line(self):
+        """A planted wrong UMask in a copy of one unit fails the case with its file and line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            self.assertIn(
+                'UMask=0077', SERVICE.read_text(),
+                f'{SERVICE}: the unit does not hold `UMask=0077`, so the case below cannot '
+                f'plant a wrong word',
+            )
+            copy = tree / SERVICE.relative_to(ROOT)
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            copy.write_text(SERVICE.read_text().replace('UMask=0077', 'UMask=0022', 1))
+
+            _modes, problems = _mode_problems(service=copy)
+            self.assertTrue(
+                problems,
+                f'{copy}: the planted UMask=0022 did not fail the case, so a moved mode word '
+                f'can stand in silence',
+            )
+            self.assertIn(f'{copy}:19', problems[0])
+            self.assertIn('0022', problems[0])
+            self.assertIn('700', problems[0])
+            self.assertIn('600', problems[0])
 
     def test_a_planted_wrong_time_names_the_file_and_the_line_of_the_row(self):
         """A copy of this module reads a table with a planted time, and reports it."""
