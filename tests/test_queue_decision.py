@@ -105,7 +105,14 @@ class DenseQueueHonesty(unittest.TestCase):
                 {"id": 9003, "type": "shot", "provenance": {"ball_id": "t256-blue"}},
                 {"id": 9004, "type": "pot", "provenance": {"ball_id": "t265-blue"}}]
 
-    def _artifact(self, tmp, pot_verdict="unknown"):
+    #: The gate's answer for the fixture's capture: a person covered the cloth when
+    #: the ball vanished.  The reason is a field of the row, not a property of the
+    #: queue, so the fixture can carry a different one (see
+    #: test_a_varied_gate_reason_is_served_as_itself below).
+    GATE_REASON = "cloth_occluded_at_disappearance"
+
+    def _artifact(self, tmp, pot_verdict="unknown", pot_reason=GATE_REASON,
+                  occlusion_status="occluded"):
         import numpy as np
         quad = np.array([[399.0, 242.25], [600.0, 243.0], [747.75, 426.75], [288.0, 422.25]],
                         float).tolist()
@@ -124,14 +131,14 @@ class DenseQueueHonesty(unittest.TestCase):
 
         def pot(ball_id, **over):
             row = {"kind": "pot", "ball_id": ball_id, "verdict": pot_verdict,
-                   "reason": "cloth_occluded_at_disappearance", "pocket": "left-side",
+                   "reason": pot_reason, "pocket": "left-side",
                    "pocket_px": [365.1, 297.22], "radius_px": 14.46, "radius_mm": 100.0,
                    "distance_px": 9.62, "distance_mm": 148.48, "distance_mm_uncertainty": 54.11,
                    "verdict_mm": "ambiguous", "inside_px": True, "inside_mm": False,
                    "pocket_test": "mm", "pocket_test_disagrees_px_vs_mm": True,
                    "last_frame_index": 49156, "last_t": 1638.516708, "last": [368.3, 306.3],
                    "last_speed_px_s": 734.15, "gap_s": 11.43, "persistence_s": 1.0,
-                   "occlusion_status": "occluded", "identity_swap_suspected": False,
+                   "occlusion_status": occlusion_status, "identity_swap_suspected": False,
                    "parked_in_jaws_possible": False,
                    "thresholds": {"pocket_r_mm": 100.0, "occlusion_threshold": 0.3},
                    "samples_used": [{"frame_index": 49156, "t": 1638.516708, "x": 368.3, "y": 306.3,
@@ -184,7 +191,7 @@ class DenseQueueHonesty(unittest.TestCase):
         return path
 
     def _build(self, tmp, previous=None, pot_verdict="unknown", queue_name="events.json",
-               ledger_name="retired.json"):
+               ledger_name="retired.json", pot_reason=GATE_REASON, occlusion_status="occluded"):
         """Build the queue the way the tool is run: old queue supplies ids, ledger the dead ones."""
         from src.dense_queue import build
         queue, report = Path(tmp) / queue_name, Path(tmp) / "report.json"
@@ -192,7 +199,9 @@ class DenseQueueHonesty(unittest.TestCase):
         if previous is not None:
             previous_path = Path(tmp) / "previous.json"
             previous_path.write_text(json.dumps(previous))
-        build(str(self._artifact(tmp, pot_verdict=pot_verdict)), str(queue), str(report),
+        build(str(self._artifact(tmp, pot_verdict=pot_verdict, pot_reason=pot_reason,
+                                 occlusion_status=occlusion_status)),
+              str(queue), str(report),
               None if previous_path is None else str(previous_path),
               str(Path(tmp) / ledger_name))
         return json.loads(queue.read_text()), json.loads(report.read_text()), queue
@@ -221,9 +230,23 @@ class DenseQueueHonesty(unittest.TestCase):
             pot = self._pot(events)
             self.assertEqual(pot["gate"]["status"], "unconfirmed")
             self.assertIn("cloth_occluded_at_disappearance", pot["gate"]["reasons"])
+            self.assertEqual(pot["gate"]["codes"][0], pot["provenance"]["gate_reason"],
+                             "the served code is the gate's own answer for this ball")
             self.assertNotEqual(pot["gate"]["status"], "confirmed")
             self.assertIsNone(pot["tier"], "no tier: a tier grades a claim, and this has none")
             self.assertFalse(pot["verified"])
+
+    def test_a_varied_gate_reason_is_served_as_itself(self):
+        """The fixture's own reason is the cloth code, so only a varied row can tell a
+        repeated reason from a house default the queue hands every pot (round 81)."""
+        with TemporaryDirectory() as tmp:
+            events, _, _ = self._build(tmp, previous=self.PREVIOUS,
+                                       pot_reason="occlusion_channel_silent",
+                                       occlusion_status="silent")
+            pot = self._pot(events)
+            self.assertEqual(pot["gate"]["codes"][0], "occlusion_channel_silent")
+            self.assertEqual(pot["provenance"]["gate_reason"], "occlusion_channel_silent")
+            self.assertNotIn("cloth_occluded_at_disappearance", pot["gate"]["codes"])
 
     def test_no_tier_is_invented_and_none_is_upgraded(self):
         with TemporaryDirectory() as tmp:

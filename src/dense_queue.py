@@ -17,9 +17,15 @@ What the queue is not allowed to claim:
   track itself -- so every shot here is `window` grade, and the pot candidate
   carries no tier at all.
 * **the pot-shaped event is not a pot.**  It keeps `type: "pot"` (that is how the
-  rail routes it to the POTS tab) but its gate status is `unconfirmed` with
-  `cloth_occluded_at_disappearance`: the ball vanished while a person covered the
-  cloth, so the honest verdict is *unknown*, and the operator watches the window.
+  rail routes it to the POTS tab) but its gate status is `unconfirmed`: the ball
+  vanished against a pocket the gate could not resolve, so the honest verdict is
+  *unknown*, and the operator watches the window.  The reason code it carries is
+  the gate's own answer for *this* ball -- `gate.pots[i].reason`, copied into
+  `provenance.gate_reason`, one read of one field: a person over the cloth, an
+  occlusion channel that said nothing about the stretch, or a pocket distance
+  inside its own error.  This tool repeats that answer and never answers the
+  question itself (it used to hand every pot it served one cloth code, telling the
+  operator a person had covered the cloth for a ball whose channel was silent).
 * **an ambiguous pocket test is not a pot.**  The gate now decides the pocket in
   reference millimetres and carries the localisation error with it.  When that
   error straddles the pocket radius the gate reports `verdict_mm: "ambiguous"`,
@@ -244,7 +250,15 @@ def pot_event(pot: dict, H, artifact, served_reason: str | None = None,
     samples = pot.get("samples_used") or []
     frames = [int(s["frame_index"]) for s in samples] or [int(pot["last_frame_index"])]
 
-    codes = ["cloth_occluded_at_disappearance"]
+    # The gate answered this ball's reason and shipped it as `gate.pots[i].reason`;
+    # the queue repeats that answer and spells no reason of its own.  A house default
+    # here would tell the operator a scene fact nobody measured, and the numbers
+    # above would contradict it (the occlusion status, the millimetre verdict).
+    gate_reason = pot.get("reason")
+    if not isinstance(gate_reason, str) or not gate_reason:
+        raise ValueError(f"the gate shipped no reason for {pot.get('ball_id')!r}: the queue "
+                         "repeats the gate's reason and will not answer one itself")
+    codes = [gate_reason]
     if verdict_mm == "ambiguous":
         codes.append("pocket_distance_ambiguous_mm")
     if verdict_mm == "outside":
@@ -324,7 +338,7 @@ def pot_event(pot: dict, H, artifact, served_reason: str | None = None,
                  "numbers": numbers,
                  "dup_count": 1, "colors_merged": [pot["ball_id"].split("-", 1)[1]]},
         "provenance": provenance(artifact, {"ball_id": pot["ball_id"],
-                                           "gate_reason": pot.get("reason"),
+                                           "gate_reason": gate_reason,
                                            "gate_verdict": pot.get("verdict"),
                                            "served_because": served_reason,
                                            "unknowns_in_channel": siblings_not_served}),
