@@ -11176,3 +11176,10 @@ red with `FAILED (failures=4)` and with the corrected report:
 The module answered OK after the restore, and the bytecode of the mutated module was removed.
 
 The delivery landed as `a749a01 test: the pocket words of the two realms stay equal`.
+
+### Suites
+
+The full python suite answers `Ran 2577 tests in 384.387s` and `OK (skipped=53)`.
+The count moved from 2566 to 2577: the eleven cases of the new guard
+`tests/test_pocket_words_owner.py`.  The three node suites answer 232, 23 and
+114 pass with 0 failures.
