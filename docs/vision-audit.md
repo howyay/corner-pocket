@@ -24,7 +24,7 @@ Six sub-view names exist in the code (`reviewModes`, `ops.js:7`), plus the ops s
 
 | # | Sub-view | Renderer | DOM host | Endpoints called (measured) | State it owns |
 |---|---|---|---|---|---|
-| 1 | **Stream / sources** (`visionTab='stream'`) | `ops.js:48 visionScreenUnified()` → `ops.js:11 livePanel()` + `ops.js:47 twitchEmbed()` + inline `#source-form` | `#ops-shell > main#main > .stack > details.stream-panel` | `GET /api/live`, `GET /api/live/frame`, `POST /api/live` (start/stop) | `liveChoice`, `liveDetectors`, `liveTimer`/`liveGeneration`, `sourceId`, `chat` (`ops.js:6,8`) |
+| 1 | **Stream / sources** (`visionTab='stream'`) | `ops.js:48 visionScreenUnified()` → `ops.js:11 livePanel()` + `ops.js:47 twitchEmbed()` + inline `#source-form` | `#ops-shell > main#main > .stack > details.stream-panel` | `GET /api/live`, `GET /api/live/frame`, `POST /api/live` (start/stop) | `liveChoice`, `liveDetectors`, `liveTimer`/`liveGeneration`, `sourceId`, `chat` (`ops.js:768`) |
 | 2 | **Event review** (`events`) | `app.js:58 renderEvents()` | `#vision-host > #review-root > #content` | `GET /api/vod30/events`, `GET /api/clip?dataset=vod30&t=…`, `POST /api/vod30/annotate`, evidence `GET /media/vod30/event-frame/<id>` | `state.index`, `state.filter`, `state.dirty`, `state.data.annotations` (`app.js:8,52-70`) |
 | 3 | **Ball labels** (`balls`) | `app.js:103 renderBalls()` | same `#content` | `GET /api/balls/<set>/meta`, `POST /api/balls/<set>/label`, `GET /media/balls/<set>/<file>` + `/ctx/<ctx>` | `state.set`, `state.index`, `state.filter`, `state.data.labels` (`app.js:102-113`) |
 | 4 | **Table calibration** (`calibration`) | `app.js:118 renderCalibration()` | same `#content` | `GET /api/vod30/anchors?t=<t>`, `POST /api/vod30/anchors`, `GET /media/vod30/frame?t=<t>` | `state.pts` (6 anchors), `state.anchor`, `state.t`, `state.dirty` (`app.js:118-138`) |
@@ -135,7 +135,7 @@ if path in ('/app.html', '/ops.html'):
     return self.send(308, b'', 'text/plain', {'Location': '/'})
 ```
 
-(`unified_server.py:928-929`.) Verified: `GET /app.html` → `308 → http://127.0.0.1:8131/`; `GET /ops.html` → `308 → http://127.0.0.1:8131/`; `GET /` serves `ops.html` (`unified_server.py:957-958`). There is **no standalone review URL anymore** — `/api/review-template` + `showReview()` is the only way to obtain and mount the review client. The mounted markup still contains `<a class="brand" href="/ops.html">` (`app.html:17`), so the review's own brand link is a redirect back to the root that resets the shell to the Floor tab (`ops.js:6` initializes `tab='floor'`).
+(`unified_server.py:198`.) Verified: `GET /app.html` → `308 → http://127.0.0.1:8131/`; `GET /ops.html` → `308 → http://127.0.0.1:8131/`; `GET /` serves `ops.html` (`unified_server.py:193`). There is **no standalone review URL anymore** — `/api/review-template` + `showReview()` is the only way to obtain and mount the review client.
 
 ---
 
@@ -303,4 +303,4 @@ Backing details: `#main` holds only 1 visible control (the `<details>` summary) 
 3. **Ball-label and calibration write paths.** Not exercised (would write to the fixture's copied annotation files, which is permitted, but the reads already established the endpoints and control sets).
 4. **`POST /api/inference`.** Not run: `Balls · SAM3 on CPU (slow)` is an explicit opt-in and the person/table models were not warmed. The frozen-frame overlay path was verified via `/api/unified` instead.
 5. **Native `<select>` dropdown interiors** are not captured in the screenshots (headless Chromium screenshots omit open native popups). Option lists were read from the DOM instead (e.g. the review `#dataset` select offers exactly `vod30`, `highlight`; `liveDetectors` checkboxes are both checked by default).
-6. **Whether any external consumer depends on `/app.html`.** The redirect at `unified_server.py:928-929` makes the standalone review page unreachable in this server; whether a second server (`annotator/server.py`) or an operator bookmark still expects it was not traced.
+6. **Whether any external consumer depends on `/app.html`.** The redirect at `unified_server.py:198` makes the standalone review page unreachable in this server; whether a second server (`annotator/server.py`) or an operator bookmark still expects it was not traced.
