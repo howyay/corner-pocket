@@ -10516,3 +10516,57 @@ resolve: a name that the file does not import gives a `NameError` at import, not
 `NAME_FIELDS`, `NAME_FIELD_BOUNDS` and `NAME_FIELD_COUNT` together.
 
 **Suites after the round.** `Ran 2475 tests in 263.730s`, `OK (skipped=53)`. The three node suites answered 232/23, 114 passed, and no failure. Round 82 answered 2473, so round 83 added 2 cases: one for the master query and one for the name field. The skip count stayed at 53.
+
+## Round 84 - the four artifact names of the out/ root have one owner
+
+Walk `/tmp/dshsess/walk_round84.md` (153 lines) at HEAD `3b19469`:
+`Strong candidate present - 1 Strong, 0 Worth, 0 Note`.
+
+**Strong 1 - the artifact names of the out/ root.**  Ground: `src/store.py:83-87` held
+`SHARED_ARTIFACTS` with three names.  Its readers were `src/store.py:366-369 artifact()` and the
+delegate `src/store_pg.py:408`.  The served readers spelled the names again
+(`annotator/unified_server.py:2144`, `:2151`, `:2239`), and `src/pid_seed_ui.py:41-43` spelled the
+fourth one.  The fourth sibling `pid2_tracklets.json` was in no map, so both store layers answered
+`{}` for it and reported no error.  Decision: one owner holds the names, and a served reader asks
+for a kind.
+Repair (writer WC, commit `e24d616`): `src/store.py:91 TRACKLETS_NAME = "pid2_tracklets.json"` and
+`:95 SHARED_ARTIFACT_NAMES = (*SHARED_ARTIFACTS.values(), TRACKLETS_NAME)`; `:377` and `:396` read
+the names; `artifact(kind, dataset=None)` answers a shared name from the tuple;
+`src/pid_seed_ui.py:41` imports the owner; the served readers pass a kind
+(`annotator/unified_server.py:2147 self.store().artifact("seed_propagation")`,
+`:2155 artifact("tracklets")`, `:2244 artifact("event_actors")`).
+Guard `tests/test_shared_artifact_names.py` holds four cases.  The writer bit `src/store.py`
+(`30f7850c -> e87b9fbb -> 30f7850c`) and the count case answered
+`AssertionError: 3 != 4 : src/store.py: the map must hold the 4 names of the out/ root`.
+The Lead read the target line and then bit `annotator/unified_server.py` with a planted literal.
+The case answered red with
+`annotator/unified_server.py:3100 quotes 'events_actors.json' : a name of the out/ root has one
+owner, src/store.py`.  The restore gave `221c8c16fc6e4d`, and the module answered OK.
+Content sha1 of the delivery: `src/store.py 30f7850ce4666a`, `src/store_pg.py 29c3af6491eed9`,
+`annotator/unified_server.py 221c8c16fc6e4d`, `src/pid_seed_ui.py 563d55efe9225d`,
+`tests/test_shared_artifact_names.py d8d316d54817a4`.
+
+**The citation that the shift moved.**  The writer reported
+`Ran 2479 tests in 288.573s - FAILED (failures=1, skipped=53)` and said that the failure was old.
+The Lead measured.  The failing guard is `test_citation_lines`; the module
+`test_store_merge_rules` answered 9 tests OK.  The citation
+`tests/test_store_merge_rules.py:8 -> src/store.py:281` lost its text, because the edit moved
+`def seed_put` from `:281` to `:289`.  The Lead re-points a cited line when the file is outside
+the writer's scope.  The first attempt took the line number from
+`grep -n "def seed_put" src/store.py`, which answered two lines (122 and 289).  The citing text
+became a citation split over two lines.  The second attempt joined it to `` `src/store.py:289` ``
+(commit `317aea8`).  Lesson: take a line number from a command that can answer one line, and read
+the citing line again after the edit.
+
+**One correction to the walk.**  The walk said that the document names `pid2_tracklets.json` 0
+times.  The measurement answers three files: `docs/impeccable-baseline.md`,
+`docs/postgres-design.md` (2 sites) and `docs/state.md`.  The ground holds.  The count does not.
+
+**Suites (round 84).**  `./scripts/pool-test.sh python`: `Ran 2479 tests in 280.150s`,
+`OK (skipped=53)`.  Node suites: 232 pass, 23 pass, 114 passed, 0 failures everywhere.  The count
+rose from 2475 to 2479 with the four cases of the new guard.
+
+**Open rows.**  The map values are not pinned; the map is the single owner, so a changed value
+must not turn a case red.  A bite must use a resolvable name, because a `NameError` masks the
+case.  A new name field enters `NAME_FIELDS`, `NAME_FIELD_BOUNDS` and `NAME_FIELD_COUNT`
+together.  `MASTER_QUERY` keeps `allow_audio_only` by the yt-dlp justification.
