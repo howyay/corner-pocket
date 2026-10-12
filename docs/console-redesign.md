@@ -10358,3 +10358,57 @@ Bites. Writer WA on `src/store_pg.py` (`e5eaa88c5ab2 -> 83259f42235b -> e5eaa88c
 Suites at `24e3948`: `Ran 2421 tests` `OK (skipped=53)`; node suites 232, 23 and 114 pass, 0 fail each. Round 79 answered 2396, so round 80 added 9 + 4 + 12 cases.
 
 New open rows. Writer WA: every line of `src/store_import.py` after `:607` moved down 17, so earlier notes that cite `:656` and `:740` are stale; the upsert replace behaviour is not measured, because the database cases skip without `POOL_DATABASE_URL`; the guard reads the syntax tree only, so it holds one writing module per statement and not column-to-table agreement. Writer WB: `docs/postgres-design.md:108` still cites `src/enroll_from_tracklet.py:160-162`, now `:162-164`; the md5 comparison itself is not driven by a case. Writer WC: `docs/impeccable-ledger.md:43` and `docs/impeccable-feature-inventory.md:57` each still hold an expiry sentence; the words of the note have no contract; no browser check was made. The open rows of rounds 51 to 79 stand.
+
+## Round 81 - the gate reason the queue ignored, one whole-seconds rule and three ownerless facts
+
+**Verdict.** The walk at HEAD `3f0b9a7` answered `Strong candidate present - 2 Strong, 3 Worth, 1 Note` in
+`/tmp/dshsess/walk_round81.md` (169 lines). It read no route body of `annotator/unified_server.py`, 15 of the 22
+`_do_*` methods of `annotator/operations.py`, the case bodies of the three console suites and 40 of the 43
+documents of `docs/`.
+
+**Strong 1 - the dense queue answered one gate reason for every pot.** `src/dense_queue.py:247` wrote
+`codes = ["cloth_occluded_at_disappearance"]` for every served pot, while `src/shot_pot_gate.py:1515-1517` chooses
+between three reasons (`cloth_occluded_at_disappearance` when the occlusion status is `occluded`,
+`occlusion_channel_silent` when it is `silent`, and `pocket_distance_within_uncertainty` otherwise), and the
+fixture of `tests/test_queue_decision.py:122-139` never varied the status, so no case could see the copy. Writer WA
+made `src/dense_queue.py` read `pot.get("reason")` and raise `ValueError` when the gate shipped no reason, sharing
+the local with `provenance.gate_reason`, and varied the fixture (commit `263ea9c`; guard
+`tests/test_queue_reason_owner.py`, 8 cases). Its bite reddened five cases; the Lead's bite replaced the three-way
+choice with the served-pot literal in `src/shot_pot_gate.py` and the guard answered `'pocket_distance_within_uncertainty' not found in {...} : the gate's three-way choice must be read whole`.
+
+**Strong 2 - the whole-seconds rule had two disagreeing implementations.** `annotator/operations.py:132-136`
+accepted an `int` only and raised `WHOLE_SECONDS` of `annotator/refusals.py:422-423`, while `src/datasets.py:71-76`
+accepted `12.0` and spelled the sentence by hand, with copies in `annotator/vod_import.py:138` and `:141` and no
+walk over that module in `tests/test_refusal_identity.py:29-31`. Writer WB made `src/datasets.py:76-88
+whole_seconds(value, name)` the one body (it accepts `12.0` and raises `ValueError(WHOLE_SECONDS.format(name=name))`),
+with `annotator/operations.py:137-146` re-voicing the text as a `TemplateError` and `annotator/vod_import.py:131-149`
+keeping its `None` and `""` answers and its `float()` parse (commit `fb48730`; guard
+`tests/test_whole_seconds_owner.py`, 14 cases). Its bite on `src/datasets.py` answered `FAILED (failures=5, errors=5)`;
+the Lead's bite added a narrow float rule to `annotator/vod_import.py._whole` and the guard answered seven failures
+(`0ca1d47f6d8d -> b47735f38231 -> 0ca1d47f6d8d`).
+
+**Worth 1, 2 and 3 - three facts with one reader and two homes.** The `to_regclass('json_documents')` probe stood
+inline in `src/store_check.py:113` beside `src/store_files.py:218-219 has_documents_table`; the measure artifact
+path stood at `src/calib_segment_measure.py:60` and `src/calib_segment_fit.py:48`; and the pretrained weight name
+`'ResNet18_Weights.IMAGENET1K_V1'` stood at `src/confusion.py:38` beside its own mapping at
+`src/train_ball_id.py:99-102`. Writer WC made `src/store_check.py` read the owner, made
+`src/calib_segment_measure.py:62 MEASURE_ARTIFACT` the one artifact path imported by `src/calib_segment_fit.py:43`,
+and put the three names in `src/train_ball_id.py:30-34 WEIGHTS` read by `src/confusion.py` as `WEIGHTS[NAME]`
+(commit `e49054c`; guard `tests/test_round81_owners.py`, 11 cases). Its bite reddened `src/store_check.py`; the
+Lead's first plant (the path as a plain string in `src/calib_segment_fit.py`) changed the file and left the guard
+green, a recorded miss, and the replacement bite bound the owner name a second time and failed
+(`3db27b6ad195 -> 21aa47313ae1 -> 3db27b6ad195`).
+
+**The one repair of the Lead.** Writer WA's guard took the self-skip sites of the tree from 26 to 28, over the
+limit of `tests/test_suite_inventory.py`. Limits are never raised and sites are never added, so both sites became
+`self.fail` (commit `17e6eb7`): the guard now fails when the `out/` artifact is absent instead of turning into a
+skip.
+
+**Guards and suites.** `Ran 2455 tests in 264.433s` with one error, which was a `tempfile` cleanup race in
+`test_vod_import` while the Lead ran its bites in parallel (a re-run of that module answered OK); the three node
+suites answered 232, 23 and 114 with no failure. The citation, fact and inventory guards answered OK.
+
+**Open rows.** The `tests/test_queue_decision.py` module keeps three older self-skip sites; the queue reason guard
+fails instead of skipping without the `out/` artifact; the gate's three reasons are reachable only through
+fixtures; `docs/postgres-design.md:523-526` still names five moved lines (this round's Note); `annotator/index.html`
+keeps a fourth spelling of the shooter values by decision.
