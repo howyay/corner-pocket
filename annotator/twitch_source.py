@@ -40,6 +40,26 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+#: The one home of the two request headers both Twitch paths send.  The live resolver and
+#: ``annotator/twitch_vod_source.py`` used to write this table twice, so one edit could send
+#: two client identities to Twitch.  ``annotator/twitch_vod_source.py`` reads both names and
+#: adds no copy.  A third name, ``Accept``, differs between a document call and an image call.
+#: Each caller states its own Accept and passes its own value only: this module keeps the
+#: name, and the value stays open.
+USER_AGENT = 'Mozilla/5.0'
+ACCEPT = 'Accept'
+
+
+def request_headers(accept):
+    """The request header table both Twitch paths send: a **new** dict on every call.
+
+    ``accept`` is the caller's own value for the Accept header.  The live resolver passes
+    ``'*/*'``; the VOD path passes ``'*/*'`` for a document and ``'image/*'`` for a picture.
+    A caller that adds its own keys adds them to the answer, never to this function.
+    """
+    return {ACCEPT: accept, 'User-Agent': USER_AGENT}
+
+
 @dataclass(frozen=True)
 class _CachePolicy:
     """How long one purpose's answers are kept, and how many are kept before a clear."""
@@ -182,7 +202,7 @@ def _validate_url(url, *, media=False):
 
 def _request(url, payload=None, *, timeout=_TIMEOUT):
     _validate_url(url, media=payload is None)
-    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*'}
+    headers = request_headers('*/*')
     data = None
     if payload is not None:
         headers.update({'Client-ID': _CLIENT_ID, 'Content-Type': 'application/json'})

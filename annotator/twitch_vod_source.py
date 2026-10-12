@@ -142,11 +142,13 @@ def _raw(url, payload=None, *, timeout=12, limit=_PLAYLIST_BYTES):
     names this call's purpose - ``api`` for a payload call (``gql.twitch.tv`` /
     ``usher.ttvnw.net``), ``vod-media`` for a media call (``*.ttvnw.net`` /
     ``*.twitchcdn.net``, plus the pinned VOD distribution) - so a signed URL can never be
-    redirected off-Twitch.  A transport failure is returned, not raised, with the exception
-    *type* only - never the message, which can contain a signed URL.
+    redirected off-Twitch.  The request headers have one home too: this path reads
+    ``live.request_headers`` and spells neither the user agent nor a header name.  A
+    transport failure is returned, not raised, with the exception *type* only - never the
+    message, which can contain a signed URL.
     """
     live._validate_url(url) if payload is not None else _validate_media(url)
-    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*'}
+    headers = live.request_headers('*/*')
     data = None
     if payload is not None:
         headers.update({'Client-ID': live._CLIENT_ID, 'Content-Type': 'application/json'})
@@ -177,7 +179,7 @@ def _raw_bytes(url, *, timeout=10, limit=_THUMB_BYTES):
     to text, which a JPEG cannot survive.
     """
     _validate_thumb(url)
-    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'image/*'}
+    headers = live.request_headers('image/*')
     context = trusted_context()
     opener = build_opener(live._NoRedirect(), HTTPSHandler(context=context))
     try:
