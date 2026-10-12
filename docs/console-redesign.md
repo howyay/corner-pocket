@@ -10914,3 +10914,10 @@ correction.
 2. `src/store.py:84 "calibration": "calib_{ds}.json"` is the sibling row with no owner.
 3. `src/frame_inference.py:191` is cited for a statement that stands at `:203-205`.  The citation
    line holds text, so the citation guard cannot see it.
+
+### The suites
+
+`./scripts/pool-test.sh python` answered `Ran 2552 tests in 573.555s` with `OK (skipped=53)`.
+`./scripts/pool-test.sh js` answered `ℹ pass 232` with `ℹ fail 0`, `ℹ pass 23` with `ℹ fail 0`, and
+`114 passed, 0 failed`.  The count went 2535 to 2552: one case from writer WO, eleven cases from
+writer WP, and five cases from writer WQ.
