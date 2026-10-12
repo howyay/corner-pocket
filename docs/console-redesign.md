@@ -11535,7 +11535,9 @@ answer `test_stylesheet_owner` `Ran 7 tests` OK, `test_palette_contrast`
 `Ran 5 tests` OK and `node tests/test_ops.js` 232 pass, 0 fail.  No writer moved a
 line outside its scope and no citation needed a shift.
 
-The full python suite answers SUITE LINE PENDING.
+The full python suite answers `Ran 2617 tests in 419.491s` and `OK (skipped=53)`.
+The count moved 2607 -> 2617: seven cases from the stylesheet guard of writer X1 and
+three from the timer guard of writer X2.
 
 LESSONS.  A guard that holds a pair of files must state which side owns the fact
 and which side is a copy, and it must read only the base token block of a
