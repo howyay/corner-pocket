@@ -13,9 +13,9 @@ Round 48 measured the tree.  ``db/migrations/0002_user_data.sql`` holds 13 ``IN 
 rules, and ``db/migrations/0004_imported_datasets.sql`` holds 3 more.  The migrations
 spell 11 distinct word domains:
 
-* this module binds 6 of them, one pair each (``PAIRS``);
+* this module binds 7 of them, one pair each (``PAIRS``);
 * two other test modules already bind one domain each (``BOUND_ELSEWHERE``);
-* three have no Python copy of this shape (``NO_PYTHON_COPY`` and ``UNBOUND``).
+* two have no Python copy of this shape (``NO_PYTHON_COPY`` and ``UNBOUND``).
 
 A rule can hold one number rather than a word list: ``identity_clusters.body_dim`` holds
 ``CHECK (body_dim IN (128))``, and three columns hold ``CHECK (cardinality(column) = 512)``.
@@ -68,7 +68,7 @@ from annotator.unified_server import (ANNOTATION_NOTE_MAX, BALL_LABEL_MAX, BALL_
 # the check of the request cannot drift apart.  A literal number in this module would be a
 # third spelling of the bound: the bounds table below names these constants instead.
 from annotator.operations import (LONGEST_NAME, RACE_TO_MAX, RACE_TO_MIN, RATING_MAX,
-                                  RATING_MIN, TABLES_MAX, TABLES_MIN)
+                                  RATING_MIN, TABLES_MAX, TABLES_MIN, TOURNAMENT_STATUSES)
 
 # The rank of a face sample is below the count src/person_identity.py keeps, so the
 # migration's three ranks and PERSIST_FACES hold one number.  This module reads the count
@@ -148,6 +148,29 @@ CHECK_CARDINALITY = re.compile(r'CHECK \([^)]*?cardinality\((\w+)\) = (\d+)\)')
 CHECK_ONE_NUMBER_IN = re.compile(r'CHECK \((\w+) IN \((\d+)\)\)')
 #: One ``CHECK`` line of the design document, and the column of its rule.
 DOC_CHECK = re.compile(r'^\s*(\w+)\s+\w.*?(CHECK \(.*BETWEEN.*\))', re.MULTILINE)
+#: The word map of one language of annotator/board.js: the object body after ``en: {``.
+#: The body stops at the closing bracket of the map.
+#: The map ends at the first closing bracket at the head of a line, which is the bracket
+#: of the map itself, because every entry of the map stands on its own line.
+BOARD_WORD_MAP_EN = re.compile(r'^\s*en: \{(.*?)^\s*\},', re.MULTILINE | re.DOTALL)
+#: The same reader for the Chinese map.
+BOARD_WORD_MAP_ZH = re.compile(r'^\s*zh: \{(.*?)^\s*\},', re.MULTILINE | re.DOTALL)
+#: One key of a word map.  A key of this map spells the word itself, so the key of a
+#: word is the word.  The other keys of the map name a table cell or a label, so the
+#: three status words stand among the keys of the map.
+BOARD_WORD_KEY = re.compile(r'(?:^|[,{])\s*([a-zA-Z][a-zA-Z0-9_]*)\s*:', re.MULTILINE)
+#: Every key of the English word map of annotator/board.js, and the same list serves the
+#: Chinese map, because the two maps hold one key list.  The count holds the current
+#: state of the board.  A new word of the page changes this list, so a reader who adds a
+#: page word updates this record in the same step.
+BOARD_PAGE_KEYS = (
+    'tonight', 'tables', 'next', 'bracket', 'standings', 'player', 'team', 'won', 'lost',
+    'played', 'tableN', 'round', 'final', 'semi', 'quarter', 'singles', 'doubles', 'raceTo',
+    'registration', 'active', 'complete', 'bye', 'tbd', 'vs', 'forfeit', 'ready', 'held',
+    'live', 'champion', 'noTables', 'noNext', 'noBracket', 'noStandings', 'timeOnTable',
+    'checkTable', 'underMinute', 'minutes', 'hours', 'connecting', 'updatedNow', 'updatedS',
+    'updatedM', 'reconnecting', 'reconnectingEmpty', 'off', 'source',
+)
 
 _SOURCES: dict = {}
 
@@ -559,6 +582,43 @@ def unrecorded_copies(copies, domains, recorded):
                   if values in domains and (module, values) not in recorded)
 
 
+def board_word_map_keys(board_text, language):
+    """The key names of one word map of annotator/board.js, in the order of the file."""
+    home = (BOARD_WORD_MAP_EN, BOARD_WORD_MAP_ZH)[language == 'zh'].search(board_text)
+    return tuple(BOARD_WORD_KEY.findall(home.group(1))) if home else ()
+
+
+def board_word_map_problems(board_text, statuses):
+    """The word maps of annotator/board.js that do not hold ``statuses``, one line each.
+
+    ``board_text`` replaces the file of the checkout, so a case can measure a planted
+    copy.  The board holds two maps, the English one and the Chinese one, and each map
+    keys the three words of the night in the order of the tuple.  A browser cannot read a
+    python name, so the map repeats the word as its key and this reader holds the copy
+    equal to the tuple.  The reader reads every key of a map, so a word added to a map, a
+    word lost and a word that moved each fail here.  The reader reports a change of the
+    key list of a map as a change of the list, because the list of the map is longer than
+    the tuple.  The count of ``BOARD_PAGE_KEYS`` records the list of the board today.
+    """
+    problems = []
+    for language in ('en', 'zh'):
+        keys = board_word_map_keys(board_text, language)
+        if keys != BOARD_PAGE_KEYS:
+            added = [key for key in keys if key not in BOARD_PAGE_KEYS]
+            lost = [key for key in BOARD_PAGE_KEYS if key not in keys]
+            problems.append(f'BOARD WORD MAP {language}: the map keys {list(keys)}; the map '
+                            f'held {list(BOARD_PAGE_KEYS)}, so this board page changed '
+                            f'(added {added}, lost {lost})')
+        found = [key for key in keys if key in tuple(statuses)]
+        if found != list(statuses):
+            problems.append(f'BOARD WORD MAP {language}: annotator/board.js spells {found}; '
+                            f'the tuple publishes {list(statuses)}')
+    if not problems and tuple(statuses) != TOURNAMENT_STATUSES:
+        problems.append(f'THE TUPLE PUBLISHES {list(statuses)}; the board spells '
+                        f'{list(TOURNAMENT_STATUSES)}')
+    return problems
+
+
 @dataclass(frozen=True)
 class Pair:
     """One SQL word domain and the Python sites that repeat it."""
@@ -767,6 +827,17 @@ PAIRS = (
          sql_column='result',
          sql_constraint="CHECK (result IN ('played','forfeit','bye'))",
          python=(('annotator/operations.py', 1),)),
+    # The night's status has two copies on the far side of a language wall: the CHECK of
+    # the migration and the two word maps of annotator/board.js.  Round 91 gave the three
+    # words the python home TOURNAMENT_STATUSES, imported above, and the case below holds
+    # that tuple, the pair table and the two maps of the board to one order.
+    Pair(domain='tournaments.status',
+         values=('registration', 'active', 'complete'),
+         sql_file='0002_user_data.sql',
+         sql_table='tournaments',
+         sql_column='status',
+         sql_constraint="CHECK (status IN ('registration','active','complete'))",
+         python=(('annotator/operations.py', 1),)),
     Pair(domain='track_seeds.label',
          values=tuple(SEED_ROLES),
          sql_file='0002_user_data.sql',
@@ -822,7 +893,7 @@ CEILINGS_DEFERRED = {
     'players.notes': 'the note bound of a saved regular stands four times: the migration '
                      'at db/migrations/0002_user_data.sql:23 holds '
                      'CHECK (length(notes) <= 4000), annotator/operations.py holds '
-                     'NOTE_MAX = 4000 at :45 and reads it at :886 and :1316, and '
+                     'NOTE_MAX = 4000 at :50 and reads it at :915 and :1346, and '
                      'docs/console-redesign.md records the row.  Round 69 binds the '
                      'annotation note, event_verdicts.note, and leaves this rule: the four '
                      'copies are one rule in two languages and one round cannot unify them',
@@ -841,15 +912,12 @@ UNBOUND = (
                   'in src/datasets.py, and this module reads literal collections only'),
 )
 
-#: Two word domains have no Python copy of this shape, so no pair exists.  The table
-#: states the measurement, and a later copy fails the completeness case.
+#: One word domain has no Python copy of this shape, so no pair exists.  The table
+#: states the measurement, and a later copy fails the completeness case.  Round 91
+#: removed the ``tournaments.status`` row of this table: annotator/operations.py now
+#: publishes that domain as the tuple TOURNAMENT_STATUSES, so the table above binds
+#: the pair and the completeness case finds the python copy.
 NO_PYTHON_COPY = (
-    Record(domain='tournaments.status',
-           values=('registration', 'active', 'complete'),
-           python=(),
-           reason='annotator/operations.py compares t["status"] with one string at a time, '
-                  'for example t["status"] != "registration", so no literal collection '
-                  'holds the three values'),
     Record(domain='sources.kind',
            values=('channel', 'video'),
            python=(),
@@ -969,10 +1037,14 @@ class SqlDomainParityTests(unittest.TestCase):
         the four values as a literal, and this case holds that literal to the constant, so a
         value that the route accepts and the pair table does not name is a failure here.  The
         pair table reads ``SEED_ROLES`` itself, and this case pins that read as well: a change
-        of the constant must reach the pair table.
+        of the constant must reach the pair table.  Round 91 added the same read for the
+        night's status: the pair table holds the three words as a literal, because the pair
+        is the record of the migration text, and this case holds that literal to
+        ``TOURNAMENT_STATUSES`` in annotator/operations.py.
         """
         cases = (('event_verdicts.shooter', SHOOTER_WORDS),
-                 ('track_seeds.label', SEED_ROLES))
+                 ('track_seeds.label', SEED_ROLES),
+                 ('tournaments.status', TOURNAMENT_STATUSES))
         for domain, constant in cases:
             with self.subTest(domain=domain):
                 pairs = [pair for pair in PAIRS if pair.domain == domain]
@@ -1174,6 +1246,40 @@ class SqlDomainParityTests(unittest.TestCase):
         self.assertEqual([], problems,
                          'the design document and the migration disagree on a CHECK ... '
                          'BETWEEN rule:\n' + '\n'.join(problems))
+
+    def test_the_board_word_maps_read_the_tournament_statuses(self):
+        """Both word maps of annotator/board.js must hold the three words, in order.
+
+        Round 91 gave the night's status the python home ``TOURNAMENT_STATUSES``.  The
+        migration repeats the words in a CHECK, and this test module reads that text.
+        The board cannot import python, so it repeats the words in two word maps, and
+        the module scanner reads ``*.py`` only, so it cannot see the copies.  This case
+        reads the board as text and holds the three keys of that domain, in both maps,
+        equal to the tuple.  The helper also reads the whole key list of each map, so a
+        word added to the board page fails here as well.
+        """
+        problems = board_word_map_problems(source('annotator/board.js'), TOURNAMENT_STATUSES)
+        self.assertEqual([], problems,
+                         'the board words and annotator/operations.py disagree on the '
+                         'night status:\n' + '\n'.join(problems))
+
+    def test_the_board_word_map_rule_reports_a_planted_word(self):
+        """A word added to a word map of the board must fail the case above.
+
+        The helper reads the file text, so this case plants one more key in a copy of that
+        text and measures the answer of the same helper.  The answer names the new key,
+        because the key list of a map is the record of the board page.  The case counts the
+        anchor before it plants the word, so a lost anchor fails here with its own message.
+        """
+        anchor = "      registration: 'Registration open',"
+        board = source('annotator/board.js')
+        self.assertEqual(1, board.count(anchor),
+                         'this case needs one anchor line in the English map of the board')
+        planted = board.replace(anchor, "      abandoned: 'Abandoned',\n" + anchor, 1)
+        self.assertNotEqual(board, planted, 'this case plants one more key in the English map')
+        problems = board_word_map_problems(planted, TOURNAMENT_STATUSES)
+        self.assertTrue(any('abandoned' in problem for problem in problems),
+                        'the planted word is reported; the guard answered ' + repr(problems))
 
 
 # The ball label domain stands in three realms with three spellings, and no case compared

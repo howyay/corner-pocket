@@ -236,6 +236,14 @@ PLACEHOLDER_NAMES = {'na', 'n/a', 'bye', 'tbd', '轮空', '輪空'}
 MATCH_STATUSES = ('pending', 'scheduled', 'live', 'delayed', 'complete')
 MATCH_RESULTS = ('played', 'forfeit', 'bye')
 
+# The words one tournament may carry. This module is the only writer of the night's
+# status, so the tuple lives here. The database cannot import Python, so
+# db/migrations/0002_user_data.sql repeats the three words in a CHECK. A browser
+# cannot import Python either, and this repository has no build step, so
+# annotator/board.js repeats them in its two word maps. tests/test_sql_domain_parity.py
+# holds the migration and both maps to this tuple, in order.
+TOURNAMENT_STATUSES = ('registration', 'active', 'complete')
+
 # The status values a player row may hold. This module is their only writer, so the
 # list lives here. The database cannot import Python, so
 # db/migrations/0002_user_data.sql repeats the names in a CHECK. The console needs

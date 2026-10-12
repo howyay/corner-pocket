@@ -156,8 +156,10 @@
     const rounds = board.bracket || [], event = board.event;
     const final = rounds.length ? rounds[rounds.length - 1].matches[0] : null;
     // event.phase is the night's own word (annotator/operations.py tournament(): 'registration',
-    // 'active', 'complete'), a different vocabulary from a match's. No tuple publishes it, so it
-    // keeps its literal here; this is not STATUS.complete.
+    // 'active', 'complete'), a different vocabulary from a match's. The tuple TOURNAMENT_STATUSES
+    // of that module publishes the three words, and the word maps of WORDS above repeat them, so
+    // tests/test_sql_domain_parity.py holds this literal and both maps equal to that tuple; this
+    // is not STATUS.complete.
     const winner = event.phase === 'complete' && final && final.winner != null ? final.sides[final.winner].name : null;
     let tables = `<li class="empty">${esc(say(lang, 'noTables'))}</li>`;
     if (winner != null) {
