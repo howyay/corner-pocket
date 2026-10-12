@@ -76,7 +76,13 @@ def load_cache(path) -> dict:
     return {round(float(key), 1): value for key, value in frames.items()}
 
 
-def load_costs(path) -> dict:
+def _json_object(path) -> dict:
+    """The JSON object of one cache file, or an empty dict when the file gives none.
+
+    A missing file, a damaged file and a file of another shape give no object, so a
+    run continues on the frames it can read.  Both readers of the cache map,
+    ``load_costs`` and ``load_filters``, call this one body and read their own key.
+    """
     path = Path(path)
     if not path.exists():
         return {}
@@ -84,7 +90,12 @@ def load_costs(path) -> dict:
         data = json.loads(path.read_text())
     except ValueError:
         return {}
-    return data.get("cost", {}) if isinstance(data, dict) else {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_costs(path) -> dict:
+    """The cost of each cached frame, or an empty dict when the file holds none."""
+    return _json_object(path).get("cost", {})
 
 
 def save_cache(path, frames: dict, costs: dict, video: str, filters: dict | None = None) -> None:
@@ -106,14 +117,8 @@ def save_cache(path, frames: dict, costs: dict, video: str, filters: dict | None
 
 
 def load_filters(path) -> dict:
-    path = Path(path)
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text())
-    except ValueError:
-        return {}
-    return data.get("filter", {}) if isinstance(data, dict) else {}
+    """The cloth filter of each cached frame, or an empty dict when the file holds none."""
+    return _json_object(path).get("filter", {})
 
 
 def cloth_mask(bgr, reference=None, corners_path="out/scan30/corners.json"):

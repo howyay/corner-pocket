@@ -52,8 +52,12 @@ from src.store_files import BALL_SETS
 # is the exception of the three: its value list stands here as a literal, because the
 # migration holds the four values and the module holds no constant for the empty string
 # and the question mark in one place yet.
-from annotator.unified_server import (ANNOTATION_NOTE_MAX, SEED_ROLES, SHOOTER_WORDS,
-                                      VERDICT_WORDS)
+# The ball label domain reads the two bounds of the service for the same reason: the route
+# owns what it accepts, the console states its own two names in a static file, and the
+# migration holds the bound in a regular expression.  The text bound table at the end of
+# this module names the three spellings, so a literal number here would be a fourth.
+from annotator.unified_server import (ANNOTATION_NOTE_MAX, BALL_LABEL_MAX, BALL_LABEL_MIN,
+                                      SEED_ROLES, SHOOTER_WORDS, VERDICT_WORDS)
 
 # The number rules read the constants of the validator, so the CHECK of the migration and
 # the check of the request cannot drift apart.  A literal number in this module would be a
@@ -935,3 +939,172 @@ class SqlDomainParityTests(unittest.TestCase):
         self.assertEqual([], problems,
                          'the design document and the migration disagree on a CHECK ... '
                          'BETWEEN rule:\n' + '\n'.join(problems))
+
+
+# The ball label domain stands in three realms with three spellings, and no case compared
+# any pair until round 77.  The service owns what it accepts.  The console is a static
+# file, so it states its own two names for the same domain.  The migration held the bound
+# in a regular expression over the jsonb text form before either name existed, and a
+# migration is applied history, so that expression stays as it is.  The table below names
+# the three spellings, and the cases at the end of this module hold them equal.
+#: One ``const BALL_LABEL_<end> = <number>;`` line of the console file.
+CONSOLE_BOUND_HOME = re.compile(r'^const (BALL_LABEL_[A-Z]+) = (-?\d+);', re.MULTILINE)
+#: The name table of the console, whose keys are the labels the file can draw.
+CONSOLE_NAMES_HOME = re.compile(r'^const NAMES = \{(.*?)\};', re.MULTILINE | re.DOTALL)
+#: One key of the name table, as the console spells it.
+CONSOLE_NAME_KEY = re.compile(r'(\d+):')
+#: One ``(column)::text ~ 'pattern'`` rule of a migration, and its jsonb column.
+SQL_TEXT_RULE = re.compile(r"\((\w+)\)::text ~ '([^']*)'")
+
+
+@dataclass(frozen=True)
+class TextBound:
+    """One number domain that no ``BETWEEN`` rule and no ``<=`` rule of a migration states.
+
+    ``BOUNDS`` reads the ``BETWEEN`` rules and the ``<=`` rules of the migrations.  A
+    regular expression over the jsonb text form is invisible to that table, so this row
+    names the three spellings of one domain, and the cases compare them.
+    """
+    column: str          # the jsonb column, as 'table.column'
+    sql_file: str        # the migration that holds the rule
+    sql_regex: str       # the one regular expression of that rule
+    owner: str           # the module that owns the two numbers
+    owner_read: str      # the gate line of the owner, which reads the two names
+    bound: tuple         # (('BALL_LABEL_MIN', 0), ('BALL_LABEL_MAX', 15)), by import
+    console: str         # the static console file, which states its own two names
+    console_read: str    # the loop line of the console, which reads its two names
+
+
+TEXT_BOUNDS = (
+    TextBound(column='ball_labels.label',
+              sql_file='0002_user_data.sql',
+              sql_regex='^(1[0-5]|[0-9])$',
+              owner='annotator/unified_server.py',
+              owner_read='type(label) is int and BALL_LABEL_MIN <= label <= BALL_LABEL_MAX',
+              bound=(('BALL_LABEL_MIN', BALL_LABEL_MIN), ('BALL_LABEL_MAX', BALL_LABEL_MAX)),
+              console='annotator/label.html',
+              console_read='for (let nn = BALL_LABEL_MIN; nn <= BALL_LABEL_MAX; nn++)'),
+)
+
+
+def domain_texts(low, high):
+    """The jsonb text form of each number of one closed domain, as one list."""
+    return [str(number) for number in range(low, high + 1)]
+
+
+def text_bound_problems(row, console_text=None, sql_text=None, owner_text=None):
+    """The spellings of one text bound that disagree, as one line each.
+
+    The answer is empty when the two names of the owner, the gate of the owner, the two
+    names of the console, the name table of the console and the rule of the migration
+    hold the same domain.  The three texts replace the files of the checkout, so a case
+    can measure a planted copy.
+    """
+    problems = []
+    ends = dict(row.bound)
+    low, high = ends['BALL_LABEL_MIN'], ends['BALL_LABEL_MAX']
+    owner_text = source(row.owner) if owner_text is None else owner_text
+    console_text = source(row.console) if console_text is None else console_text
+    sql_text = source(f'db/migrations/{row.sql_file}') if sql_text is None else sql_text
+    table, _, column = row.column.partition('.')
+    # The owner: the gate reads the two names, and the names hold the two numbers.
+    if owner_text.count(row.owner_read) != 1:
+        problems.append(f'{row.column}: {row.owner} reads its two names '
+                        f'{owner_text.count(row.owner_read)} times, not once, in the gate '
+                        f'{row.owner_read!r}')
+    # The console: one name for each end, one loop that reads the two names, and a name
+    # table whose keys are the labels of the same domain.
+    homes = dict(CONSOLE_BOUND_HOME.findall(console_text))
+    for name in ('BALL_LABEL_MIN', 'BALL_LABEL_MAX'):
+        if name not in homes:
+            problems.append(f'{row.column}: {row.console} states no {name}; the owner '
+                            f'holds {ends[name]}')
+        elif int(homes[name]) != ends[name]:
+            problems.append(f'{row.column}: {row.console} states {name} = {homes[name]}; '
+                            f'the owner holds {ends[name]}')
+    if console_text.count(row.console_read) != 1:
+        problems.append(f'{row.column}: {row.console} reads its two names '
+                        f'{console_text.count(row.console_read)} times, not once, in the '
+                        f'loop {row.console_read!r}')
+    names = CONSOLE_NAMES_HOME.search(console_text)
+    if names is None:
+        problems.append(f'{row.column}: {row.console} holds no NAMES table')
+    else:
+        keys = sorted(int(key) for key in CONSOLE_NAME_KEY.findall(names.group(1)))
+        if keys != list(range(low, high + 1)):
+            problems.append(f'{row.column}: {row.console} names the labels {keys}; the '
+                            f'domain is {low} to {high}')
+    # The migration: one text rule on the column, and the rule accepts the domain and
+    # nothing outside its two edges.
+    blocks = dict(tables_in(sql_text))
+    rules = [pattern for name, pattern in SQL_TEXT_RULE.findall(blocks.get(table, ''))
+             if name == column]
+    if len(rules) != 1:
+        problems.append(f'{row.column}: {row.sql_file} holds {len(rules)} '
+                        f'``{column}::text`` rules; the row names one')
+    elif rules[0] != row.sql_regex:
+        problems.append(f'{row.column}: {row.sql_file} spells the rule {rules[0]!r}; the '
+                        f'row names {row.sql_regex!r}')
+    else:
+        rule = re.compile(rules[0])
+        refused = [text for text in domain_texts(low, high) if not rule.match(text)]
+        if refused:
+            problems.append(f'{row.column}: {row.sql_file} refuses {refused} inside the '
+                            f'domain {low} to {high}')
+        outside = [str(end) for end in (low - 1, high + 1) if rule.match(str(end))]
+        if outside:
+            problems.append(f'{row.column}: {row.sql_file} accepts {outside} outside the '
+                            f'domain {low} to {high}')
+    return problems
+
+
+class BallLabelDomainTests(unittest.TestCase):
+    """The ball label domain: one number, three spellings, one case that holds them.
+
+    The route accepts a label of 0 to 15 and refuses 16 and -3, and
+    tests/test_unified_server.py measures that behaviour at both edges.  The console draws
+    one button for each label of the same domain, and the migration refuses a stored
+    number outside it.  Before round 77 nothing compared the three texts.
+    """
+
+    def test_the_ball_label_domain_holds_one_bound_in_three_realms(self):
+        """Each spelling of the ball label domain must agree with the other two."""
+        problems = []
+        for row in TEXT_BOUNDS:
+            problems.extend(text_bound_problems(row))
+        self.assertEqual([], problems,
+                         'the ball label domain disagrees with itself:\n'
+                         + '\n'.join(problems))
+
+    def test_the_ball_label_rule_refuses_the_number_outside_each_edge(self):
+        """The migration rule must accept both edge numbers and refuse both neighbours.
+
+        The answer is the answer of the database, because the case asks the rule text
+        itself, and the rule stays the one home of the SQL side of the domain.
+        """
+        row = TEXT_BOUNDS[0]
+        ends = dict(row.bound)
+        rule = re.compile(row.sql_regex)
+        for outside, inside in ((ends['BALL_LABEL_MIN'] - 1, ends['BALL_LABEL_MIN']),
+                                (ends['BALL_LABEL_MAX'] + 1, ends['BALL_LABEL_MAX'])):
+            self.assertTrue(rule.match(str(inside)),
+                            f'{row.sql_regex!r} must accept {inside}')
+            self.assertFalse(rule.match(str(outside)),
+                             f'{row.sql_regex!r} must refuse {outside}, one step outside '
+                             f'{inside}')
+
+    def test_the_ball_label_rule_reports_a_planted_widen(self):
+        """A console that states a wider domain must fail the case above.
+
+        This is the defect round 77 measured: the console held the number in its loop, the
+        gate held it in a comparison, and the migration held it in a regular expression,
+        so a change of one copy left the other two stating the old bound.
+        """
+        row = TEXT_BOUNDS[0]
+        console = source(row.console)
+        planted = console.replace('const BALL_LABEL_MAX = 15;', 'const BALL_LABEL_MAX = 16;')
+        self.assertNotEqual(console, planted, 'the case plants a wider console domain')
+        problems = text_bound_problems(row, console_text=planted)
+        self.assertTrue(any('BALL_LABEL_MAX = 16' in problem for problem in problems),
+                        'the planted console bound is reported; the guard answered '
+                        + repr(problems))

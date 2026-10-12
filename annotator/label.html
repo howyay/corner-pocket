@@ -47,6 +47,8 @@
 <main id="list"></main>
 <script>
 const $ = (s) => document.querySelector(s);
+const BALL_LABEL_MIN = 0;    // the cue ball
+const BALL_LABEL_MAX = 15;   // the last ball label; the service refuses a bigger number
 const NAMES = {0:'cue/white',1:'1 yellow',2:'2 blue',3:'3 red',4:'4 pink',5:'5 orange',6:'6 green',7:'7 brown',8:'8 black',
   9:'9 yellow str',10:'10 blue str',11:'11 red str',12:'12 pink str',13:'13 orange str',14:'14 green str',15:'15 brown str'};
 let crops = [];
@@ -140,7 +142,7 @@ function render() {
       b.onclick = () => setLabel(c, val);
       kd.appendChild(b);
     };
-    for (let nn = 0; nn <= 15; nn++) mk(nn === 0 ? 'W' : nn, NAMES[nn], v === nn ? 'cur' : '', nn);
+    for (let nn = BALL_LABEL_MIN; nn <= BALL_LABEL_MAX; nn++) mk(nn === BALL_LABEL_MIN ? 'W' : nn, NAMES[nn], v === nn ? 'cur' : '', nn);
     mk('?', 'not sure — mark for review', 'u ' + (v === 'u' ? 'cur' : ''), 'u');
     mk('✕', 'clear label', 'x', 'clear');
     $('#list').appendChild(d);
