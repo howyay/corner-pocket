@@ -10570,3 +10570,71 @@ rose from 2475 to 2479 with the four cases of the new guard.
 must not turn a case red.  A bite must use a resolvable name, because a `NameError` masks the
 case.  A new name field enters `NAME_FIELDS`, `NAME_FIELD_BOUNDS` and `NAME_FIELD_COUNT`
 together.  `MASTER_QUERY` keeps `allow_audio_only` by the yt-dlp justification.
+
+## Round 85 - one owner for the glow default, the label pair, and the anchor times
+
+Walk `/tmp/dshsess/walk_round85.md` at HEAD `0491f43`:
+`Strong candidate present - 2 Strong, 1 Worth, 1 Note`.
+
+**Strong 1 - the glow default.**  Ground: `annotator/operations.py:373` held `lampGlow=0.22` in the
+settings block of a fresh document, and `annotator/ops.js:1298` (the `appearancePanel`) wrote the
+same number as the console fallback `lampGlow??.22`.  `tests/test_ops_bounds.py:42` said in its own
+text that no case held the two equal.  A drift is silent: the console paints the old default first,
+and a save posts it back as an explicit setting.
+Repair (writer WD, commit `92fdb1a`): `annotator/operations.py:71 LAMP_GLOW_DEFAULT = 0.22`, and the
+settings block at `:378` reads the name.  `tests/test_ops_bounds.py` gains
+`test_the_console_glow_default_is_the_owner_default`, which reads the console fallback and compares
+it with the owner name.  The writer bit `annotator/ops.js` (`491482e9f54a -> 51ef5a2f03db ->
+491482e9f54a`) and the case answered `AssertionError: 0.3 != 0.22 : the console fallback and the
+owner default differ`.  The Lead bit the owner: `LAMP_GLOW_DEFAULT = 0.3` gave
+`AssertionError: 0.22 != 0.3 : the console fallback and the owner default differ`, and the restore
+gave `e1a6ccb670db6eba` green.
+
+**Strong 2 - the unknown-label pair.**  Ground: the service owns
+`annotator/unified_server.py:132-133` (`BALL_LABEL_UNKNOWN_WIRE = -1`,
+`BALL_LABEL_UNKNOWN_STORED = 'u'`), and `annotator/app.js:1368` held a copy that the guard held
+equal.  Three served readers spelled the pair again: `annotator/vision-stage.js:347`,
+`annotator/vision-stage.js:1334` (`data-vs-value="-1"`) and `annotator/label.html:61`, `:101`.  The
+guard said in its own text at `tests/test_console_service_agreement.py:53-56` that it did not hold
+them.  The label button posts the number it holds, so a moved wire value gives the operator a
+refusal where the label must be unknown.
+Repair (writer WE, commit `4e1d7cb`): the guard reads both files and builds each expected statement
+from the owner values.  The module rose from 6 cases to 12.  The writer bit
+`annotator/vision-stage.js` (`5482db0e32a0 -> 1f4e95c5033e -> 5482db0e32a0`) with four red cases.
+The Lead bit the owner: `BALL_LABEL_UNKNOWN_WIRE = -9` gave four red cases, one of them with the
+line `vision-stage.js:347`; the restore gave `221c8c16fc6e4d36` green.
+
+**Worth 1 - the dead anchor list.**  Ground: `src/pid_anchor_ui.py:40` held
+`SUGGESTED = [70, 200, 350]`, which no line read.  The live copy stood at `:72` in the served page,
+and the owner is `annotator/unified_server.py:170 SUGGESTED_ANCHOR_TIMES = (70, 200, 350)`.  The
+guard named the dead copy and left it to a later round.
+Repair (writer WF, commit `b7a5695`): the dead name went.  The page copy stays and moved to `:71`.
+`tests/test_console_anchor_times.py` gains the class `Round85DeadName` with three cases, and the
+disclosure is true again.  The writer bit the module (`9fe52dbd -> 3a70c202 -> 9fe52dbd`) and the
+case answered `Lists differ: [] != ['src/pid_anchor_ui.py:190 holds the module-level name
+SUGGESTED, which no line reads...']`.
+
+**Note 1 - the stale citation in the guard itself.**  `tests/test_console_service_agreement.py:53`
+cited `annotator/vision-stage.js:338`, but line 338 is `const quad = s?.cloth?.quad;` and the pair
+stands at 347.  The citation guard cannot see this, because line 338 holds letters and digits.  The
+writer of Strong 2 wrote the true number in the same change.
+
+**The citation shift.**  The new five-line block in `annotator/operations.py` pushed every line from
+67 down by five.  The Lead shifted every citation of that file at or above line 67: 159 full
+citations and 204 ledger lines, plus `docs/requirements-traceability.md`,
+`tests/test_event_retention.py` and three notes under `.pm/` (commit `363d251`).  The ledger
+citation at `:9026` also described the dead `SUGGESTED` name, so the Lead rewrote that sentence.
+
+**A writer misread a correct result.**  Writer WE reported that the integer compare of this Python
+3.14.6 is broken.  The Lead measured `(0 != 1) is True`, `(0 == 1) is False` and `[1114] != []`.
+All three answers are `True`, and all three are correct.  Lesson: measure the doubt before you write
+it down, and a strange red is a property of the case before it is a property of the interpreter.
+
+**Suites (round 85).**  `./scripts/pool-test.sh python`: `Ran 2489 tests in 269.425s`,
+`OK (skipped=53)`.  Node suites: 232 pass, 23 pass, 114 passed, 0 failures.  The count rose from
+2479 to 2489 with the ten new cases (one from WD, three from WF, six from WE).
+
+**Open rows.**  The `.pm/` notes are outside the index, so their citation shift stays local.  A bite
+must use a resolvable value, or a `NameError` masks the case.  The ledger at `:10108`, `:10187` and
+`:9092` describes the two copies of the anchor times in words; round 85 removed one, so those
+sentences are history and not a description of the tree.
