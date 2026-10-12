@@ -585,5 +585,120 @@ class PostgresBoardTest(unittest.TestCase):
                     conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
 
 
+#: The two texts that carry the envelope word of the board.  The service writes the word
+#: into the payload, and the console reads the word before it shows the board.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SERVICE_BOARD = REPO_ROOT / "annotator" / "public_board.py"
+CONSOLE_BOARD = REPO_ROOT / "annotator" / "board.js"
+#: The service states the word in a dict literal: annotator/public_board.py:20 and :90.
+SERVICE_ENVELOPE = r"""["']board["']\s*:\s*["']([A-Za-z0-9_.-]+)["']"""
+#: The console states the word in a comparison against board.board:
+#: annotator/board.js:227 holds both words, and :279 holds the off branch.
+CONSOLE_ENVELOPE = r"""board\.board\s*[!=]={1,2}\s*["']([A-Za-z0-9_.-]+)["']"""
+
+
+def envelope_name(path):
+    """Return the name of a realm's file, relative to the repository root."""
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def envelope_words(text, pattern):
+    """Return [(line, word)] for each envelope word one realm states, in source order."""
+    # This import stays here on purpose.  An import at the top of the file would move
+    # every line below it, and another file cites a line number of this file.
+    import re
+    return [(text.count("\n", 0, match.start()) + 1, match.group(1)) for match in re.finditer(pattern, text)]
+
+
+def envelope_sites(sites, word):
+    """Return the lines that state `word`, as "line N" or "lines N, M"."""
+    found = [line for line, stated in sites if stated == word]
+    return ("line " if len(found) == 1 else "lines ") + ", ".join(str(line) for line in found)
+
+
+def envelope_line(text, pattern, word):
+    """Return the one line that states `word`.  A word on two lines needs envelope_sites."""
+    found = [line for line, stated in envelope_words(text, pattern) if stated == word]
+    if len(found) != 1:
+        raise AssertionError(f"expected one line for the envelope word {word!r}, found {found}")
+    return found[0]
+
+
+def envelope_report(service_text, service_name, console_text, console_name):
+    """Return the difference between the envelope words of the two realms, or "".
+
+    Each side is one text and the name of the file that holds it.  The report names the
+    file and the line of each word that only one side states.  A rename on one side
+    therefore points at the word and the line to correct on the other side.
+    """
+    service = envelope_words(service_text, SERVICE_ENVELOPE)
+    console = envelope_words(console_text, CONSOLE_ENVELOPE)
+    written = {word for _line, word in service}
+    accepted = {word for _line, word in console}
+    if written == accepted:
+        return ""
+    report = ["the two realms do not state the same envelope words:"]
+    report += [f"  only {service_name} states {word!r} at {envelope_sites(service, word)}"
+               for word in sorted(written - accepted)]
+    report += [f"  only {console_name} states {word!r} at {envelope_sites(console, word)}"
+               for word in sorted(accepted - written)]
+    return "\n".join(report)
+
+
+class TheEnvelopeWordsAgreeTest(unittest.TestCase):
+    """The envelope word of the board, read from both realms at once (round 97 defect).
+
+    annotator/public_board.py writes the word into the payload: `OFF = {"board": "off"}`
+    at :20 and `"board": "on"` at :90.  annotator/board.js accepts the word: :227 rejects
+    a document whose `board.board` is neither 'on' nor 'off', and :279 reads the off branch.
+    The two realms each hold a copy of the same pair, and no case read both copies.
+    tests/test_board_api.py held the service literal alone, and tests/test_board.js held
+    the console sample alone.  A rename on one side therefore stops every response while
+    both suites stay green.
+
+    The first case derives the word set of each realm from the real file and holds the two
+    sets equal.  The second case plants a drift in a copy of the console text and holds the
+    report that names the file and the line of each side.
+    """
+
+    def test_the_two_realms_state_the_same_envelope_words(self):
+        service = SERVICE_BOARD.read_text(encoding="utf-8")
+        console = CONSOLE_BOARD.read_text(encoding="utf-8")
+        for path, text, pattern in ((SERVICE_BOARD, service, SERVICE_ENVELOPE),
+                                    (CONSOLE_BOARD, console, CONSOLE_ENVELOPE)):
+            with self.subTest(file=envelope_name(path)):
+                words = {word for _line, word in envelope_words(text, pattern)}
+                # A pair, not one word: the text either shows the board or hides it.  A
+                # pattern that stopped matching would agree with the other realm on nothing.
+                self.assertGreaterEqual(len(words), 2, f"{envelope_name(path)} states "
+                                        f"{len(words)} envelope words; the comparison below needs a pair")
+        report = envelope_report(service, envelope_name(SERVICE_BOARD), console, envelope_name(CONSOLE_BOARD))
+        self.assertEqual(report, "", "the envelope words of the two realms differ:\n" + report)
+
+    def test_a_planted_rename_is_reported_with_the_file_and_the_line_of_each_side(self):
+        service = SERVICE_BOARD.read_text(encoding="utf-8")
+        console = CONSOLE_BOARD.read_text(encoding="utf-8")
+        needle = "board.board !== 'on'"
+        self.assertEqual(console.count(needle), 1, f"{envelope_name(CONSOLE_BOARD)} no longer states {needle!r} one time")
+        drifted = console.replace(needle, "board.board !== 'oan'", 1)
+        service_line = envelope_line(service, SERVICE_ENVELOPE, "on")
+        console_line = envelope_line(console, CONSOLE_ENVELOPE, "on")
+        copy_line = envelope_line(drifted, CONSOLE_ENVELOPE, "oan")
+        # The copy keeps every line where it stands, so the report names the line of the real file.
+        self.assertEqual(copy_line, console_line, "the copy moved the drifted word off its line")
+        with tempfile.TemporaryDirectory() as temp:
+            copy = Path(temp) / CONSOLE_BOARD.name
+            copy.write_text(drifted, encoding="utf-8")
+            report = envelope_report(service, envelope_name(SERVICE_BOARD), drifted, envelope_name(copy))
+        self.assertEqual(report, "\n".join([
+            "the two realms do not state the same envelope words:",
+            f"  only {envelope_name(SERVICE_BOARD)} states 'on' at line {service_line}",
+            f"  only {copy} states 'oan' at line {copy_line}",
+        ]), "the planted rename is not reported with the file and the line of each side")
+
+
 if __name__ == "__main__":
     unittest.main()
