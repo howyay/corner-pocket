@@ -3308,8 +3308,8 @@ could not prove that the console reads the `actions` array the contract publishe
 | C2, the unstamped caches | Five caches live on one `Backend`: `annotator/unified_server.py:524`, `:541`, `:542`, `:1018` (filled lazily at `:1020`) and `:1181` (lazily at `:1183`). Three carry a stamp and two do not, and `grep -c "\.clear()" annotator/unified_server.py` is 0, so no write invalidates anything. The unstamped pair is `_prior_cache` at `:1013-1024` and `_unified_cache` at `:1046-1049` and `:1087-1092`, bounded by `_UNIFIED_CACHE_MAX = 24` at `:981`. The write that invalidates nothing is `self.store().anchors_put("vod30", str(info["t"]), clean)` at `:1944`, behind the route declared at `:2086`, and the stale value is consumed by `saved = self._prior_for(dataset)` at `:1068` | Open. The provenance rule that three caches state by hand belongs in one place, and a write that changes what a cache holds must invalidate it. Worker `16e50f45` holds this candidate in round 39 | Original row kept above; landed in round 40 as `1b247da`: one `Cache` type at `annotator/unified_server.py:545` answers `(stamp, value)` and pops a stale entry, `Backend.CACHES` at `:1086` declares five rows each with the source it belongs to, every read and write holds `self.lock`, and `_route_anchors` at `:2177` calls `self.invalidate('prior', 'unified')`. The five old attribute names are gone. `tests/test_unified_server.py` 90 -> 102 cases; a perturbation that deletes the invalidate line fails exactly two named cases; a live check on a free port returned 1607 bytes before the anchors write and 1677 after, so the write dropped the cached detection |
 | C4, the durable-write decision | The walk listed the durable-write decision as five places: four atomic writers and two unsafe plain `Path.write_text` calls at `annotator/server.py:127` and `:149`, in a 154-line module with 0 importers | Resolved by round 34 candidate C6, landed as `0b7ecd2`: one owner in `src/atomic_write.py`, nine call sites, five durable and four best effort, with `class TestCallerDurability` holding the two role lists. `annotator/server.py` was not part of that work because nothing imports it | `tests/test_atomic_write.py` 28 tests OK, and the module still has 0 importers |
 | C5, the retention constant | One retention fact lives in two halves: the literal `])[-500:]` at `annotator/operations.py:405` and `MAX_EVENTS = 500` at `src/store_import.py:46`, used at `:178` and `:288`. A comment is the whole contract between them | Landed, commit `58a7d4e`: `src/ops_event_log.py` holds `MAX_EVENTS = 500` and `trim(events)`. Three writers trim through it (`src/store_pg.py:140`, `src/enroll_from_tracklet.py:484`, `annotator/operations.py:415`) and the importer reads the bound from it (`src/store_import.py:177`, `:292`). `src/store_check.py:66` keeps its own SQL `LIMIT 500` and is the one recorded exception | Literal write points 5 → 1, name reads 3 → 2. The new `tests/test_event_retention.py` holds 9 cases. The python suite `Ran 1554 tests, OK (skipped=53)` |
-| C7, the Twitch seam | Three host validators (`annotator/twitch_source.py:34`, `annotator/twitch_vod_source.py:99`, `:127`), two allowlists (`:101`, `:124`), seven network sites, and a fourth time-stamped cache at `annotator/twitch_vod_source.py:215` with `_THUMB_CACHE_TTL_S` at `:221` and `_THUMB_CACHE_MAX` at `:222` | Open, Worth exploring. Worker `5e659542` holds this candidate in round 39 | Original row kept above; landed in round 40 as `510d215`: one purpose table at `annotator/twitch_source.py:62` holds four rows (api, live-media, vod-media, thumb), each with its hosts, its cache policy and its refusal sentence, and `annotator/twitch_vod_source.py` declares no host and no cache of its own. The new `tests/test_twitch_fetch.py` holds 24 cases and two of them open a real loopback listener and count requests: 0 before the row names it, 1 after. `test_twitch_source` 17, `test_twitch_vod_source` 32 and `test_vod_import` 32 cases all OK |
-| C8, `_playlist` twice | `def _playlist(text)` is defined twice, at `annotator/twitch_source.py:80` and `:148`, with byte-identical bodies, and the second definition rebinds the name | Open, Speculative | Original row kept above; landed in round 40 as `f9cd68a`: the module keeps the first definition and deletes the paste. Blame showed `f6901185` created the module's copy and `40c47437` pasted a second one, so the paste won the name and a repair to the original changed nothing at run time. Measured: top-level function names 13 and `_playlist` 1, duplicate names []; `tests/test_twitch_source.py` 185 -> 311 lines and 17 -> 19 cases, one of them an AST case; pasting the second copy back reproduces its historical sha1 `5f35ac6a` and fails exactly that case. Live check: 3 fetches, 410 bytes over the socket, 0 sockets to Twitch |
+| C7, the Twitch seam | Three host validators (`annotator/twitch_source.py:34`, `annotator/twitch_vod_source.py:99`, `:127`), two allowlists (`:101`, `:124`), seven network sites, and a fourth time-stamped cache at `annotator/twitch_vod_source.py:217` with `_THUMB_CACHE_TTL_S` at `:221` and `_THUMB_CACHE_MAX` at `:222` | Open, Worth exploring. Worker `5e659542` holds this candidate in round 39 | Original row kept above; landed in round 40 as `510d215`: one purpose table at `annotator/twitch_source.py:82` holds four rows (api, live-media, vod-media, thumb), each with its hosts, its cache policy and its refusal sentence, and `annotator/twitch_vod_source.py` declares no host and no cache of its own. The new `tests/test_twitch_fetch.py` holds 24 cases and two of them open a real loopback listener and count requests: 0 before the row names it, 1 after. `test_twitch_source` 17, `test_twitch_vod_source` 32 and `test_vod_import` 32 cases all OK |
+| C8, `_playlist` twice | `def _playlist(text)` is defined twice, at `annotator/twitch_source.py:100` and `:148`, with byte-identical bodies, and the second definition rebinds the name | Open, Speculative | Original row kept above; landed in round 40 as `f9cd68a`: the module keeps the first definition and deletes the paste. Blame showed `f6901185` created the module's copy and `40c47437` pasted a second one, so the paste won the name and a repair to the original changed nothing at run time. Measured: top-level function names 13 and `_playlist` 1, duplicate names []; `tests/test_twitch_source.py` 185 -> 311 lines and 17 -> 19 cases, one of them an AST case; pasting the second copy back reproduces its historical sha1 `5f35ac6a` and fails exactly that case. Live check: 3 fetches, 410 bytes over the socket, 0 sockets to Twitch |
 
 ### The commits so far
 
@@ -3413,7 +3413,7 @@ own instance on a free port and none of them touches that process. Two Strong ca
 round 34 card 11, the conflict sentence parsed back from the operations text (ground
 `annotator/operations.py:569-552`, `annotator/unified_server.py:1882` and
 `function bfConflictId(text)` at `annotator/ops.js:482`), waits for `16e50f45` because it needs the
-same file; and round 36 C8, `def _playlist(text)` defined twice at `annotator/twitch_source.py:80` and
+same file; and round 36 C8, `def _playlist(text)` defined twice at `annotator/twitch_source.py:100` and
 `:148`, waits for `5e659542`.
 
 ## Round 40 · the audit harness, the app and the board (2026-10-10)
@@ -4147,7 +4147,7 @@ new `src/tls_trust.py` holds one chain: `CA_BUNDLES` names
 `/etc/ssl/certs/ca-certificates.crt`, `/etc/pki/tls/certs/ca-bundle.crt` and `/etc/ssl/cert.pem`
 with the systems each path belongs to; `def bundle_path(paths=CA_BUNDLES)` answers the first path
 that exists; `def trusted_context()` loads that bundle only when the store answers 0 anchors, and
-it never turns verification off. Four sites now call it: `annotator/twitch_source.py:183`,
+it never turns verification off. Four sites now call it: `annotator/twitch_source.py:203`,
 `annotator/twitch_vod_source.py:137` and `:164`, and `scripts/fetch_weights.py:56`, which also
 gained the `sys.path` line an entry point needs because `__main__` puts `scripts/` first.
 
@@ -4279,7 +4279,7 @@ without one.
 | The reconnect delay has two owners | Worth | `RECONNECT_MS = 2000` at `annotator/clock-sync.js:49` beside `retry: 2000` at `annotator/shot_clock.py:214`; no case compares them |
 | The shot distance has two values | Worth | `SHOT_DISP_MM` is 300.0 at `src/scan_events.py:46` and 150.0 at `src/info_complete_scan.py:43` |
 | Two owners of the pocket name | Worth | Kept from round 44: `src/event_gates.py:183 def _pocket_name(value)` and `annotator/unified_server.py:1590 def _pocket_name(event)` agree over the 179 pot rows of `out/**/*events*.json` (0 differences), so the seam is unproved |
-| A released-at field nothing reads | Note | `annotator/twitch_vod_source.py:508 _released_at` is written and never read |
+| A released-at field nothing reads | Note | `annotator/twitch_vod_source.py:510 _released_at` is written and never read |
 | A docstring counts 13 state keys, the answer holds 16 | Note | The example at `annotator/twitch_vod_source.py:406-409` lists 13 keys, and the answer at `:517-523` holds 16: `start_s`, `fps` and `opened` are absent from the example |
 | The fixture anchors moved | Note | `docs/impeccable-ledger.md:576` says the state file anchors its three live matches at `2026-10-03T05:23Z`, and the regenerated file anchors them on 2026-10-10 |
 
@@ -4287,11 +4287,11 @@ The walk also measured three candidates and refused them, so a later round does 
 re-open them: the vendored `src/reid/osnet.py` 128-d against 512-d seam (all 1036 stored vectors
 are 128-d, and `src/person_identity.py:440-444` refuses a mismatch); the `annotator/public_board.py`
 and `annotator/board.js` vocabulary seam (guarded by `tests/test_board.js:379-462`); and the
-`annotator/twitch_vod_source.py:501 set()` pass-through (no live consumer).
+`annotator/twitch_vod_source.py:503 set()` pass-through (no live consumer).
 
 The walk read the tree at `1306bfb`, and the Table above states the numbers measured at
 `18159e9`. Citations moved between the two commits: `3c9f593` removed five lines above
-`annotator/twitch_vod_source.py:513`, and `6fcee26` added thirty-nine above
+`annotator/twitch_vod_source.py:515`, and `6fcee26` added thirty-nine above
 `annotator/vision-stage.js:891`, so the duration formatter there is now `:930`. `18159e9` moved the
 two job sentences of the round-44 row: the ffmpeg sentence now sits at
 `annotator/vod_import.py:550` and the scan sentence at `:854`.
@@ -8088,7 +8088,7 @@ three console suites, forty of the 43 files of `docs/`, `viz/`, `src/reid/` and 
 ### Strong 1 · the fallback frame rate had a name and no readers
 
 Ground: `tools/playfield_harness.py:31 FPS_FALLBACK = 30.0` was the only named home, while the same fallback
-stood inline in sixteen modules (`annotator/live_processing.py:539`, `annotator/twitch_vod_source.py:461`,
+stood inline in sixteen modules (`annotator/live_processing.py:539`, `annotator/twitch_vod_source.py:463`,
 ten files under `src/` with `or 30.0`), and no test named the constant
 (`tests/test_playfield_harness.py`'s two scans looked for `TABLE_MEASURE_EVERY_N` only). Repair: the new
 `src/frame_rate.py` owns `FPS_FALLBACK = 30.0` and holds no import at all, so no cycle is possible — the
@@ -8644,7 +8644,7 @@ the 43 files of `docs/` only through a grep or a short window.
 
 Ground: seven code sites in four shipped modules held the login shape with three different sentences and no
 case read the shape — `annotator/live_processing.py:350`, `annotator/operations.py:193` and `:380`,
-`annotator/twitch_source.py:271`, `annotator/twitch_vod_source.py:232`, `annotator/vod_import.py:84` and the
+`annotator/twitch_source.py:291`, `annotator/twitch_vod_source.py:234`, `annotator/vod_import.py:84` and the
 console's own copy at `annotator/ops.js:1289`. Repair: `annotator/twitch_source.py:35
 TWITCH_LOGIN = r'[a-z0-9_]{1,25}'` is the one home, every python site reads the name (the URL site keeps its
 bytes and reads it with `re.IGNORECASE | re.ASCII`), and the console keeps its own copy because a javascript
@@ -9583,11 +9583,11 @@ a case after that report; the value the Lead committed is the measured one.
 
 ### Worth 1, Worth 2 and Worth 3
 
-Ground: the VOD resolver copied four rules of the live resolver (`annotator/twitch_vod_source.py:317-361`
-against `annotator/twitch_source.py:208-320`); `PRODUCT.md:62` listed two of the three javascript suites the
+Ground: the VOD resolver copied four rules of the live resolver (`annotator/twitch_vod_source.py:319-363`
+against `annotator/twitch_source.py:228-340`); `PRODUCT.md:62` listed two of the three javascript suites the
 runner runs; and the name-equality rule was hand-written eleven times beside its owner in
 `annotator/operations.py:174-169`. Repair: the live resolver owns every shared rule (`HLS_TAG` at
-`annotator/twitch_source.py:211`, `VARIANT_CEILING = 720` at `:224`, `hls_lines`, `chosen_variant`), the VOD
+`annotator/twitch_source.py:231`, `VARIANT_CEILING = 720` at `:224`, `hls_lines`, `chosen_variant`), the VOD
 path reads the names, and the sites fell from six to two; one rule differs on purpose and the source says why
 — the live resolver asks the master for the frame rate and reads none of it, so `variant_attrs` returns `fps`,
 while the VOD path reads it into its panel — and a case names both sides.
@@ -10486,13 +10486,13 @@ Bite of writer WA: `491482e9f54a -> 3d8adb84fa45 -> 491482e9f54a`, red with the 
 and waiter`. Bite of the Lead on the pairing table: `65e1ec06335b -> 4a4f3d1bb77c` and a second run with the
 literal 120, `Ran 12 tests in 1.286s` `FAILED (failures=1)`, restore `65e1ec06335b` OK.
 
-**Strong 2 - the usher query vocabulary (writer WB).** One fact in two copies: `annotator/twitch_source.py:354-357`
-and `annotator/twitch_vod_source.py:365-367` each wrote the query keys of the master request, and the copies
+**Strong 2 - the usher query vocabulary (writer WB).** One fact in two copies: `annotator/twitch_source.py:374-377`
+and `annotator/twitch_vod_source.py:367-369` each wrote the query keys of the master request, and the copies
 already differed by the key `allow_audio_only`. `annotator/twitch_vod_source.py:57` claimed that this path adds
 no pattern of its own.
 
-Repair: `annotator/twitch_source.py:231 MASTER_QUERY` holds the four shared keys as one mapping. `resolve_twitch`
-reads it at `annotator/twitch_source.py:372`; `resolve_vod` imports it at `annotator/twitch_vod_source.py:368` and
+Repair: `annotator/twitch_source.py:251 MASTER_QUERY` holds the four shared keys as one mapping. `resolve_twitch`
+reads it at `annotator/twitch_source.py:392`; `resolve_vod` imports it at `annotator/twitch_vod_source.py:370` and
 adds only `nauth` and `nauthsig`. The doctrine comment names `live.MASTER_QUERY` at
 `annotator/twitch_vod_source.py:62-63`. The new case
 `test_both_resolvers_build_the_master_query_from_the_live_mapping` asserts both master URLs against the mapping.
