@@ -10751,3 +10751,13 @@ The restore returned `01ef15a4ad8474` and the module answered OK.  The rule coun
 round 85.  `test_suite_inventory` prints an unrelated `ResourceWarning` from `src/pid_identity.py:21`.
 `scripts/pool-test.sh python` takes one module name only; it ignores a second name.  A writer `cp`
 backup can be overwritten by another writer that uses the same file name; give each writer its own.
+
+**Suites (round 87).**  `./scripts/pool-test.sh python`: the first run read
+`Ran 2501 tests in 322.240s` with one failure.  `tests/test_ball_scale.py` recorded
+`src/tiny_ball_net.py:RESOLUTIONS` at line 70, and the round-87 insertion moved that table to line 73,
+so the recorded line had to follow (commit `7d2e85f`).  The second run read
+`Ran 2501 tests in 284.582s` with one error of `tempfile` cleanup:
+`OSError: [Errno 39] Directory not empty: '/tmp/tmpbkkunv51'`.  `test_vod_import` answers `OK` alone,
+so the error is a property of that run.  Node suites: 232 pass, 23 pass, 114 passed, 0 failures.  The
+count rose from 2493 to 2501: one case from WI, four from WJ, three from WK.  A recorded line number
+is a citation, and a table of recorded lines needs the same repair as a `file:N` citation.
