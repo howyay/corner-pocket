@@ -123,7 +123,7 @@ The scan frame wins by 3×, so the claims really are scan-frame millimetres.
 | `src/event_gates.py:63 POCKETS_MM` + `nearest_pocket` (pocket radii, `pot_pocket_r_mm=100`) | canonical mm, mapped by A wherever a pixel is involved | **right** |
 | `src/eval_events.py` claim projections (`geometry_gap_px`, `from/to_in_cloth_px`, `census_geometry_gap_px`) | **B was needed; A was used** | **wrong — fixed** |
 | `src/info_complete_scan.py:207-212` (writes the claims' mm) | its own detector median | self-consistent; see §4 |
-| `src/sam3_ball_cache.py:101,176`, `src/scan_events.py:225`, `src/timing_verify.py:778`, `src/tiny_ball_net.py:45`, `annotator/unified_server.py:476` | B, for mask/quads/detector inputs | consistent with the claim frame; none of them claims to report physical mm |
+| `src/sam3_ball_cache.py:103,176`, `src/scan_events.py:225`, `src/timing_verify.py:778`, `src/tiny_ball_net.py:45`, `annotator/unified_server.py:476` | B, for mask/quads/detector inputs | consistent with the claim frame; none of them claims to report physical mm |
 
 ### The consumer fix (additive, no data renamed)
 

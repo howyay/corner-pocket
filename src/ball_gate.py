@@ -34,14 +34,14 @@ The upper area cap, and the disagreement
     caps"):
 
     * SAM3 sees the source frame, not the canonical frame.  ``extract_frame``
-      reads one frame and never resizes it (``src/pipeline.py:55-58``).  The
-      caller passes that same frame to SAM3 (``src/pipeline.py:253``,
-      ``src/pipeline.py:267-268``).  The warp to the canonical 1270x2540 mm
-      frame happens later and uses a different array (``src/pipeline.py:207``).
+      reads one frame and never resizes it (``src/pipeline.py:57-60``).  The
+      caller passes that same frame to SAM3 (``src/pipeline.py:255``,
+      ``src/pipeline.py:269-270``).  The warp to the canonical 1270x2540 mm
+      frame happens later and uses a different array (``src/pipeline.py:209``).
       ``src/scan_events.py:122-127`` and ``src/sam3_ball_cache.py:152-154`` read
       their frames the same way, with no resize.
     * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:60``,
-      ``src/motion_scan.py:77``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
+      ``src/motion_scan.py:80``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
       three citations named the training pair, the geometry banner and an
       unrelated import comment, so they landed one to three lines above the
       fact.  They name the line that holds the fact now.  Both caps are
@@ -64,8 +64,8 @@ The classical cap, a different decision
     :data:`CLASSICAL_BALL_MAX_AREA_960X540_PX` is 4200.  It is *not* part of the
     SAM3 gate.  It caps the classical colour-blob detector
     (``src/ball_detect.py:28-34``) on a 960x540 resize
-    (``src/scan_events.py:76``, inside ``classical_scan`` at
-    ``src/scan_events.py:62``).  That detector reports a contour area, not a
+    (``src/scan_events.py:78``, inside ``classical_scan`` at
+    ``src/scan_events.py:64``).  That detector reports a contour area, not a
     SAM3 mask area, and its lower cap is 14.0 px, not 60.  It therefore keeps
     its own name here.
 
