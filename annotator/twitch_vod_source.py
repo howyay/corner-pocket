@@ -59,6 +59,8 @@ from src.tls_trust import trusted_context
 #: line drop and the header check), ``live.STREAM_INF``, ``live.variant_attrs`` (the
 #: BANDWIDTH and RESOLUTION patterns), ``live.VARIANT_CEILING`` (the default of the
 #: ``max_height`` keyword below) and ``live.chosen_variant`` (the choice rule).
+#: ``live.MASTER_QUERY`` holds the query keys of the master request, so this path writes no
+#: query key of its own beyond its two auth keys ``nauth`` and ``nauthsig``.
 #:
 #: One rule must differ, and ``tests/test_twitch_vod_source.py`` holds the case that names
 #: both sides: the live resolver asks the master for the frame rate
@@ -362,9 +364,8 @@ def resolve_vod(vod_id, *, max_height=live.VARIANT_CEILING, timeout=15):
     is live: a VOD playlist is ``EVENT`` or ``VOD`` typed, not ``None``.
     """
     token = vod_token(vod_id, timeout=timeout)
-    master_url = 'https://usher.ttvnw.net/vod/%s.m3u8?%s' % (token['vod_id'], urlencode({
-        'nauth': token['value'], 'nauthsig': token['signature'], 'allow_source': 'true',
-        'playlist_include_framerate': 'true', 'supported_codecs': 'avc1'}))
+    master_url = 'https://usher.ttvnw.net/vod/%s.m3u8?%s' % (token['vod_id'], urlencode(dict(
+        live.MASTER_QUERY, nauth=token['value'], nauthsig=token['signature'])))
     master = _raw(master_url, timeout=timeout)
     if master['transport'] is not None:
         raise TwitchVodError('Twitch VOD playlist request failed; check network and TLS connectivity')

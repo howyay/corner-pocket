@@ -13,6 +13,7 @@ import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qsl, urlsplit
 
 from annotator import twitch_source as live
 from annotator import twitch_vod_source as vod
@@ -527,8 +528,8 @@ class SharedRuleTests(unittest.TestCase):
     #: ``live.chosen_variant(...)``, so the plain name is not a mark; the list records what
     #: this module must not define again.
     SHARED_NAMES = ('HLS_TAG', 'STREAM_INF', 'BANDWIDTH_RE', 'RESOLUTION_RE',
-                    'FRAME_RATE_RE', 'VARIANT_CEILING', 'hls_lines', 'variant_attrs',
-                    'chosen_variant')
+                    'FRAME_RATE_RE', 'VARIANT_CEILING', 'MASTER_QUERY', 'hls_lines',
+                    'variant_attrs', 'chosen_variant')
 
     def rule_marks(self, module):
         """The distinctive text of the shared rules: one second copy writes each mark.
@@ -590,6 +591,37 @@ class SharedRuleTests(unittest.TestCase):
         self.assertEqual(chosen['media_url'], 'https://d2nvs31859zcd8.cloudfront.net/720.m3u8')
         self.assertEqual(inspect.signature(vod.resolve_vod).parameters['max_height'].default,
                          live.VARIANT_CEILING)
+
+    def test_both_resolvers_build_the_master_query_from_the_live_mapping(self):
+        """One mapping, two request builders: each master URL carries the shared keys.
+
+        The case fails when either builder writes its own copy of a shared key.  It names
+        the keys each side adds: the live path adds ``sig``, ``token`` and ``platform``,
+        and the VOD path adds ``nauth`` and ``nauthsig``.  The VOD path carries
+        ``allow_audio_only`` as well, because both paths keep one usher vocabulary.
+        """
+        token = json.dumps({'data': {'streamPlaybackAccessToken': {
+            'signature': 'live-signature', 'value': 'live-token'}}})
+        master = ('#EXTM3U\n'
+                  '#EXT-X-STREAM-INF:BANDWIDTH=3161420,RESOLUTION=1280x720,FRAME-RATE=30.000\n'
+                  'https://video-weaver.example.hls.ttvnw.net/live/720.m3u8\n')
+        media = '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n'
+        with patch.object(live, '_request', side_effect=[token, master, media]) as request:
+            live.resolve_twitch('https://www.twitch.tv/examplechannel')
+        network = Network()
+        with patch('annotator.twitch_vod_source._raw', network):
+            vod.resolve_vod('1000000001')
+        urls = {'live': request.call_args_list[1].args[0],
+                'vod': [url for url, payload in network.calls if payload is None][0]}
+        own = {'live': {'sig', 'token', 'platform'}, 'vod': {'nauth', 'nauthsig'}}
+        for side, url in urls.items():
+            with self.subTest(side=side):
+                query = dict(parse_qsl(urlsplit(url).query))
+                shared = {key: query.get(key) for key in live.MASTER_QUERY}
+                self.assertEqual(shared, live.MASTER_QUERY,
+                                 'the %s master query drifts from live.MASTER_QUERY' % side)
+                self.assertEqual(sorted(set(query) - set(live.MASTER_QUERY)), sorted(own[side]),
+                                 'the %s master query adds keys of its own' % side)
 
 
 if __name__ == '__main__':

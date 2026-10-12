@@ -218,6 +218,23 @@ FRAME_RATE_RE = re.compile(r'(?:[:,])FRAME-RATE=([\d.]+)(?:,|$)')
 #: one".  ``annotator/twitch_vod_source.resolve_vod`` reads this name as its own default.
 VARIANT_CEILING = 720
 
+#: The one home of the usher request vocabulary.  Both resolvers put these keys in the query
+#: of their master URL, so one edit here changes both requests.  Each resolver adds its own
+#: keys: the live path adds ``sig``, ``token`` and ``platform``, and the VOD path adds
+#: ``nauth`` and ``nauthsig``.
+#:
+#: ``allow_audio_only`` sits here because both paths keep the whole usher vocabulary: the
+#: yt-dlp client builds one query in its ``_extract_twitch_m3u8_formats`` and sends it to
+#: both ``usher.ttvnw.net/vod/<id>.m3u8`` and ``usher.ttvnw.net/api/channel/hls/<login>.m3u8``.
+#: A master row without a resolution is no variant to ``variant_attrs``, so this key cannot
+#: change the chosen VOD variant.
+MASTER_QUERY = {
+    'allow_source': 'true',
+    'allow_audio_only': 'false',
+    'playlist_include_framerate': 'true',
+    'supported_codecs': 'avc1',
+}
+
 
 def hls_lines(text, error=TwitchSourceError):
     """The lines of an HLS playlist that carry a tag or a URL.
@@ -351,11 +368,8 @@ def resolve_twitch(canonical_url):
             raise ValueError
     except (ValueError, KeyError, TypeError, AttributeError):
         raise TwitchSourceError('Twitch returned an invalid playback token response') from None
-    master = 'https://usher.ttvnw.net/api/channel/hls/%s.m3u8?%s' % (channel, urlencode({
-        'sig': signature, 'token': value, 'platform': 'web',
-        'allow_source': 'true', 'allow_audio_only': 'false',
-        'playlist_include_framerate': 'true', 'supported_codecs': 'avc1',
-    }))
+    master = 'https://usher.ttvnw.net/api/channel/hls/%s.m3u8?%s' % (channel, urlencode(dict(
+        MASTER_QUERY, sig=signature, token=value, platform='web')))
     lines = _playlist(_request(master))
     variants = []
     for index, line in enumerate(lines[:-1]):
