@@ -406,7 +406,7 @@ still held 59 clusters and the same binding, and the cluster row held 8 face sam
 **The one defect the run found.** After a merge the panel's selection still pointed at the
 cluster that the merge had deleted. The next Save therefore answered 404 and the name
 stayed empty. `linkTrack` now moves the pick to the cluster that survived, which carries no
-player yet (`annotator/app.js:1312`).
+player yet (`annotator/app.js:1317`).
 
 **Tests.** `tests/test_person_identity.py` holds four link tests: the merge, the idempotent
 second link, the bound-source refusal, and a merge that survives a reload.

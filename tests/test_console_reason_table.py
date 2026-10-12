@@ -89,7 +89,7 @@ def console_table(word, source=None, path=CONSOLE):
         end += 1
     if depth:
         raise AssertionError(f'the table at {word!r} in {path} never closes')
-    # A row key may be a computed one ([QUAD_INVALID_GEOMETRY]:, annotator/app.js:1128), so each
+    # A row key may be a computed one ([QUAD_INVALID_GEOMETRY]:, annotator/app.js:1133), so each
     # bracketed name is resolved against the string constants of the same module.
     names = dict(CONSTANT.findall(text))
     rows = {}

@@ -121,7 +121,7 @@ The redesign therefore:
 1. **Deletes** `app.js`'s inner nav (`app.html:42-46`) and the `app.css:4-5` `[data-embedded] nav` rule, plus `visionNavigation()` and the dead `#vision-host-host` in `ops.js`.
 2. **Adds a thin adapter** (`vision-stage`): a small module that renders the cues rail, layer chips and inspector from state, and calls the existing engine entry points (`activate('timeline')` semantics → `seek(frame)`, `freeze()`, `setOverlay(kind, on)`, `labelBall(k)`, `setSeed(track, role)`, `saveVerdict(...)`). The adapter owns no frame state and no fetch; it reads the engine's state and re-renders on change.
 3. **Extends two engine behaviours**: an explicit `loading` state per overlay request (for the skeleton), and a per-artifact save receipt (`{kind, id, value, at}`) returned by the existing save paths (`POST /api/vod30/annotate`, `POST /api/balls/<set>/label`, `POST /api/vod30/anchors`, `POST /api/vod30/seeds`) so the inspector can print it.
-4. **Retires** the duplicate overlay painter: live overlays (`ops.js:14`, green canvas rects from `X-Live-Metadata`) and frozen overlays (`app.js:271-295`, brass/red SVG from `/api/unified`) become one renderer fed by whichever source is active.
+4. **Retires** the duplicate overlay painter: live overlays (`ops.js:14`, green canvas rects from `X-Live-Metadata`) and frozen overlays (`app.js:276-300`, brass/red SVG from `/api/unified`) become one renderer fed by whichever source is active.
 
 One engine, one stage, one coordinate system, one status line.
 
