@@ -299,7 +299,7 @@ Arrays of `double precision` rather than `real` (changed in `0002`, measured): `
 (float4) returns the 4-dp values the files hold as e.g. `0.9120000004768372`, so the
 file → database → file round trip that §7.3 verifies could not be exact; `double precision`
 returns every stored value unchanged.  Not `pgvector` either: the matching runs in NumPy
-against a gallery of a few dozen vectors (`src/face_id.py:209-252`); nothing queries by
+against a gallery of a few dozen vectors (`src/face_id.py:213-252`); nothing queries by
 vector distance in SQL.  If a later feature needs nearest-neighbour search in the database,
 `pgvector` is a separate decision (it is not in the official image).
 

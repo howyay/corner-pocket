@@ -1155,7 +1155,7 @@ Every finding gets, at the viewport where it was measured (1280×900 is now a fi
 a before/after pair under `out/console-after/`, a row in `docs/impeccable-ledger.md`, and — where a
 number decided it — the measured number. Suites stay green: `node --test tests/test_ops.js`,
 `node tests/test_app_timeline.js`, `node tests/test_board.js`, and the python suite. Nothing ships with
-a restart: static assets are `no-store` and read from disk per request (`annotator/unified_server.py:2162`).
+a restart: static assets are `no-store` and read from disk per request (`annotator/unified_server.py:2172`).
 
 ## 15 Round 4 — the rater's thirty-nine findings, and what this round takes
 
@@ -1262,7 +1262,7 @@ and states how many rows it holds.
 `docs/impeccable-ledger.md` §"Round 4", the measured number where a number decided it, and green
 suites (`node --test tests/test_ops.js`, `node tests/test_app_timeline.js`, `node tests/test_board.js`,
 the python suite). Nothing ships with a restart — static assets are `no-store` and read from disk per
-request (`annotator/unified_server.py:2162`). The live served-byte check is **blocked** while the console
+request (`annotator/unified_server.py:2172`). The live served-byte check is **blocked** while the console
 cannot start: at 14:12 PDT on 2026-10-03 `pool-workbench.service` stopped and `/mnt/ext4dat` (the
 Postgres volume's disk) was no longer mounted, so `pool-postgres.service` fails with podman exit 125
 (`mkdir /mnt/ext4dat/podman: permission denied`). See `.pm/PROJECT.md`, "Outage".
@@ -3008,7 +3008,7 @@ now, and the number that proves it.
 | c9 | Stop rewriting `annotator/app.js` to reach inside it | The suite rewrote the source with `source.replace(/\}\)\(\);\s*$/, …)` and injected 69 internal names | The suite runs the source in a sandbox and takes the handle that `attach()` returns | `grep -c "source.replace"` = 0 |
 | c10 | One registry for an operator action | The client, `annotator/operations.py` and `annotator/unified_server.py` each held their own list of write actions | `OPERATOR_ACTIONS` holds 21 rows, one per write URL, and `GET /api/actions` serves the same table to the client | All 7 client POST paths have exactly one row; no orphan rows; 30 of 34 operation names are called by the client or the tests |
 | c11 | Hand the clock over instead of forging a `StorageEvent` | `annotator/clock-sync.js:442` forged a `StorageEvent`, because `annotator/ops.js` is one IIFE that exports nothing | `annotator/ops.js` publishes `window.OpsClock.receive(value)` and keeps its real `storage` listener | Forged events 1 → 0. A perturbation that puts the forged event back fails 2 tests |
-| c12 | Fold the store pass-through and the path it leaks | `_StoreOperations` forwarded calls from `annotator/unified_server.py:319` to `annotator/operations.py:134` | `Store.place(kind, key=None)` is in the protocol and in both backings; `Backend.operations()` returns the store | Every `type(...).__name__ ==` test is gone from the server. `tests/test_unified_server.py` 76 OK, `tests/test_board_api.py` 21 OK (2 skipped), `tests/test_vod_import.py` 32 OK |
+| c12 | Fold the store pass-through and the path it leaks | `_StoreOperations` forwarded calls from `annotator/unified_server.py:328` to `annotator/operations.py:134` | `Store.place(kind, key=None)` is in the protocol and in both backings; `Backend.operations()` returns the store | Every `type(...).__name__ ==` test is gone from the server. `tests/test_unified_server.py` 76 OK, `tests/test_board_api.py` 21 OK (2 skipped), `tests/test_vod_import.py` 32 OK |
 
 ### The five commits
 
@@ -3640,7 +3640,7 @@ console's answer with no test to catch it.
 
 * `annotator/refusals.py` (new, 99 lines) holds `REFUSALS` with 48 `Refusal(code, zh)` rows, plus
   `def of(sentence)` and `def identity_fields(sentence)`, which answers `{code, zh}` or `{}`.
-* `annotator/unified_server.py:228 def refusal_body(exc, fields=None)` builds the refusal body once:
+* `annotator/unified_server.py:237 def refusal_body(exc, fields=None)` builds the refusal body once:
   the operator sentence, then the declared extra fields, then the identity. Both refusal sites call
   it (`:2859` for `APIError`, `:2862` for `ValueError`); the third body builder at `:2866` is
   untouched.
@@ -3876,7 +3876,7 @@ the link for real and fails loudly, and the census is back at 26.
 
 ### The proof of the refusal rule starts every subject the tree holds
 
-This is the round's walk finding, and it is the smallest of the four. `src/store.py:156
+This is the round's walk finding, and it is the smallest of the four. `src/store.py:157
 def refuse_file_writes_under_postgres(tool: str) -> None:` owns one rule: a tool that writes
 user-data files directly must refuse to start while `POOL_DATABASE_URL` is set. Four modules call
 it - `src/merge_sets.py:15`, `src/pid_anchor_ui.py:32`, `src/pid_seed_ui.py:32` and, since the
@@ -4761,7 +4761,7 @@ and `AssertionError: APIError not raised`; a changed owner failed with
 `'label must be A, B, ignore, a guest name up to 61 characters, or null' != 'label must be A, B,
 ignore, a guest name up to 60 characters, or null'`.
 
-Limit. The sentence at `annotator/unified_server.py:2286` stays one literal, because
+Limit. The sentence at `annotator/unified_server.py:2296` stays one literal, because
 `tests/test_refusal_identity.py` reads the sentence of a raise site and requires a plain string
 constant. Two guards now hold that literal on both sides, so a change to the owner and a change to
 the sentence each fail a case.
@@ -4881,7 +4881,7 @@ The full discovery run on the settled tree at `45b5ec8` answered `Ran 1859 tests
 | --- | --- | --- |
 | The clock key has two spellings | Worth | `CLOCK_KEY = 'cp-ops-clock'` is defined at `annotator/clock-sync.js:44` and exported at `:491`, and nothing reads the export, while `annotator/ops.js:861`, `:881`, `:1415` and `tests/test_ops.js:1125`, `:1129`, `:1162` spell the literal |
 | The document stamp protocol has two owners | Worth | `src/sam3_artifact.py:70-99` and `src/events_document.py:99-132` both define `VERSION`, `STAMP`, `REBUILD_CALIBRATED`, `PRODUCERS`, `STAMPED`, `MIXED` and `UNSTAMPED`, and only `ROW_KEYS` differs by design |
-| The guest-name sentence stays one literal | Note | `annotator/unified_server.py:2286` holds the sentence of the raise, and `annotator/refusals.py:55` builds the same text from the owner; two guards hold the two sides together |
+| The guest-name sentence stays one literal | Note | `annotator/unified_server.py:2296` holds the sentence of the raise, and `annotator/refusals.py:55` builds the same text from the owner; two guards hold the two sides together |
 | `T_RANGE` covers two readers of `t` | Note | `annotator/unified_server.py:614` and `:2018` read the pair, and `_rebuild` holds `timeout=1800` for another purpose; the walk names the difference |
 | The console label for `Prospect` | Note | `annotator/ops.js:9` answers `Prospect:['Newcomer','新会员']`, and `design/corner-pocket/Corner Pocket Ops.dc.html:829` maps it to `Prospect` |
 | The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:824` `_do_guest_promote` sets `'Active'`, while `docs/corner-pocket-functional-inventory.md:134` says Prospect; a product decision |
@@ -4986,7 +4986,7 @@ it, and compares the pair with the pair of the owner. The Lead's two bites remov
 | `tests/dom_stubs.js:11` | its own line, and `}` at `:46` | `tests/dom_stubs.js:28`, `tests/test_app_timeline.js:55` |
 
 The Lead's own scan found the last row, and a scan of the store test found one more:
-`tests/test_store.py:36` cited `src/store.py:156` where the rule stands at `:157`. The three scans
+`tests/test_store.py:36` cited `src/store.py:157` where the rule stands at `:157`. The three scans
 size the job: every tracked file answers 539 citations and 283 bad ones, because old documents cite
 bare names; the comments alone answer 29 citations in 231 files and 2 bad ones; the comments and the
 docstrings together answer 92 citations and 4 bad ones.
@@ -5070,7 +5070,7 @@ console adds 2 cases.
 | A comment that names a symbol is outside the rule | Note | `src/motion_scan.PERSON_SHARE_MAX` was cited in `tests/ball_dense_events.py`; the Lead repaired it by hand |
 | `BALL_AREA_NATIVE = 266.0` has no reader | Note | it stands at `src/motion_scan.py:102`, and its own comment computes 280.55 |
 | `LIMIT 500` stands beside the owner of the retention bound | Note | `src/store_check.py:66` spells the bound that `src/ops_event_log.py:42` owns |
-| The guest-name sentence stays one literal | Note | `annotator/unified_server.py:2286` holds the sentence of the raise, and `annotator/refusals.py:55` builds the same text |
+| The guest-name sentence stays one literal | Note | `annotator/unified_server.py:2296` holds the sentence of the raise, and `annotator/refusals.py:55` builds the same text |
 | `T_RANGE` covers two readers of `t` | Note | `annotator/unified_server.py:614` and `:2018` read the pair, and `_rebuild` holds `timeout=1800` for another purpose |
 | The console label for `Prospect` | Note | `annotator/ops.js:9` answers `Prospect:['Newcomer','新会员']`, and the design file maps it to `Prospect` |
 | The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:824` sets `'Active'`, while the inventory says Prospect |
@@ -5456,7 +5456,7 @@ name `NEW_LABEL_MIN_SCORE` is gone from `src/tiny_ball_net.py`; the live name of
 ### Strong 3 · the audit restated the report's tolerance
 
 `src/ball_fp_audit.py:94 MATCH_TOL_PX = 6.0` sat under the comment "The match tolerance the held-out
-report itself used". The owner is `src/fast_ball_labels.py:57 MATCH_TOL_PX = 6.0`, read by `match_rows`
+report itself used". The owner is `src/fast_ball_labels.py:60 MATCH_TOL_PX = 6.0`, read by `match_rows`
 at `:107` and `agreement` at `:128`, while `tests/test_ball_fp_audit.py:65` pinned the copy to the
 literal. The audit exists to reproduce the report's verdict, so a drift on one side moves the audit's
 "recovered" count away from the report's "true positive" count in silence. The audit imports the owner
@@ -5697,8 +5697,8 @@ Round 52 answered 1945 cases, so this round adds 9: 3 in `tests/test_ball_scale.
 | --- | --- | --- |
 | `reference_quad` holds two bodies, and a third delegates | Worth 3 of the round-51 walk, measured | one dataset and one question answer two ways: `src.sam3_ball_cache.reference_quad(corners_path="out/scan30/corners.json", dataset="nothing-here")` answers `[[459.26, 268.89], [803.75, 315.78], [1023.37, 584.26], [421.81, 560.57]]`, and `src.sam3_frame_audit.reference_quad(dataset="nothing-here", anchors_path="/nonexistent.json")` answers `(None, 'none')`; `def reference_quad` stands at `src/sam3_frame_audit.py:128` |
 | The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files with two spellings (`or 30` twelve times, `or 30.0` eight), and `30.0003` stands at 8 sites |
-| The default dataset name is written five times | Worth 2 of this walk | `git grep -n 'default="vod30"'` answers `src/ball_association_ab.py:84`, `src/enroll_from_tracklet.py:1175`, `src/eval_events.py:1065`, `src/motion_scan.py:2440` and `src/track_before_detect.py:645`, plus two `out/scan30/sam3_results.json` paths at `src/ball_fp_audit.py:72` and `src/tiny_ball_net.py:50` |
-| Five more bodies stand twice in two modules each | Worth 1 of this walk | `common` of `src/motion_scan.py:2438` and `src/track_before_detect.py:643`, `frame_detections` of `src/store.py:389` and `src/store_pg.py:417`, `log_message` and `_send` of `src/pid_anchor_ui.py:139,142` and `src/pid_seed_ui.py:145,148`, and `seeds_get` of `src/store.py:273` and `src/store_pg.py:268` |
+| The default dataset name is written five times | Worth 2 of this walk | `git grep -n 'default="vod30"'` answers `src/ball_association_ab.py:84`, `src/enroll_from_tracklet.py:1175`, `src/eval_events.py:1065`, `src/motion_scan.py:2440` and `src/track_before_detect.py:645`, plus two `out/scan30/sam3_results.json` paths at `src/ball_fp_audit.py:72` and `src/tiny_ball_net.py:53` |
+| Five more bodies stand twice in two modules each | Worth 1 of this walk | `common` of `src/motion_scan.py:2441` and `src/track_before_detect.py:643`, `frame_detections` of `src/store.py:393` and `src/store_pg.py:417`, `log_message` and `_send` of `src/pid_anchor_ui.py:139,142` and `src/pid_seed_ui.py:145,148`, and `seeds_get` of `src/store.py:273` and `src/store_pg.py:268` |
 | Three test literals restate the native pair | Note 1 of this walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57 NATIVE = (1280, 720)` and `tests/test_app_quad_contract.py:43 REF_WIDTH, REF_HEIGHT = 1280, 720` |
 | The duplicate-body walk reads module-level `def`s of `src/*.py` only | limit of round 51, still open | Strong 2 of this round lived inside it: the walk reaches 780 of the 1171 `def`s, and the docstring of `module_bodies` says that a nested `def` and a method do not count there |
 | The citation rule proves a cited line holds text | limit of round 51 | it never proves that the line holds the named fact, and this round repaired one citation by hand, `tests/test_tiny_ball_net.py:284 -> src/tiny_ball_net.py:625` |
@@ -6001,7 +6001,7 @@ in this record, because the discovery of a tree counts the cases that a module b
 
 | Row | Kind | Ground |
 | --- | --- | --- |
-| The timestamp function body stands three times | found by the widened walk this round | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now` and `annotator/vod_import.py:114 now_iso` hold one body, `return datetime.now(timezone.utc).isoformat()`, at 23 call sites; the walk records the triple under the digest `7e1173f55016fa90f33df74173559c5f1c53c334` and changes no file |
+| The timestamp function body stands three times | found by the widened walk this round | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now` and `annotator/vod_import.py:114 now_iso` hold one body, `return datetime.now(timezone.utc).isoformat()`, at 23 call sites; the walk records the triple under the digest `7e1173f55016fa90f33df74173559c5f1c53c334` and changes no file |
 | Two statistics bodies stay apart on purpose | found by the widened walk this round | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats` answer the same six numbers; round 51 wrote both files outside its scope, so the walk records the pair under the digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
 | The note bound stands a fifth time in the schema | limit of this round | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)`, and no guard reads that copy |
 | The duplicate-body walk reads module-level `def`s only | limit of this round | the bite of writer K proves it: a five-statement method body left the walk green |
@@ -6145,7 +6145,7 @@ repair.
 `Worth E` is the atomic JSON document write, which stands in five modules as a nested `def`:
 `src/store.py:180 def _write(path: Path, data) -> None:`, `src/enroll_from_tracklet.py:621 def
 _write_json(path, payload) -> None:`, `annotator/shot_clock.py:254 def _save(self, state):`,
-`annotator/unified_server.py:307 def atomic_save(path, data):` and `annotator/vod_import.py:197 def
+`annotator/unified_server.py:316 def atomic_save(path, data):` and `annotator/vod_import.py:197 def
 _atomic_json(path, document):`. The owner exists: `src/atomic_write.py` holds `write_atomic` (`:57`) and
 four modules call it already (`src/face_id.py:52`, `src/person_identity.py:68`, `src/store_export.py:27`,
 `src/enroll_from_tracklet.py:107` and `src/events_document.py:90`), and `src/store_files.py:90 def
@@ -6200,7 +6200,7 @@ Round 55 answered 1990 cases and this round answers 2015. The 25 named additions
 
 | Row | Kind | Ground |
 | --- | --- | --- |
-| The atomic JSON write stands as a nested `def` in five modules | Worth E of this walk, held for round 57 | `src/store.py:180`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:307` and `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule |
+| The atomic JSON write stands as a nested `def` in five modules | Worth E of this walk, held for round 57 | `src/store.py:180`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:316` and `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule |
 | The cache-busting token of one asset stands five times on one line | Worth F of this walk, held for round 57 | `annotator/ops.html:2` holds `?v=vision-stage-52` twice, `-64` once and `-68` twice, and `tests/test_ops.js:4676` accepts any number |
 | The two coverage numbers stand as prose and as test literals | found by Strong A of this walk | `src/eval_events.py:391`, `src/event_gates.py:114`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:200` and `tests/test_calib_mapping_audit.py:191` |
 | The verdict line of a walk can disagree with its own sections | limit of this round | the round-56 walk answered `3 Strong` and wrote four Strong sections |
@@ -6209,7 +6209,7 @@ Round 55 answered 1990 cases and this round answers 2015. The 25 named additions
 | The store walk is pinned to the wording of one revision | limit of this round | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
 | The store walk cannot see an edit inside the owner | limit of this round | measured by the negative bite of writer L; only the call-site case covers `src/store_rules.py` |
 | The full suite answers a different skip count than one module alone | limit of this round | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit; the one-case difference has no explanation yet |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now` and `annotator/vod_import.py:114 now_iso` hold one body at 23 call sites; the walk records the triple under the digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now` and `annotator/vod_import.py:114 now_iso` hold one body at 23 call sites; the walk records the triple under the digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats` answer the same six numbers, recorded under the digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)`, and no guard reads that copy |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | the walk reaches 780 of the 1171 `def`s, and the bite of writer K in round 55 proves it |
@@ -6429,7 +6429,7 @@ about a moved line is measured at HEAD, never in the writer's own tree.
 
 | Row | Kind | Ground |
 | --- | --- | --- |
-| The atomic JSON write stands as a nested `def` in five modules | Worth E of the round-56 walk, held for round 58 | `src/store.py:180`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:307`, `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule; the brief is ready at `/tmp/dshsess/brief_r57_writerE.md` |
+| The atomic JSON write stands as a nested `def` in five modules | Worth E of the round-56 walk, held for round 58 | `src/store.py:180`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:316`, `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule; the brief is ready at `/tmp/dshsess/brief_r57_writerE.md` |
 | The vocabulary guard reads two vocabularies only | limit of this round | `tests/test_console_vocabulary.py` holds the box labels and the verdict words, and it never reads `annotator/ops.js` |
 | The two node suites have no name entry in the inventory guard | limit of this round | `tests/test_suite_inventory.py` counts the python modules, so a new javascript case is visible in `node` output only |
 | The console modules and their suites are read by grep only | limit of this round | `annotator/app.js`, `ops.js`, `vision-stage.js` (about 570 KB) and the three `.js` suites, with the `.css` files of `annotator/` |
@@ -6441,7 +6441,7 @@ about a moved line is measured at HEAD, never in the writer's own tree.
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
 | The store walk cannot see an edit inside the owner | limit of round 56 | measured by the negative bite of writer L; only the call-site case covers `src/store_rules.py` |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, 23 call sites, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, 23 call sites, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats`, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
@@ -6555,7 +6555,7 @@ shared slot and prints the slot name, the English key and both Chinese values on
 
 ### Strong 5 · the four move-scan argparse options stood twice
 
-Ground: `src/motion_scan.py:2438 def common(p):` and `src/track_before_detect.py:643 def common(p):` held
+Ground: `src/motion_scan.py:2441 def common(p):` and `src/track_before_detect.py:643 def common(p):` held
 one body (`--video`, `--dataset`, `--out-dir`, `--quad`), and the two helpers are nested, so the
 duplicate-body walk never read them.
 
@@ -6687,7 +6687,7 @@ inserted an import in its in-flight tree; the citations that writer I's shift br
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
 | The store walk cannot see an edit inside the owner | limit of round 56 | measured by the negative bite of writer L; only the call-site case covers `src/store_rules.py` |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, 23 call sites, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, 23 call sites, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats`, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
@@ -6923,7 +6923,7 @@ Round 58 answered 2070 cases and this round answers 2090. The twenty named addit
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
 | The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | Two statistics bodies stay apart on purpose | found by the widened walk of round 55 | `src/enroll_from_tracklet.py stats` and `src/eval_faces.py pair_stats`, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
@@ -7067,7 +7067,7 @@ held that list, so a new suite file would never run and a renamed one would fail
 (5 cases in the module now). It reads the runner's `for suite in …` line, compares the names with
 `tests/test_*.js` on disk in both directions, and fails with both lists.
 
-`Note 1`: `docs/face-identification-assessment.md:31` cited `annotator/unified_server.py:228-252`, route
+`Note 1`: `docs/face-identification-assessment.md:31` cited `annotator/unified_server.py:237-252`, route
 `1102-1103` and `1313`, and those lines hold other code now. Repair: the row cites `:887` the handler,
 `:88` the 8 MiB decoded cap with `:899` the check, `:908` the call, `:2399` the route row and `:2862` the
 dispatch body cap. `Note 2` stays open: `tests/test_citation_lines.py`'s `SKIP_PARTS` set excludes
@@ -7155,7 +7155,7 @@ replaced, never counted.
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -7275,7 +7275,7 @@ value this record keeps.
 
 ### Note 6 · the validator branch that could not fire
 
-Ground: `annotator/unified_server.py:1961 abs(...)` followed by `:1962 if area <= 0:`, with no case
+Ground: `annotator/unified_server.py:1971 abs(...)` followed by `:1962 if area <= 0:`, with no case
 driving the sentence. The writer measured the shapes: the sum of `abs()` values cannot be negative, but
 zero is reachable (collinear points, four identical points, a bow-tie, a thin strip and a zero-width line
 all answer 0), while a square answers 200. Repair: the test reads `if area == 0:` now, with a comment
@@ -7353,7 +7353,7 @@ cases arrived after S's two runs.
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -7515,7 +7515,7 @@ of `tests/test_weight_pins.py` (9 to 13) and the two of `tests/test_unified_serv
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The store walk cannot see an edit inside the owner | limit of round 56 | only the call-site case covers `src/store_rules.py` |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -7699,7 +7699,7 @@ write scope, and the record keeps that pattern.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -7864,7 +7864,7 @@ of `tests/test_sql_domain_parity.py` (5 to 10) and the four of `tests/test_opera
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -8040,7 +8040,7 @@ same module's earlier run counted.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -8226,7 +8226,7 @@ the guard of that declaration.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -8425,7 +8425,7 @@ fourth round in a row where a writer's line shift moved a citation outside its o
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -8595,7 +8595,7 @@ or takes a different file.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -8780,7 +8780,7 @@ every file its repair touches.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -8951,7 +8951,7 @@ it serves the same rule as Worth 2; the record states the deviation, and the fil
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -9039,7 +9039,7 @@ its own case. Repair: `src/store_export.py` is the one home, the tool imports `N
 local dictionary is gone, and the refusal sentence now names the home
 (`"... Remove it from NOT_OPERATOR_DATA in src/store_export.py, the one home of that decision, which %s
 reads"`, which `tests/test_write_fingerprint.py:82` reads). `Note 1`: the four frame-tier citations of
-`src/ball_gate.py` name `src/tiny_ball_net.py:60`, `src/motion_scan.py:74`, `src/dense_queue.py:74` and
+`src/ball_gate.py` name `src/tiny_ball_net.py:60`, `src/motion_scan.py:77`, `src/dense_queue.py:74` and
 `src/motion_scan.py:716`, where the facts stand.
 
 ### The bites of this round
@@ -9129,7 +9129,7 @@ line, kept it, and this record states the deviation.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -9327,7 +9327,7 @@ reads two sentence sources instead of one.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -9512,7 +9512,7 @@ Round 72 answered 2276 cases and this round answers 2289. The thirteen additions
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -9690,7 +9690,7 @@ writer does not own.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -9878,7 +9878,7 @@ Round 74 answered 2314 cases and this round answers 2329. The fifteen additions 
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -9968,7 +9968,7 @@ bar is strict: a box on the value is dropped and a box above it survives).
 | Bite | File | sha1 before → during → after | What failed |
 | --- | --- | --- | --- |
 | Writer AZ, Note 1 | `tools/playfield_quad_evidence.py` | `c84a280c538975bb41174c7e630756a11f1ebf3e → 8b7ec828d09eb726f612a551c3ebbca0f1aa4ee5 → c84a280c538975bb41174c7e630756a11f1ebf3e` | only the new case: `{'ok': True, 'reasons': [], 'metrics': {}} != {'ok': False, 'reasons': ['check-unavailable'], 'error': 'planted fault'}` |
-| Writer AY, Strong 1 | `src/fast_ball_labels.py` | `e39e75062df55768da9e213d3d4823f2de9798fa → 6f0acdcf0ecb9064c1f691f0bdea4c51f0260e68 → e39e75062df55768da9e213d3d4823f2de9798fa` | `fast_ball_labels.py: frame_at opens a VideoCapture of its own` and `src/fast_ball_labels.py:271 frame_at` reported by the statement-window walk |
+| Writer AY, Strong 1 | `src/fast_ball_labels.py` | `e39e75062df55768da9e213d3d4823f2de9798fa → 6f0acdcf0ecb9064c1f691f0bdea4c51f0260e68 → e39e75062df55768da9e213d3d4823f2de9798fa` | `fast_ball_labels.py: frame_at opens a VideoCapture of its own` and `src/fast_ball_labels.py:274 frame_at` reported by the statement-window walk |
 | Lead, Note 2 | `src/pid_identity.py` | `85158eb7f284fb6aac9248186b89cb80e71e8f18 → 1edcc314d4d2b7c788743fe76162f2df0dc8711b → 85158eb7f284fb6aac9248186b89cb80e71e8f18` | `0.35 != 0.4 : the four person sites were measured with a confidence of 0.35, but the owner holds 0.4: keep the measured value, or measure the four sites again` |
 | Lead, Strong 1 | `src/pipeline.py` | `c05de3d9f981f4a4574bfb6ed4b8d315e42ecab7 → 985d2cd4f66ca4d8c509cc576de8e4cb32ce14e4 → c05de3d9f981f4a4574bfb6ed4b8d315e42ecab7` | `FAIL: test_the_refusing_flock_refuses_with_the_one_text (site='pipeline.extract_frame')` with `'could not read a frame at t=…' != 'could not read frame at t=…'` |
 
@@ -10053,7 +10053,7 @@ Round 75 answered 2329 cases and this round answers 2347. The eighteen additions
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |
@@ -10235,7 +10235,7 @@ the brief of each later walk carries the closed list.
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements |
 | The full suite answers a different skip count than one module alone | limit of round 56 | the suite answers `skipped=53`, and `tests/test_suite_inventory.py` alone accepts the same limit |
-| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:297 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
+| The timestamp function body stands three times | found by the widened walk of round 55 | `annotator/operations.py:54 timestamp`, `annotator/unified_server.py:306 now`, `annotator/vod_import.py:114 now_iso`, digest `7e1173f55016fa90f33df74173559c5f1c53c334` |
 | The note bound stands a fifth time in the schema | limit of round 55 | `db/migrations/0002_user_data.sql` holds `notes text CHECK (length(notes) <= 4000)` |
 | The duplicate-body walk reads module-level `def`s only | limit of round 51 | it reaches 780 of the 1171 `def`s of the two trees |
 | The console guards read source text | limit of round 55 | no javascript case covers the `maxlength` of a rendered guest field |

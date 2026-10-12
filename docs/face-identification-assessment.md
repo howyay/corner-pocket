@@ -190,7 +190,7 @@ stopped after the run. Nothing under `out/corner-pocket/` or `out/identity/` cha
    (`annotator/ops.js:77` → `POST /api/identity/enroll`). The photo lands in
    `out/corner-pocket/face_embeddings.json`, separate from `state.json` on purpose
    (biometrics are not match events). 3–5 photos per person is the cheap upgrade: the gallery
-   scores a probe against every entry and keeps the best (`src/face_id.py:190-193`), so extra
+   scores a probe against every entry and keeps the best (`src/face_id.py:194-193`), so extra
    photos lift the same-person p05 0.718 without moving the 0.47 bar.
 3. **Nothing else.** From then on, every `GET /api/identity/frame` and every `GET /api/unified`
    frame runs the pipeline (`annotator/unified_server.py:205-226`, `441-446`); an unbound
@@ -315,7 +315,7 @@ nominate a value, not to adopt one. Two reasons to be careful:
 2. raising the bar costs real binds — only 93.1% of within-tracklet same-person pairs clear
    0.47 today, and the same-person p05 is 0.405, so a 0.65 bar would drop a material tail.
    More enrolment photos per regular (the gallery keeps the best entry,
-   `src/face_id.py:190-193`) lift that tail without touching the bar.
+   `src/face_id.py:194-193`) lift that tail without touching the bar.
 
 What would confirm or refute the candidate (do **not** re-tune on this window):
 

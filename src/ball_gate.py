@@ -41,7 +41,7 @@ The upper area cap, and the disagreement
       ``src/scan_events.py:122-127`` and ``src/sam3_ball_cache.py:152-154`` read
       their frames the same way, with no resize.
     * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:60``,
-      ``src/motion_scan.py:74``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
+      ``src/motion_scan.py:77``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
       three citations named the training pair, the geometry banner and an
       unrelated import comment, so they landed one to three lines above the
       fact.  They name the line that holds the fact now.  Both caps are
