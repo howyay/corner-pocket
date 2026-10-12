@@ -29,12 +29,14 @@ from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
 # The box-overlap rule has one home, src/box_geometry.py; this module reads it.
 from src.box_geometry import iou
 # The highlight recording's sample instants have one home, src/datasets.py.
-from src.datasets import HIGHLIGHT_SAMPLE_TIMES
+from src.datasets import HIGHLIGHT_SAMPLE_TIMES, media_path
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
 from src.weight_pins import SAM3
 
-VIDEO = ROOT / 'data' / 'vod_highlight.mp4'
-CROP_DIR = ROOT / 'out' / 'unlabeled_crops'
+VIDEO = media_path(ROOT, "highlight")
+# The crop-set vocabulary has one owner, src/store_files.py; this module reads it.
+from src.store_files import BALL_SETS  # noqa: E402
+CROP_DIR = ROOT / 'out' / BALL_SETS[0]
 CTX_DIR = CROP_DIR / 'ctx'
 META = CROP_DIR / 'meta.json'
 TIMES = list(HIGHLIGHT_SAMPLE_TIMES)

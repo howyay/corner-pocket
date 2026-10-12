@@ -32,12 +32,16 @@ from src.served_files import file_under, relative_under  # noqa: E402
 # times to a tenth of a second and the API compared them within 0.01 s, so one actor row
 # joined an event here and joined no event there.
 from src.events_actors import join_events_to_actors  # noqa: E402
+# The crop-set vocabulary has one owner, src/store_files.py. The three offline tools
+# read BALL_SETS from it. Before this module read it, the default of its third
+# argument spelled the first crop-set name a second time.
+from src.store_files import BALL_SETS  # noqa: E402
 EVENTS_FILE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "events.json"
 STATIC_ROOT = EVENTS_FILE.parent  # evidence images live next to events.json
 ANNOT_FILE = STATIC_ROOT / "annotations.json"
 # optional third arg: crop-set base dir (defaults to the first label set)
 CROP_BASE = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else \
-    ROOT.parent / "out" / "unlabeled_crops"
+    ROOT.parent / "out" / BALL_SETS[0]
 LABEL_META = CROP_BASE / "meta.json"
 LABELS_FILE = CROP_BASE / "labels.json"
 CROP_DIR = CROP_BASE

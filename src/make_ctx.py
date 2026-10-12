@@ -15,10 +15,12 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
+from src.datasets import media_path
 ROOT = Path(__file__).resolve().parents[1]
-VIDEO = ROOT / "data" / "vod_highlight.mp4"
-CROP_DIR = ROOT / "out" / "unlabeled_crops"
+VIDEO = media_path(ROOT, "highlight")
+# The crop-set vocabulary has one owner, src/store_files.py; this module reads it.
+from src.store_files import BALL_SETS  # noqa: E402
+CROP_DIR = ROOT / "out" / BALL_SETS[0]
 META = CROP_DIR / "meta.json"
 CTX_DIR = CROP_DIR / "ctx"
 OUT_JSON = CROP_DIR / "ctx.json"

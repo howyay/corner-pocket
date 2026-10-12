@@ -28,7 +28,7 @@ from src.store_files import (BALL_SETS, DOCUMENT_FORMAT, DOCUMENT_SETS, FORMATS,
 # tests/, and discovery puts tests/ on sys.path, so the bare module name reaches the
 # helper in both.  The tree the scanner reads sits in that same home.  This file
 # declared the tree and the scanner by hand until round 61.
-from _shipped import shipped_modules
+from _shipped import code_strings, parse, shipped_modules
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = "src/store_files.py"
@@ -47,8 +47,10 @@ PG_RANGE = r"(?<!\d)(\d{4})-(\d{4})(?!\d)"
 # The modules that import the vocabulary from its owner. They must hold no copy.
 IMPORTERS = ("src/store.py", "src/store_import.py", "src/store_pg.py",
              "annotator/unified_server.py")
-# Files that spell crop-set names for a reason, and the reason. Every other file that
-# spells two or more names on one line fails the scan below.
+# Files that spell crop-set names for a reason, and the reason. Every other source
+# file that spells one crop-set name in code fails the scan below. A name in a
+# docstring or in a comment is prose, so the scan does not read it. A case module is
+# not shipped code, so it states the crop set of the row it exercises.
 ALLOWED_SPELLINGS = {
     OWNER: "the one owner of the vocabulary",
     "db/migrations/0002_user_data.sql": "the ball_labels CHECK; SQL cannot import Python "
@@ -96,6 +98,55 @@ def source_files() -> list[Path]:
     return sorted(path for path in ROOT.rglob("*")
                   if path.is_file() and path.suffix in (".py", ".sql")
                   and not any(part in SKIP_DIRS for part in path.parts))
+
+
+def is_case_module(path: Path) -> bool:
+    """True for a unittest case module: a `tests/test_*.py` file.
+
+    The suite is not shipped code; tests/_shipped.py states that rule, and discovery
+    reads `test_*.py` files only. A case states the crop set of the row it exercises,
+    so its name is an expectation and not a second copy inside the application.
+    """
+    return (path.parent == ROOT / "tests" and path.suffix == ".py"
+            and path.name.startswith("test_"))
+
+
+def scanned_files() -> list[Path]:
+    """Every source file the vocabulary scan reads: the case modules left out."""
+    return [path for path in source_files() if not is_case_module(path)]
+
+
+def code_spelling_lines(path: Path) -> list[tuple[int, list[str]]]:
+    """(line number, names) for every line of `path` that spells a crop-set name in code.
+
+    A name is in code when a whole string literal of the module is that name. The
+    reader drops every docstring (the rule lives in tests/_shipped.py), and a comment
+    holds no literal, so a name in prose cannot fail the scan. A .sql file holds no
+    docstring, so the reader of every line answers it.
+    """
+    if path.suffix == ".sql":
+        return spelling_lines(path)
+    found: dict[int, list[str]] = {}
+    for line, text in code_strings(parse(path)):
+        if text in BALL_SETS:
+            found.setdefault(line, []).append(text)
+    return sorted(found.items())
+
+
+def label(path: Path) -> str:
+    """The name a report prints for `path`: relative to ROOT when it lies under ROOT."""
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def vocabulary_offenders(paths: list[Path]) -> list[str]:
+    """The report of the scan: one line for each site that spells a name in code."""
+    return [f"{label(path)}:{line} spells {names}"
+            for path in paths
+            if label(path) not in ALLOWED_SPELLINGS
+            for line, names in code_spelling_lines(path)]
 
 
 def resolve_rows() -> list[str]:
@@ -245,7 +296,11 @@ class VocabularyParity(unittest.TestCase):
 
 
 class SourceGuard(unittest.TestCase):
-    """Fail by file and line when a module spells the vocabulary again."""
+    """Fail by file and line when a module spells the vocabulary again.
+
+    The scan reads every .py and .sql file of the repository, with the unittest case
+    modules left out: a case states the crop set of the row it exercises.
+    """
 
     def test_the_owner_spells_the_vocabulary_exactly_once(self):
         tree = ast.parse((ROOT / OWNER).read_text(encoding="utf-8"))
@@ -260,18 +315,34 @@ class SourceGuard(unittest.TestCase):
         for relative in IMPORTERS:
             path = ROOT / relative
             self.assertTrue(path.is_file(), f"{relative} is gone; update this guard")
-            for line, names in spelling_lines(path):
+            for line, names in code_spelling_lines(path):
                 self.fail(f"{relative}:{line} spells the crop-set name(s) {names}. "
                           f"Import BALL_SETS from {OWNER} instead of writing the names.")
 
     def test_no_other_source_file_repeats_the_vocabulary(self):
-        offenders = [f"{path.relative_to(ROOT).as_posix()}:{line} spells {names}"
-                     for path in source_files()
-                     if path.relative_to(ROOT).as_posix() not in ALLOWED_SPELLINGS
-                     for line, names in spelling_lines(path) if len(names) >= 2]
+        offenders = vocabulary_offenders(scanned_files())
         self.assertEqual(offenders, [],
                          f"these lines spell the crop-set vocabulary a second time; import "
                          f"BALL_SETS from {OWNER}: " + "; ".join(offenders))
+
+    def test_the_scan_reports_one_planted_name_with_its_file_and_line(self):
+        """Round 95: a line that held one name stayed invisible to the scan."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "planted.py"
+            path.write_text(f'CROP_DIR = ROOT / "out" / "{BALL_SETS[0]}"\n', encoding="utf-8")
+            self.assertEqual(vocabulary_offenders([path]),
+                             [f"{path.as_posix()}:1 spells ['{BALL_SETS[0]}']"],
+                             "one name in code is a finding, with its file and its line")
+
+    def test_a_name_in_a_docstring_or_a_comment_is_no_finding(self):
+        """A name in prose names the vocabulary in words; it is not a second copy."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "planted.py"
+            path.write_text(f'"""The set "{BALL_SETS[0]}" is the old default."""\n'
+                            f'# The scan must not fail on the set "{BALL_SETS[0]}".\n',
+                            encoding="utf-8")
+            self.assertTrue(spelling_lines(path), "the reader of every line sees both names")
+            self.assertEqual(code_spelling_lines(path), [], "a name in prose is not code")
 
     def test_every_allowed_file_still_spells_a_crop_set_name(self):
         """A stale entry hides a whole file from the scan above."""
@@ -404,6 +475,37 @@ class DatasetMapTests(unittest.TestCase):
             self.assertEqual(sorted(store_files.dataset_dirs(Path(folder))), sorted(STATIC_OUT))
         self.assertEqual(store_import.AnchorsSet().render(NoRows()),
                          {dataset: {"anchors": {}} for dataset in STATIC_OUT})
+
+
+#: The console states the default crop set in its own words: the opening state of the
+#: Vision tab and the fallback of `loadDatasets`. A browser cannot import a python name,
+#: so the two sites keep the name, and the guard below holds them to the owner.
+APP_JS = "annotator/app.js"
+
+
+def console_vocabulary_sites(text, vocabulary):
+    """Every line of the console text that spells a name of the crop-set vocabulary."""
+    return [(number, line) for number, line in enumerate(text.splitlines(), 1)
+            if any(name in line for name in vocabulary)]
+
+
+class ConsoleVocabularyTests(unittest.TestCase):
+    """The console keeps the first crop-set name; the owner states it once."""
+
+    def test_the_console_states_the_first_crop_set_of_the_owner(self):
+        text = (ROOT / APP_JS).read_text(encoding="utf-8")
+        sites = console_vocabulary_sites(text, BALL_SETS)
+        self.assertTrue(sites, f"{APP_JS} must state its default crop set")
+        for number, line in sites:
+            self.assertIn(f"'{BALL_SETS[0]}'", line,
+                          f"{APP_JS}:{number} spells a crop-set name that is not the first "
+                          f"one of {OWNER}: {line.strip()}")
+
+    def test_a_planted_console_name_is_reported(self):
+        planted = "  set:'unlabeled_crops2',\n"
+        self.assertEqual(console_vocabulary_sites(planted, BALL_SETS),
+                         [(1, planted.rstrip("\n"))],
+                         "the scan must report the line that holds a planted name")
 
 
 if __name__ == "__main__":
