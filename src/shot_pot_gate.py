@@ -83,6 +83,8 @@ from statistics import median
 from typing import Any, Iterable, NamedTuple, Sequence
 from src.ball_scale import BALL_WIDTH_MM, NATIVE_FRAME, diameter_px, formatted_width
 from src.event_gates import GateConfig
+# The occlusion window's bar is measured in src/motion_scan.py, so this module reads it there.
+from src.motion_scan import OCC_DENSE_MIN
 from src.projection import DEFAULT_TOLERANCE, project_point
 from src.table_geometry import CANON_H, CANON_W, POCKETS_MM
 
@@ -131,14 +133,12 @@ VOD30_POCKETS_PX: dict[str, dict[str, float | tuple[float, float]]] = {
 #: 38.8 px foot, because the far end is foreshortened ~3x - one px radius is wrong.
 POCKET_R_MM = GateConfig().pot_pocket_r_mm
 
-#: ``src.motion_scan.OCC_DENSE_MIN``: share of the 61x61 px occlusion window that
-#: changed, above which a person explains the motion.  Its own justification (from
-#: motion_scan): a single ball changes at most ~0.14 of that window (2 x its area
-#: against 61x61 at the reference), a torso changes 0.5-1.0, so 0.30 is above
-#: anything one ball can reach and below anything a body reaches.  Kept equal by a
-#: test, not by hope.
-OCC_DENSE_MIN = 0.30
-
+#: Share of the 61x61 px occlusion window that changed, above which a person
+#: explains the motion.  ``src/motion_scan.py`` owns the bar: that module measures
+#: the occlusion channel in that window, and its geometric justification (a single
+#: ball changes at most ~0.14 of the window, a torso changes 0.5-1.0) belongs with
+#: the measurement.  This module reads the owner and holds no copy.
+#:
 #: The ball's median diameter measured on vod30, in the pixels of the **native
 #: 1280x720** frame.  ``src/ball_scale.py`` owns this measurement and the frame it
 #: was made in; this module reads the owner.  The value is 18.9 px.

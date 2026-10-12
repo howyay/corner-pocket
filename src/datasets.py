@@ -2,11 +2,12 @@
 
 Two recordings are built in and never change: ``vod30`` (scan folder ``out/scan30``) and
 ``highlight`` (scan folder ``out/scan_highlight``).  :data:`STATIC` below holds each one's
-scan folder and the name of its media file under ``data/``, and it is the only place in
-this package that spells a built-in media file name.  Imported Twitch VODs of a saved
-channel are listed in ``out/vods/index.json``; each keeps its operator data under
-``out/vods/<id>/`` and its media at ``data/vods/<id>.mp4`` (``annotator/vod_import.py``
-writes both).
+scan folder and the name of its media file under ``data/``, and the sample times below
+hold the instants a calibration pass reads the highlight recording at.  A built-in
+recording therefore has one definition site for its name and one for its sample times.
+Imported Twitch VODs of a saved channel are listed in ``out/vods/index.json``; each keeps
+its operator data under ``out/vods/<id>/`` and its media at ``data/vods/<id>.mp4``
+(``annotator/vod_import.py`` writes both).
 
 This module only reads.  A lookup never creates a folder and never rewrites the
 index, so every GET that resolves a dataset stays a read.  The built-in ids never
@@ -30,6 +31,16 @@ STATIC = {"vod30": ("scan30", "vod_30min_260815.mp4"),
           "highlight": ("scan_highlight", "vod_highlight.mp4")}
 #: id -> scan folder: the mapping src/store.py has always exported as DATASETS.
 STATIC_OUT = {key: value[0] for key, value in STATIC.items()}
+
+#: The six instants, in whole seconds, that a calibration pass samples the highlight
+#: recording at (the ``highlight`` row of :data:`STATIC` above).  ``src/audit_calib.py``
+#: (its highlight pass), ``src/quad_fit.py``, ``src/quad_fit_lines.py`` and
+#: ``src/recut_crops.py`` read the comparisons of the four fitted corners at these
+#: instants, so the list has one home here and those four scripts hold no copy.  The
+#: vod30 range ``range(60, 1741, 120)`` is a different recording's cadence, not this
+#: rule; the vod30 branch of ``src/audit_calib.py`` and of the two fitters still
+#: states it.
+HIGHLIGHT_SAMPLE_TIMES = (5, 28, 60, 90, 150, 200)
 
 #: An imported VOD's id: ``tw-`` + the numeric Twitch VOD id, then ``-<start>-<end>``
 #: (whole seconds into the broadcast) when only a range was imported.  Matched with

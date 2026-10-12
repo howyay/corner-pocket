@@ -28,12 +28,14 @@ from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
                            SAM3_BALL_MIN_SCORE)
 # The box-overlap rule has one home, src/box_geometry.py; this module reads it.
 from src.box_geometry import iou
+# The highlight recording's sample instants have one home, src/datasets.py.
+from src.datasets import HIGHLIGHT_SAMPLE_TIMES
 
 VIDEO = ROOT / 'data' / 'vod_highlight.mp4'
 CROP_DIR = ROOT / 'out' / 'unlabeled_crops'
 CTX_DIR = CROP_DIR / 'ctx'
 META = CROP_DIR / 'meta.json'
-TIMES = [5, 28, 60, 90, 150, 200]
+TIMES = list(HIGHLIGHT_SAMPLE_TIMES)
 
 os.makedirs(CTX_DIR, exist_ok=True)
 

@@ -11,7 +11,8 @@ from unittest.mock import patch
 import dataset_id_cases
 from annotator import live_processing
 from src import datasets, enroll_from_tracklet
-from src.datasets import imported_id, listing, lookup, parse_imported_id, read_index
+from src.datasets import (HIGHLIGHT_SAMPLE_TIMES, imported_id, listing, lookup,
+                          parse_imported_id, read_index)
 from src.served_files import bare_name
 
 ENTRY = {"vod_id": "1000000001", "channel": "examplechannel", "title": "Friday 8-ball",
@@ -340,6 +341,11 @@ class RegistryConsumerTests(unittest.TestCase):
             store.seeds_get(self.key)                               # seeds stay vod30-only
 
 
+def registry_source():
+    """The text of the module under test: two classes below read its own words."""
+    return (Path(__file__).resolve().parents[1] / "src" / "datasets.py").read_text()
+
+
 class InsideRuleTests(unittest.TestCase):
     """``src.datasets._inside`` takes its bare-name rule from the owner of that rule.
 
@@ -356,7 +362,7 @@ class InsideRuleTests(unittest.TestCase):
         (self.root / "media.mp4").write_bytes(b"media")
 
     def source(self):
-        return (Path(__file__).resolve().parents[1] / "src" / "datasets.py").read_text()
+        return registry_source()
 
     def test_the_bare_name_rule_comes_from_the_owner(self):
         self.assertIn("from src.served_files import bare_name", self.source(),
@@ -381,6 +387,27 @@ class InsideRuleTests(unittest.TestCase):
         folder = self.root / "vods" / "tw-5"
         self.assertEqual(datasets._inside(self.root / "vods", "tw-5"), folder)
         self.assertFalse(folder.exists(), "file=False must answer a folder before it exists")
+
+
+class HighlightSampleTimesTests(unittest.TestCase):
+    """``src.datasets.HIGHLIGHT_SAMPLE_TIMES``: the instants a calibration pass reads.
+
+    ``src/audit_calib.py``, ``src/quad_fit.py``, ``src/quad_fit_lines.py`` and
+    ``src/recut_crops.py`` measure the highlight recording at these instants and hold
+    no copy of the list.  ``tests/test_vod_sample_times.py`` walks the tree for a
+    second home; this class pins the value the owner answers.
+    """
+
+    def test_the_six_instants_in_seconds(self):
+        self.assertEqual(tuple(HIGHLIGHT_SAMPLE_TIMES), (5, 28, 60, 90, 150, 200))
+        self.assertTrue(all(time == int(time) for time in HIGHLIGHT_SAMPLE_TIMES),
+                        "each instant is a whole second of the highlight recording")
+
+    def test_the_owner_holds_the_instants_and_no_caller_can_change_them(self):
+        self.assertIsInstance(HIGHLIGHT_SAMPLE_TIMES, tuple)
+        self.assertIn("HIGHLIGHT_SAMPLE_TIMES = (5, 28, 60, 90, 150, 200)",
+                      registry_source(),
+                      "src/datasets.py must state the instants, or no script has an owner to read")
 
 
 if __name__ == "__main__":

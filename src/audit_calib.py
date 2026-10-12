@@ -16,9 +16,12 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+sys.path.insert(0, str(ROOT))           # the repo root, for the src.* imports
 from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import LANDSCAPE_H, LANDSCAPE_W, canonical_destination
 from vod30_corners import load as load_vod30_corners
+# The highlight recording's sample instants have one home, src/datasets.py.
+from src.datasets import HIGHLIGHT_SAMPLE_TIMES
 
 # This audit reads the table LANDSCAPE -- length on x -- as it always has; the
 # transposed view comes from the one frame in src/table_geometry.py.
@@ -79,7 +82,7 @@ def main():
     fixed_hl = json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"]
     fixed_30 = load_vod30_corners()
 
-    hl_times = [5, 28, 60, 90, 150, 200]
+    hl_times = list(HIGHLIGHT_SAMPLE_TIMES)
     v30_times = list(range(60, 1741, 120))
     out = {
         "highlight_1080p": audit(HL, fixed_hl, hl_times, "HIGHLIGHT 1080p"),
