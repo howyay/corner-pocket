@@ -13,9 +13,10 @@ still loads the same quad.
 Two tests state the boundary they defend.  ``test_no_reader_spells_a_corner_path``
 reads the code of each reader and skips prose, so a comment or a docstring may
 name the old file; ``test_only_the_owner_moves_corners_30min_under_a_root`` scans
-every python file of the repository and allows the filename in the owner, in
-this test, and inside the name ``corners_30min_v2.json``, which is a different
-artifact with its own owner.
+every python file of the repository and allows the filename in the owner and this
+test.  The file ``corners_30min_v2.json`` has its own owner,
+``src/calib_segments.py``.  The v2 cases of this section refuse a module that
+spells that path by hand.
 """
 import ast
 import importlib.util
@@ -41,14 +42,21 @@ from vod30_corners import load, reference_path  # noqa: E402
 
 # Imported once, at module level: src/eval_calib.py reaches torch through
 # src/pipeline.py, and torch refuses a second import inside one interpreter.
+
 import eval_calib  # noqa: E402
+
+# The shipped tree, and the live home of the corners v2 path.
+sys.path.insert(0, str(REPO / "tests"))
+from _shipped import code_strings, shipped_modules  # noqa: E402
+from src import calib_segments  # noqa: E402
 
 TRACKED_JSON = REPO / "annotator" / "corners_30min.json"
 OUT_JSON = REPO / "out" / "corners_30min.json"
 EVAL_CALIB = REPO / "src" / "eval_calib.py"
 OWNER_MODULE = "src/vod30_corners.py"
 TEST_MODULE = "tests/test_vod30_corners.py"
-FIXTURE_QUAD = "corners_30min_v2.json"  # a different artifact, not this quad
+#: The v2 artifact: a different file, with the owner ``src/calib_segments.py``.
+FIXTURE_QUAD = calib_segments.corners_v2_name()  # a different artifact, not this quad
 
 # The five calibration tools that read the quad, each with the name of the
 # owner function it calls (or a citation of the owner in its prose).
@@ -60,10 +68,38 @@ READERS = {
     "src/quad_refine.py": ("load_vod30_corners()", "src/vod30_corners.py"),
 }
 
-# The owner filename, and the same name inside the other artifact's filename.
-# A bare ``corners_30min`` is not a path: ``estimate_corners_30min`` is a name.
-CORNER_PATH = re.compile(r"[\"']corners_30min\.json[\"']|corners_30min(?!_v2)\b\.json")
-FIXTURE_PATH = re.compile(r"corners_30min_v2")
+# The owner filename.  A bare ``corners_30min`` is not a path:
+# ``estimate_corners_30min`` is a name.
+CORNER_PATH = re.compile(r"[\"']corners_30min\.json[\"']|corners_30min\b\.json")
+
+# The corners v2 file of the strip refinement.  ``src/calib_segments.py`` owns
+# its path, and the six readers below read that path from the owner.
+V2_OWNER = "src/calib_segments.py"
+V2_OWNER_FUNCTION = "corners_v2_path"
+
+# Two words that together tell the reader which file a text names.  A text with
+# both words is a copy of the name; a sentence about the file holds a space.
+V2_TOKENS = ("corners_", "_v2")
+
+# The kind of each finding, in the order of the priority of one report line.
+V2_KINDS = ("spells", "builds", "names")
+
+# The template and the name of the owner, read from the owner itself, so this
+# test holds no spelling of the v2 name.
+V2_TEMPLATE = calib_segments.CORNERS_V2
+V2_NAME = calib_segments.corners_v2_name()
+V2_SPELLED = (V2_TEMPLATE, V2_NAME)
+
+# The six readers of the v2 file, and the module-level name each one binds to
+# the path of the owner.
+V2_READERS = (
+    ("src/eval_table_detect.py", "CORNERS_V2"),
+    ("src/calib_segment_measure.py", "SCAN_QUAD"),
+    ("src/rebuild_events_v2.py", "CORNERS"),
+    ("src/calib_vod30.py", "CORNERS"),
+    ("src/pid_identity.py", "QUAD"),
+    ("src/pid_shooter.py", "QUAD"),
+)
 
 
 def prose_spans(body):
@@ -113,6 +149,86 @@ def corner_paths_in(body):
             if match is not None and match.start() == column:
                 found.add((line.strip(), match.group(0)))
     return sorted(found)
+
+
+def joins_the_words(text):
+    """True when one text holds both words of the v2 name and holds no space.
+
+    A path holds no space, and a sentence about the file holds one, so this
+    answer separates the two.  A text with one word only is the half of a name.
+    """
+    return " " not in text and all(word in text for word in V2_TOKENS)
+
+
+def v2_spellings(path):
+    """(line, kind, text) for every piece of code of one file that names the file.
+
+    ``kind`` is ``'spells'`` for the template or the name of the owner in one
+    literal, ``'names'`` for a joined string or a literal that holds both words,
+    and ``'builds'`` for one expression of ``+`` and ``/`` that joins them.  One
+    line answers one finding, and the kinds are read in their order.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found = {}
+
+    def note(line, kind, text):
+        if line not in found or V2_KINDS.index(kind) < V2_KINDS.index(found[line][0]):
+            found[line] = (kind, text)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr):
+            text = "".join(piece.value for piece in node.values
+                           if isinstance(piece, ast.Constant) and isinstance(piece.value, str))
+            if joins_the_words(text):
+                note(node.lineno, "names", text)
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
+            texts = [piece.value for piece in ast.walk(node)
+                     if isinstance(piece, ast.Constant) and isinstance(piece.value, str)]
+            if texts and all(any(word in text for text in texts) for word in V2_TOKENS):
+                note(node.lineno, "builds", " + ".join(sorted(texts)))
+    for line, text in code_strings(tree):
+        if not joins_the_words(text):
+            continue
+        note(line, "spells" if text in V2_SPELLED else "names", text)
+    return [(line, kind, text) for line, (kind, text) in sorted(found.items())]
+
+
+def imported_here(tree, name=V2_OWNER_FUNCTION):
+    """The local names one module gives to the owner function."""
+    aliases = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("calib_segments"):
+            aliases += [word.asname or word.name for word in node.names if word.name == name]
+        elif isinstance(node, ast.Import):
+            aliases += [word.asname or word.name
+                        for word in node.names if word.name.endswith("calib_segments")]
+    return aliases
+
+
+def reads_the_owner(node, aliases, name=V2_OWNER_FUNCTION):
+    """True when one expression reads the owner function of the v2 path."""
+    if isinstance(node, ast.Name):
+        return node.id in aliases
+    if isinstance(node, ast.Attribute) and node.attr == name:
+        base = node.value
+        return (isinstance(base, ast.Name) and base.id in aliases) or ast.unparse(base) in aliases
+    return False
+
+
+def reader_problem(relative, name):
+    """The message for one reader whose binding does not read the owner, or None."""
+    tree = ast.parse((REPO / relative).read_text(encoding="utf-8"), filename=relative)
+    aliases = imported_here(tree)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+            continue
+        if any(reads_the_owner(inner, aliases) for inner in ast.walk(node.value)):
+            return None
+        return (f"{relative}:{node.lineno} {name} = {ast.unparse(node.value)} does not "
+                f"read {V2_OWNER}:{V2_OWNER_FUNCTION}")
+    return f"{relative} binds no module-level {name}"
 
 
 def python_files():
@@ -191,8 +307,6 @@ class ReaderRoutingTests(unittest.TestCase):
         owners = set()
         for rel, path in python_files():
             for line, name in corner_paths_in(path.read_text(errors="replace")):
-                if FIXTURE_PATH.search(name):
-                    continue  # the _v2 artifact has its own readers
                 owners.add(rel)
                 self.assertIn(
                     rel,
@@ -204,6 +318,72 @@ class ReaderRoutingTests(unittest.TestCase):
             sorted(owners),
             sorted([OWNER_MODULE, TEST_MODULE]),
             "the owner or this test no longer names the tracked quad",
+        )
+
+    def test_no_shipped_module_spells_the_corners_v2_path_by_hand(self):
+        """The v2 path has one home, ``src/calib_segments.py``.
+
+        The old pattern of this section skipped every site that holds ``_v2``,
+        because that file is another artifact.  The exemption hid six readers
+        that wrote the path themselves, so a rename moved the owner alone.  This
+        test reads the shipped tree: a module outside the owner names the file by
+        hand in none of the three shapes, in a literal, in a joined string and in
+        a built path.
+        """
+        offenders = {}
+        for path in shipped_modules():
+            relative = path.relative_to(REPO).as_posix()
+            if relative == V2_OWNER:
+                continue
+            found = v2_spellings(path)
+            if found:
+                offenders[relative] = found
+        self.assertEqual(
+            offenders,
+            {},
+            f"a module outside {V2_OWNER} spells the corners v2 file by hand: {offenders}",
+        )
+
+    def test_the_owner_states_the_v2_name_once(self):
+        """One literal of the shipped tree holds the v2 name: the owner."""
+        owner = v2_spellings(REPO / V2_OWNER)
+        self.assertEqual(
+            1, len(owner), f"{V2_OWNER} must state the v2 name once, and it holds {owner}"
+        )
+        kind, text = owner[0][1], owner[0][2]
+        self.assertEqual(
+            ("spells", V2_TEMPLATE), (kind, text), f"{V2_OWNER} states the name as {kind} {text!r}"
+        )
+
+    def test_every_reader_of_the_v2_file_reads_the_owner(self):
+        """Each of the six readers binds the path through the owner function."""
+        problems = []
+        for relative, name in V2_READERS:
+            problem = reader_problem(relative, name)
+            if problem:
+                problems.append(problem)
+        self.assertEqual(
+            [],
+            problems,
+            f"a reader of the v2 file does not read {V2_OWNER}:{V2_OWNER_FUNCTION}: {problems}",
+        )
+
+    def test_a_copy_that_one_module_holds_is_reported(self):
+        """A planted copy is a finding with its line, so this guard sees one."""
+        with tempfile.TemporaryDirectory() as folder:
+            guest = Path(folder) / "guest.py"
+            guest.write_text(f'CORNERS = "{V2_NAME}"\n', encoding="utf-8")
+            spelled = v2_spellings(guest)
+            guest.write_text('CORNERS = "out/" + "%s" + "%s"\n'
+                             % (V2_TOKENS[0], "30min" + V2_TOKENS[1]), encoding="utf-8")
+            built = v2_spellings(guest)
+        self.assertEqual(
+            [(1, "spells")], [(line, kind) for line, kind, _text in spelled],
+            f"a planted literal answers {spelled}",
+        )
+        self.assertEqual(
+            [(1, "builds")], [(line, kind) for line, kind, _text in built],
+            f"a planted path built from parts answers {built}",
         )
 
     def test_every_reader_module_imports_and_reaches_the_same_quad(self):

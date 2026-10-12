@@ -52,12 +52,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.calib_segments import (VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW,  # noqa: E402
-                                anchors_reference_name, anchors_reference_path)
+                                anchors_reference_name, anchors_reference_path,
+                                corners_v2_path)
 from src.datasets import media_path  # noqa: E402
 
 VIDEO = media_path(ROOT, "vod30")
 ANCHORS = ROOT / anchors_reference_path("vod30")
-SCAN_QUAD = ROOT / "out" / "corners_30min_v2.json"
+SCAN_QUAD = ROOT / corners_v2_path()
 # The measurement artifact this tool writes.  This constant is the one home of the
 # path: ``src/calib_segment_fit.py`` reads the artifact and imports this name.
 MEASURE_ARTIFACT = ROOT / "out" / "calib_vod30_segments.measure.json"

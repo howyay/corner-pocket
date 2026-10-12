@@ -12,8 +12,12 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'src'))
 from table_detect import detect_cloth_mask, fit_quadrilateral
+# The corners v2 path has one home, src/calib_segments.py.  This writer takes the
+# directory, the file name and the default tag from that home.
+from src.calib_segments import CORNERS_V2, CORNERS_V2_TAG, corners_v2_path  # noqa: E402
 
 
 def loose_quad(bgr):
@@ -73,11 +77,11 @@ def build(video, tag, every_s=6.0, max_frames=400, mad_px=6.0):
 
 
 if __name__ == "__main__":
-    tag = sys.argv[1] if len(sys.argv) > 1 else "30min"
+    tag = sys.argv[1] if len(sys.argv) > 1 else CORNERS_V2_TAG
     video = sys.argv[2] if len(sys.argv) > 2 else \
         str(ROOT / "data" / "vod_30min_260815.mp4")
     res = build(video, tag)
     if res:
-        (ROOT / "out" / f"corners_{tag}_v2.json").write_text(
+        corners_v2_path(tag, ROOT).write_text(
             json.dumps(res, indent=1))
-        print("wrote out/corners_%s_v2.json" % tag)
+        print("wrote %s" % CORNERS_V2.format(tag=tag))

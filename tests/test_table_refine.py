@@ -4,6 +4,8 @@ The synthetic frames here build a blue bed inside a dark rail so the detector ha
 a boundary to find without any VOD on disk; the recorded-reference test is skipped
 when ``out/corners_30min_v2.json`` is absent (it is an artifact, not source).
 """
+import ast
+import importlib
 import json
 import re
 import sys
@@ -15,12 +17,61 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
+from src import calib_segments
 from src.table_detect import detect_table
 from src.table_detect import _order_corners
 from src.table_refine import (_DATASET_PRIOR, CHECK_UNAVAILABLE, detect_table_refined, load_priors,
                               prior_for, prior_provenance, prior_spec, refine_quad_edges)
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# The corners v2 file has one home, ``src/calib_segments.py``.  The six modules
+# below read its path from that owner.  The note of the ``vod30`` prior speaks
+# about the file, so the count of its readers must hold readers and not
+# spellings.  A module that writes the path by hand agrees with the owner only
+# until the next rename.
+CORNERS_V2_OWNER = 'src/calib_segments.py'
+CORNERS_V2_NAME = calib_segments.corners_v2_name()
+CORNERS_V2_READERS = (
+    ('src/eval_table_detect.py', 'CORNERS_V2'),
+    ('src/calib_segment_measure.py', 'SCAN_QUAD'),
+    ('src/rebuild_events_v2.py', 'CORNERS'),
+    ('src/calib_vod30.py', 'CORNERS'),
+    ('src/pid_identity.py', 'QUAD'),
+    ('src/pid_shooter.py', 'QUAD'),
+)
+
+# The readers that bind a path and import without the video reader of the
+# repository.  This test compares their live answer with the answer of the home.
+CORNERS_V2_LIVE = ('src/eval_table_detect.py', 'src/calib_segment_measure.py',
+                   'src/rebuild_events_v2.py', 'src/calib_vod30.py')
+
+
+def reader_problem(relative, name):
+    """The message for one reader whose binding does not read the owner, or None.
+
+    A module that spells the path itself counts as a reader of the file today,
+    and its path agrees with the owner only until the next rename.  This answer
+    reads the binding of the module, so the count below holds real readers.  The
+    two readers that load the quad at import time need the video reader of the
+    repository, so this test reads their text and not their import.
+    """
+    tree = ast.parse((ROOT / relative).read_text(encoding='utf-8'), filename=relative)
+    aliases = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or '').endswith('calib_segments'):
+            aliases += [word.asname or word.name for word in node.names
+                        if word.name == 'corners_v2_path']
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+            continue
+        if any(isinstance(inner, ast.Name) and inner.id in aliases for inner in ast.walk(node.value)):
+            return None
+        return (f'{relative}:{node.lineno} {name} = {ast.unparse(node.value)} does not read '
+                f'{CORNERS_V2_OWNER}')
+    return f'{relative} binds no module-level {name}'
 
 
 def bed_frame(quad=None, occlude=None, cloth_bgr=(150, 100, 50), rail_px=30):
@@ -225,22 +276,34 @@ class DetectorContractTests(unittest.TestCase):
         # The note names the entry it describes.
         self.assertIn('vod30', note)
         # No part of the note names the file without naming the entry in the same part.
-        # The split keeps ``corners_30min_v2.json`` whole: its dot has no space after it.
+        # The split keeps the whole name: its dot has no space after it.
         for part in re.split(r'[.;]\s+', note):
-            if 'corners_30min_v2.json' in part:
+            if CORNERS_V2_NAME in part:
                 self.assertIn('vod30', part, f'the note names the file outside the scope of its entry: {part}')
         # The note scopes the exclusion.  It never calls the file unused.
         self.assertNotIn('NOT used', note)
-        self.assertIsNone(re.search(r'corners_30min_v2\.json\s+(?:is\s+)?(?:NOT|not)\s+used', note),
-                          f'the note calls the file unused: {note}')
+        self.assertIsNone(
+            re.search(re.escape(CORNERS_V2_NAME) + r'\s+(?:is\s+)?(?:NOT|not)\s+used', note),
+            f'the note calls the file unused: {note}')
         # The scope keeps the measurement that explains it.
         self.assertIn('70 px', note)
-        # The claim of the note holds in the tree: other modules still name the file.
-        readers = sorted(path.name for path in (ROOT / 'src').glob('*.py')
-                         if path.name != 'table_refine.py' and 'corners_30min_v2.json' in path.read_text())
-        self.assertGreaterEqual(len(readers), 2,
-                                'the note says that the file stays in use, and these modules name it: '
-                                + ', '.join(readers))
+        # The claim of the note holds in the tree: each reader resolves the file
+        # through its one home.  A module that wrote the path by hand counted as
+        # a reader here before, and the count said nothing about the home.
+        problems = [problem for relative, name in CORNERS_V2_READERS
+                    if (problem := reader_problem(relative, name))]
+        self.assertEqual([], problems,
+                         'a reader of the file of the note does not read its one home, '
+                         + CORNERS_V2_OWNER + ': ' + '; '.join(problems))
+        for relative, name in CORNERS_V2_READERS:
+            if relative not in CORNERS_V2_LIVE:
+                continue
+            module = importlib.import_module(relative[:-3].replace('/', '.'))
+            self.assertEqual(Path(str(getattr(module, name))), calib_segments.corners_v2_path(),
+                             f'{relative} resolves another path than {CORNERS_V2_OWNER}')
+        self.assertGreaterEqual(len(CORNERS_V2_READERS), 2,
+                                'the note says that the file stays in use, and these modules read it: '
+                                + ', '.join(relative for relative, _name in CORNERS_V2_READERS))
 
     def test_naive_detector_is_unchanged(self):
         """The other callers keep the old dict; detect_table must still work."""

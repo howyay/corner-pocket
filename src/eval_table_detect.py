@@ -63,13 +63,13 @@ from src.table_detect import _order_corners  # noqa: E402
 # The anchor file name of a dataset has one owner, src/calib_segments.py.  The two
 # readers below (the path constant and the reference note) read that owner, so this
 # tool holds no second spelling of the name.
-from src.calib_segments import anchors_reference_path  # noqa: E402
+from src.calib_segments import anchors_reference_path, corners_v2_path  # noqa: E402
 
 OUT_DIR = ROOT / "out" / "table-detect-eval"
 VOD30 = media_path(ROOT, "vod30")
 HIGHLIGHT = ROOT / "data" / "vod_highlight.mp4"
 ANCHORS = ROOT / anchors_reference_path("vod30")
-CORNERS_V2 = ROOT / "out" / "corners_30min_v2.json"
+CORNERS_V2 = ROOT / corners_v2_path()
 FIXED_CORNERS = ROOT / "out" / "fixed_corners.json"
 CLOTH_TOLERANCE_PX = 40.0  # annotator/app.js CLOTH_TOLERANCE_PX - the app's mean-distance bar
 

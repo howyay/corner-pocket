@@ -24,12 +24,13 @@ from calibrate import (OBJECT_MM, pnp_solve, project, refined_blob,
 from frame_rate import FPS_FALLBACK
 from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import canonical_destination
-# src/calib_segments.py owns the name of the calibration document, so this writer
-# takes the file name from the owner and keeps its own root.
-from src.calib_segments import calibration_name  # noqa: E402
+# src/calib_segments.py owns the name of the calibration document.  It owns the
+# path of the corners v2 file too.  This writer takes both names from that home
+# and keeps its own root.
+from src.calib_segments import calibration_name, corners_v2_path  # noqa: E402
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
-CORNERS = ROOT.parent / "out" / "corners_30min_v2.json"
+CORNERS = corners_v2_path(root=ROOT.parent)
 N_SAMPLES = 200
 DST = canonical_destination()  # px -> mm, the canonical portrait frame
 

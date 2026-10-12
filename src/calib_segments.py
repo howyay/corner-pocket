@@ -95,6 +95,41 @@ def segment_artifact_path(dataset: str, root=None) -> Path:
     return base / "out" / ARTIFACT.format(dataset=dataset)
 
 
+# The corners v2 file of the strip refinement, as a format for its tag.  This
+# text is the one home of the name.  Six modules read the file and one module
+# writes it, and every one of them reads this text or the two functions below.
+# tests/test_vod30_corners.py and tests/test_table_refine.py hold that rule.
+CORNERS_V2 = "out/corners_{tag}_v2.json"
+CORNERS_V2_PATH_HEAD, _, CORNERS_V2_SUFFIX = CORNERS_V2.partition("{tag}")
+CORNERS_V2_HEAD = CORNERS_V2_PATH_HEAD.rpartition("/")[2]
+
+# The tag of the shipped artifact.  src/make_segment_corners.py writes this tag
+# when the command line names no other one.
+CORNERS_V2_TAG = "30min"
+
+
+def corners_v2_name(tag: str = CORNERS_V2_TAG) -> str:
+    """The file name alone of the corners v2 file of one tag.
+
+    ``corners_v2_path`` answers the path under the out/ root.  A reader that
+    matches a stored name, as ``REFUSED`` does, reads this function or the head
+    and the suffix above.
+    """
+    return f"{CORNERS_V2_HEAD}{tag}{CORNERS_V2_SUFFIX}"
+
+
+def corners_v2_path(tag: str = CORNERS_V2_TAG, root=None) -> Path:
+    """The corners v2 file of one tag, under the out/ root of one tree.
+
+    ``CORNERS_V2`` is the one spelling of the name, so a caller that joins a
+    directory and the name reads this function or the template.  ``root`` (the
+    checkout or the server's own tree) keeps the caller pointed at its own
+    artifacts, as ``segment_artifact_path`` does.
+    """
+    base = Path(root) if root is not None else ROOT
+    return base / CORNERS_V2.format(tag=tag)
+
+
 SOURCES = ("human_anchors", "refined", "derived")
 
 # The layout of a calibration file, in the order a caller-supplied file is read.
@@ -104,7 +139,7 @@ QUAD_KEYS = ("quad_px", "corners", "anchors")
 # 70 px outside the cloth at the top and about 70 px inside at the bottom, so a
 # detector seeded from it searched the carpet.  No chain below selects it.  A
 # reader may still read it by name for a comparison, and it then says why.
-REFUSED = "corners_30min_v2.json"
+REFUSED = corners_v2_name()
 
 # The time the vod30 hand anchors were clicked.  The file keys its six pocket
 # anchors by time; the first four points are the cloth quad.

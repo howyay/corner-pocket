@@ -31,6 +31,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 
 from src import events_document  # noqa: E402
+# The corners v2 file has one home, src/calib_segments.py, so this reader takes the
+# path from that home and keeps its own root.
+from src.calib_segments import corners_v2_path  # noqa: E402
 # The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
 # path from that owner, so a rename of the file name moves this reader too.
 from src.sam3_artifact import artifact_in  # noqa: E402
@@ -38,7 +41,7 @@ from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: 
 
 VIDEO = ROOT.parent / "data" / "vod_30min_260815.mp4"
 SCAN = ROOT.parent / "out" / "scan30"
-CORNERS = ROOT.parent / "out" / "corners_30min_v2.json"
+CORNERS = corners_v2_path(root=ROOT.parent)
 
 
 def main():
