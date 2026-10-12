@@ -10,16 +10,25 @@ Neither store layer refused the kind, so a rename split a reader from the writer
 Four names have one home now: `SHARED_ARTIFACTS`, `TRACKLETS_NAME` and the tuple
 `SHARED_ARTIFACT_NAMES` of ``src/store.py``.
 
-The cases below hold three facts:
+The walk below reads the two store layers, the served readers of
+``annotator/unified_server.py``, and the five modules that take a name of the
+out/ root: ``src/pid_associate.py``, ``src/yolo_track.py``,
+``src/pid_seed_rebuild.py``, ``src/pid_osnet_tight.py`` and
+``src/pid_osnet_tracks.py``.  Each of the five held one name or more as a string
+literal.
+
+The cases below hold four facts:
 
 1. the owner answers exactly four names, and each name is a plain JSON file name;
-2. no store layer and no served reader of ``annotator/unified_server.py`` spells one
-   of the four names as a string literal again.  The walk reads source with ``ast``,
-   so it sees a literal and not a sentence, and it names the site ``file:line``;
-3. a planted copy answers its own site, so case 2 cannot pass in silence.
+2. no reader of ``READERS`` spells one of the four names as a string literal again.
+   The walk reads source with ``ast``, so it sees a literal and not a sentence, and
+   it names the site ``file:line``;
+3. a planted copy answers its own site, so case 2 cannot pass in silence;
+4. every reader of ``READERS`` reads the owner, so the walk cannot hold a module
+   that cannot read it.
 
-One limit holds: the walk reads the two store layers and ``annotator/unified_server.py``
-only.  A producer of the files, for example ``src/pid_shooter.py``, is not a reader.
+One limit holds: a reader that cannot import the owner stays out of ``READERS``.  A
+producer of the files, for example ``src/pid_shooter.py``, is not a reader.
 
 Run: ``./scripts/pool-test.sh python test_shared_artifact_names``
 """
@@ -40,7 +49,18 @@ from src.store import SHARED_ARTIFACT_NAMES  # noqa: E402
 OWNER = "src/store.py"
 
 #: The two store layers and the served readers.  A name stands in the owner alone.
-READERS = ("src/store_pg.py", "annotator/unified_server.py")
+READERS = (
+    # the two store layers and the served readers
+    "src/store_pg.py",
+    "annotator/unified_server.py",
+    # the modules that took a name of the out/ root.  Each one reads src/store.py,
+    # so the walk below may hold it (see the case ``test_every_reader_reads_the_owner``).
+    "src/pid_associate.py",
+    "src/yolo_track.py",
+    "src/pid_seed_rebuild.py",
+    "src/pid_osnet_tight.py",
+    "src/pid_osnet_tracks.py",
+)
 
 #: The number of sibling files at the out/ root.  A test states this fact on
 #: purpose, so the case cannot agree with a short map by reading the map alone.
@@ -84,6 +104,21 @@ def reader_sites() -> list[str]:
     return spelling_sites([ROOT / relative for relative in READERS])
 
 
+def owner_imports(path: Path, owner=OWNER) -> list[str]:
+    """One `path:line imports name` entry for every name `path` reads from the owner.
+
+    A reader that cannot read the owner cannot hold a name of the out/ root.  The walk
+    reads the syntax tree, so an import inside a function counts as one site.
+    """
+    module = owner[: -len(".py")].replace("/", ".")
+    entries = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
+        if isinstance(node, ast.ImportFrom) and node.module == module:
+            for alias in node.names:
+                entries.append(f"{path}:{node.lineno} imports {alias.name}")
+    return entries
+
+
 class SharedArtifactNames(unittest.TestCase):
     """One home for the four names, and no second spelling in a reader."""
 
@@ -103,6 +138,14 @@ class SharedArtifactNames(unittest.TestCase):
                          f"a name of the out/ root has one owner, {OWNER}; "
                          "read SHARED_ARTIFACT_NAMES or TRACKLETS_NAME from it: "
                          + "; ".join(sites))
+
+    def test_every_reader_reads_the_owner(self):
+        """A reader list holds no module that cannot read the owner, so no case is idle."""
+        for relative in READERS:
+            with self.subTest(reader=relative):
+                self.assertTrue(owner_imports(ROOT / relative),
+                                f"{relative} names a file of the out/ root and does not "
+                                f"read {OWNER}; it could hold its own copy of the name")
 
     def test_the_walk_reports_a_planted_copy(self):
         """A copy must answer its own site, so the case above cannot pass in silence."""

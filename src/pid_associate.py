@@ -35,6 +35,9 @@ from src.weight_pins import OSNET  # noqa: E402
 # The mean and the standard deviation belong with the pinned weights, so this
 # module reads src/weight_pins.py and holds no copy of the two arrays.
 from src.weight_pins import OSNET_MEAN, OSNET_STD  # noqa: E402
+# src/store.py owns the four out/-root names, so this file takes each shared name and
+# the event-actor name from the two maps of the owner.
+from src.store import SHARED_ARTIFACTS, TRACKLETS_NAME  # noqa: E402
 
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO(weight_pins.YOLO)
@@ -73,7 +76,7 @@ def track_colour(bgr, box):
 
 def build_prototypes():
     """Mean embeddings + names for the two colour-separated track pairs."""
-    tr = json.load(open(os.path.join(REPO, "out", "pid2_tracklets.json")))
+    tr = json.load(open(os.path.join(REPO, "out", TRACKLETS_NAME)))
     cap = cv2.VideoCapture(VIDEO)
     proto = []  # (name, mean_emb, colour)
     for win in ["68-94", "330-356"]:
@@ -190,7 +193,8 @@ def main():
     print(f"shots {len(shots)} assigned {n_embed} | geo {n_geo} | low-margin {low}")
     print("seq:", seq)
     print("switches:", sw)
-    json.dump(out, open(os.path.join(REPO, "out", "events_actors.json"), "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", SHARED_ARTIFACTS["event_actors"]), "w"),
+              indent=1)
     print("wrote out/events_actors.json")
 
 

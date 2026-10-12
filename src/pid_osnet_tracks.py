@@ -22,9 +22,11 @@ from src.weight_pins import OSNET  # noqa: E402
 # The mean and the standard deviation belong with the pinned weights, so this
 # module reads src/weight_pins.py and holds no copy of the two arrays.
 from src.weight_pins import OSNET_MEAN, OSNET_STD  # noqa: E402
+# src/store.py owns the name of the tracklet document, so this file reads the owner.
+from src.store import TRACKLETS_NAME  # noqa: E402
 
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
-TR = json.load(open(os.path.join(REPO, "out", "pid2_tracklets.json")))
+TR = json.load(open(os.path.join(REPO, "out", TRACKLETS_NAME)))
 W = os.path.join(REPO, OSNET)
 MEAN = np.array(OSNET_MEAN, np.float32)
 STD = np.array(OSNET_STD, np.float32)

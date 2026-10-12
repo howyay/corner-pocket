@@ -20,6 +20,9 @@ from src.box_geometry import iou  # noqa: E402
 from src import weight_pins  # noqa: E402
 # src/pid_identity.py owns the person-pass confidence, so this file reads it.
 from src.pid_identity import PERSON_CONF  # noqa: E402
+# src/store.py owns the four out/-root names, so this file reads the owner.  The print
+# below keeps the name as console text alone.
+from src.store import TRACKLETS_NAME  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
@@ -125,7 +128,7 @@ def main():
             print(f"   tid {x['track_id']}: dur {x['duration_s']}s n={x['n']}")
         for (t, m, n) in sam3_agreement(tls, a, b):
             print(f"   SAM3 t={t}: yolo matched {m}/{n}")
-    json.dump(out, open(os.path.join(REPO, "out", "pid2_tracklets.json"), "w"), indent=1)
+    json.dump(out, open(os.path.join(REPO, "out", TRACKLETS_NAME), "w"), indent=1)
     print("wrote out/pid2_tracklets.json")
 
 
