@@ -85,7 +85,9 @@ the roster with `load_state`. Those names belong to the same seam.
 
 Import weight. An import of this module must not load the vision stack or a command
 line parser. It imports numpy and src.face_id only, and src.face_id itself imports
-the standard library and numpy alone. `cv2` and `src.person_pipeline` (which brings
+the standard library and numpy alone. Round 90 added one more read of src.face_id:
+the name `cosine` here is that module's `_cosine`, the one home of the rule.
+`cv2` and `src.person_pipeline` (which brings
 `torch`) load inside `scan_frames`, `scan_nearest`, `crop_jpeg`, `render_sheet`,
 `_crop_image`, `_infer` and `bench`; `argparse` loads inside `main` and
 `_bench_main`. A fresh interpreter therefore prints `False False` for:
@@ -108,6 +110,11 @@ from src.atomic_write import write_atomic
 from src.box_geometry import iou
 from src.datasets import STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
+# Round 90 gave the face cosine one home.  This module held a second body of that
+# rule, and the two guards disagreed on a pair that carries NaN: the owner answers
+# nan and the deleted copy answered 0.0.  The name `cosine` stays bound, because
+# the callers below read it, but it is the owner object now.
+from src.face_id import _cosine as cosine
 from src.frame_rate import FPS_FALLBACK
 from src.ops_event_log import trim
 # Round 60 gave the summary of one list one home: src/stats.py.  This name used to
@@ -147,6 +154,7 @@ REFUSAL_REASONS = (
     "no_stored_evidence",   # the identity index holds no usable face for that cluster
 )
 
+# `cosine` above is src.face_id._cosine, the one home of the face-embedding rule.
 # Round 80 deleted `PROTECTED` here: no reader read it, so the promise was empty.
 # The owner of the list is src/eval_faces.py, and tests/test_protected_paths_owner.py
 # fails on a second binding of the name; tests/test_enroll_from_tracklet.py reads it.
@@ -167,13 +175,6 @@ def center_inside(box, person) -> bool:
     """The production association rule (src/person_pipeline.py:_center_inside)."""
     x, y = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
     return person[0] <= x <= person[2] and person[1] <= y <= person[3]
-
-
-def cosine(a, b) -> float:
-    a = np.asarray(a, np.float32).ravel()
-    b = np.asarray(b, np.float32).ravel()
-    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
-    return float(np.dot(a, b) / (na * nb)) if na > 0 and nb > 0 else 0.0
 
 
 def rank_score(det_score, eye_px) -> float:

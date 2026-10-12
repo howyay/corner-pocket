@@ -207,10 +207,19 @@ def quality(face):
 def _cosine(a, b):
     """The one home of the face-embedding cosine.
 
-    ``src/eval_faces.py`` reads this function as ``_cos``.  A second body of this
-    rule in a second module lets two answers for one pair of embeddings drift
-    apart.  The walk of ``tests/test_face_cosine.py`` holds every site of the
-    body to one.
+    ``src/eval_faces.py`` reads this function as ``_cos``;
+    ``src/enroll_from_tracklet.py`` and ``tests/live_identity_validation.py`` read
+    it as ``cosine``.  A second body of this rule in a second module lets two
+    answers for one pair of embeddings drift apart: round 90 deleted such a body
+    whose guard answered ``0.0`` where this one answers ``nan`` for a pair that
+    carries NaN.  The walk of ``tests/test_face_cosine.py`` holds every site of
+    the body in the tree to one, and every reader to this object.
+
+    This function decides the rule, and one answer is worth stating: a pair that
+    carries NaN gets ``nan``, because the zero-length guard tests the two norms
+    and a NaN norm is neither <= 0.0 nor > 0.  ``nan`` is the useful answer here,
+    because a caller that compares with a threshold rejects it, while ``0.0``
+    would read as a real, low similarity.
     """
     a = np.asarray(a, np.float32).ravel()
     b = np.asarray(b, np.float32).ravel()

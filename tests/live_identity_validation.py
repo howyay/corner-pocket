@@ -36,6 +36,10 @@ make that labeling fast.
 
 Run: .venv/bin/python tests/live_identity_validation.py [--out DIR] [--seconds 60]
 Writes reports into --out (default: fresh temp dir, printed at the end).
+
+The `cosine` this harness measures with is `src.face_id._cosine`: round 90 deleted
+the second body that stood here, because its guard answered 0.0 where the owner
+answers nan for a pair that carries NaN.
 """
 from __future__ import annotations
 
@@ -55,6 +59,7 @@ sys.path.insert(0, str(REPO))
 
 import cv2  # noqa: E402
 
+from src.face_id import _cosine as cosine  # round 90: the one home of the face cosine
 from src.face_id import quality as face_quality  # noqa: E402
 from src.person_identity import IdentityIndex  # noqa: E402
 from src.person_pipeline import PersonPipeline, _center_inside  # noqa: E402
@@ -133,15 +138,6 @@ def prod_snapshot():
             st = p.stat()
             snap[str(p)] = (st.st_mtime_ns, st.st_size)
     return snap
-
-
-def cosine(a, b):
-    a = np.asarray(a, np.float32).ravel()
-    b = np.asarray(b, np.float32).ravel()
-    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
-    if na <= 0.0 or nb <= 0.0:
-        return 0.0
-    return float(np.dot(a, b) / (na * nb))
 
 
 def _stats(xs):
