@@ -10983,3 +10983,149 @@ The full python suite answers `Ran 2556 tests in 399.222s` and
 `OK (skipped=53)`.  The count moved from 2552 to 2556: one case from the guard
 of WR and three cases from the guard of WS.  The three node suites answer 232,
 23 and 114 pass with 0 failures.
+
+## Round 91 - the vod routes, the tournament words and the console name
+
+The walk of this round is `/tmp/dshsess/walk_round91.md` (272 lines) at HEAD
+`e8a1645`.  Its line 2 read `Strong candidate present - 2 Strong, 1 Worth, 1 Note`.
+The Lead read every ground of the four rows again, read-only.
+
+### Row 1 (Strong) - the write registry against the console
+
+The server owns the video-on-demand write routes in one table:
+`annotator/unified_server.py:2525 OperatorAction('vod_import', ['api', 'vods', 'import'], 'vod_request', takes='verb'),`
+and the header comment at `:2490-2499` says the parts are spelled as the console
+spells the URL it calls.  The console spelled the same URLs a second time:
+`annotator/ops.js:549` for the import, and 18 lines of the two console files hold
+one `/api/vods/<word>` literal each.  The uniqueness case
+`tests/test_unified_server.py:2078` read the python table only, and the node
+suites replace `fetch` with a stub, so a dead console URL passed every test.
+
+Writer WT added the two cases that hold the 6 write calls of the console to the
+table.  The helper `CONSOLE_WRITE_CALLS` matches only the two write shapes: a
+`fetch` with `method: 'POST'`, and a `bcApi` call with a body.  A read carries
+neither.  The case first asserts that the scan rebuilt the live table, so the scan
+cannot read nothing.  `tests/test_unified_server.py` rose from 120 to 122 cases.
+
+The Lead kept the write case and found the read side open: the read dispatch
+spells the same read URLs again.  The Lead bit the owner: the row of `:2525`
+changed `'import'` to `'teleport'`, the module answered `FAILED (failures=5)`,
+and the restore gave `3eea5a485da784ce9634b3d238ad991c18848896` back.
+
+Writer WT stopped before this second task.  `send_message` is the AgentTeams tool
+in this session, and it answers `active teammate "…" not found` for a plain
+subagent, so a stopped writer cannot take a follow-up.  The Lead wrote the brief
+`/tmp/dshsess/brief_r91_writerWX.md` and dispatched writer WX.
+
+Writer WX corrected the shape of the read dispatch, and the walk.  The dispatch is
+two layers, not one table.  The HTTP handler `dispatch()` at
+`annotator/unified_server.py:2956-3056` compares a whole path literal (the
+thumbnail stands at `:3011 if path == '/api/vods/thumb':`), and
+`Backend.get(parts, query)` at `:2195-2288` compares the segment list ten times
+and then holds one membership test at
+`:2229 if len(parts) == 3 and parts[:2] == ["api", "vods"] and parts[2] in ("recent", "job", "estimate", "queue"):`.
+The brief of the Lead wrote `if p == 'api/vods/recent':`, and
+`grep -n "p == '" annotator/unified_server.py` answers 0 hits.  The line number
+was right and the shape was wrong: a citation names a line, not a symbol.  That
+lesson stands for the third time in this ledger.
+
+WX added the read case and its planted twin.  The served set is the thumbnail from
+the literal rung and the four verbs from the parts rung.  The console holds 12
+read rows, and their distinct URLs are those five.  The module rose from 122 to
+124 cases.  Its bite changed `/api/vods/recent` to `/api/vods/recents` at
+`annotator/ops.js:232`:
+`491482e9f54aa78ea5e8b44859e3e90fef34fa56 -> 7e33fa7cc9531e8a162c2297cdac50b915617b4b -> 491482e9f54aa78ea5e8b44859e3e90fef34fa56`,
+red with `Lists differ: ['ops.js:232 /api/vods/recents'] != []`.
+
+### Row 2 (Strong) - the three words of one tournament status
+
+The migration owns the words for the database:
+`db/migrations/0002_user_data.sql:40 status text NOT NULL CHECK (status IN ('registration','active','complete')),`.
+The board script repeated them in two languages at `annotator/board.js:26` and
+`:43`, and hung the champion card on one of them at `:161`.  The comment at
+`:158-160` said that no tuple publishes the words.  The parity module recorded the
+domain as a `NO_PYTHON_COPY` record at `tests/test_sql_domain_parity.py:846`, and
+its scanner `shipped_copies()` at `:540-543` walks `*.py` only, so the two
+JavaScript copies were invisible by construction.
+
+Writer WU published `TOURNAMENT_STATUSES = ('registration', 'active', 'complete')`
+at `annotator/operations.py:245`, beside `MATCH_STATUSES`, with a six-line comment
+that names the migration, the board and the guard.  The parity module binds the
+domain to the tuple, and two cases hold the migration and both word maps to it.
+The comment of the board now names the tuple.  The module counts 22 cases at the
+start of the round and 24 at the end.  The tuple moved every line of
+`annotator/operations.py` at or after 239 down by 8, and the Lead paid 60
+citations for it.  The citing sentence that names `NOTE_MAX` was repaired in the
+same edit: `tests/test_sql_domain_parity.py:896` now names
+`annotator/operations.py:50`, `:915` and `:1346`.
+
+WU also repaired `tests/test_state_document_owner.py:6`, a file outside its brief,
+because its own shift broke that citation.  The Lead keeps that repair: whoever
+shifts a cited line re-points it.
+
+The bite of WU added `abandoned: 'Abandoned',` to the English word map:
+`cfc4552adccb727c8991a2fa084e98ad954ff167 -> eb83addc74610959628b986a2e19e8581925c6e6 -> cfc4552adccb727c8991a2fa084e98ad954ff167`,
+`FAILED (failures=2)`.  The first attempt of the bite left the plant in the file,
+and the case then failed with a silent message.  The writer repaired its own case
+to count the anchor first (`tests/test_sql_domain_parity.py:1276`).
+
+### Row 3 (Worth) - the name of the built-in dataset
+
+The registry owns the word:
+`src/datasets.py:35 STATIC = {"vod30": ("scan30", "vod_30min_260815.mp4"),`.
+`annotator/app.js` spelled it inside 20 route paths, and one anchors route carried
+two spellings: `:495` wrote `/api/vod30/anchors` and `:542` wrote
+`/api/${enc('vod30')}/anchors`.
+
+Writer WV gave the console one name, `const BUILT_IN_DATASET = 'vod30';` at
+`annotator/app.js:57`, with a four-line comment at `:53-56` that names the
+registry and the service gate.  The ten route paths read the name, and the two
+spellings became one.  The new guard `tests/test_app_routes_owner.py` holds the
+name to the registry key, holds the ten built URLs to their historic text, and
+reports a route path that spells the id again.  The literals inside the route
+paths fell from 20 to 0.  The twelve remaining spellings of `vod30` in that file
+stand outside a route path: the declaration, the `state.dataset` default, four
+comparisons, four comments and the refusal-table pattern at `:2127`, which must
+stay byte-identical to the server.
+
+The insert of the name moved every `annotator/app.js` line at or after 53 down by
+5, and the Lead paid 123 citations in 18 files for it.  The Lead bit the registry
+owner `src/datasets.py:35`: the key `"vod30"` became `"vod30x"`,
+`278ef218a5327a881260a16f62d0a28d249e3aee -> e436de2b34be92406d46a6277bdd1725c7fd594b -> 278ef218a5327a881260a16f62d0a28d249e3aee`,
+`FAILED (failures=1)`.
+
+The writer noted that its own `cp` backup held its fixed version, not the original
+one.  The Lead measured the before value from `git show HEAD:annotator/app.js`
+instead: `ef811ecadd550424a8661774a6937993324647f5`.  A `cp` backup of a writer is
+not a record of the original file.
+
+### Note - a citing sentence that named the wrong lines
+
+`tests/test_sql_domain_parity.py:825` cited `NOTE_MAX = 4000 at :45 and reads it at
+:886 and :1316`, and the true sites are `annotator/operations.py:50`, `:907` and
+`:1338`.  Writer WU repaired it in the same edit.
+
+### The nine names that the round-90 walk listed
+
+The walk of this round checked them again.  Eight have no reader at all:
+`src/ball_census.py:67 MAX_PREDICT_S`, `src/motion_scan.py:206 SERIES_FIELDS`,
+`src/pid_seed_ui.py:45 PROTO`, `src/pipeline.py:54 SOLID_MAP`,
+`src/playfield.py:18 OUTSIDE_IN`, `src/tiny_ball_net.py:62 QUAD_SEGMENTS`,
+`src/track_before_detect.py:52 COMPARE_CHANNEL` and `:53 N_FRAMES`.  One copy is
+not two copies that can drift, so no row opened.  The ninth,
+`src/motion_scan.py:108 BALL_DIAMETER_NATIVE`, is wired: the readers stand at
+`src/shot_pot_gate.py:151`, `:760`, `:823` and `:832`, and the cases at
+`tests/test_shot_pot_gate.py:27` and `:449`.
+
+### Commits
+
+* `12ba8ec test: the console vod routes answer the registry and the dispatch`
+* `5efe0a7 refactor: the tournament status words read one owner tuple`
+* `cea22e8 refactor: the built-in dataset id has one name in the console`
+* `94862b4 docs: the citations follow the two shifts of round 91`
+
+### Suites
+
+The full python suite answers `Ran 2566 tests in 618.422s` and `OK (skipped=53)`.
+The count moved from 2556 to 2566: two cases from WT, two from WX, two from WU and
+four from WV.  The three node suites answer 232, 23 and 114 pass with 0 failures.
