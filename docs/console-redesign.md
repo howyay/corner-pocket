@@ -11678,3 +11678,12 @@ before the edit.  `./scripts/pool-test.sh python test_citation_lines` answers OK
   them.
 - The documents hold 582 citations that name a blank line, measured by the walk of round 94.
   They stand as debt.
+
+The full python suite answers `Ran 2649 tests in 817.854s` with one ERROR that this
+round measures as a transient: `OSError: [Errno 39] Directory not empty: '/tmp/tmplgy8gqm1'`
+rose from the cleanup of the module `tempfile` inside
+`test_vod_import.ImporterTests.test_the_seconds_knob_is_the_only_bounded_range_and_it_is_capped`,
+and that module answers `Ran 32 tests in 9.661s` and `OK` when it runs alone.  The node
+suites answer `232 pass / 0 fail`, `23 pass / 0 fail`, and `114 passed, 0 failed`.  The
+count moved 2617 -> 2649: two cases from writer X4, two from writer X5, two from writer
+X8, eighteen from writer X7, and eight from writer X9.
