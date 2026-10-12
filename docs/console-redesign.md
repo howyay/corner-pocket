@@ -10260,3 +10260,62 @@ the brief of each later walk carries the closed list.
 The push is still blocked. One hundred and forty-two commits sit on the local `main`: the two writer commits of
 this round, the record of this round, and the hundred and thirty-nine that came before them. `origin/main` stays
 at `110b0338`. The one user action stays `git -C /home/haoye/projects/pool push origin main`.
+
+## Round 78 - one home for the highlight times, the dense bar and a citation
+
+Walk: read the repository at HEAD `a4b8931`. `git status --porcelain` was empty at the start and at the end. The verdict line was `Strong candidate present - 1 Strong, 1 Worth, 1 Note`, on line 2 of `/tmp/dshsess/walk_round78.md` (260 lines, at the cap). The report holds three candidate sections, then `## Limits` and `## Dry probes`. The walk did not read the request-handler bodies of `annotator/unified_server.py`, the `_do_*` bodies of `annotator/operations.py`, 42 of the 43 files of `docs/`, the case bodies of the three console suites, `viz/`, `src/reid/`, `src/sam3/` or `annotator/fonts/`.
+
+### Strong 1 - the highlight sample times stood in four copies
+Ground: `[5, 28, 60, 90, 150, 200]` stood at `src/audit_calib.py:82`, `src/quad_fit.py:152`, `src/quad_fit_lines.py:212` and `src/recut_crops.py:36`, with no shared name and no reader under `tests/`, `tools/`, `annotator/` or `scripts/`.
+Repair: `src/datasets.py:43 HIGHLIGHT_SAMPLE_TIMES = (5, 28, 60, 90, 150, 200)` is the one home; the four readers hold the name (`src/audit_calib.py:85 hl_times = list(HIGHLIGHT_SAMPLE_TIMES)`, `src/quad_fit.py:152`, `src/quad_fit_lines.py:212`, `src/recut_crops.py:38`). The vod30 cadence `list(range(60, 1741, 120))` stays in its three places, because it belongs to another recording; the owner states that in a comment. New guard `tests/test_vod_sample_times.py` (15 cases).
+Measurement: `git grep -n -F "5, 28, 60, 90, 150, 200" -- src tests tools annotator scripts` answers three lines: the owner and the two comparison assertions of the guard.
+
+### Worth 1 - the dense-occupancy bar stood twice
+Ground: `OCC_DENSE_MIN = 0.30` stood at `src/motion_scan.py:192` and `src/shot_pot_gate.py:140`, with different reader sets (`src/track_before_detect.py:609` against `src/ball_association_ab.py:59` and `:136`) and the geometric justification written twice. `tests/test_shot_pot_gate.py:263-264` held the two numbers equal.
+Repair: `src/motion_scan.py:192` stays the owner, because it measures the share of the 61x61 px occlusion window that changed; `src/shot_pot_gate.py:86` reads it (`from src.motion_scan import OCC_DENSE_MIN`) and its own definition and second justification became a pointer. `src/shot_pot_gate.py:660 from_shares(threshold: float = OCC_DENSE_MIN)` holds the owner object. `tests/test_shot_pot_gate.py` was not changed, because its two-way case still holds.
+Measurement: `git grep -n "OCC_DENSE_MIN *=" -- src tests` answers one line.
+
+### Note 1 - a drifted citation
+Ground: `annotator/public_board.py:46` cited `sideName (annotator/ops.js:884)`, but that line holds `const r=review();` and `sideName` stands at `annotator/ops.js:904`. The citation guard cannot see this, because it proves only that a cited line holds text.
+Repair: the Lead re-pointed the citation to `:904` (commit `65fe4ca`).
+
+### Bites
+| Writer | File | before | during | after |
+|---|---|---|---|---|
+| AY | `src/audit_calib.py` | `3a4cadd29ff8` | `d8949bc66871` | `3a4cadd29ff8` |
+| AY | `src/quad_fit.py` | `838f985e9c56` | `fd9464e5f0cb` | `838f985e9c56` |
+| Lead | `src/motion_scan.py` | `a3e1e4ed3ee7` | `48ce95650cdd` | `a3e1e4ed3ee7` |
+
+AY's first bite answered `['src/audit_calib.py:86'] != []` and `'HIGHLIGHT_SAMPLE_TIMES' not found in set() : src/quad_fit.py binds TIMES_BITE without asking the owner`. The Lead's bite answered `[False, False] != [False, True]` in `test_shares_become_flags_at_the_threshold`. The Lead's first attempt changed no byte, because the backup directory did not exist; it is recorded as a miss and it was replaced.
+
+### Suites
+| Suite | Answer |
+|---|---|
+| `./scripts/pool-test.sh python` | `Ran 2377 tests in 416.594s`, `OK (skipped=53)` |
+| `node tests/test_ops.js` | 232 pass, 0 fail |
+| `node tests/test_board.js` | 23 pass, 0 fail |
+| `node tests/test_app_timeline.js` | 114 passed, 0 failed |
+
+Round 77 answered 2360 cases; round 78 answers 2377: 15 cases of `tests/test_vod_sample_times.py` and 2 cases of `tests/test_datasets.py`.
+
+### Commits
+- `65fe4ca` - the citation of the public board names its real line.
+- `742a2db` - one home for the highlight times and the dense bar.
+
+### Rows closed
+- The six highlight sample times stand in one home.
+- The dense-occupancy bar stands in one home.
+- The citation of `annotator/public_board.py:46` names a real line.
+
+### Rows open
+- The four scripts that read `HIGHLIGHT_SAMPLE_TIMES` did not run end to end here: they need the media, the corner files and the SAM3 weights.
+- The vod30 cadence keeps three copies by decision.
+- `src/shot_pot_gate.py` now reads `cv2` at import through `src.motion_scan`; its `:101-102` "stdlib-only import graph" claim was already untrue through `src.projection`.
+- The new guard cannot see a concatenated or generated copy of the six instants.
+- A net line reduction in `src/shot_pot_gate.py` broke `tests/test_console_reason_table.py:54 -> src/shot_pot_gate.py:946`; the writer kept the line count at 1702. A writer whose edit shifts a cited line in a file outside its scope must keep the line count.
+- The brief of a walk must be checked at its task lines, not only at its title: the round-78 brief still named `walk_round73.md` and 139 commits.
+- The citation guard still proves only that a cited line holds text.
+- The open rows of rounds 51 to 77 stand.
+
+### Push
+The push is blocked. The local `main` holds 144 commits. `origin/main` stays at `110b0338`. The one user action is `git -C /home/haoye/projects/pool push origin main`.
