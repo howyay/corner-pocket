@@ -50,6 +50,11 @@ const BOX_ORIGIN = {operator:'manual', model:'auto'};
 // The frame the overlay draws in before the server names one. src/ball_scale.py owns
 // the pipeline's native frame, so the console states the same pair once here and reads
 // it at every fallback. A second copy of these two numbers is the defect.
+// The built-in dataset id is one word for the whole realm. src/datasets.py:35 (STATIC) owns
+// that word. This console states the same word once here, and reads this name at every route
+// path below. The service gate for the same word is the `_vod30` method in
+// annotator/unified_server.py:2325. A second copy of the id is the defect.
+const BUILT_IN_DATASET = 'vod30';
 const NATIVE_FRAME = [1280, 720], NATIVE_W = NATIVE_FRAME[0], NATIVE_H = NATIVE_FRAME[1];
 const state = {
   mode:'timeline', dataset:'vod30', datasets:[], sets:[], set:'unlabeled_crops',
@@ -492,7 +497,7 @@ async function loadCrops(setId = state.set) {
   state.set = setId; state.balls = {items: data.items || [], labels: data.labels || {}, index: 0, file: null}; notify();
 }
 async function loadAnchors(t = state.anchors.t) {
-  const data = await api(`/api/vod30/anchors?t=${enc(t)}`);
+  const data = await api(`/api/${BUILT_IN_DATASET}/anchors?t=${enc(t)}`);
   const w = data.width || 1920, h = data.height || 1080;
   let pts = (data.pts || data.suggested_pts || []).map(p => Array.isArray(p) ? [...p] : [p.x, p.y]);
   if (pts.length !== POCKET_ANCHOR_ORDER.length) pts = FALLBACK_ANCHOR_LAYOUT.map(([x,y]) => [Math.round(x*w),Math.round(y*h)]);
@@ -503,7 +508,7 @@ async function loadAnchors(t = state.anchors.t) {
   notify();
 }
 async function loadPersons() {
-  const data = await api('/api/vod30/tracklets');
+  const data = await api(`/api/${BUILT_IN_DATASET}/tracklets`);
   const windows = data.windows || [];
   state.persons.windows = windows.map(w => ({win: w.win, count: (w.tracks || []).length}));
   state.persons.seeds = data.seeds || {};
@@ -519,7 +524,7 @@ async function loadTracks(at = null) {
   const [start, end] = String(win).split('-').map(Number);
   const t = Number.isFinite(at) ? at : (Number.isFinite(start) && state.t >= start && state.t <= end ? state.t : start);
   try {
-    const data = await api(`/api/vod30/tracks?win=${enc(win)}&t=${enc(t)}`);
+    const data = await api(`/api/${BUILT_IN_DATASET}/tracks?win=${enc(win)}&t=${enc(t)}`);
     if (epoch !== state.epoch || request !== trackRequest) return;
     state.persons.tracks = data.tracks || [];
     state.persons.t = data.t ?? t;
@@ -527,7 +532,7 @@ async function loadTracks(at = null) {
   } catch (error) { if (epoch === state.epoch && request === trackRequest) notice(`Tracks unavailable. ${error.message}`, true); }
 }
 async function loadSeeds() {
-  try { const data = await api('/api/vod30/seeds'); state.persons.seeds = data.seeds || {}; notify(); } catch (_) {}
+  try { const data = await api(`/api/${BUILT_IN_DATASET}/seeds`); state.persons.seeds = data.seeds || {}; notify(); } catch (_) {}
 }
 // The clearance reference for the automatic cloth quad: the dataset's saved six
 // anchors when they exist, otherwise the projection of its saved calibration.
@@ -539,7 +544,7 @@ async function loadClothReference() {
   state.cloth.reference = null;
   if (state.dataset !== 'vod30') { paintOverlay(); notify(); return null; }
   try {
-    const data = await api(`/api/${enc('vod30')}/anchors?t=${enc(state.anchors.t)}`);
+    const data = await api(`/api/${enc(BUILT_IN_DATASET)}/anchors?t=${enc(state.anchors.t)}`);
     const saved = Array.isArray(data.pts) && data.pts.length >= 4;
     const suggested = Array.isArray(data.suggested_pts) && data.suggested_pts.length >= 4;
     if (saved || suggested) state.cloth.reference = {
@@ -1406,7 +1411,7 @@ async function setSeed(button, role, playerId) {
   if (label !== null && String(label) === '') { notice('Type a guest name or choose a regular before saving.', true); return false; }
   const t = state.persons.t ?? state.t;
   const body = {win: state.persons.win, t, track_id: trackId(track), label};
-  return save(button, '/api/vod30/seeds', body, async () => { await loadSeeds(); }, 'person', `win ${state.persons.win} · track ${track} = ${label === null ? 'cleared' : label}`);
+  return save(button, `/api/${BUILT_IN_DATASET}/seeds`, body, async () => { await loadSeeds(); }, 'person', `win ${state.persons.win} · track ${track} = ${label === null ? 'cleared' : label}`);
 }
 // The regular path: the player's id is bound to this track's identity cluster,
 // so face/body matching keeps working from the same explicit pick.
@@ -1510,7 +1515,7 @@ async function enrollConfirm(button) {
 function setEnrollName(value) { state.enroll = {...state.enroll, name: String(value ?? '')}; }
 function cancelEnroll() { state.enroll = {status:'idle', payload:null, name: state.enroll.name || '', startedAt:0, error:null}; notify(); }
 async function saveAnchors(button) {
-  return save(button, '/api/vod30/anchors', {t: state.anchors.t, pts: state.anchors.pts.map(p => [...p])}, () => { state.anchors.saved = true; }, 'anchor', `${state.anchors.pts.length} anchors @ t ${Number(state.anchors.t).toFixed(1)}`);
+  return save(button, `/api/${BUILT_IN_DATASET}/anchors`, {t: state.anchors.t, pts: state.anchors.pts.map(p => [...p])}, () => { state.anchors.saved = true; }, 'anchor', `${state.anchors.pts.length} anchors @ t ${Number(state.anchors.t).toFixed(1)}`);
 }
 // What 'save corrections' writes: the operator's own boxes only. The model's are
 // session-only reference (and a frozen ghost of an edited model box is never a
@@ -1639,7 +1644,7 @@ async function rebuild(button) {
   if (button) button.disabled = true;
   state.persons.status = 'Rebuilding…'; notify();
   try {
-    const data = await api('/api/vod30/rebuild', {});
+    const data = await api(`/api/${BUILT_IN_DATASET}/rebuild`, {});
     state.persons.rebuild = data.status || 'unknown';
     state.persons.status = `Status: ${data.status || 'unknown'}${data.error ? ` — ${data.error}` : ''}`;
     if (data.status === 'running') setTimeout(() => refreshRebuild(), 2500);
@@ -1648,10 +1653,10 @@ async function rebuild(button) {
 }
 async function refreshRebuild() {
   try {
-    const data = await api('/api/vod30/rebuild');
+    const data = await api(`/api/${BUILT_IN_DATASET}/rebuild`);
     state.persons.rebuild = data.status || 'unknown';
     state.persons.status = `Status: ${data.status || 'unknown'}${data.error ? ` — ${data.error}` : ''}`;
-    if (data.status === 'completed') { const fresh = await api('/api/vod30/tracklets'); state.persons.predictions = fresh.predictions; await loadTracks(); }
+    if (data.status === 'completed') { const fresh = await api(`/api/${BUILT_IN_DATASET}/tracklets`); state.persons.predictions = fresh.predictions; await loadTracks(); }
   } catch (error) { state.persons.status = `Status unavailable: ${error.message}`; }
   notify();
 }
