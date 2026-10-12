@@ -11129,3 +11129,50 @@ not two copies that can drift, so no row opened.  The ninth,
 The full python suite answers `Ran 2566 tests in 618.422s` and `OK (skipped=53)`.
 The count moved from 2556 to 2566: two cases from WT, two from WX, two from WU and
 four from WV.  The three node suites answer 232, 23 and 114 pass with 0 failures.
+
+## Round 92 - the pocket words of two realms
+
+The read-only walk of round 92 (`/tmp/dshsess/walk_round92.md`, 105 lines) ran at HEAD
+`784ddce` and answered `Strong candidate present - 1 Strong, 0 Worth, 0 Note`.
+
+### Strong 1 - the pocket words of two realms
+
+Ground: `src/dense_queue.py:96 POCKET_WORDS = {` and `src/dense_queue.py:99 POCKET_WORDS_ZH = {`
+hold the six stored keys with the English word and the Chinese word, and
+`src/dense_queue.py:150 def distance_sentence(distance_mm, uncertainty_mm, radius_mm, pocket, verdict_mm) -> tuple:`
+reads them at `:248`.  Ground: `annotator/app.js:222 const POCKET_LABELS = {`,
+`annotator/app.js:227 const POCKET_WORDS = {` and `annotator/app.js:232 function pocketWord(token, lang)`
+hold the same six keys a second time.  Measurement: `grep -c "POCKET_WORDS" docs/console-redesign.md`
+answered 0, so no earlier round closed this row.  `tests/test_app_timeline.js:1298` read the
+key set only, and `src/dense_queue.py:172` read the queue's own map.  Defect: one fact in two
+copies that can drift, across two realms that no guard held together.
+
+The Lead verified every ground read-only.  The brief is
+`/tmp/dshsess/brief_r92_writerWY.md` (5368 bytes), and the writer is subagent `45cf992c`.
+
+Writer WY delivered `tests/test_pocket_words_owner.py` (337 lines, 11 cases, four classes)
+and one comment line at `annotator/app.js:221`.  The owner `src/dense_queue.py` stayed at
+`1603f807a57551a61bb917d2bd06f2331948e483`.  The new module holds the two realms equal, key
+for key and word for word.  It holds the stage file with no table of its own.  It also holds
+the sentence builder of `distance_sentence`.  The writer measured the true shape: the pocket
+key is the fourth argument, an unknown key stays verbatim in both sentences, and the third
+verdict branch still answers two sentences.
+
+The writer's bite planted a wrong Chinese word at `annotator/app.js:230`:
+`6b7ba01b106950362f4db21b0cdefacda5c9a866 -> b451e38cee6b9e50262e9c2ba6af46899efe374f -> 6b7ba01b106950362f4db21b0cdefacda5c9a866`,
+red with `FAILED (failures=4)`.  It disclosed one incident: its first comment block added two
+lines, and it rebuilt the bytes from its backup copy.
+
+The Lead measured the delivery: the three sha1 of the writer, `git diff` of
+`annotator/app.js` (one comment line, 2470 lines before and after), and the module run.
+The Lead found one defect in the new module: the report of a difference carried the console
+file name with the python line number.  The helper `compare(left, right, left_name, right_name)`
+now names the file and the line of each realm, and the five call sites follow.
+
+The Lead's own bite changed the owner `src/dense_queue.py`, which no writer bit:
+`1603f807a57551a61bb917d2bd06f2331948e483 -> 68251a89e13df4dffdc0330c59314dd30cbd05b1 -> 1603f807a57551a61bb917d2bd06f2331948e483`,
+red with `FAILED (failures=4)` and with the corrected report:
+`('src/dense_queue.py:101 and annotator/app.js:230', "the stored key 'right-side' has the Chinese word '右中-X' in src/dense_queue.py at line 101 and '右中' in annotator/app.js at line 230")`.
+The module answered OK after the restore, and the bytecode of the mutated module was removed.
+
+The delivery landed as `a749a01 test: the pocket words of the two realms stay equal`.
