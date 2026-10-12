@@ -37,6 +37,8 @@ if str(ROOT) not in sys.path:
 
 from src import sam3_artifact  # noqa: E402
 from src.ball_census import classify_ball_color  # noqa: E402
+# src/calib_segments.py owns the scan corners path, so this file reads the owner.
+from src.calib_segments import SCAN_CORNERS  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,  # noqa: E402
@@ -123,7 +125,7 @@ def load_filters(path) -> dict:
     return _json_object(path).get("filter", {})
 
 
-def cloth_mask(bgr, reference=None, corners_path="out/scan30/corners.json"):
+def cloth_mask(bgr, reference=None, corners_path=SCAN_CORNERS):
     """The cloth a ball is allowed to sit on, and which geometry decided it.
 
     ``detect_table`` estimates the cloth per frame, and that estimate collapses
@@ -310,7 +312,7 @@ def pending_times(times, cached=(), refetch=()) -> list:
     return out
 
 
-def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path="out/scan30/corners.json",
+def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path=SCAN_CORNERS,
         budget_s=2400.0, checkpoint=SAM3, progress=print, refetch=()) -> dict:
     """Run the pending timestamps in order under a wall-clock budget.
 
@@ -386,7 +388,7 @@ def main():
                     help="JSON list (or one timestamp per line); overrides --times")
     ap.add_argument("--out", default=OWN_CACHE)
     ap.add_argument("--app-cache", default=APP_CACHE)
-    ap.add_argument("--corners", default="out/scan30/corners.json")
+    ap.add_argument("--corners", default=SCAN_CORNERS)
     ap.add_argument("--budget-s", type=float, default=2400.0)
     args = ap.parse_args()
 

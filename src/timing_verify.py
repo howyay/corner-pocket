@@ -42,6 +42,8 @@ import cv2
 import numpy as np
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME
+# src/calib_segments.py owns the scan corners path, so this file reads the owner.
+from src.calib_segments import SCAN_CORNERS
 from src.event_window import AT_TOL_S, EVENT_AFTER_S, EVENT_BEFORE_S
 from src.frame_rate import FPS_FALLBACK
 
@@ -786,7 +788,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--video", default="data/vod_30min_260815.mp4")
     ap.add_argument("--queue", default="out/scan30/events.json", help="served queue artifact")
-    ap.add_argument("--quad", default="out/scan30/corners.json")
+    ap.add_argument("--quad", default=SCAN_CORNERS)
     # This default stays a frozen literal: argparse prints a default string in --help,
     # and a recorded command line holds it.  The name has one owner,
     # src/calib_segments.anchors_reference_path; tests/test_anchor_name_owner.py holds

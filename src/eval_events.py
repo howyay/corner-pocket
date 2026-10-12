@@ -57,6 +57,8 @@ from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 from src.datasets import media_relpath  # noqa: E402
 from src import ball_scale, events_document, sam3_artifact  # noqa: E402
+# src/calib_segments.py owns the scan corners path, so this file reads the owner.
+from src.calib_segments import SCAN_CORNERS  # noqa: E402
 from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 
 # The census works in the pipeline's frame, so both sizes come from the owner.
@@ -1087,7 +1089,7 @@ def main():
     # src/calib_segments.anchors_reference_path; tests/test_anchor_name_owner.py holds
     # this literal equal to that owner, so the two cannot drift apart.
     ap.add_argument("--anchors", default="out/pid_anchors_vod30.json")
-    ap.add_argument("--scan-quad", default="out/scan30/corners.json")
+    ap.add_argument("--scan-quad", default=SCAN_CORNERS)
     ap.add_argument("--dataset", default="vod30",
                     help="calibration segment artifact to resolve the reference quad per event")
     ap.add_argument("--report", default="out/scan30/eval_events.json")
