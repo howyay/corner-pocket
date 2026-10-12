@@ -23,7 +23,7 @@ imports it.
 `src/ops_event_log.py` is now the only owner of the number.  It is a new module and
 not `src/events_document.py`, because that module owns a different document: its rows
 carry `t` and `type`, and its own scope says "it does not decide which rows are
-events, and it does not delete a row" (`src/events_document.py:37`).  An operations
+events, and it does not delete a row" (`src/events_document.py:44`).  An operations
 event carries `revision`, `action` and `context` and no `type`, so that module
 refuses it (`test_the_operations_log_is_not_an_events_document` measures this).
 

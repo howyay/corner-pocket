@@ -25,10 +25,10 @@ list before this module existed; a log shorter than the bound is returned whole.
 `src/events_document.py` is not this owner.  It owns the scan-event documents
 (`events.json`, `events_v2.json`), whose rows carry `t` and `type`; its own scope says
 "it does not decide which rows are events, and it does not delete a row"
-(`src/events_document.py:37`), and an operations event carries `revision`, `action` and
+(`src/events_document.py:44`), and an operations event carries `revision`, `action` and
 `context` and no `type`, so `events_document.write` refuses it.
 
-The `ops_events` table is not bounded here: `src/store_import.py:220-224` inserts every
+The `ops_events` table is not bounded here: `src/store_import.py:234-238` inserts every
 row of the document.  `src/store_check.py:71-72` still spells the number next to the
 live table, inside a `LIMIT`; that file is outside this change, and
 `tests/test_event_retention.py` records the spelling instead of hiding it.

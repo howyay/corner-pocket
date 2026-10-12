@@ -902,7 +902,7 @@ html,body{-webkit-font-smoothing:antialiased}
    Reset and the four chips - so they stay from 751 up and only the phone drops them. */
 /* Where the group is visible, every chip meets SS14.1's 32 px target. Measured on the merged
    tree at 1440 and 1920, all four style combinations (out/r3m/measure.json, F17_header_matrix):
-   the four buttons were 26x36 — the width annotator/ops.css:85 has always given them — and
+   the four buttons were 26x36 — the width annotator/ops.css:96 has always given them — and
    SS14.1's floor is written for every control in the header at the five measured widths, not
    only for the ones the finding named. 4 x 6 px is 24 px more in a bar that has room above
    1440; measured after (out/r3m/measure8.json): 32x36, header still 59 px, still one row. */
@@ -952,7 +952,7 @@ html,body{-webkit-font-smoothing:antialiased}
    columns §14.7 asks for, on the baseline so a 11 px round label and a 26 px chip sit on
    the same line rather than being centred against each other.
    The rule is gated on .tl-round existing because this stylesheet also ships against the
-   older single-text-run rows (annotator/ops.js:98 at the base): a bare grid there would
+   older single-text-run rows (annotator/ops.js:155,160 at the base): a bare grid there would
    drop the badge into a column of its own and make the raggedness worse, not better.
    The badge column is content-sized as §14.7 prescribes, and the chip carries a min-width
    so that a short "Bye" and a long "Signed" occupy the same column and the scores line up
@@ -986,7 +986,7 @@ html,body{-webkit-font-smoothing:antialiased}
    The rater's F5: the "BACKFILL FROM A VOD" marker wears the border and the uppercase
    tracking of the buttons beside it ("Expand") but is StaticText — clicking it does
    nothing — and at 390 it "pushes the date onto its own line and leaves the row ragged".
-   Lane r3a makes it a <button> (annotator/ops.js:88); this is the stylesheet half.
+   Lane r3a makes it a <button> (annotator/ops.js:163); this is the stylesheet half.
    A button in this console is `#ops-shell button` — a 40 px target, --btn-line, and the
    padding of a primary action — which is exactly what it must NOT look like here. It
    keeps the badge's own box (26 px tall, --line, --panel2, --fs-sm mono at .16em) and
