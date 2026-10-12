@@ -25,12 +25,15 @@ from ultralytics import YOLO
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
-from pid_identity import PERSON_CONF, torso_color, in_table_zone, light_dark, classify_ab
+# src/pid_identity.py writes the identity document and owns its name, so this
+# reader takes the path from the owner.
+from pid_identity import (IDENTITY_REFERENCE, PERSON_CONF, classify_ab, in_table_zone,
+                          light_dark, torso_color)
 
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
 MODEL = YOLO(weight_pins.YOLO)
 EVENTS = json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))
-ID = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))
+ID = json.load(open(os.path.join(REPO, IDENTITY_REFERENCE)))
 centers = np.array(ID["centers_bgr"])  # BGR
 # The A/B rule lives in src/pid_identity.py: A is the light cluster, B is the dark one.
 A_CLUSTER, B_CLUSTER = light_dark(centers)

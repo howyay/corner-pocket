@@ -24,9 +24,12 @@ from src.weight_pins import OSNET  # noqa: E402
 # The mean and the standard deviation belong with the pinned weights, so this
 # module reads src/weight_pins.py and holds no copy of the two arrays.
 from src.weight_pins import OSNET_MEAN, OSNET_STD  # noqa: E402
+# src/pid_identity.py writes the identity document and owns its name, so this
+# reader takes the path from the owner.
+from src.pid_identity import IDENTITY_REFERENCE  # noqa: E402
 
 VIDEO = os.path.join(REPO, "data", "vod_30min_260815.mp4")
-FEATS = json.load(open(os.path.join(REPO, "out", "pid_identity_v0.json")))["feats"]
+FEATS = json.load(open(os.path.join(REPO, IDENTITY_REFERENCE)))["feats"]
 W = os.path.join(REPO, OSNET)
 MEAN = np.array(OSNET_MEAN, np.float32)
 STD = np.array(OSNET_STD, np.float32)

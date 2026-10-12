@@ -10,6 +10,7 @@ the anchor set for later OSNet embeddings + tracklets. Numbers are honest
 cluster stats; identity names come later (user anchor / scoreboard).
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -19,6 +20,14 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 VIDEO = str(ROOT / "data" / "vod_30min_260815.mp4")
 QUAD = np.array(json.load(open(ROOT / "out" / "corners_30min_v2.json"))["corners"], np.float32)
+
+# The identity document: this module writes it, and three readers load it at
+# import time: src/pid_osnet.py, src/pid_shooter.py and src/pid_shooter2.py.
+# The name has one home here, as a path from the repository root, so the writer
+# and the three readers take the same text.  A rename moves the writer and the
+# three readers at once, and tests/test_pid_identity_owner.py reports a module
+# that spells the name again.
+IDENTITY_REFERENCE = "out/pid_identity_v0.json"
 
 # The person pass of the four pid call sites asks the detector for class 0 at
 # this confidence.  These files read this name: src/pid_associate.py,
@@ -180,8 +189,8 @@ def main():
     json.dump({"feats": feats,
                "centers_bgr": np.round(cen, 0).tolist(),
                "between": round(d_between, 1), "within": [round(w, 1) for w in within]},
-              open(ROOT / "out" / "pid_identity_v0.json", "w"), indent=1)
-    print("wrote out/pid_identity_v0.json")
+              open(ROOT / IDENTITY_REFERENCE, "w"), indent=1)
+    print(f"wrote {ROOT / IDENTITY_REFERENCE}")
 
 
 if __name__ == "__main__":

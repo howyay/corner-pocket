@@ -58,6 +58,21 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 ARTIFACT = "calib_{dataset}_segments.json"
+
+
+def segment_artifact_path(dataset: str, root=None) -> Path:
+    """The segment artifact of one dataset, under the out/ root of a tree.
+
+    ``ARTIFACT`` is the one spelling of the file name, so a caller that joins a
+    directory and the name reads this function or the template.  ``root`` (the
+    checkout or the server's own tree) keeps the caller pointed at its artifacts,
+    as ``load`` does.  A caller that holds the bytes of an older artifact carries
+    its own path, because its document is not this document.
+    """
+    base = Path(root) if root is not None else ROOT
+    return base / "out" / ARTIFACT.format(dataset=dataset)
+
+
 SOURCES = ("human_anchors", "refined", "derived")
 
 # The layout of a calibration file, in the order a caller-supplied file is read.
@@ -358,7 +373,7 @@ def load(dataset: str = "vod30", path=None, root=None, use_cache: bool = True) -
     down.
     """
     base = Path(root) if root is not None else ROOT
-    target = Path(path) if path is not None else base / "out" / ARTIFACT.format(dataset=dataset)
+    target = Path(path) if path is not None else segment_artifact_path(dataset, base)
     key = (str(target), target.stat().st_mtime_ns if target.is_file() else None)
     if use_cache and key in _CACHE:
         return _CACHE[key]

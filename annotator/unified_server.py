@@ -87,7 +87,10 @@ from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 # The anchor file name of a dataset has one owner, src/calib_segments.py. The event
 # sources below read that owner for the path they offer and for the name test, so the
 # server cannot hold a second spelling of the name.
-from src.calib_segments import ANCHORS_HEAD, anchors_reference_name  # noqa: E402
+from src.calib_segments import (ANCHORS_HEAD, ARTIFACT as SEGMENT_ARTIFACT,  # noqa: E402
+                                anchors_reference_name)
+# The segment artifact name has the same owner, src/calib_segments.py.  It arrives
+# as ``SEGMENT_ARTIFACT``: ``ARTIFACT`` is the SAM3 ball artifact below.
 # The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  The three event
 # source sites below read that name from here, so a rename of the file name moves
 # every one of them.
@@ -1353,7 +1356,7 @@ class Backend:
     def _segments_stamp(self, dataset):
         """``(mtime_ns, size)`` of ``out/calib_<dataset>_segments.json``, or None."""
         try:
-            info = (self.out / f'calib_{dataset}_segments.json').stat()
+            info = (self.out / SEGMENT_ARTIFACT.format(dataset=dataset)).stat()
         except OSError:
             return None
         return (info.st_mtime_ns, info.st_size)
@@ -1595,7 +1598,7 @@ class Backend:
             from src import calib_segments
         except Exception:
             return None
-        path = self.out / f'calib_{dataset}_segments.json'
+        path = self.out / SEGMENT_ARTIFACT.format(dataset=dataset)
         with self.lock:
             stamp, cached = cache.get(dataset)
             if cached is not ABSENT:

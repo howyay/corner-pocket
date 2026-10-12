@@ -28,7 +28,12 @@ if str(ROOT) not in sys.path:
 
 from src import calib_segments as cs  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "tests"))
+from _shipped import code_strings, shipped_modules  # noqa: E402
+
 ARTIFACT = ROOT / "out" / "calib_vod30_segments.json"
+TEMPLATE = cs.ARTIFACT
+MARKER_NAME = "calib_vod30_segments.json"
 
 
 def write_artifact(out, segments, verdict="split_supported"):
@@ -694,6 +699,147 @@ class NoPrivateLoaderTest(unittest.TestCase):
         for node in loads:
             self.assertNotIn("args.artifact", ast.unparse(node),
                              "the artifact is read once, by the seam")
+
+    # The segment artifact name has one owner, ``src/calib_segments.py``.  Round 88
+    # measured the name spelled at three sites outside the owner: the tool that
+    # writes the artifact, the report build, and two f-strings of the server.  Each
+    # of them now reads the owner, so a rename of the file name moves them all.
+    #
+    # One site still declares the text itself, and its file belongs to another
+    # writer of this round: ``src/store.py:79`` holds the name in its kind -> file
+    # map.  That map is a registry row (``ARTIFACTS``), and the row must read the
+    # owner before the file name stands once.  The list below names that one site
+    # for the Lead.  It is not a licence for a new copy: a case that adds a row
+    # must first make the row read the owner.
+    OWNER_MODULE = "src/calib_segments.py"
+    #: A known copy of the name that belongs to a file of another writer.
+    KNOWN_COPIES = ("src/store.py",)
+    #: The two rows of ``src/store.py`` carry their own dataset placeholder ``{ds}``.
+    FORMATTING_KEYS = ("ds", "dataset")
+    #: The readers of the name, and the call each one makes to the owner.
+    NAME_READERS = {
+        "src/calib_segment_fit.py": "segment_artifact_path",
+        "src/segment_calib_report.py": "segment_artifact_path",
+        "annotator/unified_server.py": "SEGMENT_ARTIFACT",
+    }
+
+    def shipped_files(self):
+        """The shipped modules, as (repository-relative name, tree)."""
+        out = []
+        for path in shipped_modules():
+            name = path.relative_to(ROOT).as_posix()
+            out.append((name, ast.parse(path.read_text(encoding="utf-8"))))
+        return out
+
+    def functions_of(self, tree):
+        """{name: node} for every function and class of one tree."""
+        out = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                out.setdefault(node.name, node)
+        return out
+
+    def spelled_name(self, tree):
+        """The sites of one tree that build the whole name: an f-string, or ``.format``.
+
+        A build is the shape a second reader takes when it joins the folder and the
+        name itself.  A call of the owner's helper is not a build, and a plain
+        literal of a registry row is judged by ``name_literals``.
+        """
+        out = []
+        for node in ast.walk(tree):
+            text = ""
+            if isinstance(node, ast.JoinedStr):
+                text = ast.unparse(node)
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "format"):
+                text = ast.unparse(node)
+            if "calib_" in text and "segments" in text and "json" in text:
+                out.append((node.lineno, text))
+        return out
+
+    def name_literals(self, tree):
+        """The string literals of one tree that carry the name or its template."""
+        out = []
+        for line, text in code_strings(tree):
+            if "calib_" not in text or "segments" not in text:
+                continue
+            if not text.endswith(".json") and not text.endswith("_segments.json"):
+                continue
+            if any(key in text for key in self.FORMATTING_KEYS):
+                out.append((line, text))
+            elif text == MARKER_NAME:
+                out.append((line, text))
+        return out
+
+    def test_the_artifact_name_stands_once_in_the_shipped_tree(self):
+        """Only the owner and the known copies name the artifact, in any shape."""
+        allowed = (self.OWNER_MODULE,) + self.KNOWN_COPIES
+        offenders = {}
+        for name, tree in self.shipped_files():
+            if name in allowed:
+                continue
+            found = self.spelled_name(tree) + self.name_literals(tree)
+            if found:
+                offenders[name] = found
+        self.assertEqual(offenders, {},
+                         f"a module names the segment artifact itself: {offenders}")
+
+    def test_the_artifact_name_stands_once_as_a_literal(self):
+        """A file that holds the whole name as text is the owner or a known copy."""
+        copies = {}
+        for name, tree in self.shipped_files():
+            found = self.name_literals(tree)
+            if found:
+                copies[name] = found
+        self.assertEqual(sorted(copies), sorted((self.OWNER_MODULE,) + self.KNOWN_COPIES),
+                         f"a module holds the segment artifact name as text: {copies}")
+
+    def test_the_scan_sees_a_bitten_module(self):
+        """The guard answers red when a shipped module spells the name again."""
+        source = ("def stamp(dataset):\n"
+                  "    return f'calib_{dataset}_segments.json'\n"
+                  "def other():\n"
+                  "    return 'calib_vod30_segments.json'\n")
+        tree = ast.parse(source)
+        self.assertTrue(self.spelled_name(tree), "the scan must see the f-string")
+        self.assertTrue(self.name_literals(tree), "the scan must see the literal")
+
+    def test_the_owner_answers_the_name_and_the_path(self):
+        owner = dict(self.shipped_files())[self.OWNER_MODULE]
+        module = {}
+        for node in owner.body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target = node.targets[0]
+                if isinstance(target, ast.Name) and isinstance(node.value, ast.Constant):
+                    module[target.id] = node.value.value
+        self.assertEqual(module.get("ARTIFACT"), TEMPLATE,
+                         "src/calib_segments.py must state the template once")
+        helpers = self.functions_of(owner)
+        self.assertIn("segment_artifact_path", helpers,
+                      "the owner must answer the path of one dataset")
+        text = ast.unparse(helpers["segment_artifact_path"])
+        self.assertIn("ARTIFACT", text, "the helper joins the owner's own template")
+        self.assertIn('.format(dataset=', text, "the helper fills the dataset")
+
+    def test_every_site_that_names_the_artifact_reads_the_owner(self):
+        for name, want in self.NAME_READERS.items():
+            tree = dict(self.shipped_files())[name]
+            text = ast.unparse(tree)
+            if want == "SEGMENT_ARTIFACT":
+                self.assertIn("SEGMENT_ARTIFACT", text,
+                              f"{name} must read the owner's template")
+            else:
+                self.assertIn(f"segment_artifact_path(", text,
+                              f"{name} must read the owner's path")
+                self.assertIn(f"from src.calib_segments import", text,
+                              f"{name} must import the owner")
+
+    def test_the_known_copies_hold_no_second_reader(self):
+        for name in self.KNOWN_COPIES:
+            source = (ROOT / name).read_text(encoding="utf-8")
+            self.assertNotIn("segment_artifact_path", source,
+                             f"{name} is a known copy, not a reader of the owner")
 
 
 if __name__ == "__main__":

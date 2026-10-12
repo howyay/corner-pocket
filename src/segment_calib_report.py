@@ -35,12 +35,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
-from src.calib_segments import VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW  # noqa: E402
+from src.calib_segments import (VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW,  # noqa: E402
+                                segment_artifact_path)
 from src.datasets import media_path  # noqa: E402
 
 OUT = ROOT / "out" / "segcalib" / "segment_calib_report.json"
 CANDIDATES = ROOT / "out" / "scan-ic" / "events.json"
-SEGMENT_ARTIFACT = ROOT / "out" / "calib_vod30_segments.json"
+# The segment artifact name has one owner, ``src/calib_segments.py``.  The
+# ``--artifact`` flag of this tool defaults to the artifact of the vod30 dataset,
+# and the flag reads the path from the owner, so the file name stands once.
+SEGMENT_ARTIFACT = segment_artifact_path("vod30", ROOT)
 VIDEO = media_path(ROOT, "vod30")
 SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
 

@@ -42,7 +42,8 @@ if str(ROOT) not in sys.path:
 
 from src.calib_segment_measure import MEASURE_ARTIFACT  # noqa: E402
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
-from src.calib_segments import VERIFIED_FRAMES, anchors_reference_path  # noqa: E402
+from src.calib_segments import (VERIFIED_FRAMES, anchors_reference_path,  # noqa: E402
+                                segment_artifact_path)
 from src.event_gates import GateConfig  # noqa: E402
 from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
@@ -50,7 +51,10 @@ from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 # artifact path (``MEASURE_ARTIFACT``) and writes the file.
 VIDEO = ROOT / "data" / "vod_30min_260815.mp4"
 ANCHORS = ROOT / anchors_reference_path("vod30")
-OUT = ROOT / "out" / "calib_vod30_segments.json"
+# The segment artifact name has one owner, ``src/calib_segments.py``, so this
+# writer joins the out/ root to the path the owner builds.  The ``--out`` default
+# below holds the answer of the owner, and not a second spelling of the name.
+OUT = segment_artifact_path("vod30", ROOT)
 
 # The coverage bar this tool applies.  ``src/event_gates.py`` owns the number
 # (``GateConfig.calibration_warn_fraction``), so one edit of the gate field moves
