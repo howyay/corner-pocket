@@ -128,6 +128,15 @@ ANNOTATION_NOTE_MAX = 10000
 BALL_LABEL_UNKNOWN_WIRE = -1
 BALL_LABEL_UNKNOWN_STORED = 'u'
 BALL_LABEL_CLEARED_WIRE = (None, 'clear', -2)
+#: The ball label domain, number side: a labelled ball is an integer from the cue ball
+#: (``BALL_LABEL_MIN``) to the last ball of a set (``BALL_LABEL_MAX``).  This module owns
+#: the bound, and the gate below reads the two names.  annotator/label.html is a static
+#: file, so it states its own two names for the same domain.  The migration
+#: db/migrations/0002_user_data.sql held the bound in a regular expression before either
+#: name existed, so that expression stays as it is.  tests/test_sql_domain_parity.py
+#: holds the three spellings equal.
+BALL_LABEL_MIN = 0
+BALL_LABEL_MAX = 15
 #: The dispatch body cap of every route that does not state a cap of its own: 64 KiB.
 _MAX_POST_BODY_BYTES = 65536
 # Enroll image guard: dispatch caps POST bodies at _MAX_POST_BODY_BYTES, but the backend
@@ -153,7 +162,7 @@ T_RANGE = (0, 1800)
 #: button per published value, so the two cannot state different times.  The legacy page
 #: ``src/pid_anchor_ui.py`` holds the same three seconds as its own literal, because a
 #: browser page cannot read a python name; the guard of ``tests/test_console_anchor_times.py``
-#: reports a drift between the two lists.
+#: reports a drift between the two lists.  Round 77: the anchors route default reads it.
 SUGGESTED_ANCHOR_TIMES = (70, 200, 350)
 #: The page files this handler serves. The list is closed on purpose: only these files
 #: reach a browser. A closed list drifts, and a page that loads a file this handler
@@ -2229,7 +2238,7 @@ class Backend:
                     "actors": actors, "geometry": geometry}
         self._vod30(dataset)
         if route == "anchors":
-            return self.anchor_info(query.integer("t", 70))
+            return self.anchor_info(query.integer("t", SUGGESTED_ANCHOR_TIMES[0]))
         if route == "seeds":
             return self.seeds()
         if route == "rebuild":
@@ -2308,7 +2317,7 @@ class Backend:
         label = p["label"]
         if isinstance(label, bool) or not (label in BALL_LABEL_CLEARED_WIRE
                                            or label in (BALL_LABEL_UNKNOWN_WIRE, BALL_LABEL_UNKNOWN_STORED)
-                                           or type(label) is int and 0 <= label <= 15):
+                                           or type(label) is int and BALL_LABEL_MIN <= label <= BALL_LABEL_MAX):
             raise APIError("invalid ball label")
         # The table above owns the two values: -1 is the wire value of the word "u", and
         # the three clearing values delete the row. A crop labelled for the first time is
