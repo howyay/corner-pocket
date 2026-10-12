@@ -23,6 +23,11 @@ follow from that sentence, and the round-50 walk measured both:
   `src/motion_scan.PERSON_SHARE_MAX`, and the Lead repaired that citation by hand;
 * a line whose text contradicts the comment passes, because the rule reads the
   target line and not the sentence around the citation.
+
+The second rule below closes that gap for one file.  `annotator/duration.js`
+writes seven citations, and each one names a seam of another file.  The case
+reads the sentence that carries a citation, and it states the claim: the named
+line must hold the seam that the sentence names.  A number that moved fails.
 """
 
 import ast
@@ -221,6 +226,128 @@ class CitationScanTests(unittest.TestCase):
     def test_no_citation_names_a_line_without_text(self):
         self.assertEqual(wrong_citations(), [],
                          'every citation must name a line that holds text')
+
+
+# The duration owner names the seam of each citation.  The scan above reads the
+# target line only, so a stale number passes it.  The case below reads the
+# sentence of the citation and states the claim that the sentence makes.
+DURATION = ROOT / 'annotator' / 'duration.js'
+
+# A citation, or the bare `:NN` form that continues the file named before it.
+CITATION_OR_BARE = re.compile(
+    r'(?:(?<![\w/:.-])([A-Za-z0-9_./-]+\.(?:py|js|css)))?:(\d+)')
+
+# The words a sentence uses for a seam, and the text that the named line must
+# hold.  Every pattern of a row must match the named line.
+SEAMS = (
+    ('window.Duration.hms', (r'window\.Duration\.hms',)),
+    ('builds at_s', (r"params\[key \+ '_s'\] =",)),
+    ('`\\d+` anchors', (r'\\d\+:',)),
+    ('timestamp_seconds', (r'timestamp_seconds\s*=\s*value\s*/', r'fps')),
+    ('guards its own time formatter', (r'Number\.isFinite', r'Math\.max\(0')),
+)
+
+# The greatest distance a claim phrase may sit from its citation.  A sentence
+# that names no seam within this distance fails, so a rewritten sentence cannot
+# pass the case.
+NEAR = 200
+
+
+def duration_comment_lines(text):
+    """The (line number, text, offset) of each comment line of the owner."""
+    covered = set(javascript_span_lines(text))
+    rows, at = [], 0
+    for number, line in enumerate(text.splitlines(), 1):
+        if number not in covered:
+            continue
+        rows.append((number, line, at))
+        at += len(line) + 1
+    return rows
+
+
+def duration_citations(text):
+    """Each citation of the owner: (line, path, number, offset).
+
+    A bare `:NN` continues the file that the sentence named before it.  A number
+    below 1 is not a citation, because the rule text holds `0:00:00` twice.
+    """
+    found, path = [], None
+    for number, line, offset in duration_comment_lines(text):
+        for match in CITATION_OR_BARE.finditer(line):
+            name, cited = match.group(1), int(match.group(2))
+            if name is None:
+                if path is None or cited < 1:
+                    continue
+                name = path
+            else:
+                path = name
+            found.append((number, name, cited, offset + match.start()))
+    return found
+
+
+def seam_of(block, offset):
+    """The nearest claim phrase of the comment, with its name and its patterns.
+
+    The nearest phrase wins, because one sentence of the owner names two seams:
+    the line that builds at_s, and the anchors that hold its digits.
+    """
+    best = None
+    for words, patterns in SEAMS:
+        at = block.find(words)
+        while at != -1:
+            gap = abs(offset - at)
+            if best is None or gap < best[0]:
+                best = (gap, words, patterns)
+            at = block.find(words, at + 1)
+    return best
+
+
+def duration_bad_citations(text):
+    """Each citation of the owner that does not name the seam of its sentence."""
+    block = '\n'.join(line for _, line, _ in duration_comment_lines(text))
+    bad = []
+    for line, name, number, offset in duration_citations(text):
+        target = resolve(name)
+        if target is None:
+            bad.append('%s:%d -> %s (no such file)' % (DURATION.name, line, name))
+            continue
+        seam = seam_of(block, offset)
+        if seam is None or seam[0] > NEAR:
+            bad.append('%s:%d -> %s:%d (no claim phrase near the citation)'
+                       % (DURATION.name, line, name, number))
+            continue
+        lines = target.read_text(encoding='utf-8', errors='replace').splitlines()
+        if number < 1 or number > len(lines):
+            bad.append('%s:%d -> %s:%d (the file holds %d lines)'
+                       % (DURATION.name, line, name, number, len(lines)))
+            continue
+        body = lines[number - 1]
+        if any(not re.search(pattern, body) for pattern in seam[2]):
+            bad.append('%s:%d -> %s:%d (the sentence names %s, the line reads %r)'
+                       % (DURATION.name, line, name, number, seam[1], body.strip()))
+    return bad
+
+
+class DurationSeamTests(unittest.TestCase):
+    """Each citation of the duration owner names the line that holds its seam."""
+
+    def test_the_scan_reads_every_duration_citation(self):
+        found = duration_citations(DURATION.read_text(encoding='utf-8'))
+        self.assertEqual(
+            len(found), 7,
+            'the owner writes seven citations, and the case reads %d: %r' % (len(found), found))
+
+    def test_every_duration_citation_names_its_seam(self):
+        self.assertEqual(duration_bad_citations(DURATION.read_text(encoding='utf-8')), [],
+                         'every citation must name the line that holds its seam')
+
+    def test_a_moved_duration_citation_is_refused(self):
+        text = DURATION.read_text(encoding='utf-8')
+        moved = re.sub(r'(annotator/app\.js:)\d+', r'\g<1>1', text, count=1)
+        self.assertNotEqual(moved, text, 'the owner must cite annotator/app.js with a number')
+        bad = duration_bad_citations(moved)
+        self.assertEqual(len(bad), 1, bad)
+        self.assertIn('annotator/app.js:1 ', bad[0])
 
 
 if __name__ == '__main__':

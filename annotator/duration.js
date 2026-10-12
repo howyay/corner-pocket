@@ -4,8 +4,8 @@
  * annotator/ops.js, annotator/vision-stage.js).  The three copies
  * disagreed on seven of the nineteen values the Lead's grid measures.  This
  * file replaces all three copies (the three seams now read
- * `window.Duration.hms` at annotator/app.js:2099, annotator/ops.js:117 and
- * annotator/vision-stage.js:939).
+ * `window.Duration.hms` at annotator/app.js:2107, annotator/ops.js:129 and
+ * annotator/vision-stage.js:952).
  *
  * THE RULE
  * Clamp the value at zero.  Truncate it toward zero.  Then format it as H:MM:SS.
@@ -14,11 +14,11 @@
  * WHY TRUNCATION WINS - MEASURED, NOT A PREFERENCE
  * 1. Every duration on disk is a whole number of seconds.  Under out/ the keys
  *    length_s (21 values), start_s (28 values) and end_s (20 values) hold
- *    integers only.  annotator/live_processing.py:101 builds at_s from the
- *    `\d+` anchors at :83, so at_s is a non-negative integer as well.
+ *    integers only.  annotator/live_processing.py:106 builds at_s from the
+ *    `\d+` anchors at :88, so at_s is a non-negative integer as well.
  * 2. The one fractional input is a frame time.  annotator/vision-stage.js calls
  *    this rule with `start_s + frame.t`, and frame.t is a float
- *    (annotator/unified_server.py:1834 `timestamp_seconds=value / fps`).
+ *    (annotator/unified_server.py:1927 `timestamp_seconds=value / fps`).
  *    Truncation names the second that CONTAINS the frame: 59.6 belongs to the
  *    second that starts at 59.  Rounding names the second that starts at 60, and
  *    that second holds no part of the frame.  At 30 fps this changes half of all
@@ -26,7 +26,7 @@
  * 3. A value that is not a number of seconds prints `0:00:00`.  That covers NaN,
  *    a missing value, a non-numeric string and +-Infinity.  One invalid value
  *    must not print `Infinity:NaN:NaN` while another prints zero.
- *    annotator/app.js:116 guards its own time formatter the same way.
+ *    annotator/app.js:143 guards its own time formatter the same way.
  *
  * THE SHOT CLOCK IS NOT THIS RULE
  * annotator/ops.js `clockText()` counts the time LEFT and rounds up on purpose.
