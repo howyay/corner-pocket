@@ -10412,3 +10412,53 @@ suites answered 232, 23 and 114 with no failure. The citation, fact and inventor
 fails instead of skipping without the `out/` artifact; the gate's three reasons are reachable only through
 fixtures; `docs/postgres-design.md:523-526` still names five moved lines (this round's Note); `annotator/index.html`
 keeps a fourth spelling of the shooter values by decision.
+
+## Round 82 - the ball cut with one owner, the anchor name and the face width
+
+**Verdict.** The walk at HEAD `7646c3e` answered `Strong candidate present - 1 Strong, 2 Worth, 1 Note` in
+`/tmp/dshsess/walk_round82.md` (228 lines). It read none of the third of the `Backend` body of
+`annotator/unified_server.py`, 14 of the 22 `_do_*` methods of `annotator/operations.py`, the case bodies of the
+three console suites and 41 of the 43 documents of `docs/`.
+
+**Strong 1 - the tiny-ball production cut had one owner and eight copies.** `annotator/pipeline_stages.py:73
+BALL_THRESHOLD = 0.425` was read at `:507` alone, while eight literal copies stood in the harnesses
+(`src/ball_association_ab.py:81`, `src/ball_fp_audit.py:1029`, `tests/ball_dense_events.py:297`,
+`tests/ball_stack_ab.py:199`, `:250`, `:298`, `:326`, `:372`) and no case bound a copy to the owner. Writer WD
+gave the cut one home and made every deciding site read `BALL_THRESHOLD`; the new
+`tests/test_ball_threshold_owner.py` holds 7 cases (commit `eaecff2`). Its bite answered
+`[ 'tests/ball_dense_events.py:325: spells 0.425 as a number; read annotator.pipeline_stages.BALL_THRESHOLD' ]`;
+the Lead's bite on the owner answered two failures (`ff3795dddeea -> 61bbff577b03 -> ff3795dddeea`). The writer
+also found that the harness used the student cut under the teacher name `PRODUCTION_CUT = 0.62`, which is not on
+the 38-point `FN_THRESHOLDS` grid, so the old name would answer `fn_recovered_at_operating_threshold = None`; the
+frozen headline of `tests/fixtures/ball_fp_audit/verdicts.json` keeps all 14 fields.
+
+**Worth 1 and Worth 2 - the anchor name and the face width.** `src/calib_segments.py:113 ANCHORS_REFERENCE` and
+`:597 anchors_reference_path` claimed to be the only derivation of the anchor file name, while fifteen other files
+spelled `pid_anchors`, including five frozen constants and the two frozen `--anchors` CLI defaults. The face width
+`512` stood in three `CHECK (cardinality(...) = 512)` rules of `db/migrations/0002_user_data.sql:122`, `:128` and
+`:139` beside `src/face_id.py:68 EMBEDDING_DIM = 512`, and `tests/test_sql_domain_parity.py:20-21` kept one-number
+`CHECK` rules out of scope. Writer WE closed both rows and stopped without a report; the Lead adopted the tree,
+ran the guards, re-pointed five citations that the moved lines put out of date
+(`src/ops_event_log.py`, `src/store_rules.py` twice, `tests/test_console_service_agreement.py`,
+`tests/test_store_merge_rules.py`), and took the bite on `src/calib_mapping_audit.py`
+(`22379476518a -> 8b364076b6c6 -> 22379476518a`, one failure naming the planted `out/pid_anchors_vod30.json`).
+Commit `7bdb7ce`; the new `tests/test_anchor_name_owner.py` holds the cases, and
+`tests/test_sql_domain_parity.py` grew from 17 to 22 cases.
+
+**Note 1 - a case that compared a function with itself.** `tests/test_calib_mapping_audit.py:253` compared
+`probe.claim_px(mm)` with `probe.px(mm)` while the probe carried no `claim_inverse`, so the fallback was compared
+with the function it falls back to and the case could not fail. The Lead made the case state two facts: the probe
+carries no claim inverse, and a probe that carries another claim inverse answers with that other mapping. Commit
+`542ba6f`; the bite on `src/eval_events.py:393` answered three failures
+(`d4b8fe9aabaa -> 76f8dedd53ca -> d4b8fe9aabaa`).
+
+**Guards and suites.** `Ran 2473 tests in 300.644s`, `OK (skipped=53)`; the three node suites answered 232, 23 and
+114 with no failure. Round 81 answered 2455, so round 82 added 7 (ball threshold), 5 (parity) and 6 (anchor name)
+cases, and the inventory guard stayed at 26 self-skip sites.
+
+**Open rows.** A writer can stop without a report, so the Lead must read the tree, not the message queue; the sha1
+values of the adopted delivery are the Lead's measurements. `docs/postgres-design.md:523-526` still names five
+moved lines (the Note of round 81, unfixed). The `0.425` guard reads numbers only, so a product such as
+`1.7 * 0.25` escapes it. The frozen constants of the anchor name stay frozen by decision and a case holds each
+one equal to the owner. `src/calib_segments.py` owns the derivation while `src/store.py` no longer spells the
+float key, so the historical pair citation lost its line number.
