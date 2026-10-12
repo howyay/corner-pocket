@@ -63,7 +63,7 @@ def drop_key(store: dict, key) -> None:
     An absent key is not an error, so a caller can clear a record twice.
 
     This function closes the defect of round 56: the delete of one key sat in
-    `src/store.py:279` and in `src/store_pg.py:286`.
+    `src/store.py:283` and in `src/store_pg.py:286`.
     """
     store.pop(key, None)
 

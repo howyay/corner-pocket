@@ -64,19 +64,23 @@ from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMEN
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules  # noqa: E402
-# The anchor file name of a dataset has one owner, src/calib_segments.py.  This
-# module reads that owner, so the path of the anchors document cannot drift from
-# the path the calibration readers use.
+# The anchor file name of a dataset, and the file name of the calibration
+# segments, have one owner: src/calib_segments.py.  This module reads that owner,
+# so the path of the anchors document cannot drift from the path the calibration
+# readers use.
+from src.calib_segments import ARTIFACT  # noqa: E402
 from src.calib_segments import anchors_reference_name  # noqa: E402
 # precomputed artifacts the server reads whole: kind -> file under out/.  A row here
 # names a dataset, so artifact() resolves the dataset through src/datasets.py and reads
 # the folder queue() reads (out/vods/<id>/ for an imported VOD, out/scan30/ for a
 # built-in).  {scan} is that folder, relative to out/; {ds} is the dataset id, which
-# names the calibration files at the out/ root (src/calib_segments.py:49 owns that name).
+# names the calibration files at the out/ root.  The name of the segments document
+# has one home, src/calib_segments.py:60, and its row below reads that home; the
+# format call of artifact() fills the owner's keyword {dataset}.
 ARTIFACTS = {
     "queue_report": "{scan}/dense_queue_report.json",
     "queue_retired": "{scan}/dense_queue_retired.json",
-    "calibration_segments": "calib_{ds}_segments.json",
+    "calibration_segments": ARTIFACT,
     "calibration": "calib_{ds}.json",
 }
 # Artifacts that belong to no dataset: one file at the out/ root.  They take no dataset
@@ -385,7 +389,10 @@ class JsonStore:
         if dataset is None:
             raise ValueError(f"{kind} names a dataset; pass one")
         scan = self._scan(dataset).relative_to(self.out)
-        return _read(self.out / ARTIFACTS[kind].format(ds=dataset, scan=scan), None)
+        # {ds} is the placeholder of this map's own rows; {dataset} is the keyword of
+        # the owner src/calib_segments.py, which the row of that kind reads.
+        name = ARTIFACTS[kind].replace("{ds}", "{dataset}")
+        return _read(self.out / name.format(dataset=dataset, scan=scan), None)
 
     def queue(self, dataset: str) -> list:
         return _read(self._scan(dataset) / "events.json", [])

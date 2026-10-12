@@ -705,15 +705,23 @@ class NoPrivateLoaderTest(unittest.TestCase):
     # writes the artifact, the report build, and two f-strings of the server.  Each
     # of them now reads the owner, so a rename of the file name moves them all.
     #
-    # One site still declares the text itself, and its file belongs to another
-    # writer of this round: ``src/store.py:79`` holds the name in its kind -> file
-    # map.  That map is a registry row (``ARTIFACTS``), and the row must read the
-    # owner before the file name stands once.  The list below names that one site
-    # for the Lead.  It is not a licence for a new copy: a case that adds a row
-    # must first make the row read the owner.
+    # The last copy stood at ``src/store.py``, in the kind -> file map
+    # (``ARTIFACTS``).  Round 89 made that row read the owner, so no known copy
+    # stays and the list above holds the owner alone.  Nothing there is a licence
+    # for a new copy: a case that adds a row must first make the row read the owner.
+    #
+    # The map has a shape a guard cannot see from the values: a row is read as a
+    # ``str.format`` template, and the owner's keyword is ``{dataset}``.  A second
+    # spelling of the template text is still possible, so
+    # ``test_the_kind_map_reads_the_owner`` walks the AST of ``src/store.py`` and
+    # fails on a row that spells the text again.
     OWNER_MODULE = "src/calib_segments.py"
-    #: A known copy of the name that belongs to a file of another writer.
-    KNOWN_COPIES = ("src/store.py",)
+    #: The name of the owner's template, as both files read it.
+    ARTIFACT_TEMPLATE = "ARTIFACT"
+    #: The map of ``src/store.py``, and the row this round moved to the owner.
+    MAP_MODULE = "src/store.py"
+    MAP_NAME = "ARTIFACTS"
+    MAP_ROW = "calibration_segments"
     #: The two rows of ``src/store.py`` carry their own dataset placeholder ``{ds}``.
     FORMATTING_KEYS = ("ds", "dataset")
     #: The readers of the name, and the call each one makes to the owner.
@@ -773,11 +781,10 @@ class NoPrivateLoaderTest(unittest.TestCase):
         return out
 
     def test_the_artifact_name_stands_once_in_the_shipped_tree(self):
-        """Only the owner and the known copies name the artifact, in any shape."""
-        allowed = (self.OWNER_MODULE,) + self.KNOWN_COPIES
+        """Only the owner names the artifact, in any shape."""
         offenders = {}
         for name, tree in self.shipped_files():
-            if name in allowed:
+            if name == self.OWNER_MODULE:
                 continue
             found = self.spelled_name(tree) + self.name_literals(tree)
             if found:
@@ -786,14 +793,52 @@ class NoPrivateLoaderTest(unittest.TestCase):
                          f"a module names the segment artifact itself: {offenders}")
 
     def test_the_artifact_name_stands_once_as_a_literal(self):
-        """A file that holds the whole name as text is the owner or a known copy."""
+        """One file holds the whole name as text: the owner."""
         copies = {}
         for name, tree in self.shipped_files():
             found = self.name_literals(tree)
             if found:
                 copies[name] = found
-        self.assertEqual(sorted(copies), sorted((self.OWNER_MODULE,) + self.KNOWN_COPIES),
+        self.assertEqual(sorted(copies), [self.OWNER_MODULE],
                          f"a module holds the segment artifact name as text: {copies}")
+
+    def map_rows(self, tree):
+        """{key: value node} for the kind -> file map of one tree."""
+        rows = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            targets = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            if self.MAP_NAME not in targets or not isinstance(node.value, ast.Dict):
+                continue
+            for key, value in zip(node.value.keys, node.value.values):
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    rows[key.value] = value
+        return rows
+
+    def test_the_kind_map_reads_the_owner(self):
+        """The row of ``src/store.py`` reads the owner, and does not spell the name.
+
+        The row stood as the literal ``"calib_{ds}_segments.json"``, a second
+        spelling that moved with no owner.  A later reader that writes the text
+        again fails here, and not in the file that holds the map.
+        """
+        from src import store
+
+        tree = ast.parse((ROOT / self.MAP_MODULE).read_text(encoding="utf-8"))
+        rows = self.map_rows(tree)
+        self.assertIn(self.MAP_ROW, rows, f"the map must keep the {self.MAP_ROW} row")
+        row = rows[self.MAP_ROW]
+        self.assertNotIsInstance(row, ast.Constant,
+                                 "the row spells the template text again; it must read the owner")
+        self.assertEqual(ast.unparse(row), self.ARTIFACT_TEMPLATE,
+                         "the row must read the owner's ARTIFACT")
+        self.assertEqual(store.ARTIFACTS.get(self.MAP_ROW), TEMPLATE,
+                         "the row must hold the owner's template, not a second text")
+        # The row's own placeholder is the owner's keyword, so the format call of
+        # artifact() fills it.
+        self.assertIn("{dataset}", store.ARTIFACTS[self.MAP_ROW],
+                      "the row must carry the owner's keyword")
 
     def test_the_scan_sees_a_bitten_module(self):
         """The guard answers red when a shipped module spells the name again."""
@@ -835,11 +880,11 @@ class NoPrivateLoaderTest(unittest.TestCase):
                 self.assertIn(f"from src.calib_segments import", text,
                               f"{name} must import the owner")
 
-    def test_the_known_copies_hold_no_second_reader(self):
-        for name in self.KNOWN_COPIES:
-            source = (ROOT / name).read_text(encoding="utf-8")
-            self.assertNotIn("segment_artifact_path", source,
-                             f"{name} is a known copy, not a reader of the owner")
+    def test_the_map_row_is_not_a_second_reader_of_the_name(self):
+        """The map reads the owner's template; it calls no path helper of its own."""
+        source = (ROOT / self.MAP_MODULE).read_text(encoding="utf-8")
+        self.assertNotIn("segment_artifact_path", source,
+                         "the map reads the owner's template, not a second reader")
 
 
 if __name__ == "__main__":
