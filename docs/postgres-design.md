@@ -520,11 +520,11 @@ key='<frame>')`.  Nothing new writes this kind — the endpoint stopped writing 
 
 ### 5.3 Calibration and anchors
 
-* `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:322`; readers
-  `unified_server.py:723-748` (`_segments`, via `src/calib_segments.py:170-196` which caches
-  on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:46`,
+* `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:53`; readers
+  `unified_server.py:1573` (`_segments`, via `src/calib_segments.py:362` which caches
+  on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:53`,
   `src/calib_mapping_audit.py`.  → `artifacts(kind='calibration_segments')`.
-* `out/calib_vod30.json` — reader `unified_server.py:1211` (suggested anchor points).
+* `out/calib_vod30.json` — reader `unified_server.py:2121` (suggested anchor points).
   → `artifacts(kind='calibration')`.
 * `out/pid_anchors_vod30.json` — **operator-written** (`POST /api/vod30/anchors`,
   `unified_server.py:1414-1429`), read by `anchor_info` `:1208` and, importantly, by
