@@ -47,6 +47,11 @@ SEED_DOCUMENT = "out/pid_seed.json"
 # this range today; the case in tests/test_store_files.py holds the two to each other.
 SCHEMA_RANGE = (1, 4)
 
+# The face store path has one owner: this name, beside the two document names above.
+# The format table below holds it, and every other reader imports the name, so the
+# path stands once in the code.  tests/test_face_store_path_owner.py holds the tree.
+FACE_STORE = "out/corner-pocket/face_embeddings.json"
+
 
 def dataset_dir(dataset: str) -> str:
     """The folder under the workspace root that holds a dataset's operator data:
@@ -96,7 +101,7 @@ DOCUMENT_FORMAT = INDENT2_NL
 # trailing newline.  A file that is in neither table is refused by fmt_of.
 FORMATS = {
     "out/identity/clusters.json": INDENT1,
-    "out/corner-pocket/face_embeddings.json": INDENT1,
+    FACE_STORE: INDENT1,
 }
 
 

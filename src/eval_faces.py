@@ -66,7 +66,7 @@ from src.person_identity import IdentityIndex
 from src.stats import read_pair
 # The operations document path and the seed document path have one owner
 # (src.store_files), so this list cannot name a path that the store no longer writes.
-from src.store_files import SEED_DOCUMENT, STATE_DOCUMENT
+from src.store_files import FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT
 # src/weight_pins.py owns the weight paths, so this list cannot name a path that
 # the pin table no longer owns.
 from src import weight_pins
@@ -92,7 +92,7 @@ PROTECTED = (
     SEED_DOCUMENT,
     "out/scan30/annotations.json",
     "out/identity/clusters.json",
-    "out/corner-pocket/face_embeddings.json",
+    FACE_STORE,
 )
 
 

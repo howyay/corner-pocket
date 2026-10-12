@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 from src.atomic_write import write_atomic
-from src.store_files import dump, documents, fmt_of
+from src.store_files import FACE_STORE, dump, documents, fmt_of
 
 #: The created tables of db/migrations that are not operator data, mapped to the reason.
 #: TABLES holds every other created table and no name outside that set, so a migration
@@ -60,7 +60,7 @@ def export_texts(conn) -> dict[str, str]:
         texts["out/identity/clusters.json"] = dump(clusters, fmt_of("out/identity/clusters.json"))
     faces = FacesSet().render(conn)
     if faces:
-        texts["out/corner-pocket/face_embeddings.json"] = dump(faces, fmt_of("out/corner-pocket/face_embeddings.json"))
+        texts[FACE_STORE] = dump(faces, fmt_of(FACE_STORE))
     return texts
 
 
@@ -77,7 +77,7 @@ def export(conn, to: Path) -> list[str]:
 
 
 # Files that exist only as rows: when their table is empty there is nothing to write.
-ROW_FILES = ("out/identity/clusters.json", "out/corner-pocket/face_embeddings.json")
+ROW_FILES = ("out/identity/clusters.json", FACE_STORE)
 
 
 def not_in_database(written) -> list[str]:
