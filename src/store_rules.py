@@ -51,7 +51,7 @@ def merge_record(stored: dict, incoming: dict) -> dict:
     The function returns a new dict. It does not change either argument.
 
     This function closes the defect of round 56: the merge of one record sat in
-    `src/store.py:283` and in `src/store_pg.py:291`, and one edit had to land in
+    `src/store.py:284` and in `src/store_pg.py:291`, and one edit had to land in
     both sites.
     """
     return dict(stored, **incoming)
@@ -63,7 +63,7 @@ def drop_key(store: dict, key) -> None:
     An absent key is not an error, so a caller can clear a record twice.
 
     This function closes the defect of round 56: the delete of one key sat in
-    `src/store.py:283` and in `src/store_pg.py:286`.
+    `src/store.py:284` and in `src/store_pg.py:286`.
     """
     store.pop(key, None)
 

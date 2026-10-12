@@ -382,8 +382,8 @@ class Round85DeadName(unittest.TestCase):
 
     def test_a_planted_dead_name_is_reported(self):
         planted = LEGACY_TEXT.replace(
-            'CALIB = ROOT.parent / "out" / "calib_vod30.json"',
-            'CALIB = ROOT.parent / "out" / "calib_vod30.json"\n'
+            'CALIB = ROOT.parent / "out" / calibration_name("vod30")',
+            'CALIB = ROOT.parent / "out" / calibration_name("vod30")\n'
             'SUGGESTED = [70, 200, 350]')
         self.assertNotEqual(LEGACY_TEXT, planted, 'the planted text must differ from the file')
         found = dead_name_findings(planted)
