@@ -11977,3 +11977,9 @@ citation named a moved line.
 3. A pinned list of known sentences is a debt record only when a count guards its length.
 4. Print the value before a bite.  The restore is proven only when the before and the after value
    are the same number.
+
+### Suites
+
+The full python suite answers `Ran 2699 tests in 805.157s` and `OK (skipped=53)`.
+The node suites answer `114 passed, 0 failed`, with no failure.  The count moved
+2686 -> 2699: 9 cases from writer WE and 4 from writer WD.
