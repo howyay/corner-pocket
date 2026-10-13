@@ -21,6 +21,9 @@ directions, and it holds the coverage of the CJK subset:
   Chinese sentence cannot arrive without its glyph;
 * a synthetic font proves the subset path of the builder: the code points of the
   copy survive `copy_codepoints` at annotator/fonts/build_fonts.py:132 and `build`;
+* the three names of the build table COMMON_FACES stand in the two stylesheets that
+  declare a -common face, and every -common name of those sheets stands in the table,
+  so a name that stands in one home only fails this module;
 * the shipped .woff2 files are not read.  The woff2 reader needs the `brotli`
   module, and the project virtual environment does not carry it (the build's own
   docstring names the store path it reads from).  This module proves the source
@@ -28,6 +31,8 @@ directions, and it holds the coverage of the CJK subset:
 
 Run: ./scripts/pool-test.sh python test_font_coverage_owner
 """
+import ast
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -48,6 +53,63 @@ SERVED_DOCUMENTS = ("ops.html", "app.html")
 #: `copy_names` is the one reader of the served list and a wrong rule there is silent.
 EXPECTED_COPY = ("app.js", "ops.js", "vision-stage.js", "clock-sync.js", "duration.js",
                  "ops.html", "app.html")
+
+#: The build table of the common-hanzi files: one home of the three names.
+TABLE = "COMMON_FACES"
+
+#: The two stylesheets that declare a -common face.  ops.css declares the three faces of
+#: the console; board.css declares the one face of the public board, and
+#: tests/test_unified_server.py holds that sheet to BOARD_FONTS (a closed row).
+SHEETS = ("annotator/ops.css", "annotator/board.css")
+
+#: The three names of the subset, as words.  A count of them drifts; these names do not.
+COMMON_NAMES = ("noto-sans-sc-400-common.woff2", "noto-sans-sc-500-common.woff2",
+                "noto-serif-sc-500-common.woff2")
+
+#: The word the three homes spell.  The path is not part of it: ops.css writes a rooted
+#: url and board.css a relative one, and the file name is the same word in both.
+COMMON_SUFFIX = "-common.woff2"
+
+_COMMON_IN_LINE = re.compile(r"[\w.\[\]-]*" + re.escape(COMMON_SUFFIX))
+
+
+def sheet_common_sites(text, path):
+    """Every -common file name of a stylesheet, as (name, "path:line", line text)."""
+    hits = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for name in _COMMON_IN_LINE.findall(line):
+            hits.append((name, f"{path}:{number}", line.strip()))
+    return hits
+
+
+def table_common_sites(source, path):
+    """Every name the build table writes, as (name, "path:line", line text).
+
+    The scan reads the table of the module source with `ast`.  So a -common word in a
+    comment or a docstring is not a face the build makes, and the report carries the
+    line of the table itself.
+    """
+    lines = source.splitlines()
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == TABLE
+                   for target in node.targets):
+            continue
+        return [(element.elts[0].value, f"{path}:{element.lineno}",
+                 lines[element.lineno - 1].strip()) for element in node.value.elts]
+    raise AssertionError(f"{path} must write {TABLE} = (...): the build loops on it in main")
+
+
+def one_home_only(table_sites, sheet_sites):
+    """Every name that stands in one home only, with the site that holds it."""
+    table_names = {name for name, _, _ in table_sites}
+    sheet_names = {name for name, _, _ in sheet_sites}
+    offenders = [f"{site} writes {name}, and no stylesheet declares it: {line}"
+                 for name, site, line in table_sites if name not in sheet_names]
+    offenders += [f"{site} declares {name}, and the build table {TABLE} does not write it: {line}"
+                  for name, site, line in sheet_sites if name not in table_names]
+    return offenders
 
 
 class FontCoverageOwner(unittest.TestCase):
@@ -200,6 +262,80 @@ class FontCoverageOwner(unittest.TestCase):
                 self.assertIn(ord(character), cmap,
                               f"the subset dropped {character}, so the timer sentence of "
                               "annotator/clock-sync.js cannot draw it")
+
+    def test_the_build_table_and_the_two_stylesheets_name_one_set_of_common_files(self):
+        """One fact, three homes: COMMON_FACES, ops.css and board.css.
+
+        A rename in the build table alone was silent.  The old committed file stays on
+        disk, so a case on the file names of the store still passes.  This case reports
+        every name that stands in one home only, with the path and the line of the site
+        that holds it.
+        """
+        source = (ROOT / BUILD).read_text(encoding="utf-8")
+        table = table_common_sites(source, BUILD)
+        self.assertEqual(
+            [name for name, _, _ in table], [row[0] for row in self.build.COMMON_FACES],
+            f"{BUILD} must resolve {TABLE} to the names its own source writes at the table")
+        sheets = [site for path in SHEETS
+                  for site in sheet_common_sites((ROOT / path).read_text(encoding="utf-8"), path)]
+        offenders = one_home_only(table, sheets)
+        self.assertEqual(
+            [], offenders,
+            f"the names of {BUILD} ({TABLE}) and the -common names of {SHEETS[0]} and "
+            f"{SHEETS[1]} must be one set: " + "; ".join(offenders)
+            + ".  A table name that no stylesheet declares downloads nothing, and a stylesheet "
+              "name that the table does not write serves no file.")
+
+    def test_the_common_scan_finds_the_three_real_names(self):
+        """An empty scan cannot pass the case above: the three real names stand in the text.
+
+        The case names the words, not a count of them.  It also holds each stylesheet to at
+        least one -common face, so a sheet that loses every one of them is caught here.
+        """
+        table = {name for name, _, _ in table_common_sites(
+            (ROOT / BUILD).read_text(encoding="utf-8"), BUILD)}
+        sheets = {}
+        for path in SHEETS:
+            found = {name for name, _, _ in sheet_common_sites(
+                (ROOT / path).read_text(encoding="utf-8"), path)}
+            self.assertTrue(found, f"{path} declares no -common face, so the scan is empty")
+            sheets[path] = found
+        for name in COMMON_NAMES:
+            with self.subTest(name=name):
+                self.assertIn(name, table, f"{BUILD} ({TABLE}) must write {name}")
+                self.assertTrue(any(name in found for found in sheets.values()),
+                                f"no stylesheet of {', '.join(SHEETS)} declares {name}")
+
+    def test_a_common_name_that_stands_in_one_home_only_is_reported(self):
+        """The planted case: the report rule catches a name of one home in both directions.
+
+        The plants are text, so the module resolves every value.  The last assertion shows
+        the rule on today's files, so the rule is not "always red".
+        """
+        planted_table = table_common_sites(
+            f"{TABLE} = (\n"
+            "    ('planted-in-the-table-only-common.woff2', 'x/Planted[wght].ttf', 400),\n"
+            ")\n", BUILD)
+        self.assertEqual([("planted-in-the-table-only-common.woff2", f"{BUILD}:2")],
+                         [(name, site) for name, site, _ in planted_table])
+        offenders = one_home_only(planted_table, [])
+        self.assertEqual(1, len(offenders), offenders)
+        self.assertIn("planted-in-the-table-only-common.woff2", offenders[0])
+        self.assertIn(f"{BUILD}:2", offenders[0])
+
+        planted_sheet = sheet_common_sites(
+            "@font-face{font-family:'Noto Sans SC';src:url(/fonts/"
+            "planted-in-the-sheet-only-common.woff2) format('woff2')}\n", SHEETS[0])
+        offenders = one_home_only([], planted_sheet)
+        self.assertEqual(1, len(offenders), offenders)
+        self.assertIn("planted-in-the-sheet-only-common.woff2", offenders[0])
+        self.assertIn(f"{SHEETS[0]}:1", offenders[0])
+
+        table = table_common_sites((ROOT / BUILD).read_text(encoding="utf-8"), BUILD)
+        sheets = [site for path in SHEETS
+                  for site in sheet_common_sites((ROOT / path).read_text(encoding="utf-8"), path)]
+        self.assertEqual([], one_home_only(table, sheets),
+                         "the two real homes must report no name of one home only")
 
 
 if __name__ == "__main__":
