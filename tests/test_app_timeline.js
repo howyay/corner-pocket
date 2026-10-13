@@ -3547,6 +3547,7 @@ test('a refused start is mapped to Chinese, and anything unmapped stays the serv
     'dataset must be vod30 or highlight',
     'Allowlisted dataset media is unavailable',
     'Live detectors must be table, person and/or ball; SAM balls are not supported',
+    'Live detectors must be a non-empty list of table, person, ball, balls',
     "Requested detector 'ball' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors",
     "Requested detector 'ball' cannot run: weights file is missing at /w/ball.pt",
     'Previous live processing threads have not exited; stop and retry',
@@ -3558,8 +3559,10 @@ test('a refused start is mapped to Chinese, and anything unmapped stays the serv
     const zh = T.liveErrorText(null, null, sentence, 'zh');
     assert.ok(HAN.test(zh) && zh !== sentence, `the refusal is phrased in Chinese: ${sentence} -> ${zh}`);
   }
-  assert.ok(T.liveErrorText(null, null, refusals[7], 'zh').includes('ball'), 'a refusal keeps the detector it names');
-  assert.ok(T.liveErrorText(null, null, refusals[8], 'zh').includes('/w/ball.pt'),
+  const ballStage = refusals.indexOf("Requested detector 'ball' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors");
+  const ballRun = refusals.indexOf("Requested detector 'ball' cannot run: weights file is missing at /w/ball.pt");
+  assert.ok(T.liveErrorText(null, null, refusals[ballStage], 'zh').includes('ball'), 'a refusal keeps the detector it names');
+  assert.ok(T.liveErrorText(null, null, refusals[ballRun], 'zh').includes('/w/ball.pt'),
     'and the path the server reported');
   const unknown = 'a refusal from a newer server';
   for (const lang of ['en', 'zh']) {

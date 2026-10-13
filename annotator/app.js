@@ -2130,7 +2130,8 @@ const liveRefusals = [
   [/^Requested detector '([a-z]+)' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors$/,
     name => `请求的检测器“${name}”在此流水线中没有对应阶段；请用 stages= 传入 BallStage，或从检测器中移除它`],
   [/^Requested detector '([a-z]+)' cannot run: ([\s\S]+)$/, (name, cause) => `请求的检测器“${name}”无法运行：${cause}`],
-  [/^Previous live processing threads have not exited; stop and retry$/, () => '上一次直播处理线程尚未退出；请先停止再重试']
+  [/^Previous live processing threads have not exited; stop and retry$/, () => '上一次直播处理线程尚未退出；请先停止再重试'],
+  [/^Live detectors must be a non-empty list of (?:table|person|ball|balls)(?:, (?:table|person|ball|balls))*$/, () => '直播检测器必须是非空列表，只能用 table、person、ball、balls']
 ];
 // A notice carries only the sentence: its code is the one the live state holds for it.
 function liveErrorDetail(sentence, lang = root?.lang) {
