@@ -48,6 +48,16 @@ if str(ROOT) not in sys.path:
 FRAGMENT_GAP_S = 2.5
 FRAGMENT_PX = 60.0
 
+#: The name of the rejection field that carries the distance from the last
+#: sighting of a track to the nearest pocket, in pixels.  ``src/shot_pot_gate.py``
+#: writes that field; this module reads it back, and this module is the lightest
+#: module that already reads the fact, so the name has its one home here.
+#: ``src/shot_pot_gate.py`` imports it, and the same module does not come back:
+#: this file imports the standard library only, while ``src/motion_scan.py`` and
+#: ``src/shot_pot_gate.py`` both pull cv2 and numpy into every reader of a name
+#: that they declare.  The reader of this key must stay light.
+NEAREST_DISTANCE_PX_KEY = "nearest_distance_px"
+
 
 def purity_proxies(report, share_px: float = 3.0) -> dict:
     """What the artifact can still say about the association's purity.
@@ -152,8 +162,8 @@ def diagnose(report) -> dict:
         term_causes["occlusion" if occluded else "clean_frame" if occluded is False
                       else "undecidable"] += 1
         numbers = row.get("numbers") or {}
-        if isinstance(numbers.get("nearest_distance_px"), (int, float)):
-            term_distances.append(float(numbers["nearest_distance_px"]))
+        if isinstance(numbers.get(NEAREST_DISTANCE_PX_KEY), (int, float)):
+            term_distances.append(float(numbers[NEAREST_DISTANCE_PX_KEY]))
         if isinstance(numbers.get("gap_s"), (int, float)):
             term_gaps.append(float(numbers["gap_s"]))
 

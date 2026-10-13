@@ -47,6 +47,10 @@ from src.ball_gate import SAM3_BALL_MIN_SCORE  # noqa: E402
 # The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
 # path from that owner, so a rename of the file name moves this reader too.
 from src.sam3_artifact import artifact_path  # noqa: E402
+# The probe directory and the two artifact names inside it have one home,
+# src/tiny_ball_probe.py.  Five readers built that path themselves; this reader now
+# joins the owner's names to its own root, so a rename lands in one file.
+from src.tiny_ball_probe import CHECKPOINT_NAME, HELD_FROZEN_NAME, PROBE_DIR_NAME  # noqa: E402
 # Two more names have one owner each.  The census is named by
 # src/sam3_ball_cache.py as a path under the repository root, so this reader joins
 # that name to its own base.  The segment artifact and the scan corners file belong
@@ -54,7 +58,7 @@ from src.sam3_artifact import artifact_path  # noqa: E402
 from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
 from src import calib_segments  # noqa: E402
 
-OUT = ROOT / "out" / "tiny_ball_probe"
+OUT = ROOT / PROBE_DIR_NAME
 CENSUS = ROOT / OWN_CACHE                  # the census, through its owner
 RESULTS = artifact_path("vod30", ROOT)     # the app's own scan, through its owner
 VIDEO = media_path(ROOT, "vod30")
@@ -122,7 +126,7 @@ def load_labels(root=None, extra=()) -> dict:
                                  "r": float(ball.get("r") or 0.0),
                                  "score": float(ball.get("score") or 0.0),
                                  "color": ball.get("color"), "source": "teacher-cache"})
-    for path in (root / "out" / "tiny_ball_probe" / "new_labels.json", *extra):
+    for path in (root / PROBE_DIR_NAME / "new_labels.json", *extra):
         path = Path(path)
         if not path.exists():
             continue
@@ -182,7 +186,7 @@ def tightest_gap(a: list, b: list) -> float:
     return min(abs(x - y) for x in a for y in b)
 
 
-FROZEN_HELD = OUT / "held_frozen.json"
+FROZEN_HELD = OUT / HELD_FROZEN_NAME
 
 
 def split_for_rounds(labels: dict, freeze: bool = True) -> tuple:
@@ -785,7 +789,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("report", help="held-out curve + overlays + disagreement from a "
                                      "saved checkpoint (no retraining)")
-    p.add_argument("--bitmap", default=str(OUT / "960x540-scratch.pt"))
+    p.add_argument("--bitmap", default=str(OUT / CHECKPOINT_NAME))
     p.add_argument("--size", default="960x540")
     p.add_argument("--device", default="auto")
     p.add_argument("--overlay-count", type=int, default=20)

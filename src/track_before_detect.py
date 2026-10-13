@@ -3,7 +3,8 @@
 Why
 ---
 A single frame pair catches only 6 of 25 *known moving* balls in the best channel
-(blue, 17x17 footprint at 720p -- ``out/motion_scan/vod30.json``, ``channels_report``),
+(blue, 17x17 footprint at 720p -- ``out/motion_scan/vod30.json``, its
+``motion_scan.CHANNELS_REPORT_KEY`` blob),
 and the median moving ball reads 0.40-0.93 of the quiet-floor threshold.  The reason
 is statistical: the per-frame bar is a maximum over ~200 k cloth pixels, so it is an
 extreme-value statistic, while one ball occupies one footprint.  Accumulating along a
@@ -497,7 +498,7 @@ def _windows_from_report(dataset: str = "vod30", root=None) -> list:
     if not path.exists():
         return []
     report = json.loads(path.read_text())
-    blocks = (report.get("channels_report") or {}).get("quiet_blocks") or []
+    blocks = (report.get(ms.CHANNELS_REPORT_KEY) or {}).get("quiet_blocks") or []
     return [(b["t_start"], b["t_end"]) for b in blocks]
 
 

@@ -79,10 +79,10 @@ WIDTH_NAMES = frozenset(('W', 'WIDTH', 'W_PX', 'WIDTH_PX'))
 HEIGHT_NAMES = frozenset(('H', 'HEIGHT', 'H_PX', 'HEIGHT_PX'))
 # The one binding outside the owner whose numbers agree by coincidence.  The record
 # holds the line and the exact mapping, so the case below fails when either moves.
-# A lookup entry is not a frame the module binds: no length of this repository
-# scales with it, and the other two entries of that table are not frames at all.
+# A lookup entry is not a frame the module binds: no length of this repository scales with it,
+# and the other two entries of that table are not frames at all.  Round 105 moved this 79 -> 83.
 FRAME_FACTS = (
-    ('src/tiny_ball_net.py', 'RESOLUTIONS', 79,
+    ('src/tiny_ball_net.py', 'RESOLUTIONS', 83,
      (('640x360', (640, 360)), ('960x540', (960, 540)), ('1280x720', (1280, 720)))),
 )
 # The one pair literal that is a guard, not data.  ``tests/test_ball_scale.py``

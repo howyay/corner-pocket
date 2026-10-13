@@ -119,7 +119,7 @@ The scan frame wins by 3×, so the claims really are scan-frame millimetres.
 |---|---|---|
 | `src/eval_events.py:106 reference_calibration` → every measured mm, every pocket distance, the census | A (B only as a fallback for anchorless datasets) | **right** |
 | `src/calib_segments.py:40-41` + `out/calib_vod30_segments.json` (`source: human_anchors`, `evidence.trusted_for_mm`) → the per-event reference quad | A | **right** |
-| `src/table_refine.py:69 _DATASET_PRIOR["vod30"]` → the refinement's search prior | A | **right** |
+| `src/table_refine.py:77 _DATASET_PRIOR["vod30"]` → the refinement's search prior | A | **right** |
 | `src/event_gates.py:63 POCKETS_MM` + `nearest_pocket` (pocket radii, `pot_pocket_r_mm=100`) | canonical mm, mapped by A wherever a pixel is involved | **right** |
 | `src/eval_events.py` claim projections (`geometry_gap_px`, `from/to_in_cloth_px`, `census_geometry_gap_px`) | **B was needed; A was used** | **wrong — fixed** |
 | `src/info_complete_scan.py:207-212` (writes the claims' mm) | its own detector median | self-consistent; see §4 |
@@ -213,8 +213,8 @@ supported) stays silent.
 ## 3. The highlight reference has no hand anchors and its bottom rail is inside the cloth
 
 `out/fixed_corners.json` = `[[722,452],[1177,449],[1433,844],[467,849]]` on
-1920×1080 is the highlight's reference (`src/table_refine.py:74`; also
-`src/eval_table_detect.py:56`, `src/motion_scan.py:303`, `src/quad_fit.py:131`,
+1920×1080 is the highlight's reference (`src/table_refine.py:82`; also
+`src/eval_table_detect.py:56`, `src/motion_scan.py:309`, `src/quad_fit.py:131`,
 `src/quad_fit_lines.py:209`, `src/audit_calib.py:71`). There are no hand anchors
 for the highlight, so the app path gets no seed and falls back to the naive
 detector on the 960×540 copy (13.28 px median against the 1.90 px full-res

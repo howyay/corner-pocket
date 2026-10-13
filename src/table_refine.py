@@ -45,6 +45,14 @@ from src import calib_segments
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Round 105 gave the reason a quad carries when the search found no boundary at
+# all one home.  This name is that home, and the string stands once under src/:
+# src/event_gates.py reads it as CALIBRATION_NO_EVIDENCE_REASON, and the four
+# sites below read this name in place of the bare literal each of them held, so
+# the code the gate counts and the console row an operator reads cannot part.
+# tests/test_console_no_boundary_evidence_owner.py holds the pair equal.
+REASON_NO_BOUNDARY_EVIDENCE = "no_boundary_evidence"
+
 _BAND_PX = 34.0          # half-width of the perpendicular search around a side
 _ITERS = 2
 _N_SAMPLES = 17
@@ -748,7 +756,7 @@ def refine_quad_edges(frame, prior, band_px=_BAND_PX, iters=_ITERS, band_scales=
         verified = info.get("verified_sides", 0)
         if verified:
             return None, info
-    return None, last or {"confidence": 0.0, "reason": "no_boundary_evidence"}
+    return None, last or {"confidence": 0.0, "reason": REASON_NO_BOUNDARY_EVIDENCE}
 
 
 def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
@@ -889,7 +897,7 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
                 # verified and must not be dragged toward the band edge.
                 unverified[r["side"]] = "boundary_outside_band"
             else:
-                unverified[r["side"]] = "no_boundary_evidence"
+                unverified[r["side"]] = REASON_NO_BOUNDARY_EVIDENCE
 
         # Explicit inheritance for a side whose own evidence is weak but not
         # contradictory: the mask is diffuse there (the vod30 left rail shares its
@@ -939,7 +947,7 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
                       if all(v == "low_cloth_area" for v in unverified.values())
                       else "boundary_outside_band"
                       if all(v in ("low_cloth_area", "boundary_outside_band") for v in unverified.values())
-                      else "no_boundary_evidence")
+                      else REASON_NO_BOUNDARY_EVIDENCE)
             return None, {"confidence": 0.0, "reason": reason, "mask": mask_note,
                           "iteration": it, "sides": reports,
                           "verified_sides": n_verified,
@@ -1089,7 +1097,7 @@ def detect_table_refined(bgr, prior=None, prev_quad=None):
                 return result
         result["corners"] = None
         result["confidence"] = 0.0
-        result["reason"] = info.get("reason") or "no_boundary_evidence"
+        result["reason"] = info.get("reason") or REASON_NO_BOUNDARY_EVIDENCE
         result["debug_info"] = {"tried": tried}
         result["debug"] = draw_debug(bgr, result)
         return result

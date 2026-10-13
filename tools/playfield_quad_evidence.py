@@ -94,7 +94,7 @@ def classify(signs, angles, parallel, parallel_tol):
 def best_check(quad, parallel_tol=PARALLEL_TOL_DEG):
     """The owner's verdict for the quad, from both rotations of the corner list.
 
-    ``annotator/pipeline_stages.py:403`` checks the polygon as given and once rotated, then
+    ``annotator/pipeline_stages.py:409`` checks the polygon as given and once rotated, then
     keeps the better verdict.  This tool reads a quad from the same stage, so it reads the same
     pair of verdicts.  The rotated form is tried second, because a quad that passes is uncommon
     in this evidence and the tool prints one verdict.

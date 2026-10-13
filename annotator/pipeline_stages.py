@@ -58,6 +58,11 @@ from src.frame_inference import EVENT_NOTE_SINGLE_FRAME  # noqa: E402
 #: The quad verdict has one home: the two rotations and the answer of a check that could not run.
 #: This stage reads it (``src/table_refine.py``), so one fault cannot answer two ways on two callers.
 from src.table_refine import best_verdict, unavailable_verdict  # noqa: E402
+#: The probe directory and the checkpoint name have one home, ``src/tiny_ball_probe.py``.
+#: This stage builds its own root join from those names, so the checkpoint path cannot
+#: drift from the path the trainer writes.  That module carries no heavy import, so the
+#: reading keeps this stage light.
+from src.tiny_ball_probe import CHECKPOINT_NAME, PROBE_DIR_NAME  # noqa: E402
 
 #: The evidence keys the registry owns.  A stage's ``evidence`` hook adds names
 #: beside these two; a hook that returns them is refused and its entry says so.
@@ -67,9 +72,10 @@ REGISTRY_KEYS = ('ran', 'age_frames')
 #: 300 train frames / 20 epochs) and the operating point its held-out sweep chose:
 #: 960x540, threshold 0.425, held-out F1 0.927 (P 0.940 / R 0.914) with median
 #: 1.48 px and p90 3.62 px localisation over 47 held-out frames.  The checkpoint
-#: path is relative to the pipeline root; ``out/`` is gitignored, so the weights
+#: path is relative to the pipeline root and is built from the names of
+#: ``src/tiny_ball_probe.py``; ``out/`` is gitignored, so the weights
 #: are a local artifact and a root without them gets an error naming the path.
-BALL_CHECKPOINT = 'out/tiny_ball_probe/960x540-scratch.pt'
+BALL_CHECKPOINT = str(PROBE_DIR_NAME / CHECKPOINT_NAME)
 #: The one home of the student detector's peak-search cut: ``BallStage`` reads it
 #: below, and a harness that decides a ball label reads this name and copies no
 #: number.  The SAM3 teacher's score floor is a different number with a different

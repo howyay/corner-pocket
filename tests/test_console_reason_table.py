@@ -51,8 +51,8 @@ CONSTANT = re.compile(r"const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*'([^']*)'")
 # new entry needs a comment here and a row that loses its producer must leave the set.
 ROWS_WITHOUT_A_PRODUCER = {
     # ``identity_swap_suspected`` and ``parked_in_jaws_possible`` are boolean fields of
-    # PotEvent (src/shot_pot_gate.py:946, :951).  The gate copies them into a Rejection's
-    # ``numbers`` block (src/shot_pot_gate.py:1484) and into the event (src/shot_pot_gate.py
+    # PotEvent (src/shot_pot_gate.py:949, :951).  The gate copies them into a Rejection's
+    # ``numbers`` block (src/shot_pot_gate.py:1487) and into the event (src/shot_pot_gate.py
     # :1490), and the dense queue copies them into its own ``numbers`` block
     # (src/dense_queue.py:292-293).  Neither is ever an element of a ``reasons`` list, so
     # no rule here can reach it.  The rows stay: the screen prints these notes in words.
@@ -157,7 +157,7 @@ def target_names(target):
 
     A target may be a plain name, an attribute, a subscript with a string key
     (``r["reason"] = ...``) or a tuple or list of those (``ok, why = _plausible(...)``,
-    src/table_refine.py:931).
+    src/table_refine.py:939).
     """
     if isinstance(target, (ast.Tuple, ast.List)):
         names = []
@@ -215,7 +215,7 @@ class Module:
 
         A value is followed one step at a time: a name to its assignment, a call to the
         values its own function returns.  A dict, a subscript, an f-string and a composed
-        value (``"playfield:" + ...``, src/table_refine.py:977) hold no code, so they stop
+        value (``"playfield:" + ...``, src/table_refine.py:985) hold no code, so they stop
         the walk.
         """
         if isinstance(node, ast.Constant):
@@ -286,7 +286,7 @@ def rejection_code(call):
     """Return the code argument of a ``Rejection(...)`` call.
 
     The code is the keyword ``code`` or the second positional argument, as in every call
-    of src/shot_pot_gate.py:1230 to :1568.
+    of src/shot_pot_gate.py:1233 to :1568.
     """
     for keyword in call.keywords:
         if keyword.arg == 'code':
@@ -315,7 +315,7 @@ def derived_gate_values():
       of the pot event, src/dense_queue.py:238-247).
     * ``src/shot_pot_gate.py``: the code argument of every ``Rejection(...)`` call, and
       every value assigned to a name or attribute ``reason``/``reasons``, which covers the
-      branches of the ternary at src/shot_pot_gate.py:1499-1501.
+      branches of the ternary at src/shot_pot_gate.py:1502-1504.
     """
     found: dict = {}
     for path in GATE_PRODUCERS:

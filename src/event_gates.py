@@ -78,7 +78,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 from typing import Any, Iterable
-
 # src/table_geometry.py is the single definition site of the canonical frame and
 # of the pocket table, so the gates judge on the same frame as the scan. The three
 # names stay a re-export: tests/test_table_geometry.py binds every importer of the
@@ -92,6 +91,7 @@ from src.pocket_names import pocket_from_text
 # claim with one measurement, so two blank values must compare equal and a blank
 # value answers ''.  tests/test_color_names.py holds the one home.
 from src.color_names import color_key
+from src.table_refine import REASON_NO_BOUNDARY_EVIDENCE  # the gate reads the producer's one string
 
 
 @dataclass
@@ -486,7 +486,7 @@ CALIBRATION_REFUTE_REASONS = ("boundary_outside_band", "prior_disagreement")
 # reference-not-fitting signature -- measured on the 90 px-off scan quad (2-3
 # such sides at t=0/70/1120.2/1800) against 0-1 on every occluded frame of the
 # calibrated VOD (t=484.1 has one; t=1661.0 and t=1799.1 have none at all).
-CALIBRATION_NO_EVIDENCE_REASON = "no_boundary_evidence"
+CALIBRATION_NO_EVIDENCE_REASON = REASON_NO_BOUNDARY_EVIDENCE  # one string under src/: src/table_refine.py
 
 
 def calibration_warning(rail, cfg: GateConfig = GateConfig()) -> str | None:

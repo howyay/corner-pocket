@@ -36,6 +36,10 @@ sys.dont_write_bytecode = True
 #: Five sites in this probe decide a ball label with it, so it reads the name.
 from annotator.pipeline_stages import BALL_THRESHOLD  # noqa: E402
 
+# The probe directory and the two artifact names in it have one home,
+# src/tiny_ball_probe.py; this probe joins those names to the repository root.
+from src.tiny_ball_probe import CHECKPOINT_NAME, PROBE_DIR_NAME  # noqa: E402
+
 __doc__ = __doc__.format(cut=BALL_THRESHOLD)
 
 #: The frame facts and their one conversion live in src/ball_scale.py, which imports
@@ -373,10 +377,10 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--size', default='960x540')
-    parser.add_argument('--checkpoint', default=str(ROOT / 'out/tiny_ball_probe/960x540-scratch.pt'))
+    parser.add_argument('--checkpoint', default=str(ROOT / PROBE_DIR_NAME / CHECKPOINT_NAME))
     parser.add_argument('--device', default='auto')
     parser.add_argument('--threshold', type=float, default=BALL_THRESHOLD)
-    parser.add_argument('--output', default=str(ROOT / 'out/tiny_ball_probe/stack_ab.json'))
+    parser.add_argument('--output', default=str(ROOT / PROBE_DIR_NAME / 'stack_ab.json'))
     parser.add_argument('--no-sweep', action='store_true', help='skip the 38-point F1 sweep')
     parser.add_argument('--identity-frames', type=int, default=12,
                         help='real frames compared element by element against the old '

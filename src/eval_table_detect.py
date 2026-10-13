@@ -65,6 +65,9 @@ from src.table_detect import _order_corners  # noqa: E402
 # tool holds no second spelling of the name.
 from src.calib_segments import anchors_reference_path, corners_v2_path  # noqa: E402
 
+# The output directory of this tool and of src/check_app_quad.py.  This name is the
+# one owner of the path: check_app_quad imports OUT_DIR and holds no second spelling
+# of it, and tests/test_eval_output_dir_owner.py holds the two sides together.
 OUT_DIR = ROOT / "out" / "table-detect-eval"
 VOD30 = media_path(ROOT, "vod30")
 HIGHLIGHT = media_path(ROOT, "highlight")

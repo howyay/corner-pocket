@@ -109,7 +109,7 @@ distance to the control quad.
 
 **The correction is applied at half scale.** `_side_evidence`/`_side_occupancy` measure on the
 2×-downsampled mask, so a full-res offset `D` appears as `D/2`; the code then multiplies by
-`mask_scale` (`table_refine.py:561,564,586`), which *cancels* the conversion. Measured, real
+`mask_scale` (`table_refine.py:569,564,586`), which *cancels* the conversion. Measured, real
 frame, left side, ±10 px perturbation:
 
 ```
@@ -330,7 +330,7 @@ export PYTHONPATH=.:out/table-detect-eval
 
 ## 14. Suggested follow-ups (not part of this verification)
 
-1. Fix the `mask_scale` unit error (`table_refine.py:561,564` vs `:586`) — one iteration should
+1. Fix the `mask_scale` unit error (`table_refine.py:569,564` vs `:586`) — one iteration should
    land the side on the measured boundary; the `_MAX_MOVE_PX` comment then means what it says.
 2. Make a *held* side visible: expose `converged`/`held_sides` and treat "held because no evidence
    in the band" as a refusal (or a much lower confidence), so a stale prior cannot look like a

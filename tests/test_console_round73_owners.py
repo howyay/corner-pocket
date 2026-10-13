@@ -24,7 +24,7 @@ sites.
   two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2057``)
   and the two console sites (``annotator/ops.js:766``, ``annotator/app.js:64``).  The console
   copy was held by one case (``tests/test_ops.js:264``); the two service copies were held by
-  none.  ``annotator/pipeline_stages.py:751`` owns the set now, in ``DEFAULT_DETECTORS``, beside
+  none.  ``annotator/pipeline_stages.py:757`` owns the set now, in ``DEFAULT_DETECTORS``, beside
   the ``DETECTORS`` tuple that owns the names.  The console realm states its own set once, in
   ``DEFAULT_LIVE_DETECTORS`` (``annotator/app.js:30``), published as
   ``window.ConsoleRules.liveDetectors``.  ``annotator/vision-stage.js:1075`` draws a three-name

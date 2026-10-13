@@ -306,7 +306,7 @@ class DisagreementTest(unittest.TestCase):
         self.assertLess(cloth_edge_distance(quad, 150, 50), 0)
 
     def test_no_quad_is_not_an_error(self):
-        # src/tiny_ball_net.py:625 owns the None branch, and it answers NaN on purpose.
+        # src/tiny_ball_net.py:629 owns the None branch, and it answers NaN on purpose.
         # The caller disagreement() drops those rows with the test `row["edge_px"] == row["edge_px"]`.
         # That test is False only for NaN. So the NaN is the contract, and it carries no distance.
         self.assertTrue(math.isnan(cloth_edge_distance(None, 1, 1)))

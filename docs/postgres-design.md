@@ -484,7 +484,7 @@ to every batch tool.  The two that are *queried* rather than read whole get real
   `src/scan_events.py:338-342`, `src/info_complete_scan.py:413`,
   `src/rebuild_events_calibrated.py:146`.  Readers: `unified_server.py:1306-1316`
   (`GET /api/<ds>/events`), `:1397` (annotate validation), `:696` (`_unified_events`, every
-  unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2328-2340`,
+  unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2334-2346`,
   `src/candidate_scan.py:598-602`, `src/eval_events.py`, `src/timing_verify.py:777`.
 
 ```sql
@@ -522,7 +522,7 @@ key='<frame>')`.  Nothing new writes this kind — the endpoint stopped writing 
 
 * `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:53`; readers
   `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:362` which caches
-  on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:53`,
+  on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:57`,
   `src/calib_mapping_audit.py`.  → `artifacts(kind='calibration_segments')`.
 * `out/calib_vod30.json` — reader `unified_server.py:2131` (suggested anchor points).
   → `artifacts(kind='calibration')`.

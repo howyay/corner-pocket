@@ -40,7 +40,7 @@ The upper area cap, and the disagreement
       frame happens later and uses a different array (``src/pipeline.py:209``).
       ``src/scan_events.py:122-127`` and ``src/sam3_ball_cache.py:154-156`` read
       their frames the same way, with no resize.
-    * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:60``,
+    * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:64``,
       ``src/motion_scan.py:80``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
       three citations named the training pair, the geometry banner and an
       unrelated import comment, so they landed one to three lines above the
@@ -52,7 +52,7 @@ The upper area cap, and the disagreement
     * No comment, docstring or test in the repository explains the 6000.
       ``grep -rn "6000" src/`` returns this one gate line plus two unrelated
       uses: a pocket-hole window (``src/calibrate.py:42``) and a progress print
-      (``src/motion_scan.py:716``).
+      (``src/motion_scan.py:722``).
 
     Ruling: one stage, two values, no measured reason.  These two values
     contradict each other.  This round does not change behaviour.  No value
@@ -77,7 +77,7 @@ The radius band, the third bar
     spelled the pair ``4.0, 60.0`` themselves; these are the line numbers as
     they were before this round: ``src/pipeline.py:177``,
     ``src/scan_events.py:148``, ``src/sam3_ball_cache.py:52`` and
-    ``src/ball_fp_audit.py:103``.  All four applied the same pair to the same
+    ``src/ball_fp_audit.py:106``.  All four applied the same pair to the same
     measurement, so this bar has one meaning.  Only its home was missing.
 
     The radius 60 is *not* the area 60.  A length in pixels and a count of

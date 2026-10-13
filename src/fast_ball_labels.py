@@ -50,13 +50,16 @@ from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 from src.sam3_ball_cache import OWN_CACHE
 from src.sam3_artifact import ARTIFACT
 from src.tiny_ball_net import SPLIT_GAP_S
+# The probe directory and the two artifact names in it have one home,
+# src/tiny_ball_probe.py; this reader joins those names to its own root.
+from src.tiny_ball_probe import CHECKPOINT_NAME, HELD_FROZEN_NAME, PROBE_DIR_NAME  # noqa: E402
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
 from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 
 ROOT = Path(__file__).resolve().parents[1]
 
 OUT = ROOT / "out" / "fast_ball_labels"
-LABELS_OUT = ROOT / "out" / "tiny_ball_probe" / "new_labels.json"
+LABELS_OUT = ROOT / PROBE_DIR_NAME / "new_labels.json"
 CHECKPOINT = ROOT / SAM3
 VIDEO = media_path(ROOT, "vod30")
 
@@ -262,7 +265,7 @@ def frozen_held(root=ROOT) -> list:
     """
     from src.tiny_ball_net import split_blocks
 
-    path = Path(root) / "out" / "tiny_ball_probe" / "held_frozen.json"
+    path = Path(root) / PROBE_DIR_NAME / HELD_FROZEN_NAME
     if path.exists():
         return sorted(round(float(t), 3) for t in json.loads(path.read_text())["held"])
     times = sorted(existing_times(root))
@@ -402,7 +405,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_agreement)
 
     p = sub.add_parser("prelabel", help="student pre-labels + the human-review queue")
-    p.add_argument("--bitmap", default=str(ROOT / "out" / "tiny_ball_probe" / "960x540-scratch.pt"))
+    p.add_argument("--bitmap", default=str(ROOT / PROBE_DIR_NAME / CHECKPOINT_NAME))
     p.add_argument("--size", default="960x540")
     p.add_argument("--start-s", type=float, default=0.0)
     p.add_argument("--end-s", type=float, default=1800.0)
@@ -411,8 +414,8 @@ def main(argv=None) -> int:
     p.add_argument("--radius-px", type=float, default=14.0)
     p.add_argument("--min-support", type=float, default=0.6)
     p.add_argument("--device", default="auto")
-    p.add_argument("--labels-out", default=str(ROOT / "out" / "tiny_ball_probe" / "student_labels.json"))
-    p.add_argument("--queue-out", default=str(ROOT / "out" / "tiny_ball_probe" / "review_queue.json"))
+    p.add_argument("--labels-out", default=str(ROOT / PROBE_DIR_NAME / "student_labels.json"))
+    p.add_argument("--queue-out", default=str(ROOT / PROBE_DIR_NAME / "review_queue.json"))
     p.set_defaults(func=cmd_prelabel)
 
     p = sub.add_parser("label", help="teacher-label new frames with the fast mode")

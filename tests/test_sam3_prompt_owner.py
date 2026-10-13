@@ -57,12 +57,14 @@ DOCUMENTED_PROMPT = "billiard ball"
 
 #: The measured ground of round 102: each site that states the prompt, by path and
 #: line.  `src/fast_ball_labels.py` holds two sites, and `src/sam3_ball_cache.py`
-#: holds two, so eleven sites stand in nine files.
+#: holds two, so eleven sites stand in nine files.  Round 105 added a three-line
+#: import above the sites of `src/ball_fp_audit.py` and `src/fast_ball_labels.py`,
+#: so the round moved those three numbers by +3.
 SITES = (
-    ("src/ball_fp_audit.py", 575),
+    ("src/ball_fp_audit.py", 578),
     ("src/collect2.py", 47),
-    ("src/fast_ball_labels.py", 230),
-    ("src/fast_ball_labels.py", 236),
+    ("src/fast_ball_labels.py", 233),
+    ("src/fast_ball_labels.py", 239),
     ("src/frame_inference.py", 225),
     ("src/multiplex_demo.py", 159),
     ("src/pipeline.py", 270),

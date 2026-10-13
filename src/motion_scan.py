@@ -206,6 +206,12 @@ ONSET_SIGNAL = "ball17"
 SERIES_FIELDS = ("t", "ball17", "ball9", "ball25", "ball13w",
                  "occ_share", "occ_dense", "mean", "cell", "cell_share")
 
+# The key of the per-channel report blob inside the motion-scan report.  This
+# module writes the blob, this module reads it again for --skip-quiet, and
+# src/track_before_detect.py reads the quiet windows of that blob.  The key has
+# one owner, here.
+CHANNELS_REPORT_KEY = "channels_report"
+
 
 @dataclass
 class MotionConfig:
@@ -1891,7 +1897,7 @@ def cmd_channels(args) -> None:
                      frame_size=(cfg.scan_w, cfg.scan_h))
     ctx = cloth_context(quad["quad_px"], cfg)
 
-    previous = (report.get("channels_report") or {})
+    previous = (report.get(CHANNELS_REPORT_KEY) or {})
     if args.skip_quiet and previous.get("channel_floors"):
         blocks = previous.get("quiet_blocks") or []
         floors = previous["channel_floors"]
@@ -2030,7 +2036,7 @@ def cmd_channels(args) -> None:
             "no physics model is applied anywhere",
         ],
     }
-    path = save_report({"channels_report": payload}, args.out_dir, args.dataset)
+    path = save_report({CHANNELS_REPORT_KEY: payload}, args.out_dir, args.dataset)
     print(json.dumps(payload["event_summary"], indent=1))
     print(json.dumps(payload["moving_ball_rate"], indent=1))
     print(json.dumps(payload["moving_ball_rate_by_speed"], indent=1))

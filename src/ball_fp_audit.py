@@ -73,14 +73,17 @@ from annotator.pipeline_stages import BALL_THRESHOLD as BALL_OPERATING_CUT  # no
 # The SAM3 census file has one owner, src/sam3_ball_cache.py.  This reader takes the
 # relative path from that owner, so a rename moves the writer and this reader together.
 from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
+# The probe directory and the two artifact names in it have one home,
+# src/tiny_ball_probe.py; this audit joins those names to the repository root.
+from src.tiny_ball_probe import CHECKPOINT_NAME, HELD_FROZEN_NAME, PROBE_DIR_NAME  # noqa: E402
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
 from src.weight_pins import SAM3, SAM3_BALL_PROMPT  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
-PROBE = ROOT / "out" / "tiny_ball_probe"
+PROBE = ROOT / PROBE_DIR_NAME
 AUDIT = ROOT / "out" / "ball-fp-audit"
-BITMAP = PROBE / "960x540-scratch.pt"
+BITMAP = PROBE / CHECKPOINT_NAME
 REPORT = PROBE / "report_960x540.json"
 CENSUS = ROOT / OWN_CACHE
 RESULTS = artifact_path("vod30", ROOT)       # the app's own 56 frames
@@ -428,7 +431,7 @@ def markdown_table(fp_rows: list, fn_rows: list, entry: dict,
 
 def held_frames() -> list:
     return [round(float(t), 3) for t in
-            json.loads((PROBE / "held_frozen.json").read_text())["held"]]
+            json.loads((PROBE / HELD_FROZEN_NAME).read_text())["held"]]
 
 
 def student_pass(size: tuple, times: list, device: str = "auto"):

@@ -102,9 +102,10 @@ STATEMENT_KEY_COUNT = 1
 #: The console file count, the module file count and the shortest console file
 #: measured on the same day.  The module count covers the two packages of
 #: `MODULE_FILES` only, so it is lower than a count that also reads `tools/` and
-#: `scripts/`.
+#: `scripts/`.  Round 105 added `src/tiny_ball_probe.py`, so that count moved
+#: 284 -> 285.
 CONSOLE_FILE_COUNT = 11
-MODULE_FILE_COUNT = 284
+MODULE_FILE_COUNT = 285
 SHORTEST_CONSOLE_FILE = 500
 
 #: A fragment of the sentence that no console file may hold.  It is the marker of

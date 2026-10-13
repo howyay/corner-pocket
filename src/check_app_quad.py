@@ -3,7 +3,9 @@
 
 The rule has one owner: ``src.eval_table_detect`` holds ``quad_sanity``,
 ``quad_area_px``, ``cloth_tolerance`` and every number of the contract.  This
-script applies that rule and does not state it a second time.
+script applies that rule and does not state it a second time.  The output
+directory ``OUT_DIR`` has the same one owner: this script reads it from
+``src.eval_table_detect`` and holds no second spelling of the path.
 
 ``annotator/app.js`` holds the browser copy of the rule:
 
@@ -36,18 +38,15 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 import cv2
 import numpy as np
 
-from src.eval_table_detect import (ANCHORS, CLOTH_TOLERANCE_PX, CORNERS_V2, HIGHLIGHT, VOD30,
-                                   load_references, quad_distance, quad_sanity)
+from src.eval_table_detect import (ANCHORS, CLOTH_TOLERANCE_PX, CORNERS_V2, HIGHLIGHT, OUT_DIR,
+                                   VOD30, load_references, quad_distance, quad_sanity)
 from src.frame_inference import app_prior_for
 from src.table_detect import detect_table
 from src.table_refine import detect_table_refined
-
-OUT = Path(__file__).resolve().parent.parent / 'out' / 'table-detect-eval'
 
 
 def verdict(corners, reference, width, height):
@@ -133,7 +132,7 @@ def main():
                 'mean_px_median': None if not means else round(float(np.median(means)), 1),
                 'worst_mean_px': None if not means else max(means)}
         report[dataset] = {'frames': len(rows), 'verdicts': summary, 'rows': rows}
-    path = OUT / 'app-verdict.json'
+    path = OUT_DIR / 'app-verdict.json'
     path.write_text(json.dumps(report, indent=1))
     for dataset in ('vod30', 'highlight'):
         print(f"== {dataset}  frames={report[dataset]['frames']}  tolerance={CLOTH_TOLERANCE_PX}px")

@@ -81,6 +81,9 @@ from dataclasses import dataclass, field
 import math
 from statistics import median
 from typing import Any, Iterable, NamedTuple, Sequence
+# The rejection field's name has its owner in the lightest reader of it, so this
+# writer reads the name there.
+from src.ball_association_audit import NEAREST_DISTANCE_PX_KEY
 from src.ball_scale import BALL_WIDTH_MM, NATIVE_FRAME, diameter_px, formatted_width
 from src.event_gates import GateConfig
 # The occlusion window's bar is measured in src/motion_scan.py, so this module reads it there.
@@ -1591,7 +1594,7 @@ def track_events(track: Track, pockets: PocketModel,
                 float(last.t), int(last.frame_index),
                 {"nearest_pocket": None if near is None else near.name,
                  "distance_px": round(dist, 2),
-                 "nearest_distance_px": round(near_dist, 2),
+                 NEAREST_DISTANCE_PX_KEY: round(near_dist, 2),
                  "radius_px": None if near is None else round(near.radius_px, 2),
                  "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
                  "radius_mm": m.radius_mm,
