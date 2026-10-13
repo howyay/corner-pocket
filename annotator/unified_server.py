@@ -95,6 +95,12 @@ from src.calib_segments import (ANCHORS_HEAD, ARTIFACT as SEGMENT_ARTIFACT,  # n
 # source sites below read that name from here, so a rename of the file name moves
 # every one of them.
 from src.sam3_artifact import ARTIFACT  # noqa: E402
+# The events document has one owner, src/events_document.py.  The event geometry
+# route below reads the name of the document's speed field from that owner, so a
+# rename of the field moves the rebuilt document and this fallback together.  The
+# legacy name below it belongs to the older scan writer (`src/scan_events.py`),
+# which still names its own field, so this route keeps both.
+from src.events_document import EVENT_SPEED_FIELD  # noqa: E402
 #: The live route reads its accepted verbs from this one tuple: `live_action` gates on
 #: it and the write registry imports it for its 'live' row, so the gate and the contract
 #: GET /api/actions publishes cannot name two different sets.
@@ -1756,7 +1762,11 @@ class Backend:
         items, projected, segment_only_source = [], 0, None
         for event in events:
             item = dict(event)
-            speed = event.get('speed_m_s', event.get('avg_speed_m_s'))
+            # The first name is the one owner name the two rebuilders write
+            # (src/events_document.py:EVENT_SPEED_FIELD); the second is the older
+            # field of src/scan_events.py.  One edit in the owner moves this read
+            # and the writers together.
+            speed = event.get('speed_m_s', event.get(EVENT_SPEED_FIELD))
             if isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(speed):
                 item.setdefault('speed_mm_s', round(float(speed) * 1000))
             kind = str(event.get('type') or '')

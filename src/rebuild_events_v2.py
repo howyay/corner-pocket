@@ -30,6 +30,9 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 from src.datasets import media_path  # noqa: E402
+# The events document has one owner, src/events_document.py.  This writer takes
+# the name of its speed field from that owner, so a rename of the field moves
+# this writer and the live route together.
 from src import events_document  # noqa: E402
 # The corners v2 file has one home, src/calib_segments.py, so this reader takes the
 # path from that home and keeps its own root.
@@ -115,7 +118,8 @@ def main():
             "t": round(float(np.median(t_all[cl])), 1), "type": "shot",
             "peak_t": round(pk, 1), "motion": round(float(m_all[cl].max()), 1),
             "verified": v is not None,
-            **({"disp_mm": round(v[0]), "avg_speed_m_s": round(v[0] / 2.0 / 1000, 2),
+            **({"disp_mm": round(v[0]),
+                events_document.EVENT_SPEED_FIELD: round(v[0] / 2.0 / 1000, 2),
                 "ball_from": v[1]["table_mm"], "ball_to": v[2]["table_mm"]} if v else {}),
         })
 

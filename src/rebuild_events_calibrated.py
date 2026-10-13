@@ -23,6 +23,9 @@ import sys
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 from scan_events import nearest_pocket  # reuse pocket geometry
+# The events document has one owner, src/events_document.py.  This writer takes
+# the name of its speed field from that owner, so a rename of the field moves
+# this writer and the live route together.
 from src import events_document, sam3_artifact
 
 SAM3 = sam3_artifact.artifact_path()
@@ -85,7 +88,8 @@ def main():
             "t": round(float(np.median(t_all[cl])), 1), "type": "shot",
             "peak_t": round(pk, 1), "motion": round(float(m_all[cl].max()), 1),
             "verified": v is not None,
-            **({"disp_mm": round(v[0]), "avg_speed_m_s": round(v[0] / 2.0 / 1000, 2),
+            **({"disp_mm": round(v[0]),
+                events_document.EVENT_SPEED_FIELD: round(v[0] / 2.0 / 1000, 2),
                 "ball_from": v[1]["table_mm"], "ball_to": v[2]["table_mm"]} if v else {}),
         })
 

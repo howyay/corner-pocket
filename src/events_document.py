@@ -100,6 +100,7 @@ __all__ = [
     "VERSION", "STAMP", "ROW_KEYS", "SERVED", "V2", "DOCUMENTS",
     "SCAN_EVENTS", "REBUILD_CALIBRATED", "REBUILD_V2", "DENSE_QUEUE", "EVAL_EVENTS",
     "PRODUCERS", "STAMPED", "MIXED", "UNSTAMPED",
+    "EVENT_SPEED_FIELD", "SPEED_PAIR_GAP_S",
     "Document", "DocumentVersionError", "DocumentShapeError",
     "scan_dir", "document_path", "document_in", "write", "read",
 ]
@@ -134,6 +135,20 @@ REBUILD_V2 = document_stamp.REBUILD_V2
 DENSE_QUEUE = document_stamp.DENSE_QUEUE
 EVAL_EVENTS = document_stamp.EVAL_EVENTS
 PRODUCERS = dict(document_stamp.PRODUCERS)
+
+#: The field that carries the average speed of an event, in metres per second.
+#: This is the one home of that field name.  The two rebuilders
+#: (`src/rebuild_events_v2.py`, `src/rebuild_events_calibrated.py`) write the
+#: field through this name, and the live route of `annotator/unified_server.py`
+#: reads the name for its fallback.  So one edit here moves the writer and the
+#: reader together, and a rename cannot leave a rebuilt document with no name
+#: that the route reads.
+EVENT_SPEED_FIELD = "avg_speed_m_s"
+#: The value of `EVENT_SPEED_FIELD` that the two rebuilders write with the one
+#: conversion rule.  A verified shot of displacement `D` mm over the 2.0 s pair
+#: gap reads `round(D / 2.0 / 1000, 2)`.  The rule stays in the writers: this
+#: module does not change a row value.
+SPEED_PAIR_GAP_S = 2.0
 
 #: The status of a document this module read.  `src/document_stamp.py` names
 #: them and holds their rule.
