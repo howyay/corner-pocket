@@ -154,7 +154,7 @@ const COPY = {
     gateMove:'Re-measured move', gateMotion:'motion', gateGap:'Claim vs measured ball',
     gateDup:'Duplicate detections merged', gateNotes:'Gate notes',
     gateNetPath:'Net move / path', gatePeakSpeed:'Peak speed',
-    provenanceMachine:'suggested by the computer · not yet confirmed by a person', provenanceMachineLegacy:'machine-produced candidate; no human has confirmed it', detectedBy:'detected by', technicalDetails:'Technical details',
+    provenanceMachine:'suggested by the computer · not yet confirmed by a person', detectedBy:'detected by', technicalDetails:'Technical details',
     provenanceHuman:'confirmed by a person',
     tierLabel:'Confirmation tier', tierGeometry:'geometry-verified', tierWindow:'motion window only',
     tierGeometryHint:'The re-measured motion matches the claim: this ball, this start, this end.',
@@ -260,7 +260,7 @@ const COPY = {
     gateMove:'复测位移', gateMotion:'运动量', gateGap:'声称位置与实测球',
     gateDup:'合并的重复检测', gateNotes:'检测门备注',
     gateNetPath:'净位移 / 路径', gatePeakSpeed:'峰值速度',
-    provenanceMachine:'电脑识别的候选 · 尚未经人工确认', provenanceMachineLegacy:'机器产出，未经人工确认', detectedBy:'识别来源', technicalDetails:'技术细节',
+    provenanceMachine:'电脑识别的候选 · 尚未经人工确认', detectedBy:'识别来源', technicalDetails:'技术细节',
     provenanceHuman:'已由人工确认',
     tierLabel:'确认层级', tierGeometry:'几何已核', tierWindow:'仅运动窗口',
     tierGeometryHint:'复测位移与声称一致：同这颗球、同起点、同终点。',
@@ -651,20 +651,20 @@ function chipsHTML(s) {
   <div class="vs-chipmeta"><span class="vs-fresh${s.source.kind === 'live' && s.live.stale ? ' stale' : ''}">${esc(freshness)}</span></div>${panel}`;
 }
 // Who made this candidate: one quiet line under the card's facts, never a badge.
-// A machine-produced candidate says so in its own words (translated in 中); an
-// event with no provenance block renders nothing at all - not "undefined".
+// The two flags decide the words, so the stored sentence never works as a key: an
+// entry a machine produced reads as a machine candidate whatever its sentence says.
+// An event with no provenance block renders nothing at all - not "undefined".
 function provenanceLine(event) {
   const p = event?.provenance;
   if (!p || typeof p !== 'object') return '';
   const parts = [];
-  // Round 1: operators read the plain statement; the detector string (machine vocabulary) is kept one
+  // The detector string (machine vocabulary) is kept one
   // step away - in the line's title and a visually hidden span - never removed.
   const detector = p.detector ? String(p.detector) : '';
-  const statement = p.statement ? String(p.statement) : (p.machine_produced && !p.human_confirmed ? t('provenanceMachine') : '');
-  if (statement) {
-    const known = [COPY.en.provenanceMachine, COPY.zh.provenanceMachine, COPY.en.provenanceMachineLegacy, COPY.zh.provenanceMachineLegacy].includes(statement);
-    parts.push(esc(known ? t('provenanceMachine') : statement));
-  }
+  const statement = p.statement ? String(p.statement) : '';
+  const machine = p.machine_produced === true && p.human_confirmed !== true;
+  if (machine) parts.push(esc(t('provenanceMachine')));
+  else if (statement) parts.push(esc(statement));
   if (p.human_confirmed) parts.push(esc(t('provenanceHuman')));
   if (!parts.length && !detector) return '';
   // the hidden detector span joins with a space, so the visible line ends on the statement, not on " · "

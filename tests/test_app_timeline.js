@@ -3476,6 +3476,8 @@ test('a machine-produced candidate says so on its card, and an event without pro
   // in the line's title (hover) and a visually hidden span (screen readers), never removed.
   assert.ok(rail.includes('>suggested by the computer · not yet confirmed by a person'), 'the plain statement is what the operator reads');
   assert.ok(rail.includes('machine-produced candidate; no human has confirmed it'), 'and its own stored statement is kept (title)');
+  assert.ok(/title="[^"]*machine-produced candidate; no human has confirmed it/.test(rail), 'the title holds the stored statement, which no other place keeps');
+  assert.ok(!/>machine-produced candidate; no human has confirmed it</.test(rail), 'and the card body never shows the raw sentence next to the label');
   assert.ok(/title="detected by: dense-track · trained 960×540 net @ ball@2/.test(rail), 'the detector is one hover away');
   assert.ok(!rail.includes('undefined'), 'and never the word undefined');
   // Quieter than the badge: the tier badge is a .vs-badge, provenance is a footnote.
@@ -3492,6 +3494,24 @@ test('a machine-produced candidate says so on its card, and an event without pro
   const confirmed = VSrail({events:[{...shot, provenance:{...shot.provenance, human_confirmed:true}}]});
   assert.ok(confirmed.includes('data-vs-provenance="human"') && confirmed.includes('confirmed by a person'),
     'a human-confirmed candidate says so');
+  // The two flags decide the words, so a reworded sentence cannot switch the label off: this
+  // sentence is in no COPY table, and the card still reads as a machine candidate.
+  const reworded = 'a machine proposed this; a person has not looked at it';
+  const flagged = VSrail({events:[{id:9003, type:'shot', t:1600.5, tier:'window',
+    provenance:{detector:'dense-track · trained 960×540 net @ ball@2', machine_produced:true, human_confirmed:false,
+                statement:reworded}}]});
+  assert.ok(flagged.includes('>suggested by the computer · not yet confirmed by a person'), 'a reworded sentence still reads as a machine candidate');
+  assert.ok(flagged.includes(reworded), 'and the stored sentence stays one hover away (title)');
+  assert.ok(!flagged.includes('>' + reworded), 'the raw sentence is never the card body under the flags');
+  const zhReworded = VSrail({events:[{id:9003, type:'shot', t:1600.5, tier:'window',
+    provenance:{machine_produced:true, human_confirmed:false, statement:reworded}}], lang:'zh'});
+  assert.ok(zhReworded.includes('电脑识别的候选 · 尚未经人工确认'), '中 prints the Chinese label for the same reworded sentence');
+  assert.ok(!zhReworded.includes('>' + reworded), 'and never prints the English sentence as the card body');
+  // An older row carries a sentence and no flags at all: the operator reads the stored words.
+  const bare2 = VSrail({events:[{id:9004, type:'shot', t:1610.0, tier:'window',
+    provenance:{statement:'an operator wrote this sentence'}}]});
+  assert.ok(bare2.includes('>an operator wrote this sentence'), 'a statement with no flags prints verbatim');
+  assert.ok(!bare2.includes('suggested by the computer'), 'and it is not called a machine candidate');
   // The inspector's gate block carries the pair that separates a shot from jitter.
   const numbers = stageEventPanel(V.context, shot);
   assert.ok(numbers.includes('Net move / path') && numbers.includes('159.1 / 159.9 px'), 'net vs path is in the gate block: ' + numbers);
