@@ -935,8 +935,8 @@ function liveStageLine(s) {
   const stages = (s.live?.stages || []).filter(stage => stage && stage.name);
   if (!stages.length) return '';
   const rows = stages.map(stage => {
-    const cadence = Number(stage.every_n_frames) > 1
-      ? `${t('stageEvery')} ${Number(stage.every_n_frames)} ${t('frameCount')} · ${t('stageAbsent')}`
+    const cadence = Number(stage['every_n_frames']) > 1
+      ? `${t('stageEvery')} ${Number(stage['every_n_frames'])} ${t('frameCount')} · ${t('stageAbsent')}`
       : `${t('stageEvery')} 1 ${t('frameCount')}`;
     const runs = Number(stage.runs || 0);
     return `${esc(stage.name)} · ${esc(cadence)} · ${runs} ${t('stageRuns')}`;

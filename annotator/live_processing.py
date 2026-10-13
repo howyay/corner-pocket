@@ -37,6 +37,11 @@ from src.datasets import STATIC
 from src.store_files import STATE_DOCUMENT  # the owner of the operations document path
 _DROP_REASONS = ('no_frame_ready', 'stage_overrun', 'stale')
 
+#: The one home of the cadence key of a live stage dict.  ``RallyProcessor.status``
+#: writes this key into every stage of the live snapshot and the console page reads
+#: the same key from that stage.  The wire word stays ``every_n_frames``.
+STAGE_CADENCE_KEY = 'every_n_frames'
+
 #: Every detector spelling a caller may ask for, from the one vocabulary.  ``ball`` is
 #: the trained tiny ball net (``annotator.pipeline_stages.BallStage``); ``balls`` is
 #: the same detector's other spelling there, so both build that one stage.
@@ -761,7 +766,7 @@ class LiveProcessor:
                         # ran and the provenance of its last result, so a consumer can
                         # tell measured from cached and a skipped frame from an empty one.
                         stages=[dict(name=stage.name, budget_ms=stage.budget_ms,
-                                     every_n_frames=getattr(stage, 'every_n_frames', 1) or 1,
+                                     **{STAGE_CADENCE_KEY: getattr(stage, STAGE_CADENCE_KEY, 1) or 1},
                                      runs=self._stage_runs.get(stage.name, 0),
                                      skips=self._stage_skips.get(stage.name, 0),
                                      evidence=copy.deepcopy(self._stage_evidence.get(stage.name)),
