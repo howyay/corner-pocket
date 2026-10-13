@@ -9,7 +9,7 @@ Commands to reproduce are in §13.
 
 | # | Claim | Verdict | Evidence |
 |---|-------|---------|----------|
-| 1 | `src/table_refine.py` exists, is wired into `src/frame_inference.py` and `annotator/unified_server._unified_detection` | **CONFIRMED** | code read: `detect_table_for_frame` (`src/frame_inference.py:17`), `_unified_detection` (`annotator/unified_server.py:321`), cached `_prior_for` (:276) |
+| 1 | `src/table_refine.py` exists, is wired into `src/frame_inference.py` and `annotator/unified_server._unified_detection` | **CONFIRMED** | code read: `detect_table_for_frame` (`src/frame_inference.py:17`), `_unified_detection` (`annotator/unified_server.py:327`), cached `_prior_for` (:276) |
 | 2 | vod30 vs `corners_30min_v2.json`: median 78.4 → 4.38 px, p90 135.3 → 7.16, accept@40 0 % → 100 %, "no quad" 16 → 0, invalid geometry 12 → 0 | **CONFIRMED** in the letter (fresh: 69.86 → 4.58, p90 88.85 → 5.96, accept 0 → 97.2 %, no-quad 18 → 1, invalid 9 → 0) — **PARTIAL** in substance: the reference *is* the prior file (§3, §9.1) |
 | 3 | The refined quad "measures the cloth boundary" (4.4 px is an accuracy figure) | **REFUTED** | the prior file and the scoring reference are byte-identical; the refinement moves ≤ 4.7 px from it; the reference's own TL/BR corners are 66.2 / 51.5 px from the visible cloth (§9.1) |
 | 4 | vod30 vs `pid_anchors_vod30.json` (first 4 of 6): median 72.8 → 43.1 px, accept 2.3 % → 0 % | **CONFIRMED** | fresh: 76.45 → 43.06 (p90 90.5 → 43.57, max 112.76 → 45.62), accept 0 % both |
@@ -195,7 +195,7 @@ No crash anywhere; reasons are honest and confidence 0.0 (`verify_honesty.py`, p
   same value on repeat, and 4 threads × 3 calls mixing both datasets produced no errors and one
   stable result per dataset.
 * Live path: `LiveProcessor` calls `self._infer(frame, self._detectors, self.root)`
-  (`annotator/live_processing.py:211`) with **no** `dataset`, so `detect_table_for_frame` gets
+  (`annotator/live_processing.py:216`) with **no** `dataset`, so `detect_table_for_frame` gets
   `prior=None` and returns the naive corners — `infer_frame(dataset=…)` has no production caller
   at all. Safe (no prior can be wrong), but the refinement does not reach the live view or the
   cold-frame inference path.

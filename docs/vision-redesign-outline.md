@@ -98,7 +98,7 @@ Mobile 390 px: the same DOM. The stage keeps 16:9 at the top (y≈90–300), the
 | Rule | Why |
 |---|---|
 | **Layer chips, not panels.** Cloth / Balls / Persons / Pockets / Anchors / Events as chips above the stage. | The old design used four full panels for the same state; chips cost one row and remove the mode switch entirely. |
-| **Hide what the source cannot do.** | Anchor calibration is `vod30`-only (`app.js:38`, `unified_server.py:667-668`); showing it on a live source is a lie with a button on it. |
+| **Hide what the source cannot do.** | Anchor calibration is `vod30`-only (`app.js:38`, `unified_server.py:673-674`); showing it on a live source is a lie with a button on it. |
 | **Keyboard-first.** `space` play/freeze · `←/→` ±1 frame (Shift ±10) · `0–9` label · `U` unknown · `C` cue · `A`/`B` identity · `V` cycle verdict · `Tab` next detection · `⏎` commit. | The audit found no key reaches modes or tabs, and that `<video>` can eat the arrows. The strip prints the map so it is discoverable. |
 | **One mono status line for all numbers.** | Numbers in Zilla Slab and Barlow had no tabular alignment and drifted between panels. |
 | **EN / 中 parity for every new string.** | The Vision tab is bilingual; the audit's `15-zh-timeline-1280.png` shows `Unified viewer` untranslated and a mixed `["球","Pockets","Persons","Identity"]` overlay set. Every string added by this design ships in both languages (`Cues · 线索`, `Verdict · 判定`, `Start failed · 启动失败`, …). |

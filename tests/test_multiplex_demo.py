@@ -1,7 +1,7 @@
 """One owner per command-line knob of src/multiplex_demo.py.
 
 `main()` declares seven arguments, and every one of them has a reader.  An
-earlier round declared an eighth, `--frames` at `src/multiplex_demo.py:162`.
+earlier round declared an eighth, `--frames` at `src/multiplex_demo.py:163`.
 No line read it, so `--frames 10` ran the whole clip and printed no warning: the
 knob did nothing.  The flag is gone from the source, and the rule stops the next
 one.  The effective control is `--max-frames` at `:160`, read at `:219` as

@@ -10,7 +10,7 @@ itself, so the table and the raise sites are two halves of one contract:
 * a key of the table must be a sentence the live layer still writes, or it phrases a
   failure that nobody can reach.
 
-The live module catches ``TwitchSourceError`` alone (``annotator/live_processing.py:337``
+The live module catches ``TwitchSourceError`` alone (``annotator/live_processing.py:342``
 through ``_resolve_twitch``) and gives the sentence to ``_fail``, which maps it with
 ``_error_code``.  A sentence outside both maps reports ``error_code = None``, and the
 console then shows the English sentence to an operator who reads Chinese.  A row without a

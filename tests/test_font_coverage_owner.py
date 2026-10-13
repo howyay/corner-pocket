@@ -1,6 +1,6 @@
 """The font build reads the served file list, so the subset cannot drift from the page.
 
-annotator/unified_server.py holds PAGE_FILES at annotator/unified_server.py:190, the
+annotator/unified_server.py holds PAGE_FILES at annotator/unified_server.py:196, the
 closed list of the files a browser receives.  annotator/fonts/build_fonts.py held its
 own hand copy of that list under the name COPY_FILES.  The copy had already drifted:
 the build read five files, and `clock-sync.js` was not one of them.

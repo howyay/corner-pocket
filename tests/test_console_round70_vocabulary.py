@@ -49,7 +49,7 @@ The site anchors of this round, as they stand now:
 * ``annotator/vision-stage.js:1095`` - the select that reads it
 * ``annotator/vision-stage.js:344`` - ``SEED_ROLES`` and the map that is built from it
 * ``annotator/vision-stage.js:1272`` - the seed button that reads the map
-* ``annotator/unified_server.py:102`` - ``SHOOTER_WORDS``, the one service home of the four
+* ``annotator/unified_server.py:108`` - ``SHOOTER_WORDS``, the one service home of the four
 """
 
 import re

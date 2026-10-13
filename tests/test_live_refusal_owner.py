@@ -16,7 +16,7 @@ fact that proves it, and a case reads that fact: the scope of the raise, or the 
 annotator/refusals.py.  tests/console_text.py owns the javascript line of the last sentence, so this
 module reads the line from that owner and never writes it again.
 
-The detector-list sentence of annotator/live_processing.py:375 is the sentence this round gives a
+The detector-list sentence of annotator/live_processing.py:380 is the sentence this round gives a
 pattern.
 """
 
@@ -57,7 +57,7 @@ def console_line_sentence():
 
 CONSOLE_LINE_SENTENCE = console_line_sentence()
 
-# The one value the console pattern of annotator/live_processing.py:138 names, and the value the
+# The one value the console pattern of annotator/live_processing.py:143 names, and the value the
 # worker substitutes into its `%s`.  The console owns the reading, so this module reads it here.
 DETECTOR_NAME = 'ball'
 RUN_VALUE = 'ball.pt'
@@ -140,7 +140,7 @@ UNMAPPED = {
         'refusal table'),
 }
 
-# annotator/live_processing.py:146 forwards a message its caller builds, so it sends no sentence of
+# annotator/live_processing.py:151 forwards a message its caller builds, so it sends no sentence of
 # its own.  Every other raise of the owner carries one.
 UNREADABLE = (146,)
 

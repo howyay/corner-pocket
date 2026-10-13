@@ -2,7 +2,7 @@
 
 The module that states the one-owner rule held this path in three shipped places
 besides the owner: the whole literal in the serving layer, at
-``annotator/live_processing.py:348``; the same path built from parts at
+``annotator/live_processing.py:353``; the same path built from parts at
 ``annotator/operations.py:383``; and the same path built from parts at
 ``src/enroll_from_tracklet.py:126``.  A rename of the owner would move the writer
 and leave the fallback reader of the serving layer on the old file.  Nothing

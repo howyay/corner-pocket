@@ -196,7 +196,7 @@ class ConnectionBoundTests(unittest.TestCase):
         from annotator import unified_server
         with unittest.mock.patch.object(unified_server.BoundedHTTPServer, 'max_handlers', 4):
             server = self.serve(timeout=30)
-        # The ceiling is copied in __init__ (annotator/unified_server.py:2584), so it
+        # The ceiling is copied in __init__ (annotator/unified_server.py:2594), so it
         # is the construction above that has to happen inside the patch, not this.
         before = len(pool_probe.handler_threads())
         idle = []

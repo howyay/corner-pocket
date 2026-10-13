@@ -36,7 +36,7 @@ Six sub-view names exist in the code (`reviewModes`, `ops.js:7`), plus the ops s
 **Stream / sources** — a single collapsed `<details class="stream-panel">` whose `<summary>` is the only thing visible on landing: `Vision · Stream / sources 直播与来源` (`ops.js:48`). Expanded it contains the live-processing panel (source `<select>`, `Table`/`Person` checkboxes, `Start`/`Stop`), a **Twitch player `<iframe>` plus a Twitch chat `<iframe>`** (both 540 px tall, measured), and a Twitch-source add/remove form. Measured expanded height of `#main`: **1385 px**; it pushes the review host to document-y **1559**.
 **Event review** — `<div class="review-grid">` = a `.queue` list of candidates on the left and `#event-detail` on the right (`app.js:61-74`). Detail = one looping `<video>` clip around the event (`/api/clip`, ±1.5 s / +2.5 s), a facts strip, `Verdict` + `Shooter` selects, a note textarea, `Save review`, `Next candidate →`, and a `<details>` holding a full-VOD `<video>` seeked to the event time. 38 visible controls in `#content`.
 **Ball labels** — crop image + optional context crop, a 0–15 grid (`CUE`, `SOLID`, `EIGHT`, `STRIPE`), `Unknown`, `Clear label`, and prev/next crop. Each label button posts immediately (`app.js:111`). 22 visible controls.
-**Table calibration** — `timeToolbar()` (frame-time number input + `Load frame`) + a 6-anchor SVG overlay on `/media/vod30/frame?t=`, an anchor list, a 4-button nudge pad, `Save six anchors`. 13 visible controls. Gated to the `vod30` dataset only (`app.js:38`, `unified_server.py:667-668`).
+**Table calibration** — `timeToolbar()` (frame-time number input + `Load frame`) + a 6-anchor SVG overlay on `/media/vod30/frame?t=`, an anchor list, a 4-button nudge pad, `Save six anchors`. 13 visible controls. Gated to the `vod30` dataset only (`app.js:38`, `unified_server.py:673-674`).
 **Player identities** — track-window `<select>`, identity-status panel, frame with track boxes, track list, seed buttons (`Player A` / `Player B` / `Ignore` / `Clear seed`), plus an identity-rebuild block. 13 visible controls. Seeding is explicitly two-step: saving a seed does **not** rebuild predictions (`app.js:144` hint, `app.js:170-171`).
 **Video timeline ("Unified viewer")** — toolbar (4 overlay checkboxes, jump-to-frame, jump-to-time), then a `.timeline-grid` of three panels: `Local VOD player` (`<video id="vod">` + transport + scrub bar with event ticks), `Frozen frame inspector` (`#t-img` + `#t-overlay` SVG), and `Frame inference` + `Correction editor`. 52 visible controls in `#content`, the largest surface in the app.
 
@@ -85,7 +85,7 @@ await reviewPromise;if(tab==='vision'){review().setAppearance(lang,theme);review
 catch(error){reviewPromise=null;message(`${t('error')}: ${error.message}`,true)}}
 ```
 
-Server side (`unified_server.py:930-931`):
+Server side (`unified_server.py:936-937`):
 
 ```python
 if path == '/api/review-template':
@@ -135,7 +135,7 @@ if path in ('/app.html', '/ops.html'):
     return self.send(308, b'', 'text/plain', {'Location': '/'})
 ```
 
-(`unified_server.py:198`.) Verified: `GET /app.html` → `308 → http://127.0.0.1:8131/`; `GET /ops.html` → `308 → http://127.0.0.1:8131/`; `GET /` serves `ops.html` (`unified_server.py:193`). There is **no standalone review URL anymore** — `/api/review-template` + `showReview()` is the only way to obtain and mount the review client.
+(`unified_server.py:204`.) Verified: `GET /app.html` → `308 → http://127.0.0.1:8131/`; `GET /ops.html` → `308 → http://127.0.0.1:8131/`; `GET /` serves `ops.html` (`unified_server.py:199`). There is **no standalone review URL anymore** — `/api/review-template` + `showReview()` is the only way to obtain and mount the review client.
 
 ---
 
@@ -211,7 +211,7 @@ Measured at 1280×900 unless stated. "Cost" = operator-visible steps or pixels.
 
 ## 5. Live vs VOD overlap
 
-**What is genuinely live-capable:** only the Twitch path. `annotator/live_processing.py:1-5` documents the accepted sources as `{'kind':'dataset','dataset':'vod30'|'highlight'}` or `{'kind':'twitch','source_id':<saved Operations channel id>}` — no arbitrary URLs, files, stream credentials or detector models. `POST /api/live` is handled in `unified_server.py:923-926,123-136`. A `dataset` source is a recorded file fed through the live pipeline; a `twitch` source is the only genuinely live input.
+**What is genuinely live-capable:** only the Twitch path. `annotator/live_processing.py:1-5` documents the accepted sources as `{'kind':'dataset','dataset':'vod30'|'highlight'}` or `{'kind':'twitch','source_id':<saved Operations channel id>}` — no arbitrary URLs, files, stream credentials or detector models. `POST /api/live` is handled in `unified_server.py:929-932,123-136`. A `dataset` source is a recorded file fed through the live pipeline; a `twitch` source is the only genuinely live input.
 
 **How the four live/VOD surfaces relate:**
 
@@ -303,4 +303,4 @@ Backing details: `#main` holds only 1 visible control (the `<details>` summary) 
 3. **Ball-label and calibration write paths.** Not exercised (would write to the fixture's copied annotation files, which is permitted, but the reads already established the endpoints and control sets).
 4. **`POST /api/inference`.** Not run: `Balls · SAM3 on CPU (slow)` is an explicit opt-in and the person/table models were not warmed. The frozen-frame overlay path was verified via `/api/unified` instead.
 5. **Native `<select>` dropdown interiors** are not captured in the screenshots (headless Chromium screenshots omit open native popups). Option lists were read from the DOM instead (e.g. the review `#dataset` select offers exactly `vod30`, `highlight`; `liveDetectors` checkboxes are both checked by default).
-6. **Whether any external consumer depends on `/app.html`.** The redirect at `unified_server.py:198` makes the standalone review page unreachable in this server; whether a second server (`annotator/server.py`) or an operator bookmark still expects it was not traced.
+6. **Whether any external consumer depends on `/app.html`.** The redirect at `unified_server.py:204` makes the standalone review page unreachable in this server; whether a second server (`annotator/server.py`) or an operator bookmark still expects it was not traced.
