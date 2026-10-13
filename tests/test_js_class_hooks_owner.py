@@ -8,8 +8,8 @@ of ``annotator/app.js``.  The block at ``annotator/app.js:1844-1847`` writes the
 popover markup, and the element at ``annotator/app.js:858`` carries the host hook.
 `annotator/app.css` holds the rules of those hooks.  The two action names of the
 markup are keys of the dispatcher table of ``annotator/vision-stage.js``, which
-starts at ``annotator/vision-stage.js:1456`` and ends at
-``annotator/vision-stage.js:1570``.  The pair meets on one page only:
+starts at ``annotator/vision-stage.js:1456`` and ends with the key at
+``annotator/vision-stage.js:1569``.  The pair meets on one page only:
 ``annotator/ops.html`` loads ``/app.js``, ``/vision-stage.js`` and ``/ops.js``.
 `annotator/app.html` is the review template, and no page serves it.
 
