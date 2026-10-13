@@ -12561,3 +12561,174 @@ answer `114 passed, 0 failed`, with `source-text assertions left: 75`; writer W1
 `node tests/test_ops.js`, which answered `tests 232 / pass 232 / fail 0`.  The count moved 2751 ->
 2772: 7 cases from writer W1, 7 from writer W2 and 7 from writer W3.  The four delivery commits are
 `482496b`, `c9ba938`, `49e6555` and `2e87a10`.
+
+## Round 104 - the enrolment refusal sentence and the machine provenance line
+
+The walk of this round is `/tmp/dshsess/walk_round104.md` (122 lines) at HEAD `cdbca92`.  Its verdict
+line reads `Strong candidate present - 2 Strong, 2 Worth, 2 Note`.  The Lead re-read every ground of
+every row before a writer opened.
+
+### Strong 1 - the enrolment refusal sentence stands twice
+
+The python writer is `src/enroll_from_tracklet.py:255` (`def message(self) -> str:`), with nine
+code-to-sentence rows at `:257-:265`, and two more sentences at `:657-:659`
+(`EnrollmentTokenError.to_dict()`: `token_mismatch` and `player_name_required`).  The route answer
+`annotator/unified_server.py:1204-1205` adds `preview_expired`.  The console reader is the table
+`ENROL_REASON_COPY` of `annotator/vision-stage.js:1124-1137`, twelve rows of `code:['english','中文']`,
+read by `enrolReasonText` at `:1139` and rendered at `:1174`.
+
+Guard status: `no reader`.  The search `grep -rn "ENROL_REASON_COPY|enrolReasonText" tests/` answered
+nothing.  The nearest case, `tests/test_app_timeline.js:2776-2816`, spells the module sentence as its
+own fixture literal.  The one test module that names both sides, `tests/test_unified_server.py`, reads
+the console file only as a source of VOD URLs at `:2068` (a false positive).
+
+Seven rows had already drifted apart: `selection_not_matched`, `no_face_in_track`, `face_too_small`,
+`face_low_detection`, `single_face_only`, `no_stored_evidence` and `token_mismatch`.  The two gate
+sentences carry measured numbers - `MIN_EYE_PX = 8.0` and `MIN_DET_SCORE = 0.4` of
+`src/face_id.py:61-62` - so the module writes `the 8.0px eye-distance gate` and `the 0.4 detection
+gate` while the console held other numbers.
+
+The repair (writer W1, agent `ede3234b-02e1-4585-b055-98482f6e4b44`): the module keeps the English
+sentence, the console table keeps the Chinese translation only, `enrolReasonText` reads the wire
+message for every language, and the dim line prints the message only when it differs from the label.
+The new guard `tests/test_enrol_reason_copy_owner.py` holds seven cases (sha1
+`e9009a9eb9b29d1ac446c1777a0ee5c23034349b`).  `annotator/vision-stage.js` moved
+`9b133d2b` -> `67778e0e`, and `tests/test_app_timeline.js` moved to
+`88093800fdd905cd71059c92a87bac5b2dd44f07`.
+
+Two Lead bites of that delivery, both on sites the writer did not bite:
+
+* `annotator/unified_server.py:1204` `preview_expired` -> `preview_expired_x`:
+  `79d55124` -> `db39b536` -> `79d55124`.  The guard answered `FAILED (failures=3)`, with
+  `['preview_expired'] != []`, `11 != 12 : the sentence count moved: 11` and
+  `11 != 12 : the server code count moved`.
+* The `'zh'` branch of `enrolReasonText` removed: `67778e0e` -> `6f5807a3` -> `67778e0e`.  The guard
+  answered `"'zh'" not found in ... : the function has no zh branch`, and
+  `node tests/test_app_timeline.js` stayed `114 passed, 0 failed` - that case cannot see the branch.
+
+The Lead then spent two lines: it deleted the dead English copy `enrolMismatch` of
+`annotator/vision-stage.js:126` and its Chinese twin at `:235`, because no reader in the tree names
+either one, and it reworded `docs/impeccable-feature-inventory.md:284` to `The `enrolMismatch` copy
+key was dead, and round 104 removed it.`  W1's delivery and that spend stand in
+`9aa5cbb refactor: the enrolment refusal sentence answers one home`.
+
+### Strong 2 - the machine provenance statement
+
+The python writer is `src/dense_queue.py:371` (`"statement": "machine-produced candidate; no human
+has confirmed it",`), one field of the dict that `provenance()` at `:364` builds next to the flags
+`:368-:369` (`machine_produced` and `human_confirmed`).  It is the only writer of a `"statement"` key
+in the tree.  The console reader held the sentence twice as `provenanceMachineLegacy`
+(`annotator/vision-stage.js:158` and `:265`) and matched it with a `known` array at `:667`.  There
+was a reader of the pair: the case `tests/test_app_timeline.js:3445-3465` held the translated label
+and the title, but it held the sentence text as a copy, so a reword of the writer broke it.
+
+The repair (writer W2, agent `e9b38db3-a016-49b9-a32f-381412427356`): the console decides from the
+two flags alone.  `provenanceLine` at `annotator/vision-stage.js:657` now reads
+`:665 const machine = p.machine_produced === true && p.human_confirmed !== true;`, prints the label
+at `:666`, prints the stored statement at `:667` only for an event with no flag, and keeps
+`p.statement` in the title at `:672`.  Both `provenanceMachineLegacy` rows and the text match are
+gone.  `annotator/vision-stage.js` moved `fef72d91` -> `3bae748217fe765e43c676687e1a3e27889fd2eb`
+(1898 lines, net zero).  `tests/test_app_timeline.js` moved `88093800` ->
+`f1f56e593c009121034b9b7666a447b7a428784e` (4186 -> 4206 lines: the provenance case extended and
+three cases added after `:3486`).  The new guard `tests/test_provenance_statement_owner.py` holds
+eight cases (sha1 `c61a854b9562d77cded10b4bb9620d2633b63ec0`).  `src/dense_queue.py` kept its bytes
+(`1603f807a57551a61bb917d2bd06f2331948e483`).
+
+Four bites of that writer, each restored with `cp` and proved by sha1:
+
+| Bite | sha1 before -> during | The red text names |
+| --- | --- | --- |
+| flag rename `machine_produced` -> `machine_produced_x` | `1603f807` -> `99b2f120` | `src/dense_queue.py:369` |
+| the legacy row put back at `annotator/vision-stage.js:157` | `2d85a95b` -> `95579aa6` | `annotator/vision-stage.js:157` and its text |
+| the text match put back (a `known` array with `.includes(`) | `2d85a95b` -> `4c959e6f` | `'COPY' unexpectedly found` |
+| the decoupling proof: the sentence reworded to `a machine proposed this; a person has not looked at it` | `1603f807` -> `254f70f9` | no case: `node` stayed green, both cards printed the label |
+
+The writer's modules: the new guard `Ran 8 tests` `OK`, `test_document_stamp` 16 `OK`, `test_store`
+20 `OK`, `test_suite_inventory` 5 `OK`.  `tests/test_dense_queue.py` does not exist.
+
+### The spend of two lines, its debt, and the repair of the debt
+
+The two deleted lines moved `annotator/vision-stage.js` by -2 above the enrolment region and by +7
+below it (W1 added nine lines there in the same round).  Two modules answered red on the settled
+tree:
+
+* `tests/test_js_class_hooks_owner.py`: `CHIPROW_EMITTER_SITES` holds bare integers, so a sweep
+  cannot see them.  It pinned `:652`, `:1071` and `:1076` while the emitters now stand at `:650`,
+  `:1069` and `:1074`.  The module answered `FAILED (failures=1)`,
+  `AssertionError: 4 != 1 : the emitters no longer write vs-chiprow at 4 sites`.
+* `tests/test_citation_lines.py`: three failures.  The case
+  `test_no_citation_names_a_line_without_text` named five citations whose line holds no text, and two
+  cases named the duration seam citation `annotator/duration.js:8 -> annotator/vision-stage.js:952`.
+
+The citation sweep of the round:
+`python3 tools/citation_sweep.py --base cdbca92 --hold tests/test_app_timeline.js --hold
+tests/test_enrol_reason_copy_owner.py --hold tests/test_provenance_statement_owner.py --hold
+annotator/vision-stage.js --write` moved 86 citations across 11 files, every row of its report from
+an old number to a new one, and it wrote the stamp `.git/citation-sweep.json`.  Four rows of the
+report are the round's own: `tests/test_cadence...`, the three citations of
+`tests/test_console_anchor_times.py:67`, the round-103 guard docstrings (`annotator/vision-stage.js`
+`:1456 -> :1463`, `:1569 -> :1576`, `:652 -> :650`, `:1832 -> :1839`), and the ledger's own rows.
+
+Two repairs stand outside the sweep, because it cannot see a bare `:NNN` continuation or a bare
+integer pin.  The Lead made both by hand in `tests/test_js_class_hooks_owner.py`: the docstring
+numbers `:1071` and `:1076` became `:1069` and `:1074`, and `CHIPROW_EMITTER_SITES` became
+`(650, 1069, 1074)`.  After the repair `test_citation_lines` answers `Ran 10 tests` `OK` and
+`test_js_class_hooks_owner` answers `Ran 7 tests` `OK`.
+
+Two living documents stated the removed card behaviour.  The Lead repaired both:
+`docs/impeccable-feature-inventory.md` item 107 (it now names the two label texts and states that the
+line reads the two flags) and `DESIGN.md:384` (the same fact).  Two dated records stay as they are and
+stand as Notes: `docs/tiered-queue-verification.md:117` (a past ask to a UI worker) and
+`.impeccable/critique/2026-09-26T08-55-47Z__annotator-ops-html.md:62` (a dated critique).
+
+One live coupling is recorded: `tests/test_queue_decision.py:223` holds
+`self.assertIn("no human has confirmed", provenance["statement"])`, so a reword of
+`src/dense_queue.py:371` must pay that case in the same commit.
+
+Four ledger citations of `annotator/vision-stage.js` were stale before this round, so the sweep only
+moved them by this round's delta: `docs/console-redesign.md:5908` (`:1214`, into the
+`data-vs-action="guest-name"` line that writer W1 measured at `:1247`), `:3189` (`:1132`, the
+`setShell` call), `:3097` (`:1128`, `#ops-shell`: that text no longer stands in the file) and `:4277`
+(`:930`, the duration formatter).
+
+### Worth and Note rows
+
+Worth 1: the quad sanity reasons and their numbers (`src/eval_table_detect.py:208-211` and `:214`
+against `annotator/app.js:284-292`) are held equal by `tests/test_app_quad_contract.py:118-120` and
+`:135-150`.  Worth 2: the live failure sentence table (`annotator/live_processing.py:72` against
+`annotator/app.js:2108-2121`) is held by `tests/test_app_timeline.js:3491` and `:3506-3517`, and by
+`tests/test_live_error_codes_owner.py`.  No work opened for either row.
+
+Note 1: the owner sentence `draw the box for the face id if it is a separate box` stands as prose at
+`annotator/app.js:1017` and `src/person_pipeline.py:242`.  Note 2: the comment of
+`annotator/vision-stage.js:450` copies `no cloth census measured` from `src/event_gates.py:358`.
+Both are prose copies, not code copies, so neither row opened.
+
+### Lessons of round 104
+
+1. A spend at a low line number is a debt of the whole file.  Remove lines near the top and every
+   citation below them moves; measure the shift before the spend, not after it.
+2. A citation sweep cannot see a bare `:NNN` continuation or a bare integer pin.  Run the citation
+   guard and the guards of the round after every sweep.
+3. A rendered-label case is blind to the branch that produced the label.  Removing the `'zh'` branch
+   of `enrolReasonText` left the node suite at `114 passed, 0 failed`.
+4. A console reads the flags the writer sets, never the sentence the writer phrases.  A sentence is
+   data for a reader; a key of a decision must be a name.
+5. When a document states behaviour that the round removed, repair the living document and record the
+   dated one as a Note.
+
+### Suites of round 104
+
+The tree at `32c45d6` holds the two repairs, the two new guards and the citation sweep.  The full
+suites passed on that tree.
+
+1. `./scripts/pool-test.sh python` — `Ran 2787 tests in 366.722s`, `OK (skipped=53)`.  No `FAIL` line
+   and no `ERROR` line stands in the log of 14000 lines.  2787 is 2772 + 15: the 7 cases of
+   `tests/test_enrol_reason_copy_owner.py` and the 8 cases of
+   `tests/test_provenance_statement_owner.py` are inside the count.
+2. `./scripts/pool-test.sh js` — `tests/test_ops.js` gives `pass 232`, `fail 0`; `tests/test_board.js`
+   gives `fail 0`; `tests/test_app_timeline.js` gives `114 passed, 0 failed`.  75 source-text
+   assertions stay in the tree.
+3. The guards of the round, after the repair of the debt: `tests/test_citation_lines.py` 10 tests OK,
+   `tests/test_js_class_hooks_owner.py` 7 OK, `tests/test_live_cadence_owner.py` 6 OK,
+   `tests/test_enrol_reason_copy_owner.py` 7 OK, `tests/test_provenance_statement_owner.py` 8 OK.
