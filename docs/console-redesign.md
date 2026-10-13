@@ -6293,7 +6293,7 @@ from the same array; `annotator/index.html:109-111` held three literal buttons (
 `data-v="wrong"`, `data-v="unsure"`); `annotator/unified_server.py:2235 if "verdict" in p and
 p["verdict"] not in ("correct", "wrong", "unsure"):`; and `db/migrations/0002_user_data.sql:165
 verdict    text CHECK (verdict IN ('correct','wrong','unsure')),`. The guard pair
-`tests/test_sql_domain_parity.py:194-199` tied the migration to the Python validator and named no
+`tests/test_sql_domain_parity.py:215-220` tied the migration to the Python validator and named no
 JavaScript file.
 
 Repair: the console reads `VOCABULARY.verdictWords` at all three sites through the late readers
@@ -11044,7 +11044,7 @@ The migration owns the words for the database:
 The board script repeated them in two languages at `annotator/board.js:26` and
 `:43`, and hung the champion card on one of them at `:161`.  The comment at
 `:158-160` said that no tuple publishes the words.  The parity module recorded the
-domain as a `NO_PYTHON_COPY` record at `tests/test_sql_domain_parity.py:846`, and
+domain as a `NO_PYTHON_COPY` record at `tests/test_sql_domain_parity.py:970`, and
 its scanner `shipped_copies()` at `:540-543` walks `*.py` only, so the two
 JavaScript copies were invisible by construction.
 
@@ -11056,7 +11056,7 @@ The comment of the board now names the tuple.  The module counts 22 cases at the
 start of the round and 24 at the end.  The tuple moved every line of
 `annotator/operations.py` at or after 239 down by 8, and the Lead paid 60
 citations for it.  The citing sentence that names `NOTE_MAX` was repaired in the
-same edit: `tests/test_sql_domain_parity.py:896` now names
+same edit: `tests/test_sql_domain_parity.py:1020` now names
 `annotator/operations.py:50`, `:915` and `:1346`.
 
 WU also repaired `tests/test_state_document_owner.py:6`, a file outside its brief,
@@ -11067,7 +11067,7 @@ The bite of WU added `abandoned: 'Abandoned',` to the English word map:
 `cfc4552adccb727c8991a2fa084e98ad954ff167 -> eb83addc74610959628b986a2e19e8581925c6e6 -> cfc4552adccb727c8991a2fa084e98ad954ff167`,
 `FAILED (failures=2)`.  The first attempt of the bite left the plant in the file,
 and the case then failed with a silent message.  The writer repaired its own case
-to count the anchor first (`tests/test_sql_domain_parity.py:1276`).
+to count the anchor first (`tests/test_sql_domain_parity.py:1445`).
 
 ### Row 3 (Worth) - the name of the built-in dataset
 
@@ -11101,7 +11101,7 @@ not a record of the original file.
 
 ### Note - a citing sentence that named the wrong lines
 
-`tests/test_sql_domain_parity.py:825` cited `NOTE_MAX = 4000 at :45 and reads it at
+`tests/test_sql_domain_parity.py:949` cited `NOTE_MAX = 4000 at :45 and reads it at
 :886 and :1316`, and the true sites are `annotator/operations.py:50`, `:907` and
 `:1338`.  Writer WU repaired it in the same edit.
 
