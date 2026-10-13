@@ -2772,13 +2772,16 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
     'the cluster path says it is not cross-checked: ' + clusterHTML.slice(clusterHTML.indexOf('evidence:'), clusterHTML.indexOf('evidence:') + 90));
   assert.ok(clusterHTML.includes('no other face to cross-check'), 'and why purity is absent');
   // A refusal is the reason in the operator's words, with the code still visible.
+  // The module owns the English sentence, so the console prints the wire message.
   const refused = {status:'refused', name:'', elapsed_ms:null, error:null,
     payload:{ok:false, reason:'single_face_only', message:'only one usable face: upload a second photo to prove consistency',
              crops:[{index:0, frame_index:2010, t:67.0, det_score:0.79, eye_px:12.7, jpeg_data_url:'data:image/jpeg;base64,AAA'}]}};
   const refusedHTML = adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:refused}));
-  assert.ok(refusedHTML.includes('data-vs-enrol="refused"') && refusedHTML.includes('only one usable face: no second face to cross-check it'),
-    'the refusal is a sentence, in operator language');
-  assert.ok(refusedHTML.includes('single_face_only') && refusedHTML.includes('upload a second photo'), 'with the module code and its own sentence beside it');
+  assert.ok(refusedHTML.includes('data-vs-enrol="refused"') && refusedHTML.includes('only one usable face: upload a second photo to prove consistency'),
+    'the refusal is the module sentence from the wire, in operator language');
+  assert.ok(refusedHTML.includes('single_face_only'), 'with the module code beside it');
+  assert.ok(!refusedHTML.includes('only one usable face: no second face to cross-check it'),
+    'and never a second English copy of that sentence in the console');
   assert.ok(refusedHTML.includes('data-vs-crop="0"'), 'and it still shows the face it did see');
   // A refusal on confirm (the server answers 200 ok:false: token_mismatch,
   // preview_expired, player_name_required) reaches the operator as its real
@@ -2808,9 +2811,12 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
   assert.strictEqual(written.engineSnap.enroll.status, 'written');
   const writtenReceipt = written.engineSnap.receipts.find(r => r.key === 'person');
   assert.ok(writtenReceipt && writtenReceipt.error === false && writtenReceipt.text === 'Ana → regular', JSON.stringify(writtenReceipt));
+  // [reason, the wire message, the English panel text, the Chinese panel text].
+  // The English text is the wire message itself, because the module owns that
+  // sentence and the console prints it. The Chinese text is the table row.
   for (const [reason, message, en, zh] of [
-    ['token_mismatch', 'these crops are not the ones you were shown; reload the frame', 'these crops are not the ones you were shown; preview again', '这些裁剪图与展示时不一致；请重新预览'],
-    ['preview_expired', 'this preview is no longer held; preview the track again before confirming', 'this preview is no longer held; preview again', '此预览已不再保留；请重新预览'],
+    ['token_mismatch', 'these crops are not the ones you were shown; reload the frame', 'these crops are not the ones you were shown; reload the frame', '这些裁剪图与展示时不一致；请重新预览'],
+    ['preview_expired', 'this preview is no longer held; preview the track again before confirming', 'this preview is no longer held; preview the track again before confirming', '此预览已不再保留；请重新预览'],
     ['player_name_required', 'a name is required to enrol a regular', 'a name is required to enrol a regular', '登记常客需要姓名']]) {
     const {engineSnap, confirmed, confirmError} = confirmWith({ok:false, reason, message, detail:{}});
     const box = {confirmed};
@@ -2836,6 +2842,19 @@ test('the enrol block shows the evidence level, the crops and one confirm', () =
       assert.ok(html.includes(reason), `${reason} (${lang}): with the module code beside it`);
     }
   }
+  // The module sentence stands once on the screen. The dim line repeats it only
+  // when it differs from the main line, which is the Chinese case.
+  for (const [lang, sentence] of [['en', 'that person was not seen in the sampled frames'], ['zh', '在采样帧中没有看到该人物']]) {
+    const paired = adapterSeam(lang, ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
+      enroll:{status:'refused', name:'', elapsed_ms:null, error:null,
+        payload:{ok:false, reason:'track_not_found', message:'that person was not seen in the sampled frames', crops:[]}}}));
+    assert.strictEqual(paired.split(sentence).length - 1, 1, `${lang}: the sentence stands once, not twice`);
+  }
+  const doubled = adapterSeam('zh', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}},
+    enroll:{status:'refused', name:'', elapsed_ms:null, error:null,
+      payload:{ok:false, reason:'track_not_found', message:'that person was not seen in the sampled frames', crops:[]}}}));
+  assert.ok(doubled.includes('在采样帧中没有看到该人物') && doubled.includes('that person was not seen in the sampled frames'),
+    'a Chinese operator reads the translation on the main line and the module sentence beside it');
   const none = {status:'refused', name:'', elapsed_ms:null, error:null, payload:{ok:false, reason:'no_face_in_track', message:'x', crops:[]}};
   assert.ok(adapterSeam('en', ROSTER).panel(visionSnapshot({selection:{kind:'person', track:2, person:{track_id:2, cluster_id:null}}, enroll:none}))
     .includes('no usable crop was kept'), 'a refusal with no crops says so instead of showing an empty box');

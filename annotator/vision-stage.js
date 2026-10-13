@@ -123,7 +123,6 @@ const COPY = {
     enrolName:'Regular\u2019s name', enrolConfirm:'Confirm enrolment', enrolCancel:'Cancel',
     enrolRefused:'Enrolment refused', enrolNoCrops:'no usable crop was kept: nothing to enrol from',
     enrolWrote:'enrolled; the roster was re-read', enrolRetry:'Preview again',
-    enrolMismatch:'these crops are not the ones you were shown; preview again',
     inferenceNotStored:'run on this frame, not stored', inferenceFrom:'inference source',
     inferenceSession:'inference \u00b7 this session',
     // Live detectors: the trained tiny ball net is a live stage, unlike the
@@ -232,7 +231,6 @@ const COPY = {
     enrolName:'常客姓名', enrolConfirm:'确认登记', enrolCancel:'取消',
     enrolRefused:'登记被拒绝', enrolNoCrops:'没有保留可用裁剪图：无从登记',
     enrolWrote:'已登记；名单已重新读取', enrolRetry:'重新预览',
-    enrolMismatch:'这些裁剪图与展示时不一致；请重新预览',
     inferenceNotStored:'本次运行，未存储', inferenceFrom:'推理来源',
     inferenceSession:'推理 \u00b7 本次会话',
     boundManual:'人工绑定', boundAuto:'自动人脸匹配', boundIdentity:'身份绑定',
@@ -1120,26 +1118,31 @@ function ballBlock(s) {
 // working) or a guest name (stored as this track's label in the seeds store).
 // "Not a player" is a quiet secondary action because spectators exist in this
 // footage and must stay excludable without competing with the two options.
-// The module's refusal codes, in the operator's words. The code and its own
+// The module owns the English refusal sentence: the wire message carries it, and
+// `src/enroll_from_tracklet.py` writes it (`Refusal.message()`, the two answers of
+// `EnrollmentTokenError`, and the `preview_expired` answer of the route). This
+// table holds the Chinese translation only. The code and the module's own English
 // sentence stay on screen next to the translation, so nothing is smoothed over.
 const ENROL_REASON_COPY = {
-  selection_not_matched:['the click does not overlap a person in this frame', '此点击与此帧中的人物不重叠'],
-  track_not_found:['that person was not seen in the sampled frames', '在采样帧中没有看到该人物'],
-  no_face_in_track:['the person was seen, but no face inside their box', '看到了该人物，但其标注框内没有人脸'],
-  face_too_small:['every face was below the eye-distance gate', '所有人脸都低于眼距门槛'],
-  face_low_detection:['every face was below the detection gate', '所有人脸都低于检测门槛'],
-  single_face_only:['only one usable face: no second face to cross-check it', '只有一张可用人脸：没有第二张可交叉核对'],
-  inconsistent_faces:['the usable faces do not agree: more than one person may be in this track', '可用人脸彼此不一致：该轨迹内可能有不止一人'],
-  mixed_track:['the best faces disagree with the rest of this track: the track may have switched people', '最佳人脸与轨迹其余部分不一致：该轨迹可能换过人'],
-  no_stored_evidence:['the identity index holds no usable face for this cluster', '身份索引中该聚类没有可用人脸'],
-  preview_expired:['this preview is no longer held; preview again', '此预览已不再保留；请重新预览'],
-  token_mismatch:['these crops are not the ones you were shown; preview again', '这些裁剪图与展示时不一致；请重新预览'],
-  player_name_required:['a name is required to enrol a regular', '登记常客需要姓名']
+  selection_not_matched:'此点击与此帧中的人物不重叠',
+  track_not_found:'在采样帧中没有看到该人物',
+  no_face_in_track:'看到了该人物，但其标注框内没有人脸',
+  face_too_small:'所有人脸都低于眼距门槛',
+  face_low_detection:'所有人脸都低于检测门槛',
+  single_face_only:'只有一张可用人脸：没有第二张可交叉核对',
+  inconsistent_faces:'可用人脸彼此不一致：该轨迹内可能有不止一人',
+  mixed_track:'最佳人脸与轨迹其余部分不一致：该轨迹可能换过人',
+  no_stored_evidence:'身份索引中该聚类没有可用人脸',
+  preview_expired:'此预览已不再保留；请重新预览',
+  token_mismatch:'这些裁剪图与展示时不一致；请重新预览',
+  player_name_required:'登记常客需要姓名'
 };
+// The wire message is the only English home: read it for `en` and for every other
+// language of the console. The table answers `zh` alone.
 function enrolReasonText(payload) {
-  const row = ENROL_REASON_COPY[payload?.reason];
-  if (!row) return String(payload?.message || payload?.reason || t('unknown'));
-  return opts?.lang === 'zh' ? row[1] : row[0];
+  const message = String(payload?.message || '');
+  if (opts?.lang === 'zh' && ENROL_REASON_COPY[payload?.reason]) return ENROL_REASON_COPY[payload?.reason];
+  return message || String(payload?.reason || '') || t('unknown');
 }
 function enrolCropsHTML(payload) {
   const crops = payload?.crops || [];
@@ -1171,7 +1174,11 @@ function enrolBlock(s) {
       <div class="vs-row"><button class="primary" data-vs-action="enroll-confirm">${esc(t('enrolConfirm'))}</button>${e.status === 'written' ? '' : `<button data-vs-action="enroll-cancel">${esc(t('enrolCancel'))}</button>`}</div>
       ${e.status === 'written' ? `<p class="vs-mono" data-vs-enrol="written">✓ ${esc(t('enrolWrote'))}</p>` : ''}`;
   } else if (e.status === 'refused') {
-    body = `<p class="vs-mono" data-vs-enrol="refused">${esc(t('enrolRefused'))}: ${esc(enrolReasonText(p))}</p><p class="vs-mono vs-dim">${esc(p.reason || '')}${p.message ? ` · ${esc(p.message)}` : ''}</p>${enrolCropsHTML(p) || `<p class="vs-note">${esc(t('enrolNoCrops'))}</p>`}`;
+    // The sentence above is the module's own English. The dim line repeats the code and
+    // adds the wire message only when that message is a different sentence.
+    const sentence = enrolReasonText(p);
+    const own = p.message && p.message !== sentence ? ` · ${esc(p.message)}` : '';
+    body = `<p class="vs-mono" data-vs-enrol="refused">${esc(t('enrolRefused'))}: ${esc(sentence)}</p><p class="vs-mono vs-dim">${esc(p.reason || '')}${own}</p>${enrolCropsHTML(p) || `<p class="vs-note">${esc(t('enrolNoCrops'))}</p>`}`;
   }
   return `<div class="vs-block vs-enrol"><h4>${esc(t('enrolTitle'))}</h4>${start}${body}<p class="vs-note">${esc(t('enrolHint'))}</p></div>`;
 }

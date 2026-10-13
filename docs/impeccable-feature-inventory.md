@@ -214,7 +214,7 @@ not have to keep a defect, but a fix must not remove the feature around it.
 141. **Preview crops**: a grid of face crops (data URLs) with `#i · frame <n> · t <s> s` and `det <0.00> · eye <0.0> px`. Check: after the preview, each crop shows its det and eye numbers.
 142. **Evidence-level line**: `frames seen <n> · usable faces <kept>/<usable> · purity <p>% (<probes>)|no other face to cross-check · selection IoU <x>`, then `evidence: stored cluster face|window scan · <n> crops · cross-checked|not cross-checked`. Check: a fast-path preview reads `evidence: stored cluster face · 1 crops · not cross-checked`. [test: the enrol block shows the evidence level, the crops and one confirm]
 143. **Confirm writes only on click**: *Regular’s name* (≤60), then *Confirm enrolment* (the one write, `POST /api/identity/enroll-confirm {token, player_name}`), then *Cancel*. On success it shows `✓ enrolled; the roster was re-read`, and the shell re-reads `/api/operations`. Check: confirm with a name → the new regular appears in the Regulars roster without a reload.
-144. **Refusals in operator words**: `Enrolment refused: <sentence>`, with the module code and its own message beside it, the faces it did see, or `no usable crop was kept: nothing to enrol from`. There are 11 codes: selection_not_matched, track_not_found, no_face_in_track, face_too_small, face_low_detection, single_face_only, inconsistent_faces, mixed_track, no_stored_evidence, preview_expired, **token_mismatch** (`these crops are not the ones you were shown; preview again`), and player_name_required. Check: preview a track with one usable face → `Enrolment refused: only one usable face: no second face to cross-check it` plus `single_face_only · …`. **See defect D2 for refusals that arrive on confirm, including `token_mismatch`.**
+144. **Refusals in operator words**: `Enrolment refused: <sentence>`, with the module code and its own message beside it, the faces it did see, or `no usable crop was kept: nothing to enrol from`. There are 11 codes: selection_not_matched, track_not_found, no_face_in_track, face_too_small, face_low_detection, single_face_only, inconsistent_faces, mixed_track, no_stored_evidence, preview_expired, **token_mismatch** (`these crops are not the ones you were shown; reload the frame`), and player_name_required. Check: preview a track with one usable face → `Enrolment refused: only one usable face: no second face to cross-check it` plus `single_face_only · …`. **See defect D2 for refusals that arrive on confirm, including `token_mismatch`.**
 
 ## 16. Vision: the scrub strip and the facts line
 
@@ -281,8 +281,8 @@ pinned tests) or by an exact grep. The paths are in the worktree.
   reads `payload.reason`. So a `token_mismatch` (or `preview_expired` or
   `player_name_required`) refusal renders `Enrolment refused: Unknown`, and the receipt still
   reads `✓ <name> → regular · Saved` (probe: `result.reason=token_mismatch`, receipt
-  `error:false`). The server answers 200 with `ok:false`. The `enrolMismatch` copy key is never
-  used.
+  `error:false`). The server answers 200 with `ok:false`. The `enrolMismatch` copy key was dead, and
+  round 104 removed it.
 - **D3: a VOD replay's live frames are labelled live on the stage.** `pollLive()` sets the
   frame label to `● live · <liveSourceLabel>` for every source, so a replay reads
   `● live · VOD replay 1000000001 · rate ×2 · from 30s`, and the chip row freshness and
