@@ -11983,3 +11983,130 @@ citation named a moved line.
 The full python suite answers `Ran 2699 tests in 805.157s` and `OK (skipped=53)`.
 The node suites answer `114 passed, 0 failed`, with no failure.  The count moved
 2686 -> 2699: 9 cases from writer WE and 4 from writer WD.
+
+## Round 101 - the twitch endpoint, the common hanzi names and the fallback content type
+
+Source walk: `/tmp/dshsess/walk_round101.md` (117 lines) at HEAD `3afadd5`.  The verdict line is
+`Strong candidate present - 3 Strong, 3 Worth, 3 Note`.  The Lead read every ground again.
+
+### Strong 1 - the Twitch GraphQL endpoint in four live call sites
+
+The endpoint `https://gql.twitch.tv/gql` stood as a literal in four places: the live resolver
+`annotator/twitch_source.py:380` and the three VOD calls `annotator/twitch_vod_source.py:230`, `:278`
+and `:306`.  The fake transport of `tests/test_twitch_vod_source.py:64` records the URL of every call,
+but every case there reads `calls[0][1]` alone (`:168`, `:204`, `:222`, `:226`, `:489`), so a path edit
+on one site left the other three stale while every suite stayed green.
+
+Writer W1 published one home: the comment at `annotator/twitch_source.py:420-421` and
+`GQL_ENDPOINT = 'https://gql.twitch.tv/gql'` at `:422`, and the three VOD calls read the name through
+the `live` alias.  The Lead spent the fourth site, the live call at `annotator/twitch_source.py:380`
+(`_request(GQL_ENDPOINT, payload)`), because the scope of writer W1 held added lines only.  sha1:
+`annotator/twitch_source.py` `a351aaa54eff8e023155afeafcc0be31d5c68b76` ->
+`54fe9a0e90116946da14c778e2e78331fe947a74`; `annotator/twitch_vod_source.py`
+`c3f4e3379a85cf71fc3aff72d9510b2d95904d56`.
+
+Writer W1 also added the guard `tests/test_twitch_endpoint_owner.py` (17 cases).  It reads the project
+`*.py` source, reports every code string equal to the endpoint and every read of `GQL_ENDPOINT` that
+stands in no named reader, follows the import graph so that `live.GQL_ENDPOINT` counts as a read of the
+home, and ignores a comment or a docstring that names the endpoint.  One case measures a VOD request, so
+the guard proves the shared name is live and not only declared.
+
+The writer answered `FAILED (failures=2)` honestly.  Its table `KNOWN_COPIES` and its case
+`test_the_home_copy_is_the_one_the_scope_leaves` described the tree of its delivery, before the Lead
+spent line 380.  The Lead repaired four expectations to the spent tree: `KNOWN_COPIES` holds the three
+test doubles, `test_the_home_states_the_endpoint_once` expects one site,
+`test_every_reader_reads_the_home_name` holds only rows outside `KNOWN_COPIES`, and
+`test_the_home_copy_is_the_one_the_scope_leaves` became `test_the_home_reports_no_copy`.  sha1 after the
+repair: `a01f5649606a322822062e767a4e9ce4d4864b64`; the guard answers 17 cases, `OK`.
+
+Bite A (the Lead): a second endpoint string appended to the home, landed at line 424.
+`54fe9a0e...` -> `5e0e9eae10151f029c64bd2b7f1f2cefee7dc961` -> `54fe9a0e...`, red
+`FAILED (failures=4)`, and the report named `annotator/twitch_source.py:424: X_LEAD_BITE =
+'https://gql.twitch.tv/gql'` with its text.  Bite B (the Lead): the pinned value at
+`annotator/twitch_source.py:422` became `https://gql.twitch.tv/gqlx`.  `54fe9a0e...` ->
+`0367be6010857beeb989e8d95085d82761c13eee` -> `54fe9a0e...`, four cases went red: two named the value
+pair (`'https://gql.twitch.tv/gql' != 'https://gql.twitch.tv/gqlx'`), one listed the report rows, and one
+held the walk.  Five other named modules answer `OK`: `test_twitch_vod_source` 39 cases,
+`test_twitch_source` 24, `test_twitch_fetch` 24, `test_twitch_headers_owner` 18 and
+`test_suite_inventory` 5.
+
+### Strong 2 - the common hanzi subset names, three homes and one sheet
+
+The three `-common.woff2` names stand in three live places: the build table `COMMON_FACES` at
+`annotator/fonts/build_fonts.py:101-105`, the three `@font-face` rules of `annotator/ops.css:15-17`, and
+the one rule of `annotator/board.css:13`.  No case read the two sets against each other.  The fourth
+site, `BOARD_FONTS` at `annotator/unified_server.py:2680-2682`, is the closed row at
+`docs/console-redesign.md:7434`, and the Lead left it closed.
+
+Writer W2 widened `tests/test_font_coverage_owner.py` from 8 cases to 11
+(`44f1db944d369e2f86404640e6af62a1fa6f126a` -> `e546fcf60d1608a766e372057db47e0d78c3ae2b`), commit
+`216bb02`.  The guard holds the table names and the `-common` names the two sheets declare to one set,
+reports a name of one home only in both directions with its `file:line` and its text, and pins a count on
+the three real names.  Writer bite: the table row `annotator/fonts/build_fonts.py:102` became
+`noto-sans-sc-400-common-bitten.woff2`, red `FAILED (failures=3)`, and the report named both the table
+row and `annotator/ops.css:15` in the other direction.  Lead bite: `annotator/board.css:13` became
+`noto-sans-sc-700-common.woff2` (a file the writer did not bite),
+`da9f54afd347b6710558e917a731cd25c8a3d036` -> `b49b55e975fa0f85f0655fb971449bc654c595eb` ->
+`da9f54af...`, and the report named `annotator/board.css:13 declares noto-sans-sc-700-common.woff2, and
+the build table COMMON_FACES does not write it: @font-face{...}` in two cases.  The guard answers 11
+cases, `OK`.
+
+A first Lead bite on the same line renamed the file to `noto-sans-sc-500-common-bitten.woff2`.  That
+name matches no `-common` pattern, so the set case stayed green (the other sheet still declared the
+table name) and only the scan case failed.  The lesson is recorded below.
+
+### Strong 3 - the fallback content type of the two servers
+
+The unknown-file fallback `application/octet-stream` stands at `annotator/server.py:117` (the owner) and
+`annotator/unified_server.py:2909` (the follower), and no case held the two equal.  Writer W3 added
+`tests/test_content_type_owner.py` (4 cases, sha1 `da172fcabc831ab32e4ae59683c7074701397563`), commit
+`728853b`.  The guard reads the fallback of both servers, reports a mismatch with `file:line`, both
+values and the repair, and its own planted case proves that the report rule fires.  Writer bite:
+`annotator/server.py:117` (`4c7cd047a5d805f7512e77c0f97182dc09262441` ->
+`9393a2626cecb26b89dda145671cfcf6204e840d` -> `4c7cd047...`), and the report named
+`annotator/unified_server.py:2909` with its value.  Lead bite: `annotator/unified_server.py:2909` became
+`application/x-octet-stream` (the follower, which the writer did not bite),
+`3eea5a485da784ce9634b3d238ad991c18848896` -> `a52711ea5aabdbbf2aa0a4f803c75cfda73cca4e` ->
+`3eea5a48...`, red `annotator/unified_server.py:2909: fallback content type 'application/x-octet-stream'
+disagrees with annotator/server.py 'application/octet-stream'; change it to 'application/octet-stream' or
+read the owner value`.  The guard answers 4 cases, `OK`, and `test_unified_server` answers 124 cases,
+`OK`.
+
+### Worth and Note rows
+
+Worth 1: the seed-label refusal sentence (`annotator/refusals.py:65-66` against the literal at
+`annotator/unified_server.py:2407`) already answers to `tests/test_guest_name.py:375`, so the Lead opened
+no work.  Worth 2: the lag key `newest_segment_end` of `annotator/twitch_source.py:358` against
+`annotator/live_processing.py:211` is held by `tests/test_live_processing.py:759`.  Worth 3: the host
+name of the purpose table at `annotator/twitch_source.py:109` is held against
+`tests/test_twitch_fetch.py:21` and `tests/test_twitch_source.py:352`.  The three Note rows name the HLS
+playlist tag (`annotator/twitch_source.py:339` against `annotator/twitch_vod_source.py:395`), the
+document content type of the two realms (`annotator/server.py:109`, `:112` against
+`annotator/unified_server.py:2687`), and the endpoint in the prose of this ledger (`:1385`, `:1527`,
+`:4159`); none is a code copy, and the Lead left all six rows.
+
+### Citations
+
+The round moved no cited line.  `docs/console-redesign.md:10489` and `:10495` cite
+`annotator/twitch_source.py:374-377` and `:392`, all below the append point, and
+`docs/twitch-vod-as-live.md:20` states the endpoint as prose.  The guard of writer W1 names the three VOD
+lines in its docstring, and they did not move.  One earlier line of this ledger, the guard count of
+round 100 at `:11612`, was repaired by commit `252a8b8` (`eight cases at round 100, one per claim (eleven
+at round 101)`).
+
+### Lessons
+
+1. A guard that freezes the tree the round is about to change must be repaired in the same round.  The
+   writer cannot know the line the Lead will spend, so read the pinned table of the new guard before the
+   write, or give the writer the line in its scope.
+2. A bite that renames a name to a variant of itself can stay green on a set comparison, because a second
+   home still declares the old name.  Bite with a name that the other home does not write.
+3. A published home needs a reader of the shipped artefact, not only a declaration.  The guard measures a
+   real VOD request, so a name that nothing reads cannot pass it.
+4. Two bites on one fact prove two halves: the copy that must vanish, and the value that must stay.
+
+### Suites
+
+The full python suite answers `Ran 2723 tests in 633.855s` and `OK (skipped=53)`.
+The node suites answer `114 passed, 0 failed`, with no failure.  The count moved
+2699 -> 2723: 17 cases from writer W1, 3 from writer W2 and 4 from writer W3.
