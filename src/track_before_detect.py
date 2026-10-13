@@ -479,7 +479,7 @@ def render_track_strip(video, row, ctx, cfg, bars: dict, path, offsets=(-4, -2, 
     finally:
         cap.release()
     if not tiles:
-        raise OSError("no frames for the strip")
+        raise OSError(ms.NO_FRAMES_FOR_THE_STRIP)
     tile_h, tile_w = tiles[0].shape[:2]
     canvas = np.full((tile_h, tile_w * len(tiles), 3), 24, np.uint8)
     for i, tile in enumerate(tiles):

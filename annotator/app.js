@@ -2173,6 +2173,8 @@ const SHARED_WORDS = Object.freeze({
   stale: ['STALE', '已过期'], staleNow: ['STALE', '已过期'],
   live: ['live', '直播'], liveFlag: ['live', '直播'], liveNow: ['live', '直播'],
   replayNow: ['VOD replay', '回放'], closePanel: ['Close', '关闭'], bcCancelForm: ['Close', '关闭'],
+  // The paste label of both console screens: one row per slot name, like the close rows above.
+  bcPaste: ['VOD link or id', '回放链接或 id'], bfPaste: ['VOD link or id', '回放链接或 id'],
   unknown: ['Unknown', '未知'], saveCorrections: ['Save corrections for this frame', '保存此帧修正'],
   savedOk: ['Saved', '已保存'], trackWord: ['Track', '轨迹'], gateDenseWindow: ['Track window', '轨迹窗口'],
   deleteBox: ['Delete selected', '删除所选'], drawTool: ['Draw box', '绘制标注框'],

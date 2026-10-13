@@ -50,16 +50,16 @@ from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 from src.sam3_ball_cache import OWN_CACHE
 from src.sam3_artifact import ARTIFACT
 from src.tiny_ball_net import SPLIT_GAP_S
-# The probe directory and the two artifact names in it have one home,
+# The probe directory and the three artifact names in it have one home,
 # src/tiny_ball_probe.py; this reader joins those names to its own root.
-from src.tiny_ball_probe import CHECKPOINT_NAME, HELD_FROZEN_NAME, PROBE_DIR_NAME  # noqa: E402
+from src.tiny_ball_probe import CHECKPOINT_NAME, HELD_FROZEN_NAME, LABELS_NAME, PROBE_DIR_NAME  # noqa: E402
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
 from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 
 ROOT = Path(__file__).resolve().parents[1]
 
 OUT = ROOT / "out" / "fast_ball_labels"
-LABELS_OUT = ROOT / PROBE_DIR_NAME / "new_labels.json"
+LABELS_OUT = ROOT / PROBE_DIR_NAME / LABELS_NAME
 CHECKPOINT = ROOT / SAM3
 VIDEO = media_path(ROOT, "vod30")
 

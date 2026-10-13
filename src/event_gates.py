@@ -547,3 +547,12 @@ def judge(claim: dict, evidence, cfg: GateConfig = GateConfig()) -> GateResult:
     if claim["kind"] == "shot":
         return shot_gate(claim, evidence, cfg)
     return GateResult("unconfirmed", "kind", [f"unknown kind {claim['kind']!r}"])
+
+
+# The note of a shot claim that carries no bracketing geometry: the claim holds
+# no ``from_mm``/``to_mm`` pair, so the probe measures nothing.  Both producers
+# of ``ShotEvidence`` read this one string: ``src.eval_events.measure`` and
+# ``src.segment_calib_report.measure_once``.  The constant stands at the end of
+# this module so that no line above it moves: ``tests/test_citation_lines.py``
+# holds every citation of this tree to a line that keeps its text.
+NOTE_NO_BRACKETING_GEOMETRY = "claim carries no bracketing geometry"

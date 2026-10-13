@@ -1,4 +1,4 @@
-"""The tiny-ball probe directory and the two artifact names have one home.
+"""The tiny-ball probe directory and the three artifact names have one home.
 
 Round 105 measured the defect.  The probe directory ``out/tiny_ball_probe``, the
 checkpoint name ``960x540-scratch.pt`` and the frozen held-out name
@@ -9,11 +9,15 @@ labeller (``src/fast_ball_labels.py``), the false-positive audit
 A second copy drifted in silence, because no case read two copies: a rename of one
 file had to land in five files at once.
 
-The repair gives the three names one home, ``src/tiny_ball_probe.py``, and each
+Round 106 measured the same defect on a fourth name, the labeller output
+``new_labels.json``: the labeller wrote it and the trainer read it, each from its own
+quoted spelling.  The round-106 repair moves that name into the same home.
+
+The repair gives the four names one home, ``src/tiny_ball_probe.py``, and each
 reader joins those names to its own root.  The file system root therefore stays
 local to each reader and the owner states no root of its own.
 
-The cases below hold that shape in five ways:
+The cases below hold that shape in seven ways:
 
 1. one case reads the three values from the module and proves that the module
    states each one as its own statement, at the line measured on 2026-10-14;
@@ -28,6 +32,10 @@ The cases below hold that shape in five ways:
    repair -- three test files whose own cases state the probe path -- and fails
    when one drifts.  A planted drift proves that the report names the file and the
    line.
+6. three cases hold the fourth name, the labeller output of round 106: one reads
+   that name from the owner and proves that both readers build from it, one pins
+   the shipped file name against the owner line, and one walks every ``.py`` file
+   under ``src/`` and reports a quoted spelling outside the owner.
 
 The walk of the copies found eleven copies.  Their live lines are
 ``annotator/pipeline_stages.py:78``, ``src/tiny_ball_net.py:189``,
@@ -44,7 +52,7 @@ What this module cannot see, and therefore does not claim:
   parts no constant holds stays invisible to the constant scan;
 * prose may name the path.  A docstring or a bare string statement is a comment,
   and the walk skips it.  Only a constant that a reader could use is an offence;
-* the three names are held by value.  A reader that renames its own local binding
+* the four names are held by value.  A reader that renames its own local binding
   of an owner name passes, because the case reads the value each module holds;
 * the copies outside the write scope are pinned by line number, measured on
   2026-10-14.  An edit above one of those lines moves the line and fails the case:
@@ -144,6 +152,39 @@ OUTSIDE_SITE_COUNT = 5
 
 #: The bite site: the line a text edit turns red, and the proof case reads.
 BITE_SITE = ("tests/test_live_processing.py", 51)
+
+#: The fourth name of the owner: the labeller's output file inside the probe
+#: directory.  Round 106 gave this name one home, because the labeller wrote it
+#: and the trainer read it as a second, silent copy.  The value itself is read
+#: from the module; no case spells it again.
+LABELS_NAME = "LABELS_NAME"
+
+#: The line of the owner that states the labels name, and the shape of that
+#: statement.  The line was measured on 2026-10-13, after the round-106 repair.
+LABELS_LINE = 42
+LABELS_FORM = 'LABELS_NAME = "%s"'
+
+#: The line of the labeller that builds its output path from the labels name.
+LABELS_OUT_SITE = ("src/fast_ball_labels.py", 62)
+
+#: The two modules of the round-106 repair.  Each one reads the labels name from
+#: the owner: the labeller builds its output path from it, and the trainer reads
+#: the file by it.
+LABELS_READERS = ("src/fast_ball_labels.py", "src/tiny_ball_net.py")
+LABELS_READER_COUNT = 2
+
+#: The line of each reader that must read the labels name.
+LABELS_SITES = (
+    LABELS_OUT_SITE,
+    ("src/tiny_ball_net.py", 129),
+)
+LABELS_SITE_COUNT = 2
+
+#: The files a quoted spelling of the labels name must not stand in.  The walk
+#: takes every ``.py`` file under ``src/`` and skips the owner alone, so a third
+#: home fails the case.  The floor holds the walk open: a walk that reads an
+#: almost empty tree must not pass for a clean one.
+SRC_MODULE_FLOOR = 200
 
 #: The shortest reader text this module accepts.  A scan that reads an empty file
 #: reports no offence, and no offence must not pass for a clean tree.
@@ -313,6 +354,65 @@ def outside_reports(values, texts, sites):
     return found
 
 
+def labels_value():
+    """The labels file name the owner module itself holds, read by import."""
+    from src import tiny_ball_probe as owner
+    return getattr(owner, LABELS_NAME, None)
+
+
+def labels_site_reports(texts):
+    """The reader lines that do not read the labels name of the owner.
+
+    Each report is ``path:line: <text> does not read LABELS_NAME``.  When another
+    line of the same file reads the name, the report adds that line, so a moved
+    site is named by its live line as well.
+    """
+    found = []
+    for path, number in LABELS_SITES:
+        text = texts[path]
+        line = line_text(text, number)
+        if line is None:
+            found.append("%s:%d: the line is absent; the site moved" % (path, number))
+            continue
+        if LABELS_NAME in line:
+            continue
+        found.append("%s:%d: %s does not read %s" % (path, number, line, LABELS_NAME))
+        for other, other_line in enumerate(text.splitlines(), start=1):
+            if other != number and LABELS_NAME in other_line:
+                found.append("%s:%d: %s reads %s; the site moved"
+                             % (path, other, other_line.strip(), LABELS_NAME))
+    return found
+
+
+def labels_import_reports(texts):
+    """The reader that does not take the labels name from the owner module.
+
+    Each report is ``path:line: <text> does not take LABELS_NAME from <owner>``,
+    so the import line that lost the name is named with its own text.
+    """
+    found = []
+    for path in LABELS_READERS:
+        text = texts[path]
+        nodes = [node for node in ast.walk(ast.parse(text, filename=path))
+                 if isinstance(node, ast.ImportFrom) and node.module == OWNER_MODULE]
+        if not nodes:
+            found.append("%s: the reader imports no name of %s" % (path, OWNER_MODULE))
+            continue
+        if any(LABELS_NAME in {alias.name for alias in node.names} for node in nodes):
+            continue
+        node = nodes[0]
+        found.append("%s:%d: %s does not take %s from %s"
+                     % (path, node.lineno, line_text(text, node.lineno), LABELS_NAME,
+                        OWNER_MODULE))
+    return found
+
+
+def src_modules():
+    """Every ``.py`` file under ``src/``, as a path from the repository root."""
+    return sorted(path.relative_to(ROOT).as_posix()
+                  for path in (ROOT / "src").rglob("*.py"))
+
+
 def default_expressions(text, option):
     """Every ``default=`` expression of the ``add_argument`` calls of one option."""
     found = []
@@ -383,6 +483,7 @@ class TheProbePathHasOneHome(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.values = owner_values()
+        cls.labels = labels_value()
         cls.owner_text = read(OWNER)
         cls.reader_texts = {path: read(path) for path in READER_FILES}
         cls.outside_texts = {path: read(path) for path in sorted(
@@ -484,6 +585,52 @@ class TheProbePathHasOneHome(unittest.TestCase):
         self.assertEqual(fast_ball_labels.LABELS_OUT.parent, ROOT / self.values["PROBE_DIR_NAME"],
                          "the labeller output directory moved")
 
+    def test_the_home_states_the_labels_name(self):
+        """The owner states the labels file name; both readers build from it."""
+        from src import fast_ball_labels
+        value = self.labels
+        number = LABELS_LINE
+        line = line_text(self.owner_text, number)
+        statement = LABELS_FORM % (value if isinstance(value, str) else "")
+        offenders = []
+        if not isinstance(value, str) or not value:
+            offenders.append("%s:%d: %s, not %s" % (OWNER, number, line, statement))
+        elif line != statement:
+            offenders.append("%s:%d: %s, not %s" % (OWNER, number, line, statement))
+        offenders.extend(labels_site_reports(self.reader_texts))
+        offenders.extend(labels_import_reports(self.reader_texts))
+        if isinstance(value, str) and value:
+            path, out_number = LABELS_OUT_SITE
+            where = "%s:%d: %s" % (path, out_number,
+                                   line_text(self.reader_texts[path], out_number))
+            if fast_ball_labels.LABELS_OUT.name != value:
+                offenders.append("%s: the labeller output names %s, not %s"
+                                 % (where, fast_ball_labels.LABELS_OUT.name, value))
+        self.assertEqual(offenders, [], "\n".join(offenders))
+
+    def test_no_src_module_spells_the_labels_name_again(self):
+        """No ``.py`` file under ``src/``, the owner alone, states the name again."""
+        value = self.labels
+        self.assertIsInstance(value, str, "the owner holds no labels name")
+        self.assertTrue(value, "the labels name is empty")
+        statement = LABELS_FORM % value
+        line = line_text(self.owner_text, LABELS_LINE)
+        self.assertEqual(line, statement,
+                         "%s:%d: %s, not %s" % (OWNER, LABELS_LINE, line, statement))
+        paths = src_modules()
+        self.assertIn(OWNER, paths, "the walk lost the owner")
+        self.assertGreaterEqual(len(paths), SRC_MODULE_FLOOR,
+                                "the walk read %d files, below %d" % (len(paths),
+                                                                      SRC_MODULE_FLOOR))
+        for path in LABELS_READERS:
+            self.assertIn(path, paths, "%s is no module under src/" % path)
+        offenders = []
+        for path in paths:
+            if path == OWNER:
+                continue
+            offenders.extend(spelled_copies(path, read(path), (value,)))
+        self.assertEqual(offenders, [], "\n".join(offenders))
+
     def test_the_five_copies_outside_the_write_scope_hold_the_path(self):
         """Each pinned copy still spells the value the owner holds."""
         reports = outside_reports(self.values, self.outside_texts, OUTSIDE_SITES)
@@ -536,6 +683,14 @@ class TheProbePathHasOneHome(unittest.TestCase):
                          "the read site count moved: %d" % len(READ_SITES))
         self.assertEqual(len(OUTSIDE_SITES), OUTSIDE_SITE_COUNT,
                          "the outside site count moved: %d" % len(OUTSIDE_SITES))
+        self.assertEqual(len(LABELS_READERS), LABELS_READER_COUNT,
+                         "the labels reader count moved: %d" % len(LABELS_READERS))
+        self.assertEqual(len(set(LABELS_READERS)), LABELS_READER_COUNT,
+                         "a labels reader stands twice")
+        self.assertEqual(len(LABELS_SITES), LABELS_SITE_COUNT,
+                         "the labels site count moved: %d" % len(LABELS_SITES))
+        self.assertEqual({path for path, _number in LABELS_SITES}, set(LABELS_READERS),
+                         "a labels site stands outside the two readers")
         for path, text in self.reader_texts.items():
             self.assertGreater(len(text), SHORTEST_READER, "%s is almost empty" % path)
         for path, _number, _verb in OUTSIDE_SITES:
@@ -544,6 +699,19 @@ class TheProbePathHasOneHome(unittest.TestCase):
                                "%s is almost empty" % path)
         for path in {path for path, _number, _names in READ_SITES}:
             self.assertIn(path, self.reader_texts, "%s is not a reader of the scope" % path)
+
+    def test_the_home_names_the_shipped_labels_file(self):
+        """The shipped file name stands in the owner; a value of the moment fails.
+
+        The cases above read the owner value and compare the two readers against
+        it, so a moved value moves both sides and leaves them green.  This case
+        pins the name itself, and its failure names the owner line and its text.
+        """
+        shipped = "new_labels.json"
+        line = line_text(self.owner_text, LABELS_LINE)
+        self.assertEqual(self.labels, shipped,
+                         "%s:%d: %s, not %s"
+                         % (OWNER, LABELS_LINE, line, LABELS_FORM % shipped))
 
 
 if __name__ == "__main__":

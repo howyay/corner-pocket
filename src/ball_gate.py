@@ -52,7 +52,7 @@ The upper area cap, and the disagreement
     * No comment, docstring or test in the repository explains the 6000.
       ``grep -rn "6000" src/`` returns this one gate line plus two unrelated
       uses: a pocket-hole window (``src/calibrate.py:42``) and a progress print
-      (``src/motion_scan.py:722``).
+      (``src/motion_scan.py:726``).
 
     Ruling: one stage, two values, no measured reason.  These two values
     contradict each other.  This round does not change behaviour.  No value

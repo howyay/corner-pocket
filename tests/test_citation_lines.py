@@ -145,9 +145,24 @@ def holds_text(line):
     return any(char.isalnum() for char in line)
 
 
+def read_text_or_none(path):
+    """The text of a scanned file, or None when the file went away mid-scan.
+
+    ``tests/test_ball_scale.py`` writes a plant module under ``src/`` and removes
+    it in a ``finally`` block.  A scan that reaches the plant after the remove
+    must not fail: the plant is not a citation of the repository.
+    """
+    try:
+        return path.read_text(encoding='utf-8', errors='replace')
+    except FileNotFoundError:
+        return None
+
+
 def citations_of(path):
     """Every citation the scan reads in one file."""
-    text = path.read_text(encoding='utf-8', errors='replace')
+    text = read_text_or_none(path)
+    if text is None:
+        return []
     covered = set(span_lines(path, text))
     return [match for match in CITATION.finditer(text)
             if text[:match.start()].count('\n') + 1 in covered]
@@ -180,7 +195,9 @@ def wrong_citations():
     """Every citation of the repository that a reader cannot follow."""
     bad = []
     for path in scanned_files():
-        text = path.read_text(encoding='utf-8', errors='replace')
+        text = read_text_or_none(path)
+        if text is None:
+            continue
         bad.extend(wrong_citations_in(text, str(path.relative_to(ROOT)),
                                       lambda body, p=path: span_lines(p, body)))
     return bad
@@ -198,6 +215,13 @@ class CitationScanTests(unittest.TestCase):
         text = '"""See no_such_module.py:3 for the rule."""\n'
         self.assertEqual(wrong_citations_in(text, 'probe.py', python_span_lines),
                          ['probe.py:1 -> no_such_module.py:3 (no such file)'])
+
+    def test_a_file_that_goes_away_mid_scan_is_skipped(self):
+        """A plant that a test removes before the read is not a citation."""
+        path = ROOT / 'tests' / 'probe_vanished_citation.py'
+        path.write_text('"""See tests/test_citation_lines.py:1."""\n', encoding='utf-8')
+        path.unlink()
+        self.assertIsNone(read_text_or_none(path))
 
     def test_a_citation_past_the_end_of_the_file_is_refused(self):
         text = '"""See tests/test_citation_lines.py:99999 for the rule."""\n'

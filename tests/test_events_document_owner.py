@@ -21,7 +21,7 @@ states it as ``SERVED``, and five readers plus one command line default built th
 path by hand.  The list below holds those lines as round 94 found them, before this
 round moved them.
 
-    ``src/info_complete_scan.py:431``, ``src/motion_scan.py:2339`` and ``:2336``,
+    ``src/info_complete_scan.py:431``, ``src/motion_scan.py:2343`` and ``:2336``,
     ``src/segment_calib_report.py:43``, ``src/store.py:399`` and
     ``src/timing_verify.py:790`` held the file name in their own text.
 

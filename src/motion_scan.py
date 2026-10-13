@@ -212,6 +212,10 @@ SERIES_FIELDS = ("t", "ball17", "ball9", "ball25", "ball13w",
 # one owner, here.
 CHANNELS_REPORT_KEY = "channels_report"
 
+# The sentence both strip writers raise when the source yields no tile.  This
+# module owns the sentence; src/track_before_detect.py reads it as a name.
+NO_FRAMES_FOR_THE_STRIP = "no frames for the strip"
+
 
 @dataclass
 class MotionConfig:
@@ -1574,7 +1578,7 @@ def render_strip(video, onset, ctx: ClothContext, arrays: dict, path,
     finally:
         cap.release()
     if not tiles:
-        raise OSError("no frames for the strip")
+        raise OSError(NO_FRAMES_FOR_THE_STRIP)
     tile_h, tile_w = tiles[0].shape[:2]
     chart = _chart(arrays["t"], arrays[signal], onset, threshold,
                    tile_w * len(tiles), 170, occlusion, signal)

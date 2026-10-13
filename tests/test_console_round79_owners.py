@@ -5,7 +5,7 @@ Three rows landed in this round, and this module holds the guard for each one.
 Strong 1, the stage-empty sentence.  The sentence stood twice in the tree: annotator/app.js:847 held
 the page's copy and annotator/vision-stage.js:138 held a second copy in the adapter's own table, whose
 English had drifted ('on the scrub strip' against 'on the strip').  The decision is that
-annotator/app.js owns the sentence, in the 'stageEmpty' row of SHARED_WORDS (annotator/app.js:2183);
+annotator/app.js owns the sentence, in the 'stageEmpty' row of SHARED_WORDS (annotator/app.js:2185);
 the constant reads that row, both paint sites (annotator/app.js:854 and annotator/app.js:893) call the
 constant, and no other file spells the sentence.  The drifted spelling is the case the sentence rule
 makes red, so a second copy cannot come back quietly.
@@ -21,7 +21,7 @@ rows read 赛事名, both 'Remove' rows read 移除, and no row whose English is
 Worth 4, the review-workspace sentence.  'Loading the review workspace…' stood in three files: the ops
 words table (annotator/ops.js, row 'visionLoading') and both of the adapter's tables
 (annotator/vision-stage.js).  The decision is Strong 1's decision again: the row lives in SHARED_WORDS
-(annotator/app.js:2184), and the two screens read it.  The ops console reads it through sharedWord()
+(annotator/app.js:2186), and the two screens read it.  The ops console reads it through sharedWord()
 and say() at annotator/ops.js:893 and annotator/ops.js:1249; the adapter reads it through say() at
 annotator/vision-stage.js:1783.  The ops console keeps t() on its own table, because several slot
 names stand in both tables with different words: this console's 'live' row reads 'On table' while

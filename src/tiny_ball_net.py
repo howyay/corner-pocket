@@ -47,10 +47,10 @@ from src.ball_gate import SAM3_BALL_MIN_SCORE  # noqa: E402
 # The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
 # path from that owner, so a rename of the file name moves this reader too.
 from src.sam3_artifact import artifact_path  # noqa: E402
-# The probe directory and the two artifact names inside it have one home,
+# The probe directory and the three artifact names inside it have one home,
 # src/tiny_ball_probe.py.  Five readers built that path themselves; this reader now
 # joins the owner's names to its own root, so a rename lands in one file.
-from src.tiny_ball_probe import CHECKPOINT_NAME, HELD_FROZEN_NAME, PROBE_DIR_NAME  # noqa: E402
+from src.tiny_ball_probe import CHECKPOINT_NAME, HELD_FROZEN_NAME, LABELS_NAME, PROBE_DIR_NAME  # noqa: E402
 # Two more names have one owner each.  The census is named by
 # src/sam3_ball_cache.py as a path under the repository root, so this reader joins
 # that name to its own base.  The segment artifact and the scan corners file belong
@@ -126,7 +126,7 @@ def load_labels(root=None, extra=()) -> dict:
                                  "r": float(ball.get("r") or 0.0),
                                  "score": float(ball.get("score") or 0.0),
                                  "color": ball.get("color"), "source": "teacher-cache"})
-    for path in (root / PROBE_DIR_NAME / "new_labels.json", *extra):
+    for path in (root / PROBE_DIR_NAME / LABELS_NAME, *extra):
         path = Path(path)
         if not path.exists():
             continue

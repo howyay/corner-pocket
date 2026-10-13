@@ -41,7 +41,7 @@ Object.assign(words,{
   tlExpand:['Expand','展开'],tlCollapse:['Collapse','收起'],emptySearch:['Nothing matches this search','没有符合条件的赛事'],
   backfill:['Backfill from a VOD','用 VOD 补录'],backfillOpen:['Backfill a past event from a Twitch VOD…','用 Twitch VOD 补录一场历史赛事…'],
   bfExit:['Leave the backfill','退出补录'],bfPickTitle:['Which broadcast?','选哪一段'],
-  bfPaste:['VOD link or id','回放链接或 id'],bfCheck:['Check','检查'],bfVerifyTitle:['Estimate the download','估算大小'],
+  bfCheck:['Check','检查'],bfVerifyTitle:['Estimate the download','估算大小'],
   bfStartAt:['Start at (h:mm:ss)','起点（时:分:秒）'],
   bfEstimate:['Estimate','估算大小'],bfEstimateLine:['About {size} · {free} free on disk · {reuse}','约 {size} · 磁盘剩余 {free} · {reuse}'],
   bfReuse:['this range is already downloaded','这一段已经下载过'],bfUseImported:['Skip the download — use the file already here','跳过下载 —— 直接用已下载的文件'],bfStartImport:['Start the download','开始导入'],
@@ -654,7 +654,7 @@ function bfPickStep(){
     const body=channel.error?`<p class="note err">${esc(channel.error)}</p>`:(rows?`<div class="stack">${rows}</div>`:`<p class="muted">${esc(t('bfNoVods'))}</p>`);
     return `<article class="bf-channel"><h3>${esc(channel.channel)}</h3>${body}</article>`}).join('');
   return `<h2>${esc(t('bfPickTitle'))}</h2><p class="muted">${esc(t('bfPickNote'))}</p>${channels}
-  <form id="bf-pick-form" class="bf-form">${field(t('bfPaste'),input('vod',bf.paste,'text',`id="bf-vod" data-bf="vod"${bf.notice?' aria-describedby="bf-vod-note"':''} placeholder="https://www.twitch.tv/videos/1234567890"`))}${bf.notice?`<p class="note bf-notice" id="bf-vod-note" role="status">${esc(bf.notice)}</p>`:''}
+  <form id="bf-pick-form" class="bf-form">${field(say('bfPaste'),input('vod',bf.paste,'text',`id="bf-vod" data-bf="vod"${bf.notice?' aria-describedby="bf-vod-note"':''} placeholder="https://www.twitch.tv/videos/1234567890"`))}${bf.notice?`<p class="note bf-notice" id="bf-vod-note" role="status">${esc(bf.notice)}</p>`:''}
     <div class="actions">${btn(t('bfCheck'),'bf-check','','primary')}</div></form>`}
 function bfVerifyStep(){
   const e=bf.estimate,disk=e?.disk||{},reuse=e?.already_imported?t('bfReuse'):'';

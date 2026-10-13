@@ -102,7 +102,7 @@ const COPY = {
     // Imported broadcasts: a past VOD of a saved channel, downloaded once and browsed frame by frame.
     bcTitle:'Broadcasts', bcNote:'Recent broadcasts of your saved channels. Import one (or a range of it) to browse it frame by frame and run inference on any frozen frame.',
     bcNone:'No recent broadcasts listed.', bcError:'Twitch did not answer for this channel', bcRefresh:'Refresh list', bcLoading:'Asking Twitch…',
-    bcImported:'imported', bcImport:'Import…', bcPaste:'VOD link or id', bcPasteGo:'Check',
+    bcImported:'imported', bcImport:'Import…', bcPasteGo:'Check',
     bcEstimate:'Estimate', bcConfirm:'Import', bcWhole:'whole broadcast', bcSize:'about', bcTime:'about', bcTimeUnknown:'time unknown until one import has run',
     bcFree:'free', bcAlready:'already imported', bcJob:'Import', bcCancel:'Cancel import', bcCancelAsk:'Cancel this import? The partial file is deleted and nothing is listed.',
     bcMb:'MB', bcEta:'left', bcDelete:'Delete…', bcDeleteAsk:'Delete this imported broadcast? Its video file and its list entry are removed. Your saved corrections are kept.',
@@ -210,7 +210,7 @@ const COPY = {
     vodUse:'使用该回放', vodChosen:'已选择', vodNotLive:'回放，绝不是直播',
     bcTitle:'回放', bcNote:'已保存频道的近期直播回放。导入整场（或其中一段）后，可逐帧浏览，并对任意冻结帧运行推理。',
     bcNone:'没有列出近期回放。', bcError:'Twitch 未回应此频道', bcRefresh:'刷新列表', bcLoading:'正在询问 Twitch…',
-    bcImported:'已导入', bcImport:'导入…', bcPaste:'回放链接或 id', bcPasteGo:'检查',
+    bcImported:'已导入', bcImport:'导入…', bcPasteGo:'检查',
     bcEstimate:'估算', bcConfirm:'导入', bcWhole:'整场回放', bcSize:'约', bcTime:'约', bcTimeUnknown:'完成一次导入前无法估计用时',
     bcFree:'可用', bcAlready:'已导入', bcJob:'导入', bcCancel:'取消导入', bcCancelAsk:'取消此次导入？未完成的文件会被删除，不会列出。',
     bcMb:'MB', bcEta:'剩余', bcDelete:'删除…', bcDeleteAsk:'删除这场已导入的回放？视频文件和列表条目会被移除，已保存的修正会保留。',

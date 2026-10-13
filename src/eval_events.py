@@ -42,9 +42,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.event_gates import (CANON_H, CANON_W, GateConfig, PotEvidence,  # noqa: E402
-                             ShotEvidence, dedupe, judge, nearest_pocket,
-                             normalize)
+from src.event_gates import (CANON_H, CANON_W, GateConfig, NOTE_NO_BRACKETING_GEOMETRY,  # noqa: E402
+                             PotEvidence, ShotEvidence, dedupe, judge,
+                             nearest_pocket, normalize)
 from src.ball_census import (CENSUS_VERSION, build_census, classify_ball_color,  # noqa: E402
                              displacement_measure, observations_from_classical,
                              observations_from_sam3, window_summary)
@@ -795,7 +795,7 @@ def measure(candidates_path, probe, cfg, limit=None, cache_path=None, use_cache=
         if key in cached:
             payload = cached[key]
         elif probe is not None and claim["kind"] == "shot" and not (claim["from_mm"] and claim["to_mm"]):
-            payload = asdict(ShotEvidence(available=False, note="claim carries no bracketing geometry"))
+            payload = asdict(ShotEvidence(available=False, note=NOTE_NO_BRACKETING_GEOMETRY))
         elif probe is not None:
             payload = asdict(probe_shot(claim, probe) if claim["kind"] == "shot" else probe_pot(claim, probe))
             fresh[key] = payload

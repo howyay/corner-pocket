@@ -147,9 +147,9 @@ def measure_once(candidates, references, name, cfg, video, limit=None, sam3=None
             claim = group["event"]
             inner = probe.use(claim["t"])
             if claim["kind"] == "shot" and not (claim["from_mm"] and claim["to_mm"]):
-                from src.event_gates import ShotEvidence
+                from src.event_gates import NOTE_NO_BRACKETING_GEOMETRY, ShotEvidence
                 payload = asdict(ShotEvidence(available=False,
-                                              note="claim carries no bracketing geometry"))
+                                              note=NOTE_NO_BRACKETING_GEOMETRY))
             else:
                 payload = asdict(probe_shot(claim, inner) if claim["kind"] == "shot"
                                  else probe_pot(claim, inner))

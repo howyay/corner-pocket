@@ -214,7 +214,7 @@ supported) stays silent.
 
 `out/fixed_corners.json` = `[[722,452],[1177,449],[1433,844],[467,849]]` on
 1920×1080 is the highlight's reference (`src/table_refine.py:82`; also
-`src/eval_table_detect.py:56`, `src/motion_scan.py:309`, `src/quad_fit.py:131`,
+`src/eval_table_detect.py:56`, `src/motion_scan.py:313`, `src/quad_fit.py:131`,
 `src/quad_fit_lines.py:209`, `src/audit_calib.py:71`). There are no hand anchors
 for the highlight, so the app path gets no seed and falls back to the naive
 detector on the 960×540 copy (13.28 px median against the 1.90 px full-res
