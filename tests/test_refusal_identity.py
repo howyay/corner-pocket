@@ -35,8 +35,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # The Twitch VOD source states the query refusal its caller passes on, so the raise site itself
 # is the fourth owner: a rewording there drops the code the console reads.  The two callers are
 # annotator/operations.py vod_id() and annotator/unified_server.py replay_request().
+#
+# The file store (src/store.py) is the fifth owner.  It raises the seeds refusal of the
+# database store in "seeds exist for vod30 only", and no other sentence: the rest of its
+# raise sites build an f-string or pass another value, and the walk reads neither.  An
+# operator reaches one backing or the other, so a rewording in one store alone would answer
+# the operator in two different sentences for one refusal.  This walk reads both stores, so
+# that sentence stands at two raise sites and each one is held to the row.
 RAISING_MODULES = ('annotator/operations.py', 'annotator/unified_server.py',
-                   'src/store_pg.py', 'annotator/twitch_vod_source.py')
+                   'src/store.py', 'src/store_pg.py', 'annotator/twitch_vod_source.py')
+
+# The sentence both stores raise: the file backing (src/store.py) and the database backing
+# (src/store_pg.py) refuse a seed outside vod30 with this one sentence.  Two raise sites stand
+# in the walk, and the row below them is the identity the console reads.
+STORES = ('src/store.py', 'src/store_pg.py')
+TWO_BACKING_SENTENCE = 'seeds exist for vod30 only'
 CONSOLE = 'annotator/ops.js'
 RAISER = 'annotator/twitch_vod_source.py'
 
@@ -301,6 +314,26 @@ def line_sentences():
     return {site: sentence for sentence, sites in raise_site_lines().items() for site in sites}
 
 
+_LINES = {}
+
+
+def line_text(site):
+    """The exact text of one raise site, indented as the file holds it.
+
+    A report names the site a writer opens and the line he reads, so he finds the sentence
+    without a second search.  The file is read once: the walk reads every site of a report
+    from the same file.
+    """
+    path, line = site.rsplit(':', 1)
+    if path not in _LINES:
+        _LINES[path] = (ROOT / path).read_text(encoding='utf-8').splitlines()
+    lines = _LINES[path]
+    number = int(line)
+    if not 1 <= number <= len(lines):
+        return ''
+    return lines[number - 1]
+
+
 def unrown_sentences():
     """The sentence of each entry of UNROWN_SENTENCES, read from its raise site.
 
@@ -312,13 +345,33 @@ def unrown_sentences():
 
 
 def unrown_sentences_report():
-    """The file and the line of every sentence that waits for the decision, with the sentence.
+    """The file, the line and the text of every sentence that waits for a decision.
 
     A writer reads this report to decide a row: it names the site to open and the sentence to
     translate.
     """
     sites = line_sentences()
-    return '\n'.join(f'{site}\n  {sites[site]}' for site in UNROWN_SENTENCES)
+    return '\n'.join(f'{site}\n    {line_text(site).strip()}' for site in UNROWN_SENTENCES)
+
+
+def sites_report(sites, source=None):
+    """Every raise site of one sentence, with the text of the line of that site.
+
+    A report names the file and the line of every raiser, so a reader opens the offender
+    itself.  ``sites`` is a list of ``path:line`` values.  ``source`` is the text the
+    sentences come from; the file on disk holds it when ``source`` is None.  This function
+    reads no file when a caller passes the source, so a planted module needs no file.
+    """
+    lines = source.splitlines() if source is not None else None
+    found = []
+    for site in sites:
+        if lines is None:
+            text = line_text(site)
+        else:
+            number = int(site.rsplit(':', 1)[1])
+            text = lines[number - 1] if 1 <= number <= len(lines) else ''
+        found.append(f'{site}\n    {text.strip()}')
+    return '\n'.join(found)
 
 
 def declared_names(path):
@@ -409,6 +462,72 @@ class RefusalIdentityTest(unittest.TestCase):
                          all_raised_sentences(),
                          'a raised sentence has no row, or a row names a sentence nothing states')
 
+    def test_each_backing_states_the_row_the_console_reads(self):
+        """One sentence stands at two raise sites, and each site states the row.
+
+        The file backing (src/store.py) and the database backing (src/store_pg.py) refuse a
+        seed outside vod30.  An operator reaches one backing or the other, so the two raise
+        sites must state one sentence: the key of the row that gives the refusal its code and
+        its Chinese line.  The report names each raiser as path:line with the text of that
+        line, so the failure names the site a writer opens.  The two assertions at the end
+        make the fixture real: the walk finds the sentence in the two stores, so an empty or
+        shortened walk fails here.
+        """
+        sites = raise_site_lines().get(TWO_BACKING_SENTENCE, [])
+        report = (TWO_BACKING_SENTENCE + '\n' + sites_report(sites)) if sites else 'no raise site'
+        self.assertIn(TWO_BACKING_SENTENCE, refusals.REFUSALS,
+                      'the table lost the row both stores read:\n' + report)
+        row = refusals.REFUSALS[TWO_BACKING_SENTENCE]
+        self.assertEqual({'seeds_only_vod30', '标记种子仅适用于 vod30。'}, {row.code, row.zh},
+                         'the row changed what the console reads, so the two stores answer '
+                         'another identity:\n' + report)
+        self.assertEqual(set(STORES), {site.rsplit(':', 1)[0] for site in sites},
+                         'the walk no longer finds one raise site in each store:\n' + report)
+        for site in sites:
+            with self.subTest(site=site):
+                self.assertIn(TWO_BACKING_SENTENCE, line_text(site),
+                              f'{site} answers the operator in another sentence, so the refusal '
+                              f'the console reads has no raise site at that line:\n' + report)
+        self.assertEqual(2, len(set(sites)),
+                         'one sentence stands in the two stores, at one raise site each:\n'
+                         + report)
+
+    def test_a_planted_offender_is_reported_with_its_file_and_line(self):
+        """A sentence one raiser states and no row names is reported with its file and line.
+
+        The snippet below is a real module for the readers of this file: they walk its tree.
+        Its raise site stands in no file of this repository, and the line of the offender
+        comes from that walk, so this case holds no second copy of a real refusal.  The report
+        names the file and the line of the offender, with the text of that line.
+        """
+        snippet = ('"""A planted module: one refusal the table does not name."""\n'
+                   '\n'
+                   'def planted(dataset):\n'
+                   '    raise ValueError("the planted sentence has no row")\n')
+        tree = ast.parse(snippet)
+        found = []
+        for node in ast.walk(tree):
+            sentence = raised_sentence(node)
+            if sentence is not None:
+                found.append((sentence, node.lineno))
+        self.assertEqual([('the planted sentence has no row', 4)], found,
+                         'the planted module states one sentence, and the reader found another '
+                         'set')
+        sentence, line = found[0]
+        self.assertNotIn(sentence, refusals.REFUSALS,
+                         'the planted sentence has a row, so it cannot prove the report')
+        offender = f'planted_module.py:{line}'
+        report = sites_report([offender], source=snippet)
+        self.assertIn(offender, report, 'the report drops the file and the line of the offender')
+        self.assertIn('raise ValueError("the planted sentence has no row")', report,
+                      'the report drops the text of the offender line')
+        self.assertNotIn(str(ROOT), report,
+                         'the report read a file, but the planted module stands in no file')
+        sites = raise_site_lines().get(sentence, [])
+        self.assertEqual([], sites,
+                         'the planted sentence reached the real walk:\n'
+                         + sites_report(sites))
+
     def test_no_code_is_dead(self):
         """Every row reaches a refusal body, so no code waits for a route that never sends it."""
         for sentence, refusal in refusals.REFUSALS.items():
@@ -443,8 +562,8 @@ class RefusalIdentityTest(unittest.TestCase):
         without = sorted(raised_sentences_without_a_row())
         self.assertEqual(without, [],
                          'a raised sentence lost its row in annotator/refusals.py:\n'
-                         + '\n'.join('\n'.join(raise_site_lines()[sentence]) + '\n  '
-                                     + sentence for sentence in without)
+                         + '\n'.join(sites_report(raise_site_lines()[sentence])
+                                     + '\n    ' + sentence for sentence in without)
                          + '\nIt now reaches the operator as English only.  Give it a code and a '
                            'Chinese sentence, or remove the raise site.')
         sentence = 'no row names this sentence'
@@ -481,8 +600,8 @@ class RefusalIdentityTest(unittest.TestCase):
             RAISED_SENTENCES_WITHOUT_A_ROW, len(without),
             f'the raised sentences with no row in annotator/refusals.py changed from '
             f'{RAISED_SENTENCES_WITHOUT_A_ROW} to {len(without)}.  They are now:\n'
-            + '\n'.join('\n'.join(raise_site_lines()[sentence]) + '\n  ' + sentence
-                         for sentence in sorted(without))
+            + '\n'.join(sites_report(raise_site_lines()[sentence])
+                         + '\n    ' + sentence for sentence in sorted(without))
             + '\nEach sentence above reaches the operator as English only.  Add a row with a code '
               'and the Chinese sentence, then set the number in this test.')
 
