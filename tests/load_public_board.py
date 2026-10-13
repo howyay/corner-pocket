@@ -4,11 +4,11 @@
 Starts one isolated fixture -- tests/serve_operations_fixture.py, whose --public-port grew
 the same second listener annotator/unified_server.py's --public-port serves -- on two free
 loopback ports at or above 8230, mounts the board at --public-prefix /board, and drives it
-the way the club's phones do: N pollers, one conditional GET of the board every 3 s for a
-fixed window, with the same number of pollers reading GET /api/operations on the console
-over that same window. Reports latency percentiles (p50/p95/p99), the 304 share, errors,
-the fixture process's CPU time (/proc/<pid>/stat utime+stime) as a percentage of one core,
-and the machine's load average.
+the way the club's phones do: N pollers, one conditional GET of the board every POLL_MS for a
+fixed window. annotator/board.js owns POLL_MS, and this harness reads it as text; the same
+number of pollers read GET /api/operations on the console over that window. Reports latency
+percentiles (p50/p95/p99), the 304 share, errors, the fixture process's CPU time
+(/proc/<pid>/stat utime+stime) as a percentage of one core, and the machine's load average.
 
 Loopback only, and asserted per request: every connection checks its host against the
 loopback set *and* its port against the two ports this script itself started, so a run
@@ -162,11 +162,11 @@ def pause(seconds, stopped):
 def poll(target, path, recorder, deadline, interval, offset, stopped):
     """One phone: a conditional GET every `interval` seconds until `deadline`.
 
-    board.js polls with the last ETag and a 3 s interval; each poller's first request is
-    staggered across the interval so 50 phones do not share one clock. The ETag comes from
-    the previous 200, exactly as the page keeps it. `stopped` ends the run early -- set
-    only when the fixture has died, so the numbers never mix a missing server with a
-    slow one.
+    annotator/board.js polls with the last ETag and its own POLL_MS interval; each poller's
+    first request is staggered across the interval so 50 phones do not share one clock. The
+    ETag comes from the previous 200, exactly as the page keeps it. `stopped` ends the run
+    early -- set only when the fixture has died, so the numbers never mix a missing server
+    with a slow one.
     """
     if offset:
         pause(offset, stopped)
@@ -428,7 +428,7 @@ def main():
     parser.add_argument("--pollers", type=int, default=50, help="concurrent public pollers (default 50)")
     parser.add_argument("--console-pollers", type=int, default=50,
                         help="concurrent console pollers over the same window (default 50)")
-    parser.add_argument("--interval", type=float, default=3.0, help="seconds between polls (default 3)")
+    parser.add_argument("--interval", type=float, default=poll_seconds(), help=interval_help())
     parser.add_argument("--seconds", type=float, default=120.0, help="measured window (default 120)")
     parser.add_argument("--warmup", type=float, default=5.0, help="seconds before measuring (default 5)")
     parser.add_argument("--public-prefix", default="/board", help="fixture mount (default /board)")
@@ -588,6 +588,60 @@ def main():
         args.json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         print(f"json         : {args.json}")
     return 0 if result["passed"] else 1
+
+
+# -- the board's poll interval, read from its owner ----------------------------
+#
+# This block stands below main() on purpose.  A document cites tests/load_public_board.py:474
+# (docs/console-redesign.md:11571 and :11673), and any line added above that one moves it.
+
+#: The file that owns the interval this harness polls with.
+BOARD_JS = ROOT / "annotator" / "board.js"
+#: The one binding that states it, and the line the binding stands on: annotator/board.js:15.
+POLL_MS_BINDING = r"\bPOLL_MS\s*=\s*(\d+(?:\.\d+)?)"
+
+
+def owner_citation(path, line=None):
+    """The `file:line` a report states, relative to the repository root when it can be."""
+    try:
+        shown = str(Path(path).resolve().relative_to(ROOT))
+    except ValueError:
+        shown = str(path)
+    return f"{shown}:{line}" if line else shown
+
+
+def board_poll(source=None, path=BOARD_JS):
+    """Read the interval the board polls with, and cite the file and the line.
+
+    `annotator/board.js` owns the interval: `POLL_MS` is the one binding that states it, and
+    this harness reads that binding instead of re-typing the number.  The board is a browser
+    module, so this harness must not import it; it reads the text.  A second literal here
+    would drift from the owner, and the harness would poll at a rate no phone uses.
+
+    Returns `(seconds, citation)`.  `source` supplies the text instead of the file, so a case
+    can plant a number in memory; `path` names the file the citation reports.
+    """
+    # The import stays here, with this block, on purpose: `re` at the top of the file would
+    # move every line below it, and the citation above names line 474.
+    import re
+    text = Path(path).read_text(encoding="utf-8") if source is None else source
+    match = re.search(POLL_MS_BINDING, text)
+    if match is None:
+        raise SystemExit(f"{owner_citation(path)}: no `POLL_MS = <number>` binding, so the "
+                         "poll interval has no owner to read")
+    line = text.count("\n", 0, match.start()) + 1
+    return float(match.group(1)) / 1000.0, owner_citation(path, line)
+
+
+def poll_seconds(source=None, path=BOARD_JS):
+    """The `--interval` default: the owner's `POLL_MS`, in seconds."""
+    return board_poll(source, path)[0]
+
+
+def interval_help():
+    """The `--interval` help text: the default and the owner that states it."""
+    seconds, owner = board_poll()
+    return f"seconds between polls (default {seconds:g} s = {owner})"
 
 
 if __name__ == "__main__":
