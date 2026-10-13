@@ -11609,7 +11609,7 @@ of the served list `annotator/unified_server.py:190-191 PAGE_FILES`, which also 
 `annotator/clock-sync.js:88-89` stood in no copied file, so the UI subset could not carry
 them.  Writer X9 made the copy list read the served list (`copy_names` at
 `annotator/fonts/build_fonts.py:49`, `COPY_FILES = copy_names()` at `:65`) and added
-`tests/test_font_coverage_owner.py` with eight cases, one per claim.
+`tests/test_font_coverage_owner.py` with eight cases at round 100, one per claim (eleven at round 101).
 
 ### The Lead bites
 
