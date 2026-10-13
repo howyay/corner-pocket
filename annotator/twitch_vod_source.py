@@ -227,7 +227,7 @@ def vod_thumbnail(vod_id, *, timeout=10):
 
 def gql(query, *, timeout=12):
     """POST one GraphQL query and return the parsed document, or a safe error."""
-    result = _raw('https://gql.twitch.tv/gql', {'query': query}, timeout=timeout)
+    result = _raw(live.GQL_ENDPOINT, {'query': query}, timeout=timeout)
     if result['transport'] is not None:
         raise TwitchVodError('Twitch API request failed; check network and TLS connectivity')
     if result['status'] != 200:
@@ -275,7 +275,7 @@ def channel_recent_vods(channel, limit=3):
 def vod_info(vod_id, *, strict=True):
     """Title, length and channel of a VOD. No token, no signature, no media URL."""
     vod = vod_id_of(vod_id)
-    result = _raw('https://gql.twitch.tv/gql', {'query': _VIDEO_QUERY % vod})
+    result = _raw(live.GQL_ENDPOINT, {'query': _VIDEO_QUERY % vod})
     if result['transport'] is not None:
         raise TwitchVodError('Twitch API request failed; check network and TLS connectivity')
     video = {}
@@ -303,7 +303,7 @@ def vod_token(vod_id, *, strict=True, timeout=12):
     needs in order to record what Twitch actually said.
     """
     vod = vod_id_of(vod_id)
-    result = _raw('https://gql.twitch.tv/gql', {'query': _VOD_TOKEN_QUERY % vod}, timeout=timeout)
+    result = _raw(live.GQL_ENDPOINT, {'query': _VOD_TOKEN_QUERY % vod}, timeout=timeout)
     document = {}
     error = None
     if result['transport'] is not None:

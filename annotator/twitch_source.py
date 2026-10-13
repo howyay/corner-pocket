@@ -377,7 +377,7 @@ def resolve_twitch(canonical_url):
                       'vodID': '', 'playerType': 'embed', 'platform': 'site'},
     }
     try:
-        result = json.loads(_request('https://gql.twitch.tv/gql', payload))
+        result = json.loads(_request(GQL_ENDPOINT, payload))
         if result.get('errors'):
             raise TwitchSourceError('Twitch playback is unavailable or requires browser authorization')
         token = result['data']['streamPlaybackAccessToken']
@@ -415,3 +415,8 @@ def resolve_twitch(canonical_url):
         for reference in references:
             _validate_url(urljoin(media_url, reference), media=True)
     return media_url
+
+
+#: The one home of the GraphQL endpoint of the web-player API.  The live resolver and the
+#: three VOD calls read this name, so one edit moves every caller together.
+GQL_ENDPOINT = 'https://gql.twitch.tv/gql'
