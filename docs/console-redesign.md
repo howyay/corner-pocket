@@ -12370,3 +12370,194 @@ moved 2723 -> 2751: 6 cases from writer W1, 8 from writer W2, 12 from writer W3,
 W3b repair, and 2 from writer W4.  The first two runs of the round answered `FAILED (failures=11,
 skipped=53)` and `FAILED (failures=3, skipped=53)`: the eight red cases of
 `tests/test_live_refusal_owner.py` and the two citations of the paragraph above.
+
+## Round 103
+
+Source walk: `/tmp/dshsess/walk_round103.md` (122 lines) at HEAD `f066366`, working tree clean.  Its
+line 2 reads `Strong candidate present - 5 Strong, 3 Worth, 4 Note`.  It records twelve dead names.
+Its artefacts are a scan of the class hooks and string tokens of the console
+(`/tmp/dshsess/scan103c.py`, `/tmp/dshsess/scan103c.json`), a count of the styled class family
+(`/tmp/dshsess/family103.py`) and a list of the dead names (`/tmp/dshsess/dead103.py`).
+
+### Strong 1 - the class hooks and the action names of the ball label popover
+
+The popover block of `annotator/app.js:1844-1847` wrote five tokens: the class hooks `pop-head`,
+`pop-grid`, `pop-row`, `pop-note` and the action names `label-ball`, `close-popover`.  Their rules
+stood in `annotator/app.css:138` to `:147`, and the host element hook stood at `annotator/app.js:858`.
+The two action names were keys of the dispatcher table of `annotator/vision-stage.js`, which runs from
+`:1456` to `:1569`.  No case named any of the five tokens: `grep -rn` over `tests/` answered zero for
+each one.  The two halves meet on one served page only: `annotator/ops.html` loads `/app.js`,
+`/vision-stage.js` and `/ops.js`, while no route serves `annotator/app.html`
+(`annotator/unified_server.py:199` and `:204` redirect it to `/`).
+
+### Strong 2 - the token `vs-chiprow`
+
+`annotator/ops.js:1240` and `annotator/vision-stage.js:652`, `:1071`, `:1076` wrote the token, and
+`annotator/ops.css:353`, `:549`, `:1286` held its rules.  `grep -rn 'vs-chiprow' tests/` answered
+nothing.  The one class inventory of the suite reads the `.bm.` rules of `annotator/board.css`
+(`tests/test_board.js:458`).
+
+### Strong 3 - the four class hooks of the vod chip
+
+`annotator/ops.js:417`, `:418`, `:421` and `:422` wrote `vod-chip`, `vod-chip-name`, `vod-links` and
+`vod-links-label`, and `annotator/ops.css:1203` to `:1207` held their rules.  No test named one of the
+four tokens, while the sibling action name of the same strings, `vod-unlink`, was read at
+`tests/test_ops.js:4390`, `:4393`, `:4415` and `:4424`.
+
+Writer W1 held the three pairs with one new module, `tests/test_js_class_hooks_owner.py` (595 lines,
+7 cases).  The module reads the class tokens from the emitters, the class-target selectors from the two
+stylesheets, the keys from the dispatcher table and the script names from `annotator/ops.html`; it
+hard-codes no expected token list.  Its seven cases stand at `:382`, `:408`, `:439`, `:465`, `:495`,
+`:521` and `:558` - the popover hooks, the popover action names, the served page, the chiprow rule
+lines, the chip hooks, the measured size of every scan, and a planted offender.  The six shipped files
+it reads did not change.
+
+| file | sha1 | lines |
+| --- | --- | --- |
+| `tests/test_js_class_hooks_owner.py` | `3cb09bf07cd80fe38b631339ae3796b8fb19151c` | 595 |
+| `annotator/app.js` | `9684ba1f4643c815eb244bbbba77eb3617d2d92c` | unchanged |
+| `annotator/app.css` | `8d4f793cb8ed0b05766119e18c1619a5be5bcfde` | unchanged |
+| `annotator/vision-stage.js` | `9b133d2b8fe5178d05438e2a73b2a85dd97959e9` | unchanged |
+| `annotator/ops.js` | `491482e9f54aa78ea5e8b44859e3e90fef34fa56` | unchanged |
+| `annotator/ops.css` | `be3c7339b518b8dacb0190e1b85d95129dc72684` | unchanged |
+| `annotator/ops.html` | `a4ced77cee81306dc4463cd77502d78cb8ec8de4` | unchanged |
+
+The module answers `Ran 7 tests in 0.088s` and `OK`.  Writer W1 ran five bites.  (1)
+`annotator/app.js:1847` `pop-note` -> `pop-note-x`: `9684ba1f` -> `38f748be` -> `9684ba1f`,
+`FAILED (failures=2)`, naming the emitter and the neighbour rule `annotator/app.css:147`.  (2)
+`annotator/app.css:145` `.pop-row` -> `.pop-row-x`: `8d4f793c` -> `26e71a77` -> `8d4f793c`,
+`failures=2`, naming the rule and the emitter `annotator/app.js:1846`.  (3) `annotator/vision-stage.js:1569`
+`'close-popover'` -> `'close-popover-x'`: `9b133d2b` -> `6f11f672` -> `9b133d2b`, `failures=1`,
+naming the emitter and the key line.  (4) `annotator/ops.js:1240` `vs-chiprow` -> `vs-chiprow-x`:
+`491482e9` -> `5e3add02` -> `491482e9`, `failures=1` with `4 != 3`.  (5) `annotator/ops.css:1204`
+`.vod-links-label` -> `.vod-links-label-x`: `be3c7339` -> `4578e65f` -> `be3c7339`, `failures=2`,
+naming the emitter `annotator/ops.js:418`.
+
+The Lead ran three more bites, on sites the writer did not bite.  (L1) `annotator/app.css:140`
+`.pop-head` -> `.pop-head-x`: `8d4f793c` -> `b02c9c71` -> `8d4f793c`, `failures=2` with
+`[] != [('pop-head', 'annotator/app.js:1844')]`.  (L2) `annotator/ops.css:1207` `.vod-chip-name` ->
+`.vod-chip-name-x`: `be3c7339` -> `53971863` -> `be3c7339`, `failures=2` with
+`[('vod-chip-name', 'annotator/ops.js:421')]` and the scan case `6 != 5`.  (L3) the script name of
+`annotator/ops.html` `/vision-stage.js` -> `/vision-stage-x.js`: `a4ced77c` -> `7045757c` ->
+`a4ced77c`, `failures=1` with `[] != ['vision-stage.js']`, in the case about the served page that no
+writer bite covered.
+
+### Strong 4 - the environment names of the postgres backup pair
+
+Both shipped units set the name and one script reads it:
+`deploy/systemd/pool-postgres-backup.service:16` and `deploy/systemd/pool-postgres-verify.service:13`
+set `POOL_BACKUP_DIR=@BACKUP_DIR@`, and `deploy/systemd/pool-postgres-backup.service:17` sets
+`POOL_BACKUP_KEEP_DAYS=14`.  The readers stand in `scripts/pool-postgres-backup.sh`:
+`:13` `KEEP_DAYS="${POOL_BACKUP_KEEP_DAYS:-14}"`, `:14`
+`CONTAINER="${POOL_BACKUP_CONTAINER:-pool-postgres}"`, `:20`
+`[ -n "${POOL_BACKUP_DIR:-}" ] || fail "POOL_BACKUP_DIR is not set"` and `:21` `DIR="$POOL_BACKUP_DIR"`.
+`grep -rn 'POOL_BACKUP' tests/` answered four lines, and all four named the other variable
+(`tests/test_backup_retention.py:5`, `:6`, `:146`, `:147`); the one `Environment=` harvest of the
+suite read another file, `pool-workbench.service.d/30-ffmpeg.conf` (`tests/test_unit_render.py:39`,
+`:269-270`).
+
+Writer W2 held the pair with `tests/test_backup_env_owner.py` (524 lines, 7 cases at `:359`, `:367`,
+`:375`, `:391`, `:436`, `:461`, `:478`).  The scan measures 2 unit files, 5 setter lines, 3 unit
+names, 17 script references to a name and 6 environment reads at the lines 13, 14, 15, 20, 36 and 51,
+over 4 environment names (`PODMAN`, `POOL_BACKUP_CONTAINER`, `POOL_BACKUP_DIR`,
+`POOL_BACKUP_KEEP_DAYS`) and 6 shell names.  The three shipped files it reads did not change:
+`deploy/systemd/pool-postgres-backup.service` `2a0efcfd`, `pool-postgres-verify.service` `7289837d`,
+`scripts/pool-postgres-backup.sh` `c5a9bfbf`.  Its own bites: the setter at
+`pool-postgres-backup.service:16` -> `POOL_BACKUP_DIR_X` (`2a0efcfd` -> `d9525c2f` -> `2a0efcfd`,
+`failures=3`), the required read at `scripts/pool-postgres-backup.sh:20` -> `POOL_BACKUP_DIR_X`
+(`c5a9bfbf` -> `79ee03aa` -> `c5a9bfbf`, `failures=6`) and the defaulted read at `:14` turned into a
+required read for `POOL_BACKUP_CONTAINER` (`c5a9bfbf` -> `91b67e0b` -> `c5a9bfbf`, `failures=4`).
+The Lead bit the sibling unit that no writer touched,
+`deploy/systemd/pool-postgres-verify.service:13` -> `POOL_BACKUP_DIR_X`: `7289837d` -> `f8858c08` ->
+`7289837d`, `failures=3`, naming that line; and the other read of the pair,
+`scripts/pool-postgres-backup.sh:13` -> `POOL_BACKUP_KEEP_DAYS_X`: `c5a9bfbf` -> `a9889ade` ->
+`c5a9bfbf`, `failures=4`, naming `pool-postgres-backup.service:17`.  Two limits stay open and are
+written in the module: `POOL_BACKUP_CONTAINER` is read with a default and no unit sets it, and the
+scan counts a plain `$NAME` only outside a string, so `scripts/pool-postgres-backup.sh:21` is held by
+the required read of `:20` instead.
+
+### Strong 5 - the column names of the schema and the importer
+
+The shipped schema declared the columns, and `src/store_import.py` spelled the same names a second
+time in its INSERT and SELECT statements: `db/migrations/0002_user_data.sql:22` (`joined_at`), `:49`
+and `:66` (`tournament_id`), `:69` to `:79` (`side_a`, `side_b`, `score_a`, `score_b`, `table_no`,
+`winner_id`, `completed_at`, `source_a`, `source_b`) against `src/store_import.py:215`, `:218`, `:247`,
+`:259-260`, `:273-274`, `:319-322`.  No test named one of those columns
+(`grep -rEn` over `tests/` answered 0), and the cases that would catch a rename need a live database
+(`tests/test_store_import.py:20` `HAVE_DB = bool(os.environ.get(db.ENV))`, `:53`
+`@unittest.skipUnless(HAVE_DB, ...)`, with `src/db.py:34` `ENV = "POOL_DATABASE_URL"` unset in this
+shell).
+
+Writer W3 held the two sides with `tests/test_schema_column_owner.py` (503 lines, 7 cases at `:381`,
+`:389`, `:406`, `:415`, `:424`, `:442`, `:468`), which parses the `CREATE TABLE` blocks and the
+statements and needs no database.  It measures 17 tables and 114 columns in the migrations, 36
+statements in the importer (17 INSERT, 19 SELECT) over 17 written tables and 16 read tables, 69
+distinct named columns, and an explicit `DELIBERATELY_UNUSED` map with five entries.  The two shipped
+files did not change: `db/migrations/0002_user_data.sql` `f7cb6cea`, `src/store_import.py` `434475d4`.
+Its own bites: `db/migrations/0002_user_data.sql:71` `score_a` -> `score_a_x` (`f7cb6cea` ->
+`f8d99c2b` -> `f7cb6cea`, 2 red), `src/store_import.py:260` `table_no` -> `table_no_x` (`434475d4` ->
+`3b960505` -> `434475d4`, 2 red), `db/migrations/0002_user_data.sql:77` `completed_at` ->
+`completed_at_x` (2 red), `src/store_import.py:274` `joined_at` -> `joined_at_x` (2 red) and
+`src/store_import.py:207` `SET position` -> `SET position_x` (1 red).  The Lead bit
+`src/store_import.py:247` `absent` -> `absent_x` (`434475d4` -> `0a4f7fc2` -> `434475d4`, 2 red,
+naming that line and `69 != 70` in the pin case) and `db/migrations/0002_user_data.sql:137`
+`face_embeddings.id` -> `id_x` (`f7cb6cea` -> `4eb84ec4` -> `f7cb6cea`, 2 red, naming the
+deliberately-unused entry and `db/migrations/0002_user_data.sql:137 (face_embeddings.id_x)`), so both
+directions are live.  The guard reads the later migration too, because
+`db/migrations/0003_json_documents.sql:32` declares `identity_clusters.has_face_samples`, which
+`src/store_import.py:374` and `:393` name.
+
+### Worth and Note rows
+
+Worth 1: `vs-loading` stays, because one case reads both halves (`tests/test_ops.js:336`, `:490`,
+`:492` over the emitters `annotator/ops.js:1249`, `annotator/vision-stage.js:1776` and the rule
+`annotator/ops.css:678`).  Worth 2: `pop-grid` is held on the stylesheet side only
+(`tests/test_app_timeline.js:1016`).  Worth 3: `#review-root` is held by two source contracts
+(`tests/test_app_timeline.js:1008`, `:3068`) while the copy at `annotator/app.css:4` is named by
+nothing.  Note 1: `docs/postgres.md:212` holds the refusal sentence of the script as prose.  Note 2:
+`os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")` stands in four `src/` modules
+(`src/pid_associate.py:18`, `src/pid_shooter.py:31`, `src/pid_shooter2.py:23`, `src/yolo_track.py:14`)
+with no test hit.  Note 3: the class family behind Strong 2 and 3 is large - 289 JS-emitted class
+tokens are styled by a shipped stylesheet and 109 of them are named by no test.  Note 4:
+`design/corner-pocket/` holds mock copies of console tokens, but no page serves them.  The twelve dead
+names are `bf-form`, `bf-estimate`, `bf-marked`, `bf-linked-count`, `live-card`, `maint-status`
+(`annotator/ops.js:657`, `:664`, `:692`, `:709`, `:1238`, `:1300`), `fv-gate`, `vs-cropcard`,
+`vs-cropgrid`, `vs-frame-tools`, `vs-layers-note`, `vs-source-actions` (`annotator/vision-stage.js:711`,
+`:868`, `:1083`, `:1147`, `:1320`).
+
+### Citations
+
+This round moved no line of a shipped file: every writer added one new test module, and every bite was
+restored with `cp` and proved by `sha1sum`.  One citation debt stood inside a delivery, and the suite
+found it: `tests/test_js_class_hooks_owner.py:12` named `annotator/vision-stage.js:1570`, the bare
+closing brace `};` of the dispatcher table, and `tests/test_citation_lines.py:227`
+(`test_no_citation_names_a_line_without_text`) refused it in a writer's full-suite run.  The Lead
+repaired the citation to `annotator/vision-stage.js:1569`, the last key of the table, in commit
+`2e87a10`; the module then answered `Ran 10 tests in 7.648s` and `OK`, and the guard still answered
+`Ran 7 tests` and `OK`.
+
+### Lessons
+
+1. A guard must read both sides.  The brief of a row can count the sites wrongly: the brief listed
+   `annotator/app.css:146` as a popover rule, but that line is the descendant rule `.pop-row button`,
+   so the guard counts class-target blocks and pins six rules, not seven.
+2. A reader must state which forms it counts.  The chip family has five own hooks over six rule lines,
+   and the shared class `annotator/ops.css:1206` is not one of them.
+3. A bite that leaves the guard green proves nothing.  The first `vs-chiprow` bite used a substring
+   test and stayed green; the repaired class-token test reddened with `4 != 3`.
+4. A full-suite run under sibling writers is volatile.  Two writer runs answered failures that the
+   settled tree does not have; the delivery verdict comes from the Lead's run after every writer
+   stops.
+5. The suite catches the citation a new guard writes, and the Lead pays it in the same round.
+6. A limit that the guard cannot close is a lesson, not a defect: the round writes it in the module
+   docstring and in this record.
+7. A case that needs a database cannot hold two text artefacts together.  A guard over the text can,
+   and it must read every migration that declares a name the python uses.
+
+### Suites
+
+The full python suite answers `Ran 2772 tests in 507.889s` and `OK (skipped=53)`.  The node suites
+answer `114 passed, 0 failed`, with `source-text assertions left: 75`; writer W1 also ran
+`node tests/test_ops.js`, which answered `tests 232 / pass 232 / fail 0`.  The count moved 2751 ->
+2772: 7 cases from writer W1, 7 from writer W2 and 7 from writer W3.  The four delivery commits are
+`482496b`, `c9ba938`, `49e6555` and `2e87a10`.
