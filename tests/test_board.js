@@ -374,7 +374,7 @@ test('the table-count buckets and the stylesheet carry the same list', () => {
 // registry writes and does not publish. The other two readers are here: board.js cannot import
 // python and this repository has no build step, so it keeps the one JavaScript copy, and board.css
 // is the last reader, keying on the words as CSS classes. The cases below read the tuples back out
-// of that file, the way tests/test_app_timeline.js:3299 reads annotator/live_processing.py for the
+// of that file, the way tests/test_app_timeline.js:3318 reads annotator/live_processing.py for the
 // console's live codes.
 const OPERATIONS_PY = fs.readFileSync(path.join(__dirname, '../annotator/operations.py'), 'utf8');
 const BOARD_SOURCE = fs.readFileSync(path.join(__dirname, '../annotator/board.js'), 'utf8');

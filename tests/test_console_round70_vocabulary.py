@@ -46,9 +46,9 @@ What this module reads, and what it does not
 The site anchors of this round, as they stand now:
 
 * ``annotator/vision-stage.js:42`` - ``SHOOTER_CHOICES``, the one console home of the four
-* ``annotator/vision-stage.js:1095`` - the select that reads it
-* ``annotator/vision-stage.js:344`` - ``SEED_ROLES`` and the map that is built from it
-* ``annotator/vision-stage.js:1272`` - the seed button that reads the map
+* ``annotator/vision-stage.js:1093`` - the select that reads it
+* ``annotator/vision-stage.js:342`` - ``SEED_ROLES`` and the map that is built from it
+* ``annotator/vision-stage.js:1279`` - the seed button that reads the map
 * ``annotator/unified_server.py:108`` - ``SHOOTER_WORDS``, the one service home of the four
 """
 

@@ -5,7 +5,7 @@
  * disagreed on seven of the nineteen values the Lead's grid measures.  This
  * file replaces all three copies (the three seams now read
  * `window.Duration.hms` at annotator/app.js:2107, annotator/ops.js:129 and
- * annotator/vision-stage.js:952).
+ * annotator/vision-stage.js:950).
  *
  * THE RULE
  * Clamp the value at zero.  Truncate it toward zero.  Then format it as H:MM:SS.

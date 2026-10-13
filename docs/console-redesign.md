@@ -3188,7 +3188,7 @@ the number that proves it.
 | --- | --- | --- | --- | --- |
 | C3 | The stage takes the shell writer as an option | `annotator/vision-stage.js` read `window.OpsConsole.setShell` and patched the console's element from outside | The console passes `setShell` in the option bag it already hands `attach()` (`annotator/ops.js:1315`, the last line of the bag), and the stage calls `opts.setShell({labelOverlay, vsPanel})` at `annotator/vision-stage.js:1132` | Reads of the console global in the stage 1 → 0. `tests/test_app_timeline.js` 90 → 91 passed, `tests/test_ops.js` 197 → 198 pass. In the browser at 1596 by 1045 the shell reads `{labelOverlay 0, vsPanel 0}`; one real click on `[data-vs-action="select-track"]` moves it to `{labelOverlay 1, vsPanel 0}`; the error log and the console log stay empty |
 | C1 | The composition path runs once, on a page-shaped stub | The suite never called `render()`: 42 calls were replaced and 0 were real, so no test proved that a screen reaches the page | `tests/test_ops.js` gained `domNode(selector)`, `richDocument(handlers)` and a `richDom` option that builds a stub page with one region per selector and records every `appendChild`, `classList`, `setAttribute` and `insertAdjacentHTML`. One test runs the real `render()` | The test observes `#nav` with `aria-current="page"`, `#tabbar` with the same destinations, the active screen in `#main`, `#vision-host` appended to the body, 0 timers on Tonight, the clock bar after a screen switch, and the shell state. `tests/test_ops.js` 198 → 199 pass, 0 fail |
-| C2 | The stage publishes the interface the console drives | The console drove 48 engine verbs and read 27 snapshot fields through ad-hoc reads, and `window.VisionStage` published `{attach}` only, so the contract lived in the console's own prose and in its tests' source-text assertions (45 of them named `annotator/vision-stage.js`) | The stage defines its surface once, near the end of `annotator/vision-stage.js`: `OPTIONS` (20 names), `WIRING` (2: `mount`, `review`), `VERBS` (48), `READINGS` (27). `function publish(detach)` returns a handle of 7 + 48 + 27 = 82 keys (`render`, `detach`, `options()`, `verbs()`, `readings()`, `accepts(key)`, `option(key)`), with 48 forwarders `handle[name] = (...args) => engine()[name](...args)` and 27 readings `() => snap()[name]`. `window.VisionStage` stays `{attach}` on purpose | Source-text assertions about the stage 45 → 7; all source-text assertions in `tests/test_app_timeline.js` 100 → 65; the suite 92 → 93 passed, 0 failed. Measured corrections to the card: engine members are 48, not 52 (52 was `42 ∪ 10` with three overlaps, and `target.closest` at `:1597-1610` was a false positive of a local destructured event target); the 27 snapshot fields hold; no named `render*` function exists, so the card's "42 renderers" is not reproduced. A perturbation that renames `'enrollPreview'` inside `VERBS` fails exactly the interface test and restores byte for byte. The same commit repaired a latent defect this work exposed: the row guard at `annotator/vision-stage.js:1369` called `String(snapshot()…)`, but the module defines only `const snap = () => engine()?.snapshot ? engine().snapshot() : null;` at `:262`, so a node carrying `data-vs-track` with an attributing action raised `ReferenceError`. It now reads `String(s?.persons?.track ?? '')`, and a new test drives a track row and asserts one `selectTrackAndSeek` call; a perturbation that puts the undefined name back fails exactly that test |
+| C2 | The stage publishes the interface the console drives | The console drove 48 engine verbs and read 27 snapshot fields through ad-hoc reads, and `window.VisionStage` published `{attach}` only, so the contract lived in the console's own prose and in its tests' source-text assertions (45 of them named `annotator/vision-stage.js`) | The stage defines its surface once, near the end of `annotator/vision-stage.js`: `OPTIONS` (20 names), `WIRING` (2: `mount`, `review`), `VERBS` (48), `READINGS` (27). `function publish(detach)` returns a handle of 7 + 48 + 27 = 82 keys (`render`, `detach`, `options()`, `verbs()`, `readings()`, `accepts(key)`, `option(key)`), with 48 forwarders `handle[name] = (...args) => engine()[name](...args)` and 27 readings `() => snap()[name]`. `window.VisionStage` stays `{attach}` on purpose | Source-text assertions about the stage 45 → 7; all source-text assertions in `tests/test_app_timeline.js` 100 → 65; the suite 92 → 93 passed, 0 failed. Measured corrections to the card: engine members are 48, not 52 (52 was `42 ∪ 10` with three overlaps, and `target.closest` at `:1597-1610` was a false positive of a local destructured event target); the 27 snapshot fields hold; no named `render*` function exists, so the card's "42 renderers" is not reproduced. A perturbation that renames `'enrollPreview'` inside `VERBS` fails exactly the interface test and restores byte for byte. The same commit repaired a latent defect this work exposed: the row guard at `annotator/vision-stage.js:1376` called `String(snapshot()…)`, but the module defines only `const snap = () => engine()?.snapshot ? engine().snapshot() : null;` at `:262`, so a node carrying `data-vs-track` with an attributing action raised `ReferenceError`. It now reads `String(s?.persons?.track ?? '')`, and a new test drives a track row and asserts one `selectTrackAndSeek` call; a perturbation that puts the undefined name back fails exactly that test |
 | C10 | `screenModule` is shallow, and `render()` is one line | `render()` was one 2077-character line with 33 semicolons at `annotator/ops.js:943`, every paint step inline, and `screenModule(id, build, spec={})` took a spec object with three escape hatches (`paint`, `holds`, `release`) that a screen could use or ignore | `render()` is 18 lines at `annotator/ops.js:980-997` with 15 named calls, and 14 further steps are named at `:960-979` (`haltPolling`, `paintDocument`, `paintNav`, `paintTabbar`, `paintShellState`, `paintClockBar`, `mountVisionHost`, `paintActiveScreen`, `paintOverlays`, `paintReviewHost`, `armPolling`, `loadRecordsScreen`, `paintLanguageChips`, `paintThemeChips`). `screenModule(id, screen)` takes one screen object and applies `screenBase` defaults (`build` `''`, `paint` false, `holds` false, `release()`); the six screens declare their own: `clock` paints `paintClockSlot`, `tonight` holds, `records` paints `paintRecords`, `vision` releases through `releaseVisionAdapter`, `players` holds, `status` builds only. A dead `const m=live()` was removed | `render()` 1 line / 2077 characters / 33 semicolons → 18 lines / longest line 23 characters / 15 semicolons; spec escape hatches 3 → 0; rendered fragments 50 → 63 with 45 of 49 compared fragments in place. `tests/test_ops.js` 198 → 201 pass, 0 fail, with a new test at `:4747` that runs the real `render()`. Three perturbations bite: deleting the `paintThemeChips();` call → 200 pass, 1 fail; emptying its body → 199 pass, 2 fail; renaming `paintNav` → 196 pass, 5 fail with `ReferenceError`. The browser check re-ran the whole shell: 6 nav buttons with one `aria-current`, tabbar 1156 characters, `#main` 30515 characters, a theme chip flip to `light`, the 中文 chip to `zh-CN`, the clock screen 2089 characters, and the review route painting 3055 characters of label overlay from one track click, with the error log and the console log empty |
 | S2 | A writer refuses a name it does not implement | `_do_match` and `_do_pairing` each ended in an unguarded `else` that WAS an action, so a row could borrow a writer it does not implement | The branches are named (`elif action in ('match_complete','match_forfeit')`, `elif action == 'pair_draw'`) and each writer ends with `raise ValueError(f'Unknown match action: {action}')` | Registry rows 34 → 22 writers, with `_do_match` 6, `_do_pairing` 5, `_do_entrants` 3, `_do_revival` 2. A live experiment registered `Operation('zzz_not_a_real_action', Operations._do_match, …)` and posted it: before the repair the match completed with a winner, after it the answer is `Unknown match action: zzz_not_a_real_action` and the match stays live with no result and no signature. `tests/test_operations.py` 65 → 68 tests; full suite `Ran 1356 tests in 110.994 s`, OK (skipped=51) |
 | S3 | A source failure carries its code from the raise site | Thirteen English sentences mapped to nine codes in `_ERROR_CODES` and `_ERROR_PATTERNS`, far from the raises. `'Media decoder cleanup failed'` was reachable and asserted nowhere | `class _SourceError` carries `code` and params. In-process failures name their code where they raise (unsupported_kind, open_failed, frame_invalid, decode_failed, inference_failed), and `_fail` uses a carried code or falls back to the two tables for a sentence from the Twitch layer | `tests/test_live_processing.py` 31 → 34 tests; full suite `Ran 1359 tests in 247.403 s`, OK (skipped=51). Two perturbations bite: a raise without its code fails `test_every_in_process_raise_names_its_code`, and a wrong code on the open failure fails `test_a_failed_session_reports_the_code_its_cause_maps_to` |
@@ -3206,7 +3206,7 @@ the number that proves it.
 | C17 | A start takes the probe it reports, and the suite asks by name | Nine reads of a private name in `tests/test_live_processing.py` drove the session: the session object, its probe and `_reset_session` | `start(source, detectors=None, *, source_kind=None, probe=None)` at `annotator/live_processing.py:361`, `_reset_session(..., probe=None)` at `:282`, and `status()['probe_alive']` at `:746` | Private reads of `processor._` 11 → 5; `tests/test_live_processing.py` 42 → 43 OK; `tests/test_unified_server.py` 82 OK. The five that remain are deliberate: the capture factory of `4a9654b`, an exact three-wake assertion, and the reset ownership test. Perturbation: `probe=probe)` → `probe=None)` at `:404` fails exactly `test_a_given_probe_is_the_live_edge_the_session_reports` (sha1 `ec820582…` → `cc3bf1b3…` → restored). The card's ground was stale: its nine reads and line numbers belong to the `da765d9` era, and `7297712` had added two, so the two points it proposed cannot reach a count of one |
 | S2 residue | Every writer refuses a name it does not implement | `_do_entrants` and `_do_revival` ended in a fall-through that WAS an action, the class `96248f7` repaired in `_do_match` and `_do_pairing`; the name `entrant_add_not_a_row` was accepted and added a person (entrants 2 → 3) | `elif action == 'entrant_add':` at `annotator/operations.py:851` and `elif action == 'revival_draw':` at `:1008`, each with a final `raise ValueError(f'Unknown … action: {action}')` at `:850` and `:1058` | Legal names unchanged (`git diff -w --numstat` reads `11 1`); `tests/test_operations.py` 73 → 75 OK and `tests/test_store_contract.py` 54 OK (skipped=29). The residue bound tightens with the repair: `tests/test_operations.py:1860` reads `limit = 0 if writer in guards else 1`, so the four multi-row writers that refuse by name must reach no row. Perturbation: the revival refusal replaced by `pass` fails two tests, the new refusal test and the `_do_revival` residue check (sha1 `aada8601…` → `21eabc81…` → restored) |
 
-| C4 | The two dispatch tables become one action registry with two namespaces | `annotator/ops.js:1146-1183` held 95 `if (a === …)` branches with 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1359-1490` held a second table of 63 `case` labels. A name could exist in one table and not the other, and no test could see it | `function newActionRegistry()` at `annotator/vision-stage.js:11` owns `define`, `defineFields`, `module`, `modules`, `names`, `fieldNames`, `has`, `isField`, `row`, `find` and `run`. The stage table is `const stageAct = (() => {` at `:1397` with 63 rows, `function act(action, value, node)` at `:1529` is a three-line forwarder, and `FIELD_ACTIONS` at `:1540` gained `link-target`. The console table is `const opsAct = (() => {` at `annotator/ops.js:1234` with 95 rows, registered by `const registerOps` at `:1226`; `dispatch(name, ctx = {})` at `:1344` and `run(node, event)` at `:1356` are the two ports, `registerOps();` at `:1360` runs at load, and the click handler calls `await opsAct.run(b,e);` at `:1369`. The handle publishes `dispatch`, `actions` and `registry` at `:1549` | `if(a===` 95 → 0; `case '` 63 → 0; `tests/test_ops.js` 201 → 205 pass, 0 fail; `tests/test_board.js` 16 pass, 0 fail; `tests/test_app_timeline.js` 94 passed, 0 failed, with `source-text assertions left: 65` unchanged. Four new tests hold the one registry: every rendered action resolves, every entry has an emitter or is on the named dead list (`UNREACHABLE_ROWS` at `tests/test_ops.js:4909`, eight ops names and no stage name), one registry serves both modules (`registry.find('live-start').length == 2`), and no branch chain is left. In the browser at 1596 by 1045 (raw CDP at `http://127.0.0.1:8130/#/records`): `globalThis.ActionRegistry` holds `modules() = ["vision-stage","ops"]`, 95 ops names, 63 stage names and the legal cross-namespace overlap `["live-start","live-stop","live-detector","chat"]`; the handle from `attach()` holds 174 keys = 6 ports + 168 `SEAM` rows, where HEAD held 171. An in-place row swap is honoured, proved live (`table['archive-reload'] = () => …` then `h.dispatch('archive-reload')` answers `ran the swapped row`) — but a NEW table object is silently undone, because `registerOps()` re-registers `opsAct.table` whenever `shared.module('ops') !== opsAct.table`. `window.OpsConsole.dispatch` stays undefined on purpose: the ports live on the handle. Perturbation: `shared.run('ops', name)` → `shared.run('ops-typo', name)` fails exactly two tests, the new registry test at `tests/test_ops.js:4937` and the round-13 Twitch configurator test at `tests/test_ops.js:4178` (failing at `:4204` with `TypeError: Cannot read properties of undefined (reading 'name')`); sha1 `bd9e72d6…` → `d006e141…` → restored. The eight dead rows are named and not deleted, and the coverage reader reads source literals, so a name built at run time escapes it |
+| C4 | The two dispatch tables become one action registry with two namespaces | `annotator/ops.js:1146-1183` held 95 `if (a === …)` branches with 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1366-1497` held a second table of 63 `case` labels. A name could exist in one table and not the other, and no test could see it | `function newActionRegistry()` at `annotator/vision-stage.js:11` owns `define`, `defineFields`, `module`, `modules`, `names`, `fieldNames`, `has`, `isField`, `row`, `find` and `run`. The stage table is `const stageAct = (() => {` at `:1397` with 63 rows, `function act(action, value, node)` at `:1529` is a three-line forwarder, and `FIELD_ACTIONS` at `:1540` gained `link-target`. The console table is `const opsAct = (() => {` at `annotator/ops.js:1234` with 95 rows, registered by `const registerOps` at `:1226`; `dispatch(name, ctx = {})` at `:1344` and `run(node, event)` at `:1356` are the two ports, `registerOps();` at `:1360` runs at load, and the click handler calls `await opsAct.run(b,e);` at `:1369`. The handle publishes `dispatch`, `actions` and `registry` at `:1549` | `if(a===` 95 → 0; `case '` 63 → 0; `tests/test_ops.js` 201 → 205 pass, 0 fail; `tests/test_board.js` 16 pass, 0 fail; `tests/test_app_timeline.js` 94 passed, 0 failed, with `source-text assertions left: 65` unchanged. Four new tests hold the one registry: every rendered action resolves, every entry has an emitter or is on the named dead list (`UNREACHABLE_ROWS` at `tests/test_ops.js:4909`, eight ops names and no stage name), one registry serves both modules (`registry.find('live-start').length == 2`), and no branch chain is left. In the browser at 1596 by 1045 (raw CDP at `http://127.0.0.1:8130/#/records`): `globalThis.ActionRegistry` holds `modules() = ["vision-stage","ops"]`, 95 ops names, 63 stage names and the legal cross-namespace overlap `["live-start","live-stop","live-detector","chat"]`; the handle from `attach()` holds 174 keys = 6 ports + 168 `SEAM` rows, where HEAD held 171. An in-place row swap is honoured, proved live (`table['archive-reload'] = () => …` then `h.dispatch('archive-reload')` answers `ran the swapped row`) — but a NEW table object is silently undone, because `registerOps()` re-registers `opsAct.table` whenever `shared.module('ops') !== opsAct.table`. `window.OpsConsole.dispatch` stays undefined on purpose: the ports live on the handle. Perturbation: `shared.run('ops', name)` → `shared.run('ops-typo', name)` fails exactly two tests, the new registry test at `tests/test_ops.js:4937` and the round-13 Twitch configurator test at `tests/test_ops.js:4178` (failing at `:4204` with `TypeError: Cannot read properties of undefined (reading 'name')`); sha1 `bd9e72d6…` → `d006e141…` → restored. The eight dead rows are named and not deleted, and the coverage reader reads source literals, so a name built at run time escapes it |
 | C6 | One atomic write with ten implementations | Ten modules each built a temporary file beside the target and called `os.replace`: `src/face_id.py:313-315`, `src/store_export.py:38-44`, `src/person_identity.py:487-490`, `src/store.py:165-172` and `:242-244`, `src/enroll_from_tracklet.py:630-634`, `annotator/shot_clock.py:226-233`, `annotator/vod_import.py:180-187`, `annotator/unified_server.py:219-226`. The docstring at `src/store.py:18` claimed all of them are "the same atomic temp-file + fsync + os.replace", and that claim was false: only some call `fsync`, and the temp names, the cleanup and the encodings differ | `src/atomic_write.py` (120 lines, only `os`, `tempfile`, `pathlib` and `typing`) with `write_atomic(path, write, *, fsync=False, temp_prefix=None, temp_name=None, encoding=None, remove_on_failure=True)` at `:57`, `DEFAULT_PREFIX = "."` at `:40`, and one documented rule per option. Nine call sites moved and each one keeps its own serialization, so `indent`, `sort_keys`, the newline and the encoding are unchanged. The docstring at `src/store.py:18` now names the owner. `annotator/operations.py` was left alone: its own `mkstemp` at `:401` and `replace` at `:408` belong to another worker's file | Five sites are durable (`fsync=True`): `src/store.py:171`, `src/store_export.py:38`, `annotator/shot_clock.py:231`, `annotator/vod_import.py:185`, `annotator/unified_server.py:226`. Four are best-effort on purpose: `src/face_id.py:318`, `src/person_identity.py:491`, `src/store.py:240` (which keeps `temp_name="{stem}.json.tmp"` and `remove_on_failure=False`), `src/enroll_from_tracklet.py:637`. `tests/test_atomic_write.py` 0 → 28 tests OK, and the whole suite then ran `Ran 1468 tests OK (skipped=51)`. My own perturbation found the gap this row closes: with `fsync=True` dropped at `src/store.py:171` the file still ran 26 tests OK, because the owner's fsync behaviour and each site's bytes were tested but nothing said which sites are durable. `class TestCallerDurability` now holds the two role lists, `_drives()` maps nine real write paths by `module.function`, and one test spies on `src.atomic_write.os.fsync` for every site. One run with fsync dropped at `src/store.py:171` and added at `src/person_identity.py:491` failed two subtests by name, and both files were restored from `cp` to sha1 `cd89333e…` and `36b0974c…`. A real-filesystem probe shows the default temp name `.state.json`, and a failing `os.replace` refuses with `disk full`, keeps `{"old": 1}` and removes the temp file |
 
 ### The commits so far
@@ -3288,7 +3288,7 @@ worker was given, because none of the workers committed.
 | --- | --- |
 | The SAM3 admission gate written in nine modules, with a disagreeing area band (60/9000 in eight sites, `src/pipeline.py:162` alone uses 6000, `src/scan_events.py:38` `MAX_BALL_AREA_720 = 4200.0` is a third value in the classical path) | `src/ball_census.py`, `src/ball_fp_audit.py`, `src/collect2.py`, `src/fast_ball_labels.py`, `src/pipeline.py`, `src/recut_crops.py`, `src/sam3_ball_cache.py`, `src/scan_events.py`, `src/tiny_ball_net.py`, the new `src/ball_gate.py` and `tests/test_ball_gate.py` |
 | One atomic write with nine implementations, in `src/face_id.py:313-315`, `src/store_export.py:38-44`, `src/person_identity.py:487-490`, `src/store.py:165-172` and `:242-244`, `src/enroll_from_tracklet.py:630-634`, `annotator/shot_clock.py:226-233`, `annotator/vod_import.py:180-187`, `annotator/unified_server.py:219-226`; the docstring at `src/store.py:18` claims all of them are "the same atomic temp-file + fsync + os.replace", which is false | `src/atomic_write.py` and that call list, plus `tests/test_atomic_write.py` |
-| One action registry for the two string-keyed dispatch tables: `annotator/ops.js:1146-1183` holds 95 `if (a === …)` branches, 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1359-1490` holds a second table with 63 `case` labels | `annotator/ops.js`, `annotator/vision-stage.js`, `tests/test_ops.js`, `tests/test_app_timeline.js`, `tests/test_board.js`, the cache tags of `annotator/ops.html` |
+| One action registry for the two string-keyed dispatch tables: `annotator/ops.js:1146-1183` holds 95 `if (a === …)` branches, 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1366-1497` holds a second table with 63 `case` labels | `annotator/ops.js`, `annotator/vision-stage.js`, `tests/test_ops.js`, `tests/test_app_timeline.js`, `tests/test_board.js`, the cache tags of `annotator/ops.html` |
 | One published status and result vocabulary: `annotator/public_board.py:17-18` holds its own `STATUSES` and `RESULTS`, and `:48` maps an unknown status to `"pending"` without a word, while the registry writes `registration`, `scheduled`, `delayed`, `complete`, `pending`, `active`, `bye` and `forfeit` | `annotator/operations.py`, `annotator/public_board.py`, `tests/test_public_board.py`, `tests/test_operations.py` |
 
 ## Round 36 · the annotator Python half (2026-10-10)
@@ -3595,14 +3595,14 @@ The crop-set duplicate is deleted, not committed: `tests/test_crop_set_vocabular
 
 The class token without a rule (round 41, Speculative) closes as a decision: `annotator/ops.html` loads `ops.css` and `app.css`; `annotator/ops.js` writes 209 literal class tokens and exactly 21 of them have no rule in either loaded sheet (`archive-card`, `bf-estimate`, `bf-form`, `bf-linked`, `bf-linked-count`, `bf-marked`, `bf-notice`, `card`, `close-why`, `end-night`, `field`, `live-card`, `maint-status`, `player-form`, `race`, `radio`, `revival`, `sheet-round`, `sign-confirm`, `sign-wait`, `tl-month`), and no sheet that the page does not load covers any of them. A token without a rule is not a defect by itself, so no worker is spent on it.
 
-The measurement that leaves the last Strong candidate open: the console still knows a refusal by the text of an English sentence. `annotator/ops.js:860` holds 48 Chinese sentences keyed by the English sentence, `:866` answers a generic Chinese line for every other sentence, and `:877` reads `result.error`. The service raises 169 distinct sentences (`annotator/operations.py` 97, `annotator/unified_server.py` 73) and 121 of them have no Chinese at all. Four more sites match the text itself: `annotator/ops.js:481` (`bfError`), `:691` and `:698` (the two backfill checks), and `annotator/vision-stage.js:896-899` (`serverText`, whose template sits at `:100`). The brief is written and one worker holds it.
+The measurement that leaves the last Strong candidate open: the console still knows a refusal by the text of an English sentence. `annotator/ops.js:860` holds 48 Chinese sentences keyed by the English sentence, `:866` answers a generic Chinese line for every other sentence, and `:877` reads `result.error`. The service raises 169 distinct sentences (`annotator/operations.py` 97, `annotator/unified_server.py` 73) and 121 of them have no Chinese at all. Four more sites match the text itself: `annotator/ops.js:481` (`bfError`), `:691` and `:698` (the two backfill checks), and `annotator/vision-stage.js:894-897` (`serverText`, whose template sits at `:100`). The brief is written and one worker holds it.
 
 What stands open after this round:
 
 | Candidate | Rank | Ground in the tree |
 | --- | --- | --- |
 | Round 41 Strong 2, the identity of a refusal | Strong | The console reads `annotator/ops.js:860 validationZh` and `:872 result.error`; the service raises 169 sentences and 121 have no Chinese. One worker holds it and its diff is not committed yet |
-| Round 41 Strong 2, the second half | Strong | The four English-text matches (`annotator/ops.js:481`, `:686`, `:693`, `annotator/vision-stage.js:896-899`) read sentences out of job text, because `annotator/unified_server.py:1945` and `:2239` write `job["error"] = public_error(exc)` with no code beside it |
+| Round 41 Strong 2, the second half | Strong | The four English-text matches (`annotator/ops.js:481`, `:686`, `:693`, `annotator/vision-stage.js:894-897`) read sentences out of job text, because `annotator/unified_server.py:1945` and `:2239` write `job["error"] = public_error(exc)` with no code beside it |
 | Round 38 Worth, wall-clock and threads | Worth | One module is closed by `3cf3502`, and the modules that grade the machine's speed instead of the product's behaviour are not measured again here |
 | Round 38 Worth, the two DOM doubles | Worth | `9509d14` moved `domNode` and `elementStub`; `tests/test_ops.js:28 richDocument` and `tests/test_app_timeline.js:44 engineRealm` stay separate, with the `vm.createContext` count as the reason |
 | The dotted test module path | Worth | `PYTHONPATH=. .venv/bin/python -m unittest tests.test_unit_render` fails with `ModuleNotFoundError`, because `.venv/lib/python3.14/site-packages/tests/__init__.py` is a regular package of ultralytics and beats the namespace directory. The working substitute is `(cd tests && PYTHONPATH=.. ../.venv/bin/python -m unittest test_unit_render)` |
@@ -3665,7 +3665,7 @@ Honest limits, from the delivery. 121 sentences have no Chinese row and stay Eng
 module pins that number as `RAISED_SENTENCES_WITHOUT_A_ROW = 121` and prints the sentences in the
 failure text. `annotator/ops.js:10 words.placeholderName` keeps one Chinese sentence whose English
 differs, and the module names it in `CONSOLE_WORDS_THAT_REPEAT_A_REFUSAL`. Four javascript sites
-still match job text (`annotator/ops.js:481`, `:686`, `:693`, `annotator/vision-stage.js:896-899`);
+still match job text (`annotator/ops.js:481`, `:686`, `:693`, `annotator/vision-stage.js:894-897`);
 that is the second half of this candidate, and a worker holds it. `annotator/operations.py` needed
 no edit.
 
@@ -3701,7 +3701,7 @@ copy. `README.md` names the mode and the reason, and it no longer offers the dis
 
 The four javascript sites that matched job text are gone. Before `07c3608`, `annotator/ops.js:481`
 held two regular expressions (`/Only saved channels/i`, `/Not enough free disk space/i`), `:691` and
-`:698` held the first one again, and `annotator/vision-stage.js:897-898` held a third reader that
+`:698` held the first one again, and `annotator/vision-stage.js:895-896` held a third reader that
 also read the channel name out of the sentence. A rewording in python therefore dropped the Chinese
 answer, and a channel name with a space broke the pattern.
 
@@ -4274,7 +4274,7 @@ without one.
 
 | Candidate | Rank | Ground in the tree |
 | --- | --- | --- |
-| The duration formatter has three owners | Worth | `annotator/app.js:2040` floors an unguarded value, `annotator/ops.js:104` clamps and floors, `annotator/vision-stage.js:930` clamps and rounds (the rows `6fcee26` added moved this line down from the walk's `:891`); the three disagree at 59.6 (they answer `0:00:59`, `0:00:59` and `0:01:00`), at −1 and at null. No wrong number reaches the operator today, because every stored `length_s`, `at_s`, `start_s` and `end_s` is whole and `annotator/live_processing.py:87-89` and `:101-103` make `at_s` an int. No test names `hms` |
+| The duration formatter has three owners | Worth | `annotator/app.js:2040` floors an unguarded value, `annotator/ops.js:104` clamps and floors, `annotator/vision-stage.js:928` clamps and rounds (the rows `6fcee26` added moved this line down from the walk's `:891`); the three disagree at 59.6 (they answer `0:00:59`, `0:00:59` and `0:01:00`), at −1 and at null. No wrong number reaches the operator today, because every stored `length_s`, `at_s`, `start_s` and `end_s` is whole and `annotator/live_processing.py:87-89` and `:101-103` make `at_s` an int. No test names `hms` |
 | The clock key has two spellings | Worth | `CLOCK_KEY = 'cp-ops-clock'` is defined at `annotator/clock-sync.js:44` and exported at `:491`, and nothing reads the export, while `annotator/ops.js:861`, `:881`, `:1415` and `tests/test_ops.js:1120`, `:1124`, `:1157` spell the literal |
 | The reconnect delay has two owners | Worth | `RECONNECT_MS = 2000` at `annotator/clock-sync.js:49` beside `retry: 2000` at `annotator/shot_clock.py:214`; no case compares them |
 | The shot distance has two values | Worth | `SHOT_DISP_MM` is 300.0 at `src/scan_events.py:46` and 150.0 at `src/info_complete_scan.py:43` |
@@ -4292,7 +4292,7 @@ and `annotator/board.js` vocabulary seam (guarded by `tests/test_board.js:379-46
 The walk read the tree at `1306bfb`, and the Table above states the numbers measured at
 `18159e9`. Citations moved between the two commits: `3c9f593` removed five lines above
 `annotator/twitch_vod_source.py:515`, and `6fcee26` added thirty-nine above
-`annotator/vision-stage.js:891`, so the duration formatter there is now `:930`. `18159e9` moved the
+`annotator/vision-stage.js:889`, so the duration formatter there is now `:930`. `18159e9` moved the
 two job sentences of the round-44 row: the ffmpeg sentence now sits at
 `annotator/vod_import.py:550` and the scan sentence at `:854`.
 
@@ -4419,14 +4419,14 @@ round-3 spelling was already wrong when it was written.
 ### The duration module · one rule for three copies
 
 Three page scripts held one H:MM:SS rule each: `annotator/app.js:2040` floored an unguarded
-value, `annotator/ops.js:104` clamped and floored, and `annotator/vision-stage.js:930` clamped and
+value, `annotator/ops.js:104` clamped and floored, and `annotator/vision-stage.js:928` clamped and
 rounded. On a grid of nineteen values the three answered seven of them in two different ways
 (`59.6` gave `0:00:59`, `0:00:59` and `0:01:00`).
 
 `annotator/duration.js` owns the rule now: clamp at zero, truncate toward zero, print `H:MM:SS`,
 and print `0:00:00` for a value that is not finite (the owner line is `:62`). Truncation wins
 because it names the second that contains a reading: the only fractional input in the tree is
-`start_s + frame.t` at `annotator/vision-stage.js:780`, and at 30 frames per second rounding
+`start_s + frame.t` at `annotator/vision-stage.js:778`, and at 30 frames per second rounding
 names a second that holds no part of the frame (15 of 30 frames differ). The three consumers keep
 one seam each and read `window.Duration.hms` at call time, and both pages load the module first
 (`annotator/ops.html:2`, `annotator/app.html:8`). The shot clock keeps `Math.ceil`
@@ -4441,7 +4441,7 @@ name, and `tests/test_ops.js:5184` loads every page script in one scope.
 Measured: `node tests/test_ops.js` 216 pass and 0 fail (211 before), `node
 tests/test_app_timeline.js` 100 passed and 0 failed (99 before). The scan `no page script holds a
 second copy of the duration rule` uses a number boundary, so the tenths formatter at
-`annotator/vision-stage.js:1591` (which divides by 36 000) stays out of it. A bite that put the old
+`annotator/vision-stage.js:1598` (which divides by 36 000) stays out of it. A bite that put the old
 copy back at `annotator/ops.js:104` named the file and the line. A bite in a throwaway copy that
 dropped the finite guard answered `AssertionError [ERR_ASSERTION]: the rule formats undefined as
 0:00:00`; the control copy of the same subtree answers 213 pass and 3 fail, and those three read
@@ -4677,7 +4677,7 @@ the status vocabulary and five for the dataset map.
 | The document stamp protocol has two owners | Worth | `src/sam3_artifact.py:70-99` and `src/events_document.py:99-133` both define `VERSION`, `STAMP`, `REBUILD_CALIBRATED`, `PRODUCERS`, `STAMPED`, `MIXED` and `UNSTAMPED`, and only `ROW_KEYS` differs by design |
 | The console label for `Prospect` | Note | `annotator/ops.js:9` answers `Prospect:['Newcomer','新会员']`, and `design/corner-pocket/Corner Pocket Ops.dc.html:829` maps it to `Prospect`; the value the form sends is now correct either way |
 | The create path starts a regular as `Active` | Note | the create form sends a hidden `Active`, and `annotator/operations.py:830` `_do_guest_promote` sets `'Active'`, while `docs/corner-pocket-functional-inventory.md:134` says Prospect; a product decision, not a defect |
-| Four citations that name an empty line | Note | `src/ball_gate.py:44` to `src/dense_queue.py:69`, `annotator/board.js:61` and `tests/test_board.js:377` to `tests/test_app_timeline.js:3252`, `tests/test_event_retention.py:13` to `src/store_import.py:47`, and `deploy/systemd/40-public-board.conf` cites `annotator/unified_server.py:2879` where the argument stands at `:2937` |
+| Four citations that name an empty line | Note | `src/ball_gate.py:44` to `src/dense_queue.py:69`, `annotator/board.js:61` and `tests/test_board.js:377` to `tests/test_app_timeline.js:3271`, `tests/test_event_retention.py:13` to `src/store_import.py:47`, and `deploy/systemd/40-public-board.conf` cites `annotator/unified_server.py:2879` where the argument stands at `:2937` |
 | `annotator/server.py:130` writes any label | Note | no range check and no `-1` to `"u"` map, while `annotator/unified_server.py:2223` enforces the domain; the module has no importers, so the divergence is dormant |
 | `corners_30min_v2.json` | Note | one writer at `src/make_segment_corners.py:81` and six readers, while `src/table_refine.py:64` says it is not used; the walk measured nothing, so no claim stands |
 | `REPORT.md:50`, the reverse contract, the browser path, `annotator/unified_server.py` | Note | these four rows of the round-46 table stay open unchanged |
@@ -4980,8 +4980,8 @@ it, and compares the pair with the pair of the owner. The Lead's two bites remov
 | --- | --- | --- |
 | `src/ball_gate.py:44` | a separator at `src/motion_scan.py:69` | `src/motion_scan.py:71` |
 | `src/ball_gate.py:44` | nothing at `src/dense_queue.py:69` | `src/dense_queue.py:71` |
-| `annotator/board.js:61` | nothing at `tests/test_app_timeline.js:3252` | `tests/test_app_timeline.js:3299` |
-| `tests/test_board.js:377` | nothing at `tests/test_app_timeline.js:3252` | `tests/test_app_timeline.js:3299` |
+| `annotator/board.js:61` | nothing at `tests/test_app_timeline.js:3271` | `tests/test_app_timeline.js:3318` |
+| `tests/test_board.js:377` | nothing at `tests/test_app_timeline.js:3271` | `tests/test_app_timeline.js:3318` |
 | `tests/test_event_retention.py:13` | a comment at `src/store_import.py:47` | `src/ops_event_log.py:42` |
 | `tests/dom_stubs.js:11` | its own line, and `}` at `:46` | `tests/dom_stubs.js:28`, `tests/test_app_timeline.js:55` |
 
@@ -5905,7 +5905,7 @@ answers stood in the same repository. The operations layer answered 200 for the 
 readers passed no maximum: `annotator/operations.py:525 person = dict(pid=None, name=text(member.get('name'), 'guest name'))`
 and `:816 name = text(p.get('name'), 'guest name').casefold()`. The console answered 120 in its three
 guest fields: `annotator/ops.js:1097`, `:1159` and `:1165` held `maxlength="120"`. The live stage held
-the owner: `annotator/vision-stage.js:1214 data-vs-action="guest-name" maxlength="60"`.
+the owner: `annotator/vision-stage.js:1221 data-vs-action="guest-name" maxlength="60"`.
 
 The guard could not see the drift. `tests/test_guest_name.py:26 SOURCE_TREES = (ROOT / 'annotator', ROOT / 'src')`
 with `:45 return sorted(path for tree in SOURCE_TREES for path in tree.glob('*.py'))` reads Python
@@ -6262,7 +6262,7 @@ methods of `annotator/operations.py`.
 
 ### Strong 1 · the box-label vocabulary had two live owners and two dead copies
 
-Ground: `annotator/vision-stage.js:1289`, inside `function boxBlock(s)` at `:1287`, filled both the
+Ground: `annotator/vision-stage.js:1296`, inside `function boxBlock(s)` at `:1287`, filled both the
 `<select data-vs-action="box-label">` of `:1291` and the `<select data-vs-action="new-box-label">` of
 `:1295` from `  const labels = ['person','ball','cue','solid','stripe','eight'];`. The second owner was
 the service validator `annotator/unified_server.py:1942`:
@@ -6288,7 +6288,7 @@ read them (`:1937` and `:2240`). `tests/test_console_vocabulary.py` holds 7 case
 ### Strong 2 · the verdict vocabulary stood six times, and only the SQL pair was guarded
 
 Ground: `annotator/app.js:1317 function cycleVerdict() { const order = ['correct','wrong','unsure']; ...`;
-`annotator/vision-stage.js:700` (the rail button row) and `:1306` (the draft row) built their buttons
+`annotator/vision-stage.js:698` (the rail button row) and `:1306` (the draft row) built their buttons
 from the same array; `annotator/index.html:109-111` held three literal buttons (`data-v="correct"`,
 `data-v="wrong"`, `data-v="unsure"`); `annotator/unified_server.py:2245 if "verdict" in p and
 p["verdict"] not in ("correct", "wrong", "unsure"):`; and `db/migrations/0002_user_data.sql:165
@@ -6300,7 +6300,7 @@ Repair: the console reads `VOCABULARY.verdictWords` at all three sites through t
 `const boxLabels = () => window.CornerPocketReview.vocabulary.boxLabels;` and
 `const verdictWords = () => window.CornerPocketReview.vocabulary.verdictWords;` in
 `annotator/vision-stage.js`, so the console page loads `annotator/app.js` before the adapter. The walk's
-own edit that moves one copy only — a fourth word at `annotator/vision-stage.js:700` — now fails
+own edit that moves one copy only — a fourth word at `annotator/vision-stage.js:698` — now fails
 `tests/test_console_vocabulary.py`.
 
 ### Strong 3 · the production port was named in one guard and tested in another
@@ -6525,7 +6525,7 @@ lost copy must make the page load the owner, and a kept copy must not.
 
 ### Strong 3 · the HTML escape rule stood four times
 
-Ground: `annotator/app.js:17`, `annotator/ops.js:8`, `annotator/vision-stage.js:291` and
+Ground: `annotator/app.js:17`, `annotator/ops.js:8`, `annotator/vision-stage.js:289` and
 `annotator/board.js:73` held the same rule (`/[&<>"']/g` and the five entities), and no case compared
 them.
 
@@ -6551,7 +6551,7 @@ held 113 keys, 299 distinct Chinese values and 34 shared values, and the guard
 Repair: the writer measured the two key spaces first (the engine keys are English sentences, the adapter
 keys are camelCase slot names). The measurement: the adapter holds 312 Chinese slots, 23 of them share a
 value with the engine, 289 engine values stay English, and no shared slot disagrees. A merge is unsafe,
-so one table answers per realm and a case holds the two: `tests/test_app_timeline.js:3889` compares every
+so one table answers per realm and a case holds the two: `tests/test_app_timeline.js:3928` compares every
 shared slot and prints the slot name, the English key and both Chinese values on a failure.
 
 ### Strong 5 · the four move-scan argparse options stood twice
@@ -7564,7 +7564,7 @@ it ran no test module, so every guard claim rests on the test source.
 
 ### Strong 1 · the quad refusal table stood in two console files
 
-Ground: `annotator/app.js:1117 QUAD_REFUSAL_COPY` and `annotator/vision-stage.js:311 QUAD_REASON` held one
+Ground: `annotator/app.js:1117 QUAD_REFUSAL_COPY` and `annotator/vision-stage.js:309 QUAD_REASON` held one
 table, and `annotator/ops.html` serves both files. Only the vision-stage copy was guarded
 (`tests/test_console_reason_table.py:26`), so `degenerate_prior` and `side_inherited`, which
 `src/table_refine.py:784` and `:905` produce, had a sentence on one screen and the raw-code fallback on the
@@ -7747,13 +7747,13 @@ and nothing of `viz/`, `src/reid/`, `annotator/fonts/` and `src/sam3/`.
 
 ### Strong 1 · one replay-rate bound stood three ways, and no case read any of them
 
-Ground: `annotator/vision-stage.js:908` printed `max="4"` on the rate field, `annotator/ops.js:1535`
+Ground: `annotator/vision-stage.js:906` printed `max="4"` on the rate field, `annotator/ops.js:1535`
 refused only `rate > 8`, and `annotator/unified_server.py:411 _REPLAY_RATE_MAX = 8.0` stated the service
 bound, while `git grep -n "vod-rate" -- tests/` answered nothing. Repair: `annotator/ops.js:27-29` holds
 `REPLAY_RATE_MIN = 0.25`, `REPLAY_RATE_MAX = 8` and `REPLAY_RATE_STEP = 0.25`; the picker refuses through
 the name at `:1547`; the option bag hands `replayRate: {min, max, step}` at `:1556`, which is the declared
 stage-console seam of round 34 (`docs/console-redesign.md:3094` publishes exactly four keys), so a fifth
-key would be an undeclared seam; and `annotator/vision-stage.js:899-902 rateBoundAttrs()` reads the bag, so
+key would be an undeclared seam; and `annotator/vision-stage.js:897-900 rateBoundAttrs()` reads the bag, so
 the field at `:917` prints `min="0.25" max="8" step="0.25"` and holds no number of its own.
 `tests/test_console_service_bounds.py` is new and holds six cases: the console names stand once, the field
 prints the console's numbers, the service bound is the same edge, both boundaries answer as today, and a
@@ -8561,7 +8561,7 @@ or takes a different file.
 
 | Row | Kind | Ground |
 | --- | --- | --- |
-| Two more realms spell the label pair | limit of writer AH | `annotator/vision-stage.js:338` (`label === 'u' \|\| label === -1`) and `annotator/label.html`, both outside that writer's scope |
+| Two more realms spell the label pair | limit of writer AH | `annotator/vision-stage.js:336` (`label === 'u' \|\| label === -1`) and `annotator/label.html`, both outside that writer's scope |
 | The route gate's label range is a bare literal | limit of writer AH | `0 <= label <= 15` stands unnamed in the route gate |
 | The timeline case holds its own distance rule | limit of writer AI | `annotator/app.js:2387` exports no `quadDistance` at the seam, and the pair pins 98 without the rounding mode |
 | The state half of the document-path rule still stands | limit of writer AE in round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -8743,7 +8743,7 @@ every file its repair touches.
 
 | Row | Kind | Ground |
 | --- | --- | --- |
-| Two more realms spell the ball label pair | limit of writer AH in round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of writer AH in round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of writer AH in round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of writer AI in round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The console holds the login class by need | decision of this round | a javascript file cannot import a python name, and two cases hold the copy |
@@ -8827,7 +8827,7 @@ report sits one line below the cap. It read the bodies of `annotator/unified_ser
 ### Strong 1 and Worth 2 · two vocabularies in two realms
 
 Ground: the shooter vocabulary stood at four sites — `db/migrations/0002_user_data.sql:166`, the route gate of
-`annotator/unified_server.py`, the select of `annotator/vision-stage.js:1086` and the legacy select of
+`annotator/unified_server.py`, the select of `annotator/vision-stage.js:1084` and the legacy select of
 `annotator/index.html:113-116` — while the console copy had no case: `git grep -n 'data-vs-action="shooter"'
 -- annotator tests` answered `annotator/vision-stage.js` only, `git grep -n "invalid shooter"` answered the
 refusal row and the raise and no test, and `tests/test_unified_server.py:87` drove the gate with a bad value
@@ -8917,7 +8917,7 @@ it serves the same rule as Worth 2; the record states the deviation, and the fil
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of writer AM | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working; a later round can read the constant in `seed_label` |
 | The citation rule reads a line and not a symbol | blind spot measured this round | it accepted `# pure helpers` for a function citation |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of the walk | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -9023,7 +9023,7 @@ inside `src/candidate_scan.py` and the ceiling is the end that decides. The valu
 ### Worth 1 · the anchor times, and a published field with no reader
 
 Ground: `[70, 200, 350]` stood four times — `annotator/unified_server.py:2111 "suggested_times": [70, 200, 350]`
-(the published field, which had no reader), the button row of `annotator/vision-stage.js:1293` from its own
+(the published field, which had no reader), the button row of `annotator/vision-stage.js:1300` from its own
 literal, and `src/pid_anchor_ui.py:71 const SUG` (round 85 removed the dead `SUGGESTED` name). Repair:
 `annotator/unified_server.py:157 SUGGESTED_ANCHOR_TIMES = (70, 200, 350)` is the one home and `anchor_info`
 publishes it at `:2112`; the console button row renders the published values and `annotator/app.js:50` and
@@ -9095,7 +9095,7 @@ line, kept it, and this record states the deviation.
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -9293,7 +9293,7 @@ reads two sentence sources instead of one.
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -9388,7 +9388,7 @@ no text, because `real.replace(...)` returned the real text.
 ### Strong 1 · the byte count an operator reads
 
 Ground: the byte count had four display sites (`annotator/refusals.py:346 gb`,
-`annotator/vod_import.py size_text`, `annotator/ops.js:132 sizeText`, `annotator/vision-stage.js:955 sizeText`)
+`annotator/vod_import.py size_text`, `annotator/ops.js:132 sizeText`, `annotator/vision-stage.js:953 sizeText`)
 and four readers, and two of them disagreed: the MB branch answered `12.3 MB` in python against `12 MB` in the
 console, and the GB branch answered `1.2 GB` against `1.3 GB` on the exact tie of 1_250_000_000 bytes, because
 python's `:.1f` rounds half to even while javascript's `toFixed` rounds half up. The operator acts on the
@@ -9396,7 +9396,7 @@ console's estimate line (`annotator/ops.js:664`), so python followed the console
 `annotator/refusals.py` owns both branches (`rounded` at `:333`, `gb` at `:346`, `size_text` at `:351`, ties
 rounding up through `Decimal` and `ROUND_HALF_UP`), `annotator/app.js:26` owns the console rule as
 `window.ConsoleRules.sizeText`, `annotator/vod_import.py` imports it, and `annotator/ops.js:132` and
-`annotator/vision-stage.js:955` read the console home lazily. The measured boundary table holds 18 counts and
+`annotator/vision-stage.js:953` read the console home lazily. The measured boundary table holds 18 counts and
 both realms answer one text for every one of them (`0 MB` for 0, `1 MB` at 1_000_000, `2 MB` at 1_500_000,
 `12 MB` at 12_345_678, `1000 MB` at 999_999_999, `1.0 GB` at 1_000_000_000, `1.3 GB` at 1_250_000_000,
 `8.6 GB` at 8_606_363_471, `52.2 GB` at 52_196_323_328). `tests/test_console_round73_owners.py` holds 12
@@ -9478,7 +9478,7 @@ Round 72 answered 2276 cases and this round answers 2289. The thirteen additions
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -9656,7 +9656,7 @@ writer does not own.
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -9844,7 +9844,7 @@ Round 74 answered 2314 cases and this round answers 2329. The fifteen additions 
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -10019,7 +10019,7 @@ Round 75 answered 2329 cases and this round answers 2347. The eighteen additions
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -10105,7 +10105,7 @@ them. Repair: the owner `annotator/unified_server.py:176 SUGGESTED_ANCHOR_TIMES 
 anchors route default stopped being a home — it read `query.integer("t", 70)` and reads
 `query.integer("t", SUGGESTED_ANCHOR_TIMES[0])` at `:2241` now. The other sites were measured and classified:
 `annotator/app.js` (`loadAnchors` at `:494`, export at `:2435`) copies the published field into its state and
-holds no home; `annotator/vision-stage.js:1490` and `:1546` keep the literal 70 as a deliberate copy, because a
+holds no home; `annotator/vision-stage.js:1497` and `:1546` keep the literal 70 as a deliberate copy, because a
 browser page cannot read a python name, and the guard holds it to the owner; `src/pid_anchor_ui.py`'s
 `const SUG = [70, 200, 350]` is a deliberate second realm, and a case holds the two lists equal in value and in
 order; and the module-level `SUGGESTED` name of that file is a dead name no line reads, which the guard does not
@@ -10113,7 +10113,7 @@ hold and which stands open. `tests/test_console_anchor_times.py` grew from 9 to 
 published name, the stage row and its published list, the console's two paths, the realm equality, the route
 default, and one planted case per site. The guard computes the line numbers at run time, so writer BB's nine
 inserted lines above the route did not break it. `Note 1` of this round: the guard's blind-spot list cited
-`annotator/vision-stage.js:1500`, which holds the verdict draft, and it cites `:1490` now; the citation rule
+`annotator/vision-stage.js:1507`, which holds the verdict draft, and it cites `:1490` now; the citation rule
 could not see that, because it proves only that a cited line holds a letter or a digit and never compares it
 with the sentence beside the citation.
 
@@ -10147,7 +10147,7 @@ case, a run-time monkeypatch case and a planted second body), which took that mo
 | Bite | File | sha1 before → during → after | What failed |
 | --- | --- | --- | --- |
 | Writer BA, Strong 1 | `annotator/unified_server.py` | `3e4a391869bec4fc5cad4205c607f472ccfb2e36 → b0504feb3df93fd50cfffd1c07ee43159c46accc → 3e4a391869bec4fc5cad4205c607f472ccfb2e36` | `annotator/unified_server.py:2251 states the route default as a number: … it must read SUGGESTED_ANCHOR_TIMES[0]`, and the planted-route case refusing a tree that already holds the plant |
-| Lead, Strong 1 | `annotator/vision-stage.js` | `4a058cd87e0177a2d2c6fe47428c097bdc010b41 → 2ae57cabb64e8ea3be3f49c15adfa8e63ddf98fe → 4a058cd87e0177a2d2c6fe47428c097bdc010b41` | `'annotator/unified_server.py:172' not found in 'annotator/vision-stage.js:1490 loads second 71 and seeks second 100; the fallback path states one second'` |
+| Lead, Strong 1 | `annotator/vision-stage.js` | `4a058cd87e0177a2d2c6fe47428c097bdc010b41 → 2ae57cabb64e8ea3be3f49c15adfa8e63ddf98fe → 4a058cd87e0177a2d2c6fe47428c097bdc010b41` | `'annotator/unified_server.py:172' not found in 'annotator/vision-stage.js:1497 loads second 71 and seeks second 100; the fallback path states one second'` |
 | Writer BB, Worth 1 | `annotator/label.html` | `4deddd82ccbd9bc375d547cf9e1c56cdd8ddcbb2 → 3dc82eb37afcd2d2e4ba2bb12dee794e670442c7 → 4deddd82ccbd9bc375d547cf9e1c56cdd8ddcbb2` | `ball_labels.label: annotator/label.html states BALL_LABEL_MAX = 16; the owner holds 15` |
 | Lead, Worth 1 | `annotator/unified_server.py` | `3e4a391869bec4fc5cad4205c607f472ccfb2e36 → 317e4a399348141c64c7e18c1b4f322bf31e3b03 → 3e4a391869bec4fc5cad4205c607f472ccfb2e36` | `ball_labels.label: annotator/label.html states BALL_LABEL_MAX = 15; the owner holds 16` |
 
@@ -10179,7 +10179,7 @@ the brief of each later walk carries the closed list.
 | The first anchor second had more than one home and the guard measured none | Strong 1 of this walk | the route default reads the owner and the guard holds 16 sites |
 | The ball label domain stood three times | Worth 1 of this walk | the console and the service own their bounds and the parity table binds the migration |
 | Two readers of one cache file were one body | Worth 2 of this walk | `_json_object` owns the body and a case holds it |
-| The anchor guard's blind-spot list cited a line without the fact | Note 1 of this walk | the citation names `annotator/vision-stage.js:1490` |
+| The anchor guard's blind-spot list cited a line without the fact | Note 1 of this walk | the citation names `annotator/vision-stage.js:1497` |
 
 ### What stands open after this round
 
@@ -10202,7 +10202,7 @@ the brief of each later walk carries the closed list.
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:106-107` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2143` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
-| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
+| Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
@@ -10325,7 +10325,7 @@ The push is blocked. The local `main` holds 144 commits. `origin/main` stays at 
 
 Walk at HEAD `4f69eaf`, `git status --porcelain` empty at the start and the end, verdict `Strong candidate present - 3 Strong, 2 Worth, 0 Note` on line 2 of /tmp/dshsess/walk_round79.md. The walk reported it had not read the request-handler bodies of annotator/unified_server.py, the `_do_*` bodies of annotator/operations.py, 42 of the 43 docs/ files, the case bodies of the three console suites, viz/, src/reid/, src/sam3/ and annotator/fonts/.
 
-Strong 1 (closed by writer BA, commit `5d1cb27`): the stage-empty sentence stood twice and had drifted one word - `annotator/app.js:847` "Pick a moment on the scrub strip, or select a cue, then freeze it here." against `annotator/vision-stage.js:139` "Pick a moment on the strip, …". The owner is now the row `annotator/app.js:2183 stageEmpty: ['Pick a moment on the scrub strip, or select a cue, then freeze it here.', '在拖动条上选择时刻，或选择一条线索，然后在此冻结。']`, `annotator/app.js:847 const STAGE_EMPTY_COPY = () => SHARED_WORDS.stageEmpty[0];` reads it, the two paint sites at `annotator/app.js:854` and `:893` call the constant, and the adapter reads the owner through `sharedWord` at `annotator/vision-stage.js:300` and `say` at `:1778`. The settled wording is the page's "scrub strip"; the adapter's drift counts 0.
+Strong 1 (closed by writer BA, commit `5d1cb27`): the stage-empty sentence stood twice and had drifted one word - `annotator/app.js:847` "Pick a moment on the scrub strip, or select a cue, then freeze it here." against `annotator/vision-stage.js:138` "Pick a moment on the strip, …". The owner is now the row `annotator/app.js:2183 stageEmpty: ['Pick a moment on the scrub strip, or select a cue, then freeze it here.', '在拖动条上选择时刻，或选择一条线索，然后在此冻结。']`, `annotator/app.js:847 const STAGE_EMPTY_COPY = () => SHARED_WORDS.stageEmpty[0];` reads it, the two paint sites at `annotator/app.js:854` and `:893` call the constant, and the adapter reads the owner through `sharedWord` at `annotator/vision-stage.js:298` and `say` at `:1778`. The settled wording is the page's "scrub strip"; the adapter's drift counts 0.
 
 Strong 2 (closed by writer BA, same commit): the one words table of `annotator/ops.js` answered two labels twice - `annotator/ops.js:14 event:['Event name','赛事名称']` against `:51 bfNightName:['Event name','赛事名']`, and `:67 bfUnmark:['Remove','删除']` against `remove:['Remove','移除']` - while the rule at `annotator/ops.js:16` says one word per concept and the mockup `docs/console-redesign.md:247` and `:664` spells 赛事名. `:14` now reads `event:['Event name','赛事名']` and `:72` reads `bfUnmark:['Remove','移除']`, because 删除 is this console's Delete word (deletePlayer, deleteEvent, faceForget) and its Remove word is 移除. Measurement: `grep -o -E "(event|bfNightName|remove|bfUnmark):\['[^']*','[^']*'\]" annotator/ops.js` shows both Event name rows read 赛事名 and both Remove rows read 移除, and the two old spellings count 0.
 
@@ -10594,8 +10594,8 @@ gave `e1a6ccb670db6eba` green.
 **Strong 2 - the unknown-label pair.**  Ground: the service owns
 `annotator/unified_server.py:138-139` (`BALL_LABEL_UNKNOWN_WIRE = -1`,
 `BALL_LABEL_UNKNOWN_STORED = 'u'`), and `annotator/app.js:1373` held a copy that the guard held
-equal.  Three served readers spelled the pair again: `annotator/vision-stage.js:347`,
-`annotator/vision-stage.js:1334` (`data-vs-value="-1"`) and `annotator/label.html:61`, `:101`.  The
+equal.  Three served readers spelled the pair again: `annotator/vision-stage.js:345`,
+`annotator/vision-stage.js:1341` (`data-vs-value="-1"`) and `annotator/label.html:61`, `:101`.  The
 guard said in its own text at `tests/test_console_service_agreement.py:53-56` that it did not hold
 them.  The label button posts the number it holds, so a moved wire value gives the operator a
 refusal where the label must be unknown.
@@ -10603,7 +10603,7 @@ Repair (writer WE, commit `4e1d7cb`): the guard reads both files and builds each
 from the owner values.  The module rose from 6 cases to 12.  The writer bit
 `annotator/vision-stage.js` (`5482db0e32a0 -> 1f4e95c5033e -> 5482db0e32a0`) with four red cases.
 The Lead bit the owner: `BALL_LABEL_UNKNOWN_WIRE = -9` gave four red cases, one of them with the
-line `vision-stage.js:347`; the restore gave `221c8c16fc6e4d36` green.
+line `vision-stage.js:345`; the restore gave `221c8c16fc6e4d36` green.
 
 **Worth 1 - the dead anchor list.**  Ground: `src/pid_anchor_ui.py:40` held
 `SUGGESTED = [70, 200, 350]`, which no line read.  The live copy stood at `:72` in the served page,
@@ -10616,7 +10616,7 @@ case answered `Lists differ: [] != ['src/pid_anchor_ui.py:190 holds the module-l
 SUGGESTED, which no line reads...']`.
 
 **Note 1 - the stale citation in the guard itself.**  `tests/test_console_service_agreement.py:53`
-cited `annotator/vision-stage.js:338`, but line 338 is `const quad = s?.cloth?.quad;` and the pair
+cited `annotator/vision-stage.js:336`, but line 338 is `const quad = s?.cloth?.quad;` and the pair
 stands at 347.  The citation guard cannot see this, because line 338 holds letters and digits.  The
 writer of Strong 2 wrote the true number in the same change.
 
@@ -11776,12 +11776,12 @@ The console phrases them in Chinese, and `annotator/app.js` holds the anchored p
 `const liveRefusals = [` for a sentence that carries no code.  Drift is not a risk but a fact: the
 sentence `Live detectors must be a non-empty list of table, person, ball, balls` is written by
 `annotator/live_processing.py:380` and no pattern claimed it, so the Chinese console stayed English.
-The nearest case `tests/test_app_timeline.js:3541-3559` carried its own ten sentences and compared the
+The nearest case `tests/test_app_timeline.js:3580-3598` carried its own ten sentences and compared the
 count only, so it never read the service file.
 
 Writer WA (three files) closed the row.  `annotator/app.js` gained one row at `:2134` with an explicit
 alternation (`(?:table|person|ball|balls)`) so a wrapped or unrelated sentence stays English; the
-console suite gained the eleventh sentence at `tests/test_app_timeline.js:3550`, and its positional
+console suite gained the eleventh sentence at `tests/test_app_timeline.js:3589`, and its positional
 `refusals[7]` and `refusals[8]` reads became `refusals.indexOf(...)` at `:3562-3563`, because an
 inserted sentence makes a position name the wrong string.  The new guard `tests/test_live_refusal_owner.py`
 parses every raise of the owner, rebuilds the sentence each one sends, and asks the shipped patterns
@@ -11854,7 +11854,7 @@ already holds it at `docs/console-redesign.md:11112`.
 ### Worth row and Note
 
 `annotator/app.js` holds the pair `liveErrorCodes` (sentence to code) and its keys, and
-`tests/test_app_timeline.js:3517` already holds the two equal, so the row needs no work.  The Note row of
+`tests/test_app_timeline.js:3556` already holds the two equal, so the row needs no work.  The Note row of
 the walk, the two reachable sentences at `annotator/live_processing.py:264` and `:655`, is judged inside
 the new guard: each stands in `UNMAPPED` with the fact that proves it.
 
@@ -12124,7 +12124,7 @@ constants (length at least six) and the numbers (absolute value at least two) un
 
 `RallyProcessor.status` built the cadence of every stage of the live snapshot from the literal
 `every_n_frames`, and the console page read that same key from the stage dict
-(`annotator/vision-stage.js:938`, `:939`).  No case read both halves: the python case
+(`annotator/vision-stage.js:936`, `:939`).  No case read both halves: the python case
 (`tests/test_pipeline_stages.py:192`) set a python attribute only, and the page case
 (`tests/test_app_timeline.js:2512`) built its own fixture with the key inside.  A rename of the
 producer key would have printed `every 1 frame` for every stage, and no case would have failed.
@@ -12133,7 +12133,7 @@ Writer W1 made one home.  `annotator/live_processing.py:43` now holds
 `STAGE_CADENCE_KEY = 'every_n_frames'` under a `#:` comment at `:40-42`; the producer field at
 `annotator/live_processing.py:769` reads
 `**{STAGE_CADENCE_KEY: getattr(stage, STAGE_CADENCE_KEY, 1) or 1},`; both read sites of the page
-(`annotator/vision-stage.js:938`, `:939`) read the key in brackets, so the wire word stands in the
+(`annotator/vision-stage.js:936`, `:939`) read the key in brackets, so the wire word stands in the
 open.  The wire word itself did not change.
 
 | file | sha1 before | sha1 after | lines |
@@ -12151,7 +12151,7 @@ sites of `liveStageLine` to hold the owner value.  Writer module answers: the gu
 `114 passed, 0 failed`.  A probe of one `CallableStage` with cadence three showed the stage dict of a
 started snapshot carrying `"every_n_frames": 3`.
 
-Bites.  Writer W1 changed `annotator/vision-stage.js:938` to read `stage['frame_cadence']`
+Bites.  Writer W1 changed `annotator/vision-stage.js:936` to read `stage['frame_cadence']`
 (`9b133d2b` -> `068a9b2149a2edda81d9fef1fb35bb03911a836b` -> `9b133d2b`) and the guard answered
 `FAIL` with the two read sites of `liveStageLine` in its report; it then changed the owner constant
 to `'frame_cadence'` (`506c03ef` -> `046c8bdeb0307aa12d80624af59a06686b7bf9ae` -> `506c03ef`) and the
@@ -12392,7 +12392,7 @@ each one.  The two halves meet on one served page only: `annotator/ops.html` loa
 
 ### Strong 2 - the token `vs-chiprow`
 
-`annotator/ops.js:1240` and `annotator/vision-stage.js:652`, `:1071`, `:1076` wrote the token, and
+`annotator/ops.js:1240` and `annotator/vision-stage.js:650`, `:1071`, `:1076` wrote the token, and
 `annotator/ops.css:353`, `:549`, `:1286` held its rules.  `grep -rn 'vs-chiprow' tests/` answered
 nothing.  The one class inventory of the suite reads the `.bm.` rules of `annotator/board.css`
 (`tests/test_board.js:458`).
@@ -12426,7 +12426,7 @@ The module answers `Ran 7 tests in 0.088s` and `OK`.  Writer W1 ran five bites. 
 `annotator/app.js:1847` `pop-note` -> `pop-note-x`: `9684ba1f` -> `38f748be` -> `9684ba1f`,
 `FAILED (failures=2)`, naming the emitter and the neighbour rule `annotator/app.css:147`.  (2)
 `annotator/app.css:145` `.pop-row` -> `.pop-row-x`: `8d4f793c` -> `26e71a77` -> `8d4f793c`,
-`failures=2`, naming the rule and the emitter `annotator/app.js:1846`.  (3) `annotator/vision-stage.js:1569`
+`failures=2`, naming the rule and the emitter `annotator/app.js:1846`.  (3) `annotator/vision-stage.js:1576`
 `'close-popover'` -> `'close-popover-x'`: `9b133d2b` -> `6f11f672` -> `9b133d2b`, `failures=1`,
 naming the emitter and the key line.  (4) `annotator/ops.js:1240` `vs-chiprow` -> `vs-chiprow-x`:
 `491482e9` -> `5e3add02` -> `491482e9`, `failures=1` with `4 != 3`.  (5) `annotator/ops.css:1204`
@@ -12510,7 +12510,7 @@ directions are live.  The guard reads the later migration too, because
 ### Worth and Note rows
 
 Worth 1: `vs-loading` stays, because one case reads both halves (`tests/test_ops.js:336`, `:490`,
-`:492` over the emitters `annotator/ops.js:1249`, `annotator/vision-stage.js:1776` and the rule
+`:492` over the emitters `annotator/ops.js:1249`, `annotator/vision-stage.js:1783` and the rule
 `annotator/ops.css:678`).  Worth 2: `pop-grid` is held on the stylesheet side only
 (`tests/test_app_timeline.js:1016`).  Worth 3: `#review-root` is held by two source contracts
 (`tests/test_app_timeline.js:1008`, `:3068`) while the copy at `annotator/app.css:4` is named by
@@ -12522,17 +12522,17 @@ tokens are styled by a shipped stylesheet and 109 of them are named by no test. 
 `design/corner-pocket/` holds mock copies of console tokens, but no page serves them.  The twelve dead
 names are `bf-form`, `bf-estimate`, `bf-marked`, `bf-linked-count`, `live-card`, `maint-status`
 (`annotator/ops.js:657`, `:664`, `:692`, `:709`, `:1238`, `:1300`), `fv-gate`, `vs-cropcard`,
-`vs-cropgrid`, `vs-frame-tools`, `vs-layers-note`, `vs-source-actions` (`annotator/vision-stage.js:711`,
+`vs-cropgrid`, `vs-frame-tools`, `vs-layers-note`, `vs-source-actions` (`annotator/vision-stage.js:709`,
 `:868`, `:1083`, `:1147`, `:1320`).
 
 ### Citations
 
 This round moved no line of a shipped file: every writer added one new test module, and every bite was
 restored with `cp` and proved by `sha1sum`.  One citation debt stood inside a delivery, and the suite
-found it: `tests/test_js_class_hooks_owner.py:12` named `annotator/vision-stage.js:1570`, the bare
+found it: `tests/test_js_class_hooks_owner.py:12` named `annotator/vision-stage.js:1577`, the bare
 closing brace `};` of the dispatcher table, and `tests/test_citation_lines.py:227`
 (`test_no_citation_names_a_line_without_text`) refused it in a writer's full-suite run.  The Lead
-repaired the citation to `annotator/vision-stage.js:1569`, the last key of the table, in commit
+repaired the citation to `annotator/vision-stage.js:1576`, the last key of the table, in commit
 `2e87a10`; the module then answered `Ran 10 tests in 7.648s` and `OK`, and the guard still answered
 `Ran 7 tests` and `OK`.
 

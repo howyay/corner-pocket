@@ -8,14 +8,14 @@ of ``annotator/app.js``.  The block at ``annotator/app.js:1844-1847`` writes the
 popover markup, and the element at ``annotator/app.js:858`` carries the host hook.
 `annotator/app.css` holds the rules of those hooks.  The two action names of the
 markup are keys of the dispatcher table of ``annotator/vision-stage.js``, which
-starts at ``annotator/vision-stage.js:1456`` and ends with the key at
-``annotator/vision-stage.js:1569``.  The pair meets on one page only:
+starts at ``annotator/vision-stage.js:1463`` and ends with the key at
+``annotator/vision-stage.js:1576``.  The pair meets on one page only:
 ``annotator/ops.html`` loads ``/app.js``, ``/vision-stage.js`` and ``/ops.js``.
 `annotator/app.html` is the review template, and no page serves it.
 
 **Finding B, `vs-chiprow`.**  Four emitter sites write the token:
-``annotator/ops.js:1240`` and ``annotator/vision-stage.js:652``, ``:1071``,
-``:1076``.  Three rules of `annotator/ops.css` hold it: ``annotator/ops.css:353``,
+``annotator/ops.js:1240`` and ``annotator/vision-stage.js:650``, ``:1069``,
+``:1074``.  Three rules of `annotator/ops.css` hold it: ``annotator/ops.css:353``,
 ``:549``, ``:1286``.
 
 **Finding C, the VOD chip markup.**  Four lines of `annotator/ops.js` build the
@@ -57,9 +57,9 @@ STAGE_TABLE_HEAD = 'const table = {'
 
 #: The four emitter sites of the `vs-chiprow` token, and their stylesheet.
 CHIPROW_EMITTER_SITES = (('annotator/ops.js', 1240),
-                         ('annotator/vision-stage.js', 652),
-                         ('annotator/vision-stage.js', 1071),
-                         ('annotator/vision-stage.js', 1076))
+                         ('annotator/vision-stage.js', 650),
+                         ('annotator/vision-stage.js', 1069),
+                         ('annotator/vision-stage.js', 1074))
 CHIPROW_TOKEN = 'vs-chiprow'
 OPS_CSS_SITE = 'annotator/ops.css'
 
@@ -410,7 +410,7 @@ class JsClassHooksOwnerTest(unittest.TestCase):
 
         The dispatcher table of `annotator/vision-stage.js` starts at the line
         `const table = {` and ends at the line that closes the block.  The page
-        listener at `annotator/vision-stage.js:1832` sends a click to this table.
+        listener at `annotator/vision-stage.js:1839` sends a click to this table.
         """
         keys = dispatcher_keys(STAGE_SCRIPT_SITE, STAGE_TABLE_HEAD)
         names = popover_actions()

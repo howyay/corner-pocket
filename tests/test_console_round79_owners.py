@@ -3,7 +3,7 @@
 Three rows landed in this round, and this module holds the guard for each one.
 
 Strong 1, the stage-empty sentence.  The sentence stood twice in the tree: annotator/app.js:847 held
-the page's copy and annotator/vision-stage.js:139 held a second copy in the adapter's own table, whose
+the page's copy and annotator/vision-stage.js:138 held a second copy in the adapter's own table, whose
 English had drifted ('on the scrub strip' against 'on the strip').  The decision is that
 annotator/app.js owns the sentence, in the 'stageEmpty' row of SHARED_WORDS (annotator/app.js:2183);
 the constant reads that row, both paint sites (annotator/app.js:854 and annotator/app.js:893) call the
@@ -23,7 +23,7 @@ words table (annotator/ops.js, row 'visionLoading') and both of the adapter's ta
 (annotator/vision-stage.js).  The decision is Strong 1's decision again: the row lives in SHARED_WORDS
 (annotator/app.js:2184), and the two screens read it.  The ops console reads it through sharedWord()
 and say() at annotator/ops.js:893 and annotator/ops.js:1249; the adapter reads it through say() at
-annotator/vision-stage.js:1776.  The ops console keeps t() on its own table, because several slot
+annotator/vision-stage.js:1783.  The ops console keeps t() on its own table, because several slot
 names stand in both tables with different words: this console's 'live' row reads 'On table' while
 SHARED_WORDS answers 'live', so an owner-first t() would repaint the match status badge.
 

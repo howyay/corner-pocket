@@ -56,7 +56,7 @@ What this case does not see
   ``tests/test_app_timeline.js``, which is the case that holds the wire value and the echo.
 * It holds the readers to the pattern of today.  A later round that moves a comparison or a
   button attribute must move the pattern here in the same change.  The three sites are
-  ``annotator/vision-stage.js:347`` (``labelText``), ``annotator/vision-stage.js:1334`` (the
+  ``annotator/vision-stage.js:345`` (``labelText``), ``annotator/vision-stage.js:1341`` (the
   number the unknown button posts) and ``annotator/label.html:61`` (the state of a crop).
   The page compares the stored word a second time at line 101 of the same file, and this
   module holds that line by the same rule.

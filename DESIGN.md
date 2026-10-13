@@ -381,7 +381,7 @@ The shapes are nearly square. `border-radius: 2px` appears 22 times: buttons, in
 - **Status badge** (`.badge` plus a status class): 10px mono uppercase, .16em, 1px border, `--panel2`. `live` and `delayed` are amber, `complete` is green, `scheduled` is blue. The connection badge reads `LOCAL · SAVED · <revision>` (`本地 · 已保存 · <revision>`).
 - **Vision badge** (`.vs-badge`): Shots / Pots type, brass-hi on a `--btn-line` border. Pots are green.
 - **Tier badge:** `tier-geometry` is solid green; `tier-window` is a *dashed* brass border. It appears only when the gate recorded a tier, so an unlabelled event never reads as verified.
-- **Provenance footnote** (`.vs-prov`): *not* a badge. 10px mono `ink-faint`, green when a person has confirmed it. The copy is literal: "machine-produced candidate; no human has confirmed it" / "机器产出，未经人工确认".
+- **Provenance footnote** (`.vs-prov`): *not* a badge. 10px mono `ink-faint`, green when a person has confirmed it. The line reads the flags `machine_produced` and `human_confirmed` (round 104): "suggested by the computer · not yet confirmed by a person" / "电脑识别的候选 · 尚未经人工确认", or "confirmed by a person" / "已由人工确认". The stored sentence stays in the title.
 - **Item tag** (`.vs-tag`): right-aligned 10px mono. `done` is green, and `guest` is mixed-case.
 
 ### Cards / Containers
