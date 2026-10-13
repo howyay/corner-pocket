@@ -93,6 +93,19 @@ MIGRATIONS = ROOT / 'db' / 'migrations'
 #: here.
 OWNER = 'annotator/operations.py'
 
+#: The migration that holds the note length rule of the design document.  The rule sits
+#: in the second migration, so this reader names its file and does not read every one.
+NOTE_SQL_FILE = '0002_user_data.sql'
+#: The table and column of the note of one human verdict.  The document and the migration
+#: both hold one ceiling rule for it, and the owner holds its limit as a constant.
+NOTE_COLUMN = 'event_verdicts.note'
+#: The count of ANNOTATION_NOTE_MAX sites of annotator/unified_server.py.  One site
+#: declares the constant, and one route compares a note against it (measured, round 98).
+NOTE_OWNER_SITES = 2
+#: The comparison of one note against the constant, the read site of the owner.  The
+#: declaration line alone would not hold the document to any rule of the server.
+NOTE_GUARD = re.compile(r'\bnote\b[^\n]*[<>] ANNOTATION_NOTE_MAX')
+
 #: The syntax tree of one module, parsed once per run.
 _TREES: dict = {}
 
@@ -148,6 +161,14 @@ CHECK_CARDINALITY = re.compile(r'CHECK \([^)]*?cardinality\((\w+)\) = (\d+)\)')
 CHECK_ONE_NUMBER_IN = re.compile(r'CHECK \((\w+) IN \((\d+)\)\)')
 #: One ``CHECK`` line of the design document, and the column of its rule.
 DOC_CHECK = re.compile(r'^\s*(\w+)\s+\w.*?(CHECK \(.*BETWEEN.*\))', re.MULTILINE)
+#: One ``CHECK (length(note) <= number)`` rule of the design document.  ``DOC_CHECK``
+#: needs the word ``BETWEEN``, and this rule holds none, so the document copy of the
+#: note bound was invisible to every case of this module (measured, round 98).
+DOC_CEILING = re.compile(r'CHECK \(length\((\w+)\) <= (\d+)\)')
+#: The prose form of one ceiling rule of the design document: ``note <= 10 000 chars``.
+#: The document states the note bound twice, as this line and as the CHECK rule above,
+#: so the reader of the note bound reads both sites.
+DOC_TEXT_CEILING = re.compile(r'note\s*\u2264\s*([0-9\u00a0 ,]+?)\s*chars')
 #: The word map of one language of annotator/board.js: the object body after ``en: {``.
 #: The body stops at the closing bracket of the map.
 #: The map ends at the first closing bracket at the head of a line, which is the bracket
@@ -208,6 +229,24 @@ def tables_in(sql_text):
     for index, mark in enumerate(marks):
         end = marks[index + 1].start() if index + 1 < len(marks) else len(sql_text)
         yield mark.group(1), sql_text[mark.start():end]
+
+
+def tables_with_offset(sql_text):
+    """Yield ``(name, block, offset)`` for each ``CREATE TABLE`` block of one text.
+
+    The offset is the position of the first letter of the block.  A reader that reports
+    a line number of a block needs it: a position inside the block is not a position of
+    the whole text, and the count of newlines before the block differs between the two.
+    """
+    marks = list(TABLE.finditer(sql_text))
+    for index, mark in enumerate(marks):
+        end = marks[index + 1].start() if index + 1 < len(marks) else len(sql_text)
+        yield mark.group(1), sql_text[mark.start():end], mark.start()
+
+
+def line_of(text, position):
+    """The one-based number of the line that holds one position of one text."""
+    return text.count('\n', 0, position) + 1
 
 
 def checks_in(block):
@@ -547,6 +586,91 @@ def design_doc_problems(sql_text):
 def normalised(rule):
     """One rule text with every run of spaces reduced to one space."""
     return SPACES.sub(' ', rule).strip()
+
+
+def short_line(text, position):
+    """The text of the line that holds one position, with its outer spaces removed.
+
+    A case uses this text to prove that a planted document line stayed in the document.
+    """
+    start = text.rfind('\n', 0, position) + 1
+    end = text.find('\n', position)
+    return (text[start:] if end < 0 else text[start:end]).strip()
+
+
+def note_length_problems(doc_text=None, sql_text=None):
+    """The disagreements of the note bound of the design document, one line each.
+
+    Round 98 added this reader.  The document states the note length twice: as the
+    prose line ``note <= 10 000 chars`` and as the CHECK rule of its copy of the DDL.
+    ``DOC_CHECK`` reads the second site only, and it needs the word ``BETWEEN``, so
+    the document side of the note bound was invisible.  This reader holds the two
+    document sites, the ceiling rule of db/migrations/0002_user_data.sql and the
+    owner constant ANNOTATION_NOTE_MAX together, and names each site as
+    ``path:line`` with both numbers.
+
+    The two texts replace the files of the checkout, so a case can measure a planted
+    drift without a write to the repository.  This reader touches no other rule of the
+    document, so the known drift of docs/postgres-design.md:319 stays out of it.
+    """
+    where = 'docs/postgres-design.md'
+    doc_text = source(where) if doc_text is None else doc_text
+    sql_text = source(f'db/migrations/{NOTE_SQL_FILE}') if sql_text is None else sql_text
+    problems = []
+    found = [(int(match.group(2)), line_of(sql_text, offset + match.start()))
+             for table, block, offset in tables_with_offset(sql_text)
+             for match in DOC_CEILING.finditer(block)
+             if f'{table}.{match.group(1)}' == NOTE_COLUMN]
+    if not found:
+        return [f'{where}: db/migrations/{NOTE_SQL_FILE} holds no ceiling rule for '
+                f'{NOTE_COLUMN}; this reader holds the document to that rule']
+    limit, sql_line = found[0]
+    blocks = [(doc_text, offset)
+              for name, block, offset in tables_with_offset(doc_text)
+              if name == NOTE_COLUMN.split('.')[0]]
+    if not blocks:
+        problems.append(f'{where}: the document holds no block that starts {NOTE_COLUMN}')
+    else:
+        text, offset = blocks[0]
+        rules = [(line_of(text, offset + match.start()), match)
+                 for match in DOC_CEILING.finditer(text[offset:])]
+        if len(rules) != 1:
+            problems.append(f'{where}: the {NOTE_COLUMN} block holds {len(rules)} CHECK '
+                            f'ceiling rules for the note column at the lines '
+                            f'{[line for line, _ in rules]}; this reader holds one')
+        else:
+            line, match = rules[0]
+            if int(match.group(2)) != limit:
+                problems.append(f'{where}:{line} states the note length <= '
+                                f'{int(match.group(2))} and '
+                                f'db/migrations/{NOTE_SQL_FILE}:{sql_line} states '
+                                f'<= {limit}')
+            if ANNOTATION_NOTE_MAX != limit:
+                problems.append(f'{where}:{line} states the note length <= {limit} and '
+                                f'annotator/unified_server.py holds '
+                                f'ANNOTATION_NOTE_MAX = {ANNOTATION_NOTE_MAX}')
+    claims = [(line_of(doc_text, match.start()), match)
+              for match in DOC_TEXT_CEILING.finditer(doc_text)]
+    if len(claims) != 1:
+        problems.append(f'{where}: the document states the note length in prose at '
+                        f'{len(claims)} sites {[line for line, _ in claims]}; this '
+                        f'reader holds the one site to the migration')
+    else:
+        line, match = claims[0]
+        stated = int(re.sub(r'[^0-9]', '', match.group(1)))
+        if stated != limit:
+            problems.append(f'{where}:{line} states the note of at most {stated} '
+                            f'characters and db/migrations/{NOTE_SQL_FILE}:{sql_line} '
+                            f'states <= {limit}')
+    owner = source('annotator/unified_server.py')
+    reads = owner.count('ANNOTATION_NOTE_MAX')
+    guards = NOTE_GUARD.findall(owner)
+    if reads != NOTE_OWNER_SITES or len(guards) != 1:
+        problems.append(f'annotator/unified_server.py reads ANNOTATION_NOTE_MAX at '
+                        f'{reads} sites and compares a note against it at '
+                        f'{len(guards)}; the contract of this reader holds '
+                        f'{NOTE_OWNER_SITES} sites and one comparison')
+    return problems
 
 
 def sql_domain_values(sql_text):
@@ -1246,6 +1370,51 @@ class SqlDomainParityTests(unittest.TestCase):
         self.assertEqual([], problems,
                          'the design document and the migration disagree on a CHECK ... '
                          'BETWEEN rule:\n' + '\n'.join(problems))
+
+    def test_the_design_document_note_length_holds_the_migration_and_the_owner(self):
+        """The document must state the same note length as its two owners.
+
+        ``docs/postgres-design.md`` states the note length of event_verdicts twice: as
+        the prose line ``note <= 10 000 chars`` and as the CHECK rule of its copy of the
+        DDL.  ``DOC_CHECK`` reads the rule site only, and it needs the word ``BETWEEN``,
+        so this document claim was invisible to every case of this module, while the
+        migration db/migrations/0002_user_data.sql:167 and the constant
+        ANNOTATION_NOTE_MAX of annotator/unified_server.py:138 both state 10000.
+        This case holds the two document sites, the migration rule and the constant
+        together, and each report names the document line with both numbers.
+        """
+        sql = source('db/migrations/0002_user_data.sql')
+        problems = note_length_problems(sql_text=sql)
+        self.assertEqual([], problems,
+                         'the design document, the migration and annotator/'
+                         'unified_server.py disagree on the note length of '
+                         'event_verdicts:\n' + '\n'.join(problems))
+
+    def test_a_planted_note_length_of_the_document_is_reported_with_its_line(self):
+        """A wrong note length of the document must fail, and the report names the line.
+
+        The case replaces the number of the prose statement in memory, so no write
+        touches the repository.  The document states the note length once, so the plant
+        moves one site and the reader must report that line with both numbers.
+        """
+        doc = source('docs/postgres-design.md')
+        match = DOC_TEXT_CEILING.search(doc)
+        self.assertIsNotNone(match, 'the document holds no note length statement; this '
+                                    'case cannot plant one')
+        planted = 12345
+        new_doc = doc.replace(match.group(0), f'note \u2264 {planted} chars')
+        self.assertNotEqual(doc, new_doc, 'the plant did not change the document text')
+        line = line_of(doc, match.start())
+        planted_text = f'note \u2264 {planted} chars'
+        self.assertIn(planted_text, short_line(new_doc, new_doc.index(planted_text)),
+                      'the planted statement is not the text the reader reads')
+        sql = source('db/migrations/0002_user_data.sql')
+        problems = note_length_problems(doc_text=new_doc, sql_text=sql)
+        self.assertTrue(
+            any(f'docs/postgres-design.md:{line} states the note of at most {planted} '
+                f'characters' in problem for problem in problems),
+            f'the planted note length {planted} at docs/postgres-design.md:{line} is not '
+            'reported; the reader answered ' + repr(problems))
 
     def test_the_board_word_maps_read_the_tournament_statuses(self):
         """Both word maps of annotator/board.js must hold the three words, in order.
