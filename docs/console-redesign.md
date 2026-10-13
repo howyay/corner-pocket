@@ -11900,3 +11900,80 @@ sentences answer the code table`, `112f6cf test: the live refusal sentences answ
 The full python suite answers `Ran 2686 tests in 564.524s` and `OK (skipped=53)`.  The node suites answer
 `232 pass`, `23 pass` and `114 passed, 0 failed`.  The count moved 2670 -> 2686: four cases from writer WC,
 three from writer WB and nine from writer WA.
+
+## Round 100 - the vod id sentence, the legacy routes and the open five
+
+Source walk: `/tmp/dshsess/walk_round100.md` (236 lines, 61 files read) at HEAD `1a7ffd0`.  The
+verdict line is `Strong candidate present - 2 Strong, 2 Worth, 2 Note`.  The Lead read every ground
+again.
+
+### Strong 1 - one refusal sentence, three homes and a guard that missed the raiser
+
+The sentence that asks for a Twitch VOD id stood in three live places: the raiser
+`annotator/twitch_vod_source.py:128` and `:134`, the field demand `annotator/operations.py:1534`
+and `:1537`, and the stable code row `annotator/refusals.py:281`.  The owner guard
+`tests/test_refusal_identity.py` listed its raisers in `RAISING_MODULES`, and that tuple held
+`operations.py`, `unified_server.py` and `store_pg.py` only.  A second wording in the raiser alone
+made `identity_fields()` answer `{}`, and `refusal_body()` then dropped the code and the Chinese
+sentence in silence, while every case stayed green.
+
+Writer WD widened the guard.  It reads the sentences of the raiser by text, holds each one to a row
+of `annotator/refusals.py`, to a judged list with its proof, or to the reported list, and it names
+the file and the line of an offender.  `tests/test_refusal_identity.py` moved 16 cases to 20.  Its
+bite wrote `Give a Twitch VOD id or a video URL` at `annotator/twitch_vod_source.py:128`:
+`8d95e6b89b3a8fa8f75366a545ef1e6957785d2c -> 7e311d38b68f21d816e581e6f2b54612f67eea4d -> 8d95e6b8...`,
+red `the raised sentences with no row in annotator/refusals.py changed from 0 to 1`.  The old guard
+stayed green under that bite.  The Lead bit the table row at `annotator/refusals.py:281` instead:
+`2bdd327782e17fdbc391733a7af2f98187c277ea -> 2d7b1df69cda62d76f4f5533999bba7aad0f542d -> 2bdd3277...`,
+red `FAILED (failures=6)` with `the English sentences of the table changed`.
+
+Ten further sentences of the raiser carry a judged entry with the fact that proves the judgement.
+Five sentences reach the operator as English only, with no code and no Chinese sentence.  They are
+`annotator/twitch_vod_source.py:209 Twitch has no such video`, `:259 Twitch has no such channel`,
+`:232` and `:280 Twitch API request failed; check network and TLS connectivity`, `:373 Twitch VOD
+playlist request failed; check network and TLS connectivity` and `:385 Twitch VOD media playlist
+request failed; check network and TLS connectivity`.  The guard pins them in `UNROWN_SENTENCES` with
+the count 5, so a sixth sentence fails.  A row for any of the five changes what the console can say,
+so the Lead left that work to a later round and recorded it as an open row.
+
+### Strong 2 - the legacy page routes and the old dispatch
+
+The review pages spell their routes by hand: `annotator/index.html:62`, `:63`, `:64` and `:123`, and
+`annotator/label.html:67`, `:106`, `:126` and `:130`.  The old server compares the same routes in
+`annotator/server.py`.  No case under `tests/` read those literals, and the only route regex,
+`tests/test_console_service_agreement.py:132`, reads `label.html` alone.
+
+Writer WE added `tests/test_legacy_routes_owner.py` (9 cases).  It holds 10 dispatch rules against 8
+page routes, reports the routes that the dispatch serves with no page call (the aliases
+`annotator/server.py:80 /label` and `:107 /label.html`), and reads the refuse guard at
+`annotator/server.py:136` as serving `/api/annotate`, so the page route at
+`annotator/index.html:123` is not a false red.  Its bite renamed the route at
+`annotator/index.html:62`:
+`789389b269b19966d129a78ea13ee6eb49c473f7 -> 98ec0a1bb54f9a4d884d8a64237ead0469331549 -> 789389b2...`,
+red `annotator/index.html:62 /api/eventx has no dispatch rule in annotator/server.py`.  The Lead bit
+the other end, the dispatch at `annotator/server.py:59`:
+`4c7cd047a5d805f7512e77c0f97182dc09262441 -> 80798003bbc8018d090774a4e13e20452ffc8624 -> 4c7cd047...`,
+red `FAILED (failures=3)`.
+
+### Worth and Note rows
+
+The `maxlength` pair of `tests/test_guest_name.py` and the 14 day retention pair of
+`tests/test_backup_retention.py` already hold their copies equal, so the Lead recorded them and
+opened no work.  The prose of `scripts/pool-test.sh` that names four suites, and the two score
+tuples of the `tools/playfield_*` pair, belong to different artefacts; the Lead recorded them as
+Note rows and left them.
+
+### Citations
+
+The guard insert moved `RAISED_SENTENCES_WITHOUT_A_ROW` from line 31 to line 58 of
+`tests/test_refusal_identity.py`; the Lead repaired `docs/console-redesign.md:3816`, and no other
+citation named a moved line.
+
+### Lessons
+
+1. A guard that lists its own raisers can miss the raiser of the sentence it guards.  Read the list,
+   not only the case body.
+2. A bite on a table row and a bite on a raiser prove two different halves of one guard.  Run both.
+3. A pinned list of known sentences is a debt record only when a count guards its length.
+4. Print the value before a bite.  The restore is proven only when the before and the after value
+   are the same number.
