@@ -3813,7 +3813,7 @@ number was pinned in the test module as `RAISED_SENTENCES_WITHOUT_A_ROW = 121`.
 not change, so the 48 rows that moved out of the console in `bc78341` keep the digest
 `194fce1ca9d59243f67f9994dc1054ea14dbec8e`; the new rows sit below those 48 in the order of the
 module that raises them. The table now holds 169 rows, all 169 codes are unique, no two rows share a
-Chinese sentence, and none is empty. `tests/test_refusal_identity.py:31 RAISED_SENTENCES_WITHOUT_A_ROW = 0`
+Chinese sentence, and none is empty. `tests/test_refusal_identity.py:58 RAISED_SENTENCES_WITHOUT_A_ROW = 0`
 states the goal, `:107 test_the_table_names_every_raised_sentence` proves that the table and the 169
 sentences of the two modules are the same set and names both differences, and two new digests
 (`:61 TABLE_SENTENCES_DIGEST = 'a8df47024779ea26eb90809da710e3dbe51c4733'`, plus its Chinese twin)
