@@ -11895,3 +11895,8 @@ sentences answer the code table`, `112f6cf test: the live refusal sentences answ
 - The six stale sections of `docs/vision-audit.md`, the third envelope copy at
   `tests/load_public_board.py:474`, the committed font subsets that miss three characters, and the 582
   document citations that name a blank line all stay open from the earlier rounds.
+### Suite numbers of round 99
+
+The full python suite answers `Ran 2686 tests in 564.524s` and `OK (skipped=53)`.  The node suites answer
+`232 pass`, `23 pass` and `114 passed, 0 failed`.  The count moved 2670 -> 2686: four cases from writer WC,
+three from writer WB and nine from writer WA.
