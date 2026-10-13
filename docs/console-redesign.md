@@ -3461,7 +3461,7 @@ loads `board.js`, and `tests/test_app_timeline.js` is the only test that execute
 | Candidate | The defect | Where it stands |
 | --- | --- | --- |
 | Strong 1, the dead selection box | `state.sel_box` is written at `annotator/app.js:1256` and `:1254` and read nowhere: a repository-wide grep gives exactly those two writes, no test mentions it, and it is absent from `readings` (`:2222-2253`) and from `snapshotSelection` (`:1850-1861`) | Landed, commit `b5efbb3`: both writes are gone. The index a box selection needs already lived in `state.sel.box`, and `snapshotSelection` (`annotator/app.js:1904`) publishes it from there. The bytes the fixture serves spell `sel_box` 0 times against 2 at HEAD |
-| Strong 2, the source ternary | The same source ternary is written four times (`annotator/app.js:123`, `:508`, `:578`, `:1927`), and `:508` alone writes the fallback `'unified'` while the other three write `'none'`, although `editorTemplates` really holds `unified: '统一检测'` at `:2103` and `:1035` republishes it | Landed, commit `b5efbb3`: `frameResultSource(result)` at `annotator/app.js:129` is the one owner and answers `SOURCE_LABEL.operator`, `.model` or `.none`; the four former sites read it (`:137`, `:548`, `:618`, `:1968`). One visible change: a frame with no stored correction and no stored inference now publishes `none`, where `loadUnified` wrote `unified`; the copy table at `annotator/app.js:2149` still translates `unified`, so text already stored keeps its meaning. Files served bytes hold the `'unified'` literal 0 times against 1 at HEAD. `node tests/test_app_timeline.js` 94 passed, 0 failed, 65 source-text assertions before; 98 passed, 70 after |
+| Strong 2, the source ternary | The same source ternary is written four times (`annotator/app.js:123`, `:508`, `:578`, `:1927`), and `:508` alone writes the fallback `'unified'` while the other three write `'none'`, although `editorTemplates` really holds `unified: '统一检测'` at `:2103` and `:1035` republishes it | Landed, commit `b5efbb3`: `frameResultSource(result)` at `annotator/app.js:129` is the one owner and answers `SOURCE_LABEL.operator`, `.model` or `.none`; the four former sites read it (`:137`, `:548`, `:618`, `:1968`). One visible change: a frame with no stored correction and no stored inference now publishes `none`, where `loadUnified` wrote `unified`; the copy table at `annotator/app.js:2150` still translates `unified`, so text already stored keeps its meaning. Files served bytes hold the `'unified'` literal 0 times against 1 at HEAD. `node tests/test_app_timeline.js` 94 passed, 0 failed, 65 source-text assertions before; 98 passed, 70 after |
 | Strong 3, two opposite defaults | An unknown `origin` has two answers in one file: `annotator/app.js:131` `box?.origin === 'manual' ? 'manual' : 'auto'` gives MODEL, and `:1404` `box.origin !== 'auto'` with `:1408` gives YOURS. Six spellings exist, and `tests/test_app_timeline.js:2661` asserts that a saved payload has `box.origin === undefined` | Landed, commit `b5efbb3`: `boxOrigin(box)` at `annotator/app.js:150` gives an absent origin the model's answer, in both directions, through `BOX_ORIGIN`; `isOperatorBox`, `isModelBox`, `boxTagKind`, `manualBoxCount`, `modelBoxCount` and `correctionBody` all read it. The reading is the model's because a saved payload carries no origin key at all |
 | Strong 4, the unnamed rule | `quadSanity` at `annotator/app.js:228` is called once (`:249`), is named as the same rule by `src/eval_table_detect.py:208`, `src/check_app_quad.py:5-6` and `docs/table-detect-verification.md:16` and `:249`, yet has no direct test and is not on the test handle `attach()` | The python half landed, commit `ae0eade`, as the round-40 row below; the app.js half stays with worker `a86d2cf2` |
 | Strong 5, three arities | The cloth verdict object has three arities: 7 keys at `annotator/app.js:255` and `:876`, and 2 keys on the live path at `:1621`, which is published at `:1938` and read by `clothNotice` at `:1099-1110` | Landed, commit `b5efbb3`: `clothVerdict(value, available)` at `annotator/app.js:271` always answers the same 8 keys, and a number that is not finite is null and not undefined; `noClothVerdict()` at `:275` is the empty one. The three producers (the initial state, the measured path and the live path) and the two readers (`clothNotice`, `snapshotCloth`) use it, so a reader always sees a number or an explicit null |
@@ -7598,8 +7598,8 @@ rendered-markup case (229 to 230 cases), and `tests/test_ops_bounds.py` holds 6 
 
 ### Worth 2 · the nineteen console labels stood in both files
 
-Ground: `annotator/app.js:2157-2164` held English-to-Chinese pairs, and `annotator/vision-stage.js:62`,
-`:66`, `:181` and `:185` held the same words under other names. Repair: `annotator/app.js:2135 const
+Ground: `annotator/app.js:2158-2165` held English-to-Chinese pairs, and `annotator/vision-stage.js:62`,
+`:66`, `:181` and `:185` held the same words under other names. Repair: `annotator/app.js:2136 const
 SHARED_WORDS = Object.freeze({…})` owns 23 slots whose value is `[English, 中文]`; the engine's
 `editorCopy` derives its nineteen English:Chinese rows from that table, and the adapter's `COPY` drops
 those slots and asks the owner first (`sharedWord(key, lang)` reads `window.ConsoleRules.words`). Every
@@ -8502,7 +8502,7 @@ two real facts (the row holds no queue token, and it holds `x="5" y="6"`), and t
 `/^The model table quad is \d+ px off this dataset's saved corners …$/` while `:1536` and `:1537` set both
 quads in the same case; the case now owns the two quads, recomputes the offset, and compares the whole
 sentence, so a wrong offset fails. Its limit stands recorded: the case holds its own copy of the distance
-rule, because `annotator/app.js:2386` exports no `quadDistance` at the seam, and the pair it uses gives a mean
+rule, because `annotator/app.js:2387` exports no `quadDistance` at the seam, and the pair it uses gives a mean
 of 98.097, so it pins the number 98 and not the rounding mode.
 
 ### Worth 2 · the 0.2 s clip floor
@@ -8563,7 +8563,7 @@ or takes a different file.
 | --- | --- | --- |
 | Two more realms spell the label pair | limit of writer AH | `annotator/vision-stage.js:338` (`label === 'u' \|\| label === -1`) and `annotator/label.html`, both outside that writer's scope |
 | The route gate's label range is a bare literal | limit of writer AH | `0 <= label <= 15` stands unnamed in the route gate |
-| The timeline case holds its own distance rule | limit of writer AI | `annotator/app.js:2386` exports no `quadDistance` at the seam, and the pair pins 98 without the rounding mode |
+| The timeline case holds its own distance rule | limit of writer AI | `annotator/app.js:2387` exports no `quadDistance` at the seam, and the pair pins 98 without the rounding mode |
 | The state half of the document-path rule still stands | limit of writer AE in round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -8745,7 +8745,7 @@ every file its repair touches.
 | --- | --- | --- |
 | Two more realms spell the ball label pair | limit of writer AH in round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of writer AH in round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of writer AI in round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of writer AI in round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The console holds the login class by need | decision of this round | a javascript file cannot import a python name, and two cases hold the copy |
 | Three refusal sentences around the login shape stay different | decision of this round | the row asked for one home of the shape, not one sentence |
 | A test pattern may hold a text the code does not have | found in this round | `tests/test_ball_gate.py:65` holds `pad_l, pad_r, pad_t, pad_b = (60, 20, 16, 34)` while `src/motion_scan.py:1631` holds the same assignment without parentheses |
@@ -8919,7 +8919,7 @@ it serves the same rule as Worth 2; the record states the deviation, and the fil
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of the walk | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -9097,7 +9097,7 @@ line, kept it, and this record states the deviation.
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -9295,7 +9295,7 @@ reads two sentence sources instead of one.
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -9480,7 +9480,7 @@ Round 72 answered 2276 cases and this round answers 2289. The thirteen additions
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -9658,7 +9658,7 @@ writer does not own.
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -9846,7 +9846,7 @@ Round 74 answered 2314 cases and this round answers 2329. The fifteen additions 
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -10021,7 +10021,7 @@ Round 75 answered 2329 cases and this round answers 2347. The eighteen additions
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -10203,7 +10203,7 @@ the brief of each later walk carries the closed list.
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2133` keeps `cls._SEED_ROLES` working |
 | `records` of `src/store_import.py:481 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:338` and `annotator/label.html` |
-| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2386` exports no `quadDistance` at the seam |
+| The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2387` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:258` and `:349` and `annotator/operations.py:335` |
 | Two copies of the fallback number stand under `tests/` | limit of round 66 | `tests/ball_dense_events.py:91` and `tests/live_envelope_run.py:176` |
 | The DDL is not applied to a live PostgreSQL here | limit of round 64 | eight cases of `tests/test_db.py` skip without `${db.ENV}` |
@@ -10325,11 +10325,11 @@ The push is blocked. The local `main` holds 144 commits. `origin/main` stays at 
 
 Walk at HEAD `4f69eaf`, `git status --porcelain` empty at the start and the end, verdict `Strong candidate present - 3 Strong, 2 Worth, 0 Note` on line 2 of /tmp/dshsess/walk_round79.md. The walk reported it had not read the request-handler bodies of annotator/unified_server.py, the `_do_*` bodies of annotator/operations.py, 42 of the 43 docs/ files, the case bodies of the three console suites, viz/, src/reid/, src/sam3/ and annotator/fonts/.
 
-Strong 1 (closed by writer BA, commit `5d1cb27`): the stage-empty sentence stood twice and had drifted one word - `annotator/app.js:847` "Pick a moment on the scrub strip, or select a cue, then freeze it here." against `annotator/vision-stage.js:139` "Pick a moment on the strip, …". The owner is now the row `annotator/app.js:2182 stageEmpty: ['Pick a moment on the scrub strip, or select a cue, then freeze it here.', '在拖动条上选择时刻，或选择一条线索，然后在此冻结。']`, `annotator/app.js:847 const STAGE_EMPTY_COPY = () => SHARED_WORDS.stageEmpty[0];` reads it, the two paint sites at `annotator/app.js:854` and `:893` call the constant, and the adapter reads the owner through `sharedWord` at `annotator/vision-stage.js:300` and `say` at `:1778`. The settled wording is the page's "scrub strip"; the adapter's drift counts 0.
+Strong 1 (closed by writer BA, commit `5d1cb27`): the stage-empty sentence stood twice and had drifted one word - `annotator/app.js:847` "Pick a moment on the scrub strip, or select a cue, then freeze it here." against `annotator/vision-stage.js:139` "Pick a moment on the strip, …". The owner is now the row `annotator/app.js:2183 stageEmpty: ['Pick a moment on the scrub strip, or select a cue, then freeze it here.', '在拖动条上选择时刻，或选择一条线索，然后在此冻结。']`, `annotator/app.js:847 const STAGE_EMPTY_COPY = () => SHARED_WORDS.stageEmpty[0];` reads it, the two paint sites at `annotator/app.js:854` and `:893` call the constant, and the adapter reads the owner through `sharedWord` at `annotator/vision-stage.js:300` and `say` at `:1778`. The settled wording is the page's "scrub strip"; the adapter's drift counts 0.
 
 Strong 2 (closed by writer BA, same commit): the one words table of `annotator/ops.js` answered two labels twice - `annotator/ops.js:14 event:['Event name','赛事名称']` against `:51 bfNightName:['Event name','赛事名']`, and `:67 bfUnmark:['Remove','删除']` against `remove:['Remove','移除']` - while the rule at `annotator/ops.js:16` says one word per concept and the mockup `docs/console-redesign.md:247` and `:664` spells 赛事名. `:14` now reads `event:['Event name','赛事名']` and `:72` reads `bfUnmark:['Remove','移除']`, because 删除 is this console's Delete word (deletePlayer, deleteEvent, faceForget) and its Remove word is 移除. Measurement: `grep -o -E "(event|bfNightName|remove|bfUnmark):\['[^']*','[^']*'\]" annotator/ops.js` shows both Event name rows read 赛事名 and both Remove rows read 移除, and the two old spellings count 0.
 
-Worth 4 (closed by writer BA, same commit): the sentence 'Loading the review workspace…' stood in `annotator/ops.js:15` and in `annotator/vision-stage.js:53` and `:174`. The owner is `annotator/app.js:2183 visionLoading: ['Loading the review workspace…', '正在加载复核工作区…']`; the ops row is deleted and the console reads the owner through the new late bridge `sharedWord`/`say` at `annotator/ops.js:904` from `:898` and `:1247-1249`; the adapter reads it at `:1781`. The ops `t()` is deliberately not owner-first, because slot names collide (ops `live:['On table','进行中']` against the owner's `live:['live','直播']`); the reason stands in the comment.
+Worth 4 (closed by writer BA, same commit): the sentence 'Loading the review workspace…' stood in `annotator/ops.js:15` and in `annotator/vision-stage.js:53` and `:174`. The owner is `annotator/app.js:2184 visionLoading: ['Loading the review workspace…', '正在加载复核工作区…']`; the ops row is deleted and the console reads the owner through the new late bridge `sharedWord`/`say` at `annotator/ops.js:904` from `:898` and `:1247-1249`; the adapter reads it at `:1781`. The ops `t()` is deliberately not owner-first, because slot names collide (ops `live:['On table','进行中']` against the owner's `live:['live','直播']`); the reason stands in the comment.
 
 Strong 3 (closed by writer BB, commit `8a4df71`): the face-store path was a bare literal in five code copies - `src/store_files.py:99`, `src/store_export.py:63` twice, `:80`, `src/store_import.py:449` and `src/eval_faces.py:95` inside PROTECTED - while its siblings `src/store_files.py:41 STATE_DOCUMENT` and `:45 SEED_DOCUMENT` are names. `src/store_files.py:53 FACE_STORE = "out/corner-pocket/face_embeddings.json"` is the one owner, the table entry keeps its indent at `:104`, and the five sites read the name; the three reader modules kept their line counts, so `src/store_export.py:63`, `:80`, `src/store_import.py:449` and `src/eval_faces.py:95` still hold their citations. Measurement: `git grep -n "out/corner-pocket/face_embeddings.json" -- src annotator tools scripts tests` answered seven lines before and three after (`src/face_id.py:7` docstring, `src/store_files.py:53` owner, `tests/test_store_roundtrip.py:230` test tree).
 
