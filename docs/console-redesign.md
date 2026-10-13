@@ -12110,3 +12110,263 @@ at round 101)`).
 The full python suite answers `Ran 2723 tests in 633.855s` and `OK (skipped=53)`.
 The node suites answer `114 passed, 0 failed`, with no failure.  The count moved
 2699 -> 2723: 17 cases from writer W1, 3 from writer W2 and 4 from writer W3.
+
+## Round 102
+
+Source walk: `/tmp/dshsess/walk_round102.md` (82 lines, 62 files read) at HEAD `a5d2697`.  Its line 2
+reads `Strong candidate present - 4 Strong, 1 Worth, 2 Note`.  Its artefacts are a scan of the string
+constants (length at least six) and the numbers (absolute value at least two) under `annotator/`,
+`tools/` and `scripts/` (`/tmp/dshsess/scan_round102.txt`, 153 rows; the rows outside the test tree,
+`/tmp/dshsess/scan_round102_nontest.txt`, 248 rows) and a cross-check of the records of rounds 98 to
+101 (`docs/console-redesign.md:11691`, `:11764`, `:11904`, `:11987`).
+
+### Strong 1 - the cadence key of a live stage
+
+`RallyProcessor.status` built the cadence of every stage of the live snapshot from the literal
+`every_n_frames`, and the console page read that same key from the stage dict
+(`annotator/vision-stage.js:938`, `:939`).  No case read both halves: the python case
+(`tests/test_pipeline_stages.py:192`) set a python attribute only, and the page case
+(`tests/test_app_timeline.js:2512`) built its own fixture with the key inside.  A rename of the
+producer key would have printed `every 1 frame` for every stage, and no case would have failed.
+
+Writer W1 made one home.  `annotator/live_processing.py:43` now holds
+`STAGE_CADENCE_KEY = 'every_n_frames'` under a `#:` comment at `:40-42`; the producer field at
+`annotator/live_processing.py:769` reads
+`**{STAGE_CADENCE_KEY: getattr(stage, STAGE_CADENCE_KEY, 1) or 1},`; both read sites of the page
+(`annotator/vision-stage.js:938`, `:939`) read the key in brackets, so the wire word stands in the
+open.  The wire word itself did not change.
+
+| file | sha1 before | sha1 after | lines |
+| --- | --- | --- | --- |
+| `annotator/live_processing.py` | `86c0087b520662907d4ff300ab12e489a1a15ab8` | `506c03ef06f3e20c2169adedcb66dee4fdac8100` | 777 -> 782 |
+| `annotator/vision-stage.js` | `5482db0e32a003b8916eba79b125b28ab41c9a6f` | `9b133d2b8fe5178d05438e2a73b2a85dd97959e9` | 1891 -> 1891 |
+| `tests/test_live_cadence_owner.py` (new) | - | `15286bade224c4c5e26171953a35aaf87bc06841` | 289 |
+
+The guard holds six cases and reads both files: one case asks the stage dict that
+`RallyProcessor.status` builds to write the field with the owner constant, and another asks both read
+sites of `liveStageLine` to hold the owner value.  Writer module answers: the guard
+`Ran 6 tests in 0.021s` `OK`; `test_pipeline_stages` `Ran 33 tests in 36.452s` `OK`;
+`test_live_processing` `Ran 43 tests in 0.725s` `OK`; `test_live_processing_stages`
+`Ran 30 tests in 6.151s` `OK`; `test_suite_inventory` `Ran 5 tests in 6.187s` `OK`; the node suite
+`114 passed, 0 failed`.  A probe of one `CallableStage` with cadence three showed the stage dict of a
+started snapshot carrying `"every_n_frames": 3`.
+
+Bites.  Writer W1 changed `annotator/vision-stage.js:938` to read `stage['frame_cadence']`
+(`9b133d2b` -> `068a9b2149a2edda81d9fef1fb35bb03911a836b` -> `9b133d2b`) and the guard answered
+`FAIL` with the two read sites of `liveStageLine` in its report; it then changed the owner constant
+to `'frame_cadence'` (`506c03ef` -> `046c8bdeb0307aa12d80624af59a06686b7bf9ae` -> `506c03ef`) and the
+guard named the missing owner key in the snapshot.  The Lead wrote the producer field as a plain
+literal key (`506c03ef` -> `a96ccde7d623756ac32a9d0cc9c33e3eae0d0bf2` -> `506c03ef`) and the guard
+answered `AssertionError: 0 != 1 : the stage dict that RallyProcessor.status builds must write the
+cadence field with the owner constant STAGE_CADENCE_KEY.  One line must hold: STAGE_CADENCE_KEY:
+getattr(stage, STAGE_CADENCE_KEY, 1) and this many lines hold it: 0`.  The bite shows the guard holds
+the name, not only the value.
+
+### Strong 2 - the SAM3 prompt `billiard ball`
+
+Eleven live sites in nine `src/` modules spelled the prompt of the SAM3 text-prompt call:
+`src/collect2.py:47`, `src/scan_events.py:134`, `src/fast_ball_labels.py:230` and `:236`,
+`src/ball_fp_audit.py:575`, `src/recut_crops.py:96`, `src/frame_inference.py:225`,
+`src/pipeline.py:270`, `src/sam3_ball_cache.py:172` and `:260`, and the argument default of
+`src/multiplex_demo.py:158`.  Four prose copies stood in comments (`src/pipeline.py:6`,
+`src/multiplex_demo.py:3`, `src/ball_fp_audit.py:184`, `src/ball_gate.py:30`).  No reader: no case
+and no ledger line named the string, and the closest cases stubbed the method
+(`tests/test_frame_inference.py:136`, `tests/test_scan_events.py:81`).
+
+Writer W2 made one home at `src/weight_pins.py:44 SAM3_BALL_PROMPT = "billiard ball"`, with the
+docstring paragraph at `:18-21` and the `#:` comment at `:38-43`.  The eleven sites read the name;
+`src/multiplex_demo.py:21` imports it, because that file puts `src/` on `sys.path`; the four prose
+sites stay prose.
+
+| file | sha1 before | sha1 after | lines |
+| --- | --- | --- | --- |
+| `src/weight_pins.py` | `8ec8b43249aeca1e0ab9858557ca558f50c6dc53` | `1c931ae4c866f206be675a8b04f0f45d39a869e5` | 72 -> 85 |
+| `src/collect2.py` | `45cb1fefa9787af1af0dcb63618518b0fc199cd1` | `e7302a28773aed9789f6517123e1b30486d5b34c` | 94 |
+| `src/scan_events.py` | `af660ecb4bbee9029a49a49d02aea3e411f1d60b` | `4d2a788309c1c54fa51ea93c9d1233ec44937d7e` | 372 |
+| `src/fast_ball_labels.py` | `a15cd3011101f8ffb43f7e37968111dfcb3c1a31` | `f1ebb501b8f1b2385b96ba6d5708dac43afe7e37` | 618 |
+| `src/ball_fp_audit.py` | `cfdf83014174be9c2a87a54b750a63d46025030a` | `4516b9b57867307675a58bdc2d9d5f3271c9c3b0` | 1080 |
+| `src/recut_crops.py` | `2ce0fdeb91b768158a5cf27785ac07daf62d105b` | `e98e1f64ec723fa45895299fe080a48e45a8f43f` | 201 |
+| `src/frame_inference.py` | `bf0ef6e76ff3bab89a96d33bf6a64d57a48c3494` | `015c22685c0a029334d94c161e9848bdd6ed4e43` | 233 |
+| `src/pipeline.py` | `5e21c1f5271c86295ec30f49437a73a58847a309` | `20f3cc81257ce8d6e1513e92470b4c0c7ce465be` | 383 |
+| `src/sam3_ball_cache.py` | `94ef319a0b521dacea79f6df5b347cef40883a45` | `17a457fec4aec1b85dcd44571bcf496b9c8075e1` | 412 |
+| `src/multiplex_demo.py` | `23d04e7e163b7f0454ee835aa2086007c007d93f` | `cf30f5dfef689c2955c3d6fc4e101fcc7c8f4765` | 297 |
+| `tests/test_sam3_prompt_owner.py` (new) | - | `8794bd09d52d4dc7f95b9dec383be08f850f60d3` | 312 |
+
+Writer module answers, twelve modules with exit code zero each: `test_weight_pins` 17 `OK`,
+`test_weight_pins_owner` 9 `OK`, `test_scan_events` 8 `OK`, `test_fast_ball_labels` 20 `OK`,
+`test_ball_fp_audit` 57 `OK`, `test_frame_inference` 8 `OK`, `test_sam3_ball_cache` 12 `OK`,
+`test_multiplex_demo` 3 `OK`, `test_crop_set_acceptance` 5 `OK`, `test_ball_gate` 11 `OK`,
+`test_suite_inventory` 5 `OK`, and the new guard 8 `OK`.
+
+Bites.  Writer W2 wrote `"billiard ballx"` at `src/sam3_ball_cache.py:172`
+(`17a457fe` -> `ce3fc096ede517fc576e1e560f42ae02999c98ed` -> `17a457fe`) and the guard named the line
+with its text; it then changed the owner value to `"billiard ballx"`
+(`1c931ae4` -> `9538478961fe269cbab6462effad4e363ee37b8a` -> `1c931ae4`) and the guard named all
+eleven sites.  The Lead planted a wrong value in a module the writer did not bite
+(`src/ball_gate.py:135`) and the guard named that line; it then planted the right value in the same
+place and the guard still answered `AssertionError: Lists differ: ['src/ball_gate.py:135'] != []`,
+so the guard holds the name.
+
+### Strong 3 - the events field `avg_speed_m_s`
+
+Two rebuilders wrote the speed field of a shot as a plain literal (`src/rebuild_events_v2.py:118`,
+`src/rebuild_events_calibrated.py:88`) and the route read it only as a fallback name
+(`annotator/unified_server.py:1759` =
+`speed = event.get('speed_m_s', event.get('avg_speed_m_s'))`).  No case named the fallback, and the
+closest cases pinned the other name only (`tests/test_unified_server.py:127`,
+`tests/test_scan_events.py:119`).
+
+Writer W3 made one home at `src/events_document.py:146 EVENT_SPEED_FIELD = "avg_speed_m_s"`, with
+`SPEED_PAIR_GAP_S = 2.0` at `:151` and the name in `__all__` at `:103`; the two writers read
+`events_document.EVENT_SPEED_FIELD` (`src/rebuild_events_v2.py:122`,
+`src/rebuild_events_calibrated.py:92`); the route imports the name (`annotator/unified_server.py:103`)
+and reads `event.get('speed_m_s', event.get(EVENT_SPEED_FIELD))` at `:1769`.
+
+| file | sha1 before | sha1 after | lines |
+| --- | --- | --- | --- |
+| `src/events_document.py` | `28bd383d90116a493dbb273bb5d560376c276040` | `2ac3191c5a8ca3c0054b6f5696c594977e9fc0ac` | 333 -> 348 |
+| `src/rebuild_events_v2.py` | `2fb8b2d1cbf67f2bb54d58747ef013cb263fbcee` | `2f367cfbadee5c429add84772393d41bf22a8abc` | 192 -> 196 |
+| `src/rebuild_events_calibrated.py` | `16b76b85a6bcaebe565c9b57f730a2f6b13349da` | `1e4a10654f4af25aa62113c14c55fdd693fdbe08` | 157 -> 161 |
+| `annotator/unified_server.py` | `3eea5a485da784ce9634b3d238ad991c18848896` | `79d55124b144ed9f8fb716d47648dcc3d3284dcc` | 3111 -> 3121 |
+| `tests/test_event_speed_field_owner.py` (new) | - | `26eb5d488363236f3ccec1cb7ed5825660e922a0f` | 345 |
+
+Writer module answers: the guard `Ran 11 tests in 0.089s` `OK`; `test_events_document`
+`Ran 24 tests in 0.185s` `OK`; `test_unified_server` `Ran 124 tests in 31.420s` `OK`;
+`test_suite_inventory` `Ran 5 tests in 14.923s` `OK`.  No test module exists for the two rebuilders.
+A route run projected a document whose only speed name is the owner value (0.15 with `disp_mm` 300)
+into `speed_mm_s` 150.
+
+Bites.  Writer W3 changed the owner value (`2ac3191c` -> `01d15ab14e1cb24918b8f345cf5315f62173a04c`
+-> `2ac3191c`) and the guard named the owner line; it changed the route fallback to `'speed_v2_m_s'`
+(`79d55124` -> `6b2f8ad98f45a874f99ad9c24664fad6ff0076c4` -> `79d55124`) and the guard listed that
+line.  The Lead planted the right value in `src/rebuild_events_v2.py`, a module the writer did not
+bite (`2f367cfb` -> `fbcb3126ade9ec0e4b4006ec4623e2460897e39a` -> `2f367cfb`), and the guard answered
+`OK`: a second live copy with the owner value passed.  The Lead then planted a wrong value in
+`src/rebuild_events_calibrated.py` (`1e4a1065` -> `31ba2ce52b53cd2ae5d228bc7a92c83fce832776` ->
+`1e4a1065`) and the guard answered `FAIL`, so its scan reads the files and only its value test was
+loose (`tests/test_event_speed_field_owner.py:203`).  Writer W3b added the missing case
+`test_no_writer_spells_the_field_name_as_a_literal` (`:229`) with the anti-vacuity case
+`:252`, and the guard answered `Ran 12 tests in 0.093s` `OK`.  Its bite planted the owner value in
+`src/rebuild_events_v2.py:200` (`2f367cfb` -> `fbcb3126ade9ec0e4b4006ec4623e2460897e39a` ->
+`2f367cfb`) and the new case answered `FAIL` with the line and its text.  The guard then moved
+`26eb5d48` -> `d19edfd5fdc393b9cc6f320a89deb5e1bfdcacff` (345 -> 368 lines).
+
+### Strong 4 - the seeds refusal sentence
+
+`src/store.py:288` and `src/store_pg.py:302` raised the same sentence `seeds exist for vod30 only`,
+and the refusal table held it as the row `annotator/refusals.py:270` (`'seeds exist for vod30 only':
+Refusal('seeds_only_vod30', ...)`).  The identity guard walked four modules
+(`tests/test_refusal_identity.py:38`, without `src/store.py`), the table case
+(`tests/test_refusal_identity.py:385`) passed on the `src/store_pg.py` copy alone, and the closest
+file-store case asserted the exception type only (`tests/test_store_contract.py:238`).  The ledger
+carried the row as open since round 59 (`docs/console-redesign.md:10222`), with two stale numbers in
+it.
+
+Writer W4 added `'src/store.py'` to `RAISING_MODULES` (`tests/test_refusal_identity.py:45`) and two
+cases: `test_each_backing_states_the_row_the_console_reads` (`:465`) and
+`test_a_planted_offender_is_reported_with_its_file_and_line` (`:495`), on the new report helpers
+`line_text` (`:320`) and `sites_report` (`:357`).  The three files it read keep their bytes:
+`src/store.py` `f7cf65cee9bca91a9df8357bff8d7e86acfd4973` (415 lines), `src/store_pg.py`
+`29c3af6491eed9cc0fb38496d6b3ae90c9f36d72` (423) and `annotator/refusals.py`
+`2bdd327782e17fdbc391733a7af2f98187c277ea` (478).  The guard moved
+`f22f6ccee7698785c9546121ffa01401b8808c74` -> `5976c89bf4c5c38a17b5344393bab3ebeb22ddb8`
+(651 -> 770 lines) and answers `Ran 22 tests in 2.320s` `OK`, was 20.  The other modules:
+`test_store_contract` `Ran 54 tests in 0.991s` `OK (skipped=29)`; `test_store`
+`Ran 20 tests in 1.873s` `OK`; `test_suite_inventory` `Ran 5 tests in 6.855s` `OK`.
+
+Bites.  A reword of `src/store.py:288` under the old guard answered `OK`: that is the drift this
+round repaired.  The same reword under the new guard answered `FAILED (failures=4)` and named
+`src/store.py:288` with its line text; a reword of `src/store_pg.py:302` answered
+`FAILED (failures=4)`; a change of the row code to `'seeds_only_vod30x'` answered
+`FAILED (failures=1)` and named the old code, the new code and both raise sites.  The Lead planted a
+third raise of the sentence in `annotator/operations.py:1555` and the guard answered
+`FAIL: test_each_backing_states_the_row_the_console_reads ... Items in the second set but not the
+first: annotator/operations.py:1555`.
+
+### The Worth row and the two Note rows
+
+Worth 1 - `event_actors` stands in the shared-artifact table (`src/store.py:92`) and in the route
+(`annotator/unified_server.py:2257`), but a case holds both halves (`tests/test_unified_server.py:65`,
+`:87` and `tests/test_shared_artifact_names.py:52-58`), so the row keeps its class.
+
+Note 1 - `unknown dataset: <id>` stands a third time at `src/store_files.py:69`; the held copies are
+`src/store.py:219` and `src/store_pg.py:310` and no case reads the third copy.  Both callers
+pre-check the registry, so the branch is defensive.  Left as it stands.
+
+Note 2 - `JSON object required` stands twice in `annotator/vod_import.py:460` and `:905`; the owner
+name is `annotator/refusals.py:74` and the live route refuses a non-dict payload before the importer
+(`annotator/unified_server.py:2295-2296`), so only direct calls reach the two branches.  Left as it
+stands.
+
+The walk also named two dead names and printed the areas it did not read: `docs/` other than the
+ledger, `src/sam3/**` and most of `src/`, about 160 test modules, `annotator/*.html`,
+`annotator/*.css`, the larger JS modules, `db/`, `deploy/`, `design/`, `out/` and `.venv/`.
+
+### Citations
+
+The round moved lines in 17 files, so it paid the citations with one sweep.  The sweep reads a base
+commit, maps every line of every changed file, and moves a citation only when the line moved and its
+text stands at the new number.  It replaced 354 tokens in 36 files and records its base in
+`.git/citation-sweep.json`; the tool is `tools/citation_sweep.py`, and a second run for the same base
+is refused, because the tree then states the post-round numbers.
+
+Two faults of the first pass and their repair.  The first rule replaced a whole range token with one
+number, so 52 range citations in the tracked files and 8 in the `.pm` pack collapsed
+(`unified_server.py:407-436` became `:442`); a second rule that skipped a number whose text was empty
+left range ends behind.  The final rule shifts each end of a range on its own and treats an empty
+line as a moved line.  The round rebuilt the affected lines from the base
+(`/tmp/dshsess/regen_cites.py`, twenty lines in `docs/console-redesign.md`,
+`docs/face-identification-assessment.md` and `docs/postgres-design.md`) and proved the result with
+two read-only checks: `/tmp/dshsess/check_ranges.py` answers
+`files: 36, lines with a changed token count: 0`, and `/tmp/dshsess/verify_cites.py` answers
+`changed tokens: 363 (of 363 compared), anomalies: 0`.
+
+Four citations inside the new guard `tests/test_live_cadence_owner.py` were bumped a second time,
+because the first pass did not hold the files that the writers of the round had just written; the
+round reverted them by hand to `annotator/live_processing.py:736` (the `status` method), `:769` (the
+producer field) and `:43` (the owner constant).  That guard now stands at
+`e160403572d6ace599a2a28d621e8bc1dea1a558`.
+
+`tests/test_live_refusal_owner.py` pins every raise of `annotator/live_processing.py` as a bare
+integer, so the five new lines of Strong 1 left eight of its nine cases red.  The round moved the 34
+numbers of `RAISES`, `ON_SCREEN` and `UNREADABLE` (130 -> 135, 138 -> 143, 146 -> 151, 259 -> 264,
+334 -> 339, 338 -> 343, 341 -> 346, 350 -> 355, 355 -> 360, 358 -> 363, 360 -> 365, 375 -> 380,
+388 -> 393, 512 -> 517, 541 -> 546, 568 -> 573, 655 -> 660) and the three strings the text builds
+(`'{0}:375'`, `'{0}:355'`, `'{0}:358'`, seven occurrences).
+
+The suite then found two wrong numbers that the sweep had left behind: `annotator/duration.js:18`
+named `annotator/live_processing.py:88` after the anchors moved to `:93`, and
+`tests/test_live_cadence_owner.py:107` named `tests/test_live_processing.py:27`, a blank line, where
+`:33` holds the patch the sentence points to.  The repair commit is
+`ea441c5 test: the two citations the sweep cannot see`.
+
+### Lessons
+
+1. A citation sweep must hold every file that a writer of the round touched.  A guard written in the
+   same round cites the lines that round is about to move, so a sweep shifts its numbers a second
+   time.  The final tool takes `--hold` for that reason.
+2. A range citation must be rebuilt end by end.  A rule that replaces a whole token with one mapped
+   number collapses `path:407-436` into `path:442`; the round found 52 collapsed ranges in the
+   tracked files and 8 in the `.pm` pack.
+3. A blank line is a moved line too.  A rule that skips a number whose text is empty leaves half a
+   range behind (`unified_server.py:1462-1478` instead of `1468-1478`), and a citation that named a
+   blank line can land on another blank line and pass a text check.  The map decides, and the guard
+   `tests/test_citation_lines.py` is the judge.
+4. A sweep is one shot per base commit.  A second pass shifts the post-round numbers again, so the
+   tool records its base in `.git/citation-sweep.json` and refuses a repeat.
+5. A guard that pins only the value of a shared field passes when a second live copy of the same
+   value arrives.  Pin the name: the three guards of this round report a literal of the owner value
+   as well as a literal with another value.
+6. A wrong cited line is a Note, and a round must repair the one it wrote.  The new guard of Strong 1
+   named a blank line of `tests/test_live_processing.py`; the suite found it.
+7. A citation the text builds, or a number pinned as a bare integer, is invisible to a text sweep.
+   After a write pass, run `tests/test_citation_lines.py` and the modules that read a moved file.
+
+### Suites
+
+The full python suite answers `Ran 2751 tests in 430.176s` and `OK (skipped=53)`.
+The node suites answer `114 passed, 0 failed`, with `source-text assertions left: 75`.  The count
+moved 2723 -> 2751: 6 cases from writer W1, 8 from writer W2, 12 from writer W3, two of them in the
+W3b repair, and 2 from writer W4.  The first two runs of the round answered `FAILED (failures=11,
+skipped=53)` and `FAILED (failures=3, skipped=53)`: the eight red cases of
+`tests/test_live_refusal_owner.py` and the two citations of the paragraph above.
