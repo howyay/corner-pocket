@@ -11760,3 +11760,138 @@ font subsets still lack the three characters `令`, `忙` and `繁` of `annotato
 The full python suite answers `Ran 2670 tests in 434.635s` and `OK (skipped=53)`.  The node suites answer
 `232 pass`, `23 pass` and `114 passed, 0 failed`.  The count moved 2649 -> 2670: fourteen cases from writer W1,
 five from writer W2 and two from writer W3.
+
+## Round 99 - the refusal sentences, the failure codes and the ball colour words
+
+Walk `863a51f4` wrote `/tmp/dshsess/walk_round99.md` (345 lines; 37 files, 14 of them in full) at HEAD
+`4090d30`, with `git status --porcelain` empty.  HEAD moved to `f3da329` while it read, and only
+`docs/console-redesign.md` differs between the two commits, so every quoted line stands.  Its verdict
+line answers `Strong candidate present - 3 Strong, 1 Worth, 1 Note`.  The Lead read back every ground of
+the three Strong rows and of the Worth row.
+
+### Row 1 (Strong) - the live refusal sentences stand twice
+
+`annotator/live_processing.py` raises the sentences a live start can refuse with (18 raise statements).
+The console phrases them in Chinese, and `annotator/app.js` holds the anchored pattern list
+`const liveRefusals = [` for a sentence that carries no code.  Drift is not a risk but a fact: the
+sentence `Live detectors must be a non-empty list of table, person, ball, balls` is written by
+`annotator/live_processing.py:375` and no pattern claimed it, so the Chinese console stayed English.
+The nearest case `tests/test_app_timeline.js:3541-3559` carried its own ten sentences and compared the
+count only, so it never read the service file.
+
+Writer WA (three files) closed the row.  `annotator/app.js` gained one row at `:2134` with an explicit
+alternation (`(?:table|person|ball|balls)`) so a wrapped or unrelated sentence stays English; the
+console suite gained the eleventh sentence at `tests/test_app_timeline.js:3550`, and its positional
+`refusals[7]` and `refusals[8]` reads became `refusals.indexOf(...)` at `:3562-3563`, because an
+inserted sentence makes a position name the wrong string.  The new guard `tests/test_live_refusal_owner.py`
+parses every raise of the owner, rebuilds the sentence each one sends, and asks the shipped patterns
+which sentences they claim - in node, with the real javascript regex semantics, not a python rewrite of
+them.  Nine cases hold the raise list, one pattern per judged sentence, the two judged `UNMAPPED`
+sentences with a verifiable reason each, the console table for the coded sentences, the retired row, the
+report shape, a planted sentence and a lost pattern.
+
+The writer's own first revision wrote the literal `JPEG encoding failed` three times, and
+`tests/test_refusal_identity.py` went red: `tests/console_text.py` owns that javascript line.  The
+delivered guard reads the sentence from `console_text.line_rows()` and writes no literal of its own.
+
+Bites.  The writer deleted its new row: `423e9346b5d98224f69571f4609df162f66bf41f` during, and the red
+named `annotator/live_processing.py:375`.  The Lead changed the sentence of that raise to
+`Live detectors must hold at least one detector from %s`: the owner answered
+`86c0087b520662907d4ff300ab12e489a1a15ab8 -> cdf8ec0e31a76b3220fad0542034992c4d7bb50d ->
+86c0087b520662907d4ff300ab12e489a1a15ab8`, and the guard answered `FAILED (failures=6)` with
+`a raise of the owner sends another sentence`.
+
+### Row 2 (Strong) - a failure sentence with no code
+
+`annotator/live_processing.py:67-81` holds `_ERROR_CODES`, which binds an English sentence to a stable
+code the console phrases in the operator's language.  The sentences come from `annotator/twitch_source.py`.
+A sentence with no row reports `error_code = None`, and the console falls back to English.  The walk
+measured four such sentences; writer WB measured six: `:214`, `:220`, `:268`, `:371`, `:390` and `:408`.
+The sentence at `:220` is the twin of the coded `Twitch playback is unavailable or requires browser
+authorization`, so it must not take that key.
+
+Writer WB added `tests/test_live_error_codes_owner.py` (three cases, a two way guard): every raise
+sentence of the Twitch layer must reach a code, a pattern, or one `UNMAPPED` entry with a reason, and
+every row of `_ERROR_CODES` must still be a sentence somebody writes.  No row was added, because a new
+row changes what the console can phrase and needs the console side.
+
+Bites.  The writer changed the sentence at `annotator/twitch_source.py:214`
+(`1824b32c1122c3860c0ebd3018806fd4d9959977 -> b557a10878749d705510e69ebb6236a1d016460d -> back`),
+and the guard answered red in both directions.  The Lead changed the key `Twitch playback is restricted
+or requires browser authorization` to `... became restricted ...`: the owner answered
+`86c0087b520662907d4ff300ab12e489a1a15ab8 -> 117c97421af54fca4e0d872ff24aa4d5606ee4ad ->
+86c0087b520662907d4ff300ab12e489a1a15ab8`, and the reverse case named the new row with
+`these rows of _ERROR_CODES name a code that no sentence of annotator/live_processing.py or
+annotator/twitch_source.py writes`.
+
+The Lead's first attempt at this bite wrote a key that does not exist and changed no byte: `count 0` and
+an unchanged sha1 prove nothing.  Measure the sha1 before and after every bite.
+
+### Row 3 (Strong) - the ball colour words stand twice
+
+`annotator/label.html:52-53` holds `const NAMES = {0:'cue/white',1:'1 yellow',2:'2 blue',...}` for the
+labelling page, and `annotator/ops.js:804-806` holds the comment `// 1 yellow, 2 blue, 3 red, 4 pink, ...`
+above `const ballPalette`.  No case read both: `grep -rln "yellow str\|cue/white" tests/ annotator/`
+answered `annotator/label.html` alone, and `tests/test_sql_domain_parity.py:1543` reads the numeric keys
+of the map only.  A colour word could move in one home and no case would go red.
+
+Writer WC added `tests/test_ball_colour_owner.py` (four cases): it reads the words of both homes in
+order, asserts they are equal, asserts the map holds sixteen entries and that a stripe entry repeats its
+solid word, and reports each mismatch as `file:line word`.  Its own bite changed the word of ball 2 at
+`annotator/label.html:52`: `4deddd82ccbd9bc375d547cf9e1c56cdd8ddcbb2 -> a57aac785bfe77757eabb6d8f2ecfbde44baa211
+-> 4deddd82ccbd9bc375d547cf9e1c56cdd8ddcbb2`, red with
+`ball 2: annotator/label.html:52 green; annotator/ops.js:804 blue`.  The Lead changed the comment instead,
+at `annotator/ops.js:804`: `491482e9f54aa78ea5e8b44859e3e90fef34fa56 -> 06f016021145570b7bad50fa9e36cdd9e72931ca
+-> 491482e9f54aa78ea5e8b44859e3e90fef34fa56`, red with
+`ball 3: annotator/label.html:52 red; annotator/ops.js:804 crimson`.
+
+The row guard cannot see the copies that are not code: `docs/console-redesign.md:1018-1031`, `:1324` and
+`:1512`, `docs/console-shots.md:270` and `.pm/PROJECT.md:2711` restate the same table.  The writer also
+measured `src/pipeline.py:54 SOLID_MAP`, whose word for ball 4 is `purple` and for ball 7 is `maroon`
+where the two homes say `pink` and `brown`; that name has no reader in the tree, and the round-90 record
+already holds it at `docs/console-redesign.md:11112`.
+
+### Worth row and Note
+
+`annotator/app.js` holds the pair `liveErrorCodes` (sentence to code) and its keys, and
+`tests/test_app_timeline.js:3517` already holds the two equal, so the row needs no work.  The Note row of
+the walk, the two reachable sentences at `annotator/live_processing.py:259` and `:655`, is judged inside
+the new guard: each stands in `UNMAPPED` with the fact that proves it.
+
+### Citation account of round 99
+
+The `annotator/app.js` row insert moved every line at or after the old `2134` by one.  The Lead measured
+18 citation sites that name a moved line, in two files: `docs/console-redesign.md` 16 sites and
+`tests/test_console_round79_owners.py` 2 sites; every one of them kept the text it names, and no site was
+left behind.  `tests/test_citation_lines.py` answers `Ran 10 tests` and `OK`.  Commit
+`2fbf71c docs: the citations follow the shift of round 99`.
+
+### Commits and suites of round 99
+
+`91bf48b test: the ball colour words answer the palette comment`, `346b934 test: the twitch failure
+sentences answer the code table`, `112f6cf test: the live refusal sentences answer one pattern list`,
+`2fbf71c docs: the citations follow the shift of round 99`.
+
+### Lessons of round 99
+
+1.  A guard reads the shipped artefact with the real semantics of its own language.  The new refusal
+    guard runs `annotator/app.js` in node, so a javascript regex cannot drift from the guard's idea of it.
+2.  An inserted sentence makes a positional read name the wrong string.  `refusals[7]` became
+    `refusals.indexOf(...)` in the same edit.
+3.  A writer's first revision can break another owner.  The literal `JPEG encoding failed` belongs to
+    `tests/console_text.py`, and the case of that owner answered red until the writer read the owner.
+4.  A walk samples and a writer measures.  The walk named four sentences with no code and the writer
+    measured six.
+5.  A bite on a value that does not exist changes no byte.  Take the sha1 before and after every bite.
+
+### Open rows after round 99
+
+- Six failure sentences of `annotator/twitch_source.py` carry no code (`:214`, `:220`, `:268`, `:371`,
+  `:390`, `:408`), so the console falls back to English.  A code needs a phrase on the console side too.
+- The ball colour table also lives in `docs/console-redesign.md:1018-1031`, `:1324`, `:1512`,
+  `docs/console-shots.md:270` and `.pm/PROJECT.md:2711`.
+- `src/pipeline.py:41 RENDER_COLORS` is live code (`:201`, `:236`) and holds both `purple` and `pink`,
+  and both `brown` and `maroon`; its relation to the detection class words is open.
+- The six stale sections of `docs/vision-audit.md`, the third envelope copy at
+  `tests/load_public_board.py:474`, the committed font subsets that miss three characters, and the 582
+  document citations that name a blank line all stay open from the earlier rounds.
