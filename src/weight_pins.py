@@ -15,6 +15,11 @@ the weights, because it describes the normalisation those exact weights were
 trained with.  The two arrays are tuples of floats: this module imports the
 standard library and nothing else, and a caller makes its own array.
 
+This module owns the SAM3 ball text prompt too.  The prompt is the open-vocabulary
+text that tells SAM3 which instances to return.  Eleven call sites in nine shipped
+modules spelled the string before round 102, so one edit to one copy made one module
+select another instance set.  All eleven sites now read the one name below.
+
 Standard library only, and no import from the repository.
 """
 from pathlib import Path
@@ -29,6 +34,14 @@ OSNET = "src/reid/weights/osnet_x0_25_msmt17.pth"
 #: ``WEIGHT_PINS``: ``scripts/fetch_weights.py`` does not download it, so it has no
 #: URL, no SHA-256 and no size.
 SAM3 = "data/sam3.safetensors"
+
+#: The open-vocabulary text prompt of the SAM3 ball path.  SAM3 returns the
+#: instances that match this text, so the string selects the object class of
+#: every mask the ball paths write.  Ten sites pass this name to
+#: ``set_text_prompt``, and one site, ``src/multiplex_demo.py``, states it as the
+#: default of the ``--prompt`` flag.  A copy of the literal in a caller is a
+#: second owner, and one edit to that copy moves one path alone.
+SAM3_BALL_PROMPT = "billiard ball"
 
 #: Hugging Face hosts the OSNet weight under a repository and a revision.
 OSNET_REPO = "https://huggingface.co/kaiyangzhou/osnet"

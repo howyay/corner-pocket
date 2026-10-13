@@ -31,7 +31,7 @@ from src.ball_gate import (POC_PIPELINE_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_P
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MIN_SCORE)
 from src.ball_scale import BALL_WIDTH_MM  # ball_gate.py:37 cites this file by line
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3
+from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 
 CANON_BALL_R = BALL_WIDTH_MM / 2  # mm radius (a 57.15 mm pool ball)
 POCKET_R = 24
@@ -267,7 +267,7 @@ def process_frame(video_path, t_sec, model, proc, out_dir, fixed_corners=None) -
 
     from PIL import Image
     state = proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
-    state = proc.set_text_prompt("billiard ball", state)
+    state = proc.set_text_prompt(SAM3_BALL_PROMPT, state)
 
     balls = filter_instances(state, tab["mask"], bgr)
     # project ball centers through the homography into canonical table coords.

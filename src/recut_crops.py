@@ -31,7 +31,7 @@ from src.box_geometry import iou
 # The highlight recording's sample instants have one home, src/datasets.py.
 from src.datasets import HIGHLIGHT_SAMPLE_TIMES, media_path
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3
+from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 
 VIDEO = media_path(ROOT, "highlight")
 # The crop-set vocabulary has one owner, src/store_files.py; this module reads it.
@@ -93,7 +93,7 @@ for t in TIMES:
         continue
     H, W = bgr.shape[:2]
     st = proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
-    st = proc.set_text_prompt('billiard ball', st)
+    st = proc.set_text_prompt(SAM3_BALL_PROMPT, st)
     masks = st['masks'].cpu().numpy()
     boxes = st['boxes'].cpu().numpy()
     scores = st['scores'].cpu().numpy()

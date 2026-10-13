@@ -19,7 +19,7 @@ from sam3_cpu import load_sam3_image_model, make_processor
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MIN_AREA_PX,
                            SAM3_BALL_MIN_SCORE)
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3
+from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 
 VIDEO = Path(sys.argv[1])
 OUT = Path(sys.argv[2])
@@ -44,7 +44,7 @@ for t in TIMES:
         continue
     H, W = bgr.shape[:2]
     st = proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
-    st = proc.set_text_prompt('billiard ball', st)
+    st = proc.set_text_prompt(SAM3_BALL_PROMPT, st)
     masks = st['masks'].cpu().numpy()
     scores = st['scores'].cpu().numpy()
     kept = 0

@@ -40,7 +40,7 @@ from src.ball_gate import (CLASSICAL_BALL_MAX_AREA_960X540_PX, SAM3_BALL_MAX_ARE
                            SAM3_BALL_MAX_RADIUS_PX, SAM3_BALL_MIN_AREA_PX,
                            SAM3_BALL_MIN_RADIUS_PX, SAM3_BALL_MIN_SCORE)
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3
+from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 
 # physical geometry (Rasson Victory III 9ft, 2540 x 1270 mm): the canonical
 # frame and the pocket table live in table_geometry.py, their only definition
@@ -131,7 +131,7 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
             continue
         tab = detect_table(bgr)
         st = proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
-        st = proc.set_text_prompt("billiard ball", st)
+        st = proc.set_text_prompt(SAM3_BALL_PROMPT, st)
         masks = st["masks"].cpu().float().numpy()
         scores = st["scores"].cpu().float().numpy()
         cloth = tab["mask"] > 0

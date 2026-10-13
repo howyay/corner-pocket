@@ -74,7 +74,7 @@ from annotator.pipeline_stages import BALL_THRESHOLD as BALL_OPERATING_CUT  # no
 # relative path from that owner, so a rename moves the writer and this reader together.
 from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3  # noqa: E402
+from src.weight_pins import SAM3, SAM3_BALL_PROMPT  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -572,7 +572,7 @@ def measure_frame(t, floor: float = SAM3_FLOOR) -> dict:
     proc.confidence_threshold = floor
     started = time.time()
     state = proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
-    state = proc.set_text_prompt("billiard ball", state)
+    state = proc.set_text_prompt(SAM3_BALL_PROMPT, state)
     seconds = time.time() - started
 
     masks = state["masks"].cpu().float().numpy()

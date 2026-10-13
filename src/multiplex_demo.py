@@ -18,6 +18,7 @@ import torch
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "sam3"))
 sys.path.insert(0, str(ROOT))
+from weight_pins import SAM3_BALL_PROMPT  # src/weight_pins.py owns this prompt
 
 BPE = ROOT / "sam3" / "sam3" / "assets" / "bpe_simple_vocab_16e6.txt.gz"
 
@@ -155,7 +156,7 @@ def main():
     ap.add_argument("--clip", default="data/clip_break")
     ap.add_argument("--ckpt", default="/tmp/sam3.1_multiplex_fp16.safetensors")
     ap.add_argument("--out", default="out/multiplex_break")
-    ap.add_argument("--prompt", default="billiard ball")
+    ap.add_argument("--prompt", default=SAM3_BALL_PROMPT)
     ap.add_argument("--prompt-frame", type=int, default=0)
     ap.add_argument("--max-frames", type=int, default=0, help="0 = all")
     ap.add_argument("--points", default=None, help="'x1,y1;x2,y2' absolute px point prompts (overrides text)")

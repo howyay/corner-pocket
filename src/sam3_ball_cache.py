@@ -45,7 +45,7 @@ from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,  # no
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
                            SAM3_BALL_MIN_SCORE)
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3  # noqa: E402
+from src.weight_pins import SAM3, SAM3_BALL_PROMPT  # noqa: E402
 
 #: The app's own 56 frames, named by `src/sam3_artifact.py`.  This tool reads it
 #: through that owner and never writes it, so the string stays the relative form
@@ -169,7 +169,7 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
     H = homography_to_canonical(fixed)
     cloth, filter_used = cloth_mask(bgr, reference=reference, corners_path=corners_path)
     state = model_proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
-    state = model_proc.set_text_prompt("billiard ball", state)
+    state = model_proc.set_text_prompt(SAM3_BALL_PROMPT, state)
     masks = state["masks"].cpu().float().numpy()
     scores = state["scores"].cpu().float().numpy()
     balls = []
@@ -257,7 +257,7 @@ def diagnose_frame(video, time_s, model_proc, corners_path, reference=None,
         cv2.fillPoly(reference_mask, [np.round(np.asarray(reference, np.float32)).astype(np.int32)], 1)
         reference_mask = reference_mask > 0
     state = model_proc.set_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
-    state = model_proc.set_text_prompt("billiard ball", state)
+    state = model_proc.set_text_prompt(SAM3_BALL_PROMPT, state)
     masks = state["masks"].cpu().float().numpy()
     scores = state["scores"].cpu().float().numpy()
     stages = {"raw": int(len(scores)), "score": 0, "area": 0, "radius": 0,

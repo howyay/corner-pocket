@@ -222,7 +222,7 @@ def infer_frame(frame, detectors, root, progress=lambda stage: None, dataset=Non
         device = inference_device()
         with torch.inference_mode(), torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=device != 'cpu'):
             state = processor.set_image(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
-            state = processor.set_text_prompt(prompt='billiard ball', state=state)
+            state = processor.set_text_prompt(prompt=weight_pins.SAM3_BALL_PROMPT, state=state)
         balls = filter_instances(state, table['mask'], frame)
         h, w = frame.shape[:2]
         for ball in balls:

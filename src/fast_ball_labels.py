@@ -51,7 +51,7 @@ from src.sam3_ball_cache import OWN_CACHE
 from src.sam3_artifact import ARTIFACT
 from src.tiny_ball_net import SPLIT_GAP_S
 # src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3
+from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -227,13 +227,13 @@ class Sam3Labeller:
                      "original_height": int(bgr.shape[0]), "original_width": int(bgr.shape[1])}
             encoder_s = time.time() - started
             head_started = time.time()
-            state = self.processor.set_text_prompt("billiard ball", state)
+            state = self.processor.set_text_prompt(SAM3_BALL_PROMPT, state)
             head_s = time.time() - head_started
         else:
             state = self.processor.set_image(image)
             encoder_s = time.time() - started
             head_started = time.time()
-            state = self.processor.set_text_prompt("billiard ball", state)
+            state = self.processor.set_text_prompt(SAM3_BALL_PROMPT, state)
             head_s = time.time() - head_started
         return {"seconds": round(time.time() - started, 3),
                 "encoder_s": round(encoder_s, 3), "head_s": round(head_s, 3),
