@@ -11756,3 +11756,7 @@ a writer's own draft: the W3 bite caught a reader that counted newlines inside a
 `docs/postgres-design.md:319` (`embedding real[]` against the migration's `double precision[]`); the committed
 font subsets still lack the three characters `令`, `忙` and `繁` of `annotator/clock-sync.js:88-89`; and the
 582 document citations that name a line with no text.
+
+The full python suite answers `Ran 2670 tests in 434.635s` and `OK (skipped=53)`.  The node suites answer
+`232 pass`, `23 pass` and `114 passed, 0 failed`.  The count moved 2649 -> 2670: fourteen cases from writer W1,
+five from writer W2 and two from writer W3.
