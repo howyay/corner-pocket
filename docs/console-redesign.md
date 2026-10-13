@@ -11687,3 +11687,72 @@ and that module answers `Ran 32 tests in 9.661s` and `OK` when it runs alone.  T
 suites answer `232 pass / 0 fail`, `23 pass / 0 fail`, and `114 passed, 0 failed`.  The
 count moved 2617 -> 2649: two cases from writer X4, two from writer X5, two from writer
 X8, eighteen from writer X7, and eight from writer X9.
+
+## Round 98 - the document numbers, the harness literal and the note length
+
+The walk `/tmp/dshsess/walk_round98.md` (106 lines, 64 files, 11 in full) read HEAD `2f096ab` and answered
+`Strong candidate present - 2 Strong, 1 Worth, 1 Note`.  The Lead re-read every ground.
+
+**Strong 1 - the operator document restated five clock numbers.**  `docs/corner-pocket-operations.md:21` wrote
+`20/30/45/60`, `:46` wrote `plus a heartbeat every 15 s.`, `:47` wrote `or 30 s pass with no heartbeat` and
+`**every 1 s**`, and `:48` wrote `After 10 s with no answer`.  The owners are `annotator/ops.js:902
+const SHOT_PRESETS=[20,30,45,60],SHOT_DEFAULT=30;`, `annotator/shot_clock.py:41 HEARTBEAT_S = 15`,
+`annotator/clock-sync.js:49 const POLL_MS = 1000;`, `:53 const HEARTBEAT_TIMEOUT_MS = 30000;` and `:62
+const OFFLINE_AFTER_MS = 10000;`.  No case read the document for those numbers: the one reader
+`tests/test_pipeline_note_owner.py:53 DOCUMENT = 'docs/corner-pocket-operations.md'` reads the expiry sentence
+and one `ops.js` citation.  Writer W1 added `tests/test_clock_document_owner.py` (508 lines, 14 cases) and
+repaired the prose of `annotator/shot_clock.py` so that it names `HEARTBEAT_TIMEOUT_MS` and its file instead of
+the number.  That file keeps 259 lines, so no citation moved.
+
+**Strong 2 - the load harness re-typed the board poll interval.**  `tests/load_public_board.py:431` held
+`default=3.0`, `:7` and `:165` held the same number in prose, and `docs/public-board-load.md:12` restated it.
+The owner is `annotator/board.js:15 const POLL_MS = 3000, STALE_MS = 15000, TIMEOUT_MS = 8000;`, and no case
+named the harness, so `tests/test_board.js:245-246` read the module alone.  Writer W2 made the harness read the
+owner as text (`POLL_MS_BINDING`, `board_poll`, `poll_seconds`, `interval_help`) and added
+`tests/test_load_interval_owner.py` (174 lines, 5 cases).  All 54 new lines stand below `main()`, so the two
+ledger citations of `tests/load_public_board.py:474` stay true.
+
+**Worth 1 - the design document copied the note length.**  `docs/postgres-design.md:380` and `:394` repeated
+the note ceiling of `db/migrations/0002_user_data.sql:167` and `annotator/unified_server.py:138
+ANNOTATION_NOTE_MAX = 10000`, and the document reader could not see it: `tests/test_sql_domain_parity.py:163
+DOC_CHECK` needs the word `BETWEEN` and gives 6 matches at lines 127, 129, 146, 147, 284 and 364.  Writer W3
+did not widen that pattern, because its count feeds a message; it added a second reader for the `event_verdicts`
+block (`note_length_problems`) and two cases at `:1374` and `:1393`.  The known drift at
+`docs/postgres-design.md:319` stays open and is unreachable from the new reader.
+
+**Note 1 - the prose of `annotator/shot_clock.py:39-40`.**  It restated the client timeout as a number.  Writer
+W1 repaired it.  The ledger row at `docs/console-redesign.md:8098` still calls `annotator/shot_clock.py:40` one
+prose line of an FPS census: the line is prose, and it no longer holds `30 s`.  The round records that semantic
+drift as an open row.
+
+**The bites.**  Every writer bit its own file, and the Lead bit the other end of each row:
+
+| row | bite | before -> during -> after | red |
+| --- | --- | --- | --- |
+| the note length | the Lead moved `db/migrations/0002_user_data.sql:167` from `10000` to `9999` | `f7cb6cea52746d0a8dadb56efdf53e24805d7795 -> 30f0b2e29b3f00185915879ba8426ac72f89e5ae -> f7cb6cea...` | three cases, one naming the migration |
+| the clock numbers | writer W1 moved `annotator/shot_clock.py:41` `HEARTBEAT_S = 15` to `20` | `286ea986e191d0770a0b76f377fea30552f08039 -> fb056fe85cc65e14604746b5533a5bf0e6edbc2b -> 286ea986...` | `FAILED (failures=5)`, one naming `docs/corner-pocket-operations.md:46` |
+| the clock numbers | the Lead moved `docs/corner-pocket-operations.md:46` from `15 s` to `16 s` | `9b059620525c9d5f2b3211998531f780e5eb1477 -> 60b7f01aa93222a1452eb462afd1f3ac50ec6040 -> 9b059620...` | two cases naming the document line |
+| the poll interval | writer W2 moved `tests/load_public_board.py:431` from `default=poll_seconds()` to `default=4.0` | `5d3ebc44e40bdeefa24afe22182007f63a0f6feb -> 9aa60aa303cb89daf9aae46d31808c095c5dc58a -> 5d3ebc44...` | `FAILED (failures=1)` naming the harness and the owner |
+| the poll interval | the Lead moved `annotator/board.js:15` `POLL_MS = 3000` to `4000` | `cfc4552adccb727c8991a2fa084e98ad954ff167 -> a1b3867e13f9adae8f51318add1d9fd8d3efabf1 -> cfc4552a...` | `FAILED (failures=1)` naming `docs/public-board-load.md:12` |
+
+**The citations.**  `tests/test_sql_domain_parity.py` grew from 24 to 26 cases in five hunks (old cuts 95, 163,
+233, 551 and 1249).  Five ledger citations moved to the line that holds their text: `:194 -> :215`,
+`:825 -> :949`, `:846 -> :970`, `:896 -> :1020` and `:1276 -> :1445`.  One range citation broke in the first
+pass (`:194-199` became `:215-199`) and the Lead repaired it to `:215-220`.  Every other citation of that file
+kept its number and still names the same text.
+
+**Commits.**  `ca1b9a7 test: the design document note length holds the migration and the owner`,
+`ac918aa test: the operator document clock numbers hold their owners`,
+`d18d51c test: the load harness reads the board poll interval`,
+`c8d7207 docs: the citations follow the parity module shift of round 98`, and this record.
+
+**Lessons.**  (1) A citation range needs both ends shifted, and the cut point is the old start line of a hunk,
+not its new one.  (2) `sha1sum` is not a git object id, so a baseline comes from `git show <commit>:<path>`;
+the first citation pass answered `<past end>` for every site and proved nothing.  (3) A bite can find a defect in
+a writer's own draft: the W3 bite caught a reader that counted newlines inside a block and named line 5.
+(4) The independent bite of the Lead on the far end of a row is what makes a guard two-way.
+
+**Open rows.**  The semantic drift of `docs/console-redesign.md:8098`; the existing drift at
+`docs/postgres-design.md:319` (`embedding real[]` against the migration's `double precision[]`); the committed
+font subsets still lack the three characters `令`, `忙` and `繁` of `annotator/clock-sync.js:88-89`; and the
+582 document citations that name a line with no text.
