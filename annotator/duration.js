@@ -15,7 +15,7 @@
  * 1. Every duration on disk is a whole number of seconds.  Under out/ the keys
  *    length_s (21 values), start_s (28 values) and end_s (20 values) hold
  *    integers only.  annotator/live_processing.py:111 builds at_s from the
- *    `\d+` anchors at :88, so at_s is a non-negative integer as well.
+ *    `\d+` anchors at :93, so at_s is a non-negative integer as well.
  * 2. The one fractional input is a frame time.  annotator/vision-stage.js calls
  *    this rule with `start_s + frame.t`, and frame.t is a float
  *    (annotator/unified_server.py:1937 `timestamp_seconds=value / fps`).

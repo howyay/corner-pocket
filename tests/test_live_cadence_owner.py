@@ -104,7 +104,7 @@ PAYLOAD_FAILURE = (
 def setUpModule():
     """No case here reaches Twitch: a Twitch source starts the live-edge probe, whose playlist
     fetch would go to the network.  The pattern and the reason are the ones of
-    ``tests/test_live_processing.py:27``."""
+    ``tests/test_live_processing.py:33``."""
     blocked = patch('annotator.live_processing._fetch_playlist',
                     side_effect=RuntimeError('network is not available in unit tests'))
     blocked.start()

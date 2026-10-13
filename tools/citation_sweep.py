@@ -24,6 +24,13 @@ Rules for a round:
 * The ``.pm`` tree stays out of the walk: it is an untracked pack with no commit
   to read a baseline from.
 
+Three citation forms are invisible to this walk, so a write run must also run the
+guard ``tests/test_citation_lines.py`` and the modules that read a moved file:
+
+* a bare ``:NNN`` continuation after a ``path:NNN`` in the same sentence;
+* a number the text builds, as ``'{0}:375'.format(OWNER)``;
+* a line pinned as a bare integer in a list or a dict key.
+
 Usage:
     python3 tools/citation_sweep.py --base <commit> [--hold <path>] [--write]
 """

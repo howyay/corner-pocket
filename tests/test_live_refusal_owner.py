@@ -77,44 +77,44 @@ FIRST_PATTERN_SOURCE = r'^Select a saved canonical Twitch channel$'
 # with a code is phrased by the liveErrorCodes table of the console; a raise without one is phrased
 # by the liveRefusals patterns.
 RAISES = (
-    (130, "Requested detector 'ball' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors", None),
-    (138, "Requested detector 'ball' cannot run: %s", None),
-    (146, 'a message the caller builds', None),
-    (259, 'Pass either infer or stages, not both', None),
-    (334, 'source must be a dataset or saved Twitch channel object', None),
-    (338, 'dataset must be vod30 or highlight', None),
-    (341, 'Allowlisted dataset media is unavailable', None),
-    (350, 'Saved Twitch channel is unavailable', None),
-    (355, 'Select a saved canonical Twitch channel', None),
-    (358, 'Select a saved canonical Twitch channel', None),
-    (360, 'Use an allowlisted dataset or saved Twitch source_id, not a URL', None),
-    (375, DETECTOR_TEXT, None),
-    (388, 'Previous live processing threads have not exited; stop and retry', None),
-    (512, 'Unsupported live source kind', 'unsupported_kind'),
-    (541, 'Could not open the selected media source', 'open_failed'),
-    (568, 'Decoded frame must be a color image no larger than 3840 × 2160', 'frame_invalid'),
-    (655, CONSOLE_LINE_SENTENCE, None),
+    (135, "Requested detector 'ball' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors", None),
+    (143, "Requested detector 'ball' cannot run: %s", None),
+    (151, 'a message the caller builds', None),
+    (264, 'Pass either infer or stages, not both', None),
+    (339, 'source must be a dataset or saved Twitch channel object', None),
+    (343, 'dataset must be vod30 or highlight', None),
+    (346, 'Allowlisted dataset media is unavailable', None),
+    (355, 'Saved Twitch channel is unavailable', None),
+    (360, 'Select a saved canonical Twitch channel', None),
+    (363, 'Select a saved canonical Twitch channel', None),
+    (365, 'Use an allowlisted dataset or saved Twitch source_id, not a URL', None),
+    (380, DETECTOR_TEXT, None),
+    (393, 'Previous live processing threads have not exited; stop and retry', None),
+    (517, 'Unsupported live source kind', 'unsupported_kind'),
+    (546, 'Could not open the selected media source', 'open_failed'),
+    (573, 'Decoded frame must be a color image no larger than 3840 × 2160', 'frame_invalid'),
+    (660, CONSOLE_LINE_SENTENCE, None),
 )
 
 # The sentences an operator reads, one row per raise, in line order.  A sentence a pattern claims is
 # the sentence the service sends, so the reading is the same on both sides.
 ON_SCREEN = {
-    130: "Requested detector 'ball' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors",
-    138: "Requested detector 'ball' cannot run: ball.pt",
-    259: 'Pass either infer or stages, not both',
-    334: 'source must be a dataset or saved Twitch channel object',
-    338: 'dataset must be vod30 or highlight',
-    341: 'Allowlisted dataset media is unavailable',
-    350: 'Saved Twitch channel is unavailable',
-    355: 'Select a saved canonical Twitch channel',
-    358: 'Select a saved canonical Twitch channel',
-    360: 'Use an allowlisted dataset or saved Twitch source_id, not a URL',
-    375: DETECTOR_SENTENCE,
-    388: 'Previous live processing threads have not exited; stop and retry',
-    512: 'Unsupported live source kind',
-    541: 'Could not open the selected media source',
-    568: 'Decoded frame must be a color image no larger than 3840 × 2160',
-    655: CONSOLE_LINE_SENTENCE,
+    135: "Requested detector 'ball' has no stage in this pipeline; pass a BallStage with stages= or drop it from detectors",
+    143: "Requested detector 'ball' cannot run: ball.pt",
+    264: 'Pass either infer or stages, not both',
+    339: 'source must be a dataset or saved Twitch channel object',
+    343: 'dataset must be vod30 or highlight',
+    346: 'Allowlisted dataset media is unavailable',
+    355: 'Saved Twitch channel is unavailable',
+    360: 'Select a saved canonical Twitch channel',
+    363: 'Select a saved canonical Twitch channel',
+    365: 'Use an allowlisted dataset or saved Twitch source_id, not a URL',
+    380: DETECTOR_SENTENCE,
+    393: 'Previous live processing threads have not exited; stop and retry',
+    517: 'Unsupported live source kind',
+    546: 'Could not open the selected media source',
+    573: 'Decoded frame must be a color image no larger than 3840 × 2160',
+    660: CONSOLE_LINE_SENTENCE,
 }
 
 # A judged sentence: no pattern phrases it, and one fact in the tree proves why.
@@ -142,7 +142,7 @@ UNMAPPED = {
 
 # annotator/live_processing.py:151 forwards a message its caller builds, so it sends no sentence of
 # its own.  Every other raise of the owner carries one.
-UNREADABLE = (146,)
+UNREADABLE = (151,)
 
 NODE_DRIVER = r"""
 // The refusal patterns of annotator/app.js, read as the shipped text and kept as shipped regexes.
@@ -478,7 +478,7 @@ class LiveRefusalOwnerTest(unittest.TestCase):
                         'the detector-list sentence needs its pattern: ' + DETECTOR_SENTENCE)
         self.assertEqual(DETECTOR_SENTENCE_ZH, render,
                          'the console phrases the sentence in Chinese: ' + repr(render))
-        self.assertIn(('{0}:375'.format(OWNER), DETECTOR_SENTENCE), sentences(),
+        self.assertIn(('{0}:380'.format(OWNER), DETECTOR_SENTENCE), sentences(),
                       'the service sends the sentence this case names: ' + repr(sentences()))
         for wrapped in ('prefix: ' + DETECTOR_SENTENCE, DETECTOR_SENTENCE + ' and more',
                         'Live detectors must be a non-empty list of', DEAD_DETECTOR_SENTENCE):
@@ -508,11 +508,11 @@ class LiveRefusalOwnerTest(unittest.TestCase):
                          + DEAD_DETECTOR_SENTENCE)
 
     def test_a_sentence_no_pattern_covers_is_reported_as_file_line_sentence(self):
-        entry = ('{0}:375'.format(OWNER), DETECTOR_SENTENCE)
+        entry = ('{0}:380'.format(OWNER), DETECTOR_SENTENCE)
         patterns = console_patterns()
         self.assertEqual([], uncovered([entry], patterns),
                          'the detector-list sentence has its pattern now')
-        self.assertEqual(['{0}:375 '.format(OWNER) + DETECTOR_SENTENCE],
+        self.assertEqual(['{0}:380 '.format(OWNER) + DETECTOR_SENTENCE],
                          uncovered([entry], patterns[:DETECTOR_INDEX]),
                          'a sentence no pattern covers is reported as file:line sentence')
         self.assertEqual([], uncovered([entry], patterns[:DETECTOR_INDEX], {DETECTOR_SENTENCE: 'why'}),
@@ -525,7 +525,7 @@ class LiveRefusalOwnerTest(unittest.TestCase):
             'raise ValueError({0!r})'.format(planted), 1)
         self.assertNotEqual(owner_text(), text, 'the plant missed its anchor')
         offenders = uncovered(sentences(text), console_patterns())
-        self.assertIn('{0}:355 '.format(OWNER) + planted, offenders,
+        self.assertIn('{0}:360 '.format(OWNER) + planted, offenders,
                       'the planted sentence is reported with its line: ' + repr(offenders))
         self.assertEqual(1, len(offenders),
                          'the plant adds one sentence and one report line: ' + repr(offenders))
@@ -533,11 +533,11 @@ class LiveRefusalOwnerTest(unittest.TestCase):
     def test_a_lost_pattern_names_the_sentence_it_leaves_english(self):
         text = console_source().replace(FIRST_PATTERN_SOURCE, DETECTOR_PATTERN_SOURCE, 1)
         self.assertNotEqual(console_source(), text, 'the plant missed its anchor')
-        both = ['{0}:355 Select a saved canonical Twitch channel'.format(OWNER),
-                '{0}:358 Select a saved canonical Twitch channel'.format(OWNER)]
+        both = ['{0}:360 Select a saved canonical Twitch channel'.format(OWNER),
+                '{0}:363 Select a saved canonical Twitch channel'.format(OWNER)]
         self.assertEqual(both, uncovered(sentences(), console_patterns(text)),
                          'the lost row leaves both raises that send its sentence English')
-        self.assertEqual(['{0}:375 '.format(OWNER) + DETECTOR_SENTENCE],
+        self.assertEqual(['{0}:380 '.format(OWNER) + DETECTOR_SENTENCE],
                          uncovered(sentences(), console_patterns()[:DETECTOR_INDEX]),
                          'a lost pattern names the sentence it leaves English')
 
