@@ -36,8 +36,8 @@ MIN_DURATION = 5
 MAX_DURATION = 300
 DEFAULT_DURATION = 30
 # The change stream (GET /api/clock/stream) is never silent for longer than this:
-# Cloudflare drops an idle proxied connection at ~100 s, and a page that hears
-# nothing for 30 s falls back to polling.
+# the client stops trusting it after the timeout named HEARTBEAT_TIMEOUT_MS in
+# annotator/clock-sync.js, and polls before a proxy drops the idle connection.
 HEARTBEAT_S = 15
 #: The reconnect delay this module owns. `serve_events` writes it as the `retry:`
 #: hint of the SSE preamble, and `snapshot` publishes it as `retry_ms`. The page
