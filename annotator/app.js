@@ -64,7 +64,7 @@ const BOX_ORIGIN = {operator:'manual', model:'auto'};
 const BUILT_IN_DATASET = 'vod30';
 const NATIVE_FRAME = [1280, 720], NATIVE_W = NATIVE_FRAME[0], NATIVE_H = NATIVE_FRAME[1];
 const state = {
-  mode:'timeline', dataset:'vod30', datasets:[], sets:[], set:'unlabeled_crops',
+  mode:'timeline', dataset:BUILT_IN_DATASET, datasets:[], sets:[], set:'unlabeled_crops',
   events:[], annotations:{}, eventIndex:0, eventFilter:'all', verdictDraft:null, shooterDraft:null, noteDraft:null,
   balls:{items:[], labels:{}, index:0, file:null},
   anchors:{pts:[], index:0, w:1920, h:1080, saved:false, loaded:false, t:70, times:[]},
@@ -484,7 +484,7 @@ async function loadDatasets() {
   if (!data.datasets?.length) throw new Error('No VOD datasets are configured.');
   state.sets = data.ball_sets || []; state.set = state.sets[0]?.id || 'unlabeled_crops';
   state.datasets = data.datasets;
-  state.dataset = data.datasets.some(d => d.id === 'vod30') ? 'vod30' : data.datasets[0].id;
+  state.dataset = data.datasets.some(d => d.id === BUILT_IN_DATASET) ? BUILT_IN_DATASET : data.datasets[0].id;
   notify();
 }
 async function loadVideo() {
@@ -549,7 +549,7 @@ async function loadSeeds() {
 // needs, and the same six are the dataset's trusted pocket geometry.
 async function loadClothReference() {
   state.cloth.reference = null;
-  if (state.dataset !== 'vod30') { paintOverlay(); notify(); return null; }
+  if (state.dataset !== BUILT_IN_DATASET) { paintOverlay(); notify(); return null; }
   try {
     const data = await api(`/api/${enc(BUILT_IN_DATASET)}/anchors?t=${enc(state.anchors.t)}`);
     const saved = Array.isArray(data.pts) && data.pts.length >= 4;
@@ -1061,7 +1061,7 @@ function paintOverlay() {
     const geometry = paintCueGeometry(cue);
     if (geometry) { layers.push(geometry.markup); auto.events++; }
   }
-  if (ov.anchors && state.anchors.loaded && state.dataset === 'vod30' && !liveFrame) {
+  if (ov.anchors && state.anchors.loaded && state.dataset === BUILT_IN_DATASET && !liveFrame) {
     const [ax, ay] = state.anchors.pts[0] || [0, 0];
     layers.push(state.anchors.pts.map(([x, y], i) => `<g class="u-anchor${state.sel.kind === 'anchor' && state.anchors.index === i ? ' selected' : ''}" data-anchor="${i}"><circle cx="${x}" cy="${y}" r="12"></circle><text x="${x + 18}" y="${y - 16}">${i + 1}</text></g>`).join(''));
     layers.push(sourceTag(ax + 16, Math.max(2, ay - 32), 'manual'));
@@ -1342,7 +1342,7 @@ async function selectTrackAndSeek(id) {
   return true;
 }
 function selectAnchor(index) {
-  if (state.dataset !== 'vod30') return false;
+  if (state.dataset !== BUILT_IN_DATASET) return false;
   state.anchors.index = index;
   state.sel = {kind:'anchor', anchor:index, crop:null, ball:null, person:null, track:null, event:null, box:-1};
   state.focus = 'anchors';
@@ -2468,13 +2468,15 @@ Object.defineProperty(window.CornerPocketReview, 'vocabulary', {value: VOCABULAR
 // (QUAD_REFUSAL_COPY) are the third and the fourth. The byte count the operator reads (sizeText,
 // the same rule as annotator.refusals.size_text) is the fifth, and the detectors a session measures
 // when the caller names none (liveDetectors, the same set as annotator.pipeline_stages
-// .DEFAULT_DETECTORS) is the sixth.
+// .DEFAULT_DETECTORS) is the sixth. The built-in dataset id (builtInDataset, the same word as
+// src.datasets.BUILT_IN_DATASET) is the seventh, so the adapter holds no second copy of it.
 // annotator/ops.js, annotator/vision-stage.js and annotator/clock-sync.js read them from that seam
 // instead of holding a copy. Both console pages load this file before those scripts. A test that
 // stands in for the engine handle replaces window.CornerPocketReview, and that handle is a driver
 // seam, not a rule seam.
 window.ConsoleRules = {esc, jsonHeaders, words: SHARED_WORDS, quadReasons: QUAD_REFUSAL_COPY,
-                       sizeText, liveDetectors: DEFAULT_LIVE_DETECTORS};
+                       sizeText, liveDetectors: DEFAULT_LIVE_DETECTORS,
+                       builtInDataset: BUILT_IN_DATASET};
 const standaloneRoot = document.querySelector('#review-root');
 if (standaloneRoot) { mount(standaloneRoot); activate(); }
 })();

@@ -13,7 +13,7 @@ Round 68, two rows of the walk of this round.
   and plays.  ``annotator/unified_server.py`` holds the shortest window the encoder is asked
   for: a shorter window at the end of a video is one frame, so the route refuses it.  Until
   round 68 both stated the number as a bare literal (``annotator/app.js:752`` and
-  ``annotator/unified_server.py:1973``), and no case named either.  The floor is **not** the
+  ``annotator/unified_server.py:1976``), and no case named either.  The floor is **not** the
   named clamp ``CLIP_MIN_S = 0.25`` / ``CLIP_MAX_S = 5.0``.  That clamp bounds the window a
   caller may *name*, and round 40 closed it.
 
@@ -56,7 +56,7 @@ What this case does not see
   ``tests/test_app_timeline.js``, which is the case that holds the wire value and the echo.
 * It holds the readers to the pattern of today.  A later round that moves a comparison or a
   button attribute must move the pattern here in the same change.  The three sites are
-  ``annotator/vision-stage.js:345`` (``labelText``), ``annotator/vision-stage.js:1341`` (the
+  ``annotator/vision-stage.js:350`` (``labelText``), ``annotator/vision-stage.js:1346`` (the
   number the unknown button posts) and ``annotator/label.html:61`` (the state of a crop).
   The page compares the stored word a second time at line 101 of the same file, and this
   module holds that line by the same rule.

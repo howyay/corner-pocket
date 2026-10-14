@@ -39,8 +39,8 @@ from src.store_files import SEED_DOCUMENT  # noqa: E402
 # The three artifact names of the out/ root have one owner, src.store.py.  This
 # module reads them, so it spells none of the three again.
 from src.store import SHARED_ARTIFACTS, TRACKLETS_NAME  # noqa: E402
-from src.datasets import media_path  # noqa: E402
-VIDEO = media_path(ROOT.parent, "vod30")
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
+VIDEO = media_path(ROOT.parent, BUILT_IN_DATASET)
 TR = ROOT.parent / "out" / TRACKLETS_NAME
 SEED = ROOT.parent / SEED_DOCUMENT
 PROTO = ROOT.parent / "out" / SHARED_ARTIFACTS["seed_prototypes"]

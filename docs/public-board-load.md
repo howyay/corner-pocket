@@ -171,7 +171,7 @@ assertions have nothing to look at. The console rows are still the whole point o
   tunnel; §6 measures a little of that, with 10 pollers rather than 50.
 - **A first pair of full runs is void, and the reason is kept here.** The harness originally
   handed the fixture's stderr to a pipe nobody drained. The public handler logs only refusals
-  — `log_request` is overridden at `annotator/unified_server.py:1935` precisely so that "a
+  — `log_request` is overridden at `annotator/unified_server.py:1938` precisely so that "a
   3 s poller" does not fill the journal — but the console handler has no such override and
   logs every request, so once ~64 KB of lines had accumulated every console handler thread
   blocked in `write()`. The symptom was a console that answered 106 requests and then timed

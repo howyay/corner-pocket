@@ -94,7 +94,7 @@ SITES = {
     "src/event_gates.py": ((99, "import"), (99, "import"), (186, "get")),
     "src/shot_pot_gate.py": ((90, "import"), (1412, "dict"), (1571, "dict"),
                              (1586, "dict"), (1603, "dict")),
-    "annotator/unified_server.py": ((469, "import"), (1738, "import"), (1739, "get")),
+    "annotator/unified_server.py": ((472, "import"), (1741, "import"), (1742, "get")),
 }
 #: The module each writer takes the home names from.  A name of a row that one
 #: site needs may sit on the import line of another name of the same row.  The
@@ -132,7 +132,7 @@ JS_READERS = (
     ("annotator/app.js", 1048, "event.nearest_pocket"),
     ("annotator/app.js", 1263, "event.nearest_pocket"),
     ("annotator/app.js", 2000, "e.nearest_pocket"),
-    ("annotator/vision-stage.js", 402, "event?.nearest_pocket"),
+    ("annotator/vision-stage.js", 407, "event?.nearest_pocket"),
 )
 #: The directories the anti-copy walk reads.
 PY_WALKED = ("src/**/*.py", "annotator/**/*.py")

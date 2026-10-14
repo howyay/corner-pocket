@@ -31,8 +31,11 @@ from src.served_files import bare_name
 # this repository, so this adds no cycle.
 from annotator.refusals import WHOLE_SECONDS
 
+# The id of the built-in recording has one home, here.  Every module that names the built-in
+# recording reads this name, so a second copy of the id is the defect.
+BUILT_IN_DATASET = "vod30"
 #: The built-in recordings: id -> (scan folder under out/, media file under data/).
-STATIC = {"vod30": ("scan30", "vod_30min_260815.mp4"),
+STATIC = {BUILT_IN_DATASET: ("scan30", "vod_30min_260815.mp4"),
           "highlight": ("scan_highlight", "vod_highlight.mp4")}
 #: id -> scan folder: the mapping src/store.py has always exported as DATASETS.
 STATIC_OUT = {key: value[0] for key, value in STATIC.items()}

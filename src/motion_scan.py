@@ -64,7 +64,7 @@ if str(ROOT) not in sys.path:
 from src.ball_scale import (DIAMETER_NATIVE_PX, DIAMETER_P10_NATIVE_PX,  # noqa: E402
                             DIAMETER_P90_NATIVE_PX, NATIVE_FRAME, RADIUS_NATIVE_PX,
                             WORKING_FRAME)
-from src.datasets import lookup as dataset_lookup, media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, lookup as dataset_lookup, media_path  # noqa: E402
 # The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  This reader builds
 # the path of each candidate scan folder itself, so it takes the plain name.
 from src.sam3_artifact import ARTIFACT  # noqa: E402
@@ -276,7 +276,7 @@ class ScanReport:
 
 # ------------------------------------------------------------- the quad ------
 
-def load_quad(dataset: str = "vod30", root=None, quad_file=None, frame_size=None,
+def load_quad(dataset: str = BUILT_IN_DATASET, root=None, quad_file=None, frame_size=None,
               t=None) -> dict:
     """The verified cloth quad for ``dataset``, in that dataset's native pixels.
 
@@ -320,7 +320,7 @@ def sam3_ball_radius(dataset: str, root=None) -> dict:
     root = Path(root or ROOT)
     known = dataset_lookup(root, dataset)
     folders = ([known.out_dir] if known is not None else []) + (
-        [root / "out" / "scan30"] if dataset == "vod30" else []) + [
+        [root / "out" / "scan30"] if dataset == BUILT_IN_DATASET else []) + [
         root / "out" / name for name in (f"scan_{dataset}", f"scan{dataset}", dataset)]
     for folder in dict.fromkeys(folders):
         path = folder / ARTIFACT
@@ -354,7 +354,7 @@ def video_for(dataset: str, root=None) -> Path:
     return root / "data" / f"vod_{dataset}.mp4"
 
 
-def config_for(video, dataset: str = "vod30", root=None, **overrides) -> "MotionConfig":
+def config_for(video, dataset: str = BUILT_IN_DATASET, root=None, **overrides) -> "MotionConfig":
     """The scan configuration this dataset needs, read from its own frames.
 
     The working size stays 0.75 x native (the ratio the pipeline uses) and the ball
@@ -687,7 +687,7 @@ def probe_windows(video, windows, ctx: ClothContext, cfg: MotionConfig = MotionC
 
 # ------------------------------------------------------------- the scan -------
 
-def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = "vod30",
+def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = BUILT_IN_DATASET,
          progress=lambda text: None) -> tuple[ScanReport, dict]:
     """Decode the whole VOD once; return the report and the per-frame arrays."""
     video = Path(video)
@@ -992,7 +992,7 @@ def value_at(t, values, t0: float) -> float:
 # --------------------------------------------------- the floor / the controls --
 
 def _records_for(dataset: str, root) -> list:
-    for name in (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
+    for name in (["scan30"] if dataset == BUILT_IN_DATASET else []) + [f"scan_{dataset}",
                                                               f"scan{dataset}"]:
         path = Path(root) / "out" / name / RECORDS_NAME
         if not path.exists():
@@ -1025,7 +1025,7 @@ def quiet_windows(records: list, dataset: str, root, still_count: int = 20,
     return [round(float(r["t"]), 3) for r in quiet[::step]][:still_count]
 
 
-def control_windows(root=None, dataset: str = "vod30", still_count: int = 20) -> dict:
+def control_windows(root=None, dataset: str = BUILT_IN_DATASET, still_count: int = 20) -> dict:
     """The control sets, as (name, [t, ...]) pairs.
 
     ``chance_pairs``  every ``source == "pair"`` candidate in
@@ -1040,7 +1040,7 @@ def control_windows(root=None, dataset: str = "vod30", still_count: int = 20) ->
     """
     root = Path(root or ROOT)
     sets: dict[str, list] = {"chance_pairs": [], "timing_controls": []}
-    if dataset == "vod30":
+    if dataset == BUILT_IN_DATASET:
         raw = root / "out" / "scan30" / "raw_candidates.json"
         if raw.exists():
             payload = json.loads(raw.read_text())
@@ -1693,7 +1693,7 @@ def save_scan(report: ScanReport, arrays: dict, quad_meta: dict, out_dir) -> dic
     return {"json": str(report_path), "npz": str(npz_path)}
 
 
-def save_report(payload: dict, out_dir, dataset: str = "vod30") -> str:
+def save_report(payload: dict, out_dir, dataset: str = BUILT_IN_DATASET) -> str:
     """Merge analysis blocks into the dataset JSON (the scan's own keys win)."""
     out_dir = Path(out_dir)
     path = out_dir / f"{dataset}.json"
@@ -1703,7 +1703,7 @@ def save_report(payload: dict, out_dir, dataset: str = "vod30") -> str:
     return str(path)
 
 
-def load_scan(out_dir, dataset: str = "vod30") -> tuple[dict, dict]:
+def load_scan(out_dir, dataset: str = BUILT_IN_DATASET) -> tuple[dict, dict]:
     out_dir = Path(out_dir)
     report = json.loads((out_dir / f"{dataset}.json").read_text())
     arrays = dict(np.load(out_dir / f"{dataset}.series.npz"))
@@ -1879,14 +1879,14 @@ def annotated_balls(census_row) -> list:
     return [b for b in (census_row or []) if b.get("r")]
 
 
-def load_census(dataset: str = "vod30", root=None) -> dict:
+def load_census(dataset: str = BUILT_IN_DATASET, root=None) -> dict:
     """The SAM3 census of one dataset, from the scan folder this module derives.
 
     The file name comes from the owner of the census, ``src/sam3_ball_cache.py``;
     ``OWN_CACHE`` holds the whole path, so this reader takes its last component.
     """
     root = Path(root or ROOT)
-    names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}"]
+    names = (["scan30"] if dataset == BUILT_IN_DATASET else []) + [f"scan_{dataset}"]
     for name in names:
         path = root / "out" / name / Path(OWN_CACHE).name
         if path.exists():
@@ -2289,7 +2289,7 @@ def cmd_strips(args) -> None:
                  (report.get("thresholds") or {}).get("occ_dense_bar", 1.0))})
     # vod30's strips were already delivered unprefixed, so only other datasets carry
     # their name in the filename.
-    prefix = "" if args.dataset == "vod30" else f"{args.dataset}_"
+    prefix = "" if args.dataset == BUILT_IN_DATASET else f"{args.dataset}_"
     for i, onset in enumerate(rows):
         name = (f"{prefix}{i + 1:02d}_t{onset['t_onset']:07.2f}s_"
                 f"{signal}_{onset['peak']:.0f}")
@@ -2342,7 +2342,7 @@ def events_for(dataset: str, root=None) -> Path:
     from src import events_document
 
     root = Path(root or ROOT)
-    names = (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
+    names = (["scan30"] if dataset == BUILT_IN_DATASET else []) + [f"scan_{dataset}",
                                                           f"scan{dataset}"]
     for name in names:
         path = events_document.document_in(root / "out" / name, events_document.SERVED)
@@ -2352,7 +2352,7 @@ def events_for(dataset: str, root=None) -> Path:
                                        events_document.SERVED)
 
 
-def _served_events(root, events_file, dataset: str = "vod30") -> list:
+def _served_events(root, events_file, dataset: str = BUILT_IN_DATASET) -> list:
     path = Path(events_file) if events_file else events_for(dataset, root)
     if not path.exists():
         return []

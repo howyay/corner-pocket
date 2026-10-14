@@ -18,7 +18,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)  # src/weight_pins.py sits under src/
 sys.path.insert(0, os.path.join(REPO, "src", "reid"))
 import osnet as O  # noqa
-from src.datasets import media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
 # src/weight_pins.py owns the weight path, so this file reads the owner.
 from src.weight_pins import OSNET  # noqa: E402
 # The mean and the standard deviation belong with the pinned weights, so this
@@ -28,7 +28,7 @@ from src.weight_pins import OSNET_MEAN, OSNET_STD  # noqa: E402
 # reader takes the path from the owner.
 from src.pid_identity import IDENTITY_REFERENCE  # noqa: E402
 
-VIDEO = str(media_path(REPO, "vod30"))
+VIDEO = str(media_path(REPO, BUILT_IN_DATASET))
 FEATS = json.load(open(os.path.join(REPO, IDENTITY_REFERENCE)))["feats"]
 W = os.path.join(REPO, OSNET)
 MEAN = np.array(OSNET_MEAN, np.float32)

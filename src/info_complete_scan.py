@@ -37,7 +37,7 @@ if str(ROOT) not in sys.path:
 from src.ball_scale import WORKING_FRAME  # noqa: E402
 # src/calib_segments.py owns the scan corners path, so this file reads the owner.
 from src.calib_segments import SCAN_CORNERS  # noqa: E402
-from src.datasets import media_relpath  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_relpath  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.pipeline import homography_to_canonical, CANON_W, CANON_H  # noqa: E402
 # The homogeneous-division rule has one owner, src/projection.py.  This module
@@ -413,7 +413,7 @@ def _pair_candidates(prev: dict, cur: dict, H, cfg: GateConfig, gap: float) -> t
 def main():
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--video', default=media_relpath(ROOT, 'vod30'))
+    ap.add_argument('--video', default=media_relpath(ROOT, BUILT_IN_DATASET))
     ap.add_argument('--corners', default=SCAN_CORNERS)
     ap.add_argument('--out', default='out/scan-ic')
     ap.add_argument('--stride', type=int, default=2, help='process every Nth frame')

@@ -51,6 +51,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+from src.datasets import BUILT_IN_DATASET
 
 try:                                   # `from src import sam3_artifact`
     from src.datasets import STATIC_OUT
@@ -167,7 +168,7 @@ class Artifact:
         return f"{head}, no stamp; the producer is unknown"
 
 
-def artifact_path(dataset: str = "vod30", root=None) -> Path:
+def artifact_path(dataset: str = BUILT_IN_DATASET, root=None) -> Path:
     """The path of `dataset`'s artifact: `out/scan30/sam3_results.json` for vod30.
 
     The folder name comes from `src/datasets.py:STATIC_OUT`, which is the table

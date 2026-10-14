@@ -39,13 +39,13 @@ sys.path.insert(0, ROOT)
 # reader takes the path from the owner.
 from pid_identity import (CENTERS_BGR_KEY, IDENTITY_REFERENCE, PERSON_CONF, classify_ab,
                           in_table_zone, light_dark, torso_color)
-from src.datasets import media_path  # noqa: E402
-VIDEO = str(media_path(REPO, "vod30"))
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
+VIDEO = str(media_path(REPO, BUILT_IN_DATASET))
 MODEL = YOLO(weight_pins.YOLO)
 # src/events_document.py owns the name of the vod30 rebuild document, so this
 # reader takes the path from the owner and keeps its own root.
 EVENTS = json.load(open(events_document.document_path(events_document.V2, root=REPO)))
-CAL = json.load(open(os.path.join(REPO, "out", calibration_name("vod30"))))
+CAL = json.load(open(os.path.join(REPO, "out", calibration_name(BUILT_IN_DATASET))))
 H = np.array(CAL["H"])  # mm -> px
 QUAD = np.array(json.load(open(corners_v2_path(root=REPO)))["corners"], np.float32)
 

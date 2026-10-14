@@ -25,8 +25,8 @@ from src.calib_segments import corners_v2_path  # noqa: E402
 # src/store.py owns the two person report paths, so this file reads the owner and
 # keeps its own root.
 from src.store import PERSON_REPORT_PATHS  # noqa: E402
-from src.datasets import media_path  # noqa: E402
-VIDEO = str(media_path(ROOT, "vod30"))
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
+VIDEO = str(media_path(ROOT, BUILT_IN_DATASET))
 QUAD = np.array(json.load(open(corners_v2_path(root=ROOT)))["corners"], np.float32)
 
 # The identity document: this module writes it, and three readers load it at

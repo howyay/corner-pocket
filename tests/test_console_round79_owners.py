@@ -23,7 +23,7 @@ words table (annotator/ops.js, row 'visionLoading') and both of the adapter's ta
 (annotator/vision-stage.js).  The decision is Strong 1's decision again: the row lives in SHARED_WORDS
 (annotator/app.js:2193), and the two screens read it.  The ops console reads it through sharedWord()
 and say() at annotator/ops.js:893 and annotator/ops.js:1249; the adapter reads it through say() at
-annotator/vision-stage.js:1783.  The ops console keeps t() on its own table, because several slot
+annotator/vision-stage.js:1788.  The ops console keeps t() on its own table, because several slot
 names stand in both tables with different words: this console's 'live' row reads 'On table' while
 SHARED_WORDS answers 'live', so an owner-first t() would repaint the match status badge.
 

@@ -42,7 +42,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
-from src.datasets import media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
 from src.ball_gate import SAM3_BALL_MIN_SCORE  # noqa: E402
 # The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
 # path from that owner, so a rename of the file name moves this reader too.
@@ -60,10 +60,10 @@ from src import calib_segments  # noqa: E402
 
 OUT = ROOT / PROBE_DIR_NAME
 CENSUS = ROOT / OWN_CACHE                  # the census, through its owner
-RESULTS = artifact_path("vod30", ROOT)     # the app's own scan, through its owner
-VIDEO = media_path(ROOT, "vod30")
+RESULTS = artifact_path(BUILT_IN_DATASET, ROOT)     # the app's own scan, through its owner
+VIDEO = media_path(ROOT, BUILT_IN_DATASET)
 CORNERS = ROOT / calib_segments.SCAN_CORNERS   # the scan corners, through its owner
-QUAD_SEGMENTS = ROOT / "out" / calib_segments.ARTIFACT.format(dataset="vod30")
+QUAD_SEGMENTS = ROOT / "out" / calib_segments.ARTIFACT.format(dataset=BUILT_IN_DATASET)
 
 _FRAME_CACHE: dict = {}       # (size, index) -> resized frame, so an epoch re-decodes nothing
 TRAIN_WH = (640, 360)           # probe resolution: the ball is 9.4 px across here
@@ -113,7 +113,7 @@ def load_labels(root=None, extra=()) -> dict:
     root = Path(root or ROOT)
     labels: dict[float, list] = {}
     for path, key in ((root / OWN_CACHE, "frames"),
-                      (artifact_path("vod30", root), None)):
+                      (artifact_path(BUILT_IN_DATASET, root), None)):
         if not path.exists():
             continue
         payload = json.loads(path.read_text())

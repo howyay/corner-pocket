@@ -27,7 +27,7 @@ import osnet as O  # noqa
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 from pid_identity import PERSON_CONF, in_table_zone, torso_color  # noqa
-from src.datasets import media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
 # src/weight_pins.py owns the two weight paths and src/events_document.py owns
 # the name of the vod30 rebuild document, so this file reads the two owners.
 from src import events_document, weight_pins
@@ -39,7 +39,7 @@ from src.weight_pins import OSNET_MEAN, OSNET_STD  # noqa: E402
 # the event-actor name from the two maps of the owner.
 from src.store import SHARED_ARTIFACTS, TRACKLETS_NAME  # noqa: E402
 
-VIDEO = str(media_path(REPO, "vod30"))
+VIDEO = str(media_path(REPO, BUILT_IN_DATASET))
 MODEL = YOLO(weight_pins.YOLO)
 W = os.path.join(REPO, OSNET)
 MEAN = np.array(OSNET_MEAN, np.float32)

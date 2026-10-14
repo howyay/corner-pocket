@@ -192,7 +192,11 @@ class HighlightSampleTimesHomeTests(unittest.TestCase):
         for relative, function in READERS:
             with self.subTest(reader=relative):
                 tree = parsed(relative)
-                self.assertIn("from src.datasets import %s" % OWNER_NAME, source(relative),
+                imported = {alias.name
+                            for node in ast.walk(tree)
+                            if isinstance(node, ast.ImportFrom) and node.module == "src.datasets"
+                            for alias in node.names}
+                self.assertIn(OWNER_NAME, imported,
                               "%s must import the instants from the owner" % relative)
                 self.assertIn(function, owner_readers(tree),
                               "%s must read the owner's instants in %s"

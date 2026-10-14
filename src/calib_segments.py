@@ -61,6 +61,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from src.datasets import BUILT_IN_DATASET  # noqa: E402
 
 ARTIFACT = "calib_{dataset}_segments.json"
 
@@ -159,7 +160,7 @@ ANCHORS_PATH_HEAD, _, ANCHORS_SUFFIX = ANCHORS_REFERENCE.partition("{dataset}")
 ANCHORS_HEAD = ANCHORS_PATH_HEAD.rpartition("/")[2]
 
 
-def anchors_reference_name(dataset: str = "vod30") -> str:
+def anchors_reference_name(dataset: str = BUILT_IN_DATASET) -> str:
     """The file name alone of the anchor file of one dataset.
 
     ``anchors_reference_path`` answers the path from the out/ root.  A reader that
@@ -181,7 +182,7 @@ def anchors_reference_name(dataset: str = "vod30") -> str:
 # src/calib_mapping_audit.py onto this entry.
 CORNERS_SPEC = {"file": "fixed_corners.json", "key": "corners", "table": False}
 STATIC_REFERENCES = {
-    "vod30": {"file": anchors_reference_name("vod30"), "key": "anchors", "table": True},
+    BUILT_IN_DATASET: {"file": anchors_reference_name(BUILT_IN_DATASET), "key": "anchors", "table": True},
     "highlight": CORNERS_SPEC,
 }
 
@@ -459,7 +460,7 @@ def _time(t):
 _CACHE: dict = {}
 
 
-def load(dataset: str = "vod30", path=None, root=None, use_cache: bool = True) -> Segments | None:
+def load(dataset: str = BUILT_IN_DATASET, path=None, root=None, use_cache: bool = True) -> Segments | None:
     """The segment artifact for ``dataset``, or ``None`` when there is none.
 
     ``root`` (the checkout or the server's tree) keeps a caller pointed at its own
@@ -567,7 +568,7 @@ def read(path, key: str | None = None, t=None, order: bool = False,
                      declared={"verified": bool(data.get("verified"))})
 
 
-def static_reference(dataset: str = "vod30", t=None, root=None,
+def static_reference(dataset: str = BUILT_IN_DATASET, t=None, root=None,
                      order: bool = False) -> Reference:
     """The saved reference file of a dataset, or a not-found reference.
 
@@ -586,7 +587,7 @@ def static_reference(dataset: str = "vod30", t=None, root=None,
     reference.dataset = dataset
     if not reference.found:
         return reference
-    if str(dataset) == "vod30":
+    if str(dataset) == BUILT_IN_DATASET:
         reference.note = f"hand pocket anchors at t={reference.entry} (first four)"
         reference.evidence = "hand anchors"
     else:
@@ -683,7 +684,7 @@ def _prior_reference(dataset, t, base, rejected: list) -> Reference | None:
                      note="search-centre prior, not a verified quad")
 
 
-def resolve(dataset: str = "vod30", t=None, root=None, artifact=None, quad_file=None,
+def resolve(dataset: str = BUILT_IN_DATASET, t=None, root=None, artifact=None, quad_file=None,
             frame_size=None, prefer_human: bool = False, kinds=KINDS,
             use_cache: bool = True) -> Reference:
     """The one calibration reference for ``dataset`` at time ``t``, and its origin.
@@ -731,7 +732,7 @@ def resolve(dataset: str = "vod30", t=None, root=None, artifact=None, quad_file=
                      rejected=list(rejected))
 
 
-def anchors_reference_path(dataset: str = "vod30", path=None) -> str:
+def anchors_reference_path(dataset: str = BUILT_IN_DATASET, path=None) -> str:
     """The anchor file of one dataset.  The only derivation of that name.
 
     The dataset argument names the file.  A caller may give a different name in
@@ -775,7 +776,7 @@ def _scan_corners_reference(path, dataset: str) -> Reference:
     return reference
 
 
-def verified_cloth_quad(dataset: str = "vod30", t=None, root=None, anchors_path=None,
+def verified_cloth_quad(dataset: str = BUILT_IN_DATASET, t=None, root=None, anchors_path=None,
                         scan_corners_path=None) -> Reference:
     """The verified cloth quad of one dataset: the one owner of that rule.
 

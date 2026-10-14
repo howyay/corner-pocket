@@ -40,7 +40,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
-from src.datasets import media_relpath  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_relpath  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 
 BLACK_MEAN = 12.0        # below this the frame is not a picture of anything
@@ -126,7 +126,7 @@ def cloth_report(video, time_s, reference_quad=None):
     return row
 
 
-def reference_quad(dataset="vod30", anchors_path=None, root=None):
+def reference_quad(dataset=BUILT_IN_DATASET, anchors_path=None, root=None):
     """The verified cloth quad: the human calibration segment, else the hand anchors.
 
     The rule lives in ``src.calib_segments.verified_cloth_quad``: the human
@@ -223,7 +223,7 @@ def audit(video, times, out_dir="out/scan30/zeroball", dumps=True) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
+    ap.add_argument("--video", default=media_relpath(ROOT, BUILT_IN_DATASET))
     ap.add_argument("--times", default="", help="comma-separated timestamps")
     ap.add_argument("--times-file", default=None,
                     help="JSON list of timestamps (e.g. the zero-ball frames of a cache)")

@@ -44,6 +44,7 @@ from src.table_detect import _order_corners
 from src.calib_segments import (INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
                                 UNVERIFIED_SIDES_KEY, VERIFIED_SIDES_KEY)
 from src import calib_segments  # noqa: E402
+from src.datasets import BUILT_IN_DATASET  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -87,7 +88,7 @@ _DATASET_NOTES = {
     # so the refinement searched 70 px of carpet.  The six hand anchors (their first
     # four points are the cloth corners) track the same edge within 6-13 px, so they
     # are the seed.
-    "vod30": ("first four of the six hand pocket anchors at t=70 "
+    BUILT_IN_DATASET: ("first four of the six hand pocket anchors at t=70 "
               "(measured within 6-13 px of the visible cloth edge). "
               "This note is about the vod30 seed only: the seed of vod30 is not "
               "corners_30min_v2.json, because that file has a left rail ~70 px "

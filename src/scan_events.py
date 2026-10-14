@@ -29,7 +29,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* imports
-from src.datasets import media_relpath
+from src.datasets import BUILT_IN_DATASET, media_relpath
 from ball_detect import detect_ball_candidates
 from src import ball_scale, events_document, sam3_artifact
 from src.frame_rate import FPS_FALLBACK
@@ -264,7 +264,7 @@ def shot_refinement(sam3, shot_disp=SHOT_DISP_MM):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--video", default=media_relpath(ROOT.parent, "vod30"))
+    ap.add_argument("--video", default=media_relpath(ROOT.parent, BUILT_IN_DATASET))
     ap.add_argument("--out", default="out/scan30")
     ap.add_argument("--every", type=float, default=1.0)
     ap.add_argument("--corners", default=None, help="precomputed corners JSON (do not re-estimate)")

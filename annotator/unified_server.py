@@ -33,7 +33,10 @@ from src.atomic_write import write_atomic
 # legacy review server (annotator/server.py) calls the same two functions, so the two
 # file routes cannot apply two different rules.
 from src.served_files import bare_name, file_under  # noqa: E402
-from src.datasets import STATIC as STATIC_DATASETS, listing as dataset_listing, lookup as dataset_lookup  # noqa: E402
+# The id of the built-in recording has one home, src/datasets.py.  This module imports the
+# name, so every route that names the built-in recording - a default, a store key, a compare -
+# reads that one word instead of a second copy of the id.
+from src.datasets import BUILT_IN_DATASET, STATIC as STATIC_DATASETS, listing as dataset_listing, lookup as dataset_lookup  # noqa: E402
 # The pocket name a text states has one owner, src/pocket_names.py. This backend and
 # the gate of src/event_gates.py answered the bare spelling in two different ways.
 from src.pocket_names import pocket_from_text  # noqa: E402
@@ -1128,7 +1131,7 @@ class Backend:
 
     def enroll_preview(self, payload):
         """Plan an enrolment for the clicked person. Reads only."""
-        dataset = payload.get("dataset", "vod30")
+        dataset = payload.get("dataset", BUILT_IN_DATASET)
         if dataset not in STATIC_DATASETS:
             raise APIError(UNKNOWN_DATASET)
         frame_index = payload.get("frame_index")
@@ -1880,7 +1883,7 @@ class Backend:
         found = self.registered(dataset)
         return safe_file(found.media_dir, found.media_name)
 
-    def frame(self, t, dataset="vod30"):
+    def frame(self, t, dataset=BUILT_IN_DATASET):
         import cv2
         cap = cv2.VideoCapture(str(self.video(dataset)))
         try:
@@ -1899,7 +1902,7 @@ class Backend:
         finally:
             cap.release()
 
-    def frame_jpeg(self, t, dataset="vod30"):
+    def frame_jpeg(self, t, dataset=BUILT_IN_DATASET):
         import cv2
         ok, buf = cv2.imencode(".jpg", self.frame(t, dataset))
         if not ok:
@@ -2139,7 +2142,7 @@ class Backend:
         t = number(t, *T_RANGE, "t")
         frame = self.frame(t)
         height, width = frame.shape[:2]
-        saved = self.store().anchors_get("vod30")
+        saved = self.store().anchors_get(BUILT_IN_DATASET)
         points = next((v for k, v in saved["anchors"].items() if float(k) == t), None)
         suggested = None
         calib = load(self.out / "calib_vod30.json", {})
@@ -2179,7 +2182,7 @@ class Backend:
         return self.store().artifact("tracklets") or {}
 
     def seeds(self):
-        return self.store().seed_file("vod30")
+        return self.store().seed_file(BUILT_IN_DATASET)
 
     # A person track's label is one of the legacy role words the identity
     # pipeline reads, a guest name the operator typed, or null to clear it.
@@ -2217,7 +2220,7 @@ class Backend:
             return {'writes': OPERATOR_ACTIONS.contract(), 'operations': list(TOURNAMENT_ACTIONS)}
         if parts == ['api', 'clock']:
             return self.clock_state()
-        dataset = query.text('dataset', 'vod30')
+        dataset = query.text('dataset', BUILT_IN_DATASET)
         frame_index = query.text('frame')
         if parts == ['api', 'identity', 'frame']:
             return self.identity_frame(dataset, frame_index)
@@ -2259,7 +2262,7 @@ class Backend:
         if route == "events":
             events, geometry = self._event_geometry(dataset, load(base / "events.json", []))
             actors = {}
-            if dataset == "vod30":
+            if dataset == BUILT_IN_DATASET:
                 # The rule that joins an event to its actor has one owner,
                 # src/events_actors.py.  The legacy review server (annotator/server.py)
                 # calls the same function, so the two routes cannot disagree about
@@ -2336,7 +2339,7 @@ class Backend:
     def _vod30(self, dataset):
         """Resolve the dataset, then refuse everything but vod30. One route guard."""
         self.dataset(dataset)
-        if dataset != "vod30":
+        if dataset != BUILT_IN_DATASET:
             raise APIError("feature only available for vod30", 404)
 
     def _route_ball_label(self, parts, p):
@@ -2386,7 +2389,7 @@ class Backend:
                 raise APIError("each anchor must be [x,y]")
             clean.append([number(point[0], 0, info["width"] - 1, "x"), number(point[1], 0, info["height"] - 1, "y")])
         # an existing time keeps its key spelling, a new one is keyed str(t) - as before
-        self.store().anchors_put("vod30", str(info["t"]), clean)
+        self.store().anchors_put(BUILT_IN_DATASET, str(info["t"]), clean)
         # The write names the caches it made wrong.  The stamps would cover it when the
         # store answers a file (another process rewriting it is seen), but a database
         # store answers a name, not a file, so nothing in a stat can see this put: the
@@ -2417,7 +2420,7 @@ class Backend:
             # this literal to refusals.SEED_LABEL_TEXT_INVALID, the sentence the owner builds.
             raise APIError("label must be A, B, ignore, a guest name up to 60 characters, or null")
         # the same merge (existing keys kept, these four set) or removal, one locked write
-        seeds = self.store().seed_put("vod30", f"{tid}:{win}",
+        seeds = self.store().seed_put(BUILT_IN_DATASET, f"{tid}:{win}",
                                       None if label is None else dict(win=win, t=t, track_id=tid, label=label))
         return {"ok": True, "seeds": seeds}
 
@@ -3007,13 +3010,13 @@ def make_handler(backend):
                 if path == '/api/clip':
                     # A request that names no window passes None here, so the served
                     # window of src/event_window.py is applied once, inside event_clip.
-                    clip = backend.event_clip(query.text('dataset', 'vod30'),
+                    clip = backend.event_clip(query.text('dataset', BUILT_IN_DATASET),
                                               _number(query.text('t'), 't'),
                                               _number(query.text('before'), 'before', allow_none=True),
                                               _number(query.text('after'), 'after', allow_none=True))
                     return self.file(clip)
                 if path == '/api/frame':
-                    raw, meta = backend.indexed_jpeg(query.text('dataset', 'vod30'), query.text('frame'))
+                    raw, meta = backend.indexed_jpeg(query.text('dataset', BUILT_IN_DATASET), query.text('frame'))
                     return self.send(200, raw, 'image/jpeg', {
                         'X-Frame-Index': str(meta['frame_index']),
                         'X-Timestamp-Seconds': str(meta['timestamp_seconds']),

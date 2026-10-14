@@ -14,7 +14,7 @@ import cv2
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from quad_fit import cloth_mask_tight
-from src.datasets import media_path
+from src.datasets import BUILT_IN_DATASET, media_path
 
 def refine_quad(bgr, prior, band_px=70, n_steps=25, iters=2):
     """prior: (4,2) ordered TL,TR,BR,BL. Returns refined (4,2) or None."""
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     from src.vod30_corners import load as load_vod30_corners
     ref = load_vod30_corners()
     TIMES = list(range(60, 1741, 120))
-    cap = cv2.VideoCapture(str(media_path(ROOT, "vod30")))
+    cap = cv2.VideoCapture(str(media_path(ROOT, BUILT_IN_DATASET)))
     errs, fails = [], []
     for t in TIMES:
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)

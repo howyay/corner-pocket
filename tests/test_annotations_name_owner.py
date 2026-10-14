@@ -74,7 +74,7 @@ SITES = {
     HOME: ((191, "home:corrections"), (203, "home:verdicts"), (205, "home:labels")),
     "src/store.py": ((327, "verdicts"), (330, "verdicts"), (343, "labels"),
                      (364, "corrections")),
-    "src/store_pg.py": ((69, "verdicts"), (71, "labels"), (389, "corrections")),
+    "src/store_pg.py": ((70, "verdicts"), (72, "labels"), (389, "corrections")),
     "src/store_check.py": ((61, "verdicts"), (65, "corrections"), (69, "labels")),
     "src/store_import.py": ((540, "verdicts"), (541, "verdicts"), (572, "labels"),
                             (600, "corrections"), (719, "verdicts")),

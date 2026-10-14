@@ -1379,7 +1379,7 @@ class SqlDomainParityTests(unittest.TestCase):
         DDL.  ``DOC_CHECK`` reads the rule site only, and it needs the word ``BETWEEN``,
         so this document claim was invisible to every case of this module, while the
         migration db/migrations/0002_user_data.sql:167 and the constant
-        ANNOTATION_NOTE_MAX of annotator/unified_server.py:144 both state 10000.
+        ANNOTATION_NOTE_MAX of annotator/unified_server.py:147 both state 10000.
         This case holds the two document sites, the migration rule and the constant
         together, and each report names the document line with both numbers.
         """

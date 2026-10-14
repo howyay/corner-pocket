@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from quad_fit import cloth_contours
+from src.datasets import BUILT_IN_DATASET
 
 
 def _line_yx(points, ang_tol_deg=18.0):
@@ -206,7 +207,7 @@ if __name__ == "__main__":
     from src.calib_segments import CORNERS_SPEC
     which = sys.argv[1] if len(sys.argv) > 1 else "v30"
     if which == "v30":
-        VIDEO = str(media_path(ROOT, "vod30"))
+        VIDEO = str(media_path(ROOT, BUILT_IN_DATASET))
         REF = load_vod30_corners()
         TIMES = list(range(60, 1741, 120))
     else:

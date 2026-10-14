@@ -33,12 +33,12 @@ if __name__ == "__main__":
 from calibrate import OBJECT_MM, project  # noqa
 from src.calib_segments import anchors_reference_path, calibration_name  # noqa
 from src.reply_body import write_reply  # noqa
-from src.datasets import media_path  # noqa
-VIDEO = media_path(ROOT.parent, "vod30")
-OUT = ROOT.parent / anchors_reference_path("vod30")
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa
+VIDEO = media_path(ROOT.parent, BUILT_IN_DATASET)
+OUT = ROOT.parent / anchors_reference_path(BUILT_IN_DATASET)
 # src/calib_segments.py owns the name of the calibration document, so this reader
 # takes the file name from the owner and keeps its own root.
-CALIB = ROOT.parent / "out" / calibration_name("vod30")
+CALIB = ROOT.parent / "out" / calibration_name(BUILT_IN_DATASET)
 
 H = np.array(json.load(open(CALIB))["H"])
 cap = cv2.VideoCapture(str(VIDEO))

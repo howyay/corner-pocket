@@ -46,6 +46,7 @@ import numpy as np
 
 from src import motion_scan as ms
 from src.frame_rate import FPS_FALLBACK
+from src.datasets import BUILT_IN_DATASET
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -316,7 +317,7 @@ def blind_on_known_movers(video, ctx, cfg, specs: dict, bars: dict, quad_px,
     actually was on the first frame of the stack, and speed error against the
     census displacement divided by its time gap.
     """
-    census = ms.load_census("vod30", ROOT)
+    census = ms.load_census(BUILT_IN_DATASET, ROOT)
     instances = ms.moving_ball_instances(census, min_move_px=specs["min_move_px"])
     instances = instances[:max_instances]
     ns = specs["ns"]
@@ -492,7 +493,7 @@ def render_track_strip(video, row, ctx, cfg, bars: dict, path, offsets=(-4, -2, 
 
 # ------------------------------------------------------------------ CLI -------
 
-def _windows_from_report(dataset: str = "vod30", root=None) -> list:
+def _windows_from_report(dataset: str = BUILT_IN_DATASET, root=None) -> list:
     root = Path(root or ROOT)
     path = root / "out" / "motion_scan" / f"{dataset}.json"
     if not path.exists():

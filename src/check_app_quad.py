@@ -48,6 +48,7 @@ import json
 
 import cv2
 import numpy as np
+from src.datasets import BUILT_IN_DATASET
 
 from src.eval_table_detect import (ANCHORS, CLOTH_TOLERANCE_PX, CORNERS_V2, HIGHLIGHT, OUT_DIR,
                                    STATE_NO_DETECTION, VOD30, load_references, quad_distance,
@@ -80,7 +81,7 @@ def run(dataset, video, frames, detector):
     cap = cv2.VideoCapture(str(video))
     rows = []
     for i in range(frames):
-        t = round(1780 * i / max(1, frames - 1), 1) if dataset == 'vod30' else round(370 * i / max(1, frames - 1), 1)
+        t = round(1780 * i / max(1, frames - 1), 1) if dataset == BUILT_IN_DATASET else round(370 * i / max(1, frames - 1), 1)
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
         ok, frame = cap.read()
         if not ok:
@@ -90,7 +91,7 @@ def run(dataset, video, frames, detector):
         # (src.frame_inference.app_prior_for): a harness that picks its own prior
         # reports a different verdict than the browser.
         prior = app_prior_for(dataset)
-        if dataset == 'vod30':
+        if dataset == BUILT_IN_DATASET:
             # the app detects on the 2x-downscaled copy then scales back
             small = cv2.resize(frame, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
             prior_small = None if prior is None else np.asarray(prior, np.float32) / 2.0
@@ -124,7 +125,7 @@ def main():
                                    'against a refinement detector; app-anchors are pocket-jaw '
                                    'points, not cloth corners')}
     refs = load_references()
-    for dataset, video in (('vod30', VOD30), ('highlight', HIGHLIGHT)):
+    for dataset, video in ((BUILT_IN_DATASET, VOD30), ('highlight', HIGHLIGHT)):
         rows = run(dataset, video, args.frames, None)
         summary = {}
         keys = sorted({k for r in rows for k in r if k.endswith('|state')})
@@ -142,7 +143,7 @@ def main():
         report[dataset] = {'frames': len(rows), 'verdicts': summary, 'rows': rows}
     path = OUT_DIR / 'app-verdict.json'
     path.write_text(json.dumps(report, indent=1))
-    for dataset in ('vod30', 'highlight'):
+    for dataset in (BUILT_IN_DATASET, 'highlight'):
         print(f"== {dataset}  frames={report[dataset]['frames']}  tolerance={CLOTH_TOLERANCE_PX}px")
         for name, v in report[dataset]['verdicts'].items():
             print(f"   {name:34s} ok={v['ok']:3d} refused={v['refused']:3d} "

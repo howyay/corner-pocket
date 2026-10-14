@@ -28,8 +28,8 @@ from table_geometry import canonical_destination
 # path of the corners v2 file too.  This writer takes both names from that home
 # and keeps its own root.
 from src.calib_segments import calibration_name, corners_v2_path  # noqa: E402
-from src.datasets import media_path  # noqa: E402
-VIDEO = media_path(ROOT.parent, "vod30")
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
+VIDEO = media_path(ROOT.parent, BUILT_IN_DATASET)
 CORNERS = corners_v2_path(root=ROOT.parent)
 N_SAMPLES = 200
 DST = canonical_destination()  # px -> mm, the canonical portrait frame
@@ -161,7 +161,7 @@ def main():
     "holdout": holdout,
     }
     out["H"] = np.round(Hmed, 6).tolist()
-    Path(ROOT.parent / "out" / calibration_name("vod30")).write_text(json.dumps(out, indent=1))
+    Path(ROOT.parent / "out" / calibration_name(BUILT_IN_DATASET)).write_text(json.dumps(out, indent=1))
     print(json.dumps(out, indent=1))
     print("bar: mean <= 15 mm ->", "MET" if out["mean_mm"] <= 15 else "NOT MET")
 

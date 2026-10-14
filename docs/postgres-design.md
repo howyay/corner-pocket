@@ -71,7 +71,7 @@ legacy servers, a second server instance).
 | Data set | Serialised today by | Lost-update risk today | In Postgres |
 |---|---|---|---|
 | Operations | `Operations.lock` (per-path `RLock`, `operations.py:52-58`) + `revision` check | the enrolment promotion bypasses both (§2.4); any second process | `SELECT … FOR UPDATE` on `ops_meta` + the same `revision` check (§2.3) |
-| Identity index | `Backend._identity_lock` (`unified_server.py:284`) around the pipeline | whole-file rewrite by any second `IdentityIndex` on the same path | one transaction per save, upsert of the dirty clusters only; last writer wins **per cluster** |
+| Identity index | `Backend._identity_lock` (`unified_server.py:287`) around the pipeline | whole-file rewrite by any second `IdentityIndex` on the same path | one transaction per save, upsert of the dirty clusters only; last writer wins **per cluster** |
 | Face store | `_identity_lock` for `enroll`; **no lock** for the confirm promotion (`:516`) | the promotion replaces the whole gallery (§3.3) | append-only rows per player; no read–modify–write |
 | Seeds, verdicts, labels, anchors, corrections | `Backend.lock` around all of `_post` (`:1367-1368`, `:1145`) | a second process; seeds are refused during a rebuild (`:1431`) | one row per key, `INSERT … ON CONFLICT DO UPDATE`: two writers to *different* keys never clobber each other; same key = last write wins, as today |
 | Precomputed artifacts | none (batch tools write with `write_text`, `dense_queue.py:640,709`) | a reader can see the new queue with the old report | new version + `artifact_current` flip in one transaction (§5) |
@@ -91,7 +91,7 @@ database stores *paths relative to the repo root* for those (`data/vod_30min_260
   `get` `:69-71`, `post` `:73-101`.
 * `post` = one read–check–apply–write under the lock: integer `revision` required `:78`,
   `payload.revision != state.revision` → `ConflictError` `:80-81` (`409` at
-  `unified_server.py:1355`), whitelisted event context before and after `:82-85`
+  `unified_server.py:1358`), whitelisted event context before and after `:82-85`
   (`_event_context` `:104-134` — never note or request contents), `revision += 1` `:86`,
   one event `{id, createdAt, revision, action, context}` appended and the log **truncated to
   the last 500** `:87-88`, then temp file + `fsync` + `os.replace` `:89-100`.
@@ -103,7 +103,7 @@ database stores *paths relative to the repo root* for those (`data/vod_30min_260
   `:275`, `tournament_new` `:324` (deep-copies the tournament into `history[]` with
   `archivedAt`, when it had entrants or matches), `source_add|delete` `:332/:349`,
   `settings_update` `:352`, `note_add|delete` `:372/:374`.
-* Readers: `unified_server.py:1273-1274` (`GET /api/operations`),
+* Readers: `unified_server.py:1276-1277` (`GET /api/operations`),
   `annotator/live_processing.py:166` (reads `sources[]` to resolve a saved Twitch channel),
   `src/enroll_from_tracklet.py:160-162` `load_state` (roster for enrolment planning),
   `src/eval_faces.py:78` (offline evaluation).
@@ -111,7 +111,7 @@ database stores *paths relative to the repo root* for those (`data/vod_30min_260
   `enroll_from_tracklet.py:424-437` `_roster_payload` builds a whole new document (player
   appended, `revision + 1`, event `player_enroll_from_tracklet` with context
   `{player_id, name, track_id, faces, frames}`), `write_enrollment` `:558-576` writes it to a
-  scratch root, and `unified_server.py:527-546` `_promote_enrollment` copies it over
+  scratch root, and `unified_server.py:530-549` `_promote_enrollment` copies it over
   `state.json` with `atomic_save`.
 
 ### 2.2 Tables
@@ -240,7 +240,7 @@ COMMIT;
 
 ### 2.4 Defect to fix: the enrolment promotion bypasses the revision check
 
-`_promote_enrollment` (`unified_server.py:527-546`) overwrites `state.json` with a document
+`_promote_enrollment` (`unified_server.py:530-549`) overwrites `state.json` with a document
 built from a roster read **earlier and outside the `Operations` lock**
 (`confirm_enrollment` → `load_state`, `enroll_from_tracklet.py:934`).  Any
 `POST /api/operations` accepted between the preview and the confirm (a score, a new
@@ -264,7 +264,7 @@ method (under `Operations.lock`), so the fix lands for both backends.
   with `player_id=None`), `bind_face` `:288-325`.  Observation (`update`, `register`,
   `record_face_sample`) stays in memory — `tests/test_unified_server.py:791`
   (`test_identity_frame_read_leaves_the_index_file_untouched`) pins that a GET never writes.
-* Callers: `src/person_pipeline.py:61` (constructs it), `unified_server.py:413-442`
+* Callers: `src/person_pipeline.py:61` (constructs it), `unified_server.py:416-445`
   (`/api/identity/seed`, `/unbind`), `:393-405` (status), `:682-691` (every unified
   frame runs `process_frame`, which may `bind_face` → a **write during `GET /api/unified`**
   when a face matches; see §8.2), `src/enroll_from_tracklet.py:1152-1159` (reads it).
@@ -308,7 +308,7 @@ vector distance in SQL.  If a later feature needs nearest-neighbour search in th
 * Code: `src/face_id.py` `DEFAULT_FACE_STORE` `:52`, `store_faces` `:291-315` (whole file,
   4-dp rounding, `created_at` filled), `load_faces` `:318-326` (`{}` on missing/corrupt).
 * Writers: `src/person_pipeline.py:267-275` `enroll_face` (`POST /api/identity/enroll`,
-  `unified_server.py:373-397`), and the enrolment promotion (`unified_server.py:536-544`).
+  `unified_server.py:376-400`), and the enrolment promotion (`unified_server.py:539-547`).
 * Readers: `person_pipeline.py:262-265` (`_gallery_data`, cached for the pipeline's life),
   `src/eval_faces.py:1015`.
 
@@ -335,7 +335,7 @@ rounding).
 `plan_enrollment` builds `store_json = {new_player_id: [...]}` only
 (`enroll_from_tracklet.py:416-417`); `write_enrollment` writes exactly that
 (`:574-575`); `_promote_enrollment` then `atomic_save`s it over
-`out/corner-pocket/face_embeddings.json` (`unified_server.py:536-544`).  Every previously
+`out/corner-pocket/face_embeddings.json` (`unified_server.py:539-547`).  Every previously
 enrolled player's faces are deleted by the next confirmed enrolment.  (The existing test
 `test_a_second_enrolment_appends_to_the_scratch_store`, `tests/test_enroll_from_tracklet.py:429`,
 checks the *roster*, not the store.)  It has not bitten yet only because the store is absent
@@ -347,12 +347,12 @@ restart.  The store operation `enroll_player(...)` (§2.4) appends rows and bump
 ### 3.4 Track seeds — `out/pid_seed.json`
 
 * Shape: `{"seeds": {"<track_id>:<window>": {win, t, track_id, label}}}`; label is `A`,
-  `B`, `ignore` or a guest name ≤ 60 chars (`unified_server.py:1251-1271`).
-* Writer: `POST /api/vod30/seeds` `unified_server.py:1436-1459` (refused while a rebuild
+  `B`, `ignore` or a guest name ≤ 60 chars (`unified_server.py:1254-1274`).
+* Writer: `POST /api/vod30/seeds` `unified_server.py:1439-1462` (refused while a rebuild
   runs `:1431`).  Also `src/pid_seed_ui.py:193-194` (standalone legacy UI, plain
   `write_text`).
-* Readers: `unified_server.py:1248-1249` `seeds()` (used by `/tracklets`, `/tracks`,
-  `predictions()` `:1229-1237`), `src/pid_seed_rebuild.py:28-29` (subprocess),
+* Readers: `unified_server.py:1251-1252` `seeds()` (used by `/tracklets`, `/tracks`,
+  `predictions()` `:1229-1237`), `src/pid_seed_rebuild.py:29-30` (subprocess),
   `src/pid_seed_ui.py:166-192`, `src/eval_faces.py:79`, `tests/live_identity_validation.py`.
 
 ```sql
@@ -367,7 +367,7 @@ CREATE TABLE track_seeds (
 );
 ```
 
-The rebuild subprocess (`_rebuild` `unified_server.py:1468-1478`) reads seeds from the
+The rebuild subprocess (`_rebuild` `unified_server.py:1471-1481`) reads seeds from the
 store (same `POOL_DATABASE_URL` inherited through the environment) and writes its
 propagation result to `seed_propagation` (§5.5).  The "stale" rule
 (`predictions()` compares `seed_labels` with the live seeds `:1234`) is unchanged.
@@ -378,7 +378,7 @@ propagation result to `seed_propagation` (§5.5).  The "stale" rule
 
 * Shape: `{"<event id>": {verdict, note, shooter, updated_at}}`; verdict ∈
   `correct|wrong|unsure`, shooter ∈ `A|B|?|""`, note ≤ 10 000 chars.
-* Writer: `POST /api/<dataset>/annotate` `unified_server.py:1401-1417` (event must exist in
+* Writer: `POST /api/<dataset>/annotate` `unified_server.py:1404-1420` (event must exist in
   that dataset's `events.json` `:1397`; merge-update of the record).  Legacy
   `annotator/server.py:143-151` (old single-page annotator, plain `write_text`; it writes
   `annotations.json` next to whatever `events.json` its first argument names, `:18-20`).
@@ -406,7 +406,7 @@ retired-id ledger exists precisely so a verdict keeps pointing at the ball it wa
 
 * Shape: `{"<absolute crop path>": 0..15 | "u"}`; sets `unlabeled_crops` (76 labels, keys are
   absolute paths), `unlabeled_crops2`, `vod30_event_crops` (no label file yet).
-* Writer: `POST /api/balls/<set>/label` `unified_server.py:1377-1396`; legacy
+* Writer: `POST /api/balls/<set>/label` `unified_server.py:1380-1399`; legacy
   `annotator/server.py:130`; `src/merge_sets.py:44` (offline).
 * Readers: `GET /api/balls/<set>/meta` `:1286-1295`, training/offline tools
   (`src/train_ball_id.py:61-64`, `src/confusion.py:22`, `src/merge_sets.py:21`).
@@ -427,7 +427,7 @@ writes the file from the table (§7.4), so they need no change.
 
 ### 4.3 Frame corrections — `frame_results/<frame>/correction.json`
 
-* Writer: `POST /api/frame-correction` `unified_server.py:1123-1153`; reader
+* Writer: `POST /api/frame-correction` `unified_server.py:1126-1156`; reader
   `frame_result()` `:1104-1115`; path `frame_path()` `:1043-1044`.  Zero exist today
   (one `correction.superseded.json` at frame 2100 is read by nothing).
 
@@ -482,7 +482,7 @@ to every batch tool.  The two that are *queried* rather than read whole get real
 
 * Writers (batch only): `src/dense_queue.py:590-640` (`build`, the served queue),
   `src/scan_events.py:357-361`, `src/info_complete_scan.py:413`,
-  `src/rebuild_events_calibrated.py:152`.  Readers: `unified_server.py:1306-1316`
+  `src/rebuild_events_calibrated.py:152`.  Readers: `unified_server.py:1309-1319`
   (`GET /api/<ds>/events`), `:1397` (annotate validation), `:696` (`_unified_events`, every
   unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2341-2353`,
   `src/candidate_scan.py:605-609`, `src/eval_events.py`, `src/timing_verify.py:780`.
@@ -514,20 +514,20 @@ loading and scanning the whole queue per frame.
 ### 5.2 Stored frame inference — `frame_results/<frame>/inference.json`
 
 Two legacy files; `GET /api/frame-result` still returns them labelled `stored_inference`
-(`unified_server.py:1113-1121`).  They import as `artifacts(kind='frame_inference',
+(`unified_server.py:1116-1124`).  They import as `artifacts(kind='frame_inference',
 key='<frame>')`.  Nothing new writes this kind — the endpoint stopped writing it
 (`:1181-1184`); `frame_detections` (§6) is its successor.
 
 ### 5.3 Calibration and anchors
 
 * `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:55`; readers
-  `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:402` which caches
+  `unified_server.py:1582` (`_segments`, via `src/calib_segments.py:403` which caches
   on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:57`,
   `src/calib_mapping_audit.py`.  → `artifacts(kind='calibration_segments')`.
-* `out/calib_vod30.json` — reader `unified_server.py:2132` (suggested anchor points).
+* `out/calib_vod30.json` — reader `unified_server.py:2135` (suggested anchor points).
   → `artifacts(kind='calibration')`.
 * `out/pid_anchors_vod30.json` — **operator-written** (`POST /api/vod30/anchors`,
-  `unified_server.py:1420-1435`), read by `anchor_info` `:1208` and, importantly, by
+  `unified_server.py:1423-1438`), read by `anchor_info` `:1208` and, importantly, by
   `src/frame_inference.py:40-60` (`app_prior_for`: the static-camera prior every table
   detection searches around).  Because an operator writes it, it gets a table, not an
   artifact:
@@ -547,8 +547,8 @@ The mtime-keyed caches (`calib_segments._CACHE`, `_unified_cache`) key on
 
 ### 5.4 Tracklets — `out/pid2_tracklets.json`
 
-Writer `src/yolo_track.py:130` (batch); readers `unified_server.py:1245-1246` (`tracks()`,
-used by `/tracklets`, `/tracks`, seed validation `:1436`), `src/pid_seed_rebuild.py:27`,
+Writer `src/yolo_track.py:130` (batch); readers `unified_server.py:1248-1249` (`tracks()`,
+used by `/tracklets`, `/tracks`, seed validation `:1436`), `src/pid_seed_rebuild.py:28`,
 `src/pid_seed_ui.py:28`.  Shape: `{window: {n_tracklets, runtime_s, tracklets:[{id, dur, n,
 samples:[[t, [x1,y1,x2,y2]], …]}]}}` — 4 windows, 21 tracklets, 252 samples.
 
@@ -568,17 +568,17 @@ window w" and the seed write validates one `(win, track_id)`.  The window header
 
 ### 5.5 Seed propagation and shooter attribution
 
-`out/pid_seed_tracks.json` + `pid_seed_protos.json` (writer `src/pid_seed_rebuild.py:34-35,
-100-101, 123-124`, readers `unified_server.py:1239`, `src/pid_seed_ui.py:30-31`) and
+`out/pid_seed_tracks.json` + `pid_seed_protos.json` (writer `src/pid_seed_rebuild.py:35-36,
+100-101, 123-124`, readers `unified_server.py:1242`, `src/pid_seed_ui.py:30-31`) and
 `out/events_actors.json` (writers `src/pid_shooter.py:112`, `src/pid_shooter2.py:120`; reader
-`unified_server.py:1310`) → `artifacts` kinds `seed_propagation`, `seed_prototypes`,
+`unified_server.py:1313`) → `artifacts` kinds `seed_propagation`, `seed_prototypes`,
 `event_actors`.  Read whole, small, batch-written.
 
 ## 6. `frame_detections` — per-frame overlays, precomputed
 
 ### 6.1 Why
 
-`GET /api/unified` (`unified_server.py:552-573`) decodes the frame and runs table detection
+`GET /api/unified` (`unified_server.py:555-576`) decodes the frame and runs table detection
 + ball candidates (`_unified_detection` `:594-649`, a 24-entry in-memory LRU `:544`) and the
 full person/identity pipeline (`_unified_persons` `:682-691`: YOLO + OSNet + face) on every
 uncached request — ~0.2–2.3 s warm, ~100 s cold with model load (the directive's figures;
@@ -773,7 +773,7 @@ The outline below is the original design.
 | # | Step | Touches | Done when |
 |---|---|---|---|
 | 1 | `JsonStore` + `Store` protocol, today's code moved behind it; no behaviour change | `src/store.py`, `annotator/operations.py`, `unified_server.py` call sites | full suite green, md5 of production files unchanged by a GET sweep |
-| 2 | Fix §2.4 + §3.3 in `JsonStore` (enrolment as one store operation; gallery merge + invalidation) | `src/store.py`, `enroll_from_tracklet.py`, `unified_server.py:527-546`, `person_pipeline.py` | new tests: a mutation between preview and confirm survives; a second enrolment keeps the first player's faces |
+| 2 | Fix §2.4 + §3.3 in `JsonStore` (enrolment as one store operation; gallery merge + invalidation) | `src/store.py`, `enroll_from_tracklet.py`, `unified_server.py:530-549`, `person_pipeline.py` | new tests: a mutation between preview and confirm survives; a second enrolment keeps the first player's faces |
 | 3 | Migration `0002_user_data.sql` (§2.2, §3, §4 tables) | `db/migrations/` | `python -m src.db` applies it; re-run is a no-op |
 | 4 | `PostgresStore` for user data + contract suite | `src/store.py`, `tests/test_store_contract.py` | contract suite passes on both backends |
 | 5 | Import/export for user data with verification | `src/store.py` | import twice = no change; round trip exact on the production files (copied) |

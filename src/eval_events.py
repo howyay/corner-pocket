@@ -55,7 +55,7 @@ from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 # readings below hold no threshold of their own.
 from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
-from src.datasets import media_relpath  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_relpath  # noqa: E402
 from src import ball_scale, events_document, sam3_artifact  # noqa: E402
 # src/calib_segments.py owns the scan corners path, so this file reads the owner.
 from src.calib_segments import SCAN_CORNERS  # noqa: E402
@@ -1088,14 +1088,14 @@ def main():
     # literal equal to that owner, so the two cannot drift apart.
     ap.add_argument("--candidates", default="out/scan-ic/events.json",
                     help="scan candidates the queue was built from (default) or the queue itself")
-    ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
+    ap.add_argument("--video", default=media_relpath(ROOT, BUILT_IN_DATASET))
     # This default stays a frozen literal: argparse prints a default string in --help,
     # and a recorded command line holds it.  The name has one owner,
     # src/calib_segments.anchors_reference_path; tests/test_anchor_name_owner.py holds
     # this literal equal to that owner, so the two cannot drift apart.
     ap.add_argument("--anchors", default="out/pid_anchors_vod30.json")
     ap.add_argument("--scan-quad", default=SCAN_CORNERS)
-    ap.add_argument("--dataset", default="vod30",
+    ap.add_argument("--dataset", default=BUILT_IN_DATASET,
                     help="calibration segment artifact to resolve the reference quad per event")
     ap.add_argument("--report", default="out/scan30/eval_events.json")
     ap.add_argument("--cache", default="out/scan30/probe_events.json")

@@ -28,10 +28,10 @@ production bar in the demo window (0.60, 0.55 cosine).
 | Enrollment entry point: `enroll_face()` | `src/person_pipeline.py:226-234` |
 | `bind_face()`: unbound only, requires `similarity >= match_threshold + margin`, persists | `src/person_identity.py:199-221` (bar at 211, first-match-wins at 209) |
 | Index defaults (face bar) + body matching disabled | `src/person_identity.py:108-129`, `67-69` |
-| HTTP `POST /api/identity/enroll` (base64 → `cv2.imdecode` → `enroll_face`) | `annotator/unified_server.py:897` the handler, `:88` the 8 MiB decoded cap with its check at `:903`, `:912` the call, `:2403` the route row, `:2866` the dispatch body cap (`_MAX_ENROLL_BODY_BYTES`, derived from the cap) |
-| HTTP `GET /api/identity/frame` (decode → `process_frame`) | `annotator/unified_server.py:211-232`, route `1016-1017` |
-| `GET /api/unified` runs the same seam, degrades to no persons on failure | `annotator/unified_server.py:447-452`, route `1018-1019` |
-| `GET /api/identity/status`, seed / unbind overrides | `annotator/unified_server.py:260-272`, `268-295` |
+| HTTP `POST /api/identity/enroll` (base64 → `cv2.imdecode` → `enroll_face`) | `annotator/unified_server.py:900` the handler, `:88` the 8 MiB decoded cap with its check at `:903`, `:912` the call, `:2403` the route row, `:2866` the dispatch body cap (`_MAX_ENROLL_BODY_BYTES`, derived from the cap) |
+| HTTP `GET /api/identity/frame` (decode → `process_frame`) | `annotator/unified_server.py:214-235`, route `1016-1017` |
+| `GET /api/unified` runs the same seam, degrades to no persons on failure | `annotator/unified_server.py:450-455`, route `1018-1019` |
+| `GET /api/identity/status`, seed / unbind overrides | `annotator/unified_server.py:263-275`, `268-295` |
 | Browser upload form (one photo per player) | `annotator/ops.js:77` |
 
 Two gate details worth knowing before trusting a binding:
@@ -193,7 +193,7 @@ stopped after the run. Nothing under `out/corner-pocket/` or `out/identity/` cha
    scores a probe against every entry and keeps the best (`src/face_id.py:194-193`), so extra
    photos lift the same-person p05 0.718 without moving the 0.47 bar.
 3. **Nothing else.** From then on, every `GET /api/identity/frame` and every `GET /api/unified`
-   frame runs the pipeline (`annotator/unified_server.py:211-232`, `441-446`); an unbound
+   frame runs the pipeline (`annotator/unified_server.py:214-235`, `441-446`); an unbound
    cluster whose person box holds a quality face that matches an enrolled player at ≥0.47 and
    ≥0.12 clear of any other player gets that `player_id` plus a `bind` event, and the review
    rail shows it. `POST /api/identity/seed` (explicit assign) and `/api/identity/unbind` stay

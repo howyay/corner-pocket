@@ -29,6 +29,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from src.datasets import BUILT_IN_DATASET  # noqa: E402
 
 from src import ball_association_audit as audit  # noqa: E402
 from src import ball_census as bc  # noqa: E402
@@ -87,7 +88,7 @@ def main():
     parser.add_argument("--seconds", type=float, default=300.0)
     parser.add_argument("--cadence", type=int, default=2)
     parser.add_argument("--threshold", type=float, default=BALL_THRESHOLD)
-    parser.add_argument("--dataset", default="vod30")
+    parser.add_argument("--dataset", default=BUILT_IN_DATASET)
     parser.add_argument("--budget-ms", type=float, default=1000.0 / 30)
     parser.add_argument("--output", default="")
     parser.add_argument("--baseline", default="out/dense-events/segment-1350-1650.baseline.json")

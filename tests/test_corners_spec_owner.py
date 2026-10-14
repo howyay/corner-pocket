@@ -71,15 +71,15 @@ BASENAME = "fixed_corners.json"
 READERS = (
     ("src/eval_table_detect.py", 79),
     ("src/audit_calib.py", 86),
-    ("src/quad_fit.py", 154),
-    ("src/quad_fit_lines.py", 214),
+    ("src/quad_fit.py", 155),
+    ("src/quad_fit_lines.py", 215),
     ("src/calib_mapping_audit.py", 440),
     ("src/calib_mapping_audit.py", 612),
 )
 #: Every spelling of the owner name this module accepts as a read of the owner.
 OWNER_SPELLINGS = (OWNER_NAME, f"calib_segments.{OWNER_NAME}")
 #: The one home of the basename in the shipped tree, as ``relative:line``.
-HOME = "src/calib_segments.py:182"
+HOME = "src/calib_segments.py:183"
 #: The shipped packages the home walk reads.
 WALK_DIRS = ("src", "annotator", "tools", "scripts")
 #: The floor that fails a home walk which reads no file at all.

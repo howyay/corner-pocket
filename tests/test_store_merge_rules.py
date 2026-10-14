@@ -6,13 +6,13 @@ The walk of round 56 measured the statements that `JsonStore` (src/store.py) and
 class were copies of one of five rules:
 
   * the merge of one stored record with one incoming record: `src/store.py:318`
-    with `src/store_pg.py:281` (seed_put), and `src/store.py:322` with
-    `src/store_pg.py:327` (verdict_put);
-  * the delete of one record: `src/store.py:299` with `src/store_pg.py:291`;
-  * the clear of one crop: `src/store.py:363` with `src/store_pg.py:367`;
-  * the lookup of a key by basename: `src/store.py:341` with `src/store_pg.py:357`;
+    with `src/store_pg.py:282` (seed_put), and `src/store.py:322` with
+    `src/store_pg.py:328` (verdict_put);
+  * the delete of one record: `src/store.py:299` with `src/store_pg.py:292`;
+  * the clear of one crop: `src/store.py:363` with `src/store_pg.py:368`;
+  * the lookup of a key by basename: `src/store.py:341` with `src/store_pg.py:358`;
   * the float spelling of one anchor time: `src/store.py` with
-    `src/store_pg.py:408`.
+    `src/store_pg.py:409`.
 
 A measurement of the raw statement lists of that revision counted 17 shared
 statements over the four mutators.  Only the five rules above are the copy: the
@@ -91,7 +91,7 @@ FROZEN_RULES = (
 )
 
 #: The site of the worst drift of the walk of round 56, for the failure message.
-DRIFT_SITE = 'src/store_pg.py:357'
+DRIFT_SITE = 'src/store_pg.py:358'
 
 #: The four documents one sequence of edits writes: the seed document, the verdict
 #: document, the label document and the anchor document.  The paths are the paths of
@@ -173,8 +173,8 @@ def edit_statements(function):
 
     The walk reads the method body and the bodies of the `if`, `for` and `while`
     statements inside it, because one rule sat in a `for` body at the site
-    `src/store_pg.py:359` (`for old in keys:`) and its body `labels.pop(old)` sat at
-    `src/store_pg.py:360`.  The walk does not enter a `with` body: that body holds
+    `src/store_pg.py:360` (`for old in keys:`) and its body `labels.pop(old)` sat at
+    `src/store_pg.py:361`.  The walk does not enter a `with` body: that body holds
     the lock and the writes, and those differ between the two backends.
     """
     def of(statements):
@@ -573,5 +573,5 @@ class RulePlantingTest(unittest.TestCase):
             'the planted body is not the body of the walk of round 56')
         self.assertEqual([], rule_copies(class_at('src/store_pg.py', 'PostgresStore')),
                          'the real class body still holds a rule, so the walk must fail on it')
-        self.assertTrue(DRIFT_SITE.endswith('357'),
+        self.assertTrue(DRIFT_SITE.endswith('358'),
                         'the recorded drift site must be the site of round 56')

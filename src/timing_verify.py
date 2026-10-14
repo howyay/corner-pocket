@@ -40,7 +40,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from src.datasets import media_relpath
+from src.datasets import BUILT_IN_DATASET, media_relpath
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME
 # src/calib_segments.py owns the scan corners path, so this file reads the owner.
 from src.calib_segments import SCAN_CORNERS
@@ -789,7 +789,7 @@ def print_report(report):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--video", default=media_relpath(Path("."), "vod30"))
+    ap.add_argument("--video", default=media_relpath(Path("."), BUILT_IN_DATASET))
     # The served document name has one owner, src/events_document.SERVED.  This
     # default reads the name from the owner and stays relative, like the others.
     from src import events_document

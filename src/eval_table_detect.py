@@ -52,7 +52,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.datasets import media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
 # Round 60 gave the summary of one list one home, src/stats.py.  This module held
 # a second body of it, with its own keys and its own precision.
 from src.stats import summary  # noqa: E402
@@ -72,9 +72,9 @@ from src.calib_segments import (CORNERS_SPEC, anchors_reference_path,  # noqa: E
 # one owner of the path: check_app_quad imports OUT_DIR and holds no second spelling
 # of it, and tests/test_eval_output_dir_owner.py holds the two sides together.
 OUT_DIR = ROOT / "out" / "table-detect-eval"
-VOD30 = media_path(ROOT, "vod30")
+VOD30 = media_path(ROOT, BUILT_IN_DATASET)
 HIGHLIGHT = media_path(ROOT, "highlight")
-ANCHORS = ROOT / anchors_reference_path("vod30")
+ANCHORS = ROOT / anchors_reference_path(BUILT_IN_DATASET)
 CORNERS_V2 = ROOT / corners_v2_path()
 FIXED_CORNERS = ROOT / "out" / CORNERS_SPEC["file"]
 CLOTH_TOLERANCE_PX = 40.0  # annotator/app.js CLOTH_TOLERANCE_PX - the app's mean-distance bar
@@ -95,10 +95,10 @@ def load_references() -> dict:
     never be seeded from a ``circular`` file - see :func:`assert_seed_is_measurable`.
     """
     anchors = json.load(open(ANCHORS))["anchors"]
-    refs = {"vod30": [], "highlight": []}
+    refs = {BUILT_IN_DATASET: [], "highlight": []}
     for key in sorted(anchors, key=float):
         pts = _order_corners(np.asarray(anchors[key][:4], np.float32))
-        refs["vod30"].append({
+        refs[BUILT_IN_DATASET].append({
             "name": f"app-anchors@{key}s", "corners": pts,
             "width": 1280, "height": 720, "anchors_key": key,
             "source_file": str(ANCHORS), "quality": "authoritative",
@@ -106,7 +106,7 @@ def load_references() -> dict:
                     "geometry and the app path's seed; hand-placed ground truth",
         })
     v2 = json.load(open(CORNERS_V2))
-    refs["vod30"].append({
+    refs[BUILT_IN_DATASET].append({
         "name": "corners30-v2", "corners": _order_corners(np.asarray(v2["corners"], np.float32)),
         "width": 1280, "height": 720,
         "source_file": str(CORNERS_V2), "quality": "circular",
@@ -324,7 +324,7 @@ def quad_distance(quad, reference):
 # -- sampling -----------------------------------------------------------------
 
 def sample_times(dataset, n):
-    if dataset == "vod30":
+    if dataset == BUILT_IN_DATASET:
         span = 1806.8
     else:
         span = 377.0
@@ -500,7 +500,7 @@ def main():
                   dataset: authoritative_reference(refs[dataset]) for dataset in refs},
               "reference_note": (
                   "Each detector is scored against BOTH vod30 references. The hand anchors "
-                  f"({anchors_reference_path('vod30')}) are authoritative: hand-placed ground truth, "
+                  f"({anchors_reference_path(BUILT_IN_DATASET)}) are authoritative: hand-placed ground truth, "
                   "the geometry the viewer clears the quad against and the geometry the app "
                   "path is seeded from, tracking the visible cloth boundary within 6-13 px. "
                   "corners30-v2 (out/corners_30min_v2.json) is circular and measured-bad: it is "
@@ -512,7 +512,7 @@ def main():
                   "fails loudly if a seed ever comes from a non-authoritative reference. "
                   "See docs/app-path-refusal.md."),
               "datasets": {}}
-    for dataset, video, n in (("vod30", VOD30, args.frames_vod30),
+    for dataset, video, n in ((BUILT_IN_DATASET, VOD30, args.frames_vod30),
                               ("highlight", HIGHLIGHT, args.frames_highlight)):
         if not Path(video).is_file():
             report["datasets"][dataset] = {"error": f"missing video {video}"}

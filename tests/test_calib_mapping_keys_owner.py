@@ -33,7 +33,7 @@ import cannot drift.
 
 The served contract does not change.  Each value stays byte-identical, so the
 documents on disk keep their keys.  ``annotator/app.js:1167`` and
-``annotator/vision-stage.js:328`` read ``verified_sides`` of a quad of the page
+``annotator/vision-stage.js:333`` read ``verified_sides`` of a quad of the page
 and cannot import a python name, so this module holds those two lines too: a
 moved value reddens the page walk.
 
@@ -82,10 +82,10 @@ KEYS = {
 #: The line of every home statement, at the state the home landed in.  A moved
 #: home must restate this map and the report of the round that moved it.
 HOME_LINES = {
-    "VERIFIED_SIDES_KEY": 386,
-    "UNVERIFIED_SIDES_KEY": 387,
-    "INHERITED_SIDES_KEY": 388,
-    "MASK_OFFSET_PX_KEY": 389,
+    "VERIFIED_SIDES_KEY": 387,
+    "UNVERIFIED_SIDES_KEY": 388,
+    "INHERITED_SIDES_KEY": 389,
+    "MASK_OFFSET_PX_KEY": 390,
 }
 #: The shape of a home statement of this house.
 HOME_FORM = '%s = "%s"'
@@ -99,20 +99,20 @@ NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*\s*=")
 #: site must restate itself here.
 SITES = (
     # The refinement writes every key, and reads two of them back.
-    ("src/table_refine.py", 758, "get", "VERIFIED_SIDES_KEY"),
-    ("src/table_refine.py", 850, "dict", "MASK_OFFSET_PX_KEY"),
-    ("src/table_refine.py", 867, "sub", "MASK_OFFSET_PX_KEY"),
-    ("src/table_refine.py", 919, "sub", "MASK_OFFSET_PX_KEY"),
-    ("src/table_refine.py", 921, "sub", "MASK_OFFSET_PX_KEY"),
-    ("src/table_refine.py", 924, "sub", "MASK_OFFSET_PX_KEY"),
-    ("src/table_refine.py", 928, "sub", "MASK_OFFSET_PX_KEY"),
-    ("src/table_refine.py", 955, "dict", "VERIFIED_SIDES_KEY"),
-    ("src/table_refine.py", 956, "dict", "UNVERIFIED_SIDES_KEY"),
-    ("src/table_refine.py", 957, "dict", "INHERITED_SIDES_KEY"),
-    ("src/table_refine.py", 964, "dict", "UNVERIFIED_SIDES_KEY"),
-    ("src/table_refine.py", 1013, "dict", "UNVERIFIED_SIDES_KEY"),
-    ("src/table_refine.py", 1013, "dict", "VERIFIED_SIDES_KEY"),
-    ("src/table_refine.py", 1014, "dict", "INHERITED_SIDES_KEY"),
+    ("src/table_refine.py", 759, "get", "VERIFIED_SIDES_KEY"),
+    ("src/table_refine.py", 851, "dict", "MASK_OFFSET_PX_KEY"),
+    ("src/table_refine.py", 868, "sub", "MASK_OFFSET_PX_KEY"),
+    ("src/table_refine.py", 920, "sub", "MASK_OFFSET_PX_KEY"),
+    ("src/table_refine.py", 922, "sub", "MASK_OFFSET_PX_KEY"),
+    ("src/table_refine.py", 925, "sub", "MASK_OFFSET_PX_KEY"),
+    ("src/table_refine.py", 929, "sub", "MASK_OFFSET_PX_KEY"),
+    ("src/table_refine.py", 956, "dict", "VERIFIED_SIDES_KEY"),
+    ("src/table_refine.py", 957, "dict", "UNVERIFIED_SIDES_KEY"),
+    ("src/table_refine.py", 958, "dict", "INHERITED_SIDES_KEY"),
+    ("src/table_refine.py", 965, "dict", "UNVERIFIED_SIDES_KEY"),
+    ("src/table_refine.py", 1014, "dict", "UNVERIFIED_SIDES_KEY"),
+    ("src/table_refine.py", 1014, "dict", "VERIFIED_SIDES_KEY"),
+    ("src/table_refine.py", 1015, "dict", "INHERITED_SIDES_KEY"),
     # The measurement copies the report into its own artifact.
     ("src/calib_segment_measure.py", 223, "get", "UNVERIFIED_SIDES_KEY"),
     ("src/calib_segment_measure.py", 224, "get", "INHERITED_SIDES_KEY"),
@@ -170,7 +170,7 @@ OUTSIDE_LITERALS = (
 #: The two javascript readers of the page.  No python name reaches a page, so
 #: this module holds their lines and their text.
 PAGES = (("annotator/app.js", 1167, "verified_sides"),
-         ("annotator/vision-stage.js", 328, "verified_sides"))
+         ("annotator/vision-stage.js", 333, "verified_sides"))
 #: What a page line must hold: the key, read as a property of the quad.
 PAGE_READS = "quad?.%s"
 #: The directories the anti-home walk reads, and the floor that fails a walk

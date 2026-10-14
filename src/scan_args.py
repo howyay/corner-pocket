@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from src.datasets import BUILT_IN_DATASET
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,7 +34,7 @@ def add_scan_options(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
     the ``--out-dir`` default keeps the same bytes.
     """
     p.add_argument("--video", default=None)
-    p.add_argument("--dataset", default="vod30")
+    p.add_argument("--dataset", default=BUILT_IN_DATASET)
     p.add_argument("--out-dir", default=str(ROOT / "out" / "motion_scan"))
     p.add_argument("--quad", default=None)
     return p

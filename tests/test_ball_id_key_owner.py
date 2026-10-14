@@ -29,7 +29,7 @@ top of the module.  The reason is a cycle, not taste: ``src/shot_pot_gate.py:86`
 imports ``NEAREST_DISTANCE_PX_KEY`` from the audit, so a top-level import of the
 gate closes a cycle.  Two cases hold that fact: one reads the module body of the
 audit, and one measures in a fresh interpreter that the audit alone pulls neither
-the gate nor numpy.  ``src/dense_queue.py:81`` and ``src/ball_association_ab.py:36``
+the gate nor numpy.  ``src/dense_queue.py:81`` and ``src/ball_association_ab.py:37``
 carry no cycle, so both name the home at the top of the module.
 
 Every case reads its copy, and pins the NAME of the home, not only the value: the
@@ -89,7 +89,7 @@ SITES = {
     "src/ball_association_audit.py": (
         (77, "import"), (85, "lookup"), (89, "lookup"), (91, "lookup"),
         (122, "import"), (126, "lookup"), (360, "import"), (363, "lookup")),
-    "src/ball_association_ab.py": ((36, "import"), (183, "dict")),
+    "src/ball_association_ab.py": ((37, "import"), (184, "dict")),
 }
 #: The text of each of the four writer sites of the gate: the row shape itself.
 WRITER_FORM = "%s: self.ball_id" % HOME_NAME
@@ -104,7 +104,7 @@ IMPORTS = {
 #: imports the audit at the top of its own module.  A cycle is the reason.
 DEFERRED = {"src/ball_association_audit.py": (77, 122, 360)}
 #: The two readers that close no cycle take the name at the top of the module.
-AT_TOP = {"src/dense_queue.py": 81, "src/ball_association_ab.py": 36}
+AT_TOP = {"src/dense_queue.py": 81, "src/ball_association_ab.py": 37}
 #: The import of the gate that closes the cycle, and the name it takes.
 AUDIT = "src/ball_association_audit.py"
 AUDIT_MODULE = "src.ball_association_audit"

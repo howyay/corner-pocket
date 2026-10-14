@@ -19,6 +19,7 @@ from annotator.unified_server import SEED_ROLES
 # src/store.py owns the four out/-root names, so this file reads the owner.  The import
 # is light, because src.store holds no heavy dependency at module level.
 from src.store import SHARED_ARTIFACTS, TRACKLETS_NAME
+from src.datasets import BUILT_IN_DATASET
 
 
 def explicit_seeds(tracklets, seeds):
@@ -42,7 +43,7 @@ def run(root=ROOT):
     from src.store import open_store
     out = root / "out"
     tracklets = json.loads((out / TRACKLETS_NAME).read_text())
-    seeds = open_store(root).seeds_get("vod30")
+    seeds = open_store(root).seeds_get(BUILT_IN_DATASET)
     labels = explicit_seeds(tracklets, seeds)
     mapping = {f'{tk["id"]}:{win}': "?" for win, window in tracklets.items() for tk in window["tracklets"]}
     if not {"A", "B"}.issubset(set(labels.values())):
@@ -71,7 +72,7 @@ def run(root=ROOT):
         raise RuntimeError(f"OSNet checkpoint mismatch: missing={missing}, unexpected={result.unexpected_keys}")
     model.eval()
     from src.datasets import media_path
-    cap = cv2.VideoCapture(str(media_path(root, "vod30")))
+    cap = cv2.VideoCapture(str(media_path(root, BUILT_IN_DATASET)))
     if not cap.isOpened():
         cap.release()
         raise RuntimeError("Cannot open vod30 video")

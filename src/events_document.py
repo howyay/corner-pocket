@@ -80,6 +80,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+from src.datasets import BUILT_IN_DATASET
 
 try:                                   # `from src import events_document`
     from src.datasets import STATIC_OUT
@@ -216,7 +217,7 @@ def _check_name(name: str) -> None:
                          f"the documents are {list(DOCUMENTS)}")
 
 
-def scan_dir(dataset: str = "vod30", root=None) -> Path:
+def scan_dir(dataset: str = BUILT_IN_DATASET, root=None) -> Path:
     """The output directory of `dataset`'s scan: `out/scan30` for vod30.
 
     The folder name comes from `src/datasets.py:STATIC_OUT`, which is the table
@@ -228,7 +229,7 @@ def scan_dir(dataset: str = "vod30", root=None) -> Path:
     return base / "out" / folder
 
 
-def document_path(name: str = SERVED, dataset: str = "vod30", root=None) -> Path:
+def document_path(name: str = SERVED, dataset: str = BUILT_IN_DATASET, root=None) -> Path:
     """The path of the `name` document of `dataset`'s scan.
 
     `root=None` is the repository root, so the default call is the served

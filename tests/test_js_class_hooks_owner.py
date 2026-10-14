@@ -8,14 +8,14 @@ of ``annotator/app.js``.  The block at ``annotator/app.js:1851-1854`` writes the
 popover markup, and the element at ``annotator/app.js:865`` carries the host hook.
 `annotator/app.css` holds the rules of those hooks.  The two action names of the
 markup are keys of the dispatcher table of ``annotator/vision-stage.js``, which
-starts at ``annotator/vision-stage.js:1463`` and ends with the key at
-``annotator/vision-stage.js:1576``.  The pair meets on one page only:
+starts at ``annotator/vision-stage.js:1468`` and ends with the key at
+``annotator/vision-stage.js:1581``.  The pair meets on one page only:
 ``annotator/ops.html`` loads ``/app.js``, ``/vision-stage.js`` and ``/ops.js``.
 `annotator/app.html` is the review template, and no page serves it.
 
 **Finding B, `vs-chiprow`.**  Four emitter sites write the token:
-``annotator/ops.js:1240`` and ``annotator/vision-stage.js:650``, ``:1069``,
-``:1074``.  Three rules of `annotator/ops.css` hold it: ``annotator/ops.css:353``,
+``annotator/ops.js:1240`` and ``annotator/vision-stage.js:655``, ``:1074``,
+``:1079``.  Three rules of `annotator/ops.css` hold it: ``annotator/ops.css:353``,
 ``:549``, ``:1286``.
 
 **Finding C, the VOD chip markup.**  Four lines of `annotator/ops.js` build the
@@ -57,9 +57,9 @@ STAGE_TABLE_HEAD = 'const table = {'
 
 #: The four emitter sites of the `vs-chiprow` token, and their stylesheet.
 CHIPROW_EMITTER_SITES = (('annotator/ops.js', 1240),
-                         ('annotator/vision-stage.js', 650),
-                         ('annotator/vision-stage.js', 1069),
-                         ('annotator/vision-stage.js', 1074))
+                         ('annotator/vision-stage.js', 655),
+                         ('annotator/vision-stage.js', 1074),
+                         ('annotator/vision-stage.js', 1079))
 CHIPROW_TOKEN = 'vs-chiprow'
 OPS_CSS_SITE = 'annotator/ops.css'
 
@@ -410,7 +410,7 @@ class JsClassHooksOwnerTest(unittest.TestCase):
 
         The dispatcher table of `annotator/vision-stage.js` starts at the line
         `const table = {` and ends at the line that closes the block.  The page
-        listener at `annotator/vision-stage.js:1839` sends a click to this table.
+        listener at `annotator/vision-stage.js:1844` sends a click to this table.
         """
         keys = dispatcher_keys(STAGE_SCRIPT_SITE, STAGE_TABLE_HEAD)
         names = popover_actions()
@@ -440,9 +440,9 @@ class JsClassHooksOwnerTest(unittest.TestCase):
         """The popover pair meets on one page only, and that page is ops.html.
 
         The review template `annotator/app.html` is not served: the alias table at
-        `annotator/unified_server.py:199` answers the route `/` with `ops.html`, the
-        redirect table at `annotator/unified_server.py:204` sends `/app.html` to `/`,
-        and the route at `annotator/unified_server.py:2994` hands the template to
+        `annotator/unified_server.py:202` answers the route `/` with `ops.html`, the
+        redirect table at `annotator/unified_server.py:207` sends `/app.html` to `/`,
+        and the route at `annotator/unified_server.py:2997` hands the template to
         `annotator/ops.js` as a string for the review root.  The dispatcher stands in
         `/vision-stage.js` and the emitter stands in `/app.js`, so
         `annotator/ops.html` must load both of them.

@@ -39,7 +39,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from src.datasets import media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
 from src.calib_segment_measure import MEASURE_ARTIFACT  # noqa: E402
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
 from src.calib_segments import (INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
@@ -51,12 +51,12 @@ from src.table_geometry import CANON_H, CANON_W  # noqa: E402
 
 # The measurement this tool reads: ``src/calib_segment_measure.py`` owns the
 # artifact path (``MEASURE_ARTIFACT``) and writes the file.
-VIDEO = media_path(ROOT, "vod30")
-ANCHORS = ROOT / anchors_reference_path("vod30")
+VIDEO = media_path(ROOT, BUILT_IN_DATASET)
+ANCHORS = ROOT / anchors_reference_path(BUILT_IN_DATASET)
 # The segment artifact name has one owner, ``src/calib_segments.py``, so this
 # writer joins the out/ root to the path the owner builds.  The ``--out`` default
 # below holds the answer of the owner, and not a second spelling of the name.
-OUT = segment_artifact_path("vod30", ROOT)
+OUT = segment_artifact_path(BUILT_IN_DATASET, ROOT)
 
 # The coverage bar this tool applies.  ``src/event_gates.py`` owns the number
 # (``GateConfig.calibration_warn_fraction``), so one edit of the gate field moves
@@ -272,7 +272,7 @@ def build(args):
         rule = f"a camera move is supported at t={moved_any}, so the VOD splits there"
 
     payload = {
-        "dataset": "vod30",
+        "dataset": BUILT_IN_DATASET,
         "video": str(args.video),
         "frame_size": list(NATIVE_FRAME),
         "canonical_mm": {"w": CANON_W, "h": CANON_H},
@@ -292,7 +292,7 @@ def build(args):
             "t_end": float(rows[-1]["t"]),
             "quad_px": np.round(reference, 2).tolist(),
             "source": "human_anchors",
-            "source_detail": f"{anchors_reference_path('vod30')} anchors['{anchor_key}'][:4] "
+            "source_detail": f"{anchors_reference_path(BUILT_IN_DATASET)} anchors['{anchor_key}'][:4] "
                              f"(the six hand pocket anchors; first four are the cloth quad)",
             "coverage": {
                 "metric": "share of the reference quad that is cloth-hued at that time "

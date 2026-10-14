@@ -108,7 +108,7 @@ import numpy as np
 
 from src.atomic_write import write_atomic
 from src.box_geometry import iou
-from src.datasets import STATIC
+from src.datasets import BUILT_IN_DATASET, STATIC
 from src.face_id import MIN_DET_SCORE, MIN_EYE_PX
 # Round 90 gave the face cosine one home.  This module held a second body of that
 # rule, and the two guards disagreed on a pair that carries NaN: the owner answers
@@ -1092,7 +1092,7 @@ def _crop_image(root, dataset, candidate, *, scale=CROP_SCALE, pad=CROP_PAD):
     return cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
 
 
-def render_sheets(root=REPO, directory=None, dataset="vod30", *, fps=30.0, log=print) -> dict:  # the vod30 clip rate, not the fallback
+def render_sheets(root=REPO, directory=None, dataset=BUILT_IN_DATASET, *, fps=30.0, log=print) -> dict:  # the vod30 clip rate, not the fallback
     """Write out/enroll-eval/sheets/track-<id>.jpg and index.md for every enrolment."""
     directory = Path(directory) if directory is not None else Path(root) / "out" / "enroll-eval"
     observations = json.loads((directory / "observations.json").read_text(encoding="utf-8"))
@@ -1165,7 +1165,7 @@ def main(argv=None):
     parser.add_argument("command", choices=("sheets", "bench"))
     parser.add_argument("--dir", default=None)
     parser.add_argument("--root", default=str(REPO))
-    parser.add_argument("--dataset", default="vod30")
+    parser.add_argument("--dataset", default=BUILT_IN_DATASET)
     args = parser.parse_args(argv)
     if args.command == "sheets":
         report = render_sheets(args.root, args.dir, args.dataset)
@@ -1435,7 +1435,7 @@ def scan_nearest(root, dataset, frame_index, *, span_frames=150, stride=30,
 # bench: coverage of the fast path, and the slow path's before/after
 # --------------------------------------------------------------------------
 
-def bench(root=REPO, directory=None, *, dataset="vod30", frame_index=None, bbox=None,
+def bench(root=REPO, directory=None, *, dataset=BUILT_IN_DATASET, frame_index=None, bbox=None,
           track_id=None, span_s=NEAREST_SPAN_S, stride=30, log=print) -> dict:
     """Measure the two paths on a real window: coverage, fast-path cost, slow-path cost.
 

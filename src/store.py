@@ -54,7 +54,7 @@ class StoreConstraintError(ValueError):
 # exported as DATASETS had no reader once artifact() stopped using it, so it is gone.
 # Round 47 removed the two copies that stayed in src/store_files.py and
 # src/store_import.py, so every reader now asks that one owner.
-from src.datasets import lookup as dataset_lookup  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
@@ -84,7 +84,7 @@ from src.calib_segments import anchors_reference_name  # noqa: E402
 # the folder queue() reads (out/vods/<id>/ for an imported VOD, out/scan30/ for a
 # built-in).  {scan} is that folder, relative to out/; {ds} is the dataset id, which
 # names the calibration files at the out/ root.  The two document names of the
-# calibration have one home, src/calib_segments.py:65 and :71, and their two rows
+# calibration have one home, src/calib_segments.py:66 and :72, and their two rows
 # below read that home; the format call of artifact() fills the owner's keyword
 # {dataset}.
 ARTIFACTS = {
@@ -299,7 +299,7 @@ class JsonStore:
     def _seeds_path(self, dataset: str) -> Path:
         """The seed document under this store's root: the file name of its owner,
         src.store_files.SEED_DOCUMENT, so the name stands once in the code."""
-        if dataset != "vod30":
+        if dataset != BUILT_IN_DATASET:
             raise ValueError("seeds exist for vod30 only")
         return self.out / Path(SEED_DOCUMENT).name
 
@@ -421,7 +421,7 @@ class JsonStore:
                 if isinstance(e.get("t"), (int, float)) and t0 <= e["t"] <= t1]
 
     def tracklets(self, dataset: str) -> dict:
-        if dataset != "vod30":
+        if dataset != BUILT_IN_DATASET:
             return {}
         return _read(self.out / TRACKLETS_NAME, {})
 

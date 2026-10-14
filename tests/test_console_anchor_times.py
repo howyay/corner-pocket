@@ -64,7 +64,7 @@ What this module does not see
   it serves.  A browser page cannot read a python name, so that copy stays on purpose.  The
   module-level name ``SUGGESTED`` stood beside that array until round 85, and no line read
   it; the case below fails when the name returns.
-* ``annotator/vision-stage.js:1497`` loads and seeks 70 s as the first jump of a dataset
+* ``annotator/vision-stage.js:1502`` loads and seeks 70 s as the first jump of a dataset
   whose anchors are not loaded yet.  That number is the first value of the list, and it
   stays a literal of the fallback path.  A case below holds it to the owner, and reports
   the line when the two sides drift apart.
@@ -382,8 +382,8 @@ class Round85DeadName(unittest.TestCase):
 
     def test_a_planted_dead_name_is_reported(self):
         planted = LEGACY_TEXT.replace(
-            'CALIB = ROOT.parent / "out" / calibration_name("vod30")',
-            'CALIB = ROOT.parent / "out" / calibration_name("vod30")\n'
+            'CALIB = ROOT.parent / "out" / calibration_name(BUILT_IN_DATASET)',
+            'CALIB = ROOT.parent / "out" / calibration_name(BUILT_IN_DATASET)\n'
             'SUGGESTED = [70, 200, 350]')
         self.assertNotEqual(LEGACY_TEXT, planted, 'the planted text must differ from the file')
         found = dead_name_findings(planted)

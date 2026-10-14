@@ -40,7 +40,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from src.datasets import media_path
+from src.datasets import BUILT_IN_DATASET, media_path
 from src.ball_gate import SAM3_BALL_MIN_SCORE
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between
 # The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  This reader builds
@@ -61,7 +61,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "out" / "fast_ball_labels"
 LABELS_OUT = ROOT / PROBE_DIR_NAME / LABELS_NAME
 CHECKPOINT = ROOT / SAM3
-VIDEO = media_path(ROOT, "vod30")
+VIDEO = media_path(ROOT, BUILT_IN_DATASET)
 
 MIN_SCORE = SAM3_BALL_MIN_SCORE  # the production cut the delivered caches were written at
 # SPLIT_GAP_S is imported above from src.tiny_ball_net, the owner of the split rule.

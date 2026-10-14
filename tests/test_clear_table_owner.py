@@ -4,7 +4,7 @@ Round 110 found three live writers of one SQL sentence, each spelling it again:
 
 * ``src/store_import.py:173`` - ``DataSet.clear`` emptied ``self.tables`` in reverse;
 * ``src/store_import.py:202`` - ``OperationsSet.clear`` emptied its own eight names;
-* ``src/store_pg.py:158`` - ``PostgresStore._save`` emptied seven of those names
+* ``src/store_pg.py:159`` - ``PostgresStore._save`` emptied seven of those names
   before it rewrote the row projection.
 
 Those are the lines of the round walk, at the state before this round.
@@ -73,14 +73,14 @@ HOME_LINE = 155
 SENTENCE = "DELETE FROM {table}"
 HOME_FORM = 'conn.execute(f"DELETE FROM {table}")'
 #: The three call sites, as ``(path, line)``, and the text each one holds.
-SITES = ((HOME, 183), (HOME, 212), ("src/store_pg.py", 158))
+SITES = ((HOME, 183), (HOME, 212), ("src/store_pg.py", 159))
 CALL_FORM = "clear_table(conn, table)"
 #: Every live site of the helper name, as ``(line, kind)`` per module: the definition,
 #: the import of the second writer, and each call.  A moved, a new or a lost site must
 #: restate itself here.
 NAME_SITES = {
     HOME: ((DEF_LINE, "def"), (183, "call"), (212, "call")),
-    "src/store_pg.py": ((48, "import"), (158, "call")),
+    "src/store_pg.py": ((48, "import"), (159, "call")),
 }
 #: The second writer, its one import of the home and the module it takes it from.
 READER = "src/store_pg.py"

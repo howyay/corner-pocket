@@ -5,7 +5,7 @@
  * disagreed on seven of the nineteen values the Lead's grid measures.  This
  * file replaces all three copies (the three seams now read
  * `window.Duration.hms` at annotator/app.js:2114, annotator/ops.js:129 and
- * annotator/vision-stage.js:950).
+ * annotator/vision-stage.js:955).
  *
  * THE RULE
  * Clamp the value at zero.  Truncate it toward zero.  Then format it as H:MM:SS.
@@ -18,7 +18,7 @@
  *    `\d+` anchors at :93, so at_s is a non-negative integer as well.
  * 2. The one fractional input is a frame time.  annotator/vision-stage.js calls
  *    this rule with `start_s + frame.t`, and frame.t is a float
- *    (annotator/unified_server.py:1938 `timestamp_seconds=value / fps`).
+ *    (annotator/unified_server.py:1941 `timestamp_seconds=value / fps`).
  *    Truncation names the second that CONTAINS the frame: 59.6 belongs to the
  *    second that starts at 59.  Rounding names the second that starts at 60, and
  *    that second holds no part of the frame.  At 30 fps this changes half of all

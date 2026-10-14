@@ -39,7 +39,7 @@ from src import sam3_artifact  # noqa: E402
 from src.ball_census import classify_ball_color  # noqa: E402
 # src/calib_segments.py owns the scan corners path, so this file reads the owner.
 from src.calib_segments import SCAN_CORNERS  # noqa: E402
-from src.datasets import media_relpath  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_relpath  # noqa: E402
 from src.table_detect import detect_table  # noqa: E402
 from src.ball_gate import (SAM3_BALL_MAX_AREA_PX, SAM3_BALL_MAX_RADIUS_PX,  # noqa: E402
                            SAM3_BALL_MIN_AREA_PX, SAM3_BALL_MIN_RADIUS_PX,
@@ -202,7 +202,7 @@ def detect_frame(video, time_s, model_proc, corners_path, progress=lambda text: 
     return balls, filter_used
 
 
-def reference_quad(*, dataset="vod30", t=None, root=None, scan_corners_path=None):
+def reference_quad(*, dataset=BUILT_IN_DATASET, t=None, root=None, scan_corners_path=None):
     """The verified cloth quad SAM3's balls are allowed to sit on.
 
     The per-frame ``detect_table`` mask is estimated from the frame and collapses
@@ -382,7 +382,7 @@ def run(video, times, out_path=OWN_CACHE, app_path=APP_CACHE, corners_path=SCAN_
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--video", default=media_relpath(ROOT, "vod30"))
+    ap.add_argument("--video", default=media_relpath(ROOT, BUILT_IN_DATASET))
     ap.add_argument("--times", default="", help="comma-separated timestamps, in priority order")
     ap.add_argument("--times-file", default=None,
                     help="JSON list (or one timestamp per line); overrides --times")

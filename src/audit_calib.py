@@ -21,7 +21,7 @@ from table_detect import detect_cloth_mask, fit_quadrilateral
 from table_geometry import LANDSCAPE_H, LANDSCAPE_W, canonical_destination
 from vod30_corners import load as load_vod30_corners
 # The highlight recording's sample instants have one home, src/datasets.py.
-from src.datasets import HIGHLIGHT_SAMPLE_TIMES, media_path
+from src.datasets import BUILT_IN_DATASET, HIGHLIGHT_SAMPLE_TIMES, media_path
 
 # This audit reads the table LANDSCAPE -- length on x -- as it always has; the
 # transposed view comes from the one frame in src/table_geometry.py.
@@ -78,7 +78,7 @@ def main():
     # The run stays inside this function.  An import must not open media and
     # must not write an artifact.
     HL = str(media_path(ROOT, "highlight"))
-    V30 = str(media_path(ROOT, "vod30"))
+    V30 = str(media_path(ROOT, BUILT_IN_DATASET))
     # The name of the highlight reference file has one home,
     # src.calib_segments.CORNERS_SPEC["file"].  This reader joins it to the output
     # directory and holds no second spelling of the name.

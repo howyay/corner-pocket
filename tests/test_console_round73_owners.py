@@ -12,22 +12,22 @@ sites.
   and ``1.3 GB`` in the console, because ``:.1f`` rounds a tie to the even digit and
   ``Number.toFixed`` rounds it up.  The console answer wins: the operator reads the estimate
   line beside Start (``annotator/ops.js:664``) and the broadcast panel
-  (``annotator/vision-stage.js:1027``, ``:1033``), and the console states the rule at two sites
+  (``annotator/vision-stage.js:1032``, ``:1033``), and the console states the rule at two sites
   against one.
   ``annotator/refusals.py`` owns both branches now: ``rounded`` (:333) rounds a tie up, ``gb``
   (:346) and ``size_text`` (:351) spell the two branches.  The console realm states the same
   rule once, on ``window.ConsoleRules.sizeText`` in ``annotator/app.js:26``, because a static
   file cannot import a python name; the two adapters read that name late
-  (``annotator/ops.js:132``, ``annotator/vision-stage.js:953``), and ``annotator/vod_import.py``
+  (``annotator/ops.js:132``, ``annotator/vision-stage.js:958``), and ``annotator/vod_import.py``
   imports ``size_text`` for its import sentence (:572).
 * **The default live-detector set.**  The pair ``('table', 'person')`` stood at four sites: the
-  two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2058``)
+  two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2061``)
   and the two console sites (``annotator/ops.js:766``, ``annotator/app.js:71``).  The console
   copy was held by one case (``tests/test_ops.js:264``); the two service copies were held by
   none.  ``annotator/pipeline_stages.py:757`` owns the set now, in ``DEFAULT_DETECTORS``, beside
   the ``DETECTORS`` tuple that owns the names.  The console realm states its own set once, in
   ``DEFAULT_LIVE_DETECTORS`` (``annotator/app.js:30``), published as
-  ``window.ConsoleRules.liveDetectors``.  ``annotator/vision-stage.js:1075`` draws a three-name
+  ``window.ConsoleRules.liveDetectors``.  ``annotator/vision-stage.js:1080`` draws a three-name
   vocabulary row, ``['table','person','ball']``.  That row is the vocabulary of the panel, not
   the default set, and this module does not read it as a copy.
 
@@ -40,7 +40,7 @@ What this module reads, and what it does not
   ``tests/test_app_timeline.js``, and the rendered adapters in ``tests/test_ops.js``.
 * It does not read the job view of ``annotator/vod_import.py``.  ``view['mb']``
   (``annotator/vod_import.py:432``) is one number with one home, and the console prints the
-  number it receives (``annotator/vision-stage.js:1019``).  No second copy of that rule stands.
+  number it receives (``annotator/vision-stage.js:1024``).  No second copy of that rule stands.
 * It does not re-measure the disk sentence.  ``tests/test_vod_import.py:262`` and ``:443`` hold
   the sentence, and ``tests/test_job_refusal_identity.py:390`` holds ``gb``.  This module holds
   the boundary table of both branches, and every measured value of those modules stays.

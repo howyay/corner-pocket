@@ -55,6 +55,7 @@ from src.store_rules import unknown_dataset, unknown_record_set  # the refusal s
 # store reads that owner, so the document path here cannot drift from the path
 # JsonStore builds for the same record set.
 from src.calib_segments import anchors_reference_path
+from src.datasets import BUILT_IN_DATASET
 
 # The table that holds the documents of migration 0003 (src/store_files.py). The
 # operations document and the anchor documents live in it; receipts name them so.
@@ -296,14 +297,14 @@ class PostgresStore:
                 seeds[key] = store_rules.merge_record(seeds.get(key, {}), record)
 
             def project(c):
-                c.execute("DELETE FROM track_seeds WHERE dataset = 'vod30'")
+                c.execute(f"DELETE FROM track_seeds WHERE dataset = '{BUILT_IN_DATASET}'")
                 SeedsSet().write(c, saved)
             self._store_doc(conn, path, saved, project)
             return seeds
 
     @staticmethod
     def _seeds_dataset(dataset):
-        if dataset != "vod30":
+        if dataset != BUILT_IN_DATASET:
             raise ValueError("seeds exist for vod30 only")
 
     def _dataset(self, dataset):

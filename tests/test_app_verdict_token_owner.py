@@ -72,8 +72,8 @@ TOKEN = "no detection"
 HOME = "src/eval_table_detect.py:84"
 #: Every reader of the token: its module and the line that compares it.
 READERS = (
-    ("src/check_app_quad.py", 69),
-    ("src/check_app_quad.py", 138),
+    ("src/check_app_quad.py", 70),
+    ("src/check_app_quad.py", 139),
 )
 #: The app module that holds the browser copy of the fact.
 APP = "annotator/app.js"

@@ -40,7 +40,7 @@ from pathlib import Path
 from annotator.operations import name_key
 # STATIC_OUT (built-in dataset id -> scan folder under out/) is imported from its one
 # owner, src.datasets, so this importer and the store cannot hold two different maps.
-from src.datasets import STATIC_OUT
+from src.datasets import BUILT_IN_DATASET, STATIC_OUT
 # BALL_SETS (the crop-set vocabulary) is imported from its one owner, src.store_files,
 # so this import tool and the store cannot hold two different lists of set names.
 # The document names of a data set have that same home: the map
@@ -507,14 +507,14 @@ class SeedsSet(DataSet):
         for key, rec in (doc.get("seeds") or {}).items():
             conn.execute(
                 "INSERT INTO track_seeds (dataset, win, track_id, t, label, seed_key, extra) "
-                "VALUES ('vod30', %s, %s, %s, %s, %s, %s)",
+                f"VALUES ('{BUILT_IN_DATASET}', %s, %s, %s, %s, %s, %s)",
                 (rec.get("win"), rec.get("track_id"), rec.get("t"), rec.get("label"), key,
                  jsonb({k: v for k, v in rec.items() if k not in self.SEED})))
 
     def render(self, conn):
         seeds = {}
         for key, win, track_id, t, label, extra in conn.execute(
-                "SELECT seed_key, win, track_id, t, label, extra FROM track_seeds WHERE dataset = 'vod30' "
+                f"SELECT seed_key, win, track_id, t, label, extra FROM track_seeds WHERE dataset = '{BUILT_IN_DATASET}' "
                 "ORDER BY seed_key").fetchall():
             record = {"win": win, "track_id": track_id, "label": label}
             if t is not None:

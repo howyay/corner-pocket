@@ -73,8 +73,8 @@ SENTENCE = "expected a 4x2 quad, got "
 #: Every raise of the owner module that refuses a quad of the wrong shape: its
 #: module and its line.  Both raises read the owner name.
 OWNER_SITES = (
-    ("src/calib_segments.py", 554),
-    ("src/calib_segments.py", 558),
+    ("src/calib_segments.py", 555),
+    ("src/calib_segments.py", 559),
 )
 #: The module of the round-108 exception.  Another writer owns it, so this
 #: module reads its literal from the tree and holds no copy of its line.
@@ -84,7 +84,7 @@ READER = "src/motion_scan.py"
 #: this round.
 READER_SITE = "src/motion_scan.py"
 #: The one home of the sentence in the shipped tree, as ``relative:line``.
-HOME = "src/calib_segments.py:368"
+HOME = "src/calib_segments.py:369"
 #: The shape ``read`` receives in the message cases: a value that cannot become
 #: an (n, 2) array, and a value that holds three points.  Each case names the
 #: shape text the raise appends.

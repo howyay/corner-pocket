@@ -291,6 +291,11 @@ let sourceOpen = false, guestDraft = null;
 let replayDraft = null;
 const esc = value => window.ConsoleRules.esc(value);
 const jsonHeaders = () => window.ConsoleRules.jsonHeaders();
+// The built-in dataset id has one home in the console realm: BUILT_IN_DATASET in annotator/app.js,
+// which holds the same word as src.datasets.BUILT_IN_DATASET, and publishes it on
+// window.ConsoleRules.  The two comparisons below read that name, so the adapter holds no second
+// copy of the id.  The ops page loads annotator/app.js before this file.
+const builtInDataset = () => window.ConsoleRules.builtInDataset;
 // The words that both console screens show have one owner: SHARED_WORDS in annotator/app.js,
 // published on window.ConsoleRules.  The table below holds the slots that the owner does not, and
 // this reader asks the owner first, so a reword there reaches this screen too.  The read is late,
@@ -742,7 +747,7 @@ function layersHTML(s) {
   // and events layers were toggles with nothing to toggle on a live or a recorded picture.
   const layers = [['cloth','cloth'],['balls','balls'],['persons','persons'],['pockets','pockets']];
   return layers.map(([key, label]) => {
-    const gated = key === 'anchors' && s.dataset !== 'vod30';
+    const gated = key === 'anchors' && s.dataset !== builtInDataset();
     // F2: the anchors layer is on by default but empty until loaded; the chip says what is drawn.
     const shown = (s.overlay || {})[key] && !gated && (key !== 'anchors' || s.anchors.loaded);
     // R24 item 2, step 3a: the chip says exactly what the facts line said - the layer's count with its
@@ -1293,7 +1298,7 @@ function bindHint(facts, picked) {
   return facts.cluster == null ? t('noCluster') : t('bindIdentityHint');
 }
 function anchorBlock(s) {
-  if (s.dataset !== 'vod30') return `<h3>${esc(t('calibration'))}</h3><p class="vs-empty">${esc(t('vodOnlyAnchors'))}</p>`;
+  if (s.dataset !== builtInDataset()) return `<h3>${esc(t('calibration'))}</h3><p class="vs-empty">${esc(t('vodOnlyAnchors'))}</p>`;
   const rows = s.anchors.points.map((p, i) => `<button class="vs-item${s.selection.anchor === i ? ' selected' : ''}" data-vs-action="select-anchor" data-vs-value="${i}"><span>${i + 1}</span><span class="vs-mono">${Math.round(p[0])}, ${Math.round(p[1])}</span></button>`).join('');
   return `<h3>${esc(t('calibration'))}</h3>
   <p class="vs-note">${esc(t('anchorNote'))}</p>

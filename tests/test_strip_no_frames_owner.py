@@ -4,7 +4,7 @@ Round 106, writer W2.  The walk found the sentence of the strip reader in two
 live copies, and each copy raised it as an ``OSError``:
 
   * ``src/motion_scan.py:1584`` -- the strip renderer of that module, and
-  * ``src/track_before_detect.py:482`` -- the strip renderer of that module.
+  * ``src/track_before_detect.py:483`` -- the strip renderer of that module.
 
 The bodies around the sentence are the same body.  A rename at one site would
 leave the other site with another message, and no case under ``tests/`` named

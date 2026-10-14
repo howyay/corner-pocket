@@ -52,7 +52,7 @@ from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E
 from src.calib_segments import (CORNERS_SPEC, INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
                                 SCAN_CORNERS, UNVERIFIED_SIDES_KEY, VERIFIED_FRAMES,
                                 VERIFIED_SIDES_KEY, anchors_reference_path)
-from src.datasets import media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
 # The homogeneous-division rule has one owner, src/projection.py.  The two
@@ -71,12 +71,12 @@ SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
 BALL_DIAMETER_PX_1080 = 30.8     # median of the 157 radii of out/scan_highlight/sam3_results.json
                                  # (the run src/ball_scale.py records; docs/app-path-refusal.md
                                  # states no ball size)
-ANCHORS = ROOT / anchors_reference_path("vod30")
+ANCHORS = ROOT / anchors_reference_path(BUILT_IN_DATASET)
 # The scan quad is the scan corners file of src/calib_segments.py, the owner of the
 # name.  This audit joins the owner's relative path to its own root, so a rename of
 # the file moves this reader too.  Round 93 found the path spelled here by hand.
 SCAN_QUAD = ROOT / SCAN_CORNERS
-VIDEO = media_path(ROOT, "vod30")
+VIDEO = media_path(ROOT, BUILT_IN_DATASET)
 CANDIDATES = ROOT / "out" / "scan30" / CANDIDATES_NAME
 OUT = ROOT / "out" / "calib_mapping_audit.json"
 # Frames the segment artifact already measured: early (unoccluded), the two

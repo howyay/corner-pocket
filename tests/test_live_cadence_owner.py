@@ -8,11 +8,11 @@ The console page reads the cadence of each live pipeline stage from the payload 
   ``annotator/live_processing.py:769`` -
   ``                     **{STAGE_CADENCE_KEY: getattr(stage, STAGE_CADENCE_KEY, 1) or 1},`` -
   which now writes the owner constant.
-* The reader.  ``annotator/vision-stage.js:936`` held
+* The reader.  ``annotator/vision-stage.js:941`` held
   ``    const cadence = Number(stage.every_n_frames) > 1`` and now reads
   ``    const cadence = Number(stage['every_n_frames']) > 1`` - inside ``liveStageLine``
-  (``annotator/vision-stage.js:932``), which the panel calls at ``annotator/vision-stage.js:1077``.
-  The same key was read again at ``annotator/vision-stage.js:937``.
+  (``annotator/vision-stage.js:937``), which the panel calls at ``annotator/vision-stage.js:1082``.
+  The same key was read again at ``annotator/vision-stage.js:942``.
 
 Drift: a rename at the producer with a static reader in the page left the page reading a key that
 the payload no longer carried.  The page then printed ``every 1 frame`` for every stage and stated
@@ -28,7 +28,7 @@ The decision of this round is one home for the key name.  ``annotator/live_proce
 constant ``STAGE_CADENCE_KEY`` (``annotator/live_processing.py:43``), and the stage dict of the live
 snapshot is built with that constant.  The wire format did not change: the key is still the word
 ``every_n_frames``, so every reader of the panel keeps working.  The page reads the key from the
-stage object as data - ``annotator/vision-stage.js:936`` now reads ``stage['every_n_frames']`` - and
+stage object as data - ``annotator/vision-stage.js:941`` now reads ``stage['every_n_frames']`` - and
 the bracket form makes the key of the page a value, which this guard holds to the owner constant.
 A value that moves in one half alone goes red here.
 

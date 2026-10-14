@@ -46,7 +46,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from src.datasets import media_relpath
+from src.datasets import BUILT_IN_DATASET, media_relpath
 from src.box_geometry import iou
 from src.face_id import (
     DEFAULT_MARGIN,
@@ -75,12 +75,12 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "out" / "face-eval"
 
 DATASETS = {  # id -> (video path relative to repo, scan dir, frame width)
-    "vod30": (media_relpath(REPO, "vod30"), "scan30", 1280),
+    BUILT_IN_DATASET: (media_relpath(REPO, BUILT_IN_DATASET), "scan30", 1280),
     "highlight": (media_relpath(REPO, "highlight"), "scan_highlight", 1920),
 }
 # Sampling plan defaults: 16 anchors x 10 frames on the 30-minute VOD plus
 # 8 x 10 on the short one = 240 frames, ~35 person instances per anchor burst.
-DEFAULT_PLAN = {"vod30": {"anchors": 16, "burst": 10, "spacing": 15, "start": 300},
+DEFAULT_PLAN = {BUILT_IN_DATASET: {"anchors": 16, "burst": 10, "spacing": 15, "start": 300},
                 "highlight": {"anchors": 8, "burst": 10, "spacing": 15, "start": 300}}
 
 IOU_LINK = 0.5           # same person inside a burst (0.5s apart at 30fps)
@@ -642,7 +642,7 @@ def instance_records(dataset, burst, frame_index, fps, person_boxes, faces, corn
     return records
 
 
-def measure(directory=DEFAULT_DIR, dataset_ids=("vod30", "highlight"), plan=None, log=print):
+def measure(directory=DEFAULT_DIR, dataset_ids=(BUILT_IN_DATASET, "highlight"), plan=None, log=print):
     """Run the production detector + face engine over the sampling plan."""
     from src.face_id import get_face_engine
     import cv2
@@ -753,7 +753,7 @@ def scratch_root(directory=DEFAULT_DIR, fresh=True, name="scratch"):
     return root
 
 
-def pick_demo_window(analysis, dataset="vod30", min_run=3):
+def pick_demo_window(analysis, dataset=BUILT_IN_DATASET, min_run=3):
     """The longest run of consecutive anchors where one table end keeps its person.
 
     Taken from the measured continuity rows of `analyse` (medoid cosine between
@@ -865,7 +865,7 @@ def face_crop(frame, bbox, pad=0.6):
     return cv2.resize(frame[y0:y1, x0:x1], None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
 
-def demo(directory=DEFAULT_DIR, dataset="vod30", log=print, name="scratch"):
+def demo(directory=DEFAULT_DIR, dataset=BUILT_IN_DATASET, log=print, name="scratch"):
     """Enroll one photo per player, then bind held-out faces on a scratch root.
 
     Ground truth here is *positional*: inside the measured continuity window one
@@ -1066,7 +1066,7 @@ def http_demo(port=8133, directory=DEFAULT_DIR, wait=120.0, max_frames=12, log=p
         raise RuntimeError(f"fixture on port {port} never answered")
     payload = json.loads((directory / "detections.json").read_text(encoding="utf-8"))
     analysis = json.loads((directory / "analysis.json").read_text(encoding="utf-8"))
-    window = pick_demo_window(analysis, dataset="vod30")
+    window = pick_demo_window(analysis, dataset=BUILT_IN_DATASET)
     if window is None:
         raise RuntimeError("run `analyse` first")
     dataset = window["dataset"]

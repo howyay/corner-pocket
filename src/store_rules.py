@@ -60,8 +60,8 @@ def merge_record(stored: dict, incoming: dict) -> dict:
 
     This function closes the defect of round 56: the merge of one record sat in
     both stores, and one edit had to land in both sites.  Each store now calls
-    this function: `src/store.py:335` and `src/store_pg.py:330` for one
-    annotation record, `src/store.py:322` and `src/store_pg.py:296` for one
+    this function: `src/store.py:335` and `src/store_pg.py:331` for one
+    annotation record, `src/store.py:322` and `src/store_pg.py:297` for one
     seed.
     """
     return dict(stored, **incoming)
@@ -74,7 +74,7 @@ def drop_key(store: dict, key) -> None:
 
     This function closes the defect of round 56: the delete of one key sat in
     both stores.  Each store now calls this function: `src/store.py:320` and
-    `src/store_pg.py:294`.
+    `src/store_pg.py:295`.
     """
     store.pop(key, None)
 
@@ -87,7 +87,7 @@ def clear_keys(store: dict, keys) -> None:
     can match more than one stored key.
 
     This function closes the defect of round 56: the clear of one crop sat in the
-    `for` loop of `src/store.py:342` and of `src/store_pg.py:359`.
+    `for` loop of `src/store.py:342` and of `src/store_pg.py:360`.
     """
     for key in keys:
         store.pop(key, None)
@@ -100,7 +100,7 @@ def keys_for_basename(store: dict, crop_file: str) -> list:
     of the mapping. A caller uses that key and removes the other matches.
 
     This function closes the defect of round 56: the lookup of a key by basename
-    sat in `src/store.py:331` and in `src/store_pg.py:357`.
+    sat in `src/store.py:331` and in `src/store_pg.py:358`.
     """
     return [key for key in store if Path(key).name == crop_file]
 
@@ -113,7 +113,7 @@ def spelled_time(store: dict, t_key: str) -> str:
     mapping holds no such key.
 
     This function closes the defect of round 56: the float spelling of one anchor
-    time sat in `src/store.py` and in `src/store_pg.py:408`.
+    time sat in `src/store.py` and in `src/store_pg.py:409`.
     """
     return next((key for key in store if float(key) == float(t_key)), str(t_key))
 
@@ -125,7 +125,7 @@ def unknown_record_set(kind: str) -> str:
     with this answer, so both stores refuse an unknown kind in one wording.
 
     This function closes the defect of round 107: the sentence sat in
-    `src/store.py:256` and in `src/store_pg.py:213`.
+    `src/store.py:256` and in `src/store_pg.py:214`.
     """
     return f"unknown record set: {kind}"
 
@@ -137,6 +137,6 @@ def unknown_dataset(dataset: str) -> str:
     with this answer, so the three stores refuse an unknown dataset in one wording.
 
     This function closes the defect of round 108: the sentence sat in
-    `src/store.py:233`, in `src/store_files.py:69`, and in `src/store_pg.py:315`.
+    `src/store.py:233`, in `src/store_files.py:69`, and in `src/store_pg.py:316`.
     """
     return f"unknown dataset: {dataset}"

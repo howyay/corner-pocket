@@ -4874,7 +4874,7 @@ test('round 18 / owner items 1-6, read exactly: the red boxes go, the rest stays
   assert.ok(!adapter.includes('class="vs-keys"'), 'red box 1: the keyboard-hint line is gone');
   assert.ok(!adapter.includes('data-vs-action="run-inference"') && !adapter.includes("case 'run-inference'"),
     'red box 2: no surface offers a manual inference run - a pause is the signal');
-  assert.ok(adapter.includes("const gated = key === 'anchors' && s.dataset !== 'vod30';") && !adapter.includes("if (gated) return '';"),
+  assert.ok(adapter.includes("const gated = key === 'anchors' && s.dataset !== builtInDataset();") && !adapter.includes("if (gated) return '';"),
     'everything boxed green stays: the anchors chip is a control, drawn disabled where it cannot act');
   assert.ok(adapter.includes("t('coldStartHint')"), 'and the empty-state guidance is still there');
   assert.ok(/const pickedPerson = s\.selection\?\.kind === 'person' \|\| \(s\.persons\.track !== null && s\.persons\.track !== undefined\);\n  if \(!pickedPerson\) return '';/.test(adapter),

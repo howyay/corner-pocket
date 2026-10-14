@@ -55,7 +55,7 @@ WALKED = (HOME,) + TOOLS
 #: The four options and the text of their defaults, as ``ast.unparse`` writes the
 #: default with every space removed.  A changed default fails this walk.
 PINNED = (('--video', 'None'),
-          ('--dataset', "'vod30'"),
+          ('--dataset', 'BUILT_IN_DATASET'),
           ('--out-dir', "str(ROOT/'out'/'motion_scan')"),
           ('--quad', 'None'))
 
