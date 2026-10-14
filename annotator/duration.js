@@ -4,7 +4,7 @@
  * annotator/ops.js, annotator/vision-stage.js).  The three copies
  * disagreed on seven of the nineteen values the Lead's grid measures.  This
  * file replaces all three copies (the three seams now read
- * `window.Duration.hms` at annotator/app.js:2107, annotator/ops.js:129 and
+ * `window.Duration.hms` at annotator/app.js:2114, annotator/ops.js:129 and
  * annotator/vision-stage.js:950).
  *
  * THE RULE
@@ -26,7 +26,7 @@
  * 3. A value that is not a number of seconds prints `0:00:00`.  That covers NaN,
  *    a missing value, a non-numeric string and +-Infinity.  One invalid value
  *    must not print `Infinity:NaN:NaN` while another prints zero.
- *    annotator/app.js:143 guards its own time formatter the same way.
+ *    annotator/app.js:150 guards its own time formatter the same way.
  *
  * THE SHOT CLOCK IS NOT THIS RULE
  * annotator/ops.js `clockText()` counts the time LEFT and rounds up on purpose.

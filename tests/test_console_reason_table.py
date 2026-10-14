@@ -89,7 +89,7 @@ def console_table(word, source=None, path=CONSOLE):
         end += 1
     if depth:
         raise AssertionError(f'the table at {word!r} in {path} never closes')
-    # A row key may be a computed one ([QUAD_INVALID_GEOMETRY]:, annotator/app.js:1133), so each
+    # A row key may be a computed one ([QUAD_INVALID_GEOMETRY]:, annotator/app.js:1140), so each
     # bracketed name is resolved against the string constants of the same module.
     names = dict(CONSTANT.findall(text))
     rows = {}
@@ -272,7 +272,7 @@ def gate_result_reasons(call):
 
     ``GateResult`` is a dataclass and ``reasons`` is its third field (src/event_gates.py
     :122), so the call passes the keyword or the third positional argument
-    (src/event_gates.py:409).
+    (src/event_gates.py:410).
     """
     for keyword in call.keywords:
         if keyword.arg == 'reasons':

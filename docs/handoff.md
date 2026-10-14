@@ -18,7 +18,7 @@ Source of truth: `docs/vision-redesign-outline.md`; independent re-verification:
 
 - Layout is a source chip row, then `[Cues rail ~280 px | Stage 16:9 | Inspector ~320 px]`, then a scrub strip carrying the **single facts line**. There is no sub-tab navigation and no landing screen.
 - **One picture surface**: the stage draws the live edge **or** a VOD frame, never two copies of one moment.
-- **Overlay provenance** is tagged in place: `MODEL` / `模型` (dashed), `YOURS` / `人工` (solid, with grab handles), `CALIB` / `标定` (pockets projected from the saved anchors) — `annotator/app.js:225`, `annotator/app.css:65-107`. The facts line names the pocket source, e.g. `pockets 6 (saved anchors)`.
+- **Overlay provenance** is tagged in place: `MODEL` / `模型` (dashed), `YOURS` / `人工` (solid, with grab handles), `CALIB` / `标定` (pockets projected from the saved anchors) — `annotator/app.js:232`, `annotator/app.css:65-107`. The facts line names the pocket source, e.g. `pockets 6 (saved anchors)`.
 - **Refusal reasons reach the operator** on the stage and in the facts line, e.g. `quad drift vs saved corners 6.4 px (tol 40 px)` (`docs/app-path-refusal.md`; commit `d5873a0`). Three refusals are surfaced rather than silent: a refused table quad, a correction that belongs to another (dataset, frame, size), and a model quad that fails the sanity check.
 - Re-verified in a real browser: 0 console errors/warnings across a full drive; Space / ← / → verified (±1 frame, no double consumption); 中 mode has no Latin state-word residue; the facts-line provenance numbers match the SVG node counts exactly, twice, in both languages (`docs/vision-verification.md`).
 

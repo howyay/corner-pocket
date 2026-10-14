@@ -29,6 +29,9 @@ from scan_events import BALL_TABLE_MM_KEY, nearest_pocket  # reuse pocket geomet
 # the name of its speed field from that owner, so a rename of the field moves
 # this writer and the live route together.
 from src import events_document, sam3_artifact
+# The scan document name and the shot pair gap have one home, src/scan_events.py.
+# This tool reads the scan output of that writer, so it takes both names there.
+from src.scan_events import RECORDS_NAME, SHOT_PAIR_GAP_S
 
 SAM3 = sam3_artifact.artifact_path()
 EVENTS = events_document.document_path()
@@ -54,7 +57,7 @@ def main():
     verified = {}
     for i in range(len(times) - 1):
         t1, t2 = times[i], times[i + 1]
-        if t2 - t1 > 3.5:
+        if t2 - t1 > SHOT_PAIR_GAP_S:
             continue
         b1, b2 = sam3[t1], sam3[t2]
         if not b1 or not b2:
@@ -71,7 +74,7 @@ def main():
 
     # shots: motion peaks (records.json), linked to verified displacements
     import json as _j
-    recs = _j.load(open(ROOT.parent / "out" / "scan30" / "records.json"))
+    recs = _j.load(open(ROOT.parent / "out" / "scan30" / RECORDS_NAME))
     t_all = np.array([r["t"] for r in recs])
     m_all = np.array([r["motion"] for r in recs])
     peaks = [i for i in range(1, len(t_all) - 1)

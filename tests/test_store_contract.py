@@ -18,6 +18,7 @@ import numpy as np
 from annotator.operations import ConflictError
 from src import db
 from src.store import JsonStore
+from src.store_rules import unknown_dataset
 
 HAVE_DB = bool(os.environ.get(db.ENV))
 
@@ -294,16 +295,19 @@ class Contract:
         self.assertEqual(self.store.verdicts_get("vod30"), {})
 
     def test_a_malformed_or_unlisted_dataset_is_refused_the_same_way_on_both_stores(self):
-        """Existence, like JsonStore: an id is usable only while the registry lists it."""
+        """Existence, like JsonStore: an id is usable only while the registry lists it.
+
+        The refusal is the whole sentence of its one home, `unknown_dataset` in
+        src/store_rules.py, not only the prefix that stood here before round 108."""
         self.import_vod()
         for bad in ("tw-0123", "tw-1-9-5", "tw-1000000001-3600-3900\n", "../scan30", "vod31",
                     "tw-1000000001"):                      # well-formed, but not imported
-            with self.assertRaisesRegex(ValueError, "unknown dataset", msg=repr(bad)):
-                self.store.correction_put(bad, 1, {"boxes": []})
-            with self.assertRaisesRegex(ValueError, "unknown dataset", msg=repr(bad)):
-                self.store.verdict_put(bad, 1, {"verdict": "wrong"})
-            with self.assertRaisesRegex(ValueError, "unknown dataset", msg=repr(bad)):
-                self.store.correction_get(bad, 1)
+            for refused in (lambda: self.store.correction_put(bad, 1, {"boxes": []}),
+                            lambda: self.store.verdict_put(bad, 1, {"verdict": "wrong"}),
+                            lambda: self.store.correction_get(bad, 1)):
+                with self.assertRaises(ValueError, msg=repr(bad)) as caught:
+                    refused()
+                self.assertEqual(unknown_dataset(bad), str(caught.exception), msg=repr(bad))
 
     def test_corrections_and_anchors(self):
         self.assertIsNone(self.store.correction_get("vod30", 2100))

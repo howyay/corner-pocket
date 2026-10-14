@@ -94,6 +94,8 @@ def collect(base_commit: str, hold: set[str]) -> list[tuple[str, int, str, str]]
     maps: dict[str, dict[int, int]] = {}
     texts: dict[str, tuple[list[str], list[str]]] = {}
     for relative in changed:
+        if not os.path.exists(os.path.join(ROOT, relative)):
+            continue        # a deleted path holds no line and no citation
         old, new = split_lines(git("show", f"{base_commit}:{relative}")), read(relative)
         maps[relative] = line_map(old, new)
         texts[relative] = (old, new)

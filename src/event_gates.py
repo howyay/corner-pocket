@@ -92,10 +92,11 @@ from src.pocket_names import pocket_from_text
 # value answers ''.  tests/test_color_names.py holds the one home.
 from src.color_names import color_key
 from src.table_refine import REASON_NO_BOUNDARY_EVIDENCE  # the gate reads the producer's one string
-# The pot coordinate key has one home, src/scan_events.py, the writer of the served
-# document.  The gate reads that name.  The home adds no library to this module: it
-# answers numpy and cv2 already, through src.table_refine.
-from src.scan_events import BALL_TABLE_MM_KEY
+# The pot coordinate key and the shot displacement floor have one home,
+# src/scan_events.py, the writer of the served document.  The gate reads both names.
+# The home adds no library to this module: it answers numpy and cv2 already, through
+# src.table_refine.
+from src.scan_events import BALL_TABLE_MM_KEY, SHOT_DISP_MM
 
 
 @dataclass
@@ -107,7 +108,7 @@ class GateConfig:
     pot_census_drop: int = 1
     pot_min_pre_hits: int = 1
     pot_min_census: float = 2.0      # below this the census cannot decide anything
-    shot_min_disp_mm: float = 300.0
+    shot_min_disp_mm: float = SHOT_DISP_MM
     shot_geometry_tol_px: float = 60.0
     shot_stable_anchors: int = 2     # of 3 anchor offsets (t, t-0.1, t+0.1)
     off_cloth_tol_px: float = -2.0

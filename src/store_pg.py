@@ -45,7 +45,7 @@ from src.store_import import CORRECTION_INSERT, CORRECTION_UPSERT, OPS_EVENT_INS
 # and JsonStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules
-from src.store_rules import unknown_record_set  # the refusal sentence has one home
+from src.store_rules import unknown_dataset, unknown_record_set  # the refusal sentences have one home
 # The anchor file name of a dataset has one owner, src/calib_segments.py.  This
 # store reads that owner, so the document path here cannot drift from the path
 # JsonStore builds for the same record set.
@@ -307,7 +307,7 @@ class PostgresStore:
         an imported VOD that out/vods/index.json lists (existence, not only format)."""
         from src.datasets import lookup
         if lookup(self.root, dataset) is None:
-            raise ValueError(f"unknown dataset: {dataset}")
+            raise ValueError(unknown_dataset(dataset))
 
     def verdicts_get(self, dataset: str) -> dict:
         self._dataset(dataset)

@@ -79,7 +79,11 @@ def main():
     # must not write an artifact.
     HL = str(media_path(ROOT, "highlight"))
     V30 = str(media_path(ROOT, "vod30"))
-    fixed_hl = json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"]
+    # The name of the highlight reference file has one home,
+    # src.calib_segments.CORNERS_SPEC["file"].  This reader joins it to the output
+    # directory and holds no second spelling of the name.
+    from src.calib_segments import CORNERS_SPEC
+    fixed_hl = json.load(open(ROOT / "out" / CORNERS_SPEC["file"]))["corners"]
     fixed_30 = load_vod30_corners()
 
     hl_times = list(HIGHLIGHT_SAMPLE_TIMES)

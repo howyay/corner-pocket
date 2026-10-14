@@ -44,6 +44,9 @@ from src.datasets import media_relpath
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME
 # src/calib_segments.py owns the scan corners path, so this file reads the owner.
 from src.calib_segments import SCAN_CORNERS
+# The scan document name has one home, src/scan_events.py.  This tool reads the
+# scan output of that writer, so it takes the name there.
+from src.scan_events import RECORDS_NAME
 from src.event_window import AT_TOL_S, EVENT_AFTER_S, EVENT_BEFORE_S
 from src.frame_rate import FPS_FALLBACK
 
@@ -611,7 +614,7 @@ def parse_times(value):
 
 def analyze(video, queue, quad_path=None, anchors_path=None, before=CLIP_BEFORE_S, after=CLIP_AFTER_S,
             sample_fps=SAMPLE_FPS, controls=None, control_count=12, drift_step=30.0,
-            cross_times=None, records_path="out/scan30/records.json", limit=None, progress=None):
+            cross_times=None, records_path=f"out/scan30/{RECORDS_NAME}", limit=None, progress=None):
     events = load_events(queue, limit=limit)
     quad = load_quad(quad_path, anchors_path)
     cloth = cloth_mask(quad)
@@ -808,7 +811,7 @@ def main(argv=None):
     ap.add_argument("--control-count", type=int, default=12)
     ap.add_argument("--drift-step", type=float, default=30.0)
     ap.add_argument("--cross-times", default=None, help="cross-check timestamps, comma separated")
-    ap.add_argument("--records", default="out/scan30/records.json",
+    ap.add_argument("--records", default=f"out/scan30/{RECORDS_NAME}",
                     help="the scan's own per-sample records, for the trigger check")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--report", default="out/scan30/timing_verify.json")

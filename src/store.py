@@ -64,9 +64,10 @@ from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMEN
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules  # noqa: E402
-# The refusal of an unknown record set has one home in src/store_rules.py.  The class
-# below reads the home by name; the five edit rules stay under the module alias.
-from src.store_rules import unknown_record_set  # noqa: E402
+# The refusals of an unknown record set and of an unknown dataset have one home in
+# src/store_rules.py.  The class below reads the two homes by name; the five edit
+# rules stay under the module alias.
+from src.store_rules import unknown_dataset, unknown_record_set  # noqa: E402
 # The anchor file name of a dataset, and the two document names of the
 # calibration, have one owner: src/calib_segments.py.  This module reads that
 # owner, so the path of the anchors document and the path of the calibration
@@ -225,7 +226,7 @@ class JsonStore:
     def _scan(self, dataset: str) -> Path:
         found = dataset_lookup(self.root, dataset)
         if found is None:
-            raise ValueError(f"unknown dataset: {dataset}")
+            raise ValueError(unknown_dataset(dataset))
         return found.out_dir
 
     def _operations(self):

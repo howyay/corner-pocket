@@ -481,11 +481,11 @@ to every batch tool.  The two that are *queried* rather than read whole get real
 ### 5.1 Review queue — `out/<scan>/events.json`
 
 * Writers (batch only): `src/dense_queue.py:587-637` (`build`, the served queue),
-  `src/scan_events.py:343-347`, `src/info_complete_scan.py:413`,
-  `src/rebuild_events_calibrated.py:148`.  Readers: `unified_server.py:1306-1316`
+  `src/scan_events.py:349-353`, `src/info_complete_scan.py:413`,
+  `src/rebuild_events_calibrated.py:151`.  Readers: `unified_server.py:1306-1316`
   (`GET /api/<ds>/events`), `:1397` (annotate validation), `:696` (`_unified_events`, every
-  unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2338-2350`,
-  `src/candidate_scan.py:598-602`, `src/eval_events.py`, `src/timing_verify.py:777`.
+  unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2341-2353`,
+  `src/candidate_scan.py:601-605`, `src/eval_events.py`, `src/timing_verify.py:780`.
 
 ```sql
 CREATE TABLE queue_events (
@@ -521,7 +521,7 @@ key='<frame>')`.  Nothing new writes this kind — the endpoint stopped writing 
 ### 5.3 Calibration and anchors
 
 * `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:53`; readers
-  `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:369` which caches
+  `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:381` which caches
   on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:57`,
   `src/calib_mapping_audit.py`.  → `artifacts(kind='calibration_segments')`.
 * `out/calib_vod30.json` — reader `unified_server.py:2131` (suggested anchor points).

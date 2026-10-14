@@ -4,13 +4,13 @@ The machine code ``no_boundary_evidence`` stood in five places, and no case read
 any two of them:
 
   * ``src/event_gates.py`` counted it through ``CALIBRATION_NO_EVIDENCE_REASON``,
-    the constant ``calibration_warning`` reads at ``src/event_gates.py:530``;
+    the constant ``calibration_warning`` reads at ``src/event_gates.py:531``;
   * ``src/table_refine.py`` spelled it three times: in the refusal dict of
     ``refine_quad``, in the per-side code of ``_refine_once`` and in the fallback
     of the reason ternary;
   * ``annotator/app.js`` holds the row of ``QUAD_REFUSAL_COPY`` that an operator
     reads when the refiner refuses a quad - the walk of round 105 read that row
-    at ``annotator/app.js:1138``.
+    at ``annotator/app.js:1145``.
 
 Round 105 gave the python side one home: the string stands once under ``src/``,
 on ``REASON_NO_BOUNDARY_EVIDENCE`` in ``src/table_refine.py``, and the gate reads
@@ -45,7 +45,7 @@ CONSOLE_HEAD = 'const QUAD_REFUSAL_COPY = {'
 TOKEN = 'no_boundary_evidence'
 
 #: The two sentences an operator reads for the code.  They are the console copy
-#: this row holds in place: the sentence of ``annotator/app.js:1138`` must not
+#: this row holds in place: the sentence of ``annotator/app.js:1145`` must not
 #: change under the repair that moved the machine code.
 OPERATOR_COPY = ('no rail edge is visible inside the search band',
                  '搜索带内看不到库边边缘')
@@ -245,7 +245,7 @@ class ConsoleNoBoundaryEvidenceOwnerTest(unittest.TestCase):
     def test_the_console_key_equals_the_python_home(self):
         """The console row the operator reads is keyed by the python home's value.
 
-        The walk of round 105 read the row at ``annotator/app.js:1138``: the key
+        The walk of round 105 read the row at ``annotator/app.js:1145``: the key
         is the machine code the refiner puts in a verdict, and the two sentences
         are the operator-visible copy of this row.  A renamed key leaves the
         reader on the ``default`` sentence, so this case holds the key to the

@@ -62,8 +62,11 @@ from src.stats import summary  # noqa: E402
 from src.table_detect import _order_corners  # noqa: E402
 # The anchor file name of a dataset has one owner, src/calib_segments.py.  The two
 # readers below (the path constant and the reference note) read that owner, so this
-# tool holds no second spelling of the name.
-from src.calib_segments import anchors_reference_path, corners_v2_path  # noqa: E402
+# tool holds no second spelling of the name.  The name of the highlight reference
+# file reads the same owner, so ``FIXED_CORNERS`` below joins the output directory
+# to ``CORNERS_SPEC["file"]`` and holds no second spelling of that name either.
+from src.calib_segments import (CORNERS_SPEC, anchors_reference_path,  # noqa: E402
+                                corners_v2_path)
 
 # The output directory of this tool and of src/check_app_quad.py.  This name is the
 # one owner of the path: check_app_quad imports OUT_DIR and holds no second spelling
@@ -73,8 +76,12 @@ VOD30 = media_path(ROOT, "vod30")
 HIGHLIGHT = media_path(ROOT, "highlight")
 ANCHORS = ROOT / anchors_reference_path("vod30")
 CORNERS_V2 = ROOT / corners_v2_path()
-FIXED_CORNERS = ROOT / "out" / "fixed_corners.json"
+FIXED_CORNERS = ROOT / "out" / CORNERS_SPEC["file"]
 CLOTH_TOLERANCE_PX = 40.0  # annotator/app.js CLOTH_TOLERANCE_PX - the app's mean-distance bar
+# The verdict the app answers for a frame whose detector found no quad at all.  This
+# module owns the token; src/check_app_quad.py reads this name and spells no second
+# copy of the words.
+STATE_NO_DETECTION = "no detection"
 
 
 # -- references ---------------------------------------------------------------
@@ -358,7 +365,7 @@ def evaluate(detector, dataset, n_frames, refs, video):
         for ref in refs:
             entry = {"state": "none", "mean": None}
             if corners is None:
-                entry = {"state": "no detection", "mean": None}
+                entry = {"state": STATE_NO_DETECTION, "mean": None}
             elif row["sanity"]:
                 entry = {"state": "invalid geometry", "mean": None,
                          "detail": row["sanity"]}

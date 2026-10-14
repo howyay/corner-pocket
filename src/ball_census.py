@@ -42,6 +42,9 @@ from src import color_names
 # copy of the body until round 51, and a census score and a gate field are the
 # same scalar shape.  tests/test_duplicate_bodies.py holds the one home.
 from src.event_gates import num_or_none
+# The shot displacement floor has one home, src/scan_events.py.  This census uses
+# the same floor as the gate, so it takes the name from that home.
+from src.scan_events import SHOT_DISP_MM
 
 CENSUS_VERSION = 1
 
@@ -945,7 +948,7 @@ def _tracks_of(report: dict) -> list[Track]:
 
 
 def displacement_measure(report: dict, anchor: float, claim_color: str | None = None,
-                         margin_s: float = 0.3, min_disp_mm: float = 300.0,
+                         margin_s: float = 0.3, min_disp_mm: float = SHOT_DISP_MM,
                          still_mm: float = 60.0) -> dict:
     """The move a ball made across the event, from the SAM3 ball *set*.
 

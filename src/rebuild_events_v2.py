@@ -40,9 +40,10 @@ from src.calib_segments import corners_v2_path  # noqa: E402
 # The SAM3 ball artifact has one owner, src/sam3_artifact.py.  This reader takes the
 # path from that owner, so a rename of the file name moves this reader too.
 from src.sam3_artifact import artifact_in  # noqa: E402
-# The pot coordinate key has one home, src/scan_events.py, the writer of the
-# served document this tool rebuilds.  This reader takes the name from that home.
-from src.scan_events import BALL_TABLE_MM_KEY  # noqa: E402
+# The pot coordinate key and the scan document name have one home,
+# src/scan_events.py, the writer of the served document this tool rebuilds.  This
+# reader takes the names from that home.
+from src.scan_events import BALL_TABLE_MM_KEY, RECORDS_NAME, SHOT_PAIR_GAP_S  # noqa: E402
 from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: E402
 
 VIDEO = media_path(ROOT.parent, "vod30")
@@ -54,7 +55,7 @@ def main():
     corners = np.array(json.load(open(CORNERS))["corners"], np.float32)
     H = homography_to_canonical(corners)                   # 720p px -> canonical mm
     sam3_raw = json.load(open(artifact_in(SCAN)))
-    records = json.load(open(SCAN / "records.json"))
+    records = json.load(open(SCAN / RECORDS_NAME))
     rec_by_t = {r["t"]: r for r in records}
 
     # recompute cloth area per sam3 time (occlusion gate) + reproject balls
@@ -99,7 +100,7 @@ def main():
     verified = {}
     for i in range(len(times) - 1):
         t1, t2 = times[i], times[i + 1]
-        if t2 - t1 > 3.5:
+        if t2 - t1 > SHOT_PAIR_GAP_S:
             continue
         b1, b2 = sam3[t1], sam3[t2]
         if not b1 or not b2:

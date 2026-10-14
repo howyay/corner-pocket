@@ -173,6 +173,12 @@ def anchors_reference_name(dataset: str = "vod30") -> str:
 # The saved reference file of a dataset.  A file marked ``table`` keys its points
 # by time, and the entry nearest the requested time then wins.  A dataset without
 # a table entry uses its reference corners file, as the readers did before.
+#
+# The name of that file has one home, the ``file`` entry below.  A reader that
+# joins a directory of its own reads ``CORNERS_SPEC["file"]`` and holds no second
+# spelling of the name.  Round 108 moved the readers in src/eval_table_detect.py,
+# src/audit_calib.py, src/quad_fit.py, src/quad_fit_lines.py and
+# src/calib_mapping_audit.py onto this entry.
 CORNERS_SPEC = {"file": "fixed_corners.json", "key": "corners", "table": False}
 STATIC_REFERENCES = {
     "vod30": {"file": anchors_reference_name("vod30"), "key": "anchors", "table": True},
@@ -355,6 +361,12 @@ class Segments:
 # ``src.motion_scan.load_quad`` reads this name for the same state.
 NOTE_NO_QUAD = "no quad found"
 
+# The refusal of a quad of the wrong shape, one wording for the two raises below
+# and for ``src.motion_scan.load_quad``.  The value is the prefix of the message
+# alone: each raise appends the shape it received, so the text the caller reads is
+# the sentence the callers read before round 108.
+QUAD_SHAPE_ERROR = "expected a 4x2 quad, got "
+
 
 @dataclass
 class Reference:
@@ -518,11 +530,11 @@ def read(path, key: str | None = None, t=None, order: bool = False,
         points = np.asarray(value, np.float32).reshape(-1, 2)
     except (TypeError, ValueError):
         if strict:
-            raise ValueError(f"expected a 4x2 quad, got {np.shape(value)}")
+            raise ValueError(f"{QUAD_SHAPE_ERROR}{np.shape(value)}")
         points = np.empty((0, 2), np.float32)
     if points.shape[0] < 4:
         if strict:
-            raise ValueError(f"expected a 4x2 quad, got {points.shape}")
+            raise ValueError(f"{QUAD_SHAPE_ERROR}{points.shape}")
         return Reference(artifact=target, entry=entry, note="fewer than four points")
     quad = points[:4]
     if order:

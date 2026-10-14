@@ -2,15 +2,15 @@
 
 The walk of round 107 found four live spellings of one key of the fused census:
 
-* ``src/ball_census.py:922`` - ``window_summary`` writes the key of the summary;
+* ``src/ball_census.py:925`` - ``window_summary`` writes the key of the summary;
 * ``src/eval_events.py:644`` - ``probe_pot`` reads the summary into ``PotEvidence``;
 * ``src/eval_events.py:1036`` - the report line of the console reads the key back;
-* ``src/event_gates.py:354`` - the row of ``pot_gate`` carries it to the gate report.
+* ``src/event_gates.py:355`` - the row of ``pot_gate`` carries it to the gate report.
 
 No case named the key.  ``git grep -nF '"claim_color_present_sources"' -- tests/``
 answered nothing, so a rename of the served key stayed silent in every reader.
 
-The home is ``src/ball_census.py:795``::
+The home is ``src/ball_census.py:798``::
 
     CLAIM_COLOR_PRESENT_SOURCES_KEY = "claim_color_present_sources"
 
@@ -24,7 +24,7 @@ name with a local import inside ``pot_gate``, and a case proves in a fresh
 interpreter that the import of ``src/event_gates`` alone leaves ``src.ball_census``
 out of ``sys.modules``.
 
-The field.  ``PotEvidence.claim_color_present_sources`` (``src/event_gates.py:286``)
+The field.  ``PotEvidence.claim_color_present_sources`` (``src/event_gates.py:287``)
 is the field the gate row copies, and the keyword of ``probe_pot``
 (``src/eval_events.py:644``) must keep the same name.  A case holds the pair equal,
 because a rename on one side alone would serve an empty number.
@@ -58,7 +58,7 @@ SHIPPED_KEY = "claim_color_present_sources"
 #: The home module, the name it holds the key under, and the line of the statement.
 HOME = "src/ball_census.py"
 HOME_NAME = "CLAIM_COLOR_PRESENT_SOURCES_KEY"
-HOME_LINE = 791
+HOME_LINE = 794
 HOME_FORM = '%s = "%s"' % (HOME_NAME, SHIPPED_KEY)
 #: The line regex of the definition, for the case that pins the home line.
 NAME_RE = re.compile(r"\s*%s\s*=" % HOME_NAME)
@@ -67,9 +67,9 @@ NAME_RE = re.compile(r"\s*%s\s*=" % HOME_NAME)
 #: for a key of a written row, ``get`` for a lookup that reads a row back, and
 #: ``lookup`` for a subscript of the summary that is written.
 SITES = {
-    HOME: ((791, "home"), (922, "lookup")),
+    HOME: ((794, "home"), (925, "lookup")),
     "src/eval_events.py": ((48, "import"), (644, "get"), (1036, "get")),
-    "src/event_gates.py": ((330, "import"), (350, "dict")),
+    "src/event_gates.py": ((331, "import"), (351, "dict")),
 }
 #: The module each reader takes the home from.
 IMPORTS = {
@@ -79,11 +79,11 @@ IMPORTS = {
 #: The gate, the function of its local import, and the line of that import.
 GATE = "src/event_gates.py"
 GATE_FUNCTION = "pot_gate"
-GATE_IMPORT_LINE = 330
+GATE_IMPORT_LINE = 331
 #: The reader, the evidence class, and the two lines of the field and its keyword.
 READER = "src/eval_events.py"
 EVIDENCE_CLASS = "PotEvidence"
-FIELD_LINE = 282
+FIELD_LINE = 283
 FIELD_KEYWORD_LINE = 644
 #: The five sibling keys of the summary block.  This round holds one name only, so
 #: a case reads them and reports a change of any of them.

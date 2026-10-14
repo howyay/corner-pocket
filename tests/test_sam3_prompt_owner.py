@@ -71,7 +71,7 @@ SITES = (
     ("src/recut_crops.py", 96),
     ("src/sam3_ball_cache.py", 172),
     ("src/sam3_ball_cache.py", 260),
-    ("src/scan_events.py", 139),
+    ("src/scan_events.py", 145),
 )
 
 

@@ -49,7 +49,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
-from src.calib_segments import SCAN_CORNERS, VERIFIED_FRAMES, anchors_reference_path  # noqa: E402
+from src.calib_segments import CORNERS_SPEC, SCAN_CORNERS, VERIFIED_FRAMES, anchors_reference_path  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
@@ -432,7 +432,7 @@ def highlight_reference_check(video, quad_path=None, times=None, columns=(600, 9
     from src.table_detect import detect_cloth_mask
     from src.table_refine import refine_quad_edges
 
-    path = Path(quad_path) if quad_path is not None else ROOT / "out" / "fixed_corners.json"
+    path = Path(quad_path) if quad_path is not None else ROOT / "out" / CORNERS_SPEC["file"]
     from src import calib_segments
     reference = calib_segments.read(path, "corners", order=True)
     if not reference.found:
@@ -603,7 +603,7 @@ def main(argv=None):
     ap.add_argument("--video", default=str(VIDEO))
     ap.add_argument("--candidates", default=str(CANDIDATES))
     ap.add_argument("--highlight", default=str(media_path(ROOT, "highlight")))
-    ap.add_argument("--highlight-quad", default=str(ROOT / "out" / "fixed_corners.json"))
+    ap.add_argument("--highlight-quad", default=str(ROOT / "out" / CORNERS_SPEC["file"]))
     ap.add_argument("--highlight-times", type=float, nargs="*", default=None)
     ap.add_argument("--times", type=float, nargs="*", default=list(FRAME_TIMES))
     ap.add_argument("--out", default=str(OUT))

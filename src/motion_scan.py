@@ -71,6 +71,9 @@ from src.sam3_artifact import ARTIFACT  # noqa: E402
 # The census file name has one owner too, src/sam3_ball_cache.py.  This reader
 # builds the path of each candidate scan folder itself, so it takes the plain name.
 from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
+# The scan document name has one owner, src/scan_events.py.  This reader builds the
+# path of each candidate scan folder itself, so it takes the plain name.
+from src.scan_events import RECORDS_NAME  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
                               EVENT_BEFORE_S)
@@ -380,7 +383,7 @@ def _as_quad(points) -> list | None:
     if quad.shape[0] > 4:
         quad = quad[:4]
     if quad.shape != (4, 2):
-        raise ValueError(f"expected a 4x2 quad, got {quad.shape}")
+        raise ValueError(f"{calib_segments.QUAD_SHAPE_ERROR}{quad.shape}")
     return quad.round(3).tolist()
 
 
@@ -991,7 +994,7 @@ def value_at(t, values, t0: float) -> float:
 def _records_for(dataset: str, root) -> list:
     for name in (["scan30"] if dataset == "vod30" else []) + [f"scan_{dataset}",
                                                               f"scan{dataset}"]:
-        path = Path(root) / "out" / name / "records.json"
+        path = Path(root) / "out" / name / RECORDS_NAME
         if not path.exists():
             continue
         rows = json.loads(path.read_text())

@@ -28,6 +28,13 @@ const sizeText = bytes => Number(bytes) >= 1e9 ? `${(Number(bytes) / 1e9).toFixe
 // this pair. The service states the same set in annotator/pipeline_stages.py (DEFAULT_DETECTORS).
 // The three-name row the panel draws is the vocabulary, not this default set.
 const DEFAULT_LIVE_DETECTORS = Object.freeze(['table', 'person']);
+// The verdict of a frame whose detector found no quad at all. The python side owns the
+// same token (`src.eval_table_detect.STATE_NO_DETECTION`): that module writes the word
+// into the state of every reference verdict, and `src.check_app_quad.py` counts it.
+// tests/test_app_verdict_token_owner.py reads the two languages and holds them together.
+// The initial state below calls `noClothVerdict()`, whose default this name is, so the
+// name stands above that call and not beside the default.
+const STATE_NO_DETECTION = 'no detection';
 const enc = encodeURIComponent;
 // Historical review-mode names stay valid activation targets so nothing that
 // used to be reachable disappears; they all activate the one stage and only
@@ -306,7 +313,7 @@ function clothVerdict(value = {}, available = 0) {
     source: value.source ?? null, available: Number(available) || 0
   };
 }
-function noClothVerdict(reason = 'no detection') { return clothVerdict({state:'none', reason}); }
+function noClothVerdict(reason = STATE_NO_DETECTION) { return clothVerdict({state:'none', reason}); }
 // Verdict for one frame's automatic quad: ok (checked and within tolerance),
 // off (checked and refused), unverified (no saved reference for this dataset),
 // none (nothing detected). Only `ok` and `unverified` may be painted.
@@ -2417,7 +2424,7 @@ function attach(options = {}) {
     displayBoxes, applyFrameResult, text, tagRow, pocketText, validateCloth, correctionScope,
     exitPlayback, onKeydown, translateEditor, CLOTH_TOLERANCE_PX, calibratedPockets, polygonSource,
     stageHTML, clothTolerance, markBoxEdited, personChip, eventWindow, placeTags, boxTagKind,
-    POCKET_ANCHOR_ORDER, FALLBACK_ANCHOR_LAYOUT, QUAD_INVALID_GEOMETRY,
+    POCKET_ANCHOR_ORDER, FALLBACK_ANCHOR_LAYOUT, QUAD_INVALID_GEOMETRY, STATE_NO_DETECTION,
     quadReasonText, paintCueGeometry, paintLiveChip, correctionBody,
     ghostModelBox, updateOverlayFacts, POCKET_LABELS, CLIP_BEFORE_S, CLIP_AFTER_S, CLIP_FLOOR_S, bindVideo,
     stageVideo, playEvent, dropPerFrame, drawnPocket, cueGeometryVisible, manualBoxCount,

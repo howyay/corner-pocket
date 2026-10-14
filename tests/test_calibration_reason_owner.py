@@ -3,14 +3,14 @@
 Round 105 counted nine live copies of this wire token, and no case read two of
 them together:
 
-  * ``src/event_gates.py:493`` held the constant
+  * ``src/event_gates.py:494`` held the constant
     ``CALIBRATION_NO_EVIDENCE_REASON = "no_boundary_evidence"``, read at
-    ``src/event_gates.py:530``;
+    ``src/event_gates.py:531``;
   * ``src/table_refine.py`` spelled the token in four places: the refusal dict of
     the last try, the value of the unverified sides, the fallback of the reason
     ternary and the reason of the refusal result - the last one was not in the
     walk of round 105;
-  * ``annotator/app.js:1138`` holds the row of ``QUAD_REFUSAL_COPY`` that an
+  * ``annotator/app.js:1145`` holds the row of ``QUAD_REFUSAL_COPY`` that an
     operator reads, keyed by the token.
 
 The repair gave the string one home: the name ``REASON_NO_BOUNDARY_EVIDENCE`` in

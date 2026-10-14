@@ -22,7 +22,7 @@ sites.
   imports ``size_text`` for its import sentence (:572).
 * **The default live-detector set.**  The pair ``('table', 'person')`` stood at four sites: the
   two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2057``)
-  and the two console sites (``annotator/ops.js:766``, ``annotator/app.js:64``).  The console
+  and the two console sites (``annotator/ops.js:766``, ``annotator/app.js:71``).  The console
   copy was held by one case (``tests/test_ops.js:264``); the two service copies were held by
   none.  ``annotator/pipeline_stages.py:757`` owns the set now, in ``DEFAULT_DETECTORS``, beside
   the ``DETECTORS`` tuple that owns the names.  The console realm states its own set once, in

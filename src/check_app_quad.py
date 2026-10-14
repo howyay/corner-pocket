@@ -14,9 +14,16 @@ directory ``OUT_DIR`` has the same one owner: this script reads it from
     width (``CLOTH_TOLERANCE_PX``).
   * ``validateCloth`` - the sanity gate first, then the mean corner distance
     against the bar.
+  * ``noClothVerdict`` - the verdict of a frame with no quad.  Its default is
+    app.js' ``STATE_NO_DETECTION``, the one home of the token this script reads
+    as ``STATE_NO_DETECTION`` of ``src.eval_table_detect``.
 
 Line numbers are not cited: another worker edits ``app.js``, so a symbol name is
 the locator that does not go stale.
+
+The state token has one owner as well: ``src.eval_table_detect`` holds
+``STATE_NO_DETECTION``, the word the reference writes for a frame whose detector
+found no quad.  This script reads that name and holds no second spelling of it.
 
 ``tests/test_app_quad_contract.py`` reads the app.js text and compares the two
 copies.  This script runs the rule on the frames of ``src/eval_table_detect``'s
@@ -43,7 +50,8 @@ import cv2
 import numpy as np
 
 from src.eval_table_detect import (ANCHORS, CLOTH_TOLERANCE_PX, CORNERS_V2, HIGHLIGHT, OUT_DIR,
-                                   VOD30, load_references, quad_distance, quad_sanity)
+                                   STATE_NO_DETECTION, VOD30, load_references, quad_distance,
+                                   quad_sanity)
 from src.frame_inference import app_prior_for
 from src.table_detect import detect_table
 from src.table_refine import detect_table_refined
@@ -58,7 +66,7 @@ def verdict(corners, reference, width, height):
     """
     bad = quad_sanity(corners, width, height)
     if corners is None:
-        return 'no detection', None
+        return STATE_NO_DETECTION, None
     if bad:
         return f'invalid geometry ({bad})', None
     fit = quad_distance(corners, reference['corners'])
@@ -127,7 +135,7 @@ def main():
                      if r.get(key.replace('|state', '|mean')) is not None]
             summary[f'{label} vs {ref_name}'] = {
                 'ok': states.count('ok'), 'refused': states.count('off'),
-                'no_detection': sum(1 for s in states if s == 'no detection'),
+                'no_detection': sum(1 for s in states if s == STATE_NO_DETECTION),
                 'invalid_geometry': sum(1 for s in states if s.startswith('invalid')),
                 'mean_px_median': None if not means else round(float(np.median(means)), 1),
                 'worst_mean_px': None if not means else max(means)}

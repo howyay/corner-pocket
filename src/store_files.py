@@ -31,6 +31,9 @@ from src.datasets import STATIC_OUT
 # readers below read the head and the suffix of that name, so a document set and a
 # name check cannot keep a second spelling of it.
 from src.calib_segments import ANCHORS_HEAD, ANCHORS_SUFFIX, anchors_reference_path
+# The refusal of an unknown dataset has one home, src/store_rules.py.  The three store
+# backends read that home, so one wording change lands in one file.
+from src.store_rules import unknown_dataset
 
 # BALL_SETS is the one owner of the crop-set vocabulary: the sets a crop file can
 # belong to. Every Python module imports it from here (`document_paths` above needs it
@@ -66,7 +69,7 @@ def dataset_dir(dataset: str) -> str:
     if dataset in STATIC_OUT:
         return f"out/{STATIC_OUT[dataset]}"
     if parse_imported_id(dataset) is None:
-        raise ValueError(f"unknown dataset: {dataset}")
+        raise ValueError(unknown_dataset(dataset))
     return f"out/vods/{dataset}"
 
 

@@ -2,16 +2,16 @@
 
 The walk of round 107 found five live spellings of one key of a pot event:
 
-* ``src/scan_events.py:364`` - the write of the served document;
-* ``src/rebuild_events_v2.py:162`` - the first rebuild tool;
-* ``src/rebuild_events_calibrated.py:139`` - the second rebuild tool;
-* ``src/event_gates.py:182`` - the gate reads the row back;
-* ``annotator/index.html:104`` - the pot line of the served page.
+* ``src/scan_events.py:365`` - the write of the served document;
+* ``src/rebuild_events_v2.py:163`` - the first rebuild tool;
+* ``src/rebuild_events_calibrated.py:140`` - the second rebuild tool;
+* ``src/event_gates.py:179`` - the gate reads the row back;
+* ``annotator/index.html:100`` - the pot line of the served page.
 
 No case named the key.  ``git grep -F ball_table_mm -- tests/`` answered nothing,
 so a rename of the served key stayed silent in every reader.
 
-The home is ``src/scan_events.py:62``::
+The home is ``src/scan_events.py:58``::
 
     BALL_TABLE_MM_KEY = "ball_table_mm"
 
@@ -22,12 +22,12 @@ must still find it.  One case reads the two shipped documents of ``out/scan30/``
 and feeds their pot rows to the gate, so the old bytes prove the identity.
 
 Weight.  The gate reads the home at the top of its module, and the home adds no
-library: ``src/event_gates.py:94`` imports ``src.table_refine``, which answers
+library: ``src/event_gates.py:99`` imports ``src.table_refine``, which answers
 numpy and cv2 already, so a home in ``src/scan_events.py`` adds no heavy root.  A
 case measures that answer in a fresh interpreter instead of asserting it.
 
 The page.  ``annotator/index.html`` cannot read a python name, so it holds its own
-line, ``annotator/index.html:82``, with the same value.  Two cases hold the two
+line, ``annotator/index.html:78``, with the same value.  Two cases hold the two
 lines equal: a value that moves in one file and not in the other reddens this
 module, and the failure names ``path:line`` with the text of that line.
 
@@ -60,7 +60,7 @@ SHIPPED_KEY = "ball_table_mm"
 HOME = "src/scan_events.py"
 HOME_NAME = "BALL_TABLE_MM_KEY"
 #: The line of the home statement, at the state the home landed in, and its text.
-HOME_LINE = 57
+HOME_LINE = 58
 HOME_FORM = '%s = "%s"' % (HOME_NAME, SHIPPED_KEY)
 #: The line regex of the definition, for the case that pins the home line.
 NAME_RE = re.compile(r"\s*%s\s*=" % HOME_NAME)
@@ -71,10 +71,10 @@ CONSTANT_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 #: for a key of a written row and ``get`` for a lookup that reads a row back.
 #: A moved, a new or a lost site must restate itself here.
 SITES = {
-    HOME: ((57, "home"), (359, "dict")),
-    "src/rebuild_events_v2.py": ((45, "import"), (162, "dict")),
-    "src/rebuild_events_calibrated.py": ((27, "import"), (137, "dict")),
-    "src/event_gates.py": ((98, "import"), (178, "get")),
+    HOME: ((58, "home"), (365, "dict")),
+    "src/rebuild_events_v2.py": ((46, "import"), (163, "dict")),
+    "src/rebuild_events_calibrated.py": ((27, "import"), (140, "dict")),
+    "src/event_gates.py": ((99, "import"), (179, "get")),
 }
 #: The module each reader takes the home from.
 IMPORTS = {

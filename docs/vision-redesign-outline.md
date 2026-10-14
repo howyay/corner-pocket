@@ -98,7 +98,7 @@ Mobile 390 px: the same DOM. The stage keeps 16:9 at the top (y≈90–300), the
 | Rule | Why |
 |---|---|
 | **Layer chips, not panels.** Cloth / Balls / Persons / Pockets / Anchors / Events as chips above the stage. | The old design used four full panels for the same state; chips cost one row and remove the mode switch entirely. |
-| **Hide what the source cannot do.** | Anchor calibration is `vod30`-only (`app.js:38`, `unified_server.py:673-674`); showing it on a live source is a lie with a button on it. |
+| **Hide what the source cannot do.** | Anchor calibration is `vod30`-only (`app.js:45`, `unified_server.py:673-674`); showing it on a live source is a lie with a button on it. |
 | **Keyboard-first.** `space` play/freeze · `←/→` ±1 frame (Shift ±10) · `0–9` label · `U` unknown · `C` cue · `A`/`B` identity · `V` cycle verdict · `Tab` next detection · `⏎` commit. | The audit found no key reaches modes or tabs, and that `<video>` can eat the arrows. The strip prints the map so it is discoverable. |
 | **One mono status line for all numbers.** | Numbers in Zilla Slab and Barlow had no tabular alignment and drifted between panels. |
 | **EN / 中 parity for every new string.** | The Vision tab is bilingual; the audit's `15-zh-timeline-1280.png` shows `Unified viewer` untranslated and a mixed `["球","Pockets","Persons","Identity"]` overlay set. Every string added by this design ships in both languages (`Cues · 线索`, `Verdict · 判定`, `Start failed · 启动失败`, …). |
@@ -121,7 +121,7 @@ The redesign therefore:
 1. **Deletes** `app.js`'s inner nav (`app.html:42-46`) and the `app.css:4-5` `[data-embedded] nav` rule, plus `visionNavigation()` and the dead `#vision-host-host` in `ops.js`.
 2. **Adds a thin adapter** (`vision-stage`): a small module that renders the cues rail, layer chips and inspector from state, and calls the existing engine entry points (`activate('timeline')` semantics → `seek(frame)`, `freeze()`, `setOverlay(kind, on)`, `labelBall(k)`, `setSeed(track, role)`, `saveVerdict(...)`). The adapter owns no frame state and no fetch; it reads the engine's state and re-renders on change.
 3. **Extends two engine behaviours**: an explicit `loading` state per overlay request (for the skeleton), and a per-artifact save receipt (`{kind, id, value, at}`) returned by the existing save paths (`POST /api/vod30/annotate`, `POST /api/balls/<set>/label`, `POST /api/vod30/anchors`, `POST /api/vod30/seeds`) so the inspector can print it.
-4. **Retires** the duplicate overlay painter: live overlays (`ops.js:14`, green canvas rects from `X-Live-Metadata`) and frozen overlays (`app.js:276-300`, brass/red SVG from `/api/unified`) become one renderer fed by whichever source is active.
+4. **Retires** the duplicate overlay painter: live overlays (`ops.js:14`, green canvas rects from `X-Live-Metadata`) and frozen overlays (`app.js:283-307`, brass/red SVG from `/api/unified`) become one renderer fed by whichever source is active.
 
 One engine, one stage, one coordinate system, one status line.
 

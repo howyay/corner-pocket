@@ -47,6 +47,7 @@ from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 # site, so this scan writes the same millimetres the gates and the server use.
 
 SHOT_DISP_MM = 300.0    # shot refinement floor: the fastest ball moves >= 300 mm
+SHOT_PAIR_GAP_S = 3.5   # two samples of one shot stand at most 3.5 s apart
 MOTION_THRESH = 4.5     # table-region frame diff for a shot candidate
 MIN_BALL_AREA_720 = 14.0
 MAX_BALL_AREA_720 = CLASSICAL_BALL_MAX_AREA_960X540_PX
@@ -55,6 +56,11 @@ MAX_BALL_AREA_720 = CLASSICAL_BALL_MAX_AREA_960X540_PX
 # src/event_gates.py read this name; annotator/index.html reads the same key of the
 # served row.  The value stays, because the document on disk carries it.
 BALL_TABLE_MM_KEY = "ball_table_mm"
+
+# The scan writes its per-sample document under this name.  src/rebuild_events_v2.py,
+# src/rebuild_events_calibrated.py, src/timing_verify.py and src/motion_scan.py read
+# the same name from their own directory.  A rename touches one line.
+RECORDS_NAME = "records.json"
 
 
 def motion_energy(gray_now: np.ndarray, gray_prev: np.ndarray, mask) -> float:
@@ -224,7 +230,7 @@ def shot_refinement(sam3, shot_disp=SHOT_DISP_MM):
     times = sorted(sam3)
     for i in range(len(times) - 1):
         t1, t2 = times[i], times[i + 1]
-        if t2 - t1 > 3.5:
+        if t2 - t1 > SHOT_PAIR_GAP_S:
             continue
         b1, b2 = sam3[t1], sam3[t2]
         if not b1 or not b2:
@@ -262,7 +268,7 @@ def main():
     print("phase 1: classical scan...", flush=True)
     t0 = time.time()
     records, med_corners = classical_scan(args.video, args.every)
-    json.dump(records, open(out_dir / "records.json", "w"))
+    json.dump(records, open(out_dir / RECORDS_NAME, "w"))
     print(f"phase 1 done in {time.time()-t0:.0f}s, {len(records)} samples", flush=True)
     if args.corners:
         med_corners = np.array(json.load(open(args.corners))["corners"], dtype=np.float32)

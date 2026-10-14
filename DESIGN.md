@@ -412,13 +412,13 @@ The shapes are nearly square. `border-radius: 2px` appears 22 times: buttons, in
   - *Operator (YOURS)* is **solid**: manual boxes at opacity 1 (brass stroke 3, `#c9a22722` fill, 5px `#fff2bd` stroke when selected, brass-hi handles), the cloth polygon (green, 3px), and anchors (vod30 only: `#20160d` fill, brass-hi ring, a `grab` cursor, a 700 16px cream numeral, and a single YOURS tag for the set).
   - *The cue under review* is **red and emphatic**: a dashed cue line `10 6` at .9, a solid pocket ring 3.5px at .95, an arrowhead (`.u-cue-head`), a cream cue ball `#fff4d5`, and a dashed cream take-off mark `6 4`. Detected pots also get a dashed red pulse ring (`6 5` at .6) on their pocket.
   - *Interaction:* hovering a model ball removes its dash and restores full opacity. Hovering a person raises it to opacity 1. Selecting a person makes the stroke solid at 4px.
-- **Source tags** (`sourceTag()` in `app.js:288`): a group beside the shape, never inside it, so it cannot inherit editable styling. It is a `rect` (height 18, `rx=3`, fill `#0b0a08cc`, 1.5px stroke) plus a 700 14px mono label, laid out by a glyph-width estimate (CJK = 1em, Latin = .62em).
+- **Source tags** (`sourceTag()` in `app.js:295`): a group beside the shape, never inside it, so it cannot inherit editable styling. It is a `rect` (height 18, `rx=3`, fill `#0b0a08cc`, 1.5px stroke) plus a 700 14px mono label, laid out by a glyph-width estimate (CJK = 1em, Latin = .62em).
   - **MODEL / 模型**: brass stroke, brass-hi text.
   - **YOURS / 人工**: green stroke and text.
   - **CALIB / 标定**: amber stroke and text. It marks the saved calibration's cloth and pockets: trusted, but not a detection on this frame.
   - **EVENT / 事件**: red stroke, `#f3b3aa` text.
   - The group's own label (`.o-label`, 500 14px, cream) shares the tag's line through `tagRow()`.
-  - Person boxes are pale green (`#8fd6a8`, 2px, a literal in `app.js:790`), with a MODEL tag and an identity chip (`.u-chip`, green, turning `#8fd6a8` at opacity 1 once bound to a player).
+  - Person boxes are pale green (`#8fd6a8`, 2px, a literal in `app.js:797`), with a MODEL tag and an identity chip (`.u-chip`, green, turning `#8fd6a8` at opacity 1 once bound to a player).
 - **Stage popover** (`.stage-popover`): `--panel` with a brass border, 2px radius, shadow, min width 168px. Holds a 5-column ball grid (30px buttons) plus a row of actions (28px), a 10px uppercase brass-hi head and a 10.5px `ink-dim` note.
 
 ### Facts line and scrub strip

@@ -54,6 +54,9 @@ from src.table_detect import detect_table  # noqa: E402
 # The SAM3 census has one owner, src/sam3_ball_cache.py.  This reader uses the
 # file name of that owner, so a rename of the file name moves this reader too.
 from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
+# The shot displacement floor has one home, src/scan_events.py.  This scanner uses
+# the same floor as the gates, so it takes the name from that home.
+from src.scan_events import SHOT_DISP_MM  # noqa: E402
 
 # The scan's working frame, from its owner.  The resize below and the scale back
 # to source pixels are the only readers.
@@ -67,7 +70,7 @@ MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 class ScanConfig:
     """Thresholds that decide what becomes a raw candidate (generation only)."""
     stride: int = 2
-    shot_min_disp_mm: float = 300.0
+    shot_min_disp_mm: float = SHOT_DISP_MM
     # The shot-speed window is a measurement of the ball, not a tuning of this
     # scanner: both names read src/info_complete_scan, which owns them.
     shot_speed_mm_s: float = SHOT_SPEED_MM_S

@@ -141,6 +141,9 @@ if __name__ == "__main__":
         sys.path.insert(0, str(ROOT))
     from src.datasets import HIGHLIGHT_SAMPLE_TIMES, media_path
     from src.vod30_corners import load as load_vod30_corners
+    # The name of the highlight reference file has one home,
+    # src.calib_segments.CORNERS_SPEC["file"].
+    from src.calib_segments import CORNERS_SPEC
     which = sys.argv[1] if len(sys.argv) > 1 else "v30"
     if which == "v30":
         VIDEO = str(media_path(ROOT, "vod30"))
@@ -148,7 +151,8 @@ if __name__ == "__main__":
         TIMES = list(range(60, 1741, 120))
     else:
         VIDEO = str(media_path(ROOT, "highlight"))
-        REF = np.array(json.load(open(ROOT / "out" / "fixed_corners.json"))["corners"], np.float32)
+        REF = np.array(json.load(open(ROOT / "out" / CORNERS_SPEC["file"]))["corners"],
+                       np.float32)
         TIMES = list(HIGHLIGHT_SAMPLE_TIMES)
     cap = cv2.VideoCapture(VIDEO)
     errs, fails = [], []

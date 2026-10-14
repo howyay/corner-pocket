@@ -4,8 +4,8 @@ Three pairs of shipped files state one agreement.  A reader of this module reads
 both sides of each pair, and it names every offender as ``path:line: <line text>``.
 
 **Finding A, the ball label popover.**  The emitter is the function `paintPopover`
-of ``annotator/app.js``.  The block at ``annotator/app.js:1844-1847`` writes the
-popover markup, and the element at ``annotator/app.js:858`` carries the host hook.
+of ``annotator/app.js``.  The block at ``annotator/app.js:1851-1854`` writes the
+popover markup, and the element at ``annotator/app.js:865`` carries the host hook.
 `annotator/app.css` holds the rules of those hooks.  The two action names of the
 markup are keys of the dispatcher table of ``annotator/vision-stage.js``, which
 starts at ``annotator/vision-stage.js:1463`` and ends with the key at
@@ -44,8 +44,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 #: The emitter of the popover markup, and the element that hosts it.
 POPOVER_SITE = 'annotator/app.js'
-POPOVER_EMIT_RANGE = (1844, 1847)
-POPOVER_HOST_LINE = 858
+POPOVER_EMIT_RANGE = (1851, 1854)
+POPOVER_HOST_LINE = 865
 
 #: The reader of the popover hooks, and the reader of the dispatcher table.
 APP_CSS_SITE = 'annotator/app.css'
@@ -382,8 +382,8 @@ class JsClassHooksOwnerTest(unittest.TestCase):
     def test_every_popover_class_hook_has_a_stylesheet_rule(self):
         """The popover hooks of the emitter and the rules of app.css agree.
 
-        The emitter writes the hooks at `annotator/app.js:1844-1847`, and the host
-        element carries the hook at `annotator/app.js:858`.  This case reads the
+        The emitter writes the hooks at `annotator/app.js:1851-1854`, and the host
+        element carries the hook at `annotator/app.js:865`.  This case reads the
         tokens out of both sites and the selectors out of the stylesheet.  A token
         that loses its rule, or a rule that loses its token, reddens here.
         """
