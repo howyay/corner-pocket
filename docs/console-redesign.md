@@ -13230,3 +13230,20 @@ The walk left three notes.  They stay recorded here, and no writer repaired one.
 3. `tests/test_citation_lines.py` 11 cases OK and `tests/test_suite_inventory.py` 5 OK.  The eight
    guards of the round give 84 cases, with no skip, and the verifier bit each row at a site its
    writer did not bite.
+
+### Live check
+
+The round measured the served bytes on two servers: a new instance of `annotator/server.py` on a free
+port, and the running console on port 8130.
+
+1. The new instance (port 43557) served `/` and `/index.html` with the sha1 `5c501aeded93`.  That sha1
+   equals the sha1 of `annotator/index.html` on disk.  The served page carries one `ball_table_mm` hit,
+   so the pot key of row 1 reaches the browser.
+2. The running console served `board.css` with the sha1 `da9f54afd347`, equal to the sha1 of
+   `annotator/board.css` on disk.  The home `FACE_FILES` of row 2 names the faces, and the served style
+   sheet is the shipped file.
+3. The three face names that the walk did not count answer on the console with code 200 and the byte
+   counts 15396 (`zilla-slab-400-italic.woff2`), 13088 (`barlow-400.woff2`) and 100576
+   (`noto-sans-sc-400.woff2`).  Each count equals the size of that file on disk.
+4. The two servers serve different path sets.  The simple server answers 404 for `board.css`, `app.js`
+   and the fonts.  The console answers 404 for `annotator/index.html`.  The check therefore uses both.
