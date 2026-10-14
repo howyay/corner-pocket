@@ -56,7 +56,7 @@ from annotator.operations import check_requires  # noqa: E402
 # That module owns the longest guest name too (GUEST_NAME_MAX): this module imports the
 # name, so the enroll route and the seed label bound a name exactly as the operations
 # layer does.
-from annotator.refusals import GUEST_NAME_MAX, identity_fields  # noqa: E402
+from annotator.refusals import GUEST_NAME_MAX, UNKNOWN_DATASET, identity_fields  # noqa: E402
 # The detector vocabulary (annotator/pipeline_stages.py) owns what a detector is
 # called, and it owns the set a caller who names none gets.  This module imports
 # both names here, so this route and the stage factory that builds the live
@@ -466,7 +466,7 @@ def _saved_quad(data, key):
 
 def _pockets_mm():
     """Canonical pocket geometry, imported on demand (src.scan_events pulls cv2)."""
-    from src.scan_events import POCKETS_MM
+    from src.scan_events import NEAREST_POCKET_KEY, POCKETS_MM
     return POCKETS_MM
 
 
@@ -1130,7 +1130,7 @@ class Backend:
         """Plan an enrolment for the clicked person. Reads only."""
         dataset = payload.get("dataset", "vod30")
         if dataset not in STATIC_DATASETS:
-            raise APIError("unknown dataset")
+            raise APIError(UNKNOWN_DATASET)
         frame_index = payload.get("frame_index")
         if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
             raise APIError("frame_index must be a non-negative integer")
@@ -1735,7 +1735,8 @@ class Backend:
     @staticmethod
     def _pocket_name(event):
         """The pocket a pot names, from the scan's own field or its millimetres."""
-        named = pocket_from_text(event.get('nearest_pocket'))
+        from src.scan_events import NEAREST_POCKET_KEY  # local: src.scan_events pulls cv2
+        named = pocket_from_text(event.get(NEAREST_POCKET_KEY))
         if named:
             return named
         pockets = _pockets_mm()
@@ -1864,7 +1865,7 @@ class Backend:
         """The registry entry of ``dataset`` (src/datasets.py), or a 404."""
         found = dataset_lookup(self.root, dataset)
         if found is None:
-            raise APIError("unknown dataset", 404)
+            raise APIError(UNKNOWN_DATASET, 404)
         return found
 
     def dataset(self, dataset):

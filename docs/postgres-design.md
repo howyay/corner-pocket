@@ -74,7 +74,7 @@ legacy servers, a second server instance).
 | Identity index | `Backend._identity_lock` (`unified_server.py:284`) around the pipeline | whole-file rewrite by any second `IdentityIndex` on the same path | one transaction per save, upsert of the dirty clusters only; last writer wins **per cluster** |
 | Face store | `_identity_lock` for `enroll`; **no lock** for the confirm promotion (`:516`) | the promotion replaces the whole gallery (§3.3) | append-only rows per player; no read–modify–write |
 | Seeds, verdicts, labels, anchors, corrections | `Backend.lock` around all of `_post` (`:1367-1368`, `:1145`) | a second process; seeds are refused during a rebuild (`:1431`) | one row per key, `INSERT … ON CONFLICT DO UPDATE`: two writers to *different* keys never clobber each other; same key = last write wins, as today |
-| Precomputed artifacts | none (batch tools write with `write_text`, `dense_queue.py:637,709`) | a reader can see the new queue with the old report | new version + `artifact_current` flip in one transaction (§5) |
+| Precomputed artifacts | none (batch tools write with `write_text`, `dense_queue.py:640,709`) | a reader can see the new queue with the old report | new version + `artifact_current` flip in one transaction (§5) |
 
 **What stays on disk, always:** the videos (`data/*.mp4`, vod30 = 690 MB), decoded frames,
 crops (`out/<set>/*.png`), evidence JPEGs, the clip cache, model weights, and the batch
@@ -380,7 +380,7 @@ propagation result to `seed_propagation` (§5.5).  The "stale" rule
   `correct|wrong|unsure`, shooter ∈ `A|B|?|""`, note ≤ 10 000 chars.
 * Writer: `POST /api/<dataset>/annotate` `unified_server.py:1401-1417` (event must exist in
   that dataset's `events.json` `:1397`; merge-update of the record).  Legacy
-  `annotator/server.py:140-148` (old single-page annotator, plain `write_text`; it writes
+  `annotator/server.py:143-151` (old single-page annotator, plain `write_text`; it writes
   `annotations.json` next to whatever `events.json` its first argument names, `:18-20`).
 * Readers: `GET /api/<dataset>/events` `:1309`, `src/dense_queue.py:71` (only its md5;
   "never opened for writing" `:45-46`), `src/eval_events.py:73-74`, `src/eval_faces.py:80`.
@@ -407,7 +407,7 @@ retired-id ledger exists precisely so a verdict keeps pointing at the ball it wa
 * Shape: `{"<absolute crop path>": 0..15 | "u"}`; sets `unlabeled_crops` (76 labels, keys are
   absolute paths), `unlabeled_crops2`, `vod30_event_crops` (no label file yet).
 * Writer: `POST /api/balls/<set>/label` `unified_server.py:1377-1396`; legacy
-  `annotator/server.py:127`; `src/merge_sets.py:44` (offline).
+  `annotator/server.py:130`; `src/merge_sets.py:44` (offline).
 * Readers: `GET /api/balls/<set>/meta` `:1286-1295`, training/offline tools
   (`src/train_ball_id.py:61-64`, `src/confusion.py:22`, `src/merge_sets.py:21`).
 
@@ -480,9 +480,9 @@ to every batch tool.  The two that are *queried* rather than read whole get real
 
 ### 5.1 Review queue — `out/<scan>/events.json`
 
-* Writers (batch only): `src/dense_queue.py:587-637` (`build`, the served queue),
-  `src/scan_events.py:349-353`, `src/info_complete_scan.py:413`,
-  `src/rebuild_events_calibrated.py:151`.  Readers: `unified_server.py:1306-1316`
+* Writers (batch only): `src/dense_queue.py:590-640` (`build`, the served queue),
+  `src/scan_events.py:357-361`, `src/info_complete_scan.py:413`,
+  `src/rebuild_events_calibrated.py:152`.  Readers: `unified_server.py:1306-1316`
   (`GET /api/<ds>/events`), `:1397` (annotate validation), `:696` (`_unified_events`, every
   unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2341-2353`,
   `src/candidate_scan.py:601-605`, `src/eval_events.py`, `src/timing_verify.py:780`.
@@ -507,7 +507,7 @@ CREATE TABLE retired_event_ids (                                 -- dense_queue_
 ```
 
 `UNIQUE (dataset, event_id)` on the ledger is the "a retired id is dead for good" rule
-(`dense_queue.py:377-400`) as a constraint.  The report stays an `artifacts` row
+(`dense_queue.py:380-403`) as a constraint.  The report stays an `artifacts` row
 (`kind='queue_report'`).  `_unified_events` then asks for `t BETWEEN ts-3 AND ts+3` instead of
 loading and scanning the whole queue per frame.
 
@@ -520,11 +520,11 @@ key='<frame>')`.  Nothing new writes this kind — the endpoint stopped writing 
 
 ### 5.3 Calibration and anchors
 
-* `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:53`; readers
-  `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:381` which caches
+* `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:55`; readers
+  `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:402` which caches
   on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:57`,
   `src/calib_mapping_audit.py`.  → `artifacts(kind='calibration_segments')`.
-* `out/calib_vod30.json` — reader `unified_server.py:2131` (suggested anchor points).
+* `out/calib_vod30.json` — reader `unified_server.py:2132` (suggested anchor points).
   → `artifacts(kind='calibration')`.
 * `out/pid_anchors_vod30.json` — **operator-written** (`POST /api/vod30/anchors`,
   `unified_server.py:1420-1435`), read by `anchor_info` `:1208` and, importantly, by
@@ -570,7 +570,7 @@ window w" and the seed write validates one `(win, track_id)`.  The window header
 
 `out/pid_seed_tracks.json` + `pid_seed_protos.json` (writer `src/pid_seed_rebuild.py:34-35,
 100-101, 123-124`, readers `unified_server.py:1239`, `src/pid_seed_ui.py:30-31`) and
-`out/events_actors.json` (writers `src/pid_shooter.py:111`, `src/pid_shooter2.py:119`; reader
+`out/events_actors.json` (writers `src/pid_shooter.py:112`, `src/pid_shooter2.py:120`; reader
 `unified_server.py:1310`) → `artifacts` kinds `seed_propagation`, `seed_prototypes`,
 `event_actors`.  Read whole, small, batch-written.
 

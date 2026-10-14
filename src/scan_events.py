@@ -57,6 +57,14 @@ MAX_BALL_AREA_720 = CLASSICAL_BALL_MAX_AREA_960X540_PX
 # served row.  The value stays, because the document on disk carries it.
 BALL_TABLE_MM_KEY = "ball_table_mm"
 
+# The pot row names its pocket under this key, and the distance to that pocket
+# under the next one.  src/rebuild_events_v2.py, src/rebuild_events_calibrated.py,
+# src/dense_queue.py, src/eval_events.py, src/shot_pot_gate.py and
+# src/event_gates.py read these two names; annotator/index.html reads the value of
+# the served rows.  The values stay, because the document on disk carries them.
+NEAREST_POCKET_KEY = "nearest_pocket"
+POCKET_DIST_MM_KEY = "pocket_dist_mm"
+
 # The scan writes its per-sample document under this name.  src/rebuild_events_v2.py,
 # src/rebuild_events_calibrated.py, src/timing_verify.py and src/motion_scan.py read
 # the same name from their own directory.  A rename touches one line.
@@ -363,8 +371,8 @@ def main():
                     "type": "pot",
                     "window_s": [round(t1, 1), round(t2, 1)],
                     BALL_TABLE_MM_KEY: b["table_mm"],
-                    "nearest_pocket": pocket,
-                    "pocket_dist_mm": round(dist),
+                    NEAREST_POCKET_KEY: pocket,
+                    POCKET_DIST_MM_KEY: round(dist),
                 })
         else:
             prev_min = min(prev_min, counts[t2])

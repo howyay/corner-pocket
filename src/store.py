@@ -58,8 +58,13 @@ from src.datasets import lookup as dataset_lookup  # noqa: E402
 # The crop-set vocabulary (the sets a crop file can belong to) has one owner:
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it, so the store and that owner cannot hold two different lists.
+# The document names of a data set — the verdicts file of a dataset, the labels file
+# of a crop set, the correction file of a frame — have one home: the map
+# src.store_files.document_paths owns them, and document_name and correction_path
+# answer them.  This class reads those homes, so its three paths cannot drift from
+# the files the rest of the store layer reads.
 from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT,  # noqa: E402
-                             save_document)
+                             correction_path, document_name, save_document)
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -319,10 +324,10 @@ class JsonStore:
 
     # -- operator records ---------------------------------------------------
     def verdicts_get(self, dataset: str) -> dict:
-        return _read(self._scan(dataset) / "annotations.json", {})
+        return _read(self._scan(dataset) / document_name("verdicts"), {})
 
     def verdict_put(self, dataset: str, event_id, fields: dict) -> dict:
-        path = self._scan(dataset) / "annotations.json"
+        path = self._scan(dataset) / document_name("verdicts")
         key = str(event_id)
         with self._lock(path):
             annotations = _read(path, {})
@@ -335,7 +340,7 @@ class JsonStore:
     def _labels_path(self, crop_set: str) -> Path:
         if crop_set not in BALL_SETS:
             raise ValueError(f"unknown ball set: {crop_set}")
-        return self.out / crop_set / "labels.json"
+        return self.out / crop_set / document_name("labels")
 
     def labels_get(self, crop_set: str) -> dict:
         return _read(self._labels_path(crop_set), {})
@@ -356,7 +361,7 @@ class JsonStore:
             save_document(path, labels)
 
     def _correction_path(self, dataset: str, frame_index: int) -> Path:
-        return self._scan(dataset) / "frame_results" / str(int(frame_index)) / "correction.json"
+        return Path(correction_path(str(self._scan(dataset)), frame_index))
 
     def correction_get(self, dataset: str, frame_index: int) -> dict | None:
         return _read(self._correction_path(dataset, frame_index), None)

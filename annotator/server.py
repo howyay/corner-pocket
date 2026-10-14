@@ -34,16 +34,19 @@ from src.served_files import file_under, relative_under  # noqa: E402
 from src.events_actors import join_events_to_actors  # noqa: E402
 # The crop-set vocabulary has one owner, src/store_files.py. The three offline tools
 # read BALL_SETS from it. Before this module read it, the default of its third
-# argument spelled the first crop-set name a second time.
-from src.store_files import BALL_SETS  # noqa: E402
+# argument spelled the first crop-set name a second time. The two documents this
+# server serves (the verdicts file beside events.json and the labels file of the crop
+# base) are the documents the store reads; document_name answers both from that home.
+from src.store_files import BALL_SETS, document_name  # noqa: E402
+from src.store import SHARED_ARTIFACTS  # noqa: E402
 EVENTS_FILE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "events.json"
 STATIC_ROOT = EVENTS_FILE.parent  # evidence images live next to events.json
-ANNOT_FILE = STATIC_ROOT / "annotations.json"
+ANNOT_FILE = STATIC_ROOT / document_name("verdicts")
 # optional third arg: crop-set base dir (defaults to the first label set)
 CROP_BASE = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else \
     ROOT.parent / "out" / BALL_SETS[0]
 LABEL_META = CROP_BASE / "meta.json"
-LABELS_FILE = CROP_BASE / "labels.json"
+LABELS_FILE = CROP_BASE / document_name("labels")
 CROP_DIR = CROP_BASE
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8123
 
@@ -66,7 +69,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, b"{}")
             return self._send(200, ANNOT_FILE.read_bytes())
         if self.path == "/api/actors":
-            f = ROOT.parent / "out" / "events_actors.json"
+            f = ROOT.parent / "out" / SHARED_ARTIFACTS["event_actors"]
             if not f.exists():
                 return self._send(200, b"{}")
             # map by event id: events_actors.json entries carry t; events carry id+t

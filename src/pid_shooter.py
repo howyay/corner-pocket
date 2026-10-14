@@ -23,6 +23,7 @@ sys.path.insert(0, REPO)  # src/weight_pins.py sits under src/
 # src/weight_pins.py owns the weight paths and src/events_document.py owns the
 # name and the path of the events document, so this file reads the two owners.
 from src import events_document, weight_pins  # noqa: E402
+from src.store import SHARED_ARTIFACTS  # noqa: E402
 # src/calib_segments.py owns the name of the calibration document.  It owns the
 # path of the corners v2 file too.  This reader takes both names from that home
 # and keeps its own root.
@@ -120,8 +121,9 @@ def main():
     # switches
     sw = sum(1 for i in range(1, len(seq)) if seq[i] in "AB" and seq[i - 1] in "AB" and seq[i] != seq[i - 1])
     print("A/B switches:", sw)
-    json.dump(out, open(os.path.join(REPO, "out", "events_actors.json"), "w"), indent=1)
-    print("wrote out/events_actors.json")
+    json.dump(out, open(os.path.join(REPO, "out", SHARED_ARTIFACTS["event_actors"]), "w"),
+              indent=1)
+    print(f"wrote out/{SHARED_ARTIFACTS['event_actors']}")
 
 
 if __name__ == "__main__":

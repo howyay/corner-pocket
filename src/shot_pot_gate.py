@@ -85,6 +85,9 @@ from typing import Any, Iterable, NamedTuple, Sequence
 # writer reads the name there.
 from src.ball_association_audit import NEAREST_DISTANCE_PX_KEY
 from src.ball_scale import BALL_WIDTH_MM, NATIVE_FRAME, diameter_px, formatted_width
+# The pocket key of a served pot row owns its spelling in src/scan_events.py,
+# so the rejection reports read the name there.
+from src.scan_events import NEAREST_POCKET_KEY
 from src.event_gates import GateConfig
 # The occlusion window's bar is measured in src/motion_scan.py, so this module reads it there.
 from src.motion_scan import OCC_DENSE_MIN
@@ -1401,7 +1404,7 @@ def track_events(track: Track, pockets: PocketModel,
                 "the motion run reaches the end of the track on open cloth: a ball that "
                 "rolled and was never seen to stop at a pocket is not a pot",
                 float(b.t), int(b.frame_index),
-                {"nearest_pocket": None if pocket is None else pocket.name,
+                {NEAREST_POCKET_KEY: None if pocket is None else pocket.name,
                  "distance_px": round(dist, 2),
                  "radius_px": None if pocket is None else round(pocket.radius_px, 2),
                  "last_speed_px_s": round(intervals[-1].speed, 2) if intervals else None},
@@ -1560,7 +1563,7 @@ def track_events(track: Track, pockets: PocketModel,
                 float(last.t), int(last.frame_index),
                 {"last_xy": [round(last.x, 2), round(last.y, 2)],
                  "frame_size": list(th.frame_size) if th.frame_size else None,
-                 "nearest_pocket": pockets.nearest(last.x, last.y)[0].name,
+                 NEAREST_POCKET_KEY: pockets.nearest(last.x, last.y)[0].name,
                  "distance_px": round(dist, 2),
                  "radius_px": round(pockets.nearest(last.x, last.y)[0].radius_px, 2),
                  "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
@@ -1575,7 +1578,7 @@ def track_events(track: Track, pockets: PocketModel,
                 "radius: the ball left the playing surface",
                 float(last.t), int(last.frame_index),
                 {"last_xy": [round(last.x, 2), round(last.y, 2)],
-                 "nearest_pocket": pockets.nearest(last.x, last.y)[0].name,
+                 NEAREST_POCKET_KEY: pockets.nearest(last.x, last.y)[0].name,
                  "distance_px": round(dist, 2),
                  "distance_mm": None if m.distance_mm is None else round(m.distance_mm, 2),
                  "radius_mm": m.radius_mm,
@@ -1592,7 +1595,7 @@ def track_events(track: Track, pockets: PocketModel,
                 f" / {near.r_mm if near else float('nan'):.0f} mm gate): a disappearance on open "
                 "cloth is a detector dropout, not a pot",
                 float(last.t), int(last.frame_index),
-                {"nearest_pocket": None if near is None else near.name,
+                {NEAREST_POCKET_KEY: None if near is None else near.name,
                  "distance_px": round(dist, 2),
                  NEAREST_DISTANCE_PX_KEY: round(near_dist, 2),
                  "radius_px": None if near is None else round(near.radius_px, 2),

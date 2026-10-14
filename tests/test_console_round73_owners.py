@@ -21,7 +21,7 @@ sites.
   (``annotator/ops.js:132``, ``annotator/vision-stage.js:953``), and ``annotator/vod_import.py``
   imports ``size_text`` for its import sentence (:572).
 * **The default live-detector set.**  The pair ``('table', 'person')`` stood at four sites: the
-  two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2057``)
+  two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2058``)
   and the two console sites (``annotator/ops.js:766``, ``annotator/app.js:71``).  The console
   copy was held by one case (``tests/test_ops.js:264``); the two service copies were held by
   none.  ``annotator/pipeline_stages.py:757`` owns the set now, in ``DEFAULT_DETECTORS``, beside
@@ -282,7 +282,7 @@ class ByteCountOwnersTest(unittest.TestCase):
                 for count, console in zip(BOUNDARY_COUNTS, answers['sizes'])]
         disagreements = [row for row in rows if row[1] != row[2]]
         self.assertEqual([], disagreements,
-                         'the python home (annotator/refusals.py:351) and the console home '
+                         'the python home (annotator/refusals.py:355) and the console home '
                          '(annotator/app.js:26) must answer one text for every count.  A row '
                          'here is (count, python, console):\n  '
                          + '\n  '.join(f'{count}: python {python!r} vs console {console!r}'

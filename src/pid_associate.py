@@ -195,7 +195,7 @@ def main():
     print("switches:", sw)
     json.dump(out, open(os.path.join(REPO, "out", SHARED_ARTIFACTS["event_actors"]), "w"),
               indent=1)
-    print("wrote out/events_actors.json")
+    print(f"wrote out/{SHARED_ARTIFACTS['event_actors']}")
 
 
 if __name__ == "__main__":

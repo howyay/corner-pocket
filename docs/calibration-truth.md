@@ -26,7 +26,7 @@ the three protected files are byte-identical (md5 in §5).
   corners, `[[480,397],[865,398]]` the two side pockets).
 * **B — scan quad** `out/scan30/corners.json`
   (`[[459.3,268.9],[803.7,315.8],[1023.4,584.3],[421.8,560.6]]`), written by
-  `src/scan_events.py:236` as the median of the scan's own `detect_table`
+  `src/scan_events.py:244` as the median of the scan's own `detect_table`
   detections.
 
 Both are homographies to the same canonical frame
@@ -119,11 +119,11 @@ The scan frame wins by 3×, so the claims really are scan-frame millimetres.
 |---|---|---|
 | `src/eval_events.py:106 reference_calibration` → every measured mm, every pocket distance, the census | A (B only as a fallback for anchorless datasets) | **right** |
 | `src/calib_segments.py:40-41` + `out/calib_vod30_segments.json` (`source: human_anchors`, `evidence.trusted_for_mm`) → the per-event reference quad | A | **right** |
-| `src/table_refine.py:77 _DATASET_PRIOR["vod30"]` → the refinement's search prior | A | **right** |
+| `src/table_refine.py:79 _DATASET_PRIOR["vod30"]` → the refinement's search prior | A | **right** |
 | `src/event_gates.py:63 POCKETS_MM` + `nearest_pocket` (pocket radii, `pot_pocket_r_mm=100`) | canonical mm, mapped by A wherever a pixel is involved | **right** |
 | `src/eval_events.py` claim projections (`geometry_gap_px`, `from/to_in_cloth_px`, `census_geometry_gap_px`) | **B was needed; A was used** | **wrong — fixed** |
 | `src/info_complete_scan.py:207-212` (writes the claims' mm) | its own detector median | self-consistent; see §4 |
-| `src/sam3_ball_cache.py:103,176`, `src/scan_events.py:236`, `src/timing_verify.py:781`, `src/tiny_ball_net.py:45`, `annotator/unified_server.py:482` | B, for mask/quads/detector inputs | consistent with the claim frame; none of them claims to report physical mm |
+| `src/sam3_ball_cache.py:103,176`, `src/scan_events.py:244`, `src/timing_verify.py:781`, `src/tiny_ball_net.py:45`, `annotator/unified_server.py:482` | B, for mask/quads/detector inputs | consistent with the claim frame; none of them claims to report physical mm |
 
 ### The consumer fix (additive, no data renamed)
 
@@ -177,7 +177,7 @@ evidence already used by `src/calib_segment_fit` — a side counts when the sear
 finds the cloth boundary inside its band with the inner-occupancy, edge-drop and
 dark-band-then-bright-cloth signature — measured per event by
 `src/eval_events.py Probe.rail_evidence` (0.03–0.10 s per frame on this machine)
-and judged by the pure `src/event_gates.py:524 calibration_warning`:
+and judged by the pure `src/event_gates.py:525 calibration_warning`:
 
 * `calibration_reference_contradicted_at_time` — a side's boundary is
   demonstrably somewhere else (`boundary_outside_band`, `prior_disagreement`);
@@ -213,7 +213,7 @@ supported) stays silent.
 ## 3. The highlight reference has no hand anchors and its bottom rail is inside the cloth
 
 `out/fixed_corners.json` = `[[722,452],[1177,449],[1433,844],[467,849]]` on
-1920×1080 is the highlight's reference (`src/table_refine.py:82`; also
+1920×1080 is the highlight's reference (`src/table_refine.py:84`; also
 `src/eval_table_detect.py:56`, `src/motion_scan.py:316`, `src/quad_fit.py:131`,
 `src/quad_fit_lines.py:212`, `src/audit_calib.py:71`). There are no hand anchors
 for the highlight, so the app path gets no seed and falls back to the naive

@@ -442,7 +442,7 @@ class JsClassHooksOwnerTest(unittest.TestCase):
         The review template `annotator/app.html` is not served: the alias table at
         `annotator/unified_server.py:199` answers the route `/` with `ops.html`, the
         redirect table at `annotator/unified_server.py:204` sends `/app.html` to `/`,
-        and the route at `annotator/unified_server.py:2993` hands the template to
+        and the route at `annotator/unified_server.py:2994` hands the template to
         `annotator/ops.js` as a string for the review root.  The dispatcher stands in
         `/vision-stage.js` and the emitter stands in `/app.js`, so
         `annotator/ops.html` must load both of them.

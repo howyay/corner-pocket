@@ -4,8 +4,8 @@ Two servers answer a request for a static file with a content type taken from
 ``mimetypes.guess_type``.  When the module function answers ``None``, each server
 states its own fallback string:
 
-    annotator/server.py:117        ctype = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
-    annotator/unified_server.py:2919   self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
+    annotator/server.py:120        ctype = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
+    annotator/unified_server.py:2920   self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
 
 Both sites are live.  The string stands in no other file of the project, so no
 test held the two copies together: one realm can change its fallback alone, and

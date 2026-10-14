@@ -51,7 +51,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.calib_segments import (VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW,  # noqa: E402
+from src.calib_segments import (INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
+                                UNVERIFIED_SIDES_KEY, VERIFIED_FRAME_HIGH,
+                                VERIFIED_FRAME_LOW, VERIFIED_SIDES_KEY,
                                 anchors_reference_name, anchors_reference_path,
                                 corners_v2_path)
 from src.datasets import media_path  # noqa: E402
@@ -218,8 +220,8 @@ def _disagreement(a, b):
 def _side_state(info):
     """Per-side evidence from a refinement pass, in the artifact's vocabulary."""
     sides = info.get("sides") or []
-    unverified = {int(s["side"]): s["reason"] for s in info.get("unverified_sides") or []}
-    inherited = {int(s["side"]): s for s in info.get("inherited_sides") or []}
+    unverified = {int(s["side"]): s["reason"] for s in info.get(UNVERIFIED_SIDES_KEY) or []}
+    inherited = {int(s["side"]): s for s in info.get(INHERITED_SIDES_KEY) or []}
     state = []
     for r in sides:
         s = int(r["side"])
@@ -227,7 +229,7 @@ def _side_state(info):
             "side": s,
             "state": "unverified" if s in unverified else ("inherited" if s in inherited else "verified"),
             "reason": unverified.get(s) or ("side_inherited" if s in inherited else None),
-            "mask_offset_px": r.get("mask_offset_px"),
+            MASK_OFFSET_PX_KEY: r.get(MASK_OFFSET_PX_KEY),
             "mask_inner_occupancy": r.get("mask_inner_occupancy"),
             "mask_edge_drop": r.get("mask_edge_drop"),
             "mask_band_peak": r.get("mask_band_peak"),
@@ -270,7 +272,7 @@ def measure_frame(frame, reference, chain_prior, anchor_gray=None):
     row["refined_disagreement"] = _disagreement(quad, reference)
     row["refined_confidence"] = info.get("confidence")
     row["refined_reason"] = info.get("reason")
-    row["refined_verified_sides"] = info.get("verified_sides")
+    row["refined_verified_sides"] = info.get(VERIFIED_SIDES_KEY)
     row["refined_sides"] = _side_state(info)
     if quad is not None:
         row["coverage"]["refined"] = coverage(frame, quad)
@@ -281,7 +283,7 @@ def measure_frame(frame, reference, chain_prior, anchor_gray=None):
         row["chained_disagreement"] = _disagreement(cquad, reference)
         row["chained_confidence"] = cinfo.get("confidence")
         row["chained_reason"] = cinfo.get("reason")
-        row["chained_verified_sides"] = cinfo.get("verified_sides")
+        row["chained_verified_sides"] = cinfo.get(VERIFIED_SIDES_KEY)
         row["chained_sides"] = _side_state(cinfo)
         if cquad is not None:
             row["coverage"]["chained"] = coverage(frame, cquad)

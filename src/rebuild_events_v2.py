@@ -43,7 +43,8 @@ from src.sam3_artifact import artifact_in  # noqa: E402
 # The pot coordinate key and the scan document name have one home,
 # src/scan_events.py, the writer of the served document this tool rebuilds.  This
 # reader takes the names from that home.
-from src.scan_events import BALL_TABLE_MM_KEY, RECORDS_NAME, SHOT_PAIR_GAP_S  # noqa: E402
+from src.scan_events import (BALL_TABLE_MM_KEY, NEAREST_POCKET_KEY, POCKET_DIST_MM_KEY,
+                             RECORDS_NAME, SHOT_PAIR_GAP_S)  # noqa: E402
 from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: E402
 
 VIDEO = media_path(ROOT.parent, "vod30")
@@ -160,8 +161,8 @@ def main():
             pots.append({
                 "t": round((t1 + t2) / 2, 1), "type": "pot",
                 "window_s": [round(t1, 1), round(t2, 1)],
-                BALL_TABLE_MM_KEY: b["table_mm"], "nearest_pocket": pocket,
-                "pocket_dist_mm": round(dist),
+                BALL_TABLE_MM_KEY: b["table_mm"], NEAREST_POCKET_KEY: pocket,
+                POCKET_DIST_MM_KEY: round(dist),
                 "count_before": int(min(hull + k, counts[t1])), "count_after": c,
             })
 
@@ -193,7 +194,7 @@ def main():
           f"unlinked: {len(unlinked)}")
     drops = [p["count_before"] - p["count_after"] for p in chain]
     print("window drops:", drops)
-    print("pocket dists mm:", sorted(p["pocket_dist_mm"] for p in pots)[:8], '...')
+    print("pocket dists mm:", sorted(p[POCKET_DIST_MM_KEY] for p in pots)[:8], '...')
 
 
 if __name__ == "__main__":

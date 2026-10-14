@@ -42,7 +42,9 @@ if str(ROOT) not in sys.path:
 from src.datasets import media_path  # noqa: E402
 from src.calib_segment_measure import MEASURE_ARTIFACT  # noqa: E402
 from src.ball_scale import NATIVE_FRAME  # noqa: E402
-from src.calib_segments import (VERIFIED_FRAMES, anchors_reference_path,  # noqa: E402
+from src.calib_segments import (INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
+                                UNVERIFIED_SIDES_KEY, VERIFIED_FRAMES,
+                                VERIFIED_SIDES_KEY, anchors_reference_path,
                                 segment_artifact_path)
 from src.event_gates import GateConfig  # noqa: E402
 from src.table_geometry import CANON_H, CANON_W  # noqa: E402
@@ -73,8 +75,8 @@ def _signed_offsets(row):
     """Per-side offsets, only where the frame verified the side."""
     out = {}
     for s in row.get("refined_sides") or []:
-        if s.get("state") == "verified" and s.get("mask_offset_px") is not None:
-            out[int(s["side"])] = float(s["mask_offset_px"])
+        if s.get("state") == "verified" and s.get(MASK_OFFSET_PX_KEY) is not None:
+            out[int(s["side"])] = float(s[MASK_OFFSET_PX_KEY])
         elif s.get("scan_offset_px") is not None and s.get("state") == "verified":
             out[int(s["side"])] = float(s["scan_offset_px"])
     return out
@@ -90,7 +92,7 @@ def framing_test(row):
         if mag > PHASE_MOVE_PX:
             reasons.append("whole_frame_shift")
     offs = _signed_offsets(row)
-    witnesses["verified_sides"] = len(offs)
+    witnesses[VERIFIED_SIDES_KEY] = len(offs)
     if len(offs) == 4:
         vals = list(offs.values())
         # A camera move displaces the *boundary*, and the refinement reports where
@@ -186,18 +188,18 @@ def _holdout_gate(video, quad, times, baseline=None):
                 continue
             _q, info = refine_quad_edges(frame, prior)
             sides = info.get("sides") or []
-            offsets = [abs(float(r["mask_offset_px"])) for r in sides
-                       if r.get("mask_offset_px") is not None]
+            offsets = [abs(float(r[MASK_OFFSET_PX_KEY])) for r in sides
+                       if r.get(MASK_OFFSET_PX_KEY) is not None]
             row[label] = {
-                "verified_sides": info.get("verified_sides"),
-                "unverified": [s["reason"] for s in info.get("unverified_sides") or []],
-                "inherited": [s["side"] for s in info.get("inherited_sides") or []],
+                VERIFIED_SIDES_KEY: info.get(VERIFIED_SIDES_KEY),
+                "unverified": [s["reason"] for s in info.get(UNVERIFIED_SIDES_KEY) or []],
+                "inherited": [s["side"] for s in info.get(INHERITED_SIDES_KEY) or []],
                 "confidence": info.get("confidence"),
                 "boundary_max_offset_px": round(max(offsets, default=0.0), 2),
             }
         d, b = row.get("derived"), row.get("baseline_human")
         row["derived_at_least_as_good"] = (d is not None and
-                                           (b is None or (d["verified_sides"] or 0) >= (b["verified_sides"] or 0)))
+                                           (b is None or (d[VERIFIED_SIDES_KEY] or 0) >= (b[VERIFIED_SIDES_KEY] or 0)))
         if not row["derived_at_least_as_good"]:
             worse.append(row["t"])
         if d is not None and not d["unverified"]:
@@ -232,7 +234,7 @@ def build(args):
     verified = [s for s in sides if s["state"] == "verified"]
     verified_by_side = {}
     for s in verified:
-        verified_by_side.setdefault(int(s["side"]), []).append(float(s["mask_offset_px"]))
+        verified_by_side.setdefault(int(s["side"]), []).append(float(s[MASK_OFFSET_PX_KEY]))
     # A held-inherit side is not a measurement; a refused frame is not a failure of
     # the reference either, so the evidence state is reported as a distribution.
     side_evidence = {

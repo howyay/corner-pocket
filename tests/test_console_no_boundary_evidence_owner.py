@@ -4,7 +4,7 @@ The machine code ``no_boundary_evidence`` stood in five places, and no case read
 any two of them:
 
   * ``src/event_gates.py`` counted it through ``CALIBRATION_NO_EVIDENCE_REASON``,
-    the constant ``calibration_warning`` reads at ``src/event_gates.py:531``;
+    the constant ``calibration_warning`` reads at ``src/event_gates.py:532``;
   * ``src/table_refine.py`` spelled it three times: in the refusal dict of
     ``refine_quad``, in the per-side code of ``_refine_once`` and in the fallback
     of the reason ternary;

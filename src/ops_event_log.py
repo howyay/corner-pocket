@@ -28,8 +28,8 @@ list before this module existed; a log shorter than the bound is returned whole.
 (`src/events_document.py:44`), and an operations event carries `revision`, `action` and
 `context` and no `type`, so `events_document.write` refuses it.
 
-The `ops_events` table is not bounded here: `src/store_import.py:234-238` inserts every
-row of the document.  `src/store_check.py:71-72` still spells the number next to the
+The `ops_events` table is not bounded here: `src/store_import.py:238-242` inserts every
+row of the document.  `src/store_check.py:80-81` still spells the number next to the
 live table, inside a `LIMIT`; that file is outside this change, and
 `tests/test_event_retention.py` records the spelling instead of hiding it.
 """

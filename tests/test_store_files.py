@@ -425,7 +425,7 @@ class DatasetMapTests(unittest.TestCase):
     """One map, "built-in dataset id -> scan folder under out/": `STATIC_OUT` in src/datasets.py.
 
     The round-47 walk found the map typed three times: at its owner, at
-    src/store_files.py:25 and at src/store_import.py:49.  A typed copy is equal today
+    src/store_files.py:25 and at src/store_import.py:53.  A typed copy is equal today
     and silent tomorrow: the owner can rename a scan folder and the copy stays old.
     These tests hold the shipped code at one spelling, and prove that every reader
     answers the map the owner holds.

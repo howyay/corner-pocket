@@ -196,9 +196,9 @@ class LegacyRouteCases(unittest.TestCase):
         """The parser reads the route literal and its line from each verb."""
         rules = dispatch_rules(SERVER, read(SERVER))
         seen = {(rule.name, rule.line) for rule in rules}
-        self.assertIn(('/api/events', 59), seen)
-        self.assertIn(('/api/ball_label', 122), seen)
-        self.assertIn(('/api/annotate', 136), seen)
+        self.assertIn(('/api/events', 62), seen)
+        self.assertIn(('/api/ball_label', 125), seen)
+        self.assertIn(('/api/annotate', 139), seen)
         kinds = {rule.name: rule.kind for rule in rules}
         self.assertEqual('guard', kinds['/api/annotate'])
         self.assertTrue(seen, 'the parser read no dispatch rule of ' + SERVER)
@@ -295,8 +295,8 @@ class LegacyRouteCases(unittest.TestCase):
         )
         rules = dispatch_rules(SERVER, read(SERVER))
         alone = served_without_page(records, rules)
-        self.assertIn(f'{SERVER}:80 /label', alone)
-        self.assertIn(f'{SERVER}:107 /label.html', alone)
+        self.assertIn(f'{SERVER}:83 /label', alone)
+        self.assertIn(f'{SERVER}:110 /label.html', alone)
         self.assertNotIn('/api/actors', ' '.join(alone))
 
     def test_reports_the_routes_no_page_calls(self):

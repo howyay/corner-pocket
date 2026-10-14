@@ -367,6 +367,27 @@ NOTE_NO_QUAD = "no quad found"
 # the sentence the callers read before round 108.
 QUAD_SHAPE_ERROR = "expected a 4x2 quad, got "
 
+# The calibration side-mapping keys.  A refinement reports the boundary of each
+# side of the quad, and these four keys carry that report into the segment
+# recording.  Four live modules wrote the words themselves: ``table_refine``
+# writes them, and ``calib_segment_measure``, ``calib_segment_fit`` and
+# ``calib_mapping_audit`` read them back.  The home holds the words once, so one
+# edit of a key moves every writer and every reader with it.
+#
+# The served contract does not change.  The key of a row on disk stays the value
+# of the constant, so the documents and the page that read them keep their bytes:
+# ``annotator/app.js:1167`` and ``annotator/vision-stage.js:328`` read
+# ``verified_sides`` of a quad of the page, and no python name reaches them.  The
+# guard ``tests/test_calib_mapping_keys_owner.py`` holds both lines.
+#
+# ``supported_sides`` and the per-side keys (``side``, ``reason``, ``state``) are
+# no part of this home.  One writer alone builds them, so a second spelling of
+# them has nothing to collide with.
+VERIFIED_SIDES_KEY = "verified_sides"
+UNVERIFIED_SIDES_KEY = "unverified_sides"
+INHERITED_SIDES_KEY = "inherited_sides"
+MASK_OFFSET_PX_KEY = "mask_offset_px"
+
 
 @dataclass
 class Reference:

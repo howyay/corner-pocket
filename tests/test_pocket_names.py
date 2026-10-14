@@ -112,7 +112,7 @@ class OwnerTests(unittest.TestCase):
             self.assertIn("from src.pocket_names import pocket_from_text", text,
                           f"{rel} must ask the one owner")
         self.assertNotIn("_pocket_name", gate, "the gate keeps no rule of its own")
-        self.assertIn("pocket_from_text(event.get('nearest_pocket'))", console,
+        self.assertIn("pocket_from_text(event.get(NEAREST_POCKET_KEY))", console,
                       "the console asks the owner first, then falls back to the table")
 
 

@@ -28,7 +28,8 @@ The cases below hold four facts:
    that cannot read it.
 
 One limit holds: a reader that cannot import the owner stays out of ``READERS``.  A
-producer of the files, for example ``src/pid_shooter.py``, is not a reader.
+producer of the files stays out of ``READERS`` too, and the tuple ``SPELLERS`` holds it
+instead.  Round 109 moved the four spellers of ``events_actors.json`` to the owner.
 
 Run: ``./scripts/pool-test.sh python test_shared_artifact_names``
 """
@@ -43,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.store import SHARED_ARTIFACT_NAMES  # noqa: E402
+from src.store import SHARED_ARTIFACTS, SHARED_ARTIFACT_NAMES  # noqa: E402
 
 #: The owner module of the four names, as a path under the repository root.
 OWNER = "src/store.py"
@@ -60,6 +61,16 @@ READERS = (
     "src/pid_seed_rebuild.py",
     "src/pid_osnet_tight.py",
     "src/pid_osnet_tracks.py",
+)
+
+#: The producers that wrote one name of the out/ root, and the served reader that read
+#: it, before round 109.  A producer is not a reader of the store, but it must not spell
+#: a name either: a rename would split the file it writes from every reader of that file.
+SPELLERS = (
+    "src/pid_shooter.py",
+    "src/pid_shooter2.py",
+    "src/pid_associate.py",
+    "annotator/server.py",
 )
 
 #: The number of sibling files at the out/ root.  A test states this fact on
@@ -96,6 +107,22 @@ def spelling_sites(paths, names=SHARED_ARTIFACT_NAMES) -> list[str]:
         for number, value in spelled_strings(path):
             if value in names:
                 entries.append(f"{path}:{number} quotes {value}")
+    return sorted(entries)
+
+
+def containing_sites(paths, names=SHARED_ARTIFACT_NAMES) -> list[str]:
+    """One `path:line contains name` entry for every literal that holds one name.
+
+    A sentence and a path fragment spell a name too.  The walk above sees a literal that
+    IS a name; this walk sees the literal that carries the name inside a longer text.
+    """
+    entries = []
+    for path in paths:
+        for number, value in spelled_strings(path):
+            for name in names:
+                if name in value:
+                    entries.append(f"{path}:{number} contains {name}")
+                    break
     return sorted(entries)
 
 
@@ -154,6 +181,31 @@ class SharedArtifactNames(unittest.TestCase):
             planted = Path(folder) / "planted_reader.py"
             planted.write_text(f'NAME = "{name}"\n', encoding="utf-8")
             self.assertEqual(spelling_sites([planted]), [f"{planted}:1 quotes {name}"],
+                             "the walk must name the line of a planted copy")
+
+    def test_no_speller_spells_one_of_the_four_names(self):
+        """The producers and the served reader take the actors name from the owner."""
+        sites = (spelling_sites([ROOT / relative for relative in SPELLERS])
+                 + containing_sites([ROOT / relative for relative in SPELLERS]))
+        self.assertEqual(sites, [],
+                         f"a name of the out/ root has one owner, {OWNER}; "
+                         'read SHARED_ARTIFACTS["event_actors"] from it: ' + "; ".join(sites))
+
+    def test_every_speller_reads_the_owner(self):
+        for relative in SPELLERS:
+            with self.subTest(speller=relative):
+                self.assertTrue(owner_imports(ROOT / relative),
+                                f"{relative} writes a file of the out/ root and does not "
+                                f"read {OWNER}; it could hold its own copy of the name")
+
+    def test_the_speller_walk_reports_a_planted_copy(self):
+        """A copy must answer its own site, so the case above cannot pass in silence."""
+        name = SHARED_ARTIFACTS["event_actors"]
+        with tempfile.TemporaryDirectory() as folder:
+            planted = Path(folder) / "planted_producer.py"
+            planted.write_text(f'print("wrote out/{name}")\n', encoding="utf-8")
+            self.assertEqual(containing_sites([planted]),
+                             [f"{planted}:1 contains {name}"],
                              "the walk must name the line of a planted copy")
 
     def test_a_short_map_fails_the_count(self):

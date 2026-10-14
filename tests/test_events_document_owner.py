@@ -3,7 +3,7 @@
 Round 89 found the name ``events_v2.json`` spelled four times: the owner states
 it as ``V2``, and three import-time readers built the path by hand.
 
-    ``src/pid_shooter.py:39``, ``src/pid_shooter2.py:35`` and
+    ``src/pid_shooter.py:40``, ``src/pid_shooter2.py:36`` and
     ``src/pid_associate.py:123`` held the same statement:
     ``json.load(open(os.path.join(REPO, "out", "scan30", "events_v2.json")))``.
 
@@ -22,7 +22,7 @@ path by hand.  The list below holds those lines as round 94 found them, before t
 round moved them.
 
     ``src/info_complete_scan.py:431``, ``src/motion_scan.py:2346`` and ``:2336``,
-    ``src/segment_calib_report.py:43``, ``src/store.py:409`` and
+    ``src/segment_calib_report.py:43``, ``src/store.py:414`` and
     ``src/timing_verify.py:793`` held the file name in their own text.
 
 Five of the six sites read the name through the owner now, so a rename moves the

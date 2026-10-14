@@ -75,6 +75,9 @@ from src.ball_scale import NATIVE_FRAME, WORKING_FRAME  # noqa: E402
 # holds no threshold of its own.
 from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 #: The gate owns the served threshold names.  This tool never spells them again.
+# The two pocket keys of a served pot row own their spelling in
+# src/scan_events.py, so this writer reads the names there.
+from src.scan_events import NEAREST_POCKET_KEY, POCKET_DIST_MM_KEY  # noqa: E402
 from src.shot_pot_gate import RAIL_THRESHOLD_KEYS, REPORT_THRESHOLD_KEYS  # noqa: E402
 
 # The work space of this queue and the native frame it came from.  ``src.ball_scale``
@@ -323,7 +326,7 @@ def pot_event(pot: dict, H, artifact, served_reason: str | None = None,
         "source": "dense-track",
         "window_s": [round(float(pot["last_t"]) - 1.5, 2), round(float(pot["last_t"]) + 1.5, 2)],
         "color": pot["ball_id"].split("-", 1)[1],
-        "nearest_pocket": (f"{pot['pocket']} ({float(gate_mm):.0f} ± {float(uncertainty_mm):.0f}mm)"
+        POCKET_DIST_MM_KEY: (f"{pot['pocket']} ({float(gate_mm):.0f} ± {float(uncertainty_mm):.0f}mm)"
                            if gate_mm is not None and uncertainty_mm is not None
                            else f"{pot['pocket']} ({gate_mm}mm)" if gate_mm is not None
                            else None),

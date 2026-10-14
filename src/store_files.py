@@ -157,11 +157,11 @@ def is_document_path(relative: str) -> bool:
     if len(parts) == 2 and parts[0] == "out" and parts[1].startswith(ANCHORS_HEAD) \
             and parts[1].endswith(ANCHORS_SUFFIX):
         return True
-    if len(parts) == 3 and parts[0] == "out" and parts[2] == "labels.json" and parts[1] in BALL_SETS:
+    if len(parts) == 3 and parts[0] == "out" and parts[2] == document_name("labels") and parts[1] in BALL_SETS:
         return True
-    if parts[-1] == "annotations.json":
+    if parts[-1] == document_name("verdicts"):
         return dataset_of_dir("/".join(parts[:-1])) is not None
-    if len(parts) >= 4 and parts[-1] == "correction.json" and parts[-2].isdigit() \
+    if len(parts) >= 4 and parts[-1] == document_name("corrections") and parts[-2].isdigit() \
             and parts[-3] == "frame_results":
         return dataset_of_dir("/".join(parts[:-3])) is not None
     return False
@@ -179,6 +179,16 @@ def fmt_of(relative: str) -> str:
     if is_document_path(relative):
         return DOCUMENT_FORMAT
     raise ValueError(f"no user-data file has the path {relative}")
+
+
+def correction_path(folder: str, frame: int | str) -> str:
+    """The path of one frame's correction document under one dataset folder.
+
+    ``frame`` is the frame index, or the wildcard ``"*"`` that the discovery in
+    :func:`document_paths` globs.  The frame folder and the file name stand here, and
+    that discovery and the two stores read this function, so the three cannot drift.
+    """
+    return f"{folder}/frame_results/{'*' if frame == '*' else int(frame)}/correction.json"
 
 
 def document_paths(set_name: str, root: Path | None = None) -> list[str]:
@@ -199,8 +209,28 @@ def document_paths(set_name: str, root: Path | None = None) -> list[str]:
         if root is None:
             return []
         return sorted(str(p.relative_to(root)) for folder in dataset_dirs(root).values()
-                      for p in (Path(root) / folder / "frame_results").glob("*/correction.json"))
+                      for p in Path(root).glob(correction_path(folder, "*")))
     return []
+
+
+def document_name(set_name: str) -> str:
+    """The file name that every path of `document_paths` ends with.
+
+    A reader that has its folder already, or that compares one file name, reads the
+    name here: the map above owns it for the sets whose name is fixed, and
+    :func:`correction_path` owns it for corrections, which the map discovers by a glob.
+    A set whose paths carry different names - the anchors document carries the dataset
+    id - has no one name, and this function refuses it instead of picking one.
+    """
+    if set_name == "corrections":
+        return correction_path("", "*").rsplit("/", 1)[-1]
+    paths = document_paths(set_name)
+    if not paths:
+        raise ValueError(f"no document name for the set {set_name}")
+    names = {path.rsplit("/", 1)[-1] for path in paths}
+    if len(names) != 1:
+        raise ValueError(f"the set {set_name} has no single document name: {sorted(names)}")
+    return names.pop()
 
 
 DOCUMENT_SETS = ("operations", "seeds", "verdicts", "labels", "anchors", "corrections")

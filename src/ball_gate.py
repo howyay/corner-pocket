@@ -19,7 +19,7 @@ The score cut
 The lower area cap
     :data:`SAM3_BALL_MIN_AREA_PX` is the lower cap of the area window.  The area
     is ``float(mask.sum())``: the number of pixels the instance mask covers
-    (``src/pipeline.py:165``, ``src/scan_events.py:152``).  A mask below this cap
+    (``src/pipeline.py:165``, ``src/scan_events.py:160``).  A mask below this cap
     is noise, not a ball.  The unit is a pixel of the frame that SAM3 saw, not a
     millimetre of the table.
 
@@ -38,7 +38,7 @@ The upper area cap, and the disagreement
       caller passes that same frame to SAM3 (``src/pipeline.py:255``,
       ``src/pipeline.py:269-270``).  The warp to the canonical 1270x2540 mm
       frame happens later and uses a different array (``src/pipeline.py:209``).
-      ``src/scan_events.py:145-146`` and ``src/sam3_ball_cache.py:154-156`` read
+      ``src/scan_events.py:153-154`` and ``src/sam3_ball_cache.py:154-156`` read
       their frames the same way, with no resize.
     * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:64``,
       ``src/motion_scan.py:86``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
@@ -64,8 +64,8 @@ The classical cap, a different decision
     :data:`CLASSICAL_BALL_MAX_AREA_960X540_PX` is 4200.  It is *not* part of the
     SAM3 gate.  It caps the classical colour-blob detector
     (``src/ball_detect.py:28-34``) on a 960x540 resize
-    (``src/scan_events.py:89``, inside ``classical_scan`` at
-    ``src/scan_events.py:75``).  That detector reports a contour area, not a
+    (``src/scan_events.py:97``, inside ``classical_scan`` at
+    ``src/scan_events.py:83``).  That detector reports a contour area, not a
     SAM3 mask area, and its lower cap is 14.0 px, not 60.  It therefore keeps
     its own name here.
 
@@ -76,7 +76,7 @@ The radius band, the third bar
     (``src/pipeline.py:168``, ``src/sam3_ball_cache.py:174``).  Four sites
     spelled the pair ``4.0, 60.0`` themselves; these are the line numbers as
     they were before this round: ``src/pipeline.py:177``,
-    ``src/scan_events.py:159``, ``src/sam3_ball_cache.py:52`` and
+    ``src/scan_events.py:167``, ``src/sam3_ball_cache.py:52`` and
     ``src/ball_fp_audit.py:106``.  All four applied the same pair to the same
     measurement, so this bar has one meaning.  Only its home was missing.
 

@@ -19,6 +19,7 @@ sys.path.insert(0, REPO)  # src/weight_pins.py sits under src/
 # src/weight_pins.py owns the weight paths and src/events_document.py owns the
 # name and the path of the events document, so this file reads the two owners.
 from src import events_document, weight_pins  # noqa: E402
+from src.store import SHARED_ARTIFACTS  # noqa: E402
 
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo-cfg")
 os.environ.setdefault("ULTRALYTICS_SAFE_LOAD", "1")  # weights-only YOLO load (audit D-2)
@@ -126,8 +127,9 @@ def main():
              if seq[i] in "AB" and seq[i - 1] in "AB" and seq[i] != seq[i - 1])
     print("actor seq:", seq)
     print("A/B switches:", sw)
-    json.dump(out, open(os.path.join(REPO, "out", "events_actors.json"), "w"), indent=1)
-    print("wrote out/events_actors.json")
+    json.dump(out, open(os.path.join(REPO, "out", SHARED_ARTIFACTS["event_actors"]), "w"),
+              indent=1)
+    print(f"wrote out/{SHARED_ARTIFACTS['event_actors']}")
 
 
 if __name__ == "__main__":

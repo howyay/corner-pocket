@@ -56,7 +56,7 @@ from src.table_detect import detect_table  # noqa: E402
 from src.sam3_ball_cache import OWN_CACHE  # noqa: E402
 # The shot displacement floor has one home, src/scan_events.py.  This scanner uses
 # the same floor as the gates, so it takes the name from that home.
-from src.scan_events import SHOT_DISP_MM  # noqa: E402
+from src.scan_events import NEAREST_POCKET_KEY, POCKET_DIST_MM_KEY, SHOT_DISP_MM  # noqa: E402
 
 # The scan's working frame, from its owner.  The resize below and the scale back
 # to source pixels are the only readers.
@@ -327,7 +327,7 @@ def _pot_candidate(drop, records, H, cfg: ScanConfig) -> dict:
                           "last_mm": [round(mm[0], 1), round(mm[1], 1)],
                           "last_cx": gone["cx"], "last_cy": gone["cy"],
                           "streak": gone.get("streak", 1),
-                          "pocket": pocket, "pocket_dist_mm": round(distance)})
+                          "pocket": pocket, POCKET_DIST_MM_KEY: round(distance)})
     return candidate
 
 
@@ -434,8 +434,8 @@ def pot_strength(candidate) -> float:
     if drop < 1:
         return 0.0
     score = 1.4 if drop <= 2 else 0.6 if drop <= 4 else -1.0
-    if candidate.get("pocket_dist_mm") is not None:
-        score += max(0.0, 1.6 * (1.0 - candidate["pocket_dist_mm"] / 300.0))
+    if candidate.get(POCKET_DIST_MM_KEY) is not None:
+        score += max(0.0, 1.6 * (1.0 - candidate[POCKET_DIST_MM_KEY] / 300.0))
     else:
         score -= 0.5
     missing = candidate.get("missing_count")

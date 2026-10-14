@@ -76,6 +76,10 @@ INTEGER_REVISION_REQUIRED = 'integer revision required'
 STATE_CHANGED_RELOAD = 'State changed; reload before retrying'
 
 # English sentence -> identity.  Keep the order of the sentences you add.
+#: The sentence two API raises state and one row of REFUSALS keys.  It is one fact: the
+#: row answers the sentence the API raised, so the two stand or fall together.
+UNKNOWN_DATASET = "unknown dataset"
+
 REFUSALS = {
     'Player name already exists': Refusal('player_name_exists', '球员姓名已存在。'),
     'The pairing changed; review the teams again': Refusal('pairing_changed', '配对已变化，请重新查看组合。'),
@@ -200,7 +204,7 @@ REFUSALS = {
     'cluster_id must be an integer': Refusal('cluster_id_not_integer', 'cluster_id 必须是整数。'),
     'track_id must be an integer': Refusal('track_id_not_integer', 'track_id 必须是整数。'),
     'no face data for this player': Refusal('face_data_none', '该球员没有人脸数据。'),
-    'unknown dataset': Refusal('dataset_unknown', '找不到该数据集。'),
+    UNKNOWN_DATASET: Refusal('dataset_unknown', '找不到该数据集。'),
     'frame_index must be a non-negative integer': Refusal('frame_index_not_non_negative', 'frame_index 必须是非负整数。'),
     'bbox must be [x1, y1, x2, y2] in frame pixels': Refusal('enroll_bbox_invalid', 'bbox 必须是帧像素坐标 [x1, y1, x2, y2]。'),
     'another enrolment preview is running; try again when it finishes': Refusal('enroll_preview_busy', '另一个人脸录入预览正在运行，请等它结束后重试。'),

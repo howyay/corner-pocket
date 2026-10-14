@@ -268,7 +268,7 @@ class CalibrationNameOwnerTest(unittest.TestCase):
         """The three sites that name the document read the owner's answer.
 
         The name stood at ``src/calib_vod30.py:157``, ``src/pid_anchor_ui.py:39``
-        and ``src/pid_shooter.py:43``.  Each site resolves the same path after the
+        and ``src/pid_shooter.py:44``.  Each site resolves the same path after the
         move: ``calibration_name`` answers the text the literal held.
         """
         files = dict(self.shipped_files())
@@ -286,7 +286,7 @@ class CalibrationNameOwnerTest(unittest.TestCase):
     def test_the_document_name_stands_once_in_the_shipped_tree(self):
         """One shipped reader still holds the whole name, and the owner holds the rest.
 
-        ``annotator/unified_server.py:2144`` reads ``self.out / "calib_vod30.json"``
+        ``annotator/unified_server.py:2145`` reads ``self.out / "calib_vod30.json"``
         in ``anchor_info``.  That file belongs to another writer this round, so the
         list holds the owner and that one site.  A third site fails here, and the
         failure names it.

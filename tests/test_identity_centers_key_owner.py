@@ -8,8 +8,8 @@ The three live copies at the round-107 walk were:
 
 * `src/pid_identity.py:195` — the writer row of the document, and the key as a
   quoted literal;
-* `src/pid_shooter.py:52` — the reader indexes the identity document with it;
-* `src/pid_shooter2.py:40` — the second reader does the same.
+* `src/pid_shooter.py:53` — the reader indexes the identity document with it;
+* `src/pid_shooter2.py:41` — the second reader does the same.
 
 Round 107 W4 gave the name one home, `CENTERS_BGR_KEY` in `src/pid_identity.py`,
 and all three sites read it.  The key itself did not change: the identity

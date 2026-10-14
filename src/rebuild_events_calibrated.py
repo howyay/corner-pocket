@@ -24,7 +24,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
 # The pot coordinate key has one home, src/scan_events.py, the writer of the
 # served document.  This tool takes the name from that home.
-from scan_events import BALL_TABLE_MM_KEY, nearest_pocket  # reuse pocket geometry
+from scan_events import (BALL_TABLE_MM_KEY, NEAREST_POCKET_KEY, POCKET_DIST_MM_KEY,
+                         nearest_pocket)  # reuse pocket geometry
 # The events document has one owner, src/events_document.py.  This writer takes
 # the name of its speed field from that owner, so a rename of the field moves
 # this writer and the live route together.
@@ -137,8 +138,8 @@ def main():
             pots.append({
                 "t": round((t1 + t2) / 2, 1), "type": "pot",
                 "window_s": [round(t1, 1), round(t2, 1)],
-                BALL_TABLE_MM_KEY: b["table_mm"], "nearest_pocket": pocket,
-                "pocket_dist_mm": round(dist),
+                BALL_TABLE_MM_KEY: b["table_mm"], NEAREST_POCKET_KEY: pocket,
+                POCKET_DIST_MM_KEY: round(dist),
                 "count_before": counts[t1], "count_after": counts[t2],
             })
 

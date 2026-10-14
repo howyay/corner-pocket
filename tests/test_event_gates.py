@@ -97,7 +97,7 @@ class PotGateTests(unittest.TestCase):
     def test_the_mouth_radius_decides_both_sides_of_the_bar(self):
         """Strong 1: one mouth radius, and it is the bar on both of its sides.
 
-        ``src/event_gates.py:392`` refuses a vanished ball past
+        ``src/event_gates.py:393`` refuses a vanished ball past
         ``cfg.pot_pocket_r_mm``.  ``src/shot_pot_gate.POCKET_R_MM`` places the
         model's mouth.  This case names both numbers and then measures just
         inside the bar, at the bar and just outside it.

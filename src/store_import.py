@@ -43,8 +43,12 @@ from annotator.operations import name_key
 from src.datasets import STATIC_OUT
 # BALL_SETS (the crop-set vocabulary) is imported from its one owner, src.store_files,
 # so this import tool and the store cannot hold two different lists of set names.
+# The document names of a data set have that same home: the map
+# src.store_files.document_paths owns them, and document_name and correction_path
+# answer them, so every path this tool loads is the path the stores read.
 from src.store_files import (BALL_SETS, DOCUMENT_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT,
-                             dataset_dirs, document_paths, get_document, has_documents_table, put_document)
+                             correction_path, dataset_dirs, document_name, document_paths,
+                             get_document, has_documents_table, put_document)
 # The retention bound of the operations event log is imported from its one owner
 # (src.ops_event_log), so this importer and every writer cannot hold two bounds.
 from src.ops_event_log import MAX_EVENTS
@@ -523,8 +527,8 @@ class VerdictsSet(DataSet):
         # has verdicts (out/vods/<id>/annotations.json) - render() lists the same keys
         doc = {}
         for ds, folder in dataset_dirs(snap.root).items():
-            if ds in STATIC_OUT or (snap.root / folder / "annotations.json").is_file():
-                doc[ds] = snap.json(f"{folder}/annotations.json", {})
+            if ds in STATIC_OUT or (snap.root / folder / document_name("verdicts")).is_file():
+                doc[ds] = snap.json(f"{folder}/{document_name('verdicts')}", {})
         return doc, []
 
     def write(self, conn, doc):
@@ -555,7 +559,8 @@ class LabelsSet(DataSet):
     tables = ("ball_labels",)
 
     def load(self, snap):
-        return {crop_set: snap.json(f"out/{crop_set}/labels.json", {}) for crop_set in BALL_SETS}, []
+        return {crop_set: snap.json(f"out/{crop_set}/{document_name('labels')}", {})
+                for crop_set in BALL_SETS}, []
 
     def write(self, conn, doc):
         for crop_set, labels in doc.items():
@@ -582,7 +587,7 @@ class CorrectionsSet(DataSet):
         doc = {}
         for dataset, folder in dataset_dirs(snap.root).items():
             found = {}
-            for path in sorted((snap.root / folder / "frame_results").glob("*/correction.json")):
+            for path in sorted(snap.root.glob(correction_path(folder, "*"))):
                 frame = path.parent.name
                 if not frame.isdigit():
                     raise Mismatch(f"{path}: the frame directory is not a frame index")
@@ -700,7 +705,8 @@ def import_set(conn, spec: DataSet, root, *, replace=False) -> dict:
                         "SELECT path FROM json_documents WHERE path LIKE %s", ("%/frame_results/%",)).fetchall()]
                 elif spec.name == "verdicts":         # the built-in scans and any imported VOD's
                     known = [row[0] for row in conn.execute(
-                        "SELECT path FROM json_documents WHERE path LIKE %s", ("%/annotations.json",)).fetchall()]
+                        "SELECT path FROM json_documents WHERE path LIKE %s",
+                        (f"%/{document_name('verdicts')}",)).fetchall()]
                 else:
                     known = document_paths(spec.name)
                 for rel in known:

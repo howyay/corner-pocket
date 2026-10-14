@@ -38,8 +38,8 @@ machine: **2.0 min of single-core CPU for the entire 30-minute VOD** (decode + a
 | VOD 2 | 1920×1080, 29.997 fps, 11,309 frames, 6.28 min (`data/vod_highlight.mp4`) | same |
 | Ball apparent size | median **18.9 px** diameter at the native 1280×720 frame, which is **14.175 px** at the pipeline's 960×540 working frame; p10 13.8 px, p90 24.8 px | `src/ball_scale.py` owns the size (`DIAMETER_NATIVE_PX`, `diameter_px`); the 270 radii of `out/scan30/sam3_results.json` are its sample. The pooled median of the two local runs is **18.40 px** over 1,062 instances — a second number from a larger sample, and *not* the owner's |
 | SAM3 cache size | **194 frame-times**, not 43 (56 app frames + 138 project frames) | frame keys in the two cache files |
-| Cloth scale | **not one number**: **2.58–7.75 mm/px** across the cloth, by region (the reference quad spans 0.129–0.388 px/mm) | `src/shot_pot_gate.py:709` (`VOD30_REFERENCE_QUAD`, 1280×720). The console holds one guarded copy, `CLOTH_TOLERANCE_MM_PER_PX = 1.9` in `src/eval_table_detect.py:217`, read by `tests/test_app_quad_contract.py` |
-| Ball motion between frames | **3.2–9.7 px/frame at 1 m/s, 9.7–29.1 px/frame at 3 m/s** (960×540); **4.3–12.9 / 12.9–38.8 px/frame** on the 1280×720 frames | the cloth's local scale, **2.58–7.75 mm/px** by region (`src/shot_pot_gate.py:709`), ×30 fps, at 1 m/s = 33.3 mm/frame and 3 m/s = 100 mm/frame. A single mid value is the ball's own scale, **3.02 mm/px** native (`src/ball_scale.py`, `millimetres_per_pixel`): 11.0 / 33.1 px/frame native, 8.3 / 24.8 px/frame at 960×540 |
+| Cloth scale | **not one number**: **2.58–7.75 mm/px** across the cloth, by region (the reference quad spans 0.129–0.388 px/mm) | `src/shot_pot_gate.py:712` (`VOD30_REFERENCE_QUAD`, 1280×720). The console holds one guarded copy, `CLOTH_TOLERANCE_MM_PER_PX = 1.9` in `src/eval_table_detect.py:217`, read by `tests/test_app_quad_contract.py` |
+| Ball motion between frames | **3.2–9.7 px/frame at 1 m/s, 9.7–29.1 px/frame at 3 m/s** (960×540); **4.3–12.9 / 12.9–38.8 px/frame** on the 1280×720 frames | the cloth's local scale, **2.58–7.75 mm/px** by region (`src/shot_pot_gate.py:712`), ×30 fps, at 1 m/s = 33.3 mm/frame and 3 m/s = 100 mm/frame. A single mid value is the ball's own scale, **3.02 mm/px** native (`src/ball_scale.py`, `millimetres_per_pixel`): 11.0 / 33.1 px/frame native, 8.3 / 24.8 px/frame at 960×540 |
 | SAM3 cost | 47.5 s/frame CPU (documented); **715 h ≈ 29.8 days** for one 30-min VOD | `docs/handoff.md`; arithmetic |
 | CPU frame loop | 591 fps decode; 2,045 fps gray+absdiff; **2.2 ms/frame** → 2.0 min for the full VOD | 400-frame timing run, 2026-09-23 |
 | GPU | AMD RX 9070 XT; ROCm PyTorch 2.9.1 works for YOLO persons (~26 ms warm); **SAM3's presence head returns zero instances on GPU** (ROCm 6.4 gfx1201) | `docs/handoff.md` §5 |
@@ -94,7 +94,7 @@ perfect prediction.** Even so, the entire open field sits at 27–58 out of 100,
 never "the ball is 3 px from where it should be". Meanwhile the 2026 multi-agent benchmark states outright that
 recovering **metric-scale** dynamics from generated video is an unsolved problem, and its own best pipeline reaches only
 sub-metre error — roughly **one to two orders of magnitude coarser** than the millimetre-class accuracy a
-**2.58–7.75 mm/px** cloth (`src/shot_pot_gate.py:709`) requires.
+**2.58–7.75 mm/px** cloth (`src/shot_pot_gate.py:712`) requires.
 
 **Conclusion: no benchmark in this space publishes a positional/velocity error for ball-like objects, because no model
 produces one.** "Effective" in this literature means "physically plausible to a judge", not "numerically correct".

@@ -116,11 +116,11 @@ READ_TABLES_MEASURED = 16     # the tables a SELECT reads
 SKIPPED_MEASURED = 2          # the plain statements whose table is outside migration 0002
 NAMED_COLUMNS_MEASURED = 69  # the distinct columns the kept statements name
 UPDATE_STATEMENTS_MEASURED = 2    # the UPDATE statements of the importer
-UPDATE_LINES = (207, 211)         # the line of each UPDATE statement
+UPDATE_LINES = (211, 215)         # the line of each UPDATE statement
 
 #: The two ``json_documents`` SELECT statements of the importer, with the line of
 #: each one.  The table belongs to migration 0003, so the scan skips the two.
-SKIPPED_LINES = (700, 703)
+SKIPPED_LINES = (705, 708)
 MISSING_TABLE_NAME = "json_documents"
 
 

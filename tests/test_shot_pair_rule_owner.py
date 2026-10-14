@@ -87,11 +87,28 @@ def number_sites(relative: str, value, text: str | None = None) -> list[str]:
     return found
 
 
+def import_lines(text: str) -> set[int]:
+    """The lines of every import statement of one module.  An import is not a reader.
+
+    A wrapped import puts names on continuation lines that do not hold the word
+    ``import``.  The tree measures the statement, so a wrapped import counts as one
+    import and adds no reader site.
+    """
+    found = set()
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            first, last = node.lineno, node.end_lineno or node.lineno
+            found.update(range(first, last + 1))
+    return found
+
+
 def home_sites(relative: str, home: str, forbidden: str) -> list[str]:
     """The sites of one reader that name a home and no bare number of the rule."""
+    body = text_of(relative)
+    imports = import_lines(body)
     found = []
-    for number, line in enumerate(text_of(relative).splitlines(), 1):
-        if "import" in line or home not in line:
+    for number, line in enumerate(body.splitlines(), 1):
+        if number in imports or home not in line:
             continue
         if line.strip().startswith(home + " ="):     # the definition of the home itself
             continue

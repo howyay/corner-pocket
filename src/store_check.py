@@ -21,8 +21,17 @@ import sys
 import uuid
 
 from src import db
-from src.store_files import (SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir, documents,
-                             has_documents_table)
+# The document names of a data set — the verdicts file of a dataset, the labels file
+# of a crop set, the correction file of a frame — have one home: the map
+# src.store_files.document_paths owns them, and document_name answers them.  The
+# reader below takes the three names from that home, so it cannot read a stored path
+# that the writer of the same file would not have written.
+from src.store_files import (SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir, document_name,
+                             documents, has_documents_table)
+# The anchor file name of a dataset has one owner, src/calib_segments.py.  The
+# document reader below takes the head and the suffix of that name from the owner,
+# so the dataset it reads out of a stored path cannot drift from the name check.
+from src.calib_segments import ANCHORS_PATH_HEAD, ANCHORS_SUFFIX
 # The anchor file name of a dataset has one owner, src/calib_segments.py.  The
 # document reader below takes the head and the suffix of that name from the owner,
 # so the dataset it reads out of a stored path cannot drift from the name check.
@@ -49,15 +58,15 @@ def projections(docs: dict[str, str]):
     corrections: dict = {}
     for path, text in docs.items():
         head, _, name = path.rpartition("/")
-        if name == "annotations.json" and dataset_of_dir(head) is not None:
+        if name == document_name("verdicts") and dataset_of_dir(head) is not None:
             verdicts[dataset_of_dir(head)] = json.loads(text)
         folder, marker, rest = path.partition("/frame_results/")
         frame, _, file = rest.partition("/")
-        if marker and file == "correction.json" and dataset_of_dir(folder) is not None:
+        if marker and file == document_name("corrections") and dataset_of_dir(folder) is not None:
             corrections.setdefault(dataset_of_dir(folder), {})[frame] = json.loads(text)
     yield SETS["verdicts"], verdicts
     yield SETS["labels"], {path.split("/")[1]: json.loads(text) for path, text in docs.items()
-                           if path.endswith("/labels.json")}
+                           if path.endswith("/" + document_name("labels"))}
     yield SETS["anchors"], {path[len(ANCHORS_PATH_HEAD):-len(ANCHORS_SUFFIX)]: json.loads(text)
                             for path, text in docs.items() if path.startswith(ANCHORS_PATH_HEAD)}
     yield SETS["corrections"], corrections

@@ -76,6 +76,11 @@ function shooter(e) { return (annotations[String(e.id)] || {}).shooter || ''; }
 // The pot coordinate key has one home, src/scan_events.py, which writes the served
 // events document.  This page reads the same key; the owner guard holds them equal.
 const BALL_TABLE_MM_KEY = "ball_table_mm";
+// The distance of the vanished ball from the pocket it was lost to owns its
+// spelling in src/scan_events.py too.  This page reads that key of the served
+// row; the two constants below stand on the page, because a page runs no python.
+const POCKET_DIST_MM_KEY = "pocket_dist_mm";
+const NEAREST_POCKET_KEY = "nearest_pocket";
 
 function render() {
   const list = events.filter(e => {
@@ -97,7 +102,7 @@ function render() {
     if (e.type === 'shot') {
       desc = `displacement ${e.disp_mm} mm (≈${e.speed_m_s} m/s) · ${e.ball_from ? 'from (' + e.ball_from[0] + ',' + e.ball_from[1] + ') mm to (' + e.ball_to[0] + ',' + e.ball_to[1] + ') mm' : ''}`;
     } else {
-      desc = `ball potted near ${e.nearest_pocket} (${e.pocket_dist_mm} mm from pocket) · last at (${e[BALL_TABLE_MM_KEY][0]},${e[BALL_TABLE_MM_KEY][1]}) mm`;
+      desc = `ball potted near ${e[NEAREST_POCKET_KEY]} (${e[POCKET_DIST_MM_KEY]} mm from pocket) · last at (${e[BALL_TABLE_MM_KEY][0]},${e[BALL_TABLE_MM_KEY][1]}) mm`;
     }
     const v = verdict(e);
     const img = e.evidence ? e.evidence : `evidence_t${String(Math.round(e.t)).padStart(5,'0')}.jpg`;

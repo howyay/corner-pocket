@@ -859,8 +859,9 @@ def to_queue_event(group, previous_ids):
         event["ball_from"] = raw.get("from_mm")
         event["ball_to"] = raw.get("to_mm")
     elif claim["last_mm"]:
+        from src.scan_events import NEAREST_POCKET_KEY, POCKET_DIST_MM_KEY  # the homes of the two keys
         pocket, distance = nearest_pocket(float(claim["last_mm"][0]), float(claim["last_mm"][1]))
-        event.setdefault("nearest_pocket", f"{pocket} ({round(distance)}mm)")
+        event.setdefault(NEAREST_POCKET_KEY, f"{pocket} ({round(distance)}mm)")
     event["dup_count"] = group["count"]
     event["gate"] = {**group["verdict"], "dup_count": group["count"],
                      "colors_merged": group["colors"]}
@@ -1014,7 +1015,7 @@ def build_rows(groups, previous_ids):
         rows.append({"id": event["id"], "kind": group["event"]["kind"], "t": group["event"]["t"],
                      "color": group["event"]["color"], "dup_count": group["count"],
                      "measured": group["event"]["raw"].get("measured"),
-                     "pocket": event.get("nearest_pocket") or next(
+                     "pocket": event.get(NEAREST_POCKET_KEY) or next(
                          (v.get("pocket") for v in group["evidence"].get("vanish", [])), None),
                      "verdict": group["verdict"], "evidence": group["evidence"],
                      "event": event})

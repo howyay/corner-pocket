@@ -16,7 +16,7 @@ The home of the word is ``src/ball_association_audit.py:59``::
 The home sits in the audit module and not in the gate, and the reason is weight.
 The audit module imports the standard library only, and it must stay that way: it
 is the tool the associator runs from a shell, and a reader of it must not need
-cv2.  The gate is not a light module -- ``src/shot_pot_gate.py:90`` reads
+cv2.  The gate is not a light module -- ``src/shot_pot_gate.py:93`` reads
 ``OCC_DENSE_MIN`` from ``src/motion_scan.py``, which imports cv2 and numpy -- so a
 home declared in the gate would pull both libraries into every reader that names
 it.  A home declared in the audit module is read by the gate, and the gate is
@@ -72,7 +72,7 @@ CONSTANT_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 #: state the home landed in.  A fourth site, or a move, must state itself here.
 SITES = {
     OWNER: ((165, "get", OWNER_NAME), (166, "lookup", OWNER_NAME)),
-    WRITER: ((1597, "dict", OWNER_NAME),),
+    WRITER: ((1600, "dict", OWNER_NAME),),
 }
 #: The module and the name the writer imports for the home.
 WRITER_IMPORT = ("src.ball_association_audit", OWNER_NAME)

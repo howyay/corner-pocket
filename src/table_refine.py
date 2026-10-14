@@ -41,7 +41,9 @@ from src.table_detect import _order_corners
 # cannot name two files for one dataset.  This module imports the owner at the top
 # and holds no copy of the pairs.  src/calib_segments.py imports this module only
 # inside a function, so the two modules do not import each other at load time.
-from src import calib_segments
+from src.calib_segments import (INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
+                                UNVERIFIED_SIDES_KEY, VERIFIED_SIDES_KEY)
+from src import calib_segments  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -753,7 +755,7 @@ def refine_quad_edges(frame, prior, band_px=_BAND_PX, iters=_ITERS, band_scales=
         # (part of the frame agrees with it, part does not): widening that one
         # would let the agreeing rails pull the others far past the boundary, which
         # is exactly the confident-wrong-quad case.  Those refuse as they are.
-        verified = info.get("verified_sides", 0)
+        verified = info.get(VERIFIED_SIDES_KEY, 0)
         if verified:
             return None, info
     return None, last or {"confidence": 0.0, "reason": REASON_NO_BOUNDARY_EVIDENCE}
@@ -845,7 +847,7 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
             peak, width = _band_quality(ts, occ)
             med, mad, n_in = _robust_offset(offsets)
             reports.append({"side": s, "n": int(len(offsets)), "n_inliers": n_in,
-                            "mask_offset_px": None if crossing is None else round(crossing, 2),
+                            MASK_OFFSET_PX_KEY: None if crossing is None else round(crossing, 2),
                             "mask_inner_occupancy": (None if crossing_info is None
                                                      else round(crossing_info["inner"], 2)),
                             "mask_edge_drop": (None if crossing_info is None
@@ -862,7 +864,7 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
         # Verify each side against the frame before letting it move the quad.
         offsets_mask, unverified = {}, {}
         for r in reports:
-            cross = r["mask_offset_px"]
+            cross = r[MASK_OFFSET_PX_KEY]
             peak = r["mask_band_peak"] or 0.0
             inner = r["mask_inner_occupancy"]
             drop = r["mask_edge_drop"]
@@ -914,16 +916,16 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
                 # A diffuse crossing (no step at all across the threshold) carries no
                 # position information: its offset is dominated by how wide the ramp
                 # is, not by where the edge sits, so it is not a disagreement.
-                diffuse = (r["mask_offset_px"] is not None
+                diffuse = (r[MASK_OFFSET_PX_KEY] is not None
                            and (r["mask_edge_drop"] or 1.0) < _DROP_MIN
-                           and abs(r["mask_offset_px"]) * mask_scale <= _INHERIT_DIFFUSE_PX)
+                           and abs(r[MASK_OFFSET_PX_KEY]) * mask_scale <= _INHERIT_DIFFUSE_PX)
                 # Contradictory evidence (a crossing far from the prior *and* a scan
                 # consensus in the same direction) can never inherit.
-                contradicting = [v for v in (r["mask_offset_px"], r["scan_offset_px"])
+                contradicting = [v for v in (r[MASK_OFFSET_PX_KEY], r["scan_offset_px"])
                                  if v is not None and abs(v) * mask_scale > _BAND_PX / 2.0]
                 if len(contradicting) >= 2:
                     continue
-                weak = [] if diffuse else [v for v in (r["mask_offset_px"], r["scan_offset_px"])
+                weak = [] if diffuse else [v for v in (r[MASK_OFFSET_PX_KEY], r["scan_offset_px"])
                                            if v is not None]
                 # ``weak`` empty means the frame showed *nothing* for this side, and
                 # nothing is not agreement: inheriting there would report the prior
@@ -950,16 +952,16 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
                       else REASON_NO_BOUNDARY_EVIDENCE)
             return None, {"confidence": 0.0, "reason": reason, "mask": mask_note,
                           "iteration": it, "sides": reports,
-                          "verified_sides": n_verified,
-                          "unverified_sides": [dict(side=s, reason=unverified[s]) for s in sorted(unverified)],
-                          "inherited_sides": [dict(side=s, **inherited[s]) for s in sorted(inherited)],
+                          VERIFIED_SIDES_KEY: n_verified,
+                          UNVERIFIED_SIDES_KEY: [dict(side=s, reason=unverified[s]) for s in sorted(unverified)],
+                          INHERITED_SIDES_KEY: [dict(side=s, **inherited[s]) for s in sorted(inherited)],
                           "candidates": [c["name"] for c in cands]}
         moved_mask = np.array([offsets_mask[s] for s in range(4)], float)      # mask px
         moved_px = moved_mask / mask_scale                                     # real px
         if float(np.median(np.abs(moved_px - np.median(moved_px)))) > 45.0:
             return None, {"confidence": 0.0, "reason": "prior_disagreement", "mask": mask_note,
                           "iteration": it, "sides": reports,
-                          "unverified_sides": [dict(side=s, reason="prior_disagreement") for s in range(4)]}
+                          UNVERIFIED_SIDES_KEY: [dict(side=s, reason="prior_disagreement") for s in range(4)]}
         for s in range(4):
             # One iteration advances the FULL measured offset, clipped to the cap.
             # The cap is expressed in real pixels: an unbounded step lets one rail
@@ -1008,8 +1010,8 @@ def _refine_once(frame, prior, band_px=_BAND_PX, iters=_ITERS):
         confidence = round(confidence * 0.6, 3)
     info = {"confidence": confidence, "reason": None, "mask": mask_note,
             "iterations": len(movements), "side_moves_px": movements,
-            "verified_sides": 4 - len(inherited), "unverified_sides": [],
-            "inherited_sides": [dict(side=s, **inherited[s]) for s in sorted(inherited)],
+            VERIFIED_SIDES_KEY: 4 - len(inherited), UNVERIFIED_SIDES_KEY: [],
+            INHERITED_SIDES_KEY: [dict(side=s, **inherited[s]) for s in sorted(inherited)],
             "reason": "side_inherited" if inherited else None,
             "side_peak_occupancy": round(float(np.min(peaks)), 2),
             "edge_width_px": round(float(np.median(widths)) if widths else -1.0, 2),

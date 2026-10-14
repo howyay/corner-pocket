@@ -49,7 +49,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E402
-from src.calib_segments import CORNERS_SPEC, SCAN_CORNERS, VERIFIED_FRAMES, anchors_reference_path  # noqa: E402
+from src.calib_segments import (CORNERS_SPEC, INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
+                                SCAN_CORNERS, UNVERIFIED_SIDES_KEY, VERIFIED_FRAMES,
+                                VERIFIED_SIDES_KEY, anchors_reference_path)
 from src.datasets import media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
@@ -266,15 +268,15 @@ def rail_evidence(video, times, quad_a, quad_b, size=NATIVE_FRAME):
             sides = info.get("sides") or []
             row[key] = {
                 "reason": info.get("reason"),
-                "verified_sides": info.get("verified_sides"),
-                "inherited_sides": len(info.get("inherited_sides") or []),
-                "supported_sides": (info.get("verified_sides") or 0)
-                                   + len(info.get("inherited_sides") or []),
+                VERIFIED_SIDES_KEY: info.get(VERIFIED_SIDES_KEY),
+                INHERITED_SIDES_KEY: len(info.get(INHERITED_SIDES_KEY) or []),
+                "supported_sides": (info.get(VERIFIED_SIDES_KEY) or 0)
+                                   + len(info.get(INHERITED_SIDES_KEY) or []),
                 "unverified": {str(s["side"]): s.get("reason")
-                               for s in info.get("unverified_sides") or []},
+                               for s in info.get(UNVERIFIED_SIDES_KEY) or []},
                 "inherited": {str(s["side"]): s.get("reason")
-                              for s in info.get("inherited_sides") or []},
-                "mask_offsets_px": {str(s["side"]): s.get("mask_offset_px") for s in sides},
+                              for s in info.get(INHERITED_SIDES_KEY) or []},
+                "mask_offsets_px": {str(s["side"]): s.get(MASK_OFFSET_PX_KEY) for s in sides},
                 "rail_dark": {str(s["side"]): s.get("rail_dark") for s in sides},
                 "quad_diff_max_px": None if out is None else round(float(
                     np.linalg.norm(np.asarray(out, float) - np.asarray(quad, float),
@@ -453,11 +455,11 @@ def highlight_reference_check(video, quad_path=None, times=None, columns=(600, 9
             continue
         frames += 1
         _q, info = refine_quad_edges(frame, quad)
-        if info.get("unverified_sides"):
+        if info.get(UNVERIFIED_SIDES_KEY):
             refused += 1
         for row in info.get("sides") or []:
-            if row.get("mask_offset_px") is not None:
-                per_side_refine[int(row["side"])].append(float(row["mask_offset_px"]))
+            if row.get(MASK_OFFSET_PX_KEY) is not None:
+                per_side_refine[int(row["side"])].append(float(row[MASK_OFFSET_PX_KEY]))
         for side, prof in enumerate(profile_sides(frame, quad, half=40.0)):
             if prof is not None and prof.get("offset_px") is not None:
                 per_side_step[side].append(float(prof["offset_px"]))
@@ -580,8 +582,9 @@ def _print(payload):
     for row in payload["rail_evidence"].get("rows", []):
         for key in ("a_hand_anchors", "b_scan_quad"):
             info = row.get(key) or {}
-            print(f"  t={row.get('t'):7.1f} {key:16s} verified={info.get('verified_sides')} "
-                  f"inherited={info.get('inherited_sides')} supported={info.get('supported_sides')} "
+            verified, inherited = info.get(VERIFIED_SIDES_KEY), info.get(INHERITED_SIDES_KEY)
+            print(f"  t={row.get('t'):7.1f} {key:16s} verified={verified} "
+                  f"inherited={inherited} supported={info.get('supported_sides')} "
                   f"reason={info.get('reason')} unverified={info.get('unverified')}")
     fore = payload["foreshortening"]
     for key in ("a_hand_anchors", "b_scan_quad"):

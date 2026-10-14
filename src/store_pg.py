@@ -33,8 +33,13 @@ from src import db
 from src.store import JsonStore, StoreConstraintError
 from annotator.refusals import (INTEGER_REVISION_REQUIRED, JSON_OBJECT_REQUIRED,
                                 STATE_CHANGED_RELOAD)
-from src.store_files import (BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, dataset_dir, dump, fmt_of,
-                             get_document, put_document)
+# The document names of a data set — the verdicts file of a dataset, the labels file
+# of a crop set, the correction file of a frame — have one home: the map
+# src.store_files.document_paths owns them, and document_name and correction_path
+# answer them.  This store reads those homes, so the paths below cannot drift from the
+# files JsonStore builds for the same record set.
+from src.store_files import (BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, correction_path, dataset_dir,
+                             document_name, dump, fmt_of, get_document, put_document)
 # The document side of the event log is trimmed by its one owner (src.ops_event_log),
 # so this store holds no copy of the retention bound.
 from src.ops_event_log import trim
@@ -61,9 +66,9 @@ def _doc_path(kind: str, key: str) -> str:
     if kind == "seeds":
         return SEED_DOCUMENT
     if kind == "verdicts":
-        return f"{dataset_dir(key)}/annotations.json"
+        return f"{dataset_dir(key)}/{document_name('verdicts')}"
     if kind == "labels":
-        return f"out/{key}/labels.json"
+        return f"out/{key}/{document_name('labels')}"
     if kind == "anchors":
         return anchors_reference_path(key)
     raise ValueError(kind)
@@ -381,7 +386,7 @@ class PostgresStore:
 
     @staticmethod
     def _correction_path(dataset, frame_index):
-        return f"{dataset_dir(dataset)}/frame_results/{int(frame_index)}/correction.json"
+        return correction_path(dataset_dir(dataset), frame_index)
 
     def anchors_get(self, dataset: str) -> dict:
         self._dataset(dataset)

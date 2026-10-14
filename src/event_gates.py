@@ -96,7 +96,8 @@ from src.table_refine import REASON_NO_BOUNDARY_EVIDENCE  # the gate reads the p
 # src/scan_events.py, the writer of the served document.  The gate reads both names.
 # The home adds no library to this module: it answers numpy and cv2 already, through
 # src.table_refine.
-from src.scan_events import BALL_TABLE_MM_KEY, SHOT_DISP_MM
+from src.scan_events import (BALL_TABLE_MM_KEY, NEAREST_POCKET_KEY, POCKET_DIST_MM_KEY,
+                             SHOT_DISP_MM)
 
 
 @dataclass
@@ -182,7 +183,7 @@ def normalize(raw: Any) -> dict:
         "to_frame": event.get("to_frame"),
         "last_frame": event.get("last_frame"),
         "window_s": window,
-        "pocket": pocket_from_text(event.get("nearest_pocket")),
+        "pocket": pocket_from_text(event.get(NEAREST_POCKET_KEY)),
         "raw": event,
     }
 

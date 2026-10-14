@@ -28,7 +28,7 @@ The cases below hold eight things:
    module that builds the path by hand;
 8. a copy that a module builds from parts is reported with its file and its line.
 
-Round 93 found two more copies of the path, at ``src/calib_mapping_audit.py:70``
+Round 93 found two more copies of the path, at ``src/calib_mapping_audit.py:72``
 and ``src/tiny_ball_net.py:65``.  Each one joined the parts by hand, and the case
 at point 2 asked for ``'spells'`` findings only, so the guard hid both.  The two
 modules read the owner now, and the case reads every kind.
@@ -91,7 +91,7 @@ class Site(NamedTuple):
 #: The six sites of round 89, and the line each one moved to.
 SITES = (
     Site('src/info_complete_scan.py', 415, 417, 'argparse', '--corners'),
-    Site('src/eval_events.py', 1090, 1096, 'argparse', '--scan-quad'),
+    Site('src/eval_events.py', 1090, 1097, 'argparse', '--scan-quad'),
     Site('src/timing_verify.py', 798, 801, 'argparse', '--quad'),
     Site('src/sam3_ball_cache.py', 126, 128, 'signature', 'cloth_mask', 'corners_path'),
     Site('src/sam3_ball_cache.py', 313, 315, 'signature', 'run', 'corners_path'),

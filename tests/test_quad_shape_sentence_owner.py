@@ -73,8 +73,8 @@ SENTENCE = "expected a 4x2 quad, got "
 #: Every raise of the owner module that refuses a quad of the wrong shape: its
 #: module and its line.  Both raises read the owner name.
 OWNER_SITES = (
-    ("src/calib_segments.py", 533),
-    ("src/calib_segments.py", 537),
+    ("src/calib_segments.py", 554),
+    ("src/calib_segments.py", 558),
 )
 #: The module of the round-108 exception.  Another writer owns it, so this
 #: module reads its literal from the tree and holds no copy of its line.

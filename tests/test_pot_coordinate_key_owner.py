@@ -2,10 +2,10 @@
 
 The walk of round 107 found five live spellings of one key of a pot event:
 
-* ``src/scan_events.py:365`` - the write of the served document;
+* ``src/scan_events.py:373`` - the write of the served document;
 * ``src/rebuild_events_v2.py:163`` - the first rebuild tool;
 * ``src/rebuild_events_calibrated.py:140`` - the second rebuild tool;
-* ``src/event_gates.py:179`` - the gate reads the row back;
+* ``src/event_gates.py:180`` - the gate reads the row back;
 * ``annotator/index.html:100`` - the pot line of the served page.
 
 No case named the key.  ``git grep -F ball_table_mm -- tests/`` answered nothing,
@@ -71,10 +71,10 @@ CONSTANT_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 #: for a key of a written row and ``get`` for a lookup that reads a row back.
 #: A moved, a new or a lost site must restate itself here.
 SITES = {
-    HOME: ((58, "home"), (365, "dict")),
-    "src/rebuild_events_v2.py": ((46, "import"), (163, "dict")),
-    "src/rebuild_events_calibrated.py": ((27, "import"), (140, "dict")),
-    "src/event_gates.py": ((99, "import"), (179, "get")),
+    HOME: ((58, "home"), (373, "dict")),
+    "src/rebuild_events_v2.py": ((46, "import"), (164, "dict")),
+    "src/rebuild_events_calibrated.py": ((27, "import"), (141, "dict")),
+    "src/event_gates.py": ((99, "import"), (180, "get")),
 }
 #: The module each reader takes the home from.
 IMPORTS = {
@@ -91,7 +91,7 @@ PAGE = "annotator/index.html"
 PAGE_NAME = "BALL_TABLE_MM_KEY"
 PAGE_KEY_LINE = 78
 PAGE_KEY_FORM = 'const %s = "%s";' % (PAGE_NAME, SHIPPED_KEY)
-PAGE_POT_LINE = 100
+PAGE_POT_LINE = 105
 #: What the pot line must read, and the bare spelling it must not use again.
 PAGE_POT_READS = ("e[%s][0]" % PAGE_NAME, "e[%s][1]" % PAGE_NAME)
 PAGE_POT_BANNED = "e.%s" % SHIPPED_KEY

@@ -1,7 +1,7 @@
 """The machine provenance sentence has one home, and the console reads the flags.
 
 Round 104 measured the defect.  One sentence stood in two live copies, and no case
-read both of them.  The writer was `src/dense_queue.py:371`, inside
+read both of them.  The writer was `src/dense_queue.py:374`, inside
 `def provenance(artifact, extra: dict) -> dict:`, and the reader was the console
 `provenanceLine` of `annotator/vision-stage.js`.  The console held a second copy
 in the `provenanceMachineLegacy` row of its two COPY tables and matched that row
@@ -14,7 +14,7 @@ against the stored sentence, in this shape:
 The match made the sentence TEXT a recognition key.  A reworded sentence in the
 module switched the key off, and a 中文 console then printed the raw English text.
 The tree-wide search for the sentence returned exactly four lines
-(`annotator/vision-stage.js:158`, `src/dense_queue.py:371`, and two lines of
+(`annotator/vision-stage.js:158`, `src/dense_queue.py:374`, and two lines of
 `tests/test_app_timeline.js`), and `grep -c dense_queue tests/test_app_timeline.js`
 answered `0`, so the only case that spelled the sentence never opened the module
 that writes it.
@@ -95,8 +95,8 @@ MODULE_FILES = tuple(sorted(
 #: the scan open: a scan that reads no file reports no offender, and no offender
 #: must not pass for a clean tree.
 STATEMENT_TEXT = "machine-produced candidate; no human has confirmed it"
-STATEMENT_LINE = 371
-FLAG_LINES = (369, 370)
+STATEMENT_LINE = 374
+FLAG_LINES = (372, 373)
 STATEMENT_KEY_COUNT = 1
 
 #: The console file count, the module file count and the shortest console file

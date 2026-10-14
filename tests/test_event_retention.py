@@ -15,9 +15,9 @@ Before this change the number was written at four code sites in four modules:
 
 Two modules that must agree each held their own constant, so changing one of them
 alone changed the bound of one writer and left the others at the old value.  Nothing
-failed.  A fifth literal, `LIMIT 500`, sits in `src/store_check.py:66`.
+failed.  A fifth literal, `LIMIT 500`, sits in `src/store_check.py:75`.
 
-`src/ops_event_log.py:42` now holds `MAX_EVENTS = 500`, and `src/store_import.py:49`
+`src/ops_event_log.py:42` now holds `MAX_EVENTS = 500`, and `src/store_import.py:53`
 imports it.
 
 `src/ops_event_log.py` is now the only owner of the number.  It is a new module and
@@ -77,7 +77,7 @@ LIMIT_LITERAL = re.compile(r"LIMIT\s+(\d+)\b", re.IGNORECASE)
 #: The key is (path, kind, matched text), so an entry that stops matching fails.
 OUTSIDE_THE_OWNERS_WRITE_SCOPE = {
     ("src/store_check.py", "LIMIT", "LIMIT 500"):
-        "src/store_check.py:65-66 reads the newest rows of the live ops_events table for its "
+        "src/store_check.py:74-75 reads the newest rows of the live ops_events table for its "
         "projection check.  That file is outside the files this change may write, so the "
         "literal stays.  It agrees with the owner today (500).  Recorded, not changed.",
 }
@@ -440,8 +440,8 @@ class TheDatabaseTest(unittest.TestCase):
     def test_the_table_keeps_every_row_while_the_count_reports_the_bound(self):
         """Recorded disagreement: `OperationsSet.write` inserts every row of the document,
         so the table is unbounded, and `OperationsSet.actual` reports at most the bound
-        (src/store_import.py:177) while `OperationsSet.expected` counts the document with
-        no cap (src/store_import.py:331).  The value 500 is not asserted here; it is pinned
+        (src/store_import.py:181) while `OperationsSet.expected` counts the document with
+        no cap (src/store_import.py:335).  The value 500 is not asserted here; it is pinned
         by tests/test_operations.py:324."""
         from src.store_import import OperationsSet
         bound = owner_number()
@@ -453,7 +453,7 @@ class TheDatabaseTest(unittest.TestCase):
         OperationsSet().write(writer, document)
         inserted = [sql for sql, _ in writer.queries if sql.startswith("INSERT INTO ops_events")]
         self.assertEqual(len(inserted), bound + 100,
-                         "src/store_import.py:221 inserts every row of the document, so the "
+                         "src/store_import.py:225 inserts every row of the document, so the "
                          "table keeps every event and is not the bounded side")
         counts = OperationsSet().actual(_Recorder(events=bound + 100))
         self.assertEqual(counts["ops_events"], bound,
@@ -463,7 +463,7 @@ class TheDatabaseTest(unittest.TestCase):
                          "the document side counts every row it was given, with no cap")
         self.assertNotEqual(expected["ops_events"], counts["ops_events"],
                             "so a document with more rows than the bound cannot be verified "
-                            "against the table: src/store_import.py:656 refuses it.  Recorded, "
+                            "against the table: src/store_import.py:661 refuses it.  Recorded, "
                             "not changed.")
 
 

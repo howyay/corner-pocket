@@ -7,7 +7,7 @@ hand copies, in three readers:
 
 * annotator/board.css:14 declares barlow-500.woff2 and three more names in url();
 * annotator/ops.css:18 declares all fifteen names in url();
-* BOARD_FONTS at annotator/unified_server.py:2691 routes four of them under /fonts/.
+* BOARD_FONTS at annotator/unified_server.py:2692 routes four of them under /fonts/.
 
 `git grep -n 'LATIN_FACES' -- tests/` and `git grep -n 'CJK_FACES' -- tests/` both answered
 nothing, so a rename in the build table was silent: the committed file keeps its old name
